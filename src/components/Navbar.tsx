@@ -14,24 +14,28 @@ interface NavbarProps {
 }
 
 export default function Navbar({ tenants, activeTenantId, onTenantChange }: NavbarProps) {
-  const activeTenant = tenants.find((t) => t.id === activeTenantId);
-
   return (
     <nav className="bg-slate-900/80 border-b border-slate-800 sticky top-0 z-50 backdrop-blur">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        {/* Brand */}
+        {/* Brand & Navigation */}
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2">
             <span className="text-xl font-extrabold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
               ALiSiO PMS
             </span>
             <span className="text-xs px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30">
-              Stage 1
+              Stage 2
             </span>
           </Link>
           <div className="hidden md:flex gap-4 text-sm font-medium text-slate-300">
             <Link href="/" className="hover:text-white transition">
-              Готелі та Об'єкти
+              🏨 Готелі
+            </Link>
+            <Link
+              href="/calendar"
+              className="hover:text-indigo-400 text-indigo-300 font-semibold transition"
+            >
+              📅 Шахматка Календаря
             </Link>
             <Link
               href="/onboarding"

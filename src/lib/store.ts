@@ -40,6 +40,27 @@ export interface Room {
   status: string; // 'available' | 'occupied' | 'dirty' | 'maintenance'
 }
 
+export interface Booking {
+  id: string;
+  tenantId: string;
+  propertyId: string;
+  roomId: string;
+  guestName: string;
+  checkIn: string; // YYYY-MM-DD
+  checkOut: string; // YYYY-MM-DD
+  totalPrice: number;
+  status: 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled';
+  guestsCount: number;
+  createdAt: string;
+}
+
+// Helper to format date strings YYYY-MM-DD
+function getOffsetDateStr(daysOffset: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + daysOffset);
+  return d.toISOString().split('T')[0];
+}
+
 // In-Memory Multi-Tenant Store with Demo Seed Data
 class PMSStore {
   private tenants: Tenant[] = [
@@ -139,6 +160,48 @@ class PMSStore {
     },
   ];
 
+  private bookings: Booking[] = [
+    {
+      id: 'book-401',
+      tenantId: '00000000-0000-0000-0000-000000000001',
+      propertyId: 'prop-101',
+      roomId: 'room-301',
+      guestName: 'Олександр Коваленко',
+      checkIn: getOffsetDateStr(0),
+      checkOut: getOffsetDateStr(3),
+      totalPrice: 13500,
+      status: 'checked_in',
+      guestsCount: 2,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'book-402',
+      tenantId: '00000000-0000-0000-0000-000000000002',
+      propertyId: 'prop-102',
+      roomId: 'room-302',
+      guestName: 'Ірина Мельник',
+      checkIn: getOffsetDateStr(1),
+      checkOut: getOffsetDateStr(4),
+      totalPrice: 9600,
+      status: 'confirmed',
+      guestsCount: 2,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'book-403',
+      tenantId: '00000000-0000-0000-0000-000000000002',
+      propertyId: 'prop-102',
+      roomId: 'room-303',
+      guestName: 'Андрій Шевченко',
+      checkIn: getOffsetDateStr(-1),
+      checkOut: getOffsetDateStr(2),
+      totalPrice: 9600,
+      status: 'checked_in',
+      guestsCount: 3,
+      createdAt: new Date().toISOString(),
+    },
+  ];
+
   // Tenant operations
   getTenants(): Tenant[] {
     return this.tenants;
@@ -212,6 +275,24 @@ class PMSStore {
     };
     this.rooms.push(newRoom);
     return newRoom;
+  }
+
+  // Tenant-scoped Bookings
+  getBookings(tenantId: string, propertyId?: string): Booking[] {
+    return this.bookings.filter(
+      (b) => b.tenantId === tenantId && (!propertyId || b.propertyId === propertyId),
+    );
+  }
+
+  createBooking(tenantId: string, data: Omit<Booking, 'id' | 'tenantId' | 'createdAt'>): Booking {
+    const newBooking: Booking = {
+      id: `book-${Date.now()}`,
+      tenantId,
+      ...data,
+      createdAt: new Date().toISOString(),
+    };
+    this.bookings.push(newBooking);
+    return newBooking;
   }
 }
 
