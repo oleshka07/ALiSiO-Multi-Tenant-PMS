@@ -1,0 +1,227 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import { Plus, Pencil, Trash2, Play, Wifi, WifiOff, Mail, AlertCircle, CheckCircle } from 'lucide-react';
+import BankInboxModal, { InboxFormValues } from './BankInboxModal';
+
+export interface BankInbox {
+  id: string;
+  name: string;
+  imap_host: string;
+  imap_port: number;
+  imap_user: string;
+  imap_folder: string;
+  use_tls: number;
+  sender_filter: string | null;
+  subject_filter: string | null;
+  attachment_format: string;
+  last_uid: number | null;
+  last_synced_at: string | null;
+  last_error: string | null;
+  last_email_at: string | null;
+  emails_processed: number;
+  operations_imported: number;
+  is_active: number;
+  has_password: boolean;
+}
+
+function formatDateTime(s: string | null): string {
+  if (!s) return '—';
+  return new Date(s).toLocaleString('cs-CZ');
+}
+
+export default function BankInboxesTab() {
+  const [items, setItems] = useState<BankInbox[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<BankInbox | 'new' | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const fetchItems = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/finance/bank-inboxes');
+      const json = await res.json();
+      setItems(Array.isArray(json) ? json : []);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchItems(); }, [fetchItems]);
+
+  async function handleSave(values: InboxFormValues, id?: string) {
+    const res = await fetch(id ? `/api/finance/bank-inboxes/${id}` : '/api/finance/bank-inboxes', {
+      method: id ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(values),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Помилка');
+    }
+    setEditing(null);
+    fetchItems();
+  }
+
+  async function handleDelete(item: BankInbox) {
+    if (!confirm(`Видалити ящик «${item.name}»?`)) return;
+    await fetch(`/api/finance/bank-inboxes/${item.id}`, { method: 'DELETE' });
+    fetchItems();
+  }
+
+  async function handleToggle(item: BankInbox) {
+    await fetch(`/api/finance/bank-inboxes/${item.id}/toggle`, { method: 'PATCH' });
+    fetchItems();
+  }
+
+  async function handleTest(item: BankInbox) {
+    setBusyId(item.id);
+    const res = await fetch(`/api/finance/bank-inboxes/${item.id}/test`, { method: 'POST' });
+    const data = await res.json();
+    setBusyId(null);
+    if (data.ok) {
+      alert(`✓ Підключення OK\nЛистів: ${data.mailbox.messages}\nНових: ${data.mailbox.unseen}`);
+    } else {
+      alert(`✗ Помилка: ${data.error}`);
+    }
+  }
+
+  async function handleRunNow(item: BankInbox) {
+    if (!confirm(`Зчитати email зараз для «${item.name}»?`)) return;
+    setBusyId(item.id);
+    const res = await fetch(`/api/finance/bank-inboxes/${item.id}/run-now`, { method: 'POST' });
+    const data = await res.json();
+    setBusyId(null);
+    if (data.ok) {
+      alert(`Нових email: ${data.newEmails}\nІмпортовано операцій: ${data.imported}\nНе знайдено account по IBAN: ${data.unmatched}\nПомилок: ${data.errors.length}`);
+      fetchItems();
+    } else {
+      alert(`Помилка: ${data.error || 'unknown'}`);
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <h2 style={{ margin: 0, fontSize: 20 }}>Банк-приймач (IMAP)</h2>
+        <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+          {items.filter((i) => i.is_active).length} активних / {items.length}
+        </span>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setEditing('new')} style={btnAdd}>
+          <Plus size={16} /> Додати ящик
+        </button>
+      </div>
+
+      <div style={infoBox}>
+        💡 Як це працює: ваш IMAP-ящик приймає виписки KB → ми парсимо XML → транзакції
+        автоматично потрапляють у відповідний рахунок (за IBAN). Перед першим запуском
+        додайте IBAN ваших рахунків у вкладці «Рахунки».
+      </div>
+
+      {loading ? (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+      ) : items.length === 0 ? (
+        <div style={emptyStyle}>
+          Жодного ящика. Натисніть «Додати ящик» щоб налаштувати IMAP-приймач для виписок KB.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: 12 }}>
+          {items.map((item) => (
+            <div key={item.id} style={{ ...cardStyle, opacity: item.is_active ? 1 : 0.55 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <Mail size={16} style={{ color: 'var(--text-secondary)' }} />
+                <strong style={{ fontSize: 15 }}>{item.name}</strong>
+                {item.is_active ? (
+                  <span style={badgeOn}>увімкнено</span>
+                ) : (
+                  <span style={badgeOff}>вимкнено</span>
+                )}
+                {item.last_error && (
+                  <span style={badgeError} title={item.last_error}><AlertCircle size={12} /> помилка</span>
+                )}
+                {!item.last_error && item.last_synced_at && (
+                  <span style={badgeOk}><CheckCircle size={12} /> синхр.</span>
+                )}
+                <div style={{ flex: 1 }} />
+                <button onClick={() => handleTest(item)} disabled={busyId === item.id} style={iconBtn} title="Тест підключення">
+                  {item.is_active ? <Wifi size={14} /> : <WifiOff size={14} />}
+                </button>
+                <button onClick={() => handleRunNow(item)} disabled={busyId === item.id || !item.is_active} style={{ ...iconBtn, color: '#22c55e' }} title="Зчитати зараз">
+                  <Play size={14} />
+                </button>
+                <button onClick={() => setEditing(item)} style={iconBtn} title="Редагувати"><Pencil size={14} /></button>
+                <button onClick={() => handleToggle(item)} style={iconBtn} title={item.is_active ? 'Вимкнути' : 'Увімкнути'}>
+                  {item.is_active ? <WifiOff size={14} /> : <Wifi size={14} />}
+                </button>
+                <button onClick={() => handleDelete(item)} style={{ ...iconBtn, color: '#dc2626' }} title="Видалити"><Trash2 size={14} /></button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, fontSize: 12 }}>
+                <Field label="IMAP" value={`${item.imap_user}@${item.imap_host}:${item.imap_port}`} />
+                <Field label="Папка" value={item.imap_folder} />
+                <Field label="Sender" value={item.sender_filter || '(будь-який)'} />
+                <Field label="Email отримано" value={`${item.emails_processed}`} />
+                <Field label="Операцій імпортовано" value={`${item.operations_imported}`} />
+                <Field label="Останній sync" value={formatDateTime(item.last_synced_at)} />
+                <Field label="Останній email" value={formatDateTime(item.last_email_at)} />
+              </div>
+
+              {item.last_error && (
+                <div style={{ marginTop: 10, padding: 10, background: 'rgba(220,38,38,0.08)', borderRadius: 6, color: '#dc2626', fontSize: 12 }}>
+                  <strong>Помилка:</strong> {item.last_error}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <BankInboxModal
+          initial={editing === 'new' ? undefined : editing}
+          onClose={() => setEditing(null)}
+          onSave={(vals) => handleSave(vals, editing !== 'new' ? editing.id : undefined)}
+        />
+      )}
+    </div>
+  );
+}
+
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontWeight: 500, marginTop: 2, wordBreak: 'break-word' }}>{value}</div>
+    </div>
+  );
+}
+
+const btnAdd: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px',
+  background: 'var(--accent, #6366f1)', color: '#fff', border: 'none',
+  borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13,
+};
+const cardStyle: React.CSSProperties = {
+  border: '1px solid var(--border-primary)', borderRadius: 10,
+  padding: 14, background: 'var(--bg-primary)',
+};
+const infoBox: React.CSSProperties = {
+  padding: 12, background: 'rgba(99,102,241,0.08)', borderRadius: 8,
+  fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16,
+};
+const emptyStyle: React.CSSProperties = {
+  padding: 40, textAlign: 'center', color: 'var(--text-secondary)',
+  border: '1px dashed var(--border-primary)', borderRadius: 10,
+};
+const iconBtn: React.CSSProperties = {
+  background: 'transparent', border: 'none', padding: 6, margin: '0 2px',
+  cursor: 'pointer', color: 'var(--text-secondary)', borderRadius: 6,
+};
+const badgeBase: React.CSSProperties = {
+  fontSize: 10, padding: '2px 8px', borderRadius: 4, display: 'inline-flex',
+  alignItems: 'center', gap: 4, textTransform: 'uppercase', fontWeight: 600,
+};
+const badgeOn = { ...badgeBase, background: 'rgba(34,197,94,0.15)', color: '#16a34a' };
+const badgeOff = { ...badgeBase, background: 'var(--bg-secondary)', color: 'var(--text-secondary)' };
+const badgeError = { ...badgeBase, background: 'rgba(220,38,38,0.15)', color: '#dc2626' };
+const badgeOk = { ...badgeBase, background: 'rgba(34,197,94,0.10)', color: '#16a34a' };

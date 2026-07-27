@@ -4,10 +4,10 @@
    ============================================================ */
 
 /* ─── Google Fonts ─────────────────────────────── */
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 /* ─── Mobile Design System ────────────────────── */
-@import "./mobile.css";
+@import './mobile.css';
 
 /* ─── CSS Custom Properties (Tokens) ──────────── */
 :root {
@@ -79,9 +79,8 @@
   --radius-full: 9999px;
 
   /* Typography */
-  --font-sans: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  --font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
   /* Spacing */
   --sidebar-width: 260px;
@@ -282,7 +281,7 @@ a:hover {
 }
 
 .sidebar-nav-item.active::before {
-  content: "";
+  content: '';
   position: absolute;
   left: 0;
   top: 50%;
@@ -328,15 +327,8 @@ a:hover {
 }
 
 @keyframes sidebar-pulse {
-  0%,
-  100% {
-    opacity: 1;
-    box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.5);
-  }
-  50% {
-    opacity: 0.8;
-    box-shadow: 0 0 0 4px rgba(248, 113, 113, 0);
-  }
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.5); }
+  50% { opacity: 0.8; box-shadow: 0 0 0 4px rgba(248, 113, 113, 0); }
 }
 
 .sidebar.collapsed .sidebar-draft-badge {
@@ -647,7 +639,7 @@ a:hover {
 }
 
 .form-checkbox input:checked::after {
-  content: "";
+  content: '';
   position: absolute;
   left: 5px;
   top: 2px;
@@ -951,7 +943,7 @@ a:hover {
   justify-content: center;
   font-size: 10px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255,255,255,0.1);
 }
 
 /* ─── Search box ──────────────────────────────── */
@@ -1011,18 +1003,10 @@ a:hover {
   flex-shrink: 0;
 }
 
-.status-dot.online {
-  background: var(--accent-success);
-}
-.status-dot.offline {
-  background: var(--text-tertiary);
-}
-.status-dot.warning {
-  background: var(--accent-warning);
-}
-.status-dot.danger {
-  background: var(--accent-danger);
-}
+.status-dot.online { background: var(--accent-success); }
+.status-dot.offline { background: var(--text-tertiary); }
+.status-dot.warning { background: var(--accent-warning); }
+.status-dot.danger { background: var(--accent-danger); }
 
 /* ─── Tooltip ─────────────────────────────────── */
 .tooltip {
@@ -1047,44 +1031,23 @@ a:hover {
 
 /* ─── Animations ──────────────────────────────── */
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .animate-pulse {
@@ -1301,26 +1264,12 @@ a:hover {
   box-shadow: var(--shadow-md);
 }
 
-.booking-bar.status-draft {
-  background: var(--status-draft);
-}
-.booking-bar.status-tentative {
-  background: var(--status-tentative);
-  color: var(--text-inverse);
-}
-.booking-bar.status-confirmed {
-  background: var(--status-confirmed);
-  color: var(--text-inverse);
-}
-.booking-bar.status-checked-in {
-  background: var(--status-checked-in);
-}
-.booking-bar.status-checked-out {
-  background: var(--status-checked-out);
-}
-.booking-bar.status-cancelled {
-  background: var(--status-cancelled);
-}
+.booking-bar.status-draft { background: var(--status-draft); }
+.booking-bar.status-tentative { background: var(--status-tentative); color: var(--text-inverse); }
+.booking-bar.status-confirmed { background: var(--status-confirmed); color: var(--text-inverse); }
+.booking-bar.status-checked-in { background: var(--status-checked-in); }
+.booking-bar.status-checked-out { background: var(--status-checked-out); }
+.booking-bar.status-cancelled { background: var(--status-cancelled); }
 
 .booking-bar-name {
   font-weight: 600;
@@ -1582,78 +1531,27 @@ a:hover {
 }
 
 /* ─── Utility Classes ─────────────────────────── */
-.flex {
-  display: flex;
-}
-.flex-col {
-  flex-direction: column;
-}
-.items-center {
-  align-items: center;
-}
-.justify-between {
-  justify-content: space-between;
-}
-.gap-2 {
-  gap: 8px;
-}
-.gap-3 {
-  gap: 12px;
-}
-.gap-4 {
-  gap: 16px;
-}
-.mt-2 {
-  margin-top: 8px;
-}
-.mt-4 {
-  margin-top: 16px;
-}
-.mb-2 {
-  margin-bottom: 8px;
-}
-.mb-4 {
-  margin-bottom: 16px;
-}
-.ml-auto {
-  margin-left: auto;
-}
-.text-sm {
-  font-size: 12px;
-}
-.text-xs {
-  font-size: 11px;
-}
-.text-muted {
-  color: var(--text-tertiary);
-}
-.text-center {
-  text-align: center;
-}
-.font-semibold {
-  font-weight: 600;
-}
-.font-bold {
-  font-weight: 700;
-}
-.w-full {
-  width: 100%;
-}
-.truncate {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  border: 0;
-}
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.gap-4 { gap: 16px; }
+.mt-2 { margin-top: 8px; }
+.mt-4 { margin-top: 16px; }
+.mb-2 { margin-bottom: 8px; }
+.mb-4 { margin-bottom: 16px; }
+.ml-auto { margin-left: auto; }
+.text-sm { font-size: 12px; }
+.text-xs { font-size: 11px; }
+.text-muted { color: var(--text-tertiary); }
+.text-center { text-align: center; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+.w-full { width: 100%; }
+.truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
 
 /* ─── Login Page ──────────────────────────────── */
 .login-page {
@@ -1662,11 +1560,9 @@ a:hover {
   align-items: center;
   justify-content: center;
   background: var(--bg-primary);
-  background-image: radial-gradient(
-      ellipse at 20% 50%,
-      rgba(79, 110, 247, 0.08) 0%,
-      transparent 50%
-    ), radial-gradient(ellipse at 80% 20%, rgba(167, 139, 250, 0.06) 0%, transparent 50%);
+  background-image:
+    radial-gradient(ellipse at 20% 50%, rgba(79, 110, 247, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(167, 139, 250, 0.06) 0%, transparent 50%);
   padding: 20px;
 }
 
@@ -1787,7 +1683,7 @@ a:hover {
 .login-spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid rgba(255,255,255,0.3);
   border-top-color: white;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
@@ -1814,28 +1710,15 @@ a:hover {
 }
 
 @keyframes shake {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  20% {
-    transform: translateX(-6px);
-  }
-  40% {
-    transform: translateX(6px);
-  }
-  60% {
-    transform: translateX(-4px);
-  }
-  80% {
-    transform: translateX(4px);
-  }
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
 }
 
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 
 /* ─── Sidebar User Section ───────────────────── */
@@ -2349,14 +2232,8 @@ a:hover {
 
 /* ─── Mobile Modal Animation ─────────────────── */
 @keyframes slideUpMobile {
-  from {
-    opacity: 0;
-    transform: translateY(40%);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(40%); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* ============================================================
@@ -2364,27 +2241,13 @@ a:hover {
    ============================================================ */
 
 /* ─── Visibility Utilities ───────────────────── */
-.mobile-only {
-  display: none;
-}
-.desktop-only {
-  display: block;
-}
-.desktop-only-flex {
-  display: flex;
-}
-.desktop-only-grid {
-  display: grid;
-}
-.desktop-only-table {
-  display: table;
-}
-.desktop-only-table-row-group {
-  display: table-row-group;
-}
-.desktop-only-table-header-group {
-  display: table-header-group;
-}
+.mobile-only { display: none; }
+.desktop-only { display: block; }
+.desktop-only-flex { display: flex; }
+.desktop-only-grid { display: grid; }
+.desktop-only-table { display: table; }
+.desktop-only-table-row-group { display: table-row-group; }
+.desktop-only-table-header-group { display: table-header-group; }
 
 /* ─── Bottom Navigation Bar ──────────────────── */
 .bottom-nav {
@@ -2440,7 +2303,7 @@ a:hover {
 }
 
 .bottom-nav-item.active::after {
-  content: "";
+  content: '';
   position: absolute;
   top: -6px;
   left: 50%;
@@ -2461,9 +2324,7 @@ a:hover {
   padding: 2px 0;
 }
 
-.filter-chips::-webkit-scrollbar {
-  display: none;
-}
+.filter-chips::-webkit-scrollbar { display: none; }
 
 .filter-chip {
   display: inline-flex;
@@ -2679,9 +2540,7 @@ a:hover {
   border-bottom: 2px solid var(--border-primary);
 }
 
-.mobile-tabs::-webkit-scrollbar {
-  display: none;
-}
+.mobile-tabs::-webkit-scrollbar { display: none; }
 
 .mobile-tab {
   position: relative;
@@ -2710,7 +2569,7 @@ a:hover {
 }
 
 .mobile-tab.active::after {
-  content: "";
+  content: '';
   position: absolute;
   bottom: -2px;
   left: 0;
@@ -2871,28 +2730,18 @@ a:hover {
    PHASE 2+3 — Mobile Overrides (≤768px)
    ============================================================ */
 @media (max-width: 768px) {
-  .mobile-only {
-    display: block;
-  }
-  .mobile-only-flex {
-    display: flex;
-  }
+  .mobile-only { display: block; }
+  .mobile-only-flex { display: flex; }
   .desktop-only,
   .desktop-only-flex,
   .desktop-only-grid,
   .desktop-only-table,
   .desktop-only-table-row-group,
-  .desktop-only-table-header-group {
-    display: none !important;
-  }
+  .desktop-only-table-header-group { display: none !important; }
 
-  .bottom-nav {
-    display: block;
-  }
+  .bottom-nav { display: block; }
 
-  .floating-btn {
-    display: block;
-  }
+  .floating-btn { display: block; }
 
   /* Extra bottom padding for bottom-nav safe area */
   .app-content {
@@ -2912,12 +2761,8 @@ a:hover {
   }
 
   /* Hide page-subtitle on small screens */
-  .page-subtitle {
-    display: none;
-  }
+  .page-subtitle { display: none; }
 
   /* Desktop filter card: hide on mobile (pages use MobileFilterBar instead) */
-  .desktop-filter-card {
-    display: none !important;
-  }
+  .desktop-filter-card { display: none !important; }
 }

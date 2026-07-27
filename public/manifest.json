@@ -1,0 +1,30 @@
+{
+  "name": "ALiSiO PMS",
+  "short_name": "ALiSiO",
+  "description": "Property Management System for glamping, resort & camping",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1019",
+  "theme_color": "#14b8a6",
+  "icons": [
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Бронювання", "url": "/bookings", "description": "Список бронювань" },
+    { "name": "Календар",   "url": "/calendar",  "description": "Gantt-календар" },
+    { "name": "Гості",      "url": "/guests",    "description": "База гостей" }
+  ],
+  "categories": ["business", "productivity"]
+}

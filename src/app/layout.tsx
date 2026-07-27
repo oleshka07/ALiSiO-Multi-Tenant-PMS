@@ -1,10 +1,24 @@
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
-import './mobile.css';
-import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'ALiSiO Multi-Tenant PMS',
-  description: 'Cloud-Native SaaS Property Management System for Hotels & Glampings',
+  title: 'ALiSiO PMS — Property Management System',
+  description: 'Modern property management system for glamping, resort, and camping properties',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'ALiSiO PMS',
+  },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+  themeColor: '#0f1019',
 };
 
 export default function RootLayout({
@@ -13,16 +27,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="uk">
+    <html lang="uk" suppressHydrationWarning>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
-          rel="stylesheet"
-        />
+        <link rel="apple-touch-icon" href="/icons/icon-192.svg" />
+      <link rel="apple-touch-startup-image" href="/icons/icon-512.svg" />
       </head>
-      <body>{children}</body>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }

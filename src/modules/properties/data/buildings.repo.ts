@@ -1,0 +1,71 @@
+import { getDb } from '@core/db';
+
+export function listBuildings(filters: { property_id?: string } = {}) {
+  let query = `
+    SELECT b.*, c.name as category_name, c.type as category_type,
+      COUNT(u.id) as unit_count
+    FROM buildings b
+    JOIN categories c ON b.category_id = c.id
+    LEFT JOIN units u ON u.building_id = b.id AND u.is_active = 1
+    WHERE 1=1
+  `;
+
+  const params: string[] = [];
+
+  if (filters.property_id) {
+    query += ' AND b.property_id = ?';
+    params.push(filters.property_id);
+  }
+
+  query += ' GROUP BY b.id ORDER BY b.sort_order';
+
+  return getDb().prepare(query).all(...params);
+}
+
+export interface CreateBuildingInput {
+  category_id: string;
+  property_id: string;
+  name: string;
+  code: string;
+  description?: string;
+  sort_order?: number;
+}
+
+export function createBuilding(input: CreateBuildingInput) {
+  const db = getDb();
+  const result = db.prepare(`
+    INSERT INTO buildings (category_id, property_id, name, code, description, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(input.category_id, input.property_id, input.name, input.code, input.description ?? null, input.sort_order ?? 0);
+  return db.prepare('SELECT * FROM buildings WHERE rowid = ?').get(result.lastInsertRowid);
+}
+
+export function updateBuilding(id: string, fields: Record<string, unknown>) {
+  const db = getDb();
+  const allowed = ['name', 'code', 'description', 'sort_order', 'category_id'];
+  const updates: string[] = [];
+  const values: unknown[] = [];
+
+  for (const field of allowed) {
+    if (fields[field] !== undefined) {
+      updates.push(`${field} = ?`);
+      values.push(fields[field]);
+    }
+  }
+
+  if (updates.length === 0) return null;
+
+  values.push(id);
+  db.prepare(`UPDATE buildings SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  return db.prepare('SELECT * FROM buildings WHERE id = ?').get(id);
+}
+
+export function deleteBuilding(id: string): { ok: boolean; error?: string } {
+  const db = getDb();
+  const unitCount = db.prepare('SELECT COUNT(*) as cnt FROM units WHERE building_id = ?').get(id) as { cnt: number };
+  if (unitCount.cnt > 0) {
+    return { ok: false, error: `Cannot delete: ${unitCount.cnt} units belong to this building. Delete units first.` };
+  }
+  db.prepare('DELETE FROM buildings WHERE id = ?').run(id);
+  return { ok: true };
+}
