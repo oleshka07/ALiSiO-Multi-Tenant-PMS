@@ -1,26 +1,40 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: alisio-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: alisio_pms
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alisio_secure_pass_2026}
+    ports:
+      - "127.0.0.1:5438:5432"
+    volumes:
+      - alisio-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d alisio_pms"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   app:
     build:
       context: ..
       dockerfile: Dockerfile
+    container_name: alisio-app
     restart: always
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3130:3000"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:alisio_secure_pass_2026@postgres:5432/alisio_pms?sslmode=disable}
       - NEXT_PUBLIC_APP_URL=https://alisio.rozum.one
-
-  nginx:
-    image: nginx:alpine
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - NEXT_PUBLIC_APP_DOMAIN=alisio.rozum.one
     depends_on:
-      - app
+      postgres:
+        condition: service_healthy
+
+volumes:
+  alisio-pgdata:
