@@ -309,7 +309,7 @@ export default function CalendarPage() {
                   >
                     {rooms.map((r) => (
                       <option key={r.id} value={r.id}>
-                        {r.roomNumber} ({r.type})
+                        {r.roomNumber} ({r.status})
                       </option>
                     ))}
                   </select>
