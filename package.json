@@ -10,6 +10,7 @@
     "lint": "biome check ./src",
     "lint:fix": "biome check --write ./src",
     "typecheck": "tsc --noEmit",
+    "check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/modules/bookings/domain/booking-com-excel.check.ts",
     "test:e2e": "playwright test",
     "test:ui": "playwright test --ui"
   },
@@ -29,15 +30,14 @@
     "lucide-react": "^0.577.0",
     "mailparser": "^3.9.8",
     "mrz": "^5.0.2",
-    "next": "16.1.6",
-    "nodemailer": "^8.0.5",
+    "next": "^16.2.12",
+    "nodemailer": "^9.0.3",
     "openai": "^6.32.0",
     "pdf-parse": "^2.4.5",
     "pdfkit": "^0.18.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-google-charts": "^5.2.1",
-    "xlsx": "^0.18.5",
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
@@ -48,5 +48,12 @@
     "@types/react-dom": "^19",
     "esbuild": "^0.28.0",
     "typescript": "^5"
+  },
+  "//overrides": "Force patched versions of transitive deps flagged by npm audit; drop an entry once the direct parent ships the fix itself.",
+  "overrides": {
+    "sharp": "^0.35.3",
+    "uuid": "^11.1.1",
+    "brace-expansion": "^5.0.8",
+    "postcss": "^8.5.18"
   }
 }

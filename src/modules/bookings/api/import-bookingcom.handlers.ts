@@ -292,7 +292,7 @@ export async function previewBookingComImport(request: NextRequest): Promise<Nex
     const buffer = Buffer.from(arrayBuffer);
     console.log(`[Import Booking.com] File received: ${(file as File).name}, size=${buffer.length} bytes`);
 
-    const parsed = parseBookingComExcel(buffer);
+    const parsed = await parseBookingComExcel(buffer);
     const mode = (formData.get('mode') || 'draft') as 'draft' | 'auto';
 
     console.log(`[Import Booking.com] Parsed: ${parsed.rows.length} rows, ${parsed.errors.length} errors, totalInFile=${parsed.totalRowsInFile}`);

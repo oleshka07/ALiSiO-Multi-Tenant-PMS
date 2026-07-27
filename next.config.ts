@@ -17,9 +17,6 @@ const nextConfig: NextConfig = {
   // that cannot be externalized by Turbopack (Next.js 16 default bundler).
   // Listing it causes "client reference manifest does not exist" build failures.
   serverExternalPackages: ['better-sqlite3', 'imapflow', 'nodemailer', 'pdfkit', 'pdf-parse'],
-  // Allow build to succeed during modular architecture migration
-  // Remove once all modules are fully migrated and TS errors resolved
-  typescript: { ignoreBuildErrors: true },
   // Fix Turbopack workspace root detection on VPS
   turbopack: { root: '.' },
   async headers() {
