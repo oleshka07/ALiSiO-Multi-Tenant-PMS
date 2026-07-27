@@ -9,7 +9,7 @@ import {
 const MIN_LEN = 8;
 
 // GET /api/finance/security/status
-export async function getFinanceSecurityStatus(request: Request): Promise<Response> {
+export async function getFinanceSecurityStatus(_request?: Request): Promise<Response> {
   const r = await resolveFinanceOwner();
   if (r instanceof NextResponse) return r;
   return NextResponse.json({
@@ -77,7 +77,7 @@ export async function unlockFinanceHandler(request: Request): Promise<Response> 
 }
 
 // POST /api/finance/security/lock
-export async function lockFinanceHandler(request: Request): Promise<Response> {
+export async function lockFinanceHandler(_request?: Request): Promise<Response> {
   const r = await resolveFinanceOwner();
   if (r instanceof NextResponse) return r;
   lockFinance(r.sessionId);

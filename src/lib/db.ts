@@ -30,23 +30,19 @@ export function getDb(): any {
   }
 
   // Dynamic require to avoid webpack bundling issues
-  let Database: any;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    Database = require('better-sqlite3');
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
-    initSchema(db);
-    runMigrations(db);
-  } catch (e: any) {
-    console.warn('[DB] SQLite disabled in PostgreSQL mode:', e.message);
-    db = {
-      prepare: () => ({ get: () => null, all: () => [], run: () => ({}) }),
-      exec: () => {},
-      pragma: () => {},
-    };
-  }
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const Database = require('better-sqlite3');
+  db = new Database(DB_PATH);
+
+  // Enable WAL mode for better performance
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+
+  // Initialize schema if needed
+  initSchema(db);
+
+  // Run migrations for existing databases
+  runMigrations(db);
 
   // PR #8: run recurring templates if 24h has elapsed since last tick
   try {

@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
-  Building2,
   CalendarDays,
   BookOpen,
   DollarSign,
@@ -59,7 +58,6 @@ const navigation: NavSection[] = [
     title: 'Основне',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} />, permission: 'nav:dashboard' },
-      { label: "Об'єкти", href: '/properties', icon: <Building2 size={20} />, permission: 'nav:dashboard' },
       { label: 'Календар', href: '/calendar', icon: <CalendarDays size={20} />, permission: 'nav:calendar' },
       { label: 'Бронювання', href: '/bookings', icon: <BookOpen size={20} />, permission: 'nav:bookings' },
       { label: 'Імпорт Booking.com', href: '/imports/booking-com', icon: <Upload size={20} />, permission: 'nav:bookings' },
