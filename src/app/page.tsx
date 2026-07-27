@@ -1,12 +1,15 @@
 'use client';
 
-import Navbar from '@/components/Navbar';
+import Header from '@/components/layout/Header';
+import Sidebar from '@/components/layout/Sidebar';
 import type { Property, Tenant } from '@/lib/store';
+import { ArrowRight, Building, DollarSign, Home, MapPin, Plus, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import type React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 
 export default function HomePage() {
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [activeTenantId, setActiveTenantId] = useState<string>(
     '00000000-0000-0000-0000-000000000001',
@@ -14,7 +17,7 @@ export default function HomePage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [showPropertyModal, setShowPropertyModal] = useState(false);
 
-  // New Property Form
+  // Form State
   const [propName, setPropName] = useState('');
   const [propType, setPropType] = useState('glamping');
   const [city, setCity] = useState('Київ');
@@ -56,174 +59,224 @@ export default function HomePage() {
     loadData();
   };
 
-  const activeTenantName =
-    tenants.find((t) => t.id === activeTenantId)?.name || 'Обрана Організація';
+  const activeTenant = tenants.find((t) => t.id === activeTenantId);
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 pb-12">
-      <Navbar
-        tenants={tenants}
-        activeTenantId={activeTenantId}
-        onTenantChange={setActiveTenantId}
-      />
+    <div className="app-layout">
+      <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
 
-      <main className="max-w-7xl mx-auto px-6 py-8 space-y-8">
-        {/* Stage Banner */}
-        <div className="bg-gradient-to-r from-indigo-900/60 to-purple-900/60 border border-indigo-500/30 rounded-2xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xl">
-          <div>
-            <span className="px-3 py-1 bg-indigo-500/20 text-indigo-300 text-xs font-semibold rounded-full border border-indigo-500/30">
-              Етап 1: Properties & Units Management
-            </span>
-            <h1 className="text-2xl font-extrabold text-white mt-2">
-              Управління Готелями та Номерами
-            </h1>
-            <p className="text-slate-300 text-xs mt-1">
-              Модуль для реєстрації компаній, створення об'єктів (готелів, глемпінгів) та
-              налаштування категорій і номерів.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowPropertyModal(true)}
-            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs rounded-xl shadow-lg transition"
-          >
-            + Створити Готель / Глемпінг
-          </button>
-        </div>
+      <div className="app-main">
+        <Header
+          title="Об'єкти та Нерухомість (Properties)"
+          tenants={tenants}
+          activeTenantId={activeTenantId}
+          onTenantChange={setActiveTenantId}
+          onMenuClick={() => setMobileOpen(true)}
+        />
 
-        {/* Multi-Tenant Isolation Testing Banner */}
-        <div className="p-4 bg-slate-800/80 border border-emerald-500/30 rounded-xl space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse" />
-            <h2 className="text-sm font-bold text-emerald-400">
-              Перевірка Мультитенантності (Тест Ізоляції Даних):
-            </h2>
-          </div>
-          <p className="text-xs text-slate-300">
-            Зараз у системі відображаються об'єкти тільки для{' '}
-            <strong className="text-white">"{activeTenantName}"</strong>. Перемкніть організацію у
-            шапці зверху, щоб переконатися, що об'єкти однієї компанії повністю приховані від іншої!
-          </p>
-        </div>
-
-        {/* Properties List */}
-        <section className="space-y-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            🏨 Об'єкти Організації ({properties.length})
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {properties.map((prop) => (
-              <div
-                key={prop.id}
-                className="bg-slate-800/60 border border-slate-700/60 hover:border-indigo-500/50 rounded-2xl p-6 transition shadow-lg space-y-4 flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex justify-between items-start">
-                    <span className="px-2.5 py-1 bg-indigo-500/20 text-indigo-300 text-[10px] font-bold uppercase rounded border border-indigo-500/30">
-                      {prop.type}
-                    </span>
-                    <span className="text-xs text-slate-400">{prop.city}</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-white mt-3">{prop.name}</h3>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {prop.address || 'Адреса не вказана'}
-                  </p>
+        <main className="app-content space-y-6">
+          {/* Top Banner */}
+          <div className="card bg-gradient-to-r from-indigo-900/60 via-slate-800 to-purple-900/40 border border-indigo-500/30">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="badge badge-primary font-mono">Stage 1</span>
+                  <span className="text-xs text-indigo-300 font-semibold uppercase tracking-wider">
+                    Properties & Units Management
+                  </span>
                 </div>
-
-                <div className="pt-4 border-t border-slate-700/50 flex justify-between items-center">
-                  <span className="text-xs font-mono text-slate-400">{prop.currency}</span>
-                  <Link
-                    href={`/properties/${prop.id}`}
-                    className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white font-medium text-xs rounded-lg transition"
-                  >
-                    Керувати Номерами →
-                  </Link>
-                </div>
-              </div>
-            ))}
-
-            {properties.length === 0 && (
-              <div className="col-span-full p-8 text-center bg-slate-800/30 border border-dashed border-slate-700 rounded-2xl">
-                <p className="text-slate-400 text-sm">
-                  У цієї організації ще немає створених готелів або глемпінгів.
+                <h2 className="page-title mt-1">Управління Готелями та Глемпінгами</h2>
+                <p className="page-subtitle">
+                  Створення нових об'єктів, налаштування номерного фонду та керування категоріями.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setShowPropertyModal(true)}
-                  className="mt-3 text-xs text-indigo-400 hover:underline font-medium"
-                >
-                  + Створити перший об'єкт
-                </button>
               </div>
-            )}
+
+              <button
+                type="button"
+                onClick={() => setShowPropertyModal(true)}
+                className="btn btn-primary"
+              >
+                <Plus size={16} /> Створити Новий Об'єкт
+              </button>
+            </div>
           </div>
-        </section>
-      </main>
+
+          {/* Multi-Tenant Isolation Banner */}
+          <div className="card bg-slate-800/80 border-emerald-500/40">
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="text-emerald-400" size={24} />
+              <div>
+                <h3 className="text-sm font-bold text-emerald-400">
+                  Ізоляція Даних Мультитенантності
+                </h3>
+                <p className="text-xs text-slate-300">
+                  Активна організація:{' '}
+                  <strong className="text-white">{activeTenant?.name || '---'}</strong> (ID:{' '}
+                  {activeTenantId}). Всі запити безпечно фільтруються на рівні бази даних.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Stats Overview */}
+          <div className="stats-grid">
+            <div className="stat-card">
+              <div className="stat-icon blue">
+                <Building size={22} />
+              </div>
+              <div>
+                <div className="stat-value">{properties.length}</div>
+                <div className="stat-label">Всього об'єктів</div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-icon green">
+                <Home size={22} />
+              </div>
+              <div>
+                <div className="stat-value">12</div>
+                <div className="stat-label">Активні номери / куполи</div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-icon yellow">
+                <DollarSign size={22} />
+              </div>
+              <div>
+                <div className="stat-value">UAH</div>
+                <div className="stat-label">Основна валюта</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Properties Grid */}
+          <section className="space-y-4">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              🏨 Список Об'єктів ({properties.length})
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {properties.map((prop) => (
+                <div
+                  key={prop.id}
+                  className="card space-y-4 flex flex-col justify-between hover:border-indigo-500/50"
+                >
+                  <div>
+                    <div className="flex justify-between items-start">
+                      <span className="badge badge-glamping uppercase">{prop.type}</span>
+                      <span className="text-xs text-slate-400 flex items-center gap-1">
+                        <MapPin size={12} /> {prop.city}
+                      </span>
+                    </div>
+
+                    <h4 className="text-lg font-bold text-white mt-3">{prop.name}</h4>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {prop.address || 'Адреса не вказана'}
+                    </p>
+                  </div>
+
+                  <div className="pt-4 border-t border-slate-700/60 flex justify-between items-center">
+                    <span className="text-xs font-mono text-slate-400">{prop.currency}</span>
+                    <Link href={`/properties/${prop.id}`} className="btn btn-secondary btn-sm">
+                      Керувати Номерами <ArrowRight size={14} />
+                    </Link>
+                  </div>
+                </div>
+              ))}
+
+              {properties.length === 0 && (
+                <div className="col-span-full card text-center py-12 space-y-3">
+                  <p className="text-slate-400 text-sm">
+                    У цієї організації ще немає створених об'єктів.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowPropertyModal(true)}
+                    className="btn btn-primary btn-sm"
+                  >
+                    + Створити перший об'єкт
+                  </button>
+                </div>
+              )}
+            </div>
+          </section>
+        </main>
+      </div>
 
       {/* Modal New Property */}
       {showPropertyModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 max-w-md w-full space-y-4">
-            <h3 className="text-lg font-bold text-white">Створити Новий Готель або Глемпінг</h3>
-            <form onSubmit={handleCreateProperty} className="space-y-3">
-              <div>
-                <label htmlFor="propName" className="block text-xs text-slate-300 mb-1">
-                  Назва об'єкту *
-                </label>
-                <input
-                  id="propName"
-                  type="text"
-                  required
-                  placeholder="напр. Eco Glamping Dnipro"
-                  value={propName}
-                  onChange={(e) => setPropName(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
-                />
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h3 className="modal-title">Створити Новий Готель або Глемпінг</h3>
+              <button
+                type="button"
+                onClick={() => setShowPropertyModal(false)}
+                className="modal-close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateProperty}>
+              <div className="modal-body space-y-4">
+                <div className="form-group">
+                  <label htmlFor="propName" className="form-label">
+                    Назва об'єкту *
+                  </label>
+                  <input
+                    id="propName"
+                    type="text"
+                    required
+                    placeholder="напр. Eco Glamping Dnipro"
+                    value={propName}
+                    onChange={(e) => setPropName(e.target.value)}
+                    className="form-input"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="propType" className="form-label">
+                    Тип об'єкту
+                  </label>
+                  <select
+                    id="propType"
+                    value={propType}
+                    onChange={(e) => setPropType(e.target.value)}
+                    className="form-select"
+                  >
+                    <option value="glamping">Глемпінг</option>
+                    <option value="hotel">Готель</option>
+                    <option value="villa">Вілла / Котедж</option>
+                    <option value="apartment">Апартаменти</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="city" className="form-label">
+                    Місто
+                  </label>
+                  <input
+                    id="city"
+                    type="text"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    className="form-input"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label htmlFor="propType" className="block text-xs text-slate-300 mb-1">
-                  Тип об'єкту
-                </label>
-                <select
-                  id="propType"
-                  value={propType}
-                  onChange={(e) => setPropType(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
-                >
-                  <option value="glamping">Глемпінг</option>
-                  <option value="hotel">Готель</option>
-                  <option value="villa">Вілла / Котедж</option>
-                  <option value="apartment">Апартаменти</option>
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="city" className="block text-xs text-slate-300 mb-1">
-                  Місто
-                </label>
-                <input
-                  id="city"
-                  type="text"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
-                />
-              </div>
-
-              <div className="flex gap-2 justify-end pt-2">
+              <div className="modal-footer">
                 <button
                   type="button"
                   onClick={() => setShowPropertyModal(false)}
-                  className="px-3 py-2 bg-slate-700 text-xs rounded-lg text-slate-300"
+                  className="btn btn-secondary"
                 >
                   Скасувати
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs rounded-lg text-white font-medium shadow"
-                >
+                <button type="submit" className="btn btn-primary">
                   Створити Об'єкт
                 </button>
               </div>

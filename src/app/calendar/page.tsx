@@ -1,13 +1,15 @@
 'use client';
 
-import Navbar from '@/components/Navbar';
+import Header from '@/components/layout/Header';
+import Sidebar from '@/components/layout/Sidebar';
 import type { Booking, Property, Room, Tenant } from '@/lib/store';
+import { CalendarDays, Plus } from 'lucide-react';
 import type React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 
-// Helper to generate 14 upcoming days
+// Helper to generate upcoming days
 function generateDays(count = 14) {
-  const days: { dateStr: string; label: string; dayName: string }[] = [];
+  const days: { dateStr: string; label: string; dayName: string; isWeekend: boolean }[] = [];
   const today = new Date();
 
   for (let i = -1; i < count - 1; i++) {
@@ -18,14 +20,16 @@ function generateDays(count = 14) {
     const label = `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}`;
     const dayNames = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
     const dayName = dayNames[d.getDay()];
+    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
 
-    days.push({ dateStr, label, dayName });
+    days.push({ dateStr, label, dayName, isWeekend });
   }
 
   return days;
 }
 
 export default function CalendarPage() {
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [activeTenantId, setActiveTenantId] = useState<string>(
     '00000000-0000-0000-0000-000000000001',
@@ -122,319 +126,280 @@ export default function CalendarPage() {
     loadData();
   };
 
-  const getStatusBadge = (bStatus: Booking['status']) => {
+  const getStatusClass = (bStatus: Booking['status']) => {
     switch (bStatus) {
       case 'checked_in':
-        return 'bg-emerald-600/90 text-white border-emerald-400';
+        return 'status-checked-in';
       case 'confirmed':
-        return 'bg-indigo-600/90 text-white border-indigo-400';
+        return 'status-confirmed';
       case 'checked_out':
-        return 'bg-slate-600/90 text-slate-200 border-slate-400';
+        return 'status-checked-out';
       case 'cancelled':
-        return 'bg-rose-600/90 text-white border-rose-400';
+        return 'status-cancelled';
       default:
-        return 'bg-indigo-600/90 text-white';
-    }
-  };
-
-  const getStatusLabel = (bStatus: Booking['status']) => {
-    switch (bStatus) {
-      case 'checked_in':
-        return 'Заселено';
-      case 'confirmed':
-        return 'Заброньовано';
-      case 'checked_out':
-        return 'Виселено';
-      case 'cancelled':
-        return 'Скасовано';
-      default:
-        return bStatus;
+        return 'status-tentative';
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 pb-12">
-      <Navbar
-        tenants={tenants}
-        activeTenantId={activeTenantId}
-        onTenantChange={setActiveTenantId}
-      />
+    <div className="app-layout">
+      <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
 
-      <main className="max-w-[1400px] mx-auto px-6 py-8 space-y-6">
-        {/* Header Bar */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
+      <div className="app-main">
+        <Header
+          title="Шахматка Бронювань (Interactive Grid)"
+          tenants={tenants}
+          activeTenantId={activeTenantId}
+          onTenantChange={setActiveTenantId}
+          properties={properties}
+          activePropertyId={selectedPropertyId}
+          onPropertyChange={setSelectedPropertyId}
+          onMenuClick={() => setMobileOpen(true)}
+        />
+
+        <main className="app-content space-y-4">
+          {/* Top Control Bar */}
+          <div className="card py-3 px-4 flex flex-col md:flex-row justify-between items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 bg-indigo-500/20 text-indigo-300 text-xs font-semibold rounded border border-indigo-500/30">
-                Stage 2
-              </span>
-              <h1 className="text-2xl font-extrabold text-white">
-                📅 Шахматка Бронювань (Interactive Calendar Grid)
-              </h1>
-            </div>
-            <p className="text-xs text-slate-400 mt-1">
-              Візуальна сітка дат та кімнат для швидкого бронювання та відстеження статусів гостей.
-            </p>
-          </div>
-
-          <div className="flex gap-3">
-            {properties.length > 1 && (
-              <select
-                value={selectedPropertyId}
-                onChange={(e) => setSelectedPropertyId(e.target.value)}
-                className="bg-slate-800 border border-slate-700 text-white text-xs font-semibold rounded-lg px-3 py-2"
-              >
-                {properties.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    🏨 {p.name}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            <button
-              type="button"
-              onClick={() => {
-                if (rooms.length > 0) {
-                  setModalRoomId(rooms[0].id);
-                  setCheckIn(days[1].dateStr);
-                  setCheckOut(days[3].dateStr);
-                  setShowModal(true);
-                }
-              }}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg shadow transition"
-            >
-              + Нове Бронювання
-            </button>
-          </div>
-        </div>
-
-        {/* Legend */}
-        <div className="flex flex-wrap gap-4 p-3 bg-slate-800/60 border border-slate-700/50 rounded-xl text-xs">
-          <span className="text-slate-400 font-medium">Легенда статусів:</span>
-          <span className="flex items-center gap-1.5 text-indigo-300">
-            <span className="w-2.5 h-2.5 bg-indigo-500 rounded-full" /> Заброньовано
-          </span>
-          <span className="flex items-center gap-1.5 text-emerald-300">
-            <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full" /> Заселено (В готелі)
-          </span>
-          <span className="flex items-center gap-1.5 text-slate-400">
-            <span className="w-2.5 h-2.5 bg-slate-500 rounded-full" /> Виселено
-          </span>
-          <span className="flex items-center gap-1.5 text-rose-300">
-            <span className="w-2.5 h-2.5 bg-rose-500 rounded-full" /> Скасовано
-          </span>
-        </div>
-
-        {/* Interactive Calendar Grid Table */}
-        <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl overflow-x-auto shadow-2xl">
-          <div className="min-w-[1000px]">
-            {/* Header Dates Row */}
-            <div className="grid grid-cols-[180px_repeat(14,_minmax(65px,_1fr))] border-b border-slate-700 bg-slate-900/80 text-xs font-bold text-slate-300 sticky top-0">
-              <div className="p-3 border-r border-slate-700 text-slate-400">Кімната / Намет</div>
-              {days.map((d) => (
-                <div key={d.dateStr} className="p-2 border-r border-slate-700/50 text-center">
-                  <div className="text-[10px] text-indigo-400 uppercase">{d.dayName}</div>
-                  <div className="text-xs font-mono">{d.label}</div>
-                </div>
-              ))}
+              <CalendarDays className="text-indigo-400" size={20} />
+              <h2 className="text-base font-bold text-white">Календар Зайнятості Номерів</h2>
+              <span className="badge badge-primary font-mono text-[10px]">14 Днів</span>
             </div>
 
-            {/* Room Rows */}
-            {rooms.map((room) => (
-              <div
-                key={room.id}
-                className="grid grid-cols-[180px_repeat(14,_minmax(65px,_1fr))] border-b border-slate-700/50 hover:bg-slate-800/40 transition text-xs"
-              >
-                {/* Room Info Cell */}
-                <div className="p-3 border-r border-slate-700 bg-slate-900/40 font-semibold text-white flex items-center justify-between">
-                  <span>{room.roomNumber}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
-                    {room.status}
-                  </span>
-                </div>
-
-                {/* Day Cells */}
-                {days.map((day) => {
-                  // Find if room is booked on this day
-                  const activeBooking = bookings.find(
-                    (b) =>
-                      b.roomId === room.id && day.dateStr >= b.checkIn && day.dateStr < b.checkOut,
-                  );
-
-                  if (activeBooking) {
-                    const isStartDay = day.dateStr === activeBooking.checkIn;
-
-                    return (
-                      <button
-                        type="button"
-                        key={day.dateStr}
-                        onClick={() => {
-                          setModalRoomId(room.id);
-                          setGuestName(activeBooking.guestName);
-                          setCheckIn(activeBooking.checkIn);
-                          setCheckOut(activeBooking.checkOut);
-                          setTotalPrice(activeBooking.totalPrice.toString());
-                          setStatus(activeBooking.status);
-                          setShowModal(true);
-                        }}
-                        className={`p-1 border-r border-slate-700/40 flex items-center justify-center text-left text-[11px] font-medium transition cursor-pointer ${getStatusBadge(activeBooking.status)}`}
-                      >
-                        {isStartDay && (
-                          <span className="truncate px-1 font-semibold">
-                            👤 {activeBooking.guestName}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  }
-
-                  return (
-                    <button
-                      type="button"
-                      key={day.dateStr}
-                      onClick={() => handleCellClick(room.id, day.dateStr)}
-                      className="p-2 border-r border-slate-700/30 hover:bg-indigo-500/20 text-slate-600 hover:text-indigo-300 flex items-center justify-center transition cursor-pointer text-[10px]"
-                    >
-                      +
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-
-            {rooms.length === 0 && (
-              <div className="p-12 text-center text-slate-400 text-sm">
-                У цьому об'єкті ще немає створених кімнат або наметів.
-              </div>
-            )}
-          </div>
-        </div>
-      </main>
-
-      {/* Booking Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/75 flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <div className="flex justify-between items-center border-b border-slate-700 pb-3">
-              <h3 className="text-lg font-bold text-white">
-                {guestName ? 'Деталі Бронювання' : 'Нове Бронювання'}
-              </h3>
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => setShowModal(false)}
-                className="text-slate-400 hover:text-white text-sm"
+                onClick={() => {
+                  if (rooms.length > 0) {
+                    setModalRoomId(rooms[0].id);
+                    setCheckIn(days[1].dateStr);
+                    setCheckOut(days[3].dateStr);
+                    setShowModal(true);
+                  }
+                }}
+                className="btn btn-primary btn-sm"
               >
+                <Plus size={14} /> Створити Бронювання
+              </button>
+            </div>
+          </div>
+
+          {/* Interactive Calendar Container */}
+          <div className="calendar-container">
+            <div className="calendar-grid-wrapper">
+              {/* Left Panel: Rooms */}
+              <div className="calendar-left-panel">
+                <div className="calendar-left-header">
+                  <span className="text-xs font-bold text-slate-300">Номер / Купол</span>
+                </div>
+                {rooms.map((room) => (
+                  <div key={room.id} className="calendar-unit-row">
+                    <div className="calendar-unit-icon">🏕️</div>
+                    <div className="min-w-0">
+                      <div className="calendar-unit-name">{room.roomNumber}</div>
+                      <div className="calendar-unit-type">{room.status}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Scrollable Right Panel: Grid */}
+              <div className="calendar-scroll-area">
+                {/* Header Dates */}
+                <div className="calendar-dates-header">
+                  {days.map((d) => (
+                    <div
+                      key={d.dateStr}
+                      className={`calendar-date-cell ${d.isWeekend ? 'weekend' : ''}`}
+                    >
+                      <span className="calendar-date-day">{d.dayName}</span>
+                      <span className="calendar-date-num">{d.label.split('.')[0]}</span>
+                      <span className="calendar-date-month">{d.label.split('.')[1]}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Grid Rows */}
+                <div className="calendar-grid-body">
+                  {rooms.map((room) => (
+                    <div key={room.id} className="calendar-grid-row">
+                      {days.map((day) => {
+                        const activeBooking = bookings.find(
+                          (b) =>
+                            b.roomId === room.id &&
+                            day.dateStr >= b.checkIn &&
+                            day.dateStr < b.checkOut,
+                        );
+
+                        if (activeBooking) {
+                          const isStartDay = day.dateStr === activeBooking.checkIn;
+
+                          return (
+                            <button
+                              type="button"
+                              key={day.dateStr}
+                              onClick={() => {
+                                setModalRoomId(room.id);
+                                setGuestName(activeBooking.guestName);
+                                setCheckIn(activeBooking.checkIn);
+                                setCheckOut(activeBooking.checkOut);
+                                setTotalPrice(activeBooking.totalPrice.toString());
+                                setStatus(activeBooking.status);
+                                setShowModal(true);
+                              }}
+                              className={`booking-bar ${getStatusClass(activeBooking.status)}`}
+                              style={{ width: '100%', border: 'none', textAlign: 'left' }}
+                            >
+                              {isStartDay && (
+                                <div className="truncate">
+                                  <span className="booking-bar-name">
+                                    {activeBooking.guestName}
+                                  </span>
+                                  <span className="booking-bar-info">
+                                    ({activeBooking.totalPrice} ₴)
+                                  </span>
+                                </div>
+                              )}
+                            </button>
+                          );
+                        }
+
+                        return (
+                          <button
+                            type="button"
+                            key={day.dateStr}
+                            onClick={() => handleCellClick(room.id, day.dateStr)}
+                            className={`calendar-day-cell ${day.isWeekend ? 'weekend' : ''}`}
+                            style={{ border: 'none', background: 'transparent' }}
+                            aria-label={`Select date ${day.dateStr}`}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      {/* Modal New/Edit Booking */}
+      {showModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h3 className="modal-title">Деталі Бронювання</h3>
+              <button type="button" onClick={() => setShowModal(false)} className="modal-close">
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleCreateBooking} className="space-y-3">
-              <div>
-                <label htmlFor="modalRoom" className="block text-xs text-slate-300 mb-1">
-                  Кімната / Намет *
-                </label>
-                <select
-                  id="modalRoom"
-                  value={modalRoomId}
-                  onChange={(e) => setModalRoomId(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
-                >
-                  {rooms.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.roomNumber}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="modalGuest" className="block text-xs text-slate-300 mb-1">
-                  ПІБ Гостя *
-                </label>
-                <input
-                  id="modalGuest"
-                  type="text"
-                  required
-                  placeholder="напр. Тарас Шевченко"
-                  value={guestName}
-                  onChange={(e) => setGuestName(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="checkIn" className="block text-xs text-slate-300 mb-1">
-                    Дата Заїзду *
-                  </label>
-                  <input
-                    id="checkIn"
-                    type="date"
-                    required
-                    value={checkIn}
-                    onChange={(e) => setCheckIn(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="checkOut" className="block text-xs text-slate-300 mb-1">
-                    Дата Виїзду *
-                  </label>
-                  <input
-                    id="checkOut"
-                    type="date"
-                    required
-                    value={checkOut}
-                    onChange={(e) => setCheckOut(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="price" className="block text-xs text-slate-300 mb-1">
-                    Сума (грн)
-                  </label>
-                  <input
-                    id="price"
-                    type="number"
-                    value={totalPrice}
-                    onChange={(e) => setTotalPrice(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="bookingStatus" className="block text-xs text-slate-300 mb-1">
-                    Статус
+            <form onSubmit={handleCreateBooking}>
+              <div className="modal-body space-y-4">
+                <div className="form-group">
+                  <label htmlFor="modalRoom" className="form-label">
+                    Обрана Кімната / Купол
                   </label>
                   <select
-                    id="bookingStatus"
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as Booking['status'])}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                    id="modalRoom"
+                    value={modalRoomId}
+                    onChange={(e) => setModalRoomId(e.target.value)}
+                    className="form-select"
                   >
-                    <option value="confirmed">{getStatusLabel('confirmed')}</option>
-                    <option value="checked_in">{getStatusLabel('checked_in')}</option>
-                    <option value="checked_out">{getStatusLabel('checked_out')}</option>
-                    <option value="cancelled">{getStatusLabel('cancelled')}</option>
+                    {rooms.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.roomNumber} ({r.type})
+                      </option>
+                    ))}
                   </select>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="guestName" className="form-label">
+                    Ім'я Гостя *
+                  </label>
+                  <input
+                    id="guestName"
+                    type="text"
+                    required
+                    placeholder="напр. Олександр Коваленко"
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                    className="form-input"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="form-group">
+                    <label htmlFor="checkIn" className="form-label">
+                      Заїзд
+                    </label>
+                    <input
+                      id="checkIn"
+                      type="date"
+                      value={checkIn}
+                      onChange={(e) => setCheckIn(e.target.value)}
+                      className="form-input"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="checkOut" className="form-label">
+                      Виїзд
+                    </label>
+                    <input
+                      id="checkOut"
+                      type="date"
+                      value={checkOut}
+                      onChange={(e) => setCheckOut(e.target.value)}
+                      className="form-input"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="form-group">
+                    <label htmlFor="totalPrice" className="form-label">
+                      Сума (UAH)
+                    </label>
+                    <input
+                      id="totalPrice"
+                      type="number"
+                      value={totalPrice}
+                      onChange={(e) => setTotalPrice(e.target.value)}
+                      className="form-input"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="status" className="form-label">
+                      Статус
+                    </label>
+                    <select
+                      id="status"
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value as Booking['status'])}
+                      className="form-select"
+                    >
+                      <option value="confirmed">Заброньовано</option>
+                      <option value="checked_in">Заселено</option>
+                      <option value="checked_out">Виселено</option>
+                      <option value="cancelled">Скасовано</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex gap-2 justify-end pt-3 border-t border-slate-700">
+              <div className="modal-footer">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-3 py-2 bg-slate-700 text-xs rounded-lg text-slate-300"
+                  className="btn btn-secondary"
                 >
                   Скасувати
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs rounded-lg text-white font-medium shadow"
-                >
+                <button type="submit" className="btn btn-primary">
                   Зберегти Бронювання
                 </button>
               </div>
