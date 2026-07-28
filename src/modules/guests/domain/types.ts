@@ -30,11 +30,13 @@ export interface CreateGuestInput {
 export interface RegisteredGuest {
   firstName: string;
   lastName: string;
-  dateOfBirth?: string;
-  address?: string;
-  nationality?: string;
-  documentType?: string;
-  documentNumber?: string;
-  purposeOfStay?: string;
-  visaNumber?: string;
+  // null is meaningful here, not merely "absent": saveRegistrations() passes
+  // these through COALESCE(?, existing), so null means "keep the stored value".
+  dateOfBirth?: string | null;
+  address?: string | null;
+  nationality?: string | null;
+  documentType?: string | null;
+  documentNumber?: string | null;
+  purposeOfStay?: string | null;
+  visaNumber?: string | null;
 }

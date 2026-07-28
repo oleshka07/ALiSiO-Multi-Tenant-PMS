@@ -44,42 +44,26 @@ export function getDb(): any {
   // Run migrations for existing databases
   runMigrations(db);
 
+  // Background ticks, lazily loaded so getDb() does not drag in IMAP/HTTP
+  // machinery. These MUST use dynamic import(), not require(): under Turbopack
+  // a require() of these modules yielded a namespace without the exported
+  // function, which silently killed the bank- and receipt-inbox pollers
+  // ("runBankInboxTickIfDue is not a function") for as long as they existed.
+  // Fire-and-forget by design — a failing tick must never block getDb().
+  const tick = (label: string, load: () => Promise<any>, fn: string) => {
+    load()
+      .then((m) => m[fn]?.(db))
+      .catch((e: any) => console.log(`[${label}] tick-if-due error:`, e.message));
+  };
+
   // PR #8: run recurring templates if 24h has elapsed since last tick
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { runRecurringTickIfDue } = require('@/modules/finance/data/recurring-engine');
-    runRecurringTickIfDue(db);
-  } catch (e: any) {
-    console.log('[Recurring] tick-if-due error:', e.message);
-  }
-
-  // PR #11: poll bank inboxes if 15min elapsed (async, fire-and-forget)
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { runBankInboxTickIfDue } = require('@/modules/finance/data/bank-inbox-engine');
-    runBankInboxTickIfDue(db);
-  } catch (e: any) {
-    console.log('[BankInbox] tick-if-due error:', e.message);
-  }
-
-  // PR #25: Teya transaction sync if 4h elapsed (async, fire-and-forget,
-  // skipped silently when TEYA_CLIENT_ID env missing)
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { runTeyaSyncTickIfDue } = require('@/modules/finance/data/teya-reconcile-engine');
-    runTeyaSyncTickIfDue(db);
-  } catch (e: any) {
-    console.log('[Teya] tick-if-due error:', e.message);
-  }
-
+  tick('Recurring', () => import('@/modules/finance/data/recurring-engine'), 'runRecurringTickIfDue');
+  // PR #11: poll bank inboxes if 15min elapsed
+  tick('BankInbox', () => import('@/modules/finance/data/bank-inbox-engine'), 'runBankInboxTickIfDue');
+  // PR #25: Teya transaction sync if 4h elapsed (skipped when TEYA_CLIENT_ID missing)
+  tick('Teya', () => import('@/modules/finance/data/teya-reconcile-engine'), 'runTeyaSyncTickIfDue');
   // PR #27: receipt inboxes — IMAP poll for forwarded invoices (15 min)
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { runReceiptInboxTickIfDue } = require('@/modules/finance/data/receipt-inbox-engine');
-    runReceiptInboxTickIfDue(db);
-  } catch (e: any) {
-    console.log('[ReceiptInbox] tick-if-due error:', e.message);
-  }
+  tick('ReceiptInbox', () => import('@/modules/finance/data/receipt-inbox-engine'), 'runReceiptInboxTickIfDue');
 
   return db;
 }
