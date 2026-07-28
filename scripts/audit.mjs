@@ -91,6 +91,8 @@ for (const [f, body] of src) {
     });
     if (matchesDynamic) continue;
     if (/\$\{|\[/.test(href)) continue; // template or unresolved
+    // A link may also target a static asset rather than a route.
+    if (fs.existsSync(path.join(ROOT, 'public', href))) continue;
     report.A.push({ kind: 'broken-link', href, from: rel(f) });
   }
 }

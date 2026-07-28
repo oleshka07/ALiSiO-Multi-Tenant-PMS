@@ -11,11 +11,12 @@
 
 import { getDb } from '@core/db';
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
-const ADMIN_CHAT_IDS: string[] = (process.env.TELEGRAM_ADMIN_CHAT_IDS || '')
-  .split(',').map(id => id.trim()).filter(id => id.length > 0 && id !== CHAT_ID);
-const BASE_URL = process.env.NEXTAUTH_URL || 'https://alisio.swipescape.eu';
+import { getAdminChatIds, getBotToken, getChatId } from '@/lib/channels/telegram-bot';
+import { appBaseUrl } from '@core/app-url';
+
+// This module kept its own copy of the Telegram env vars, so a bot connected in
+// Settings sent booking alerts but not the daily digest, and its base URL
+// fell back to the original operator's domain. Both now come from one place.
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -565,7 +566,7 @@ function formatDailyDigest(
   if (crm.pendingDrafts > 0) {
     lines.push(`📝 AI-чернетки на підтвердження: <b>${crm.pendingDrafts}</b>`);
   }
-  lines.push(`🔗 <a href="${BASE_URL}/crm/inbox">Відкрити CRM →</a>`);
+  lines.push(`🔗 <a href="${appBaseUrl()}/crm/inbox">Відкрити CRM →</a>`);
   lines.push(``);
 
   // ── Finance Block ──
@@ -595,7 +596,7 @@ function formatDailyDigest(
       }
     }
   }
-  lines.push(`🔗 <a href="${BASE_URL}/finance">Відкрити Фінанси →</a>`);
+  lines.push(`🔗 <a href="${appBaseUrl()}/finance">Відкрити Фінанси →</a>`);
 
   // ── Per-BU Income Breakdown ──
   if (breakdown.length > 0) {
@@ -660,7 +661,7 @@ function formatDailyDigest(
     const srcParts = bookings.sourceBreakdown.map(s => `${s.source}: ${s.count}`).join(', ');
     lines.push(`  📋 Джерела: ${srcParts}`);
   }
-  lines.push(`🔗 <a href="${BASE_URL}/calendar">Відкрити Календар →</a>`);
+  lines.push(`🔗 <a href="${appBaseUrl()}/calendar">Відкрити Календар →</a>`);
   lines.push(``);
 
   // ── Tasks Block ──
@@ -673,7 +674,7 @@ function formatDailyDigest(
     if (tasks.today > 0) lines.push(`  📅 На сьогодні: <b>${tasks.today}</b>`);
     if (tasks.inProgress > 0) lines.push(`  🔄 В роботі: <b>${tasks.inProgress}</b>`);
     lines.push(`  📊 Всього активних: ${tasks.total}`);
-    lines.push(`🔗 <a href="${BASE_URL}/tasks">Відкрити Задачі →</a>`);
+    lines.push(`🔗 <a href="${appBaseUrl()}/tasks">Відкрити Задачі →</a>`);
   }
 
   return lines.join('\n');
@@ -682,6 +683,7 @@ function formatDailyDigest(
 // ─── Send to Telegram ────────────────────────────────────
 
 async function sendToChat(chatId: string, text: string): Promise<number | null> {
+  const BOT_TOKEN = getBotToken();
   if (!BOT_TOKEN) return null;
   try {
     const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
@@ -727,6 +729,7 @@ export async function sendDailyOperationalDigest(): Promise<{
   let sent = false;
 
   // Send to primary chat — message 1 (general) + message 2 (detailed)
+  const CHAT_ID = getChatId();
   if (CHAT_ID) {
     const msgId = await sendToChat(CHAT_ID, text);
     sent = !!msgId;
@@ -736,7 +739,7 @@ export async function sendDailyOperationalDigest(): Promise<{
   }
 
   // Send copies to admin chats
-  for (const adminId of ADMIN_CHAT_IDS) {
+  for (const adminId of getAdminChatIds()) {
     sendToChat(adminId, text).catch(e =>
       console.error(`[DailyDigest] Admin send to ${adminId} failed:`, e.message)
     );

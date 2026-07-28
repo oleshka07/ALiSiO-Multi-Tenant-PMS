@@ -15,25 +15,60 @@
 
 const IS_DEV = process.env.NODE_ENV === 'development';
 
-// In dev, prefer *_DEV variants; fall back to prod vars (with a tag)
-const BOT_TOKEN = IS_DEV
-  ? (process.env.TELEGRAM_BOT_TOKEN_DEV || process.env.TELEGRAM_BOT_TOKEN || '')
-  : (process.env.TELEGRAM_BOT_TOKEN || '');
+/**
+ * Credentials come from the organization's saved settings first, falling back
+ * to the environment. Environment variables are process-global: on a shared
+ * server they would hand every tenant the same bot and the same chat.
+ *
+ * Resolution is lazy and per-call rather than computed at module load, because
+ * reading the database during import would trigger migrations from an import.
+ *
+ * ponytail: takes the only organization, which is correct while the app is
+ * single-tenant. Becomes a per-request lookup once tenant context lands.
+ */
+function resolveConfig(): { botToken: string; chatId: string; adminChatIds: string[] } {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getDb } = require('@core/db');
+    const org = getDb().prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string } | undefined;
+    if (org) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { getTelegramConfig } = require('@/modules/notifications/data/telegram-config.repo');
+      const cfg = getTelegramConfig(org.id);
+      if (cfg.botToken) return { botToken: cfg.botToken, chatId: cfg.chatId, adminChatIds: cfg.adminChatIds };
+    }
+  } catch {
+    // Fall through to env — a settings problem must not take notifications down.
+  }
+  const botToken = IS_DEV
+    ? process.env.TELEGRAM_BOT_TOKEN_DEV || process.env.TELEGRAM_BOT_TOKEN || ''
+    : process.env.TELEGRAM_BOT_TOKEN || '';
+  const chatId = IS_DEV
+    ? process.env.TELEGRAM_CHAT_ID_DEV || process.env.TELEGRAM_CHAT_ID || ''
+    : process.env.TELEGRAM_CHAT_ID || '';
+  const adminChatIds = (IS_DEV ? process.env.TELEGRAM_ADMIN_CHAT_IDS_DEV || '' : process.env.TELEGRAM_ADMIN_CHAT_IDS || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0 && id !== chatId);
+  return { botToken, chatId, adminChatIds };
+}
 
-export const CHAT_ID = IS_DEV
-  ? (process.env.TELEGRAM_CHAT_ID_DEV || process.env.TELEGRAM_CHAT_ID || '')
-  : (process.env.TELEGRAM_CHAT_ID || '');
+export function getChatId(): string {
+  return resolveConfig().chatId;
+}
 
-export const ADMIN_CHAT_IDS: string[] = IS_DEV
-  ? (process.env.TELEGRAM_ADMIN_CHAT_IDS_DEV || '')
-      .split(',').map(id => id.trim()).filter(id => id.length > 0 && id !== CHAT_ID)
-  : (process.env.TELEGRAM_ADMIN_CHAT_IDS || '')
-      .split(',').map(id => id.trim()).filter(id => id.length > 0 && id !== CHAT_ID);
+export function getBotToken(): string {
+  return resolveConfig().botToken;
+}
+
+export function getAdminChatIds(): string[] {
+  return resolveConfig().adminChatIds;
+}
 
 /** Map draftId → array of { chatId, messageId } for admin copies */
 const adminMessageMap = new Map<string, { chatId: string; messageId: number }[]>();
 
-const API_BASE = `https://api.telegram.org/bot${BOT_TOKEN}`;
+const apiBase = (token: string) => `https://api.telegram.org/bot${token}`;
 
 /** Prepend [DEV] tag when running on dev but using the prod bot as fallback */
 function devTag(): string {
@@ -57,19 +92,20 @@ export async function sendTelegramMessage(
   inlineKeyboard?: { text: string; callback_data: string }[][],
   options?: { ownerOnly?: boolean },
 ): Promise<number | null> {
-  if (!BOT_TOKEN || !CHAT_ID) {
+  const { botToken, chatId, adminChatIds } = resolveConfig();
+  if (!botToken || !chatId) {
     console.warn('[Telegram] Bot not configured — skipping');
     return null;
   }
 
   const taggedText = devTag() + text;
 
-  // Send to primary CHAT_ID
-  const primaryMsgId = await sendToChat(CHAT_ID, taggedText, inlineKeyboard);
+  // Send to the primary chat
+  const primaryMsgId = await sendToChat(chatId, taggedText, inlineKeyboard);
 
   // Send copies to admin chats (unless ownerOnly)
   if (!options?.ownerOnly) {
-    for (const adminId of ADMIN_CHAT_IDS) {
+    for (const adminId of adminChatIds) {
       sendToChat(adminId, text, inlineKeyboard).catch(err =>
         console.error(`[Telegram] Admin send to ${adminId} failed:`, err.message)
       );
@@ -95,7 +131,7 @@ async function sendToChat(
       body.reply_markup = JSON.stringify({ inline_keyboard: inlineKeyboard });
     }
 
-    const res = await fetch(`${API_BASE}/sendMessage`, {
+    const res = await fetch(`${apiBase(resolveConfig().botToken)}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -122,10 +158,11 @@ export async function editTelegramMessage(
   inlineKeyboard?: { text: string; callback_data: string }[][],
   draftId?: string
 ): Promise<boolean> {
-  if (!BOT_TOKEN || !CHAT_ID) return false;
+  const { botToken, chatId } = resolveConfig();
+  if (!botToken || !chatId) return false;
 
   // Edit primary message
-  const ok = await editInChat(CHAT_ID, messageId, text, inlineKeyboard);
+  const ok = await editInChat(chatId, messageId, text, inlineKeyboard);
 
   // Edit admin copies if we have them
   if (draftId) {
@@ -158,7 +195,7 @@ export async function editInChat(
       body.reply_markup = JSON.stringify({ inline_keyboard: inlineKeyboard });
     }
 
-    const res = await fetch(`${API_BASE}/editMessageText`, {
+    const res = await fetch(`${apiBase(resolveConfig().botToken)}/editMessageText`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -180,9 +217,10 @@ export async function editInChat(
    Answer Callback Query (removes loading spinner on button)
    ──────────────────────────────────────────────────────── */
 export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
-  if (!BOT_TOKEN) return;
+  const { botToken } = resolveConfig();
+  if (!botToken) return;
   try {
-    await fetch(`${API_BASE}/answerCallbackQuery`, {
+    await fetch(`${apiBase(botToken)}/answerCallbackQuery`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -242,11 +280,12 @@ export async function sendDraftApproval(opts: {
   ];
 
   // Send to primary chat
-  const primaryMsgId = await sendToChat(CHAT_ID, text, keyboard);
+  const { chatId, adminChatIds } = resolveConfig();
+  const primaryMsgId = await sendToChat(chatId, text, keyboard);
 
   // Send to admin chats and track message IDs for later editing
   const adminCopies: { chatId: string; messageId: number }[] = [];
-  for (const adminId of ADMIN_CHAT_IDS) {
+  for (const adminId of adminChatIds) {
     try {
       const adminMsgId = await sendToChat(adminId, text, keyboard);
       if (adminMsgId) {
