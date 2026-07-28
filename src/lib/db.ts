@@ -76,6 +76,15 @@ function initSchema(database: any) {
 
   if (tableExists) return; // Already initialized
 
+  // All-or-nothing. Without the transaction, a failure part-way through leaves
+  // the tables created but the seed incomplete — and because the guard above
+  // only looks for `organizations`, every later call returns early and the
+  // half-provisioned database is never repaired. SQLite makes DDL transactional,
+  // so a rollback here really does undo the CREATE TABLEs.
+  database.transaction(() => buildSchema(database))();
+}
+
+function buildSchema(database: any) {
   // ─── Create all tables ──────────────────────────────────
   database.exec(`
     -- Organizations
@@ -335,6 +344,51 @@ function initSchema(database: any) {
     CREATE INDEX idx_guests_name ON guests(last_name, first_name);
   `);
 
+  // ─── Tables that used to be created as a side effect ──────────────────
+  // availability_blocks is read by the public booking widget, yet it was only
+  // ever created by the Hostex bootstrap — so a tenant not using Hostex got
+  // "no such table" and could not take bookings. email_processed was written by
+  // the CRM mail poller but created nowhere at all. Central schema owns them
+  // now; integrations may write rows but must never create tables.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS availability_blocks (
+      id TEXT PRIMARY KEY,
+      unit_id TEXT NOT NULL,
+      date_from TEXT NOT NULL,
+      date_to TEXT NOT NULL,
+      reason TEXT DEFAULT 'blocked',
+      notes TEXT,
+      hostex_code TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS email_processed (
+      message_id TEXT PRIMARY KEY,
+      category TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS hostex_sync_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      records_synced INTEGER DEFAULT 0,
+      error_message TEXT,
+      started_at TEXT,
+      completed_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS hostex_property_map (
+      hostex_property_id INTEGER PRIMARY KEY,
+      hostex_title TEXT,
+      unit_id TEXT NOT NULL,
+      channels TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_availability_blocks_unit ON availability_blocks(unit_id, date_from, date_to);
+  `);
+
   // ─── Seed initial data ────────────────────────────────  // Seed data
   seedData(database);
 }
@@ -348,12 +402,25 @@ function runMigrations(database: any) {
   ).get();
 
   // --- Check if app_users needs role migration ---
-  try {
-    // Test INSERT to check if new CHECK constraint is in place
-    // (SQLite CHECK only fires on INSERT/UPDATE, not SELECT)
-    database.prepare("INSERT INTO app_users (id, organization_id, email, full_name, role) VALUES ('__role_test__', 'org_alisio_001', '__test__', '__test__', 'owner')").run();
-    database.prepare("DELETE FROM app_users WHERE id = '__role_test__'").run();
-  } catch {
+  // The probe must reference a real organization: app_users.organization_id is a
+  // foreign key and `foreign_keys` is ON, so a hardcoded id that does not exist
+  // in this database fails for the wrong reason and drops us into the rebuild
+  // branch below — which recreates app_users WITHOUT password_hash (see the
+  // re-insert further down) and drops audit_log outright.
+  const probeOrg = database.prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string } | undefined;
+  let roleCheckIsCurrent = true;
+  if (probeOrg) {
+    try {
+      // SQLite CHECK only fires on INSERT/UPDATE, not SELECT.
+      database
+        .prepare("INSERT INTO app_users (id, organization_id, email, full_name, role) VALUES ('__role_test__', ?, '__test__', '__test__', 'owner')")
+        .run(probeOrg.id);
+      database.prepare("DELETE FROM app_users WHERE id = '__role_test__'").run();
+    } catch {
+      roleCheckIsCurrent = false;
+    }
+  }
+  if (!roleCheckIsCurrent) {
     // CHECK constraint is old — need to recreate app_users table
     console.log('[DB] Migrating app_users table to new role system');
     try {
@@ -389,13 +456,14 @@ function runMigrations(database: any) {
           created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
       `);
-      // Re-insert with role mapping
-      const ins = database.prepare('INSERT INTO app_users (id, organization_id, email, full_name, role, is_active, last_login, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)');
+      // Re-insert with role mapping. password_hash must be carried over —
+      // omitting it silently locks every existing user out of the system.
+      const ins = database.prepare('INSERT INTO app_users (id, organization_id, email, full_name, password_hash, role, is_active, last_login, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)');
       for (const u of existingUsers as any[]) {
         let newRole = u.role;
         if (newRole === 'admin') newRole = 'owner';
         if (newRole === 'operator') newRole = 'receptionist';
-        ins.run(u.id, u.organization_id, u.email, u.full_name, newRole, u.is_active, u.last_login, u.created_at, u.updated_at);
+        ins.run(u.id, u.organization_id, u.email, u.full_name, u.password_hash ?? null, newRole, u.is_active, u.last_login, u.created_at, u.updated_at);
       }
       console.log('[DB] app_users table migrated successfully');
     } catch (e: any) {
@@ -810,15 +878,11 @@ function runMigrations(database: any) {
     const propRow = database.prepare("SELECT id FROM properties LIMIT 1").get() as any;
     if (propRow) {
       const insAS = database.prepare('INSERT INTO additional_services (id, property_id, name, name_en, description, price, unit_label, icon, category, available_for, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-      insAS.run('svc_breakfast', propRow.id, 'Сніданок', 'Breakfast', 'Повноцінний сніданок у ресторані', 250, 'за особу/день', '🍳', 'food', 'all', 1);
-      insAS.run('svc_sauna', propRow.id, 'Сауна', 'Sauna', 'Фінська сауна (2 години)', 800, 'за сеанс', '🧖', 'wellness', 'all', 2);
-      insAS.run('svc_pool', propRow.id, 'Купіль', 'Plunge Pool', 'Холодна купіль після сауни', 400, 'за сеанс', '🏊', 'wellness', 'all', 3);
-      insAS.run('svc_bicycle', propRow.id, 'Велосипед', 'Bicycle', 'Оренда велосипеда на день', 350, 'за день', '🚲', 'sport', 'all', 4);
-      insAS.run('svc_ebike', propRow.id, 'Електровелосипед', 'E-Bike', 'Оренда електровелосипеда на день', 600, 'за день', '⚡', 'sport', 'all', 5);
-      insAS.run('svc_sup', propRow.id, 'SUP борд', 'SUP Board', 'Оренда SUP борду', 300, 'за годину', '🏄', 'sport', 'all', 6);
-      insAS.run('svc_bbq', propRow.id, 'Мангал', 'BBQ Grill', 'Набір для барбекю з вугіллям', 200, 'за раз', '🔥', 'food', 'camping', 7);
-      insAS.run('svc_parking', propRow.id, 'Паркінг VIP', 'VIP Parking', 'Закрите паркомісце біля будівлі', 150, 'за день', '🅿️', 'other', 'resort', 8);
-      console.log('[DB] Created additional_services table with 8 services');
+      // Generic sample services only. Anything specific to one property's
+      // offering belongs in that tenant's own data, not in every new database.
+      insAS.run('svc_breakfast', propRow.id, 'Breakfast', 'Breakfast', 'Breakfast served in the restaurant', 250, 'per person/day', '🍳', 'food', 'all', 1);
+      insAS.run('svc_parking', propRow.id, 'Parking', 'Parking', 'Reserved parking space', 150, 'per day', '🅿️', 'other', 'all', 2);
+      console.log('[DB] Created additional_services table with sample services');
     }
   }
 
@@ -1220,12 +1284,12 @@ function runMigrations(database: any) {
     const insMI = database.prepare(
       'INSERT INTO menu_items (id, service_id, name, name_en, name_cs, name_de, description, weight_grams, price, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
-    insMI.run('mi_breakfast_1', 'svc_breakfast', 'Класичний сніданок', 'Classic Breakfast', 'Klasická snídaně', 'Klassisches Frühstück',
-      'Яєчня, тости, масло, джем, свіжі овочі, кава/чай', 400, 250, 1);
-    insMI.run('mi_breakfast_2', 'svc_breakfast', 'Млинці з ягодами', 'Pancakes with Berries', 'Lívanečky s ovocem', 'Pfannkuchen mit Beeren',
-      'Пухкі млинці з сезонними ягодами, медом та сметаною', 350, 280, 2);
-    insMI.run('mi_breakfast_3', 'svc_breakfast', 'Гранола боул', 'Granola Bowl', 'Granola mísa', 'Granola Schüssel',
-      'Домашня гранола з йогуртом, фруктами та медом', 300, 220, 3);
+    insMI.run('mi_breakfast_1', 'svc_breakfast', 'Classic Breakfast', 'Classic Breakfast', 'Klasická snídaně', 'Klassisches Frühstück',
+      'Eggs, toast, butter, jam, fresh vegetables, coffee or tea', 400, 250, 1);
+    insMI.run('mi_breakfast_2', 'svc_breakfast', 'Pancakes with Berries', 'Pancakes with Berries', 'Lívanečky s ovocem', 'Pfannkuchen mit Beeren',
+      'Fluffy pancakes with seasonal berries, honey and sour cream', 350, 280, 2);
+    insMI.run('mi_breakfast_3', 'svc_breakfast', 'Granola Bowl', 'Granola Bowl', 'Granola mísa', 'Granola Schüssel',
+      'House granola with yoghurt, fruit and honey', 300, 220, 3);
     console.log('[DB] Created menu_items table with 3 breakfast items');
   }
 
@@ -1282,19 +1346,8 @@ function runMigrations(database: any) {
     )
   `);
 
-  // Seed GLAMPING promo code: 310 CZK/hour for sauna (instead of 600)
-  try {
-    const glamExists = database.prepare("SELECT id FROM coupons WHERE code = 'GLAMPING'").get();
-    if (!glamExists) {
-      database.prepare(`
-        INSERT INTO coupons (id, code, description, discount_type, offer_amount, applicable_services, is_active)
-        VALUES ('promo_glamping', 'GLAMPING', 'Glamping guest sauna discount — 310 CZK/hr', 'fixed_price', 310, '["svc_sauna"]', 1)
-      `).run();
-      console.log('[DB] Seeded GLAMPING promo code (310 CZK/hr for sauna)');
-    }
-  } catch (e) {
-    console.warn('[DB] Promo seed error:', e);
-  }
+  // No promo codes are seeded: a discount tied to one property's sauna pricing
+  // has no meaning in another tenant's database.
 
   // --- Migration: create sauna_addons table for broom etc ---
   database.exec(`
@@ -1310,16 +1363,7 @@ function runMigrations(database: any) {
       sort_order INTEGER NOT NULL DEFAULT 0
     )
   `);
-  // Seed sauna addon: broom (віник)
-  try {
-    const broomExists = database.prepare("SELECT id FROM service_addons WHERE id = 'addon_broom'").get();
-    if (!broomExists) {
-      database.prepare(
-        'INSERT INTO service_addons (id, service_id, name, name_en, name_cs, name_de, price, icon, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      ).run('addon_broom', 'svc_sauna', 'Віник', 'Broom', 'Metla', 'Besen', 300, '🧹', 1);
-      console.log('[DB] Seeded sauna addon: broom (300 CZK)');
-    }
-  } catch { /* already exists */ }
+  // No add-ons are seeded — they belong to a specific property's service list.
 
   // --- Migration: add extra_person_charge, pet_allowed, pet_charge to unit_types ---
   try {
@@ -1393,29 +1437,23 @@ function runMigrations(database: any) {
     console.warn('[DB] menu_items backfill note:', e.message);
   }
 
-  // --- Migration: seed new services (tub, late checkout, early checkin) ---
+  // --- Migration: seed generic checkout/checkin services ---
+  // Property-specific wellness services are deliberately not seeded here.
   try {
     const propRow2 = database.prepare("SELECT id FROM properties LIMIT 1").get() as any;
     if (propRow2) {
-      const tubExists = database.prepare("SELECT id FROM additional_services WHERE id = 'svc_tub'").get();
-      if (!tubExists) {
-        database.prepare(
-          'INSERT INTO additional_services (id, property_id, name, name_en, name_cs, name_de, description, price, unit_label, icon, category, available_for, sort_order, service_type, duration_minutes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        ).run('svc_tub', propRow2.id, 'Чан', 'Hot Tub', 'Káď', 'Badefass', 'Дерев\'яний чан під відкритим небом. Мінімальне бронювання — 2 години.', 600, 'за годину', '🛁', 'wellness', 'all', 3, 'slot_booking', 60);
-        console.log('[DB] Seeded service: svc_tub (600 CZK/hr)');
-      }
       const lateExists = database.prepare("SELECT id FROM additional_services WHERE id = 'svc_late_checkout'").get();
       if (!lateExists) {
         database.prepare(
           'INSERT INTO additional_services (id, property_id, name, name_en, name_cs, name_de, description, price, unit_label, icon, category, available_for, sort_order, service_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        ).run('svc_late_checkout', propRow2.id, 'Пізнє виселення', 'Late Checkout', 'Pozdní odhlášení', 'Später Check-out', 'Виселення до 14:00 замість 11:00', 500, 'разово', '🕐', 'other', 'all', 10, 'toggle');
+        ).run('svc_late_checkout', propRow2.id, 'Late Checkout', 'Late Checkout', 'Pozdní odhlášení', 'Später Check-out', 'Check out at 14:00 instead of 11:00', 500, 'one-off', '🕐', 'other', 'all', 10, 'toggle');
         console.log('[DB] Seeded service: svc_late_checkout (500 CZK)');
       }
       const earlyExists = database.prepare("SELECT id FROM additional_services WHERE id = 'svc_early_checkin'").get();
       if (!earlyExists) {
         database.prepare(
           'INSERT INTO additional_services (id, property_id, name, name_en, name_cs, name_de, description, price, unit_label, icon, category, available_for, sort_order, service_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        ).run('svc_early_checkin', propRow2.id, 'Раннє заселення', 'Early Check-in', 'Brzký příjezd', 'Früher Check-in', 'Заселення з 12:00 замість 15:00', 500, 'разово', '🕛', 'other', 'all', 11, 'toggle');
+        ).run('svc_early_checkin', propRow2.id, 'Early Check-in', 'Early Check-in', 'Brzký příjezd', 'Früher Check-in', 'Check in from 12:00 instead of 15:00', 500, 'one-off', '🕛', 'other', 'all', 11, 'toggle');
         console.log('[DB] Seeded service: svc_early_checkin (500 CZK)');
       }
     }
@@ -4815,129 +4853,157 @@ export function generateGuestToken(): string {
 }
 
 function seedData(database: any) {
-  const orgId = 'org_alisio_001';
-  const propId = 'prop_main_001';
-  const catGlamp = 'cat_glamping';
-  const catResort = 'cat_resort';
-  const catCamping = 'cat_camping';
-  const bldgF = 'bldg_f';
-  const bldgD = 'bldg_d';
+  // Neutral demo tenant. This runs for any freshly created database, including
+  // one belonging to a brand-new customer, so nothing here may reference a
+  // specific real hotel, person or mailbox.
+  const orgId = 'org_demo';
+  const propId = 'prop_demo';
+  const catRooms = 'cat_rooms';
+  const catSuites = 'cat_suites';
 
-  // Organization
-  database.prepare('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)').run(orgId, 'ALiSiO Properties', 'alisio');
+  const day = (offset: number): string => {
+    const d = new Date();
+    d.setUTCHours(0, 0, 0, 0);
+    d.setUTCDate(d.getUTCDate() + offset);
+    return d.toISOString().slice(0, 10);
+  };
 
-  // Property
-  database.prepare('INSERT INTO properties (id, organization_id, name, slug, city, country) VALUES (?, ?, ?, ?, ?, ?)').run(propId, orgId, 'Carlsbad Wellness & Camping Resort', 'alisio-main', 'Březová-Karlovy Vary', 'CZ');
+  database.prepare('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)').run(orgId, 'Demo Hotel', 'demo');
 
-  // Categories
-  database.prepare('INSERT INTO categories (id, property_id, name, type, sort_order, icon, color) VALUES (?, ?, ?, ?, ?, ?, ?)').run(catGlamp, propId, 'Glamping', 'glamping', 1, '🏕️', '#a78bfa');
-  database.prepare('INSERT INTO categories (id, property_id, name, type, sort_order, icon, color) VALUES (?, ?, ?, ?, ?, ?, ?)').run(catResort, propId, 'Resort', 'resort', 2, '🏨', '#60a5fa');
-  database.prepare('INSERT INTO categories (id, property_id, name, type, sort_order, icon, color) VALUES (?, ?, ?, ?, ?, ?, ?)').run(catCamping, propId, 'Camping', 'camping', 3, '⛺', '#34d399');
+  database
+    .prepare('INSERT INTO properties (id, organization_id, name, slug, city, country) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(propId, orgId, 'Demo Hotel & Spa', 'demo-hotel', 'Praha', 'CZ');
 
-  // Buildings
-  database.prepare('INSERT INTO buildings (id, category_id, property_id, name, code, sort_order) VALUES (?, ?, ?, ?, ?, ?)').run(bldgF, catResort, propId, 'Будова F (Standart)', 'F', 1);
-  database.prepare('INSERT INTO buildings (id, category_id, property_id, name, code, sort_order) VALUES (?, ?, ?, ?, ?, ?)').run(bldgD, catResort, propId, 'Будова D (Econom)', 'D', 2);
+  const insertCat = database.prepare(
+    'INSERT INTO categories (id, property_id, name, type, sort_order, icon, color) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  );
+  insertCat.run(catRooms, propId, 'Rooms', 'resort', 1, '🏨', '#60a5fa');
+  insertCat.run(catSuites, propId, 'Suites', 'resort', 2, '✨', '#a78bfa');
 
-  // Unit Types
-  const utStealth = 'ut_stealth'; const utMirror = 'ut_mirror'; const utGlamp4 = 'ut_glamp4';
-  const utF2 = 'ut_f2'; const utF3 = 'ut_f3'; const utF4 = 'ut_f4'; const utDeco = 'ut_deco';
-  const utFB = 'ut_fb'; const utBB = 'ut_bb'; const utFR = 'ut_fr'; const utBR = 'ut_br';
+  const utStd = 'ut_standard';
+  const utDlx = 'ut_deluxe';
+  const utSuite = 'ut_suite';
+  const insertUT = database.prepare(
+    'INSERT INTO unit_types (id, property_id, category_id, building_id, name, code, max_adults, base_occupancy, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  );
+  insertUT.run(utStd, propId, catRooms, null, 'Standard Double', 'STD', 2, 2, 1);
+  insertUT.run(utDlx, propId, catRooms, null, 'Deluxe Double', 'DLX', 3, 2, 2);
+  insertUT.run(utSuite, propId, catSuites, null, 'Suite', 'SUITE', 4, 2, 3);
 
-  const insertUT = database.prepare('INSERT INTO unit_types (id, property_id, category_id, building_id, name, code, max_adults, base_occupancy, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-  insertUT.run(utStealth, propId, catGlamp, null, 'Stealth House (2 місця)', 'STEALTH', 2, 2, 1);
-  insertUT.run(utMirror, propId, catGlamp, null, 'Mirror House (2 місця)', 'MIRROR', 2, 2, 2);
-  insertUT.run(utGlamp4, propId, catGlamp, null, '4-місний будинок', 'GLAMP4', 4, 2, 3);
-  insertUT.run(utF2, propId, catResort, bldgF, 'F — 2-місний', 'F-2BED', 2, 2, 1);
-  insertUT.run(utF3, propId, catResort, bldgF, 'F — 3-місний', 'F-3BED', 3, 2, 2);
-  insertUT.run(utF4, propId, catResort, bldgF, 'F — 4-місний', 'F-4BED', 4, 2, 3);
-  insertUT.run(utDeco, propId, catResort, bldgD, 'D — Econom', 'D-ECO', 3, 2, 4);
-  insertUT.run(utFB, propId, catCamping, null, 'FB — Front Pitch', 'FB', 4, 2, 1);
-  insertUT.run(utBB, propId, catCamping, null, 'BB — Between Pitch', 'BB', 4, 2, 2);
-  insertUT.run(utFR, propId, catCamping, null, 'FR — Restaurant Pitch', 'FR', 4, 2, 3);
-  insertUT.run(utBR, propId, catCamping, null, 'BR — River Pitch', 'BR', 4, 2, 4);
-
-  // Units
-  const insertUnit = database.prepare('INSERT INTO units (id, unit_type_id, property_id, category_id, building_id, name, code, beds, zone, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-
-  // Glamping - Stealth (3)
-  for (let i = 1; i <= 3; i++) insertUnit.run(`u_st${i}`, utStealth, propId, catGlamp, null, `Stealth ${i}`, `ST${i}`, 2, null, i);
-  // Glamping - Mirror (2)
-  for (let i = 1; i <= 2; i++) insertUnit.run(`u_mr${i}`, utMirror, propId, catGlamp, null, `Mirror ${i}`, `MR${i}`, 2, null, 10 + i);
-  // Glamping - 4-person (3)
-  for (let i = 1; i <= 3; i++) insertUnit.run(`u_g4_${i}`, utGlamp4, propId, catGlamp, null, `4-місний ${i}`, `G4-${i}`, 4, null, 20 + i);
-
-  // Resort F rooms (renumbered from 1)
-  // Physical room order: old 7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23 → new 1..17
-  const fRoomMap: [number, string][] = [
-    [1, utF2], [2, utF3], [3, utF3], [4, utF3], [5, utF3],
-    [6, utF3], [7, utF3], [8, utF3], [9, utF3], [10, utF3],
-    [11, utF4], [12, utF3], [13, utF3], [14, utF3], [15, utF3],
-    [16, utF4], [17, utF2],
-  ];
-  const fBeds: Record<string, number> = { [utF2]: 2, [utF3]: 3, [utF4]: 4 };
-  for (const [n, ut] of fRoomMap) {
-    insertUnit.run(`u_f${n}`, ut, propId, catResort, bldgF, `F${n}`, `F${n}`, fBeds[ut], null, n);
+  const insertUnit = database.prepare(
+    'INSERT INTO units (id, unit_type_id, property_id, category_id, building_id, name, code, beds, zone, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  );
+  const units: string[] = [];
+  for (let i = 1; i <= 6; i++) {
+    const id = `u_std${i}`;
+    insertUnit.run(id, utStd, propId, catRooms, null, `10${i}`, `10${i}`, 2, null, i);
+    units.push(id);
+  }
+  for (let i = 1; i <= 4; i++) {
+    const id = `u_dlx${i}`;
+    insertUnit.run(id, utDlx, propId, catRooms, null, `20${i}`, `20${i}`, 2, null, 10 + i);
+    units.push(id);
+  }
+  for (let i = 1; i <= 2; i++) {
+    const id = `u_suite${i}`;
+    insertUnit.run(id, utSuite, propId, catSuites, null, `30${i}`, `30${i}`, 4, null, 20 + i);
+    units.push(id);
   }
 
-  // Resort D rooms (16)
-  for (let i = 1; i <= 16; i++) insertUnit.run(`u_d${i}`, utDeco, propId, catResort, bldgD, `D${i}`, `D${i}`, 3, null, i);
+  database
+    .prepare('INSERT INTO rate_plans (id, property_id, name, code, pricing_model, priority) VALUES (?, ?, ?, ?, ?, ?)')
+    .run('rp_std', propId, 'Standard', 'STD', 'standard', 1);
 
-  // Camping zones
-  for (let i = 1; i <= 15; i++) insertUnit.run(`u_fb${i}`, utFB, propId, catCamping, null, `FB${i}`, `FB${i}`, 0, 'FB', i);
-  for (let i = 16; i <= 40; i++) insertUnit.run(`u_bb${i}`, utBB, propId, catCamping, null, `BB${i}`, `BB${i}`, 0, 'BB', i);
-  for (let i = 41; i <= 50; i++) insertUnit.run(`u_fr${i}`, utFR, propId, catCamping, null, `FR${i}`, `FR${i}`, 0, 'FR', i);
-  for (let i = 51; i <= 70; i++) insertUnit.run(`u_br${i}`, utBR, propId, catCamping, null, `BR${i}`, `BR${i}`, 0, 'BR', i);
+  const insertFee = database.prepare(
+    'INSERT INTO fees_taxes (id, property_id, name, type, amount) VALUES (?, ?, ?, ?, ?)'
+  );
+  insertFee.run('fee_clean', propId, 'Cleaning', 'per_stay', 500);
+  insertFee.run('fee_tax', propId, 'City tax', 'per_person_per_night', 50);
 
-  // Rate Plans
-  database.prepare('INSERT INTO rate_plans (id, property_id, name, code, pricing_model, priority) VALUES (?, ?, ?, ?, ?, ?)').run('rp_std', propId, 'Standard', 'STD', 'standard', 1);
+  // Demo owner. Credentials are overridable so a real deployment never ships
+  // with a known password; the defaults exist only for local evaluation.
+  const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@demo.local';
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD || 'demo1234';
+  database
+    .prepare('INSERT INTO app_users (id, organization_id, email, full_name, role, password_hash) VALUES (?, ?, ?, ?, ?, ?)')
+    .run('user_admin', orgId, adminEmail, 'Demo Owner', 'owner', bcrypt.hashSync(adminPassword, 10));
+  if (!process.env.SEED_ADMIN_PASSWORD) {
+    console.log(`[Seed] Demo owner: ${adminEmail} / ${adminPassword} — change before exposing this instance.`);
+  }
 
-  // Fees
-  database.prepare('INSERT INTO fees_taxes (id, property_id, name, type, amount) VALUES (?, ?, ?, ?, ?)').run('fee_clean', propId, 'Прибирання', 'per_stay', 500);
-  database.prepare('INSERT INTO fees_taxes (id, property_id, name, type, amount) VALUES (?, ?, ?, ?, ?)').run('fee_tax', propId, 'Туристичний збір', 'per_person_per_night', 50);
+  const guestSeed: [string, string, string, string][] = [
+    ['Jan', 'Novak', 'jan.novak@example.com', 'CZ'],
+    ['Maria', 'Schmidt', 'maria.schmidt@example.com', 'DE'],
+    ['Olena', 'Kovalchuk', 'olena.k@example.com', 'UA'],
+    ['Peter', 'Brown', 'peter.brown@example.com', 'GB'],
+    ['Anna', 'Dvorakova', 'anna.d@example.com', 'CZ'],
+    ['Klaus', 'Weber', 'klaus.weber@example.com', 'DE'],
+    ['Tomas', 'Horak', 'tomas.horak@example.com', 'CZ'],
+    ['Iryna', 'Petrenko', 'iryna.p@example.com', 'UA'],
+    ['Sofia', 'Rossi', 'sofia.rossi@example.com', 'IT'],
+    ['Lukas', 'Fischer', 'lukas.fischer@example.com', 'AT'],
+    ['Emma', 'Wilson', 'emma.wilson@example.com', 'GB'],
+    ['Marek', 'Kowalski', 'marek.k@example.com', 'PL'],
+    ['Julie', 'Martin', 'julie.martin@example.com', 'FR'],
+    ['David', 'Cerny', 'david.cerny@example.com', 'CZ'],
+    ['Nina', 'Larsen', 'nina.larsen@example.com', 'DK'],
+  ];
+  const insertGuest = database.prepare(
+    'INSERT INTO guests (id, organization_id, first_name, last_name, email, country) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+  guestSeed.forEach(([first, last, email, country], i) => {
+    insertGuest.run(`g${String(i + 1).padStart(3, '0')}`, orgId, first, last, email, country);
+  });
 
-  // Admin users (owners)
-  const defaultPasswordHash = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 10);
-  const user4svHash = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 10);
+  // Reservations are placed relative to today so the calendar is populated
+  // whenever the demo is seeded, rather than on a fixed historical date.
+  const insertRes = database.prepare(
+    'INSERT INTO reservations (id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  );
+  const plan: [number, number, number, number, number, string, string, string][] = [
+    // [unitIdx, startOffset, nights, adults, children, status, paymentStatus, source]
+    [0, -6, 3, 2, 0, 'checked_out', 'paid', 'direct'],
+    [1, -4, 5, 2, 1, 'checked_in', 'paid', 'booking_com'],
+    [2, -2, 4, 1, 0, 'checked_in', 'paid', 'direct'],
+    [3, -1, 3, 2, 0, 'checked_in', 'prepaid', 'airbnb'],
+    [4, 0, 2, 2, 0, 'confirmed', 'unpaid', 'phone'],
+    [5, 0, 4, 3, 1, 'confirmed', 'paid', 'booking_com'],
+    [6, 1, 3, 2, 0, 'confirmed', 'payment_requested', 'direct'],
+    [7, 2, 6, 2, 2, 'confirmed', 'prepaid', 'booking_com'],
+    [8, 3, 2, 1, 0, 'tentative', 'unpaid', 'other_ota'],
+    [9, 4, 5, 4, 0, 'confirmed', 'paid', 'airbnb'],
+    [10, 5, 3, 2, 1, 'confirmed', 'unpaid', 'direct'],
+    [11, 7, 4, 2, 0, 'confirmed', 'prepaid', 'booking_com'],
+    [0, 8, 3, 2, 0, 'confirmed', 'unpaid', 'phone'],
+    [1, 10, 2, 2, 0, 'tentative', 'unpaid', 'whatsapp'],
+    [2, 12, 7, 3, 1, 'confirmed', 'paid', 'direct'],
+    [3, 14, 3, 2, 0, 'confirmed', 'prepaid', 'booking_com'],
+    [4, 16, 4, 2, 2, 'confirmed', 'unpaid', 'airbnb'],
+    [5, 19, 2, 1, 0, 'confirmed', 'unpaid', 'direct'],
+    [6, 21, 5, 2, 0, 'confirmed', 'paid', 'booking_com'],
+    [7, 25, 3, 2, 1, 'tentative', 'unpaid', 'phone'],
+  ];
+  const RATE: Record<string, number> = { u_std: 1800, u_dlx: 2600, u_suite: 4200 };
+  plan.forEach(([unitIdx, start, nights, adults, children, status, paymentStatus, source], i) => {
+    const unitId = units[unitIdx];
+    const rate = RATE[unitId.replace(/\d+$/, '')] ?? 1800;
+    insertRes.run(
+      `r${String(i + 1).padStart(3, '0')}`,
+      propId,
+      unitId,
+      `g${String((i % guestSeed.length) + 1).padStart(3, '0')}`,
+      day(start),
+      day(start + nights),
+      nights,
+      adults,
+      children,
+      status,
+      paymentStatus,
+      source,
+      rate * nights
+    );
+  });
 
-  database.prepare('INSERT INTO app_users (id, organization_id, email, full_name, role, password_hash) VALUES (?, ?, ?, ?, ?, ?)').run('user_admin', orgId, 'admin@alisio.cz', 'Admin ALiSiO', 'owner', defaultPasswordHash);
-  database.prepare('INSERT INTO app_users (id, organization_id, email, full_name, role, password_hash) VALUES (?, ?, ?, ?, ?, ?)').run('user_4sv', orgId, '4sv.exe@gmail.com', '4sv.exe Admin', 'owner', user4svHash);
-
-  // Seed some guests
-  const insertGuest = database.prepare('INSERT INTO guests (id, organization_id, first_name, last_name, email, phone, country) VALUES (?, ?, ?, ?, ?, ?, ?)');
-  insertGuest.run('g001', orgId, 'Jan', 'Novák', 'jan.novak@email.cz', '+420601234567', 'CZ');
-  insertGuest.run('g002', orgId, 'Maria', 'Schmidt', 'maria.schmidt@email.de', '+491701234567', 'DE');
-  insertGuest.run('g003', orgId, 'Олена', 'Ковальчук', 'olena@email.ua', '+380501234567', 'UA');
-  insertGuest.run('g004', orgId, 'Peter', 'Brown', 'peter.b@email.com', '+441234567890', 'GB');
-  insertGuest.run('g005', orgId, 'Anna', 'Dvořáková', 'anna.d@email.cz', '+420777654321', 'CZ');
-  insertGuest.run('g006', orgId, 'Klaus', 'Weber', 'k.weber@email.de', '+491601234567', 'DE');
-  insertGuest.run('g007', orgId, 'Tomáš', 'Horák', 'tomas.h@email.cz', '+420608765432', 'CZ');
-  insertGuest.run('g008', orgId, 'Ірина', 'Петренко', 'iryna.p@email.ua', '+380671234567', 'UA');
-
-  // Seed some reservations
-  const insertRes = database.prepare('INSERT INTO reservations (id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-  // Note: F-room IDs use new numbering (F7→F1, F8→F2, F12→F6, F17→F11)
-  insertRes.run('r001', propId, 'u_st1', 'g001', '2026-03-11', '2026-03-15', 4, 2, 0, 'confirmed', 'paid', 'booking_com', 8800);
-  insertRes.run('r002', propId, 'u_mr1', 'g002', '2026-03-11', '2026-03-14', 3, 2, 1, 'checked_in', 'paid', 'direct', 6200);
-  insertRes.run('r003', propId, 'u_g4_2', 'g003', '2026-03-13', '2026-03-18', 5, 3, 1, 'tentative', 'prepaid', 'airbnb', 12500);
-  insertRes.run('r004', propId, 'u_f2', 'g004', '2026-03-09', '2026-03-12', 3, 2, 0, 'checked_in', 'paid', 'direct', 5400);
-  insertRes.run('r005', propId, 'u_f6', 'g005', '2026-03-12', '2026-03-16', 4, 2, 2, 'confirmed', 'payment_requested', 'booking_com', 9200);
-  insertRes.run('r006', propId, 'u_f11', 'g006', '2026-03-14', '2026-03-20', 6, 4, 0, 'confirmed', 'unpaid', 'phone', 15600);
-  insertRes.run('r007', propId, 'u_d3', 'g007', '2026-03-10', '2026-03-12', 2, 1, 0, 'checked_out', 'paid', 'direct', 2800);
-  insertRes.run('r008', propId, 'u_d7', 'g008', '2026-03-11', '2026-03-18', 7, 2, 1, 'confirmed', 'prepaid', 'whatsapp', 11200);
-
-  // Seed demo payments / transactions
-  const insertPay = database.prepare('INSERT INTO payments (id, reservation_id, amount, method, type, status, paid_at, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-
-  // r001 Jan Novák — fully paid by card (8800)
-  insertPay.run('pay001', 'r001', 8800, 'card', 'full', 'completed', '2026-02-20', 'Booking.com payment');
-  // r002 Maria Schmidt — fully paid cash at check-in (6200)
-  insertPay.run('pay002', 'r002', 6200, 'cash', 'full', 'completed', '2026-03-11', 'Cash at front desk');
-  // r003 Олена Ковальчук — prepaid 30% via bank transfer (3750 of 12500)
-  insertPay.run('pay003', 'r003', 3750, 'bank_transfer', 'deposit', 'completed', '2026-02-15', 'Передплата 30%');
-  // r004 Peter Brown — fully paid by card (5400)
-  insertPay.run('pay004', 'r004', 5400, 'card', 'full', 'completed', '2026-03-09', 'Card payment');
-  // r007 Tomáš Horák — paid cash (2800)
-  insertPay.run('pay005', 'r007', 2800, 'cash', 'full', 'completed', '2026-03-10', 'Cash');
-  // r008 Ірина Петренко — prepaid 50% via invoice (5600 of 11200)
-  insertPay.run('pay006', 'r008', 5600, 'invoice', 'deposit', 'completed', '2026-02-28', 'Фактура передплата 50%');
+  // No payment rows are seeded: initSchema's `payments` table is dropped later
+  // by the fin_operations migration, so anything written here would vanish.
 }
