@@ -69,7 +69,10 @@ for (const f of pages) {
 // links pointing at routes that do not exist
 const pageUrls = new Set(pages.map(routeUrl));
 const dynamicPage = [...pageUrls].filter((u) => u.includes('['));
-const hrefRe = /href=\{?["'`](\/[a-z0-9\-/[\]._]*)["'`]/gi;
+// Both JSX (href="/x") and object literals (href: '/x'), which is how the nav
+// and the settings cards declare their targets — missing the latter hid four
+// settings entries pointing at pages that do not exist.
+const hrefRe = /href[=:]\s*\{?["'`](\/[a-z0-9\-/[\]._]*)["'`]/gi;
 const seenHref = new Set();
 for (const [f, body] of src) {
   if (isRoute(f)) continue;
