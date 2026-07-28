@@ -206,10 +206,16 @@ for (const [f, body] of src) {
 }
 
 // ── E. explicitly unfinished ─────────────────────────────────────────────────
+// Must be an actual marker in a comment. Matching case-insensitively caught
+// `todo:` — the task status used all over the tasks module — and `?site_id=xxx`
+// in URL examples, which buried the handful of real ones.
 for (const [f, body] of src) {
   body.split('\n').forEach((line, i) => {
-    const m = line.match(/\b(TODO|FIXME|HACK|XXX|not implemented|coming soon|Не реалізовано|в розробці)\b/i);
-    if (m) report.E.push({ file: rel(f), line: i + 1, marker: m[1], text: line.trim().slice(0, 110) });
+    const m = line.match(/(?:\/\/|\/\*|\*)\s*.*?\b(TODO|FIXME|HACK|XXX)\b/);
+    const prose = line.match(/\b(not implemented|coming soon|Не реалізовано|в розробці|заглушка)\b/i);
+    if (m || prose) {
+      report.E.push({ file: rel(f), line: i + 1, marker: m ? m[1] : prose[1], text: line.trim().slice(0, 110) });
+    }
   });
 }
 
