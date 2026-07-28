@@ -1506,19 +1506,16 @@ function runMigrations(database: any) {
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
-    // Seed BUs from Proj_Map
+    // Only the two structural units every P&L needs. A tenant's real business
+    // units (their restaurant, their wellness area, their buildings) are theirs
+    // to define — seeding one property's breakdown into every database put
+    // another company's org chart in front of the customer.
     const orgRow = database.prepare("SELECT id FROM organizations LIMIT 1").get() as any;
     if (orgRow) {
       const insBU = database.prepare('INSERT INTO business_units (id, organization_id, name, unit_type, is_shared, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
-      insBU.run('bu_glamping', orgRow.id, 'Глемпинг', 'Глемпинг', 0, 1);
-      insBU.run('bu_budova_fd', orgRow.id, 'Будова F/D', 'Міні-готель / 16 номерів', 0, 2);
-      insBU.run('bu_camping', orgRow.id, 'Кемпинг', 'Кемпинг', 0, 3);
-      insBU.run('bu_restaurant', orgRow.id, 'Ресторан', 'Ресторан', 0, 4);
-      insBU.run('bu_sauna', orgRow.id, 'Сауна', 'Сауна', 0, 5);
-      insBU.run('bu_pool', orgRow.id, 'Купель', 'Купель', 0, 6);
-      insBU.run('bu_shared', orgRow.id, 'Загальне', 'Shared / HQ', 1, 7);
-      insBU.run('bu_review', orgRow.id, 'На перегляд', 'Списання / review', 0, 8);
-      console.log('[DB] Created business_units table with 8 BUs');
+      insBU.run('bu_shared', orgRow.id, 'Shared / HQ', 'Shared / HQ', 1, 1);
+      insBU.run('bu_review', orgRow.id, 'To review', 'Unassigned / review', 0, 2);
+      console.log('[DB] Created business_units table');
     }
   }
 
@@ -1558,37 +1555,35 @@ function runMigrations(database: any) {
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
-    // Seed categories from Cat_Map
+    // A generic hotel chart of accounts. Revenue lines that belong to one
+    // property's offering (its sauna, its restaurant) are not seeded — the
+    // tenant adds those itself.
     const orgRow = database.prepare("SELECT id FROM organizations LIMIT 1").get() as any;
     if (orgRow) {
       const insEC = database.prepare('INSERT INTO expense_categories (id, organization_id, name, std_group, pnl_line, include_in_pnl, include_in_cash, alloc_method, is_capex, icon, color, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
       // Revenue
-      insEC.run('ec_accommodation', orgRow.id, 'Проживання', 'Revenue', 'Проживання', 1, 1, 'DIRECT', 0, '🏠', '#22c55e', 1);
-      insEC.run('ec_sauna', orgRow.id, 'Сауна', 'Revenue', 'Сауна', 1, 1, 'DIRECT', 0, '🧖', '#f59e0b', 2);
-      insEC.run('ec_restaurant', orgRow.id, 'Ресторан', 'Revenue', 'Ресторан', 1, 1, 'DIRECT', 0, '🍽️', '#ef4444', 3);
-      insEC.run('ec_breakfast', orgRow.id, 'Сніданки', 'Revenue', 'Сніданки', 1, 1, 'DIRECT', 0, '🍳', '#f97316', 4);
-      insEC.run('ec_other_rev', orgRow.id, 'Інші доходи', 'Revenue', 'Інші доходи', 1, 1, 'DIRECT', 0, '💰', '#84cc16', 5);
+      insEC.run('ec_accommodation', orgRow.id, 'Accommodation', 'Revenue', 'Accommodation', 1, 1, 'DIRECT', 0, '🏠', '#22c55e', 1);
+      insEC.run('ec_services_rev', orgRow.id, 'Services', 'Revenue', 'Services', 1, 1, 'DIRECT', 0, '🛎️', '#f59e0b', 2);
+      insEC.run('ec_other_rev', orgRow.id, 'Other income', 'Revenue', 'Other income', 1, 1, 'DIRECT', 0, '💰', '#84cc16', 3);
       // COGS
-      insEC.run('ec_food', orgRow.id, 'Харчування', 'COGS', 'Харчування', 1, 1, 'DIRECT', 0, '🥘', '#dc2626', 6);
-      insEC.run('ec_products', orgRow.id, 'Продукти', 'COGS', 'Продукти', 1, 1, 'DIRECT', 0, '🛒', '#b91c1c', 7);
-      insEC.run('ec_variable', orgRow.id, 'Змінні витрати', 'COGS', 'Змінні витрати', 1, 1, 'DIRECT', 0, '📦', '#991b1b', 8);
+      insEC.run('ec_variable', orgRow.id, 'Variable costs', 'COGS', 'Variable costs', 1, 1, 'DIRECT', 0, '📦', '#991b1b', 4);
       // OPEX
-      insEC.run('ec_rent', orgRow.id, 'Оренда', 'OPEX', 'Оренда', 1, 1, 'RENT', 0, '🏢', '#6366f1', 9);
-      insEC.run('ec_utilities', orgRow.id, 'Комунальні', 'OPEX', 'Комунальні', 1, 1, 'UTILITIES', 0, '🔌', '#8b5cf6', 10);
-      insEC.run('ec_payroll', orgRow.id, 'Зарплати', 'OPEX', 'Зарплати', 1, 1, 'SHARED_PAYROLL', 0, '👥', '#a855f7', 11);
-      insEC.run('ec_marketing', orgRow.id, 'Маркетинг', 'OPEX', 'Маркетинг', 1, 1, 'HQ', 0, '📢', '#ec4899', 12);
-      insEC.run('ec_professional', orgRow.id, 'Профпослуги', 'OPEX', 'Профпослуги', 1, 1, 'HQ', 0, '💼', '#14b8a6', 13);
-      insEC.run('ec_other_exp', orgRow.id, 'Інші витрати', 'OPEX', 'Інші витрати', 1, 1, 'HQ', 0, '📋', '#6b7280', 14);
-      insEC.run('ec_consumables', orgRow.id, 'Розхідники', 'OPEX', 'Розхідники', 1, 1, 'HQ', 0, '🧹', '#78716c', 15);
+      insEC.run('ec_rent', orgRow.id, 'Rent', 'OPEX', 'Rent', 1, 1, 'RENT', 0, '🏢', '#6366f1', 5);
+      insEC.run('ec_utilities', orgRow.id, 'Utilities', 'OPEX', 'Utilities', 1, 1, 'UTILITIES', 0, '🔌', '#8b5cf6', 6);
+      insEC.run('ec_payroll', orgRow.id, 'Payroll', 'OPEX', 'Payroll', 1, 1, 'SHARED_PAYROLL', 0, '👥', '#a855f7', 7);
+      insEC.run('ec_marketing', orgRow.id, 'Marketing', 'OPEX', 'Marketing', 1, 1, 'HQ', 0, '📢', '#ec4899', 8);
+      insEC.run('ec_professional', orgRow.id, 'Professional services', 'OPEX', 'Professional services', 1, 1, 'HQ', 0, '💼', '#14b8a6', 9);
+      insEC.run('ec_consumables', orgRow.id, 'Consumables', 'OPEX', 'Consumables', 1, 1, 'HQ', 0, '🧹', '#78716c', 10);
+      insEC.run('ec_other_exp', orgRow.id, 'Other expenses', 'OPEX', 'Other expenses', 1, 1, 'HQ', 0, '📋', '#6b7280', 11);
       // Taxes
-      insEC.run('ec_taxes', orgRow.id, 'Податки', 'Taxes', 'Податки', 1, 1, 'HQ', 0, '🏛️', '#334155', 16);
+      insEC.run('ec_taxes', orgRow.id, 'Taxes', 'Taxes', 'Taxes', 1, 1, 'HQ', 0, '🏛️', '#334155', 12);
       // CAPEX
-      insEC.run('ec_capex', orgRow.id, 'Стройка', 'CAPEX', 'CAPEX', 0, 1, 'NONE', 1, '🏗️', '#0ea5e9', 17);
+      insEC.run('ec_capex', orgRow.id, 'Capital expenditure', 'CAPEX', 'CAPEX', 0, 1, 'NONE', 1, '🏗️', '#0ea5e9', 13);
       // Financing
-      insEC.run('ec_investors', orgRow.id, 'Інвесторські кошти', 'Financing', 'Інвесторські кошти', 0, 1, 'NONE', 0, '🏦', '#059669', 18);
+      insEC.run('ec_investors', orgRow.id, 'Financing', 'Financing', 'Financing', 0, 1, 'NONE', 0, '🏦', '#059669', 14);
       // Transfer
-      insEC.run('ec_transfer', orgRow.id, 'Переказ', 'Transfer', 'Переказ', 0, 1, 'NONE', 0, '↔️', '#94a3b8', 19);
-      console.log('[DB] Created expense_categories table with 19 categories from Cat_Map');
+      insEC.run('ec_transfer', orgRow.id, 'Transfer', 'Transfer', 'Transfer', 0, 1, 'NONE', 0, '↔️', '#94a3b8', 15);
+      console.log('[DB] Created expense_categories table with default chart of accounts');
     }
   }
 
@@ -3402,42 +3397,9 @@ function runMigrations(database: any) {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
-  // Seed default prices if table is empty
-  try {
-    const plCount = (database.prepare('SELECT COUNT(*) as c FROM widget_price_list').get() as any).c;
-    if (plCount === 0) {
-      const ins = database.prepare(`INSERT INTO widget_price_list (id, category, item_code, item_name, rate_standard, rate_holiday, rate_side_season, unit_label, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-      const seed = database.transaction(() => {
-        // Glamping
-        ins.run('wpl_tiny_std', 'glamping', 'tiny_house', 'Tiny House', 3900, 5500, null, 'night', 'Max 2 guests, price per house', 1);
-        ins.run('wpl_barn_std', 'glamping', 'barn_house', 'Barn House', 5000, 7000, null, 'night', 'Max 6 guests, price per house', 2);
-        // Buildings — Budova D
-        ins.run('wpl_bd_bed1', 'buildings', 'budova_d_bed_1night', 'Budova D — 1 night bed', 420, 520, null, 'bed/night', '48 beds total', 10);
-        ins.run('wpl_bd_bed2', 'buildings', 'budova_d_bed_2plus', 'Budova D — 2+ nights bed', 390, 470, null, 'bed/night', '48 beds total', 11);
-        ins.run('wpl_bd_room', 'buildings', 'budova_d_room', 'Budova D — Room', 690, null, null, 'room/night', 'Holiday = individual quote', 12);
-        // Buildings — Budova F
-        ins.run('wpl_bf_bed1', 'buildings', 'budova_f_bed_1night', 'Budova F — 1 night bed', 550, 730, null, 'bed/night', '51 beds total', 20);
-        ins.run('wpl_bf_bed2', 'buildings', 'budova_f_bed_2plus', 'Budova F — 2+ nights bed', 490, 680, null, 'bed/night', '51 beds total', 21);
-        ins.run('wpl_bf_room', 'buildings', 'budova_f_room', 'Budova F — Room', 860, null, null, 'room/night', 'Holiday = individual quote', 22);
-        // Camping
-        ins.run('wpl_c_stent', 'camping', 'small_tent', 'Small tent (up to 3×3m)', 100, null, 80, 'night', null, 30);
-        ins.run('wpl_c_ltent', 'camping', 'large_tent', 'Large tent (over 3×3m)', 150, null, 120, 'night', null, 31);
-        ins.run('wpl_c_car', 'camping', 'car', 'Car', 100, null, null, 'night', null, 32);
-        ins.run('wpl_c_minibus', 'camping', 'minibus', 'Minibus / Van', 175, null, null, 'night', null, 33);
-        ins.run('wpl_c_caravan', 'camping', 'caravan', 'Caravan', 200, null, null, 'night', null, 34);
-        ins.run('wpl_c_motorhome', 'camping', 'motorhome', 'Motorhome', 300, null, null, 'night', null, 35);
-        ins.run('wpl_c_moto', 'camping', 'motorcycle', 'Motorcycle', 50, null, null, 'night', null, 36);
-        ins.run('wpl_c_adult', 'camping', 'adult_person', 'Adult', 150, null, 170, 'person/night', 'Tourist tax +25 Kč', 40);
-        ins.run('wpl_c_child', 'camping', 'child_person', 'Child (3-15)', 100, null, 100, 'person/night', 'Under 3 free', 41);
-        ins.run('wpl_c_elec', 'camping', 'electricity', 'Electricity hookup', 120, null, null, 'night', null, 50);
-        ins.run('wpl_c_pet', 'camping', 'pet', 'Pet', 50, null, null, 'animal/night', null, 51);
-        ins.run('wpl_c_mhsvc', 'camping', 'motorhome_service', 'Motorhome cassette service', 100, null, null, 'once', null, 52);
-        ins.run('wpl_c_tax', 'camping', 'tourist_tax', 'Tourist tax', 25, null, null, 'adult/night', 'Mandatory', 60);
-      });
-      seed();
-      console.log('[DB] Seeded widget_price_list with default rates');
-    }
-  } catch (e: any) { console.error('[DB] widget_price_list seed error:', e.message); }
+  // No price list is seeded. The rates that used to live here were one
+  // property's real commercial pricing (tiny house, barn house, camping
+  // pitches, tourist tax) and would have been shown to every other tenant.
 
   // --- Migration: add source column to guests (for analytics) ---
   try {
@@ -3552,34 +3514,11 @@ function runMigrations(database: any) {
   database.exec('CREATE INDEX IF NOT EXISTS idx_recv_extid ON fin_channel_receivables(external_reservation_id)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_recv_payoutid ON fin_channel_receivables(statement_payout_id)');
 
-  // Seed default clearing accounts (one-time, idempotent via name+org check)
-  try {
-    const orgRow = database.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-    if (orgRow) {
-      const orgId = orgRow.id;
-      const seeds = [
-        { name: 'Booking.com (CZK)', currency: 'CZK', color: '#003580', sort_order: 901 },
-        { name: 'Booking.com (EUR)', currency: 'EUR', color: '#003580', sort_order: 902 },
-        { name: 'Airbnb (EUR)', currency: 'EUR', color: '#FF5A5F', sort_order: 903 },
-        { name: 'VRBO (EUR)', currency: 'EUR', color: '#206A92', sort_order: 904 },
-      ];
-      const insertClearing = database.prepare(`
-        INSERT INTO finance_accounts (id, organization_id, name, type, currency, color, sort_order, is_active)
-        VALUES (?, ?, ?, 'clearing', ?, ?, ?, 1)
-      `);
-      const checkExists = database.prepare(
-        "SELECT id FROM finance_accounts WHERE organization_id = ? AND name = ? AND type = 'clearing'"
-      );
-      let seeded = 0;
-      for (const s of seeds) {
-        if (checkExists.get(orgId, s.name)) continue;
-        const id = `acct_clr_${s.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-        insertClearing.run(id, orgId, s.name, s.currency, s.color, s.sort_order);
-        seeded++;
-      }
-      if (seeded > 0) console.log(`[DB] PR #15: seeded ${seeded} clearing accounts`);
-    }
-  } catch (e: any) { console.log('[DB] PR #15 clearing accounts seed:', e.message); }
+  // Clearing accounts are NOT seeded. One per channel/currency only makes sense
+  // once that channel is actually connected; seeding Booking.com CZK/EUR,
+  // Airbnb and VRBO unconditionally left four permanently-zero accounts in the
+  // operations list of every tenant, including those selling none of them.
+  // They are created when a channel connection is established.
 
   // Finance PR #A (is_pms_signal) was retired in clean-3: all readers are
   // gone, so new databases no longer get the column. Existing databases may
