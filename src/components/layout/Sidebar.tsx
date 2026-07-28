@@ -17,15 +17,13 @@ import {
   LogOut,
   X,
   Wallet,
-  Landmark,
   ClipboardList,
   Upload,
   Clock,
   Repeat,
   ListChecks,
-  Inbox,
   MessageSquare,
-  Mail,
+  Code2,
   GitBranch,
   UserPlus,
   Globe,
@@ -53,6 +51,12 @@ interface SidebarProps {
   onMobileClose?: () => void;
 }
 
+// Finance held 15 of these 34 entries — a hotel PMS whose navigation announced
+// itself as an accounting product, on a screen where most people live in the
+// calendar. Nothing was removed: those pages moved into the tab bar in the
+// finance layout, and the sidebar keeps the two a receptionist opens daily.
+// The same reasoning gathers the imports, the widget and the channel settings
+// into one Integrations section instead of scattering them across three.
 const navigation: NavSection[] = [
   {
     title: 'Основне',
@@ -60,9 +64,8 @@ const navigation: NavSection[] = [
       { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} />, permission: 'nav:dashboard' },
       { label: 'Календар', href: '/calendar', icon: <CalendarDays size={20} />, permission: 'nav:calendar' },
       { label: 'Бронювання', href: '/bookings', icon: <BookOpen size={20} />, permission: 'nav:bookings' },
-      { label: 'Імпорт Booking.com', href: '/imports/booking-com', icon: <Upload size={20} />, permission: 'nav:bookings' },
-      { label: 'Виписки Airbnb/Booking', href: '/imports/ota-payouts', icon: <Repeat size={20} />, permission: 'nav:finance' },
-      { label: 'Журнал змін', href: '/audit', icon: <Clock size={20} />, permission: 'nav:settings' },
+      { label: 'Гості', href: '/guests', icon: <Users size={20} />, permission: 'nav:guests' },
+      { label: 'Задачі', href: '/tasks', icon: <CheckSquare size={20} />, permission: 'nav:tasks' },
     ],
   },
   {
@@ -72,7 +75,6 @@ const navigation: NavSection[] = [
       { label: 'Inbox', href: '/crm/inbox', icon: <MessageSquare size={20} />, permission: 'nav:crm' },
       { label: 'Pipeline', href: '/crm', icon: <GitBranch size={20} />, permission: 'nav:crm' },
       { label: 'Ліди', href: '/crm/leads', icon: <UserPlus size={20} />, permission: 'nav:crm' },
-      { label: 'Налаштування', href: '/crm/settings', icon: <Settings size={20} />, permission: 'nav:crm' },
     ],
   },
   {
@@ -80,37 +82,33 @@ const navigation: NavSection[] = [
     items: [
       { label: 'Ціноутворення', href: '/pricing', icon: <DollarSign size={20} />, permission: 'nav:pricing' },
       { label: 'Аналітика продажів', href: '/reports', icon: <BarChart3 size={20} />, permission: 'nav:reports' },
-      { label: 'Гості', href: '/guests', icon: <Users size={20} />, permission: 'nav:guests' },
-      { label: 'Evidenční kniha', href: '/guest-registry', icon: <ClipboardList size={20} />, permission: 'nav:guests' },
       { label: 'Документи', href: '/documents', icon: <FileText size={20} />, permission: 'nav:documents' },
-      { label: 'Задачі', href: '/tasks', icon: <CheckSquare size={20} />, permission: 'nav:tasks' },
-      { label: 'Сайти', href: '/sites', icon: <Globe size={20} />, permission: 'nav:sites' },
+      { label: 'Evidenční kniha', href: '/guest-registry', icon: <ClipboardList size={20} />, permission: 'nav:guests' },
     ],
   },
   {
     title: 'Фінанси',
     items: [
       { label: 'Огляд', href: '/finance', icon: <Wallet size={20} />, permission: 'nav:finance' },
-      { label: 'Reconcile (чеклист)', href: '/finance/reconcile', icon: <Inbox size={20} />, permission: 'nav:finance' },
       { label: 'Операції', href: '/finance/operations', icon: <ListChecks size={20} />, permission: 'nav:finance' },
-      { label: 'Історія змін', href: '/finance/history', icon: <Clock size={20} />, permission: 'nav:finance' },
-      { label: 'Clearing (платформи)', href: '/finance/clearing', icon: <Repeat size={20} />, permission: 'nav:finance' },
-      { label: 'Чеки з пошти', href: '/finance/receipts', icon: <Mail size={20} />, permission: 'nav:finance' },
-      { label: 'Import wizard', href: '/finance/import', icon: <Upload size={20} />, permission: 'nav:finance' },
-      { label: 'Інвестори (адмін)', href: '/finance/investors', icon: <Users size={20} />, permission: 'nav:investors' },
-      { label: 'Звіти', href: '/finance/reports', icon: <BarChart3 size={20} />, permission: 'nav:finance' },
-      { label: 'Календар', href: '/finance/calendar', icon: <CalendarDays size={20} />, permission: 'nav:finance' },
-      { label: 'Очікувані оплати', href: '/finance/expected-payments', icon: <Clock size={20} />, permission: 'nav:finance' },
-      { label: 'CAPEX', href: '/finance/capex', icon: <Landmark size={20} />, permission: 'nav:finance' },
-      { label: 'Нарахування', href: '/finance/accruals', icon: <ClipboardList size={20} />, permission: 'nav:finance' },
-      { label: 'Банк', href: '/finance/bank', icon: <Upload size={20} />, permission: 'nav:finance' },
-      { label: 'Налаштування фінансів', href: '/finance/settings', icon: <Settings size={20} />, permission: 'nav:finance' },
+    ],
+  },
+  {
+    title: 'Інтеграції',
+    items: [
+      { label: 'Канали', href: '/settings/channel-manager', icon: <Globe size={20} />, permission: 'nav:settings' },
+      { label: 'Віджет бронювання', href: '/settings/booking-widget', icon: <Code2 size={20} />, permission: 'nav:settings' },
+      { label: 'Сайти', href: '/sites', icon: <Globe size={20} />, permission: 'nav:sites' },
+      { label: 'Канали CRM', href: '/crm/settings', icon: <MessageSquare size={20} />, permission: 'nav:crm' },
+      { label: 'Імпорт Booking.com', href: '/imports/booking-com', icon: <Upload size={20} />, permission: 'nav:bookings' },
+      { label: 'Виписки OTA', href: '/imports/ota-payouts', icon: <Repeat size={20} />, permission: 'nav:finance' },
     ],
   },
   {
     title: 'Система',
     items: [
       { label: 'Налаштування', href: '/settings', icon: <Settings size={20} />, permission: 'nav:settings' },
+      { label: 'Журнал змін', href: '/audit', icon: <Clock size={20} />, permission: 'nav:settings' },
     ],
   },
 ];

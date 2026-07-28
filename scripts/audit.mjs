@@ -97,6 +97,30 @@ for (const [f, body] of src) {
   }
 }
 
+// Dashboard pages no navigation reaches. The mirror of the broken-link check:
+// trimming a menu is only safe if nothing falls off it, and a page reachable
+// solely by typing its URL is invisible to the people paying for it.
+{
+  const NAV_SOURCES = [
+    'src/components/layout/Sidebar.tsx',
+    'src/app/(dashboard)/finance/_components/FinanceTabs.tsx',
+    'src/app/(dashboard)/settings/page.tsx',
+  ];
+  const navLinks = new Set();
+  for (const relPath of NAV_SOURCES) {
+    const abs = path.join(ROOT, relPath);
+    if (!fs.existsSync(abs)) continue;
+    for (const m of read(abs).matchAll(/href[=:]\s*\{?["'`](\/[a-z0-9\-/]*)/gi)) navLinks.add(m[1]);
+  }
+  for (const f of pages) {
+    const url = routeUrl(f);
+    if (!url.startsWith('/') || url.includes('[')) continue;
+    if (!rel(f).includes('(dashboard)')) continue;
+    const reachable = [...navLinks].some((l) => url === l || url.startsWith(`${l}/`));
+    if (!reachable) report.A.push({ kind: 'unreachable-page', url, file: rel(f) });
+  }
+}
+
 // ── B. API routes nothing calls ──────────────────────────────────────────────
 // Callers live in three places, and missing any of them turns working code into
 // a false "dead route": React components, the plain-JS embeddable widget under
@@ -246,6 +270,7 @@ for (const [k, v] of Object.entries(report.stats)) console.log(`  ${k.padEnd(18)
 h('A. UI: заглушки, редиректи, биті посилання');
 for (const r of report.A) {
   if (r.kind === 'broken-link') console.log(`  [БИТЕ]     ${r.href}  ←  ${r.from}`);
+  else if (r.kind === 'unreachable-page') console.log(`  [НЕДОСЯЖНА] ${r.url}  ${r.file}`);
   else console.log(`  [${r.kind === 'redirect-only' ? 'РЕДИРЕКТ' : 'ЗАГЛУШКА'}] ${String(r.url).padEnd(38)} ${r.lines} рядків  ${r.file}`);
 }
 
