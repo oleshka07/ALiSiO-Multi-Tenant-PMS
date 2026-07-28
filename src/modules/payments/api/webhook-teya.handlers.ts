@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
+import { appBaseUrl } from '@core/app-url';
 import { verifyWebhookSignature } from '../domain/teya-client';
 import { getDb } from '@core/db';
 import { eventBus } from '@core/event-bus';
@@ -567,7 +568,7 @@ function sendFullBookingWebhookTG(db: any, paymentRef: string, amount: number, c
       `💰 ${displayAmount} ${currency || res.currency || 'CZK'} — ✅ Оплачено онлайн`,
       ``,
       `🔖 <code>${esc(res.id)}</code>`,
-      `🔗 <a href="https://alisio.swipescape.eu/crm/inbox?id=${esc(res.id)}">Відкрити в CRM</a>`,
+      `🔗 <a href="${appBaseUrl()}/crm/inbox?id=${esc(res.id)}">Відкрити в CRM</a>`,
     ].filter(Boolean).join('\n');
 
     console.log('[Teya Webhook] Sending full-booking webhook TG for', guestName);

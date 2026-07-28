@@ -22,11 +22,12 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { appBaseUrl } from '@core/app-url';
 import { getDb, generateGuestToken } from '@core/db';
 import { createPaymentSession } from '@payments';
 import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
 
-const PMS_BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://alisio.swipescape.eu';
+const PMS_BASE_URL = appBaseUrl();
 const DEPOSIT_PERCENT = 30;
 
 export async function convertLeadToBooking(

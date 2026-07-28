@@ -7,6 +7,7 @@
  * Returns: { sent: true, to: string }
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { getOrgIdentity } from '@core/org-identity';
 import { getDb } from '@core/db';
 import { renderInvoiceHtml, type InvoiceData } from '@/lib/invoice-template';
 import { sendEmail } from '@/lib/email';
@@ -82,7 +83,13 @@ async function _POST(
       || `${data.guest_first_name || ''} ${data.guest_last_name || ''}`.trim()
       || 'host';
 
-    const subject = `Faktura ${data.invoice_number} — Kemp Carlsbad`;
+    // Brand name and address were literals naming one company, so every
+    // tenant's invoice email would have gone out under it.
+    const identity = getOrgIdentity();
+    const orgName = identity.name || 'PMS';
+    const orgAddress = identity.legalAddress;
+
+    const subject = `Faktura ${data.invoice_number} — ${orgName}`;
 
     // Wrap in a clean email body
     const emailHtml = `
@@ -92,13 +99,13 @@ async function _POST(
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:sans-serif;">
   <div style="max-width:680px;margin:24px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
     <div style="background:#1a2234;color:#fff;padding:20px 28px;">
-      <div style="font-size:18px;font-weight:700;">Kemp Carlsbad</div>
-      <div style="font-size:13px;opacity:.7;margin-top:2px;">Chebská 38/5, Dvory, 360 06 Karlovy Vary</div>
+      <div style="font-size:18px;font-weight:700;">${orgName}</div>
+      <div style="font-size:13px;opacity:.7;margin-top:2px;">${orgAddress}</div>
     </div>
     <div style="padding:24px 28px;">
       <p style="margin:0 0 16px;font-size:15px;">Dobrý den, ${guestName},</p>
       <p style="margin:0 0 24px;color:#555;font-size:14px;">
-        Zasíláme Vám fakturu <strong>${data.invoice_number}</strong> za ubytování v Kemp Carlsbad.
+        Zasíláme Vám fakturu <strong>${data.invoice_number}</strong> za ubytování v ${orgName}.
         Níže naleznete kompletní doklad.
       </p>
     </div>

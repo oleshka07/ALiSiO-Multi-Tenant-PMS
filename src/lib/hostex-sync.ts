@@ -3,6 +3,7 @@
  * Handles reservation, guest, and payment synchronization
  */
 import { getDb, generateGuestToken } from './db';
+import { appBaseUrl } from '@core/app-url';
 import {
   getProperties,
   getAllReservations,
@@ -16,7 +17,7 @@ import { notifyReservationCreated } from '@/modules/bookings/domain/reservation-
 import { findOrCreateGuest as findOrCreateGuestUnified } from '@guests';
 
 // Public URL of the PMS (used to build guest page links sent to Hostex)
-const PMS_BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://alisio.swipescape.eu';
+const PMS_BASE_URL = appBaseUrl();
 
 // Channel types that represent owner blocks / closed dates — NOT real guests
 const BLOCKED_CHANNEL_TYPES = new Set(['owner', 'manual', 'owner_reservation', 'blocked', 'maintenance']);

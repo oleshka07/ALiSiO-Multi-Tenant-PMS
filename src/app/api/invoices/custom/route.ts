@@ -22,6 +22,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getOrgIdentity } from '@core/org-identity';
 import { getDb } from '@core/db';
 import { requirePermission } from '@core/security/route-guard';
 import { generateInvoicePdf } from '@/lib/invoice-pdf';
@@ -163,10 +164,11 @@ async function _POST(req: NextRequest): Promise<NextResponse> {
           invoice_company_email:   emailTo,
         };
         const html = renderInvoiceHtml(fakeData);
+        const orgName = getOrgIdentity().name || 'PMS';
 
         await sendEmail({
           to:      emailTo.trim(),
-          subject: `Faktura ${invoiceNumber} – Kemp Carlsbad s.r.o.`,
+          subject: `Faktura ${invoiceNumber} – ${orgName}`,
           html,
           attachments: [{
             filename:    `faktura-${invoiceNumber}.pdf`,

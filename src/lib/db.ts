@@ -4784,6 +4784,32 @@ function runMigrations(database: any) {
     )
   `);
   console.log('[DB] finance_user_access table ready');
+
+  // --- Migration: legal and banking identity on the organization -----------
+  // Invoices, the booking wizard footer, the terms and the privacy policy all
+  // carried one company's identity as literals — including its tax number and
+  // its IBAN. Another tenant's invoice would have shown that bank account, and
+  // guests would have paid the wrong company. These belong to the tenant.
+  try {
+    const orgCols = (database.prepare('PRAGMA table_info(organizations)').all() as any[]).map((c: any) => c.name);
+    const add = (col: string, decl: string) => {
+      if (!orgCols.includes(col)) database.exec(`ALTER TABLE organizations ADD COLUMN ${col} ${decl}`);
+    };
+    add('legal_name', 'TEXT');
+    add('registration_no', 'TEXT');   // IČO
+    add('vat_no', 'TEXT');            // DIČ
+    add('is_vat_payer', 'INTEGER NOT NULL DEFAULT 0');
+    add('legal_address', 'TEXT');
+    add('bank_name', 'TEXT');
+    add('bank_account', 'TEXT');
+    add('iban', 'TEXT');
+    add('swift', 'TEXT');
+    add('invoice_email', 'TEXT');
+    add('website', 'TEXT');
+    if (orgCols.length < 18) console.log('[DB] organizations: legal & banking columns ready');
+  } catch (e: any) {
+    console.log('[DB] organization legal columns migration note:', e.message);
+  }
   }
 
 // Generate a cryptographically secure random token for guest pages

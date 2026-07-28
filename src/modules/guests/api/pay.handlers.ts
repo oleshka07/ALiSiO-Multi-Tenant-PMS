@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { appBaseUrl } from '@core/app-url';
 import * as actionsRepo from '../data/guest-actions.repo';
 import { createPaymentSession, resolveCredentialsForReservation } from '@payments';
 import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
@@ -91,7 +92,7 @@ async function handleSinglePay(
   ].filter(Boolean).join('\n')).catch((e) => console.error('[Guest Pay] TG error:', e.message));
 
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://alisio.swipescape.eu';
+    const baseUrl = appBaseUrl();
     const siteCredentials = resolveCredentialsForReservation(reservation.id);
     const session = await createPaymentSession({
       kind: 'service_standalone',
@@ -264,7 +265,7 @@ async function handleCartPay(token: string, items: CartItemInput[]): Promise<Nex
   ].filter(Boolean).join('\n')).catch((e) => console.error('[Cart Pay] TG error:', e.message));
 
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://alisio.swipescape.eu';
+    const baseUrl = appBaseUrl();
     const siteCredentials = resolveCredentialsForReservation(reservation.id);
     const session = await createPaymentSession({
       kind: 'service_cart',

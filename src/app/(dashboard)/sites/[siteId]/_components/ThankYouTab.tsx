@@ -28,7 +28,9 @@ export function ThankYouTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Wi
     onUpdate(cfg);
   };
 
-  const bookingUrl = `${typeof window !== 'undefined' ? window.location.origin : 'https://alisio.swipescape.eu'}/book?site_id=${site.slug}`;
+  // Relative until the browser knows its own origin — never another operator's.
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const bookingUrl = `${origin}/book?site_id=${site.slug}`;
 
   return (
     <div style={{ maxWidth: 640 }}>

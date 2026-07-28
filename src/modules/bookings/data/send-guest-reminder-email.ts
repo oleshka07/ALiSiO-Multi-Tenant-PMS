@@ -1,4 +1,5 @@
 import { getDb } from '@core/db';
+import { appBaseUrl } from '@core/app-url';
 import { sendEmail } from '@/lib/email';
 import { detectLanguage } from '@/app/guest/[token]/translations';
 
@@ -26,7 +27,7 @@ export async function sendGuestReminderEmail(reservationId: string, origin?: str
 
   const guestName = row.first_name ? row.first_name.trim() : (tLang === 'uk' ? 'Гість' : tLang === 'de' ? 'Gast' : tLang === 'cs' ? 'Host' : 'Guest');
   const propertyName = row.property_name || 'Kemp Carlsbad';
-  const appUrl = origin || process.env.NEXT_PUBLIC_APP_URL || 'https://alisio.swipescape.eu';
+  const appUrl = origin || appBaseUrl();
   
   const guestPageUrl = `${appUrl}/guest/${row.guest_page_token}`;
 

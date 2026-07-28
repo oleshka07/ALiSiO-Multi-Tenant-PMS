@@ -96,8 +96,12 @@ const handleSubmit = async (e) => {
 }
 
 function ScriptSnippet({ scriptId, siteId }: { scriptId: string; siteId: string }) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL
-    || (typeof window !== 'undefined' ? window.location.origin : 'https://alisio.swipescape.eu');
+  // The browser's own origin is always correct here. The SSR fallback used to
+  // be a literal domain, which pasted another operator's host into the snippet
+  // customers copy onto their own websites.
+  const baseUrl = typeof window !== 'undefined'
+    ? window.location.origin
+    : process.env.NEXT_PUBLIC_APP_URL || '';
   const snippet = `<script\n  src="${baseUrl}/widget/collector.js"\n  data-site-id="${siteId}"\n  async defer\n></script>`;
   const manualSnippet = `<!-- React/SPA: виклич вручну в handleSubmit -->\nwindow.Alisio?.sendForm({\n  name:    formData.name,\n  email:   formData.email,\n  phone:   formData.phone,\n  message: formData.message,\n});`;
   void scriptId;

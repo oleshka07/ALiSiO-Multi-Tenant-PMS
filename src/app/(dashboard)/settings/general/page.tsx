@@ -14,6 +14,17 @@ interface Organization {
   slug: string;
   timezone: string;
   default_currency: string;
+  legal_name: string | null;
+  registration_no: string | null;
+  vat_no: string | null;
+  is_vat_payer: number;
+  legal_address: string | null;
+  bank_name: string | null;
+  bank_account: string | null;
+  iban: string | null;
+  swift: string | null;
+  invoice_email: string | null;
+  website: string | null;
 }
 
 interface Property {
@@ -87,7 +98,7 @@ export default function GeneralSettingsPage() {
     }
   };
 
-  const setOrgField = (k: keyof Organization, v: string) => setOrg((p) => (p ? { ...p, [k]: v } : p));
+  const setOrgField = (k: keyof Organization, v: string | number) => setOrg((p) => (p ? { ...p, [k]: v } : p));
   const setPropField = (k: keyof Property, v: string) => setProperty((p) => (p ? { ...p, [k]: v } : p));
 
   return (
@@ -154,6 +165,75 @@ export default function GeneralSettingsPage() {
                       {currencies.map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
                     <div className="form-hint">Валюта звітів. Наявні операції не перераховуються.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="card" style={{ marginBottom: 20 }}>
+              <div className="card-header"><div className="card-title">Реквізити для документів</div></div>
+              <div style={{ padding: 20 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 16, lineHeight: 1.6 }}>
+                  Ці дані друкуються на інвойсах і показуються гостям. Поки вони порожні,
+                  документи виходять без реквізитів.
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Юридична назва</label>
+                    <input className="form-input" value={org.legal_name ?? ''} onChange={(e) => setOrgField('legal_name', e.target.value)} placeholder="ТОВ «Назва», s.r.o., GmbH…" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Юридична адреса</label>
+                    <input className="form-input" value={org.legal_address ?? ''} onChange={(e) => setOrgField('legal_address', e.target.value)} />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">IČO / ЄДРПОУ</label>
+                    <input className="form-input" value={org.registration_no ?? ''} onChange={(e) => setOrgField('registration_no', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">DIČ / ПДВ-номер</label>
+                    <input className="form-input" value={org.vat_no ?? ''} onChange={(e) => setOrgField('vat_no', e.target.value)} placeholder="CZ12345678" />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                    <input type="checkbox" className="form-checkbox" checked={!!org.is_vat_payer}
+                      onChange={(e) => setOrgField('is_vat_payer', e.target.checked ? 1 : 0)} />
+                    <span style={{ fontSize: 14 }}>Платник ПДВ</span>
+                  </label>
+                  <div className="form-hint">Впливає на те, як ПДВ показується в інвойсах.</div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Банк</label>
+                    <input className="form-input" value={org.bank_name ?? ''} onChange={(e) => setOrgField('bank_name', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Номер рахунку</label>
+                    <input className="form-input" value={org.bank_account ?? ''} onChange={(e) => setOrgField('bank_account', e.target.value)} />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">IBAN</label>
+                    <input className="form-input" value={org.iban ?? ''} onChange={(e) => setOrgField('iban', e.target.value)} placeholder="CZ70 0100 0000 1313 5694 1027" />
+                    <div className="form-hint">Друкується на інвойсах — саме на цей рахунок платитимуть гості.</div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">SWIFT / BIC</label>
+                    <input className="form-input" value={org.swift ?? ''} onChange={(e) => setOrgField('swift', e.target.value)} />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Email для документів</label>
+                    <input className="form-input" type="email" value={org.invoice_email ?? ''} onChange={(e) => setOrgField('invoice_email', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Сайт</label>
+                    <input className="form-input" value={org.website ?? ''} onChange={(e) => setOrgField('website', e.target.value)} placeholder="https://…" />
                   </div>
                 </div>
               </div>

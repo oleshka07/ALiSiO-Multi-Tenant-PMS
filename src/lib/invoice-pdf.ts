@@ -6,11 +6,12 @@
  * below the header block. Table rows are fully dynamic.
  *
  * Page: A4 (595.28 × 841.89 pts)
- * Kemp Carlsbad s.r.o. — neplátce DPH (0 % VAT)
+ * VAT presentation follows the organization's is_vat_payer flag.
  */
 import PDFDocument from 'pdfkit';
 import path from 'path';
 import fs from 'fs';
+import { getOrgIdentity } from '@core/org-identity';
 
 // ─── Font resolution ─────────────────────────────────────────────────────────
 function resolveFont(name: 'regular' | 'bold'): string {
@@ -61,24 +62,30 @@ const TBLBG   = '#f0f0f0';  // table header bg
 const ROWBDR  = '#dddddd';  // table row borders
 
 // ─── Business data ────────────────────────────────────────────────────────────
-const SUPPLIER = {
-  name:   'Kemp Carlsbad s.r.o.',
-  street: 'Chebská 38/5',
-  city:   '360 06 Karlovy Vary',
-  ico:    '23430567',
-  dic:    '',            // neplátce DPH — IČO only, no VAT number
-  phone:  '723565616',
-  email:  'kemp-carlsbad@email.cz',
-  court:  'Krajského soudu v Plzni, oddíl C 46931',
-};
+// Resolved per call from the organization record. These were literals naming
+// one real company — address, IČO, phone, mailbox and IBAN — so every tenant's
+// invoice asked guests to pay into that same bank account.
+function supplierOf() {
+  const id = getOrgIdentity();
+  // legal_address is one field; split on the last comma for the two-line layout.
+  const addr = id.legalAddress.trim();
+  const cut = addr.lastIndexOf(',');
+  return {
+    name: id.name,
+    street: cut > 0 ? addr.slice(0, cut).trim() : addr,
+    city: cut > 0 ? addr.slice(cut + 1).trim() : '',
+    ico: id.registrationNo,
+    dic: id.isVatPayer ? id.vatNo : '',
+    phone: id.phone,
+    email: id.email,
+    court: '',
+  };
+}
 
-const BANK = {
-  name:    process.env.BANK_NAME    || 'Komerční banka',
-  account: process.env.BANK_ACCOUNT || '131-3569410227',
-  code:    process.env.BANK_CODE    || '0100',
-  iban:    process.env.BANK_IBAN    || 'CZ7001000001313569410227',
-  bic:     process.env.BANK_BIC     || 'KOMBCZPP',
-};
+function bankOf() {
+  const id = getOrgIdentity();
+  return { name: id.bankName, account: id.bankAccount, code: '', iban: id.iban, bic: id.swift };
+}
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 export interface InvoiceItem {
@@ -147,6 +154,10 @@ function textHeight(doc: PDFKit.PDFDocument, text: string, width: number, fontSi
 
 // ─── PDF builder ──────────────────────────────────────────────────────────────
 export async function generateInvoicePdf(data: InvoicePdfInput): Promise<Buffer> {
+  // Resolved once per document rather than at module load, so a change in
+  // Settings takes effect on the next invoice without a restart.
+  const SUPPLIER = supplierOf();
+  const BANK = bankOf();
   return new Promise((resolve, reject) => {
     const isCreditNote = data.isCreditNote === true;
     const currency     = data.currency     || 'CZK';
@@ -533,8 +544,12 @@ export async function generateInvoicePdf(data: InvoicePdfInput): Promise<Buffer>
     const LEGAL_Y = 605;
     const SIG_Y   = 757;
 
-    R(7.5).fillColor(LGRAY)
-      .text(`Vedeno u ${SUPPLIER.court}`, ML, LEGAL_Y, { width: CR - ML, lineBreak: false });
+    // Court-registry line only when the tenant has one — it is a Czech-specific
+    // detail that would otherwise print another company's registration.
+    if (SUPPLIER.court) {
+      R(7.5).fillColor(LGRAY)
+        .text(`Vedeno u ${SUPPLIER.court}`, ML, LEGAL_Y, { width: CR - ML, lineBreak: false });
+    }
 
     R(7.5).fillColor(LGRAY).text(
       'Dovolujeme si Vás upozornit, že v případě nedodržení data splatnosti uvedeného na faktuře ' +

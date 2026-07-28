@@ -28,7 +28,12 @@ export async function getGeneralSettings(): Promise<NextResponse> {
   try {
     const db = getDb();
     const org = db
-      .prepare('SELECT id, name, slug, timezone, default_currency FROM organizations WHERE id = ?')
+      .prepare(
+        `SELECT id, name, slug, timezone, default_currency,
+                legal_name, registration_no, vat_no, is_vat_payer, legal_address,
+                bank_name, bank_account, iban, swift, invoice_email, website
+         FROM organizations WHERE id = ?`,
+      )
       .get(user.organization_id);
     const property = db
       .prepare(
@@ -77,10 +82,41 @@ export async function saveGeneralSettings(request: NextRequest): Promise<NextRes
       }
     }
 
+    const str = (v: unknown) => {
+      const s = String(v ?? '').trim();
+      return s === '' ? null : s;
+    };
+    // IBAN is checked because it ends up on invoices: a typo means guests pay
+    // into an account that does not exist.
+    const iban = str(org.iban)?.replace(/\s+/g, '').toUpperCase() ?? null;
+    if (iban && !/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(iban)) {
+      return NextResponse.json({ error: 'IBAN виглядає некоректно' }, { status: 400 });
+    }
+
     const db = getDb();
     db.prepare(
-      "UPDATE organizations SET name = ?, timezone = ?, default_currency = ?, updated_at = datetime('now') WHERE id = ?",
-    ).run(name, timezone, currency, user.organization_id);
+      `UPDATE organizations SET name = ?, timezone = ?, default_currency = ?,
+         legal_name = ?, registration_no = ?, vat_no = ?, is_vat_payer = ?, legal_address = ?,
+         bank_name = ?, bank_account = ?, iban = ?, swift = ?, invoice_email = ?, website = ?,
+         updated_at = datetime('now')
+       WHERE id = ?`,
+    ).run(
+      name,
+      timezone,
+      currency,
+      str(org.legal_name),
+      str(org.registration_no),
+      str(org.vat_no),
+      org.is_vat_payer ? 1 : 0,
+      str(org.legal_address),
+      str(org.bank_name),
+      str(org.bank_account),
+      iban,
+      str(org.swift),
+      str(org.invoice_email),
+      str(org.website),
+      user.organization_id,
+    );
 
     if (prop.id) {
       // The WHERE clause carries organization_id so a forged property id from

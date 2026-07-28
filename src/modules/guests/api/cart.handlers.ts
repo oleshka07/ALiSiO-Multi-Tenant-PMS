@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { appBaseUrl } from '@core/app-url';
 import * as repo from '../data/guest-actions.repo';
 import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
 import { sendEmail } from '@/lib/email';
@@ -58,7 +59,7 @@ export async function sendAbandonNotifications(
     const guestName = [event.first_name, event.last_name].filter(Boolean).join(' ') || 'Guest';
     const currency = items[0]?.currency || 'Kč';
     const total = event.cart_total ? `${event.cart_total} ${currency}` : '—';
-    const guestPageUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://alisio.swipescape.eu'}/guest/${guestToken}`;
+    const guestPageUrl = `${appBaseUrl()}/guest/${guestToken}`;
 
     const itemLines = items.map((i: any) =>
       `  • ${i.serviceName || i.name || '?'} ×${i.quantity} — ${(i.price * i.quantity).toFixed(0)} ${i.currency || 'Kč'}`
