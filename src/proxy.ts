@@ -33,7 +33,8 @@ const PUBLIC_PREFIXES = [
 const PUBLIC_EXACT = [
   '/',
   '/login',
-  '/book',
+  // '/book' removed with the single-property wizard; the public widget is
+  // '/w/<slug>', already covered by the prefix list above.
   '/api/auth/login',
   '/api/auth/logout',
   '/api/auth/me',

@@ -6,7 +6,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import type { BookingLang } from '../translations';
 import { getBookingTranslations } from '../translations';
 import type { UnitResult, AvailabilityResponse, ReserveResponse, DesignConfig, ActiveRatePlan } from '../types';
-import { fmtDate, parseDate, formatPrice } from '../utils';
+import { fmtDate, parseDate, formatPrice, groupUnitsByCategory } from '../utils';
 import { v3Locales } from '../locales';
 
 const API_BASE = process.env.NEXT_PUBLIC_PMS_API_URL || '';
@@ -259,7 +259,39 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
 
   useEffect(() => { if (!isMounted) return; (async () => { try { const fetchMonth = async (offset: number) => { const date = new Date(today.getFullYear(), today.getMonth()+offset, 1); const monthStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`; const p = new URLSearchParams({ month: monthStr }); if (siteId) p.set('siteId', siteId); if (siteSlug) p.set('siteSlug', siteSlug); if (selectedUnitId) p.set('unitId', selectedUnitId); const urlParams = new URLSearchParams(window.location.search); const rp = urlParams.get('ratePlanId') || urlParams.get('ratePlan'); if (rp) p.set('ratePlanId', rp); const res = await fetch(`${API_BASE}/api/widget/calendar?${p.toString()}`); return res.json(); }; const [d1, d2] = await Promise.all([fetchMonth(calMonthOffset), fetchMonth(calMonthOffset+1)]); const busy = new Set<string>(); const partial = new Set<string>(); [d1,d2].forEach(data => { if (data?.days) data.days.forEach((d: any) => { if (d.status==='booked') busy.add(d.date); if (d.status==='partial') partial.add(d.date); }); }); setBusyDates(busy); setPartialDates(partial); } catch(e) { console.error(e); } })(); }, [calMonthOffset, isMounted, siteId, siteSlug, selectedUnitId]);
 
-  const displayUnits = useMemo(() => { if (!availability?.units) return []; if (offerApplied?.bundle?.applied_listings?.length > 0) return availability.units.filter(u => offerApplied!.bundle.applied_listings.includes(u.id)); return availability.units; }, [availability, offerApplied]);
+  // ── Optional category step ────────────────────────────────────────────────
+  // The retired bespoke wizard made guests pick glamping / buildings / camping
+  // before showing units. That is the categories table, hardcoded because there
+  // was one property. Here it is derived from what is actually available for the
+  // chosen dates, and skipped when a property has a single category — which is
+  // why an ordinary hotel never sees this screen.
+  const offerUnits = useMemo(() => {
+    if (!availability?.units) return [];
+    if (offerApplied?.bundle?.applied_listings?.length > 0) {
+      return availability.units.filter(u => offerApplied!.bundle.applied_listings.includes(u.id));
+    }
+    return availability.units;
+  }, [availability, offerApplied]);
+
+  const availableCategories = useMemo(() => groupUnitsByCategory(offerUnits), [offerUnits]);
+
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  /** Only worth asking when there is a real choice to make. */
+  const categoryStepEnabled = availableCategories.length > 1;
+
+  // A new search may not contain the previously chosen category at all.
+  useEffect(() => {
+    if (selectedCategoryId && !availableCategories.some(c => c.id === selectedCategoryId)) {
+      setSelectedCategoryId(null);
+    }
+  }, [availableCategories, selectedCategoryId]);
+
+  const displayUnits = useMemo(
+    () => (categoryStepEnabled && selectedCategoryId
+      ? offerUnits.filter(u => u.categoryId === selectedCategoryId)
+      : offerUnits),
+    [offerUnits, categoryStepEnabled, selectedCategoryId],
+  );
   const selectedUnit = useMemo(() => { if (!selectedUnitId) return null; if (availability) return displayUnits.find(u => u.id === selectedUnitId) || unitInfo; return unitInfo; }, [availability, selectedUnitId, unitInfo, displayUnits]);
   const totalWithDiscount = useMemo(() => {
     // ── Package with fixed price: no need to wait for selectedUnit ──
@@ -529,7 +561,7 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
 
   const invalidNightsMsg = offerApplied?.offerType==='package' && offerApplied.bundle?.nights_included && nights>0 && nights!==offerApplied.bundle.nights_included ? t.packageNightsError(offerApplied.bundle.nights_included) : null;
 
-  return { lang, setLang, setOfferError, t, v3t, step, setStep, checkIn, setCheckIn, checkOut, setCheckOut, nights, selectingCheckOut, setSelectingCheckOut, adults, setAdults, kids, setKids, calMonthOffset, setCalMonthOffset, calOpen, setCalOpen, busyDates, partialDates, socialProof, waitlistStatus, joinWaitlist, nextAvailable, availability, loadingAvail, selectedUnitId, setSelectedUnitId, unitInfo, currentImgIndex, setCurrentImgIndex, firstName, setFirstName, lastName, setLastName, email, setEmail, phone, setPhone, submitting, error, reservation, couponCode, setCouponCode, showOffer, setShowOffer, offerApplied, offerError, applyingOffer, extraCouponCode, setExtraCouponCode, showExtraOffer, setShowExtraOffer, extraCouponApplied, setExtraCouponApplied, extraCouponError, setExtraCouponError, applyingExtraCoupon, handleApplyExtraOffer, isHiddenBundle, siteConfig, siteCurrency, services, loadingServices, selectedServiceIds, setSelectedServiceIds, setAvailability, displayUnits, selectedUnit, totalWithDiscount, totalWithoutDiscount, fetchAvailability, handleDayClick, goToStep, handleApplyOffer, submitBooking, toggleService, startPayment, activeDesign, dynamicStyles, invalidNightsMsg, today, getOccupancyString, resolvedSiteId, activeRatePlan };
+  return { lang, setLang, setOfferError, t, v3t, step, setStep, checkIn, setCheckIn, checkOut, setCheckOut, nights, selectingCheckOut, setSelectingCheckOut, adults, setAdults, kids, setKids, calMonthOffset, setCalMonthOffset, calOpen, setCalOpen, busyDates, partialDates, socialProof, waitlistStatus, joinWaitlist, nextAvailable, availability, loadingAvail, selectedUnitId, setSelectedUnitId, unitInfo, currentImgIndex, setCurrentImgIndex, firstName, setFirstName, lastName, setLastName, email, setEmail, phone, setPhone, submitting, error, reservation, couponCode, setCouponCode, showOffer, setShowOffer, offerApplied, offerError, applyingOffer, extraCouponCode, setExtraCouponCode, showExtraOffer, setShowExtraOffer, extraCouponApplied, setExtraCouponApplied, extraCouponError, setExtraCouponError, applyingExtraCoupon, handleApplyExtraOffer, isHiddenBundle, siteConfig, siteCurrency, services, loadingServices, selectedServiceIds, setSelectedServiceIds, setAvailability, displayUnits, availableCategories, selectedCategoryId, setSelectedCategoryId, categoryStepEnabled, selectedUnit, totalWithDiscount, totalWithoutDiscount, fetchAvailability, handleDayClick, goToStep, handleApplyOffer, submitBooking, toggleService, startPayment, activeDesign, dynamicStyles, invalidNightsMsg, today, getOccupancyString, resolvedSiteId, activeRatePlan };
 }
 
 

@@ -30,7 +30,9 @@ export function ThankYouTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Wi
 
   // Relative until the browser knows its own origin — never another operator's.
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const bookingUrl = `${origin}/book?site_id=${site.slug}`;
+  // /w/<slug> is the per-site widget. The old /book was a single-property
+  // funnel, so every site pointed at the same one.
+  const bookingUrl = `${origin}/w/${site.slug}`;
 
   return (
     <div style={{ maxWidth: 640 }}>
@@ -62,7 +64,7 @@ export function ThankYouTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Wi
           <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>Як це працює</span>
         </div>
         <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9, color: 'var(--text-secondary)' }}>
-          <li>Гість відкриває <code>/book?site_id={site.slug}</code> і Pixel ініціалізується</li>
+          <li>Гість відкриває <code>/w/{site.slug}</code> і Pixel ініціалізується</li>
           <li>Оплачує через Teya → система підтверджує і надсилає email</li>
           <li>Pixel стріляє <code>Purchase</code> і гість переходить на ваш сайт</li>
           <li>На вашій сторінці підтвердження Pixel стріляє ще раз — Meta дедуплікує</li>

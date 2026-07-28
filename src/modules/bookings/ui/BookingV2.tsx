@@ -9,7 +9,7 @@ import type { BookingLang } from './translations';
 import { useBookingWidget } from './hooks/useBookingWidget';
 
 export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPreview, lang: initialLang }: { siteId?: string; siteSlug?: string; thankYouUrl?: string; design?: DesignConfig; isPreview?: boolean; lang?: BookingLang }) {
-  const { lang, t, v3t, step, setStep, checkIn, setCheckIn, checkOut, setCheckOut, nights, selectingCheckOut, setSelectingCheckOut, adults, setAdults, kids, setKids, calMonthOffset, setCalMonthOffset, calOpen, setCalOpen, busyDates, partialDates, socialProof, waitlistStatus, joinWaitlist, nextAvailable, availability, loadingAvail, selectedUnitId, setSelectedUnitId, currentImgIndex, setCurrentImgIndex, firstName, setFirstName, lastName, setLastName, email, setEmail, phone, setPhone, submitting, error, reservation, couponCode, setCouponCode, showOffer, setShowOffer, offerApplied, offerError, applyingOffer, handleApplyOffer, extraCouponCode, setExtraCouponCode, showExtraOffer, setShowExtraOffer, extraCouponApplied, extraCouponError, applyingExtraCoupon, handleApplyExtraOffer, siteConfig, siteCurrency, services, loadingServices, selectedServiceIds, setSelectedServiceIds, setAvailability, displayUnits, selectedUnit, totalWithDiscount, totalWithoutDiscount, fetchAvailability, handleDayClick, goToStep, submitBooking, toggleService, startPayment, activeDesign, dynamicStyles, invalidNightsMsg, today, getOccupancyString, activeRatePlan } = useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPreview, initialLang });
+  const { lang, t, v3t, step, setStep, checkIn, setCheckIn, checkOut, setCheckOut, nights, selectingCheckOut, setSelectingCheckOut, adults, setAdults, kids, setKids, calMonthOffset, setCalMonthOffset, calOpen, setCalOpen, busyDates, partialDates, socialProof, waitlistStatus, joinWaitlist, nextAvailable, availability, loadingAvail, selectedUnitId, setSelectedUnitId, currentImgIndex, setCurrentImgIndex, firstName, setFirstName, lastName, setLastName, email, setEmail, phone, setPhone, submitting, error, reservation, couponCode, setCouponCode, showOffer, setShowOffer, offerApplied, offerError, applyingOffer, handleApplyOffer, extraCouponCode, setExtraCouponCode, showExtraOffer, setShowExtraOffer, extraCouponApplied, extraCouponError, applyingExtraCoupon, handleApplyExtraOffer, siteConfig, siteCurrency, services, loadingServices, selectedServiceIds, setSelectedServiceIds, setAvailability, displayUnits, availableCategories, selectedCategoryId, setSelectedCategoryId, categoryStepEnabled, selectedUnit, totalWithDiscount, totalWithoutDiscount, fetchAvailability, handleDayClick, goToStep, submitBooking, toggleService, startPayment, activeDesign, dynamicStyles, invalidNightsMsg, today, getOccupancyString, activeRatePlan } = useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPreview, initialLang });
   return (
     <div className={`v3-body ${activeDesign?.theme?.toLowerCase() || ''}`} style={dynamicStyles} id="alisio-widget-v3">
       <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -402,8 +402,42 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
             </div>
           )}
 
+          {/* Category chooser — the configurable replacement for the retired
+              wizard's hardcoded glamping / buildings / camping screen. Built
+              from the categories that actually have availability, and shown
+              only when the property offers more than one. */}
+          {!loadingAvail && !selectedUnitId && categoryStepEnabled && !selectedCategoryId && (
+            <div className="v3-house-list">
+              {availableCategories.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className="v3-house-lock v3-category-card"
+                  onClick={() => setSelectedCategoryId(c.id)}
+                  style={c.color ? { borderLeft: `3px solid ${c.color}` } : undefined}
+                >
+                  <div className="v3-category-icon" aria-hidden="true">{c.icon || '🏠'}</div>
+                  <div className="v3-house-lock-info">
+                    <div className="v3-category-name">{c.name}</div>
+                    <div className="v3-category-meta">
+                      {c.count} {v3t.optionsAvailable || 'варіантів'}
+                      {c.fromPrice > 0 && <> · {v3t.fromPrice || 'від'} {formatPrice(c.fromPrice, siteCurrency)}</>}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Back out of a chosen category without losing the selected dates */}
+          {!loadingAvail && !selectedUnitId && categoryStepEnabled && selectedCategoryId && (
+            <button type="button" className="v3-category-back" onClick={() => setSelectedCategoryId(null)}>
+              ← {availableCategories.find((c) => c.id === selectedCategoryId)?.name}
+            </button>
+          )}
+
           {/* Unit selection list — only when no unit is pre-selected */}
-          {!loadingAvail && !selectedUnitId && (
+          {!loadingAvail && !selectedUnitId && (!categoryStepEnabled || selectedCategoryId) && (
             <div className="v3-house-list">
               {displayUnits.length === 0 ? (
                 <div className="v3-no-avail">

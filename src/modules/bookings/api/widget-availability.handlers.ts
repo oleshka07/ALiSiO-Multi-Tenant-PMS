@@ -160,7 +160,8 @@ export async function getAvailability(request: NextRequest) {
              ut.max_adults, ut.max_children, ut.max_occupancy,
              ut.base_occupancy, ut.beds_single, ut.beds_double, ut.beds_sofa,
              ut.extra_person_charge, ut.pet_allowed, ut.pet_charge,
-             c.name as category_name, c.type as category_type,
+             c.id as category_id, c.name as category_name, c.type as category_type,
+             c.icon as category_icon, c.color as category_color, c.sort_order as category_sort,
              gpc.amenities as gpc_amenities,
              sl.photos as listing_photos,
              sl.price_override
@@ -309,6 +310,15 @@ export async function getAvailability(request: NextRequest) {
         unitTypeId: unit.unit_type_id,
         typeName: unit.type_name,
         typeCode: unit.type_code,
+        // The widget groups by category when a property has more than one, so
+        // guests pick "Glamping" or "Rooms" before browsing individual units.
+        // These were already joined for filtering but never returned.
+        categoryId: unit.category_id,
+        categoryName: unit.category_name,
+        categoryType: unit.category_type,
+        categoryIcon: unit.category_icon,
+        categoryColor: unit.category_color,
+        categorySort: unit.category_sort ?? 0,
         description: unit.type_description,
         maxAdults: unit.max_adults,
         maxChildren: unit.max_children,

@@ -9,6 +9,17 @@ export interface UnitResult {
   unitTypeId: string;
   typeName: string;
   typeCode: string;
+  /**
+   * Category the unit belongs to. Drives the optional category step, which
+   * replaces the bespoke glamping/buildings/camping branches the old wizard
+   * hardcoded for one property.
+   */
+  categoryId?: string;
+  categoryName?: string;
+  categoryType?: string;
+  categoryIcon?: string | null;
+  categoryColor?: string | null;
+  categorySort?: number;
   description: string;
   photos: string[];
   maxAdults: number;
