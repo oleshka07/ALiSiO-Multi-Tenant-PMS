@@ -23,6 +23,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# local database
+/data/
+*.db
+*.db-shm
+*.db-wal
+
 # local env files
 .env
 .env*.local
@@ -31,3 +37,7 @@ yarn-error.log*
 .vercel
 .idea
 .vscode
+
+# deploy environment files hold real secrets
+/deploy/env.*
+!/deploy/env.*.example

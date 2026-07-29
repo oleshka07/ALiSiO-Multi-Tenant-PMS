@@ -4,6 +4,7 @@
  * Also registers webhook on startup for real-time updates
  */
 import { syncReservations, seedPropertyMap } from '../hostex-sync';
+import { appBaseUrl } from '@core/app-url';
 import { ensureWebhookRegistered } from '../hostex';
 
 let cronInterval: ReturnType<typeof setInterval> | null = null;
@@ -11,7 +12,7 @@ let isRunning = false;
 let initialized = false;
 
 const SYNC_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
-const PMS_BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://alisio.swipescape.eu';
+const PMS_BASE_URL = appBaseUrl();
 
 export function startHostexCron() {
   if (cronInterval) return;

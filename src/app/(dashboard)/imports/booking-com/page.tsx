@@ -152,15 +152,15 @@ export default function BookingComImportPage() {
         >
           <div style={{ fontSize: 48, marginBottom: 12 }}>📥</div>
           <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>
-            {loading ? 'Завантаження...' : 'Перетягни XLS-файл сюди або клікни щоб обрати'}
+            {loading ? 'Завантаження...' : 'Перетягни XLSX-файл сюди або клікни щоб обрати'}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-            Підтримуються формати .xls та .xlsx з Booking Extranet
+            Формат .xlsx з Booking Extranet. Старий .xls — відкрий у Excel і збережи як .xlsx
           </div>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".xls,.xlsx"
+            accept=".xlsx"
             style={{ display: 'none' }}
             onChange={(e) => {
               const f = e.target.files?.[0];

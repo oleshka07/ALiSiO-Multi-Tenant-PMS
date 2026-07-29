@@ -102,9 +102,40 @@ function currentMonth() {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+/** Supplier block on the invoice. These were literals naming one real company —
+ *  its address, IČ, DIČ, phone and mailbox — printed on every tenant's invoice. */
+interface Supplier {
+  legal_name: string | null;
+  name: string;
+  legal_address: string | null;
+  registration_no: string | null;
+  vat_no: string | null;
+  invoice_email: string | null;
+  bank_name: string | null;
+  bank_account: string | null;
+  iban: string | null;
+  swift: string | null;
+}
+
 export default function DocumentsPage() {
   const onMenuClick = useMobileMenu();
   const searchParams = useSearchParams();
+
+  const [supplier, setSupplier] = useState<Supplier | null>(null);
+  const [supplierPhone, setSupplierPhone] = useState<string | null>(null);
+  useEffect(() => {
+    fetch('/api/settings/general')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        setSupplier(d.organization ?? null);
+        setSupplierPhone(d.property?.phone ?? null);
+      })
+      .catch(() => {});
+  }, []);
+  // A missing field must read as "not configured", never as another company's
+  // details — hence a visible placeholder rather than a default value.
+  const sup = (v: string | null | undefined, hint: string) => v?.trim() || `⟨${hint}⟩`;
 
   // Read initial values from URL params (?tab=reconciliation&month=2026-05)
   const urlTab = searchParams.get('tab');
@@ -1451,7 +1482,9 @@ export default function DocumentsPage() {
 
                 {/* ── HEADER ── */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>Kemp Carlsbad s.r.o.</div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>
+                    {sup(supplier?.legal_name || supplier?.name, 'юридична назва')}
+                  </div>
                   <div style={{ fontWeight: 700, fontSize: 15, color: '#1565c0' }}>
                     FAKTURA č. <span style={{ fontStyle: 'italic', color: '#999', fontSize: 11 }}>автоматично</span>
                   </div>
@@ -1463,13 +1496,14 @@ export default function DocumentsPage() {
                   {/* Left — Dodavatel (read-only) */}
                   <div style={{ borderRight: '0.5px solid #aaa', padding: '8px 10px', fontSize: 11 }}>
                     <div style={{ fontSize: 9, color: '#888', marginBottom: 3 }}>Dodavatel:</div>
-                    <div style={{ fontWeight: 700, fontSize: 12 }}>Kemp Carlsbad s.r.o.</div>
-                    <div>Chebská 38/5</div>
-                    <div style={{ marginBottom: 8 }}>360 06 Karlovy Vary</div>
-                    <div style={{ color: '#1565c0' }}>IČ: 23430567</div>
-                    <div style={{ color: '#1565c0' }}>DIČ: CZ23430567</div>
-                    <div>Mobil: 723565616</div>
-                    <div>E-mail: kemp-carlsbad@email.cz</div>
+                    <div style={{ fontWeight: 700, fontSize: 12 }}>
+                      {sup(supplier?.legal_name || supplier?.name, 'юридична назва')}
+                    </div>
+                    <div style={{ marginBottom: 8 }}>{sup(supplier?.legal_address, 'юридична адреса')}</div>
+                    <div style={{ color: '#1565c0' }}>IČ: {sup(supplier?.registration_no, 'IČO')}</div>
+                    <div style={{ color: '#1565c0' }}>DIČ: {sup(supplier?.vat_no, 'DIČ')}</div>
+                    <div>Mobil: {sup(supplierPhone, 'телефон')}</div>
+                    <div>E-mail: {sup(supplier?.invoice_email, 'email')}</div>
                   </div>
                   {/* Right — Variabilní + Odběratel box */}
                   <div style={{ padding: '8px 10px', fontSize: 11 }}>
@@ -1541,10 +1575,10 @@ export default function DocumentsPage() {
                 <div style={{ border: '0.5px solid #aaa', borderTop: 'none', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                   <div style={{ borderRight: '0.5px solid #aaa', padding: '7px 10px', fontSize: 11 }}>
                     {[
-                      ['Banka:', 'Komerční banka', true],
-                      ['SWIFT:', 'KOMBCZPP', false],
-                      ['IBAN:', 'CZ7001000001313569410227', false],
-                      ['Číslo účtu:', '131-3569410227  Kód: 0100', false],
+                      ['Banka:', sup(supplier?.bank_name, 'банк'), true],
+                      ['SWIFT:', sup(supplier?.swift, 'SWIFT'), false],
+                      ['IBAN:', sup(supplier?.iban, 'IBAN'), false],
+                      ['Číslo účtu:', sup(supplier?.bank_account, 'номер рахунку'), false],
                     ].map(([label, val, bold]) => (
                       <div key={String(label)} style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
                         <span style={{ color: '#888', minWidth: 70 }}>{label}</span>

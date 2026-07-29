@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { appBaseUrl } from '@core/app-url';
 import { getDb } from '@core/db';
 import { eventBus } from '@core/event-bus';
 import { notifyReservationCreated } from '../domain/reservation-tg-notify';
@@ -539,7 +540,7 @@ export async function createWidgetReservation(request: NextRequest) {
     let testEmailStatus = 'not_sent';
     if (email) {
       try {
-        const alisioAppUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://alisio.swipescape.eu';
+        const alisioAppUrl = appBaseUrl();
         const { sendEmail } = await import('@/lib/email');
         const propertyInfo = db.prepare(`
           SELECT p.name, u.name as unit_name

@@ -5,6 +5,7 @@
  * after a payment_status update where `.changes > 0` so we don't email twice.
  */
 import { getDb } from '@core/db';
+import { appBaseUrl } from '@core/app-url';
 import { sendEmail } from '@/lib/email';
 
 function fmtDate(iso?: string | null): string {
@@ -49,7 +50,7 @@ export async function sendBookingConfirmationEmail(reservationId: string, origin
   const total = fmtPrice(row.total_price || 0, row.currency || 'CZK');
   let guestPageUrl = null;
   if (row.guest_page_token) {
-    const baseUrl = process.env.NEXT_PUBLIC_ALISIO_URL || 'https://alisio.swipescape.eu';
+    const baseUrl = appBaseUrl();
     guestPageUrl = `${baseUrl}/guest/${row.guest_page_token}`;
   }
 

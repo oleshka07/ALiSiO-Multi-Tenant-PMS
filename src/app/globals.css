@@ -2766,3 +2766,44 @@ a:hover {
   /* Desktop filter card: hide on mobile (pages use MobileFilterBar instead) */
   .desktop-filter-card { display: none !important; }
 }
+
+/* ─── Finance sub-navigation ───────────────────────────────────────────────
+   Finance held 15 of the sidebar's 34 entries. They live here now, so the
+   sidebar can show what the whole product does rather than one module. */
+.finance-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 24px;
+  margin-bottom: 4px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.finance-tabs::-webkit-scrollbar { height: 3px; }
+.finance-tabs::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
+
+.finance-tab {
+  flex: 0 0 auto;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  text-decoration: none;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.finance-tab:hover { color: var(--text-primary); }
+.finance-tab.active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+@media (max-width: 768px) {
+  .finance-tabs { padding: 0 12px; }
+  .finance-tab { padding: 11px 11px; font-size: 12.5px; }
+}

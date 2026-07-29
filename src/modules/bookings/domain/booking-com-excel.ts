@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 export interface BookingComRow {
   bookNumber: string;
@@ -288,7 +288,10 @@ function parsePrice(value: unknown): { amount: number; currency: string } {
   const s = String(value).trim();
   const m = s.match(/([\d.,\s]+)\s*([A-Z]{3})?/);
   if (!m) return { amount: 0, currency: 'EUR' };
-  let numStr = m[1].trim();
+  // Strip spaces used as thousands separators ("4 500,50"), including the
+  // non-breaking space Booking.com emits — parseFloat stops at the first one
+  // and would read "4 500,50" as 4.
+  let numStr = m[1].replace(/\s/g, '');
   // Detect European format: 1.234,56 (dot=thousands, comma=decimal)
   if (numStr.includes(',') && numStr.indexOf(',') > numStr.lastIndexOf('.')) {
     numStr = numStr.replace(/\./g, '').replace(',', '.');
@@ -317,15 +320,59 @@ function splitUnitTypes(raw: string): string[] {
   return raw.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-export function parseBookingComExcel(buffer: Buffer): ParseResult {
-  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) {
+/**
+ * Flatten an ExcelJS cell value to the primitives the parsers below expect
+ * (string | number | Date | null). ExcelJS returns rich objects for formulas,
+ * hyperlinks and styled text where SheetJS returned a plain scalar.
+ */
+function cellValue(v: any): any {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return v;
+  if (typeof v === 'object') {
+    if (Array.isArray(v.richText)) return v.richText.map((t: any) => t.text).join('');
+    if ('result' in v) return cellValue(v.result); // formula cell
+    if ('text' in v) return v.text; // hyperlink cell
+    if ('error' in v) return null;
+  }
+  return v;
+}
+
+export async function parseBookingComExcel(buffer: Buffer): Promise<ParseResult> {
+  // Legacy .xls (BIFF) starts with the OLE2 signature; ExcelJS reads .xlsx only,
+  // so detect it here rather than surfacing an opaque zip-parse error.
+  if (buffer.length >= 8 && buffer.readUInt32BE(0) === 0xd0cf11e0) {
+    return {
+      rows: [],
+      errors: [{ rowIndex: 0, field: 'workbook', reason: 'Старий формат .xls не підтримується — відкрий файл у Excel і збережи як .xlsx', raw: null }],
+      totalRowsInFile: 0,
+    };
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as any);
+  const sheet = workbook.worksheets[0];
+  if (!sheet) {
     return { rows: [], errors: [{ rowIndex: 0, field: 'workbook', reason: 'No sheets found', raw: null }], totalRowsInFile: 0 };
   }
 
-  const sheet = workbook.Sheets[sheetName];
-  let json = XLSX.utils.sheet_to_json(sheet, { defval: null, raw: false }) as Record<string, any>[];
+  // Row 1 is the header; ExcelJS `values` is 1-indexed with a hole at [0].
+  const header = (sheet.getRow(1).values as any[]) || [];
+  let json: Record<string, any>[] = [];
+  sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const values = row.values as any[];
+    const obj: Record<string, any> = {};
+    for (let c = 1; c < header.length; c++) {
+      const key = cellValue(header[c]);
+      if (key == null) continue;
+      const name = String(key);
+      // Duplicate header names: keep the first, matching sheet_to_json's shape
+      // once normalizeHeaders() has collapsed aliases.
+      if (name in obj) continue;
+      obj[name] = cellValue(values?.[c]) ?? null;
+    }
+    if (Object.values(obj).some((v) => v !== null)) json.push(obj);
+  });
 
   const errors: ParseError[] = [];
 

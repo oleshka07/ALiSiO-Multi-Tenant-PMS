@@ -77,7 +77,8 @@ export async function notifyReservationCreated(reservationId: string, options: N
       const msgId = await sendTelegramMessage(lines);
       if (msgId) {
         const { storeTgBookingMessage } = await import('@/modules/notifications/data/tg-message-updater');
-        const { CHAT_ID: ownerChatId } = await import('@/lib/channels/telegram-bot');
+        const { getChatId } = await import('@/lib/channels/telegram-bot');
+        const ownerChatId = getChatId();
         if (ownerChatId) {
           storeTgBookingMessage(reservationId, ownerChatId, msgId, r.payment_status || 'unpaid', lines);
         }

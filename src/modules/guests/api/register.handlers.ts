@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import * as registrationRepo from '../data/registration.repo';
 // TODO: replace with @channels eventBus event when channels module is migrated
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -110,7 +111,6 @@ export async function registerGuests(
       return NextResponse.json({ error: 'At least one guest is required' }, { status: 400 });
     }
 
-    const { z } = require('zod');
     const VALID_DOC_TYPES = ['id_card', 'passport', 'driving_license', 'other'] as const;
     const guestSchema = z.object({
       firstName: z.string().min(1).max(100),

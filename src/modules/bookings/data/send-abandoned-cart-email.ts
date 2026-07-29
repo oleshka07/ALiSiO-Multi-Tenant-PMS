@@ -1,4 +1,5 @@
 import { getDb } from '@core/db';
+import { appBaseUrl } from '@core/app-url';
 import { sendEmail } from '@/lib/email';
 import { detectLanguage } from '@/app/guest/[token]/translations';
 
@@ -31,7 +32,7 @@ export async function sendAbandonedCartEmail(reservationId: string, origin?: str
   const guestName = row.first_name ? row.first_name.trim() : (tLang === 'uk' ? 'Гість' : tLang === 'de' ? 'Gast' : tLang === 'cs' ? 'Host' : 'Guest');
   const total = fmtPrice(row.total_price || 0, row.currency || 'CZK');
   const propertyName = row.property_name || 'Glamping';
-  const appUrl = origin || process.env.NEXT_PUBLIC_APP_URL || 'https://alisio.swipescape.eu';
+  const appUrl = origin || appBaseUrl();
   let guestPageUrl = null;
   if (row.guest_page_token) {
     if (row.thank_you_url) {

@@ -2046,4 +2046,49 @@
   z-index: 10;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   pointer-events: none;
-}
+}
+/* ─── Category step ────────────────────────────────────────────────────────
+   Shown before the unit list when a property offers more than one category
+   (glamping vs rooms vs pitches). Replaces the retired wizard's hardcoded
+   three-way branch; the cards are built from the categories table. */
+.v3-category-card {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.v3-category-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07);
+}
+.v3-category-icon {
+  width: 54px;
+  height: 54px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  line-height: 1;
+  background: var(--sand, rgba(0, 0, 0, 0.04));
+  border-radius: var(--radius-md, 10px);
+}
+.v3-category-name {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 3px;
+}
+.v3-category-meta {
+  font-size: 12.5px;
+  opacity: 0.65;
+}
+.v3-category-back {
+  background: none;
+  border: none;
+  padding: 0 0 14px;
+  font: inherit;
+  font-size: 13px;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.v3-category-back:hover { opacity: 1; }

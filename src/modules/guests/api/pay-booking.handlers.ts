@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { appBaseUrl } from '@core/app-url';
 import { getDb } from '@core/db';
 import { createPaymentSession, resolveCredentialsForReservation } from '@payments';
 import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
@@ -57,7 +58,7 @@ export async function payForBooking(
 
     const guestName = `${reservation.first_name} ${reservation.last_name}`;
     const description = `Booking ${reservation.unit_name || ''} · ${reservation.check_in}–${reservation.check_out}`;
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://alisio.swipescape.eu';
+    const baseUrl = appBaseUrl();
 
     console.log(`[Guest Pay Booking] ${guestName} | ${description} | remaining: ${remaining} ${reservation.currency}`);
 

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
+import { appBaseUrl } from '@core/app-url';
 import { getDb } from '@core/db';
 import { sendTelegramMessage } from '@/lib/channels/telegram-bot'; // TODO: replace with eventBus
 import { sendBookingConfirmationEmail } from '../data/send-confirmation-email';
@@ -112,7 +113,7 @@ export async function handlePaymentReturn(req: Request) {
               msgLines.push(`📋 <b>Reservation:</b> <code>${reservationId}</code>`);
               if (utmBlock) msgLines.push(utmBlock);
 
-              const rowButtons = [{ text: '📋 CRM', url: `https://alisio.swipescape.eu/crm/inbox?id=${reservationId}` }];
+              const rowButtons = [{ text: '📋 CRM', url: `${appBaseUrl()}/crm/inbox?id=${reservationId}` }];
 
               sendTelegramMessage(msgLines.join('\n'), [rowButtons] as any).catch(() => {});
             }
