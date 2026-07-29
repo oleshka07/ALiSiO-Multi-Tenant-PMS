@@ -1,53 +1,34 @@
-version: '3.8'
+# Local development helpers. The application itself runs with `npm run dev`;
+# this file only provides the services it will talk to.
+#
+#   docker compose up -d postgres
+#
+# Deployment lives in deploy/ — see deploy/docker-compose.yml.
+#
+# Postgres is here ahead of the migration off SQLite. It mounted
+# ./database/schema.sql and ./database/seed.sql, which described a schema the
+# application never used and no longer exist; the real schema will arrive as
+# generated migrations.
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: alisio_postgres
-    restart: always
+    container_name: alisio_dev_postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER:-alisio_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-alisio_secure_password_2026}
+      POSTGRES_USER: ${DB_USER:-alisio}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-alisio_dev}
       POSTGRES_DB: ${DB_NAME:-alisio_pms}
+    # 5433 on the host so a locally installed Postgres on 5432 still works.
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
-      - ./database/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-alisio_user} -d ${DB_NAME:-alisio_pms}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-alisio} -d ${DB_NAME:-alisio_pms}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: alisio_app
-    restart: always
-    ports:
-      - "3000:3000"
-    environment:
-      NODE_ENV: production
-      DATABASE_URL: postgresql://${DB_USER:-alisio_user}:${DB_PASSWORD:-alisio_secure_password_2026}@postgres:5432/${DB_NAME:-alisio_pms}
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: alisio_pgadmin
-    restart: always
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@alisio.io}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin2026}
-    ports:
-      - "5050:80"
-    depends_on:
-      - postgres
-
 volumes:
   postgres_data:
-    driver: local

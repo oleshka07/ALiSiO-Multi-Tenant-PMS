@@ -1,0 +1,46 @@
+# One compose file, one environment per env-file.
+#
+#   docker compose --env-file env.prod -p alisio-prod up -d --build
+#   docker compose --env-file env.beta -p alisio-beta up -d --build
+#
+# The project name (-p) keeps the two stacks' containers, networks and volumes
+# apart, so beta can be rebuilt or wiped without touching production.
+#
+# Note the data volume. The application stores its database in /app/data; the
+# previous configuration mounted nothing there, so every container restart
+# silently discarded every booking. Never remove it.
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: alisio-pms:${ENV_NAME}
+    container_name: alisio-${ENV_NAME}-app
+    restart: unless-stopped
+    # Bound to loopback: nginx terminates TLS and is the only way in.
+    ports:
+      - "127.0.0.1:${APP_PORT}:3000"
+    environment:
+      NODE_ENV: production
+      ENV_NAME: ${ENV_NAME}
+      APP_URL: ${APP_URL}
+      NEXT_PUBLIC_APP_URL: ${APP_URL}
+      APP_SECRET_KEY: ${APP_SECRET_KEY}
+      DATABASE_URL: ${DATABASE_URL:-}
+    volumes:
+      - app-data:/app/data
+      - app-uploads:/app/public/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  app-data:
+  app-uploads:

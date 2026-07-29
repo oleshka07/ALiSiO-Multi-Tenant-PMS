@@ -37,3 +37,7 @@ yarn-error.log*
 .vercel
 .idea
 .vscode
+
+# deploy environment files hold real secrets
+/deploy/env.*
+!/deploy/env.*.example
