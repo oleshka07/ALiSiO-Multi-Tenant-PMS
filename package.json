@@ -14,7 +14,8 @@
     "test:e2e": "playwright test",
     "test:ui": "playwright test --ui",
     "audit": "node scripts/audit.mjs",
-    "audit:tenant": "node scripts/audit-tenant.mjs"
+    "audit:tenant": "node scripts/audit-tenant.mjs",
+    "audit:routes": "node scripts/audit-routes.mjs"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",
