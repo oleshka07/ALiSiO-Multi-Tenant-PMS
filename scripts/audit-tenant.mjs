@@ -41,10 +41,32 @@ const rel = (f) => path.relative(ROOT, f).replace(/\\/g, '/');
 const src = new Map(files.map((f) => [f, read(f)]));
 const dbText = fs.existsSync(DB_FILE) ? read(DB_FILE) : '';
 
+/**
+ * The live schema, when there is one, is the truth. db.ts creates a table and
+ * then rebuilds it in a later migration, and the parser below takes the first
+ * CREATE it sees — so reading only the source reports the shape a table had
+ * before its migrations, which is how invoices kept being reported as UNIQUE on
+ * invoice_number alone after that was fixed.
+ */
+async function liveSchema() {
+  const file = path.join(ROOT, process.env.DB_PATH || 'data/alisio.db');
+  if (!fs.existsSync(file)) return '';
+  try {
+    const { default: Database } = await import('better-sqlite3');
+    const db = new Database(file, { readonly: false });
+    const rows = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND sql IS NOT NULL").all();
+    db.close();
+    return rows.map((r) => `${r.sql};`).join('\n') + '\n';
+  } catch (e) {
+    console.error('[audit] live schema unavailable, falling back to db.ts:', e.message);
+    return '';
+  }
+}
+
 // ── 1. table catalogue ───────────────────────────────────────────────────────
 /** table -> { columns, refs: {column -> table}, unique: [[cols]] } */
 const tables = new Map();
-const allText = [...src.values()].join('\n');
+const allText = (await liveSchema()) + [...src.values()].join('\n');
 
 for (const m of allText.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?([a-z_0-9]+)\s*\(/gi)) {
   const name = m[1];
@@ -74,6 +96,11 @@ for (const m of allText.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?([a-z_0-9]+)\s
     if (!line) continue;
     const uq = line.match(/^UNIQUE\s*\(([^)]+)\)/i);
     if (uq) { unique.push(uq[1].split(',').map((s) => s.trim().replace(/["'`]/g, ''))); continue; }
+    // A table-level FOREIGN KEY clause carries the same scope information as an
+    // inline REFERENCES, and skipping it reported tables as unscoped that are
+    // not — guest_registrations reaches an organization through its reservation.
+    const tfk = line.match(/^FOREIGN KEY\s*\(\s*([a-z_0-9]+)\s*\)\s*REFERENCES\s+([a-z_0-9]+)/i);
+    if (tfk) { columns.add(tfk[1]); refs[tfk[1]] = tfk[2]; continue; }
     if (/^(PRIMARY KEY|FOREIGN KEY|CHECK|CONSTRAINT)\b/i.test(line)) continue;
     const cm = line.match(/^["'`]?([a-z_0-9]+)["'`]?\s+[A-Z]+/i);
     if (!cm) continue;
@@ -97,7 +124,7 @@ for (const m of allText.matchAll(/ALTER TABLE ([a-z_0-9]+) ADD COLUMN ([a-z_0-9]
 
 // Reference data that is the same for every tenant, so being unscoped is right.
 const GLOBAL_TABLES = new Set([
-  'organizations', 'sessions', 'rate_limits', 'settings', 'invoice_counters',
+  'organizations', 'sessions', 'rate_limits', 'settings', 'sqlite_sequence',
   'content_translations', 'email_processed', 'fin_system_state',
   'hostex_sync_log', 'hostex_property_map',
 ]);
