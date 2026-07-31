@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
+import { cloudOcrAllowed } from '@core/privacy/ocr-consent';
 import { getDb } from '@core/db';
 import { ocrDocument } from '@/lib/ai/ocr-document';
 import { saveRegistrations } from '@/modules/guests/data/registration.repo';
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
     for (const docUrl of document_urls) {
       try {
         const fullUrl = docUrl.startsWith('http') ? docUrl : `${proto}://${host}${docUrl}`;
-        const result = await ocrDocument(fullUrl);
+        const result = await ocrDocument(fullUrl, { allowCloudFallback: cloudOcrAllowed() });
         if (result.confidence > 15) {
           ocrResults.push(result);
         }

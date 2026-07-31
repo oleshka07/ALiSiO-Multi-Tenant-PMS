@@ -4844,6 +4844,10 @@ function runMigrations(database: any) {
     add('swift', 'TEXT');
     add('invoice_email', 'TEXT');
     add('website', 'TEXT');
+    // Sending a guest's identity document to OpenAI is a transfer outside the
+    // EU and has to be the organization's decision, so it defaults to off.
+    // Local MRZ reading still runs either way.
+    add('ocr_cloud_fallback', 'INTEGER NOT NULL DEFAULT 0');
     if (orgCols.length < 18) console.log('[DB] organizations: legal & banking columns ready');
   } catch (e: any) {
     console.log('[DB] organization legal columns migration note:', e.message);

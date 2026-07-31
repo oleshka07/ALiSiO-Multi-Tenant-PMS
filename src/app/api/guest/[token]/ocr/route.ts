@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
+import { cloudOcrAllowed } from '@core/privacy/ocr-consent';
 import { ocrDocument } from '@/lib/ai/ocr-document';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -27,7 +28,7 @@ export async function POST(
 
     // Pass the full data URL (data:image/...;base64,...) to OCR
     const dataUrl = image.includes('base64,') ? image : `data:image/jpeg;base64,${image}`;
-    const result = await ocrDocument(dataUrl);
+    const result = await ocrDocument(dataUrl, { allowCloudFallback: cloudOcrAllowed() });
 
     return NextResponse.json({ success: true, data: result });
   } catch (err: any) {

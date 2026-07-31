@@ -10,6 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { cloudOcrAllowed } from '@core/privacy/ocr-consent';
 import { getDb } from '@core/db';
 import { ocrDocument } from '@/lib/ai/ocr-document';
 import { saveRegistrations } from '@/modules/guests/data/registration.repo';
@@ -162,7 +163,7 @@ export async function registerFromPhotos(request: NextRequest) {
         // OCR via URL (the file is served by /api/uploads/...)
         const photoUrl = `${baseUrl}/api/uploads/registrations/${filename}`;
         console.log(`[TG Registration] OCR photo ${i + 1}/${photos.length}: ${filename}`);
-        const result = await ocrDocument(photoUrl);
+        const result = await ocrDocument(photoUrl, { allowCloudFallback: cloudOcrAllowed() });
         
         if (result.confidence > 15) {
           ocrResults.push(result);

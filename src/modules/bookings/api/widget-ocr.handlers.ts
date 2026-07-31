@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cloudOcrAllowed } from '@core/privacy/ocr-consent';
 import { ocrDocument } from '@/lib/ai/ocr-document';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -33,7 +34,7 @@ export async function processWidgetOcr(request: NextRequest) {
     const mimeType = file.type || 'image/jpeg';
     const dataUrl = `data:${mimeType};base64,${base64}`;
 
-    const result = await ocrDocument(dataUrl);
+    const result = await ocrDocument(dataUrl, { allowCloudFallback: cloudOcrAllowed() });
     
     return NextResponse.json({
       success: true,

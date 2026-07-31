@@ -31,7 +31,7 @@ export async function getGeneralSettings(): Promise<NextResponse> {
       .prepare(
         `SELECT id, name, slug, timezone, default_currency,
                 legal_name, registration_no, vat_no, is_vat_payer, legal_address,
-                bank_name, bank_account, iban, swift, invoice_email, website
+                bank_name, bank_account, iban, swift, invoice_email, website, ocr_cloud_fallback
          FROM organizations WHERE id = ?`,
       )
       .get(user.organization_id);
@@ -97,7 +97,7 @@ export async function saveGeneralSettings(request: NextRequest): Promise<NextRes
     db.prepare(
       `UPDATE organizations SET name = ?, timezone = ?, default_currency = ?,
          legal_name = ?, registration_no = ?, vat_no = ?, is_vat_payer = ?, legal_address = ?,
-         bank_name = ?, bank_account = ?, iban = ?, swift = ?, invoice_email = ?, website = ?,
+         bank_name = ?, bank_account = ?, iban = ?, swift = ?, invoice_email = ?, website = ?, ocr_cloud_fallback = ?,
          updated_at = datetime('now')
        WHERE id = ?`,
     ).run(

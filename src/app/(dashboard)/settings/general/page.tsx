@@ -25,6 +25,7 @@ interface Organization {
   swift: string | null;
   invoice_email: string | null;
   website: string | null;
+  ocr_cloud_fallback: number;
 }
 
 interface Property {
@@ -236,6 +237,33 @@ export default function GeneralSettingsPage() {
                     <input className="form-input" value={org.website ?? ''} onChange={(e) => setOrgField('website', e.target.value)} placeholder="https://…" />
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div className="card" style={{ marginBottom: 20 }}>
+              <div className="card-header"><div className="card-title">Документи гостей</div></div>
+              <div style={{ padding: 20 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 14, lineHeight: 1.6 }}>
+                  Дані з паспортів і посвідчень зчитуються <strong>на цьому сервері</strong> —
+                  розпізнається машинозчитувана зона, фото нікуди не передається.
+                </div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    className="form-checkbox"
+                    checked={!!org.ocr_cloud_fallback}
+                    onChange={(e) => setOrgField('ocr_cloud_fallback', e.target.checked ? 1 : 0)}
+                    style={{ marginTop: 3 }}
+                  />
+                  <span style={{ fontSize: 14 }}>
+                    Дозволити хмарне розпізнавання, коли локальне не впоралось
+                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4, lineHeight: 1.6 }}>
+                      Тоді <strong>фото документа надсилається в OpenAI (США)</strong>. Це передача
+                      персональних даних за межі ЄС: потрібно вказати OpenAI як субпроцесора у вашій
+                      політиці конфіденційності. Без цього гість просто заповнює поля вручну.
+                    </div>
+                  </span>
+                </label>
               </div>
             </div>
 

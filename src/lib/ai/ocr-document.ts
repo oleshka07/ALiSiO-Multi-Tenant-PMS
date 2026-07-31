@@ -82,20 +82,49 @@ async function runLocalTesseract(imageUrl: string): Promise<string | null> {
   });
 }
 
-export async function ocrDocument(imageUrl: string): Promise<OcrResult> {
+/**
+ * Extract personal data from an identity document.
+ *
+ * Local first: Tesseract reads the machine-readable zone on this server, and
+ * the image never leaves it. Only if that fails is the photograph itself sent
+ * to OpenAI — a transfer of identity-document data to a processor outside the
+ * EU, so it happens only where the organization has switched it on.
+ *
+ * The fallback used to be unconditional, and tesseract.js was never installed,
+ * so the local branch always failed: in practice every passport photograph went
+ * to OpenAI, with nothing in the privacy policy saying so.
+ */
+export async function ocrDocument(
+  imageUrl: string,
+  options: { allowCloudFallback?: boolean } = {},
+): Promise<OcrResult> {
   console.log('[OCR] Starting local Tesseract OCR...');
   const text = await runLocalTesseract(imageUrl);
-  
+
   if (text) {
     const mrzData = parseMrz(text);
     if (mrzData && mrzData.firstName && mrzData.lastName && mrzData.firstName !== 'Unknown') {
       console.log('[OCR] Successfully parsed MRZ from local OCR.');
       return mrzData as OcrResult;
     }
-    console.log('[OCR] MRZ parse failed or missing fields. Falling back to OpenAI...');
+    console.log('[OCR] MRZ parse failed or missing fields.');
   } else {
-    console.log('[OCR] Local OCR failed entirely. Falling back to OpenAI...');
+    console.log('[OCR] Local OCR failed entirely.');
   }
+
+  if (!options.allowCloudFallback) {
+    // Deliberately not an error: the guest simply types the fields in. Sending
+    // their document abroad without the organization having agreed to it would
+    // be the worse outcome.
+    console.log('[OCR] Cloud fallback is off for this organization — returning an empty result.');
+    return {
+      firstName: '', lastName: '', fullName: '',
+      dateOfBirth: null, documentNumber: null, documentType: 'other',
+      nationality: null, address: null, confidence: 0,
+    };
+  }
+
+  console.log('[OCR] Cloud fallback enabled — sending the document image to OpenAI.');
 
   // Fallback to OpenAI
   const response = await getClient().chat.completions.create({

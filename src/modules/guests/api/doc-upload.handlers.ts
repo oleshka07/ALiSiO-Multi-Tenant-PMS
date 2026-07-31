@@ -97,9 +97,10 @@ export async function uploadGuestDoc(
 
     // Run OCR via existing ocrDocument function
     const { ocrDocument } = require('@/lib/ai/ocr-document');
+    const { cloudOcrAllowed } = require('@core/privacy/ocr-consent');
     let ocrResult: any = null;
     try {
-      ocrResult = await ocrDocument(dataUrl);
+      ocrResult = await ocrDocument(dataUrl, { allowCloudFallback: cloudOcrAllowed() });
       
       // ── Telegram notification ──────────────────────────────────
       try {
