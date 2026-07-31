@@ -1,0 +1,23 @@
+/* Generated from style-hover attributes in the design export. */
+.dcx-h1{transition:border-color .25s ease,transform .25s ease,background .25s ease,color .25s ease,filter .25s ease}
+.dcx-h1:hover{transform:translateY(-2px) !important}
+.dcx-h2{transition:border-color .25s ease,transform .25s ease,background .25s ease,color .25s ease,filter .25s ease}
+.dcx-h2:hover{background:rgba(255,255,255,.06) !important}
+.dcx-h3{transition:border-color .25s ease,transform .25s ease,background .25s ease,color .25s ease,filter .25s ease}
+.dcx-h3:hover{border-color:rgba(61,220,192,.4) !important; transform:translateY(-3px) !important}
+.dcx-h4{transition:border-color .25s ease,transform .25s ease,background .25s ease,color .25s ease,filter .25s ease}
+.dcx-h4:hover{background:rgba(20,23,26,.05) !important}
+.dcx-h5{transition:border-color .25s ease,transform .25s ease,background .25s ease,color .25s ease,filter .25s ease}
+.dcx-h5:hover{border-color:rgba(61,220,192,.4) !important; transform:translateY(-4px) !important}
+.dcx-h6{transition:border-color .25s ease,transform .25s ease,background .25s ease,color .25s ease,filter .25s ease}
+.dcx-h6:hover{border-color:rgba(61,220,192,.45) !important; transform:translateY(-4px) !important}
+.dcx-h7{transition:border-color .25s ease,transform .25s ease,background .25s ease,color .25s ease,filter .25s ease}
+.dcx-h7:hover{border-color:rgba(61,220,192,.6) !important; transform:translateY(-4px) !important}
+.dcx-h8{transition:border-color .25s ease,transform .25s ease,background .25s ease,color .25s ease,filter .25s ease}
+.dcx-h8:hover{border-color:rgba(61,220,192,.45) !important}
+.dcx-h9{transition:border-color .25s ease,transform .25s ease,background .25s ease,color .25s ease,filter .25s ease}
+.dcx-h9:hover{color:#3DDCC0 !important}
+.dcx-h10{transition:border-color .25s ease,transform .25s ease,background .25s ease,color .25s ease,filter .25s ease}
+.dcx-h10:hover{filter:brightness(1.08) !important}
+.dcx-h11{transition:border-color .25s ease,transform .25s ease,background .25s ease,color .25s ease,filter .25s ease}
+.dcx-h11:hover{background:rgba(255,255,255,.05) !important}
