@@ -1,6 +1,13 @@
 import { getDb } from '@core/db';
+import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope';
 
-export function listUnitTypes(filters: { category?: string } = {}) {
+/**
+ * Unit types hang off a property. listUnitTypes filtered only by is_active and
+ * an optional category, so it returned every tenant's room types; create,
+ * update and delete acted on whatever ids the request carried.
+ */
+
+export function listUnitTypes(organizationId: string, filters: { category?: string } = {}) {
   let query = `
     SELECT
       ut.id, ut.name, ut.code, ut.max_adults, ut.max_children, ut.max_occupancy, ut.base_occupancy,
@@ -46,7 +53,12 @@ export interface CreateUnitTypeInput {
   sort_order?: number;
 }
 
-export function createUnitType(input: CreateUnitTypeInput) {
+export function createUnitType(organizationId: string, input: CreateUnitTypeInput) {
+  // Ids arrive in the request body, so each is verified against the caller.
+  if (!ownsProperty(organizationId, input.property_id)) return null;
+  if (!ownsViaProperty(organizationId, 'categories', input.category_id)) return null;
+  if (input.building_id && !ownsViaProperty(organizationId, 'buildings', input.building_id)) return null;
+
   const db = getDb();
   const result = db.prepare(`
     INSERT INTO unit_types (property_id, category_id, building_id, name, code, description,
@@ -62,7 +74,14 @@ export function createUnitType(input: CreateUnitTypeInput) {
   return db.prepare('SELECT * FROM unit_types WHERE rowid = ?').get(result.lastInsertRowid);
 }
 
-export function updateUnitType(id: string, fields: Record<string, unknown>) {
+export function updateUnitType(organizationId: string, id: string, fields: Record<string, unknown>) {
+  if (!ownsViaProperty(organizationId, 'unit_types', id)) return null;
+  // Reassignment must not move the type into another tenant.
+  if (fields.category_id !== undefined
+    && !ownsViaProperty(organizationId, 'categories', String(fields.category_id))) return null;
+  if (fields.building_id
+    && !ownsViaProperty(organizationId, 'buildings', String(fields.building_id))) return null;
+
   const db = getDb();
 
   const nullableFields = ['building_id', 'description'];
@@ -84,18 +103,22 @@ export function updateUnitType(id: string, fields: Record<string, unknown>) {
   if (updates.length === 0) return null;
 
   updates.push("updated_at = datetime('now')");
-  values.push(id);
+  values.push(id, organizationId);
 
-  db.prepare(`UPDATE unit_types SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(
+    `UPDATE unit_types SET ${updates.join(', ')} WHERE id = ? AND ${propertyScopeSql('unit_types')}`,
+  ).run(...values);
   return db.prepare('SELECT * FROM unit_types WHERE id = ?').get(id);
 }
 
-export function deleteUnitType(id: string): { ok: boolean; error?: string } {
+export function deleteUnitType(organizationId: string, id: string): { ok: boolean; error?: string } {
+  if (!ownsViaProperty(organizationId, 'unit_types', id)) return { ok: false, error: 'Not found' };
+
   const db = getDb();
   const unitCount = db.prepare('SELECT COUNT(*) as cnt FROM units WHERE unit_type_id = ?').get(id) as { cnt: number };
   if (unitCount.cnt > 0) {
     return { ok: false, error: `Cannot delete: ${unitCount.cnt} units of this type exist. Delete units first.` };
   }
-  db.prepare('DELETE FROM unit_types WHERE id = ?').run(id);
+  db.prepare(`DELETE FROM unit_types WHERE id = ? AND ${propertyScopeSql('unit_types')}`).run(id, organizationId);
   return { ok: true };
 }

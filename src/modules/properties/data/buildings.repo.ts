@@ -1,16 +1,23 @@
 import { getDb } from '@core/db';
+import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope';
 
-export function listBuildings(filters: { property_id?: string } = {}) {
+/**
+ * Buildings hang off a property. The property_id filter used to be optional, so
+ * calling the endpoint without it listed every tenant's buildings, and
+ * update/delete acted on whatever id the URL carried.
+ */
+
+export function listBuildings(organizationId: string, filters: { property_id?: string } = {}) {
   let query = `
     SELECT b.*, c.name as category_name, c.type as category_type,
       COUNT(u.id) as unit_count
     FROM buildings b
     JOIN categories c ON b.category_id = c.id
     LEFT JOIN units u ON u.building_id = b.id AND u.is_active = 1
-    WHERE 1=1
+    WHERE ${propertyScopeSql('b')}
   `;
 
-  const params: string[] = [];
+  const params: string[] = [organizationId];
 
   if (filters.property_id) {
     query += ' AND b.property_id = ?';
@@ -31,7 +38,12 @@ export interface CreateBuildingInput {
   sort_order?: number;
 }
 
-export function createBuilding(input: CreateBuildingInput) {
+export function createBuilding(organizationId: string, input: CreateBuildingInput) {
+  // Both ids arrive in the request body. The category is checked too, or a
+  // building could be filed under another tenant's category.
+  if (!ownsProperty(organizationId, input.property_id)) return null;
+  if (!ownsViaProperty(organizationId, 'categories', input.category_id)) return null;
+
   const db = getDb();
   const result = db.prepare(`
     INSERT INTO buildings (category_id, property_id, name, code, description, sort_order)
@@ -40,7 +52,12 @@ export function createBuilding(input: CreateBuildingInput) {
   return db.prepare('SELECT * FROM buildings WHERE rowid = ?').get(result.lastInsertRowid);
 }
 
-export function updateBuilding(id: string, fields: Record<string, unknown>) {
+export function updateBuilding(organizationId: string, id: string, fields: Record<string, unknown>) {
+  if (!ownsViaProperty(organizationId, 'buildings', id)) return null;
+  // Reassigning the category must not move the building into another tenant.
+  if (fields.category_id !== undefined
+    && !ownsViaProperty(organizationId, 'categories', String(fields.category_id))) return null;
+
   const db = getDb();
   const allowed = ['name', 'code', 'description', 'sort_order', 'category_id'];
   const updates: string[] = [];
@@ -55,17 +72,21 @@ export function updateBuilding(id: string, fields: Record<string, unknown>) {
 
   if (updates.length === 0) return null;
 
-  values.push(id);
-  db.prepare(`UPDATE buildings SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  values.push(id, organizationId);
+  db.prepare(
+    `UPDATE buildings SET ${updates.join(', ')} WHERE id = ? AND ${propertyScopeSql('buildings')}`,
+  ).run(...values);
   return db.prepare('SELECT * FROM buildings WHERE id = ?').get(id);
 }
 
-export function deleteBuilding(id: string): { ok: boolean; error?: string } {
+export function deleteBuilding(organizationId: string, id: string): { ok: boolean; error?: string } {
+  if (!ownsViaProperty(organizationId, 'buildings', id)) return { ok: false, error: 'Not found' };
+
   const db = getDb();
   const unitCount = db.prepare('SELECT COUNT(*) as cnt FROM units WHERE building_id = ?').get(id) as { cnt: number };
   if (unitCount.cnt > 0) {
     return { ok: false, error: `Cannot delete: ${unitCount.cnt} units belong to this building. Delete units first.` };
   }
-  db.prepare('DELETE FROM buildings WHERE id = ?').run(id);
+  db.prepare(`DELETE FROM buildings WHERE id = ? AND ${propertyScopeSql('buildings')}`).run(id, organizationId);
   return { ok: true };
 }

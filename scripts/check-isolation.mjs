@@ -36,6 +36,13 @@ function makeTenant(suffix) {
 
 function cleanup() {
   // Children first: foreign keys are ON.
+  const props = db.prepare('SELECT id FROM properties WHERE organization_id LIKE ?').all(`${TAG}%`).map((r) => r.id);
+  for (const pid of props) {
+    db.prepare('DELETE FROM units WHERE property_id = ?').run(pid);
+    db.prepare('DELETE FROM unit_types WHERE property_id = ?').run(pid);
+    db.prepare('DELETE FROM buildings WHERE property_id = ?').run(pid);
+    db.prepare('DELETE FROM categories WHERE property_id = ?').run(pid);
+  }
   db.prepare('DELETE FROM properties WHERE organization_id LIKE ?').run(`${TAG}%`);
   db.prepare('DELETE FROM app_users WHERE organization_id LIKE ?').run(`${TAG}%`);
   db.prepare('DELETE FROM sessions WHERE user_id LIKE ?').run(`${TAG}%`);
@@ -108,6 +115,61 @@ async function main() {
     const stillThere = db.prepare('SELECT 1 FROM properties WHERE id = ?').get(propA.id);
     assert.ok(stillThere, "A's property was deleted by B");
     console.log("  ok  B cannot delete A's property");
+
+    // ── The property's children ─────────────────────────────────────────────
+    // categories, buildings, unit_types and units carry no organization_id;
+    // they reach one through property_id. That indirection is exactly where a
+    // check is easy to forget, so each is exercised rather than assumed.
+    const catRes = await call(cookieA, '/api/categories', {
+      method: 'POST',
+      body: JSON.stringify({ property_id: propA.id, name: 'Probe rooms', type: 'resort' }),
+    });
+    assert.strictEqual(catRes.status, 201, `A could not create a category: ${catRes.status}`);
+    const catA = await catRes.json();
+    console.log('  ok  tenant A created a category');
+
+    // B must not attach anything to A's property, even with a valid own session.
+    const stolenCat = await call(cookieB, '/api/categories', {
+      method: 'POST',
+      body: JSON.stringify({ property_id: propA.id, name: 'Hijack', type: 'resort' }),
+    });
+    assert.strictEqual(stolenCat.status, 404, `B created a category on A's property: ${stolenCat.status}`);
+    console.log("  ok  B cannot create a category on A's property");
+
+    const catsB = await (await call(cookieB, '/api/categories')).json();
+    assert.ok(!catsB.some((c) => c.id === catA.id), "B's category list contains A's category");
+    console.log("  ok  B's category list excludes A's category");
+
+    const catPatchB = await call(cookieB, `/api/categories/${catA.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: 'Hijacked' }),
+    });
+    assert.strictEqual(catPatchB.status, 404, `B renamed A's category: ${catPatchB.status}`);
+    const catDelB = await call(cookieB, `/api/categories/${catA.id}`, { method: 'DELETE' });
+    assert.strictEqual(catDelB.status, 404, `B deleted A's category: ${catDelB.status}`);
+    console.log("  ok  B cannot rename or delete A's category");
+
+    // Bulk creation is the worst case: unchecked it writes 200 rows at once.
+    const utRes = await call(cookieA, '/api/unit-types', {
+      method: 'POST',
+      body: JSON.stringify({ property_id: propA.id, category_id: catA.id, name: 'Probe type', code: 'PRB' }),
+    });
+    assert.strictEqual(utRes.status, 201, `A could not create a unit type: ${utRes.status}`);
+    const utA = await utRes.json();
+
+    const bulkB = await call(cookieB, '/api/units', {
+      method: 'POST',
+      body: JSON.stringify({
+        bulk: true, property_id: propA.id, category_id: catA.id, unit_type_id: utA.id,
+        prefix: 'HIJACK', from: 1, to: 50,
+      }),
+    });
+    assert.strictEqual(bulkB.status, 404, `B bulk-created units in A's property: ${bulkB.status}`);
+    const leaked = db
+      .prepare('SELECT COUNT(*) c FROM units WHERE property_id = ?')
+      .get(propA.id);
+    assert.strictEqual(leaked.c, 0, `${leaked.c} units were written into A's property by B`);
+    console.log("  ok  B cannot bulk-create 50 units inside A's property");
 
     // And without a session, nothing at all.
     const anon = await fetch(`${BASE}/api/properties`);

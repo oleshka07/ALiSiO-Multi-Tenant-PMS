@@ -1,17 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as categoriesRepo from '../data/categories.repo';
+import { withActor, withPermission, type Actor } from '@core/auth/session';
 
-export async function listCategories(): Promise<NextResponse> {
+/**
+ * The organization comes from the session, never from the request. A null from
+ * the repository means "not yours, or not there" and answers 404, so ids cannot
+ * be probed for existence.
+ */
+
+type IdParams = { params: Promise<{ id: string }> };
+
+export const listCategories = withActor(async (_req, _ctx, actor: Actor) => {
   try {
-    const rows = categoriesRepo.listCategories();
-    return NextResponse.json(rows);
+    return NextResponse.json(categoriesRepo.listCategories(actor.organizationId));
   } catch (error) {
     console.error('GET /api/categories error:', error);
     return NextResponse.json({ error: 'Failed to fetch categories' }, { status: 500 });
   }
-}
+});
 
-export async function createCategory(request: NextRequest): Promise<NextResponse> {
+export const createCategory = withPermission('manage_properties', async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const body = await request.json();
     const { property_id, name, type, description, sort_order, icon, color } = body;
@@ -24,37 +32,40 @@ export async function createCategory(request: NextRequest): Promise<NextResponse
       return NextResponse.json({ error: 'type must be glamping, resort, or camping' }, { status: 400 });
     }
 
-    const created = categoriesRepo.createCategory({ property_id, name, type, description, sort_order, icon, color });
+    const created = categoriesRepo.createCategory(actor.organizationId, {
+      property_id, name, type, description, sort_order, icon, color,
+    });
+    if (!created) return NextResponse.json({ error: 'Property not found' }, { status: 404 });
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
     console.error('POST /api/categories error:', error);
     return NextResponse.json({ error: 'Failed to create category' }, { status: 500 });
   }
-}
+});
 
-type IdParams = { params: Promise<{ id: string }> };
-
-export async function updateCategory(request: NextRequest, context: IdParams): Promise<NextResponse> {
+export const updateCategory = withPermission('manage_properties', async (request: NextRequest, context: IdParams, actor: Actor) => {
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const updated = categoriesRepo.updateCategory(id, body);
-    if (!updated) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+    const updated = categoriesRepo.updateCategory(actor.organizationId, id, body);
+    if (!updated) return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     return NextResponse.json(updated);
   } catch (error) {
     console.error('PATCH /api/categories/:id error:', error);
     return NextResponse.json({ error: 'Failed to update category' }, { status: 500 });
   }
-}
+});
 
-export async function deleteCategory(_request: NextRequest, context: IdParams): Promise<NextResponse> {
+export const deleteCategory = withPermission('manage_properties', async (_request, context: IdParams, actor: Actor) => {
   try {
     const { id } = await context.params;
-    const result = categoriesRepo.deleteCategory(id);
-    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    const result = categoriesRepo.deleteCategory(actor.organizationId, id);
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.error === 'Not found' ? 404 : 400 });
+    }
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('DELETE /api/categories/:id error:', error);
     return NextResponse.json({ error: 'Failed to delete category' }, { status: 500 });
   }
-}
+});

@@ -1,6 +1,14 @@
 import { getDb } from '@core/db';
+import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope';
 
-export function listUnits(filters: { category?: string; unitType?: string; includePool?: boolean } = {}) {
+/**
+ * Units hang off a property. listUnits filtered only by is_active, so it
+ * returned every tenant's rooms, and create/update/delete acted on whatever
+ * ids the request carried — including bulkCreateUnits, which could have
+ * written a hundred rooms into another tenant's property in one call.
+ */
+
+export function listUnits(organizationId: string, filters: { category?: string; unitType?: string; includePool?: boolean } = {}) {
   let query = `
     SELECT
       u.id, u.name, u.code, u.beds, u.zone, u.room_status, u.cleaning_status, u.sort_order, u.is_active, u.is_pool, u.lock_code, u.entry_photo_url,
@@ -11,10 +19,10 @@ export function listUnits(filters: { category?: string; unitType?: string; inclu
     JOIN categories c ON u.category_id = c.id
     JOIN unit_types ut ON u.unit_type_id = ut.id
     LEFT JOIN buildings b ON u.building_id = b.id
-    WHERE u.is_active = 1
+    WHERE u.is_active = 1 AND ${propertyScopeSql('u')}
   `;
 
-  const params: string[] = [];
+  const params: string[] = [organizationId];
 
   // Pool/staging units never show up as bookable rooms. The room-allocation
   // modal opts in via includePool=true.
@@ -51,7 +59,21 @@ export interface CreateUnitInput {
   sort_order?: number;
 }
 
-export function createUnit(input: CreateUnitInput) {
+/** Every id below arrives in the request body, so each is checked separately. */
+function ownsAllRefs(
+  organizationId: string,
+  input: { property_id: string; category_id: string; unit_type_id: string; building_id?: string },
+): boolean {
+  if (!ownsProperty(organizationId, input.property_id)) return false;
+  if (!ownsViaProperty(organizationId, 'categories', input.category_id)) return false;
+  if (!ownsViaProperty(organizationId, 'unit_types', input.unit_type_id)) return false;
+  if (input.building_id && !ownsViaProperty(organizationId, 'buildings', input.building_id)) return false;
+  return true;
+}
+
+export function createUnit(organizationId: string, input: CreateUnitInput) {
+  if (!ownsAllRefs(organizationId, input)) return null;
+
   const db = getDb();
   const result = db.prepare(`
     INSERT INTO units (unit_type_id, property_id, category_id, building_id, name, code, floor, zone, beds, notes, sort_order)
@@ -76,7 +98,11 @@ export interface BulkCreateUnitsInput {
   zone?: string;
 }
 
-export function bulkCreateUnits(input: BulkCreateUnitsInput) {
+export function bulkCreateUnits(organizationId: string, input: BulkCreateUnitsInput) {
+  // Unchecked, this wrote up to two hundred rooms into another tenant's
+  // property in a single call.
+  if (!ownsAllRefs(organizationId, input)) return [];
+
   const db = getDb();
   const insert = db.prepare(`
     INSERT INTO units (unit_type_id, property_id, category_id, building_id, name, code, beds, zone, sort_order)
@@ -101,7 +127,15 @@ export function bulkCreateUnits(input: BulkCreateUnitsInput) {
   return created;
 }
 
-export function updateUnit(id: string, fields: Record<string, unknown>) {
+export function updateUnit(organizationId: string, id: string, fields: Record<string, unknown>) {
+  if (!ownsViaProperty(organizationId, 'units', id)) return null;
+  // Reassignment must not move the unit into another tenant.
+  for (const [field, table] of [
+    ['category_id', 'categories'], ['unit_type_id', 'unit_types'], ['building_id', 'buildings'],
+  ] as const) {
+    if (fields[field] && !ownsViaProperty(organizationId, table, String(fields[field]))) return null;
+  }
+
   const db = getDb();
 
   const nullableFields = ['building_id', 'floor', 'zone', 'notes', 'lock_code', 'entry_photo_url'];
@@ -123,13 +157,17 @@ export function updateUnit(id: string, fields: Record<string, unknown>) {
   if (updates.length === 0) return null;
 
   updates.push("updated_at = datetime('now')");
-  values.push(id);
+  values.push(id, organizationId);
 
-  db.prepare(`UPDATE units SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(
+    `UPDATE units SET ${updates.join(', ')} WHERE id = ? AND ${propertyScopeSql('units')}`,
+  ).run(...values);
   return db.prepare('SELECT * FROM units WHERE id = ?').get(id);
 }
 
-export function deleteUnit(id: string): { ok: boolean; error?: string } {
+export function deleteUnit(organizationId: string, id: string): { ok: boolean; error?: string } {
+  if (!ownsViaProperty(organizationId, 'units', id)) return { ok: false, error: 'Not found' };
+
   const db = getDb();
   const resCount = db.prepare(
     "SELECT COUNT(*) as cnt FROM reservations WHERE unit_id = ? AND status NOT IN ('cancelled', 'checked_out')"
@@ -139,6 +177,6 @@ export function deleteUnit(id: string): { ok: boolean; error?: string } {
     return { ok: false, error: `Cannot delete: ${resCount.cnt} active reservations exist for this unit.` };
   }
 
-  db.prepare('DELETE FROM units WHERE id = ?').run(id);
+  db.prepare(`DELETE FROM units WHERE id = ? AND ${propertyScopeSql('units')}`).run(id, organizationId);
   return { ok: true };
 }

@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as unitsRepo from '../data/units.repo';
+import { withActor, withPermission, type Actor } from '@core/auth/session';
 
-export async function listUnits(request: NextRequest): Promise<NextResponse> {
+/**
+ * The organization comes from the session, never from the request. A null or an
+ * empty result from the repository means "not yours, or not there" and answers
+ * 404, so ids cannot be probed for existence.
+ */
+
+type IdParams = { params: Promise<{ id: string }> };
+
+export const listUnits = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const { searchParams } = new URL(request.url);
-    const rows = unitsRepo.listUnits({
+    const rows = unitsRepo.listUnits(actor.organizationId, {
       category: searchParams.get('category') || undefined,
       unitType: searchParams.get('unitType') || undefined,
       includePool: searchParams.get('include_pool') === '1',
@@ -14,9 +23,9 @@ export async function listUnits(request: NextRequest): Promise<NextResponse> {
     console.error('GET /api/units error:', error);
     return NextResponse.json({ error: 'Failed to fetch units' }, { status: 500 });
   }
-}
+});
 
-export async function createUnit(request: NextRequest): Promise<NextResponse> {
+export const createUnit = withPermission('manage_properties', async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const body = await request.json();
 
@@ -31,7 +40,14 @@ export async function createUnit(request: NextRequest): Promise<NextResponse> {
         return NextResponse.json({ error: 'Invalid range (max 200 units at once)' }, { status: 400 });
       }
 
-      const created = unitsRepo.bulkCreateUnits({ property_id, category_id, building_id, unit_type_id, prefix, from, to, beds, zone });
+      const created = unitsRepo.bulkCreateUnits(actor.organizationId, {
+        property_id, category_id, building_id, unit_type_id, prefix, from, to, beds, zone,
+      });
+      // An empty result here means the referenced ids are not this tenant's —
+      // unchecked, this call wrote up to 200 rooms into someone else's property.
+      if (created.length === 0) {
+        return NextResponse.json({ error: 'Property, category, unit type or building not found' }, { status: 404 });
+      }
       return NextResponse.json({ created: created.length, items: created }, { status: 201 });
     }
 
@@ -41,7 +57,10 @@ export async function createUnit(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'unit_type_id, property_id, category_id, name, and code are required' }, { status: 400 });
     }
 
-    const unit = unitsRepo.createUnit({ unit_type_id, property_id, category_id, building_id, name, code, floor, zone, beds, notes, sort_order });
+    const unit = unitsRepo.createUnit(actor.organizationId, {
+      unit_type_id, property_id, category_id, building_id, name, code, floor, zone, beds, notes, sort_order,
+    });
+    if (!unit) return NextResponse.json({ error: 'Property, category, unit type or building not found' }, { status: 404 });
     return NextResponse.json(unit, { status: 201 });
   } catch (error: unknown) {
     console.error('POST /api/units error:', error);
@@ -51,31 +70,31 @@ export async function createUnit(request: NextRequest): Promise<NextResponse> {
     }
     return NextResponse.json({ error: msg }, { status: 500 });
   }
-}
+});
 
-type IdParams = { params: Promise<{ id: string }> };
-
-export async function updateUnit(request: NextRequest, context: IdParams): Promise<NextResponse> {
+export const updateUnit = withPermission('manage_properties', async (request: NextRequest, context: IdParams, actor: Actor) => {
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const updated = unitsRepo.updateUnit(id, body);
-    if (!updated) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+    const updated = unitsRepo.updateUnit(actor.organizationId, id, body);
+    if (!updated) return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
     return NextResponse.json(updated);
   } catch (error) {
     console.error('PATCH /api/units/:id error:', error);
     return NextResponse.json({ error: 'Failed to update unit' }, { status: 500 });
   }
-}
+});
 
-export async function deleteUnit(_request: NextRequest, context: IdParams): Promise<NextResponse> {
+export const deleteUnit = withPermission('manage_properties', async (_request, context: IdParams, actor: Actor) => {
   try {
     const { id } = await context.params;
-    const result = unitsRepo.deleteUnit(id);
-    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    const result = unitsRepo.deleteUnit(actor.organizationId, id);
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.error === 'Not found' ? 404 : 400 });
+    }
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('DELETE /api/units/:id error:', error);
     return NextResponse.json({ error: 'Failed to delete unit' }, { status: 500 });
   }
-}
+});
