@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { PDFParse } from 'pdf-parse';
 import type { ParsedStatement, ParsedTransaction } from './bank-inbox-engine';
-import { ensurePdfWorker } from './pdf-worker-init';
+import { loadPdfParse } from './pdf-loader';
 
 // ─────────────────────────────────────────────────────────────────
 // KB (Komerční banka) PDF statement parser
@@ -248,7 +247,7 @@ function extractCounterparty(rawLines: string[]): string | null {
  * which then triggers the Telegram alert (see notifyParseFailure).
  */
 export async function parseKbPdf(buf: Buffer): Promise<ParsedStatement> {
-  ensurePdfWorker();
+  const PDFParse = await loadPdfParse();
   const parser = new PDFParse({ data: buf });
   const data = await parser.getText();
   const text = data.text || '';
@@ -306,7 +305,7 @@ export async function parseKbPdf(buf: Buffer): Promise<ParsedStatement> {
   if (blocks.length === 0) {
     // Diagnostic-rich error so the operator (and the next dev) can see
     // exactly what shape the PDF had instead of guessing.
-    const sample = body.slice(0, 30).map((l) => l.length > 80 ? l.substring(0, 77) + '…' : l).join(' | ');
+    const sample = body.slice(0, 30).map((l: string) => l.length > 80 ? l.substring(0, 77) + '…' : l).join(' | ');
     throw new Error(
       `KB PDF: zero transactions detected. body lines=${body.length}, ` +
       `currency=${currency}, iban=${iban || 'none'}, opening=${opening_balance}. ` +
