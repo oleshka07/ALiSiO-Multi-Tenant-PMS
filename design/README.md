@@ -34,8 +34,9 @@ Three deliberate deviations from the export, all in `scripts/port-design.mjs`:
   HTML defaults; handed to React as `value` with no `onChange` they become
   controlled and read-only, which is what froze the autonomy dial.
 - **`<button>` gets `type="button"`** so it cannot submit anything.
-- **A log-in link is inserted** before the demo CTA. The design offers no way
-  into the product, and `/` is no longer a redirect to the dashboard.
+- **A log-in link is inserted** before the demo CTA, pointing at `/app/login`.
+  The design offers no way into the product, and `/` is no longer a redirect
+  to the dashboard — the operator app lives under `/app`.
 
 ## Routes
 

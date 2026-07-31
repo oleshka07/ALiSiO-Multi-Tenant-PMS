@@ -442,7 +442,7 @@ export default function Guest360({ leadId, onClose, onStageChanged, variant = 's
         <div className="g360-actions">
           {/* Booking action */}
           {lead.reservation_id ? (
-            <a href={`/bookings?highlight=${lead.reservation_id}`}
+            <a href={`/app/bookings?highlight=${lead.reservation_id}`}
               className="btn btn-sm" style={{ flex: 1, justifyContent: 'center', gap: 6, background: 'var(--accent-success)', color: '#fff', fontWeight: 600 }}>
               <ExternalLink size={13} /> Відкрити бронювання
             </a>
@@ -461,13 +461,13 @@ export default function Guest360({ leadId, onClose, onStageChanged, variant = 's
                 if (lead.children > 0) params.set('children', String(lead.children));
                 params.set('crmLeadId', lead.id);
                 params.set('source', lead.source || 'direct');
-                window.open(`/bookings?${params.toString()}`, '_blank');
+                window.open(`/app/bookings?${params.toString()}`, '_blank');
               }}>
               <Calendar size={13} /> Створити бронювання
             </button>
           )}
 
-          <a href={`/crm/inbox?lead=${lead.id}`} className="btn btn-sm btn-secondary" style={{ justifyContent: 'center', gap: 6 }}>
+          <a href={`/app/crm/inbox?lead=${lead.id}`} className="btn btn-sm btn-secondary" style={{ justifyContent: 'center', gap: 6 }}>
             <MessageSquare size={13} /> Діалог
           </a>
         </div>

@@ -23,7 +23,8 @@ const PUBLIC_PREFIXES = [
   '/api/invest/', // investor portal API (token-based auth in handler)
   '/api/widget', // widget-* endpoints (public embed)
   '/api/file-upload', // guest passport photo upload from /book page (no session)
-  '/login', // login page
+  '/app/login', // login page — the only public path under /app
+  '/login', // legacy /login, redirects to /app/login
   '/guest/', // guest portal page
   '/book/', // public booking wizard
   '/invest/', // investor portal page (token-based)
@@ -33,8 +34,9 @@ const PUBLIC_PREFIXES = [
 ];
 
 // ─── Public marketing site — src/app/(marketing) ──────────────────────
-// Every page of the landing site is public by definition. The product
-// itself still starts at /login; '/' is the site now, not a redirect.
+// Every page of the landing site is public by definition. '/' is the site,
+// not a redirect; the operator app lives under /app and starts at
+// /app/login.
 const MARKETING_PAGES = [
   '/',
   '/product',
@@ -49,6 +51,7 @@ const MARKETING_PAGES = [
 
 const PUBLIC_EXACT = [
   ...MARKETING_PAGES,
+  '/app/login',
   '/login',
   // '/book' removed with the single-property wizard; the public widget is
   // '/w/<slug>', already covered by the prefix list above.
@@ -61,6 +64,33 @@ const PUBLIC_EXACT = [
 function isPublicRoute(pathname: string): boolean {
   if (PUBLIC_EXACT.includes(pathname)) return true;
   return PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+// ─── Legacy operator routes ───────────────────────────────────────────
+// The app used to sit at the top level, so every bookmark, e-mail link and
+// Telegram deep link an operator saved points at the old path. Redirect
+// rather than 404 — one rule here beats a stub page per section.
+const MOVED_TO_APP = [
+  'dashboard',
+  'bookings',
+  'calendar',
+  'crm',
+  'finance',
+  'tasks',
+  'settings',
+  'sites',
+  'reports',
+  'guests',
+  'pricing',
+  'imports',
+  'documents',
+  'audit',
+  'guest-registry',
+];
+
+function legacyAppPath(pathname: string): string | null {
+  const segment = pathname.split('/')[1] ?? '';
+  return MOVED_TO_APP.includes(segment) ? `/app${pathname}` : null;
 }
 
 // ─── Device detection ─────────────────────────────────────────────────
@@ -85,6 +115,18 @@ export function proxy(request: NextRequest) {
     }
   }
 
+  // ─── Legacy operator routes ─────────────────────────────────────────
+  // Before the auth gate, so an old link lands on the right page rather than
+  // on the dashboard by way of the login screen.
+  if (!pathname.startsWith('/api/')) {
+    const moved = legacyAppPath(pathname);
+    if (moved) {
+      const target = request.nextUrl.clone();
+      target.pathname = moved;
+      return NextResponse.redirect(target, 308);
+    }
+  }
+
   // ─── Auth gate ──────────────────────────────────────────────────────
   if (!isPublicRoute(pathname)) {
     const sessionId = request.cookies.get('session_id')?.value;
@@ -104,7 +146,7 @@ export function proxy(request: NextRequest) {
       // Dashboard pages: redirect to login
       if (!sessionId) {
         const loginUrl = request.nextUrl.clone();
-        loginUrl.pathname = '/login';
+        loginUrl.pathname = '/app/login';
         return NextResponse.redirect(loginUrl);
       }
     }

@@ -15,10 +15,10 @@ interface MobileBottomTabsProps {
 }
 
 const tabs = [
-  { label: 'Головна',    href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Бронювання', href: '/bookings',  icon: BookOpen },
-  { label: 'Календар',   href: '/calendar',  icon: CalendarDays },
-  { label: 'Гості',      href: '/guests',    icon: Users },
+  { label: 'Головна',    href: '/app/dashboard', icon: LayoutDashboard },
+  { label: 'Бронювання', href: '/app/bookings',  icon: BookOpen },
+  { label: 'Календар',   href: '/app/calendar',  icon: CalendarDays },
+  { label: 'Гості',      href: '/app/guests',    icon: Users },
   { label: 'Більше',     href: '__more__',   icon: MoreHorizontal },
 ];
 

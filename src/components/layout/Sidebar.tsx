@@ -61,54 +61,54 @@ const navigation: NavSection[] = [
   {
     title: 'Основне',
     items: [
-      { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={20} />, permission: 'nav:dashboard' },
-      { label: 'Календар', href: '/calendar', icon: <CalendarDays size={20} />, permission: 'nav:calendar' },
-      { label: 'Бронювання', href: '/bookings', icon: <BookOpen size={20} />, permission: 'nav:bookings' },
-      { label: 'Гості', href: '/guests', icon: <Users size={20} />, permission: 'nav:guests' },
-      { label: 'Задачі', href: '/tasks', icon: <CheckSquare size={20} />, permission: 'nav:tasks' },
+      { label: 'Dashboard', href: '/app/dashboard', icon: <LayoutDashboard size={20} />, permission: 'nav:dashboard' },
+      { label: 'Календар', href: '/app/calendar', icon: <CalendarDays size={20} />, permission: 'nav:calendar' },
+      { label: 'Бронювання', href: '/app/bookings', icon: <BookOpen size={20} />, permission: 'nav:bookings' },
+      { label: 'Гості', href: '/app/guests', icon: <Users size={20} />, permission: 'nav:guests' },
+      { label: 'Задачі', href: '/app/tasks', icon: <CheckSquare size={20} />, permission: 'nav:tasks' },
     ],
   },
   {
     title: 'CRM',
     items: [
-      { label: 'Сьогодні', href: '/crm/today', icon: <Target size={20} />, permission: 'nav:crm' },
-      { label: 'Inbox', href: '/crm/inbox', icon: <MessageSquare size={20} />, permission: 'nav:crm' },
-      { label: 'Pipeline', href: '/crm', icon: <GitBranch size={20} />, permission: 'nav:crm' },
-      { label: 'Ліди', href: '/crm/leads', icon: <UserPlus size={20} />, permission: 'nav:crm' },
+      { label: 'Сьогодні', href: '/app/crm/today', icon: <Target size={20} />, permission: 'nav:crm' },
+      { label: 'Inbox', href: '/app/crm/inbox', icon: <MessageSquare size={20} />, permission: 'nav:crm' },
+      { label: 'Pipeline', href: '/app/crm', icon: <GitBranch size={20} />, permission: 'nav:crm' },
+      { label: 'Ліди', href: '/app/crm/leads', icon: <UserPlus size={20} />, permission: 'nav:crm' },
     ],
   },
   {
     title: 'Управління',
     items: [
-      { label: 'Ціноутворення', href: '/pricing', icon: <DollarSign size={20} />, permission: 'nav:pricing' },
-      { label: 'Аналітика продажів', href: '/reports', icon: <BarChart3 size={20} />, permission: 'nav:reports' },
-      { label: 'Документи', href: '/documents', icon: <FileText size={20} />, permission: 'nav:documents' },
-      { label: 'Evidenční kniha', href: '/guest-registry', icon: <ClipboardList size={20} />, permission: 'nav:guests' },
+      { label: 'Ціноутворення', href: '/app/pricing', icon: <DollarSign size={20} />, permission: 'nav:pricing' },
+      { label: 'Аналітика продажів', href: '/app/reports', icon: <BarChart3 size={20} />, permission: 'nav:reports' },
+      { label: 'Документи', href: '/app/documents', icon: <FileText size={20} />, permission: 'nav:documents' },
+      { label: 'Evidenční kniha', href: '/app/guest-registry', icon: <ClipboardList size={20} />, permission: 'nav:guests' },
     ],
   },
   {
     title: 'Фінанси',
     items: [
-      { label: 'Огляд', href: '/finance', icon: <Wallet size={20} />, permission: 'nav:finance' },
-      { label: 'Операції', href: '/finance/operations', icon: <ListChecks size={20} />, permission: 'nav:finance' },
+      { label: 'Огляд', href: '/app/finance', icon: <Wallet size={20} />, permission: 'nav:finance' },
+      { label: 'Операції', href: '/app/finance/operations', icon: <ListChecks size={20} />, permission: 'nav:finance' },
     ],
   },
   {
     title: 'Інтеграції',
     items: [
-      { label: 'Канали', href: '/settings/channel-manager', icon: <Globe size={20} />, permission: 'nav:settings' },
-      { label: 'Віджет бронювання', href: '/settings/booking-widget', icon: <Code2 size={20} />, permission: 'nav:settings' },
-      { label: 'Сайти', href: '/sites', icon: <Globe size={20} />, permission: 'nav:sites' },
-      { label: 'Канали CRM', href: '/crm/settings', icon: <MessageSquare size={20} />, permission: 'nav:crm' },
-      { label: 'Імпорт Booking.com', href: '/imports/booking-com', icon: <Upload size={20} />, permission: 'nav:bookings' },
-      { label: 'Виписки OTA', href: '/imports/ota-payouts', icon: <Repeat size={20} />, permission: 'nav:finance' },
+      { label: 'Канали', href: '/app/settings/channel-manager', icon: <Globe size={20} />, permission: 'nav:settings' },
+      { label: 'Віджет бронювання', href: '/app/settings/booking-widget', icon: <Code2 size={20} />, permission: 'nav:settings' },
+      { label: 'Сайти', href: '/app/sites', icon: <Globe size={20} />, permission: 'nav:sites' },
+      { label: 'Канали CRM', href: '/app/crm/settings', icon: <MessageSquare size={20} />, permission: 'nav:crm' },
+      { label: 'Імпорт Booking.com', href: '/app/imports/booking-com', icon: <Upload size={20} />, permission: 'nav:bookings' },
+      { label: 'Виписки OTA', href: '/app/imports/ota-payouts', icon: <Repeat size={20} />, permission: 'nav:finance' },
     ],
   },
   {
     title: 'Система',
     items: [
-      { label: 'Налаштування', href: '/settings', icon: <Settings size={20} />, permission: 'nav:settings' },
-      { label: 'Журнал змін', href: '/audit', icon: <Clock size={20} />, permission: 'nav:settings' },
+      { label: 'Налаштування', href: '/app/settings', icon: <Settings size={20} />, permission: 'nav:settings' },
+      { label: 'Журнал змін', href: '/app/audit', icon: <Clock size={20} />, permission: 'nav:settings' },
     ],
   },
 ];
@@ -155,21 +155,21 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
 
   // Map finance route paths to tab IDs for filtering
   const FINANCE_TAB_MAP: Record<string, string> = {
-    '/finance': 'overview',
-    '/finance/operations': 'operations',
-    '/finance/reports': 'reports',
-    '/finance/bank': 'bank',
-    '/finance/clearing': 'clearing',
-    '/finance/receipts': 'receipts',
-    '/finance/calendar': 'calendar',
-    '/finance/expected-payments': 'expected-payments',
-    '/finance/capex': 'capex',
-    '/finance/accruals': 'accruals',
-    '/finance/history': 'history',
-    '/finance/import': 'import',
-    '/finance/reconcile': 'reconcile',
-    '/finance/investors': 'investors',
-    '/finance/settings': 'settings',
+    '/app/finance': 'overview',
+    '/app/finance/operations': 'operations',
+    '/app/finance/reports': 'reports',
+    '/app/finance/bank': 'bank',
+    '/app/finance/clearing': 'clearing',
+    '/app/finance/receipts': 'receipts',
+    '/app/finance/calendar': 'calendar',
+    '/app/finance/expected-payments': 'expected-payments',
+    '/app/finance/capex': 'capex',
+    '/app/finance/accruals': 'accruals',
+    '/app/finance/history': 'history',
+    '/app/finance/import': 'import',
+    '/app/finance/reconcile': 'reconcile',
+    '/app/finance/investors': 'investors',
+    '/app/finance/settings': 'settings',
   };
 
   // Filter navigation based on user permissions
@@ -182,7 +182,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         // For non-owner finance users: filter by allowed_tabs FIRST — independent
         // of item.permission, otherwise finance links without a permission field
         // would bypass the tab restriction and always show.
-        if (financeAccess && !financeAccess.is_owner && item.href.startsWith('/finance')) {
+        if (financeAccess && !financeAccess.is_owner && item.href.startsWith('/app/finance')) {
           const tabId = FINANCE_TAB_MAP[item.href];
           if (tabId && tabId !== 'overview' && !financeAccess.allowed_tabs.includes(tabId)) {
             return false;
@@ -229,7 +229,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               {section.items.map((item) => {
                 const isActive =
                   pathname === item.href ||
-                  (item.href !== '/dashboard' && item.href !== '/crm' && pathname.startsWith(item.href));
+                  (item.href !== '/app/dashboard' && item.href !== '/app/crm' && pathname.startsWith(item.href));
                 return (
                   <Link
                     key={item.href}
@@ -238,7 +238,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                   >
                     <span className="sidebar-nav-icon">{item.icon}</span>
                     <span className="sidebar-nav-label">{item.label}</span>
-                    {item.href === '/calendar' && draftCount > 0 && (
+                    {item.href === '/app/calendar' && draftCount > 0 && (
                       <span className="sidebar-draft-badge" title={`${draftCount} бронювань у чорновику`}>
                         {draftCount}
                       </span>

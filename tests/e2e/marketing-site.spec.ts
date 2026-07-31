@@ -60,9 +60,25 @@ test.describe('public marketing site', () => {
     });
   }
 
-  test('the dashboard is still behind the login gate', async ({ page }) => {
-    await page.goto('/dashboard');
-    await expect(page).toHaveURL(/\/login/);
+  test('the app is still behind the login gate', async ({ page }) => {
+    await page.goto('/app/dashboard');
+    await expect(page).toHaveURL(/\/app\/login/);
+  });
+
+  test('/app lands on the dashboard, gate included', async ({ page }) => {
+    await page.goto('/app');
+    await expect(page).toHaveURL(/\/app\/login/);
+  });
+
+  test('the old /login bookmark still works', async ({ page }) => {
+    await page.goto('/login');
+    await expect(page).toHaveURL(/\/app\/login/);
+  });
+
+  test('the header offers a way into the product', async ({ page }) => {
+    await page.goto('/');
+    await page.click('[data-nav] a[href="/app/login"]');
+    await expect(page).toHaveURL(/\/app\/login/);
   });
 
   test('header navigates, and the dropdown opens', async ({ page }) => {

@@ -17,23 +17,23 @@ interface MobileMoreSheetProps {
 
 const moreItems = [
   { section: 'Управління', items: [
-    { label: 'Ціноутворення', href: '/pricing', icon: DollarSign },
-    { label: 'Звіти', href: '/reports', icon: BarChart3 },
-    { label: 'Гості', href: '/guests', icon: Users },
-    { label: 'Документи', href: '/documents', icon: FileText },
+    { label: 'Ціноутворення', href: '/app/pricing', icon: DollarSign },
+    { label: 'Звіти', href: '/app/reports', icon: BarChart3 },
+    { label: 'Гості', href: '/app/guests', icon: Users },
+    { label: 'Документи', href: '/app/documents', icon: FileText },
   ]},
   { section: 'CRM', items: [
-    { label: 'Inbox', href: '/crm/inbox', icon: MessageSquare },
-    { label: 'Pipeline', href: '/crm', icon: GitBranch },
+    { label: 'Inbox', href: '/app/crm/inbox', icon: MessageSquare },
+    { label: 'Pipeline', href: '/app/crm', icon: GitBranch },
   ]},
   { section: 'Фінанси', items: [
-    { label: 'Огляд', href: '/finance', icon: Wallet },
-    { label: 'Журнал транзакцій', href: '/finance/operations', icon: List },
-    { label: 'Витрати', href: '/finance/expenses', icon: Receipt },
-    { label: 'Cash Flow', href: '/finance/cashflow', icon: TrendingUp },
+    { label: 'Огляд', href: '/app/finance', icon: Wallet },
+    { label: 'Журнал транзакцій', href: '/app/finance/operations', icon: List },
+    { label: 'Витрати', href: '/app/finance/expenses', icon: Receipt },
+    { label: 'Cash Flow', href: '/app/finance/cashflow', icon: TrendingUp },
   ]},
   { section: 'Система', items: [
-    { label: 'Налаштування', href: '/settings', icon: Settings },
+    { label: 'Налаштування', href: '/app/settings', icon: Settings },
   ]},
 ];
 

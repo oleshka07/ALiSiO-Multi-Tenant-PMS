@@ -166,19 +166,19 @@ export default function MobileFinanceOverview() {
 
       {/* Quick actions */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
-        <Link href="/finance/operations" style={{ textDecoration: 'none' }}>
+        <Link href="/app/finance/operations" style={{ textDecoration: 'none' }}>
           <div style={{ background: 'rgba(99,102,241,0.12)', borderRadius: 14, padding: '12px 8px', textAlign: 'center', cursor: 'pointer' }}>
             <FileText size={20} color="#6366f1" style={{ marginBottom: 4 }} />
             <div style={{ fontSize: 11, fontWeight: 700, color: '#6366f1' }}>Журнал</div>
           </div>
         </Link>
-        <Link href="/finance/expenses" style={{ textDecoration: 'none' }}>
+        <Link href="/app/finance/expenses" style={{ textDecoration: 'none' }}>
           <div style={{ background: 'rgba(239,68,68,0.10)', borderRadius: 14, padding: '12px 8px', textAlign: 'center', cursor: 'pointer' }}>
             <Receipt size={20} color="#ef4444" style={{ marginBottom: 4 }} />
             <div style={{ fontSize: 11, fontWeight: 700, color: '#ef4444' }}>Витрати</div>
           </div>
         </Link>
-        <Link href="/finance/cashflow" style={{ textDecoration: 'none' }}>
+        <Link href="/app/finance/cashflow" style={{ textDecoration: 'none' }}>
           <div style={{ background: 'rgba(20,184,166,0.12)', borderRadius: 14, padding: '12px 8px', textAlign: 'center', cursor: 'pointer' }}>
             <BarChart3 size={20} color="#14b8a6" style={{ marginBottom: 4 }} />
             <div style={{ fontSize: 11, fontWeight: 700, color: '#14b8a6' }}>Cash Flow</div>
@@ -191,7 +191,7 @@ export default function MobileFinanceOverview() {
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
           Останні транзакції
         </div>
-        <Link href="/finance/operations" style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 12, color: 'var(--accent-primary)', textDecoration: 'none', fontWeight: 600 }}>
+        <Link href="/app/finance/operations" style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 12, color: 'var(--accent-primary)', textDecoration: 'none', fontWeight: 600 }}>
           Всі <ArrowRight size={12} />
         </Link>
       </div>

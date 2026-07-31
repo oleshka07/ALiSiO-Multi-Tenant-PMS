@@ -12,14 +12,14 @@ interface MobileHeaderProps {
 }
 
 const ROUTE_TITLES: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/calendar': 'Календар',
-  '/bookings': 'Бронювання',
-  '/guests': 'Гості',
-  '/finance': 'Фінанси',
-  '/settings': 'Налаштування',
-  '/pricing': 'Ціноутворення',
-  '/reports': 'Звіти',
+  '/app/dashboard': 'Dashboard',
+  '/app/calendar': 'Календар',
+  '/app/bookings': 'Бронювання',
+  '/app/guests': 'Гості',
+  '/app/finance': 'Фінанси',
+  '/app/settings': 'Налаштування',
+  '/app/pricing': 'Ціноутворення',
+  '/app/reports': 'Звіти',
 };
 
 export default function MobileHeader({ title, onBack, rightAction, showSearch, onSearch }: MobileHeaderProps) {

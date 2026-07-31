@@ -3693,7 +3693,7 @@ function runMigrations(database: any) {
   // by PR #signals-filter (the latest fix).
   //
   // Mark them needs_review=1 so the operator sees them in the existing
-  // triage queue (`/finance/operations?needs_review=1`) and can either
+  // triage queue (`/app/finance/operations?needs_review=1`) and can either
   // assign an account or archive them. Idempotent: only flips rows
   // currently at 0.
   // ═══════════════════════════════════════════════════════════════════

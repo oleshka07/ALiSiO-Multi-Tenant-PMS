@@ -433,7 +433,7 @@ ${body}
  * A live deployment needs one, because `/` no longer redirects to the
  * dashboard, so the header gets a log-in link ahead of the demo button.
  */
-const LOGIN_LINK = `<Link href="/login" style={{ color: "#B6BCC3", fontSize: "14px", padding: "9px 13px", borderRadius: "9px" }} className="dcx-login">Log in</Link>`;
+const LOGIN_LINK = `<Link href="/app/login" style={{ color: "#B6BCC3", fontSize: "14px", padding: "9px 13px", borderRadius: "9px" }} className="dcx-login">Log in</Link>`;
 
 function withLoginLink(body) {
   const lines = body.split('\n');

@@ -56,7 +56,7 @@ export function useCurrentUser(): UseCurrentUserReturn {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
       setUser(null);
-      window.location.href = '/login';
+      window.location.href = '/app/login';
     } catch {
       // ignore
     }

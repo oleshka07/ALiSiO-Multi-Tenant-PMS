@@ -54,7 +54,7 @@ export default function SiteHeaderMarkup() {
             <button data-lang-opt="uk" style={{ all: "unset", cursor: "pointer", display: "block", width: "100%", padding: "9px 12px", borderRadius: "8px", fontSize: "14px", color: "#ECEAE5", boxSizing: "border-box" }} type="button">Українська</button>
           </div>
         </div>
-        <Link href="/login" style={{ color: "#B6BCC3", fontSize: "14px", padding: "9px 13px", borderRadius: "9px" }} className="dcx-login">Log in</Link>
+        <Link href="/app/login" style={{ color: "#B6BCC3", fontSize: "14px", padding: "9px 13px", borderRadius: "9px" }} className="dcx-login">Log in</Link>
         <Link data-nav-cta={true} href="/demo" data-route="demo" style={{ background: "var(--acc,#3DDCC0)", color: "#07100E", fontWeight: "600", fontSize: "14px", padding: "11px 18px", borderRadius: "10px" }} data-i18n="nav_demo" className="dcx-h10">Book a demo</Link>
         <button data-burger={true} style={{ all: "unset", display: "none", cursor: "pointer", width: "44px", height: "44px", border: "1px solid rgba(255,255,255,.14)", borderRadius: "11px", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }} type="button">
           <span data-burger-icon={true} style={{ display: "block", width: "18px", height: "12px", position: "relative" }}>
