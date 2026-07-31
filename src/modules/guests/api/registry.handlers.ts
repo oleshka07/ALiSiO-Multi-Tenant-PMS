@@ -1,10 +1,23 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import * as registryRepo from '../data/registry.repo';
+import { withPermission, notFound, type Actor } from '@core/auth/session';
+
+/**
+ * The guest registry — names, dates of birth, nationality, document type and
+ * number, address — was reachable without any authentication at all: the route
+ * sat behind the '/api/guest-registry' public prefix, whose comment claimed
+ * "session or Bearer token auth", and no handler checked either. The CSV
+ * export was open too, so the whole registry of every hotel on the server
+ * could be downloaded by anyone who knew the path.
+ *
+ * It needs a session and manage_guests, and everything is scoped to the
+ * caller's organization.
+ */
 
 // ─── GET /api/guest-registry ─────────────────────────────────────────────────
 
-export async function getRegistry(request: NextRequest): Promise<NextResponse> {
+export const getRegistry = withPermission('manage_guests', async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const { searchParams } = new URL(request.url);
     const now = new Date();
@@ -14,64 +27,65 @@ export async function getRegistry(request: NextRequest): Promise<NextResponse> {
     const search = searchParams.get('search') || undefined;
     const propertyId = searchParams.get('propertyId') || undefined;
 
-    const entries = registryRepo.getRegistryEntries({ month, foreignersOnly, unregisteredOnly, search, propertyId });
-    const summary = registryRepo.getRegistrySummary({ month, propertyId });
+    const entries = registryRepo.getRegistryEntries(actor.organizationId, { month, foreignersOnly, unregisteredOnly, search, propertyId });
+    const summary = registryRepo.getRegistrySummary(actor.organizationId, { month, propertyId });
 
     return NextResponse.json({ entries, summary });
   } catch (error: any) {
     console.error('GET /api/guest-registry error:', error?.message || error);
-    return NextResponse.json({ error: error?.message || 'Failed to fetch registry' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch registry' }, { status: 500 });
   }
-}
+})
 
 // ─── PATCH /api/guest-registry/[id] ──────────────────────────────────────────
 
-export async function updateRegistryEntry(
+export const updateRegistryEntry = withPermission('manage_guests', async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
-): Promise<NextResponse> {
+  actor: Actor,
+) => {
   try {
     const { id } = await params;
     const body = await request.json();
     const { action } = body;
+    const org = actor.organizationId;
 
+    // false means the entry is not this organization's; 404 rather than 403,
+    // so ids cannot be probed.
+    let done: boolean;
     switch (action) {
-      case 'mark_police': {
-        const ref = body.ref || '';
-        registryRepo.markPoliceReported(id, ref);
+      case 'mark_police':
+        done = registryRepo.markPoliceReported(org, id, body.ref || '');
         break;
-      }
-      case 'unmark_police': {
-        registryRepo.unmarkPoliceReported(id);
+      case 'unmark_police':
+        done = registryRepo.unmarkPoliceReported(org, id);
         break;
-      }
       case 'update_fee': {
         const { feeAmount, feeExempt, feeExemptReason } = body;
-        registryRepo.updateFee(id, { feeAmount, feeExempt, feeExemptReason });
+        done = registryRepo.updateFee(org, id, { feeAmount, feeExempt, feeExemptReason });
         break;
       }
-      case 'hide': {
-        registryRepo.hideRegistryEntry(id);
+      case 'hide':
+        done = registryRepo.hideRegistryEntry(org, id);
         break;
-      }
-      case 'unhide': {
-        registryRepo.unhideRegistryEntry(id);
+      case 'unhide':
+        done = registryRepo.unhideRegistryEntry(org, id);
         break;
-      }
       default:
         return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
     }
 
+    if (!done) return notFound();
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('PATCH /api/guest-registry/[id] error:', error?.message || error);
-    return NextResponse.json({ error: error?.message || 'Failed to update registry entry' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update registry entry' }, { status: 500 });
   }
-}
+})
 
 // ─── GET /api/guest-registry?format=csv ──────────────────────────────────────
 
-export async function exportRegistry(request: NextRequest): Promise<NextResponse> {
+export const exportRegistry = withPermission('manage_guests', async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const { searchParams } = new URL(request.url);
     const now = new Date();
@@ -81,7 +95,7 @@ export async function exportRegistry(request: NextRequest): Promise<NextResponse
     const search = searchParams.get('search') || undefined;
     const propertyId = searchParams.get('propertyId') || undefined;
 
-    const entries = registryRepo.getRegistryEntries({ month, foreignersOnly, unregisteredOnly, search, propertyId });
+    const entries = registryRepo.getRegistryEntries(actor.organizationId, { month, foreignersOnly, unregisteredOnly, search, propertyId });
 
     const headers = [
       'Jméno', 'Příjmení', 'Datum narození', 'Státní příslušnost',
@@ -119,6 +133,6 @@ export async function exportRegistry(request: NextRequest): Promise<NextResponse
     });
   } catch (error: any) {
     console.error('GET /api/guest-registry?format=csv error:', error?.message || error);
-    return NextResponse.json({ error: error?.message || 'Failed to export registry' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to export registry' }, { status: 500 });
   }
-}
+})

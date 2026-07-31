@@ -1,6 +1,21 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getDb } from '@core/db';
 
+/**
+ * The guest registry (evidenční kniha): names, dates of birth, nationality,
+ * document type and number, address. reservation_guests reaches an
+ * organization through its reservation's property, and none of these queries
+ * used that — the month view, the CSV export and every mutation acted on every
+ * hotel's guests at once. Combined with the route being public, that was the
+ * whole registry of every customer, readable and exportable by anyone.
+ *
+ * Every read is constrained by the organization, and every mutation is a
+ * no-op unless the row belongs to it.
+ */
+
+/** Constrain reservation_guests rg / reservations r to one organization. */
+const ORG_SCOPE = 'r.property_id IN (SELECT id FROM properties WHERE organization_id = ?)';
+
 // ─── Types ────────────────────────────────────────────
 
 export interface RegistryFilters {
@@ -60,7 +75,7 @@ function nextMonth(month: string): string {
 
 // ─── Queries ──────────────────────────────────────────
 
-export function getRegistryEntries(filters: RegistryFilters): RegistryEntry[] {
+export function getRegistryEntries(organizationId: string, filters: RegistryFilters): RegistryEntry[] {
   const monthStart = `${filters.month}-01`;
   const monthEnd = nextMonth(filters.month);
 
@@ -93,9 +108,9 @@ export function getRegistryEntries(filters: RegistryFilters): RegistryEntry[] {
     FROM reservation_guests rg
     JOIN reservations r ON rg.reservation_id = r.id
     JOIN units u ON r.unit_id = u.id
-    WHERE r.check_in >= ? AND r.check_in < ?
+    WHERE ${ORG_SCOPE} AND r.check_in >= ? AND r.check_in < ?
   `;
-  const params: (string | number)[] = [monthStart, monthEnd];
+  const params: (string | number)[] = [organizationId, monthStart, monthEnd];
 
   if (filters.propertyId) {
     query += ' AND r.property_id = ?';
@@ -122,7 +137,7 @@ export function getRegistryEntries(filters: RegistryFilters): RegistryEntry[] {
   return getDb().prepare(query).all(...params) as RegistryEntry[];
 }
 
-export function getRegistrySummary(filters: { month: string; propertyId?: string }): RegistrySummary {
+export function getRegistrySummary(organizationId: string, filters: { month: string; propertyId?: string }): RegistrySummary {
   const monthStart = `${filters.month}-01`;
   const monthEnd = nextMonth(filters.month);
 
@@ -136,9 +151,9 @@ export function getRegistrySummary(filters: { month: string; propertyId?: string
       SUM(CASE WHEN rg.fee_exempt = 1 THEN 1 ELSE 0 END) as exemptGuests
     FROM reservation_guests rg
     JOIN reservations r ON rg.reservation_id = r.id
-    WHERE r.check_in >= ? AND r.check_in < ?
+    WHERE ${ORG_SCOPE} AND r.check_in >= ? AND r.check_in < ?
   `;
-  const params: (string | number)[] = [monthStart, monthEnd];
+  const params: (string | number)[] = [organizationId, monthStart, monthEnd];
 
   if (filters.propertyId) {
     query += ' AND r.property_id = ?';
@@ -161,7 +176,17 @@ export function getRegistrySummary(filters: { month: string; propertyId?: string
 
 // ─── Mutations ────────────────────────────────────────
 
-export function markPoliceReported(id: string, ref?: string): void {
+/** The row, if this organization owns it through the reservation's property. */
+function owns(organizationId: string, id: string): boolean {
+  return !!getDb().prepare(`
+    SELECT 1 FROM reservation_guests rg
+    JOIN reservations r ON r.id = rg.reservation_id
+    WHERE rg.id = ? AND ${ORG_SCOPE}
+  `).get(id, organizationId);
+}
+
+export function markPoliceReported(organizationId: string, id: string, ref?: string): boolean {
+  if (!owns(organizationId, id)) return false;
   getDb().prepare(`
     UPDATE reservation_guests
     SET police_reported = 1,
@@ -169,9 +194,11 @@ export function markPoliceReported(id: string, ref?: string): void {
         police_report_ref = ?
     WHERE id = ?
   `).run(ref ?? null, id);
+  return true;
 }
 
-export function unmarkPoliceReported(id: string): void {
+export function unmarkPoliceReported(organizationId: string, id: string): boolean {
+  if (!owns(organizationId, id)) return false;
   getDb().prepare(`
     UPDATE reservation_guests
     SET police_reported = 0,
@@ -179,9 +206,11 @@ export function unmarkPoliceReported(id: string): void {
         police_report_ref = NULL
     WHERE id = ?
   `).run(id);
+  return true;
 }
 
-export function updateFee(id: string, data: { feeAmount: number; feeExempt: boolean; feeExemptReason?: string }): void {
+export function updateFee(organizationId: string, id: string, data: { feeAmount: number; feeExempt: boolean; feeExemptReason?: string }): boolean {
+  if (!owns(organizationId, id)) return false;
   getDb().prepare(`
     UPDATE reservation_guests
     SET fee_amount = ?,
@@ -189,9 +218,10 @@ export function updateFee(id: string, data: { feeAmount: number; feeExempt: bool
         fee_exempt_reason = ?
     WHERE id = ?
   `).run(data.feeAmount, data.feeExempt ? 1 : 0, data.feeExemptReason ?? null, id);
+  return true;
 }
 
-export function calculateFees(month: string, feePerNight: number): number {
+export function calculateFees(organizationId: string, month: string, feePerNight: number): number {
   const db = getDb();
   const monthStart = `${month}-01`;
   const monthEnd = nextMonth(month);
@@ -201,9 +231,9 @@ export function calculateFees(month: string, feePerNight: number): number {
     SELECT rg.id, r.nights
     FROM reservation_guests rg
     JOIN reservations r ON rg.reservation_id = r.id
-    WHERE r.check_in >= ? AND r.check_in < ?
+    WHERE ${ORG_SCOPE} AND r.check_in >= ? AND r.check_in < ?
       AND COALESCE(rg.fee_exempt, 0) = 0
-  `).all(monthStart, monthEnd) as { id: string; nights: number }[];
+  `).all(organizationId, monthStart, monthEnd) as { id: string; nights: number }[];
 
   let total = 0;
   const update = db.prepare('UPDATE reservation_guests SET fee_amount = ? WHERE id = ?');
@@ -219,10 +249,14 @@ export function calculateFees(month: string, feePerNight: number): number {
   return total;
 }
 
-export function hideRegistryEntry(id: string): void {
+export function hideRegistryEntry(organizationId: string, id: string): boolean {
+  if (!owns(organizationId, id)) return false;
   getDb().prepare('UPDATE reservation_guests SET is_hidden = 1 WHERE id = ?').run(id);
+  return true;
 }
 
-export function unhideRegistryEntry(id: string): void {
+export function unhideRegistryEntry(organizationId: string, id: string): boolean {
+  if (!owns(organizationId, id)) return false;
   getDb().prepare('UPDATE reservation_guests SET is_hidden = 0 WHERE id = ?').run(id);
+  return true;
 }

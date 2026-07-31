@@ -286,6 +286,25 @@ async function main() {
     assert.ok(pinRow.payment_pin_hash && pinRow.payment_pin_hash !== '4721', 'the PIN was stored in the clear');
     console.log('  ok  a staff PIN is stored hashed, per organization');
 
+    // The guest registry — names, dates of birth, nationality, document type
+    // and number — was served to the open internet, export included.
+    const registryAnon = await fetch(`${BASE}/api/guest-registry?month=2026-07`);
+    assert.strictEqual(registryAnon.status, 401, `anonymous registry read returned ${registryAnon.status}`);
+    const exportAnon = await fetch(`${BASE}/api/guest-registry?month=2026-07&format=csv`);
+    assert.strictEqual(exportAnon.status, 401, `anonymous registry export returned ${exportAnon.status}`);
+    const registryPatchAnon = await fetch(`${BASE}/api/guest-registry/probe`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'hide' }),
+    });
+    assert.strictEqual(registryPatchAnon.status, 401, `anonymous registry write returned ${registryPatchAnon.status}`);
+    console.log('  ok  the guest registry needs a session, read and export alike');
+
+    // The public price list must name a hotel rather than return everyone's.
+    const pricesAnon = await fetch(`${BASE}/api/widget/prices`);
+    assert.strictEqual(pricesAnon.status, 400, `unqualified public price list returned ${pricesAnon.status}`);
+    console.log('  ok  the public price list refuses to answer without a site');
+
     // And without a session, nothing at all.
     const anon = await fetch(`${BASE}/api/properties`);
     assert.strictEqual(anon.status, 401, `anonymous list returned ${anon.status}`);

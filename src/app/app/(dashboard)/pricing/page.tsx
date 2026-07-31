@@ -681,7 +681,7 @@ function WidgetPriceListSection() {
   const [toast, setToast] = useState('');
 
   useEffect(() => {
-    fetch('/api/widget/prices').then(r => r.json()).then(data => {
+    fetch('/api/pricing/widget-list').then(r => r.json()).then(data => {
       if (Array.isArray(data)) setItems(data);
     }).finally(() => setLoading(false));
   }, []);
