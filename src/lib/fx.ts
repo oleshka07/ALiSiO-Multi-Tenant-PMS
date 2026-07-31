@@ -9,6 +9,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { syncCnbRates } from './cnb-rates';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { money } from '@core/money';
 
 function orgId(db: any): string | null {
   try { return requireOrganizationId(db); } catch { return null; }
@@ -73,7 +74,7 @@ export function convertToCzk(db: any, amount: number, currency: string, dateIso:
   if (rate == null) {
     return { amountCzk: amount, rate: 0, original: amount, currency: cur, converted: false };
   }
-  return { amountCzk: Math.round(amount * rate * 100) / 100, rate, original: amount, currency: cur, converted: true };
+  return { amountCzk: money(amount * rate), rate, original: amount, currency: cur, converted: true };
 }
 
 /**
@@ -94,7 +95,7 @@ export async function convertToCzkAuto(db: any, amount: number, currency: string
     } catch { /* offline / feed error — leave rate null, keep original currency */ }
   }
   if (rate == null) return { amountCzk: amount, rate: 0, original: amount, currency: cur, converted: false };
-  return { amountCzk: Math.round(amount * rate * 100) / 100, rate, original: amount, currency: cur, converted: true };
+  return { amountCzk: money(amount * rate), rate, original: amount, currency: cur, converted: true };
 }
 
 /** Czech-style secondary line, e.g. "Původní částka: 250,00 EUR · kurz 25,300 CZK/EUR". */

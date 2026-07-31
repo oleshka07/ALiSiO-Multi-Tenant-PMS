@@ -23,6 +23,7 @@ import {
   cancelReservation,
   findPoolUnit,
 } from '../data/import.repo';
+import { money } from '@core/money';
 
 export interface PlannedUnit {
   unitId: string;
@@ -469,10 +470,10 @@ export async function confirmBookingComImport(request: NextRequest): Promise<Nex
                 nights: row.duration || 1,
                 adults: unit.capacity,
                 children: isMultiRoom ? Math.ceil(row.children / roomCount) : row.children,
-                totalPrice: i === 0 ? (isEurRow ? +(row.priceMajor * eurToCzk).toFixed(2) : row.priceMajor) : 0,
+                totalPrice: i === 0 ? (isEurRow ? money(row.priceMajor * eurToCzk) : row.priceMajor) : 0,
                 currency: isEurRow ? 'CZK' : (row.currency || 'CZK'),
                 bcomReservationId: row.bookNumber,
-                commissionAmount: i === 0 ? (isEurRow ? +(row.commissionMajor * eurToCzk).toFixed(2) : row.commissionMajor) : 0,
+                commissionAmount: i === 0 ? (isEurRow ? money(row.commissionMajor * eurToCzk) : row.commissionMajor) : 0,
                 notes: draftNotes,
                 totalRateEur: i === 0 ? (isEurRow ? row.priceMajor : null) : null,
                 commissionEur: i === 0 ? (isEurRow ? row.commissionMajor : null) : null,
@@ -490,8 +491,8 @@ export async function confirmBookingComImport(request: NextRequest): Promise<Nex
 
               if (isFirst) {
                 // Master reservation: gets the FULL price
-                const totalPriceCzk = isEurRow ? +(row.priceMajor * eurToCzk).toFixed(2) : row.priceMajor;
-                const commissionCzk = isEurRow ? +(row.commissionMajor * eurToCzk).toFixed(2) : row.commissionMajor;
+                const totalPriceCzk = isEurRow ? money(row.priceMajor * eurToCzk) : row.priceMajor;
+                const commissionCzk = isEurRow ? money(row.commissionMajor * eurToCzk) : row.commissionMajor;
                 const totalRateEur = isEurRow ? row.priceMajor : null;
                 const commissionEur = isEurRow ? row.commissionMajor : null;
                 const storedCurrency = isEurRow ? 'CZK' : (row.currency || 'CZK');

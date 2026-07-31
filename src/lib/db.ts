@@ -5012,6 +5012,13 @@ function runMigrations(database: any) {
       // owner; those rows stay NULL on purpose.
       payment_webhook_log:
         'UPDATE payment_webhook_log SET organization_id = (SELECT p.organization_id FROM reservations r JOIN properties p ON p.id = r.property_id WHERE r.id = payment_webhook_log.reservation_id) WHERE organization_id IS NULL AND reservation_id IS NOT NULL',
+      // The rebuild that gave this table user_id/before_json/after_json also
+      // dropped its `FOREIGN KEY (reservation_id) REFERENCES reservations(id)`,
+      // so it lost its only path to an organization — and rows now outlive the
+      // booking they describe. The column below restores the path; the missing
+      // foreign key is handled in the rebuild that follows.
+      booking_activity_log:
+        'UPDATE booking_activity_log SET organization_id = (SELECT p.organization_id FROM reservations r JOIN properties p ON p.id = r.property_id WHERE r.id = booking_activity_log.reservation_id) WHERE organization_id IS NULL AND reservation_id IS NOT NULL',
       booking_drafts: null,
       widget_price_list: null,
       crm_auto_drafts: null,
@@ -5066,11 +5073,41 @@ function runMigrations(database: any) {
       const left = (database.prepare(
         `SELECT COUNT(*) c FROM ${table} WHERE organization_id IS NULL`,
       ).get() as any).c;
-      if (left && table !== 'payment_webhook_log') {
+      if (left && table !== 'payment_webhook_log' && table !== 'booking_activity_log') {
         stranded += left;
         console.error(`[DB] ${table}: ${left} rows have no organization`);
       }
     }
+    // Restore the foreign key the earlier rebuild dropped, so an activity-log
+    // row cannot outlive the booking it describes.
+    const balSql = (database.prepare('SELECT sql FROM sqlite_master WHERE type = ? AND name = ?')
+      .get('table', 'booking_activity_log') as { sql: string } | undefined)?.sql || '';
+    if (balSql && !/REFERENCES\s+reservations/i.test(balSql)) {
+      const cols = (database.prepare('PRAGMA table_info(booking_activity_log)').all() as any[]).map((c: any) => c.name);
+      database.exec('DELETE FROM booking_activity_log WHERE reservation_id IS NULL OR reservation_id NOT IN (SELECT id FROM reservations)');
+      database.exec('ALTER TABLE booking_activity_log RENAME TO booking_activity_log_orphan');
+      database.exec(`
+        CREATE TABLE booking_activity_log (
+          id TEXT PRIMARY KEY,
+          organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+          reservation_id TEXT NOT NULL REFERENCES reservations(id) ON DELETE CASCADE,
+          action TEXT NOT NULL,
+          details TEXT,
+          user_id TEXT,
+          user_name TEXT,
+          before_json TEXT,
+          after_json TEXT,
+          booking_label TEXT,
+          created_at TEXT DEFAULT (datetime('now'))
+        )
+      `);
+      const carried = cols.filter((c: string) => c !== 'organization_id');
+      database.exec(`INSERT INTO booking_activity_log (${carried.join(', ')}) SELECT ${carried.join(', ')} FROM booking_activity_log_orphan`);
+      database.exec('DROP TABLE booking_activity_log_orphan');
+      database.exec('CREATE INDEX IF NOT EXISTS idx_booking_activity_log_org ON booking_activity_log(organization_id)');
+      console.log('[DB] booking_activity_log: foreign key to reservations restored');
+    }
+
     if (!stranded) console.log('[DB] every table now reaches an organization');
   } catch (e: any) {
     console.error('[DB] organization_id backfill migration:', e.message);

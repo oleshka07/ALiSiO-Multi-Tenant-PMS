@@ -15,6 +15,7 @@ import {
 import { upsertReceivableForReservation } from '@/modules/finance/data/clearing-engine';
 import { notifyReservationCreated } from '@/modules/bookings/domain/reservation-tg-notify';
 import { findOrCreateGuest as findOrCreateGuestUnified } from '@guests';
+import { money } from '@core/money';
 
 // Public URL of the PMS (used to build guest page links sent to Hostex)
 const PMS_BASE_URL = appBaseUrl();
@@ -241,7 +242,7 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
   const totalEur = res.rates?.total_rate?.amount || 0;
   const commissionEur = res.rates?.total_commission?.amount || 0;
   const netEur = totalEur - commissionEur;
-  const totalCzk = Math.round(totalEur * result.eurCzkRate);
+  const totalCzk = money(totalEur * result.eurCzkRate);
 
   // Multi-room detection (Booking.com group bookings carry an _N- marker)
   const multiRoomMarker = detectMultiRoomMarker(res.stay_code);

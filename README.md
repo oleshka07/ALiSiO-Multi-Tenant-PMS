@@ -16,6 +16,7 @@
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | шари, модулі, модель тенантності, guard-и, поточний стан і план |
 | [docs/SECURITY-FINDINGS.md](docs/SECURITY-FINDINGS.md) | усі знайдені вразливості й помилки, з інструкцією як шукати те саме деінде |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | два середовища, спільний VPS, відкат |
+| [db/postgres/README.md](db/postgres/README.md) | цільова схема Postgres, типи даних, row-level security |
 | [product_capabilities_and_value.md](product_capabilities_and_value.md) | що продукт уміє з точки зору готелю |
 
 Порядок не випадковий: `AGENTS.md` перший, бо система мультитенантна і запит
@@ -43,6 +44,7 @@ node scripts/audit-tenant.mjs      # ізоляція: таблиці, запи�
 node scripts/audit-routes.mjs      # маршрути без визначення особи
 node scripts/audit.mjs             # мертвий UI та маршрути
 node scripts/check-isolation.mjs   # живий доказ ізоляції (потребує npm run dev)
+node scripts/pg-schema.mjs         # перегенерувати цільову схему Postgres
 ```
 
 `check-isolation.mjs` створює дві справжні організації, ходить API від імені

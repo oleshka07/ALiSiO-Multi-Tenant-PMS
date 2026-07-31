@@ -68,7 +68,12 @@ async function liveSchema() {
 const tables = new Map();
 const allText = (await liveSchema()) + [...src.values()].join('\n');
 
-for (const m of allText.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?([a-z_0-9]+)\s*\(/gi)) {
+// The name may be quoted: SQLite rewrites `CREATE TABLE x` as
+// `CREATE TABLE "x"` when a migration renames the table, and a pattern that
+// only accepts a bare identifier then falls through to the pre-migration
+// definition in db.ts — which is how booking_activity_log looked scoped
+// while the live table had lost its foreign key.
+for (const m of allText.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?["'`]?([a-z_0-9]+)["'`]?\s*\(/gi)) {
   const name = m[1];
   if (tables.has(name)) continue;
   let i = m.index + m[0].length;

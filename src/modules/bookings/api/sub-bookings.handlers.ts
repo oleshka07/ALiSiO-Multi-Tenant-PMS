@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
+import { money } from '@core/money';
 
 /**
  * GET /api/bookings/[id]/sub-bookings
@@ -138,7 +139,7 @@ export async function createSubBooking(request: NextRequest, { params }: { param
       for (let i = 0; i < lineItems.length; i++) {
         const item = lineItems[i];
         const itemId = `li_${Date.now()}_${i}`;
-        const itemTotal = item.total ?? (item.quantity || 1) * (item.unit_price || 0);
+        const itemTotal = money(item.total ?? (item.quantity || 1) * (item.unit_price || 0));
         insertItem.run(
           itemId, subId, item.description || '', item.quantity || 1,
           item.unit_price || 0, itemTotal, item.category || 'other', i
@@ -211,7 +212,7 @@ export async function updateSubBooking(request: NextRequest, { params }: { param
       for (let i = 0; i < body.lineItems.length; i++) {
         const item = body.lineItems[i];
         const itemId = `li_${Date.now()}_${i}`;
-        const itemTotal = item.total ?? (item.quantity || 1) * (item.unit_price || 0);
+        const itemTotal = money(item.total ?? (item.quantity || 1) * (item.unit_price || 0));
         insertItem.run(
           itemId, subId, item.description || '', item.quantity || 1,
           item.unit_price || 0, itemTotal, item.category || 'other', i

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { money } from '@core/money';
 import { sendTelegramMessage } from '@/lib/channels/telegram-bot'; // TODO: replace with eventBus
 
 const CORS_HEADERS = {
@@ -213,7 +214,7 @@ export async function bookWidgetService(request: NextRequest) {
         }
       }
 
-      let totalPrice = pricePerHour * hours;
+      let totalPrice = money(pricePerHour * hours);
 
       const existingTables = new Set(
         (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[])
@@ -354,7 +355,7 @@ export async function bookWidgetService(request: NextRequest) {
         if (!menuItem) continue;
 
         const qty = item.quantity || 1;
-        const itemTotal = menuItem.price * qty;
+        const itemTotal = money(menuItem.price * qty);
         totalPrice += itemTotal;
 
         if (reservationId) {

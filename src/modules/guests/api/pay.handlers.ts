@@ -4,6 +4,7 @@ import { appBaseUrl } from '@core/app-url';
 import * as actionsRepo from '../data/guest-actions.repo';
 import { createPaymentSession, resolveCredentialsForReservation } from '@payments';
 import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
+import { money } from '@core/money';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 interface CartItemInput {
@@ -57,7 +58,7 @@ async function handleSinglePay(
   }
 
   const effectiveQty = Math.max(quantity, dates.length);
-  const totalPrice = service.price * effectiveQty;
+  const totalPrice = money(service.price * effectiveQty);
   const serviceName = service.name_en || service.name;
   const guestName = `${reservation.first_name} ${reservation.last_name}`;
 
@@ -155,7 +156,7 @@ async function handleCartPay(token: string, items: CartItemInput[]): Promise<Nex
       const date = item.slotDate || item.serviceDates?.[0] || reservation.check_in;
       const brooms = Math.max(0, item.addonBrooms || 0);
       const broomPrice = brooms > 0 ? Math.max(0, item.addonBroomPrice || 0) : 0;
-      const lineTotal = svc.price * hours + brooms * broomPrice;
+      const lineTotal = money(svc.price * hours + brooms * broomPrice);
       resolvedItems.push({ kind: 'slot', svc, lineTotal, hours, startHour, date, brooms, broomPrice });
       continue;
     }

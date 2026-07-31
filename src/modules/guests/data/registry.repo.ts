@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getDb } from '@core/db';
+import { money } from '@core/money';
 
 /**
  * The guest registry (evidenční kniha): names, dates of birth, nationality,
@@ -240,7 +241,7 @@ export function calculateFees(organizationId: string, month: string, feePerNight
 
   db.transaction(() => {
     for (const row of rows) {
-      const fee = row.nights * feePerNight;
+      const fee = money(row.nights * feePerNight);
       update.run(fee, row.id);
       total += fee;
     }
