@@ -1,0 +1,113 @@
+{
+  "pages": [
+    {
+      "id": "home",
+      "file": "home",
+      "component": "SectionHome",
+      "route": "/"
+    },
+    {
+      "id": "product",
+      "file": "product",
+      "component": "SectionProduct",
+      "route": "/product"
+    },
+    {
+      "id": "agents",
+      "file": "agents",
+      "component": "SectionAgents",
+      "route": "/agents"
+    },
+    {
+      "id": "m-calendar",
+      "file": "module-calendar",
+      "component": "SectionModuleCalendar",
+      "route": "/modules/calendar"
+    },
+    {
+      "id": "m-channels",
+      "file": "module-channels",
+      "component": "SectionModuleChannels",
+      "route": "/modules/channels"
+    },
+    {
+      "id": "m-finance",
+      "file": "module-finance",
+      "component": "SectionModuleFinance",
+      "route": "/modules/finance"
+    },
+    {
+      "id": "m-guest",
+      "file": "module-guest-portal",
+      "component": "SectionModuleGuestPortal",
+      "route": "/modules/guest-portal"
+    },
+    {
+      "id": "m-crm",
+      "file": "module-crm",
+      "component": "SectionModuleCrm",
+      "route": "/modules/crm"
+    },
+    {
+      "id": "m-compliance",
+      "file": "module-compliance",
+      "component": "SectionModuleCompliance",
+      "route": "/modules/compliance"
+    },
+    {
+      "id": "m-ops",
+      "file": "module-housekeeping",
+      "component": "SectionModuleHousekeeping",
+      "route": "/modules/housekeeping"
+    },
+    {
+      "id": "solutions",
+      "file": "solutions",
+      "component": "SectionSolutions",
+      "route": "/solutions"
+    },
+    {
+      "id": "integrations",
+      "file": "integrations",
+      "component": "SectionIntegrations",
+      "route": "/integrations"
+    },
+    {
+      "id": "cases",
+      "file": "cases",
+      "component": "SectionCases",
+      "route": "/cases"
+    },
+    {
+      "id": "blog",
+      "file": "blog",
+      "component": "SectionBlog",
+      "route": "/blog"
+    },
+    {
+      "id": "post-goppar",
+      "file": "post-goppar-uplift",
+      "component": "SectionPostGopparUplift",
+      "route": "/blog/goppar-uplift"
+    },
+    {
+      "id": "post-autonomy",
+      "file": "post-autonomy-levels",
+      "component": "SectionPostAutonomyLevels",
+      "route": "/blog/autonomy-levels"
+    },
+    {
+      "id": "about",
+      "file": "about",
+      "component": "SectionAbout",
+      "route": "/about"
+    },
+    {
+      "id": "demo",
+      "file": "demo",
+      "component": "SectionDemo",
+      "route": "/demo"
+    }
+  ],
+  "hoverClasses": 11
+}

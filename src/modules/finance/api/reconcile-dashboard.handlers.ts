@@ -62,7 +62,7 @@ export async function getReconcileDashboard(_request: NextRequest): Promise<Next
             ? `Остання виписка ${daysSince} дн. тому (${lastAt.toISOString().substring(0, 10)})`
             : 'Виписку не завантажували жодного разу',
           action_label: 'Завантажити',
-          action_href: '/finance/clearing',
+          action_href: '/app/finance/clearing',
         });
       }
     }
@@ -80,7 +80,7 @@ export async function getReconcileDashboard(_request: NextRequest): Promise<Next
         title: `${pendingReceiptsRow.cnt} чек(ів) у пошті чекає привʼязки`,
         description: 'Перейди й привʼяжи кожен до операції — або auto-match підтвердь',
         action_label: 'Розібрати',
-        action_href: '/finance/receipts',
+        action_href: '/app/finance/receipts',
       });
     }
 
@@ -97,7 +97,7 @@ export async function getReconcileDashboard(_request: NextRequest): Promise<Next
         title: `${recurringSugRow.cnt} операц(ій) з recurring-suggestion`,
         description: 'Bank inbox знайшов схожість — підтверди прив\'язку до шаблону або відхили',
         action_label: 'Переглянути',
-        action_href: '/finance/operations',
+        action_href: '/app/finance/operations',
       });
     }
 
@@ -118,7 +118,7 @@ export async function getReconcileDashboard(_request: NextRequest): Promise<Next
         title: `${o.cnt} orphan receivable(s) у ${o.channel_source}`,
         description: 'Бронювання у виписці є, але в PMS немає (Hostex sync gap)',
         action_label: 'Дивитися',
-        action_href: `/finance/clearing?orphan=1`,
+        action_href: `/app/finance/clearing?orphan=1`,
       });
     }
 
@@ -139,7 +139,7 @@ export async function getReconcileDashboard(_request: NextRequest): Promise<Next
         title: `${s.cnt} payout(s) у ${s.currency} >7 днів без зарахування`,
         description: `Очікується ${s.total.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} ${s.currency} — перевір банк`,
         action_label: 'Дивитися',
-        action_href: '/finance/clearing?status=in_statement',
+        action_href: '/app/finance/clearing?status=in_statement',
       });
     }
 
@@ -161,7 +161,7 @@ export async function getReconcileDashboard(_request: NextRequest): Promise<Next
         title: `${largeNoReceiptRow.cnt} витрат(и) ≥${LARGE_EXPENSE_NO_RECEIPT_THRESHOLD} CZK без чеку (90д)`,
         description: 'Прикріпи фактуру / чек, або підтвердь що документ не потрібен',
         action_label: 'Знайти',
-        action_href: '/finance/operations',
+        action_href: '/app/finance/operations',
       });
     }
 
@@ -181,7 +181,7 @@ export async function getReconcileDashboard(_request: NextRequest): Promise<Next
         title: `${ie.kind === 'bank' ? 'Банк-приймач' : 'Receipt inbox'} «${ie.name}» — помилка`,
         description: String(ie.last_error).slice(0, 120),
         action_label: 'Перевірити',
-        action_href: '/finance/settings',
+        action_href: '/app/finance/settings',
       });
     }
 

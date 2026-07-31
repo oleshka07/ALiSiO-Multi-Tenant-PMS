@@ -1,20 +1,21 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 test.describe('ALiSiO Multi-Tenant PMS - E2E Core Flows', () => {
-  test('Landing Page & Property Management Dashboard loads correctly', async ({ page }) => {
+  // '/' is the public marketing site now, not the dashboard — the operator
+  // app lives under /app and starts at /app/login. Page-level coverage of the
+  // site lives in marketing-site.spec.ts.
+  test('Landing page loads the public site', async ({ page }) => {
     await page.goto('/');
-
-    // Check header title
-    await expect(page.locator('h1')).toContainText('ALiSiO Multi-Tenant PMS');
-
-    // Check key status badge
-    await expect(page.getByText('Active Tenant')).toBeVisible();
+    await expect(page.locator('h1')).toContainText('See what your property lost');
+    await expect(page.locator('[data-nav]')).toBeVisible();
   });
 
   test('Booking creation simulation flow', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/app/bookings');
 
-    // Verify booking section exists
+    // Without a session the gate sends us to the login page.
+    await expect(page).toHaveURL(/\/app\/login/);
+
     const bookingButton = page.getByRole('button', { name: /створити бронювання|new booking/i });
     if (await bookingButton.isVisible()) {
       await bookingButton.click();

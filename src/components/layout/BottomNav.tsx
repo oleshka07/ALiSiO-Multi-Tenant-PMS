@@ -15,10 +15,10 @@ interface BottomNavProps {
 }
 
 const tabs = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Календар', href: '/calendar', icon: CalendarDays },
-  { label: 'Бронювання', href: '/bookings', icon: BookOpen },
-  { label: 'Гості', href: '/guests', icon: Users },
+  { label: 'Dashboard', href: '/app/dashboard', icon: LayoutDashboard },
+  { label: 'Календар', href: '/app/calendar', icon: CalendarDays },
+  { label: 'Бронювання', href: '/app/bookings', icon: BookOpen },
+  { label: 'Гості', href: '/app/guests', icon: Users },
 ];
 
 export default function BottomNav({ onMoreClick }: BottomNavProps) {

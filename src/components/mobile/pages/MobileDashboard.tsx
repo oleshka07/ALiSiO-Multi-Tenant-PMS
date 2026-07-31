@@ -39,17 +39,17 @@ const CLEAN_COLORS: Record<string, { label: string; color: string }> = {
 };
 
 const QUICK_ACTIONS = [
-  { label: 'Бронювання',  href: '/bookings',       icon: BookOpen,     color: '#3b82f6' },
-  { label: 'Денна зміна', href: '/calendar?view=shift', icon: RefreshCw, color: '#3b82f6' },
-  { label: 'Календар',    href: '/calendar',        icon: CalendarDays, color: '#14b8a6' },
-  { label: 'Гості',       href: '/guests',          icon: Users,        color: '#8b5cf6' },
-  { label: 'Журнал',      href: '/finance/operations',     icon: List,         color: '#22c55e' },
-  { label: 'Фінанси',     href: '/finance',         icon: Wallet,       color: '#f59e0b' },
-  { label: 'Витрати',     href: '/finance/expenses',icon: BarChart3,    color: '#ef4444' },
-  { label: 'Ціни',        href: '/pricing',         icon: DollarSign,   color: '#06b6d4' },
-  { label: 'Inbox',       href: '/crm/inbox',       icon: MessageSquare,color: '#ec4899' },
-  { label: 'Звіти',       href: '/reports',         icon: TrendingUp,   color: '#a855f7' },
-  { label: 'Налаштув.',   href: '/settings',        icon: Settings,     color: '#6b7280' },
+  { label: 'Бронювання',  href: '/app/bookings',       icon: BookOpen,     color: '#3b82f6' },
+  { label: 'Денна зміна', href: '/app/calendar?view=shift', icon: RefreshCw, color: '#3b82f6' },
+  { label: 'Календар',    href: '/app/calendar',        icon: CalendarDays, color: '#14b8a6' },
+  { label: 'Гості',       href: '/app/guests',          icon: Users,        color: '#8b5cf6' },
+  { label: 'Журнал',      href: '/app/finance/operations',     icon: List,         color: '#22c55e' },
+  { label: 'Фінанси',     href: '/app/finance',         icon: Wallet,       color: '#f59e0b' },
+  { label: 'Витрати',     href: '/app/finance/expenses',icon: BarChart3,    color: '#ef4444' },
+  { label: 'Ціни',        href: '/app/pricing',         icon: DollarSign,   color: '#06b6d4' },
+  { label: 'Inbox',       href: '/app/crm/inbox',       icon: MessageSquare,color: '#ec4899' },
+  { label: 'Звіти',       href: '/app/reports',         icon: TrendingUp,   color: '#a855f7' },
+  { label: 'Налаштув.',   href: '/app/settings',        icon: Settings,     color: '#6b7280' },
 ];
 
 type Tab = 'today' | 'tomorrow' | 'arrivals' | 'departures';
@@ -115,7 +115,7 @@ export default function MobileDashboard() {
 
       {/* Operational Shift Banner */}
       <Link
-        href="/calendar?view=shift"
+        href="/app/calendar?view=shift"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -168,10 +168,10 @@ export default function MobileDashboard() {
       {(tab === 'today' || tab === 'tomorrow') && (
         <div className="m-kpi-grid" style={{ marginBottom: 14 }}>
           {[
-            { value: data.arrivalsToday,   label: 'Заїздів',  icon: ArrowDownRight, color: '#34d399', bg: 'rgba(52,211,153,0.15)', href: '/calendar?view=shift' },
-            { value: data.departuresToday, label: 'Виїздів',  icon: ArrowUpRight,   color: '#60a5fa', bg: 'rgba(96,165,250,0.15)', href: '/calendar?view=shift'  },
-            { value: data.freeUnits,       label: 'Вільних',  icon: BedDouble,      color: '#a78bfa', bg: 'rgba(167,139,250,0.15)', href: '/bookings' },
-            { value: `${data.occupancyRate}%`, label: 'Зайн.', icon: Home,          color: '#fbbf24', bg: 'rgba(251,191,36,0.15)', href: '/calendar'  },
+            { value: data.arrivalsToday,   label: 'Заїздів',  icon: ArrowDownRight, color: '#34d399', bg: 'rgba(52,211,153,0.15)', href: '/app/calendar?view=shift' },
+            { value: data.departuresToday, label: 'Виїздів',  icon: ArrowUpRight,   color: '#60a5fa', bg: 'rgba(96,165,250,0.15)', href: '/app/calendar?view=shift'  },
+            { value: data.freeUnits,       label: 'Вільних',  icon: BedDouble,      color: '#a78bfa', bg: 'rgba(167,139,250,0.15)', href: '/app/bookings' },
+            { value: `${data.occupancyRate}%`, label: 'Зайн.', icon: Home,          color: '#fbbf24', bg: 'rgba(251,191,36,0.15)', href: '/app/calendar'  },
           ].map((kpi, i) => {
             const Icon = kpi.icon;
             return (

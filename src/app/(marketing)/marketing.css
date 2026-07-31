@@ -1,0 +1,150 @@
+/* ============================================================
+   Alisio PMS — public marketing site
+   Scoped to .dcx-root so none of it reaches the dashboard, which
+   has its own design system in globals.css.
+   ============================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap");
+@import "./_design/hover.css";
+
+/* The dashboard paints the body from its own tokens; the landing needs its
+   own canvas, including the area revealed by overscroll. */
+body:has(.dcx-root) {
+  background: #08090b;
+}
+
+.dcx-root {
+  --acc: #3ddcc0;
+  background: #08090b;
+  color: #eceae5;
+  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: normal;
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.dcx-root a {
+  color: var(--acc, #3ddcc0);
+  text-decoration: none;
+}
+.dcx-root a:hover {
+  color: #9bf0df;
+}
+
+.dcx-root h1,
+.dcx-root h2,
+.dcx-root h3,
+.dcx-root h4,
+.dcx-root p,
+.dcx-root figure {
+  margin: 0;
+}
+.dcx-root ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dcx-root ::selection {
+  background: #3ddcc0;
+  color: #08090b;
+}
+
+/* Fixed aura behind everything — the design's two radial gradients. */
+.dcx-aura {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(1100px 620px at 78% -8%, rgba(61, 220, 192, 0.14), transparent 60%),
+    radial-gradient(900px 520px at 8% 12%, rgba(96, 120, 255, 0.1), transparent 62%);
+}
+
+/* ─── Autonomy dial ─────────────────────────────────────────── */
+.dcx-root input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+.dcx-root input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 99px;
+  background: linear-gradient(
+    90deg,
+    var(--acc, #3ddcc0) var(--fill, 60%),
+    rgba(255, 255, 255, 0.14) var(--fill, 60%)
+  );
+}
+.dcx-root input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  margin-top: -9px;
+  border-radius: 50%;
+  background: #f6f4f0;
+  border: 4px solid var(--acc, #3ddcc0);
+  cursor: grab;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+}
+.dcx-root input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 99px;
+  background: linear-gradient(
+    90deg,
+    var(--acc, #3ddcc0) var(--fill, 60%),
+    rgba(255, 255, 255, 0.14) var(--fill, 60%)
+  );
+}
+.dcx-root input[type="range"]::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #f6f4f0;
+  border: 4px solid var(--acc, #3ddcc0);
+  cursor: grab;
+}
+
+/* ─── Animations ────────────────────────────────────────────── */
+@keyframes dcx-lgIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scaleY(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes marq {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Reveal animations start at opacity 0 and are switched on by the runtime.
+   With scripting off the observer never fires, so the whole page would be
+   blank — the layout ships a <noscript> override for that case. */
+
+@media (prefers-reduced-motion: reduce) {
+  .dcx-root [data-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .dcx-root [data-marquee] {
+    animation: none !important;
+  }
+}

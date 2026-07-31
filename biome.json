@@ -17,6 +17,7 @@
   },
   "formatter": {
     "enabled": true,
+    "ignore": ["src/app/(marketing)/_design/**"],
     "formatWithErrors": false,
     "indentStyle": "space",
     "indentWidth": 2,

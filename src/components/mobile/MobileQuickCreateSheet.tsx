@@ -26,7 +26,7 @@ export default function MobileQuickCreateSheet({ open, onClose }: MobileQuickCre
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 16px' }}>
           <Link
-            href="/bookings?new=1"
+            href="/app/bookings?new=1"
             onClick={onClose}
             style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, background: 'var(--bg-card)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
           >
@@ -40,7 +40,7 @@ export default function MobileQuickCreateSheet({ open, onClose }: MobileQuickCre
           </Link>
 
           <Link
-            href="/guests?new=1"
+            href="/app/guests?new=1"
             onClick={onClose}
             style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, background: 'var(--bg-card)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
           >
@@ -54,7 +54,7 @@ export default function MobileQuickCreateSheet({ open, onClose }: MobileQuickCre
           </Link>
 
           <Link
-            href="/finance/operations?new=1"
+            href="/app/finance/operations?new=1"
             onClick={onClose}
             style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, background: 'var(--bg-card)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
           >
