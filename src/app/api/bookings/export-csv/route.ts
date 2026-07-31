@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { withPermission, type Actor } from '@core/auth/session';
 import ExcelJS from 'exceljs';
 
 /**
@@ -10,7 +11,7 @@ import ExcelJS from 'exceljs';
  * Filters by check-in OR check-out overlap with the range.
  * Excludes cancelled, no_show, child sub-bookings.
  */
-export async function GET(request: NextRequest) {
+export const GET = withPermission('view_reports', async (request: NextRequest, _ctx, actor) => {
   try {
     const db = getDb();
     const { searchParams } = new URL(request.url);
@@ -249,4 +250,4 @@ export async function GET(request: NextRequest) {
     console.error('[export-csv] Error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
-}
+})

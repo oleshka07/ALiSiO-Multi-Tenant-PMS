@@ -1,2 +1,3 @@
 import { getReport } from '@reports';
-export const GET = getReport;
+import { withPermission } from '@core/auth/session';
+export const GET = withPermission('view_reports', getReport);

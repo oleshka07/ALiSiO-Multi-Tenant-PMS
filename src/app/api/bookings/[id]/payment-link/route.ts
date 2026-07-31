@@ -1,2 +1,5 @@
 import { createReservationPaymentLink } from '@payments';
-export const POST = createReservationPaymentLink;
+import { withPermission } from '@core/auth/session';
+
+// Creates a payment link for a reservation named in the URL.
+export const POST = withPermission('manage_payments', createReservationPaymentLink);

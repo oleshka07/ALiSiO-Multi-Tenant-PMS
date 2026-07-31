@@ -3,14 +3,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { sendWhatsAppTemplate } from '@/lib/channels/whatsapp';
 import crypto from 'crypto';
+import { withPermission, notFound, type Actor } from '@core/auth/session';
 
 /**
  * POST /api/crm/whatsapp-template
  * Send a pre-approved WhatsApp template to a lead.
  *
  * Body: { leadId, conversationId, templateName, languageCode, parameters?: string[] }
+ *
+ * Sends a message to a person on the hotel's WhatsApp number and bill. The
+ * lead id came from the request and was never checked, so any logged-in user
+ * of any hotel could message another hotel's leads.
  */
-export async function POST(request: NextRequest) {
+export const POST = withPermission('manage_crm', async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const body = await request.json();
     const { leadId, conversationId, templateName, languageCode, parameters } = body;
@@ -22,10 +27,9 @@ export async function POST(request: NextRequest) {
     const db = getDb();
 
     // Get lead's WhatsApp number
-    const lead = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(leadId) as any;
-    if (!lead) {
-      return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
-    }
+    const lead = db.prepare('SELECT * FROM crm_leads WHERE id = ? AND organization_id = ?')
+      .get(leadId, actor.organizationId) as any;
+    if (!lead) return notFound();
 
     const phone = lead.whatsapp || lead.phone;
     if (!phone) {
@@ -112,4 +116,4 @@ export async function POST(request: NextRequest) {
     console.error('[WhatsApp Template API]', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+})

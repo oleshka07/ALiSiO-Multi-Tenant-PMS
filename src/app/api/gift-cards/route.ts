@@ -1,9 +1,21 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { withPermission, type Actor } from '@core/auth/session';
+import { requirePropertyId } from '@core/auth/tenant-context';
 import { buildGiftCode, getGiftCardTemplate, calcExpiresAt, GIFT_CARD_TEMPLATES } from '@/lib/gift-card-builder';
 
+/**
+ * Gift cards / vouchers.
+ *
+ * These routes never established who was calling: any logged-in user of any
+ * hotel could list every hotel's vouchers with their buyer names and emails,
+ * and mint new ones against any property_id they cared to send. The list
+ * started from `WHERE 1=1`, and the auto-expire sweep updated every hotel's
+ * rows at once.
+ */
+
 // GET /api/gift-cards — список ваучерів
-export async function GET(req: Request) {
+export const GET = withPermission('manage_bookings', async (req: Request, _ctx, actor: Actor) => {
   try {
     const db = getDb();
     const url = new URL(req.url);
@@ -17,9 +29,9 @@ export async function GET(req: Request) {
              r.check_in, r.check_out, r.unit_id
       FROM gift_cards v
       LEFT JOIN reservations r ON v.reservation_id = r.id
-      WHERE 1=1
+      WHERE v.organization_id = ?
     `;
-    const params: (string | number)[] = [];
+    const params: (string | number)[] = [actor.organizationId];
 
     if (propertyId) {
       sql += ' AND v.property_id = ?';
@@ -45,21 +57,22 @@ export async function GET(req: Request) {
     // Auto-expire: оновити статус прострочених ваучерів
     db.prepare(`
       UPDATE gift_cards SET status = 'expired', updated_at = datetime('now')
-      WHERE status IN ('active', 'paid')
+      WHERE organization_id = ?
+        AND status IN ('active', 'paid')
         AND expires_at IS NOT NULL
         AND expires_at < date('now')
-    `).run();
+    `).run(actor.organizationId);
 
     return NextResponse.json({ gift_cards: giftCards, templates: GIFT_CARD_TEMPLATES });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('GET /api/gift-cards error:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch gift cards' }, { status: 500 });
   }
-}
+});
 
 // POST /api/gift-cards — створити ваучер
-export async function POST(req: Request) {
+export const POST = withPermission('manage_bookings', async (req: Request, _ctx, actor: Actor) => {
   try {
     const db = getDb();
     const body = await req.json();
@@ -86,13 +99,23 @@ export async function POST(req: Request) {
 
     // Resolve site_id to property_id if property_id is not directly provided
     if (!property_id && site_id) {
-      const site = db.prepare('SELECT property_id FROM booking_sites WHERE id = ?').get(site_id) as { property_id: string } | undefined;
+      const site = db.prepare(`
+        SELECT s.property_id FROM booking_sites s
+        JOIN properties p ON p.id = s.property_id
+        WHERE s.id = ? AND p.organization_id = ?
+      `).get(site_id, actor.organizationId) as { property_id: string } | undefined;
       if (site) property_id = site.property_id;
     }
 
-    // Валідація
-    if (!property_id) {
-      return NextResponse.json({ error: 'property_id or valid site_id is required' }, { status: 400 });
+    // The property_id arrives in the request body, so it is verified against
+    // the session's organization rather than trusted.
+    try {
+      property_id = requirePropertyId(db, property_id);
+    } catch (e: unknown) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : 'property_id or valid site_id is required' },
+        { status: 400 },
+      );
     }
 
     // Визначаємо параметри з шаблону або з тіла запиту
@@ -106,11 +129,14 @@ export async function POST(req: Request) {
     const resolvedExpires = expires_at
       || (tpl ? calcExpiresAt(tpl.validityMonths) : calcExpiresAt(12));
 
-    // Генерація унікального коду (retry до 5 спроб)
+    // Генерація коду. It only has to be unique inside this organization —
+    // a code is redeemed on one hotel's site, and two hotels may both issue
+    // the same string.
     let code = '';
     for (let attempt = 0; attempt < 5; attempt++) {
       const candidate = buildGiftCode();
-      const existing = db.prepare('SELECT id FROM gift_cards WHERE code = ?').get(candidate);
+      const existing = db.prepare('SELECT id FROM gift_cards WHERE code = ? AND organization_id = ?')
+        .get(candidate, actor.organizationId);
       if (!existing) { code = candidate; break; }
     }
     if (!code) {
@@ -119,15 +145,15 @@ export async function POST(req: Request) {
 
     const id = db.prepare(`
       INSERT INTO gift_cards (
-        property_id, code, template_id, name, type, value_type,
+        organization_id, property_id, code, template_id, name, type, value_type,
         face_value, currency, status,
         recipient_name, recipient_email,
         buyer_name, buyer_email, buyer_phone,
         message, expires_at, config_json, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id
     `).get(
-      property_id, code, template_id || 'custom', resolvedName,
+      actor.organizationId, property_id, code, template_id || 'custom', resolvedName,
       resolvedType, resolvedValueType, resolvedFaceValue, resolvedCurrency,
       status, recipient_name || null, recipient_email || null,
       buyer_name || null, buyer_email || null, buyer_phone || null,
@@ -139,6 +165,6 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('POST /api/gift-cards error:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to create gift card' }, { status: 500 });
   }
-}
+});

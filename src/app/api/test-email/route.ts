@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendEmail } from '@/lib/email';
+import { withOwner } from '@core/auth/session';
 
-export async function GET(request: NextRequest) {
+// Sends mail to any address given in the query string, on the hotel's SMTP
+// credentials. Owner-only: unguarded it was an open relay for anyone with a
+// login on any tenant.
+export const GET = withOwner(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const to = searchParams.get('to');
 
@@ -47,4 +51,4 @@ export async function GET(request: NextRequest) {
       }
     }, { status: 500 });
   }
-}
+})

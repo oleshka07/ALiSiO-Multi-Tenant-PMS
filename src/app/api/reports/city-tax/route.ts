@@ -1,2 +1,3 @@
 import { getCityTaxReport } from '@reports';
-export const GET = getCityTaxReport;
+import { withPermission } from '@core/auth/session';
+export const GET = withPermission('view_reports', getCityTaxReport);

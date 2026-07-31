@@ -1,9 +1,19 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { withActor } from '@core/auth/session';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export async function GET() {
+/**
+ * Shift checklists for the mobile app.
+ *
+ * Guarded here, but the body below is broken independently of that: it reads a
+ * `bookings` table that does not exist in this schema (reservations does), and
+ * its first rule matches units and notes containing "сауна" — the original
+ * hotel's own facility. Every call throws, so MobileShiftChecklists shows
+ * nothing. Rewriting it into configurable rules is its own change.
+ */
+export const GET = withActor(async () => {
   try {
     const db = getDb();
     const todayISO = new Date().toISOString().split('T')[0];
@@ -69,4 +79,4 @@ export async function GET() {
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+})

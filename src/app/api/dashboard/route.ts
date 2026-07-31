@@ -1,2 +1,3 @@
 import { getDashboard } from '@dashboard';
-export const GET = getDashboard;
+import { withActor } from '@core/auth/session';
+export const GET = withActor(getDashboard);

@@ -5,8 +5,9 @@ import { getDb } from '@core/db';
 import { parseKbPdf } from '@/modules/finance/data/kb-pdf-parser';
 import { importStatement } from '@/modules/finance/data/bank-inbox-engine';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { withOwner } from '@core/auth/session';
 
-export async function GET() {
+export const GET = withOwner(async () => {
   try {
     const db = getDb();
     const dir = path.join(process.cwd(), 'temporary', 'bank Rest');
@@ -54,4 +55,4 @@ export async function GET() {
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+})

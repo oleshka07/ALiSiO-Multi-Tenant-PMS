@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { withOwner } from '@core/auth/session';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export const GET = withOwner(async () => {
   try {
     const db = getDb();
     
@@ -22,4 +23,4 @@ export async function GET() {
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+})

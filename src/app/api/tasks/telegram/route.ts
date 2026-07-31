@@ -3,8 +3,21 @@ import { formatUserTasksForTelegram } from '@/modules/tasks/data/task-notificati
 import { getDb } from '@core/db';
 
 // GET /api/tasks/telegram?chat_id=123 — returns task list for Telegram user
+//
+// The bot is the caller, so it authenticates with the same shared secret as
+// the other bridge endpoints. A chat_id alone is not a credential: with only
+// the middleware's cookie-presence check, any logged-in user could read any
+// other user's task list by naming their chat id.
 export async function GET(request: NextRequest) {
   try {
+    const expected = process.env.TELEGRAM_BRIDGE_TOKEN;
+    if (!expected) {
+      return NextResponse.json({ error: 'Bridge not configured: TELEGRAM_BRIDGE_TOKEN missing on server' }, { status: 503 });
+    }
+    if (request.headers.get('authorization') !== `Bearer ${expected}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const chatId = request.nextUrl.searchParams.get('chat_id');
     if (!chatId) {
       return NextResponse.json({ error: 'chat_id required' }, { status: 400 });

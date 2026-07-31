@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { withPermission, notFound, type Actor } from '@core/auth/session';
+
+/** Every lookup is constrained by the organization; a stranger's id is a 404. */
+type IdParams = { params: Promise<{ id: string }> };
 
 // GET /api/gift-cards/[id]
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export const GET = withPermission('manage_bookings', async (_req, { params }: IdParams, actor: Actor) => {
   try {
     const db = getDb();
     const { id } = await params;
@@ -13,25 +17,26 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       FROM gift_cards v
       LEFT JOIN reservations r ON v.reservation_id = r.id
       LEFT JOIN units u ON r.unit_id = u.id
-      WHERE v.id = ?
-    `).get(id);
-    if (!gift_card) return NextResponse.json({ error: 'GiftCard not found' }, { status: 404 });
+      WHERE v.id = ? AND v.organization_id = ?
+    `).get(id, actor.organizationId);
+    if (!gift_card) return notFound();
     return NextResponse.json({ giftCard: gift_card });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error('GET /api/gift-cards/[id] error:', err instanceof Error ? err.message : err);
+    return NextResponse.json({ error: 'Failed to fetch gift card' }, { status: 500 });
   }
-}
+});
 
 // PATCH /api/gift-cards/[id] — оновити поля ваучера
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export const PATCH = withPermission('manage_bookings', async (req, { params }: IdParams, actor: Actor) => {
   try {
     const db = getDb();
     const { id } = await params;
     const body = await req.json();
 
-    const existing = db.prepare('SELECT id, status FROM gift_cards WHERE id = ?').get(id) as { id: string; status: string } | undefined;
-    if (!existing) return NextResponse.json({ error: 'GiftCard not found' }, { status: 404 });
+    const existing = db.prepare('SELECT id, status FROM gift_cards WHERE id = ? AND organization_id = ?')
+      .get(id, actor.organizationId) as { id: string; status: string } | undefined;
+    if (!existing) return notFound();
 
     // Дозволені поля для оновлення
     const allowed = [
@@ -55,37 +60,39 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     sets.push("updated_at = datetime('now')");
-    vals.push(id);
+    vals.push(id, actor.organizationId);
 
-    db.prepare(`UPDATE gift_cards SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    db.prepare(`UPDATE gift_cards SET ${sets.join(', ')} WHERE id = ? AND organization_id = ?`).run(...vals);
 
     const updated = db.prepare('SELECT * FROM gift_cards WHERE id = ?').get(id);
     return NextResponse.json({ giftCard: updated });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error('PATCH /api/gift-cards/[id] error:', err instanceof Error ? err.message : err);
+    return NextResponse.json({ error: 'Failed to update gift card' }, { status: 500 });
   }
-}
+});
 
 // DELETE /api/gift-cards/[id] — м'яке видалення (→ cancelled)
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = withPermission('manage_bookings', async (_req, { params }: IdParams, actor: Actor) => {
   try {
     const db = getDb();
     const { id } = await params;
-    const existing = db.prepare('SELECT id, status FROM gift_cards WHERE id = ?').get(id) as { id: string; status: string } | undefined;
-    if (!existing) return NextResponse.json({ error: 'GiftCard not found' }, { status: 404 });
+    const existing = db.prepare('SELECT id, status FROM gift_cards WHERE id = ? AND organization_id = ?')
+      .get(id, actor.organizationId) as { id: string; status: string } | undefined;
+    if (!existing) return notFound();
 
     if (existing.status === 'activated') {
       return NextResponse.json({ error: 'Cannot cancel a activated giftCard' }, { status: 409 });
     }
 
     db.prepare(`
-      UPDATE gift_cards SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?
-    `).run(id);
+      UPDATE gift_cards SET status = 'cancelled', updated_at = datetime('now')
+      WHERE id = ? AND organization_id = ?
+    `).run(id, actor.organizationId);
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error('DELETE /api/gift-cards/[id] error:', err instanceof Error ? err.message : err);
+    return NextResponse.json({ error: 'Failed to cancel gift card' }, { status: 500 });
   }
-}
+});

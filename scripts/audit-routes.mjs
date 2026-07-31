@@ -110,9 +110,11 @@ for (const f of routes) {
     continue;
   }
 
-  if (!hasSession) {
+  if (!hasSession && !hasToken) {
     // Behind the middleware, so a cookie must exist — but the cookie is never
-    // validated there and no organization is derived from it.
+    // validated there and no organization is derived from it. A shared secret
+    // counts as identity here: a cron job and a bot have no session to
+    // present, and a Bearer token is how they identify themselves.
     report.unauthenticated.push({ url, methods: methods.join(','), writes, file: rel(f) });
   } else {
     report.ok.push(url);

@@ -2,11 +2,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
+import { withActor } from '@core/auth/session';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'data', 'uploads');
 
 // GET /api/uploads/[...path] — serve uploaded files
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
+//
+// These are guest documents, bank statements and registration scans. Served
+// without a session, a guessed or leaked filename was enough to read any
+// hotel's file, and the response asked browsers and proxies to cache it
+// publicly for a year.
+export const GET = withActor(async (_request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) => {
   try {
     const { path: segments } = await params;
     const filePath = path.join(UPLOAD_DIR, ...segments);
@@ -34,11 +40,11 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     return new NextResponse(buffer, {
       headers: {
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=31536000, immutable',
+        'Cache-Control': 'private, max-age=31536000, immutable',
       },
     });
   } catch (error: any) {
     console.error('GET /api/uploads error:', error?.message);
     return NextResponse.json({ error: 'Failed to serve file' }, { status: 500 });
   }
-}
+})

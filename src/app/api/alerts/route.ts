@@ -1,2 +1,3 @@
 import { getAlerts } from '@dashboard';
-export const GET = getAlerts;
+import { withActor } from '@core/auth/session';
+export const GET = withActor(getAlerts);

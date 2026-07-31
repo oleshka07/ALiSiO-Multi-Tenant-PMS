@@ -1,2 +1,3 @@
 import { getGlampingReport } from '@reports';
-export const GET = getGlampingReport;
+import { withPermission } from '@core/auth/session';
+export const GET = withPermission('view_reports', getGlampingReport);

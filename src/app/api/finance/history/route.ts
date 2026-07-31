@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { withFinanceRead } from '@finance/_guard';
 
 /**
  * GET /api/finance/history
@@ -19,7 +20,7 @@ import { getDb } from '@core/db';
  *   user   – partial match on user_name
  *   search – searches in before_json, after_json, user_name
  */
-export async function GET(request: NextRequest) {
+export const GET = withFinanceRead(async (request: NextRequest, _ctx, actor) => {
   try {
     const db = getDb();
     const sp = request.nextUrl.searchParams;
@@ -146,9 +147,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ items, total: totalRow.n, page, limit });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('GET /api/finance/history error:', error?.message || error);
+    return NextResponse.json({ error: 'Failed to fetch history' }, { status: 500 });
   }
-}
+});
 
 function tryParseJson(str: string | null): any | null {
   if (!str) return null;

@@ -2,13 +2,19 @@
 import { NextResponse } from 'next/server';
 import { cloudOcrAllowed } from '@core/privacy/ocr-consent';
 import { ocrDocument } from '@/lib/ai/ocr-document';
+import { withPermission } from '@core/auth/session';
 
 /**
  * POST /api/bookings/ocr
  * Body: { image: "data:image/...;base64,..." }
  * Runs GPT-4o vision OCR on the document image and returns extracted fields.
+ *
+ * It reads a guest's identity document, so it needs a session: unguarded, it
+ * was an OCR service anyone with a login could point at any image, on the
+ * hotel's OpenAI bill, and the cloud-consent flag it honours belongs to an
+ * organization it had no way to identify.
  */
-export async function POST(req: Request) {
+export const POST = withPermission('manage_guests', async (req: Request) => {
   try {
     const { image } = await req.json();
     if (!image) {
@@ -26,4 +32,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-}
+})

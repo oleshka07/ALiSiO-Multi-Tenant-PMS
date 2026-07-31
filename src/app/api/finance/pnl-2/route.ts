@@ -1,2 +1,3 @@
 import { getPnl2 } from '@finance/reports.pnl2';
-export const GET = getPnl2;
+import { withFinanceRead } from '@finance/_guard';
+export const GET = withFinanceRead(getPnl2);

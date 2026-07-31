@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { withOwner } from '@core/auth/session';
 
 const orgId = requireOrganizationId;
 
@@ -45,7 +46,7 @@ function mapExpense(cnameLower: string, commentLower: string, classifier: string
     return { rowId: 'fixed', childName: 'Прочие' };
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withOwner(async (request: NextRequest) => {
   try {
     const db = await getDb();
     const org = orgId(db);
@@ -175,4 +176,4 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+})

@@ -2,9 +2,14 @@ import { NextResponse } from 'next/server';
 import { anonymizeOldRegistrations } from '@/modules/guests/data/registration.repo';
 
 export async function GET(request: Request) {
-  // Allow invoking locally or via cron, ideally guarded by a secret header in production
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Fails closed. This used to run unauthenticated whenever CRON_SECRET was
+  // unset, and it permanently anonymises guest records — the one operation in
+  // the system that cannot be undone.
+  const secret = process.env.CRON_SECRET;
+  if (!secret) {
+    return NextResponse.json({ error: 'CRON_SECRET is not configured' }, { status: 503 });
+  }
+  if (request.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

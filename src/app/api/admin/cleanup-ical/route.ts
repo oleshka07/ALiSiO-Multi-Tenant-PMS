@@ -1,3 +1,6 @@
 import { previewIcalCleanup, deleteIcalCleanup } from '@admin';
-export const GET = previewIcalCleanup;
-export const DELETE = deleteIcalCleanup;
+import { withOwner } from '@core/auth/session';
+
+// Bulk-deletes iCal-imported reservations. Owner-only.
+export const GET = withOwner(previewIcalCleanup);
+export const DELETE = withOwner(deleteIcalCleanup);

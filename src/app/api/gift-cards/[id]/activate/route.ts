@@ -1,8 +1,16 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { withPermission, notFound, type Actor } from '@core/auth/session';
 
 // POST /api/gift-cards/[id]/activate — погасити ваучер (прив'язати до бронювання)
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+// Both the voucher and the reservation come from the request, so both are
+// checked against the caller's organization: unqualified, one hotel's voucher
+// could be redeemed against another hotel's booking.
+export const POST = withPermission('manage_bookings', async (
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+  actor: Actor,
+) => {
   try {
     const db = getDb();
     const { id } = await params;
@@ -13,8 +21,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: 'reservation_id is required' }, { status: 400 });
     }
 
-    const gift_card = db.prepare('SELECT * FROM gift_cards WHERE id = ?').get(id) as Record<string, unknown> | undefined;
-    if (!gift_card) return NextResponse.json({ error: 'GiftCard not found' }, { status: 404 });
+    const gift_card = db.prepare('SELECT * FROM gift_cards WHERE id = ? AND organization_id = ?')
+      .get(id, actor.organizationId) as Record<string, unknown> | undefined;
+    if (!gift_card) return notFound();
 
     // Перевірки
     if (gift_card.status === 'activated') {
@@ -31,10 +40,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     // Перевірка що бронювання існує
-    const reservation = db.prepare('SELECT id, unit_id, check_in FROM reservations WHERE id = ?').get(reservation_id);
-    if (!reservation) {
-      return NextResponse.json({ error: 'Reservation not found' }, { status: 404 });
-    }
+    const reservation = db.prepare(`
+      SELECT r.id, r.unit_id, r.check_in
+      FROM reservations r JOIN properties p ON p.id = r.property_id
+      WHERE r.id = ? AND p.organization_id = ?
+    `).get(reservation_id, actor.organizationId);
+    if (!reservation) return notFound();
 
     db.prepare(`
       UPDATE gift_cards
@@ -57,6 +68,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('POST /api/gift-cards/[id]/activate error:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to activate gift card' }, { status: 500 });
   }
-}
+})

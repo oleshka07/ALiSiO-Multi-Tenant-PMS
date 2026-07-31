@@ -1,13 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { withFinanceRead } from '@finance/_guard';
 
 /**
  * GET /api/finance/audit-cash-routing
  * Returns all cash/manual operations from the last N days with audit info,
  * highlighting misrouted ones.
  */
-export async function GET(request: Request): Promise<NextResponse> {
+export const GET = withFinanceRead(async (request: any) => {
   // Allow access via cron secret (same as other internal endpoints)
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
@@ -108,4 +109,4 @@ export async function GET(request: Request): Promise<NextResponse> {
     })),
     operations: results,
   });
-}
+})
