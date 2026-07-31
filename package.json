@@ -15,7 +15,8 @@
     "test:ui": "playwright test --ui",
     "audit": "node scripts/audit.mjs",
     "audit:tenant": "node scripts/audit-tenant.mjs",
-    "audit:routes": "node scripts/audit-routes.mjs"
+    "audit:routes": "node scripts/audit-routes.mjs",
+    "check:isolation": "node scripts/check-isolation.mjs"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",

@@ -694,7 +694,8 @@ function WidgetPriceListSection() {
   const saveEdit = async (id: string) => {
     setSaving(true);
     try {
-      const res = await fetch('/api/widget/prices', {
+      // Not /api/widget/prices — that path is public and now read-only.
+      const res = await fetch('/api/pricing/widget-list', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, ...editValues }),
       });

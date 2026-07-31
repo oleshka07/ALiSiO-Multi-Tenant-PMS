@@ -22,7 +22,8 @@ const PUBLIC_PREFIXES = [
   '/api/channels/sync/process',    // ARI sync queue (cron secret in route.ts)
   '/api/invest/',                  // investor portal API (token-based auth in handler)
   '/api/widget',         // widget-* endpoints (public embed)
-  '/api/file-upload',    // guest passport photo upload from /book page (no session)
+  // '/api/file-upload' was public for the retired /book wizard. Every caller is
+  // now a dashboard screen, and an open upload endpoint is an invitation.
   '/login',              // login page
   '/guest/',             // guest portal page
   '/book/',              // public booking wizard

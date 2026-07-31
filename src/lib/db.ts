@@ -4785,6 +4785,44 @@ function runMigrations(database: any) {
   `);
   console.log('[DB] finance_user_access table ready');
 
+  // --- Migration: drop foreign keys pointing at a table that no longer exists
+  // The fin_operations migration dropped `expenses`, but accruals.paid_expense_id
+  // and receipts.expense_id still reference it. With foreign_keys ON, SQLite
+  // rejects every write to those tables with "no such table: main.expenses" — so
+  // Accruals and Receipts from Email are not buggy, they are unusable. SQLite
+  // cannot drop a foreign key, so the tables are rebuilt without it.
+  try {
+    for (const [table, deadCol] of [['accruals', 'paid_expense_id'], ['receipts', 'expense_id']] as const) {
+      const row = database.prepare('SELECT sql FROM sqlite_master WHERE type = ? AND name = ?').get('table', table) as
+        | { sql: string }
+        | undefined;
+      if (!row?.sql || !/REFERENCES\s+expenses\b/i.test(row.sql)) continue;
+
+      // The column and its data stay; only the reference is removed.
+      const rebuilt = row.sql.replace(
+        new RegExp(`(${deadCol}\\s+TEXT)\\s+REFERENCES\\s+expenses\\s*\\([^)]*\\)(\\s+ON DELETE [A-Z ]+)?`, 'i'),
+        '$1',
+      );
+      const cols = (database.prepare(`PRAGMA table_info(${table})`).all() as any[])
+        .map((c: any) => `"${c.name}"`)
+        .join(', ');
+
+      database.exec('PRAGMA foreign_keys = OFF');
+      database.exec('BEGIN');
+      database.exec(rebuilt.replace(new RegExp(`CREATE TABLE ${table}\\b`, 'i'), `CREATE TABLE ${table}__rebuilt`));
+      database.exec(`INSERT INTO ${table}__rebuilt (${cols}) SELECT ${cols} FROM ${table}`);
+      database.exec(`DROP TABLE ${table}`);
+      database.exec(`ALTER TABLE ${table}__rebuilt RENAME TO ${table}`);
+      database.exec('COMMIT');
+      database.exec('PRAGMA foreign_keys = ON');
+      console.log(`[DB] ${table}: removed dead foreign key to dropped table "expenses"`);
+    }
+  } catch (e: any) {
+    try { database.exec('ROLLBACK'); } catch { /* not inside a transaction */ }
+    database.exec('PRAGMA foreign_keys = ON');
+    console.error('[DB] dead foreign key migration:', e.message);
+  }
+
   // --- Migration: legal and banking identity on the organization -----------
   // Invoices, the booking wizard footer, the terms and the privacy policy all
   // carried one company's identity as literals — including its tax number and

@@ -1,12 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { withActor } from '@core/auth/session';
 import path from 'path';
 import fs from 'fs';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'data', 'uploads');
 
-// POST /api/upload — upload a file
-export async function POST(request: NextRequest) {
+// POST /api/file-upload — dashboard image upload.
+// Requires a session. This route was exempted from the middleware for the
+// retired public booking wizard, which left an open upload endpoint behind.
+async function uploadHandler(request: NextRequest) {
   try {
     // Ensure upload directory exists
     if (!fs.existsSync(UPLOAD_DIR)) {
@@ -64,3 +67,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error?.message || 'Upload failed' }, { status: 500 });
   }
 }
+
+
+export const POST = withActor((req) => uploadHandler(req as NextRequest));

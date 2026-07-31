@@ -1,6 +1,20 @@
 import { getDb } from '@core/db';
 
-export function listProperties() {
+/**
+ * Every function here takes the caller's organization and constrains on it.
+ *
+ * None of them did before: listProperties returned every tenant's properties,
+ * get/update/deleteProperty acted on whatever id the URL carried, createProperty
+ * attached the new row to `SELECT id FROM organizations LIMIT 1` — whichever
+ * tenant happened to be first — and the "cannot delete the last property" guard
+ * counted across all tenants, so one customer's second property unlocked
+ * deleting another customer's only one.
+ *
+ * A wrong-tenant id returns null rather than throwing, so callers answer 404 and
+ * never confirm that someone else's row exists.
+ */
+
+export function listProperties(organizationId: string) {
   return getDb().prepare(`
     SELECT
       p.*,
@@ -9,16 +23,26 @@ export function listProperties() {
       (SELECT COUNT(*) FROM units u WHERE u.property_id = p.id AND u.is_active = 1) as unit_count,
       (SELECT COUNT(*) FROM unit_types ut WHERE ut.property_id = p.id AND ut.is_active = 1) as unit_type_count
     FROM properties p
+    WHERE p.organization_id = ?
     ORDER BY p.created_at
-  `).all();
+  `).all(organizationId);
 }
 
-export function getPropertyById(id: string) {
+/** True when the property exists *and* belongs to this organization. */
+function owns(db: any, organizationId: string, id: string): boolean {
+  return !!db.prepare('SELECT 1 FROM properties WHERE id = ? AND organization_id = ?').get(id, organizationId);
+}
+
+export function getPropertyById(organizationId: string, id: string) {
   const db = getDb();
 
-  const property = db.prepare('SELECT * FROM properties WHERE id = ?').get(id);
+  const property = db
+    .prepare('SELECT * FROM properties WHERE id = ? AND organization_id = ?')
+    .get(id, organizationId);
   if (!property) return null;
 
+  // The children below are reached through property_id, which the lookup above
+  // has already tied to this organization.
   const categories = db.prepare(`
     SELECT c.*, COUNT(u.id) as unit_count
     FROM categories c
@@ -74,26 +98,24 @@ export interface CreatePropertyInput {
   check_out_time?: string;
 }
 
-export function createProperty(input: CreatePropertyInput) {
+export function createProperty(organizationId: string, input: CreatePropertyInput) {
   const db = getDb();
-  const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string } | undefined;
-  if (!org) throw new Error('No organization found');
-
   const result = db.prepare(`
     INSERT INTO properties (organization_id, name, slug, address, city, country, phone, email, check_in_time, check_out_time)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    org.id, input.name, input.slug,
+    organizationId, input.name, input.slug,
     input.address ?? null, input.city ?? null, input.country ?? 'CZ',
     input.phone ?? null, input.email ?? null,
-    input.check_in_time ?? '15:00', input.check_out_time ?? '10:00'
+    input.check_in_time ?? '15:00', input.check_out_time ?? '11:00',
   );
-
   return db.prepare('SELECT * FROM properties WHERE rowid = ?').get(result.lastInsertRowid);
 }
 
-export function updateProperty(id: string, fields: Record<string, unknown>) {
+export function updateProperty(organizationId: string, id: string, fields: Record<string, unknown>) {
   const db = getDb();
+  if (!owns(db, organizationId, id)) return null;
+
   const allowed = ['name', 'slug', 'address', 'city', 'country', 'phone', 'email', 'check_in_time', 'check_out_time', 'is_active'];
   const updates: string[] = [];
   const values: unknown[] = [];
@@ -108,16 +130,23 @@ export function updateProperty(id: string, fields: Record<string, unknown>) {
   if (updates.length === 0) return null;
 
   updates.push("updated_at = datetime('now')");
-  values.push(id);
+  values.push(id, organizationId);
 
-  db.prepare(`UPDATE properties SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-  return db.prepare('SELECT * FROM properties WHERE id = ?').get(id);
+  // organization_id is repeated in the WHERE clause, not left to the check
+  // above alone: the guard and the write must not be able to drift apart.
+  db.prepare(`UPDATE properties SET ${updates.join(', ')} WHERE id = ? AND organization_id = ?`).run(...values);
+  return db.prepare('SELECT * FROM properties WHERE id = ? AND organization_id = ?').get(id, organizationId);
 }
 
-export function deleteProperty(id: string): { ok: boolean; error?: string } {
+export function deleteProperty(organizationId: string, id: string): { ok: boolean; error?: string } {
   const db = getDb();
-  const count = db.prepare('SELECT COUNT(*) as cnt FROM properties').get() as { cnt: number };
+  if (!owns(db, organizationId, id)) return { ok: false, error: 'Not found' };
+
+  const count = db
+    .prepare('SELECT COUNT(*) as cnt FROM properties WHERE organization_id = ?')
+    .get(organizationId) as { cnt: number };
   if (count.cnt <= 1) return { ok: false, error: 'Cannot delete the last property' };
-  db.prepare('DELETE FROM properties WHERE id = ?').run(id);
+
+  db.prepare('DELETE FROM properties WHERE id = ? AND organization_id = ?').run(id, organizationId);
   return { ok: true };
 }
