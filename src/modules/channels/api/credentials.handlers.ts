@@ -1,16 +1,27 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import * as credentialsRepo from '../data/credentials.repo';
+import { withOwner, type Actor } from '@core/auth/session';
 
-export async function listCredentials(): Promise<NextResponse> {
+/**
+ * Channel credentials are owner-only: they authenticate the hotel to
+ * Booking.com and friends, and whoever can read or replace them can sell its
+ * inventory. The organization comes from the session.
+ *
+ * Errors no longer echo e.message to the caller — these handlers surface
+ * database and OAuth failures, and their text is not something a browser needs.
+ */
+
+export const listCredentials = withOwner(async (_req, _ctx, actor: Actor) => {
   try {
-    return NextResponse.json(credentialsRepo.listCredentials());
+    return NextResponse.json(credentialsRepo.listCredentials(actor.organizationId));
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error('GET /api/channels/credentials error:', e?.message || e);
+    return NextResponse.json({ error: 'Failed to fetch credentials' }, { status: 500 });
   }
-}
+});
 
-export async function upsertCredentials(request: NextRequest): Promise<NextResponse> {
+export const upsertCredentials = withOwner(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const body = await request.json();
     const { channel, environment, client_id, client_secret } = body;
@@ -22,9 +33,12 @@ export async function upsertCredentials(request: NextRequest): Promise<NextRespo
       );
     }
 
-    const result = credentialsRepo.upsertCredentials({ channel, environment, client_id, client_secret });
+    const result = credentialsRepo.upsertCredentials(actor.organizationId, {
+      channel, environment, client_id, client_secret,
+    });
     return NextResponse.json({ id: result.id, status: result.created ? 'created' : 'updated' });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error('POST /api/channels/credentials error:', e?.message || e);
+    return NextResponse.json({ error: 'Failed to save credentials' }, { status: 500 });
   }
-}
+});

@@ -35,7 +35,13 @@ function makeTenant(suffix) {
 }
 
 function cleanup() {
-  // Children first: foreign keys are ON.
+  // Children first: foreign keys are ON. Channel rows go before unit_types,
+  // because a room mapping points at one.
+  const conns = db.prepare('SELECT id FROM channel_connections WHERE organization_id LIKE ?').all(`${TAG}%`).map((r) => r.id);
+  for (const cid of conns) db.prepare('DELETE FROM channel_room_mapping WHERE connection_id = ?').run(cid);
+  db.prepare('DELETE FROM channel_connections WHERE organization_id LIKE ?').run(`${TAG}%`);
+  db.prepare('DELETE FROM channel_credentials WHERE organization_id LIKE ?').run(`${TAG}%`);
+
   const props = db.prepare('SELECT id FROM properties WHERE organization_id LIKE ?').all(`${TAG}%`).map((r) => r.id);
   for (const pid of props) {
     db.prepare('DELETE FROM units WHERE property_id = ?').run(pid);
@@ -170,6 +176,70 @@ async function main() {
       .get(propA.id);
     assert.strictEqual(leaked.c, 0, `${leaked.c} units were written into A's property by B`);
     console.log("  ok  B cannot bulk-create 50 units inside A's property");
+
+    // Channel credentials authenticate the hotel to Booking.com. Leaking them
+    // — or letting B point its connection at A's — sells A's rooms under B's
+    // account, so this is exercised end to end rather than trusted.
+    const credRes = await call(cookieA, '/api/channels/credentials', {
+      method: 'POST',
+      body: JSON.stringify({
+        channel: 'booking_com', environment: 'test',
+        client_id: 'probe-client-a', client_secret: 'probe-secret-a',
+      }),
+    });
+    assert.ok(credRes.ok, `A could not save credentials: ${credRes.status}`);
+    const credA = await credRes.json();
+
+    const credsB = await (await call(cookieB, '/api/channels/credentials')).json();
+    assert.ok(Array.isArray(credsB), 'credentials list is not an array');
+    assert.ok(!credsB.some((c) => c.id === credA.id), "B's credential list contains A's credentials");
+    console.log("  ok  B's channel credentials exclude A's");
+
+    // B saving its own credentials must not overwrite A's row.
+    const credResB = await call(cookieB, '/api/channels/credentials', {
+      method: 'POST',
+      body: JSON.stringify({
+        channel: 'booking_com', environment: 'test',
+        client_id: 'probe-client-b', client_secret: 'probe-secret-b',
+      }),
+    });
+    assert.ok(credResB.ok, `B could not save credentials: ${credResB.status}`);
+    const storedA = db.prepare('SELECT client_id FROM channel_credentials WHERE id = ?').get(credA.id);
+    assert.strictEqual(storedA?.client_id, 'probe-client-a', "B's save overwrote A's credentials");
+    console.log("  ok  B saving credentials does not overwrite A's");
+
+    const connRes = await call(cookieA, '/api/channels/connections', {
+      method: 'POST',
+      body: JSON.stringify({ channel: 'booking_com', external_property_id: 'probe-prop-a' }),
+    });
+    assert.strictEqual(connRes.status, 201, `A could not create a connection: ${connRes.status}`);
+    const connA = await connRes.json();
+
+    const connsB = await (await call(cookieB, '/api/channels/connections')).json();
+    assert.ok(!connsB.some((c) => c.id === connA.id), "B's connection list contains A's connection");
+    const connGetB = await call(cookieB, `/api/channels/connections/${connA.id}`);
+    assert.strictEqual(connGetB.status, 404, `B read A's connection: ${connGetB.status}`);
+    const connPutB = await call(cookieB, `/api/channels/connections/${connA.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ external_property_id: 'hijacked' }),
+    });
+    assert.strictEqual(connPutB.status, 404, `B updated A's connection: ${connPutB.status}`);
+    const connDelB = await call(cookieB, `/api/channels/connections/${connA.id}`, { method: 'DELETE' });
+    assert.strictEqual(connDelB.status, 404, `B deleted A's connection: ${connDelB.status}`);
+    console.log("  ok  B cannot read, change or delete A's channel connection");
+
+    // The mapping is what puts a room on a channel: both ids come from the
+    // request body, so both are checked.
+    const mapB = await call(cookieB, '/api/channels/mapping', {
+      method: 'POST',
+      body: JSON.stringify({ connection_id: connA.id, unit_type_id: utA.id, external_room_type_id: 'hijack' }),
+    });
+    assert.strictEqual(mapB.status, 404, `B mapped A's unit type onto A's connection: ${mapB.status}`);
+    const mapped = db
+      .prepare('SELECT COUNT(*) c FROM channel_room_mapping WHERE connection_id = ?')
+      .get(connA.id);
+    assert.strictEqual(mapped.c, 0, `${mapped.c} room mappings were written into A's connection by B`);
+    console.log("  ok  B cannot map rooms onto A's connection");
 
     // And without a session, nothing at all.
     const anon = await fetch(`${BASE}/api/properties`);
