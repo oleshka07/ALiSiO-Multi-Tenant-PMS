@@ -1,7 +1,35 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import bcrypt from 'bcryptjs';
 import { sendBookingConfirmationEmail } from '../data/send-confirmation-email';
+
+/**
+ * Which hotel this booking is for.
+ *
+ * The endpoint is public — the embedded widget calls it from the customer's
+ * own website with no session — so the tenant has to come from the request.
+ * The embed script identifies itself with data-site, which arrives here as
+ * site_slug or site_id; property_id is accepted for direct integrations.
+ *
+ * It used to read `SELECT id, organization_id FROM properties LIMIT 1`, which
+ * on a shared server files a guest, a reservation and a payment against
+ * whichever hotel the server created first.
+ */
+function resolveTarget(db: any, body: any): { id: string; organization_id: string } | null {
+  if (body.property_id) {
+    return db.prepare('SELECT id, organization_id FROM properties WHERE id = ? AND is_active = 1')
+      .get(body.property_id) ?? null;
+  }
+  const site = body.site_id || body.site_slug;
+  if (!site) return null;
+  return db.prepare(`
+    SELECT p.id, p.organization_id
+    FROM booking_sites s
+    JOIN properties p ON p.id = s.property_id
+    WHERE (s.id = ? OR s.slug = ?) AND s.status != 'deleted'
+  `).get(site, site) ?? null;
+}
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -34,14 +62,22 @@ export async function createBookingDraft(req: Request) {
     const draftId = genId('bkd');
     const sessionId = body.session_id || genId('sess');
 
+    const property = resolveTarget(db, body);
+    if (!property) {
+      return NextResponse.json(
+        { error: 'site_slug, site_id or property_id is required' },
+        { status: 400, headers: CORS_HEADERS },
+      );
+    }
+
     // 1. Save booking_draft (always — as a log)
     db.prepare(`
-      INSERT INTO booking_drafts (id, session_id, accommodation_type, unit_type, check_in, check_out,
+      INSERT INTO booking_drafts (id, organization_id, session_id, accommodation_type, unit_type, check_in, check_out,
         adults, children, extras, options, guest_name, guest_email, guest_phone,
         total_price, deposit_amount, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
     `).run(
-      draftId, sessionId,
+      draftId, property.organization_id, sessionId,
       body.accommodation_type || null,
       body.accommodation_data?.unit || body.accommodation_data?.building || null,
       body.check_in || null,
@@ -61,13 +97,6 @@ export async function createBookingDraft(req: Request) {
     const [firstName, ...rest] = (body.guest_name || 'Guest').trim().split(' ');
     const lastName = rest.join(' ') || '';
 
-    // Get first property's organization_id
-    const property = db.prepare(`SELECT id, organization_id FROM properties LIMIT 1`).get() as any;
-    if (!property) {
-      console.warn('[BookingDraft] No property found — returning draft only');
-      return NextResponse.json({ id: draftId, session_id: sessionId }, { headers: CORS_HEADERS });
-    }
-
     let guestId: string | null = null;
 
     // ⚠️ Widget bookings ALWAYS create a new guest record.
@@ -79,7 +108,7 @@ export async function createBookingDraft(req: Request) {
     guestId = genId('g');
     db.prepare(`
       INSERT INTO guests (id, organization_id, first_name, last_name, email, phone, source, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'widget_kemp', datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, 'widget', datetime('now'))
     `).run(guestId, property.organization_id, firstName, lastName, body.guest_email || null, body.guest_phone || null);
 
 
@@ -224,7 +253,7 @@ export async function createBookingDraft(req: Request) {
     const utmTerm = utmParams['utm_term'] || null;
     const gaClientId = utmParams['ga_client_id'] || null;
 
-    const draftSource = body.site_id ? `widget:${body.site_id}` : 'widget_kemp';
+    const draftSource = body.site_id ? `widget:${body.site_id}` : 'widget';
 
     const refUrl = body.source_url || 'Прямий захід';
     const ua = body.user_agent || '';
@@ -322,23 +351,46 @@ export async function createBookingDraft(req: Request) {
 }
 
 // ─── PUT — admin confirm payment ─────────────────────────────────────────────
-// Admin PINs — server-side only, never sent to client
-const ADMIN_PINS: Record<string, string> = {
-  '1315': 'Андрей',
-  '2099': 'т. Наташа',
-  '0309': 'Олег',
-  '0912': 'Антон',
-};
+/**
+ * The PIN a receptionist enters to confirm a cash or terminal payment.
+ *
+ * It used to be four hard-coded four-digit numbers in this file, mapped to the
+ * names of the original hotel's staff and to their personal cash accounts. On
+ * a shared server that means one hotel's PIN marks any other hotel's
+ * reservation as paid — this endpoint is public, serves
+ * Access-Control-Allow-Origin: *, and takes the reservation id from the
+ * request.
+ *
+ * The PIN is a staff credential, so it lives on the staff row, which already
+ * carries both the organization and the cash account the payment should be
+ * routed to. It is checked only against the organization that owns the
+ * reservation being confirmed.
+ */
+function staffForPin(db: any, organizationId: string, pin: string):
+  { name: string; cashAccountId: string | null } | null {
+  const candidates = db.prepare(`
+    SELECT full_name, payment_pin_hash, default_cash_account_id
+    FROM app_users
+    WHERE organization_id = ? AND is_active = 1 AND payment_pin_hash IS NOT NULL
+  `).all(organizationId) as any[];
 
-// PIN → finance cash account name mapping.
-// When an admin confirms cash payment via PIN, the fin_operation is routed
-// to their personal cash account (not the first one by sort_order).
-const PIN_TO_ACCOUNT_NAME: Record<string, string> = {
-  '1315': 'Андріїв cash',
-  '2099': 'Каса Кемпінг і проживання',
-  '0309': 'Олег наличные',
-  '0912': 'Антон Готівка',
-};
+  for (const u of candidates) {
+    if (bcrypt.compareSync(pin, u.payment_pin_hash)) {
+      return { name: u.full_name, cashAccountId: u.default_cash_account_id ?? null };
+    }
+  }
+  return null;
+}
+
+/** The organization that owns a reservation, through its property. */
+function organizationOfReservation(db: any, reservationId: string): string | null {
+  const row = db.prepare(`
+    SELECT p.organization_id AS org
+    FROM reservations r JOIN properties p ON p.id = r.property_id
+    WHERE r.id = ?
+  `).get(reservationId) as any;
+  return row?.org ?? null;
+}
 
 export async function updateBookingDraft(req: Request) {
   try {
@@ -348,17 +400,12 @@ export async function updateBookingDraft(req: Request) {
     const isTerminal = payment_method === 'terminal';
     if (!id && !directResId) return NextResponse.json({ error: 'Missing id or reservation_id' }, { status: 400, headers: CORS_HEADERS });
 
-    // ─── PIN validation (required for status = 'paid') ────────────────────
+    // The PIN is validated below, once the reservation — and so the
+    // organization whose staff may confirm it — is known.
     let adminName: string | null = null;
-    if (status === 'paid') {
-      if (!admin_pin) {
-        return NextResponse.json({ error: 'PIN required', code: 'PIN_REQUIRED' }, { status: 401, headers: CORS_HEADERS });
-      }
-      adminName = ADMIN_PINS[String(admin_pin).trim()] || null;
-      if (!adminName) {
-        console.warn(`[AdminConfirm] Invalid PIN attempt: ${String(admin_pin).substring(0, 2)}**`);
-        return NextResponse.json({ error: 'Невірний PIN-код. Зверніться до адміністратора.', code: 'WRONG_PIN' }, { status: 401, headers: CORS_HEADERS });
-      }
+    let adminCashAccountId: string | null = null;
+    if (status === 'paid' && !admin_pin) {
+      return NextResponse.json({ error: 'PIN required', code: 'PIN_REQUIRED' }, { status: 401, headers: CORS_HEADERS });
     }
 
     // ─── Resolve reservation ID ────────────────────────────────────────────
@@ -374,6 +421,21 @@ export async function updateBookingDraft(req: Request) {
 
     // ─── Confirm payment ───────────────────────────────────────────────────
     if (status === 'paid' && rid) {
+      const organizationId = organizationOfReservation(db, rid);
+      if (!organizationId) {
+        return NextResponse.json({ error: 'Reservation not found' }, { status: 404, headers: CORS_HEADERS });
+      }
+      const staff = staffForPin(db, organizationId, String(admin_pin).trim());
+      if (!staff) {
+        console.warn(`[AdminConfirm] Invalid PIN attempt on ${rid}: ${String(admin_pin).substring(0, 2)}**`);
+        return NextResponse.json(
+          { error: 'Невірний PIN-код. Зверніться до адміністратора.', code: 'WRONG_PIN' },
+          { status: 401, headers: CORS_HEADERS },
+        );
+      }
+      adminName = staff.name;
+      adminCashAccountId = staff.cashAccountId;
+
       const now = new Date().toLocaleString('uk-UA', { timeZone: 'Europe/Prague' });
       const note = isTerminal
         ? `💳 Оплата терміналом, прийняв: ${adminName} · ${now}`
@@ -414,26 +476,15 @@ export async function updateBookingDraft(req: Request) {
         if (!isTerminal) {
           try {
             const { createPaymentOperation, hasPaymentOperation } = await import('../../finance/api/payment-bridge');
-            const pinStr = String(admin_pin).trim();
             // Prevent double-creation if widget retries
             if (!hasPaymentOperation(rid, 'booking_widget', `pin_${rid}`)) {
               const reservation = db.prepare('SELECT total_price, currency FROM reservations WHERE id = ?').get(rid) as any;
               const amount = reservation?.total_price || 0;
               const currency = reservation?.currency || 'CZK';
 
-              // Resolve admin's cash account by name from PIN mapping
-              let accountId: string | undefined;
-              const wantedName = PIN_TO_ACCOUNT_NAME[pinStr];
-              if (wantedName) {
-                const orgRow = db.prepare('SELECT organization_id FROM properties LIMIT 1').get() as any;
-                if (orgRow?.organization_id) {
-                  const acct = db.prepare(
-                    "SELECT id FROM finance_accounts WHERE organization_id = ? AND name = ? AND is_active = 1 LIMIT 1"
-                  ).get(orgRow.organization_id, wantedName) as any;
-                  accountId = acct?.id;
-                  if (!accountId) console.warn(`[AdminConfirm] Account "${wantedName}" not found for PIN ${pinStr.substring(0,2)}**`);
-                }
-              }
+              // The cash goes to the account on the staff row the PIN matched.
+              const accountId: string | undefined = adminCashAccountId ?? undefined;
+              if (!accountId) console.warn(`[AdminConfirm] ${adminName} has no cash account set`);
 
               if (amount > 0) {
                 createPaymentOperation({
@@ -446,7 +497,8 @@ export async function updateBookingDraft(req: Request) {
                   sourceRef: `pin_${rid}`,
                   accountId,
                   comment: `Готівка (віджет) · Внесено: ${adminName || 'Admin'}`,
-                  actor: { id: `pin_${pinStr}`, name: adminName || 'Admin' },
+                  // The PIN itself must not end up in the operation trail.
+                  actor: { id: `staff:${adminName}`, name: adminName || 'Admin' },
                 });
                 console.log(`[CashConfirm] Created fin_operation for ${rid}, account=${accountId || 'fallback'}, amount=${amount} ${currency}`);
               }
@@ -473,8 +525,7 @@ export async function updateBookingDraft(req: Request) {
 
       // ─── Audit log ──────────────────────────────────────────────────────
       try {
-        const orgRow = db.prepare('SELECT organization_id FROM properties LIMIT 1').get() as any;
-        const orgId = orgRow?.organization_id || 'org_alisio_001';
+        const orgId = organizationId;
         const auditAction = isTerminal ? 'terminal_payment_confirmed' : 'cash_payment_confirmed';
         db.prepare(`
           INSERT INTO audit_log (organization_id, action, entity_type, entity_id, new_values, created_at)

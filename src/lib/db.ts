@@ -5135,6 +5135,19 @@ function runMigrations(database: any) {
       database.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_org ON ${table}(organization_id)`);
     }
 
+    // The widget's cash-confirmation PIN belonged to four named people from the
+    // original hotel and lived in the source. It is a staff credential, so it
+    // belongs to the staff row that already carries the organization and the
+    // cash account to route the payment to.
+    try {
+      const userCols = (database.prepare('PRAGMA table_info(app_users)').all() as any[]).map((c: any) => c.name);
+      if (!userCols.includes('payment_pin_hash')) {
+        database.exec('ALTER TABLE app_users ADD COLUMN payment_pin_hash TEXT');
+      }
+    } catch (e: any) {
+      console.error('[DB] app_users.payment_pin_hash:', e.message);
+    }
+
     rescope('coupons', ['code']);
     rescope('gift_cards', ['code']);
     rescope('widget_price_list', ['item_code']);

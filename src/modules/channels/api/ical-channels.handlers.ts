@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
+import { requirePropertyId } from '@core/auth/tenant-context';
 
 export async function listIcalChannels() {
   try {
@@ -65,8 +66,12 @@ export async function createIcalChannel(request: NextRequest) {
       if (dup) return NextResponse.json({ error: 'Channel already exists for this unit + source' }, { status: 400 });
     }
 
-    const prop = db.prepare('SELECT id FROM properties LIMIT 1').get() as any;
-    if (!prop) return NextResponse.json({ error: 'No property found' }, { status: 400 });
+    let propertyId: string;
+    try {
+      propertyId = requirePropertyId(db, body.property_id);
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
+    }
 
     const id = `ich_${Date.now()}`;
     const exportToken = generateGuestToken() + generateGuestToken();
@@ -75,7 +80,7 @@ export async function createIcalChannel(request: NextRequest) {
       INSERT INTO ical_channels (id, property_id, channel_type, building_id, unit_id, source_code, ical_url, export_token, sync_interval_minutes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      id, prop.id, channel_type,
+      id, propertyId, channel_type,
       channel_type === 'building' ? building_id : null,
       channel_type === 'unit' ? unit_id : null,
       source_code, ical_url || null, exportToken,

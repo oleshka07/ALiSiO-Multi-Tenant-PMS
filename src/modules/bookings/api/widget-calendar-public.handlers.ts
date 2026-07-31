@@ -80,16 +80,18 @@ export async function getWidgetCalendar(request: NextRequest) {
       if (u) property = { id: u.property_id };
     }
 
-    if (!property) {
-      if (propertyId) {
-        property = db.prepare('SELECT id FROM properties WHERE id = ? AND is_active = 1').get(propertyId);
-      } else {
-        property = db.prepare('SELECT id FROM properties WHERE is_active = 1 LIMIT 1').get();
-      }
+    if (!property && propertyId) {
+      property = db.prepare('SELECT id FROM properties WHERE id = ? AND is_active = 1').get(propertyId);
     }
 
     if (!property) {
-      return NextResponse.json({ error: 'Property not found' }, { status: 404, headers: CORS_HEADERS });
+      // Public endpoint, no session: the caller has to say which hotel it is
+      // asking about. Falling back to the first active property served one
+      // hotel's availability calendar from another hotel's widget.
+      return NextResponse.json(
+        { error: 'propertyId, unitId or siteId is required' },
+        { status: 400, headers: CORS_HEADERS },
+      );
     }
 
     // ── 4. Date range ───────────────────────────────────────────────────────

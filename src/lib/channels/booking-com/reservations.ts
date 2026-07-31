@@ -15,7 +15,7 @@ import { parseResNotifResponse } from '../xml/ota-parser';
 import { enqueueForAllConnections } from '../sync-queue';
 import { BOOKING_COM_URLS } from '../types';
 import type { OTAReservation, EnvironmentType } from '../types';
-import { requireOrganizationId } from '@core/auth/tenant-context';
+import { requireOrganizationId, requirePropertyId } from '@core/auth/tenant-context';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -281,7 +281,11 @@ export function processReservation(
   // Create new reservation
   const resId = `bcom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const org = { id: requireOrganizationId(db) } as any;
-  const prop = db.prepare('SELECT id FROM properties LIMIT 1').get() as any;
+  // The channel sync runs without a session; the organization comes from the
+  // connection being synced, and the property from that organization. Taking
+  // the first row filed an incoming Booking.com reservation against whichever
+  // hotel the server created first.
+  const prop = { id: requirePropertyId(db) } as any;
 
   db.prepare(`
     INSERT INTO reservations (

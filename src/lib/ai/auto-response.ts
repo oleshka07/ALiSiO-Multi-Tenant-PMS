@@ -8,6 +8,7 @@ import { getDb } from '@/lib/db';
 import { sendDraftApproval } from '@/lib/channels/telegram-bot';
 import { searchKnowledge, buildKnowledgeContext, assessQuestionConfidence } from '@/lib/crm/knowledge-base';
 import crypto from 'crypto';
+import { requirePropertyId } from '@core/auth/tenant-context';
 
 /* ────────────────────────────────────────────────────────
    Generate Auto-Response draft for new inbound message
@@ -80,8 +81,11 @@ export async function generateAutoResponse(opts: {
       ORDER BY version DESC LIMIT 1
     `).get(currentStage) as any : null;
 
-    // Get property info
-    const property = db.prepare('SELECT name, city, country, check_in_time, check_out_time FROM properties LIMIT 1').get() as any;
+    // Get property info. Reading the first row put another hotel's name,
+    // city and check-in times into the reply this AI sends to a guest.
+    const property = db.prepare(
+      'SELECT name, city, country, check_in_time, check_out_time FROM properties WHERE id = ?',
+    ).get(requirePropertyId(db)) as any;
 
     // Get conversation history
     const history = db.prepare(`

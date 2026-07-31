@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getSessionUser, getSessionIdFromCookies } from '@/lib/auth';
+import { requirePropertyId } from '@core/auth/tenant-context';
 
 // GET /api/booking-sites — list all sites for property
 export async function GET(_req: NextRequest) {
@@ -40,14 +41,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Назва сайту обовʼязкова' }, { status: 400 });
     }
 
-    // Get property_id from first property if not provided
-    let propId = property_id;
-    if (!propId) {
-      const prop = db.prepare('SELECT id FROM properties LIMIT 1').get() as any;
-      if (!prop) {
-        return NextResponse.json({ error: 'Спочатку створіть об’єкт (Property) у налаштуваннях' }, { status: 400 });
-      }
-      propId = prop.id;
+    // The property must be this organization's: unqualified, this attached a
+    // new booking site to whichever property the server created first.
+    let propId: string;
+    try {
+      propId = requirePropertyId(db, property_id);
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
     }
 
     const defaultDesignConfig = JSON.stringify({

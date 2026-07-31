@@ -258,6 +258,34 @@ async function main() {
     assert.strictEqual(tagRow.organization_id, b.orgId, `B's tag was filed under ${tagRow.organization_id}`);
     console.log("  ok  a finance write from B lands under B, not the first organization");
 
+    // Staff accounts: the permission check was there, the ownership check was
+    // not, so an owner could rename, re-role or delete another hotel's staff —
+    // including its owner.
+    const userGetB = await call(cookieB, `/api/users/${a.userId}`);
+    assert.strictEqual(userGetB.status, 404, `B read A's user: ${userGetB.status}`);
+    const userPutB = await call(cookieB, `/api/users/${a.userId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ full_name: 'Hijacked', is_active: false }),
+    });
+    assert.strictEqual(userPutB.status, 404, `B edited A's user: ${userPutB.status}`);
+    const userDelB = await call(cookieB, `/api/users/${a.userId}`, { method: 'DELETE' });
+    assert.strictEqual(userDelB.status, 404, `B deleted A's user: ${userDelB.status}`);
+    const userA = db.prepare('SELECT full_name, is_active FROM app_users WHERE id = ?').get(a.userId);
+    assert.ok(userA && userA.full_name === 'Probe a' && userA.is_active === 1, "A's user was changed by B");
+    console.log("  ok  B cannot read, change or delete A's staff");
+
+    // The widget's cash-confirmation PIN is a staff credential and must only
+    // work inside the organization that owns the reservation. It used to be
+    // four hard-coded numbers that worked everywhere.
+    const pinSet = await call(cookieA, `/api/users/${a.userId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ payment_pin: '4721' }),
+    });
+    assert.ok(pinSet.ok, `A could not set a payment PIN: ${pinSet.status}`);
+    const pinRow = db.prepare('SELECT payment_pin_hash FROM app_users WHERE id = ?').get(a.userId);
+    assert.ok(pinRow.payment_pin_hash && pinRow.payment_pin_hash !== '4721', 'the PIN was stored in the clear');
+    console.log('  ok  a staff PIN is stored hashed, per organization');
+
     // And without a session, nothing at all.
     const anon = await fetch(`${BASE}/api/properties`);
     assert.strictEqual(anon.status, 401, `anonymous list returned ${anon.status}`);

@@ -35,13 +35,14 @@ interface UserForm {
   telegram_chat_id: string;
   role: UserRole;
   password: string;
+  payment_pin: string;
   is_active: boolean;
   overrides: PermissionOverride[];
 }
 
 const emptyForm: UserForm = {
   full_name: '', email: '', phone: '', telegram_chat_id: '', role: 'receptionist',
-  password: '', is_active: true, overrides: [],
+  password: '', payment_pin: '', is_active: true, overrides: [],
 };
 
 const ALL_ROLES: UserRole[] = ['owner', 'director', 'manager', 'receptionist', 'housekeeper', 'maintenance', 'accountant'];
@@ -103,6 +104,7 @@ export default function UsersPage() {
       telegram_chat_id: user.telegram_chat_id || '',
       role: user.role,
       password: '',
+      payment_pin: '',
       is_active: user.is_active === 1,
       overrides: user.overrides || [],
     });
@@ -198,6 +200,7 @@ export default function UsersPage() {
           permissions_overrides: form.overrides,
         };
         if (form.password) payload.password = form.password;
+        if (form.payment_pin) payload.payment_pin = form.payment_pin;
 
         const res = await fetch(`/api/users/${editId}`, {
           method: 'PUT',
@@ -455,6 +458,19 @@ export default function UsersPage() {
                   </label>
                   <input className="form-input" value={form.telegram_chat_id} onChange={e => setForm(prev => ({ ...prev, telegram_chat_id: e.target.value }))} placeholder="123456789" />
                   <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>Для сповіщень про задачі. Дізнатися: @userinfobot</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">PIN для підтвердження оплати</label>
+                  <input
+                    className="form-input"
+                    inputMode="numeric"
+                    value={form.payment_pin}
+                    onChange={e => setForm(prev => ({ ...prev, payment_pin: e.target.value.replace(/\D/g, '').slice(0, 8) }))}
+                    placeholder="4–8 цифр"
+                  />
+                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                    Ним співробітник підтверджує готівку у віджеті бронювання. Готівка піде на його касовий рахунок. Порожнє поле — залишити як є.
+                  </div>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Роль *</label>

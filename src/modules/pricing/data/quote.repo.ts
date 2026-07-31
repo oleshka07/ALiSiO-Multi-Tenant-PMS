@@ -45,8 +45,13 @@ export function calculateQuote(unitTypeId: string, checkIn: string, checkOut: st
   // Fees & taxes
   let fees: any[] = [];
   try {
-    const prop = db.prepare('SELECT id FROM properties LIMIT 1').get() as any;
-    if (prop) {
+    // The fees are the ones belonging to the unit type being quoted. Reading
+    // them from the first property in the table priced one hotel's stay with
+    // another hotel's city tax and cleaning fee.
+    const prop = db.prepare(
+      'SELECT property_id AS id FROM unit_types WHERE id = ?',
+    ).get(unitTypeId) as any;
+    if (prop?.id) {
       fees = db.prepare('SELECT * FROM fees_taxes WHERE property_id = ? AND is_active = 1').all(prop.id) as any[];
     }
   } catch { /* fees_taxes may not exist */ }

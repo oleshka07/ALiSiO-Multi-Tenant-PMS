@@ -18,12 +18,18 @@ export async function getWidgetConfig(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const propertyId = searchParams.get('propertyId');
 
-    let property: any;
-    if (propertyId) {
-      property = db.prepare('SELECT * FROM properties WHERE id = ? AND is_active = 1').get(propertyId);
-    } else {
-      property = db.prepare('SELECT * FROM properties WHERE is_active = 1 LIMIT 1').get();
+    // Public endpoint, no session: the caller has to say which hotel it is
+    // configuring. Falling back to the first active property handed one
+    // hotel's widget another hotel's rooms, prices and contact details.
+    if (!propertyId) {
+      return NextResponse.json(
+        { error: 'propertyId is required' },
+        { status: 400, headers: CORS_HEADERS },
+      );
     }
+    const property = db
+      .prepare('SELECT * FROM properties WHERE id = ? AND is_active = 1')
+      .get(propertyId) as any;
 
     if (!property) {
       return NextResponse.json({ error: 'Property not found' }, { status: 404, headers: CORS_HEADERS });

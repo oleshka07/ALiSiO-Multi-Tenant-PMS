@@ -10,7 +10,7 @@ import { findOrCreateGuestForLead } from '@/lib/sync/guest-lead-sync';
 import { onInboundMessage } from '@/lib/crm/stage-transitions';
 import { notifyReservationCreated } from '@bookings';
 import crypto from 'crypto';
-import { requireOrganizationId } from '@core/auth/tenant-context';
+import { requireOrganizationId, requirePropertyId } from '@core/auth/tenant-context';
 
 export async function pollEmails(req: NextRequest) {
   const results = {
@@ -427,12 +427,15 @@ function autoCreateReservationFromEmail(db: any, leadId: string, data: any, emai
       }
     }
 
-    // 1. Property — try by Camping name first; fall back to first property.
-    const prop =
-      (db.prepare("SELECT id FROM properties WHERE name LIKE '%Camping%' LIMIT 1").get() as any) ||
-      (db.prepare("SELECT id FROM properties LIMIT 1").get() as any);
-    if (!prop) {
-      console.error("[AutoRes] No property in DB");
+    // 1. Property. This used to look for a property named "%Camping%" — the
+    // original hotel's own naming — and otherwise take the first row in the
+    // table, which on a shared server files an incoming booking email against
+    // someone else's hotel.
+    let prop: { id: string };
+    try {
+      prop = { id: requirePropertyId(db) };
+    } catch (e: any) {
+      console.error('[AutoRes] cannot resolve the property:', e.message);
       return;
     }
 

@@ -47,3 +47,33 @@ export function requireOrganizationId(db: any): string {
     'No organization in context and more than one exists — this code path must be reached through a guard, or set the organization explicitly with runWithOrganization()',
   );
 }
+
+/**
+ * The property to act on. The same "first row in the table" shortcut existed
+ * for properties, which is worse than for organizations: a hotel group with a
+ * second property gets its bookings, iCal channels and booking sites attached
+ * to whichever one was created first.
+ *
+ * An explicit id from the caller wins, and is verified to belong to the
+ * organization. With none, the organization's only property is used — most
+ * customers have exactly one — and where there are several the caller has to
+ * say which.
+ */
+export function requirePropertyId(db: any, explicitId?: string | null): string {
+  const organizationId = requireOrganizationId(db);
+
+  if (explicitId) {
+    const owned = db
+      .prepare('SELECT 1 FROM properties WHERE id = ? AND organization_id = ?')
+      .get(explicitId, organizationId);
+    if (!owned) throw new Error('Property not found');
+    return explicitId;
+  }
+
+  const rows = db
+    .prepare('SELECT id FROM properties WHERE organization_id = ? LIMIT 2')
+    .all(organizationId) as { id: string }[];
+  if (rows.length === 1) return rows[0].id;
+  if (rows.length === 0) throw new Error('This organization has no property yet');
+  throw new Error('This organization has more than one property — property_id is required');
+}
