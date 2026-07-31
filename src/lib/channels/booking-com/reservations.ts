@@ -15,6 +15,7 @@ import { parseResNotifResponse } from '../xml/ota-parser';
 import { enqueueForAllConnections } from '../sync-queue';
 import { BOOKING_COM_URLS } from '../types';
 import type { OTAReservation, EnvironmentType } from '../types';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -279,7 +280,7 @@ export function processReservation(
 
   // Create new reservation
   const resId = `bcom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as any;
+  const org = { id: requireOrganizationId(db) } as any;
   const prop = db.prepare('SELECT id FROM properties LIMIT 1').get() as any;
 
   db.prepare(`
@@ -339,7 +340,7 @@ function findOrCreateGuest(db: any, res: OTAReservation): string {
 
   // Create new guest
   const guestId = `g_bcom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as any;
+  const org = { id: requireOrganizationId(db) } as any;
 
   db.prepare(`
     INSERT INTO guests (id, organization_id, first_name, last_name, email, phone)

@@ -3,12 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { encryptPassword, decryptPassword, checkInbox, type BankInboxConfig } from '../data/bank-inbox-engine';
 import { ImapFlow } from 'imapflow';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
-function getOrgId(db: any): string {
-  const row = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-  if (!row) throw new Error('No organization found');
-  return row.id;
-}
+const getOrgId = requireOrganizationId;
 
 function maskedRow(row: any) {
   if (!row) return row;

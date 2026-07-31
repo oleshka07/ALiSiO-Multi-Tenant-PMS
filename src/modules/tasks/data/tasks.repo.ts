@@ -2,14 +2,12 @@ import { getDb } from '@core/db';
 import type { Task, TaskTag } from '../domain/types';
 import path from 'path';
 import fs from 'fs';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 // ─── Helpers ───────────────────────────────────────────────
 
 function getOrgId(): string {
-  const db = getDb();
-  const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string } | undefined;
-  if (!org) throw new Error('No organization found');
-  return org.id;
+  return requireOrganizationId(getDb());
 }
 
 function fetchTagsForTask(taskId: string): TaskTag[] {

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getDb, generateGuestToken } from '@core/db';
 import { findOrCreateGuest } from '@guests';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export interface UnitTypeMatch {
   id: string;
@@ -220,7 +221,7 @@ export function findOrCreateGuestForImport(args: {
   address: string | null;
 }): string {
   const db = getDb();
-  const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as any;
+  const org = { id: requireOrganizationId(db) } as any;
   return findOrCreateGuest({
     organizationId: org?.id,
     firstName: args.firstName,

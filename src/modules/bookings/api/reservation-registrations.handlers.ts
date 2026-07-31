@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function listRegistrations(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -34,7 +35,7 @@ export async function registerGuest(request: NextRequest, { params }: { params: 
       return NextResponse.json({ error: 'Missing required fields (name + document)' }, { status: 400 });
     }
 
-    const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string };
+    const org = { id: requireOrganizationId(db) } as { id: string };
 
     let guestId: string;
     const existingGuest = db.prepare(

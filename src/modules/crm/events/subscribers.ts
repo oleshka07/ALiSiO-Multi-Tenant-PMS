@@ -1,6 +1,7 @@
 import { eventBus } from '@core/event-bus';
 import { getDb } from '@core/db';
 import { onPaymentReceived } from '@/lib/crm/stage-transitions';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export function registerCrmSubscribers() {
   // Guard against double-registration (hot reload / repeated serverless warm-ups)
@@ -11,7 +12,7 @@ export function registerCrmSubscribers() {
     try {
       const db = getDb();
       const leadId = `l_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string } | undefined;
+      const org = { id: requireOrganizationId(db) } as { id: string } | undefined;
       const guest = db.prepare('SELECT first_name, last_name, email, phone FROM guests WHERE id = ?').get(payload.guestId) as any;
       const reservation = db.prepare('SELECT check_in, check_out, adults, children FROM reservations WHERE id = ?').get(payload.bookingId) as any;
 

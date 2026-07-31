@@ -5,12 +5,9 @@ import {
   parseBookingCsv, parseVrboCsv, parseAirbnbCsv, applyStatementToReceivables,
   detectChannelFromCsv, type StatementChannel,
 } from '../data/statement-parsers';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
-function orgId(db: any): string {
-  const row = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-  if (!row) throw new Error('No organization found');
-  return row.id;
-}
+const orgId = requireOrganizationId;
 
 /**
  * POST /api/finance/clearing/statements

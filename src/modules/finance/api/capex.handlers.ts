@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function listCapex(request: NextRequest): Promise<NextResponse> {
   try {
@@ -42,7 +43,7 @@ export async function createCapex(request: Request): Promise<NextResponse> {
 
     if (!name || !amount || !purchase_date) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
 
-    const orgRow = db.prepare("SELECT id FROM organizations LIMIT 1").get() as any;
+    const orgRow = { id: requireOrganizationId(db) } as any;
     const id = `capex_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const month = purchase_date.substring(0, 7);
     const depMonthly = useful_life_months && useful_life_months > 0 ? Math.round((amount / useful_life_months) * 100) / 100 : 0;

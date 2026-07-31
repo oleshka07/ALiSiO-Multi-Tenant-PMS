@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { createOperationInTx, recalcReservationPaymentStatus } from './operations.handlers';
 import { loadActiveRules, applyRulesToOperation } from '../data/auto-rules-engine';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function listBankStatements(): Promise<NextResponse> {
   try {
@@ -60,7 +61,7 @@ export async function updateBankTransaction(request: Request): Promise<NextRespo
     `).run(matched_category_id, matched_business_unit_id ?? null, match_status, id);
 
     if (create_expense && matched_category_id && (match_status === 'confirmed' || match_status === 'manual')) {
-      const orgRow = db.prepare("SELECT id FROM organizations LIMIT 1").get() as any;
+      const orgRow = { id: requireOrganizationId(db) } as any;
       // Negative amount → expense (money out), positive → income
       const opType: 'expense' | 'income' = tx.amount < 0 ? 'expense' : 'income';
 
@@ -149,7 +150,7 @@ export async function importBankStatement(request: Request): Promise<NextRespons
       return NextResponse.json({ error: 'Missing file_name or rows array' }, { status: 400 });
     }
 
-    const orgRow = db.prepare("SELECT id FROM organizations LIMIT 1").get() as any;
+    const orgRow = { id: requireOrganizationId(db) } as any;
     const stmtId = `stmt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const dates = rows.map((r: any) => r.date).filter(Boolean).sort();
 

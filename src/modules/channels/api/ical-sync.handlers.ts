@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { parseICal, extractGuestName } from '@/lib/ical'; // TODO: move to @core/ical
 import { notifyReservationCreated } from '@bookings';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function syncIcal(request: NextRequest) {
   try {
@@ -54,7 +55,7 @@ async function syncChannel(db: any, channel: any) {
     const unitIds = getChannelUnitIds(db, channel);
     if (unitIds.length === 0) throw new Error('No units found for this channel');
 
-    const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as any;
+    const org = { id: requireOrganizationId(db) } as any;
 
     for (const event of events) {
       const externalUid = `ical_${channel.id}_${event.uid}`;

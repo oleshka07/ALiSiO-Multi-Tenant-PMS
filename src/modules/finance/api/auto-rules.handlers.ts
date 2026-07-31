@@ -5,14 +5,11 @@ import {
   applyRulesToOperation, loadActiveRules, parseRule,
   type AutoRuleRow, type Condition, type Actions, type Operation,
 } from '../data/auto-rules-engine';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const OP_TYPES = ['income', 'expense', 'any'] as const;
 
-function getOrgId(db: any): string {
-  const row = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-  if (!row) throw new Error('No organization found');
-  return row.id;
-}
+const getOrgId = requireOrganizationId;
 
 function enrichRule(db: any, row: AutoRuleRow) {
   const parsed = parseRule(row);

@@ -17,6 +17,7 @@
 //
 
 import { listTeyaTransactions, type TeyaTransaction } from '@/modules/payments/domain/teya-client';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export interface ReconcileResult {
   fetched: number;
@@ -80,7 +81,7 @@ export async function runTeyaSyncTickIfDue(db: any): Promise<boolean> {
   db.prepare("INSERT OR REPLACE INTO fin_system_state (key, value, updated_at) VALUES ('last_teya_sync_tick', ?, datetime('now'))")
     .run(String(now));
 
-  const orgRow = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
+  const orgRow = { id: requireOrganizationId(db) } as { id: string } | undefined;
   if (!orgRow) return false;
 
   const today = new Date();

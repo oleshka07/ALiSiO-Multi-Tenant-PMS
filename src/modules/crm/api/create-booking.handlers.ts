@@ -26,6 +26,7 @@ import { appBaseUrl } from '@core/app-url';
 import { getDb, generateGuestToken } from '@core/db';
 import { createPaymentSession } from '@payments';
 import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const PMS_BASE_URL = appBaseUrl();
 const DEPOSIT_PERCENT = 30;
@@ -70,7 +71,7 @@ export async function convertLeadToBooking(
     ));
 
     // 2. Find or create guest
-    const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as any;
+    const org = { id: requireOrganizationId(db) } as any;
     let guestId: string;
     if (email) {
       const existing = db.prepare('SELECT id FROM guests WHERE email = ? AND organization_id = ?').get(email, org.id) as any;

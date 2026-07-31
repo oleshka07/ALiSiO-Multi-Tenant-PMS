@@ -4,11 +4,12 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function GET(request: NextRequest) {
   try {
     const db = getDb();
-    const orgRow = db.prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string } | undefined;
+    const orgRow = { id: requireOrganizationId(db) } as { id: string } | undefined;
     const orgId = orgRow?.id;
     if (!orgId) return NextResponse.json({ error: 'No org' }, { status: 400 });
 

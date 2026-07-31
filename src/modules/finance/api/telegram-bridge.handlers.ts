@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { createOperationInTx } from './operations.handlers';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 type BridgeEventType = 'sauna_income' | 'cash_expense' | 'income' | 'expense' | 'transfer';
 
@@ -41,11 +42,7 @@ interface BridgeEvent {
   recorded_by?: string | null; // username/full_name from Telegram
 }
 
-function getOrgId(db: any): string {
-  const row = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-  if (!row) throw new Error('No organization found');
-  return row.id;
-}
+const getOrgId = requireOrganizationId;
 
 function authorizeBridge(request: NextRequest): { ok: true } | { ok: false; response: NextResponse } {
   const expected = process.env.TELEGRAM_BRIDGE_TOKEN;

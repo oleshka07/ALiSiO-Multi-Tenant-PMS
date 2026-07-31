@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function listExpenseCategories(): Promise<NextResponse> {
   try {
@@ -20,7 +21,7 @@ export async function createExpenseCategory(request: Request): Promise<NextRespo
 
     if (!name || !std_group || !pnl_line) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
 
-    const orgRow = db.prepare("SELECT id FROM organizations LIMIT 1").get() as any;
+    const orgRow = { id: requireOrganizationId(db) } as any;
     const id = `ec_${Date.now()}`;
     const maxOrder = db.prepare("SELECT MAX(sort_order) as mx FROM expense_categories").get() as any;
 

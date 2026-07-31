@@ -8,6 +8,7 @@ import {
 } from '../data/import-wizard-engine';
 import { buildEntityCandidates, saveResolutions, type EntityType } from '../data/entity-matcher';
 import { processRowsForReview, commitApprovedRows } from '../data/import-commit-engine';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const ENTITY_FIELD_MAP: Record<EntityType, string[]> = {
   account:      ['account_from', 'account_to'],
@@ -16,11 +17,7 @@ const ENTITY_FIELD_MAP: Record<EntityType, string[]> = {
   counterparty: ['counterparty'],
 };
 
-function getOrgId(db: any): string {
-  const row = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-  if (!row) throw new Error('No organization found');
-  return row.id;
-}
+const getOrgId = requireOrganizationId;
 
 /**
  * POST /api/finance/import/parse

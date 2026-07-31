@@ -5,6 +5,7 @@ import { getSessionUser, type SessionUser } from '@/lib/auth';
 import { hasPermission, type Permission } from '@/lib/permissions';
 import { hasFinancePassphrase, isFinanceUnlocked } from './_finance-unlock';
 import type { Actor } from '@core/auth/session';
+import { runWithOrganization } from '@core/auth/tenant-context';
 
 /**
  * The actor is handed to the handler rather than looked up again, so a finance
@@ -213,7 +214,7 @@ export function withFinanceRead<TCtx = unknown>(
   return async (request, context) => {
     const a = await requireFinanceUser(request, false);
     if (a instanceof NextResponse) return a;
-    return handler(request, context, a);
+    return runWithOrganization(a.organizationId, () => handler(request, context, a));
   };
 }
 
@@ -233,7 +234,7 @@ export function withPermission<TCtx = unknown>(
     if (!hasPermission(a.user.permissions, permission)) {
       return forbidden(`Недостатньо прав. Потрібен дозвіл: ${permission}`, { required: permission });
     }
-    return handler(request, context, a);
+    return runWithOrganization(a.organizationId, () => handler(request, context, a));
   };
 }
 
@@ -255,6 +256,6 @@ export function withAnyPermission<TCtx = unknown>(
         { required: permissions },
       );
     }
-    return handler(request, context, a);
+    return runWithOrganization(a.organizationId, () => handler(request, context, a));
   };
 }

@@ -14,6 +14,7 @@ import { cookies } from 'next/headers';
 import { getDb } from '@core/db';
 import { getSessionUser } from '@/lib/auth';
 import { createOperationInTx } from './operations.handlers';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 // ─────────────────────────────────────────────────────────────────
 // CSV helpers
@@ -324,7 +325,7 @@ function detectSource(content: string, hint: string | null): OtaSource {
 export async function previewOtaImport(request: NextRequest): Promise<NextResponse> {
   try {
     const db = getDb();
-    const orgRow = db.prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string } | undefined;
+    const orgRow = { id: requireOrganizationId(db) } as { id: string } | undefined;
     if (!orgRow) return NextResponse.json({ error: 'No organization found' }, { status: 500 });
 
     const formData = await request.formData();
@@ -374,7 +375,7 @@ export async function previewOtaImport(request: NextRequest): Promise<NextRespon
 export async function confirmOtaImport(request: NextRequest): Promise<NextResponse> {
   try {
     const db = getDb();
-    const orgRow = db.prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string } | undefined;
+    const orgRow = { id: requireOrganizationId(db) } as { id: string } | undefined;
     if (!orgRow) return NextResponse.json({ error: 'No organization found' }, { status: 500 });
     const orgId = orgRow.id;
 

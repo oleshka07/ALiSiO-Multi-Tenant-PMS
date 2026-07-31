@@ -13,6 +13,7 @@
 // finance query has an organization id in hand like every other query.
 import { NextResponse } from 'next/server';
 import { currentActor, type Actor } from '@core/auth/session';
+import { runWithOrganization } from '@core/auth/tenant-context';
 import { hasPermission, type Permission } from '@/lib/permissions';
 
 /** What a guarded handler receives. The actor is added by the guard. */
@@ -52,7 +53,7 @@ export function requireOwner<C = any>(handler: GuardedHandler<C>): RouteHandler<
         return forbidden('Доступ лише для власника');
       }
     }
-    return handler(request, context, actor);
+    return runWithOrganization(actor.organizationId, () => handler(request, context, actor));
   };
 }
 
@@ -67,6 +68,6 @@ export function requirePermission<C = any>(
     if (!hasPermission(actor.user.permissions, permission)) {
       return forbidden(`Недостатньо прав. Потрібен дозвіл: ${permission}`);
     }
-    return handler(request, context, actor);
+    return runWithOrganization(actor.organizationId, () => handler(request, context, actor));
   };
 }

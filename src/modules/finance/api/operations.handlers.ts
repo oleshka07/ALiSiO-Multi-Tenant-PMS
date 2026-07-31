@@ -5,6 +5,7 @@ import { getDb } from '@core/db';
 import { getSessionUser } from '@/lib/auth';
 
 import { loadActiveRules, isRuleApplicable } from '../data/auto-rules-engine';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const OP_TYPES = ['income', 'expense', 'transfer'] as const;
 type OpType = typeof OP_TYPES[number];
@@ -52,11 +53,7 @@ export function writeOperationAudit(
   }
 }
 
-function getOrgId(db: any): string {
-  const row = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-  if (!row) throw new Error('No organization found');
-  return row.id;
-}
+const getOrgId = requireOrganizationId;
 
 function computeAmountCompany(db: any, amount: number, currency: string, paidAt: string): number {
   if (currency === 'CZK') return amount;

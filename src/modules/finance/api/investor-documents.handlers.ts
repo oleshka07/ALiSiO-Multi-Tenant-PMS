@@ -20,6 +20,7 @@ import { getDb } from '@core/db';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const UPLOAD_ROOT = path.join(process.cwd(), 'data', 'uploads', 'investor-documents');
 
@@ -29,11 +30,7 @@ function ensureUploadRoot(): void {
   }
 }
 
-function getOrgId(db: any): string {
-  const row = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-  if (!row) throw new Error('No organization found');
-  return row.id;
-}
+const getOrgId = requireOrganizationId;
 
 const ALLOWED_TYPES = ['agreement', 'monthly_report', 'tax_statement', 'bank_statement', 'other'] as const;
 

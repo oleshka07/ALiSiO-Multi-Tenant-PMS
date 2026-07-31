@@ -13,6 +13,7 @@
  *   ...
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const CNB_DAILY_URL =
   'https://www.cnb.cz/en/financial-markets/foreign-exchange-market/central-bank-exchange-rate-fixing/central-bank-exchange-rate-fixing/daily.txt';
@@ -84,8 +85,7 @@ export async function fetchCnbFixing(dateIso?: string): Promise<CnbFixing> {
 }
 
 function orgId(db: any): string | null {
-  const r = db.prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string } | undefined;
-  return r?.id ?? null;
+  try { return requireOrganizationId(db); } catch { return null; }
 }
 
 export interface CnbSyncResult {

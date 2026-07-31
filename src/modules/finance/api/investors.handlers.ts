@@ -21,12 +21,9 @@ import { createOperationInTx, getOptionalActor } from './operations.handlers';
 import { buildMonthlyDigest, renderDigestText } from '../data/monthly-digest-engine';
 import { getTelegramBotInfo, sendTelegramMessage } from '../data/telegram-bot';
 import { getAutoRevenueAllProjects, getAutoRevenue, autoFillMonthlyMetrics } from '../data/auto-revenue-engine';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
-function getOrgId(db: any): string {
-  const row = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-  if (!row) throw new Error('No organization found');
-  return row.id;
-}
+const getOrgId = requireOrganizationId;
 
 function newToken(): string {
   return crypto.randomBytes(32).toString('hex');

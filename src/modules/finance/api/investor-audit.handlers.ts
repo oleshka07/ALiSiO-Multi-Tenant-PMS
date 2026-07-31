@@ -7,12 +7,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
-function getOrgId(db: any): string {
-  const row = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-  if (!row) throw new Error('No organization found');
-  return row.id;
-}
+const getOrgId = requireOrganizationId;
 
 function normName(s: string): string {
   return (s || '').toLowerCase()
@@ -354,7 +351,7 @@ export async function executeCascadeDelete(
 export async function relinkProjectToUnit(request: NextRequest): Promise<NextResponse> {
   try {
     const db = getDb();
-    const orgId = (db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined)?.id;
+    const orgId = ({ id: requireOrganizationId(db) } as { id: string } | undefined)?.id;
     if (!orgId) throw new Error('No organization found');
 
     const body = await request.json();

@@ -4,6 +4,7 @@ import { getDb, generateGuestToken } from '@core/db';
 import { findOrCreateGuest } from '@guests';
 import { notifyReservationCreated } from '../domain/reservation-tg-notify';
 import { writeBookingAudit, getBookingActor } from './audit-log.handlers';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function listReservations(request: NextRequest) {
   try {
@@ -154,7 +155,7 @@ export async function createReservation(request: NextRequest) {
       return NextResponse.json({ error: 'This unit is already booked for the selected dates' }, { status: 409 });
     }
 
-    const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string };
+    const org = { id: requireOrganizationId(db) } as { id: string };
 
     const dedup = findOrCreateGuest({
       organizationId: org.id,

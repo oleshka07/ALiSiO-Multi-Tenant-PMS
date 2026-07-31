@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getSessionUser, type SessionUser } from '@/lib/auth';
 import { hasPermission, type Permission } from '@/lib/permissions';
+import { runWithOrganization } from './tenant-context';
 
 export interface Actor {
   user: SessionUser;
@@ -51,7 +52,7 @@ export function withActor<C = any>(handler: Handler<C>) {
   return async (request: any, context: C): Promise<Response> => {
     const actor = await currentActor();
     if (!actor) return unauthorized();
-    return handler(request, context, actor);
+    return runWithOrganization(actor.organizationId, () => handler(request, context, actor));
   };
 }
 
@@ -61,7 +62,7 @@ export function withPermission<C = any>(permission: Permission, handler: Handler
     const actor = await currentActor();
     if (!actor) return unauthorized();
     if (!hasPermission(actor.user.permissions, permission)) return forbidden();
-    return handler(request, context, actor);
+    return runWithOrganization(actor.organizationId, () => handler(request, context, actor));
   };
 }
 
@@ -71,6 +72,6 @@ export function withOwner<C = any>(handler: Handler<C>) {
     const actor = await currentActor();
     if (!actor) return unauthorized();
     if (actor.user.role !== 'owner' && actor.user.role !== 'director') return forbidden();
-    return handler(request, context, actor);
+    return runWithOrganization(actor.organizationId, () => handler(request, context, actor));
   };
 }

@@ -18,6 +18,7 @@
 import { getInvestorIncomeBySource, type InvestorSourceBreakdown } from './auto-revenue-engine';
 import { computeAggregatePortfolioCashback, computeCashbackStatus, type CashbackStatus } from './cashback-calculator';
 import { getPerformanceScoresForInvestor, type PerformanceScoreResult } from './performance-score';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export interface InvestorPortalData {
   investor: {
@@ -605,7 +606,7 @@ export function buildPortalData(db: any, token: string): InvestorPortalData | nu
   //      to=fromCur), use 1/rate.
   //   3. Pick the one that produces a plausible amount (rate < 5 for direct,
   //      rate > 0.2 for inverse means a sensible exchange).
-  const orgRow = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
+  const orgRow = { id: requireOrganizationId(db) } as { id: string } | undefined;
   const orgId = orgRow?.id;
   const getRateToEur = (fromCur: string): number | null => {
     if (fromCur === 'EUR') return 1;

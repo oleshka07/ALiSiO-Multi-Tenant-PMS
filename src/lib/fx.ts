@@ -8,10 +8,10 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { syncCnbRates } from './cnb-rates';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 function orgId(db: any): string | null {
-  const r = db.prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string } | undefined;
-  return r?.id ?? null;
+  try { return requireOrganizationId(db); } catch { return null; }
 }
 
 /**

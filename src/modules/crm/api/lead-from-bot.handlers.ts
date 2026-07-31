@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { generateAutoResponse } from '@/lib/ai/auto-response'; // TODO: replace with eventBus
 import crypto from 'crypto';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function createLeadFromBot(request: NextRequest) {
   try {
@@ -26,7 +27,7 @@ export async function createLeadFromBot(request: NextRequest) {
 
     console.log(`[Lead from Bot] Creating lead: ${firstName} ${lastName}, source: ${source}, type: ${type}`);
 
-    const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as any;
+    const org = { id: requireOrganizationId(db) } as any;
     if (!org) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 500 });
     }

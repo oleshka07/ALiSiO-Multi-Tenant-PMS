@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function listAccruals(request: NextRequest): Promise<NextResponse> {
   try {
@@ -46,7 +47,7 @@ export async function createAccrual(request: Request): Promise<NextResponse> {
 
     if (!description || !amount || !month) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
 
-    const orgRow = db.prepare("SELECT id FROM organizations LIMIT 1").get() as any;
+    const orgRow = { id: requireOrganizationId(db) } as any;
     const id = `acc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
     db.prepare(`

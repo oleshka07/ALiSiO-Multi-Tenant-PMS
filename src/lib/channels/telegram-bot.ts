@@ -23,14 +23,19 @@ const IS_DEV = process.env.NODE_ENV === 'development';
  * Resolution is lazy and per-call rather than computed at module load, because
  * reading the database during import would trigger migrations from an import.
  *
- * ponytail: takes the only organization, which is correct while the app is
- * single-tenant. Becomes a per-request lookup once tenant context lands.
+ * The organization comes from the request's tenant context. Outside a request
+ * — a cron notification, a webhook — it falls back to the sole organization
+ * and raises where there is more than one, rather than sending one hotel's
+ * message through another hotel's bot. The catch below then falls through to
+ * the environment, which is the same behaviour as a missing settings row.
  */
 function resolveConfig(): { botToken: string; chatId: string; adminChatIds: string[] } {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { getDb } = require('@core/db');
-    const org = getDb().prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string } | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { requireOrganizationId } = require('@core/auth/tenant-context');
+    const org = { id: requireOrganizationId(getDb()) as string };
     if (org) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { getTelegramConfig } = require('@/modules/notifications/data/telegram-config.repo');

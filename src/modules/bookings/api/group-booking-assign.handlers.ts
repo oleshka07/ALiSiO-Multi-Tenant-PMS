@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function assignGuest(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -21,7 +22,7 @@ export async function assignGuest(request: NextRequest, { params }: { params: Pr
       return NextResponse.json({ error: 'Reservation not found in this group' }, { status: 404 });
     }
 
-    const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as any;
+    const org = { id: requireOrganizationId(db) } as any;
 
     let guestId: string;
     if (email) {

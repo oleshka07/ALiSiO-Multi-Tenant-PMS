@@ -4,6 +4,7 @@ import { appBaseUrl } from '@core/app-url';
 import { getDb } from '@core/db';
 import { eventBus } from '@core/event-bus';
 import { notifyReservationCreated } from '../domain/reservation-tg-notify';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 // Fallback to guarantee event subscribers are registered in Serverless (Vercel) isolated functions
 const ensureSubscribers = async () => {
@@ -371,7 +372,7 @@ export async function createWidgetReservation(request: NextRequest) {
 
     const finalPrice = Math.max(0, totalPrice - offerDiscount - certificateDiscount - extraDiscount);
 
-    const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string };
+    const org = { id: requireOrganizationId(db) } as { id: string };
 
     let guestId: string;
     if (email) {

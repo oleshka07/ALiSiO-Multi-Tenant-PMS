@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { getMonthMoney } from '../data/money-metrics';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 // Helpers: SQL fragments that filter fin_operations by semantic slice.
 // A "payment" operation = income or refund tied to a reservation (source IN ('booking_widget','teia','hostex','manual') with reservation_id).
@@ -478,11 +479,7 @@ function generateMonthList(from: string, to: string): string[] {
   return result;
 }
 
-function orgId(db: any): string {
-  const row = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-  if (!row) throw new Error('No organization found');
-  return row.id;
-}
+const orgId = requireOrganizationId;
 
 export async function getCashflowMatrix(request: NextRequest): Promise<NextResponse> {
   try {

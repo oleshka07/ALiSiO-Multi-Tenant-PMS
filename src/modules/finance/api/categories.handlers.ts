@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const OP_TYPES = ['income', 'expense', 'transfer', 'other'] as const;
 type OpType = typeof OP_TYPES[number];
@@ -32,11 +33,7 @@ interface CategoryRow {
   created_at: string;
 }
 
-function getOrgId(db: any): string {
-  const row = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-  if (!row) throw new Error('No organization found');
-  return row.id;
-}
+const getOrgId = requireOrganizationId;
 
 function countLinkedExpenseOps(db: any, categoryId: string): number {
   const row = db.prepare("SELECT COUNT(*) AS n FROM fin_operations WHERE category_id = ?").get(categoryId) as { n: number };

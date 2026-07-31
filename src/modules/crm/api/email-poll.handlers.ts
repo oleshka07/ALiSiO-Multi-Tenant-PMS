@@ -10,6 +10,7 @@ import { findOrCreateGuestForLead } from '@/lib/sync/guest-lead-sync';
 import { onInboundMessage } from '@/lib/crm/stage-transitions';
 import { notifyReservationCreated } from '@bookings';
 import crypto from 'crypto';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function pollEmails(req: NextRequest) {
   const results = {
@@ -114,7 +115,7 @@ async function processEmail(email: IncomingEmail, db: any, results: any) {
     results.classified_guest++;
   }
 
-  const orgRow = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string };
+  const orgRow = { id: requireOrganizationId(db) } as { id: string };
   const orgId = orgRow.id;
 
   const lead = await findOrCreateLeadSmart(db, email, bookingData, classification, orgId, results);

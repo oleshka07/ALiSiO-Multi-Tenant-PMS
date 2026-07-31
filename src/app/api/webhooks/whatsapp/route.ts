@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getDb } from '@/lib/db';
 import { sendWhatsAppTemplate, detectTemplateLanguage } from '@/lib/channels/whatsapp';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 // ─── Helpers ──────────────────────────────────────────────────
 function generateId(): string {
@@ -206,7 +207,7 @@ async function processIncomingMessage(
 
   // ── 1. Find or create CRM lead ────────────────────────────
   // Use the first organization (single-tenant system)
-  const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as any;
+  const org = { id: requireOrganizationId(db) } as any;
   const orgId = org?.id || 'org_alisio_001';
 
   let lead = db.prepare(

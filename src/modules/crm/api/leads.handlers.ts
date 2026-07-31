@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import crypto from 'crypto';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 function normalizePhone(phone: string): string {
   return phone.replace(/[\s\-\(\)\.]/g, '').replace(/^00/, '+');
@@ -151,7 +152,7 @@ export function executeCreateLead(db: any, body: any) {
     }
   }
 
-  const org = db.prepare("SELECT id FROM organizations LIMIT 1").get() as any;
+  const org = { id: requireOrganizationId(db) } as any;
   if (!org) throw new Error('Organization not found');
 
   const id = crypto.randomBytes(8).toString('hex');

@@ -4,6 +4,7 @@ import path from 'path';
 import { getDb } from '@core/db';
 import { parseKbPdf } from '@/modules/finance/data/kb-pdf-parser';
 import { importStatement } from '@/modules/finance/data/bank-inbox-engine';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function GET() {
   try {
@@ -11,7 +12,7 @@ export async function GET() {
     const dir = path.join(process.cwd(), 'temporary', 'bank Rest');
     const files = fs.readdirSync(dir).filter(f => f.endsWith('.pdf'));
 
-    const orgRow = db.prepare("SELECT id FROM organizations LIMIT 1").get() as any;
+    const orgRow = { id: requireOrganizationId(db) } as any;
     if (!orgRow) throw new Error("No org");
     const orgId = orgRow.id;
 

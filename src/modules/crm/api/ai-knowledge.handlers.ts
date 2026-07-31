@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { getSessionUser, getSessionIdFromCookies } from '@/lib/auth';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function listKnowledge(request: NextRequest) {
   const sessionId = getSessionIdFromCookies(request.headers.get('cookie'));
@@ -43,7 +44,7 @@ export async function saveKnowledge(request: NextRequest) {
       return NextResponse.json({ error: 'Missing topic, keywords, or content' }, { status: 400 });
     }
 
-    const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as any;
+    const org = { id: requireOrganizationId(db) } as any;
     if (!org) return NextResponse.json({ error: 'No organization' }, { status: 500 });
 
     if (id) {

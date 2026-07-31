@@ -17,14 +17,11 @@ import { encryptPassword } from '../data/bank-inbox-engine';
 import { checkReceiptInbox } from '../data/receipt-inbox-engine';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@/lib/auth';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 
-function getOrgId(db: any): string {
-  const row = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-  if (!row) throw new Error('No organization found');
-  return row.id;
-}
+const getOrgId = requireOrganizationId;
 
 async function getCurrentUserId(): Promise<string | null> {
   const store = await cookies();

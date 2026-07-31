@@ -15,6 +15,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@/lib/auth';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const ATTACH_ROOT = path.join(DATA_DIR, 'attachments');
@@ -22,11 +23,7 @@ const ATTACH_ROOT = path.join(DATA_DIR, 'attachments');
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB per file
 const ALLOWED_MIME_PREFIXES = ['image/', 'application/pdf', 'application/vnd.', 'application/zip', 'text/'];
 
-function getOrgId(db: any): string {
-  const row = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-  if (!row) throw new Error('No organization found');
-  return row.id;
-}
+const getOrgId = requireOrganizationId;
 
 function safeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 80);

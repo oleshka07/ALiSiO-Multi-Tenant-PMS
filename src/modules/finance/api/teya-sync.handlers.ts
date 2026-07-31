@@ -3,12 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { reconcileTeyaTransactions, reconcileTeyaCsvRows } from '../data/teya-reconcile-engine';
 import { parseTeyaCsv } from '../data/teya-csv-parser';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
-function getOrgId(db: any): string {
-  const row = db.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-  if (!row) throw new Error('No organization found');
-  return row.id;
-}
+const getOrgId = requireOrganizationId;
 
 /**
  * POST /api/finance/teya/sync

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { findOrCreateGuest } from '@guests';
 import { notifyGroupBookingCreated } from '../domain/reservation-tg-notify';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function listGroupBookings() {
   try {
@@ -86,7 +87,7 @@ export async function createGroupBooking(request: NextRequest) {
       (new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000
     ));
 
-    const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as any;
+    const org = { id: requireOrganizationId(db) } as any;
     const firstUnit = db.prepare('SELECT property_id FROM units WHERE id = ?').get(finalUnitIds[0]) as any;
     if (!firstUnit) {
       return NextResponse.json({ error: 'Unit not found' }, { status: 400 });

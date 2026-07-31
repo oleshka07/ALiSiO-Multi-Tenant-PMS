@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { executeCreateLead, executeCreateMessage } from '@crm';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 // Honeypot field name injected by collector.js — bots fill it, humans don't.
 const HONEYPOT_FIELD = '_hp_trap';
@@ -132,7 +133,7 @@ export async function POST(req: NextRequest) {
 
   // ── Create or merge into existing CRM lead ──
   try {
-    const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as any;
+    const org = { id: requireOrganizationId(db) } as any;
     if (org) {
       // Parse name into first/last
       const nameParts = (fullName ?? '').trim().split(/\s+/);

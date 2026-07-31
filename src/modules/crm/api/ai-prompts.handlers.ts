@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { getSessionUser, getSessionIdFromCookies } from '@/lib/auth';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function listPrompts(request: NextRequest) {
   const sessionId = getSessionIdFromCookies(request.headers.get('cookie'));
@@ -34,7 +35,7 @@ export async function savePrompt(request: NextRequest) {
       return NextResponse.json({ error: 'Missing name or systemPrompt' }, { status: 400 });
     }
 
-    const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as { id: string } | undefined;
+    const org = { id: requireOrganizationId(db) } as { id: string } | undefined;
     if (!org) return NextResponse.json({ error: 'No organization' }, { status: 500 });
 
     if (id) {

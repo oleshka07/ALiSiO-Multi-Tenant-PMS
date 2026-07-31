@@ -50,6 +50,7 @@ function cleanup() {
     db.prepare('DELETE FROM categories WHERE property_id = ?').run(pid);
   }
   db.prepare('DELETE FROM properties WHERE organization_id LIKE ?').run(`${TAG}%`);
+  db.prepare('DELETE FROM finance_tags WHERE organization_id LIKE ?').run(`${TAG}%`);
   db.prepare('DELETE FROM app_users WHERE organization_id LIKE ?').run(`${TAG}%`);
   db.prepare('DELETE FROM sessions WHERE user_id LIKE ?').run(`${TAG}%`);
   db.prepare('DELETE FROM organizations WHERE id LIKE ?').run(`${TAG}%`);
@@ -240,6 +241,22 @@ async function main() {
       .get(connA.id);
     assert.strictEqual(mapped.c, 0, `${mapped.c} room mappings were written into A's connection by B`);
     console.log("  ok  B cannot map rooms onto A's connection");
+
+    // Finance used to answer "which organization is this?" with the first row
+    // in the table, in 66 files. With the tenant context in place, a write from
+    // B's session must land under B — not under whichever organization the
+    // server happens to have created first.
+    const tagRes = await call(cookieB, '/api/finance/tags', {
+      method: 'POST',
+      body: JSON.stringify({ name: `probe-tag-${TAG}`, color: '#123456' }),
+    });
+    assert.ok(tagRes.ok, `B could not create a finance tag: ${tagRes.status}`);
+    const tagRow = db
+      .prepare('SELECT organization_id FROM finance_tags WHERE name = ?')
+      .get(`probe-tag-${TAG}`);
+    assert.ok(tagRow, 'the finance tag was not written');
+    assert.strictEqual(tagRow.organization_id, b.orgId, `B's tag was filed under ${tagRow.organization_id}`);
+    console.log("  ok  a finance write from B lands under B, not the first organization");
 
     // And without a session, nothing at all.
     const anon = await fetch(`${BASE}/api/properties`);

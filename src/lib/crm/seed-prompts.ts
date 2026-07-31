@@ -10,6 +10,7 @@
  * - Meals: breakfast 150/120, lunch/dinner 200 (groups 15+)
  */
 import { getDb } from '@/lib/db';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const STAGE_PROMPTS: Array<{
   stage: string;
@@ -190,7 +191,7 @@ export function seedStagePrompts(): number {
   const db = getDb();
   
   // Get org ID
-  const org = db.prepare('SELECT id FROM organizations LIMIT 1').get() as any;
+  const org = { id: requireOrganizationId(db) } as any;
   if (!org) {
     console.log('[Seed Prompts] No organization found — skipping');
     return 0;
