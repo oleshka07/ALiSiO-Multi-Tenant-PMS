@@ -4,8 +4,22 @@ import { cookies } from 'next/headers';
 import { getSessionUser, type SessionUser } from '@/lib/auth';
 import { hasPermission, type Permission } from '@/lib/permissions';
 import { hasFinancePassphrase, isFinanceUnlocked } from './_finance-unlock';
+import type { Actor } from '@core/auth/session';
 
+/**
+ * The actor is handed to the handler rather than looked up again, so a finance
+ * query has an organization id in hand. Existing handlers that ignore the third
+ * argument keep working — they are being scoped one at a time.
+ */
 export type FinanceHandler<TCtx = unknown> = (
+  request: NextRequest,
+  context: TCtx,
+  actor: Actor,
+) => Promise<NextResponse | Response>;
+
+/** What a guard returns — a plain route export, which Next requires to take
+ *  exactly (request, context). */
+export type GuardedRoute<TCtx = unknown> = (
   request: NextRequest,
   context: TCtx,
 ) => Promise<NextResponse | Response>;
@@ -145,9 +159,12 @@ function forbidden(message: string, extra: Record<string, unknown> = {}): NextRe
 async function requireFinanceUser(
   request?: NextRequest,
   isWrite = false,
-): Promise<SessionUser | NextResponse> {
+): Promise<Actor | NextResponse> {
   const { sessionId, user } = await getSession();
   if (!user) return unauthenticated();
+  // A session with no organization cannot be scoped, so it cannot be trusted
+  // with money.
+  if (!user.organization_id) return unauthenticated();
   if (!isFinanceAuthorized(user)) {
     return forbidden('Доступ до фінансів лише для власника');
   }
@@ -162,7 +179,7 @@ async function requireFinanceUser(
     const aclError = financeAclError(user, request.nextUrl.pathname, isWrite);
     if (aclError) return aclError;
   }
-  return user;
+  return { user, organizationId: user.organization_id };
 }
 
 /**
@@ -192,11 +209,11 @@ export async function resolveFinanceOwner(): Promise<
  */
 export function withFinanceRead<TCtx = unknown>(
   handler: FinanceHandler<TCtx>,
-): FinanceHandler<TCtx> {
+): GuardedRoute<TCtx> {
   return async (request, context) => {
-    const u = await requireFinanceUser(request, false);
-    if (u instanceof NextResponse) return u;
-    return handler(request, context);
+    const a = await requireFinanceUser(request, false);
+    if (a instanceof NextResponse) return a;
+    return handler(request, context, a);
   };
 }
 
@@ -209,14 +226,14 @@ export function withFinanceRead<TCtx = unknown>(
 export function withPermission<TCtx = unknown>(
   permission: Permission,
   handler: FinanceHandler<TCtx>,
-): FinanceHandler<TCtx> {
+): GuardedRoute<TCtx> {
   return async (request, context) => {
-    const u = await requireFinanceUser(request, true);
-    if (u instanceof NextResponse) return u;
-    if (!hasPermission(u.permissions, permission)) {
+    const a = await requireFinanceUser(request, true);
+    if (a instanceof NextResponse) return a;
+    if (!hasPermission(a.user.permissions, permission)) {
       return forbidden(`Недостатньо прав. Потрібен дозвіл: ${permission}`, { required: permission });
     }
-    return handler(request, context);
+    return handler(request, context, a);
   };
 }
 
@@ -227,17 +244,17 @@ export function withPermission<TCtx = unknown>(
 export function withAnyPermission<TCtx = unknown>(
   permissions: Permission[],
   handler: FinanceHandler<TCtx>,
-): FinanceHandler<TCtx> {
+): GuardedRoute<TCtx> {
   return async (request, context) => {
-    const u = await requireFinanceUser(request, true);
-    if (u instanceof NextResponse) return u;
-    const ok = permissions.some((p) => hasPermission(u.permissions, p));
+    const a = await requireFinanceUser(request, true);
+    if (a instanceof NextResponse) return a;
+    const ok = permissions.some((p) => hasPermission(a.user.permissions, p));
     if (!ok) {
       return forbidden(
         `Недостатньо прав. Потрібен один з дозволів: ${permissions.join(', ')}`,
         { required: permissions },
       );
     }
-    return handler(request, context);
+    return handler(request, context, a);
   };
 }

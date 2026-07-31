@@ -10,7 +10,7 @@
     "lint": "biome check ./src",
     "lint:fix": "biome check --write ./src",
     "typecheck": "tsc --noEmit",
-    "check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/modules/bookings/domain/booking-com-excel.check.ts && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/modules/bookings/ui/category-step.check.ts",
+    "check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/modules/bookings/domain/booking-com-excel.check.ts && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/modules/bookings/ui/category-step.check.ts && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/lib/invoice-numbering.check.ts",
     "test:e2e": "playwright test",
     "test:ui": "playwright test --ui",
     "audit": "node scripts/audit.mjs",

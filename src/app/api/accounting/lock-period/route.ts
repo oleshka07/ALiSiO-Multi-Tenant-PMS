@@ -11,22 +11,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { requireOwner } from '@core/security/route-guard';
 import { lockPeriod, unlockPeriod, seriesForChannel } from '@/lib/invoice-numbering';
+import type { Actor } from '@core/auth/session';
 
-export const GET = requireOwner(async (): Promise<NextResponse> => {
+export const GET = requireOwner(async (_request, _ctx, actor: Actor): Promise<NextResponse> => {
   const db = getDb();
   const periods = db.prepare(
-    'SELECT series, month, status, locked_at FROM invoice_periods ORDER BY month DESC, series'
-  ).all();
+    'SELECT series, month, status, locked_at FROM invoice_periods WHERE organization_id = ? ORDER BY month DESC, series'
+  ).all(actor.organizationId);
   // Also surface open (series, month) combos that have invoices but no explicit row yet.
   const derived = db.prepare(`
     SELECT series, substr(COALESCE(period, issued_at),1,7) AS month, COUNT(*) AS invoices
-    FROM invoices WHERE status = 'issued'
+    FROM invoices WHERE organization_id = ? AND status = 'issued'
     GROUP BY series, month ORDER BY month DESC, series
-  `).all();
+  `).all(actor.organizationId);
   return NextResponse.json({ periods, derived });
 });
 
-export const POST = requireOwner(async (request: NextRequest): Promise<NextResponse> => {
+export const POST = requireOwner(async (request: NextRequest, _ctx, actor: Actor): Promise<NextResponse> => {
   try {
     const { series, month, action, channel } = await request.json();
     const resolvedSeries = (series || seriesForChannel(channel).series) as string;
@@ -35,10 +36,10 @@ export const POST = requireOwner(async (request: NextRequest): Promise<NextRespo
     }
     const db = getDb();
     if (action === 'unlock') {
-      unlockPeriod(db, resolvedSeries, month);
+      unlockPeriod(db, actor.organizationId, resolvedSeries, month);
       return NextResponse.json({ ok: true, series: resolvedSeries, month, status: 'open' });
     }
-    lockPeriod(db, resolvedSeries, month);
+    lockPeriod(db, actor.organizationId, resolvedSeries, month);
     return NextResponse.json({ ok: true, series: resolvedSeries, month, status: 'locked' });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

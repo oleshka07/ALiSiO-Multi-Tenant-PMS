@@ -7,12 +7,19 @@
 // session against the DB and enforce role/permission. Owner policy mirrors the
 // finance module (owner, or an explicit FINANCE_EXTRA_USER_IDS allow-list).
 // ════════════════════════════════════════════════════════════
+//
+// Identity itself comes from core/auth/session — these guards only add the
+// finance access policy on top, and hand the same Actor to the handler so a
+// finance query has an organization id in hand like every other query.
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { getSessionUser, type SessionUser } from '@/lib/auth';
+import { currentActor, type Actor } from '@core/auth/session';
 import { hasPermission, type Permission } from '@/lib/permissions';
 
-type RouteHandler<C = any> = (request: any, context: C) => Promise<Response> | Response;
+/** What a guarded handler receives. The actor is added by the guard. */
+type GuardedHandler<C = any> = (request: any, context: C, actor: Actor) => Promise<Response> | Response;
+/** What the guard returns — a plain route export, which Next requires to take
+ *  exactly (request, context). */
+type RouteHandler<C = any> = (request: any, context: C) => Promise<Response>;
 
 const FINANCE_ALLOWLIST: ReadonlySet<string> = new Set(
   (process.env.FINANCE_EXTRA_USER_IDS ?? '')
@@ -20,11 +27,6 @@ const FINANCE_ALLOWLIST: ReadonlySet<string> = new Set(
     .map((s) => s.trim())
     .filter(Boolean),
 );
-
-async function currentUser(): Promise<SessionUser | null> {
-  const store = await cookies();
-  return getSessionUser(store.get('session_id')?.value);
-}
 
 function unauthenticated(): NextResponse {
   return NextResponse.json({ error: 'Не авторизовано', code: 'UNAUTHENTICATED' }, { status: 401 });
@@ -34,10 +36,11 @@ function forbidden(message: string): NextResponse {
 }
 
 /** Owner-only (plus FINANCE_EXTRA_USER_IDS allow-list + finance_user_access table). */
-export function requireOwner<C = any>(handler: RouteHandler<C>): RouteHandler<C> {
+export function requireOwner<C = any>(handler: GuardedHandler<C>): RouteHandler<C> {
   return async (request, context) => {
-    const u = await currentUser();
-    if (!u) return unauthenticated();
+    const actor = await currentActor();
+    if (!actor) return unauthenticated();
+    const u = actor.user;
     if (u.role !== 'owner' && !FINANCE_ALLOWLIST.has(u.id)) {
       // Check DB-based access as a fallback
       try {
@@ -49,21 +52,21 @@ export function requireOwner<C = any>(handler: RouteHandler<C>): RouteHandler<C>
         return forbidden('Доступ лише для власника');
       }
     }
-    return handler(request, context);
+    return handler(request, context, actor);
   };
 }
 
 /** Requires a valid session and a specific feature permission. */
 export function requirePermission<C = any>(
   permission: Permission,
-  handler: RouteHandler<C>,
+  handler: GuardedHandler<C>,
 ): RouteHandler<C> {
   return async (request, context) => {
-    const u = await currentUser();
-    if (!u) return unauthenticated();
-    if (!hasPermission(u.permissions, permission)) {
+    const actor = await currentActor();
+    if (!actor) return unauthenticated();
+    if (!hasPermission(actor.user.permissions, permission)) {
       return forbidden(`Недостатньо прав. Потрібен дозвіл: ${permission}`);
     }
-    return handler(request, context);
+    return handler(request, context, actor);
   };
 }

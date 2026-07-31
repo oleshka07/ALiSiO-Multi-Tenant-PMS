@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { requireOwner } from '@core/security/route-guard';
 import { allocateInvoiceNumber, seriesForChannel, isPeriodLocked } from '@/lib/invoice-numbering';
+import type { Actor } from '@core/auth/session';
 
 // ─── CSV utilities ──────────────────────────────────────────────────────────
 
@@ -370,7 +371,7 @@ export interface BatchInvoiceResult {
 }
 
 export const DELETE = requireOwner(_DELETE);
-async function _DELETE(request: NextRequest): Promise<NextResponse> {
+async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
     const db = getDb();
     const url = new URL(request.url);
@@ -395,8 +396,9 @@ async function _DELETE(request: NextRequest): Promise<NextResponse> {
       seriesVal = 'TEYA';
     }
 
-    let query = `DELETE FROM invoices WHERE 1=1`;
-    const params: any[] = [];
+    // Unscoped this wiped every hotel's imported invoices, not just this one's.
+    let query = `DELETE FROM invoices WHERE organization_id = ?`;
+    const params: any[] = [actor.organizationId];
 
     if (channel !== 'all') {
       query += ` AND (notes LIKE ? OR series = ?)`;
@@ -417,8 +419,8 @@ async function _DELETE(request: NextRequest): Promise<NextResponse> {
     const force = url.searchParams.get('force') === 'true';
     if (!force) {
       // Find if any matched invoices are locked
-      let checkQuery = `SELECT COUNT(*) as count FROM invoices WHERE locked = 1`;
-      const checkParams: any[] = [];
+      let checkQuery = `SELECT COUNT(*) as count FROM invoices WHERE organization_id = ? AND locked = 1`;
+      const checkParams: any[] = [actor.organizationId];
       if (channel !== 'all') {
         checkQuery += ` AND (notes LIKE ? OR series = ?)`;
         checkParams.push(notesPattern, seriesVal);
@@ -466,7 +468,7 @@ async function _DELETE(request: NextRequest): Promise<NextResponse> {
 }
 
 export const POST = requireOwner(_POST);
-async function _POST(request: NextRequest): Promise<NextResponse> {
+async function _POST(request: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
     const db = getDb();
     const form = await request.formData();
@@ -501,8 +503,8 @@ async function _POST(request: NextRequest): Promise<NextResponse> {
       // Dedup: check if already exists via notes field
       const noteKey = `${row.source}:${row.source_ref}`;
       const existing = db.prepare(
-        "SELECT id, invoice_number FROM invoices WHERE notes = ? AND status = 'issued' LIMIT 1"
-      ).get(noteKey) as { id: string; invoice_number: string } | undefined;
+        "SELECT id, invoice_number FROM invoices WHERE organization_id = ? AND notes = ? AND status = 'issued' LIMIT 1"
+      ).get(actor.organizationId, noteKey) as { id: string; invoice_number: string } | undefined;
 
       if (existing) {
         return { id: existing.id, number: existing.invoice_number, created: false };
@@ -512,11 +514,11 @@ async function _POST(request: NextRequest): Promise<NextResponse> {
       const issued = (row.date || today);
       const period = issued.slice(0, 7);
       const { series } = seriesForChannel(row.source);
-      if (isPeriodLocked(db, series, period)) {
+      if (isPeriodLocked(db, actor.organizationId, series, period)) {
         throw new Error(`Období ${series} ${period} je uzamčeno — nové faktury nelze přidat.`);
       }
       const invId  = `inv_batch_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
-      const { invoiceNumber: invNum } = allocateInvoiceNumber(db, row.source, new Date().getFullYear());
+      const { invoiceNumber: invNum } = allocateInvoiceNumber(db, actor.organizationId, row.source, new Date().getFullYear());
       const due    = row.date > today ? row.date : today;
 
       // For rows that need a guest name, store a placeholder
@@ -524,11 +526,11 @@ async function _POST(request: NextRequest): Promise<NextResponse> {
 
       db.prepare(`
         INSERT INTO invoices
-          (id, invoice_number, issued_at, due_date, amount, currency, status, notes, is_custom,
+          (id, organization_id, invoice_number, issued_at, due_date, amount, currency, status, notes, is_custom,
            custom_buyer_name, custom_description, is_credit_note, series, period, confirmed, confirmation_source)
-        VALUES (?, ?, ?, ?, ?, ?, 'issued', ?, 1, ?, ?, ?, ?, ?, 1, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'issued', ?, 1, ?, ?, ?, ?, ?, 1, ?)
       `).run(
-        invId, invNum, issued, due,
+        invId, actor.organizationId, invNum, issued, due,
         row.amount, row.currency,
         noteKey,
         buyerName,

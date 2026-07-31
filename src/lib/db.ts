@@ -3216,6 +3216,131 @@ function runMigrations(database: any) {
     console.error('[db] invoice series/lock migration:', e.message);
   }
 
+  // --- Migration: invoice numbering is per organization ---
+  // invoice_counters was keyed (series, year) and invoice_number was UNIQUE
+  // across the whole table. On one hotel that is fine; on a shared server the
+  // second hotel's first invoice of the year comes out numbered 002, because it
+  // read a counter the first hotel had already advanced — and once two hotels
+  // both reach "2026-001" the UNIQUE constraint refuses the second one
+  // outright. An invoice number is a legal document identifier: each company
+  // must own its own sequence starting at 1.
+  try {
+    const counterCols = (database.prepare('PRAGMA table_info(invoice_counters)').all() as any[]).map((c: any) => c.name);
+    if (!counterCols.includes('organization_id')) {
+      // Counters are derived data: whatever is in them can be rebuilt from the
+      // invoices themselves, so they are recreated rather than guessed at.
+      database.exec(`
+        DROP TABLE IF EXISTS invoice_counters;
+        CREATE TABLE invoice_counters (
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          series  TEXT NOT NULL,
+          year    INTEGER NOT NULL,
+          last_no INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (organization_id, series, year)
+        )
+      `);
+    }
+
+    const periodCols = (database.prepare('PRAGMA table_info(invoice_periods)').all() as any[]).map((c: any) => c.name);
+    if (!periodCols.includes('organization_id')) {
+      // A lock is a real decision, not derived, so existing rows are kept when
+      // there is exactly one organization to attribute them to.
+      const orgs = database.prepare('SELECT id FROM organizations').all() as any[];
+      database.exec(`
+        ALTER TABLE invoice_periods RENAME TO invoice_periods_old;
+        CREATE TABLE invoice_periods (
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          series    TEXT NOT NULL,
+          month     TEXT NOT NULL,
+          status    TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','locked')),
+          locked_at TEXT,
+          PRIMARY KEY (organization_id, series, month)
+        )
+      `);
+      if (orgs.length === 1) {
+        database.prepare(
+          'INSERT INTO invoice_periods (organization_id, series, month, status, locked_at) ' +
+          'SELECT ?, series, month, status, locked_at FROM invoice_periods_old'
+        ).run(orgs[0].id);
+      } else {
+        const n = (database.prepare('SELECT COUNT(*) c FROM invoice_periods_old').get() as any).c;
+        if (n) console.error(`[db] invoice_periods: ${n} rows dropped, ${orgs.length} organizations — cannot attribute`);
+      }
+      database.exec('DROP TABLE invoice_periods_old');
+    }
+
+    const invCols2 = (database.prepare('PRAGMA table_info(invoices)').all() as any[]).map((c: any) => c.name);
+    if (!invCols2.includes('organization_id')) {
+      // Dropping the global UNIQUE on invoice_number needs a table rebuild;
+      // SQLite has no ALTER for it. The organization comes from the
+      // reservation's property, which is where it was implied all along.
+      database.exec('ALTER TABLE invoices RENAME TO invoices_old');
+      database.exec(`
+        CREATE TABLE invoices (
+          id TEXT PRIMARY KEY,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          reservation_id TEXT NOT NULL REFERENCES reservations(id) ON DELETE CASCADE,
+          invoice_number TEXT NOT NULL,
+          issued_at TEXT NOT NULL DEFAULT (datetime('now')),
+          due_date TEXT,
+          amount REAL NOT NULL,
+          currency TEXT NOT NULL DEFAULT 'CZK',
+          status TEXT NOT NULL DEFAULT 'issued' CHECK (status IN ('issued', 'cancelled')),
+          notes TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          series TEXT DEFAULT 'HOUSE',
+          period TEXT,
+          locked INTEGER NOT NULL DEFAULT 0,
+          confirmed INTEGER NOT NULL DEFAULT 0,
+          confirmation_source TEXT,
+          UNIQUE (organization_id, invoice_number)
+        )
+      `);
+      // Anything a later migration had already ALTERed on is re-added, so a
+      // rebuild never silently drops a column the app writes to.
+      const newCols = (database.prepare('PRAGMA table_info(invoices)').all() as any[]).map((c: any) => c.name);
+      for (const c of (database.prepare('PRAGMA table_info(invoices_old)').all() as any[])) {
+        if (newCols.includes(c.name)) continue;
+        const def = c.dflt_value != null ? ` DEFAULT ${c.dflt_value}` : '';
+        database.exec(`ALTER TABLE invoices ADD COLUMN ${c.name} ${c.type || 'TEXT'}${def}`);
+        newCols.push(c.name);
+      }
+      const carried = invCols2.filter((c) => newCols.includes(c));
+      // An invoice whose reservation lost its property has no organization and
+      // no way to acquire one; it is left behind rather than filed under a
+      // hotel it may not belong to.
+      database.exec(`
+        INSERT INTO invoices (organization_id, ${carried.join(', ')})
+        SELECT p.organization_id, ${carried.map((c) => `i.${c}`).join(', ')}
+        FROM invoices_old i
+        JOIN reservations r ON r.id = i.reservation_id
+        JOIN properties p ON p.id = r.property_id
+      `);
+      const before = (database.prepare('SELECT COUNT(*) c FROM invoices_old').get() as any).c;
+      const after = (database.prepare('SELECT COUNT(*) c FROM invoices').get() as any).c;
+      if (before !== after) console.error(`[db] invoices: ${before - after} of ${before} rows had no organization and were not carried over`);
+      database.exec('DROP TABLE invoices_old');
+      database.exec('CREATE INDEX IF NOT EXISTS idx_invoices_reservation ON invoices(reservation_id)');
+      database.exec('CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(organization_id, invoice_number)');
+      database.exec('CREATE INDEX IF NOT EXISTS idx_invoices_issued ON invoices(issued_at)');
+    }
+
+    // Re-seed each organization's HOUSE counter from its own invoices, so a
+    // fresh counter never re-issues a number that already exists.
+    const yr2 = new Date().getFullYear();
+    database.prepare(`
+      INSERT INTO invoice_counters (organization_id, series, year, last_no)
+      SELECT organization_id, COALESCE(series, 'HOUSE'), ?,
+             MAX(CAST(substr(invoice_number, instr(invoice_number, '-') + 1) AS INTEGER))
+      FROM invoices WHERE invoice_number LIKE ?
+      GROUP BY organization_id, COALESCE(series, 'HOUSE')
+      ON CONFLICT(organization_id, series, year)
+      DO UPDATE SET last_no = MAX(last_no, excluded.last_no)
+    `).run(yr2, `%${yr2}-%`);
+  } catch (e: any) {
+    console.error('[db] per-organization invoice numbering migration:', e.message);
+  }
+
   // --- Migration: invoice confirmation (only Teya/cash-confirmed invoices count) ---
   // An invoice is "confirmed" when backed by a real payment: Teya webhook, Teya
   // CSV/POSLink reconciliation, an OTA statement, or operator-marked cash. A bare
