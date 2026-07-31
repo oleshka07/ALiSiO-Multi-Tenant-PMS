@@ -148,6 +148,11 @@ function scopeOf(name, seen = new Set()) {
   return { kind: 'unscoped', path: [] };
 }
 
+// A table that a migration renames away is scaffolding for a rebuild, not a
+// table anyone stores rows in — booking_activity_log_new exists for three
+// statements before it becomes booking_activity_log.
+for (const m of allText.matchAll(/ALTER TABLE ([a-z_0-9]+) RENAME TO/gi)) tables.delete(m[1]);
+
 const scope = new Map();
 for (const name of tables.keys()) {
   scope.set(name, GLOBAL_TABLES.has(name) ? { kind: 'global', path: [] } : scopeOf(name));

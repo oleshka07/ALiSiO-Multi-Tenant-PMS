@@ -4977,6 +4977,175 @@ function runMigrations(database: any) {
   } catch (e: any) {
     console.log('[DB] organization legal columns migration note:', e.message);
   }
+
+  // --- Migration: the last tables with no path to an organization ---
+  // Everything else in the schema reaches an organization either directly or
+  // through a foreign key. These did not, by any route, which means every
+  // customer shared the rows: one hotel's public price list, another's booking
+  // drafts, a third's gift-card bundles, all in the same table with nothing to
+  // tell them apart. organization_id is added directly rather than by declaring
+  // a foreign key, because SQLite cannot add one without rebuilding the table
+  // and because a direct column is what Postgres row-level security will key on
+  // later.
+  //
+  // Backfill: from the row's natural parent where it has one, otherwise from
+  // the sole organization. On a server that already has more than one, rows
+  // that cannot be attributed are left NULL and counted — guessing would file
+  // one hotel's data under another.
+  try {
+    const orgs = database.prepare('SELECT id FROM organizations').all() as any[];
+    const soleOrg = orgs.length === 1 ? orgs[0].id : null;
+
+    /** Where a row's organization can be read from, when it can. */
+    const BACKFILL: Record<string, string | null> = {
+      availability_blocks:
+        'UPDATE availability_blocks SET organization_id = (SELECT p.organization_id FROM units u JOIN properties p ON p.id = u.property_id WHERE u.id = availability_blocks.unit_id) WHERE organization_id IS NULL',
+      tg_booking_messages:
+        'UPDATE tg_booking_messages SET organization_id = (SELECT p.organization_id FROM reservations r JOIN properties p ON p.id = r.property_id WHERE r.id = tg_booking_messages.reservation_id) WHERE organization_id IS NULL',
+      fin_operation_audit:
+        'UPDATE fin_operation_audit SET organization_id = (SELECT o.organization_id FROM fin_operations o WHERE o.id = fin_operation_audit.operation_id) WHERE organization_id IS NULL',
+      gift_card_bundles:
+        'UPDATE gift_card_bundles SET organization_id = (SELECT p.organization_id FROM booking_sites s JOIN properties p ON p.id = s.property_id WHERE s.id = gift_card_bundles.site_id) WHERE organization_id IS NULL',
+      gift_card_automation_rules:
+        'UPDATE gift_card_automation_rules SET organization_id = (SELECT p.organization_id FROM booking_sites s JOIN properties p ON p.id = s.property_id WHERE s.id = gift_card_automation_rules.site_id) WHERE organization_id IS NULL',
+      // A webhook for a payment we could not match has no reservation and so no
+      // owner; those rows stay NULL on purpose.
+      payment_webhook_log:
+        'UPDATE payment_webhook_log SET organization_id = (SELECT p.organization_id FROM reservations r JOIN properties p ON p.id = r.property_id WHERE r.id = payment_webhook_log.reservation_id) WHERE organization_id IS NULL AND reservation_id IS NOT NULL',
+      booking_drafts: null,
+      widget_price_list: null,
+      crm_auto_drafts: null,
+      widget_handshakes: null,
+    };
+
+    // Created here rather than left to the handlers that lazily CREATE ... IF
+    // NOT EXISTS them, so the first shape on disk is the scoped one.
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS crm_auto_drafts (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        message_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        lead_id TEXT NOT NULL,
+        account_id TEXT,
+        original_query TEXT NOT NULL,
+        draft_content_uk TEXT NOT NULL,
+        draft_content_translated TEXT,
+        target_language TEXT,
+        status TEXT DEFAULT 'pending',
+        telegram_message_id INTEGER,
+        reply_subject TEXT,
+        reply_to_email TEXT,
+        in_reply_to TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS widget_handshakes (
+        token TEXT PRIMARY KEY,
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        site_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        expires_at DATETIME
+      )
+    `);
+
+    let stranded = 0;
+    for (const [table, backfill] of Object.entries(BACKFILL)) {
+      const cols = (database.prepare(`PRAGMA table_info(${table})`).all() as any[]).map((c: any) => c.name);
+      if (cols.length === 0) continue; // table not in this database
+      if (!cols.includes('organization_id')) {
+        database.exec(`ALTER TABLE ${table} ADD COLUMN organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE`);
+      }
+      if (backfill) database.exec(backfill);
+      if (soleOrg) {
+        database.prepare(`UPDATE ${table} SET organization_id = ? WHERE organization_id IS NULL`).run(soleOrg);
+      }
+      database.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_org ON ${table}(organization_id)`);
+      const left = (database.prepare(
+        `SELECT COUNT(*) c FROM ${table} WHERE organization_id IS NULL`,
+      ).get() as any).c;
+      if (left && table !== 'payment_webhook_log') {
+        stranded += left;
+        console.error(`[DB] ${table}: ${left} rows have no organization`);
+      }
+    }
+    if (!stranded) console.log('[DB] every table now reaches an organization');
+  } catch (e: any) {
+    console.error('[DB] organization_id backfill migration:', e.message);
+  }
+
+  // --- Migration: uniqueness is per organization, not per server ---
+  // A promo code, a price-list item code and a gift-card code are all values a
+  // person types in. Two hotels both want SUMMER25, and with a server-wide
+  // UNIQUE the second one to try is simply refused — the first customer to
+  // choose a code takes it away from everyone else. SQLite cannot drop a
+  // constraint, so each of these tables is rebuilt with the organization added
+  // to the key.
+  try {
+    /** Re-key a UNIQUE so it starts with organization_id. */
+    const rescope = (table: string, cols: string[]) => {
+      const row = database.prepare('SELECT sql FROM sqlite_master WHERE type = ? AND name = ?')
+        .get('table', table) as { sql: string } | undefined;
+      if (!row) return;
+      const tableCols = (database.prepare(`PRAGMA table_info(${table})`).all() as any[]).map((c: any) => c.name);
+      if (!tableCols.includes('organization_id')) return; // scoped some other way
+      if (new RegExp(`UNIQUE\\s*\\(\\s*organization_id`, 'i').test(row.sql)) return; // already done
+
+      let ddl = row.sql;
+      for (const col of cols) {
+        // Inline form: `code TEXT UNIQUE NOT NULL`
+        ddl = ddl.replace(new RegExp(`(^|[\\s,(])(${col}\\s+[A-Z]+[^,\\n]*?)\\bUNIQUE\\b`, 'i'), '$1$2');
+      }
+      // Table-level form: `UNIQUE (scope, scope_id, month)`
+      ddl = ddl.replace(new RegExp(`,?\\s*UNIQUE\\s*\\([^)]*\\b${cols[0]}\\b[^)]*\\)`, 'i'), '');
+      const close = ddl.lastIndexOf(')');
+      ddl = `${ddl.slice(0, close)}, UNIQUE (organization_id, ${cols.join(', ')})${ddl.slice(close)}`;
+
+      const indexes = (database.prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+      ).all(table) as any[]).map((r: any) => r.sql);
+
+      database.exec(`ALTER TABLE ${table} RENAME TO ${table}_old`);
+      database.exec(ddl);
+      const carried = tableCols.join(', ');
+      database.exec(`INSERT INTO ${table} (${carried}) SELECT ${carried} FROM ${table}_old`);
+      database.exec(`DROP TABLE ${table}_old`);
+      for (const ix of indexes) {
+        try { database.exec(ix); } catch { /* renamed away with the old table */ }
+      }
+      console.log(`[DB] ${table}: UNIQUE re-keyed to (organization_id, ${cols.join(', ')})`);
+    };
+
+    // coupons and gift_cards reach an organization only through a site or a
+    // property, which is not something a UNIQUE can key on.
+    for (const [table, backfill] of [
+      ['coupons', 'UPDATE coupons SET organization_id = (SELECT p.organization_id FROM booking_sites s JOIN properties p ON p.id = s.property_id WHERE s.id = coupons.site_id) WHERE organization_id IS NULL AND site_id IS NOT NULL'],
+      ['gift_cards', 'UPDATE gift_cards SET organization_id = (SELECT p.organization_id FROM properties p WHERE p.id = gift_cards.property_id) WHERE organization_id IS NULL'],
+    ] as const) {
+      const cols = (database.prepare(`PRAGMA table_info(${table})`).all() as any[]).map((c: any) => c.name);
+      if (cols.length === 0 || cols.includes('organization_id')) continue;
+      database.exec(`ALTER TABLE ${table} ADD COLUMN organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE`);
+      database.exec(backfill);
+      const orgs = database.prepare('SELECT id FROM organizations').all() as any[];
+      if (orgs.length === 1) {
+        database.prepare(`UPDATE ${table} SET organization_id = ? WHERE organization_id IS NULL`).run(orgs[0].id);
+      }
+      database.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_org ON ${table}(organization_id)`);
+    }
+
+    rescope('coupons', ['code']);
+    rescope('gift_cards', ['code']);
+    rescope('widget_price_list', ['item_code']);
+    rescope('investor_monthly_notes', ['scope', 'scope_id', 'month']);
+    // Left global on purpose: ical_channels.export_token, investors.portal_token
+    // and booking_drafts.session_id are random values used as the whole lookup
+    // key from a public URL. Server-wide uniqueness is what makes that lookup
+    // unambiguous; adding the organization would weaken it, not scope it.
+  } catch (e: any) {
+    console.error('[DB] per-organization uniqueness migration:', e.message);
+  }
   }
 
 // Generate a cryptographically secure random token for guest pages
