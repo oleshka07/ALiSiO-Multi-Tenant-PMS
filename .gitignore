@@ -45,3 +45,6 @@ yarn-error.log*
 # OCR language data is committed; runtime caches are not
 /ocr-lang/*.traineddata.gz
 /ocr-lang/.probe.*
+
+# build artefacts
+tsconfig.tsbuildinfo
