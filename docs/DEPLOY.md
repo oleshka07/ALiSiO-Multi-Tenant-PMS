@@ -12,13 +12,56 @@ production's database.** That is the point of having it.
 
 ## First-time server setup
 
+**Pick the right script. The wrong one takes other projects on the host
+offline.**
+
+### The host serves nothing else
+
 ```bash
 git clone <repo> /opt/alisio && cd /opt/alisio
 sudo ./deploy/setup-vps.sh pms.example.com admin@example.com
 ```
 
-Installs Docker, nginx, certbot and a firewall; issues certificates for the
-domain and its `beta.` subdomain. Both A records must already point at the host.
+Installs Docker, nginx and certbot, enables ufw with SSH + nginx as the only
+open ports, removes nginx's default site, then hands over to `add-site.sh` for
+the server blocks and certificates.
+
+`setup-vps.sh` refuses to run if it sees other sites in `sites-enabled`, an
+already-active ufw, or running Docker containers. That guard exists because
+`ufw --force enable` closes every port the other projects listen on directly,
+and reinstalling nginx restarts it for everyone. Override with
+`ALISIO_FORCE_SETUP=1` only if you are certain the detection is wrong.
+
+### The host already runs other projects
+
+This is the usual case. Install nginx, certbot and Docker yourself — or confirm
+they are there — and then:
+
+```bash
+git clone <repo> /opt/alisio && cd /opt/alisio
+sudo ./deploy/add-site.sh pms.example.com admin@example.com
+```
+
+`add-site.sh` only ever writes `/etc/nginx/snippets/alisio-proxy.conf`, one
+server-block file for this domain, and requests certificates for `<domain>` and
+`beta.<domain>` with `--cert-name` so an existing certificate is untouched. It
+does not install packages, does not touch the firewall, does not remove the
+default site, and refuses to overwrite a server-block file it did not write
+itself.
+
+Both A records — `<domain>` and `beta.<domain>` — must resolve to this host
+before you run it. The script checks and stops if they do not: certbot's
+HTTP-01 challenge would fail, leaving a server block that references
+certificates which do not exist, and then `nginx -t` fails and the next reload
+takes **every** site on the box down.
+
+### What is running here now
+
+`alisio.rozum.one` and `beta.alisio.rozum.one` share a VPS with several
+unrelated projects (rozum, socialio, systemator, holos, goto). nginx there
+already serves eight sites and ufw is already configured. On that host, only
+`add-site.sh` is safe — `setup-vps.sh` will refuse, which is the intended
+behaviour.
 
 Then create the two environment files — they are gitignored and never committed:
 

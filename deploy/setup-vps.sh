@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
 #
-# Prepare a fresh Debian/Ubuntu VPS to host production and beta.
+# Prepare a FRESH Debian/Ubuntu VPS to host production and beta.
 #
 #   sudo ./deploy/setup-vps.sh pms.example.com admin@example.com
+#
+# ⚠ Only for a server that hosts nothing else. It installs nginx and Docker,
+# turns the firewall on with SSH + nginx as the only open ports, and removes
+# nginx's default site. On a box that already serves other projects that is
+# destructive: `ufw --force enable` cuts off every port those projects listen
+# on directly, and the nginx work can collide with their server blocks.
+#
+# On a shared host, install nginx / certbot / Docker yourself and then run
+#   sudo ./deploy/add-site.sh pms.example.com admin@example.com
+# which only adds this application's server blocks and certificates.
 #
 # Idempotent — safe to re-run. Does not deploy the application; run
 # deploy/deploy.sh afterwards.
@@ -15,8 +25,46 @@ if [ -z "$DOMAIN" ] || [ -z "$EMAIL" ]; then
   echo "  e.g. $0 pms.example.com admin@example.com" >&2
   exit 2
 fi
-BETA="beta.${DOMAIN}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+
+# ── Refuse to run on a host that is already serving something ───────────────
+# These checks are the difference between "sets up a new server" and "takes
+# four unrelated sites offline".
+occupied=""
+
+if [ -d /etc/nginx/sites-enabled ]; then
+  others="$(find /etc/nginx/sites-enabled -mindepth 1 \
+            ! -name default ! -name "${DOMAIN}.conf" ! -name 'alisio*' 2>/dev/null | wc -l)"
+  [ "$others" -gt 0 ] && occupied="${occupied}  - nginx already serves ${others} other site(s)\n"
+fi
+
+if command -v ufw >/dev/null && ufw status 2>/dev/null | head -1 | grep -qi active; then
+  occupied="${occupied}  - ufw is already enabled and configured\n"
+fi
+
+if command -v docker >/dev/null && [ "$(docker ps -q 2>/dev/null | wc -l)" -gt 0 ]; then
+  occupied="${occupied}  - Docker is already running $(docker ps -q | wc -l) container(s)\n"
+fi
+
+if [ -n "$occupied" ]; then
+  echo "This host is not fresh:" >&2
+  printf "$occupied" >&2
+  cat >&2 <<EOF
+
+Refusing to run. This script enables a firewall that closes every port except
+SSH and nginx, removes nginx's default site, and reinstalls packages — any of
+which can take the other projects on this host offline.
+
+Use the additive path instead, which touches nothing but this application:
+
+  sudo ./deploy/add-site.sh ${DOMAIN} ${EMAIL}
+
+If this really is a fresh host and the detection is wrong, set
+ALISIO_FORCE_SETUP=1 and re-run.
+EOF
+  [ "${ALISIO_FORCE_SETUP:-}" = "1" ] || exit 1
+  echo "ALISIO_FORCE_SETUP=1 — continuing anyway." >&2
+fi
 
 echo "==> packages"
 apt-get update -qq
@@ -43,31 +91,9 @@ ufw allow OpenSSH
 ufw allow 'Nginx Full'
 ufw --force enable
 
-echo "==> nginx"
-install -d /etc/nginx/snippets /var/www/certbot
-sed "s/pms\.example\.com/${DOMAIN}/g" "${HERE}/nginx/alisio.conf" \
-  > /etc/nginx/sites-available/alisio.conf
-cp "${HERE}/nginx/alisio-proxy.conf" /etc/nginx/snippets/alisio-proxy.conf
-ln -sf /etc/nginx/sites-available/alisio.conf /etc/nginx/sites-enabled/alisio.conf
+echo "==> default site"
 rm -f /etc/nginx/sites-enabled/default
 
-echo "==> certificates for ${DOMAIN} and ${BETA}"
-# One certificate per host over HTTP-01. A wildcard needs a DNS-01 challenge and
-# API credentials for the DNS provider — the previous script asked certbot for a
-# wildcard with --standalone, which cannot work.
-certbot --nginx --non-interactive --agree-tos -m "$EMAIL" -d "$DOMAIN" -d "$BETA" \
-  || echo "!! certbot failed — check that both A records point at this host, then re-run" >&2
-
-nginx -t && systemctl reload nginx
-
-cat <<EOF
-
-Ready. Next:
-  1. cp deploy/env.prod.example deploy/env.prod   and fill APP_SECRET_KEY
-  2. cp deploy/env.beta.example deploy/env.beta   and fill a DIFFERENT key
-  3. ./deploy/deploy.sh beta      # verify on https://${BETA}
-  4. ./deploy/deploy.sh prod      # then https://${DOMAIN}
-
-Generate a key with:
-  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-EOF
+# nginx server blocks and certificates are the same work on a fresh host as on
+# a shared one, so they live in one place.
+"${HERE}/add-site.sh" "$DOMAIN" "$EMAIL"

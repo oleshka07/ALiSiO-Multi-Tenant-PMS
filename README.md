@@ -1,0 +1,61 @@
+# ALiSiO PMS
+
+Мультитенантна система управління готелем. Один сервер обслуговує багато
+готелів; кожен бачить лише свої дані.
+
+**Працює:** [alisio.rozum.one](https://alisio.rozum.one) (prod) ·
+[beta.alisio.rozum.one](https://beta.alisio.rozum.one) (beta)
+
+---
+
+## Читати перед роботою
+
+| | |
+|---|---|
+| [AGENTS.md](AGENTS.md) | **правила проєкту** — інваріанти, перевірки перед комітом, обов'язок оновлювати документацію |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | шари, модулі, модель тенантності, guard-и, поточний стан і план |
+| [docs/SECURITY-FINDINGS.md](docs/SECURITY-FINDINGS.md) | усі знайдені вразливості й помилки, з інструкцією як шукати те саме деінде |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | два середовища, спільний VPS, відкат |
+| [product_capabilities_and_value.md](product_capabilities_and_value.md) | що продукт уміє з точки зору готелю |
+
+Порядок не випадковий: `AGENTS.md` перший, бо система мультитенантна і запит
+без обмеження за організацією не падає — він тихо віддає дані іншого клієнта.
+
+## Запустити локально
+
+```bash
+npm install
+npm run dev          # http://localhost:3000
+```
+
+База створюється сама в `data/alisio.db` при першому запуску: схема,
+міграції й демо-організація.
+
+## Перевірки
+
+```bash
+npx tsc --noEmit                   # 0 помилок — обов'язково перед комітом
+npm run check                      # доменні self-check'и
+npm run lint                       # biome
+npm run build:win                  # повний build перед push складних змін
+
+node scripts/audit-tenant.mjs      # ізоляція: таблиці, запити, UNIQUE
+node scripts/audit-routes.mjs      # маршрути без визначення особи
+node scripts/audit.mjs             # мертвий UI та маршрути
+node scripts/check-isolation.mjs   # живий доказ ізоляції (потребує npm run dev)
+```
+
+`check-isolation.mjs` створює дві справжні організації, ходить API від імені
+кожної й перевіряє, що друга не бачить і не нищить дані першої. Це головна
+перевірка перед підключенням клієнта.
+
+## Розгортання
+
+```bash
+ssh <server> 'cd /opt/alisio && ./deploy/deploy.sh beta'   # спершу beta
+ssh <server> 'cd /opt/alisio && ./deploy/deploy.sh prod'   # після перевірки
+```
+
+Сервер спільний з іншими проєктами. Для першого налаштування **не запускайте
+`setup-vps.sh`** — він вмикає ufw і перезаписує nginx. Використовуйте
+`add-site.sh`. Деталі — в [docs/DEPLOY.md](docs/DEPLOY.md).
