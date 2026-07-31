@@ -3,50 +3,55 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as guestsRepo from '../data/guests.repo';
 // TODO: replace with eventBus.emit('crm.guest_updated') when crm module is migrated
 import { syncGuestToLead } from '@/lib/sync/guest-lead-sync';
+import { withActor, withPermission, type Actor } from '@core/auth/session';
 
-export async function getGuest(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-): Promise<NextResponse> {
+/**
+ * The organization comes from the session. A guest id belonging to another
+ * tenant answers 404 rather than 403 — the record holds a person's name,
+ * contact details and document number, so confirming that it exists is itself
+ * a disclosure.
+ */
+
+type IdParams = { params: Promise<{ id: string }> };
+
+export const getGuest = withActor(async (_request, { params }: IdParams, actor: Actor) => {
   try {
     const { id } = await params;
-    const guest = guestsRepo.getGuestWithReservations(id);
+    const guest = guestsRepo.getGuestWithReservations(actor.organizationId, id);
     if (!guest) return NextResponse.json({ error: 'Guest not found' }, { status: 404 });
     return NextResponse.json(guest);
   } catch (error: any) {
     console.error('GET /api/guests/[id] error:', error?.message || error);
-    return NextResponse.json({ error: error?.message || 'Failed to fetch guest' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch guest' }, { status: 500 });
   }
-}
+});
 
-export async function updateGuest(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-): Promise<NextResponse> {
+export const updateGuest = withPermission('manage_guests', async (request: NextRequest, { params }: IdParams, actor: Actor) => {
   try {
     const { id } = await params;
     const body = await request.json();
-    const updated = guestsRepo.updateGuest(id, body);
-    if (!updated) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+    const updated = guestsRepo.updateGuest(actor.organizationId, id, body);
+    // Now false for both "nothing to change" and "not this tenant's guest";
+    // 404 is the safe reading of either.
+    if (!updated) return NextResponse.json({ error: 'Guest not found' }, { status: 404 });
     try { syncGuestToLead(id); } catch { /* non-fatal */ }
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('PATCH /api/guests/[id] error:', error?.message || error);
-    return NextResponse.json({ error: error?.message || 'Failed to update guest' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update guest' }, { status: 500 });
   }
-}
+});
 
-export async function deleteGuest(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-): Promise<NextResponse> {
+export const deleteGuest = withPermission('manage_guests', async (_request, { params }: IdParams, actor: Actor) => {
   try {
     const { id } = await params;
-    const result = guestsRepo.deleteGuest(id);
-    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 409 });
+    const result = guestsRepo.deleteGuest(actor.organizationId, id);
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.error === 'Not found' ? 404 : 409 });
+    }
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('DELETE /api/guests/[id] error:', error?.message || error);
-    return NextResponse.json({ error: error?.message || 'Failed to delete guest' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to delete guest' }, { status: 500 });
   }
-}
+});

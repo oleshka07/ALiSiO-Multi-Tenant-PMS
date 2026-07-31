@@ -1,8 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import * as guestsRepo from '../data/guests.repo';
+import { withActor, withPermission, type Actor } from '@core/auth/session';
 
-export async function listGuests(request: NextRequest): Promise<NextResponse> {
+/**
+ * The organization comes from the session. Guest records hold names, emails,
+ * phone numbers and document numbers, so an unscoped list here is a personal
+ * data leak rather than a display bug.
+ */
+
+export const listGuests = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
@@ -10,15 +17,20 @@ export async function listGuests(request: NextRequest): Promise<NextResponse> {
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '50', 10);
 
-    const result = guestsRepo.listGuests({ search: search || undefined, country: country || undefined }, page, limit);
+    const result = guestsRepo.listGuests(
+      actor.organizationId,
+      { search: search || undefined, country: country || undefined },
+      page,
+      limit,
+    );
     return NextResponse.json(result);
   } catch (error: any) {
     console.error('GET /api/guests error:', error);
     return NextResponse.json({ error: 'Failed to fetch guests' }, { status: 500 });
   }
-}
+});
 
-export async function createGuest(request: NextRequest): Promise<NextResponse> {
+export const createGuest = withPermission('manage_guests', async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const body = await request.json();
     const { firstName, lastName } = body;
@@ -27,10 +39,10 @@ export async function createGuest(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
     }
 
-    const guestId = guestsRepo.createGuest(body);
+    const guestId = guestsRepo.createGuest(actor.organizationId, body);
     return NextResponse.json({ id: guestId }, { status: 201 });
   } catch (error: any) {
     console.error('POST /api/guests error:', error);
     return NextResponse.json({ error: 'Failed to create guest' }, { status: 500 });
   }
-}
+});
