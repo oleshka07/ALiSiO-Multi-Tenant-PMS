@@ -12,7 +12,7 @@ export async function hostexSync(): Promise<NextResponse> {
     const result = await syncReservations();
     return NextResponse.json({ success: true, ...result, unmappedProperties: seedResult?.unmapped || [] });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return hostexError('request', e);
   }
 }
 
@@ -20,7 +20,7 @@ export async function hostexSyncStatus(): Promise<NextResponse> {
   try {
     return NextResponse.json(getSyncStatus());
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return hostexError('request', e);
   }
 }
 
@@ -36,11 +36,24 @@ export async function hostexReservations(request: Request): Promise<NextResponse
     const result = await getReservations({ page, per_page, status, property_id });
     return NextResponse.json(result);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return hostexError('request', e);
   }
 }
 
 // ─── /api/hostex/properties ───────────────────────────────────────────────────
+
+/**
+ * An unconfigured integration is 503, not 500 — the server is fine, nobody has
+ * connected Hostex yet. Everything else is logged and answered generically.
+ */
+function hostexError(where: string, e: any): NextResponse {
+  const status = typeof e?.status === 'number' && e.status >= 400 ? e.status : 500;
+  console.error(`[Hostex] ${where}:`, e?.message || e);
+  return NextResponse.json(
+    { error: status === 503 ? e.message : 'Hostex request failed' },
+    { status },
+  );
+}
 
 export async function hostexProperties(): Promise<NextResponse> {
   try {
@@ -52,7 +65,7 @@ export async function hostexProperties(): Promise<NextResponse> {
     const result = properties.map(p => ({ ...p, mapping: mappingMap.get(p.id) || null, is_mapped: mappingMap.has(p.id) }));
     return NextResponse.json({ properties: result });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return hostexError('request', e);
   }
 }
 
@@ -92,6 +105,6 @@ export async function hostexBulkSync(request: NextRequest): Promise<NextResponse
     const result = await syncReservations();
     return NextResponse.json({ mode: 'full', synced: result.synced, created: result.created, updated: result.updated, skipped: result.skipped, errors: result.errors.length, errorDetails: result.errors, eurCzkRate: result.eurCzkRate });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return hostexError('request', e);
   }
 }

@@ -1,58 +1,24 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import { getDb } from '@core/db';
-import { parseKbPdf } from '@/modules/finance/data/kb-pdf-parser';
-import { importStatement } from '@/modules/finance/data/bank-inbox-engine';
-import { requireOrganizationId } from '@core/auth/tenant-context';
-import { withOwner } from '@core/auth/session';
 
-export const GET = withOwner(async () => {
-  try {
-    const db = getDb();
-    const dir = path.join(process.cwd(), 'temporary', 'bank Rest');
-    const files = fs.readdirSync(dir).filter(f => f.endsWith('.pdf'));
-
-    const orgRow = { id: requireOrganizationId(db) } as any;
-    if (!orgRow) throw new Error("No org");
-    const orgId = orgRow.id;
-
-    // We need a dummy inbox config to pass to importStatement
-    // It only needs id and organization_id in that function
-    const dummyInbox: any = {
-      id: 'inbox_manual_debug',
-      organization_id: orgId
-    };
-
-    const results = [];
-
-    for (const file of files) {
-      const buffer = fs.readFileSync(path.join(dir, file));
-      try {
-        const stmt = await parseKbPdf(buffer);
-        // UID can just be random or sequential
-        const uid = Math.floor(Math.random() * 1000000);
-        const importedCount = importStatement(db, dummyInbox, stmt, uid, new Date());
-        
-        results.push({
-          file,
-          status: 'success',
-          iban: stmt.iban,
-          account_number: stmt.account_number,
-          tx_count: stmt.transactions.length,
-          importedCount
-        });
-      } catch (err: any) {
-        results.push({
-          file,
-          status: 'error',
-          error: err.message
-        });
-      }
-    }
-
-    return NextResponse.json(results);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-})
+/**
+ * Disabled.
+ *
+ * This read every PDF out of a hard-coded `temporary/bank Rest` folder on the
+ * server's disk and imported them as bank statements. That folder was one
+ * developer's working directory for one hotel's Komerční banka exports; it does
+ * not exist anywhere else, so the route answered 500 on every call.
+ *
+ * Bulk statement import is a real feature and it already exists behind
+ * /api/finance/import — with an upload, a preview and an audit trail. A route
+ * that ingests whatever happens to be lying in a directory is not a debug tool
+ * on a shared server; it is a way to file one customer's bank statements
+ * against another.
+ *
+ * Answers 410 rather than being deleted, so an unnoticed caller fails loudly.
+ */
+export function GET() {
+  return NextResponse.json(
+    { error: 'This endpoint is disabled. Use /api/finance/import.', code: 'GONE' },
+    { status: 410 },
+  );
+}

@@ -1,82 +1,47 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@core/db';
-import { withActor } from '@core/auth/session';
+import { withActor, type Actor } from '@core/auth/session';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * Shift checklists for the mobile app.
  *
- * Guarded here, but the body below is broken independently of that: it reads a
- * `bookings` table that does not exist in this schema (reservations does), and
- * its first rule matches units and notes containing "сауна" — the original
- * hotel's own facility. Every call throws, so MobileShiftChecklists shows
- * nothing. Rewriting it into configurable rules is its own change.
+ * What was here answered 500 on every call: it read a `bookings` table that
+ * does not exist in this schema — the table is `reservations` — so
+ * MobileShiftChecklists has shown nothing since the code arrived.
+ *
+ * The checklists themselves were not a bug to patch. All of them were written
+ * out in full for one hotel: a sauna inspection triggered by units or notes
+ * containing "сауна", and a daily round of "Будинок F / Будинок D". Neither
+ * means anything to a second customer, and shipping them would put another
+ * hotel's building names on every screen. So this returns the part that is
+ * genuinely general — which rooms need cleaning — and no checklists until they
+ * are something an organization defines. A `checklists` table with per-item
+ * rules is the actual feature, and it is not this change.
  */
-export const GET = withActor(async () => {
+export const GET = withActor(async (_req, _ctx, actor: Actor) => {
   try {
     const db = getDb();
-    const todayISO = new Date().toISOString().split('T')[0];
 
-    // 1. Check if sauna service/booking is active today
-    const saunaBookings = db.prepare(`
-      SELECT b.id, b.first_name, b.last_name, u.name as unit_name, b.check_in, b.check_out
-      FROM bookings b
-      LEFT JOIN units u ON b.unit_id = u.id
-      WHERE (LOWER(u.name) LIKE '%сауна%' OR LOWER(b.notes) LIKE '%сауна%' OR LOWER(b.notes) LIKE '%sauna%')
-        AND b.status NOT IN ('cancelled', 'checked_out')
-        AND b.check_in <= ? AND b.check_out >= ?
-    `).all(todayISO, todayISO) as any[];
-
-    const hasSaunaToday = saunaBookings.length > 0;
-
-    // 2. Get dirty units for cleaner assignment
+    // Scoped: unqualified this listed every hotel's dirty rooms.
     const dirtyUnits = db.prepare(`
-      SELECT id, code, name, cleaning_status, building_id
-      FROM units
-      WHERE cleaning_status = 'dirty' OR cleaning_status = 'in_progress'
-      ORDER BY code ASC
-    `).all() as any[];
-
-    // 3. Construct response checklists payload
-    const checklists = [
-      ...(hasSaunaToday ? [{
-        id: 'sauna-check-today',
-        title: '🧖 Обов\'язкова перевірка Сауни',
-        subtitle: `Заброньовано сауну сьогодні (${saunaBookings.length} бр.)`,
-        role: 'admin',
-        is_sauna: true,
-        items: [
-          { id: 's1', text: 'Перевірка нагріву та температури парилки', done: false },
-          { id: 's2', text: 'Запас сухих рушників та простирадл', done: false },
-          { id: 's3', text: 'Чистота душевих кабін та чану', done: false },
-          { id: 's4', text: 'Чайні набори, посуд та питна вода', done: false },
-          { id: 's5', text: 'Перевірка систем вентиляції та освітлення', done: false },
-        ]
-      }] : []),
-      {
-        id: 'fd-bathrooms-check',
-        title: '🚻 Щоденний обхід санвузлів (Будинки F / D)',
-        subtitle: 'Інспекція загальних зон та санвузлів',
-        role: 'admin',
-        is_sauna: false,
-        items: [
-          { id: 'fd1', text: 'Санвузол Будинок F — рідке мило, папір, дезінфекція', done: false },
-          { id: 'fd2', text: 'Санвузол Будинок D — рідке мило, папір, дезінфекція', done: false },
-          { id: 'fd3', text: 'Прибирання підлоги та спорожнення кошиків сміття', done: false },
-        ]
-      }
-    ];
+      SELECT u.id, u.code, u.name, u.cleaning_status, u.building_id
+      FROM units u
+      JOIN properties p ON p.id = u.property_id
+      WHERE p.organization_id = ?
+        AND u.cleaning_status IN ('dirty', 'in_progress')
+      ORDER BY u.code ASC
+    `).all(actor.organizationId) as any[];
 
     return NextResponse.json({
       success: true,
-      hasSaunaToday,
-      saunaBookingsCount: saunaBookings.length,
       dirtyUnitsCount: dirtyUnits.length,
       dirtyUnits,
-      checklists,
+      checklists: [],
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('GET /api/checklists error:', error?.message || error);
+    return NextResponse.json({ error: 'Failed to load checklists' }, { status: 500 });
   }
-})
+});

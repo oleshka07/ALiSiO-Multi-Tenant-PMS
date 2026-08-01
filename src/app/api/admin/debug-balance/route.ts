@@ -20,7 +20,7 @@ export const GET = withOwner(async (request: NextRequest) => {
     const to = sp.get('to') || '2026-01-25';
 
     const acct = db.prepare(
-      "SELECT id, name, currency, initial_balance FROM finance_accounts WHERE name = ? AND org_id = ?"
+      "SELECT id, name, currency, initial_balance FROM finance_accounts WHERE name = ? AND organization_id = ?"
     ).get(accountName, orgId) as any;
 
     if (!acct) {

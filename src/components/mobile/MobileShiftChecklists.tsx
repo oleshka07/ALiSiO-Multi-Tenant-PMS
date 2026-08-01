@@ -36,7 +36,6 @@ const CLEANER_ITEMS = [
 export default function MobileShiftChecklists() {
   const [role, setRole] = useState<'admin' | 'cleaner'>('admin');
   const [data, setData] = useState<{
-    hasSaunaToday: boolean;
     checklists: Checklist[];
     dirtyUnits: DirtyUnit[];
   } | null>(null);

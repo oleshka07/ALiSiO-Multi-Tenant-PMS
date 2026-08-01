@@ -93,6 +93,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
   } catch (e: any) {
     console.error('[PriceLabs Preview] error:', e?.message, e?.stack);
-    return NextResponse.json({ error: 'PriceLabs request failed', detail: e?.message }, { status: 500 });
+    // An integration nobody has connected is 503, not a server fault.
+    const status = typeof e?.status === 'number' && e.status >= 400 ? e.status : 500;
+    return NextResponse.json(
+      { error: status === 503 ? e.message : 'PriceLabs request failed' },
+      { status },
+    );
   }
 }

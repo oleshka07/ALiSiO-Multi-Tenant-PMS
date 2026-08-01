@@ -44,9 +44,18 @@ export interface PriceLabsListingPrices {
   data: PriceLabsDailyPrice[];
 }
 
+/** Thrown when the integration has not been configured, so callers answer 503. */
+export class PriceLabsNotConfiguredError extends Error {
+  readonly status = 503;
+  constructor() {
+    super('PriceLabs is not configured: PRICELABS_API_KEY is missing');
+    this.name = 'PriceLabsNotConfiguredError';
+  }
+}
+
 function apiKey(): string {
   const key = process.env.PRICELABS_API_KEY;
-  if (!key) throw new Error('PRICELABS_API_KEY not configured');
+  if (!key) throw new PriceLabsNotConfiguredError();
   return key;
 }
 

@@ -261,7 +261,18 @@ node scripts/pg-schema.mjs         # перегенерувати цільову
 
 Цільова схема Postgres і доказ RLS — у [db/postgres/](../db/postgres/README.md).
 
-Живий доказ ізоляції (потребує запущеного `npm run dev`):
+Прогін по всіх GET-маршрутах під справжньою сесією — **по production-збірці**,
+бо dev-сервер компілює кожен маршрут при першому зверненні і на 183 маршрутах
+помирає від нестачі памʼяті:
+
+```bash
+npm run build:win && npm run start
+node scripts/smoke-routes.mjs
+```
+
+Очікується нуль 5xx. 503 для неналаштованих інтеграцій — це норма.
+
+Живий доказ ізоляції (потребує запущеного сервера):
 
 ```bash
 node scripts/check-isolation.mjs

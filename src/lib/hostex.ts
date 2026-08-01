@@ -8,7 +8,16 @@ const HOSTEX_BASE = 'api.hostex.io';
 const HOSTEX_API_VERSION = '/v3';
 const HOSTEX_TOKEN = process.env.HOSTEX_ACCESS_TOKEN;
 if (!HOSTEX_TOKEN) {
-  console.error('[Hostex] CRITICAL: HOSTEX_ACCESS_TOKEN environment variable is not set!');
+  console.error('[Hostex] HOSTEX_ACCESS_TOKEN is not set — the integration is off.');
+}
+
+/** Thrown when the integration has not been configured, so callers can answer 503. */
+export class HostexNotConfiguredError extends Error {
+  readonly status = 503;
+  constructor() {
+    super('Hostex is not configured: HOSTEX_ACCESS_TOKEN is missing');
+    this.name = 'HostexNotConfiguredError';
+  }
 }
 
 // ─── Types ────────────────────────────────────────────────
@@ -126,6 +135,11 @@ async function rateLimitWait(): Promise<void> {
 
 // ─── Core HTTP client ─────────────────────────────────────
 function hostexRequest<T>(method: string, path: string, body?: any): Promise<HostexApiResponse<T>> {
+  // Without this, node's http layer throws `Invalid value "undefined" for
+  // header "Hostex-Access-Token"` and every caller reported a 500 — which
+  // reads as a broken server rather than an integration nobody turned on.
+  if (!HOSTEX_TOKEN) return Promise.reject(new HostexNotConfiguredError());
+
   return new Promise((resolve, reject) => {
     const options: https.RequestOptions = {
       hostname: HOSTEX_BASE,

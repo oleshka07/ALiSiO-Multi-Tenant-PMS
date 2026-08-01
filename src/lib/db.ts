@@ -5078,6 +5078,68 @@ function runMigrations(database: any) {
         console.error(`[DB] ${table}: ${left} rows have no organization`);
       }
     }
+    // Standalone invoices — ones not tied to a reservation — and credit notes.
+    // Four routes write and read these columns and no migration ever created
+    // them, so /api/invoices/custom, /api/invoices/export,
+    // /api/accounting/invoices/list and /api/accounting/reconciliation all
+    // answered 500 on every call. The custom-invoice route even carries the
+    // comment "requires migration that makes reservation_id nullable"; this is
+    // that migration.
+    const invColsNow = (database.prepare('PRAGMA table_info(invoices)').all() as any[]);
+    const invNames = invColsNow.map((c: any) => c.name);
+    const reservationRequired = invColsNow.some((c: any) => c.name === 'reservation_id' && c.notnull);
+    if (reservationRequired) {
+      database.exec('ALTER TABLE invoices RENAME TO invoices_pre_custom');
+      database.exec(`
+        CREATE TABLE invoices (
+          id TEXT PRIMARY KEY,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          reservation_id TEXT REFERENCES reservations(id) ON DELETE CASCADE,
+          invoice_number TEXT NOT NULL,
+          issued_at TEXT NOT NULL DEFAULT (datetime('now')),
+          due_date TEXT,
+          amount REAL NOT NULL,
+          currency TEXT NOT NULL DEFAULT 'CZK',
+          status TEXT NOT NULL DEFAULT 'issued' CHECK (status IN ('issued', 'cancelled')),
+          notes TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          series TEXT DEFAULT 'HOUSE',
+          period TEXT,
+          locked INTEGER NOT NULL DEFAULT 0,
+          confirmed INTEGER NOT NULL DEFAULT 0,
+          confirmation_source TEXT,
+          is_custom INTEGER NOT NULL DEFAULT 0,
+          is_credit_note INTEGER NOT NULL DEFAULT 0,
+          fin_operation_id TEXT REFERENCES fin_operations(id) ON DELETE SET NULL,
+          custom_buyer_name TEXT,
+          custom_buyer_ico TEXT,
+          custom_buyer_dic TEXT,
+          custom_buyer_address TEXT,
+          custom_buyer_city TEXT,
+          custom_buyer_country TEXT,
+          custom_description TEXT,
+          custom_email TEXT,
+          UNIQUE (organization_id, invoice_number)
+        )
+      `);
+      const carry = invNames.filter((c: string) => c !== 'rowid');
+      database.exec(`INSERT INTO invoices (${carry.join(', ')}) SELECT ${carry.join(', ')} FROM invoices_pre_custom`);
+      database.exec('DROP TABLE invoices_pre_custom');
+      database.exec('CREATE INDEX IF NOT EXISTS idx_invoices_reservation ON invoices(reservation_id)');
+      database.exec('CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(organization_id, invoice_number)');
+      database.exec('CREATE INDEX IF NOT EXISTS idx_invoices_issued ON invoices(issued_at)');
+      console.log('[DB] invoices: standalone invoices and credit notes are possible now');
+    }
+
+    // Per-room door code and entry photo. The rooms list, the room editor and
+    // the guest page all read and write these, but no migration ever created
+    // the columns — so `GET /api/units` answered 500 on every call, and with it
+    // the rooms screen and everything that lists a room.
+    for (const [col, decl] of [['lock_code', 'TEXT'], ['entry_photo_url', 'TEXT']] as const) {
+      const cols = (database.prepare('PRAGMA table_info(units)').all() as any[]).map((c: any) => c.name);
+      if (!cols.includes(col)) database.exec(`ALTER TABLE units ADD COLUMN ${col} ${decl}`);
+    }
+
     // Restore the foreign key the earlier rebuild dropped, so an activity-log
     // row cannot outlive the booking it describes.
     const balSql = (database.prepare('SELECT sql FROM sqlite_master WHERE type = ? AND name = ?')

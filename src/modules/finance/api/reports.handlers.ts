@@ -858,11 +858,14 @@ export async function getBalanceSheet(request: NextRequest): Promise<NextRespons
     });
 
     // OTA receivables: money the platforms owe us (CZK)
+    // `expected_gross` has never existed on this table — the column is
+    // gross_amount — so the whole balance sheet answered 500. It was also
+    // summing every organization's receivables into one number.
     const otaReceivables = db.prepare(`
-      SELECT COALESCE(SUM(COALESCE(expected_net, expected_gross, 0)), 0) AS total, COUNT(*) AS cnt
+      SELECT COALESCE(SUM(COALESCE(expected_net, gross_amount, 0)), 0) AS total, COUNT(*) AS cnt
       FROM fin_channel_receivables
-      WHERE status IN ('expected', 'in_statement')
-    `).get() as { total: number; cnt: number };
+      WHERE organization_id = ? AND status IN ('expected', 'in_statement')
+    `).get(orgId(db)) as { total: number; cnt: number };
 
     // Guest prepayments for FUTURE stays: money received, service not yet
     // delivered — a liability until check-in (CZK)

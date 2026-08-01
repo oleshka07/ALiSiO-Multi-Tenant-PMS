@@ -45,6 +45,7 @@ node scripts/audit-routes.mjs      # маршрути без визначенн�
 node scripts/audit.mjs             # мертвий UI та маршрути
 node scripts/check-isolation.mjs   # живий доказ ізоляції (потребує npm run dev)
 node scripts/pg-schema.mjs         # перегенерувати цільову схему Postgres
+node scripts/smoke-routes.mjs      # усі GET-маршрути під сесією (по build, не dev)
 ```
 
 `check-isolation.mjs` створює дві справжні організації, ходить API від імені

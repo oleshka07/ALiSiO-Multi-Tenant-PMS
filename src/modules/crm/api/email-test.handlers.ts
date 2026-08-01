@@ -5,7 +5,8 @@ export async function testEmail() {
   try {
     const user = process.env.EMAIL_CZ_USER;
     if (!user) {
-      return NextResponse.json({ error: 'EMAIL_CZ_USER not configured' }, { status: 500 });
+      // 503, not 500: the server is fine, it has not been configured yet.
+      return NextResponse.json({ error: 'EMAIL_CZ_USER not configured' }, { status: 503 });
     }
 
     const result = await sendEmail({

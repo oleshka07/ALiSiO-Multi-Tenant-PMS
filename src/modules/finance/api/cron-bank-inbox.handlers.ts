@@ -33,7 +33,7 @@ export async function pollBankInboxesFromCron(request: NextRequest): Promise<Nex
   if (!expected) {
     return NextResponse.json(
       { error: 'CRON_SECRET env variable is not configured on the server' },
-      { status: 500 },
+      { status: 503 },
     );
   }
 

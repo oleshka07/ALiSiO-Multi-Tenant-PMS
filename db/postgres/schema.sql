@@ -1484,7 +1484,7 @@ CREATE TABLE "invoice_periods" (
 CREATE TABLE "invoices" (
   "id" TEXT NOT NULL,
   "organization_id" TEXT NOT NULL,
-  "reservation_id" TEXT NOT NULL,
+  "reservation_id" TEXT,
   "invoice_number" TEXT NOT NULL,
   "issued_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "due_date" DATE,
@@ -1498,6 +1498,17 @@ CREATE TABLE "invoices" (
   "locked" BOOLEAN DEFAULT false NOT NULL,
   "confirmed" BOOLEAN DEFAULT false NOT NULL,
   "confirmation_source" TEXT,
+  "is_custom" BOOLEAN DEFAULT false NOT NULL,
+  "is_credit_note" BOOLEAN DEFAULT false NOT NULL,
+  "fin_operation_id" TEXT,
+  "custom_buyer_name" TEXT,
+  "custom_buyer_ico" TEXT,
+  "custom_buyer_dic" TEXT,
+  "custom_buyer_address" TEXT,
+  "custom_buyer_city" TEXT,
+  "custom_buyer_country" TEXT,
+  "custom_description" TEXT,
+  "custom_email" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "invoice_number"),
   CHECK (status IN ('issued', 'cancelled'))
@@ -2184,6 +2195,8 @@ CREATE TABLE "units" (
   "is_pool" BOOLEAN DEFAULT false NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "lock_code" TEXT,
+  "entry_photo_url" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("property_id", "code"),
   CHECK (room_status IN ('available', 'occupied', 'maintenance', 'blocked')),
@@ -2574,9 +2587,11 @@ ALTER TABLE "invoice_counters" ADD CONSTRAINT "fk_invoice_counters_organization_
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "invoice_periods" ADD CONSTRAINT "fk_invoice_periods_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "invoices" ADD CONSTRAINT "fk_invoices_reservation_id_1"
+ALTER TABLE "invoices" ADD CONSTRAINT "fk_invoices_fin_operation_id_1"
+  FOREIGN KEY ("fin_operation_id") REFERENCES "fin_operations" ("id") ON DELETE SET NULL;
+ALTER TABLE "invoices" ADD CONSTRAINT "fk_invoices_reservation_id_2"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
-ALTER TABLE "invoices" ADD CONSTRAINT "fk_invoices_organization_id_2"
+ALTER TABLE "invoices" ADD CONSTRAINT "fk_invoices_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "menu_items" ADD CONSTRAINT "fk_menu_items_service_id_1"
   FOREIGN KEY ("service_id") REFERENCES "additional_services" ("id") ON DELETE CASCADE;

@@ -20,13 +20,19 @@ async function callJson<T>(handler: (req: NextRequest) => Promise<NextResponse>,
   const res = await handler(fakeReq);
   if (!res.ok) {
     const errBody = await res.json().catch(() => ({}));
-    throw new Error((errBody as any).error || `Upstream handler failed (${res.status})`);
+    // Carry the upstream status. Without it, "account_id is required" — a 400
+    // the caller can fix — reached the client as a 500 that reads like a bug
+    // in the server.
+    const err: any = new Error((errBody as any).error || `Upstream handler failed (${res.status})`);
+    err.status = res.status;
+    throw err;
   }
   return (await res.json()) as T;
 }
 
 function errorResponse(error: any): Response {
-  return NextResponse.json({ error: error?.message || 'Export failed' }, { status: 500 });
+  const status = typeof error?.status === 'number' && error.status >= 400 ? error.status : 500;
+  return NextResponse.json({ error: error?.message || 'Export failed' }, { status });
 }
 
 // ────────────────────────────────────────────────────────────

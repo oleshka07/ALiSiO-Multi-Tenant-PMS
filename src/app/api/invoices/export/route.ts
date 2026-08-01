@@ -8,9 +8,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { requireOwner } from '@core/security/route-guard';
+import type { Actor } from '@core/auth/session';
 
 export const GET = requireOwner(_GET);
-async function _GET(req: NextRequest): Promise<NextResponse> {
+async function _GET(req: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(req.url);
     const source  = searchParams.get('source')  || 'all';
@@ -19,9 +20,10 @@ async function _GET(req: NextRequest): Promise<NextResponse> {
 
     const db = getDb();
 
-    // Build query
-    const conditions: string[] = [];
-    const params: (string | number)[] = [];
+    // Build query. The organization is not optional here: this writes every
+    // matching invoice into a file, and unqualified it wrote every hotel's.
+    const conditions: string[] = ['i.organization_id = ?'];
+    const params: (string | number)[] = [actor.organizationId];
 
     // Source filter
     if (source !== 'all') {
@@ -41,7 +43,7 @@ async function _GET(req: NextRequest): Promise<NextResponse> {
     if (from) { conditions.push('i.issued_at >= ?'); params.push(from); }
     if (to)   { conditions.push('i.issued_at <= ?'); params.push(to + 'T23:59:59'); }
 
-    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+    const where = 'WHERE ' + conditions.join(' AND ');
 
     const rows = db.prepare(`
       SELECT
@@ -65,7 +67,7 @@ async function _GET(req: NextRequest): Promise<NextResponse> {
             THEN i.custom_buyer_address || ', ' || COALESCE(i.custom_buyer_city,'')
           END, ''
         ) AS buyer_address,
-        COALESCE(i.custom_description, r.unit_name, '') AS description,
+        COALESCE(i.custom_description, u.name, '') AS description,
         i.amount,
         i.currency,
         i.status,
@@ -73,6 +75,7 @@ async function _GET(req: NextRequest): Promise<NextResponse> {
       FROM invoices i
       LEFT JOIN reservations r ON r.id = i.reservation_id
       LEFT JOIN guests g ON g.id = r.guest_id
+      LEFT JOIN units u ON u.id = r.unit_id
       ${where}
       ORDER BY i.issued_at DESC
     `).all(...params) as Record<string, unknown>[];

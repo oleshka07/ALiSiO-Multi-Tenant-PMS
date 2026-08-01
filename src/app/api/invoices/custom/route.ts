@@ -29,25 +29,22 @@ import { generateInvoicePdf } from '@/lib/invoice-pdf';
 import { generateIsdocXml }   from '@/lib/isdoc';
 import { sendEmail }           from '@/lib/email';
 import { renderInvoiceHtml }   from '@/lib/invoice-template';
+import { allocateInvoiceNumber } from '@/lib/invoice-numbering';
+import type { Actor } from '@core/auth/session';
 
-// Re-use the same number-generator logic as reservaton invoices
-function getNextInvoiceNumber(db: ReturnType<typeof getDb>): string {
-  const year   = new Date().getFullYear();
-  const prefix = `${year}-`;
-  const last   = db.prepare(
-    'SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY invoice_number DESC LIMIT 1'
-  ).get(`${prefix}%`) as { invoice_number: string } | undefined;
-  let next = 1;
-  if (last) {
-    const parts = last.invoice_number.split('-');
-    const n = parseInt(parts[parts.length - 1], 10);
-    if (!isNaN(n)) next = n + 1;
-  }
-  return `${prefix}${String(next).padStart(3, '0')}`;
-}
+/**
+ * The number comes from the shared allocator, not from a second copy of the
+ * logic. The copy that used to live here read
+ * `SELECT invoice_number FROM invoices WHERE invoice_number LIKE '2026-%'
+ *  ORDER BY invoice_number DESC LIMIT 1`
+ * across every organization on the server, so one hotel's standalone invoice
+ * was numbered from another hotel's books. It also had no transaction, so two
+ * requests at once got the same number, and it ignored the monthly period lock
+ * entirely.
+ */
 
 export const POST = requirePermission('manage_documents', _POST);
-async function _POST(req: NextRequest): Promise<NextResponse> {
+async function _POST(req: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
     const body  = await req.json();
     const {
@@ -88,19 +85,18 @@ async function _POST(req: NextRequest): Promise<NextResponse> {
     })();
 
     const invoiceId     = `inv_custom_${Date.now()}`;
-    const invoiceNumber = getNextInvoiceNumber(db);
+    const { invoiceNumber } = allocateInvoiceNumber(db, actor.organizationId, 'house', new Date().getFullYear());
 
-    // Persist to invoices table (requires migration that makes reservation_id nullable)
     db.prepare(`
       INSERT INTO invoices
-        (id, reservation_id, invoice_number, issued_at, due_date, amount, currency, status,
+        (id, organization_id, reservation_id, invoice_number, issued_at, due_date, amount, currency, status,
          is_custom, custom_buyer_name, custom_buyer_ico, custom_buyer_dic,
          custom_buyer_address, custom_buyer_city, custom_buyer_country,
          custom_description, custom_email)
-      VALUES (?, NULL, ?, ?, ?, ?, ?, 'issued',
+      VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 'issued',
               1, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      invoiceId, invoiceNumber, today, due, totalAmount, currency,
+      invoiceId, actor.organizationId, invoiceNumber, today, due, totalAmount, currency,
       buyerName    || null,
       buyerIco     || null,
       buyerDic     || null,
