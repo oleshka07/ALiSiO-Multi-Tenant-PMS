@@ -4,9 +4,10 @@ import { getDb, generateGuestToken } from '@core/db';
 import { findOrCreateGuest } from '@guests';
 import { notifyReservationCreated } from '../domain/reservation-tg-notify';
 import { writeBookingAudit, getBookingActor } from './audit-log.handlers';
-import { requireOrganizationId } from '@core/auth/tenant-context';
+import { withActor, type Actor } from '@core/auth/session';
+import { ownedUnit } from '../data/owned.repo';
 
-export async function listReservations(request: NextRequest) {
+export const listReservations = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const db = getDb();
     const { searchParams } = new URL(request.url);
@@ -35,10 +36,11 @@ export async function listReservations(request: NextRequest) {
       JOIN units u ON r.unit_id = u.id
       JOIN categories c ON u.category_id = c.id
       JOIN unit_types ut ON u.unit_type_id = ut.id
-      WHERE 1=1
+      JOIN properties p ON r.property_id = p.id
+      WHERE p.organization_id = ?
     `;
 
-    const params: string[] = [];
+    const params: string[] = [actor.organizationId];
 
     // Hide child reservations on Bookings list page, but show them on Calendar
     if (excludeChildren) {
@@ -120,9 +122,9 @@ export async function listReservations(request: NextRequest) {
     console.error('GET /api/bookings error:', error);
     return NextResponse.json({ error: 'Failed to fetch bookings' }, { status: 500 });
   }
-}
+});
 
-export async function createReservation(request: NextRequest) {
+export const createReservation = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const db = getDb();
     const body = await request.json();
@@ -140,7 +142,8 @@ export async function createReservation(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const unit = db.prepare('SELECT property_id, category_id FROM units WHERE id = ?').get(unitId) as { property_id: string; category_id: string } | undefined;
+    // Wrong tenant's unit looks exactly like a missing one.
+    const unit = ownedUnit(db, actor.organizationId, unitId);
     if (!unit) {
       return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
     }
@@ -155,7 +158,7 @@ export async function createReservation(request: NextRequest) {
       return NextResponse.json({ error: 'This unit is already booked for the selected dates' }, { status: 409 });
     }
 
-    const org = { id: requireOrganizationId(db) } as { id: string };
+    const org = { id: actor.organizationId };
 
     const dedup = findOrCreateGuest({
       organizationId: org.id,
@@ -189,36 +192,6 @@ export async function createReservation(request: NextRequest) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(resId, unit.property_id, unitId, guestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', totalPrice || 0, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null);
 
-    // Auto-link to CRM lead
-    try {
-      const crmLeadId = body.crmLeadId;
-      let linkedLeadId: string | null = null;
-
-      if (crmLeadId) {
-        const lead = db.prepare('SELECT id FROM crm_leads WHERE id = ?').get(crmLeadId) as { id: string } | undefined;
-        if (lead) linkedLeadId = lead.id;
-      }
-
-      if (!linkedLeadId && email) {
-        const lead = db.prepare(
-          "SELECT id FROM crm_leads WHERE email = ? AND organization_id = ? AND reservation_id IS NULL ORDER BY updated_at DESC LIMIT 1"
-        ).get(email, org.id) as { id: string } | undefined;
-        if (lead) linkedLeadId = lead.id;
-      }
-
-      if (linkedLeadId) {
-        db.prepare(`
-          UPDATE crm_leads
-          SET reservation_id = ?, guest_id = ?, stage = 'booked',
-              updated_at = datetime('now')
-          WHERE id = ?
-        `).run(resId, guestId, linkedLeadId);
-        console.log(`[Booking] Linked reservation ${resId} to CRM lead ${linkedLeadId}`);
-      }
-    } catch (linkErr) {
-      console.error('[Booking] CRM link error (non-fatal):', linkErr);
-    }
-
     notifyReservationCreated(resId, { sourceLabel: `Ручне додавання · ${source || 'direct'}` });
 
     // Audit log
@@ -233,4 +206,4 @@ export async function createReservation(request: NextRequest) {
     console.error('POST /api/bookings error:', error);
     return NextResponse.json({ error: 'Failed to create booking' }, { status: 500 });
   }
-}
+});

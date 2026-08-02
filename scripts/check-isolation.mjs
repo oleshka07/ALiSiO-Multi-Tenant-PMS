@@ -44,6 +44,12 @@ function cleanup() {
 
   const props = db.prepare('SELECT id FROM properties WHERE organization_id LIKE ?').all(`${TAG}%`).map((r) => r.id);
   for (const pid of props) {
+    const resIds = db.prepare('SELECT id FROM reservations WHERE property_id = ?').all(pid).map((r) => r.id);
+    for (const rid of resIds) {
+      db.prepare('DELETE FROM guest_registrations WHERE reservation_id = ?').run(rid);
+      db.prepare('DELETE FROM booking_activity_log WHERE reservation_id = ?').run(rid);
+    }
+    db.prepare('DELETE FROM reservations WHERE property_id = ?').run(pid);
     db.prepare('DELETE FROM units WHERE property_id = ?').run(pid);
     db.prepare('DELETE FROM unit_types WHERE property_id = ?').run(pid);
     db.prepare('DELETE FROM buildings WHERE property_id = ?').run(pid);
@@ -54,6 +60,7 @@ function cleanup() {
   // The app creates this table on first boot; cleanup may run against a
   // database the new code has not touched yet.
   try { db.prepare('DELETE FROM organization_features WHERE organization_id LIKE ?').run(`${TAG}%`); } catch { /* not yet migrated */ }
+  db.prepare('DELETE FROM guests WHERE organization_id LIKE ?').run(`${TAG}%`);
   db.prepare('DELETE FROM app_users WHERE organization_id LIKE ?').run(`${TAG}%`);
   db.prepare('DELETE FROM sessions WHERE user_id LIKE ?').run(`${TAG}%`);
   db.prepare('DELETE FROM organizations WHERE id LIKE ?').run(`${TAG}%`);
@@ -323,6 +330,50 @@ async function main() {
     });
     assert.ok([401, 403, 405].includes(put.status), `unauthenticated PUT on widget prices returned ${put.status}`);
     console.log('  ok  unauthenticated PUT on the public price list is refused');
+
+    // ── The booking book itself ──────────────────────────────────────────
+    // The calendar's API. This is the exact list that was returned to every
+    // tenant on the server until the calendar audit — so it gets the full
+    // cross-tenant treatment: list, read, edit, delete, and the guest
+    // documents attached to a booking.
+    db.prepare(`
+      INSERT INTO units (id, property_id, category_id, unit_type_id, name, code)
+      VALUES (?, ?, ?, ?, 'Probe unit', 'PRB-1')
+    `).run(`${TAG}unit_a`, propA.id, catA.id, utA.id);
+
+    const bookRes = await call(cookieA, '/api/bookings', {
+      method: 'POST',
+      body: JSON.stringify({
+        firstName: 'Probe', lastName: 'Guest', unitId: `${TAG}unit_a`,
+        checkIn: '2031-01-10', checkOut: '2031-01-12', nights: 2,
+      }),
+    });
+    assert.strictEqual(bookRes.status, 201, `A could not create a booking: ${bookRes.status}`);
+    const booking = await bookRes.json();
+
+    const listBookA = await (await call(cookieA, '/api/bookings')).json();
+    assert.ok(listBookA.some((r) => r.id === booking.id), "A's booking list is missing A's booking");
+    const listBookB = await (await call(cookieB, '/api/bookings')).json();
+    assert.ok(!listBookB.some((r) => r.id === booking.id), "B's booking list contains A's booking");
+    console.log("  ok  the booking list is per organization");
+
+    const readBookB = await call(cookieB, `/api/bookings/${booking.id}`);
+    assert.strictEqual(readBookB.status, 404, `B read A's booking: ${readBookB.status}`);
+    const patchBookB = await call(cookieB, `/api/bookings/${booking.id}`, {
+      method: 'PATCH', body: JSON.stringify({ notes: 'hijack' }),
+    });
+    assert.strictEqual(patchBookB.status, 404, `B patched A's booking: ${patchBookB.status}`);
+    const regsB = await call(cookieB, `/api/bookings/${booking.id}/registrations`);
+    assert.strictEqual(regsB.status, 404, `B read A's guest registrations: ${regsB.status}`);
+    const delBookB = await call(cookieB, `/api/bookings/${booking.id}`, { method: 'DELETE' });
+    assert.strictEqual(delBookB.status, 404, `B deleted A's booking: ${delBookB.status}`);
+    console.log("  ok  B cannot read, change or delete A's booking");
+
+    // Deleting one's own booking must actually work — it 500'd on a leftover
+    // crm_leads statement from the CRM removal until the calendar audit.
+    const delBookA = await call(cookieA, `/api/bookings/${booking.id}`, { method: 'DELETE' });
+    assert.ok(delBookA.ok, `A could not delete its own booking: ${delBookA.status}`);
+    console.log('  ok  deleting your own booking works');
 
     // ── The feature registry ─────────────────────────────────────────────
     // Probe organizations are created after the seed migration, so they have

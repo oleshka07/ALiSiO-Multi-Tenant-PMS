@@ -70,18 +70,20 @@ export function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[]): nu
   return prices.length;
 }
 
-export function getBulkPrices(startDate: string, endDate: string) {
+export function getBulkPrices(organizationId: string, startDate: string, endDate: string) {
   return getDb().prepare(`
-    SELECT unit_type_id, date, base_price, weekend_price,
+    SELECT pc.unit_type_id, pc.date, pc.base_price, pc.weekend_price,
       CASE
-        WHEN (CAST(strftime('%w', date) AS INTEGER) IN (0, 5, 6)) AND weekend_price IS NOT NULL
-        THEN weekend_price
-        ELSE base_price
+        WHEN (CAST(strftime('%w', pc.date) AS INTEGER) IN (0, 5, 6)) AND pc.weekend_price IS NOT NULL
+        THEN pc.weekend_price
+        ELSE pc.base_price
       END as effective_price
-    FROM price_calendar
-    WHERE date >= ? AND date <= ?
-    ORDER BY unit_type_id, date
-  `).all(startDate, endDate);
+    FROM price_calendar pc
+    JOIN unit_types ut ON pc.unit_type_id = ut.id
+    JOIN properties p ON ut.property_id = p.id
+    WHERE p.organization_id = ? AND pc.date >= ? AND pc.date <= ?
+    ORDER BY pc.unit_type_id, pc.date
+  `).all(organizationId, startDate, endDate);
 }
 
 export interface BulkUpdateInput {

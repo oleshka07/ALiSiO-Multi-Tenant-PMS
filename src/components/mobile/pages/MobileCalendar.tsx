@@ -256,7 +256,7 @@ export default function MobileCalendar() {
   const [unitTypes, setUnitTypes] = useState<BFUnitTypeRow[]>([]);
   const [bookingSources, setBookingSources] = useState<BFBookingSourceRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState('resort');
+  const [category, setCategory] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('');
   const [cleaningFilter, setCleaningFilter] = useState('');
@@ -327,9 +327,10 @@ export default function MobileCalendar() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Filter units by cleaning status + search
+  // Filter units by category + cleaning status + search
   const filteredUnits = useMemo(() => {
     return units.filter(u => {
+      if (category && u.category_type !== category) return false;
       if (cleaningFilter && u.cleaning_status !== cleaningFilter) return false;
       if (search) {
         const s = search.toLowerCase();
@@ -337,7 +338,7 @@ export default function MobileCalendar() {
       }
       return true;
     });
-  }, [units, cleaningFilter, search]);
+  }, [units, category, cleaningFilter, search]);
 
   // Group units — by building for resort, by zone for camping, flat for glamping
   const groups = useMemo(() => {
@@ -553,10 +554,8 @@ export default function MobileCalendar() {
       {/* Top Header: Category toggle & View Mode switcher */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }}>
         <div style={{ display: 'flex', gap: 4 }}>
-          {[
-            { key: 'glamping', label: 'Glamping' },
-            { key: 'resort', label: 'Resort' },
-            { key: 'camping', label: 'Camping' },
+          {[{ key: '', label: 'Всі' },
+            ...[...new Set(units.map(u => u.category_type))].sort().map(t => ({ key: t, label: t })),
           ].map(c => (
             <button key={c.key} onClick={() => setCategory(c.key)} style={{
               padding: '5px 10px', borderRadius: 16, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,

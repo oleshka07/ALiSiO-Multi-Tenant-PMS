@@ -23,7 +23,8 @@ export async function createReservationPaymentLink(
     const body = await req.json().catch(() => ({} as any));
 
     const res = db.prepare(
-      'SELECT id, organization_id, total_price, currency FROM reservations WHERE id = ?'
+      `SELECT r.id, p.organization_id, r.total_price, r.currency
+       FROM reservations r JOIN properties p ON r.property_id = p.id WHERE r.id = ?`
     ).get(id) as { id: string; organization_id: string; total_price: number; currency: string } | undefined;
     if (!res) return NextResponse.json({ error: 'Reservation not found' }, { status: 404 });
 

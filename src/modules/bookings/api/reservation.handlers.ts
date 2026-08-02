@@ -1,15 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
+import { withActor, type Actor } from '@core/auth/session';
+import { ownedReservation } from '../data/owned.repo';
 import { generateInvoiceForReservation } from '@finance';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@/lib/auth';
 import { writeBookingAudit, getBookingActor, buildBookingLabel } from './audit-log.handlers';
 
-export async function getReservation(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const getReservation = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
     const db = getDb();
     const { id } = await params;
+    if (!ownedReservation(db, actor.organizationId, id)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
     const row = db.prepare(`
       SELECT
@@ -65,12 +70,15 @@ export async function getReservation(_request: NextRequest, { params }: { params
     console.error('GET /api/bookings/[id] error:', error?.message || error);
     return NextResponse.json({ error: error?.message || 'Failed to fetch booking' }, { status: 500 });
   }
-}
+});
 
-export async function updateReservation(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const updateReservation = withActor(async (request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
     const db = getDb();
     const { id } = await params;
+    if (!ownedReservation(db, actor.organizationId, id)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
     const body = await request.json();
 
     console.log('[PATCH] booking id:', id, 'body:', JSON.stringify(body));
@@ -275,12 +283,15 @@ export async function updateReservation(request: NextRequest, { params }: { para
     console.error('PATCH /api/bookings/[id] error:', error?.message || error);
     return NextResponse.json({ error: error?.message || 'Failed to update booking' }, { status: 500 });
   }
-}
+});
 
-export async function deleteReservation(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const deleteReservation = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, sessionActor: Actor) => {
   try {
     const db = getDb();
     const { id } = await params;
+    if (!ownedReservation(db, sessionActor.organizationId, id)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
     // Capture snapshot + actor BEFORE deletion for audit
     const beforeSnapshot = db.prepare('SELECT * FROM reservations WHERE id = ?').get(id) as any;
@@ -288,9 +299,6 @@ export async function deleteReservation(_request: NextRequest, { params }: { par
     const actor = await getBookingActor();
 
     db.transaction(() => {
-      // 1. Unlink from CRM leads
-      db.prepare('UPDATE crm_leads SET reservation_id = NULL WHERE reservation_id = ?').run(id);
-
       // 2. Delete related cart events (keep activity logs — no cascade)
       db.prepare('DELETE FROM cart_events WHERE reservation_id = ?').run(id);
 
@@ -320,4 +328,4 @@ export async function deleteReservation(_request: NextRequest, { params }: { par
     console.error('DELETE /api/bookings/[id] error:', error?.message || error);
     return NextResponse.json({ error: error?.message || 'Failed to delete booking' }, { status: 500 });
   }
-}
+});

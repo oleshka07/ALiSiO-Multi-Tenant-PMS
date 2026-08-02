@@ -2,11 +2,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { withActor, type Actor } from '@core/auth/session';
+import { ownedReservation } from '../data/owned.repo';
 
-export async function listRegistrations(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const listRegistrations = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
     const db = getDb();
     const { id } = await params;
+    if (!ownedReservation(db, actor.organizationId, id)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
     const rows = db.prepare(`
       SELECT gr.id as reg_id, gr.is_primary, gr.registered_at,
              g.id as guest_id, g.first_name, g.last_name, g.email, g.phone,
@@ -21,12 +26,15 @@ export async function listRegistrations(_request: NextRequest, { params }: { par
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
 
-export async function registerGuest(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const registerGuest = withActor(async (request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
     const db = getDb();
     const { id } = await params;
+    if (!ownedReservation(db, actor.organizationId, id)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
     const body = await request.json();
 
     const { firstName, lastName, dateOfBirth, documentType, documentNumber, nationality, country, address, isPrimary } = body;
@@ -80,12 +88,15 @@ export async function registerGuest(request: NextRequest, { params }: { params: 
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
 
-export async function removeRegistration(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const removeRegistration = withActor(async (request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
     const db = getDb();
     const { id } = await params;
+    if (!ownedReservation(db, actor.organizationId, id)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
     const { searchParams } = new URL(request.url);
     const regId = searchParams.get('reg_id');
     if (!regId) return NextResponse.json({ error: 'reg_id required' }, { status: 400 });
@@ -97,7 +108,7 @@ export async function removeRegistration(request: NextRequest, { params }: { par
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
 
 function updateRegistrationStatus(db: any, reservationId: string) {
   const reservation = db.prepare('SELECT adults FROM reservations WHERE id = ?').get(reservationId) as { adults: number } | undefined;

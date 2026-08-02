@@ -2,8 +2,9 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { requireOrganizationId, requirePropertyId } from '@core/auth/tenant-context';
+import { withActor } from '@core/auth/session';
 
-export async function listBookingSources() {
+export const listBookingSources = withActor(async () => {
   try {
     const db = getDb();
     // booking_sources reaches an organization through its property; unscoped
@@ -18,9 +19,9 @@ export async function listBookingSources() {
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
 
-export async function createBookingSource(request: Request) {
+export const createBookingSource = withActor(async (request: Request) => {
   try {
     const db = getDb();
     const body = await request.json();
@@ -55,4 +56,4 @@ export async function createBookingSource(request: Request) {
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});

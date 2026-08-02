@@ -15,7 +15,7 @@ export async function payForBooking(
 
     // ── Resolve reservation by guest_page_token ─────────────────
     const reservation = db.prepare(`
-      SELECT r.id, r.organization_id, r.total_price, r.currency, r.payment_status, r.check_in, r.check_out,
+      SELECT r.id, p.organization_id, r.total_price, r.currency, r.payment_status, r.check_in, r.check_out,
              r.guest_page_expires_at,
              g.first_name, g.last_name,
              u.name as unit_name,

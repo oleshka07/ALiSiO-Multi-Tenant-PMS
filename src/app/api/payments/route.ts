@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { createPaymentOperation } from '@/modules/finance/api/payment-bridge';
 import { getOptionalActor } from '@/modules/finance/api/operations.handlers';
+import { withActor, type Actor } from '@core/auth/session';
 
 // Legacy /api/payments endpoint — reads/writes via fin_operations.
 //
@@ -13,7 +14,7 @@ import { getOptionalActor } from '@/modules/finance/api/operations.handlers';
 // As of clean-3 there are no signal vs real duplicates any more — every
 // fin_operation row represents real money. The dedup logic that used to
 // live here is gone with the is_pms_signal column.
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export const GET = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const db = getDb();
     const { searchParams } = new URL(request.url);
@@ -28,8 +29,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const where: string[] = ["o.reservation_id IS NOT NULL", "o.status = 'completed'"];
-    const params: any[] = [];
+    const where: string[] = ["o.reservation_id IS NOT NULL", "o.status = 'completed'", 'o.organization_id = ?'];
+    const params: any[] = [actor.organizationId];
     if (reservationId) {
       // Include payments for this reservation AND all its children
       where.push('(o.reservation_id = ? OR o.reservation_id IN (SELECT id FROM reservations WHERE parent_id = ?))');
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
 
 // Methods that represent real money in our hands at the moment of click —
 // only `cash` qualifies. Card / bank / platform / invoice / online are

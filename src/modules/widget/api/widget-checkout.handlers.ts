@@ -78,7 +78,7 @@ export async function createWidgetCheckoutSession(req: Request) {
     // on a single-organization install — the only organization there is.
     try {
       const org: string | undefined = (reservation_id
-        ? (db.prepare('SELECT organization_id FROM reservations WHERE id = ?').get(reservation_id) as any)?.organization_id
+        ? (db.prepare('SELECT p.organization_id FROM reservations r JOIN properties p ON r.property_id = p.id WHERE r.id = ?').get(reservation_id) as any)?.organization_id
         : undefined) || site?.organization_id || requireOrganizationId(db);
       if (!org || !hasFeature(db, org, 'teya')) return featureDisabled('teya', CORS_HEADERS);
     } catch {

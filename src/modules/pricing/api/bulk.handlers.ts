@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { withActor, type Actor } from '@core/auth/session';
 import { getBulkPrices, bulkUpdatePrices } from '../data/price-calendar.repo';
 
-export async function getBulkPricing(request: NextRequest): Promise<NextResponse> {
+export const getBulkPricing = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('startDate');
@@ -10,12 +11,12 @@ export async function getBulkPricing(request: NextRequest): Promise<NextResponse
 
     if (!startDate || !endDate) return NextResponse.json({ error: 'startDate and endDate required' }, { status: 400 });
 
-    return NextResponse.json(getBulkPrices(startDate, endDate));
+    return NextResponse.json(getBulkPrices(actor.organizationId, startDate, endDate));
   } catch (error: any) {
     console.error('GET /api/pricing/bulk error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to fetch pricing' }, { status: 500 });
   }
-}
+})
 
 export async function updateBulkPricing(request: NextRequest): Promise<NextResponse> {
   try {

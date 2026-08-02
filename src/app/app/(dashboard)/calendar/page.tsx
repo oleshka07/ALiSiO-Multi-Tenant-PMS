@@ -101,6 +101,7 @@ const PAYMENT_STATUS_MAP: Record<string, { label: string; color: string; bg: str
   payment_requested: { label: 'Запит на оплату', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', icon: '✉' },
   prepaid: { label: 'Передплата', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)', icon: '◓' },
   paid: { label: 'Оплачено', color: '#22c55e', bg: 'rgba(34,197,94,0.15)', icon: '✓' },
+  partial: { label: 'Часткова оплата', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', icon: '◐' },
 };
 
 const CLEAN_MAP: Record<string, { label: string; color: string }> = {
@@ -162,8 +163,8 @@ function CalendarDesktop() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState(() => {
-    if (typeof window !== 'undefined') return localStorage.getItem('calendar_categoryFilter') || 'resort';
-    return 'resort';
+    if (typeof window !== 'undefined') return localStorage.getItem('calendar_categoryFilter') || '';
+    return '';
   });
 
   useEffect(() => {
@@ -217,8 +218,6 @@ function CalendarDesktop() {
     return map;
   }, [bookingSources]);
 
-  const CZK_TO_EUR = 23.5;
-  const toEur = (czk: number) => (czk / CZK_TO_EUR).toFixed(1);
   const METHOD_LABELS: Record<string, string> = {
     cash: '💵 Готівка', card: '💳 Картою',
     bank_transfer: '🏦 На рахунок', invoice: '📄 Фактура', online: '🌐 Онлайн',
@@ -363,7 +362,9 @@ function CalendarDesktop() {
   // ─── Group units ──────
   const groups = useMemo(() => {
     const result: { key: string; label: string; category: string; units: UnitRow[] }[] = [];
-    const cats = ['glamping', 'resort', 'camping'];
+    // Whatever category types this hotel actually has — the previous fixed
+    // list (glamping/resort/camping) silently dropped any other type's units.
+    const cats = [...new Set(units.map(u => u.category_type))].sort();
     for (const cat of cats) {
       const catUnits = filteredUnits.filter(u => u.category_type === cat);
       if (catUnits.length === 0) continue;
@@ -384,7 +385,7 @@ function CalendarDesktop() {
       }
     }
     return result;
-  }, [filteredUnits]);
+  }, [filteredUnits, units]);
 
   // ─── Flat unit list (for row indexing) ──────
   const flatRows = useMemo(() => {
@@ -423,10 +424,14 @@ function CalendarDesktop() {
   const freePerDay = useMemo(() => {
     return days.map(day => {
       const dateStr = fmtDate(day);
-      const booked = new Set(filteredBookings.filter(b => dateStr >= b.check_in && dateStr < b.check_out).map(b => b.unit_id));
-      return filteredUnits.length - booked.size;
+      const busy = new Set(filteredBookings.filter(b => dateStr >= b.check_in && dateStr < b.check_out).map(b => b.unit_id));
+      // A closure (maintenance, owner stay) takes the unit out of "free" too.
+      for (const blk of blocks) {
+        if (dateStr >= blk.date_from && dateStr < blk.date_to) busy.add(blk.unit_id);
+      }
+      return filteredUnits.filter(u => !busy.has(u.id)).length;
     });
-  }, [days, filteredBookings, filteredUnits]);
+  }, [days, filteredBookings, filteredUnits, blocks]);
 
   // ─── Occupancy rate per day (for heatmap) ──────
   const occupancyRate = useMemo(() => {
@@ -664,9 +669,9 @@ function CalendarDesktop() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <select className="form-select" style={{ width: 100, fontSize: 11, padding: '4px 6px' }} value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
               <option value="">Категорії</option>
-              <option value="glamping">Glamping</option>
-              <option value="resort">Resort</option>
-              <option value="camping">Camping</option>
+              {[...new Set(units.map(u => u.category_type))].sort().map(cat => (
+                <option key={cat} value={cat}>{categoryConfig[cat]?.label || cat}</option>
+              ))}
             </select>
             <div style={{ position: 'relative' }}>
               <Search size={12} style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
