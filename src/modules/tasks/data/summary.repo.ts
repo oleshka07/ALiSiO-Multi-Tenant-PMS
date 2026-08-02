@@ -1,0 +1,46 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { getDb } from '@core/db';
+import { requireOrganizationId } from '@core/auth/tenant-context';
+
+/**
+ * The counts the evening digest shows.
+ *
+ * This lived inside the notifications module and read the tasks table directly
+ * — the kind of reach-past-the-front-door that makes a module impossible to
+ * remove or replace. It also counted every organization's tasks into one
+ * number, so a second hotel's overdue work appeared in the first hotel's
+ * digest, names and all.
+ */
+
+export interface TasksSummary {
+  overdue: number;
+  overdueNames: string[];
+  today: number;
+  inProgress: number;
+  total: number;
+}
+
+export function getTasksSummary(): TasksSummary {
+  const db = getDb();
+  const org = requireOrganizationId(db);
+  const today = new Date().toISOString().split('T')[0];
+
+  const open = "status NOT IN ('done', 'cancelled') AND organization_id = ?";
+
+  const count = (where: string, ...params: unknown[]): number =>
+    (db.prepare(`SELECT COUNT(*) as cnt FROM tasks WHERE ${where}`).get(...params) as any).cnt;
+
+  const overdueNames = (db.prepare(`
+    SELECT title FROM tasks
+    WHERE ${open} AND due_date IS NOT NULL AND due_date < ?
+    ORDER BY due_date ASC LIMIT 3
+  `).all(org, today) as any[]).map((t) => t.title || '');
+
+  return {
+    overdue: count(`${open} AND due_date IS NOT NULL AND due_date < ?`, org, today),
+    overdueNames,
+    today: count(`${open} AND due_date = ?`, org, today),
+    inProgress: count("status = 'in_progress' AND organization_id = ?", org),
+    total: count(open, org),
+  };
+}

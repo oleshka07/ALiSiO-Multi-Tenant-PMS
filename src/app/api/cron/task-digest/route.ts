@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendDailyTaskDigestAll } from '@/modules/tasks/data/task-notifications';
+import { sendDailyTaskDigestAll } from '@tasks';
 
 export async function GET(request: NextRequest) {
   // Auth: require CRON_SECRET in production

@@ -132,6 +132,8 @@ node scripts/check-boundaries.mjs bookings   # що тримає один
 пише SQL до таблиці, якою володіє лише цей модуль. Нуль пробоїв означає, що
 модуль можна вимкнути або переписати, не зачепивши решту.
 
+Нуль пробоїв мають: `dashboard`, `reports`, `tasks`.
+
 ### 3.1 Правило нових таблиць
 
 Нова таблиця отримує `organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE`

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { formatUserTasksForTelegram } from '@/modules/tasks/data/task-notifications';
+import { formatUserTasksForTelegram } from '@tasks';
 import { getDb } from '@core/db';
 
 // GET /api/tasks/telegram?chat_id=123 — returns task list for Telegram user

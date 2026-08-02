@@ -13,6 +13,7 @@ import { getDb } from '@core/db';
 
 import { getAdminChatIds, getBotToken, getChatId } from '@/lib/channels/telegram-bot';
 import { appBaseUrl } from '@core/app-url';
+import { getTasksSummary, type TasksSummary } from '@tasks';
 
 // This module kept its own copy of the Telegram env vars, so a bot connected in
 // Settings sent booking alerts but not the daily digest, and its base URL
@@ -237,52 +238,6 @@ function getBookingsDigest(): BookingsDigest {
     totalUnits,
     occupancyPct: totalUnits > 0 ? Math.round((occupied / totalUnits) * 100) : 0,
   };
-}
-
-// ─── Tasks Summary ───────────────────────────────────────
-
-interface TasksSummary {
-  overdue: number;
-  overdueNames: string[];
-  today: number;
-  inProgress: number;
-  total: number;
-}
-
-function getTasksSummary(): TasksSummary {
-  const db = getDb();
-  const today = new Date().toISOString().split('T')[0];
-
-  const overdue = (db.prepare(`
-    SELECT COUNT(*) as cnt FROM tasks
-    WHERE status NOT IN ('done', 'cancelled')
-      AND due_date IS NOT NULL AND due_date < ?
-  `).get(today) as any).cnt;
-
-  const overdueList = db.prepare(`
-    SELECT title FROM tasks
-    WHERE status NOT IN ('done', 'cancelled')
-      AND due_date IS NOT NULL AND due_date < ?
-    ORDER BY due_date ASC LIMIT 3
-  `).all(today) as any[];
-
-  const todayTasks = (db.prepare(`
-    SELECT COUNT(*) as cnt FROM tasks
-    WHERE status NOT IN ('done', 'cancelled')
-      AND due_date = ?
-  `).get(today) as any).cnt;
-
-  const inProgress = (db.prepare(`
-    SELECT COUNT(*) as cnt FROM tasks
-    WHERE status = 'in_progress'
-  `).get() as any).cnt;
-
-  const total = (db.prepare(`
-    SELECT COUNT(*) as cnt FROM tasks
-    WHERE status NOT IN ('done', 'cancelled')
-  `).get() as any).cnt;
-
-  return { overdue, overdueNames: overdueList.map((t: any) => t.title || ''), today: todayTasks, inProgress, total };
 }
 
 // ─── Detailed Property/BU Breakdown ──────────────────────
