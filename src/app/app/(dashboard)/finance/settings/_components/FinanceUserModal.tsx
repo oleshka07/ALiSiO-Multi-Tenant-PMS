@@ -24,7 +24,6 @@ const ALL_TABS: Array<{ value: string; label: string }> = [
   { value: 'history', label: 'Історія змін' },
   { value: 'import', label: 'Імпорт' },
   { value: 'reconcile', label: 'Reconcile' },
-  { value: 'investors', label: 'Інвестори' },
   { value: 'settings', label: 'Налаштування' },
 ];
 

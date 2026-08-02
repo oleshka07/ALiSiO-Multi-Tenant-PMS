@@ -3394,126 +3394,6 @@ function runMigrations(database: any) {
   } catch (e: any) { console.log('[DB] PR #C fin_operations columns:', e.message); }
 
   // ═══════════════════════════════════════════════════════════════════
-  // PR #36: supabase_id columns on investor tables for idempotent re-import
-  // from the InvestFlow Supabase backend. Lets user re-upload CSVs without
-  // creating duplicates — second run is a no-op for already-imported rows.
-  const addCol = (table: string, col: string, def: string) => {
-    try {
-      const cols = database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-      if (!cols.some((c) => c.name === col)) {
-        database.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
-        database.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_${col} ON ${table}(${col})`);
-      }
-    } catch (e: any) { console.log(`[DB] PR #36 ${table}.${col} migration:`, e.message); }
-  };
-  addCol('investors', 'supabase_id', 'TEXT');
-  addCol('investor_investments', 'supabase_id', 'TEXT');
-  addCol('investor_payouts', 'supabase_id', 'TEXT');
-  addCol('property_monthly_metrics', 'supabase_id', 'TEXT');
-  addCol('property_monthly_reports', 'supabase_id', 'TEXT');
-
-  // ═══════════════════════════════════════════════════════════════════
-  // Cleanup #A: re-introduce unit_id columns on investor tables (the
-  // PR #41 columns were not removed when #41 was reverted, but the
-  // migration routine was — re-adding here so the schema is explicit and
-  // any rows with unit_id IS NULL get name-matched to a real glamping unit
-  // on next boot.
-  //
-  // No code yet reads from these — that comes in cleanup #B.
-  // ═══════════════════════════════════════════════════════════════════
-  addCol('investor_investments', 'unit_id', 'TEXT REFERENCES units(id) ON DELETE SET NULL');
-  addCol('investor_payouts', 'unit_id', 'TEXT REFERENCES units(id) ON DELETE SET NULL');
-  addCol('property_monthly_metrics', 'unit_id', 'TEXT REFERENCES units(id) ON DELETE CASCADE');
-  addCol('property_monthly_reports', 'unit_id', 'TEXT REFERENCES units(id) ON DELETE CASCADE');
-  addCol('property_work_stages', 'unit_id', 'TEXT REFERENCES units(id) ON DELETE CASCADE');
-  addCol('investor_property_details', 'unit_id', 'TEXT REFERENCES units(id) ON DELETE CASCADE');
-
-  try {
-    const norm = (s: string) => (s || '').toLowerCase()
-      .replace(/[іії]/g, 'и').replace(/[єё]/g, 'е').replace(/ґ/g, 'г')
-      .replace(/[\s_\-/]/g, '');
-
-    const unitRows = database.prepare(`
-      SELECT u.id, u.name FROM units u
-      JOIN categories c ON c.id = u.category_id
-      WHERE u.is_active = 1 AND c.type = 'glamping'
-    `).all() as { id: string; name: string }[];
-    const unitByNorm = new Map<string, string>();
-    for (const u of unitRows) unitByNorm.set(norm(u.name), u.id);
-
-    const buRows = database.prepare("SELECT id, name FROM business_units").all() as { id: string; name: string }[];
-    const buToUnit = new Map<string, string>();
-    for (const bu of buRows) {
-      const u = unitByNorm.get(norm(bu.name));
-      if (u) buToUnit.set(bu.id, u);
-    }
-
-    let filled = 0;
-    const tables = [
-      'investor_investments', 'investor_payouts',
-      'property_monthly_metrics', 'property_monthly_reports',
-      'property_work_stages', 'investor_property_details',
-    ];
-    for (const table of tables) {
-      const cols = database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-      if (!cols.some((c) => c.name === 'unit_id') || !cols.some((c) => c.name === 'project_id')) continue;
-      const upd = database.prepare(`UPDATE ${table} SET unit_id = ? WHERE project_id = ? AND unit_id IS NULL`);
-      for (const [buId, unitId] of buToUnit.entries()) {
-        const r = upd.run(unitId, buId);
-        filled += r.changes;
-      }
-    }
-    if (filled > 0) console.log(`[DB] Cleanup #A: filled unit_id on ${filled} investor rows by name match`);
-  } catch (e: any) { console.log('[DB] Cleanup #A unit_id name-match:', e.message); }
-
-  try {
-    database.exec('CREATE INDEX IF NOT EXISTS idx_inv_invest_unit ON investor_investments(unit_id)');
-    database.exec('CREATE INDEX IF NOT EXISTS idx_inv_payouts_unit ON investor_payouts(unit_id)');
-  } catch (e: any) { console.log('[DB] Cleanup #A indexes:', e.message); }
-
-  // ═══════════════════════════════════════════════════════════════════
-  // Cleanup #C: archive Supabase-imported business_units that are only
-  // used by the investor module. These polluted finance reports/budgets
-  // because business_units is the finance grouping table and the importer
-  // (PR #36/#37) created rows here for each Supabase property.
-  //
-  // Criteria: id LIKE 'bu_sb_%' AND has at least one investor_investment.
-  // We DO NOT delete — just set is_active = 0. Existing fin_operations
-  // that reference these rows continue to work; they just disappear from
-  // pickers and active project lists. Manually un-archivable via
-  // /finance/projects (existing UI).
-  //
-  // Idempotent — uses fin_system_state key.
-  // ═══════════════════════════════════════════════════════════════════
-  try {
-    const already = database.prepare(
-      "SELECT value FROM fin_system_state WHERE key = 'cleanup_c_archived_supabase_bus'"
-    ).get() as { value: string } | undefined;
-    if (!already) {
-      const targets = database.prepare(`
-        SELECT bu.id, bu.name FROM business_units bu
-        WHERE bu.id LIKE 'bu_sb_%'
-          AND bu.is_active = 1
-          AND EXISTS (SELECT 1 FROM investor_investments WHERE project_id = bu.id)
-      `).all() as { id: string; name: string }[];
-
-      let archived = 0;
-      const upd = database.prepare("UPDATE business_units SET is_active = 0 WHERE id = ?");
-      for (const t of targets) {
-        upd.run(t.id);
-        archived++;
-      }
-      database.prepare(
-        "INSERT OR REPLACE INTO fin_system_state (key, value, updated_at) VALUES ('cleanup_c_archived_supabase_bus', ?, datetime('now'))"
-      ).run(`archived ${archived}: ${targets.map((t) => t.name).join(', ')}`);
-      if (archived > 0) {
-        console.log(`[DB] Cleanup #C: archived ${archived} Supabase-imported BUs from finance pickers (${targets.map((t) => t.name).join(', ')})`);
-      }
-    }
-  } catch (e: any) { console.log('[DB] Cleanup #C archive supabase BUs:', e.message); }
-
-
-  // ═══════════════════════════════════════════════════════════════════
   // Finance PR #G: payment_webhook_log — audit trail for every Teya
   // webhook call. Captures raw payload + outcome so that when a payment
   // doesn't show up in the system, the admin can look here to see whether
@@ -3712,200 +3592,6 @@ function runMigrations(database: any) {
     )
   `);
   database.exec('CREATE INDEX IF NOT EXISTS idx_import_runs_org ON import_runs(organization_id, created_at)');
-
-  // ═══════════════════════════════════════════════════════════════════
-  // PR #31: Investor module — investors, investments, monthly metrics,
-  // payouts. Adapted from investflow-dashboard architecture but reuses
-  // our business_units (= properties).
-  // ═══════════════════════════════════════════════════════════════════
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS investors (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      email TEXT,
-      phone TEXT,
-      telegram_chat_id TEXT,
-      portal_token TEXT NOT NULL UNIQUE,
-      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_investors_org ON investors(organization_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_investors_token ON investors(portal_token)');
-
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS investor_investments (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      investor_id TEXT NOT NULL REFERENCES investors(id) ON DELETE CASCADE,
-      project_id TEXT NOT NULL REFERENCES business_units(id) ON DELETE CASCADE,
-      amount REAL NOT NULL,
-      currency TEXT NOT NULL DEFAULT 'EUR',
-      equity_pct REAL,
-      invested_at TEXT NOT NULL,
-      model_description TEXT,
-      is_active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_inv_invest_org ON investor_investments(organization_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_inv_invest_investor ON investor_investments(investor_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_inv_invest_project ON investor_investments(project_id)');
-
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS property_monthly_metrics (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      project_id TEXT NOT NULL REFERENCES business_units(id) ON DELETE CASCADE,
-      year_month TEXT NOT NULL,
-      occupancy_pct REAL,
-      revenue REAL,
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(project_id, year_month)
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_pmm_project ON property_monthly_metrics(project_id, year_month)');
-
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS investor_payouts (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      investor_id TEXT NOT NULL REFERENCES investors(id) ON DELETE CASCADE,
-      project_id TEXT REFERENCES business_units(id) ON DELETE SET NULL,
-      amount REAL NOT NULL,
-      currency TEXT NOT NULL DEFAULT 'EUR',
-      paid_at TEXT NOT NULL,
-      period_year_month TEXT,
-      comment TEXT,
-      fin_operation_id TEXT REFERENCES fin_operations(id) ON DELETE SET NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_inv_payouts_investor ON investor_payouts(investor_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_inv_payouts_paid_at ON investor_payouts(paid_at)');
-
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS property_monthly_reports (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      project_id TEXT NOT NULL REFERENCES business_units(id) ON DELETE CASCADE,
-      year_month TEXT NOT NULL,
-      adr REAL,
-      general_comment TEXT,
-      market_insight TEXT,
-      operational_updates_json TEXT NOT NULL DEFAULT '[]',
-      photo_url TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(project_id, year_month)
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_pmr_project ON property_monthly_reports(project_id, year_month)');
-
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS property_work_stages (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      project_id TEXT NOT NULL UNIQUE REFERENCES business_units(id) ON DELETE CASCADE,
-      stages_json TEXT NOT NULL DEFAULT '[]',
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-
-  // PR #38: Investor-facing property metadata that doesn't belong on
-  // business_units (which is shared with the rest of the PMS). Carries
-  // the InvestFlow fields: location label, image_url, status, airbnb_url,
-  // ical_url. Linked 1:1 to a business_unit (= property).
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS investor_property_details (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      project_id TEXT NOT NULL UNIQUE REFERENCES business_units(id) ON DELETE CASCADE,
-      location TEXT,
-      image_url TEXT,
-      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('project', 'in_progress', 'active', 'paused')),
-      airbnb_url TEXT,
-      ical_url TEXT,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-
-  // ═══════════════════════════════════════════════════════════════════
-  // Investor Portal v2 — Phase 1 (Foundation)
-  //
-  // New columns + tables to support contractual cashback schedules,
-  // performance targets, CEO monthly notes, investor documents, and
-  // 3-scenario forward projections.
-  //
-  // - cashback_schedule_json: full contractual monthly/quarterly plan
-  // - target_apy / target_occupancy: baselines for the above/on/below
-  //   performance indicator on the assets list
-  // - units_count: how many physical units in a business_unit (1 by
-  //   default; e.g. "B1-B3 STEALTH" has 3)
-  // - investor_monthly_notes: CEO commentary per month, scope=portfolio|asset
-  // - investor_documents: filesystem-backed PDF vault (agreements, monthly
-  //   reports, tax statements)
-  // - forecast_scenarios: 3 scenarios (pessimistic/base/optimistic) per BU
-  // ═══════════════════════════════════════════════════════════════════
-  addCol('investor_investments', 'cashback_schedule_json', 'TEXT');
-  addCol('investor_investments', 'target_apy',             'NUMERIC');
-  addCol('investor_investments', 'target_occupancy',       'NUMERIC');
-  addCol('business_units',       'units_count',            'INTEGER NOT NULL DEFAULT 1');
-
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS investor_monthly_notes (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      scope TEXT NOT NULL CHECK (scope IN ('portfolio', 'asset')),
-      scope_id TEXT NOT NULL,
-      month TEXT NOT NULL,
-      ceo_name TEXT,
-      body_md TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE (scope, scope_id, month)
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_inv_notes_scope ON investor_monthly_notes(scope, scope_id, month)');
-
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS investor_documents (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      investor_id TEXT REFERENCES investors(id) ON DELETE CASCADE,
-      business_unit_id TEXT REFERENCES business_units(id) ON DELETE SET NULL,
-      type TEXT NOT NULL CHECK (type IN ('agreement', 'monthly_report', 'tax_statement', 'bank_statement', 'other')),
-      name TEXT NOT NULL,
-      file_path TEXT NOT NULL,
-      file_size INTEGER,
-      mime_type TEXT,
-      period_start TEXT,
-      period_end TEXT,
-      uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
-      uploaded_by TEXT,
-      is_archived INTEGER NOT NULL DEFAULT 0
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_inv_docs_investor ON investor_documents(investor_id, is_archived)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_inv_docs_bu ON investor_documents(business_unit_id, is_archived)');
-
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS forecast_scenarios (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      business_unit_id TEXT NOT NULL REFERENCES business_units(id) ON DELETE CASCADE,
-      scenario TEXT NOT NULL CHECK (scenario IN ('pessimistic', 'base', 'optimistic')),
-      assumptions_json TEXT,
-      monthly_cashback_projection_json TEXT,
-      full_repayment_eta TEXT,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE (business_unit_id, scenario)
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_forecast_bu ON forecast_scenarios(business_unit_id)');
 
   // PR #27: email-forward receipts inbox (separate from bank inbox)
   // User forwards email with invoice/receipt → IMAP poll extracts attachments
@@ -4713,6 +4399,22 @@ function runMigrations(database: any) {
     console.log('[DB] organization legal columns migration note:', e.message);
   }
 
+  // --- Migration: the investor module is gone ---
+  // Same reasoning as the CRM: a very individual, half-built feature that made
+  // the product harder to explain and the codebase harder to move. Preserved
+  // at the tag `investors-before-removal` and on branch `archive/investors`.
+  try {
+    const invTables = (database.prepare(
+      `SELECT name FROM sqlite_master WHERE type = 'table'
+       AND (name LIKE 'investor%' OR name IN ('forecast_scenarios', 'property_monthly_metrics',
+            'property_monthly_reports', 'property_work_stages'))`,
+    ).all() as any[]).map((r: any) => r.name);
+    for (const t of invTables) database.exec(`DROP TABLE IF EXISTS "${t}"`);
+    if (invTables.length) console.log(`[DB] investors: dropped ${invTables.length} tables`);
+  } catch (e: any) {
+    console.error('[DB] investor table removal:', e.message);
+  }
+
   // --- Migration: the CRM is gone ---
   // It was half-built and shaped around one hotel's way of working, so it was
   // cut to get the core of the PMS right first. The code lives on the
@@ -5016,10 +4718,9 @@ function runMigrations(database: any) {
     rescope('coupons', ['code']);
     rescope('gift_cards', ['code']);
     rescope('widget_price_list', ['item_code']);
-    rescope('investor_monthly_notes', ['scope', 'scope_id', 'month']);
-    // Left global on purpose: ical_channels.export_token, investors.portal_token
-    // and booking_drafts.session_id are random values used as the whole lookup
-    // key from a public URL. Server-wide uniqueness is what makes that lookup
+    // Left global on purpose: ical_channels.export_token and
+    // booking_drafts.session_id are random values used as the whole lookup key
+    // from a public URL. Server-wide uniqueness is what makes that lookup
     // unambiguous; adding the organization would weaken it, not scope it.
   } catch (e: any) {
     console.error('[DB] per-organization uniqueness migration:', e.message);

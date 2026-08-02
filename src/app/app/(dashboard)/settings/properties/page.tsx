@@ -75,7 +75,6 @@ const VISIBILITY_FLAGS = [
   { key: 'show_in_tasks', label: 'Задачі', color: '#3b82f6' },
   { key: 'show_in_finance', label: 'Фінанси', color: '#22c55e' },
   { key: 'show_in_booking', label: 'Бронювання', color: '#f59e0b' },
-  { key: 'show_in_investor', label: 'Інвестори', color: '#a855f7' },
 ];
 
 const STATUS_COLORS: Record<string, { label: string; color: string }> = {
@@ -133,7 +132,7 @@ export default function SettingsPropertiesPage() {
 
   // ── Forms ──
   const [propForm, setPropForm] = useState({ name: '', slug: '', address: '', city: '', country: 'CZ', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00' });
-  const [catForm, setCatForm] = useState({ name: '', type: 'glamping', description: '', icon: '🏕️', color: '#a78bfa', sort_order: 0, show_in_tasks: 1, show_in_finance: 0, show_in_booking: 1, show_in_investor: 0 });
+  const [catForm, setCatForm] = useState({ name: '', type: 'glamping', description: '', icon: '🏕️', color: '#a78bfa', sort_order: 0, show_in_tasks: 1, show_in_finance: 0, show_in_booking: 1 });
   const [bldForm, setBldForm] = useState({ category_id: '', name: '', code: '', description: '', sort_order: 0 });
   const [utForm, setUtForm] = useState({ category_id: '', building_id: '', name: '', code: '', max_adults: 2, max_children: 2, max_occupancy: 4, base_occupancy: 2, beds_single: 0, beds_double: 1, beds_sofa: 0, extra_bed_available: 0, sort_order: 0 });
   const [unitForm, setUnitForm] = useState({ unit_type_id: '', category_id: '', building_id: '', name: '', code: '', beds: 2, floor: '', zone: '', notes: '', sort_order: 0 });
@@ -256,10 +255,10 @@ export default function SettingsPropertiesPage() {
   const openCategoryModal = (cat?: CategoryRow) => {
     if (cat) {
       setEditId(cat.id);
-      setCatForm({ name: cat.name, type: cat.type, description: cat.description || '', icon: cat.icon || '🏕️', color: cat.color || '#a78bfa', sort_order: cat.sort_order, show_in_tasks: (cat as any).show_in_tasks ?? 1, show_in_finance: (cat as any).show_in_finance ?? 0, show_in_booking: (cat as any).show_in_booking ?? 1, show_in_investor: (cat as any).show_in_investor ?? 0 });
+      setCatForm({ name: cat.name, type: cat.type, description: cat.description || '', icon: cat.icon || '🏕️', color: cat.color || '#a78bfa', sort_order: cat.sort_order, show_in_tasks: (cat as any).show_in_tasks ?? 1, show_in_finance: (cat as any).show_in_finance ?? 0, show_in_booking: (cat as any).show_in_booking ?? 1 });
     } else {
       setEditId(null);
-      setCatForm({ name: '', type: 'glamping', description: '', icon: '🏕️', color: '#a78bfa', sort_order: categories.length, show_in_tasks: 1, show_in_finance: 0, show_in_booking: 1, show_in_investor: 0 });
+      setCatForm({ name: '', type: 'glamping', description: '', icon: '🏕️', color: '#a78bfa', sort_order: categories.length, show_in_tasks: 1, show_in_finance: 0, show_in_booking: 1 });
     }
     setModal('category');
   };

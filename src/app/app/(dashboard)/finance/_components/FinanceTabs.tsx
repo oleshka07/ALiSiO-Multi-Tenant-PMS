@@ -23,7 +23,6 @@ const TABS: { href: string; label: string }[] = [
   { href: '/app/finance/expected-payments', label: 'Очікувані оплати' },
   { href: '/app/finance/accruals', label: 'Нарахування' },
   { href: '/app/finance/capex', label: 'CAPEX' },
-  { href: '/app/finance/investors', label: 'Інвестори' },
   { href: '/app/finance/import', label: 'Імпорт' },
   { href: '/app/finance/history', label: 'Історія змін' },
   { href: '/app/finance/settings', label: 'Налаштування' },

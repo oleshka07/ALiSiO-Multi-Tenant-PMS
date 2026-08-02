@@ -31,8 +31,6 @@ export const ALL_PERMISSIONS = [
   'view_finance',
   'manage_finance_settings',
   'import_bank_data',
-  'manage_investors',
-  'nav:investors',
   'manage_sites',
   'manage_tasks',
 ] as const;
@@ -72,8 +70,6 @@ export const PERMISSION_GROUPS: { title: string; permissions: { key: Permission;
       { key: 'view_finance', label: 'Перегляд фінансів' },
       { key: 'manage_finance_settings', label: 'Налаштування фінансів (рахунки, категорії, контрагенти)' },
       { key: 'import_bank_data', label: 'Імпорт банківських виписок' },
-      { key: 'manage_investors', label: 'Керування інвесторами' },
-      { key: 'nav:investors', label: 'Доступ до розділу Інвестори' },
       { key: 'manage_sites', label: 'Керування сайтами' },
       { key: 'manage_tasks', label: 'Керування задачами' },
     ],

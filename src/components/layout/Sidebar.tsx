@@ -158,7 +158,6 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     '/app/finance/history': 'history',
     '/app/finance/import': 'import',
     '/app/finance/reconcile': 'reconcile',
-    '/app/finance/investors': 'investors',
     '/app/finance/settings': 'settings',
   };
 

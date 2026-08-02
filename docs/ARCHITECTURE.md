@@ -41,9 +41,14 @@ src/lib/          історичний шар; поступово розходи
 `auth bookings channels dashboard finance guests notifications payments
 pricing properties reports tasks`
 
-CRM вирізано: вона була напівзроблена й дуже індивідуальна. Код — на гілці
-`archive/crm` і за тегом `crm-before-removal`; повертатися туди за досвідом,
-коли дійде до нової CRM.
+Вирізано як напівзроблене й дуже індивідуальне:
+
+| Що | Гілка / тег |
+|---|---|
+| CRM | `archive/crm` · `crm-before-removal` |
+| Інвестори | `archive/investors` · `investors-before-removal` |
+
+Повертатися туди за досвідом, а не за кодом.
 
 Кожен має однакову структуру:
 
@@ -97,10 +102,10 @@ organizations                      ← клієнт SaaS (готель або м
               └── invoices
 ```
 
-116 таблиць. Кожна дістається до організації одним із трьох способів:
+106 таблиць. Кожна дістається до організації одним із трьох способів:
 
-- **напряму** — має колонку `organization_id` (57 таблиць);
-- **через зв'язок** — має FK, який веде до організації (48 таблиць);
+- **напряму** — має колонку `organization_id`;
+- **через зв'язок** — має FK, який веде до організації;
 - **глобальна** — довідник, однаковий для всіх (10 таблиць:
   `organizations`, `sessions`, `rate_limits`, `settings`,
   `content_translations`, `hostex_property_map` тощо).

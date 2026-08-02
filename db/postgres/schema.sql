@@ -898,20 +898,6 @@ CREATE TABLE "finance_user_access" (
   CHECK (period_mode IN ('all', 'month'))
 );
 
-CREATE TABLE "forecast_scenarios" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "business_unit_id" TEXT NOT NULL,
-  "scenario" TEXT NOT NULL,
-  "assumptions_json" JSONB,
-  "monthly_cashback_projection_json" JSONB,
-  "full_repayment_eta" TEXT,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  UNIQUE ("business_unit_id", "scenario"),
-  CHECK (scenario IN ('pessimistic', 'base', 'optimistic'))
-);
-
 CREATE TABLE "gift_card_automation_rules" (
   "id" TEXT NOT NULL,
   "site_id" TEXT NOT NULL,
@@ -1163,110 +1149,6 @@ CREATE TABLE "import_runs" (
   PRIMARY KEY ("id")
 );
 
-CREATE TABLE "investor_documents" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "investor_id" TEXT,
-  "business_unit_id" TEXT,
-  "type" TEXT NOT NULL,
-  "name" TEXT NOT NULL,
-  "file_path" TEXT NOT NULL,
-  "file_size" BIGINT,
-  "mime_type" TEXT,
-  "period_start" TEXT,
-  "period_end" TEXT,
-  "uploaded_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "uploaded_by" TEXT,
-  "is_archived" BOOLEAN DEFAULT false NOT NULL,
-  PRIMARY KEY ("id"),
-  CHECK (type IN ('agreement', 'monthly_report', 'tax_statement', 'bank_statement', 'other'))
-);
-
-CREATE TABLE "investor_investments" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "investor_id" TEXT NOT NULL,
-  "project_id" TEXT NOT NULL,
-  "amount" NUMERIC(14,2) NOT NULL,
-  "currency" TEXT DEFAULT 'EUR' NOT NULL,
-  "equity_pct" DOUBLE PRECISION,
-  "invested_at" TIMESTAMPTZ NOT NULL,
-  "model_description" TEXT,
-  "is_active" BOOLEAN DEFAULT true NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "cashback_schedule_json" JSONB,
-  "target_apy" NUMERIC(14,2),
-  "target_occupancy" NUMERIC(14,2),
-  "supabase_id" TEXT,
-  "unit_id" TEXT,
-  PRIMARY KEY ("id")
-);
-
-CREATE TABLE "investor_monthly_notes" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "scope" TEXT NOT NULL,
-  "scope_id" TEXT NOT NULL,
-  "month" TEXT NOT NULL,
-  "ceo_name" TEXT,
-  "body_md" TEXT,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  UNIQUE ("organization_id", "scope", "scope_id", "month"),
-  CHECK (scope IN ('portfolio', 'asset'))
-);
-
-CREATE TABLE "investor_payouts" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "investor_id" TEXT NOT NULL,
-  "project_id" TEXT,
-  "amount" NUMERIC(14,2) NOT NULL,
-  "currency" TEXT DEFAULT 'EUR' NOT NULL,
-  "paid_at" TIMESTAMPTZ NOT NULL,
-  "period_year_month" TEXT,
-  "comment" TEXT,
-  "fin_operation_id" TEXT,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "supabase_id" TEXT,
-  "unit_id" TEXT,
-  PRIMARY KEY ("id")
-);
-
-CREATE TABLE "investor_property_details" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "project_id" TEXT NOT NULL,
-  "location" TEXT,
-  "image_url" TEXT,
-  "status" TEXT DEFAULT 'active' NOT NULL,
-  "airbnb_url" TEXT,
-  "ical_url" TEXT,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "unit_id" TEXT,
-  PRIMARY KEY ("id"),
-  UNIQUE ("project_id"),
-  CHECK (status IN ('project', 'in_progress', 'active', 'paused'))
-);
-
-CREATE TABLE "investors" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "name" TEXT NOT NULL,
-  "email" TEXT,
-  "phone" TEXT,
-  "telegram_chat_id" TEXT,
-  "portal_token" TEXT NOT NULL,
-  "status" TEXT DEFAULT 'active' NOT NULL,
-  "notes" TEXT,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "supabase_id" TEXT,
-  PRIMARY KEY ("id"),
-  UNIQUE ("portal_token"),
-  CHECK (status IN ('active', 'archived'))
-);
-
 CREATE TABLE "invoice_counters" (
   "organization_id" TEXT NOT NULL,
   "series" TEXT NOT NULL,
@@ -1462,40 +1344,6 @@ CREATE TABLE "property_guest_config" (
   UNIQUE ("property_id")
 );
 
-CREATE TABLE "property_monthly_metrics" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "project_id" TEXT NOT NULL,
-  "year_month" TEXT NOT NULL,
-  "occupancy_pct" DOUBLE PRECISION,
-  "revenue" NUMERIC(14,2),
-  "notes" TEXT,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "supabase_id" TEXT,
-  "unit_id" TEXT,
-  PRIMARY KEY ("id"),
-  UNIQUE ("project_id", "year_month")
-);
-
-CREATE TABLE "property_monthly_reports" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "project_id" TEXT NOT NULL,
-  "year_month" TEXT NOT NULL,
-  "adr" DOUBLE PRECISION,
-  "general_comment" TEXT,
-  "market_insight" TEXT,
-  "operational_updates_json" JSONB DEFAULT '[]'::jsonb NOT NULL,
-  "photo_url" TEXT,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "supabase_id" TEXT,
-  "unit_id" TEXT,
-  PRIMARY KEY ("id"),
-  UNIQUE ("project_id", "year_month")
-);
-
 CREATE TABLE "property_photos" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "property_id" TEXT NOT NULL,
@@ -1506,16 +1354,6 @@ CREATE TABLE "property_photos" (
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   CHECK (photo_type IN ('building', 'territory', 'common', 'aerial'))
-);
-
-CREATE TABLE "property_work_stages" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "project_id" TEXT NOT NULL,
-  "stages_json" JSONB DEFAULT '[]'::jsonb NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "unit_id" TEXT,
-  PRIMARY KEY ("id"),
-  UNIQUE ("project_id")
 );
 
 CREATE TABLE "rate_limits" (
@@ -2268,10 +2106,6 @@ ALTER TABLE "finance_tags" ADD CONSTRAINT "fk_finance_tags_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "finance_user_access" ADD CONSTRAINT "fk_finance_user_access_user_id_1"
   FOREIGN KEY ("user_id") REFERENCES "app_users" ("id") ON DELETE CASCADE;
-ALTER TABLE "forecast_scenarios" ADD CONSTRAINT "fk_forecast_scenarios_business_unit_id_1"
-  FOREIGN KEY ("business_unit_id") REFERENCES "business_units" ("id") ON DELETE CASCADE;
-ALTER TABLE "forecast_scenarios" ADD CONSTRAINT "fk_forecast_scenarios_organization_id_2"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "gift_card_automation_rules" ADD CONSTRAINT "fk_gift_card_automation_rules_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "gift_card_bundles" ADD CONSTRAINT "fk_gift_card_bundles_organization_id_1"
@@ -2310,38 +2144,6 @@ ALTER TABLE "import_runs" ADD CONSTRAINT "fk_import_runs_format_id_1"
   FOREIGN KEY ("format_id") REFERENCES "import_formats" ("id") ON DELETE SET NULL;
 ALTER TABLE "import_runs" ADD CONSTRAINT "fk_import_runs_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "investor_documents" ADD CONSTRAINT "fk_investor_documents_business_unit_id_1"
-  FOREIGN KEY ("business_unit_id") REFERENCES "business_units" ("id") ON DELETE SET NULL;
-ALTER TABLE "investor_documents" ADD CONSTRAINT "fk_investor_documents_investor_id_2"
-  FOREIGN KEY ("investor_id") REFERENCES "investors" ("id") ON DELETE CASCADE;
-ALTER TABLE "investor_documents" ADD CONSTRAINT "fk_investor_documents_organization_id_3"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "investor_investments" ADD CONSTRAINT "fk_investor_investments_unit_id_1"
-  FOREIGN KEY ("unit_id") REFERENCES "units" ("id") ON DELETE SET NULL;
-ALTER TABLE "investor_investments" ADD CONSTRAINT "fk_investor_investments_project_id_2"
-  FOREIGN KEY ("project_id") REFERENCES "business_units" ("id") ON DELETE CASCADE;
-ALTER TABLE "investor_investments" ADD CONSTRAINT "fk_investor_investments_investor_id_3"
-  FOREIGN KEY ("investor_id") REFERENCES "investors" ("id") ON DELETE CASCADE;
-ALTER TABLE "investor_investments" ADD CONSTRAINT "fk_investor_investments_organization_id_4"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "investor_monthly_notes" ADD CONSTRAINT "fk_investor_monthly_notes_organization_id_1"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "investor_payouts" ADD CONSTRAINT "fk_investor_payouts_unit_id_1"
-  FOREIGN KEY ("unit_id") REFERENCES "units" ("id") ON DELETE SET NULL;
-ALTER TABLE "investor_payouts" ADD CONSTRAINT "fk_investor_payouts_fin_operation_id_2"
-  FOREIGN KEY ("fin_operation_id") REFERENCES "fin_operations" ("id") ON DELETE SET NULL;
-ALTER TABLE "investor_payouts" ADD CONSTRAINT "fk_investor_payouts_project_id_3"
-  FOREIGN KEY ("project_id") REFERENCES "business_units" ("id") ON DELETE SET NULL;
-ALTER TABLE "investor_payouts" ADD CONSTRAINT "fk_investor_payouts_investor_id_4"
-  FOREIGN KEY ("investor_id") REFERENCES "investors" ("id") ON DELETE CASCADE;
-ALTER TABLE "investor_payouts" ADD CONSTRAINT "fk_investor_payouts_organization_id_5"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "investor_property_details" ADD CONSTRAINT "fk_investor_property_details_unit_id_1"
-  FOREIGN KEY ("unit_id") REFERENCES "units" ("id") ON DELETE CASCADE;
-ALTER TABLE "investor_property_details" ADD CONSTRAINT "fk_investor_property_details_project_id_2"
-  FOREIGN KEY ("project_id") REFERENCES "business_units" ("id") ON DELETE CASCADE;
-ALTER TABLE "investors" ADD CONSTRAINT "fk_investors_organization_id_1"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "invoice_counters" ADD CONSTRAINT "fk_invoice_counters_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "invoice_periods" ADD CONSTRAINT "fk_invoice_periods_organization_id_1"
@@ -2364,24 +2166,8 @@ ALTER TABLE "properties" ADD CONSTRAINT "fk_properties_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "property_guest_config" ADD CONSTRAINT "fk_property_guest_config_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
-ALTER TABLE "property_monthly_metrics" ADD CONSTRAINT "fk_property_monthly_metrics_unit_id_1"
-  FOREIGN KEY ("unit_id") REFERENCES "units" ("id") ON DELETE CASCADE;
-ALTER TABLE "property_monthly_metrics" ADD CONSTRAINT "fk_property_monthly_metrics_project_id_2"
-  FOREIGN KEY ("project_id") REFERENCES "business_units" ("id") ON DELETE CASCADE;
-ALTER TABLE "property_monthly_metrics" ADD CONSTRAINT "fk_property_monthly_metrics_organization_id_3"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "property_monthly_reports" ADD CONSTRAINT "fk_property_monthly_reports_unit_id_1"
-  FOREIGN KEY ("unit_id") REFERENCES "units" ("id") ON DELETE CASCADE;
-ALTER TABLE "property_monthly_reports" ADD CONSTRAINT "fk_property_monthly_reports_project_id_2"
-  FOREIGN KEY ("project_id") REFERENCES "business_units" ("id") ON DELETE CASCADE;
-ALTER TABLE "property_monthly_reports" ADD CONSTRAINT "fk_property_monthly_reports_organization_id_3"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "property_photos" ADD CONSTRAINT "fk_property_photos_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
-ALTER TABLE "property_work_stages" ADD CONSTRAINT "fk_property_work_stages_unit_id_1"
-  FOREIGN KEY ("unit_id") REFERENCES "units" ("id") ON DELETE CASCADE;
-ALTER TABLE "property_work_stages" ADD CONSTRAINT "fk_property_work_stages_project_id_2"
-  FOREIGN KEY ("project_id") REFERENCES "business_units" ("id") ON DELETE CASCADE;
 ALTER TABLE "rate_plans" ADD CONSTRAINT "fk_rate_plans_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "receipts" ADD CONSTRAINT "fk_receipts_organization_id_1"
@@ -2586,7 +2372,6 @@ CREATE INDEX "idx_fx_org" ON "finance_exchange_rates" ("organization_id");
 CREATE INDEX "idx_fx_pair" ON "finance_exchange_rates" ("from_currency", "to_currency", "effective_from");
 CREATE INDEX "idx_tags_org" ON "finance_tags" ("organization_id");
 CREATE UNIQUE INDEX "idx_tags_org_name" ON "finance_tags" (organization_id, LOWER(name));
-CREATE INDEX "idx_forecast_bu" ON "forecast_scenarios" ("business_unit_id");
 CREATE INDEX "idx_gift_card_automation_rules_org" ON "gift_card_automation_rules" ("organization_id");
 CREATE INDEX "idx_var_site" ON "gift_card_automation_rules" ("site_id");
 CREATE INDEX "idx_gift_card_bundles_org" ON "gift_card_bundles" ("organization_id");
@@ -2602,27 +2387,6 @@ CREATE INDEX "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX "idx_iem_format" ON "import_entity_mappings" ("format_id", "entity_type");
 CREATE INDEX "idx_import_formats_org" ON "import_formats" ("organization_id");
 CREATE INDEX "idx_import_runs_org" ON "import_runs" ("organization_id", "created_at");
-CREATE INDEX "idx_inv_docs_bu" ON "investor_documents" ("business_unit_id", "is_archived");
-CREATE INDEX "idx_inv_docs_investor" ON "investor_documents" ("investor_id", "is_archived");
-CREATE INDEX "idx_inv_invest_investor" ON "investor_investments" ("investor_id");
-CREATE INDEX "idx_inv_invest_org" ON "investor_investments" ("organization_id");
-CREATE INDEX "idx_inv_invest_project" ON "investor_investments" ("project_id");
-CREATE INDEX "idx_inv_invest_unit" ON "investor_investments" ("unit_id");
-CREATE INDEX "idx_investor_investments_cashback_schedule_json" ON "investor_investments" ("cashback_schedule_json");
-CREATE INDEX "idx_investor_investments_supabase_id" ON "investor_investments" ("supabase_id");
-CREATE INDEX "idx_investor_investments_target_apy" ON "investor_investments" ("target_apy");
-CREATE INDEX "idx_investor_investments_target_occupancy" ON "investor_investments" ("target_occupancy");
-CREATE INDEX "idx_investor_investments_unit_id" ON "investor_investments" ("unit_id");
-CREATE INDEX "idx_inv_notes_scope" ON "investor_monthly_notes" ("scope", "scope_id", "month");
-CREATE INDEX "idx_inv_payouts_investor" ON "investor_payouts" ("investor_id");
-CREATE INDEX "idx_inv_payouts_paid_at" ON "investor_payouts" ("paid_at");
-CREATE INDEX "idx_inv_payouts_unit" ON "investor_payouts" ("unit_id");
-CREATE INDEX "idx_investor_payouts_supabase_id" ON "investor_payouts" ("supabase_id");
-CREATE INDEX "idx_investor_payouts_unit_id" ON "investor_payouts" ("unit_id");
-CREATE INDEX "idx_investor_property_details_unit_id" ON "investor_property_details" ("unit_id");
-CREATE INDEX "idx_investors_org" ON "investors" ("organization_id");
-CREATE INDEX "idx_investors_supabase_id" ON "investors" ("supabase_id");
-CREATE INDEX "idx_investors_token" ON "investors" ("portal_token");
 CREATE INDEX "idx_invoices_issued" ON "invoices" ("issued_at");
 CREATE INDEX "idx_invoices_number" ON "invoices" ("organization_id", "invoice_number");
 CREATE INDEX "idx_invoices_reservation" ON "invoices" ("reservation_id");
@@ -2633,13 +2397,6 @@ CREATE INDEX "idx_pwl_result" ON "payment_webhook_log" ("result");
 CREATE INDEX "idx_price_cal_date" ON "price_calendar" ("date");
 CREATE INDEX "idx_price_cal_ut" ON "price_calendar" ("unit_type_id");
 CREATE INDEX "idx_price_cal_ut_date" ON "price_calendar" ("unit_type_id", "date");
-CREATE INDEX "idx_pmm_project" ON "property_monthly_metrics" ("project_id", "year_month");
-CREATE INDEX "idx_property_monthly_metrics_supabase_id" ON "property_monthly_metrics" ("supabase_id");
-CREATE INDEX "idx_property_monthly_metrics_unit_id" ON "property_monthly_metrics" ("unit_id");
-CREATE INDEX "idx_pmr_project" ON "property_monthly_reports" ("project_id", "year_month");
-CREATE INDEX "idx_property_monthly_reports_supabase_id" ON "property_monthly_reports" ("supabase_id");
-CREATE INDEX "idx_property_monthly_reports_unit_id" ON "property_monthly_reports" ("unit_id");
-CREATE INDEX "idx_property_work_stages_unit_id" ON "property_work_stages" ("unit_id");
 CREATE INDEX "idx_line_items_sub" ON "reservation_line_items" ("sub_booking_id");
 CREATE INDEX "idx_sub_bookings_res" ON "reservation_sub_bookings" ("reservation_id");
 CREATE INDEX "idx_reservations_dates" ON "reservations" ("check_in", "check_out");
@@ -2707,25 +2464,17 @@ CREATE INDEX IF NOT EXISTS "idx_finance_accounts_org" ON "finance_accounts" ("or
 CREATE INDEX IF NOT EXISTS "idx_finance_counterparties_org" ON "finance_counterparties" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_finance_exchange_rates_org" ON "finance_exchange_rates" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_finance_tags_org" ON "finance_tags" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_forecast_scenarios_org" ON "forecast_scenarios" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_gift_card_automation_rules_org" ON "gift_card_automation_rules" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_gift_card_bundles_org" ON "gift_card_bundles" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_gift_cards_org" ON "gift_cards" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_import_formats_org" ON "import_formats" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_import_runs_org" ON "import_runs" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_investor_documents_org" ON "investor_documents" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_investor_investments_org" ON "investor_investments" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_investor_monthly_notes_org" ON "investor_monthly_notes" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_investor_payouts_org" ON "investor_payouts" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_investors_org" ON "investors" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoice_counters_org" ON "invoice_counters" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoice_periods_org" ON "invoice_periods" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoices_org" ON "invoices" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_payment_webhook_log_org" ON "payment_webhook_log" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_properties_org" ON "properties" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_property_monthly_metrics_org" ON "property_monthly_metrics" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_property_monthly_reports_org" ON "property_monthly_reports" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_receipts_org" ON "receipts" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_task_attachments_org" ON "task_attachments" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_task_projects_org" ON "task_projects" ("organization_id");
@@ -3024,12 +2773,6 @@ CREATE POLICY "finance_user_access_tenant" ON "finance_user_access"
   USING ("user_id" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id')))
   WITH CHECK ("user_id" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id')));
 
-ALTER TABLE "forecast_scenarios" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "forecast_scenarios" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "forecast_scenarios_tenant" ON "forecast_scenarios"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
 ALTER TABLE "gift_card_automation_rules" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "gift_card_automation_rules" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "gift_card_automation_rules_tenant" ON "gift_card_automation_rules"
@@ -3102,42 +2845,6 @@ CREATE POLICY "import_runs_tenant" ON "import_runs"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
-ALTER TABLE "investor_documents" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "investor_documents" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "investor_documents_tenant" ON "investor_documents"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "investor_investments" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "investor_investments" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "investor_investments_tenant" ON "investor_investments"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "investor_monthly_notes" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "investor_monthly_notes" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "investor_monthly_notes_tenant" ON "investor_monthly_notes"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "investor_payouts" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "investor_payouts" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "investor_payouts_tenant" ON "investor_payouts"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "investor_property_details" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "investor_property_details" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "investor_property_details_tenant" ON "investor_property_details"
-  USING ("unit_id" IN (SELECT "id" FROM "units" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))
-  WITH CHECK ("unit_id" IN (SELECT "id" FROM "units" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))));
-
-ALTER TABLE "investors" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "investors" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "investors_tenant" ON "investors"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
 ALTER TABLE "invoice_counters" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "invoice_counters" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "invoice_counters_tenant" ON "invoice_counters"
@@ -3192,29 +2899,11 @@ CREATE POLICY "property_guest_config_tenant" ON "property_guest_config"
   USING ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))
   WITH CHECK ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')));
 
-ALTER TABLE "property_monthly_metrics" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "property_monthly_metrics" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "property_monthly_metrics_tenant" ON "property_monthly_metrics"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "property_monthly_reports" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "property_monthly_reports" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "property_monthly_reports_tenant" ON "property_monthly_reports"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
 ALTER TABLE "property_photos" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "property_photos" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "property_photos_tenant" ON "property_photos"
   USING ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))
   WITH CHECK ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')));
-
-ALTER TABLE "property_work_stages" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "property_work_stages" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "property_work_stages_tenant" ON "property_work_stages"
-  USING ("unit_id" IN (SELECT "id" FROM "units" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))
-  WITH CHECK ("unit_id" IN (SELECT "id" FROM "units" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))));
 
 ALTER TABLE "rate_plans" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "rate_plans" FORCE ROW LEVEL SECURITY;
