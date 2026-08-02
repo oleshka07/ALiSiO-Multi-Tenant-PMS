@@ -58,12 +58,6 @@ export function getDb(): any {
 
   // PR #8: run recurring templates if 24h has elapsed since last tick
   tick('Recurring', () => import('@/modules/finance/data/recurring-engine'), 'runRecurringTickIfDue');
-  // PR #11: poll bank inboxes if 15min elapsed
-  tick('BankInbox', () => import('@/modules/finance/data/bank-inbox-engine'), 'runBankInboxTickIfDue');
-  // PR #25: Teya transaction sync if 4h elapsed (skipped when TEYA_CLIENT_ID missing)
-  tick('Teya', () => import('@/modules/finance/data/teya-reconcile-engine'), 'runTeyaSyncTickIfDue');
-  // PR #27: receipt inboxes — IMAP poll for forwarded invoices (15 min)
-  tick('ReceiptInbox', () => import('@/modules/finance/data/receipt-inbox-engine'), 'runReceiptInboxTickIfDue');
 
   return db;
 }
@@ -4397,6 +4391,36 @@ function runMigrations(database: any) {
     if (orgCols.length < 18) console.log('[DB] organizations: legal & banking columns ready');
   } catch (e: any) {
     console.log('[DB] organization legal columns migration note:', e.message);
+  }
+
+  // --- Migration: the finance wrapper is gone ---
+  // Bank inboxes, statement import, the import wizard, email-forwarded
+  // receipts, reconciliation, clearing, accruals and the finance calendar were
+  // cut so what is left is the part every hotel needs: the money ledger,
+  // invoices, accounts and reports. Preserved at `finance-wrapper-before-removal`
+  // and on branch `archive/finance-wrapper`.
+  //
+  // Not everything here goes. bank_transactions, fin_channel_receivables and
+  // accruals still have live readers in the operations audit and the balance
+  // sheet, so only the tables nothing reads are dropped — and bank_statements
+  // stays with them, because bank_transactions has a foreign key to it and a
+  // key pointing at a dropped table makes SQLite refuse every statement that
+  // touches the row. Only the *import* is gone; an operation can still be
+  // linked to a bank transaction.
+  try {
+    const wrapperTables = ['fin_bank_inboxes', 'fin_receipt_inboxes',
+      'fin_pending_receipts', 'import_formats', 'import_entity_mappings', 'import_runs',
+      'fin_channel_receivables_pr21', 'receipts'];
+    let dropped = 0;
+    for (const t of wrapperTables) {
+      const exists = database.prepare('SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?').get('table', t);
+      if (!exists) continue;
+      database.exec(`DROP TABLE IF EXISTS "${t}"`);
+      dropped++;
+    }
+    if (dropped) console.log(`[DB] finance wrapper: dropped ${dropped} tables`);
+  } catch (e: any) {
+    console.error('[DB] finance wrapper table removal:', e.message);
   }
 
   // --- Migration: the investor module is gone ---

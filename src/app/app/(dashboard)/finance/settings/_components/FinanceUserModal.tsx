@@ -14,16 +14,9 @@ interface Props {
 const ALL_TABS: Array<{ value: string; label: string }> = [
   { value: 'operations', label: 'Операції' },
   { value: 'reports', label: 'Звіти' },
-  { value: 'bank', label: 'Банк' },
-  { value: 'clearing', label: 'Clearing (платформи)' },
-  { value: 'receipts', label: 'Чеки з пошти' },
-  { value: 'calendar', label: 'Календар' },
   { value: 'expected-payments', label: 'Очікувані оплати' },
   { value: 'capex', label: 'CAPEX' },
-  { value: 'accruals', label: 'Нарахування' },
   { value: 'history', label: 'Історія змін' },
-  { value: 'import', label: 'Імпорт' },
-  { value: 'reconcile', label: 'Reconcile' },
   { value: 'settings', label: 'Налаштування' },
 ];
 

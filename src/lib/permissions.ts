@@ -30,7 +30,6 @@ export const ALL_PERMISSIONS = [
   'manage_expenses',
   'view_finance',
   'manage_finance_settings',
-  'import_bank_data',
   'manage_sites',
   'manage_tasks',
 ] as const;
@@ -69,7 +68,6 @@ export const PERMISSION_GROUPS: { title: string; permissions: { key: Permission;
       { key: 'manage_expenses', label: 'Керування витратами' },
       { key: 'view_finance', label: 'Перегляд фінансів' },
       { key: 'manage_finance_settings', label: 'Налаштування фінансів (рахунки, категорії, контрагенти)' },
-      { key: 'import_bank_data', label: 'Імпорт банківських виписок' },
       { key: 'manage_sites', label: 'Керування сайтами' },
       { key: 'manage_tasks', label: 'Керування задачами' },
     ],
@@ -85,7 +83,7 @@ export const ROLE_DEFAULTS: Record<UserRole, Permission[]> = {
     'nav:reports', 'nav:guests', 'nav:documents', 'nav:finance', 'nav:sites', 'nav:tasks',
     'manage_bookings', 'manage_guests', 'manage_pricing',
     'view_reports', 'manage_payments', 'manage_documents',
-    'manage_expenses', 'view_finance', 'manage_finance_settings', 'import_bank_data',
+    'manage_expenses', 'view_finance', 'manage_finance_settings',
     'manage_sites', 'manage_tasks',
   ],
   receptionist: [
@@ -101,7 +99,7 @@ export const ROLE_DEFAULTS: Record<UserRole, Permission[]> = {
   accountant: [
     'nav:dashboard', 'nav:reports', 'nav:documents', 'nav:finance',
     'view_reports', 'manage_payments', 'manage_documents',
-    'manage_expenses', 'view_finance', 'manage_finance_settings', 'import_bank_data',
+    'manage_expenses', 'view_finance', 'manage_finance_settings',
   ],
 };
 

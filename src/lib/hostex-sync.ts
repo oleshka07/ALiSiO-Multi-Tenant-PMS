@@ -12,7 +12,6 @@ import {
   updateReservationCustomField,
   type HostexReservation,
 } from './hostex';
-import { upsertReceivableForReservation } from '@/modules/finance/data/clearing-engine';
 import { notifyReservationCreated } from '@/modules/bookings/domain/reservation-tg-notify';
 import { findOrCreateGuest as findOrCreateGuestUnified } from '@guests';
 import { money } from '@core/money';
@@ -326,17 +325,6 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
       const isEurChannel = ['airbnb', 'vrbo'].includes(mapChannelToSource(res.channel_type));
       const recvCurrency = isEurChannel || (totalEur && totalEur > 0) ? 'EUR' : 'CZK';
       const recvAmount = recvCurrency === 'EUR' && totalEur ? totalEur : totalCzk;
-      upsertReceivableForReservation(db, {
-        reservationId: existing.id,
-        organizationId: ORG_ID,
-        hostexChannelType: res.channel_type,
-        externalReservationId: res.channel_id,
-        grossAmount: recvAmount,
-        currency: recvCurrency,
-        checkIn, checkOut,
-        status: finalStatus as any,
-        commissionAmount: commissionEur && commissionEur > 0 ? commissionEur : null,
-      });
     } catch (e: any) { console.log('[Hostex] receivable upsert error:', e.message); }
 
     // Push guest page URL to Hostex as custom field → use {{cf.guest_page_url}} in message templates
@@ -399,17 +387,6 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
       const isEurChannel = ['airbnb', 'vrbo'].includes(mapChannelToSource(res.channel_type));
       const recvCurrency = isEurChannel || (totalEur && totalEur > 0) ? 'EUR' : 'CZK';
       const recvAmount = recvCurrency === 'EUR' && totalEur ? totalEur : totalCzk;
-      upsertReceivableForReservation(db, {
-        reservationId: newId,
-        organizationId: ORG_ID,
-        hostexChannelType: res.channel_type,
-        externalReservationId: res.channel_id,
-        grossAmount: recvAmount,
-        currency: recvCurrency,
-        checkIn, checkOut,
-        status: status as any,
-        commissionAmount: commissionEur && commissionEur > 0 ? commissionEur : null,
-      });
     } catch (e: any) { console.log('[Hostex] receivable upsert error:', e.message); }
 
     if (guestPageToken) {

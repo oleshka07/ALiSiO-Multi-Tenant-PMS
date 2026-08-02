@@ -148,16 +148,9 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     '/app/finance': 'overview',
     '/app/finance/operations': 'operations',
     '/app/finance/reports': 'reports',
-    '/app/finance/bank': 'bank',
-    '/app/finance/clearing': 'clearing',
-    '/app/finance/receipts': 'receipts',
-    '/app/finance/calendar': 'calendar',
     '/app/finance/expected-payments': 'expected-payments',
     '/app/finance/capex': 'capex',
-    '/app/finance/accruals': 'accruals',
     '/app/finance/history': 'history',
-    '/app/finance/import': 'import',
-    '/app/finance/reconcile': 'reconcile',
     '/app/finance/settings': 'settings',
   };
 

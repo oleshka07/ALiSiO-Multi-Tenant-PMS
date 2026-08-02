@@ -164,17 +164,18 @@ CREATE TABLE "availability_blocks" (
 );
 
 CREATE TABLE "bank_statements" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "file_name" TEXT NOT NULL,
-  "bank_name" TEXT,
-  "account_number" TEXT,
+  "id" TEXT NOT NULL,
+  "organization_id" TEXT,
+  "account_id" TEXT,
+  "iban" TEXT,
   "period_from" DATE,
   "period_to" DATE,
-  "total_transactions" INTEGER DEFAULT 0 NOT NULL,
-  "matched_transactions" BIGINT DEFAULT 0 NOT NULL,
-  "status" TEXT DEFAULT 'pending' NOT NULL,
-  "uploaded_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "opening_balance" NUMERIC(14,2),
+  "closing_balance" NUMERIC(14,2),
+  "currency" TEXT,
+  "total_transactions" INTEGER,
+  "source" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now(),
   PRIMARY KEY ("id")
 );
 
@@ -559,31 +560,6 @@ CREATE TABLE "fin_auto_rules" (
   CHECK (op_type IN ('income','expense','any'))
 );
 
-CREATE TABLE "fin_bank_inboxes" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "name" TEXT NOT NULL,
-  "imap_host" TEXT NOT NULL,
-  "imap_port" BIGINT DEFAULT 993 NOT NULL,
-  "imap_user" TEXT NOT NULL,
-  "imap_password_encrypted" TEXT NOT NULL,
-  "imap_folder" TEXT DEFAULT 'INBOX' NOT NULL,
-  "use_tls" BIGINT DEFAULT 1 NOT NULL,
-  "sender_filter" TEXT,
-  "subject_filter" TEXT,
-  "attachment_format" TEXT DEFAULT 'auto' NOT NULL,
-  "last_uid" BIGINT,
-  "last_synced_at" TIMESTAMPTZ,
-  "last_error" TEXT,
-  "last_email_at" TIMESTAMPTZ,
-  "emails_processed" BIGINT DEFAULT 0 NOT NULL,
-  "operations_imported" BIGINT DEFAULT 0 NOT NULL,
-  "is_active" BOOLEAN DEFAULT true NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id")
-);
-
 CREATE TABLE "fin_budgets" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
@@ -599,33 +575,6 @@ CREATE TABLE "fin_budgets" (
 );
 
 CREATE TABLE "fin_channel_receivables" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "reservation_id" TEXT NOT NULL,
-  "clearing_account_id" TEXT NOT NULL,
-  "channel_source" TEXT NOT NULL,
-  "external_reservation_id" TEXT,
-  "gross_amount" NUMERIC(14,2) NOT NULL,
-  "expected_commission" NUMERIC(14,2) DEFAULT 0 NOT NULL,
-  "expected_net" DOUBLE PRECISION NOT NULL,
-  "actual_commission" NUMERIC(14,2),
-  "actual_net" DOUBLE PRECISION,
-  "currency" TEXT NOT NULL,
-  "check_in" DATE NOT NULL,
-  "check_out" DATE NOT NULL,
-  "status" TEXT DEFAULT 'expected' NOT NULL,
-  "statement_payout_id" TEXT,
-  "statement_payout_date" DATE,
-  "paid_operation_id" TEXT,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "actual_gross" DOUBLE PRECISION,
-  PRIMARY KEY ("id"),
-  UNIQUE ("reservation_id", "clearing_account_id"),
-  CHECK (status IN ('expected', 'in_statement', 'paid', 'cancelled'))
-);
-
-CREATE TABLE "fin_channel_receivables_pr21" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
   "reservation_id" TEXT,
@@ -722,53 +671,6 @@ CREATE TABLE "fin_operations" (
   PRIMARY KEY ("id"),
   CHECK (op_type IN ('income', 'expense', 'transfer')),
   CHECK (status IN ('completed','pending','failed','refunded'))
-);
-
-CREATE TABLE "fin_pending_receipts" (
-  "id" TEXT NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "inbox_id" TEXT,
-  "file_name" TEXT NOT NULL,
-  "storage_path" TEXT NOT NULL,
-  "mime_type" TEXT,
-  "size_bytes" BIGINT,
-  "sender_email" TEXT,
-  "subject" TEXT,
-  "received_at" TIMESTAMPTZ,
-  "detected_amount" NUMERIC(14,2),
-  "detected_currency" TEXT,
-  "auto_matched_operation_id" TEXT,
-  "status" TEXT DEFAULT 'pending' NOT NULL,
-  "attached_attachment_id" TEXT,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  CHECK (status IN ('pending', 'matched', 'attached', 'archived'))
-);
-
-CREATE TABLE "fin_receipt_inboxes" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "name" TEXT NOT NULL,
-  "imap_host" TEXT NOT NULL,
-  "imap_port" BIGINT DEFAULT 993 NOT NULL,
-  "imap_user" TEXT NOT NULL,
-  "imap_password_encrypted" TEXT NOT NULL,
-  "imap_folder" TEXT DEFAULT 'INBOX' NOT NULL,
-  "use_tls" BIGINT DEFAULT 1 NOT NULL,
-  "sender_filter" TEXT,
-  "subject_filter" TEXT,
-  "auto_match_threshold_pct" DOUBLE PRECISION DEFAULT 1.0 NOT NULL,
-  "last_uid" BIGINT,
-  "last_synced_at" TIMESTAMPTZ,
-  "last_error" TEXT,
-  "last_email_at" TIMESTAMPTZ,
-  "emails_processed" BIGINT DEFAULT 0 NOT NULL,
-  "receipts_imported" BIGINT DEFAULT 0 NOT NULL,
-  "is_active" BOOLEAN DEFAULT true NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id")
 );
 
 CREATE TABLE "fin_recurring_templates" (
@@ -1107,48 +1009,6 @@ CREATE TABLE "ical_sync_log" (
   CHECK (status IN ('success', 'error'))
 );
 
-CREATE TABLE "import_entity_mappings" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "format_id" TEXT NOT NULL,
-  "entity_type" TEXT NOT NULL,
-  "source_value" TEXT NOT NULL,
-  "pms_entity_id" TEXT,
-  "action" TEXT DEFAULT 'use_existing' NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  UNIQUE ("format_id", "entity_type", "source_value"),
-  CHECK (entity_type IN ('account','category','project','counterparty')),
-  CHECK (action IN ('use_existing','create_new','ignore'))
-);
-
-CREATE TABLE "import_formats" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "name" TEXT NOT NULL,
-  "description" TEXT,
-  "detector_signature" TEXT,
-  "field_mappings_json" JSONB DEFAULT '{}'::jsonb NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id")
-);
-
-CREATE TABLE "import_runs" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "format_id" TEXT,
-  "file_name" TEXT,
-  "rows_total" INTEGER DEFAULT 0 NOT NULL,
-  "rows_created" BIGINT DEFAULT 0 NOT NULL,
-  "rows_skipped" BIGINT DEFAULT 0 NOT NULL,
-  "rows_dup" BIGINT DEFAULT 0 NOT NULL,
-  "errors_count" BIGINT DEFAULT 0 NOT NULL,
-  "status" TEXT DEFAULT 'committed' NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id")
-);
-
 CREATE TABLE "invoice_counters" (
   "organization_id" TEXT NOT NULL,
   "series" TEXT NOT NULL,
@@ -1383,17 +1243,6 @@ CREATE TABLE "rate_plans" (
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("property_id", "code")
-);
-
-CREATE TABLE "receipts" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "expense_id" TEXT,
-  "file_path" TEXT NOT NULL,
-  "file_type" TEXT,
-  "source" TEXT DEFAULT 'manual' NOT NULL,
-  "uploaded_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id")
 );
 
 CREATE TABLE "reservation_groups" (
@@ -1928,8 +1777,6 @@ ALTER TABLE "audit_log" ADD CONSTRAINT "fk_audit_log_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "availability_blocks" ADD CONSTRAINT "fk_availability_blocks_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "bank_statements" ADD CONSTRAINT "fk_bank_statements_organization_id_1"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "bank_transactions" ADD CONSTRAINT "fk_bank_transactions_matched_operation_id_1"
   FOREIGN KEY ("matched_operation_id") REFERENCES "fin_operations" ("id");
 ALTER TABLE "bank_transactions" ADD CONSTRAINT "fk_bank_transactions_matched_business_unit_id_2"
@@ -2018,8 +1865,6 @@ ALTER TABLE "fin_auto_rule_matches" ADD CONSTRAINT "fk_fin_auto_rule_matches_rul
   FOREIGN KEY ("rule_id") REFERENCES "fin_auto_rules" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_auto_rules" ADD CONSTRAINT "fk_fin_auto_rules_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_bank_inboxes" ADD CONSTRAINT "fk_fin_bank_inboxes_organization_id_1"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_budgets" ADD CONSTRAINT "fk_fin_budgets_project_id_1"
   FOREIGN KEY ("project_id") REFERENCES "business_units" ("id");
 ALTER TABLE "fin_budgets" ADD CONSTRAINT "fk_fin_budgets_category_id_2"
@@ -2031,16 +1876,8 @@ ALTER TABLE "fin_channel_receivables" ADD CONSTRAINT "fk_fin_channel_receivables
 ALTER TABLE "fin_channel_receivables" ADD CONSTRAINT "fk_fin_channel_receivables_clearing_account_id_2"
   FOREIGN KEY ("clearing_account_id") REFERENCES "finance_accounts" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_channel_receivables" ADD CONSTRAINT "fk_fin_channel_receivables_reservation_id_3"
-  FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_channel_receivables" ADD CONSTRAINT "fk_fin_channel_receivables_organization_id_4"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_channel_receivables_pr21" ADD CONSTRAINT "fk_fin_channel_receivables_pr21_paid_operation_id_1"
-  FOREIGN KEY ("paid_operation_id") REFERENCES "fin_operations" ("id") ON DELETE SET NULL;
-ALTER TABLE "fin_channel_receivables_pr21" ADD CONSTRAINT "fk_fin_channel_receivables_pr21_clearing_account_id_2"
-  FOREIGN KEY ("clearing_account_id") REFERENCES "finance_accounts" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_channel_receivables_pr21" ADD CONSTRAINT "fk_fin_channel_receivables_pr21_reservation_id_3"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
-ALTER TABLE "fin_channel_receivables_pr21" ADD CONSTRAINT "fk_fin_channel_receivables_pr21_organization_id_4"
+ALTER TABLE "fin_channel_receivables" ADD CONSTRAINT "fk_fin_channel_receivables_organization_id_4"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_operation_attachments" ADD CONSTRAINT "fk_fin_operation_attachments_operation_id_1"
   FOREIGN KEY ("operation_id") REFERENCES "fin_operations" ("id") ON DELETE CASCADE;
@@ -2067,16 +1904,6 @@ ALTER TABLE "fin_operations" ADD CONSTRAINT "fk_fin_operations_account_to_id_6"
 ALTER TABLE "fin_operations" ADD CONSTRAINT "fk_fin_operations_account_from_id_7"
   FOREIGN KEY ("account_from_id") REFERENCES "finance_accounts" ("id");
 ALTER TABLE "fin_operations" ADD CONSTRAINT "fk_fin_operations_organization_id_8"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_pending_receipts" ADD CONSTRAINT "fk_fin_pending_receipts_attached_attachment_id_1"
-  FOREIGN KEY ("attached_attachment_id") REFERENCES "fin_operation_attachments" ("id") ON DELETE SET NULL;
-ALTER TABLE "fin_pending_receipts" ADD CONSTRAINT "fk_fin_pending_receipts_auto_matched_operation_id_2"
-  FOREIGN KEY ("auto_matched_operation_id") REFERENCES "fin_operations" ("id") ON DELETE SET NULL;
-ALTER TABLE "fin_pending_receipts" ADD CONSTRAINT "fk_fin_pending_receipts_inbox_id_3"
-  FOREIGN KEY ("inbox_id") REFERENCES "fin_receipt_inboxes" ("id") ON DELETE SET NULL;
-ALTER TABLE "fin_pending_receipts" ADD CONSTRAINT "fk_fin_pending_receipts_organization_id_4"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_receipt_inboxes" ADD CONSTRAINT "fk_fin_receipt_inboxes_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_recurring_templates" ADD CONSTRAINT "fk_fin_recurring_templates_counterparty_id_1"
   FOREIGN KEY ("counterparty_id") REFERENCES "finance_counterparties" ("id");
@@ -2136,14 +1963,6 @@ ALTER TABLE "ical_channels" ADD CONSTRAINT "fk_ical_channels_property_id_3"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "ical_sync_log" ADD CONSTRAINT "fk_ical_sync_log_channel_id_1"
   FOREIGN KEY ("channel_id") REFERENCES "ical_channels" ("id") ON DELETE CASCADE;
-ALTER TABLE "import_entity_mappings" ADD CONSTRAINT "fk_import_entity_mappings_format_id_1"
-  FOREIGN KEY ("format_id") REFERENCES "import_formats" ("id") ON DELETE CASCADE;
-ALTER TABLE "import_formats" ADD CONSTRAINT "fk_import_formats_organization_id_1"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "import_runs" ADD CONSTRAINT "fk_import_runs_format_id_1"
-  FOREIGN KEY ("format_id") REFERENCES "import_formats" ("id") ON DELETE SET NULL;
-ALTER TABLE "import_runs" ADD CONSTRAINT "fk_import_runs_organization_id_2"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "invoice_counters" ADD CONSTRAINT "fk_invoice_counters_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "invoice_periods" ADD CONSTRAINT "fk_invoice_periods_organization_id_1"
@@ -2170,8 +1989,6 @@ ALTER TABLE "property_photos" ADD CONSTRAINT "fk_property_photos_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "rate_plans" ADD CONSTRAINT "fk_rate_plans_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
-ALTER TABLE "receipts" ADD CONSTRAINT "fk_receipts_organization_id_1"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "reservation_groups" ADD CONSTRAINT "fk_reservation_groups_building_id_1"
   FOREIGN KEY ("building_id") REFERENCES "buildings" ("id");
 ALTER TABLE "reservation_groups" ADD CONSTRAINT "fk_reservation_groups_guest_id_2"
@@ -2329,8 +2146,6 @@ CREATE INDEX "idx_arm_op" ON "fin_auto_rule_matches" ("operation_id");
 CREATE INDEX "idx_arm_rule" ON "fin_auto_rule_matches" ("rule_id");
 CREATE INDEX "idx_ar_active" ON "fin_auto_rules" ("is_active", "sort_order");
 CREATE INDEX "idx_ar_org" ON "fin_auto_rules" ("organization_id");
-CREATE INDEX "idx_inbox_active" ON "fin_bank_inboxes" ("is_active", "last_synced_at");
-CREATE INDEX "idx_inbox_org" ON "fin_bank_inboxes" ("organization_id");
 CREATE INDEX "idx_budgets_period" ON "fin_budgets" ("organization_id", "year", "month");
 CREATE INDEX "idx_recv_clearing" ON "fin_channel_receivables" ("clearing_account_id");
 CREATE INDEX "idx_recv_extid" ON "fin_channel_receivables" ("external_reservation_id");
@@ -2358,9 +2173,6 @@ CREATE INDEX "idx_fop_reservation" ON "fin_operations" ("reservation_id");
 CREATE INDEX "idx_fop_source_ref" ON "fin_operations" ("source", "source_ref");
 CREATE INDEX "idx_fop_status" ON "fin_operations" ("status");
 CREATE INDEX "idx_fop_type" ON "fin_operations" ("op_type");
-CREATE INDEX "idx_prec_org" ON "fin_pending_receipts" ("organization_id");
-CREATE INDEX "idx_prec_status" ON "fin_pending_receipts" ("status");
-CREATE INDEX "idx_recv_inbox_org" ON "fin_receipt_inboxes" ("organization_id");
 CREATE INDEX "idx_rt_next_run" ON "fin_recurring_templates" ("next_run_at", "is_active");
 CREATE INDEX "idx_rt_org" ON "fin_recurring_templates" ("organization_id");
 CREATE INDEX "idx_stmt_upl_org" ON "fin_statement_uploads" ("organization_id");
@@ -2384,9 +2196,6 @@ CREATE INDEX "idx_gift_cards_status" ON "gift_cards" ("status");
 CREATE INDEX "idx_gcm_res" ON "guest_chat_messages" ("reservation_id");
 CREATE INDEX "idx_guests_name" ON "guests" ("last_name", "first_name");
 CREATE INDEX "idx_guests_org" ON "guests" ("organization_id");
-CREATE INDEX "idx_iem_format" ON "import_entity_mappings" ("format_id", "entity_type");
-CREATE INDEX "idx_import_formats_org" ON "import_formats" ("organization_id");
-CREATE INDEX "idx_import_runs_org" ON "import_runs" ("organization_id", "created_at");
 CREATE INDEX "idx_invoices_issued" ON "invoices" ("issued_at");
 CREATE INDEX "idx_invoices_number" ON "invoices" ("organization_id", "invoice_number");
 CREATE INDEX "idx_invoices_reservation" ON "invoices" ("reservation_id");
@@ -2449,15 +2258,11 @@ CREATE INDEX IF NOT EXISTS "idx_cost_allocations_org" ON "cost_allocations" ("or
 CREATE INDEX IF NOT EXISTS "idx_coupons_org" ON "coupons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_expense_categories_org" ON "expense_categories" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_auto_rules_org" ON "fin_auto_rules" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_fin_bank_inboxes_org" ON "fin_bank_inboxes" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_budgets_org" ON "fin_budgets" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_channel_receivables_org" ON "fin_channel_receivables" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_fin_channel_receivables_pr21_org" ON "fin_channel_receivables_pr21" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_operation_attachments_org" ON "fin_operation_attachments" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_operation_audit_org" ON "fin_operation_audit" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_operations_org" ON "fin_operations" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_fin_pending_receipts_org" ON "fin_pending_receipts" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_fin_receipt_inboxes_org" ON "fin_receipt_inboxes" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_recurring_templates_org" ON "fin_recurring_templates" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_statement_uploads_org" ON "fin_statement_uploads" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_finance_accounts_org" ON "finance_accounts" ("organization_id");
@@ -2468,14 +2273,11 @@ CREATE INDEX IF NOT EXISTS "idx_gift_card_automation_rules_org" ON "gift_card_au
 CREATE INDEX IF NOT EXISTS "idx_gift_card_bundles_org" ON "gift_card_bundles" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_gift_cards_org" ON "gift_cards" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_guests_org" ON "guests" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_import_formats_org" ON "import_formats" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_import_runs_org" ON "import_runs" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoice_counters_org" ON "invoice_counters" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoice_periods_org" ON "invoice_periods" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoices_org" ON "invoices" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_payment_webhook_log_org" ON "payment_webhook_log" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_properties_org" ON "properties" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_receipts_org" ON "receipts" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_task_attachments_org" ON "task_attachments" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_task_projects_org" ON "task_projects" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_task_tags_org" ON "task_tags" ("organization_id");
@@ -2665,12 +2467,6 @@ CREATE POLICY "fin_auto_rules_tenant" ON "fin_auto_rules"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
-ALTER TABLE "fin_bank_inboxes" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fin_bank_inboxes" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "fin_bank_inboxes_tenant" ON "fin_bank_inboxes"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
 ALTER TABLE "fin_budgets" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "fin_budgets" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "fin_budgets_tenant" ON "fin_budgets"
@@ -2680,12 +2476,6 @@ CREATE POLICY "fin_budgets_tenant" ON "fin_budgets"
 ALTER TABLE "fin_channel_receivables" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "fin_channel_receivables" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "fin_channel_receivables_tenant" ON "fin_channel_receivables"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "fin_channel_receivables_pr21" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fin_channel_receivables_pr21" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "fin_channel_receivables_pr21_tenant" ON "fin_channel_receivables_pr21"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
@@ -2710,18 +2500,6 @@ CREATE POLICY "fin_operation_tags_tenant" ON "fin_operation_tags"
 ALTER TABLE "fin_operations" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "fin_operations" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "fin_operations_tenant" ON "fin_operations"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "fin_pending_receipts" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fin_pending_receipts" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "fin_pending_receipts_tenant" ON "fin_pending_receipts"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "fin_receipt_inboxes" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fin_receipt_inboxes" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "fin_receipt_inboxes_tenant" ON "fin_receipt_inboxes"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
@@ -2827,24 +2605,6 @@ CREATE POLICY "ical_sync_log_tenant" ON "ical_sync_log"
   USING ("channel_id" IN (SELECT "id" FROM "ical_channels" WHERE "unit_id" IN (SELECT "id" FROM "units" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))))
   WITH CHECK ("channel_id" IN (SELECT "id" FROM "ical_channels" WHERE "unit_id" IN (SELECT "id" FROM "units" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))));
 
-ALTER TABLE "import_entity_mappings" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "import_entity_mappings" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "import_entity_mappings_tenant" ON "import_entity_mappings"
-  USING ("format_id" IN (SELECT "id" FROM "import_formats" WHERE "organization_id" = current_setting('app.organization_id')))
-  WITH CHECK ("format_id" IN (SELECT "id" FROM "import_formats" WHERE "organization_id" = current_setting('app.organization_id')));
-
-ALTER TABLE "import_formats" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "import_formats" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "import_formats_tenant" ON "import_formats"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "import_runs" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "import_runs" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "import_runs_tenant" ON "import_runs"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
 ALTER TABLE "invoice_counters" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "invoice_counters" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "invoice_counters_tenant" ON "invoice_counters"
@@ -2910,12 +2670,6 @@ ALTER TABLE "rate_plans" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "rate_plans_tenant" ON "rate_plans"
   USING ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))
   WITH CHECK ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')));
-
-ALTER TABLE "receipts" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "receipts" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "receipts_tenant" ON "receipts"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "reservation_groups" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reservation_groups" FORCE ROW LEVEL SECURITY;

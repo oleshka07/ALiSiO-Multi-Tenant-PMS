@@ -144,27 +144,7 @@ export const createCapex     = withPermission('manage_finance_settings', _create
 export const updateCapexItem = withPermission('manage_finance_settings', _updateCapexItem);
 export const deleteCapexItem = withPermission('manage_finance_settings', _deleteCapexItem);
 
-// ─── Accruals (legacy) ────────────────────────────────────────
-import { listAccruals as _listAccruals, createAccrual as _createAccrual } from './accruals.handlers';
-import {
-  getAccrual as _getAccrual,
-  updateAccrual as _updateAccrual, deleteAccrual as _deleteAccrual,
-} from './accrual.handlers';
-export const listAccruals  = withFinanceRead(_listAccruals);
-export const getAccrual    = withFinanceRead(_getAccrual);
-export const createAccrual = withPermission('manage_finance_settings', _createAccrual);
-export const updateAccrual = withPermission('manage_finance_settings', _updateAccrual);
-export const deleteAccrual = withPermission('manage_finance_settings', _deleteAccrual);
 
-// ─── Bank statements (manual import + transaction edit) ───────
-import {
-  listBankStatements as _listBankStatements, listBankTransactions as _listBankTransactions,
-  updateBankTransaction as _updateBankTransaction, importBankStatement as _importBankStatement,
-} from './bank.handlers';
-export const listBankStatements    = withFinanceRead(_listBankStatements);
-export const listBankTransactions  = withFinanceRead(_listBankTransactions);
-export const updateBankTransaction = withPermission('import_bank_data', _updateBankTransaction);
-export const importBankStatement   = withPermission('import_bank_data', _importBankStatement);
 
 // ─── Invoices ─────────────────────────────────────────────────
 // generateInvoiceForReservation is internal (called from bookings + payments
@@ -275,27 +255,8 @@ export const deleteRecurringTemplate = withPermission('manage_finance_settings',
 export const toggleRecurringTemplate = withPermission('manage_finance_settings', _toggleRecurringTemplate);
 export const runRecurringNow         = withPermission('manage_finance_settings', _runRecurringNow);
 
-import { getCalendarMonth as _getCalendarMonth } from './calendar.handlers';
-export const getCalendarMonth = withFinanceRead(_getCalendarMonth);
 
-// ─── Bank inbox (PR #11) — import_bank_data ───────────────────
-import {
-  listBankInboxes as _listBankInboxes,
-  createBankInbox as _createBankInbox, updateBankInbox as _updateBankInbox,
-  deleteBankInbox as _deleteBankInbox, toggleBankInbox as _toggleBankInbox,
-  testBankInbox as _testBankInbox, runBankInboxNow as _runBankInboxNow,
-} from './bank-inbox.handlers';
-export const listBankInboxes = withFinanceRead(_listBankInboxes);
-export const createBankInbox = withPermission('import_bank_data', _createBankInbox);
-export const updateBankInbox = withPermission('import_bank_data', _updateBankInbox);
-export const deleteBankInbox = withPermission('import_bank_data', _deleteBankInbox);
-export const toggleBankInbox = withPermission('import_bank_data', _toggleBankInbox);
-export const testBankInbox   = withPermission('import_bank_data', _testBankInbox);
-export const runBankInboxNow = withPermission('import_bank_data', _runBankInboxNow);
 
-// ─── Cron-driven bank inbox poll ──────────────────────────────
-// X-Cron-Secret auth — NOT a user session.
-export { pollBankInboxesFromCron } from './cron-bank-inbox.handlers';
 
 // ─── Exports (PR #12) — read ──────────────────────────────────
 import {
@@ -307,22 +268,6 @@ export const exportCashflow    = withFinanceRead(_exportCashflow);
 export const exportPnl         = withFinanceRead(_exportPnl);
 export const exportStatement   = withFinanceRead(_exportStatement);
 
-// ─── Clearing accounts (PR #15) — read + manage_finance_settings ─
-import {
-  listClearingAccounts as _listClearingAccounts, listReceivables as _listReceivables,
-  backfillReceivablesHandler as _backfillReceivablesHandler,
-} from './clearing.handlers';
-export const listClearingAccounts = withFinanceRead(_listClearingAccounts);
-export const listReceivables      = withFinanceRead(_listReceivables);
-export const backfillReceivablesHandler = withPermission('manage_finance_settings', _backfillReceivablesHandler);
-
-// ─── Statement uploads (PR #16) — import_bank_data ─────────────
-import {
-  listStatementUploads as _listStatementUploads,
-  uploadStatement as _uploadStatement,
-} from './statement-upload.handlers';
-export const listStatementUploads = withFinanceRead(_listStatementUploads);
-export const uploadStatement      = withPermission('import_bank_data', _uploadStatement);
 
 // ─── Telegram bridge (PR #17) — Bearer token auth, no session ──
 export {
@@ -342,37 +287,8 @@ export const getAttachmentCounts      = withFinanceRead(_getAttachmentCounts);
 export const uploadAttachment = withPermission('manage_payments', _uploadAttachment);
 export const deleteAttachment = withPermission('manage_payments', _deleteAttachment);
 
-// ─── Teya transaction sync (PR #24) — import_bank_data ─────────
-import {
-  getTeyaSyncStatus as _getTeyaSyncStatus, getTeyaCoverage as _getTeyaCoverage,
-  syncTeyaTransactions as _syncTeyaTransactions, importTeyaCsv as _importTeyaCsv,
-} from './teya-sync.handlers';
-export const getTeyaSyncStatus = withFinanceRead(_getTeyaSyncStatus);
-export const getTeyaCoverage   = withFinanceRead(_getTeyaCoverage);
-export const syncTeyaTransactions = withPermission('import_bank_data', _syncTeyaTransactions);
-export const importTeyaCsv = withPermission('import_bank_data', _importTeyaCsv);
 
-// ─── Reconciliation dashboard (PR #28) — read ──────────────────
-import { getReconcileDashboard as _getReconcileDashboard } from './reconcile-dashboard.handlers';
-export const getReconcileDashboard = withFinanceRead(_getReconcileDashboard);
 
-// ─── Generic import wizard (PR #33-#35) — manage_finance_settings ──
-import {
-  listImportFormats as _listImportFormats, listImportRuns as _listImportRuns,
-  parseImportFile as _parseImportFile, saveImportFormat as _saveImportFormat,
-  deleteImportFormat as _deleteImportFormat, resolveEntities as _resolveEntities,
-  saveEntityResolutions as _saveEntityResolutions, reviewRows as _reviewRows,
-  commitImport as _commitImport,
-} from './import-wizard.handlers';
-export const listImportFormats = withFinanceRead(_listImportFormats);
-export const listImportRuns    = withFinanceRead(_listImportRuns);
-export const parseImportFile        = withPermission('manage_finance_settings', _parseImportFile);
-export const saveImportFormat       = withPermission('manage_finance_settings', _saveImportFormat);
-export const deleteImportFormat     = withPermission('manage_finance_settings', _deleteImportFormat);
-export const resolveEntities        = withPermission('manage_finance_settings', _resolveEntities);
-export const saveEntityResolutions  = withPermission('manage_finance_settings', _saveEntityResolutions);
-export const reviewRows             = withPermission('manage_finance_settings', _reviewRows);
-export const commitImport           = withPermission('manage_finance_settings', _commitImport);
 
 // ─── Orphan payment recovery (PR #G) + paid services (PR #H) ──
 import {
@@ -383,23 +299,6 @@ export const listOrphanPayments = withFinanceRead(_listOrphanPayments);
 export const listPaidServices   = withFinanceRead(_listPaidServices);
 export const restoreOrphanPayment = withPermission('manage_payments', _restoreOrphanPayment);
 
-// ─── Receipt inbox (PR #27) — import_bank_data + manage_payments ─
-import {
-  listReceiptInboxes as _listReceiptInboxes, listPendingReceipts as _listPendingReceipts,
-  downloadPendingReceipt as _downloadPendingReceipt,
-  createReceiptInbox as _createReceiptInbox, updateReceiptInbox as _updateReceiptInbox,
-  deleteReceiptInbox as _deleteReceiptInbox, runReceiptInboxNow as _runReceiptInboxNow,
-  attachPendingReceipt as _attachPendingReceipt, archivePendingReceipt as _archivePendingReceipt,
-} from './receipt-inbox.handlers';
-export const listReceiptInboxes    = withFinanceRead(_listReceiptInboxes);
-export const listPendingReceipts   = withFinanceRead(_listPendingReceipts);
-export const downloadPendingReceipt = withFinanceRead(_downloadPendingReceipt);
-export const createReceiptInbox    = withPermission('import_bank_data', _createReceiptInbox);
-export const updateReceiptInbox    = withPermission('import_bank_data', _updateReceiptInbox);
-export const deleteReceiptInbox    = withPermission('import_bank_data', _deleteReceiptInbox);
-export const runReceiptInboxNow    = withPermission('import_bank_data', _runReceiptInboxNow);
-export const attachPendingReceipt  = withPermission('manage_payments', _attachPendingReceipt);
-export const archivePendingReceipt = withPermission('manage_payments', _archivePendingReceipt);
 
 // ─── Finance user access (owner-only management + self-read) ──
 import {

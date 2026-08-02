@@ -29,7 +29,7 @@ export type GuardedRoute<TCtx = unknown> = (
 // Finance access policy — SINGLE SOURCE OF TRUTH
 //
 // The finance module (and everything it surfaces: P&L, cashflow, operations,
-// bank data, investor data, invoices) is restricted to the OWNER only.
+// invoices) is restricted to the OWNER only.
 //
 // An optional allow-list of user IDs (env FINANCE_EXTRA_USER_IDS, comma-sep)
 // can grant point access to a specific person without changing their role.
@@ -68,23 +68,10 @@ const FINANCE_TAB_BY_SEGMENT: Readonly<Record<string, string>> = {
   pnl: 'reports', 'pnl-2': 'reports', 'pnl-matrix': 'reports',
   cashflow: 'reports', 'cashflow-matrix': 'reports', 'plan-fact': 'reports',
   'project-profitability': 'reports', indicators: 'reports', balance: 'reports',
-  'forecast-scenarios': 'reports',
-  bank: 'bank', 'account-statement': 'bank',
-  clearing: 'clearing',
-  receipts: 'receipts',
-  calendar: 'calendar',
+  'account-statement': 'reports',
   'expected-payments': 'expected-payments',
   capex: 'capex',
-  accruals: 'accruals',
-  history: 'history', log: 'history', audit: 'history', 'audit-cash-routing': 'history',
-  import: 'import',
-  reconcile: 'reconcile',
-  investors: 'investors', 'investor-auto-revenue': 'investors',
-  'investor-documents': 'investors', 'investor-investments': 'investors',
-  'investor-monthly-digest': 'investors', 'investor-monthly-metrics': 'investors',
-  'investor-monthly-notes': 'investors', 'investor-monthly-reports': 'investors',
-  'investor-payouts': 'investors', 'investor-projects': 'investors',
-  'investor-properties': 'investors',
+  history: 'history', log: 'history', audit: 'history',
 };
 
 function financeTabForPath(pathname: string): string | null {
