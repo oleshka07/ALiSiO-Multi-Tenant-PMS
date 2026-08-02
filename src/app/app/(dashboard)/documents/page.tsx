@@ -1527,7 +1527,7 @@ export default function DocumentsPage() {
                         Odběratel: <span style={{ color: '#4f6ef7' }}>(необов&apos;язково)</span>
                       </div>
 
-                      {/* Company name — bold 12pt like "Kemp Carlsbad s.r.o." on the left */}
+                      {/* Company name — bold 12pt, on the left */}
                       <input type="text" value={customForm.buyerName}
                         onChange={e => setCustomForm(f => ({ ...f, buyerName: e.target.value, showBuyer: !!e.target.value }))}
                         placeholder="Назва компанії або ПІБ..."

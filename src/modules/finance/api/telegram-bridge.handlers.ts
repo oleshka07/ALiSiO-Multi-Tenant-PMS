@@ -2,7 +2,7 @@
 //
 // Telegram bot ↔ Finance bridge.
 //
-// The Python bot (kemptimebot) records two kinds of finance events that
+// The Telegram bot records two kinds of finance events that
 // otherwise wouldn't make it into PMS:
 //   - sauna walk-ins (income, ~2% of revenue but easy to miss)
 //   - cash payments to staff / small purchases (expense)

@@ -2,7 +2,7 @@
 /**
  * Registration Telegram Bridge
  *
- * Allows the Python bot (kemptimebot) to:
+ * Allows the Telegram bot to:
  *  - POST photos of passports/IDs → OCR → register guests
  *  - GET today's check-ins to show as inline keyboard
  *

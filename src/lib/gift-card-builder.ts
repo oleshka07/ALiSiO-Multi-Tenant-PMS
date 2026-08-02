@@ -18,7 +18,7 @@ export interface GiftCardTemplate {
 }
 
 /**
- * 6 стандартних шаблонів ваучерів для Kemp Carlsbad
+ * 6 стандартних шаблонів ваучерів
  */
 export const GIFT_CARD_TEMPLATES: GiftCardTemplate[] = [
   {

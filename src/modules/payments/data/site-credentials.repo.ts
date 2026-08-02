@@ -5,8 +5,7 @@ import type { ResolvedSiteCredentials } from '../domain/types';
 import { getEnvStore } from '../api/create-payment-session';
 
 export function resolveSiteCredentials(opts: { slug?: string | null; id?: string | null }): ResolvedSiteCredentials | null {
-  let slug = opts.slug || undefined;
-  if (slug === 'kv.kemp-carlsbad.cz') slug = 'kemp-carlsbad';
+  const slug = opts.slug || undefined;
   const id = opts.id || undefined;
   if (!slug && !id) return null;
 
@@ -25,7 +24,7 @@ export function resolveSiteCredentials(opts: { slug?: string | null; id?: string
   }
 
   const enabled = payCfg.enabled && payCfg.provider === 'teya' && payCfg.teya?.client_id;
-  
+
   if (enabled) {
     return {
       siteId: site.id,
@@ -38,21 +37,18 @@ export function resolveSiteCredentials(opts: { slug?: string | null; id?: string
     };
   }
 
-  // Fallback: If no UI config is set, but the site is Kemp Carlsbad, use the camping ENV store.
-  // Slug is stored as the slugified full URL (e.g. "https-kv-kemp-carlsbad-cz"), so match loosely.
-  const siteSlug = (site.slug || '') as string;
-  const isKempCarlsbad =
-    site.id === '2975fba30e3cd3a6f7df3092183e258a' ||
-    site.id === '50aeb822f406ff264ac5c292d0d48926' ||
-    siteSlug === 'kemp-carlsbad' ||
-    siteSlug.includes('kemp-carlsbad');
-  if (isKempCarlsbad) {
-    const campingCreds = getEnvStore('camping');
-    if (campingCreds && campingCreds.client_id) {
+  // A site may point at one of the server's named env stores instead of
+  // carrying its own keys. Which store used to be decided by two literal site
+  // ids and a slug from the first customer; the site now says so itself.
+  // Without that key the answer is null and the caller falls back to the
+  // global env credentials, exactly as before.
+  if (payCfg.store === 'camping' || payCfg.store === 'glamping') {
+    const envStore = getEnvStore(payCfg.store);
+    if (envStore?.client_id) {
       return {
         siteId: site.id,
         siteUrl: site.site_url || undefined,
-        credentials: campingCreds,
+        credentials: envStore,
       };
     }
   }

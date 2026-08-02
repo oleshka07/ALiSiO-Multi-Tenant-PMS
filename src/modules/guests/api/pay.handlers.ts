@@ -280,7 +280,7 @@ async function handleCartPay(token: string, items: CartItemInput[]): Promise<Nex
       kind: 'service_cart',
       amount: grandTotal,
       currency,
-      description: `Kemp Carlsbad — Cart (${resolvedItems.length} ${resolvedItems.length === 1 ? 'item' : 'items'}) — ${guestName}`,
+      description: `${reservation.property_name || 'Booking'} — Cart (${resolvedItems.length} ${resolvedItems.length === 1 ? 'item' : 'items'}) — ${guestName}`,
       lineItems: resolvedItems.map((r) => {
         const name = r.svc.name_en || r.svc.name;
         if (r.kind === 'slot') {

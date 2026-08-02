@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * Telegram Bot Client — sends CRM notifications via existing @kemptimebot
+ * Telegram Bot Client — sends notifications through the organization's bot
  *
  * DEV/PROD separation:
  *   - Set TELEGRAM_BOT_TOKEN_DEV + TELEGRAM_CHAT_ID_DEV in .env.local to use a

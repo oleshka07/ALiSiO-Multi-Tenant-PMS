@@ -26,7 +26,7 @@ export async function sendGuestReminderEmail(reservationId: string, origin?: str
   const tLang = ['uk', 'de', 'cs'].includes(lang) ? lang : 'en';
 
   const guestName = row.first_name ? row.first_name.trim() : (tLang === 'uk' ? 'Гість' : tLang === 'de' ? 'Gast' : tLang === 'cs' ? 'Host' : 'Guest');
-  const propertyName = row.property_name || 'Kemp Carlsbad';
+  const propertyName = row.property_name || '';
   const appUrl = origin || appBaseUrl();
   
   const guestPageUrl = `${appUrl}/guest/${row.guest_page_token}`;

@@ -41,7 +41,7 @@ export async function getGuestPortal(
       return NextResponse.json({
         expired: true,
         guestName: reservation.first_name,
-        brandName: reservation.category_type === 'glamping' ? 'QA Glamping' : 'Kemp Carlsbad',
+        brandName: reservation.property_name || '',
         propertyName: reservation.property_name,
         propertyEmail: reservation.property_email,
         propertyPhone: reservation.property_phone,
@@ -64,7 +64,7 @@ export async function getGuestPortal(
     const orderedServices = portalRepo.getOrderedServices(reservation.id);
     const guestPageConfig = portalRepo.getGuestPageConfig(reservation.unit_type_id, reservation.property_id, reservation.unit_id);
 
-    const propertyName = reservation.property_name || 'Kemp Carlsbad';
+    const propertyName = reservation.property_name || '';
 
     // ── Variant B: send abandon notifications if >30min pending ──────────
     // Fire-and-forget — does not block the page response
@@ -73,6 +73,7 @@ export async function getGuestPortal(
     return NextResponse.json({
       expired: false,
       phase,
+      propertyName,
       reservation,
       registeredGuests,
       payments: {

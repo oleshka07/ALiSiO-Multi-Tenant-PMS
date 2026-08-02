@@ -1,7 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * Simple email sender using Email.cz SMTP (nodemailer)
- * Sender: kemp-carlsbad@email.cz
+ * Simple email sender using SMTP (nodemailer).
+ *
+ * The From name is whoever the mail is actually from: callers that know the
+ * hotel pass `fromName`, everyone else gets EMAIL_FROM_NAME. It used to be the
+ * first customer's name in the source, so every hotel's guests received their
+ * booking confirmation signed by a Czech campsite.
  */
 import nodemailer from 'nodemailer';
 
@@ -20,7 +24,7 @@ function getTransporter() {
     greetingTimeout: 5000,
     socketTimeout: 5000,
     auth: {
-      user: process.env.EMAIL_CZ_USER || 'kemp-carlsbad@email.cz',
+      user: process.env.EMAIL_CZ_USER,
       pass: process.env.EMAIL_CZ_PASSWORD,
     },
   });
@@ -29,6 +33,8 @@ function getTransporter() {
 
 export interface SendEmailOptions {
   to: string;
+  /** Display name of the sender — the hotel, when the caller knows it. */
+  fromName?: string;
   subject: string;
   html: string;
   text?: string;
@@ -39,10 +45,12 @@ export interface SendEmailOptions {
   }>;
 }
 
-export async function sendEmail({ to, subject, html, text, attachments }: SendEmailOptions): Promise<void> {
+export async function sendEmail({ to, fromName, subject, html, text, attachments }: SendEmailOptions): Promise<void> {
   const t = getTransporter();
+  const sender = process.env.EMAIL_CZ_USER || '';
+  const label = fromName || process.env.EMAIL_FROM_NAME || 'ALiSiO PMS';
   await t.sendMail({
-    from: `"Kemp Carlsbad" <${process.env.EMAIL_CZ_USER || 'kemp-carlsbad@email.cz'}>`,
+    from: `"${label.replace(/"/g, "'")}" <${sender}>`,
     to,
     subject,
     html,

@@ -11,6 +11,7 @@
  * owner fills in Settings → General.
  */
 import { getDb } from '@core/db';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export interface OrgIdentity {
   name: string;
@@ -33,16 +34,21 @@ const EMPTY: OrgIdentity = {
 };
 
 /**
- * ponytail: resolves the single organization, which is correct while the app is
- * single-tenant. Takes an id once tenant context lands.
+ * Whose identity goes on the document.
+ *
+ * Without an explicit id this used to take the FIRST organization by creation
+ * date — so on a shared server the second hotel's invoices carried the first
+ * hotel's company name, IČO and bank account, and its guests paid the wrong
+ * company. It now asks the ambient tenant context, which every session-guarded
+ * handler sets, and which still resolves a single-organization install without
+ * anyone passing anything.
  */
 export function getOrgIdentity(organizationId?: string): OrgIdentity {
   let row: any;
   try {
     const db = getDb();
-    row = organizationId
-      ? db.prepare('SELECT * FROM organizations WHERE id = ?').get(organizationId)
-      : db.prepare('SELECT * FROM organizations ORDER BY created_at LIMIT 1').get();
+    const orgId = organizationId || requireOrganizationId(db);
+    row = db.prepare('SELECT * FROM organizations WHERE id = ?').get(orgId);
   } catch {
     row = undefined;
   }

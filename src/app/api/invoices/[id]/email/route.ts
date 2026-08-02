@@ -88,6 +88,7 @@ async function _POST(
     const identity = getOrgIdentity();
     const orgName = identity.name || 'PMS';
     const orgAddress = identity.legalAddress;
+    const orgEmail = identity.email;
 
     const subject = `Faktura ${data.invoice_number} — ${orgName}`;
 
@@ -113,14 +114,14 @@ async function _POST(
       ${html}
     </div>
     <div style="padding:16px 28px;background:#f9f9f9;font-size:12px;color:#888;border-top:1px solid #eee;">
-      Tato zpráva byla vygenerována automaticky systémem ALiSiO PMS.<br/>
-      V případě dotazů nás kontaktujte na kemp-carlsbad@email.cz
+      Tato zpráva byla vygenerována automaticky systémem ALiSiO PMS.${orgEmail ? `<br/>
+      V případě dotazů nás kontaktujte na ${orgEmail}` : ''}
     </div>
   </div>
 </body>
 </html>`;
 
-    await sendEmail({ to, subject, html: emailHtml });
+    await sendEmail({ to, fromName: orgName, subject, html: emailHtml });
 
     return NextResponse.json({ sent: true, to, invoice_number: data.invoice_number });
   } catch (e: unknown) {

@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { hasFeature, featureDisabled } from '@core/features';
+import { resolveSiteByKey } from '../data/site.repo';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -22,14 +23,13 @@ export async function getWidgetSiteConfig(req: NextRequest) {
       return NextResponse.json({ error: 'slug is required' }, { status: 400, headers: CORS_HEADERS });
     }
     
-    if (slug === 'kv.kemp-carlsbad.cz') slug = 'kemp-carlsbad';
-
     const db = getDb();
-    const site = db.prepare(`
-      SELECT id, organization_id, name, slug, design_config, widget_config, payment_config, currency, site_url
-      FROM booking_sites
-      WHERE slug = ? OR id = ?
-    `).get(slug, slug) as any;
+    // Accepts an id, a slug, or the hostname the widget is embedded on — the
+    // last of which used to be one hardcoded alias for the first customer.
+    const site = resolveSiteByKey(
+      db, slug,
+      'id, organization_id, name, slug, design_config, widget_config, payment_config, currency, site_url, allowed_domains',
+    ) as any;
 
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: CORS_HEADERS });

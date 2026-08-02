@@ -122,10 +122,11 @@ export async function getWidgetServices(request: NextRequest) {
         price: s.price_override != null ? s.price_override : s.price,
       }));
     } else {
-      // Fallback: all active glamping services (desktop /booking page)
+      // Fallback: the property's active services. The old filter also let
+      // through available_for = 'glamping', one hotel's category name.
       services = db.prepare(`
         SELECT * FROM additional_services
-        WHERE is_active = 1 AND (available_for = 'all' OR available_for = 'glamping')
+        WHERE is_active = 1 AND available_for = 'all'
         ORDER BY sort_order
       `).all() as any[];
     }

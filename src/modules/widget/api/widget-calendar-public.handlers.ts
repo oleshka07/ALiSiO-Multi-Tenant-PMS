@@ -121,12 +121,13 @@ export async function getWidgetCalendar(request: NextRequest) {
       const row = db.prepare(`SELECT COUNT(*) as cnt FROM units WHERE id IN (${ph}) AND is_active = 1`).get(...siteUnitIds) as any;
       totalCount = row?.cnt || 0;
     } else {
-      // Fallback: all glamping units in property
+      // Fallback: every bookable unit in the property. Filtering to one
+      // category type ('glamping') returned an empty calendar to every hotel
+      // that does not use the first customer's vocabulary.
       const row = db.prepare(`
         SELECT COUNT(*) as cnt FROM units u
         JOIN unit_types ut ON u.unit_type_id = ut.id
-        JOIN categories c ON ut.category_id = c.id
-        WHERE c.type = 'glamping' AND u.is_active = 1 AND u.room_status = 'available' AND ut.property_id = ?
+        WHERE u.is_active = 1 AND u.room_status = 'available' AND ut.property_id = ?
       `).get(property.id) as any;
       totalCount = row?.cnt || 0;
     }
@@ -153,8 +154,7 @@ export async function getWidgetCalendar(request: NextRequest) {
         SELECT r.unit_id, r.check_in, r.check_out FROM reservations r
         JOIN units u ON r.unit_id = u.id
         JOIN unit_types ut ON u.unit_type_id = ut.id
-        JOIN categories c ON ut.category_id = c.id
-        WHERE c.type = 'glamping' AND ut.property_id = ?
+        WHERE ut.property_id = ?
           AND r.status NOT IN ('cancelled', 'no_show')
           AND r.check_in < ? AND r.check_out > ?
       `).all(property.id, nextMonthStart, monthStart) as any[];
@@ -179,8 +179,7 @@ export async function getWidgetCalendar(request: NextRequest) {
           SELECT ab.unit_id, ab.date_from, ab.date_to FROM availability_blocks ab
           JOIN units u ON ab.unit_id = u.id
           JOIN unit_types ut ON u.unit_type_id = ut.id
-          JOIN categories c ON ut.category_id = c.id
-          WHERE c.type = 'glamping' AND ut.property_id = ?
+          WHERE ut.property_id = ?
             AND ab.date_from < ? AND ab.date_to > ?
         `).all(property.id, nextMonthStart, monthStart) as any[];
       }
@@ -189,8 +188,7 @@ export async function getWidgetCalendar(request: NextRequest) {
     // ── 8. Price map (optional) ─────────────────────────────────────────────
     const unitTypes = db.prepare(`
       SELECT ut.id FROM unit_types ut
-      JOIN categories c ON ut.category_id = c.id
-      WHERE c.type = 'glamping' AND ut.is_active = 1 AND ut.property_id = ?
+      WHERE ut.is_active = 1 AND ut.property_id = ?
     `).all(property.id) as any[];
 
     const priceMap = new Map<string, any>();

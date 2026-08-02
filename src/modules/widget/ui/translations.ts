@@ -178,7 +178,7 @@ export interface BookingTranslations {
 
 const translations: Record<BookingLang, any> = {
   uk: {
-    brandName: 'QA Glamping',
+    brandName: '',
     back: 'Назад',
     next: 'Далі',
     selectDates: 'Підтверди дати',
@@ -283,7 +283,7 @@ const translations: Record<BookingLang, any> = {
     weWillContact: 'Ми звʼяжемося з вами незабаром.',
     purchasedServicesTitle: 'Придбані сервіси',
     backToStart: 'На початок',
-    supportContactNote: "Якщо щось — пиши на hello@qa-glamping.eu або +420 773 708 849",
+    supportContactNote: "Якщо щось — звертайтеся до нас.",
     finishBooking: 'Завершити',
     poweredBy: 'Powered by ALiSiO',
     guestsShort: 'гостей',
@@ -324,7 +324,7 @@ const translations: Record<BookingLang, any> = {
     gdprNote: 'Натискаючи «Далі», ви даєте згоду на обробку ваших персональних даних відповідно до нашої Політики конфіденційності.',
   },
   en: {
-    brandName: 'QA Glamping',
+    brandName: '',
     back: 'Back',
     next: 'Next',
     selectDates: 'Confirm dates',
@@ -429,7 +429,7 @@ const translations: Record<BookingLang, any> = {
     weWillContact: 'We will contact you shortly.',
     purchasedServicesTitle: 'Purchased services',
     backToStart: 'Back to start',
-    supportContactNote: "If any questions — contact hello@qa-glamping.eu or +420 773 708 849",
+    supportContactNote: "If you have any questions, please get in touch.",
     finishBooking: 'Finish',
     poweredBy: 'Powered by ALiSiO',
     guestsShort: 'guests',
@@ -470,7 +470,7 @@ const translations: Record<BookingLang, any> = {
     gdprNote: 'By clicking "Next", you consent to the processing of your personal data in accordance with our Privacy Policy.',
   },
   cs: {
-    brandName: 'QA Glamping',
+    brandName: '',
     back: 'Zpět',
     next: 'Další',
     selectDates: 'Potvrdit termín',
@@ -575,7 +575,7 @@ const translations: Record<BookingLang, any> = {
     weWillContact: 'Brzy vás kontaktujeme.',
     purchasedServicesTitle: 'Zakoupené služby',
     backToStart: 'Na začátek',
-    supportContactNote: "V případě dotazů pište na hello@qa-glamping.eu nebo volejte +420 773 708 849",
+    supportContactNote: "V případě dotazů nás kontaktujte.",
     finishBooking: 'Dokončit',
     poweredBy: 'Powered by ALiSiO',
     guestsShort: 'hostů',
@@ -616,7 +616,7 @@ const translations: Record<BookingLang, any> = {
     gdprNote: 'Kliknutím na „Další" souhlasíte se zpracováním vašich osobních údajů v souladu s našimi Zásadami ochrany osobních údajů.',
   },
   de: {
-    brandName: 'QA Glamping',
+    brandName: '',
     back: 'Zurück',
     next: 'Weiter',
     selectDates: 'Termine bestätigen',
@@ -721,7 +721,7 @@ const translations: Record<BookingLang, any> = {
     weWillContact: 'Wir werden uns in Kürze bei Ihnen melden.',
     purchasedServicesTitle: 'Gebuchte Leistungen',
     backToStart: 'Zum Anfang',
-    supportContactNote: "Bei Fragen — schreiben Sie an hello@qa-glamping.eu oder +420 773 708 849",
+    supportContactNote: "Bei Fragen kontaktieren Sie uns bitte.",
     finishBooking: 'Abschließen',
     poweredBy: 'Powered by ALiSiO',
     guestsShort: 'Gäste',

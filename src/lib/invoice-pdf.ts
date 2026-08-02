@@ -569,7 +569,7 @@ export async function generateInvoicePdf(data: InvoicePdfInput): Promise<Buffer>
 
     // Bottom attribution (reference y=774)
     R(7).fillColor(LGRAY)
-      .text('ALiSiO PMS – Kemp Carlsbad s.r.o.', ML, PH - 20, { width: CR - ML, align: 'center', lineBreak: false });
+      .text(['ALiSiO PMS', SUPPLIER.name].filter(Boolean).join(' – '), ML, PH - 20, { width: CR - ML, align: 'center', lineBreak: false });
 
     doc.end();
   });

@@ -101,7 +101,7 @@ export interface Translations {
   viewRoutes: string;
   // Chat
   typePlaceholder: string;
-  chatWelcome: (name: string) => string;
+  chatWelcome: (name: string, brand: string) => string;
   // Registration
   regTitle: string;
   stepOf: (current: number, total: number) => string;
@@ -234,7 +234,7 @@ const translations: Record<Lang, Translations> = {
     addToStay: 'Add to My Stay', per: 'per', viewMenu: 'View Menu →',
     exploreTitle: 'Explore', exploreSubtitle: 'Discover what\'s around you',
     navigate: 'Navigate', viewRoutes: 'View routes',
-    typePlaceholder: 'Type a message...', chatWelcome: (name) => `Hi ${name}! Welcome to Kemp Carlsbad. Let us know if you need anything 🌿`,
+    typePlaceholder: 'Type a message...', chatWelcome: (name, brand) => `Hi ${name}! Welcome to ${brand}. Let us know if you need anything 🌿`,
     regTitle: 'Guest Registration', stepOf: (c, t) => `Step ${c} of ${t}`, back: '← Back', continue_: 'Continue →', confirmReg: 'Confirm Registration ✓',
     step1Title: 'Guest Details', fullName: 'Full name', email: 'Email', phone: 'Phone', phoneHint: 'Only for check-in day contact',
     dateOfBirth: 'Date of birth',
@@ -307,7 +307,7 @@ const translations: Record<Lang, Translations> = {
     addToStay: 'Zum Aufenthalt hinzufügen', per: 'pro', viewMenu: 'Menü ansehen →',
     exploreTitle: 'Entdecken', exploreSubtitle: 'Entdecken Sie die Umgebung',
     navigate: 'Navigation', viewRoutes: 'Routen ansehen',
-    typePlaceholder: 'Nachricht eingeben...', chatWelcome: (name) => `Hallo ${name}! Willkommen im Kemp Carlsbad. Lassen Sie uns wissen, wenn Sie etwas brauchen 🌿`,
+    typePlaceholder: 'Nachricht eingeben...', chatWelcome: (name, brand) => `Hallo ${name}! Willkommen im ${brand}. Lassen Sie uns wissen, wenn Sie etwas brauchen 🌿`,
     regTitle: 'Gästeregistrierung', stepOf: (c, t) => `Schritt ${c} von ${t}`, back: '← Zurück', continue_: 'Weiter →', confirmReg: 'Registrierung bestätigen ✓',
     step1Title: 'Gästedaten', fullName: 'Vollständiger Name', email: 'E-Mail', phone: 'Telefon', phoneHint: 'Nur für Kontakt am Check-in-Tag',
     dateOfBirth: 'Geburtsdatum',
@@ -380,7 +380,7 @@ const translations: Record<Lang, Translations> = {
     addToStay: 'Přidat k pobytu', per: 'za', viewMenu: 'Zobrazit menu →',
     exploreTitle: 'Okolí', exploreSubtitle: 'Objevte, co je kolem vás',
     navigate: 'Navigovat', viewRoutes: 'Zobrazit trasy',
-    typePlaceholder: 'Napište zprávu...', chatWelcome: (name) => `Ahoj ${name}! Vítejte v Kempu Carlsbad. Dejte nám vědět, pokud cokoliv potřebujete 🌿`,
+    typePlaceholder: 'Napište zprávu...', chatWelcome: (name, brand) => `Ahoj ${name}! Vítejte v ${brand}. Dejte nám vědět, pokud cokoliv potřebujete 🌿`,
     regTitle: 'Registrace hostů', stepOf: (c, t) => `Krok ${c} z ${t}`, back: '← Zpět', continue_: 'Pokračovat →', confirmReg: 'Potvrdit registraci ✓',
     step1Title: 'Údaje hosta', fullName: 'Celé jméno', email: 'E-mail', phone: 'Telefon', phoneHint: 'Pouze pro kontakt v den příjezdu',
     dateOfBirth: 'Datum narození',
@@ -453,7 +453,7 @@ const translations: Record<Lang, Translations> = {
     addToStay: 'Додати до перебування', per: 'за', viewMenu: 'Меню →',
     exploreTitle: 'Околиці', exploreSubtitle: 'Відкрийте для себе, що навколо',
     navigate: 'Навігація', viewRoutes: 'Маршрути',
-    typePlaceholder: 'Напишіть повідомлення...', chatWelcome: (name) => `Привіт, ${name}! Ласкаво просимо до Кемп Карлсбад. Пишіть, якщо щось потрібно 🌿`,
+    typePlaceholder: 'Напишіть повідомлення...', chatWelcome: (name, brand) => `Привіт, ${name}! Ласкаво просимо до ${brand}. Пишіть, якщо щось потрібно 🌿`,
     regTitle: 'Реєстрація гостей', stepOf: (c, t) => `Крок ${c} з ${t}`, back: '← Назад', continue_: 'Далі →', confirmReg: 'Підтвердити реєстрацію ✓',
     step1Title: 'Дані гостя', fullName: 'Повне ім\'я', email: 'Email', phone: 'Телефон', phoneHint: 'Тільки для зв\'язку в день заїзду',
     dateOfBirth: 'Дата народження',
@@ -526,7 +526,7 @@ const translations: Record<Lang, Translations> = {
     addToStay: 'Dodaj do pobytu', per: 'za', viewMenu: 'Zobacz menu →',
     exploreTitle: 'Odkrywaj', exploreSubtitle: 'Odkryj co jest wokół ciebie',
     navigate: 'Nawiguj', viewRoutes: 'Zobacz trasy',
-    typePlaceholder: 'Napisz wiadomość...', chatWelcome: (name) => `Cześć ${name}! Witamy w Kemp Carlsbad. Daj znać, jeśli czegoś potrzebujesz 🌿`,
+    typePlaceholder: 'Napisz wiadomość...', chatWelcome: (name, brand) => `Cześć ${name}! Witamy w ${brand}. Daj znać, jeśli czegoś potrzebujesz 🌿`,
     regTitle: 'Rejestracja gości', stepOf: (c, t) => `Krok ${c} z ${t}`, back: '← Wstecz', continue_: 'Dalej →', confirmReg: 'Potwierdź rejestrację ✓',
     step1Title: 'Dane gościa', fullName: 'Imię i nazwisko', email: 'E-mail', phone: 'Telefon', phoneHint: 'Tylko do kontaktu w dniu przyjazdu',
     dateOfBirth: 'Data urodzenia',
@@ -599,7 +599,7 @@ const translations: Record<Lang, Translations> = {
     addToStay: 'Toevoegen', per: 'per', viewMenu: 'Menu bekijken →',
     exploreTitle: 'Ontdek', exploreSubtitle: 'Ontdek wat er om u heen is',
     navigate: 'Navigeren', viewRoutes: 'Routes bekijken',
-    typePlaceholder: 'Typ een bericht...', chatWelcome: (name) => `Hallo ${name}! Welkom bij Kemp Carlsbad. Laat het ons weten als u iets nodig hebt 🌿`,
+    typePlaceholder: 'Typ een bericht...', chatWelcome: (name, brand) => `Hallo ${name}! Welkom bij ${brand}. Laat het ons weten als u iets nodig hebt 🌿`,
     regTitle: 'Gastregistratie', stepOf: (c, t) => `Stap ${c} van ${t}`, back: '← Terug', continue_: 'Verder →', confirmReg: 'Registratie bevestigen ✓',
     step1Title: 'Gastgegevens', fullName: 'Volledige naam', email: 'E-mail', phone: 'Telefoon', phoneHint: 'Alleen voor contact op de dag van aankomst',
     dateOfBirth: 'Geboortedatum',
@@ -672,7 +672,7 @@ const translations: Record<Lang, Translations> = {
     addToStay: 'Ajouter au séjour', per: 'par', viewMenu: 'Voir le menu →',
     exploreTitle: 'Explorer', exploreSubtitle: 'Découvrez ce qu\'il y a autour de vous',
     navigate: 'Naviguer', viewRoutes: 'Voir les itinéraires',
-    typePlaceholder: 'Tapez un message...', chatWelcome: (name) => `Bonjour ${name} ! Bienvenue au Kemp Carlsbad. N'hésitez pas si vous avez besoin de quoi que ce soit 🌿`,
+    typePlaceholder: 'Tapez un message...', chatWelcome: (name, brand) => `Bonjour ${name} ! Bienvenue à ${brand}. N'hésitez pas si vous avez besoin de quoi que ce soit 🌿`,
     regTitle: 'Enregistrement', stepOf: (c, t) => `Étape ${c} sur ${t}`, back: '← Retour', continue_: 'Continuer →', confirmReg: 'Confirmer l\'enregistrement ✓',
     step1Title: 'Détails de l\'hôte', fullName: 'Nom complet', email: 'E-mail', phone: 'Téléphone', phoneHint: 'Uniquement pour le contact le jour d\'arrivée',
     dateOfBirth: 'Date de naissance',
@@ -741,8 +741,16 @@ export function detectLanguage(phone?: string | null, country?: string | null): 
   return 'en';
 }
 
-export function getBrandName(categoryType: string): string {
-  return categoryType === 'glamping' ? 'QA Glamping' : 'Kemp Carlsbad';
+/**
+ * The name a guest sees on their booking page.
+ *
+ * This mapped a category type to one of two hotel names written here, so every
+ * hotel's guests were welcomed to somebody else's property. The name is the
+ * property's own; the argument survives only as the fallback when the portal
+ * response has not loaded yet.
+ */
+export function getBrandName(propertyName?: string | null): string {
+  return propertyName || '';
 }
 
 export function formatDateLocalized(dateStr: string, lang: Lang): string {

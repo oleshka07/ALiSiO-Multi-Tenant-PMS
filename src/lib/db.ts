@@ -3536,7 +3536,7 @@ function runMigrations(database: any) {
   // - import_formats: persisted column→field mappings per source format
   //   (Finmap, Booking, Airbnb, etc). Saves user time on repeat imports.
   // - import_entity_mappings: persisted entity resolution (source value
-  //   "KB Kemp Крони" → existing PMS account ID, OR action='create_new'
+  //   an incoming account label → existing PMS account ID, OR action='create_new'
   //   to spawn fresh on commit, OR 'ignore' to skip).
   // - import_runs: audit log of each import attempt — file name, format,
   //   counts. Lets user see history.

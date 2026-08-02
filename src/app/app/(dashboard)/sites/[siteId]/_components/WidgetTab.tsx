@@ -180,7 +180,7 @@ export function WidgetTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Widg
         </div>
         <div className="form-group">
           <label className="form-label">URL вашого сайту (де вбудовано віджет)</label>
-          <input className="form-input" placeholder="https://book.kemp-carlsbad.cz"
+          <input className="form-input" placeholder="https://book.example.com"
             value={site.site_url || ''}
             onChange={e => onUpdate({ ...cfg, site_url: e.target.value })} />
           <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>Допомагає правильно генерувати посилання на бронювання</div>

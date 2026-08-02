@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * Task Telegram Notifications — sends notifications via @kemptimebot
+ * Task Telegram Notifications — sends notifications through the organization's bot
  * when tasks are assigned, updated, or due.
  */
 

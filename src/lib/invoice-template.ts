@@ -2,14 +2,15 @@
  * ALiSiO PMS — Invoice HTML Template
  *
  * Generates a Czech-law compliant Faktura (invoice).
- * Kemp Carlsbad s.r.o. is a NON-VAT payer (neplátce DPH),
- * so no DPH breakdown is required.
+ * A non-VAT-paying issuer (neplátce DPH) needs no DPH breakdown; whether
+ * this organization is one comes from its record, not from this file.
  *
  * Legal basis: § 26–29 Zákona č. 235/2004 Sb. (invoice requirements for non-VAT entities)
  * Also respects Zákon č. 563/1991 Sb. (Zákon o účetnictví)
  */
 
 import { showBuyerName, dueDateFor } from './invoice-rules';
+import { getOrgIdentity } from '@core/org-identity';
 
 // Inline type — avoids cross-module coupling for a pure template helper.
 // Many fields are nullable because the SQL uses LEFT JOIN on units/guests,
@@ -54,18 +55,28 @@ export interface InvoiceData {
   invoice_company_email?: string | null;
 }
 
-const SUPPLIER = {
-  name: 'Kemp Carlsbad s.r.o.',
-  street: 'Chebská 38/5',
-  city: 'Dvory',
-  zip: '360 06',
-  region: 'Karlovy Vary',
-  country: 'Česká republika',
-  ico: '234 30 567',
-  dic: null as string | null, // neplátce DPH
-  email: 'kemp-carlsbad@email.cz',
-  web: 'kemp-carlsbad.cz',
-};
+/**
+ * Who is issuing this invoice.
+ *
+ * These were module-level literals naming one real company — its address, IČO
+ * and mailbox — so on a shared server every hotel's invoices went out under
+ * that company, with its bank details. The values come from the organization
+ * record now (Settings → General), resolved through the tenant context of the
+ * request that asked for the document.
+ */
+function supplier() {
+  const id = getOrgIdentity();
+  return {
+    name: id.name,
+    address: id.legalAddress,
+    country: '',
+    ico: id.registrationNo,
+    dic: id.isVatPayer ? id.vatNo : null,
+    email: id.email,
+    web: id.website,
+    isVatPayer: id.isVatPayer,
+  };
+}
 
 const PAYMENT_METHODS: Record<string, string> = {
   cash: 'Hotovost',
@@ -109,6 +120,7 @@ function formatCountry(code: string | null | undefined): string {
 }
 
 export function renderInvoiceHtml(data: InvoiceData): string {
+  const SUP = supplier();
   // Defensive: any of these can arrive as null from a LEFT JOIN with deleted
   // units/guests, or from legacy rows that pre-date a column being NOT NULL.
   const invoiceNumber = data.invoice_number || data.id || '—';
@@ -545,11 +557,11 @@ export function renderInvoiceHtml(data: InvoiceData): string {
     <!-- ─── HEADER ─────────────────────────────────────────────── -->
     <div class="inv-header">
       <div class="supplier-block">
-        <div class="company-name">${SUPPLIER.name}</div>
+        <div class="company-name">${SUP.name}</div>
         <div class="company-meta">
-          ${SUPPLIER.street}, ${SUPPLIER.zip} ${SUPPLIER.city}<br>
-          IČO: ${SUPPLIER.ico} &nbsp;|&nbsp; Neplátce DPH<br>
-          ${SUPPLIER.email} &nbsp;|&nbsp; ${SUPPLIER.web}
+          ${SUP.address}<br>
+          IČO: ${SUP.ico} &nbsp;|&nbsp; ${SUP.isVatPayer ? `DIČ: ${SUP.dic}` : 'Neplátce DPH'}<br>
+          ${[SUP.email, SUP.web].filter(Boolean).join(' &nbsp;|&nbsp; ')}
         </div>
       </div>
       <div class="doc-title">
@@ -572,11 +584,9 @@ export function renderInvoiceHtml(data: InvoiceData): string {
         <div class="meta-block">
           <div class="label">Dodavatel</div>
           <div class="value">
-            <strong>${SUPPLIER.name}</strong><br>
-            ${SUPPLIER.street}<br>
-            ${SUPPLIER.zip} ${SUPPLIER.city}<br>
-            ${SUPPLIER.country}<br>
-            IČO: ${SUPPLIER.ico}
+            <strong>${SUP.name}</strong><br>
+            ${SUP.address}<br>
+            IČO: ${SUP.ico}
           </div>
         </div>
         <div class="meta-block">
@@ -672,7 +682,7 @@ export function renderInvoiceHtml(data: InvoiceData): string {
     <div class="inv-footer">
       <div class="legal-notice">
         Tato faktura slouží jako doklad o provedené platbě za ubytovací služby.
-        Fakturující subjekt <strong>${SUPPLIER.name}</strong>, IČO ${SUPPLIER.ico}, není plátcem daně z přidané hodnoty
+        Fakturující subjekt <strong>${SUP.name}</strong>, IČO ${SUP.ico}, není plátcem daně z přidané hodnoty
         dle § 6 zákona č. 235/2004 Sb.
       </div>
       <div class="signature-block">

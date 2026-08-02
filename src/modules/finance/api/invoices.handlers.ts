@@ -3,7 +3,7 @@
  * ALiSiO PMS — Invoice Handlers (Finance Module)
  *
  * Generates and serves Faktury (invoices) for paid reservations.
- * Kemp Carlsbad s.r.o. is NOT a VAT payer (neplátce DPH),
+ * For an issuer that is not a VAT payer (neplátce DPH),
  * so these are regular Faktury, not Daňové doklady.
  *
  * Auto-trigger: called from payments.handlers.ts and reservation.handlers.ts

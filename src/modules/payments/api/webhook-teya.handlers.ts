@@ -614,7 +614,7 @@ async function sendServerSideAnalytics(db: any, paymentRef: string, amount: numb
             transaction_id: transactionId,
             value: displayAmount,
             currency: curr,
-            items: [{ item_id: transactionId, item_name: 'Kemp Carlsbad Reservation', price: displayAmount, quantity: 1 }],
+            items: [{ item_id: transactionId, item_name: 'Reservation', price: displayAmount, quantity: 1 }],
           },
         }],
       };

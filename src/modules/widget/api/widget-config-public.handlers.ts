@@ -45,8 +45,7 @@ export async function getWidgetConfig(request: NextRequest) {
              ut.max_adults, ut.max_children, ut.max_occupancy, ut.base_occupancy,
              ut.beds_single, ut.beds_double, ut.beds_sofa
       FROM unit_types ut
-      JOIN categories c ON ut.category_id = c.id
-      WHERE c.type = 'glamping' AND ut.is_active = 1 AND ut.property_id = ?
+      WHERE ut.is_active = 1 AND ut.property_id = ?
       ORDER BY ut.sort_order
     `).all(property.id) as any[];
 

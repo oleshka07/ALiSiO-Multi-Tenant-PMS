@@ -301,7 +301,7 @@ export default function GuestPage() {
   const registeredCount = data?.registeredGuests?.length || 0;
   const isRegistered = registeredCount >= requiredGuests;
   const catType = r?.category_type || 'resort';
-  const brandName = data?.expired ? data.brandName : getBrandName(catType);
+  const brandName = data?.expired ? data.brandName : getBrandName(data?.propertyName || r?.property_name);
 
   // ─── isPaid ────────────────────────────────────
   const isPaid = r?.payment_status === 'paid'

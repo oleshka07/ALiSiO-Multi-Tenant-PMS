@@ -4,6 +4,7 @@ import { createPaymentSession, resolveSiteCredentials, isGlobalTeyaConfigured } 
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { hasFeature, featureDisabled } from '@core/features';
+import { resolveSiteByKey, siteAllowsHost } from '../data/site.repo';
 import { sendTelegramMessage } from '@/lib/channels/telegram-bot'; // TODO: replace with eventBus
 
 const CORS_HEADERS = {
@@ -48,24 +49,13 @@ export async function createWidgetCheckoutSession(req: Request) {
     let site: any = null;
     let siteCreds: any = null;
 
-    // Identifier may arrive as site_slug OR site_id. It can be a UUID, a DB slug,
-    // or a friendly slug like 'kemp-carlsbad'. If it is missing OR does not match
-    // any row, fall through to global/default ENV credentials (NO hard 404) so a
-    // single-property site (e.g. alisio.swipescape.eu) not registered in
-    // booking_sites can still take payment.
-    let siteKey: string | undefined = site_slug || clientSiteId;
+    // Identifier may arrive as site_slug OR site_id: an id, a slug, or the
+    // hostname the widget runs on. If it is missing OR matches no row, fall
+    // through to global/default ENV credentials (NO hard 404) so a single-
+    // property site not registered in booking_sites can still take payment.
+    const siteKey: string | undefined = site_slug || clientSiteId;
     if (siteKey) {
-      if (siteKey === 'kv.kemp-carlsbad.cz' || siteKey === 'www.kemp-carlsbad.cz' || siteKey === 'kemp-carlsbad.cz') {
-        siteKey = 'kemp-carlsbad';
-      }
-      // Exact slug/id, loose Kemp Carlsbad slug (DB stores the slugified full URL,
-      // e.g. 'https-kv-kemp-carlsbad-cz'), or a site_url substring match.
-      site = db.prepare(
-        `SELECT id, organization_id, payment_config, site_url, slug FROM booking_sites
-         WHERE slug = ? OR id = ?
-            OR (? = 'kemp-carlsbad' AND slug LIKE '%kemp-carlsbad%')
-            OR (site_url IS NOT NULL AND site_url <> '' AND site_url LIKE ?)`
-      ).get(siteKey, siteKey, siteKey, `%${siteKey}%`) as any;
+      site = resolveSiteByKey(db, siteKey, 'id, organization_id, payment_config, site_url, slug, allowed_domains');
       if (site) {
         siteCreds = resolveSiteCredentials({ id: site.id, slug: site.slug });
       } else {
@@ -360,13 +350,10 @@ export async function createWidgetCheckoutSession(req: Request) {
     let returnTo = return_path || (reservation_id ? `/guest/${reservation_id}` : '/');
     if (returnTo.startsWith('http') && site?.site_url) {
       try {
-        const allowedHost = new URL(site.site_url).hostname;
-        const targetHost = new URL(returnTo).hostname;
-        // Allow: same site host, any alisio.eu subdomain, kemp-carlsbad.cz (partner domain)
-        const isAllowed = allowedHost === targetHost
-          || targetHost.includes('alisio.eu')
-          || targetHost.includes('kemp-carlsbad.cz');
-        if (!isAllowed) {
+        // Where a guest may be sent after paying: the site's own domain and
+        // whatever the hotel listed in allowed_domains. Anything else falls
+        // back to the site itself rather than following an open redirect.
+        if (!siteAllowsHost(site, new URL(returnTo).hostname)) {
           returnTo = site.site_url;
         }
       } catch { /* invalid URL — keep returnTo */ }

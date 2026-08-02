@@ -21,9 +21,11 @@ export const getReservation = withActor(async (_request: NextRequest, { params }
         r.*, r.guest_page_token, g.first_name, g.last_name, g.email as guest_email, g.phone as guest_phone, g.country as guest_country,
         u.name as unit_name, u.code as unit_code,
         c.name as category_name, c.type as category_type,
-        ut.name as unit_type_name
+        ut.name as unit_type_name,
+        p.name as property_name
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
+      JOIN properties p ON r.property_id = p.id
       JOIN units u ON r.unit_id = u.id
       JOIN categories c ON u.category_id = c.id
       JOIN unit_types ut ON u.unit_type_id = ut.id

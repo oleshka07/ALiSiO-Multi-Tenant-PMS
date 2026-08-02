@@ -6,6 +6,7 @@ import { eventBus } from '@core/event-bus';
 import { notifyReservationCreated } from '@bookings';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { hasFeature, featureDisabled } from '@core/features';
+import { siteAllowsHost, type SiteRow } from '../data/site.repo';
 
 // Fallback to guarantee event subscribers are registered in Serverless (Vercel) isolated functions
 const ensureSubscribers = async () => {
@@ -54,14 +55,13 @@ export async function createWidgetReservation(request: NextRequest) {
       )
     `).run();
 
-    // Check allowed origin from DB
-    let allowedSiteUrl: string | null = null;
+    // Which hosts this site trusts — its own domain plus allowed_domains.
+    let originSite: SiteRow | undefined;
     const searchSite = siteId || siteSlug;
     if (searchSite) {
-      const site = db.prepare("SELECT site_url FROM booking_sites WHERE (id = ? OR slug = ?) AND status != 'deleted'").get(searchSite, searchSite) as { site_url: string | null } | undefined;
-      if (site) {
-        allowedSiteUrl = site.site_url;
-      }
+      originSite = db.prepare(
+        "SELECT id, slug, site_url, allowed_domains FROM booking_sites WHERE (id = ? OR slug = ?) AND status != 'deleted'",
+      ).get(searchSite, searchSite) as SiteRow | undefined;
     }
 
     const origin = request.headers.get('origin');
@@ -71,18 +71,9 @@ export async function createWidgetReservation(request: NextRequest) {
     };
     
     if (origin) {
-      if (allowedSiteUrl) {
+      if (originSite?.site_url) {
         try {
-          const originHost = new URL(origin).hostname;
-          const allowedHost = new URL(allowedSiteUrl.startsWith('http') ? allowedSiteUrl : `https://${allowedSiteUrl}`).hostname;
-          
-          if (
-            originHost !== allowedHost && 
-            !originHost.endsWith(`.${allowedHost}`) && 
-            originHost !== 'localhost' && 
-            originHost !== '127.0.0.1' &&
-            originHost !== 'kemp-carlsbad-cz.onrender.com'
-          ) {
+          if (!siteAllowsHost(originSite, new URL(origin).hostname)) {
             return NextResponse.json({ error: 'Origin domain not authorized for this widget' }, { status: 403, headers: CORS_HEADERS });
           }
           dynamicHeaders['Access-Control-Allow-Origin'] = origin;
@@ -184,8 +175,10 @@ export async function createWidgetReservation(request: NextRequest) {
     if (unit && siteId && existingTables.has('site_listings')) {
       const allowed = db.prepare('SELECT 1 FROM site_listings WHERE site_id = ? AND unit_id = ?').get(siteId, unitId);
       if (!allowed) {
-        const isRender = request.headers.get('origin')?.includes('kemp-carlsbad-cz.onrender.com');
-        if (process.env.NODE_ENV === 'development' || isRender) {
+        // A staging host used to be allowed to book units the site does not
+        // list. That was one hotel's deploy preview written into production
+        // authorisation — in production the listing decides, full stop.
+        if (process.env.NODE_ENV === 'development') {
           console.log(`[DEV BYPASS] Allowing unmapped unit ${unitId} for site ${siteId}`);
         } else {
           return NextResponse.json({ error: 'Unit not available for this site' }, { status: 403, headers: CORS_HEADERS });

@@ -257,7 +257,7 @@ export async function handlePaymentReturn(req: Request) {
   const separator = returnPath.includes('?') ? '&' : '?';
   const redirectUrl = `${returnPath}${separator}payment_status=${status}&session_id=${sessionId}`;
 
-  // If redirectUrl is already absolute (cross-domain return, e.g. kv.kemp-carlsbad.cz),
+  // If redirectUrl is already absolute (a cross-domain return to the hotel's own site),
   // new URL(absoluteUrl, base) ignores the base and returns the absolute URL — correct.
   // If it's a relative path, url.origin is used as base — also correct.
   let finalRedirectUrl: URL;

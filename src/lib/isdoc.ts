@@ -2,7 +2,7 @@
  * ALiSiO PMS — ISDOC v6.0.2 Generator
  *
  * Generates Czech electronic invoice (ISDOC) XML.
- * Kemp Carlsbad s.r.o. is a NON-VAT payer (neplátce DPH), so:
+ * For a non-VAT-paying issuer (neplátce DPH):
  *   - VATApplicable = false at document level
  *   - All line items have 0% VAT
  *   - TaxAmount = 0, TaxExclusiveAmount = TaxInclusiveAmount = PayableAmount
@@ -11,24 +11,48 @@
  */
 
 import crypto from 'crypto';
+import { getOrgIdentity } from '@core/org-identity';
 
-// ─── Supplier (hardcoded for Kemp Carlsbad s.r.o.) ───────────────────────────
+// ─── Supplier ────────────────────────────────────────────────────────────────
+//
+// One real company used to be written here — its IČO, address and, via env,
+// its bank account. Every tenant's accounting export therefore claimed to come
+// from that company and pointed payment at its account. It comes from the
+// organization record now, through the tenant context of the request.
 
-const SUPPLIER = {
-  ico:     '23430567',
-  dic:     '',                         // neplátce DPH — no VAT number
-  name:    'Kemp Carlsbad s.r.o.',
-  street:  'Chebská 38/5',
-  city:    'Dvory',
-  zip:     '360 06',
-  country: 'CZ',
-  // Bank details — read from env or defaults to empty
-  bankAccount: process.env.BANK_ACCOUNT || '',
-  bankCode:    process.env.BANK_CODE    || '',
-  bankName:    process.env.BANK_NAME    || '',
-  iban:        process.env.BANK_IBAN    || '',
-  bic:         process.env.BANK_BIC     || '',
-};
+/**
+ * ISDOC wants StreetName / CityName / PostalZone separately; organizations
+ * store one free-form legal_address. The convention is the Czech postal one —
+ * "Street 1, 360 06 City" — and anything that does not match goes into
+ * StreetName whole, which stays valid XML and legible to an accountant.
+ */
+function splitAddress(address: string): { street: string; zip: string; city: string } {
+  const parts = address.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2) return { street: address.trim(), zip: '', city: '' };
+  const tail = parts[parts.length - 1];
+  const m = tail.match(/^(\d{3}\s?\d{2})\s+(.+)$/);
+  if (!m) return { street: parts.slice(0, -1).join(', '), zip: '', city: tail };
+  return { street: parts.slice(0, -1).join(', '), zip: m[1], city: m[2] };
+}
+
+function supplier() {
+  const id = getOrgIdentity();
+  const addr = splitAddress(id.legalAddress || '');
+  return {
+    ico:     id.registrationNo,
+    dic:     id.isVatPayer ? id.vatNo : '',
+    name:    id.name,
+    street:  addr.street,
+    city:    addr.city,
+    zip:     addr.zip,
+    country: 'CZ',
+    bankAccount: id.bankAccount,
+    bankCode:    process.env.BANK_CODE || '',
+    bankName:    id.bankName,
+    iban:        id.iban,
+    bic:         id.swift,
+  };
+}
 
 // PaymentMeansCode: 10=cash, 42=bank transfer, 48=card
 const PAYMENT_CODE: Record<string, string> = {
@@ -120,6 +144,7 @@ function uuid(): string {
  * For neplátce DPH: VAT = 0, all amounts are equal (excl = incl = payable).
  */
 export function generateIsdocXml(input: IsdocInput): string {
+  const SUPPLIER = supplier();
   const {
     invoiceNumber,
     issueDate,

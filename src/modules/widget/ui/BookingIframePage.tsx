@@ -201,6 +201,18 @@ export default function BookingPage() {
   const thankYouUrl = typeof window !== 'undefined' ? (window as any).__BOOKING_THANK_YOU_URL__ || '' : '';
   const isWidget = !!siteId;
 
+  // The hotel's own name. It used to be a literal in translations.ts, so this
+  // page greeted every hotel's guests with the first customer's brand.
+  const [siteName, setSiteName] = useState('');
+  useEffect(() => {
+    const key = widgetSlug || siteId;
+    if (!key) return;
+    fetch(`${API_BASE}/api/booking/site-config?slug=${encodeURIComponent(key)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.name) setSiteName(d.name); })
+      .catch(() => { /* the widget works without a name */ });
+  }, [widgetSlug, siteId]);
+
   // Whether step 4 has any services to show
   const [hasServices, setHasServices] = useState(true); // default true until checked
 
@@ -819,7 +831,7 @@ export default function BookingPage() {
 
         <div className="booking-sidebar-location">
           <span className="booking-sidebar-location-icon">🏕️</span>
-          QA Glamping
+          {siteName}
         </div>
       </div>
 
@@ -845,7 +857,7 @@ export default function BookingPage() {
               <div className="booking-sidebar-unit-details">
                 <div className="booking-sidebar-unit-name">{selectedUnitData.name}</div>
                 <div className="booking-sidebar-unit-meta">
-                  👥 {selectedUnitData.baseOccupancy} {t.guests} · 🏕️ QA Glamping
+                  👥 {selectedUnitData.baseOccupancy} {t.guests}{siteName ? ` · 🏕️ ${siteName}` : ''}
                 </div>
               </div>
               <div className="booking-sidebar-unit-price-label">
@@ -942,7 +954,7 @@ export default function BookingPage() {
         <header className="booking-header">
           <div className="booking-logo">
             <div className="booking-logo-icon">Q</div>
-            <span>{t.brandName}</span>
+            <span>{siteName || t.brandName}</span>
           </div>
           <div className="booking-header-right">
             <div className="booking-social-links">
@@ -1204,10 +1216,12 @@ export default function BookingPage() {
                               <span className="booking-house-spec-icon">👥</span>
                               {t.totalFor} {unit.baseOccupancy} {t.guests} (+{unit.maxAdults - unit.baseOccupancy})
                             </div>
-                            <div className="booking-house-spec">
-                              <span className="booking-house-spec-icon">🏕️</span>
-                              QA Glamping
-                            </div>
+                            {siteName && (
+                              <div className="booking-house-spec">
+                                <span className="booking-house-spec-icon">🏕️</span>
+                                {siteName}
+                              </div>
+                            )}
                           </div>
 
                           {/* Description text like ULIS */}
@@ -2114,7 +2128,7 @@ export default function BookingPage() {
       {/* ═══ Footer ═══ */}
       {!isWidget && (
         <footer className="booking-footer">
-          © {new Date().getFullYear()} {t.brandName} · {t.poweredBy}
+          © {new Date().getFullYear()} {siteName || t.brandName} · {t.poweredBy}
         </footer>
       )}
     </div>

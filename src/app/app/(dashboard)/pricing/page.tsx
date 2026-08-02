@@ -727,7 +727,7 @@ function WidgetPriceListSection() {
         </h3>
       </div>
       <div style={{ fontSize: 13, color: 'var(--text-tertiary)', padding: '0 16px 12px' }}>
-        Ці ціни використовуються у віджеті бронювання (book.kempcarlsbad.cz). Змініть тут — віджет підтягне автоматично.
+        Ці ціни використовуються у віджеті бронювання. Змініть тут — віджет підтягне автоматично.
       </div>
 
       {categories.map(cat => {

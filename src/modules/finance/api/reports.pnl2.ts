@@ -72,35 +72,18 @@ export async function getPnl2(request: NextRequest): Promise<NextResponse> {
       ORDER BY sort_order
     `).all(org) as any[];
 
+    // Every active business unit is its own column; costs that belong to no
+    // unit — or to a shared one, which the query above already excludes —
+    // land in 'v_general' and are distributed proportionally below.
+    //
+    // This used to sort units by matching their names against one hotel's
+    // vocabulary: one literal hotel name meant general, 'будова'/'f/d' were merged
+    // into one column, 'сауна'/'купель' into another. Any other hotel got
+    // its own units back unrenamed and nothing distributed, and a hotel that
+    // happened to use those words got its P&L silently reshaped.
     const virtualBusMap: Record<string, string> = {};
-    const virtualBus: Record<string, any> = {};
-    
-    for (const bu of originalBus) {
-      let vName = bu.name;
-      let vId = bu.id;
-      
-      const lowerName = vName.toLowerCase();
-
-      // General BU that we distribute proportionally
-      if (lowerName.includes('загальне') || lowerName.includes('kemp carlsbad')) {
-        virtualBusMap[bu.id] = 'v_general';
-        continue; // Exclude from columns
-      }
-      
-      if (lowerName.includes('будова') || lowerName.includes('f/d') || lowerName === 'resort f' || lowerName === 'rfesort b') {
-        vName = 'Будова F/D';
-        vId = 'v_budova';
-      } else if (lowerName.includes('сауна') || lowerName.includes('купель') || lowerName.includes('спа')) {
-        vName = 'СПА';
-        vId = 'v_spa';
-      }
-      
-      virtualBusMap[bu.id] = vId;
-      if (!virtualBus[vId]) {
-        virtualBus[vId] = { id: vId, name: vName };
-      }
-    }
-    const bus = Object.values(virtualBus);
+    for (const bu of originalBus) virtualBusMap[bu.id] = bu.id;
+    const bus = originalBus.map((bu) => ({ id: bu.id, name: bu.name }));
 
     // Fetch operations
     const ops = db.prepare(`
