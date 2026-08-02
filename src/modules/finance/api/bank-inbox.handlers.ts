@@ -188,21 +188,3 @@ export async function runBankInboxNow(
   }
 }
 
-export async function runAllInboxes(_req: NextRequest): Promise<NextResponse> {
-  try {
-    const db = getDb();
-    const inboxes = db.prepare("SELECT * FROM fin_bank_inboxes WHERE is_active = 1").all() as BankInboxConfig[];
-    const results = [];
-    for (const inbox of inboxes) {
-      try {
-        const r = await checkInbox(db, inbox);
-        results.push({ inbox: inbox.name, ...r });
-      } catch (e: any) {
-        results.push({ inbox: inbox.name, error: e.message });
-      }
-    }
-    return NextResponse.json({ ok: true, count: inboxes.length, results });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
-  }
-}

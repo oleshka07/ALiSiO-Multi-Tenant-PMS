@@ -13,7 +13,7 @@
 // NOT wrapped (own auth / no user session):
 //   - payment-bridge (createPaymentOperation, hasPaymentOperation,
 //     deletePaymentOperationsForReservation) — internal, called programmatically
-//   - generateInvoiceForReservation / reissueInvoiceForReservation — internal,
+//   - generateInvoiceForReservation — internal,
 //     called from bookings + payments on reservation lifecycle
 //   - getReservationPaymentTotals / recalcReservationPaymentStatus — internal
 //     (db, reservationId) helpers
@@ -34,7 +34,7 @@ export {
 
 // ─── Reports & matrices (read) ────────────────────────────────
 import {
-  getFinanceOverview as _getFinanceOverview, getPnl as _getPnl, getCashflow as _getCashflow,
+  getFinanceOverview as _getFinanceOverview,
   getExpectedPayments as _getExpectedPayments, getCashflowMatrix as _getCashflowMatrix,
   getPnlMatrix as _getPnlMatrix, getFinancialIndicators as _getFinancialIndicators,
   getOperationsForDrillDown as _getOperationsForDrillDown, getBalanceSheet as _getBalanceSheet,
@@ -42,8 +42,6 @@ import {
   getPlanFactReport as _getPlanFactReport,
 } from './reports.handlers';
 export const getFinanceOverview      = withFinanceRead(_getFinanceOverview);
-export const getPnl                  = withFinanceRead(_getPnl);
-export const getCashflow             = withFinanceRead(_getCashflow);
 export const getExpectedPayments     = withFinanceRead(_getExpectedPayments);
 export const getCashflowMatrix       = withFinanceRead(_getCashflowMatrix);
 export const getPnlMatrix            = withFinanceRead(_getPnlMatrix);
@@ -108,14 +106,13 @@ export const moveProject    = withPermission('manage_finance_settings', _movePro
 // ─── Counterparties (PR #4) ───────────────────────────────────
 import {
   listCounterparties as _listCounterparties, getCounterpartyTree as _getCounterpartyTree,
-  matchCounterpartyByText as _matchCounterpartyByText, getAliasSuggestions as _getAliasSuggestions,
+  getAliasSuggestions as _getAliasSuggestions,
   createCounterparty as _createCounterparty, updateCounterparty as _updateCounterparty,
   archiveCounterparty as _archiveCounterparty, deleteCounterparty as _deleteCounterparty,
   moveCounterparty as _moveCounterparty,
 } from './counterparties.handlers';
 export const listCounterparties      = withFinanceRead(_listCounterparties);
 export const getCounterpartyTree     = withFinanceRead(_getCounterpartyTree);
-export const matchCounterpartyByText = withFinanceRead(_matchCounterpartyByText);
 export const getAliasSuggestions     = withFinanceRead(_getAliasSuggestions);
 export const createCounterparty  = withPermission('manage_finance_settings', _createCounterparty);
 export const updateCounterparty  = withPermission('manage_finance_settings', _updateCounterparty);
@@ -170,11 +167,9 @@ export const updateBankTransaction = withPermission('import_bank_data', _updateB
 export const importBankStatement   = withPermission('import_bank_data', _importBankStatement);
 
 // ─── Invoices ─────────────────────────────────────────────────
-// generateInvoiceForReservation / reissueInvoiceForReservation are internal
-// (called from bookings + payments on reservation lifecycle) — NOT guarded.
-export {
-  generateInvoiceForReservation, reissueInvoiceForReservation,
-} from './invoices.handlers';
+// generateInvoiceForReservation is internal (called from bookings + payments
+// on the reservation lifecycle) — NOT guarded.
+export { generateInvoiceForReservation } from './invoices.handlers';
 import {
   listInvoices as _listInvoices, getInvoiceHtml as _getInvoiceHtml,
   getInvoiceByReservation as _getInvoiceByReservation,
@@ -186,8 +181,6 @@ export const getInvoiceByReservation = withFinanceRead(_getInvoiceByReservation)
 export const reissueInvoiceHandler   = withPermission('manage_finance_settings', _reissueInvoiceHandler);
 
 // ─── Invoice Reconciliation Journal ───────────────────────────
-import { reconciliationHandler as _reconciliationHandler } from './reconciliation.handlers';
-export const reconciliationHandler = withFinanceRead(_reconciliationHandler);
 
 // ─── Accounts (PR #1) ─────────────────────────────────────────
 import {
@@ -255,7 +248,6 @@ import {
   listAutoRules as _listAutoRules,
   createAutoRule as _createAutoRule, updateAutoRule as _updateAutoRule,
   deleteAutoRule as _deleteAutoRule, toggleAutoRule as _toggleAutoRule,
-  moveAutoRule as _moveAutoRule,
   applyAutoRulesToOperations as _applyAutoRulesToOperations,
   autoMatchCounterpartiesAllOps as _autoMatchCounterpartiesAllOps,
 } from './auto-rules.handlers';
@@ -264,7 +256,6 @@ export const createAutoRule = withPermission('manage_finance_settings', _createA
 export const updateAutoRule = withPermission('manage_finance_settings', _updateAutoRule);
 export const deleteAutoRule = withPermission('manage_finance_settings', _deleteAutoRule);
 export const toggleAutoRule = withPermission('manage_finance_settings', _toggleAutoRule);
-export const moveAutoRule   = withPermission('manage_finance_settings', _moveAutoRule);
 export const applyAutoRulesToOperations    = withPermission('manage_finance_settings', _applyAutoRulesToOperations);
 export const autoMatchCounterpartiesAllOps = withPermission('manage_finance_settings', _autoMatchCounterpartiesAllOps);
 
@@ -276,7 +267,6 @@ import {
   deleteRecurringTemplate as _deleteRecurringTemplate,
   toggleRecurringTemplate as _toggleRecurringTemplate,
   runRecurringNow as _runRecurringNow,
-  runAllDue as _runAllDue,
 } from './recurring.handlers';
 export const listRecurringTemplates  = withFinanceRead(_listRecurringTemplates);
 export const createRecurringTemplate = withPermission('manage_finance_settings', _createRecurringTemplate);
@@ -284,7 +274,6 @@ export const updateRecurringTemplate = withPermission('manage_finance_settings',
 export const deleteRecurringTemplate = withPermission('manage_finance_settings', _deleteRecurringTemplate);
 export const toggleRecurringTemplate = withPermission('manage_finance_settings', _toggleRecurringTemplate);
 export const runRecurringNow         = withPermission('manage_finance_settings', _runRecurringNow);
-export const runAllDue               = withPermission('manage_finance_settings', _runAllDue);
 
 import { getCalendarMonth as _getCalendarMonth } from './calendar.handlers';
 export const getCalendarMonth = withFinanceRead(_getCalendarMonth);
@@ -295,7 +284,6 @@ import {
   createBankInbox as _createBankInbox, updateBankInbox as _updateBankInbox,
   deleteBankInbox as _deleteBankInbox, toggleBankInbox as _toggleBankInbox,
   testBankInbox as _testBankInbox, runBankInboxNow as _runBankInboxNow,
-  runAllInboxes as _runAllInboxes,
 } from './bank-inbox.handlers';
 export const listBankInboxes = withFinanceRead(_listBankInboxes);
 export const createBankInbox = withPermission('import_bank_data', _createBankInbox);
@@ -304,7 +292,6 @@ export const deleteBankInbox = withPermission('import_bank_data', _deleteBankInb
 export const toggleBankInbox = withPermission('import_bank_data', _toggleBankInbox);
 export const testBankInbox   = withPermission('import_bank_data', _testBankInbox);
 export const runBankInboxNow = withPermission('import_bank_data', _runBankInboxNow);
-export const runAllInboxes   = withPermission('import_bank_data', _runAllInboxes);
 
 // ─── Cron-driven bank inbox poll ──────────────────────────────
 // X-Cron-Secret auth — NOT a user session.
@@ -523,4 +510,3 @@ export const deleteFinanceAccess  = withPermission('manage_users', _deleteFinanc
 export const getMyFinanceAccess   = withFinanceRead(_getMyFinanceAccess);
 
 // Re-export auth helpers for use in _guard.ts and other modules
-export { isFinanceUserEnabled, getFinanceAccessForUser } from './finance-access.handlers';

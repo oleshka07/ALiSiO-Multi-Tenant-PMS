@@ -191,34 +191,3 @@ export function getStoredTranslations(texts: string[]): Record<string, Record<st
   }
   return result;
 }
-
-/**
- * Translate all config fields + all active services in one call.
- * Used by the "Retranslate All" admin action.
- */
-export async function retranslateAll(force = false): Promise<{ translated: number; skipped: number }> {
-  const db = getDb();
-
-  // Collect config texts
-  let allTexts: string[] = [];
-  try {
-    const pgc = db.prepare('SELECT * FROM property_guest_config LIMIT 1').get() as any;
-    if (pgc) allTexts = [...allTexts, ...extractTexts(pgc)];
-  } catch { /* table may not exist */ }
-  try {
-    const utcfgs = db.prepare('SELECT * FROM guest_page_config').all() as any[];
-    for (const cfg of utcfgs) allTexts = [...allTexts, ...extractTexts(cfg)];
-  } catch { /* table may not exist */ }
-
-  // Collect service texts
-  try {
-    const svcs = db.prepare('SELECT name, description, unit_label FROM additional_services WHERE is_active=1').all() as any[];
-    allTexts = [...allTexts, ...extractServiceTexts(svcs)];
-  } catch { /* table may not exist */ }
-
-  // Deduplicate
-  const unique = [...new Set(allTexts.filter(Boolean))];
-  console.log(`[translate] retranslateAll: ${unique.length} unique texts`);
-
-  return translateAndStore(unique, force);
-}

@@ -26,10 +26,9 @@ export { listAvailabilityBlocks, createAvailabilityBlock, deleteAvailabilityBloc
 export { listServiceOrders, updateServiceOrder } from './service-orders.handlers';
 export { getWidgetCalendar, getWidgetCalendarOptions } from './widget-calendar-public.handlers';
 export { getWidgetSiteConfig, getWidgetSiteConfigOptions } from './widget-site.handlers';
-export { createBookingDraft, getBookingDraft, deleteBookingDraft, createBookingDraftOptions } from './booking-drafts.handlers';
 export { fixServiceOrderPayment, getPendingOrders } from './fix-payment.handlers';
 export { previewBookingComImport, confirmBookingComImport } from './import-bookingcom.handlers';
 export type { PreviewRow, PreviewResponse, ConfirmRequest, ConfirmResponse, PlannedUnit } from './import-bookingcom.handlers';
 export type { BookingComRow } from '../domain/booking-com-excel';
-export { notifyReservationCreated, notifyGroupBookingCreated } from '../domain/reservation-tg-notify';
+export { notifyReservationCreated } from '../domain/reservation-tg-notify';
 export { registerBookingsSubscribers } from '../events/subscribers';

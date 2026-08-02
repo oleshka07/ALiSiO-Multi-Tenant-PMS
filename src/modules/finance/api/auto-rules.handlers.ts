@@ -176,25 +176,6 @@ export async function toggleAutoRule(
   }
 }
 
-export async function moveAutoRule(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
-): Promise<NextResponse> {
-  try {
-    const db = getDb();
-    const { id } = await context.params;
-    const body = await request.json();
-    const existing = db.prepare("SELECT id FROM fin_auto_rules WHERE id = ?").get(id);
-    if (!existing) return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
-    if (body.sort_order === undefined) return NextResponse.json({ error: 'sort_order is required' }, { status: 400 });
-    db.prepare("UPDATE fin_auto_rules SET sort_order = ?, updated_at = datetime('now') WHERE id = ?").run(Number(body.sort_order) || 0, id);
-    const updated = db.prepare("SELECT * FROM fin_auto_rules WHERE id = ?").get(id) as AutoRuleRow;
-    return NextResponse.json(enrichRule(db, updated));
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-
 export async function applyAutoRulesToOperations(request: NextRequest): Promise<NextResponse> {
   try {
     const db = getDb();

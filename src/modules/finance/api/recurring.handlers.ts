@@ -172,12 +172,3 @@ export async function runRecurringNow(
   }
 }
 
-export async function runAllDue(_request: NextRequest): Promise<NextResponse> {
-  try {
-    const db = getDb();
-    const result = runRecurringTick(db);
-    return NextResponse.json(result);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}

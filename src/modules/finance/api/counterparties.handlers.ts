@@ -343,47 +343,6 @@ export async function moveCounterparty(
   }
 }
 
-export async function matchCounterpartyByText(request: NextRequest): Promise<NextResponse> {
-  try {
-    const db = getDb();
-    const body = await request.json();
-    const text = typeof body.text === 'string' ? body.text : '';
-    if (!text.trim()) {
-      return NextResponse.json({ counterparty_id: null, matched_alias: null });
-    }
-    const haystack = text.toUpperCase();
-    const orgId = getOrgId(db);
-
-    const rows = db.prepare(`
-      SELECT id, name, aliases_json, sort_order FROM finance_counterparties
-      WHERE organization_id = ? AND is_active = 1
-    `).all(orgId) as { id: string; name: string; aliases_json: string; sort_order: number }[];
-
-    let best: { id: string; name: string; alias: string; sort_order: number } | null = null;
-    for (const r of rows) {
-      const aliases = parseAliases(r.aliases_json);
-      for (const a of aliases) {
-        if (!a) continue;
-        if (haystack.includes(a)) {
-          if (!best || a.length > best.alias.length ||
-              (a.length === best.alias.length && r.sort_order < best.sort_order)) {
-            best = { id: r.id, name: r.name, alias: a, sort_order: r.sort_order };
-          }
-        }
-      }
-    }
-
-    if (!best) return NextResponse.json({ counterparty_id: null, matched_alias: null });
-    return NextResponse.json({
-      counterparty_id: best.id,
-      counterparty_name: best.name,
-      matched_alias: best.alias,
-    });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-
 export async function getAliasSuggestions(_request: NextRequest): Promise<NextResponse> {
   try {
     const db = getDb();

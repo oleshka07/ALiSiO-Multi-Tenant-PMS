@@ -143,19 +143,4 @@ export async function deleteTask(_request: NextRequest, context: IdParams): Prom
   }
 }
 
-export async function reorderTasks(request: NextRequest): Promise<NextResponse> {
-  try {
-    const body = await request.json();
-    const { updates } = body;
 
-    if (!updates || !Array.isArray(updates)) {
-      return NextResponse.json({ error: 'updates array is required' }, { status: 400 });
-    }
-
-    tasksRepo.reorderTasks(updates);
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('PATCH /api/tasks/reorder error:', error);
-    return NextResponse.json({ error: 'Failed to reorder tasks' }, { status: 500 });
-  }
-}
