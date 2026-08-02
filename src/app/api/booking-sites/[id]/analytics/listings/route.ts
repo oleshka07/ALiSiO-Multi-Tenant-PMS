@@ -1,3 +1,3 @@
-import { getAnalyticsListings } from '@bookings';
+import { getAnalyticsListings } from '@widget';
 
 export const GET = getAnalyticsListings;

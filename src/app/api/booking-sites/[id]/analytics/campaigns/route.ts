@@ -1,3 +1,3 @@
-import { getAnalyticsCampaigns } from '@bookings';
+import { getAnalyticsCampaigns } from '@widget';
 
 export const GET = getAnalyticsCampaigns;

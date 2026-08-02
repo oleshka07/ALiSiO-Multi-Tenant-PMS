@@ -3,7 +3,7 @@
 import dynamicImport from 'next/dynamic';
 import { useParams } from 'next/navigation';
 
-const BookingV2 = dynamicImport(() => import('@/modules/bookings/ui/BookingV2'), {
+const BookingV2 = dynamicImport(() => import('@/modules/widget/ui/BookingV2'), {
   ssr: false,
   loading: () => <div style={{ minHeight: '100vh', background: '#FAFAF7' }} />
 });

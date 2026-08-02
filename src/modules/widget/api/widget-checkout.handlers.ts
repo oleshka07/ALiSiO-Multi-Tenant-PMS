@@ -77,7 +77,7 @@ export async function createWidgetCheckoutSession(req: Request) {
       if (reservation_id) {
         // Fire email explicitly for offline/bank-transfer partner bookings
         try {
-          const { sendBookingConfirmationEmail } = await import('../data/send-confirmation-email');
+          const { sendBookingConfirmationEmail } = await import('@bookings');
           sendBookingConfirmationEmail(reservation_id).catch(() => { });
         } catch (err: any) {
           console.error('[Checkout Session] Failed to trigger email:', err.message);
@@ -444,7 +444,7 @@ export async function createWidgetCheckoutSession(req: Request) {
 
       if (reservation_id) {
         try {
-          const { sendBookingConfirmationEmail } = await import('../data/send-confirmation-email');
+          const { sendBookingConfirmationEmail } = await import('@bookings');
           sendBookingConfirmationEmail(reservation_id).catch(() => { });
         } catch (err: any) {
           console.error('[Checkout Session] Failed to trigger email:', err.message);

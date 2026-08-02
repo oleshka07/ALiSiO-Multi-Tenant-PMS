@@ -6,7 +6,7 @@ import { THEME_CONFIGS, THEMES, BUTTON_STYLES } from './SiteHelpers';
 import type { Site, DesignConfig } from '../_types';
 import dynamic from 'next/dynamic';
 
-const BookingV2 = dynamic(() => import('@/modules/bookings/ui/BookingV2'), {
+const BookingV2 = dynamic(() => import('@/modules/widget/ui/BookingV2'), {
   ssr: false,
   loading: () => <div style={{ height: 680, background: '#FAFAF7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: 13 }}>Завантаження...</div>,
 });

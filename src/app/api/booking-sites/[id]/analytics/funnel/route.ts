@@ -1,3 +1,3 @@
-import { getAnalyticsFunnel } from '@bookings';
+import { getAnalyticsFunnel } from '@widget';
 
 export const GET = getAnalyticsFunnel;

@@ -1,3 +1,3 @@
-import { getWidgetReservation } from '@/modules/bookings/api/widget-reserve.handlers';
+import { getWidgetReservation } from '@widget';
 
 export const GET = getWidgetReservation;

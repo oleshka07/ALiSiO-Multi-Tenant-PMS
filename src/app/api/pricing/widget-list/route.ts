@@ -1,4 +1,4 @@
-import { listOwnWidgetPrices, updateWidgetPriceItem } from '@properties/widget-prices.handlers';
+import { listOwnWidgetPrices, updateWidgetPriceItem } from '@widget';
 import { withPermission } from '@core/auth/session';
 
 /**

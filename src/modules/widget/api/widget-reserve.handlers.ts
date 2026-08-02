@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
 import { getDb } from '@core/db';
 import { eventBus } from '@core/event-bus';
-import { notifyReservationCreated } from '../domain/reservation-tg-notify';
+import { notifyReservationCreated } from '@bookings';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
 // Fallback to guarantee event subscribers are registered in Serverless (Vercel) isolated functions

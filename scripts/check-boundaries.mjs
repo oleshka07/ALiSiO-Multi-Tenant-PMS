@@ -11,9 +11,14 @@
  *   через фасад   an import from '@crm' — the module's front door. Fine by
  *                 design, and cheap to cut: it is one import line.
  *   ПРОБІЙ        an import that reaches past the front door into data/,
- *                 domain/ or ui/, or a raw SQL query against a table the module
- *                 owns. This is what makes removal expensive, and it is what
- *                 the tsconfig aliases exist to prevent.
+ *                 domain/ or events/, or a raw SQL query against a table the
+ *                 module owns. This is what makes removal expensive, and it is
+ *                 what the tsconfig aliases exist to prevent.
+ *
+ * A module has TWO front doors, not one. '@mod' carries server code and pulls
+ * in better-sqlite3, so a 'use client' component can never import it; React
+ * components therefore come from 'modules/mod/ui/…' directly, and that path
+ * counts as the front door rather than a breach.
  *
  * Read the second number. The first is the size of the seam; the second is
  * whether there is a seam at all.
@@ -45,14 +50,22 @@ const FILES = [];
  * and turn every screen showing a booking into a boundary breach. A shared
  * table is shared vocabulary, and reading one is not reaching into a module.
  */
-const WRITERS = new Map(); // table -> Set<module>
+/** Prose is not SQL: `// Update tentative → confirmed` named a table for a while. */
+const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+
+const WRITERS = new Map(); // table -> Set<module>, or the marker 'ЗЗОВНІ'
 for (const [f, text] of FILES) {
   const m = f.match(/^src\/modules\/([^/]+)\//);
-  if (!m) continue;
-  for (const w of text.matchAll(/\b(?:INSERT\s+(?:OR\s+\w+\s+)?INTO|UPDATE)\s+["'`]?([a-z_0-9]+)/gi)) {
+  // A write from a route file, a page or a script belongs to no module — and a
+  // table written from there is not any module's private property, however it
+  // looks from inside one.
+  const owner = m ? m[1] : 'ЗЗОВНІ';
+  for (const w of stripComments(text).matchAll(/\b(?:INSERT\s+(?:OR\s+\w+\s+)?INTO|UPDATE)\s+["'`]?([a-z_0-9]+)/gi)) {
     const t = w[1].toLowerCase();
+    // `UPDATE a SET …` is an alias inside a longer statement, not a table.
+    if (t.length <= 2) continue;
     if (!WRITERS.has(t)) WRITERS.set(t, new Set());
-    WRITERS.get(t).add(m[1]);
+    WRITERS.get(t).add(owner);
   }
 }
 
@@ -73,12 +86,17 @@ for (const mod of MODULES) {
 
   for (const [f, text] of FILES) {
     if (f.startsWith(`src/modules/${mod}/`)) continue;
+    // The schema file names every table by definition; that is its job, not a
+    // reach into anyone. It is the one place a table exists before a module.
+    if (f === 'src/lib/db.ts') continue;
 
-    // Front door: import ... from '@mod' or '@mod/...'
-    if (new RegExp(`from\\s+['"]@${mod}(?:/[^'"]*)?['"]`).test(text)) viaFacade.push(f);
+    // Front door: '@mod' for server code, 'modules/mod/ui/…' for React.
+    const front = new RegExp(`['"](?:@${mod}(?:/[^'"]*)?|[^'"]*modules/${mod}/ui/[^'"]*)['"]`);
+    if (front.test(text)) viaFacade.push(f);
 
-    // Past the front door: a relative or aliased path into the module's guts.
-    const deep = new RegExp(`from\\s+['"][^'"]*modules/${mod}/(data|domain|ui|events)/`);
+    // Past the front door. `import(…)` counts as much as `from …` — a
+    // dynamic() import of a module's internals is the same reach, just later.
+    const deep = new RegExp(`(?:from|import\\()\\s*['"][^'"]*modules/${mod}/(data|domain|events)/`);
     if (deep.test(text)) breaches.push(`${f} — імпорт нутрощів`);
 
     // Someone else's SQL against a table this module owns.

@@ -1,4 +1,4 @@
-import { getWidgetPriceList } from '@properties/widget-prices.handlers';
+import { getWidgetPriceList } from '@widget';
 import { NextResponse } from 'next/server';
 
 /**

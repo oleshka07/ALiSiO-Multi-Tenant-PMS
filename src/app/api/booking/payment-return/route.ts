@@ -1,2 +1,2 @@
-import { handlePaymentReturn } from '@bookings';
+import { handlePaymentReturn } from '@widget';
 export const GET = handlePaymentReturn;
