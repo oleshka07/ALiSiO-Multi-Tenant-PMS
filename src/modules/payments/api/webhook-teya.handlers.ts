@@ -6,7 +6,6 @@ import { getDb } from '@core/db';
 import { eventBus } from '@core/event-bus';
 import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
 // TODO: replace with eventBus.emit('crm.payment_received') when crm module is migrated
-import { onPaymentReceived } from '@/lib/crm/stage-transitions';
 // TODO: replace with eventBus subscription in @finance once subscriber bootstrap exists
 import { generateInvoiceForReservation } from '@finance';
 
@@ -343,22 +342,6 @@ function handlePaymentSuccess(db: any, event: any, eventType: string): SuccessOu
       console.error('[Teya Webhook] Auto-invoice error:', e.message);
     }
   }
-
-  try {
-    const leadByPayment = db.prepare(`
-      SELECT l.id, l.stage, l.estimated_value, r.total_price FROM crm_leads l
-      JOIN reservations r ON r.id = l.reservation_id
-      WHERE l.reservation_id IN (
-        SELECT so.reservation_id FROM service_orders so WHERE so.payment_id = ?
-        UNION SELECT bso.reservation_id FROM booking_service_orders bso WHERE bso.payment_id = ?
-        UNION SELECT r2.id FROM reservations r2 WHERE r2.payment_id = ?
-      ) LIMIT 1
-    `).get(effectiveRef, effectiveRef, effectiveRef) as any;
-    if (leadByPayment) {
-      const totalPrice = leadByPayment.total_price || leadByPayment.estimated_value || 0;
-      onPaymentReceived(leadByPayment.id, leadByPayment.stage, !!(amount && totalPrice > 0 && amount >= totalPrice * 0.9));
-    }
-  } catch (stageErr: any) { console.error('[Teya Webhook] Stage transition error:', stageErr.message); }
 
   void result4;
 

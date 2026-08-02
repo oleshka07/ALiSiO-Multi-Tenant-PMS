@@ -22,10 +22,6 @@ const moreItems = [
     { label: 'Гості', href: '/app/guests', icon: Users },
     { label: 'Документи', href: '/app/documents', icon: FileText },
   ]},
-  { section: 'CRM', items: [
-    { label: 'Inbox', href: '/app/crm/inbox', icon: MessageSquare },
-    { label: 'Pipeline', href: '/app/crm', icon: GitBranch },
-  ]},
   { section: 'Фінанси', items: [
     { label: 'Огляд', href: '/app/finance', icon: Wallet },
     { label: 'Журнал транзакцій', href: '/app/finance/operations', icon: List },

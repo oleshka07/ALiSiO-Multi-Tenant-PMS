@@ -47,7 +47,6 @@ const QUICK_ACTIONS = [
   { label: 'Фінанси',     href: '/app/finance',         icon: Wallet,       color: '#f59e0b' },
   { label: 'Витрати',     href: '/app/finance/expenses',icon: BarChart3,    color: '#ef4444' },
   { label: 'Ціни',        href: '/app/pricing',         icon: DollarSign,   color: '#06b6d4' },
-  { label: 'Inbox',       href: '/app/crm/inbox',       icon: MessageSquare,color: '#ec4899' },
   { label: 'Звіти',       href: '/app/reports',         icon: TrendingUp,   color: '#a855f7' },
   { label: 'Налаштув.',   href: '/app/settings',        icon: Settings,     color: '#6b7280' },
 ];

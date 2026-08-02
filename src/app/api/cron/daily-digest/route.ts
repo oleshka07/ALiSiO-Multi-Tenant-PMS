@@ -17,11 +17,6 @@ export async function GET(request: NextRequest) {
     console.log(`[Daily Digest Cron] Sent: ${result.sent}`);
     return NextResponse.json({
       sent: result.sent,
-      crm: {
-        newMessages: result.sections.crm.newMessagesToday,
-        unanswered: result.sections.crm.unansweredLeads.length,
-        pendingDrafts: result.sections.crm.pendingDrafts,
-      },
       finance: {
         totalIncome: result.sections.finance.totalIncome,
         totalExpenses: result.sections.finance.totalExpenses,

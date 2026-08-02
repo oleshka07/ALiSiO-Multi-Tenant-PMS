@@ -2559,112 +2559,6 @@ function runMigrations(database: any) {
   // CRM MODULE
   // ═══════════════════════════════════════════════════════
 
-  // --- Migration: create crm_channels table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS crm_channels (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      channel_type TEXT NOT NULL CHECK (channel_type IN (
-        'whatsapp', 'email', 'phone', 'guest_page', 'telegram',
-        'booking_com', 'airbnb', 'web_form', 'manual'
-      )),
-      name TEXT NOT NULL,
-      config_json TEXT,
-      is_active INTEGER NOT NULL DEFAULT 1,
-      is_default_outbound INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_channels_org ON crm_channels(organization_id)');
-
-  // Seed default channels
-  try {
-    const chExists = database.prepare("SELECT id FROM crm_channels WHERE id = 'ch_manual'").get();
-    if (!chExists) {
-      const orgRow = database.prepare("SELECT id FROM organizations LIMIT 1").get() as any;
-      if (orgRow) {
-        const insCh = database.prepare('INSERT INTO crm_channels (id, organization_id, channel_type, name, is_default_outbound) VALUES (?, ?, ?, ?, ?)');
-        insCh.run('ch_manual', orgRow.id, 'manual', 'Вручну', 0);
-        insCh.run('ch_phone', orgRow.id, 'phone', 'Телефон', 0);
-        insCh.run('ch_whatsapp', orgRow.id, 'whatsapp', 'WhatsApp', 1);
-        insCh.run('ch_email_main', orgRow.id, 'email', 'Email (основний)', 0);
-        insCh.run('ch_guest_page', orgRow.id, 'guest_page', 'Guest Page', 0);
-        insCh.run('ch_telegram', orgRow.id, 'telegram', 'Telegram Bot', 0);
-        insCh.run('ch_booking_com', orgRow.id, 'booking_com', 'Booking.com', 0);
-        insCh.run('ch_airbnb', orgRow.id, 'airbnb', 'Airbnb', 0);
-        insCh.run('ch_web_form', orgRow.id, 'web_form', 'Форми з сайтів', 0);
-        console.log('[DB] Created crm_channels with 9 default channels');
-      }
-    }
-  } catch (e: any) {
-    console.log('[DB] crm_channels seed note:', e.message);
-  }
-
-  // --- Migration: create crm_leads table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS crm_leads (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      guest_id TEXT REFERENCES guests(id),
-      channel_id TEXT REFERENCES crm_channels(id),
-      first_name TEXT NOT NULL,
-      last_name TEXT,
-      email TEXT,
-      phone TEXT,
-      whatsapp TEXT,
-      source TEXT NOT NULL DEFAULT 'manual',
-      external_booking_id TEXT,
-      stage TEXT NOT NULL DEFAULT 'new' CHECK (stage IN (
-        'new', 'inquiry', 'info_needed', 'quote_sent', 'negotiation',
-        'deposit_paid', 'booked', 'pre_stay', 'check_in', 'in_stay',
-        'check_out', 'post_stay', 'lost', 'spam'
-      )),
-      priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
-      assigned_to TEXT REFERENCES app_users(id),
-      reservation_id TEXT REFERENCES reservations(id),
-      guest_page_token TEXT,
-      check_in_date TEXT,
-      check_out_date TEXT,
-      adults INTEGER NOT NULL DEFAULT 0,
-      children INTEGER NOT NULL DEFAULT 0,
-      unit_type_preference TEXT,
-      estimated_value REAL NOT NULL DEFAULT 0,
-      currency TEXT NOT NULL DEFAULT 'CZK',
-      camping_children_json TEXT,
-      camping_vehicle_type TEXT,
-      camping_tent_type TEXT,
-      camping_electricity INTEGER NOT NULL DEFAULT 0,
-      camping_pets_json TEXT,
-      tags TEXT,
-      notes TEXT,
-      last_message_at TEXT,
-      last_message_preview TEXT,
-      unread_count INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_leads_org ON crm_leads(organization_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_leads_stage ON crm_leads(stage)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_leads_guest ON crm_leads(guest_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_leads_reservation ON crm_leads(reservation_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_leads_last_msg ON crm_leads(last_message_at)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_leads_email ON crm_leads(email)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_leads_phone ON crm_leads(phone)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_leads_external ON crm_leads(external_booking_id)');
-
-  // --- Migration: add country/nationality to crm_leads for lead-guest parity ---
-  const leadCols = database.prepare("PRAGMA table_info(crm_leads)").all().map((c: any) => c.name);
-  if (!leadCols.includes('country')) {
-    try { database.exec("ALTER TABLE crm_leads ADD COLUMN country TEXT"); } catch { /* */ }
-  }
-  if (!leadCols.includes('nationality')) {
-    try { database.exec("ALTER TABLE crm_leads ADD COLUMN nationality TEXT"); } catch { /* */ }
-  }
-  if (!leadCols.includes('language')) {
-    try { database.exec("ALTER TABLE crm_leads ADD COLUMN language TEXT"); } catch { /* */ }
-  }
-
   // --- Migration: add whatsapp to guests for sync with leads ---
   const guestCols2 = database.prepare("PRAGMA table_info(guests)").all().map((c: any) => c.name);
   if (!guestCols2.includes('whatsapp')) {
@@ -2682,151 +2576,6 @@ function runMigrations(database: any) {
       updated_at TEXT DEFAULT (datetime('now'))
     )
   `);
-
-  // --- Migration: create crm_conversations table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS crm_conversations (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      lead_id TEXT NOT NULL REFERENCES crm_leads(id) ON DELETE CASCADE,
-      guest_id TEXT REFERENCES guests(id),
-      reservation_id TEXT REFERENCES reservations(id),
-      subject TEXT,
-      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'waiting', 'resolved', 'archived')),
-      last_message_at TEXT,
-      last_channel TEXT,
-      unread_count INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_conv_lead ON crm_conversations(lead_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_conv_status ON crm_conversations(status)');
-
-  // --- Migration: create crm_messages table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS crm_messages (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      conversation_id TEXT NOT NULL REFERENCES crm_conversations(id) ON DELETE CASCADE,
-      channel_type TEXT NOT NULL,
-      direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
-      sender_type TEXT NOT NULL CHECK (sender_type IN ('guest', 'staff', 'ai', 'system')),
-      sender_id TEXT,
-      sender_name TEXT,
-      content TEXT NOT NULL,
-      content_type TEXT NOT NULL DEFAULT 'text' CHECK (content_type IN ('text', 'image', 'file', 'template', 'system')),
-      metadata_json TEXT,
-      external_id TEXT,
-      is_ai_generated INTEGER NOT NULL DEFAULT 0,
-      ai_approved INTEGER NOT NULL DEFAULT 1,
-      read_at TEXT,
-      delivered_at TEXT,
-      status TEXT NOT NULL DEFAULT 'sent' CHECK (status IN ('draft', 'queued', 'sent', 'delivered', 'read', 'failed')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_msg_conv ON crm_messages(conversation_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_msg_created ON crm_messages(created_at)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_msg_channel ON crm_messages(channel_type)');
-
-  // --- Migration: create crm_prompt_configs table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS crm_prompt_configs (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      stage TEXT,
-      trigger_type TEXT NOT NULL DEFAULT 'manual' CHECK (trigger_type IN ('manual', 'auto', 'stage_change')),
-      system_prompt TEXT NOT NULL,
-      context_instructions TEXT,
-      variables TEXT,
-      temperature REAL NOT NULL DEFAULT 0.7,
-      model TEXT NOT NULL DEFAULT 'gpt-4o',
-      is_active INTEGER NOT NULL DEFAULT 1,
-      version INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_prompts_org ON crm_prompt_configs(organization_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_prompts_stage ON crm_prompt_configs(stage)');
-
-  // --- Migration: create crm_stage_history table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS crm_stage_history (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      lead_id TEXT NOT NULL REFERENCES crm_leads(id) ON DELETE CASCADE,
-      from_stage TEXT,
-      to_stage TEXT NOT NULL,
-      changed_by TEXT REFERENCES app_users(id),
-      trigger TEXT NOT NULL DEFAULT 'manual',
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_stage_lead ON crm_stage_history(lead_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_stage_created ON crm_stage_history(created_at)');
-
-  // --- Migration: create crm_ai_training table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS crm_ai_training (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      conversation_id TEXT REFERENCES crm_conversations(id),
-      guest_message TEXT NOT NULL,
-      guest_language TEXT,
-      lead_stage TEXT,
-      guest_context_json TEXT,
-      ai_draft TEXT NOT NULL,
-      final_response TEXT,
-      was_approved INTEGER NOT NULL DEFAULT 0,
-      was_edited INTEGER NOT NULL DEFAULT 0,
-      edit_reason TEXT,
-      rating INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_training_approved ON crm_ai_training(was_approved)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_training_stage ON crm_ai_training(lead_stage)');
-
-  // --- Migration: create crm_automation_rules table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS crm_automation_rules (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      trigger_stage TEXT,
-      trigger_condition TEXT,
-      action_type TEXT NOT NULL CHECK (action_type IN ('send_message', 'change_stage', 'notify_admin', 'send_tg')),
-      action_config TEXT NOT NULL,
-      is_active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_auto_org ON crm_automation_rules(organization_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_auto_stage ON crm_automation_rules(trigger_stage)');
-
-  // --- Migration: crm_knowledge_base — AI training knowledge articles ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS crm_knowledge_base (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      topic TEXT NOT NULL,
-      keywords TEXT NOT NULL,
-      content TEXT NOT NULL,
-      category TEXT NOT NULL DEFAULT 'general',
-      language TEXT DEFAULT 'all',
-      is_active INTEGER NOT NULL DEFAULT 1,
-      usage_count INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_kb_org ON crm_knowledge_base(organization_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_kb_category ON crm_knowledge_base(category)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_crm_kb_active ON crm_knowledge_base(is_active)');
-
-  // ═══════════════════════════════════════════════════════
-  // GUEST PAGE V3 — BATCH 3 MIGRATIONS
-  // ═══════════════════════════════════════════════════════
 
   // --- Migration: property_guest_config (shared property-level settings) ---
   const pgcExists = database.prepare(
@@ -3119,25 +2868,11 @@ function runMigrations(database: any) {
     }
   } catch (e: any) { console.log('[DB] allowed_domains migration note:', e.message); }
 
-  // --- Migration: create site_capture_scripts table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS site_capture_scripts (
-      id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      site_id     TEXT NOT NULL REFERENCES booking_sites(id) ON DELETE CASCADE,
-      name        TEXT NOT NULL DEFAULT 'Основний скрипт',
-      is_active   INTEGER NOT NULL DEFAULT 1,
-      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_capture_scripts_site ON site_capture_scripts(site_id)');
-
   // --- Migration: create site_incoming_leads table ---
   database.exec(`
     CREATE TABLE IF NOT EXISTS site_incoming_leads (
       id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       site_id     TEXT NOT NULL REFERENCES booking_sites(id) ON DELETE CASCADE,
-      script_id   TEXT REFERENCES site_capture_scripts(id) ON DELETE SET NULL,
       full_name   TEXT,
       email       TEXT,
       phone       TEXT,
@@ -4978,6 +4713,59 @@ function runMigrations(database: any) {
     console.log('[DB] organization legal columns migration note:', e.message);
   }
 
+  // --- Migration: the CRM is gone ---
+  // It was half-built and shaped around one hotel's way of working, so it was
+  // cut to get the core of the PMS right first. The code lives on the
+  // `archive/crm` branch and at the `crm-before-removal` tag; when a new CRM is
+  // designed, that is where the experience is — not in tables nobody writes to.
+  //
+  // Dropped rather than left standing: an unused table is one the Postgres
+  // migration still has to carry and the isolation audit still has to classify.
+  try {
+    const crmTables = (database.prepare(
+      `SELECT name FROM sqlite_master WHERE type = 'table'
+       AND (name LIKE 'crm_%' OR name IN ('incoming_leads', 'site_capture_scripts', 'whatsapp_templates'))`,
+    ).all() as any[]).map((r: any) => r.name);
+    for (const t of crmTables) database.exec(`DROP TABLE IF EXISTS "${t}"`);
+    if (crmTables.length) console.log(`[DB] CRM: dropped ${crmTables.length} tables`);
+
+    // site_incoming_leads survives — the site analytics tab counts form
+    // submissions — but it pointed at site_capture_scripts, which has just
+    // gone. A foreign key to a table that does not exist makes SQLite refuse
+    // to prepare any statement touching the row, including a DELETE on
+    // properties three joins away. That is exactly how accruals and receipts
+    // were unusable before, so: rebuild without the dead column.
+    const silSql = (database.prepare('SELECT sql FROM sqlite_master WHERE type = ? AND name = ?')
+      .get('table', 'site_incoming_leads') as { sql: string } | undefined)?.sql || '';
+    if (/REFERENCES\s+site_capture_scripts/i.test(silSql)) {
+      database.exec('ALTER TABLE site_incoming_leads RENAME TO site_incoming_leads_old');
+      database.exec(`
+        CREATE TABLE site_incoming_leads (
+          id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+          site_id     TEXT NOT NULL REFERENCES booking_sites(id) ON DELETE CASCADE,
+          full_name   TEXT,
+          email       TEXT,
+          phone       TEXT,
+          message     TEXT,
+          status      TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'read', 'archived')),
+          source_url  TEXT,
+          raw_data    TEXT,
+          created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      database.exec(`
+        INSERT INTO site_incoming_leads
+          (id, site_id, full_name, email, phone, message, status, source_url, raw_data, created_at)
+        SELECT id, site_id, full_name, email, phone, message, status, source_url, raw_data, created_at
+        FROM site_incoming_leads_old
+      `);
+      database.exec('DROP TABLE site_incoming_leads_old');
+      console.log('[DB] site_incoming_leads: dead foreign key removed');
+    }
+  } catch (e: any) {
+    console.error('[DB] CRM table removal:', e.message);
+  }
+
   // --- Migration: the last tables with no path to an organization ---
   // Everything else in the schema reaches an organization either directly or
   // through a foreign key. These did not, by any route, which means every
@@ -5021,33 +4809,11 @@ function runMigrations(database: any) {
         'UPDATE booking_activity_log SET organization_id = (SELECT p.organization_id FROM reservations r JOIN properties p ON p.id = r.property_id WHERE r.id = booking_activity_log.reservation_id) WHERE organization_id IS NULL AND reservation_id IS NOT NULL',
       booking_drafts: null,
       widget_price_list: null,
-      crm_auto_drafts: null,
       widget_handshakes: null,
     };
 
-    // Created here rather than left to the handlers that lazily CREATE ... IF
-    // NOT EXISTS them, so the first shape on disk is the scoped one.
-    database.exec(`
-      CREATE TABLE IF NOT EXISTS crm_auto_drafts (
-        id TEXT PRIMARY KEY,
-        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
-        message_id TEXT NOT NULL,
-        conversation_id TEXT NOT NULL,
-        lead_id TEXT NOT NULL,
-        account_id TEXT,
-        original_query TEXT NOT NULL,
-        draft_content_uk TEXT NOT NULL,
-        draft_content_translated TEXT,
-        target_language TEXT,
-        status TEXT DEFAULT 'pending',
-        telegram_message_id INTEGER,
-        reply_subject TEXT,
-        reply_to_email TEXT,
-        in_reply_to TEXT,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-      )
-    `);
+    // Created here rather than left to the handler that lazily CREATE ... IF
+    // NOT EXISTS it, so the first shape on disk is the scoped one.
     database.exec(`
       CREATE TABLE IF NOT EXISTS widget_handshakes (
         token TEXT PRIMARY KEY,

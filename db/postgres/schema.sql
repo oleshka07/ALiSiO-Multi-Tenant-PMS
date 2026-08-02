@@ -475,202 +475,6 @@ CREATE TABLE "coupons" (
   CHECK (discount_type IN ('fixed_price', 'percentage', 'fixed_amount'))
 );
 
-CREATE TABLE "crm_ai_training" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "conversation_id" TEXT,
-  "guest_message" TEXT NOT NULL,
-  "guest_language" TEXT,
-  "lead_stage" TEXT,
-  "guest_context_json" JSONB,
-  "ai_draft" TEXT NOT NULL,
-  "final_response" TEXT,
-  "was_approved" BIGINT DEFAULT 0 NOT NULL,
-  "was_edited" BIGINT DEFAULT 0 NOT NULL,
-  "edit_reason" TEXT,
-  "rating" BIGINT,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id")
-);
-
-CREATE TABLE "crm_auto_drafts" (
-  "id" TEXT NOT NULL,
-  "organization_id" TEXT,
-  "message_id" TEXT NOT NULL,
-  "conversation_id" TEXT NOT NULL,
-  "lead_id" TEXT NOT NULL,
-  "account_id" TEXT,
-  "original_query" TEXT NOT NULL,
-  "draft_content_uk" TEXT NOT NULL,
-  "draft_content_translated" TEXT,
-  "target_language" TEXT,
-  "status" TEXT DEFAULT 'pending',
-  "telegram_message_id" BIGINT,
-  "reply_subject" TEXT,
-  "reply_to_email" TEXT,
-  "in_reply_to" TEXT,
-  "created_at" TIMESTAMPTZ DEFAULT now(),
-  "updated_at" TIMESTAMPTZ DEFAULT now(),
-  PRIMARY KEY ("id")
-);
-
-CREATE TABLE "crm_automation_rules" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "name" TEXT NOT NULL,
-  "trigger_stage" TEXT,
-  "trigger_condition" TEXT,
-  "action_type" TEXT NOT NULL,
-  "action_config" TEXT NOT NULL,
-  "is_active" BOOLEAN DEFAULT true NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  CHECK (action_type IN ('send_message', 'change_stage', 'notify_admin', 'send_tg'))
-);
-
-CREATE TABLE "crm_channels" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "channel_type" TEXT NOT NULL,
-  "name" TEXT NOT NULL,
-  "config_json" JSONB,
-  "is_active" BOOLEAN DEFAULT true NOT NULL,
-  "is_default_outbound" BOOLEAN DEFAULT false NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  CHECK (channel_type IN ( 'whatsapp', 'email', 'phone', 'guest_page', 'telegram', 'booking_com', 'airbnb', 'web_form', 'manual' ))
-);
-
-CREATE TABLE "crm_conversations" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "lead_id" TEXT NOT NULL,
-  "guest_id" TEXT,
-  "reservation_id" TEXT,
-  "subject" TEXT,
-  "status" TEXT DEFAULT 'active' NOT NULL,
-  "last_message_at" TIMESTAMPTZ,
-  "last_channel" TEXT,
-  "unread_count" BIGINT DEFAULT 0 NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  CHECK (status IN ('active', 'waiting', 'resolved', 'archived'))
-);
-
-CREATE TABLE "crm_knowledge_base" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "topic" TEXT NOT NULL,
-  "keywords" TEXT NOT NULL,
-  "content" TEXT NOT NULL,
-  "category" TEXT DEFAULT 'general' NOT NULL,
-  "language" TEXT DEFAULT 'all',
-  "is_active" BOOLEAN DEFAULT true NOT NULL,
-  "usage_count" BIGINT DEFAULT 0 NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id")
-);
-
-CREATE TABLE "crm_leads" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "guest_id" TEXT,
-  "channel_id" TEXT,
-  "first_name" TEXT NOT NULL,
-  "last_name" TEXT,
-  "email" TEXT,
-  "phone" TEXT,
-  "whatsapp" TEXT,
-  "source" TEXT DEFAULT 'manual' NOT NULL,
-  "external_booking_id" TEXT,
-  "stage" TEXT DEFAULT 'new' NOT NULL,
-  "priority" TEXT DEFAULT 'normal' NOT NULL,
-  "assigned_to" TEXT,
-  "reservation_id" TEXT,
-  "guest_page_token" TEXT,
-  "check_in_date" DATE,
-  "check_out_date" DATE,
-  "adults" BIGINT DEFAULT 0 NOT NULL,
-  "children" BIGINT DEFAULT 0 NOT NULL,
-  "unit_type_preference" TEXT,
-  "estimated_value" DOUBLE PRECISION DEFAULT 0 NOT NULL,
-  "currency" TEXT DEFAULT 'CZK' NOT NULL,
-  "camping_children_json" JSONB,
-  "camping_vehicle_type" TEXT,
-  "camping_tent_type" TEXT,
-  "camping_electricity" BIGINT DEFAULT 0 NOT NULL,
-  "camping_pets_json" JSONB,
-  "tags" TEXT,
-  "notes" TEXT,
-  "last_message_at" TIMESTAMPTZ,
-  "last_message_preview" TEXT,
-  "unread_count" BIGINT DEFAULT 0 NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "country" TEXT,
-  "nationality" TEXT,
-  "language" TEXT,
-  PRIMARY KEY ("id"),
-  CHECK (stage IN ( 'new', 'inquiry', 'info_needed', 'quote_sent', 'negotiation', 'deposit_paid', 'booked', 'pre_stay', 'check_in', 'in_stay', 'check_out', 'post_stay', 'lost', 'spam' )),
-  CHECK (priority IN ('low', 'normal', 'high', 'urgent'))
-);
-
-CREATE TABLE "crm_messages" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "conversation_id" TEXT NOT NULL,
-  "channel_type" TEXT NOT NULL,
-  "direction" TEXT NOT NULL,
-  "sender_type" TEXT NOT NULL,
-  "sender_id" TEXT,
-  "sender_name" TEXT,
-  "content" TEXT NOT NULL,
-  "content_type" TEXT DEFAULT 'text' NOT NULL,
-  "metadata_json" JSONB,
-  "external_id" TEXT,
-  "is_ai_generated" BOOLEAN DEFAULT false NOT NULL,
-  "ai_approved" BIGINT DEFAULT 1 NOT NULL,
-  "read_at" TIMESTAMPTZ,
-  "delivered_at" TIMESTAMPTZ,
-  "status" TEXT DEFAULT 'sent' NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  CHECK (direction IN ('inbound', 'outbound')),
-  CHECK (sender_type IN ('guest', 'staff', 'ai', 'system')),
-  CHECK (content_type IN ('text', 'image', 'file', 'template', 'system')),
-  CHECK (status IN ('draft', 'queued', 'sent', 'delivered', 'read', 'failed'))
-);
-
-CREATE TABLE "crm_prompt_configs" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "name" TEXT NOT NULL,
-  "stage" TEXT,
-  "trigger_type" TEXT DEFAULT 'manual' NOT NULL,
-  "system_prompt" TEXT NOT NULL,
-  "context_instructions" TEXT,
-  "variables" TEXT,
-  "temperature" DOUBLE PRECISION DEFAULT 0.7 NOT NULL,
-  "model" TEXT DEFAULT 'gpt-4o' NOT NULL,
-  "is_active" BOOLEAN DEFAULT true NOT NULL,
-  "version" BIGINT DEFAULT 1 NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  CHECK (trigger_type IN ('manual', 'auto', 'stage_change'))
-);
-
-CREATE TABLE "crm_stage_history" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "lead_id" TEXT NOT NULL,
-  "from_stage" TEXT,
-  "to_stage" TEXT NOT NULL,
-  "changed_by" TEXT,
-  "trigger" TEXT DEFAULT 'manual' NOT NULL,
-  "notes" TEXT,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id")
-);
-
 CREATE TABLE "early_bookings" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "guest_id" TEXT,
@@ -1977,20 +1781,9 @@ CREATE TABLE "settings" (
   PRIMARY KEY ("key")
 );
 
-CREATE TABLE "site_capture_scripts" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "site_id" TEXT NOT NULL,
-  "name" TEXT DEFAULT 'Основний скрипт' NOT NULL,
-  "is_active" BOOLEAN DEFAULT true NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id")
-);
-
 CREATE TABLE "site_incoming_leads" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "site_id" TEXT NOT NULL,
-  "script_id" TEXT,
   "full_name" TEXT,
   "email" TEXT,
   "phone" TEXT,
@@ -2369,40 +2162,6 @@ ALTER TABLE "coupons" ADD CONSTRAINT "fk_coupons_gift_card_rule_id_2"
   FOREIGN KEY ("gift_card_rule_id") REFERENCES "gift_card_automation_rules" ("id") ON DELETE SET NULL;
 ALTER TABLE "coupons" ADD CONSTRAINT "fk_coupons_site_id_3"
   FOREIGN KEY ("site_id") REFERENCES "booking_sites" ("id") ON DELETE SET NULL;
-ALTER TABLE "crm_ai_training" ADD CONSTRAINT "fk_crm_ai_training_conversation_id_1"
-  FOREIGN KEY ("conversation_id") REFERENCES "crm_conversations" ("id");
-ALTER TABLE "crm_auto_drafts" ADD CONSTRAINT "fk_crm_auto_drafts_organization_id_1"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "crm_automation_rules" ADD CONSTRAINT "fk_crm_automation_rules_organization_id_1"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "crm_channels" ADD CONSTRAINT "fk_crm_channels_organization_id_1"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "crm_conversations" ADD CONSTRAINT "fk_crm_conversations_reservation_id_1"
-  FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id");
-ALTER TABLE "crm_conversations" ADD CONSTRAINT "fk_crm_conversations_guest_id_2"
-  FOREIGN KEY ("guest_id") REFERENCES "guests" ("id");
-ALTER TABLE "crm_conversations" ADD CONSTRAINT "fk_crm_conversations_lead_id_3"
-  FOREIGN KEY ("lead_id") REFERENCES "crm_leads" ("id") ON DELETE CASCADE;
-ALTER TABLE "crm_knowledge_base" ADD CONSTRAINT "fk_crm_knowledge_base_organization_id_1"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "crm_leads" ADD CONSTRAINT "fk_crm_leads_reservation_id_1"
-  FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id");
-ALTER TABLE "crm_leads" ADD CONSTRAINT "fk_crm_leads_assigned_to_2"
-  FOREIGN KEY ("assigned_to") REFERENCES "app_users" ("id");
-ALTER TABLE "crm_leads" ADD CONSTRAINT "fk_crm_leads_channel_id_3"
-  FOREIGN KEY ("channel_id") REFERENCES "crm_channels" ("id");
-ALTER TABLE "crm_leads" ADD CONSTRAINT "fk_crm_leads_guest_id_4"
-  FOREIGN KEY ("guest_id") REFERENCES "guests" ("id");
-ALTER TABLE "crm_leads" ADD CONSTRAINT "fk_crm_leads_organization_id_5"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "crm_messages" ADD CONSTRAINT "fk_crm_messages_conversation_id_1"
-  FOREIGN KEY ("conversation_id") REFERENCES "crm_conversations" ("id") ON DELETE CASCADE;
-ALTER TABLE "crm_prompt_configs" ADD CONSTRAINT "fk_crm_prompt_configs_organization_id_1"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "crm_stage_history" ADD CONSTRAINT "fk_crm_stage_history_changed_by_1"
-  FOREIGN KEY ("changed_by") REFERENCES "app_users" ("id");
-ALTER TABLE "crm_stage_history" ADD CONSTRAINT "fk_crm_stage_history_lead_id_2"
-  FOREIGN KEY ("lead_id") REFERENCES "crm_leads" ("id") ON DELETE CASCADE;
 ALTER TABLE "early_bookings" ADD CONSTRAINT "fk_early_bookings_source_reservation_id_1"
   FOREIGN KEY ("source_reservation_id") REFERENCES "reservations" ("id");
 ALTER TABLE "early_bookings" ADD CONSTRAINT "fk_early_bookings_unit_type_id_2"
@@ -2669,11 +2428,7 @@ ALTER TABLE "service_time_slots" ADD CONSTRAINT "fk_service_time_slots_service_i
   FOREIGN KEY ("service_id") REFERENCES "additional_services" ("id") ON DELETE CASCADE;
 ALTER TABLE "sessions" ADD CONSTRAINT "fk_sessions_user_id_1"
   FOREIGN KEY ("user_id") REFERENCES "app_users" ("id") ON DELETE CASCADE;
-ALTER TABLE "site_capture_scripts" ADD CONSTRAINT "fk_site_capture_scripts_site_id_1"
-  FOREIGN KEY ("site_id") REFERENCES "booking_sites" ("id") ON DELETE CASCADE;
-ALTER TABLE "site_incoming_leads" ADD CONSTRAINT "fk_site_incoming_leads_script_id_1"
-  FOREIGN KEY ("script_id") REFERENCES "site_capture_scripts" ("id") ON DELETE SET NULL;
-ALTER TABLE "site_incoming_leads" ADD CONSTRAINT "fk_site_incoming_leads_site_id_2"
+ALTER TABLE "site_incoming_leads" ADD CONSTRAINT "fk_site_incoming_leads_site_id_1"
   FOREIGN KEY ("site_id") REFERENCES "booking_sites" ("id") ON DELETE CASCADE;
 ALTER TABLE "site_listings" ADD CONSTRAINT "fk_site_listings_unit_type_id_1"
   FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
@@ -2783,32 +2538,6 @@ CREATE INDEX "idx_ch_room_conn" ON "channel_room_mapping" ("connection_id");
 CREATE INDEX "idx_ct_hash" ON "content_translations" ("text_hash");
 CREATE INDEX "idx_ct_lang" ON "content_translations" ("text_hash", "lang");
 CREATE INDEX "idx_coupons_org" ON "coupons" ("organization_id");
-CREATE INDEX "idx_crm_training_approved" ON "crm_ai_training" ("was_approved");
-CREATE INDEX "idx_crm_training_stage" ON "crm_ai_training" ("lead_stage");
-CREATE INDEX "idx_crm_auto_drafts_org" ON "crm_auto_drafts" ("organization_id");
-CREATE INDEX "idx_crm_auto_org" ON "crm_automation_rules" ("organization_id");
-CREATE INDEX "idx_crm_auto_stage" ON "crm_automation_rules" ("trigger_stage");
-CREATE INDEX "idx_crm_channels_org" ON "crm_channels" ("organization_id");
-CREATE INDEX "idx_crm_conv_lead" ON "crm_conversations" ("lead_id");
-CREATE INDEX "idx_crm_conv_status" ON "crm_conversations" ("status");
-CREATE INDEX "idx_crm_kb_active" ON "crm_knowledge_base" ("is_active");
-CREATE INDEX "idx_crm_kb_category" ON "crm_knowledge_base" ("category");
-CREATE INDEX "idx_crm_kb_org" ON "crm_knowledge_base" ("organization_id");
-CREATE INDEX "idx_crm_leads_email" ON "crm_leads" ("email");
-CREATE INDEX "idx_crm_leads_external" ON "crm_leads" ("external_booking_id");
-CREATE INDEX "idx_crm_leads_guest" ON "crm_leads" ("guest_id");
-CREATE INDEX "idx_crm_leads_last_msg" ON "crm_leads" ("last_message_at");
-CREATE INDEX "idx_crm_leads_org" ON "crm_leads" ("organization_id");
-CREATE INDEX "idx_crm_leads_phone" ON "crm_leads" ("phone");
-CREATE INDEX "idx_crm_leads_reservation" ON "crm_leads" ("reservation_id");
-CREATE INDEX "idx_crm_leads_stage" ON "crm_leads" ("stage");
-CREATE INDEX "idx_crm_msg_channel" ON "crm_messages" ("channel_type");
-CREATE INDEX "idx_crm_msg_conv" ON "crm_messages" ("conversation_id");
-CREATE INDEX "idx_crm_msg_created" ON "crm_messages" ("created_at");
-CREATE INDEX "idx_crm_prompts_org" ON "crm_prompt_configs" ("organization_id");
-CREATE INDEX "idx_crm_prompts_stage" ON "crm_prompt_configs" ("stage");
-CREATE INDEX "idx_crm_stage_created" ON "crm_stage_history" ("created_at");
-CREATE INDEX "idx_crm_stage_lead" ON "crm_stage_history" ("lead_id");
 CREATE INDEX "idx_ec_parent" ON "expense_categories" ("parent_id");
 CREATE INDEX "idx_arm_op" ON "fin_auto_rule_matches" ("operation_id");
 CREATE INDEX "idx_arm_rule" ON "fin_auto_rule_matches" ("rule_id");
@@ -2923,7 +2652,6 @@ CREATE INDEX "idx_reservations_parent" ON "reservations" ("parent_id");
 CREATE INDEX "idx_reservations_property" ON "reservations" ("property_id");
 CREATE INDEX "idx_reservations_status" ON "reservations" ("status");
 CREATE INDEX "idx_reservations_unit" ON "reservations" ("unit_id");
-CREATE INDEX "idx_capture_scripts_site" ON "site_capture_scripts" ("site_id");
 CREATE INDEX "idx_incoming_leads_site" ON "site_incoming_leads" ("site_id");
 CREATE INDEX "idx_incoming_leads_status" ON "site_incoming_leads" ("status");
 CREATE INDEX "idx_site_listings_site" ON "site_listings" ("site_id");
@@ -2962,12 +2690,6 @@ CREATE INDEX IF NOT EXISTS "idx_channel_connections_org" ON "channel_connections
 CREATE INDEX IF NOT EXISTS "idx_channel_credentials_org" ON "channel_credentials" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cost_allocations_org" ON "cost_allocations" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_coupons_org" ON "coupons" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_crm_auto_drafts_org" ON "crm_auto_drafts" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_crm_automation_rules_org" ON "crm_automation_rules" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_crm_channels_org" ON "crm_channels" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_crm_knowledge_base_org" ON "crm_knowledge_base" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_crm_leads_org" ON "crm_leads" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_crm_prompt_configs_org" ON "crm_prompt_configs" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_expense_categories_org" ON "expense_categories" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_auto_rules_org" ON "fin_auto_rules" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_bank_inboxes_org" ON "fin_bank_inboxes" ("organization_id");
@@ -3163,66 +2885,6 @@ ALTER TABLE "coupons" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "coupons_tenant" ON "coupons"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "crm_ai_training" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "crm_ai_training" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "crm_ai_training_tenant" ON "crm_ai_training"
-  USING ("conversation_id" IN (SELECT "id" FROM "crm_conversations" WHERE "reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))))
-  WITH CHECK ("conversation_id" IN (SELECT "id" FROM "crm_conversations" WHERE "reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))));
-
-ALTER TABLE "crm_auto_drafts" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "crm_auto_drafts" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "crm_auto_drafts_tenant" ON "crm_auto_drafts"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "crm_automation_rules" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "crm_automation_rules" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "crm_automation_rules_tenant" ON "crm_automation_rules"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "crm_channels" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "crm_channels" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "crm_channels_tenant" ON "crm_channels"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "crm_conversations" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "crm_conversations" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "crm_conversations_tenant" ON "crm_conversations"
-  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))))
-  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))));
-
-ALTER TABLE "crm_knowledge_base" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "crm_knowledge_base" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "crm_knowledge_base_tenant" ON "crm_knowledge_base"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "crm_leads" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "crm_leads" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "crm_leads_tenant" ON "crm_leads"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "crm_messages" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "crm_messages" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "crm_messages_tenant" ON "crm_messages"
-  USING ("conversation_id" IN (SELECT "id" FROM "crm_conversations" WHERE "reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))))
-  WITH CHECK ("conversation_id" IN (SELECT "id" FROM "crm_conversations" WHERE "reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))));
-
-ALTER TABLE "crm_prompt_configs" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "crm_prompt_configs" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "crm_prompt_configs_tenant" ON "crm_prompt_configs"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "crm_stage_history" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "crm_stage_history" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "crm_stage_history_tenant" ON "crm_stage_history"
-  USING ("changed_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id')))
-  WITH CHECK ("changed_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "early_bookings" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "early_bookings" FORCE ROW LEVEL SECURITY;
@@ -3614,17 +3276,11 @@ CREATE POLICY "service_time_slots_tenant" ON "service_time_slots"
   USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))))
   WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))));
 
-ALTER TABLE "site_capture_scripts" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "site_capture_scripts" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "site_capture_scripts_tenant" ON "site_capture_scripts"
-  USING ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id'))))
-  WITH CHECK ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id'))));
-
 ALTER TABLE "site_incoming_leads" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "site_incoming_leads" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "site_incoming_leads_tenant" ON "site_incoming_leads"
-  USING ("script_id" IN (SELECT "id" FROM "site_capture_scripts" WHERE "site_id" IN (SELECT "id" FROM "booking_sites" WHERE "created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id')))))
-  WITH CHECK ("script_id" IN (SELECT "id" FROM "site_capture_scripts" WHERE "site_id" IN (SELECT "id" FROM "booking_sites" WHERE "created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id')))));
+  USING ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "site_listings" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "site_listings" FORCE ROW LEVEL SECURITY;

@@ -28,67 +28,6 @@ function formatAmount(amount: number, currency = 'CZK'): string {
 
 // ─── CRM Digest ──────────────────────────────────────────
 
-interface CrmDigest {
-  newMessagesToday: number;
-  unansweredLeads: { id: string; name: string; lastMessage: string; waitingSince: string }[];
-  pendingDrafts: number;
-  totalUnread: number;
-}
-
-function getCrmDigest(): CrmDigest {
-  const db = getDb();
-  const today = new Date().toISOString().split('T')[0];
-
-  // New inbound messages today
-  const newMsgs = db.prepare(`
-    SELECT COUNT(*) as cnt FROM crm_messages
-    WHERE direction = 'inbound' AND date(created_at) = ?
-  `).get(today) as any;
-
-  // Unanswered leads — last message was inbound, lead not in closed stages
-  const unanswered = db.prepare(`
-    SELECT l.id, l.first_name, l.last_name,
-      m.content as last_message, m.created_at as last_message_at
-    FROM crm_leads l
-    JOIN crm_conversations c ON c.lead_id = l.id
-    JOIN crm_messages m ON m.conversation_id = c.id
-    WHERE m.direction = 'inbound'
-      AND m.id = (
-        SELECT m3.id FROM crm_messages m3
-        WHERE m3.conversation_id = c.id
-        ORDER BY m3.created_at DESC LIMIT 1
-      )
-      AND l.stage NOT IN ('lost', 'spam', 'booked', 'check_in', 'in_stay', 'check_out', 'post_stay')
-    ORDER BY m.created_at ASC
-    LIMIT 20
-  `).all() as any[];
-
-  // Pending AI drafts
-  let pendingDrafts = 0;
-  try {
-    const res = db.prepare(`
-      SELECT COUNT(*) as cnt FROM crm_auto_drafts WHERE status = 'pending'
-    `).get() as any;
-    pendingDrafts = res?.cnt || 0;
-  } catch { /* table may not exist */ }
-
-  // Total unread
-  const totalUnread = (db.prepare(
-    `SELECT COALESCE(SUM(unread_count), 0) as cnt FROM crm_leads`
-  ).get() as any).cnt;
-
-  return {
-    newMessagesToday: newMsgs?.cnt || 0,
-    unansweredLeads: unanswered.map(u => ({
-      id: u.id,
-      name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || 'Без імені',
-      lastMessage: (u.last_message || '').substring(0, 60),
-      waitingSince: u.last_message_at || '',
-    })),
-    pendingDrafts,
-    totalUnread,
-  };
-}
 
 // ─── Finance Digest ──────────────────────────────────────
 
@@ -523,7 +462,6 @@ function formatDetailedDigest(breakdown: BuBreakdown[]): string {
 // ─── Format & Send ───────────────────────────────────────
 
 function formatDailyDigest(
-  crm: CrmDigest,
   finance: FinanceDigest,
   bookings: BookingsDigest,
   tasks: TasksSummary,
@@ -539,35 +477,6 @@ function formatDailyDigest(
     `📅 ${today}`,
     ``,
   ];
-
-  // ── CRM Block ──
-  lines.push(`━━━ 📨 <b>CRM</b> ━━━`);
-  lines.push(`📩 Нових повідомлень: <b>${crm.newMessagesToday}</b>`);
-  if (crm.unansweredLeads.length > 0) {
-    lines.push(`⚠️ Без відповіді: <b>${crm.unansweredLeads.length}</b>`);
-    for (const lead of crm.unansweredLeads.slice(0, 5)) {
-      // Calculate wait time
-      let waitLabel = '';
-      if (lead.waitingSince) {
-        const diffMs = Date.now() - new Date(lead.waitingSince).getTime();
-        const diffH = Math.floor(diffMs / 3600000);
-        const diffD = Math.floor(diffH / 24);
-        waitLabel = diffD > 0 ? ` (${diffD} дн.)` : diffH > 0 ? ` (${diffH} год.)` : ' (щойно)';
-      }
-      const preview = lead.lastMessage ? ` — "${escapeHtml(lead.lastMessage)}..."` : '';
-      lines.push(`  • ${escapeHtml(lead.name)}${waitLabel}${preview}`);
-    }
-    if (crm.unansweredLeads.length > 5) {
-      lines.push(`  <i>...та ще ${crm.unansweredLeads.length - 5}</i>`);
-    }
-  } else {
-    lines.push(`✅ Всі повідомлення мають відповідь`);
-  }
-  if (crm.pendingDrafts > 0) {
-    lines.push(`📝 AI-чернетки на підтвердження: <b>${crm.pendingDrafts}</b>`);
-  }
-  lines.push(`🔗 <a href="${appBaseUrl()}/crm/inbox">Відкрити CRM →</a>`);
-  lines.push(``);
 
   // ── Finance Block ──
   lines.push(`━━━ 💰 <b>Фінанси</b> ━━━`);
@@ -711,19 +620,18 @@ async function sendToChat(chatId: string, text: string): Promise<number | null> 
 /**
  * Main entry point — collect all data and send digest to Telegram.
  * Sends TWO messages:
- * 1. General digest (CRM, Finance totals, Bookings, Tasks)
+ * 1. General digest (Finance totals, Bookings, Tasks)
  * 2. Detailed per-property/BU breakdown (check-ins, cash/card, expenses)
  */
 export async function sendDailyOperationalDigest(): Promise<{
   sent: boolean;
-  sections: { crm: CrmDigest; finance: FinanceDigest; bookings: BookingsDigest; tasks: TasksSummary };
+  sections: { finance: FinanceDigest; bookings: BookingsDigest; tasks: TasksSummary };
 }> {
-  const crm = getCrmDigest();
   const finance = getFinanceDigest();
   const bookings = getBookingsDigest();
   const tasks = getTasksSummary();
   const breakdown = getDetailedBreakdown();
-  const text = formatDailyDigest(crm, finance, bookings, tasks, breakdown);
+  const text = formatDailyDigest(finance, bookings, tasks, breakdown);
   const detailedText = formatDetailedDigest(breakdown);
 
   let sent = false;
@@ -750,7 +658,7 @@ export async function sendDailyOperationalDigest(): Promise<{
     }
   }
 
-  console.log(`[DailyDigest] CRM: ${crm.newMessagesToday} msgs, ${crm.unansweredLeads.length} unanswered | Finance: ${finance.totalIncome} ${finance.currency} | Bookings: ${bookings.newBookingsToday} new, ${bookings.occupancyPct}% occ | Tasks: ${tasks.total} active | BU breakdown: ${breakdown.length} units`);
+  console.log(`[DailyDigest] Finance: ${finance.totalIncome} ${finance.currency} | Bookings: ${bookings.newBookingsToday} new, ${bookings.occupancyPct}% occ | Tasks: ${tasks.total} active | BU breakdown: ${breakdown.length} units`);
 
-  return { sent, sections: { crm, finance, bookings, tasks } };
+  return { sent, sections: { finance, bookings, tasks } };
 }

@@ -717,27 +717,10 @@ export async function getAnalyticsFunnel(
       const emailList = emails.map(e => `'${e.replace(/'/g, "''")}'`).join(',');
       const phoneList = phones.map(p => `'${p.replace(/'/g, "''")}'`).join(',');
 
-      let processedCount = submittedLeads.filter(l => l.status !== 'new').length;
-      let crmProcessedCount = 0;
-
-      if (emailList || phoneList) {
-        const crmConds = [];
-        if (emailList) crmConds.push(`cl.email IN (${emailList})`);
-        if (phoneList) crmConds.push(`cl.phone IN (${phoneList})`);
-        const crmCond = crmConds.join(' OR ');
-
-        // Outbound messages check
-        const crmProcessedSql = `
-          SELECT COUNT(DISTINCT cl.id) as count
-          FROM crm_leads cl
-          JOIN crm_conversations cc ON cc.lead_id = cl.id
-          JOIN crm_messages cm ON cm.conversation_id = cc.id
-          WHERE (${crmCond}) AND cm.direction = 'outbound'
-        `;
-        crmProcessedCount = (db.prepare(crmProcessedSql).get() as any).count;
-      }
-      
-      leadsProcessed = Math.max(processedCount, crmProcessedCount);
+      // "Processed" used to mean either the form lead had moved off 'new' or
+      // somebody had replied to it in the CRM. With the CRM gone it is the
+      // status alone.
+      leadsProcessed = submittedLeads.filter(l => l.status !== 'new').length;
 
       if (emailList || phoneList) {
         const guestConds = [];

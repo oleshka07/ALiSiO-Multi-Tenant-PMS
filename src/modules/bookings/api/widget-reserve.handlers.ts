@@ -10,9 +10,7 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 const ensureSubscribers = async () => {
   if (!(globalThis as any).__prodSubscribersRegistered) {
     try {
-      const { registerCrmSubscribers } = await import('@crm');
       const { registerBookingsSubscribers } = await import('@bookings');
-      registerCrmSubscribers();
       registerBookingsSubscribers();
       (globalThis as any).__prodSubscribersRegistered = true;
     } catch (e) { console.error('[EventBus] Bootstrap failed', e); }
@@ -755,39 +753,6 @@ export async function createWidgetReservation(request: NextRequest) {
     }
     notifyReservationCreated(resId, { sourceLabel: widgetSourceLabel, emoji: widgetEmoji });
 
-    if (conversationId) {
-      try {
-        const docStatus = documentStrategy === 'reception' 
-          ? 'Заповнять на рецепції ⚠️' 
-          : documentStrategy === 'portal' 
-            ? 'Заповнять онлайн 💻'
-            : documentStrategy === 'now'
-              ? 'Заповнили зараз ✅'
-              : 'Не вказано';
-
-        const content = [
-          `✅ <b>Бронювання завершено (через віджет)!</b>`,
-          `🆔 Бронювання ID: <code>${resId}</code>`,
-          `🏕️ Тип: ${unit.name}`,
-          `📅 Дати: ${checkIn} — ${checkOut} (${nights} ночей)`,
-          `👥 Гості: Дорослих ${adults}, Дітей ${children}${hasPet ? ', Тварина 🐾' : ''}`,
-          `💳 Сума: ${finalPrice} ${resCurrency}`,
-          `📋 Документи: ${docStatus}`
-        ].join('\n');
-
-        const { executeCreateMessage } = await import('@crm');
-        await executeCreateMessage(db, conversationId, {
-          channelType: 'web_form',
-          direction: 'inbound',
-          senderType: 'guest',
-          senderName: firstName || 'Гість',
-          content,
-          contentType: 'text'
-        });
-      } catch (e: any) {
-        console.error('[Reserve] Failed to add CRM message:', e.message);
-      }
-    }
 
     return NextResponse.json({
       success: true,

@@ -38,8 +38,12 @@ src/lib/          історичний шар; поступово розходи
 
 ### 2.1 Модулі
 
-`admin auth bookings channels crm dashboard finance guests notifications
-payments pricing properties reports tasks`
+`auth bookings channels dashboard finance guests notifications payments
+pricing properties reports tasks`
+
+CRM вирізано: вона була напівзроблена й дуже індивідуальна. Код — на гілці
+`archive/crm` і за тегом `crm-before-removal`; повертатися туди за досвідом,
+коли дійде до нової CRM.
 
 Кожен має однакову структуру:
 
@@ -74,6 +78,7 @@ src/modules/<name>/
 | `core/security/route-guard.ts` | guard для маршрутів поза модулем finance |
 | `core/privacy/ocr-consent.ts` | згода організації на хмарний OCR |
 | `core/db` | доступ до з'єднання |
+| `core/money.ts` | округлення сум перед записом |
 | `core/event-bus` | внутрішні події між модулями |
 
 ---
@@ -92,10 +97,10 @@ organizations                      ← клієнт SaaS (готель або м
               └── invoices
 ```
 
-128 таблиць. Кожна дістається до організації одним із трьох способів:
+116 таблиць. Кожна дістається до організації одним із трьох способів:
 
-- **напряму** — має колонку `organization_id` (63 таблиці);
-- **через зв'язок** — має FK, який веде до організації (55 таблиць);
+- **напряму** — має колонку `organization_id` (57 таблиць);
+- **через зв'язок** — має FK, який веде до організації (48 таблиць);
 - **глобальна** — довідник, однаковий для всіх (10 таблиць:
   `organizations`, `sessions`, `rate_limits`, `settings`,
   `content_translations`, `hostex_property_map` тощо).
@@ -105,6 +110,17 @@ organizations                      ← клієнт SaaS (готель або м
 ```bash
 node scripts/audit-tenant.mjs
 ```
+
+Наскільки модуль ізольований — окрема перевірка:
+
+```bash
+node scripts/check-boundaries.mjs            # усі модулі
+node scripts/check-boundaries.mjs bookings   # що тримає один
+```
+
+**Пробій** — це коли хтось лізе повз фасад у `data/`, `domain/` чи `ui/`, або
+пише SQL до таблиці, якою володіє лише цей модуль. Нуль пробоїв означає, що
+модуль можна вимкнути або переписати, не зачепивши решту.
 
 ### 3.1 Правило нових таблиць
 

@@ -49,8 +49,6 @@ export type AppEvents = {
   'channel.sync_failed': { source: string; error: string };
 
   // CRM
-  'crm.lead_created': { leadId: string; source: string };
-  'crm.message_received': { conversationId: string; channel: string };
 };
 
 export type EventName = keyof AppEvents;

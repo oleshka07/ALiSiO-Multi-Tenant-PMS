@@ -69,15 +69,6 @@ const navigation: NavSection[] = [
     ],
   },
   {
-    title: 'CRM',
-    items: [
-      { label: 'Сьогодні', href: '/app/crm/today', icon: <Target size={20} />, permission: 'nav:crm' },
-      { label: 'Inbox', href: '/app/crm/inbox', icon: <MessageSquare size={20} />, permission: 'nav:crm' },
-      { label: 'Pipeline', href: '/app/crm', icon: <GitBranch size={20} />, permission: 'nav:crm' },
-      { label: 'Ліди', href: '/app/crm/leads', icon: <UserPlus size={20} />, permission: 'nav:crm' },
-    ],
-  },
-  {
     title: 'Управління',
     items: [
       { label: 'Ціноутворення', href: '/app/pricing', icon: <DollarSign size={20} />, permission: 'nav:pricing' },
@@ -99,7 +90,6 @@ const navigation: NavSection[] = [
       { label: 'Канали', href: '/app/settings/channel-manager', icon: <Globe size={20} />, permission: 'nav:settings' },
       { label: 'Віджет бронювання', href: '/app/settings/booking-widget', icon: <Code2 size={20} />, permission: 'nav:settings' },
       { label: 'Сайти', href: '/app/sites', icon: <Globe size={20} />, permission: 'nav:sites' },
-      { label: 'Канали CRM', href: '/app/crm/settings', icon: <MessageSquare size={20} />, permission: 'nav:crm' },
       { label: 'Імпорт Booking.com', href: '/app/imports/booking-com', icon: <Upload size={20} />, permission: 'nav:bookings' },
       { label: 'Виписки OTA', href: '/app/imports/ota-payouts', icon: <Repeat size={20} />, permission: 'nav:finance' },
     ],
@@ -229,7 +219,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               {section.items.map((item) => {
                 const isActive =
                   pathname === item.href ||
-                  (item.href !== '/app/dashboard' && item.href !== '/app/crm' && pathname.startsWith(item.href));
+                  (item.href !== '/app/dashboard' && pathname.startsWith(item.href));
                 return (
                   <Link
                     key={item.href}

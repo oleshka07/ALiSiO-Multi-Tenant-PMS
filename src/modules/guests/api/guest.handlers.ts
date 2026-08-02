@@ -1,8 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import * as guestsRepo from '../data/guests.repo';
-// TODO: replace with eventBus.emit('crm.guest_updated') when crm module is migrated
-import { syncGuestToLead } from '@/lib/sync/guest-lead-sync';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 
 /**
@@ -34,7 +32,6 @@ export const updateGuest = withPermission('manage_guests', async (request: NextR
     // Now false for both "nothing to change" and "not this tenant's guest";
     // 404 is the safe reading of either.
     if (!updated) return NextResponse.json({ error: 'Guest not found' }, { status: 404 });
-    try { syncGuestToLead(id); } catch { /* non-fatal */ }
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('PATCH /api/guests/[id] error:', error?.message || error);
