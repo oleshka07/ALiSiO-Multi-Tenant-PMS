@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
 import * as actionsRepo from '../data/guest-actions.repo';
-import { createPaymentSession, resolveCredentialsForReservation } from '@payments';
+import { createPaymentSession, resolveCredentialsForReservation, isPaymentConfigured } from '@payments';
 import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
 import { money } from '@core/money';
 
@@ -32,6 +32,10 @@ async function handleSinglePay(
 ): Promise<NextResponse> {
   const reservation = actionsRepo.getReservationForPay(token);
   if (!reservation) return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
+
+  if (!isPaymentConfigured(reservation.organization_id)) {
+    return NextResponse.json({ error: 'Online payments are not available' }, { status: 403 });
+  }
 
   const service = actionsRepo.getServiceForProperty(serviceId, reservation.property_id);
   if (!service) return NextResponse.json({ error: 'Service not found' }, { status: 404 });
@@ -124,6 +128,10 @@ async function handleSinglePay(
 async function handleCartPay(token: string, items: CartItemInput[]): Promise<NextResponse> {
   const reservation = actionsRepo.getReservationForPay(token);
   if (!reservation) return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
+
+  if (!isPaymentConfigured(reservation.organization_id)) {
+    return NextResponse.json({ error: 'Online payments are not available' }, { status: 403 });
+  }
 
   const serviceIds = [...new Set(items.map((i) => i.serviceId))];
   const services = actionsRepo.getServicesForCart(serviceIds, reservation.property_id);

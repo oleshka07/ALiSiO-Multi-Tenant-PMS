@@ -14,6 +14,8 @@ import { getEurCzkRate } from '@/lib/hostex';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@/lib/auth';
 import { hasPermission } from '@/lib/permissions';
+import { getDb } from '@core/db';
+import { hasFeature, featureDisabled } from '@core/features';
 
 async function requirePricingPerm(): Promise<NextResponse | null> {
   const store = await cookies();
@@ -21,6 +23,9 @@ async function requirePricingPerm(): Promise<NextResponse | null> {
   if (!user) return NextResponse.json({ error: 'Не авторизовано' }, { status: 401 });
   if (!hasPermission(user.permissions, 'manage_pricing')) {
     return NextResponse.json({ error: 'Потрібен дозвіл manage_pricing' }, { status: 403 });
+  }
+  if (!hasFeature(getDb(), user.organization_id, 'pricelabs')) {
+    return featureDisabled('pricelabs') as NextResponse;
   }
   return null;
 }

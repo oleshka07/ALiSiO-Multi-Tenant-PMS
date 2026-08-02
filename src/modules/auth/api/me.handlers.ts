@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@core/auth';
+import { getDb } from '@core/db';
+import { listFeatures } from '@core/features';
 
 export async function getMe() {
   try {
@@ -12,7 +14,10 @@ export async function getMe() {
       return NextResponse.json({ error: 'Не авторизовано' }, { status: 401 });
     }
 
-    return NextResponse.json({ user });
+    // The same registry the routes enforce — the sidebar only mirrors it.
+    const features = user.organization_id ? listFeatures(getDb(), user.organization_id) : {};
+
+    return NextResponse.json({ user, features });
   } catch (error) {
     console.error('Auth me error:', error);
     return NextResponse.json({ error: 'Помилка сервера' }, { status: 500 });

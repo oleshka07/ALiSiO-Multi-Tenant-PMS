@@ -12,7 +12,7 @@ export { teyaBotWebhook } from './webhook-teya-bot.handlers';
 
 // Site-specific Teya credentials resolution (booking_sites.payment_config).
 // Returns null when no per-site config is set — callers fall back to global ENV.
-export { resolveSiteCredentials, isGlobalTeyaConfigured } from '../data/site-credentials.repo';
+export { resolveSiteCredentials, isGlobalTeyaConfigured, isPaymentConfigured } from '../data/site-credentials.repo';
 
 // Resolve per-site Teya credentials from a reservation's source field.
 // Used by guest-page payment handlers so payments match the store used at checkout.

@@ -5,6 +5,7 @@ import { getDb } from '@core/db';
 import { eventBus } from '@core/event-bus';
 import { notifyReservationCreated } from '@bookings';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { hasFeature, featureDisabled } from '@core/features';
 
 // Fallback to guarantee event subscribers are registered in Serverless (Vercel) isolated functions
 const ensureSubscribers = async () => {
@@ -194,6 +195,15 @@ export async function createWidgetReservation(request: NextRequest) {
 
     if (!unit) {
       return NextResponse.json({ error: 'Unit not found or not available' }, { status: 404, headers: CORS_HEADERS });
+    }
+
+    // Public endpoint: the organization comes from the unit being booked, and
+    // it must have bought the widget for this booking to exist at all.
+    const unitOrg = db.prepare(
+      'SELECT organization_id FROM properties WHERE id = ?'
+    ).get(unit.property_id) as { organization_id: string } | undefined;
+    if (!unitOrg || !hasFeature(db, unitOrg.organization_id, 'widget')) {
+      return featureDisabled('widget', CORS_HEADERS);
     }
 
     let priceOverride: number | null = null;

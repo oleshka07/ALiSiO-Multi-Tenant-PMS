@@ -4749,6 +4749,37 @@ function runMigrations(database: any) {
   } catch (e: any) {
     console.error('[DB] per-organization uniqueness migration:', e.message);
   }
+
+  // --- Migration: the feature registry ---
+  // Which integrations an organization actually bought. One row per switched-on
+  // feature; absence of a row means OFF. The menu and the routes both ask
+  // core/features.ts, so "a German hotel has no Teya" is one missing row, not
+  // an edit to the menu and every route.
+  try {
+    const had = database
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'organization_features'")
+      .get();
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS organization_features (
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        feature TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (organization_id, feature)
+      )
+    `);
+    if (!had) {
+      // Existing organizations were using everything — seed it all ON so this
+      // migration changes nothing for them. New organizations start with no
+      // rows, i.e. every integration OFF until someone turns it on.
+      const seed = database.prepare(
+        'INSERT OR IGNORE INTO organization_features (organization_id, feature) SELECT id, ? FROM organizations'
+      );
+      for (const f of ['teya', 'hostex', 'pricelabs', 'telegram', 'widget']) seed.run(f);
+    }
+  } catch (e: any) {
+    console.error('[DB] organization_features migration:', e.message);
+  }
   }
 
 // Generate a cryptographically secure random token for guest pages

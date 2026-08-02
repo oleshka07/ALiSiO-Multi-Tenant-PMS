@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
 import { getDb } from '@core/db';
-import { createPaymentSession, resolveCredentialsForReservation } from '@payments';
+import { createPaymentSession, resolveCredentialsForReservation, isPaymentConfigured } from '@payments';
 import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
 
 export async function payForBooking(
@@ -15,7 +15,7 @@ export async function payForBooking(
 
     // ── Resolve reservation by guest_page_token ─────────────────
     const reservation = db.prepare(`
-      SELECT r.id, r.total_price, r.currency, r.payment_status, r.check_in, r.check_out,
+      SELECT r.id, r.organization_id, r.total_price, r.currency, r.payment_status, r.check_in, r.check_out,
              r.guest_page_expires_at,
              g.first_name, g.last_name,
              u.name as unit_name,
@@ -29,6 +29,10 @@ export async function payForBooking(
 
     if (!reservation) {
       return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
+    }
+
+    if (!isPaymentConfigured(reservation.organization_id)) {
+      return NextResponse.json({ error: 'Online payments are not available' }, { status: 403 });
     }
 
     // Check expiry

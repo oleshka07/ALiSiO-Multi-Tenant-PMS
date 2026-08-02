@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { hasFeature, featureDisabled } from '@core/features';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -25,7 +26,7 @@ export async function getWidgetSiteConfig(req: NextRequest) {
 
     const db = getDb();
     const site = db.prepare(`
-      SELECT id, name, slug, design_config, widget_config, payment_config, currency, site_url
+      SELECT id, organization_id, name, slug, design_config, widget_config, payment_config, currency, site_url
       FROM booking_sites
       WHERE slug = ? OR id = ?
     `).get(slug, slug) as any;
@@ -34,10 +35,16 @@ export async function getWidgetSiteConfig(req: NextRequest) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: CORS_HEADERS });
     }
 
+    if (!hasFeature(db, site.organization_id, 'widget')) {
+      return featureDisabled('widget', CORS_HEADERS);
+    }
 
+    // Payment is offered only when the organization has Teya at all — the env
+    // fallback used to make every site on the server claim it takes cards.
     const payCfg = JSON.parse(site.payment_config || '{}');
-    const hasPayment = !!(payCfg.enabled && payCfg.provider === 'teya' && payCfg.teya?.client_id)
-      || !!process.env.TEYA_CLIENT_ID;
+    const hasPayment = hasFeature(db, site.organization_id, 'teya')
+      && (!!(payCfg.enabled && payCfg.provider === 'teya' && payCfg.teya?.client_id)
+        || !!process.env.TEYA_CLIENT_ID);
 
     let maxAdults = 2;
     let maxChildren = 2;

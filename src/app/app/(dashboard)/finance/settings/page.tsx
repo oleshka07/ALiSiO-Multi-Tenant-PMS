@@ -11,6 +11,7 @@ import TagsTab from './_components/TagsTab';
 import AutoRulesTab from './_components/AutoRulesTab';
 import RecurringTemplatesTab from './_components/RecurringTemplatesTab';
 import TeyaSyncTab from './_components/TeyaSyncTab';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 import FinanceUsersTab from './_components/FinanceUsersTab';
 
 type TabId =
@@ -47,6 +48,9 @@ const TABS: TabDef[] = [
 
 export default function FinanceSettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>('accounts');
+  const { features } = useCurrentUser();
+  // An organization without Teya has no Teya sync tab — same registry the API enforces.
+  const tabs = TABS.filter((t) => t.id !== 'teya-sync' || features.teya);
 
   return (
     <div className="page-container" style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -67,7 +71,7 @@ export default function FinanceSettingsPage() {
             top: 80,
           }}
         >
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
               <button

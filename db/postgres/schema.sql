@@ -1080,6 +1080,14 @@ CREATE TABLE "menu_items" (
   PRIMARY KEY ("id")
 );
 
+CREATE TABLE "organization_features" (
+  "organization_id" TEXT NOT NULL,
+  "feature" TEXT NOT NULL,
+  "enabled" BOOLEAN DEFAULT true NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("organization_id", "feature")
+);
+
 CREATE TABLE "organizations" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "name" TEXT NOT NULL,
@@ -1975,6 +1983,8 @@ ALTER TABLE "invoices" ADD CONSTRAINT "fk_invoices_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "menu_items" ADD CONSTRAINT "fk_menu_items_service_id_1"
   FOREIGN KEY ("service_id") REFERENCES "additional_services" ("id") ON DELETE CASCADE;
+ALTER TABLE "organization_features" ADD CONSTRAINT "fk_organization_features_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "payment_webhook_log" ADD CONSTRAINT "fk_payment_webhook_log_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "payments_new" ADD CONSTRAINT "fk_payments_new_reservation_id_1"
@@ -2276,6 +2286,7 @@ CREATE INDEX IF NOT EXISTS "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoice_counters_org" ON "invoice_counters" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoice_periods_org" ON "invoice_periods" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoices_org" ON "invoices" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_organization_features_org" ON "organization_features" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_payment_webhook_log_org" ON "payment_webhook_log" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_properties_org" ON "properties" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_task_attachments_org" ON "task_attachments" ("organization_id");
@@ -2628,6 +2639,12 @@ ALTER TABLE "menu_items" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "menu_items_tenant" ON "menu_items"
   USING ("service_id" IN (SELECT "id" FROM "additional_services" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
   WITH CHECK ("service_id" IN (SELECT "id" FROM "additional_services" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
+
+ALTER TABLE "organization_features" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "organization_features" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "organization_features_tenant" ON "organization_features"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "payment_webhook_log" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "payment_webhook_log" FORCE ROW LEVEL SECURITY;

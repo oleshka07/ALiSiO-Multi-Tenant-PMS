@@ -1,10 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { withActor, type Actor } from '@core/auth/session';
+import { hasFeature, featureDisabled } from '@core/features';
 import { syncReservations, syncSingleReservation, getSyncStatus, seedPropertyMap } from '@/lib/hostex-sync';
 import { getReservations, getProperties } from '@/lib/hostex';
 
 // ─── /api/hostex/sync ─────────────────────────────────────────────────────────
+// hostexSync and hostexBulkSync stay bare: their routes are cron-secret
+// endpoints, there is no session to read a feature from.
 
 export async function hostexSync(): Promise<NextResponse> {
   try {
@@ -16,17 +20,19 @@ export async function hostexSync(): Promise<NextResponse> {
   }
 }
 
-export async function hostexSyncStatus(): Promise<NextResponse> {
+export const hostexSyncStatus = withActor(async (_req, _ctx, actor: Actor) => {
+  if (!hasFeature(getDb(), actor.organizationId, 'hostex')) return featureDisabled('hostex');
   try {
     return NextResponse.json(getSyncStatus());
   } catch (e: any) {
     return hostexError('request', e);
   }
-}
+});
 
 // ─── /api/hostex/reservations ─────────────────────────────────────────────────
 
-export async function hostexReservations(request: Request): Promise<NextResponse> {
+export const hostexReservations = withActor(async (request, _ctx, actor: Actor) => {
+  if (!hasFeature(getDb(), actor.organizationId, 'hostex')) return featureDisabled('hostex');
   try {
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
@@ -38,7 +44,7 @@ export async function hostexReservations(request: Request): Promise<NextResponse
   } catch (e: any) {
     return hostexError('request', e);
   }
-}
+});
 
 // ─── /api/hostex/properties ───────────────────────────────────────────────────
 
@@ -55,7 +61,8 @@ function hostexError(where: string, e: any): NextResponse {
   );
 }
 
-export async function hostexProperties(): Promise<NextResponse> {
+export const hostexProperties = withActor(async (_req, _ctx, actor: Actor) => {
+  if (!hasFeature(getDb(), actor.organizationId, 'hostex')) return featureDisabled('hostex');
   try {
     const properties = await getProperties();
     const db = getDb();
@@ -67,7 +74,7 @@ export async function hostexProperties(): Promise<NextResponse> {
   } catch (e: any) {
     return hostexError('request', e);
   }
-}
+});
 
 // ─── /api/hostex/bulk-sync ────────────────────────────────────────────────────
 

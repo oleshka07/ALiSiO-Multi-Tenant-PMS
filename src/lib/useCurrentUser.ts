@@ -16,6 +16,8 @@ export interface CurrentUser {
 
 interface UseCurrentUserReturn {
   user: CurrentUser | null;
+  /** Enabled integrations for the user's organization — see core/features.ts. */
+  features: Record<string, boolean>;
   loading: boolean;
   error: string | null;
   logout: () => Promise<void>;
@@ -24,6 +26,7 @@ interface UseCurrentUserReturn {
 
 export function useCurrentUser(): UseCurrentUserReturn {
   const [user, setUser] = useState<CurrentUser | null>(null);
+  const [features, setFeatures] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +36,7 @@ export function useCurrentUser(): UseCurrentUserReturn {
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
+        setFeatures(data.features || {});
         setError(null);
       } else {
         setUser(null);
@@ -62,5 +66,5 @@ export function useCurrentUser(): UseCurrentUserReturn {
     }
   }, []);
 
-  return { user, loading, error, logout, refresh: fetchUser };
+  return { user, features, loading, error, logout, refresh: fetchUser };
 }

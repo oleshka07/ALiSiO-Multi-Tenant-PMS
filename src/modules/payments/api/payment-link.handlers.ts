@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { createPaymentLink } from '../domain/teya-client';
 import { getDefaultStore } from './create-payment-session';
+import { isPaymentConfigured } from '../data/site-credentials.repo';
 
 /**
  * POST /api/bookings/[id]/payment-link
@@ -22,9 +23,13 @@ export async function createReservationPaymentLink(
     const body = await req.json().catch(() => ({} as any));
 
     const res = db.prepare(
-      'SELECT id, total_price, currency FROM reservations WHERE id = ?'
-    ).get(id) as { id: string; total_price: number; currency: string } | undefined;
+      'SELECT id, organization_id, total_price, currency FROM reservations WHERE id = ?'
+    ).get(id) as { id: string; organization_id: string; total_price: number; currency: string } | undefined;
     if (!res) return NextResponse.json({ error: 'Reservation not found' }, { status: 404 });
+
+    if (!isPaymentConfigured(res.organization_id)) {
+      return NextResponse.json({ error: 'Online payments are not available' }, { status: 403 });
+    }
 
     const amountMajor = Number(body.amount) > 0 ? Number(body.amount) : (res.total_price || 0);
     if (!amountMajor || amountMajor <= 0) {

@@ -2,6 +2,8 @@
 import { NextResponse } from 'next/server';
 import { createPaymentSession, resolveSiteCredentials, isGlobalTeyaConfigured } from '@payments';
 import { getDb } from '@core/db';
+import { requireOrganizationId } from '@core/auth/tenant-context';
+import { hasFeature, featureDisabled } from '@core/features';
 import { sendTelegramMessage } from '@/lib/channels/telegram-bot'; // TODO: replace with eventBus
 
 const CORS_HEADERS = {
@@ -59,7 +61,7 @@ export async function createWidgetCheckoutSession(req: Request) {
       // Exact slug/id, loose Kemp Carlsbad slug (DB stores the slugified full URL,
       // e.g. 'https-kv-kemp-carlsbad-cz'), or a site_url substring match.
       site = db.prepare(
-        `SELECT id, payment_config, site_url, slug FROM booking_sites
+        `SELECT id, organization_id, payment_config, site_url, slug FROM booking_sites
          WHERE slug = ? OR id = ?
             OR (? = 'kemp-carlsbad' AND slug LIKE '%kemp-carlsbad%')
             OR (site_url IS NOT NULL AND site_url <> '' AND site_url LIKE ?)`
@@ -69,6 +71,18 @@ export async function createWidgetCheckoutSession(req: Request) {
       } else {
         console.warn('[Checkout Session] Site not registered, using default ENV creds:', siteKey);
       }
+    }
+
+    // A payment session is created for an organization that bought Teya.
+    // The organization comes from the reservation being paid, the site, or —
+    // on a single-organization install — the only organization there is.
+    try {
+      const org: string | undefined = (reservation_id
+        ? (db.prepare('SELECT organization_id FROM reservations WHERE id = ?').get(reservation_id) as any)?.organization_id
+        : undefined) || site?.organization_id || requireOrganizationId(db);
+      if (!org || !hasFeature(db, org, 'teya')) return featureDisabled('teya', CORS_HEADERS);
+    } catch {
+      return NextResponse.json({ error: 'Online payments not configured' }, { status: 403, headers: CORS_HEADERS });
     }
 
     // Check if payment is possible: either site-specific Teya config or global ENV

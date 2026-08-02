@@ -51,6 +51,9 @@ function cleanup() {
   }
   db.prepare('DELETE FROM properties WHERE organization_id LIKE ?').run(`${TAG}%`);
   db.prepare('DELETE FROM finance_tags WHERE organization_id LIKE ?').run(`${TAG}%`);
+  // The app creates this table on first boot; cleanup may run against a
+  // database the new code has not touched yet.
+  try { db.prepare('DELETE FROM organization_features WHERE organization_id LIKE ?').run(`${TAG}%`); } catch { /* not yet migrated */ }
   db.prepare('DELETE FROM app_users WHERE organization_id LIKE ?').run(`${TAG}%`);
   db.prepare('DELETE FROM sessions WHERE user_id LIKE ?').run(`${TAG}%`);
   db.prepare('DELETE FROM organizations WHERE id LIKE ?').run(`${TAG}%`);
@@ -320,6 +323,30 @@ async function main() {
     });
     assert.ok([401, 403, 405].includes(put.status), `unauthenticated PUT on widget prices returned ${put.status}`);
     console.log('  ok  unauthenticated PUT on the public price list is refused');
+
+    // ── The feature registry ─────────────────────────────────────────────
+    // Probe organizations are created after the seed migration, so they have
+    // no feature rows — exactly what a brand-new customer looks like. Nothing
+    // may work until a feature is switched on, and switching one on for B must
+    // change nothing for A.
+    const hostexOff = await call(cookieB, '/api/hostex/sync');
+    assert.strictEqual(hostexOff.status, 403, `hostex without the feature returned ${hostexOff.status}`);
+
+    const widgetOff = await call(cookieA, `/api/widget/config?propertyId=${propA.id}`);
+    assert.strictEqual(widgetOff.status, 403, `widget without the feature returned ${widgetOff.status}`);
+    console.log('  ok  a new organization has every integration off');
+
+    const turnOn = await call(cookieB, '/api/settings/features', {
+      method: 'PUT',
+      body: JSON.stringify({ feature: 'hostex', enabled: true }),
+    });
+    assert.ok(turnOn.ok, `enabling a feature failed: ${turnOn.status}`);
+    const hostexOn = await call(cookieB, '/api/hostex/sync');
+    assert.notStrictEqual(hostexOn.status, 403, 'hostex still refused after enabling the feature');
+
+    const stillOffForA = await call(cookieA, '/api/hostex/sync');
+    assert.strictEqual(stillOffForA.status, 403, "B's toggle changed A's features");
+    console.log("  ok  a feature toggles per organization, not per server");
 
     console.log('isolation: all checks passed');
   } finally {

@@ -18,9 +18,7 @@ import {
   X,
   Wallet,
   ClipboardList,
-  Upload,
   Clock,
-  Repeat,
   ListChecks,
   MessageSquare,
   Code2,
@@ -39,6 +37,8 @@ interface NavItem {
   href: string;
   icon: React.ReactNode;
   permission?: Permission;
+  /** Hidden unless the organization has this feature — see core/features.ts. */
+  feature?: string;
 }
 
 interface NavSection {
@@ -88,10 +88,8 @@ const navigation: NavSection[] = [
     title: 'Інтеграції',
     items: [
       { label: 'Канали', href: '/app/settings/channel-manager', icon: <Globe size={20} />, permission: 'nav:settings' },
-      { label: 'Віджет бронювання', href: '/app/settings/booking-widget', icon: <Code2 size={20} />, permission: 'nav:settings' },
-      { label: 'Сайти', href: '/app/sites', icon: <Globe size={20} />, permission: 'nav:sites' },
-      { label: 'Імпорт Booking.com', href: '/app/imports/booking-com', icon: <Upload size={20} />, permission: 'nav:bookings' },
-      { label: 'Виписки OTA', href: '/app/imports/ota-payouts', icon: <Repeat size={20} />, permission: 'nav:finance' },
+      { label: 'Віджет бронювання', href: '/app/settings/booking-widget', icon: <Code2 size={20} />, permission: 'nav:settings', feature: 'widget' },
+      { label: 'Сайти', href: '/app/sites', icon: <Globe size={20} />, permission: 'nav:sites', feature: 'widget' },
     ],
   },
   {
@@ -107,7 +105,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [draftCount, setDraftCount] = useState(0);
   const pathname = usePathname();
-  const { user, loading, logout } = useCurrentUser();
+  const { user, features, loading, logout } = useCurrentUser();
 
   // Close mobile sidebar on route change
   useEffect(() => {
@@ -172,6 +170,9 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         }
 
         if (item.permission && !hasPermission(user.permissions, item.permission)) return false;
+
+        // The registry decides, the menu mirrors — same row the routes check.
+        if (item.feature && !features[item.feature]) return false;
         return true;
       }),
     }))

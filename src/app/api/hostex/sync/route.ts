@@ -41,10 +41,6 @@ export async function POST(request: NextRequest) {
   return hostexSync();
 }
 
-// GET /api/hostex/sync — sync status
-export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-  return hostexSyncStatus();
-}
+// GET /api/hostex/sync — sync status. Session-only: the caller is the calendar
+// UI, and the withActor wrapper inside also checks the hostex feature.
+export const GET = hostexSyncStatus;

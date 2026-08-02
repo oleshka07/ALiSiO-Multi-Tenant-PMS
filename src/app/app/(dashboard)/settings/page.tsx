@@ -90,6 +90,13 @@ const settingsItems = [
     color: 'yellow',
   },
   {
+    title: 'Модулі та інтеграції',
+    desc: 'Що куплено: Teya, Hostex, PriceLabs, Telegram, віджет',
+    icon: <SettingsIcon size={22} />,
+    href: '/app/settings/features',
+    color: 'orange',
+  },
+  {
     title: 'Загальні налаштування',
     desc: 'Організація, часова зона, валюта, контакти',
     icon: <SettingsIcon size={22} />,

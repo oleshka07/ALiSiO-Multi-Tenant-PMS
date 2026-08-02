@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { hasFeature, featureDisabled } from '@core/features';
 
 export const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -33,6 +34,10 @@ export async function getWidgetConfig(request: NextRequest) {
 
     if (!property) {
       return NextResponse.json({ error: 'Property not found' }, { status: 404, headers: CORS_HEADERS });
+    }
+
+    if (!hasFeature(db, property.organization_id, 'widget')) {
+      return featureDisabled('widget', CORS_HEADERS);
     }
 
     const unitTypes = db.prepare(`

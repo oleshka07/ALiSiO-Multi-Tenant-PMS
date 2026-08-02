@@ -17,7 +17,6 @@ const PUBLIC_PREFIXES = [
   '/api/hostex/bulk-sync', // Hostex bulk sync (cron secret in route.ts)
   '/api/channels/reservations/poll', // Booking.com polling (cron secret in route.ts)
   '/api/channels/sync/process', // ARI sync queue (cron secret in route.ts)
-  '/api/invest/', // investor portal API (token-based auth in handler)
   '/api/widget', // widget-* endpoints (public embed)
   // '/api/file-upload' is deliberately absent. It was public for the retired
   // /book wizard; every caller is now a dashboard screen, and an open upload
@@ -25,7 +24,6 @@ const PUBLIC_PREFIXES = [
   '/app/login', // login page — the only public path under /app
   '/login', // legacy /login, redirects to /app/login
   '/guest/', // guest portal page
-  '/invest/', // investor portal page (token-based)
   '/w/', // booking widget
   '/modules/', // marketing site: one page per product module
   '/blog/', // marketing site: journal posts

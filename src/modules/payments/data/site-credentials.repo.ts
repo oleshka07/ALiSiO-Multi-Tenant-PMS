@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getDb } from '@core/db';
+import { hasFeature } from '@core/features';
 import type { ResolvedSiteCredentials } from '../domain/types';
 import { getEnvStore } from '../api/create-payment-session';
 
@@ -61,4 +62,28 @@ export function resolveSiteCredentials(opts: { slug?: string | null; id?: string
 
 export function isGlobalTeyaConfigured(): boolean {
   return !!process.env.TEYA_CLIENT_ID;
+}
+
+/**
+ * Does this organization take online payments at all?
+ *
+ * The feature comes first: an organization that has not bought Teya has no
+ * payments no matter what env vars are set on the server. Then either one of
+ * its sites carries a working Teya config, or the transitional global env
+ * credentials exist. Callers ask this — not "is Teya configured" — so a second
+ * provider changes this function, not every caller.
+ */
+export function isPaymentConfigured(organizationId: string): boolean {
+  const db = getDb();
+  if (!hasFeature(db, organizationId, 'teya')) return false;
+  const sites = db
+    .prepare('SELECT payment_config FROM booking_sites WHERE organization_id = ?')
+    .all(organizationId) as any[];
+  for (const s of sites) {
+    try {
+      const cfg = JSON.parse(s.payment_config || '{}');
+      if (cfg.enabled && cfg.provider === 'teya' && cfg.teya?.client_id) return true;
+    } catch { /* malformed config is not a configured payment */ }
+  }
+  return isGlobalTeyaConfigured();
 }
