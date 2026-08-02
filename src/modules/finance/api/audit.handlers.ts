@@ -241,26 +241,9 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
       });
     }
 
-    // ─── 8. Bank reconciliation gap ────────────────────────────
-    {
-      const unmatched = safeRun(() => db.prepare(`
-        SELECT COUNT(*) AS n FROM bank_transactions WHERE matched_operation_id IS NULL
-      `).get() as any, { n: 0 });
-      const total = safeRun(() => db.prepare(`
-        SELECT COUNT(*) AS n FROM bank_transactions
-      `).get() as any, { n: 0 });
-      const pct = total.n > 0 ? Math.round((unmatched.n / total.n) * 100) : 0;
-
-      sections.push({
-        key: 'bank_recon',
-        title: 'Bank reconciliation',
-        severity: pct > 30 ? 'red' : pct > 10 ? 'yellow' : 'green',
-        headline: `${unmatched.n} з ${total.n} bank_transactions не зматчені (${pct}%)`,
-        description: 'Незматчені банк-транзакції = реальні гроші, які прийшли на рахунок, але не привʼязані до жодної fin_operation. Може бути нормально (поточні нові надходження), але високий відсоток означає, що auto-matcher не справляється.',
-        metric_label: 'Не зматчено',
-        metric_value: `${pct}%`,
-      });
-    }
+    // Section 8 was bank reconciliation. It reported how many bank
+    // transactions were unmatched — a number that could only be 0 of 0 once
+    // the statement import was removed and nothing could write that table.
 
     // ─── 9. needs_review queue ─────────────────────────────────
     {
@@ -310,7 +293,6 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
         (SELECT COUNT(*) FROM fin_operations WHERE status='completed' AND organization_id = ?) AS completed_ops,
         (SELECT COUNT(*) FROM finance_accounts WHERE organization_id = ? AND is_active=1) AS active_accounts,
         (SELECT COUNT(*) FROM fin_channel_receivables WHERE organization_id = ?) AS receivables,
-        (SELECT COUNT(*) FROM bank_transactions) AS bank_tx,
         (SELECT COUNT(*) FROM reservations) AS reservations
     `).get(org, org, org, org) as any, {});
 

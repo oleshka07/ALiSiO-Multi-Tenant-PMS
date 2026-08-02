@@ -4,8 +4,14 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
-// Database file path — stored in project root /data directory
-const DATA_DIR = path.join(process.cwd(), 'data');
+// Database file path — the project's /data directory, unless told otherwise.
+// The override exists so scripts/check-fresh-schema.mjs can boot the app
+// against an empty directory and compare the schema a NEW customer gets with
+// the one this database has. Nothing checked that before, and the two had
+// silently drifted.
+const DATA_DIR = process.env.ALISIO_DATA_DIR
+  ? path.resolve(process.env.ALISIO_DATA_DIR)
+  : path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DATA_DIR, 'alisio.db');
 
 // EUR conversion rate
@@ -1037,25 +1043,8 @@ function runMigrations(database: any) {
     }
   } catch { /* */ }
 
-  // --- Migration: create early_bookings table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS early_bookings (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      guest_id TEXT REFERENCES guests(id),
-      guest_name TEXT NOT NULL,
-      guest_email TEXT,
-      guest_phone TEXT,
-      unit_type_id TEXT REFERENCES unit_types(id),
-      discount_percent INTEGER NOT NULL DEFAULT 30,
-      min_nights INTEGER NOT NULL DEFAULT 2,
-      base_price_at_booking REAL,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'used', 'expired', 'cancelled')),
-      source_reservation_id TEXT REFERENCES reservations(id),
-      notes TEXT,
-      expires_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
+  // early_bookings was created here and never read by anything.
+  // The cleanup below drops it where it already exists.
 
   // --- Migration: create rate_limits table ---
   database.exec(`
@@ -1301,7 +1290,8 @@ function runMigrations(database: any) {
       unit_price REAL NOT NULL DEFAULT 0,
       total_price REAL NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'cancelled')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      completed_at TEXT
     )
   `);
 
@@ -1793,49 +1783,10 @@ function runMigrations(database: any) {
   database.exec('CREATE INDEX IF NOT EXISTS idx_accruals_month ON accruals(month)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_accruals_status ON accruals(status)');
 
-  // --- Migration: create bank_statements table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS bank_statements (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      file_name TEXT NOT NULL,
-      bank_name TEXT,
-      account_number TEXT,
-      period_from TEXT,
-      period_to TEXT,
-      total_transactions INTEGER NOT NULL DEFAULT 0,
-      matched_transactions INTEGER NOT NULL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'pending',
-      uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-
-  // --- Migration: create bank_transactions table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS bank_transactions (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      statement_id TEXT NOT NULL REFERENCES bank_statements(id) ON DELETE CASCADE,
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      transaction_date TEXT NOT NULL,
-      amount REAL NOT NULL,
-      counterparty TEXT,
-      description TEXT,
-      reference TEXT,
-      matched_category_id TEXT REFERENCES expense_categories(id),
-      matched_business_unit_id TEXT REFERENCES business_units(id),
-      matched_expense_id TEXT REFERENCES expenses(id),
-      match_status TEXT NOT NULL DEFAULT 'unmatched',
-      confidence REAL NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_bank_tx_statement ON bank_transactions(statement_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_bank_tx_status ON bank_transactions(match_status)');
-
-  // --- Migration: add matched_payment_id to bank_transactions ---
-  try {
-    database.exec("ALTER TABLE bank_transactions ADD COLUMN matched_payment_id TEXT REFERENCES payments(id)");
-  } catch { /* column already exists */ }
+  // bank_statements and bank_transactions used to be created here. The
+  // statement import that filled them was removed with the finance wrapper,
+  // so they could only ever be empty; the cleanup at the end of this
+  // function drops them from databases that still carry them.
 
   // ═══════════════════════════════════════════════════════
   // FINANCE MODULE PHASE 3 — Accounts, Income, Transfers
@@ -2254,8 +2205,11 @@ function runMigrations(database: any) {
     `);
 
     // 3) Rename bank_transactions FK: matched_expense_id + matched_payment_id → matched_operation_id
+    // PRAGMA on a missing table returns nothing rather than throwing, so the
+    // ALTER below would be the thing that fails. bank_transactions no longer
+    // exists on a fresh database.
     const btxCols = database.prepare("PRAGMA table_info(bank_transactions)").all() as { name: string }[];
-    if (!btxCols.some((c) => c.name === 'matched_operation_id')) {
+    if (btxCols.length && !btxCols.some((c) => c.name === 'matched_operation_id')) {
       database.exec('ALTER TABLE bank_transactions ADD COLUMN matched_operation_id TEXT REFERENCES fin_operations(id)');
       database.exec(`
         UPDATE bank_transactions
@@ -2533,6 +2487,7 @@ function runMigrations(database: any) {
         is_primary INTEGER DEFAULT 0,
         registered_at TEXT,
         created_at TEXT DEFAULT (datetime('now')),
+        reg_status TEXT NOT NULL DEFAULT 'not_started',
         FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
         FOREIGN KEY (guest_id) REFERENCES guests(id) ON DELETE CASCADE
       )
@@ -2597,7 +2552,8 @@ function runMigrations(database: any) {
         weather_lat REAL,
         weather_lon REAL,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        parking_photo_url TEXT
       )
     `);
     // Seed from first existing guest_page_config
@@ -2783,7 +2739,8 @@ function runMigrations(database: any) {
       max_inventory      INTEGER,
       external_url       TEXT,
       sort_order         INTEGER NOT NULL DEFAULT 0,
-      created_at         TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+      photos TEXT
     )
   `);
   database.exec('CREATE INDEX IF NOT EXISTS idx_site_listings_site ON site_listings(site_id)');
@@ -3093,32 +3050,13 @@ function runMigrations(database: any) {
   // --- Migration: camping-specific fields in reservations ---
   try {
     const resCols = (database.prepare("PRAGMA table_info(reservations)").all() as any[]).map((c: any) => c.name);
-    if (!resCols.includes('camping_vehicle_type'))
-      database.exec("ALTER TABLE reservations ADD COLUMN camping_vehicle_type TEXT");
-    if (!resCols.includes('camping_tent_type'))
-      database.exec("ALTER TABLE reservations ADD COLUMN camping_tent_type TEXT");
-    if (!resCols.includes('camping_electricity'))
-      database.exec("ALTER TABLE reservations ADD COLUMN camping_electricity INTEGER DEFAULT 0");
-    if (!resCols.includes('camping_pets'))
-      database.exec("ALTER TABLE reservations ADD COLUMN camping_pets TEXT");
-    if (!resCols.includes('camping_notes'))
-      database.exec("ALTER TABLE reservations ADD COLUMN camping_notes TEXT");
     // deposit / prepayment tracking
     if (!resCols.includes('deposit_amount'))
       database.exec("ALTER TABLE reservations ADD COLUMN deposit_amount INTEGER DEFAULT 0");
     if (!resCols.includes('deposit_status'))
       database.exec("ALTER TABLE reservations ADD COLUMN deposit_status TEXT DEFAULT 'none'");
-    if (!resCols.includes('deposit_session_id'))
-      database.exec("ALTER TABLE reservations ADD COLUMN deposit_session_id TEXT");
-    if (!resCols.includes('deposit_session_url'))
-      database.exec("ALTER TABLE reservations ADD COLUMN deposit_session_url TEXT");
-    if (!resCols.includes('deposit_session_expires_at'))
-      database.exec("ALTER TABLE reservations ADD COLUMN deposit_session_expires_at TEXT");
     if (!resCols.includes('deposit_paid_at'))
       database.exec("ALTER TABLE reservations ADD COLUMN deposit_paid_at TEXT");
-    if (!resCols.includes('group_lead_id'))
-      database.exec("ALTER TABLE reservations ADD COLUMN group_lead_id TEXT");
-    database.exec('CREATE INDEX IF NOT EXISTS idx_reservations_deposit_session ON reservations(deposit_session_id)');
     // Invoice-to-company override: when invoice_company_name is set, the
     // generated faktura uses these fields instead of the personal guest data
     // for the Odberatel block. Other reservations keep rendering as physical-
@@ -3137,7 +3075,7 @@ function runMigrations(database: any) {
       database.exec("ALTER TABLE reservations ADD COLUMN invoice_company_country TEXT");
     if (!resCols.includes('invoice_company_email'))
       database.exec("ALTER TABLE reservations ADD COLUMN invoice_company_email TEXT");
-    console.log('[DB] Camping + deposit + invoice-company columns migrated');
+    console.log('[DB] deposit + invoice-company columns migrated');
     // Waitlist table
     database.exec(`
       CREATE TABLE IF NOT EXISTS waitlist (
@@ -3346,17 +3284,11 @@ function runMigrations(database: any) {
       channel_source TEXT NOT NULL,
       external_reservation_id TEXT,
       gross_amount REAL NOT NULL,
-      expected_commission REAL NOT NULL DEFAULT 0,
       expected_net REAL NOT NULL,
-      actual_commission REAL,
-      actual_net REAL,
       currency TEXT NOT NULL,
       check_in TEXT NOT NULL,
       check_out TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'expected' CHECK (status IN ('expected', 'in_statement', 'paid', 'cancelled')),
-      statement_payout_id TEXT,
-      statement_payout_date TEXT,
-      paid_operation_id TEXT REFERENCES fin_operations(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE (reservation_id, clearing_account_id)
@@ -3366,7 +3298,6 @@ function runMigrations(database: any) {
   database.exec('CREATE INDEX IF NOT EXISTS idx_recv_status ON fin_channel_receivables(status)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_recv_clearing ON fin_channel_receivables(clearing_account_id)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_recv_extid ON fin_channel_receivables(external_reservation_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_recv_payoutid ON fin_channel_receivables(statement_payout_id)');
 
   // Clearing accounts are NOT seeded. One per channel/currency only makes sense
   // once that channel is actually connected; seeding Booking.com CZK/EUR,
@@ -3693,18 +3624,11 @@ function runMigrations(database: any) {
             channel_source TEXT NOT NULL,
             external_reservation_id TEXT,
             gross_amount REAL NOT NULL,
-            expected_commission REAL NOT NULL DEFAULT 0,
             expected_net REAL NOT NULL,
-            actual_gross REAL,
-            actual_commission REAL,
-            actual_net REAL,
             currency TEXT NOT NULL,
             check_in TEXT NOT NULL,
             check_out TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'expected' CHECK (status IN ('expected', 'in_statement', 'paid', 'cancelled')),
-            statement_payout_id TEXT,
-            statement_payout_date TEXT,
-            paid_operation_id TEXT REFERENCES fin_operations(id) ON DELETE SET NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now')),
             UNIQUE (reservation_id, clearing_account_id, external_reservation_id)
@@ -3712,10 +3636,8 @@ function runMigrations(database: any) {
           INSERT INTO fin_channel_receivables_pr21
             SELECT id, organization_id, reservation_id, clearing_account_id,
                    channel_source, external_reservation_id, gross_amount,
-                   expected_commission, expected_net, actual_gross,
-                   actual_commission, actual_net, currency, check_in, check_out,
-                   status, statement_payout_id, statement_payout_date,
-                   paid_operation_id, created_at, updated_at
+                   expected_net, currency, check_in, check_out,
+                   status, created_at, updated_at
             FROM fin_channel_receivables;
           DROP TABLE fin_channel_receivables;
           ALTER TABLE fin_channel_receivables_pr21 RENAME TO fin_channel_receivables;
@@ -3723,7 +3645,6 @@ function runMigrations(database: any) {
           CREATE INDEX IF NOT EXISTS idx_recv_status ON fin_channel_receivables(status);
           CREATE INDEX IF NOT EXISTS idx_recv_clearing ON fin_channel_receivables(clearing_account_id);
           CREATE INDEX IF NOT EXISTS idx_recv_extid ON fin_channel_receivables(external_reservation_id);
-          CREATE INDEX IF NOT EXISTS idx_recv_payoutid ON fin_channel_receivables(statement_payout_id);
         `);
         console.log('[DB] PR #21: rebuilt fin_channel_receivables to allow NULL reservation_id (orphan receivables)');
       } finally {
@@ -4750,6 +4671,112 @@ function runMigrations(database: any) {
     console.error('[DB] per-organization uniqueness migration:', e.message);
   }
 
+  // --- Migration: tables nothing reads ---
+  //
+  // Seven empty tables, each the remains of something that was replaced or
+  // cut. audit_log lost to booking_activity_log; early_bookings and
+  // payments_new are migration scaffolding that never carried a row;
+  // email_processed, fin_statement_uploads and bank_statements went with the
+  // bank/statement/email-receipt block.
+  //
+  // bank_transactions goes with them: nothing can write to it since the
+  // statement import was removed, so its three readers only ever reported
+  // zeros. It has to be dropped BEFORE bank_statements — SQLite refuses to
+  // prepare any statement touching a table whose foreign key points at
+  // something that no longer exists, and that failure reaches queries three
+  // joins away.
+  try {
+    for (const t of [
+      'bank_transactions', 'bank_statements', 'fin_statement_uploads',
+      'email_processed', 'audit_log', 'early_bookings', 'payments_new',
+    ]) {
+      const row = database.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?"
+      ).get(t) as { name: string } | undefined;
+      if (!row) continue;
+      const n = (database.prepare(`SELECT COUNT(*) c FROM ${t}`).get() as { c: number }).c;
+      if (n > 0) {
+        // Somebody's data. Leave it and say so rather than delete it quietly.
+        console.warn(`[DB] ${t} has ${n} rows — not dropping`);
+        continue;
+      }
+      database.exec(`DROP TABLE ${t}`);
+    }
+  } catch (e: any) {
+    console.error('[DB] dead table cleanup:', e.message);
+  }
+
+  // --- Migration: columns nothing reads ---
+  //
+  // Found by scripts/audit-dead-data.mjs. Each is the remains of something
+  // cut or never finished: OTA statement reconciliation, a deposit-session
+  // payment flow, the previous business's camping fields.
+  //
+  // A column is dropped only when every row in it is empty — NULL, 0 or ''.
+  // A column carrying information is kept and reported, because this runs
+  // against the customer's database as well as an empty demo one, and a
+  // migration must not be the thing that loses their data.
+  //
+  // The two indexes go first: SQLite refuses to drop an indexed column.
+  try {
+    for (const ix of ['idx_reservations_deposit_session', 'idx_recv_payoutid', 'idx_business_units_units_count']) {
+      database.exec(`DROP INDEX IF EXISTS ${ix}`);
+    }
+
+    const DEAD_COLUMNS: Record<string, string[]> = {
+      reservations: [
+        'camping_vehicle_type', 'camping_tent_type', 'camping_electricity',
+        'camping_pets', 'camping_notes',
+        'deposit_session_id', 'deposit_session_url', 'deposit_session_expires_at',
+        'group_lead_id',
+      ],
+      fin_channel_receivables: [
+        'expected_commission', 'actual_gross', 'actual_commission', 'actual_net',
+        'statement_payout_id', 'statement_payout_date', 'paid_operation_id',
+      ],
+      accruals: ['paid_expense_id'],
+      booking_drafts: ['teya_session_id'],
+      additional_services: ['options_schema'],
+      guest_registrations: ['doc_photo_url'],
+      property_photos: ['photo_type'],
+      site_incoming_leads: ['source_url', 'raw_data'],
+      fin_auto_rule_matches: ['matched_at'],
+      business_units: ['units_count'],
+    };
+
+    for (const [table, columns] of Object.entries(DEAD_COLUMNS)) {
+      const exists = database
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+        .get(table) as { name: string } | undefined;
+      if (!exists) continue;
+
+      const present = (database.prepare(`PRAGMA table_info(${table})`).all() as any[])
+        .map((c: any) => c.name);
+
+      for (const col of columns) {
+        if (!present.includes(col)) continue;
+        const kept = (database.prepare(
+          `SELECT COUNT(*) c FROM ${table}
+           WHERE ${col} IS NOT NULL AND TRIM(CAST(${col} AS TEXT)) NOT IN ('', '0')`
+        ).get() as { c: number }).c;
+        // A denormalized counter is not information — it is derivable and
+        // nothing reads it, so it is dropped whatever it holds.
+        const derived = table === 'business_units' && col === 'units_count';
+        if (kept > 0 && !derived) {
+          console.warn(`[DB] ${table}.${col}: ${kept} rows carry a value — column kept`);
+          continue;
+        }
+        try {
+          database.exec(`ALTER TABLE ${table} DROP COLUMN ${col}`);
+        } catch (e: any) {
+          console.warn(`[DB] ${table}.${col} not dropped: ${e.message}`);
+        }
+      }
+    }
+  } catch (e: any) {
+    console.error('[DB] dead column cleanup:', e.message);
+  }
+
   // --- Migration: the feature registry ---
   // Which integrations an organization actually bought. One row per switched-on
   // feature; absence of a row means OFF. The menu and the routes both ask
@@ -4780,6 +4807,13 @@ function runMigrations(database: any) {
   } catch (e: any) {
     console.error('[DB] organization_features migration:', e.message);
   }
+
+  // The last line of runMigrations, and the only reliable signal that the
+  // schema has settled. scripts/check-fresh-schema.mjs waits for it: polling
+  // the table count said "done" while ALTER TABLE ADD COLUMN was still going,
+  // and the comparison then reported dozens of differences that were really
+  // just a race with itself.
+  console.log('[DB] migrations complete');
   }
 
 // Generate a cryptographically secure random token for guest pages

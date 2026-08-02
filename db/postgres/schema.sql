@@ -33,7 +33,6 @@ CREATE TABLE "accruals" (
   "month" TEXT NOT NULL,
   "accrual_type" TEXT DEFAULT 'expense' NOT NULL,
   "status" TEXT DEFAULT 'pending' NOT NULL,
-  "paid_expense_id" TEXT,
   "notes" TEXT,
   "created_by" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
@@ -62,7 +61,6 @@ CREATE TABLE "additional_services" (
   "photo_url" TEXT,
   "min_quantity" BIGINT DEFAULT 0,
   "max_quantity" BIGINT DEFAULT 10,
-  "options_schema" TEXT,
   "name_cs" TEXT,
   "name_de" TEXT,
   "name_pl" TEXT,
@@ -137,19 +135,6 @@ CREATE TABLE "ari_sync_queue" (
   PRIMARY KEY ("id")
 );
 
-CREATE TABLE "audit_log" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "user_id" TEXT,
-  "action" TEXT NOT NULL,
-  "entity_type" TEXT NOT NULL,
-  "entity_id" TEXT,
-  "old_values" JSONB,
-  "new_values" JSONB,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id")
-);
-
 CREATE TABLE "availability_blocks" (
   "id" TEXT NOT NULL,
   "unit_id" TEXT NOT NULL,
@@ -160,40 +145,6 @@ CREATE TABLE "availability_blocks" (
   "hostex_code" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now(),
   "organization_id" TEXT,
-  PRIMARY KEY ("id")
-);
-
-CREATE TABLE "bank_statements" (
-  "id" TEXT NOT NULL,
-  "organization_id" TEXT,
-  "account_id" TEXT,
-  "iban" TEXT,
-  "period_from" DATE,
-  "period_to" DATE,
-  "opening_balance" NUMERIC(14,2),
-  "closing_balance" NUMERIC(14,2),
-  "currency" TEXT,
-  "total_transactions" INTEGER,
-  "source" TEXT,
-  "created_at" TIMESTAMPTZ DEFAULT now(),
-  PRIMARY KEY ("id")
-);
-
-CREATE TABLE "bank_transactions" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "statement_id" TEXT NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "transaction_date" DATE NOT NULL,
-  "amount" NUMERIC(14,2) NOT NULL,
-  "counterparty" TEXT,
-  "description" TEXT,
-  "reference" TEXT,
-  "matched_category_id" TEXT,
-  "matched_business_unit_id" TEXT,
-  "match_status" TEXT DEFAULT 'unmatched' NOT NULL,
-  "confidence" DOUBLE PRECISION DEFAULT 0 NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "matched_operation_id" TEXT,
   PRIMARY KEY ("id")
 );
 
@@ -229,7 +180,6 @@ CREATE TABLE "booking_drafts" (
   "total_price" NUMERIC(14,2) DEFAULT 0,
   "deposit_amount" NUMERIC(14,2) DEFAULT 0,
   "status" TEXT DEFAULT 'draft',
-  "teya_session_id" TEXT,
   "reservation_id" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
@@ -323,7 +273,6 @@ CREATE TABLE "business_units" (
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "parent_id" TEXT,
-  "units_count" BIGINT DEFAULT 1 NOT NULL,
   PRIMARY KEY ("id")
 );
 
@@ -476,32 +425,6 @@ CREATE TABLE "coupons" (
   CHECK (discount_type IN ('fixed_price', 'percentage', 'fixed_amount'))
 );
 
-CREATE TABLE "early_bookings" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "guest_id" TEXT,
-  "guest_name" TEXT NOT NULL,
-  "guest_email" TEXT,
-  "guest_phone" TEXT,
-  "unit_type_id" TEXT,
-  "discount_percent" NUMERIC(5,2) DEFAULT 30 NOT NULL,
-  "min_nights" BIGINT DEFAULT 2 NOT NULL,
-  "base_price_at_booking" NUMERIC(14,2),
-  "status" TEXT DEFAULT 'pending' NOT NULL,
-  "source_reservation_id" TEXT,
-  "notes" TEXT,
-  "expires_at" TIMESTAMPTZ,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  CHECK (status IN ('pending', 'confirmed', 'used', 'expired', 'cancelled'))
-);
-
-CREATE TABLE "email_processed" (
-  "message_id" TEXT NOT NULL,
-  "category" TEXT NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now(),
-  PRIMARY KEY ("message_id")
-);
-
 CREATE TABLE "expense_categories" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
@@ -540,7 +463,6 @@ CREATE TABLE "fin_auto_rule_matches" (
   "id" BIGINT NOT NULL,
   "rule_id" TEXT NOT NULL,
   "operation_id" TEXT NOT NULL,
-  "matched_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id")
 );
 
@@ -582,18 +504,11 @@ CREATE TABLE "fin_channel_receivables" (
   "channel_source" TEXT NOT NULL,
   "external_reservation_id" TEXT,
   "gross_amount" NUMERIC(14,2) NOT NULL,
-  "expected_commission" NUMERIC(14,2) DEFAULT 0 NOT NULL,
   "expected_net" DOUBLE PRECISION NOT NULL,
-  "actual_gross" DOUBLE PRECISION,
-  "actual_commission" NUMERIC(14,2),
-  "actual_net" DOUBLE PRECISION,
   "currency" TEXT NOT NULL,
   "check_in" DATE NOT NULL,
   "check_out" DATE NOT NULL,
   "status" TEXT DEFAULT 'expected' NOT NULL,
-  "statement_payout_id" TEXT,
-  "statement_payout_date" DATE,
-  "paid_operation_id" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
@@ -698,19 +613,6 @@ CREATE TABLE "fin_recurring_templates" (
   PRIMARY KEY ("id"),
   CHECK (op_type IN ('income','expense','transfer')),
   CHECK (schedule IN ('daily','weekly','monthly','yearly'))
-);
-
-CREATE TABLE "fin_statement_uploads" (
-  "id" TEXT NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "channel" TEXT NOT NULL,
-  "file_name" TEXT NOT NULL,
-  "row_count" BIGINT DEFAULT 0 NOT NULL,
-  "applied_count" BIGINT DEFAULT 0 NOT NULL,
-  "cancelled_count" BIGINT DEFAULT 0 NOT NULL,
-  "unmatched_count" BIGINT DEFAULT 0 NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id")
 );
 
 CREATE TABLE "fin_system_state" (
@@ -928,7 +830,6 @@ CREATE TABLE "guest_registrations" (
   "purpose_of_stay" TEXT,
   "visa_number" TEXT,
   "reg_status" TEXT DEFAULT 'not_started' NOT NULL,
-  "doc_photo_url" TEXT,
   PRIMARY KEY ("id")
 );
 
@@ -1132,24 +1033,6 @@ CREATE TABLE "payment_webhook_log" (
   CHECK (result IN ('recorded','no_match','duplicate','signature_invalid','parse_error','unhandled','error'))
 );
 
-CREATE TABLE "payments_new" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "reservation_id" TEXT NOT NULL,
-  "amount" NUMERIC(14,2) NOT NULL,
-  "currency" TEXT DEFAULT 'CZK' NOT NULL,
-  "method" TEXT NOT NULL,
-  "type" TEXT NOT NULL,
-  "status" TEXT DEFAULT 'pending' NOT NULL,
-  "paid_at" TIMESTAMPTZ,
-  "notes" TEXT,
-  "auto_created" BIGINT DEFAULT 0,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  CHECK (method IN ('cash', 'card', 'bank_transfer', 'invoice', 'online', 'booking_platform')),
-  CHECK (type IN ('deposit', 'full', 'partial', 'refund', 'service')),
-  CHECK (status IN ('pending', 'completed', 'failed', 'refunded'))
-);
-
 CREATE TABLE "price_calendar" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "unit_type_id" TEXT NOT NULL,
@@ -1217,11 +1100,9 @@ CREATE TABLE "property_photos" (
   "property_id" TEXT NOT NULL,
   "url" TEXT NOT NULL,
   "caption" TEXT,
-  "photo_type" TEXT DEFAULT 'common' NOT NULL,
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  CHECK (photo_type IN ('building', 'territory', 'common', 'aerial'))
+  PRIMARY KEY ("id")
 );
 
 CREATE TABLE "rate_limits" (
@@ -1366,18 +1247,9 @@ CREATE TABLE "reservations" (
   "city_tax_included" BIGINT DEFAULT 0,
   "city_tax_paid" TEXT DEFAULT 'pending',
   "registration_status" TEXT DEFAULT 'not_registered',
-  "camping_vehicle_type" TEXT,
-  "camping_tent_type" TEXT,
-  "camping_electricity" BIGINT DEFAULT 0,
-  "camping_pets" TEXT,
-  "camping_notes" TEXT,
   "deposit_amount" NUMERIC(14,2) DEFAULT 0,
   "deposit_status" TEXT DEFAULT 'none',
-  "deposit_session_id" TEXT,
-  "deposit_session_url" NUMERIC(14,2),
-  "deposit_session_expires_at" TIMESTAMPTZ,
   "deposit_paid_at" TIMESTAMPTZ,
-  "group_lead_id" TEXT,
   "invoice_company_name" TEXT,
   "invoice_company_ico" TEXT,
   "invoice_company_dic" TEXT,
@@ -1484,8 +1356,6 @@ CREATE TABLE "site_incoming_leads" (
   "phone" TEXT,
   "message" TEXT,
   "status" TEXT DEFAULT 'new' NOT NULL,
-  "source_url" TEXT,
-  "raw_data" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   CHECK (status IN ('new', 'read', 'archived'))
@@ -1779,22 +1649,8 @@ ALTER TABLE "ari_sync_log" ADD CONSTRAINT "fk_ari_sync_log_connection_id_1"
   FOREIGN KEY ("connection_id") REFERENCES "channel_connections" ("id") ON DELETE CASCADE;
 ALTER TABLE "ari_sync_queue" ADD CONSTRAINT "fk_ari_sync_queue_connection_id_1"
   FOREIGN KEY ("connection_id") REFERENCES "channel_connections" ("id") ON DELETE CASCADE;
-ALTER TABLE "audit_log" ADD CONSTRAINT "fk_audit_log_user_id_1"
-  FOREIGN KEY ("user_id") REFERENCES "app_users" ("id");
-ALTER TABLE "audit_log" ADD CONSTRAINT "fk_audit_log_organization_id_2"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "availability_blocks" ADD CONSTRAINT "fk_availability_blocks_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "bank_transactions" ADD CONSTRAINT "fk_bank_transactions_matched_operation_id_1"
-  FOREIGN KEY ("matched_operation_id") REFERENCES "fin_operations" ("id");
-ALTER TABLE "bank_transactions" ADD CONSTRAINT "fk_bank_transactions_matched_business_unit_id_2"
-  FOREIGN KEY ("matched_business_unit_id") REFERENCES "business_units" ("id");
-ALTER TABLE "bank_transactions" ADD CONSTRAINT "fk_bank_transactions_matched_category_id_3"
-  FOREIGN KEY ("matched_category_id") REFERENCES "expense_categories" ("id");
-ALTER TABLE "bank_transactions" ADD CONSTRAINT "fk_bank_transactions_organization_id_4"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "bank_transactions" ADD CONSTRAINT "fk_bank_transactions_statement_id_5"
-  FOREIGN KEY ("statement_id") REFERENCES "bank_statements" ("id") ON DELETE CASCADE;
 ALTER TABLE "booking_activity_log" ADD CONSTRAINT "fk_booking_activity_log_reservation_id_1"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
 ALTER TABLE "booking_activity_log" ADD CONSTRAINT "fk_booking_activity_log_organization_id_2"
@@ -1855,12 +1711,6 @@ ALTER TABLE "coupons" ADD CONSTRAINT "fk_coupons_gift_card_rule_id_2"
   FOREIGN KEY ("gift_card_rule_id") REFERENCES "gift_card_automation_rules" ("id") ON DELETE SET NULL;
 ALTER TABLE "coupons" ADD CONSTRAINT "fk_coupons_site_id_3"
   FOREIGN KEY ("site_id") REFERENCES "booking_sites" ("id") ON DELETE SET NULL;
-ALTER TABLE "early_bookings" ADD CONSTRAINT "fk_early_bookings_source_reservation_id_1"
-  FOREIGN KEY ("source_reservation_id") REFERENCES "reservations" ("id");
-ALTER TABLE "early_bookings" ADD CONSTRAINT "fk_early_bookings_unit_type_id_2"
-  FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id");
-ALTER TABLE "early_bookings" ADD CONSTRAINT "fk_early_bookings_guest_id_3"
-  FOREIGN KEY ("guest_id") REFERENCES "guests" ("id");
 ALTER TABLE "expense_categories" ADD CONSTRAINT "fk_expense_categories_parent_id_1"
   FOREIGN KEY ("parent_id") REFERENCES "expense_categories" ("id");
 ALTER TABLE "expense_categories" ADD CONSTRAINT "fk_expense_categories_organization_id_2"
@@ -1879,13 +1729,11 @@ ALTER TABLE "fin_budgets" ADD CONSTRAINT "fk_fin_budgets_category_id_2"
   FOREIGN KEY ("category_id") REFERENCES "expense_categories" ("id");
 ALTER TABLE "fin_budgets" ADD CONSTRAINT "fk_fin_budgets_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_channel_receivables" ADD CONSTRAINT "fk_fin_channel_receivables_paid_operation_id_1"
-  FOREIGN KEY ("paid_operation_id") REFERENCES "fin_operations" ("id") ON DELETE SET NULL;
-ALTER TABLE "fin_channel_receivables" ADD CONSTRAINT "fk_fin_channel_receivables_clearing_account_id_2"
+ALTER TABLE "fin_channel_receivables" ADD CONSTRAINT "fk_fin_channel_receivables_clearing_account_id_1"
   FOREIGN KEY ("clearing_account_id") REFERENCES "finance_accounts" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_channel_receivables" ADD CONSTRAINT "fk_fin_channel_receivables_reservation_id_3"
+ALTER TABLE "fin_channel_receivables" ADD CONSTRAINT "fk_fin_channel_receivables_reservation_id_2"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
-ALTER TABLE "fin_channel_receivables" ADD CONSTRAINT "fk_fin_channel_receivables_organization_id_4"
+ALTER TABLE "fin_channel_receivables" ADD CONSTRAINT "fk_fin_channel_receivables_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_operation_attachments" ADD CONSTRAINT "fk_fin_operation_attachments_operation_id_1"
   FOREIGN KEY ("operation_id") REFERENCES "fin_operations" ("id") ON DELETE CASCADE;
@@ -1924,8 +1772,6 @@ ALTER TABLE "fin_recurring_templates" ADD CONSTRAINT "fk_fin_recurring_templates
 ALTER TABLE "fin_recurring_templates" ADD CONSTRAINT "fk_fin_recurring_templates_account_from_id_5"
   FOREIGN KEY ("account_from_id") REFERENCES "finance_accounts" ("id");
 ALTER TABLE "fin_recurring_templates" ADD CONSTRAINT "fk_fin_recurring_templates_organization_id_6"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "fin_statement_uploads" ADD CONSTRAINT "fk_fin_statement_uploads_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "finance_accounts" ADD CONSTRAINT "fk_finance_accounts_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
@@ -1987,8 +1833,6 @@ ALTER TABLE "organization_features" ADD CONSTRAINT "fk_organization_features_org
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "payment_webhook_log" ADD CONSTRAINT "fk_payment_webhook_log_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "payments_new" ADD CONSTRAINT "fk_payments_new_reservation_id_1"
-  FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
 ALTER TABLE "price_calendar" ADD CONSTRAINT "fk_price_calendar_unit_type_id_1"
   FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
 ALTER TABLE "properties" ADD CONSTRAINT "fk_properties_organization_id_1"
@@ -2129,16 +1973,12 @@ CREATE INDEX "idx_ari_queue_priority" ON "ari_sync_queue" ("priority", "created_
 CREATE INDEX "idx_ari_queue_status" ON "ari_sync_queue" ("status");
 CREATE INDEX "idx_availability_blocks_org" ON "availability_blocks" ("organization_id");
 CREATE INDEX "idx_availability_blocks_unit" ON "availability_blocks" ("unit_id", "date_from", "date_to");
-CREATE INDEX "idx_bank_tx_statement" ON "bank_transactions" ("statement_id");
-CREATE INDEX "idx_bank_tx_status" ON "bank_transactions" ("match_status");
-CREATE INDEX "idx_btx_matched_op" ON "bank_transactions" ("matched_operation_id");
 CREATE INDEX "idx_booking_activity_log_org" ON "booking_activity_log" ("organization_id");
 CREATE INDEX "idx_booking_drafts_org" ON "booking_drafts" ("organization_id");
 CREATE INDEX "idx_booking_sites_property" ON "booking_sites" ("property_id");
 CREATE UNIQUE INDEX "idx_booking_sites_slug" ON "booking_sites" ("slug");
 CREATE INDEX "idx_booking_sites_status" ON "booking_sites" ("status");
 CREATE INDEX "idx_bu_parent" ON "business_units" ("parent_id");
-CREATE INDEX "idx_business_units_units_count" ON "business_units" ("units_count");
 CREATE INDEX "idx_capex_bu" ON "capex_items" ("business_unit_id");
 CREATE INDEX "idx_capex_month" ON "capex_items" ("month");
 CREATE INDEX "idx_capex_org" ON "capex_items" ("organization_id");
@@ -2160,7 +2000,6 @@ CREATE INDEX "idx_budgets_period" ON "fin_budgets" ("organization_id", "year", "
 CREATE INDEX "idx_recv_clearing" ON "fin_channel_receivables" ("clearing_account_id");
 CREATE INDEX "idx_recv_extid" ON "fin_channel_receivables" ("external_reservation_id");
 CREATE INDEX "idx_recv_org" ON "fin_channel_receivables" ("organization_id");
-CREATE INDEX "idx_recv_payoutid" ON "fin_channel_receivables" ("statement_payout_id");
 CREATE INDEX "idx_recv_status" ON "fin_channel_receivables" ("status");
 CREATE INDEX "idx_attach_op" ON "fin_operation_attachments" ("operation_id");
 CREATE INDEX "idx_attach_org" ON "fin_operation_attachments" ("organization_id");
@@ -2185,7 +2024,6 @@ CREATE INDEX "idx_fop_status" ON "fin_operations" ("status");
 CREATE INDEX "idx_fop_type" ON "fin_operations" ("op_type");
 CREATE INDEX "idx_rt_next_run" ON "fin_recurring_templates" ("next_run_at", "is_active");
 CREATE INDEX "idx_rt_org" ON "fin_recurring_templates" ("organization_id");
-CREATE INDEX "idx_stmt_upl_org" ON "fin_statement_uploads" ("organization_id");
 CREATE INDEX "idx_fin_acct_iban" ON "finance_accounts" ("iban");
 CREATE INDEX "idx_fin_acct_org" ON "finance_accounts" ("organization_id");
 CREATE INDEX "idx_cp_org" ON "finance_counterparties" ("organization_id");
@@ -2219,7 +2057,6 @@ CREATE INDEX "idx_price_cal_ut_date" ON "price_calendar" ("unit_type_id", "date"
 CREATE INDEX "idx_line_items_sub" ON "reservation_line_items" ("sub_booking_id");
 CREATE INDEX "idx_sub_bookings_res" ON "reservation_sub_bookings" ("reservation_id");
 CREATE INDEX "idx_reservations_dates" ON "reservations" ("check_in", "check_out");
-CREATE INDEX "idx_reservations_deposit_session" ON "reservations" ("deposit_session_id");
 CREATE INDEX "idx_reservations_external_uid" ON "reservations" ("external_uid");
 CREATE INDEX "idx_reservations_guest" ON "reservations" ("guest_id");
 CREATE UNIQUE INDEX "idx_reservations_guest_token" ON "reservations" ("guest_page_token");
@@ -2254,10 +2091,7 @@ CREATE INDEX "idx_widget_price_list_org" ON "widget_price_list" ("organization_i
 -- Indexes the row-level security predicates depend on.
 CREATE INDEX IF NOT EXISTS "idx_accruals_org" ON "accruals" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_app_users_org" ON "app_users" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_audit_log_org" ON "audit_log" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_availability_blocks_org" ON "availability_blocks" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_bank_statements_org" ON "bank_statements" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_bank_transactions_org" ON "bank_transactions" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_booking_activity_log_org" ON "booking_activity_log" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_booking_drafts_org" ON "booking_drafts" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_business_units_org" ON "business_units" ("organization_id");
@@ -2274,7 +2108,6 @@ CREATE INDEX IF NOT EXISTS "idx_fin_operation_attachments_org" ON "fin_operation
 CREATE INDEX IF NOT EXISTS "idx_fin_operation_audit_org" ON "fin_operation_audit" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_operations_org" ON "fin_operations" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_recurring_templates_org" ON "fin_recurring_templates" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_fin_statement_uploads_org" ON "fin_statement_uploads" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_finance_accounts_org" ON "finance_accounts" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_finance_counterparties_org" ON "finance_counterparties" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_finance_exchange_rates_org" ON "finance_exchange_rates" ("organization_id");
@@ -2334,27 +2167,9 @@ CREATE POLICY "ari_sync_queue_tenant" ON "ari_sync_queue"
   USING ("connection_id" IN (SELECT "id" FROM "channel_connections" WHERE "organization_id" = current_setting('app.organization_id')))
   WITH CHECK ("connection_id" IN (SELECT "id" FROM "channel_connections" WHERE "organization_id" = current_setting('app.organization_id')));
 
-ALTER TABLE "audit_log" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "audit_log" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "audit_log_tenant" ON "audit_log"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
 ALTER TABLE "availability_blocks" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "availability_blocks" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "availability_blocks_tenant" ON "availability_blocks"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "bank_statements" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "bank_statements" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "bank_statements_tenant" ON "bank_statements"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "bank_transactions" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "bank_transactions" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "bank_transactions_tenant" ON "bank_transactions"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
@@ -2448,12 +2263,6 @@ CREATE POLICY "coupons_tenant" ON "coupons"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
-ALTER TABLE "early_bookings" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "early_bookings" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "early_bookings_tenant" ON "early_bookings"
-  USING ("source_reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))))
-  WITH CHECK ("source_reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))));
-
 ALTER TABLE "expense_categories" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "expense_categories" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "expense_categories_tenant" ON "expense_categories"
@@ -2517,12 +2326,6 @@ CREATE POLICY "fin_operations_tenant" ON "fin_operations"
 ALTER TABLE "fin_recurring_templates" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "fin_recurring_templates" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "fin_recurring_templates_tenant" ON "fin_recurring_templates"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "fin_statement_uploads" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fin_statement_uploads" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "fin_statement_uploads_tenant" ON "fin_statement_uploads"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
@@ -2651,12 +2454,6 @@ ALTER TABLE "payment_webhook_log" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "payment_webhook_log_tenant" ON "payment_webhook_log"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "payments_new" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "payments_new" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "payments_new_tenant" ON "payments_new"
-  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))))
-  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))));
 
 ALTER TABLE "price_calendar" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "price_calendar" FORCE ROW LEVEL SECURITY;
@@ -2846,7 +2643,6 @@ CREATE POLICY "widget_price_list_tenant" ON "widget_price_list"
 
 -- Reference data, identical for every customer: no policy by design.
 --   content_translations
---   email_processed
 --   fin_system_state
 --   hostex_property_map
 --   hostex_sync_log
