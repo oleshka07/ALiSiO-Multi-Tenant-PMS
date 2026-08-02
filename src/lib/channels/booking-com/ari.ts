@@ -168,6 +168,15 @@ export function buildARIFromPriceCalendar(
   const roomTypeId = mapping.external_room_type_id;
   const ratePlanId = mapping.external_rate_plan_id || 'STD';
 
+  // The currency these prices are actually in. It was the literal 'CZK', so a
+  // hotel pricing in euros would have pushed euro amounts to Booking.com
+  // labelled as koruna — the guest is then charged the wrong sum.
+  const currency = (db.prepare(`
+    SELECT p.default_currency FROM unit_types ut
+    JOIN properties p ON ut.property_id = p.id
+    WHERE ut.id = ?
+  `).get(unitTypeId) as { default_currency?: string } | undefined)?.default_currency || 'CZK';
+
   // Get price calendar data
   const prices = db.prepare(`
     SELECT * FROM price_calendar
@@ -230,7 +239,7 @@ export function buildARIFromPriceCalendar(
         dateTo: p.date,
         basePrice: effectivePrice,
         weekendPrice: p.weekend_price,
-        currency: 'CZK', // TODO: make configurable per connection
+        currency,
       });
     }
 

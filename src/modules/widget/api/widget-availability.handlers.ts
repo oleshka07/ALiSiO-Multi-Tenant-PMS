@@ -363,9 +363,18 @@ export async function getAvailability(request: NextRequest) {
       }
     }
 
-    let certificate: { code: string; amount: number } | null = null;
+    // Gift certificates are not redeemable yet: gift_cards exists but nothing
+    // reads it, and this returned amount 0 while still echoing the code back —
+    // so the widget showed the certificate as accepted and the guest paid full
+    // price. Until redemption is built, say no out loud.
+    let certificate: { code: string; amount: number; valid: boolean; message?: string } | null = null;
     if (certificateCode) {
-      certificate = { code: certificateCode, amount: 0 };
+      certificate = {
+        code: certificateCode,
+        amount: 0,
+        valid: false,
+        message: 'Сертифікати поки не приймаються онлайн — зверніться до готелю.',
+      };
     }
 
     return NextResponse.json({

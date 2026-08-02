@@ -525,7 +525,7 @@ export default function BookingViewModal({
               : isCancelled ? { bg: 'rgba(239,68,68,0.05)', border: 'rgba(239,68,68,0.2)', dot: '#ef4444' }
               : { bg: 'var(--bg-secondary)', border: 'var(--border-primary)', dot: '#f59e0b' };
             return (
-              <div onClick={() => {}} style={{ background: chipStyle.bg, border: `1px solid ${chipStyle.border}`, borderRadius: 10, padding: '10px 12px', cursor: 'pointer' }}>
+              <div style={{ background: chipStyle.bg, border: `1px solid ${chipStyle.border}`, borderRadius: 10, padding: '10px 12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: chipStyle.dot, boxShadow: `0 0 0 3px ${chipStyle.dot}33`, flexShrink: 0 }} />
                   <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600 }}>Бронь</span>

@@ -337,10 +337,14 @@ export async function createWidgetReservation(request: NextRequest) {
       }
     }
 
-    let certificateDiscount = 0;
-    if (certificateCode) {
-      certificateDiscount = 0;
-    }
+    // Same as the availability endpoint: a certificate code changed nothing
+    // and nobody was told. Refusing the booking is worse than refusing the
+    // certificate, so the reservation proceeds at full price with the reason
+    // recorded on it — the front desk can then honour the certificate.
+    const certificateDiscount = 0;
+    const certificateNote = certificateCode
+      ? `Гість вказав сертифікат ${String(certificateCode).toUpperCase().trim()} — онлайн не зараховано, перевірити вручну.`
+      : null;
 
     let extraDiscount = 0;
     if (extraCouponCode) {
@@ -461,6 +465,7 @@ export async function createWidgetReservation(request: NextRequest) {
       const notesArr = [];
       if (paymentMethod) notesArr.push(`payment_method:${paymentMethod}`);
       if (documentStrategy) notesArr.push(`document_strategy:${documentStrategy}`);
+      if (certificateNote) notesArr.push(certificateNote);
       const finalNotes = notesArr.length > 0 ? notesArr.join(' | ') : null;
 
       db.prepare(`

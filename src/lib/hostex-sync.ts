@@ -24,18 +24,34 @@ const BLOCKED_CHANNEL_TYPES = new Set(['owner', 'manual', 'owner_reservation', '
 
 // ─── Property Mapping ─────────────────────────────────────
 
-/** Hostex property_id → ALiSiO unit_id mapping */
-const PROPERTY_MAP: Record<number, string> = {
-  12446083: 'u_mr1',                           // A1 River Wood → A1 - Mirror - River Wood
-  12558043: 'u_mr2',                           // A2 Slow Down  → A2 - Mirror - Slow Down
-  12590381: 'u_st1',                           // B1            → B1 - Stealth - Stealth 1
-  12590382: 'u_st2',                           // B2            → B2 - Stealth - Stealth 2
-  12446084: 'u_st3',                           // B3 Stealth    → B3 - Stealth - Stealth 3
-  12565124: '1e7f6c7bd383af9cdfaa43eb50160148', // B4 Svitanok   → B4 - Stealth - Svitanok
-};
+/**
+ * Which unit a Hostex property belongs to — and, through it, which hotel.
+ *
+ * This was a literal table of six ids from the first customer, next to a
+ * hardcoded PROPERTY_ID and ORG_ID. Those two ids exist in no other database,
+ * so the cron failed with a foreign key error on every other install; and had
+ * they existed, one hotel's Hostex bookings would have been written into
+ * another hotel's account. hostex_property_map is the mapping the settings
+ * screen already writes — it just was not read.
+ */
+interface MappedUnit {
+  unitId: string;
+  propertyId: string;
+  organizationId: string;
+}
 
-const PROPERTY_ID = 'prop_main_001';
-const ORG_ID = 'org_alisio_001';
+function mapHostexProperty(db: any, hostexPropertyId: number): MappedUnit | null {
+  const row = db.prepare(`
+    SELECT m.unit_id, u.property_id, p.organization_id
+    FROM hostex_property_map m
+    JOIN units u ON m.unit_id = u.id
+    JOIN properties p ON u.property_id = p.id
+    WHERE m.hostex_property_id = ?
+  `).get(hostexPropertyId) as
+    { unit_id: string; property_id: string; organization_id: string } | undefined;
+  if (!row) return null;
+  return { unitId: row.unit_id, propertyId: row.property_id, organizationId: row.organization_id };
+}
 
 // ─── Channel type → source mapping ───────────────────────
 function mapChannelToSource(channelType: string): string {
@@ -229,9 +245,10 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
     return;
   }
 
-  // Map property → unit
-  const unitId = PROPERTY_MAP[res.property_id];
-  if (!unitId) {
+  // Map property → unit → hotel
+  const mapped = mapHostexProperty(db, res.property_id);
+  const unitId = mapped?.unitId;
+  if (!mapped || !unitId) {
     console.warn(`[Hostex] UNMAPPED property_id=${res.property_id} guest="${res.guest_name}" stay_code="${res.stay_code}" channel="${res.channel_type}" listing="${res.listing_id}" check_in=${res.check_in_date}`);
     result.skipped++;
     return;
@@ -254,7 +271,7 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
   const paymentStatus = paymentInfo.isPrepaid ? 'paid' : 'unpaid';
 
   // Find or create guest
-  const guestId = findOrCreateGuest(db, res);
+  const guestId = findOrCreateGuest(db, res, mapped.organizationId);
 
   // Check if already in DB
   const existing = db.prepare(
@@ -366,7 +383,7 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
         ?, ?
       )
     `).run(
-      newId, PROPERTY_ID, unitId, guestId,
+      newId, mapped.propertyId, unitId, guestId,
       checkIn, checkOut, nights,
       res.number_of_adults, res.number_of_children, res.number_of_infants,
       status, paymentStatus, mapChannelToSource(res.channel_type),
@@ -410,7 +427,7 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
 // ─── Process blocked date (owner closure in Hostex) ────────
 
 function processBlockedDate(db: any, res: HostexReservation, result: SyncResult) {
-  const unitId = PROPERTY_MAP[res.property_id];
+  const unitId = mapHostexProperty(db, res.property_id)?.unitId;
   if (!unitId) { result.skipped++; return; }
 
   const blockId = `hx_block_${res.reservation_code.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40)}`;
@@ -448,7 +465,7 @@ function processBlockedDate(db: any, res: HostexReservation, result: SyncResult)
 
 // ─── Guest management ─────────────────────────────────────
 
-function findOrCreateGuest(_db: any, res: HostexReservation): string {
+function findOrCreateGuest(db: any, res: HostexReservation, organizationId: string): string {
   const guestData = res.guests?.[0];
   const rawEmail = guestData?.email || res.guest_email || '';
   // Booking's privacy-proxy emails (@guest.booking.com) are not stable identifiers
@@ -460,7 +477,7 @@ function findOrCreateGuest(_db: any, res: HostexReservation): string {
 
   const { firstName, lastName } = splitGuestName(name);
   return findOrCreateGuestUnified({
-    organizationId: ORG_ID,
+    organizationId,
     firstName,
     lastName,
     email,
@@ -678,7 +695,7 @@ export async function seedPropertyMap(): Promise<{ unmapped: { id: number; title
   const unmapped: { id: number; title: string; channels: string[] }[] = [];
 
   for (const prop of properties) {
-    const unitId = PROPERTY_MAP[prop.id];
+    const unitId = mapHostexProperty(db, prop.id)?.unitId;
     if (unitId) {
       upsert.run(prop.id, prop.title, unitId, JSON.stringify(prop.channels));
       console.log(`[Hostex] Mapped: ${prop.title} (${prop.id}) → ${unitId}`);
