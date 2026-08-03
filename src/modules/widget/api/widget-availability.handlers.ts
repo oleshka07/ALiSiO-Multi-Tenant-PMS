@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { quoteCertificate } from '../data/certificate.repo';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -29,10 +30,14 @@ export async function getAvailability(request: NextRequest) {
 
     // Resolve siteId and check origin CORS whitelist
     let siteIdObj = siteId;
+    let siteOrganizationId: string | null = null;
+    let siteCurrency = 'CZK';
     let allowedSiteUrl: string | null = null;
     const lookupSite = siteId || siteSlug;
     if (lookupSite) {
-      const site = db.prepare("SELECT id, site_url FROM booking_sites WHERE (slug = ? OR id = ?) AND status != 'deleted'").get(lookupSite, lookupSite) as any;
+      const site = db.prepare("SELECT id, organization_id, currency, site_url FROM booking_sites WHERE (slug = ? OR id = ?) AND status != 'deleted'").get(lookupSite, lookupSite) as any;
+      siteOrganizationId = site?.organization_id || null;
+      siteCurrency = site?.currency || siteCurrency;
       if (site) {
         siteIdObj = site.id;
         allowedSiteUrl = site.site_url;
@@ -363,18 +368,22 @@ export async function getAvailability(request: NextRequest) {
       }
     }
 
-    // Gift certificates are not redeemable yet: gift_cards exists but nothing
-    // reads it, and this returned amount 0 while still echoing the code back —
-    // so the widget showed the certificate as accepted and the guest paid full
-    // price. Until redemption is built, say no out loud.
+    // The certificate answer the guest sees while choosing dates. Amount here
+    // is the face value — the reserve endpoint caps it at the actual total and
+    // makes the atomic claim; this is a preview, not a promise.
     let certificate: { code: string; amount: number; valid: boolean; message?: string } | null = null;
     if (certificateCode) {
-      certificate = {
-        code: certificateCode,
-        amount: 0,
-        valid: false,
-        message: 'Сертифікати поки не приймаються онлайн — зверніться до готелю.',
-      };
+      if (siteOrganizationId) {
+        const answer = quoteCertificate(db, siteOrganizationId, certificateCode, Number.MAX_SAFE_INTEGER, siteCurrency);
+        certificate = answer.valid
+          ? { code: certificateCode, amount: answer.quote.amount, valid: true }
+          : { code: certificateCode, amount: 0, valid: false, message: answer.message };
+      } else {
+        certificate = {
+          code: certificateCode, amount: 0, valid: false,
+          message: 'Сертифікат перевіримо на рецепції.',
+        };
+      }
     }
 
     return NextResponse.json({

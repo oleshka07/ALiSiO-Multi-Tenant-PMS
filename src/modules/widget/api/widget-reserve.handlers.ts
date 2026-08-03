@@ -7,6 +7,7 @@ import { notifyReservationCreated } from '@bookings';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { hasFeature, featureDisabled } from '@core/features';
 import { siteAllowsHost, type SiteRow } from '../data/site.repo';
+import { quoteCertificate, claimCertificate } from '../data/certificate.repo';
 
 // Fallback to guarantee event subscribers are registered in Serverless (Vercel) isolated functions
 const ensureSubscribers = async () => {
@@ -337,14 +338,26 @@ export async function createWidgetReservation(request: NextRequest) {
       }
     }
 
-    // Same as the availability endpoint: a certificate code changed nothing
-    // and nobody was told. Refusing the booking is worse than refusing the
-    // certificate, so the reservation proceeds at full price with the reason
-    // recorded on it — the front desk can then honour the certificate.
-    const certificateDiscount = 0;
-    const certificateNote = certificateCode
-      ? `Гість вказав сертифікат ${String(certificateCode).toUpperCase().trim()} — онлайн не зараховано, перевірити вручну.`
-      : null;
+    // A fixed-value certificate in the booking's currency is redeemed right
+    // here; anything else books at full price with the reason written on the
+    // reservation, and the front desk honours it at check-in. One certificate,
+    // one booking — group bookings settle certificates at the desk too.
+    let certificateDiscount = 0;
+    let certificateNote: string | null = null;
+    let certificateClaimId: string | null = null;
+    if (certificateCode) {
+      const remaining = Math.max(0, totalPrice - offerDiscount);
+      const answer = bookingQuantity === 1
+        ? quoteCertificate(db, unitOrg.organization_id, String(certificateCode), remaining, resCurrency)
+        : { valid: false as const, message: 'Для групових бронювань сертифікат зараховує рецепція.' };
+      if (answer.valid) {
+        certificateDiscount = answer.quote.amount;
+        certificateClaimId = answer.quote.id;
+        certificateNote = `Сертифікат ${answer.quote.code}: зараховано ${answer.quote.amount} ${answer.quote.currency}.`;
+      } else {
+        certificateNote = `Гість вказав сертифікат ${String(certificateCode).toUpperCase().trim()} — онлайн не зараховано (${answer.message})`;
+      }
+    }
 
     let extraDiscount = 0;
     if (extraCouponCode) {
@@ -487,6 +500,27 @@ export async function createWidgetReservation(request: NextRequest) {
         lang, countryCode, session_id_to_store, groupId,
         finalNotes
       );
+
+      // The certificate is attached to the first reservation, with a status
+      // guard against a simultaneous second use. If somebody else claimed it
+      // between the quote above and this line, the discount is taken back:
+      // the booking survives at full price and the note says why.
+      if (slot === 1 && certificateClaimId) {
+        if (claimCertificate(db, certificateClaimId, resId)) {
+          db.prepare(
+            "UPDATE gift_cards SET notes = COALESCE(notes, '') || ? WHERE id = ?"
+          ).run(` | widget:${resId}`, certificateClaimId);
+        } else {
+          db.prepare(`
+            UPDATE reservations
+            SET total_price = total_price + ?,
+                notes = COALESCE(notes, '') || ?
+            WHERE id = ?
+          `).run(certificateDiscount,
+                 ' | Сертифікат не зараховано: використаний іншим бронюванням.', resId);
+          certificateDiscount = 0;
+        }
+      }
 
       // Save passport data as a pending guest_registration for the primary guest
       // Staff will confirm/complete at check-in. Only for slot=1 (primary guest).
