@@ -29,7 +29,6 @@ const FORBIDDEN = [
 // Path → why the name is allowed to remain there.
 const ALLOWED = new Map([
   ['src/modules/widget/data/site.repo.ts', 'documents the hardcodes it replaced'],
-  ['src/app/privacy/page.tsx', 'legal text — needs a lawyer, not a sed'],
   ['scripts/check-no-tenant-names.mjs', 'this file lists them on purpose'],
   ['docs/SECURITY-FINDINGS.md', 'the findings record'],
 ]);
