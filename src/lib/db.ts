@@ -36,10 +36,19 @@ export function getDb(): any {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
 
-  // createRequire, not a bare require(): webpack still leaves the native
-  // module unbundled, and the file also loads as plain ESM — node runs the
-  // .check.ts files directly, where `require` does not exist.
-  const Database = createRequire(path.join(process.cwd(), 'package.json'))('better-sqlite3');
+  // Two loaders on purpose. Under Next the bare require is what webpack
+  // rewrites to its BUNDLED copy — the standalone image ships no
+  // node_modules/better-sqlite3 at all, so a real filesystem require there
+  // finds nothing (that exact swap took beta down). Under plain node (the
+  // .check.ts scripts) `require` does not exist in ESM — the catch falls
+  // back to a real resolver against the project root.
+  let Database: any;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    Database = require('better-sqlite3');
+  } catch {
+    Database = createRequire(path.join(process.cwd(), 'package.json'))('better-sqlite3');
+  }
 
   // The module-level `db` is assigned only AFTER the schema work succeeds.
   // It used to be assigned first — so when a migration threw, the connection
