@@ -75,6 +75,11 @@
 
 ---
 
+## 3.1 Імена
+
+Нові таблиці, колонки, статуси, маршрути, модулі — за docs/NAMING.md.
+Немає відповіді там — спершу допиши її туди, потім називай.
+
 ## 4. Перед комітом
 
 ```bash
@@ -115,6 +120,7 @@ build **і прогін по маршрутах**:
 
 ```bash
 npm run build:win
+node scripts/check-fresh-schema.mjs   # схема нового клієнта = цій базі
 npm run start &
 node scripts/smoke-routes.mjs
 ```
