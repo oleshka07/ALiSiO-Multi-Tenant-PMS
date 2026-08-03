@@ -21,12 +21,12 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 // every cash report must use them so the numbers agree across pages.
 // revenue = income (non-financing) − refunds; expenses include tax and
 // uncategorized spending, exclude capex/financing (separate buckets).
-function monthRevenueSql(month: string, db: any): number {
-  return getMonthMoney(db, month).revenue;
+function monthRevenueSql(month: string, db: any, org: string): number {
+  return getMonthMoney(db, org, month).revenue;
 }
 
-function monthExpensesSql(month: string, db: any): number {
-  const m = getMonthMoney(db, month);
+function monthExpensesSql(month: string, db: any, org: string): number {
+  const m = getMonthMoney(db, org, month);
   return m.expenses_operating + m.tax;
 }
 
@@ -35,19 +35,25 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
     const db = getDb();
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month') || new Date().toISOString().substring(0, 7);
+    // Capex, accruals and depreciation all carry organization_id and none of
+    // the three used it: EBITDA was computed from every company's numbers.
+    const org = orgId(db);
 
-    const revenue = monthRevenueSql(month, db);
-    const expenses = monthExpensesSql(month, db);
+    const revenue = monthRevenueSql(month, db, org);
+    const expenses = monthExpensesSql(month, db, org);
 
-    const capexRow = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM capex_items WHERE month = ?`).get(month) as any;
+    const capexRow = db.prepare(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM capex_items WHERE organization_id = ? AND month = ?`
+    ).get(org, month) as any;
     const pendingAccruals = db.prepare(`
       SELECT COALESCE(SUM(ABS(a.amount)), 0) as total, COUNT(*) as cnt
-      FROM accruals a WHERE a.month = ? AND a.status = 'pending'
-    `).get(month) as any;
+      FROM accruals a WHERE a.organization_id = ? AND a.month = ? AND a.status = 'pending'
+    `).get(org, month) as any;
     const depRow = db.prepare(`
       SELECT COALESCE(SUM(depreciation_monthly), 0) as total
-      FROM capex_items WHERE status = 'active' AND depreciation_monthly > 0
-    `).get() as any;
+      FROM capex_items
+      WHERE organization_id = ? AND status = 'active' AND depreciation_monthly > 0
+    `).get(org) as any;
 
     const ebitda = revenue - expenses - pendingAccruals.total;
     const margin = revenue > 0 ? ((ebitda / revenue) * 100) : 0;
@@ -61,8 +67,8 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
     }
 
     const monthlyData = months.map(m => {
-      const rev = monthRevenueSql(m, db);
-      const exp = monthExpensesSql(m, db);
+      const rev = monthRevenueSql(m, db, org);
+      const exp = monthExpensesSql(m, db, org);
       return { month: m, revenue: rev, expenses: exp, ebitda: rev - exp };
     });
 
@@ -79,17 +85,19 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
       FROM business_units bu
       LEFT JOIN fin_operations o ON o.project_id = bu.id AND strftime('%Y-%m', o.paid_at) = ? AND o.status = 'completed'
       LEFT JOIN expense_categories ec ON ec.id = o.category_id
-      WHERE bu.is_active = 1 AND bu.is_shared = 0
+      WHERE bu.organization_id = ? AND bu.is_active = 1 AND bu.is_shared = 0
       GROUP BY bu.id ORDER BY bu.sort_order
-    `).all(month) as any[];
+    `).all(month, org) as any[];
 
     // Only PENDING accruals are added on top of cash expenses. Paid accruals
     // are already (or will be) real fin_operations — adding them here counted
     // the same expense twice.
     const buAccruals = db.prepare(`
       SELECT a.business_unit_id, COALESCE(SUM(ABS(a.amount)), 0) as total
-      FROM accruals a WHERE a.month = ? AND a.status = 'pending' GROUP BY a.business_unit_id
-    `).all(month) as any[];
+      FROM accruals a
+      WHERE a.organization_id = ? AND a.month = ? AND a.status = 'pending'
+      GROUP BY a.business_unit_id
+    `).all(org, month) as any[];
     for (const acc of buAccruals) {
       const bu = buBreakdown.find((b: any) => b.id === acc.business_unit_id);
       if (bu) bu.expenses += acc.total;
@@ -97,11 +105,11 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
 
     const noProjectRows = db.prepare(`
       SELECT COUNT(*) as cnt FROM fin_operations
-      WHERE op_type = 'expense' AND project_id IS NULL
-    `).get() as any;
+      WHERE organization_id = ? AND op_type = 'expense' AND project_id IS NULL
+    `).get(org) as any;
     const totalExpRows = db.prepare(`
-      SELECT COUNT(*) as cnt FROM fin_operations WHERE op_type = 'expense'
-    `).get() as any;
+      SELECT COUNT(*) as cnt FROM fin_operations WHERE organization_id = ? AND op_type = 'expense'
+    `).get(org) as any;
 
     // Expected payments (unpaid confirmed reservations)
     const expectedRow = db.prepare(`
@@ -114,14 +122,16 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
       ), 0) as total,
       COUNT(*) as cnt
       FROM reservations r
-      WHERE r.status IN ('confirmed', 'checked_in', 'tentative') AND r.payment_status != 'paid'
+      JOIN properties prop ON r.property_id = prop.id
+      WHERE prop.organization_id = ?
+        AND r.status IN ('confirmed', 'checked_in', 'tentative') AND r.payment_status != 'paid'
         AND r.total_price > (
           COALESCE((SELECT SUM(amount) FROM fin_operations
                      WHERE reservation_id = r.id AND op_type = 'income' AND status = 'completed'), 0)
           - COALESCE((SELECT SUM(amount) FROM fin_operations
                      WHERE reservation_id = r.id AND op_type = 'expense' AND payment_subtype = 'refund' AND status = 'completed'), 0)
         )
-    `).get() as any;
+    `).get(org) as any;
 
     const alerts = [
       { metric: 'Транзакцій без BU', value: noProjectRows.cnt, threshold: Math.max(1, totalExpRows.cnt * 0.03), status: noProjectRows.cnt > totalExpRows.cnt * 0.03 ? 'RED' : 'GREEN' },
@@ -530,7 +540,7 @@ export async function getFinancialIndicators(request: NextRequest): Promise<Next
 
     // Canonical definitions (money-metrics): revenue nets refunds and
     // excludes financing inflows — same number as the overview shows.
-    const mm = getMonthMoney(db, month);
+    const mm = getMonthMoney(db, orgId(db), month);
     const revenue = mm.revenue;
     const cogs = mm.cogs;
     const variable = mm.variable;

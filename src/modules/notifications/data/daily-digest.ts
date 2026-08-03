@@ -10,6 +10,7 @@
  */
 
 import { getDb } from '@core/db';
+import { runWithOrganization } from '@core/auth/tenant-context';
 
 import { getAdminChatIds, getBotToken, getChatId } from '@/modules/notifications/data/telegram-bot';
 import { appBaseUrl } from '@core/app-url';
@@ -45,7 +46,14 @@ interface FinanceDigest {
   currency: string;
 }
 
-function getFinanceDigest(): FinanceDigest {
+/**
+ * reservations and units carry no organization_id — they reach one through
+ * property_id. Every query in this file uses the same fragment so "mine"
+ * cannot come to mean two different things in two places.
+ */
+const OWN = (alias = '') => `${alias}property_id IN (SELECT id FROM properties WHERE organization_id = ?)`;
+
+function getFinanceDigest(org: string): FinanceDigest {
   const db = getDb();
   const today = new Date().toISOString().split('T')[0];
 
@@ -53,10 +61,10 @@ function getFinanceDigest(): FinanceDigest {
   const incomeRows = db.prepare(`
     SELECT method, COALESCE(SUM(amount), 0) as total
     FROM fin_operations
-    WHERE op_type = 'income' AND status = 'completed'
+    WHERE organization_id = ? AND op_type = 'income' AND status = 'completed'
       AND date(paid_at) = ?
     GROUP BY method
-  `).all(today) as any[];
+  `).all(org, today) as any[];
 
   const methods: Record<string, number> = {};
   for (const r of incomeRows) {
@@ -67,16 +75,16 @@ function getFinanceDigest(): FinanceDigest {
   const expenseRow = db.prepare(`
     SELECT COALESCE(SUM(amount), 0) as total
     FROM fin_operations
-    WHERE op_type = 'expense' AND status = 'completed'
+    WHERE organization_id = ? AND op_type = 'expense' AND status = 'completed'
       AND date(paid_at) = ?
-  `).get(today) as any;
+  `).get(org, today) as any;
 
   const topExp = db.prepare(`
     SELECT comment, amount FROM fin_operations
-    WHERE op_type = 'expense' AND status = 'completed'
+    WHERE organization_id = ? AND op_type = 'expense' AND status = 'completed'
       AND date(paid_at) = ?
     ORDER BY amount DESC LIMIT 3
-  `).all(today) as any[];
+  `).all(org, today) as any[];
 
   const totalIncome = Object.values(methods).reduce((s, v) => s + v, 0);
 
@@ -87,9 +95,9 @@ function getFinanceDigest(): FinanceDigest {
   const yesterdayRow = db.prepare(`
     SELECT COALESCE(SUM(amount), 0) as total
     FROM fin_operations
-    WHERE op_type = 'income' AND status = 'completed'
+    WHERE organization_id = ? AND op_type = 'income' AND status = 'completed'
       AND date(paid_at) = ?
-  `).get(yesterdayStr) as any;
+  `).get(org, yesterdayStr) as any;
 
   return {
     cash: methods['cash'] || 0,
@@ -121,15 +129,15 @@ interface BookingsDigest {
   occupancyPct: number;
 }
 
-function getBookingsDigest(): BookingsDigest {
+function getBookingsDigest(org: string): BookingsDigest {
   const db = getDb();
   const today = new Date().toISOString().split('T')[0];
 
   // New bookings created today
   const newBookings = (db.prepare(`
     SELECT COUNT(*) as cnt FROM reservations
-    WHERE date(created_at) = ? AND status NOT IN ('cancelled', 'draft')
-  `).get(today) as any).cnt;
+    WHERE ${OWN()} AND date(created_at) = ? AND status NOT IN ('cancelled', 'draft')
+  `).get(org, today) as any).cnt;
 
   // Check-ins today (with category)
   const checkIns = db.prepare(`
@@ -139,9 +147,9 @@ function getBookingsDigest(): BookingsDigest {
     JOIN guests g ON g.id = r.guest_id
     JOIN units u ON u.id = r.unit_id
     LEFT JOIN categories c ON c.id = u.category_id
-    WHERE r.check_in = ? AND r.status IN ('confirmed', 'checked_in')
+    WHERE ${OWN('r.')} AND r.check_in = ? AND r.status IN ('confirmed', 'checked_in')
     ORDER BY category_name, u.name
-  `).all(today) as any[];
+  `).all(org, today) as any[];
 
   // Check-outs today
   const checkOuts = db.prepare(`
@@ -149,9 +157,9 @@ function getBookingsDigest(): BookingsDigest {
     FROM reservations r
     JOIN guests g ON g.id = r.guest_id
     JOIN units u ON u.id = r.unit_id
-    WHERE r.check_out = ? AND r.status IN ('checked_in', 'checked_out')
+    WHERE ${OWN('r.')} AND r.check_out = ? AND r.status IN ('checked_in', 'checked_out')
     ORDER BY u.name
-  `).all(today) as any[];
+  `).all(org, today) as any[];
 
   // Tomorrow's check-ins
   const tomorrow = new Date();
@@ -171,18 +179,18 @@ function getBookingsDigest(): BookingsDigest {
   // Unpaid bookings currently in-house or arriving today
   const unpaidRow = db.prepare(`
     SELECT COUNT(*) as cnt FROM reservations
-    WHERE check_in <= ? AND check_out > ?
+    WHERE ${OWN()} AND check_in <= ? AND check_out > ?
       AND status NOT IN ('cancelled', 'no_show', 'draft')
       AND payment_status != 'paid'
-  `).get(today, today) as any;
+  `).get(org, today, today) as any;
 
   // Today's new bookings by source
   const sourceRows = db.prepare(`
     SELECT COALESCE(source, 'direct') as source, COUNT(*) as cnt
     FROM reservations
-    WHERE date(created_at) = ? AND status NOT IN ('cancelled', 'draft')
+    WHERE ${OWN()} AND date(created_at) = ? AND status NOT IN ('cancelled', 'draft')
     GROUP BY source ORDER BY cnt DESC
-  `).all(today) as any[];
+  `).all(org, today) as any[];
 
   // Occupancy — all active bookings covering tonight (exclude pool units)
   const occupied = (db.prepare(`
@@ -194,10 +202,10 @@ function getBookingsDigest(): BookingsDigest {
   `).get(today, today) as any).cnt;
 
   const totalUnits = (db.prepare(
-    `SELECT COUNT(*) as cnt FROM units WHERE is_active = 1 AND is_pool = 0`
-  ).get() as any)?.cnt || (db.prepare(
-    `SELECT COUNT(*) as cnt FROM units WHERE is_pool = 0`
-  ).get() as any).cnt;
+    `SELECT COUNT(*) as cnt FROM units WHERE ${OWN()} AND is_active = 1 AND is_pool = 0`
+  ).get(org) as any)?.cnt || (db.prepare(
+    `SELECT COUNT(*) as cnt FROM units WHERE ${OWN()} AND is_pool = 0`
+  ).get(org) as any).cnt;
 
   // Group check-ins by category
   const catGroupToday: Record<string, number> = {};
@@ -254,16 +262,16 @@ interface BuBreakdown {
   expenseDetails: { comment: string; amount: number }[];
 }
 
-function getDetailedBreakdown(): BuBreakdown[] {
+function getDetailedBreakdown(org: string): BuBreakdown[] {
   const db = getDb();
   const today = new Date().toISOString().split('T')[0];
 
   // Get active business units
   const bus = db.prepare(`
     SELECT id, name FROM business_units
-    WHERE is_active = 1 AND is_shared = 0
+    WHERE organization_id = ? AND is_active = 1 AND is_shared = 0
     ORDER BY sort_order
-  `).all() as any[];
+  `).all(org) as any[];
 
   // For each BU, collect income by method and expenses
   const result: BuBreakdown[] = [];
@@ -273,10 +281,10 @@ function getDetailedBreakdown(): BuBreakdown[] {
     const incomeRows = db.prepare(`
       SELECT method, SUM(amount) as total
       FROM fin_operations
-      WHERE project_id = ? AND op_type = 'income' AND status = 'completed'
+      WHERE organization_id = ? AND project_id = ? AND op_type = 'income' AND status = 'completed'
         AND date(paid_at) = ?
       GROUP BY method
-    `).all(bu.id, today) as any[];
+    `).all(org, bu.id, today) as any[];
 
     const methods: Record<string, number> = {};
     for (const r of incomeRows) methods[r.method || 'other'] = r.total;
@@ -285,9 +293,9 @@ function getDetailedBreakdown(): BuBreakdown[] {
     const expenseRows = db.prepare(`
       SELECT amount, comment
       FROM fin_operations
-      WHERE project_id = ? AND op_type = 'expense' AND status = 'completed'
+      WHERE organization_id = ? AND project_id = ? AND op_type = 'expense' AND status = 'completed'
         AND date(paid_at) = ? AND (method = 'cash' OR method IS NULL)
-    `).all(bu.id, today) as any[];
+    `).all(org, bu.id, today) as any[];
 
     const cashExpenses = expenseRows.reduce((s: number, r: any) => s + r.amount, 0);
 
@@ -304,10 +312,10 @@ function getDetailedBreakdown(): BuBreakdown[] {
         JOIN units u ON u.id = r.unit_id
         JOIN categories c ON c.id = u.category_id
         JOIN guests g ON g.id = r.guest_id
-        WHERE r.check_in = ? AND r.status IN ('confirmed','checked_in')
+        WHERE ${OWN('r.')} AND r.check_in = ? AND r.status IN ('confirmed','checked_in')
           AND c.type = 'glamping'
         ORDER BY u.name
-      `).all(today) as any[];
+      `).all(org, today) as any[];
     } else if (buNameLower.includes('кемп') || buNameLower.includes('camping') || buNameLower.includes('палатк') || buNameLower.includes('караван')) {
       checkIns = db.prepare(`
         SELECT g.first_name, g.last_name, u.name as unit_name, r.nights
@@ -315,10 +323,10 @@ function getDetailedBreakdown(): BuBreakdown[] {
         JOIN units u ON u.id = r.unit_id
         JOIN categories c ON c.id = u.category_id
         JOIN guests g ON g.id = r.guest_id
-        WHERE r.check_in = ? AND r.status IN ('confirmed','checked_in')
+        WHERE ${OWN('r.')} AND r.check_in = ? AND r.status IN ('confirmed','checked_in')
           AND c.type = 'camping'
         ORDER BY u.name
-      `).all(today) as any[];
+      `).all(org, today) as any[];
     } else if (buNameLower.includes('будов') || buNameLower.includes('resort') || buNameLower.includes('готел')) {
       checkIns = db.prepare(`
         SELECT g.first_name, g.last_name, u.name as unit_name, r.nights
@@ -326,10 +334,10 @@ function getDetailedBreakdown(): BuBreakdown[] {
         JOIN units u ON u.id = r.unit_id
         JOIN categories c ON c.id = u.category_id
         JOIN guests g ON g.id = r.guest_id
-        WHERE r.check_in = ? AND r.status IN ('confirmed','checked_in')
+        WHERE ${OWN('r.')} AND r.check_in = ? AND r.status IN ('confirmed','checked_in')
           AND c.type = 'resort'
         ORDER BY u.name
-      `).all(today) as any[];
+      `).all(org, today) as any[];
     }
 
     const totalIncome = Object.values(methods).reduce((s, v) => s + v, 0);
@@ -578,14 +586,19 @@ async function sendToChat(chatId: string, text: string): Promise<number | null> 
  * 1. General digest (Finance totals, Bookings, Tasks)
  * 2. Detailed per-property/BU breakdown (check-ins, cash/card, expenses)
  */
-export async function sendDailyOperationalDigest(): Promise<{
+export async function sendDailyOperationalDigest(organizationId: string): Promise<{
   sent: boolean;
   sections: { finance: FinanceDigest; bookings: BookingsDigest; tasks: TasksSummary };
 }> {
-  const finance = getFinanceDigest();
-  const bookings = getBookingsDigest();
+  // Whose numbers. This function used to take nothing and sum everything —
+  // with one hotel that read correctly, with two the message pasted into one
+  // hotel's Telegram carried the other's revenue, arrivals and guest names.
+  const org = organizationId;
+  return runWithOrganization(org, async () => {
+  const finance = getFinanceDigest(org);
+  const bookings = getBookingsDigest(org);
   const tasks = getTasksSummary();
-  const breakdown = getDetailedBreakdown();
+  const breakdown = getDetailedBreakdown(org);
   const text = formatDailyDigest(finance, bookings, tasks, breakdown);
   const detailedText = formatDetailedDigest(breakdown);
 
@@ -616,4 +629,5 @@ export async function sendDailyOperationalDigest(): Promise<{
   console.log(`[DailyDigest] Finance: ${finance.totalIncome} ${finance.currency} | Bookings: ${bookings.newBookingsToday} new, ${bookings.occupancyPct}% occ | Tasks: ${tasks.total} active | BU breakdown: ${breakdown.length} units`);
 
   return { sent, sections: { finance, bookings, tasks } };
+  });
 }

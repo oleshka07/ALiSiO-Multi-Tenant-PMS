@@ -54,7 +54,15 @@ const CLS_SQL = `
   ))
 `;
 
-export function getMonthMoney(db: any, month: string): MonthMoney {
+/**
+ * Every number the finance overview shows for a month.
+ *
+ * The organization is a REQUIRED argument, not an option: this is the helper
+ * behind revenue, expenses and EBITDA, and without it those were sums across
+ * every company on the server. One hotel's overview quietly included another
+ * hotel's income — the kind of wrong that looks like a plausible number.
+ */
+export function getMonthMoney(db: any, organizationId: string, month: string): MonthMoney {
   const rows = db.prepare(`
     SELECT o.op_type,
            CASE WHEN o.op_type = 'expense' AND COALESCE(o.payment_subtype, '') = 'refund'
@@ -63,11 +71,12 @@ export function getMonthMoney(db: any, month: string): MonthMoney {
            COALESCE(SUM(o.amount_company), 0) AS total
     FROM fin_operations o
     LEFT JOIN expense_categories ec ON ec.id = o.category_id
-    WHERE o.status = 'completed'
+    WHERE o.organization_id = ?
+      AND o.status = 'completed'
       AND o.op_type != 'transfer'
       AND strftime('%Y-%m', o.paid_at) = ?
     GROUP BY o.op_type, is_refund, cls
-  `).all(month) as { op_type: string; is_refund: number; cls: string; total: number }[];
+  `).all(organizationId, month) as { op_type: string; is_refund: number; cls: string; total: number }[];
 
   const m: MonthMoney = {
     month,
