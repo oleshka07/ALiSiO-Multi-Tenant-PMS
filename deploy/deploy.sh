@@ -58,15 +58,30 @@ docker compose --env-file "$ENV_FILE" -p "$PROJECT" -f deploy/docker-compose.yml
 
 # ── Verify ───────────────────────────────────────────────────────────────────
 PORT="$(grep -E '^APP_PORT=' "$ENV_FILE" | cut -d= -f2)"
+# Health means "answers a request that opens the database", not "serves a
+# page". GET /login renders from the bundle alone: when a deploy shipped a
+# build that could not load better-sqlite3, this loop said "beta is up" while
+# every data route returned 500. A login POST with junk credentials has to
+# reach the users table, so only a real 401 proves the database is readable.
 echo "==> waiting for health on 127.0.0.1:${PORT}"
-for i in $(seq 1 30); do
-  if curl -fsS -o /dev/null "http://127.0.0.1:${PORT}/login"; then
-    echo "==> $ENV_NAME is up: $(git rev-parse --short HEAD)"
-    exit 0
-  fi
+HEALTH_URL="http://127.0.0.1:${PORT}/api/auth/login"
+for i in $(seq 1 45); do
+  CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$HEALTH_URL"     -H 'Content-Type: application/json'     -d '{"email":"deploy-health@example.invalid","password":"x"}' || true)"
+  case "$CODE" in
+    401|400)
+      echo "==> $ENV_NAME is up: $(git rev-parse --short HEAD) (db reachable, health $CODE)"
+      exit 0
+      ;;
+    500|502|503)
+      # The server is answering but something behind it is broken — report the
+      # reason instead of retrying until the timeout hides it.
+      echo "!! $ENV_NAME answers $CODE on a database-backed route" >&2
+      break
+      ;;
+  esac
   sleep 2
 done
 
-echo "!! $ENV_NAME did not become healthy in 60s" >&2
+echo "!! $ENV_NAME did not become healthy in 90s" >&2
 docker compose --env-file "$ENV_FILE" -p "$PROJECT" -f deploy/docker-compose.yml logs --tail 60 app >&2
 exit 1
