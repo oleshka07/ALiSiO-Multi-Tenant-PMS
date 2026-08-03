@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import path from 'path';
 import fs from 'fs';
+import { createRequire } from 'node:module';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
@@ -35,20 +36,31 @@ export function getDb(): any {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
 
-  // Dynamic require to avoid webpack bundling issues
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Database = require('better-sqlite3');
-  db = new Database(DB_PATH);
+  // createRequire, not a bare require(): webpack still leaves the native
+  // module unbundled, and the file also loads as plain ESM — node runs the
+  // .check.ts files directly, where `require` does not exist.
+  const Database = createRequire(path.join(process.cwd(), 'package.json'))('better-sqlite3');
 
-  // Enable WAL mode for better performance
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+  // The module-level `db` is assigned only AFTER the schema work succeeds.
+  // It used to be assigned first — so when a migration threw, the connection
+  // was already cached, every later getDb() returned it through the guard at
+  // the top, and the whole app ran on a half-migrated schema with no error
+  // anywhere near the cause. A failed boot must fail out loud and be retried,
+  // not remembered.
+  const database = new Database(DB_PATH);
+  database.pragma('journal_mode = WAL');
+  database.pragma('foreign_keys = ON');
 
-  // Initialize schema if needed
-  initSchema(db);
+  try {
+    // Initialize schema if needed, then upgrade existing databases.
+    initSchema(database);
+    runMigrations(database);
+  } catch (e) {
+    try { database.close(); } catch { /* already broken */ }
+    throw e;
+  }
 
-  // Run migrations for existing databases
-  runMigrations(db);
+  db = database;
 
   // Background ticks, lazily loaded so getDb() does not drag in IMAP/HTTP
   // machinery. These MUST use dynamic import(), not require(): under Turbopack
@@ -1709,26 +1721,14 @@ function runMigrations(database: any) {
         UNIQUE(organization_id, month, alloc_method, business_unit_id)
       )
     `);
-    // Seed default allocations from Allocations sheet (for 2026-03)
-    const orgRow = database.prepare("SELECT id FROM organizations LIMIT 1").get() as any;
-    if (orgRow) {
-      const insAlloc = database.prepare('INSERT INTO cost_allocations (organization_id, month, alloc_method, business_unit_id, percentage) VALUES (?, ?, ?, ?, ?)');
-      const allocData: [string, string, number][] = [
-        // [method, bu_id, percentage]
-        ['RENT', 'bu_glamping', 30], ['RENT', 'bu_budova_fd', 30], ['RENT', 'bu_camping', 5],
-        ['RENT', 'bu_restaurant', 20], ['RENT', 'bu_sauna', 10], ['RENT', 'bu_pool', 5],
-        ['UTILITIES', 'bu_glamping', 25], ['UTILITIES', 'bu_budova_fd', 30], ['UTILITIES', 'bu_camping', 5],
-        ['UTILITIES', 'bu_restaurant', 20], ['UTILITIES', 'bu_sauna', 15], ['UTILITIES', 'bu_pool', 5],
-        ['SHARED_PAYROLL', 'bu_glamping', 30], ['SHARED_PAYROLL', 'bu_budova_fd', 25], ['SHARED_PAYROLL', 'bu_camping', 5],
-        ['SHARED_PAYROLL', 'bu_restaurant', 20], ['SHARED_PAYROLL', 'bu_sauna', 10], ['SHARED_PAYROLL', 'bu_pool', 10],
-        ['HQ', 'bu_glamping', 30], ['HQ', 'bu_budova_fd', 25], ['HQ', 'bu_camping', 5],
-        ['HQ', 'bu_restaurant', 20], ['HQ', 'bu_sauna', 10], ['HQ', 'bu_pool', 10],
-      ];
-      for (const [method, buId, pct] of allocData) {
-        insAlloc.run(orgRow.id, '2026-03', method, buId, pct);
-      }
-      console.log('[DB] Created cost_allocations table with default allocations');
-    }
+    // No seed. This used to insert the first hotel's allocation percentages
+    // for 2026-03 against six of its business unit ids — ids that stopped
+    // existing when the unit seeding was reduced to bu_shared/bu_review, so on
+    // a fresh database the INSERT died on its foreign key. Worker A crashed,
+    // worker B saw the table already created, skipped the block, and the boot
+    // "succeeded" with the crash swallowed. Allocations are the customer's own
+    // numbers; an empty table is the correct start.
+    console.log('[DB] Created cost_allocations table');
   }
 
   // ═══════════════════════════════════════════════════════
@@ -4669,6 +4669,37 @@ function runMigrations(database: any) {
     // unambiguous; adding the organization would weaken it, not scope it.
   } catch (e: any) {
     console.error('[DB] per-organization uniqueness migration:', e.message);
+  }
+
+  // --- Migration: Hostex columns on reservations ---
+  //
+  // These were added by ensureHostexColumns() inside the SYNC — so a database
+  // only got them once a Hostex sync actually ran. On a hotel without Hostex
+  // the columns never appeared, and every query naming them (the calendar's
+  // booking list does) died with "no such column". Schema must not depend on
+  // an integration having fired; the sync's own ensure stays as a no-op.
+  try {
+    const resCols2 = (database.prepare('PRAGMA table_info(reservations)').all() as any[])
+      .map((c: any) => c.name);
+    const hostexCols: [string, string][] = [
+      ['hostex_reservation_code', 'TEXT'],
+      ['hostex_stay_code', 'TEXT'],
+      ['hostex_channel_type', 'TEXT'],
+      ['hostex_channel_id', 'TEXT'],
+      ['hostex_listing_id', 'TEXT'],
+      ['total_rate_eur', 'REAL'],
+      ['commission_eur', 'REAL'],
+      ['net_rate_eur', 'REAL'],
+      ['channel_remarks', 'TEXT'],
+      ['is_prepaid', 'INTEGER DEFAULT 0'],
+      ['is_multi_room', 'INTEGER DEFAULT 0'],
+      ['multi_room_marker', 'TEXT'],
+    ];
+    for (const [name, type] of hostexCols) {
+      if (!resCols2.includes(name)) database.exec(`ALTER TABLE reservations ADD COLUMN ${name} ${type}`);
+    }
+  } catch (e: any) {
+    console.error('[DB] hostex columns migration:', e.message);
   }
 
   // --- Migration: tables nothing reads ---

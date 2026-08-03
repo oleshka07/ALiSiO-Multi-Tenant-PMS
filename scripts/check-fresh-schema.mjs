@@ -18,7 +18,7 @@
  * Reads only. The temporary database lives in the system temp directory and
  * the real one is never opened for writing.
  */
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -50,7 +50,14 @@ let log = '';
 server.stdout.on('data', (d) => { log += d; });
 server.stderr.on('data', (d) => { log += d; });
 
-const stop = () => { try { server.kill('SIGKILL'); } catch { /* already gone */ } };
+// shell:true means server.pid is the cmd wrapper; kill() reaped the shell and
+// left the actual node process holding the port for every later run.
+const stop = () => {
+  try {
+    if (process.platform === 'win32') execSync(`taskkill /T /F /PID ${server.pid}`, { stdio: 'ignore' });
+    else server.kill('SIGKILL');
+  } catch { /* already gone */ }
+};
 
 /** The app builds its schema lazily, on the first request that touches the db. */
 async function waitForSchema() {
