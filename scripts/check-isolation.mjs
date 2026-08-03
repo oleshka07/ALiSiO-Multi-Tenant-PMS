@@ -431,6 +431,20 @@ async function main() {
     assert.strictEqual(malformed.status, 400, `waitlist accepted junk: ${malformed.status}`);
     console.log('  ok  the public waitlist refuses invented sites and junk input');
 
+    // ── The dashboard ────────────────────────────────────────────────────
+    // The first screen after logging in showed arrivals, departures and an
+    // occupancy percentage computed across every hotel on the server, plus a
+    // list of upcoming guests by name. B has no property with units, so its
+    // dashboard must be empty rather than a copy of A's.
+    const dashB = await call(cookieB, '/api/dashboard');
+    if (dashB.ok) {
+      const d = await dashB.json();
+      assert.strictEqual(d.totalUnits, 0, `B's dashboard counts ${d.totalUnits} units it does not own`);
+      assert.strictEqual((d.upcomingArrivals || []).length, 0, "B's dashboard lists arrivals it does not own");
+      assert.strictEqual((d.todayDepartures || []).length, 0, "B's dashboard lists departures it does not own");
+      console.log("  ok  the dashboard counts only the caller's own hotel");
+    }
+
     // ── The nightly digest ───────────────────────────────────────────────
     // It sends numbers to Telegram. Every query in it was unscoped, so the
     // message pasted into one hotel's chat carried both companies' revenue,
