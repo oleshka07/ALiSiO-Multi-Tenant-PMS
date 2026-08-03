@@ -125,3 +125,27 @@ same login.
   Until then the two environments are two files, not two database servers.
 - Backups are local to the server. Copy `deploy/backups/` off-host — a disk
   failure currently takes the backups with it.
+
+
+---
+
+## Новий клієнт
+
+```bash
+node scripts/provision-org.mjs   --name "Hotel Kyiv" --slug hotel-kyiv --email owner@hotel-kyiv.ua   --city Kyiv --country UA --currency UAH
+```
+
+Створює організацію, її власника, перший об'єкт і одну категорію — все в
+одній транзакції. Пароль генерується і показується **один раз**, якщо не
+передати `--password`.
+
+Усі інтеграції стартують **вимкненими**. Нового клієнта не варто зустрічати
+пунктами меню, які відповідають 403; вмикайте кожну в Налаштування → Модулі
+та інтеграції, коли для неї справді є ключі (`--enable widget,teya` — якщо
+вже є).
+
+На сервері — всередині контейнера відповідного середовища:
+
+```bash
+docker exec -it alisio-beta-app node scripts/provision-org.mjs --name … --slug … --email …
+```

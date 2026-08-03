@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextResponse } from 'next/server';
 
 /**
  * The feature registry: which integrations this organization actually bought.
@@ -46,10 +45,16 @@ export function setFeature(db: any, organizationId: string, feature: FeatureKey,
   `).run(organizationId, feature, enabled ? 1 : 0);
 }
 
-/** The refusal a handler returns when the organization lacks the feature. */
+/**
+ * The refusal a handler returns when the organization lacks the feature.
+ *
+ * A plain Response, not NextResponse: importing 'next/server' here would make
+ * the whole registry unloadable outside the bundler, and provisioning needs to
+ * write feature rows from a plain node script. Next accepts either.
+ */
 export function featureDisabled(feature: FeatureKey, headers?: Record<string, string>): Response {
-  return NextResponse.json(
-    { error: `Feature "${feature}" is not enabled for this organization` },
-    { status: 403, headers },
+  return new Response(
+    JSON.stringify({ error: `Feature "${feature}" is not enabled for this organization` }),
+    { status: 403, headers: { 'Content-Type': 'application/json', ...(headers || {}) } },
   );
 }

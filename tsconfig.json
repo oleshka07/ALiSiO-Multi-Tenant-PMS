@@ -6,6 +6,10 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // A few modules load BOTH under the bundler and under plain node — the
+    // provisioning script and the *.check.ts self-checks import them directly.
+    // Those imports must carry the .ts extension for node to resolve them.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
