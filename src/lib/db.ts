@@ -2488,11 +2488,19 @@ function runMigrations(database: any) {
         registered_at TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         reg_status TEXT NOT NULL DEFAULT 'not_started',
+        group_id TEXT,
         FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
         FOREIGN KEY (guest_id) REFERENCES guests(id) ON DELETE CASCADE
       )
     `);
   } catch { /* already exists */ }
+
+  // group_id used to be added by a lazy ALTER inside the widget's reserve
+  // handler — so whether a database had the column depended on whether a
+  // widget booking had ever happened on it. Schema lives here.
+  try {
+    database.exec('ALTER TABLE guest_registrations ADD COLUMN group_id TEXT');
+  } catch { /* column already exists */ }
 
   // --- Migration: add registration_status to reservations ---
   try {

@@ -464,11 +464,6 @@ export async function createWidgetReservation(request: NextRequest) {
       return `${Math.random().toString(36).slice(2)}_${Date.now()}`;
     };
 
-    // Ensure guest_registrations table has the group_id column (graceful migration)
-    try {
-      db.prepare('ALTER TABLE guest_registrations ADD COLUMN group_id TEXT').run();
-    } catch { /* column already exists */ }
-
     const createdReservations: { reservationId: string; guestPageToken: string; unitName: string; slot: number }[] = [];
 
     for (let slot = 1; slot <= bookingQuantity; slot++) {

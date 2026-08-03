@@ -828,6 +828,7 @@ CREATE TABLE "guest_registrations" (
   "purpose_of_stay" TEXT,
   "visa_number" TEXT,
   "reg_status" TEXT DEFAULT 'not_started' NOT NULL,
+  "group_id" TEXT,
   PRIMARY KEY ("id")
 );
 
