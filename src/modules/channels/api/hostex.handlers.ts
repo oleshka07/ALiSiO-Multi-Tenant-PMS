@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { withActor, type Actor } from '@core/auth/session';
 import { hasFeature, featureDisabled } from '@core/features';
-import { syncReservations, syncSingleReservation, getSyncStatus, seedPropertyMap } from '@/lib/hostex-sync';
-import { getReservations, getProperties } from '@/lib/hostex';
+import { syncReservations, syncSingleReservation, getSyncStatus, seedPropertyMap } from '../data/hostex-sync';
+import { getReservations, getProperties } from '../domain/hostex-client';
 
 // ─── /api/hostex/sync ─────────────────────────────────────────────────────────
 // hostexSync and hostexBulkSync stay bare: their routes are cron-secret

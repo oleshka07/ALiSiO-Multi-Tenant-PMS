@@ -128,3 +128,29 @@ export async function syncCnbRates(
 
   return { date: fixing.date, upserted, skipped };
 }
+
+// ─── Cached EUR/CZK mid-rate ─────────────────────────────────────────────────
+//
+// This lived inside the Hostex client with its own private copy of the ČNB
+// fetch — an FX question hiding in a channel-manager file, which is why the
+// pricing module and the Booking.com import were importing '@/lib/hostex' to
+// convert currency. Same feed, one parser, one cache.
+
+let cachedEurCzk: { rate: number; fetchedAt: number } | null = null;
+const EUR_CZK_CACHE_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+export async function getEurCzkRate(): Promise<number> {
+  if (cachedEurCzk && Date.now() - cachedEurCzk.fetchedAt < EUR_CZK_CACHE_MS) {
+    return cachedEurCzk.rate;
+  }
+  try {
+    const fixing = await fetchCnbFixing();
+    const rate = fixing.rates['EUR'];
+    if (!rate) throw new Error('ČNB feed has no EUR row');
+    cachedEurCzk = { rate, fetchedAt: Date.now() };
+    return rate;
+  } catch (e) {
+    console.error('[CNB] EUR/CZK fetch failed, using fallback:', (e as Error).message);
+    return cachedEurCzk?.rate || 25.2;
+  }
+}

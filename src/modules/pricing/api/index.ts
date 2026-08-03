@@ -18,3 +18,4 @@ export type {
   Promotion,
   PromotionType,
 } from '../domain/types';
+export { previewPricelabs } from './pricelabs-preview.handlers';

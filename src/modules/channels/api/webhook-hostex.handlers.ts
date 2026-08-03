@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { syncSingleReservation, syncReservations } from '@/lib/hostex-sync';
+import { syncSingleReservation, syncReservations } from '../data/hostex-sync';
 
 const WEBHOOK_SECRET = process.env.HOSTEX_WEBHOOK_SECRET || '';
 

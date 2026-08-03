@@ -364,32 +364,34 @@ function CalendarDesktop() {
   }, [bookings, statusFilter, paymentFilter]);
 
   // ─── Group units ──────
+  //
+  // Rows are grouped by whatever this hotel actually uses: a building, a zone,
+  // or — when it names neither — the category itself. Nothing is hardcoded to
+  // one hotel's vocabulary, and nothing is dropped.
+  //
+  // The bug this replaces made the calendar render ZERO rooms: the group names
+  // were built with a fallback (`building_name || 'Other'`) but the members
+  // were matched without one (`building_name === 'Other'`), so for the very
+  // common case of a hotel with no buildings named, every group came out
+  // empty. Grouping now keys on one function used for both sides.
   const groups = useMemo(() => {
-    const result: { key: string; label: string; category: string; units: UnitRow[] }[] = [];
-    // Whatever category types this hotel actually has — the previous fixed
-    // list (glamping/resort/camping) silently dropped any other type's units.
-    const cats = [...new Set(units.map(u => u.category_type))].sort();
-    for (const cat of cats) {
-      const catUnits = filteredUnits.filter(u => u.category_type === cat);
-      if (catUnits.length === 0) continue;
-      if (cat === 'resort') {
-        const bldgs = [...new Set(catUnits.map(u => u.building_name || 'Other'))];
-        for (const b of bldgs) {
-          const bUnits = catUnits.filter(u => u.building_name === b);
-          result.push({ key: `resort-${b}`, label: `Resort / ${b}`, category: cat, units: bUnits });
-        }
-      } else if (cat === 'camping') {
-        const zones = [...new Set(catUnits.map(u => u.zone || 'Other'))];
-        for (const z of zones) {
-          const zUnits = catUnits.filter(u => u.zone === z);
-          result.push({ key: `camping-${z}`, label: `Camping / ${z}`, category: cat, units: zUnits });
-        }
-      } else {
-        result.push({ key: cat, label: categoryConfig[cat]?.label || cat, category: cat, units: catUnits });
+    const groupOf = (u: UnitRow) => {
+      const sub = u.building_name || u.zone || '';
+      const cat = categoryConfig[u.category_type]?.label || u.category_type || 'Номери';
+      return sub ? { key: `${u.category_type}/${sub}`, label: `${cat} / ${sub}` }
+                 : { key: u.category_type || 'all', label: cat };
+    };
+
+    const byKey = new Map<string, { key: string; label: string; category: string; units: UnitRow[] }>();
+    for (const u of filteredUnits) {
+      const g = groupOf(u);
+      if (!byKey.has(g.key)) {
+        byKey.set(g.key, { key: g.key, label: g.label, category: u.category_type, units: [] });
       }
+      byKey.get(g.key)!.units.push(u);
     }
-    return result;
-  }, [filteredUnits, units]);
+    return [...byKey.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [filteredUnits]);
 
   // ─── Flat unit list (for row indexing) ──────
   const flatRows = useMemo(() => {

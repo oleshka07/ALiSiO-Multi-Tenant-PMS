@@ -2,16 +2,16 @@
  * Hostex → ALiSiO PMS Sync Service
  * Handles reservation, guest, and payment synchronization
  */
-import { getDb, generateGuestToken } from './db';
+import { getDb, generateGuestToken } from '@core/db';
 import { appBaseUrl } from '@core/app-url';
 import {
   getProperties,
   getAllReservations,
-  getEurCzkRate,
   updateReservationRemarks,
   updateReservationCustomField,
   type HostexReservation,
-} from './hostex';
+} from '../domain/hostex-client';
+import { getEurCzkRate } from '@/lib/cnb-rates';
 import { notifyReservationCreated } from '@/modules/bookings/domain/reservation-tg-notify';
 import { findOrCreateGuest as findOrCreateGuestUnified } from '@guests';
 import { money } from '@core/money';
@@ -201,7 +201,8 @@ export async function syncSingleReservation(reservationCode: string): Promise<Sy
   const result: SyncResult = { synced: 0, created: 0, updated: 0, skipped: 0, errors: [], eurCzkRate: 25.2 };
 
   try {
-    const { getReservationByCode, getEurCzkRate: fetchRate } = await import('./hostex');
+    const { getReservationByCode } = await import('../domain/hostex-client');
+    const { getEurCzkRate: fetchRate } = await import('@/lib/cnb-rates');
     result.eurCzkRate = await fetchRate();
     ensureHostexColumns(db);
 

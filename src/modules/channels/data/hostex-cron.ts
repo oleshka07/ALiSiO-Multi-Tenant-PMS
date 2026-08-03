@@ -3,9 +3,9 @@
  * Runs every 10 minutes to pull reservations from Hostex
  * Also registers webhook on startup for real-time updates
  */
-import { syncReservations, seedPropertyMap } from '../hostex-sync';
+import { syncReservations, seedPropertyMap } from './hostex-sync';
 import { appBaseUrl } from '@core/app-url';
-import { ensureWebhookRegistered } from '../hostex';
+import { ensureWebhookRegistered } from '../domain/hostex-client';
 
 let cronInterval: ReturnType<typeof setInterval> | null = null;
 let isRunning = false;
