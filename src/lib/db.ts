@@ -2624,7 +2624,13 @@ function runMigrations(database: any) {
   // causing INSERT OR IGNORE to silently discard payment records
   // Skipped after PR #6 — payments table no longer exists, replaced by fin_operations.
   // ═══════════════════════════════════════════════════════
-  if (!finOpsMigrated) try {
+  // finOpsMigrated was read before PR #6 ran in THIS process — probe the
+  // table itself, or on a fresh boot this recreated a table dropped a moment
+  // earlier and logged an error every time.
+  const paymentsStillExists = !!database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='payments'"
+  ).get();
+  if (!finOpsMigrated && paymentsStillExists) try {
     // Check if payments table has restrictive CHECK by trying an insert with 'service' type
     const testId = '_check_test_' + Date.now();
     const testRes = database.prepare("SELECT id FROM reservations LIMIT 1").get() as any;
@@ -3688,13 +3694,26 @@ function runMigrations(database: any) {
     if (!flagRow) {
       const orgRow = database.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
       if (orgRow) {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { backfillReceivables } = require('@/modules/finance/data/clearing-engine');
-        const count = backfillReceivables(database, orgRow.id);
-        database.prepare(
-          "INSERT OR REPLACE INTO fin_system_state (key, value, updated_at) VALUES (?, ?, datetime('now'))"
-        ).run('pr15_receivables_backfilled', String(count));
-        console.log(`[DB] PR #15: backfilled ${count} channel receivables`);
+        let backfillReceivables: ((db: any, orgId: string) => number) | null = null;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          ({ backfillReceivables } = require('@/modules/finance/data/clearing-engine'));
+        } catch {
+          // The alias resolves only under the bundler. Plain node (the check
+          // scripts) cannot load it — and a database that has never seen the
+          // bundler has nothing to backfill. Write the flag so this does not
+          // re-log on every boot forever.
+          database.prepare(
+            "INSERT OR REPLACE INTO fin_system_state (key, value, updated_at) VALUES (?, ?, datetime('now'))"
+          ).run('pr15_receivables_backfilled', 'skipped: module unavailable outside the bundler');
+        }
+        if (backfillReceivables) {
+          const count = backfillReceivables(database, orgRow.id);
+          database.prepare(
+            "INSERT OR REPLACE INTO fin_system_state (key, value, updated_at) VALUES (?, ?, datetime('now'))"
+          ).run('pr15_receivables_backfilled', String(count));
+          console.log(`[DB] PR #15: backfilled ${count} channel receivables`);
+        }
       }
     }
   } catch (e: any) { console.log('[DB] PR #15 receivables backfill:', e.message); }
