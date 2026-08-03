@@ -162,13 +162,17 @@ function CalendarDesktop() {
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  // v2 key on purpose: the old key holds 'resort' for everyone who ever
+  // opened the calendar while that was the hardcoded default — carrying it
+  // forward would keep silently hiding every other category. A filter the
+  // user picks from now on persists under the new key.
   const [categoryFilter, setCategoryFilter] = useState(() => {
-    if (typeof window !== 'undefined') return localStorage.getItem('calendar_categoryFilter') || '';
+    if (typeof window !== 'undefined') return localStorage.getItem('calendar_category_v2') || '';
     return '';
   });
 
   useEffect(() => {
-    localStorage.setItem('calendar_categoryFilter', categoryFilter);
+    localStorage.setItem('calendar_category_v2', categoryFilter);
   }, [categoryFilter]);
   const [statusFilter, setStatusFilter] = useState('');
   const [cleaningFilter, setCleaningFilter] = useState('');
