@@ -1,3 +1,4 @@
+import { integrationCredentials } from '@core/integration-credentials';
 /**
  * PriceLabs Customer API client.
  * Endpoint reference: https://api.pricelabs.co/v1
@@ -48,13 +49,23 @@ export interface PriceLabsListingPrices {
 export class PriceLabsNotConfiguredError extends Error {
   readonly status = 503;
   constructor() {
-    super('PriceLabs is not configured: PRICELABS_API_KEY is missing');
+    super('PriceLabs is not configured: no API key for this organization');
     this.name = 'PriceLabsNotConfiguredError';
   }
 }
 
+/**
+ * Whose PriceLabs account — same story as the Hostex token: one env var for
+ * the whole server meant two hotels could never have separate accounts.
+ */
+let currentOrganizationId: string | null = null;
+
+export function setPriceLabsOrganization(organizationId: string | null): void {
+  currentOrganizationId = organizationId;
+}
+
 function apiKey(): string {
-  const key = process.env.PRICELABS_API_KEY;
+  const key = integrationCredentials('pricelabs', currentOrganizationId)?.accessToken;
   if (!key) throw new PriceLabsNotConfiguredError();
   return key;
 }

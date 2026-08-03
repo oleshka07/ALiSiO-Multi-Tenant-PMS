@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
-import { createPaymentSession, resolveSiteCredentials, isGlobalTeyaConfigured } from '@payments';
+import { createPaymentSession, resolveSiteCredentials, isPaymentConfigured } from '@payments';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { hasFeature, featureDisabled } from '@core/features';
@@ -63,21 +63,24 @@ export async function createWidgetCheckoutSession(req: Request) {
       }
     }
 
-    // A payment session is created for an organization that bought Teya.
+    // ONE question: does this organization take online payments? Not "is Teya
+    // configured" — that named a provider in a booking-widget file, so adding
+    // a second gateway would have meant editing every caller. isPaymentConfigured
+    // owns the whole answer (feature bought → credentials present, site or env);
+    // a German provider changes that function and nothing here.
+    //
     // The organization comes from the reservation being paid, the site, or —
     // on a single-organization install — the only organization there is.
+    let payingOrg: string | undefined;
     try {
-      const org: string | undefined = (reservation_id
+      payingOrg = (reservation_id
         ? (db.prepare('SELECT p.organization_id FROM reservations r JOIN properties p ON r.property_id = p.id WHERE r.id = ?').get(reservation_id) as any)?.organization_id
         : undefined) || site?.organization_id || requireOrganizationId(db);
-      if (!org || !hasFeature(db, org, 'teya')) return featureDisabled('teya', CORS_HEADERS);
     } catch {
-      return NextResponse.json({ error: 'Online payments not configured' }, { status: 403, headers: CORS_HEADERS });
+      payingOrg = undefined;
     }
 
-    // Check if payment is possible: either site-specific Teya config or global ENV
-    const hasSiteTeya = !!siteCreds?.credentials;
-    if (!hasSiteTeya && !isGlobalTeyaConfigured()) {
+    if (!payingOrg || !isPaymentConfigured(payingOrg)) {
       if (reservation_id) {
         // Fire email explicitly for offline/bank-transfer partner bookings
         try {

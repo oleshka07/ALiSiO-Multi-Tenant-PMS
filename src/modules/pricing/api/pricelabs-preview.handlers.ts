@@ -9,7 +9,7 @@
 //
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getListings, getListingPrices } from '../domain/pricelabs-client';
+import { getListings, getListingPrices, setPriceLabsOrganization } from '../domain/pricelabs-client';
 import { getEurCzkRate } from '@/modules/finance/domain/cnb-rates';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@core/auth';
@@ -27,6 +27,8 @@ async function requirePricingPerm(): Promise<NextResponse | null> {
   if (!hasFeature(getDb(), user.organization_id, 'pricelabs')) {
     return featureDisabled('pricelabs') as NextResponse;
   }
+  // The client is stateless about whose account it uses until told.
+  setPriceLabsOrganization(user.organization_id);
   return null;
 }
 

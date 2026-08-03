@@ -4,7 +4,7 @@ import { getDb } from '@core/db';
 import { withActor, type Actor } from '@core/auth/session';
 import { hasFeature, featureDisabled } from '@core/features';
 import { syncReservations, syncSingleReservation, getSyncStatus, seedPropertyMap } from '../data/hostex-sync';
-import { getReservations, getProperties } from '../domain/hostex-client';
+import { getReservations, getProperties, setHostexOrganization } from '../domain/hostex-client';
 
 // ─── /api/hostex/sync ─────────────────────────────────────────────────────────
 // hostexSync and hostexBulkSync stay bare: their routes are cron-secret
@@ -22,6 +22,7 @@ export async function hostexSync(): Promise<NextResponse> {
 
 export const hostexSyncStatus = withActor(async (_req, _ctx, actor: Actor) => {
   if (!hasFeature(getDb(), actor.organizationId, 'hostex')) return featureDisabled('hostex');
+  setHostexOrganization(actor.organizationId);
   try {
     return NextResponse.json(getSyncStatus());
   } catch (e: any) {
@@ -33,6 +34,7 @@ export const hostexSyncStatus = withActor(async (_req, _ctx, actor: Actor) => {
 
 export const hostexReservations = withActor(async (request, _ctx, actor: Actor) => {
   if (!hasFeature(getDb(), actor.organizationId, 'hostex')) return featureDisabled('hostex');
+  setHostexOrganization(actor.organizationId);
   try {
     const url = new URL(request.url);
     const page = parseInt(url.searchParams.get('page') || '1');
@@ -63,6 +65,7 @@ function hostexError(where: string, e: any): NextResponse {
 
 export const hostexProperties = withActor(async (_req, _ctx, actor: Actor) => {
   if (!hasFeature(getDb(), actor.organizationId, 'hostex')) return featureDisabled('hostex');
+  setHostexOrganization(actor.organizationId);
   try {
     const properties = await getProperties();
     const db = getDb();

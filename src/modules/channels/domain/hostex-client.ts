@@ -3,19 +3,37 @@
  * Channel manager integration for ALiSiO PMS
  */
 import https from 'https';
+import { integrationCredentials } from '@core/integration-credentials';
 
 const HOSTEX_BASE = 'api.hostex.io';
 const HOSTEX_API_VERSION = '/v3';
-const HOSTEX_TOKEN = process.env.HOSTEX_ACCESS_TOKEN;
-if (!HOSTEX_TOKEN) {
-  console.error('[Hostex] HOSTEX_ACCESS_TOKEN is not set — the integration is off.');
+/**
+ * Whose Hostex account.
+ *
+ * This was a module-level constant read once from the environment — one
+ * channel-manager account for the whole server. The feature registry could
+ * turn Hostex off for a hotel, but two hotels could never have their own:
+ * enabling it for the second would have pointed at the first one's listings.
+ *
+ * The token now comes from the calling organization's saved credentials,
+ * with the environment as the fallback so the existing install keeps working.
+ * `setHostexOrganization` scopes a run — the sync sets it before it starts.
+ */
+let currentOrganizationId: string | null = null;
+
+export function setHostexOrganization(organizationId: string | null): void {
+  currentOrganizationId = organizationId;
+}
+
+function hostexToken(): string | undefined {
+  return integrationCredentials('hostex', currentOrganizationId)?.accessToken;
 }
 
 /** Thrown when the integration has not been configured, so callers can answer 503. */
 export class HostexNotConfiguredError extends Error {
   readonly status = 503;
   constructor() {
-    super('Hostex is not configured: HOSTEX_ACCESS_TOKEN is missing');
+    super('Hostex is not configured: no access token for this organization');
     this.name = 'HostexNotConfiguredError';
   }
 }
@@ -138,7 +156,8 @@ function hostexRequest<T>(method: string, path: string, body?: any): Promise<Hos
   // Without this, node's http layer throws `Invalid value "undefined" for
   // header "Hostex-Access-Token"` and every caller reported a 500 — which
   // reads as a broken server rather than an integration nobody turned on.
-  if (!HOSTEX_TOKEN) return Promise.reject(new HostexNotConfiguredError());
+  const token = hostexToken();
+  if (!token) return Promise.reject(new HostexNotConfiguredError());
 
   return new Promise((resolve, reject) => {
     const options: https.RequestOptions = {
@@ -146,7 +165,7 @@ function hostexRequest<T>(method: string, path: string, body?: any): Promise<Hos
       path: `${HOSTEX_API_VERSION}${path}`,
       method,
       headers: {
-        'Hostex-Access-Token': HOSTEX_TOKEN,
+        'Hostex-Access-Token': token,
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
