@@ -9,7 +9,7 @@
  * 4. Tasks — overdue, today, in progress
  */
 
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { runWithOrganization } from '@core/auth/tenant-context';
 
 import { getAdminChatIds, getBotToken, getChatId } from '@/modules/notifications/data/telegram-bot';
@@ -53,18 +53,18 @@ interface FinanceDigest {
  */
 const OWN = (alias = '') => `${alias}property_id IN (SELECT id FROM properties WHERE organization_id = ?)`;
 
-function getFinanceDigest(org: string): FinanceDigest {
-  const db = getDb();
+async function getFinanceDigest(org: string): Promise<FinanceDigest> {
+  const sql = getSql();
   const today = new Date().toISOString().split('T')[0];
 
   // Revenue by method today
-  const incomeRows = db.prepare(`
+  const incomeRows = await sql.rows<any>(`
     SELECT method, COALESCE(SUM(amount), 0) as total
     FROM fin_operations
     WHERE organization_id = ? AND op_type = 'income' AND status = 'completed'
       AND date(paid_at) = ?
     GROUP BY method
-  `).all(org, today) as any[];
+  `, [org, today]) as any[];
 
   const methods: Record<string, number> = {};
   for (const r of incomeRows) {
@@ -72,19 +72,19 @@ function getFinanceDigest(org: string): FinanceDigest {
   }
 
   // Total expenses today
-  const expenseRow = db.prepare(`
+  const expenseRow = await sql.row<any>(`
     SELECT COALESCE(SUM(amount), 0) as total
     FROM fin_operations
     WHERE organization_id = ? AND op_type = 'expense' AND status = 'completed'
       AND date(paid_at) = ?
-  `).get(org, today) as any;
+  `, [org, today]) as any;
 
-  const topExp = db.prepare(`
+  const topExp = await sql.rows<any>(`
     SELECT comment, amount FROM fin_operations
     WHERE organization_id = ? AND op_type = 'expense' AND status = 'completed'
       AND date(paid_at) = ?
     ORDER BY amount DESC LIMIT 3
-  `).all(org, today) as any[];
+  `, [org, today]) as any[];
 
   const totalIncome = Object.values(methods).reduce((s, v) => s + v, 0);
 
@@ -92,12 +92,12 @@ function getFinanceDigest(org: string): FinanceDigest {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = yesterday.toISOString().split('T')[0];
-  const yesterdayRow = db.prepare(`
+  const yesterdayRow = await sql.row<any>(`
     SELECT COALESCE(SUM(amount), 0) as total
     FROM fin_operations
     WHERE organization_id = ? AND op_type = 'income' AND status = 'completed'
       AND date(paid_at) = ?
-  `).get(org, yesterdayStr) as any;
+  `, [org, yesterdayStr]) as any;
 
   return {
     cash: methods['cash'] || 0,
@@ -129,18 +129,18 @@ interface BookingsDigest {
   occupancyPct: number;
 }
 
-function getBookingsDigest(org: string): BookingsDigest {
-  const db = getDb();
+async function getBookingsDigest(org: string): Promise<BookingsDigest> {
+  const sql = getSql();
   const today = new Date().toISOString().split('T')[0];
 
   // New bookings created today
-  const newBookings = (db.prepare(`
+  const newBookings = (await sql.row<any>(`
     SELECT COUNT(*) as cnt FROM reservations
     WHERE ${OWN()} AND date(created_at) = ? AND status NOT IN ('cancelled', 'draft')
-  `).get(org, today) as any).cnt;
+  `, [org, today]) as any).cnt;
 
   // Check-ins today (with category)
-  const checkIns = db.prepare(`
+  const checkIns = await sql.rows<any>(`
     SELECT g.first_name, g.last_name, u.name as unit_name, r.nights,
            COALESCE(c.name, c.type, 'інше') as category_name
     FROM reservations r
@@ -149,23 +149,23 @@ function getBookingsDigest(org: string): BookingsDigest {
     LEFT JOIN categories c ON c.id = u.category_id
     WHERE ${OWN('r.')} AND r.check_in = ? AND r.status IN ('confirmed', 'checked_in')
     ORDER BY category_name, u.name
-  `).all(org, today) as any[];
+  `, [org, today]) as any[];
 
   // Check-outs today
-  const checkOuts = db.prepare(`
+  const checkOuts = await sql.rows<any>(`
     SELECT g.first_name, g.last_name, u.name as unit_name, r.payment_status
     FROM reservations r
     JOIN guests g ON g.id = r.guest_id
     JOIN units u ON u.id = r.unit_id
     WHERE ${OWN('r.')} AND r.check_out = ? AND r.status IN ('checked_in', 'checked_out')
     ORDER BY u.name
-  `).all(org, today) as any[];
+  `, [org, today]) as any[];
 
   // Tomorrow's check-ins
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowStr = tomorrow.toISOString().split('T')[0];
-  const checkInsTmrw = db.prepare(`
+  const checkInsTmrw = await sql.rows<any>(`
     SELECT g.first_name, g.last_name, u.name as unit_name, r.nights,
            COALESCE(c.name, c.type, 'інше') as category_name
     FROM reservations r
@@ -174,38 +174,34 @@ function getBookingsDigest(org: string): BookingsDigest {
     LEFT JOIN categories c ON c.id = u.category_id
     WHERE r.check_in = ? AND r.status IN ('confirmed', 'checked_in')
     ORDER BY category_name, u.name
-  `).all(tomorrowStr) as any[];
+  `, [tomorrowStr]) as any[];
 
   // Unpaid bookings currently in-house or arriving today
-  const unpaidRow = db.prepare(`
+  const unpaidRow = await sql.row<any>(`
     SELECT COUNT(*) as cnt FROM reservations
     WHERE ${OWN()} AND check_in <= ? AND check_out > ?
       AND status NOT IN ('cancelled', 'no_show', 'draft')
       AND payment_status != 'paid'
-  `).get(org, today, today) as any;
+  `, [org, today, today]) as any;
 
   // Today's new bookings by source
-  const sourceRows = db.prepare(`
+  const sourceRows = await sql.rows<any>(`
     SELECT COALESCE(source, 'direct') as source, COUNT(*) as cnt
     FROM reservations
     WHERE ${OWN()} AND date(created_at) = ? AND status NOT IN ('cancelled', 'draft')
     GROUP BY source ORDER BY cnt DESC
-  `).all(org, today) as any[];
+  `, [org, today]) as any[];
 
   // Occupancy — all active bookings covering tonight (exclude pool units)
-  const occupied = (db.prepare(`
+  const occupied = (await sql.row<any>(`
     SELECT COUNT(DISTINCT r.unit_id) as cnt FROM reservations r
     JOIN units u ON u.id = r.unit_id
     WHERE r.check_in <= ? AND r.check_out > ?
       AND r.status NOT IN ('cancelled', 'no_show', 'draft')
       AND u.is_pool = 0
-  `).get(today, today) as any).cnt;
+  `, [today, today]) as any).cnt;
 
-  const totalUnits = (db.prepare(
-    `SELECT COUNT(*) as cnt FROM units WHERE ${OWN()} AND is_active = 1 AND is_pool = 0`
-  ).get(org) as any)?.cnt || (db.prepare(
-    `SELECT COUNT(*) as cnt FROM units WHERE ${OWN()} AND is_pool = 0`
-  ).get(org) as any).cnt;
+  const totalUnits = (await sql.row<any>(`SELECT COUNT(*) as cnt FROM units WHERE ${OWN()} AND is_active = 1 AND is_pool = 0`, [org]) as any)?.cnt || (await sql.row<any>(`SELECT COUNT(*) as cnt FROM units WHERE ${OWN()} AND is_pool = 0`, [org]) as any).cnt;
 
   // Group check-ins by category
   const catGroupToday: Record<string, number> = {};
@@ -262,40 +258,40 @@ interface BuBreakdown {
   expenseDetails: { comment: string; amount: number }[];
 }
 
-function getDetailedBreakdown(org: string): BuBreakdown[] {
-  const db = getDb();
+async function getDetailedBreakdown(org: string): Promise<BuBreakdown[]> {
+  const sql = getSql();
   const today = new Date().toISOString().split('T')[0];
 
   // Get active business units
-  const bus = db.prepare(`
+  const bus = await sql.rows<any>(`
     SELECT id, name FROM business_units
     WHERE organization_id = ? AND is_active = 1 AND is_shared = 0
     ORDER BY sort_order
-  `).all(org) as any[];
+  `, [org]) as any[];
 
   // For each BU, collect income by method and expenses
   const result: BuBreakdown[] = [];
 
   for (const bu of bus) {
     // Income by method for this BU
-    const incomeRows = db.prepare(`
+    const incomeRows = await sql.rows<any>(`
       SELECT method, SUM(amount) as total
       FROM fin_operations
       WHERE organization_id = ? AND project_id = ? AND op_type = 'income' AND status = 'completed'
         AND date(paid_at) = ?
       GROUP BY method
-    `).all(org, bu.id, today) as any[];
+    `, [org, bu.id, today]) as any[];
 
     const methods: Record<string, number> = {};
     for (const r of incomeRows) methods[r.method || 'other'] = r.total;
 
     // Cash expenses for this BU
-    const expenseRows = db.prepare(`
+    const expenseRows = await sql.rows<any>(`
       SELECT amount, comment
       FROM fin_operations
       WHERE organization_id = ? AND project_id = ? AND op_type = 'expense' AND status = 'completed'
         AND date(paid_at) = ? AND (method = 'cash' OR method IS NULL)
-    `).all(org, bu.id, today) as any[];
+    `, [org, bu.id, today]) as any[];
 
     const cashExpenses = expenseRows.reduce((s: number, r: any) => s + r.amount, 0);
 
@@ -306,7 +302,7 @@ function getDetailedBreakdown(org: string): BuBreakdown[] {
     const buNameLower = bu.name.toLowerCase();
     
     if (buNameLower.includes('глемп') || buNameLower.includes('glamping')) {
-      checkIns = db.prepare(`
+      checkIns = await sql.rows<any>(`
         SELECT g.first_name, g.last_name, u.name as unit_name, r.nights
         FROM reservations r
         JOIN units u ON u.id = r.unit_id
@@ -315,9 +311,9 @@ function getDetailedBreakdown(org: string): BuBreakdown[] {
         WHERE ${OWN('r.')} AND r.check_in = ? AND r.status IN ('confirmed','checked_in')
           AND c.type = 'glamping'
         ORDER BY u.name
-      `).all(org, today) as any[];
+      `, [org, today]) as any[];
     } else if (buNameLower.includes('кемп') || buNameLower.includes('camping') || buNameLower.includes('палатк') || buNameLower.includes('караван')) {
-      checkIns = db.prepare(`
+      checkIns = await sql.rows<any>(`
         SELECT g.first_name, g.last_name, u.name as unit_name, r.nights
         FROM reservations r
         JOIN units u ON u.id = r.unit_id
@@ -326,9 +322,9 @@ function getDetailedBreakdown(org: string): BuBreakdown[] {
         WHERE ${OWN('r.')} AND r.check_in = ? AND r.status IN ('confirmed','checked_in')
           AND c.type = 'camping'
         ORDER BY u.name
-      `).all(org, today) as any[];
+      `, [org, today]) as any[];
     } else if (buNameLower.includes('будов') || buNameLower.includes('resort') || buNameLower.includes('готел')) {
-      checkIns = db.prepare(`
+      checkIns = await sql.rows<any>(`
         SELECT g.first_name, g.last_name, u.name as unit_name, r.nights
         FROM reservations r
         JOIN units u ON u.id = r.unit_id
@@ -337,7 +333,7 @@ function getDetailedBreakdown(org: string): BuBreakdown[] {
         WHERE ${OWN('r.')} AND r.check_in = ? AND r.status IN ('confirmed','checked_in')
           AND c.type = 'resort'
         ORDER BY u.name
-      `).all(org, today) as any[];
+      `, [org, today]) as any[];
     }
 
     const totalIncome = Object.values(methods).reduce((s, v) => s + v, 0);
@@ -595,10 +591,10 @@ export async function sendDailyOperationalDigest(organizationId: string): Promis
   // hotel's Telegram carried the other's revenue, arrivals and guest names.
   const org = organizationId;
   return runWithOrganization(org, async () => {
-  const finance = getFinanceDigest(org);
-  const bookings = getBookingsDigest(org);
+  const finance = await getFinanceDigest(org);
+  const bookings = await getBookingsDigest(org);
   const tasks = await getTasksSummary();
-  const breakdown = getDetailedBreakdown(org);
+  const breakdown = await getDetailedBreakdown(org);
   const text = formatDailyDigest(finance, bookings, tasks, breakdown);
   const detailedText = formatDetailedDigest(breakdown);
 
