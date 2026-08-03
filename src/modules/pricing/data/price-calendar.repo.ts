@@ -1,18 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import type { DayPrice, PriceUpsertInput } from '../domain/types';
 
-export function getPriceMonth(unitTypeId: string, month: number, year: number): { unitTypeId: string; month: number; year: number; days: DayPrice[] } {
-  const db = getDb();
+export async function getPriceMonth(unitTypeId: string, month: number, year: number): Promise<{ unitTypeId: string; month: number; year: number; days: DayPrice[] }> {
+  const sql = getSql();
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-  const rows = db.prepare(`
+  const rows = await sql.rows<any>(`
     SELECT * FROM price_calendar
     WHERE unit_type_id = ? AND date >= ? AND date <= ?
     ORDER BY date ASC
-  `).all(unitTypeId, startDate, endDate);
+  `, [unitTypeId, startDate, endDate]);
 
   const priceMap = new Map<string, any>();
   for (const row of rows as any[]) priceMap.set(row.date, row);
@@ -45,33 +45,32 @@ export function getPriceMonth(unitTypeId: string, month: number, year: number): 
   return { unitTypeId, month, year, days };
 }
 
-export function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[]): number {
-  const db = getDb();
-  const stmt = db.prepare(`
-    INSERT INTO price_calendar (id, unit_type_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
-    VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(unit_type_id, date) DO UPDATE SET
-      base_price = excluded.base_price,
-      weekend_price = excluded.weekend_price,
-      min_stay = excluded.min_stay,
-      max_stay = excluded.max_stay,
-      closed = excluded.closed,
-      cta = excluded.cta,
-      ctd = excluded.ctd,
-      updated_at = datetime('now')
-  `);
-
-  db.transaction(() => {
+export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[]): Promise<number> {
+  const sql = getSql();
+  await sql.tx(async (t) => {
     for (const p of prices) {
-      stmt.run(unitTypeId, p.date, p.base_price ?? 0, p.weekend_price ?? null, p.min_stay ?? 1, p.max_stay ?? null, p.closed ? 1 : 0, p.cta ? 1 : 0, p.ctd ? 1 : 0);
+      await t.run(`
+      INSERT INTO price_calendar (id, unit_type_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
+      VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(unit_type_id, date) DO UPDATE SET
+        base_price = excluded.base_price,
+        weekend_price = excluded.weekend_price,
+        min_stay = excluded.min_stay,
+        max_stay = excluded.max_stay,
+        closed = excluded.closed,
+        cta = excluded.cta,
+        ctd = excluded.ctd,
+        updated_at = datetime('now')
+      `, [unitTypeId, p.date, p.base_price ?? 0, p.weekend_price ?? null, p.min_stay ?? 1, p.max_stay ?? null, p.closed ? 1 : 0, p.cta ? 1 : 0, p.ctd ? 1 : 0]);
     }
-  })();
+  });
 
   return prices.length;
 }
 
-export function getBulkPrices(organizationId: string, startDate: string, endDate: string) {
-  return getDb().prepare(`
+export async function getBulkPrices(organizationId: string, startDate: string, endDate: string) {
+  const sql = getSql();
+  return await sql.rows<any>(`
     SELECT pc.unit_type_id, pc.date, pc.base_price, pc.weekend_price,
       CASE
         WHEN (CAST(strftime('%w', pc.date) AS INTEGER) IN (0, 5, 6)) AND pc.weekend_price IS NOT NULL
@@ -83,7 +82,7 @@ export function getBulkPrices(organizationId: string, startDate: string, endDate
     JOIN properties p ON ut.property_id = p.id
     WHERE p.organization_id = ? AND pc.date >= ? AND pc.date <= ?
     ORDER BY pc.unit_type_id, pc.date
-  `).all(organizationId, startDate, endDate);
+  `, [organizationId, startDate, endDate]);
 }
 
 export interface BulkUpdateInput {
@@ -100,31 +99,15 @@ export interface BulkUpdateInput {
   ctd?: boolean;
 }
 
-export function bulkUpdatePrices(input: BulkUpdateInput): number {
-  const db = getDb();
+export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> {
+  const sql = getSql();
   const { unitTypeId, dateFrom, dateTo, applyTo = 'all' } = input;
-
-  const upsert = db.prepare(`
-    INSERT INTO price_calendar (id, unit_type_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
-    VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(unit_type_id, date) DO UPDATE SET
-      base_price = excluded.base_price,
-      weekend_price = excluded.weekend_price,
-      min_stay = excluded.min_stay,
-      max_stay = excluded.max_stay,
-      closed = excluded.closed,
-      cta = excluded.cta,
-      ctd = excluded.ctd,
-      updated_at = datetime('now')
-  `);
-
-  const getExisting = db.prepare('SELECT * FROM price_calendar WHERE unit_type_id = ? AND date = ?');
 
   let count = 0;
   const start = new Date(dateFrom);
   const end = new Date(dateTo);
 
-  db.transaction(() => {
+  await sql.tx(async (t) => {
     const current = new Date(start);
     while (current <= end) {
       const dateStr = current.toISOString().split('T')[0];
@@ -134,7 +117,7 @@ export function bulkUpdatePrices(input: BulkUpdateInput): number {
       if (applyTo === 'weekdays' && isWeekend) { current.setDate(current.getDate() + 1); continue; }
       if (applyTo === 'weekends' && !isWeekend) { current.setDate(current.getDate() + 1); continue; }
 
-      const existing = getExisting.get(unitTypeId, dateStr) as any;
+      const existing = await t.row<any>('SELECT * FROM price_calendar WHERE unit_type_id = ? AND date = ?', [unitTypeId, dateStr]);
       const basePrice = input.base_price ?? existing?.base_price ?? 0;
       const weekendPrice = input.weekend_price !== undefined ? input.weekend_price : (existing?.weekend_price ?? null);
       const minStay = input.min_stay ?? existing?.min_stay ?? 1;
@@ -143,11 +126,23 @@ export function bulkUpdatePrices(input: BulkUpdateInput): number {
       const cta = input.cta !== undefined ? (input.cta ? 1 : 0) : (existing?.cta ?? 0);
       const ctd = input.ctd !== undefined ? (input.ctd ? 1 : 0) : (existing?.ctd ?? 0);
 
-      upsert.run(unitTypeId, dateStr, basePrice, weekendPrice, minStay, maxStay, closed, cta, ctd);
+      await t.run(`
+      INSERT INTO price_calendar (id, unit_type_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
+      VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(unit_type_id, date) DO UPDATE SET
+        base_price = excluded.base_price,
+        weekend_price = excluded.weekend_price,
+        min_stay = excluded.min_stay,
+        max_stay = excluded.max_stay,
+        closed = excluded.closed,
+        cta = excluded.cta,
+        ctd = excluded.ctd,
+        updated_at = datetime('now')
+      `, [unitTypeId, dateStr, basePrice, weekendPrice, minStay, maxStay, closed, cta, ctd]);
       count++;
       current.setDate(current.getDate() + 1);
     }
-  })();
+  });
 
   return count;
 }

@@ -11,7 +11,7 @@ export const getBulkPricing = withActor(async (request: NextRequest, _ctx, actor
 
     if (!startDate || !endDate) return NextResponse.json({ error: 'startDate and endDate required' }, { status: 400 });
 
-    return NextResponse.json(getBulkPrices(actor.organizationId, startDate, endDate));
+    return NextResponse.json(await getBulkPrices(actor.organizationId, startDate, endDate));
   } catch (error: any) {
     console.error('GET /api/pricing/bulk error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to fetch pricing' }, { status: 500 });
@@ -27,7 +27,7 @@ export async function updateBulkPricing(request: NextRequest): Promise<NextRespo
       return NextResponse.json({ error: 'unitTypeId, dateFrom, dateTo required' }, { status: 400 });
     }
 
-    const updated = bulkUpdatePrices({ unitTypeId, dateFrom, dateTo, applyTo, ...body });
+    const updated = await bulkUpdatePrices({ unitTypeId, dateFrom, dateTo, applyTo, ...body });
     return NextResponse.json({ success: true, updated });
   } catch (error: any) {
     console.error('PUT /api/pricing/bulk error:', error?.message || error);

@@ -11,7 +11,7 @@ export async function getPricing(request: NextRequest): Promise<NextResponse> {
 
     if (!unitTypeId) return NextResponse.json({ error: 'unitTypeId is required' }, { status: 400 });
 
-    return NextResponse.json(getPriceMonth(unitTypeId, month, year));
+    return NextResponse.json(await getPriceMonth(unitTypeId, month, year));
   } catch (error: any) {
     console.error('GET /api/pricing error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to fetch pricing' }, { status: 500 });
@@ -27,7 +27,7 @@ export async function updatePricing(request: NextRequest): Promise<NextResponse>
       return NextResponse.json({ error: 'unitTypeId and prices array required' }, { status: 400 });
     }
 
-    const updated = upsertPrices(unitTypeId, prices);
+    const updated = await upsertPrices(unitTypeId, prices);
 
     // Trigger ARI sync — non-critical, contained in try/catch.
     // Will be replaced with eventBus.emit('pricing.updated') when channels module is migrated.

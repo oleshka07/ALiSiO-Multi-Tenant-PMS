@@ -15,7 +15,7 @@ export async function getQuote(request: NextRequest): Promise<NextResponse> {
     const end = new Date(checkOut);
     if (end <= start) return NextResponse.json({ error: 'checkOut must be after checkIn' }, { status: 400 });
 
-    return NextResponse.json(calculateQuote(unitTypeId, checkIn, checkOut, adults, children));
+    return NextResponse.json(await calculateQuote(unitTypeId, checkIn, checkOut, adults, children));
   } catch (error: any) {
     console.error('POST /api/pricing/quote error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to calculate quote' }, { status: 500 });

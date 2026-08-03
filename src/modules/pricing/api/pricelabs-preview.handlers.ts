@@ -14,8 +14,9 @@ import { getEurCzkRate } from '@/modules/finance/domain/cnb-rates';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@core/auth';
 import { hasPermission } from '@core/auth';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { hasFeature, featureDisabled } from '@core/features';
+import { getDb } from '@core/db';
 
 async function requirePricingPerm(): Promise<NextResponse | null> {
   const store = await cookies();

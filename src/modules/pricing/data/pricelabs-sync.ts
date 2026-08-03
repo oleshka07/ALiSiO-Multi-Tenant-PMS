@@ -8,7 +8,7 @@
 // Designed to be called from /api/cron/sync-pricelabs once per day.
 //
 
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { getListings, getListingPrices } from '../domain/pricelabs-client';
 import { getEurCzkRate } from '@/modules/finance/domain/cnb-rates';
 
@@ -88,7 +88,7 @@ export async function syncPriceLabsToCalendar(daysAhead = 90): Promise<SyncResul
   // Only PMS-connected listings (drops the per-channel Airbnb/Booking duplicates).
   const hostexListings = listings.filter((l) => l.pms === 'hostex');
 
-  const db = getDb();
+  const sql = getSql();
 
   // 1. Resolve PL listing → unit_type_id via Hostex id → unit_id → units row.
   const resolved: Array<{ pl_id: string; pl_name: string; unit_id: string; unit_type_id: string; unit_name: string }> = [];
@@ -100,7 +100,7 @@ export async function syncPriceLabsToCalendar(daysAhead = 90): Promise<SyncResul
       result.listingsSkipped += 1;
       continue;
     }
-    const row = db.prepare('SELECT unit_type_id, name FROM units WHERE id = ?').get(unitId) as any;
+    const row = await sql.row<any>('SELECT unit_type_id, name FROM units WHERE id = ?', [unitId]) as any;
     if (!row || !row.unit_type_id) {
       console.log(`[PL sync] Skip listing ${l.id} — unit ${unitId} not found or no unit_type_id`);
       result.listingsSkipped += 1;
@@ -157,18 +157,7 @@ export async function syncPriceLabsToCalendar(daysAhead = 90): Promise<SyncResul
   // 4. Upsert into price_calendar. weekend_price is left NULL — PriceLabs
   //    already varies the daily rate, so the legacy weekend-multiplier
   //    branch should never kick in for these unit_types.
-  const upsert = db.prepare(`
-    INSERT INTO price_calendar (id, unit_type_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
-    VALUES (lower(hex(randomblob(16))), ?, ?, ?, NULL, ?, NULL, ?, 0, 0)
-    ON CONFLICT(unit_type_id, date) DO UPDATE SET
-      base_price = excluded.base_price,
-      weekend_price = NULL,
-      min_stay = excluded.min_stay,
-      closed = excluded.closed,
-      updated_at = datetime('now')
-  `);
-
-  const writeTx = db.transaction(() => {
+  await sql.tx(async (t) => {
     for (const entry of priced) {
       const item = resolved.find((r) => r.pl_id === entry.id);
       if (!item) continue;
@@ -178,7 +167,16 @@ export async function syncPriceLabsToCalendar(daysAhead = 90): Promise<SyncResul
         const baseCzk = Math.round(d.price * result.eurToCzk);
         const minStay = d.min_stay > 0 ? d.min_stay : 1;
         const closed = d.unbookable === 1 ? 1 : 0;
-        upsert.run(item.unit_type_id, d.date, baseCzk, minStay, closed);
+        await t.run(`
+          INSERT INTO price_calendar (id, unit_type_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
+          VALUES (lower(hex(randomblob(16))), ?, ?, ?, NULL, ?, NULL, ?, 0, 0)
+          ON CONFLICT(unit_type_id, date) DO UPDATE SET
+            base_price = excluded.base_price,
+            weekend_price = NULL,
+            min_stay = excluded.min_stay,
+            closed = excluded.closed,
+            updated_at = datetime('now')
+        `, [item.unit_type_id, d.date, baseCzk, minStay, closed]);
         daysWritten += 1;
       }
       result.perListing.push({
@@ -192,7 +190,6 @@ export async function syncPriceLabsToCalendar(daysAhead = 90): Promise<SyncResul
       result.daysWrittenTotal += daysWritten;
     }
   });
-  writeTx();
 
   result.listingsResolved = resolved.length;
   result.ok = result.errors.length === 0;

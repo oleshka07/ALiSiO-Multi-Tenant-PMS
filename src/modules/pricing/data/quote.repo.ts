@@ -1,15 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import type { QuoteResult } from '../domain/types';
 
-export function calculateQuote(unitTypeId: string, checkIn: string, checkOut: string, adults = 2, children = 0): QuoteResult {
-  const db = getDb();
+export async function calculateQuote(unitTypeId: string, checkIn: string, checkOut: string, adults = 2, children = 0): Promise<QuoteResult> {
+  const sql = getSql();
 
-  const prices = db.prepare(`
+  const prices = await sql.rows<any>(`
     SELECT * FROM price_calendar
     WHERE unit_type_id = ? AND date >= ? AND date < ?
     ORDER BY date ASC
-  `).all(unitTypeId, checkIn, checkOut) as any[];
+  `, [unitTypeId, checkIn, checkOut]) as any[];
 
   const priceMap = new Map<string, any>();
   for (const p of prices) priceMap.set(p.date, p);
@@ -48,11 +48,9 @@ export function calculateQuote(unitTypeId: string, checkIn: string, checkOut: st
     // The fees are the ones belonging to the unit type being quoted. Reading
     // them from the first property in the table priced one hotel's stay with
     // another hotel's city tax and cleaning fee.
-    const prop = db.prepare(
-      'SELECT property_id AS id FROM unit_types WHERE id = ?',
-    ).get(unitTypeId) as any;
+    const prop = await sql.row<any>('SELECT property_id AS id FROM unit_types WHERE id = ?', [unitTypeId]) as any;
     if (prop?.id) {
-      fees = db.prepare('SELECT * FROM fees_taxes WHERE property_id = ? AND is_active = 1').all(prop.id) as any[];
+      fees = await sql.rows<any>('SELECT * FROM fees_taxes WHERE property_id = ? AND is_active = 1', [prop.id]) as any[];
     }
   } catch { /* fees_taxes may not exist */ }
 
