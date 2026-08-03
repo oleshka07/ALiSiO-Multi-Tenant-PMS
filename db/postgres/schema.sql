@@ -325,10 +325,8 @@ CREATE TABLE "categories" (
   "show_in_tasks" BIGINT DEFAULT 1 NOT NULL,
   "show_in_finance" BIGINT DEFAULT 0 NOT NULL,
   "show_in_booking" BIGINT DEFAULT 1 NOT NULL,
-  "show_in_investor" BIGINT DEFAULT 0 NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  CHECK (type IN ('glamping', 'resort', 'camping', 'facility', 'area', 'zone'))
+  PRIMARY KEY ("id")
 );
 
 CREATE TABLE "channel_connections" (

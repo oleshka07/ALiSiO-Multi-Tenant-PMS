@@ -134,7 +134,7 @@ function buildSchema(database: any) {
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
-      type TEXT NOT NULL CHECK (type IN ('glamping', 'resort', 'camping', 'facility', 'area', 'zone')),
+      type TEXT NOT NULL,
       description TEXT,
       sort_order INTEGER NOT NULL DEFAULT 0,
       icon TEXT,
@@ -142,7 +142,6 @@ function buildSchema(database: any) {
       show_in_tasks INTEGER NOT NULL DEFAULT 1,
       show_in_finance INTEGER NOT NULL DEFAULT 0,
       show_in_booking INTEGER NOT NULL DEFAULT 1,
-      show_in_investor INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -4180,7 +4179,6 @@ function runMigrations(database: any) {
           show_in_tasks INTEGER NOT NULL DEFAULT 1,
           show_in_finance INTEGER NOT NULL DEFAULT 0,
           show_in_booking INTEGER NOT NULL DEFAULT 1,
-          show_in_investor INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
       `);
@@ -4189,7 +4187,7 @@ function runMigrations(database: any) {
         SELECT id, property_id, name, type, description, sort_order, icon, color, created_at FROM categories
       `);
       // Mark existing accommodation categories as visible everywhere
-      database.exec(`UPDATE categories_new SET show_in_tasks = 1, show_in_finance = 1, show_in_booking = 1, show_in_investor = 1`);
+      database.exec(`UPDATE categories_new SET show_in_tasks = 1, show_in_finance = 1, show_in_booking = 1`);
       database.exec('DROP TABLE categories');
       database.exec('ALTER TABLE categories_new RENAME TO categories');
       database.exec('PRAGMA foreign_keys = ON');
@@ -4198,13 +4196,13 @@ function runMigrations(database: any) {
       const propId = (database.prepare('SELECT id FROM properties LIMIT 1').get() as { id: string })?.id;
       if (propId) {
         const insertCat = database.prepare(`
-          INSERT OR IGNORE INTO categories (id, property_id, name, type, sort_order, icon, color, show_in_tasks, show_in_finance, show_in_booking, show_in_investor)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT OR IGNORE INTO categories (id, property_id, name, type, sort_order, icon, color, show_in_tasks, show_in_finance, show_in_booking)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        insertCat.run('cat_restaurant', propId, 'Ресторан', 'facility', 10, '🍽️', '#f59e0b', 1, 1, 0, 0);
-        insertCat.run('cat_sauna', propId, 'Сауна', 'facility', 11, '🧖', '#ef4444', 1, 1, 0, 0);
-        insertCat.run('cat_pool', propId, 'Купель', 'facility', 12, '🛁', '#06b6d4', 1, 1, 0, 0);
-        insertCat.run('cat_territory', propId, 'Територія', 'area', 13, '🌳', '#22c55e', 1, 0, 0, 0);
+        insertCat.run('cat_restaurant', propId, 'Ресторан', 'facility', 10, '🍽️', '#f59e0b', 1, 1, 0);
+        insertCat.run('cat_sauna', propId, 'Сауна', 'facility', 11, '🧖', '#ef4444', 1, 1, 0);
+        insertCat.run('cat_pool', propId, 'Купель', 'facility', 12, '🛁', '#06b6d4', 1, 1, 0);
+        insertCat.run('cat_territory', propId, 'Територія', 'area', 13, '🌳', '#22c55e', 1, 0, 0);
       }
       console.log('[DB] Categories migration complete: expanded types + visibility flags + seeded facilities');
     }
@@ -4671,6 +4669,52 @@ function runMigrations(database: any) {
     console.error('[DB] per-organization uniqueness migration:', e.message);
   }
 
+  // --- Migration: categories.type is the hotel's own word ---
+  //
+  // The live table carried CHECK (type IN ('glamping','resort','camping',
+  // 'facility','area','zone')) — the first customer's six words, enforced by
+  // the DATABASE. The calendar learned to render any type, but a hotel that
+  // tried to CREATE one got a constraint error. SQLite cannot drop a CHECK,
+  // so the table is rebuilt once, without it.
+  try {
+    const catSql = (database.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'categories'"
+    ).get() as { sql: string } | undefined)?.sql || '';
+    if (catSql.includes("type IN ('glamping'")) {
+      database.pragma('foreign_keys = OFF');
+      try {
+        database.exec(`
+          CREATE TABLE categories_free (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            description TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            icon TEXT,
+            color TEXT,
+            show_in_tasks INTEGER NOT NULL DEFAULT 1,
+            show_in_finance INTEGER NOT NULL DEFAULT 0,
+            show_in_booking INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          INSERT INTO categories_free (id, property_id, name, type, description, sort_order,
+                                       icon, color, show_in_tasks, show_in_finance, show_in_booking, created_at)
+            SELECT id, property_id, name, type, description, sort_order,
+                   icon, color, show_in_tasks, show_in_finance, show_in_booking, created_at
+            FROM categories;
+          DROP TABLE categories;
+          ALTER TABLE categories_free RENAME TO categories;
+        `);
+        console.log('[DB] categories: type CHECK removed');
+      } finally {
+        database.pragma('foreign_keys = ON');
+      }
+    }
+  } catch (e: any) {
+    console.error('[DB] categories type CHECK migration:', e.message);
+  }
+
   // --- Migration: Hostex columns on reservations ---
   //
   // These were added by ensureHostexColumns() inside the SYNC — so a database
@@ -4768,6 +4812,7 @@ function runMigrations(database: any) {
       accruals: ['paid_expense_id'],
       booking_drafts: ['teya_session_id'],
       additional_services: ['options_schema'],
+      categories: ['show_in_investor'],
       guest_registrations: ['doc_photo_url'],
       property_photos: ['photo_type'],
       site_incoming_leads: ['source_url', 'raw_data'],
