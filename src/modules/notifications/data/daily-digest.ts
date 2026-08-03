@@ -11,7 +11,7 @@
 
 import { getDb } from '@core/db';
 
-import { getAdminChatIds, getBotToken, getChatId } from '@/lib/channels/telegram-bot';
+import { getAdminChatIds, getBotToken, getChatId } from '@/modules/notifications/data/telegram-bot';
 import { appBaseUrl } from '@core/app-url';
 import { getTasksSummary, type TasksSummary } from '@tasks';
 

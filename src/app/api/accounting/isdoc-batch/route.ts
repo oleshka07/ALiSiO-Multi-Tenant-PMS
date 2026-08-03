@@ -13,11 +13,11 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
-import { generateIsdocXml } from '@/lib/isdoc';
+import { generateIsdocXml } from '@/modules/finance/domain/isdoc';
 import { requireOwner } from '@core/security/route-guard';
-import type { InvoiceData } from '@/lib/invoice-template';
-import { convertToCzkAuto, foreignNote } from '@/lib/fx';
-import { showBuyerName, dueDateFor } from '@/lib/invoice-rules';
+import type { InvoiceData } from '@/modules/finance/domain/invoice-template';
+import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
+import { showBuyerName, dueDateFor } from '@/modules/finance/domain/invoice-rules';
 import JSZip from 'jszip';
 
 // ─── Helper: build description from invoice or fin_op data ───────────────────

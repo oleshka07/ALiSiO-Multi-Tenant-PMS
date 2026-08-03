@@ -12,9 +12,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
-import { renderInvoiceHtml, type InvoiceData } from '@/lib/invoice-template';
-import { convertToCzkAuto, foreignNote } from '@/lib/fx';
-import { allocateInvoiceNumber, isInvoiceLocked } from '@/lib/invoice-numbering';
+import { renderInvoiceHtml, type InvoiceData } from '@/modules/finance/domain/invoice-template';
+import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
+import { allocateInvoiceNumber, isInvoiceLocked } from '@/modules/finance/domain/invoice-numbering';
 import type { Actor } from '@core/auth/session';
 
 /**

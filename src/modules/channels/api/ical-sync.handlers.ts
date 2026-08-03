@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
-import { parseICal, extractGuestName } from '@/lib/ical'; // TODO: move to @core/ical
+import { parseICal, extractGuestName } from '@/modules/channels/domain/ical'; // TODO: move to @core/ical
 import { notifyReservationCreated } from '@bookings';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 

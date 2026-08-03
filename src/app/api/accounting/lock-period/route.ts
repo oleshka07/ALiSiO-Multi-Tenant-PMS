@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { requireOwner } from '@core/security/route-guard';
-import { lockPeriod, unlockPeriod, seriesForChannel } from '@/lib/invoice-numbering';
+import { lockPeriod, unlockPeriod, seriesForChannel } from '@/modules/finance/domain/invoice-numbering';
 import type { Actor } from '@core/auth/session';
 
 export const GET = requireOwner(async (_request, _ctx, actor: Actor): Promise<NextResponse> => {

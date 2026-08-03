@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrgIdentity } from '@core/org-identity';
 import { getDb } from '@core/db';
-import { renderInvoiceHtml, type InvoiceData } from '@/lib/invoice-template';
+import { renderInvoiceHtml, type InvoiceData } from '@/modules/finance/domain/invoice-template';
 import { sendEmail } from '@/lib/email';
 import { requirePermission } from '@core/security/route-guard';
 

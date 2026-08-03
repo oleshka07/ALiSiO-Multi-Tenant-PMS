@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@/lib/auth';
 import { hasPermission } from '@/lib/permissions';
-import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
-import { getEurCzkRate } from '@/lib/cnb-rates';
+import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot';
+import { getEurCzkRate } from '@/modules/finance/domain/cnb-rates';
 import { getDb, generateGuestToken } from '@core/db';
 import {
   parseBookingComExcel,

@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { getDb } from '@core/db';
-import { getQueueStats, getFailedJobs, getAllSyncLogs, dequeueJob, markCompleted, markFailed } from '@/lib/channels';
-import { pushInventory, pushRates, pushRestrictions, buildARIFromPriceCalendar } from '@/lib/channels/booking-com/ari';
+import { getQueueStats, getFailedJobs, getAllSyncLogs, dequeueJob, markCompleted, markFailed } from '@/modules/channels/domain';
+import { pushInventory, pushRates, pushRestrictions, buildARIFromPriceCalendar } from '@/modules/channels/domain/booking-com/ari';
 
 const MAX_JOBS_PER_RUN = 10;
 

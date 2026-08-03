@@ -15,11 +15,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
-import { generateIsdocXml } from '@/lib/isdoc';
+import { generateIsdocXml } from '@/modules/finance/domain/isdoc';
 import { requireOwner } from '@core/security/route-guard';
-import { generateInvoicePdf } from '@/lib/invoice-pdf';
-import { convertToCzkAuto, foreignNote } from '@/lib/fx';
-import { showBuyerName, dueDateFor } from '@/lib/invoice-rules';
+import { generateInvoicePdf } from '@/modules/finance/domain/invoice-pdf';
+import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
+import { showBuyerName, dueDateFor } from '@/modules/finance/domain/invoice-rules';
 
 // ─── Pure-JS ZIP builder (STORE method — no compression, no deps) ─────────────
 // Implements PKZIP 2.0 local file headers + central directory + EOCD.

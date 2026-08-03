@@ -16,7 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { requireOwner } from '@core/security/route-guard';
-import { allocateInvoiceNumber, seriesForChannel, isPeriodLocked } from '@/lib/invoice-numbering';
+import { allocateInvoiceNumber, seriesForChannel, isPeriodLocked } from '@/modules/finance/domain/invoice-numbering';
 import type { Actor } from '@core/auth/session';
 
 // ─── CSV utilities ──────────────────────────────────────────────────────────

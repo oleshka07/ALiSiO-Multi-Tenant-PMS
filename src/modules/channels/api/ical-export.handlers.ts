@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getDb } from '@core/db';
-import { generateICal } from '@/lib/ical'; // TODO: move to @core/ical
+import { generateICal } from '@/modules/channels/domain/ical'; // TODO: move to @core/ical
 
 export async function exportIcal(
   _request: Request,

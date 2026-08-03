@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, Plus, Trash2, Zap, Copy, Check, CopyPlus } from 'lucide-react';
 import { Modal } from './SiteHelpers';
-import { GIFT_CARD_TEMPLATES } from '@/lib/gift-card-builder';
+import { GIFT_CARD_TEMPLATES } from '@/modules/widget/domain/gift-card-builder';
 
 const DAY_LABELS = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
 const DAYS = [1, 2, 3, 4, 5, 6, 7];

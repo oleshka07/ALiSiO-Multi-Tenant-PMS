@@ -26,7 +26,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { getSessionUser, getSessionIdFromCookies } from '@/lib/auth';
-import { getGiftCardTemplate } from '@/lib/gift-card-builder';
+import { getGiftCardTemplate } from '@/modules/widget/domain/gift-card-builder';
 
 import { randomBytes } from 'crypto';
 

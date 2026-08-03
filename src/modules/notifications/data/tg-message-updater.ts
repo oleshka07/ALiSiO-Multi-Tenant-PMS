@@ -4,7 +4,7 @@
  * when payment_status changes (strikethrough old + add new status).
  */
 import { getDb } from '@core/db';
-import { editInChat, getChatId } from '@/lib/channels/telegram-bot';
+import { editInChat, getChatId } from '@/modules/notifications/data/telegram-bot';
 
 const PAY_LABELS: Record<string, string> = {
   paid: '✅ оплачено',
@@ -95,7 +95,7 @@ export async function updateBookingPaymentNotification(
       } else {
         // Edit failed (likely >48h) — send a short update as new message
         if (row.chat_id === getChatId()) {
-          const { sendTelegramMessage } = await import('@/lib/channels/telegram-bot');
+          const { sendTelegramMessage } = await import('@/modules/notifications/data/telegram-bot');
           const r = db.prepare(`
             SELECT r.id, g.first_name, g.last_name, u.name as unit_name
             FROM reservations r

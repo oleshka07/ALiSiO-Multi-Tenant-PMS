@@ -4,11 +4,11 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
-import { generateIsdocXml } from '@/lib/isdoc';
-import type { InvoiceData } from '@/lib/invoice-template';
+import { generateIsdocXml } from '@/modules/finance/domain/isdoc';
+import type { InvoiceData } from '@/modules/finance/domain/invoice-template';
 import { requirePermission } from '@core/security/route-guard';
-import { convertToCzkAuto, foreignNote } from '@/lib/fx';
-import { showBuyerName, dueDateFor } from '@/lib/invoice-rules';
+import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
+import { showBuyerName, dueDateFor } from '@/modules/finance/domain/invoice-rules';
 
 export const GET = requirePermission('manage_documents', _GET);
 async function _GET(

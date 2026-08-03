@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { withPermission, type Actor } from '@core/auth/session';
 import { requirePropertyId } from '@core/auth/tenant-context';
-import { buildGiftCode, getGiftCardTemplate, calcExpiresAt, GIFT_CARD_TEMPLATES } from '@/lib/gift-card-builder';
+import { buildGiftCode, getGiftCardTemplate, calcExpiresAt, GIFT_CARD_TEMPLATES } from '@/modules/widget/domain/gift-card-builder';
 
 /**
  * Gift cards / vouchers.

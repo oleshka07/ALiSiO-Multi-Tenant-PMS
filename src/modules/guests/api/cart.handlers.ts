@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
 import * as repo from '../data/guest-actions.repo';
-import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
+import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot';
 import { sendEmail } from '@/lib/email';
 
 // ─── POST /api/guest/[token]/cart ────────────────────────────────────────────

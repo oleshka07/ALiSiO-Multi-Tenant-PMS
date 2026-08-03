@@ -5,7 +5,7 @@ import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { hasFeature, featureDisabled } from '@core/features';
 import { resolveSiteByKey, siteAllowsHost } from '../data/site.repo';
-import { sendTelegramMessage } from '@/lib/channels/telegram-bot'; // TODO: replace with eventBus
+import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot'; // TODO: replace with eventBus
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',

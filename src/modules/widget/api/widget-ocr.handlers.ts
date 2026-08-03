@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cloudOcrAllowed } from '@core/privacy/ocr-consent';
-import { ocrDocument } from '@/lib/ai/ocr-document';
+import { ocrDocument } from '@/modules/guests/domain/ai/ocr-document';
 import { checkRateLimit } from '@/lib/rate-limit';
 
 const CORS_HEADERS = {

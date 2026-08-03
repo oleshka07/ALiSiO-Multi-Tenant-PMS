@@ -11,7 +11,7 @@ import {
   updateReservationCustomField,
   type HostexReservation,
 } from '../domain/hostex-client';
-import { getEurCzkRate } from '@/lib/cnb-rates';
+import { getEurCzkRate } from '@/modules/finance/domain/cnb-rates';
 import { notifyReservationCreated } from '@/modules/bookings/domain/reservation-tg-notify';
 import { findOrCreateGuest as findOrCreateGuestUnified } from '@guests';
 import { money } from '@core/money';
@@ -202,7 +202,7 @@ export async function syncSingleReservation(reservationCode: string): Promise<Sy
 
   try {
     const { getReservationByCode } = await import('../domain/hostex-client');
-    const { getEurCzkRate: fetchRate } = await import('@/lib/cnb-rates');
+    const { getEurCzkRate: fetchRate } = await import('@/modules/finance/domain/cnb-rates');
     result.eurCzkRate = await fetchRate();
     ensureHostexColumns(db);
 

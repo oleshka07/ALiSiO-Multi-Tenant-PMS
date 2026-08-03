@@ -12,7 +12,7 @@ import { withRateLimit } from '../rate-limiter';
 import { logSyncRequest, extractRUID } from '../ruid-logger';
 import { buildResNotifAcknowledge, buildReservationSummaryRequest } from '../xml/ota-builder';
 import { parseResNotifResponse } from '../xml/ota-parser';
-import { enqueueForAllConnections } from '../sync-queue';
+import { enqueueForAllConnections } from '../../data/sync-queue';
 import { BOOKING_COM_URLS } from '../types';
 import type { OTAReservation, EnvironmentType } from '../types';
 import { requireOrganizationId, requirePropertyId } from '@core/auth/tenant-context';

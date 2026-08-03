@@ -32,7 +32,7 @@ export async function updatePricing(request: NextRequest): Promise<NextResponse>
     // Trigger ARI sync — non-critical, contained in try/catch.
     // Will be replaced with eventBus.emit('pricing.updated') when channels module is migrated.
     try {
-      const { enqueueForAllConnections } = await import('@/lib/channels/sync-queue');
+      const { enqueueForAllConnections } = await import('@/modules/channels/data/sync-queue');
       const dates = prices.map((p: any) => p.date).sort();
       if (dates.length > 0) {
         enqueueForAllConnections({ syncType: 'full', unitTypeId, dateFrom: dates[0], dateTo: dates[dates.length - 1], priority: 3 });

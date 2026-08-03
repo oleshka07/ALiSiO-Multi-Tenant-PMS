@@ -7,7 +7,7 @@ import {
   pullModifications,
   acknowledgeModifications,
   processReservation,
-} from '@/lib/channels/booking-com/reservations';
+} from '@/modules/channels/domain/booking-com/reservations';
 
 export async function pollReservations(): Promise<NextResponse> {
   const results: {

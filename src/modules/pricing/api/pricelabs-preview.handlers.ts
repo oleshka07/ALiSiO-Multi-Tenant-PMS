@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getListings, getListingPrices } from '../domain/pricelabs-client';
-import { getEurCzkRate } from '@/lib/cnb-rates';
+import { getEurCzkRate } from '@/modules/finance/domain/cnb-rates';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@/lib/auth';
 import { hasPermission } from '@/lib/permissions';

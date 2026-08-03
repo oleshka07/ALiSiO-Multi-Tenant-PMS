@@ -9,7 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
-import { syncCnbRates } from '@/lib/cnb-rates';
+import { syncCnbRates } from '@/modules/finance/domain/cnb-rates';
 
 async function handle(request: NextRequest): Promise<NextResponse> {
   const authHeader = request.headers.get('x-cron-secret')

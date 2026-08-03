@@ -47,7 +47,7 @@ export {
   getQueueStats,
   getFailedJobs,
   cleanupOldJobs,
-} from './sync-queue';
+} from '../data/sync-queue';
 
 // XML Builder
 export {

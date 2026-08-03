@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
 import * as actionsRepo from '../data/guest-actions.repo';
 import { createPaymentSession, resolveCredentialsForReservation, isPaymentConfigured } from '@payments';
-import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
+import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot';
 import { money } from '@core/money';
 
 // ─── Types ─────────────────────────────────────────────────────────────────

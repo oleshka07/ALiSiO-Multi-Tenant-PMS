@@ -12,9 +12,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cloudOcrAllowed } from '@core/privacy/ocr-consent';
 import { getDb } from '@core/db';
-import { ocrDocument } from '@/lib/ai/ocr-document';
+import { ocrDocument } from '@/modules/guests/domain/ai/ocr-document';
 import { saveRegistrations } from '@/modules/guests/data/registration.repo';
-import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
+import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot';
 import fs from 'fs';
 import path from 'path';
 

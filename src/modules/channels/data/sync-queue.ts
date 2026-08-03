@@ -7,7 +7,7 @@
  */
 
 import { getDb } from '@/lib/db';
-import type { SyncType, SyncJobStatus } from './types';
+import type { SyncType, SyncJobStatus } from '../domain/types';
 
 function generateJobId(): string {
   return `sq_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;

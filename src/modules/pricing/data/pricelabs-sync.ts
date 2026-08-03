@@ -10,7 +10,7 @@
 
 import { getDb } from '@core/db';
 import { getListings, getListingPrices } from '../domain/pricelabs-client';
-import { getEurCzkRate } from '@/lib/cnb-rates';
+import { getEurCzkRate } from '@/modules/finance/domain/cnb-rates';
 
 /**
  * Hostex property_id → ALiSiO unit_id. Same map used by hostex-sync.ts.

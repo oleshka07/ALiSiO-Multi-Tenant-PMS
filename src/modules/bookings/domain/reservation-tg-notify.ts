@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getDb } from '@core/db';
-import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
+import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot';
 import { maskLastName } from '@core/security/pii-mask';
 
 export interface NotifyOptions {
@@ -77,7 +77,7 @@ export async function notifyReservationCreated(reservationId: string, options: N
       const msgId = await sendTelegramMessage(lines);
       if (msgId) {
         const { storeTgBookingMessage } = await import('@/modules/notifications/data/tg-message-updater');
-        const { getChatId } = await import('@/lib/channels/telegram-bot');
+        const { getChatId } = await import('@/modules/notifications/data/telegram-bot');
         const ownerChatId = getChatId();
         if (ownerChatId) {
           storeTgBookingMessage(reservationId, ownerChatId, msgId, r.payment_status || 'unpaid', lines);

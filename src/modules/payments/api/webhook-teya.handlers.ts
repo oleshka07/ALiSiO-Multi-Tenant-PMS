@@ -4,7 +4,7 @@ import { appBaseUrl } from '@core/app-url';
 import { verifyWebhookSignature } from '../domain/teya-client';
 import { getDb } from '@core/db';
 import { eventBus } from '@core/event-bus';
-import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
+import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot';
 // TODO: replace with eventBus.emit('crm.payment_received') when crm module is migrated
 // TODO: replace with eventBus subscription in @finance once subscriber bootstrap exists
 import { generateInvoiceForReservation } from '@finance';

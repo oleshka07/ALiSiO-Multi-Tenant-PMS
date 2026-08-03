@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { cloudOcrAllowed } from '@core/privacy/ocr-consent';
-import { ocrDocument } from '@/lib/ai/ocr-document';
+import { ocrDocument } from '@/modules/guests/domain/ai/ocr-document';
 import { withPermission } from '@core/auth/session';
 
 /**

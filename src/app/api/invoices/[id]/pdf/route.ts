@@ -4,10 +4,10 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
-import { generateInvoicePdf } from '@/lib/invoice-pdf';
+import { generateInvoicePdf } from '@/modules/finance/domain/invoice-pdf';
 import { requirePermission } from '@core/security/route-guard';
-import { convertToCzkAuto, foreignNote } from '@/lib/fx';
-import { showBuyerName, dueDateFor } from '@/lib/invoice-rules';
+import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
+import { showBuyerName, dueDateFor } from '@/modules/finance/domain/invoice-rules';
 
 export const GET = requirePermission('manage_documents', _GET);
 async function _GET(

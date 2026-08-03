@@ -4,7 +4,7 @@ import { z } from 'zod';
 import * as registrationRepo from '../data/registration.repo';
 // TODO: replace with @channels eventBus event when channels module is migrated
 import { checkRateLimit } from '@/lib/rate-limit';
-import { sendTelegramMessage } from '@/lib/channels/telegram-bot';
+import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot';
 import { maskFullName, maskDob, maskDocNumber, maskDobForSheets, maskDocNumberForSheets } from '@core/security/pii-mask';
 
 /** POST to Google Apps Script (same endpoint as the Telegram bot uses) */
