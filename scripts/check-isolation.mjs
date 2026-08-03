@@ -56,6 +56,8 @@ function cleanup() {
     db.prepare('DELETE FROM categories WHERE property_id = ?').run(pid);
   }
   db.prepare('DELETE FROM properties WHERE organization_id LIKE ?').run(`${TAG}%`);
+  try { db.prepare('DELETE FROM waitlist WHERE site_id IN (SELECT id FROM booking_sites WHERE slug LIKE ?)').run(`${TAG}%`); } catch { /* table may not exist */ }
+  try { db.prepare('DELETE FROM booking_sites WHERE slug LIKE ?').run(`${TAG}%`); } catch { /* table may not exist */ }
   db.prepare('DELETE FROM finance_tags WHERE organization_id LIKE ?').run(`${TAG}%`);
   // The app creates this table on first boot; cleanup may run against a
   // database the new code has not touched yet.
@@ -374,6 +376,60 @@ async function main() {
     const delBookA = await call(cookieA, `/api/bookings/${booking.id}`, { method: 'DELETE' });
     assert.ok(delBookA.ok, `A could not delete its own booking: ${delBookA.status}`);
     console.log('  ok  deleting your own booking works');
+
+    // ── Site analytics ───────────────────────────────────────────────────
+    // Six analytics routes had a session and never asked whose. A logged-in
+    // user of hotel B could read hotel A's revenue, conversion, campaigns and
+    // geography by putting A's site id in the URL — confirmed live, HTTP 200
+    // with a body, before this was fixed.
+    const siteRes = await call(cookieA, '/api/booking-sites', {
+      method: 'POST',
+      body: JSON.stringify({ property_id: propA.id, name: 'Probe site', slug: `${TAG}site_a` }),
+    });
+    if (siteRes.ok) {
+      const siteA = await siteRes.json();
+      const siteId = siteA.id || siteA.site?.id;
+      if (siteId) {
+        for (const view of ['overview', 'traffic', 'geo', 'listings', 'campaigns', 'funnel']) {
+          const leak = await call(cookieB, `/api/booking-sites/${siteId}/analytics/${view}`);
+          assert.strictEqual(leak.status, 404, `B read A's analytics/${view}: ${leak.status}`);
+        }
+        const own = await call(cookieA, `/api/booking-sites/${siteId}/analytics/overview`);
+        assert.ok(own.ok, `A cannot read its own analytics: ${own.status}`);
+        console.log("  ok  B cannot read A's site analytics, A still can");
+      }
+    }
+
+    // 'all' must mean "all of MINE". It expanded to `1=1` — every reservation
+    // on the server — which read correctly only while there was one hotel.
+    const allB = await call(cookieB, '/api/booking-sites/all/analytics/overview');
+    if (allB.ok) {
+      const body = await allB.json();
+      assert.strictEqual(body?.current?.revenue ?? 0, 0,
+        "B's 'all sites' revenue is not zero — it is counting somebody else's");
+      console.log("  ok  'all sites' counts only the caller's own");
+    }
+
+    // ── The public waitlist ──────────────────────────────────────────────
+    // Open by design (a guest joins from the widget), so the guard is that a
+    // made-up site id cannot become a row of somebody's personal data.
+    const bogus = await fetch(`${BASE}/api/booking/waitlist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        siteId: 'no-such-site', checkIn: '2031-01-01', checkOut: '2031-01-02',
+        email: 'probe@example.invalid',
+      }),
+    });
+    assert.strictEqual(bogus.status, 404, `waitlist accepted an invented site: ${bogus.status}`);
+
+    const malformed = await fetch(`${BASE}/api/booking/waitlist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ siteId: 'x', checkIn: 'tomorrow', checkOut: 'later', email: 'not-an-email' }),
+    });
+    assert.strictEqual(malformed.status, 400, `waitlist accepted junk: ${malformed.status}`);
+    console.log('  ok  the public waitlist refuses invented sites and junk input');
 
     // ── The feature registry ─────────────────────────────────────────────
     // Probe organizations are created after the seed migration, so they have

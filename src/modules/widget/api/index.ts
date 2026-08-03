@@ -37,3 +37,7 @@ export {
   getAnalyticsOverview, getAnalyticsTraffic, getAnalyticsGeo,
   getAnalyticsListings, getAnalyticsCampaigns, getAnalyticsFunnel,
 } from './site-analytics.handlers';
+
+// A guest asking to be told when a date frees up. Public, but the site must
+// exist, the hotel must have the widget, and one IP gets ten an hour.
+export { joinWaitlist, joinWaitlistOptions } from './widget-waitlist.handlers';

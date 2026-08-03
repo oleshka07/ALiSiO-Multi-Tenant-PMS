@@ -1,6 +1,7 @@
 ﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
+import { withPermission, notFound, type Actor } from '@core/auth/session';
 
 function getToday(): string {
   return new Date().toISOString().split('T')[0];
@@ -22,19 +23,54 @@ function getSitePropertyId(db: any, siteId: string): string | null {
   return row ? row.property_id : null;
 }
 
-function getSourceFilter(siteId: string, propertyId: string | null, alias = '') {
-  if (siteId === 'all') return '1=1'; 
+/**
+ * Does this site belong to the caller's organization?
+ *
+ * These six handlers had a session (middleware saw to that) and never asked
+ * WHOSE session. Any logged-in user of any hotel could read another hotel's
+ * revenue, conversion, campaigns and geography by putting its site id in the
+ * URL — a live cross-tenant read, confirmed with two real organizations.
+ *
+ * 'all' means "every site I own", so it is scoped by the organization rather
+ * than by a single site id.
+ */
+function ownsSite(db: any, organizationId: string, siteId: string): boolean {
+  if (siteId === 'all') return true;
+  return !!db.prepare(`
+    SELECT 1 FROM booking_sites bs
+    JOIN properties p ON bs.property_id = p.id
+    WHERE bs.id = ? AND p.organization_id = ?
+  `).get(siteId, organizationId);
+}
+
+/** Restrict an 'all' query to the caller's own properties. */
+function ownPropertyIds(db: any, organizationId: string): string[] {
+  return (db.prepare('SELECT id FROM properties WHERE organization_id = ?')
+    .all(organizationId) as { id: string }[]).map((r) => r.id);
+}
+
+/**
+ * 'all' used to expand to `1=1` — every reservation on the server, not every
+ * reservation of this hotel. With one organization that read the same; with
+ * two it is another company's revenue. It now lists the caller's own
+ * properties, so "all my sites" means exactly that.
+ */
+function getSourceFilter(siteId: string, propertyId: string | null, ownIds: string[], alias = '') {
+  if (siteId === 'all') {
+    if (!ownIds.length) return '1=0';
+    return `${alias}property_id IN (${ownIds.map(() => '?').join(',')})`;
+  }
   const propFilter = propertyId ? `${alias}property_id = ? AND ` : '';
   return `${propFilter}${alias}source IN (?, ?)`;
 }
 
-function getSourceParams(siteId: string, propertyId: string | null) {
-  if (siteId === 'all') return [];
+function getSourceParams(siteId: string, propertyId: string | null, ownIds: string[]) {
+  if (siteId === 'all') return ownIds;
   return propertyId ? [propertyId, `widget:${siteId}`, 'widget'] : [`widget:${siteId}`, 'widget'];
 }
 
 
-function getReservationsStats(db: any, siteId: string, propertyId: string | null, from: string, to: string, dateType: string) {
+function getReservationsStats(db: any, siteId: string, propertyId: string | null, ownIds: string[], from: string, to: string, dateType: string) {
   let sql = `
     SELECT 
       COUNT(*) as count,
@@ -42,9 +78,9 @@ function getReservationsStats(db: any, siteId: string, propertyId: string | null
       COALESCE(SUM(CASE WHEN payment_status != 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END), 0) as unpaid_revenue,
       COALESCE(AVG(CASE WHEN payment_status = 'paid' THEN total_price ELSE NULL END), 0) as avg_check
     FROM reservations
-    WHERE ${getSourceFilter(siteId, propertyId)} AND status != 'cancelled'
+    WHERE ${getSourceFilter(siteId, propertyId, ownIds)} AND status != 'cancelled'
   `;
-  const params: any[] = getSourceParams(siteId, propertyId);
+  const params: any[] = getSourceParams(siteId, propertyId, ownIds);
   if (dateType === 'check_in') {
     sql += ' AND check_in >= ? AND check_in <= ?';
     params.push(from, to);
@@ -55,24 +91,42 @@ function getReservationsStats(db: any, siteId: string, propertyId: string | null
   return db.prepare(sql).get(...params) as { count: number; revenue: number; unpaid_revenue: number; avg_check: number };
 }
 
-function getSessionsCount(db: any, siteId: string, from: string, to: string) {
+/**
+ * Sessions in the window.
+ *
+ * The bounds were written `` `T00:00:00Z` `` — the interpolation was lost, so
+ * every comparison ran against the literal string "T00:00:00Z" and the count
+ * was always 0. Conversion, which divides by it, was therefore always 0 too:
+ * the whole funnel read as if nobody had ever opened the widget.
+ */
+function getSessionsCount(db: any, siteId: string, ownIds: string[], from: string, to: string) {
+  const lo = `${from}T00:00:00Z`;
+  const hi = `${to}T23:59:59Z`;
   if (siteId === 'all') {
-    const sql = `SELECT COUNT(DISTINCT session_id) as count FROM widget_events WHERE created_at >= ? AND created_at <= ?`;
-    const row = db.prepare(sql).get(`T00:00:00Z`, `T23:59:59Z`) as { count: number };
+    if (!ownIds.length) return 0;
+    const ph = ownIds.map(() => '?').join(',');
+    const sql = `SELECT COUNT(DISTINCT e.session_id) as count
+                 FROM widget_events e
+                 JOIN booking_sites bs ON e.site_id = bs.id
+                 WHERE bs.property_id IN (${ph}) AND e.created_at >= ? AND e.created_at <= ?`;
+    const row = db.prepare(sql).get(...ownIds, lo, hi) as { count: number };
     return row ? row.count : 0;
   }
   const sql = `SELECT COUNT(DISTINCT session_id) as count FROM widget_events WHERE site_id = ? AND created_at >= ? AND created_at <= ?`;
-  const row = db.prepare(sql).get(siteId, `T00:00:00Z`, `T23:59:59Z`) as { count: number };
+  const row = db.prepare(sql).get(siteId, lo, hi) as { count: number };
   return row ? row.count : 0;
 }
 
-export async function getAnalyticsOverview(
+export const getAnalyticsOverview = withPermission('nav:sites', async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+  { params }: { params: Promise<{ id: string }> },
+  actor: Actor,
+) => {
   try {
     const { id: siteId } = await params;
     const db = getDb();
+    if (!ownsSite(db, actor.organizationId, siteId)) return notFound();
+    const ownIds = ownPropertyIds(db, actor.organizationId);
     const { searchParams } = new URL(request.url);
     const propertyId = getSitePropertyId(db, siteId);
 
@@ -81,8 +135,8 @@ export async function getAnalyticsOverview(
     const dateType = searchParams.get('date_type') || 'created_at';
 
     // Current period stats
-    const currentStats = getReservationsStats(db, siteId, propertyId, dateFrom, dateTo, dateType);
-    const currentSessions = getSessionsCount(db, siteId, dateFrom, dateTo);
+    const currentStats = getReservationsStats(db, siteId, propertyId, ownIds, dateFrom, dateTo, dateType);
+    const currentSessions = getSessionsCount(db, siteId, ownIds, dateFrom, dateTo);
     const currentConversion = currentSessions > 0 ? (currentStats.count / currentSessions) * 100 : 0;
 
     // Previous period dates
@@ -100,8 +154,8 @@ export async function getAnalyticsOverview(
     const prevTo = prevToDate.toISOString().split('T')[0];
 
     // Previous period stats
-    const prevStats = getReservationsStats(db, siteId, propertyId, prevFrom, prevTo, dateType);
-    const prevSessions = getSessionsCount(db, siteId, prevFrom, prevTo);
+    const prevStats = getReservationsStats(db, siteId, propertyId, ownIds, prevFrom, prevTo, dateType);
+    const prevSessions = getSessionsCount(db, siteId, ownIds, prevFrom, prevTo);
     const prevConversion = prevSessions > 0 ? (prevStats.count / prevSessions) * 100 : 0;
 
     return NextResponse.json({
@@ -133,15 +187,18 @@ export async function getAnalyticsOverview(
     console.error('Error fetching site overview:', error?.message || error);
     return NextResponse.json({ error: 'Failed to fetch site overview' }, { status: 500 });
   }
-}
+});
 
-export async function getAnalyticsTraffic(
+export const getAnalyticsTraffic = withPermission('nav:sites', async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+  { params }: { params: Promise<{ id: string }> },
+  actor: Actor,
+) => {
   try {
     const { id: siteId } = await params;
     const db = getDb();
+    if (!ownsSite(db, actor.organizationId, siteId)) return notFound();
+    const ownIds = ownPropertyIds(db, actor.organizationId);
     const { searchParams } = new URL(request.url);
     const propertyId = getSitePropertyId(db, siteId);
 
@@ -178,9 +235,9 @@ export async function getAnalyticsTraffic(
         SUM(CASE WHEN payment_status = 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as revenue,
         SUM(CASE WHEN payment_status != 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as unpaid_revenue
       FROM reservations
-      WHERE ${getSourceFilter(siteId, propertyId)} AND status != 'cancelled' AND utm_source IS NOT NULL
+      WHERE ${getSourceFilter(siteId, propertyId, ownIds)} AND status != 'cancelled' AND utm_source IS NOT NULL
     `;
-    const bookingsParams: any[] = getSourceParams(siteId, propertyId);
+    const bookingsParams: any[] = getSourceParams(siteId, propertyId, ownIds);
     if (dateType === 'check_in') {
       bookingsSql += ' AND check_in >= ? AND check_in <= ?';
       bookingsParams.push(dateFrom, dateTo);
@@ -245,15 +302,18 @@ export async function getAnalyticsTraffic(
     console.error('Error fetching traffic analytics:', error?.message || error);
     return NextResponse.json({ error: 'Failed to fetch traffic analytics' }, { status: 500 });
   }
-}
+});
 
-export async function getAnalyticsGeo(
+export const getAnalyticsGeo = withPermission('nav:sites', async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+  { params }: { params: Promise<{ id: string }> },
+  actor: Actor,
+) => {
   try {
     const { id: siteId } = await params;
     const db = getDb();
+    if (!ownsSite(db, actor.organizationId, siteId)) return notFound();
+    const ownIds = ownPropertyIds(db, actor.organizationId);
     const { searchParams } = new URL(request.url);
     const propertyId = getSitePropertyId(db, siteId);
 
@@ -287,7 +347,7 @@ export async function getAnalyticsGeo(
         SUM(CASE WHEN payment_status = 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as revenue,
         SUM(CASE WHEN payment_status != 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as unpaid_revenue
       FROM reservations
-      WHERE ${getSourceFilter(siteId, propertyId)} AND status != 'cancelled' AND booking_lang IS NOT NULL
+      WHERE ${getSourceFilter(siteId, propertyId, ownIds)} AND status != 'cancelled' AND booking_lang IS NOT NULL
     `;
     const langParams = [source, 'widget'];
     if (dateType === 'check_in') {
@@ -345,7 +405,7 @@ export async function getAnalyticsGeo(
         SUM(CASE WHEN payment_status = 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as revenue,
         SUM(CASE WHEN payment_status != 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as unpaid_revenue
       FROM reservations
-      WHERE ${getSourceFilter(siteId, propertyId)} AND status != 'cancelled' AND country_code IS NOT NULL
+      WHERE ${getSourceFilter(siteId, propertyId, ownIds)} AND status != 'cancelled' AND country_code IS NOT NULL
     `;
     const countryParams = [source, 'widget'];
     if (dateType === 'check_in') {
@@ -386,15 +446,18 @@ export async function getAnalyticsGeo(
     console.error('Error fetching site geo analytics:', error?.message || error);
     return NextResponse.json({ error: 'Failed to fetch geo analytics' }, { status: 500 });
   }
-}
+});
 
-export async function getAnalyticsListings(
+export const getAnalyticsListings = withPermission('nav:sites', async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+  { params }: { params: Promise<{ id: string }> },
+  actor: Actor,
+) => {
   try {
     const { id: siteId } = await params;
     const db = getDb();
+    if (!ownsSite(db, actor.organizationId, siteId)) return notFound();
+    const ownIds = ownPropertyIds(db, actor.organizationId);
     const { searchParams } = new URL(request.url);
     const propertyId = getSitePropertyId(db, siteId);
 
@@ -417,9 +480,9 @@ export async function getAnalyticsListings(
       FROM reservations r
       JOIN units u ON r.unit_id = u.id
       JOIN unit_types ut ON u.unit_type_id = ut.id
-      WHERE ${getSourceFilter(siteId, propertyId, 'r.')} AND r.status != 'cancelled'
+      WHERE ${getSourceFilter(siteId, propertyId, ownIds, 'r.')} AND r.status != 'cancelled'
     `;
-    const utParams: any[] = getSourceParams(siteId, propertyId);
+    const utParams: any[] = getSourceParams(siteId, propertyId, ownIds);
     if (dateType === 'check_in') {
       utSql += ' AND r.check_in >= ? AND r.check_in <= ?';
       utParams.push(dateFrom, dateTo);
@@ -442,9 +505,9 @@ export async function getAnalyticsListings(
       FROM reservations r
       JOIN units u ON r.unit_id = u.id
       JOIN categories c ON u.category_id = c.id
-      WHERE ${getSourceFilter(siteId, propertyId, 'r.')} AND r.status != 'cancelled'
+      WHERE ${getSourceFilter(siteId, propertyId, ownIds, 'r.')} AND r.status != 'cancelled'
     `;
-    const catParams: any[] = getSourceParams(siteId, propertyId);
+    const catParams: any[] = getSourceParams(siteId, propertyId, ownIds);
     if (dateType === 'check_in') {
       catSql += ' AND r.check_in >= ? AND r.check_in <= ?';
       catParams.push(dateFrom, dateTo);
@@ -464,15 +527,18 @@ export async function getAnalyticsListings(
     console.error('Error fetching site listings analytics:', error?.message || error);
     return NextResponse.json({ error: 'Failed to fetch listings analytics' }, { status: 500 });
   }
-}
+});
 
-export async function getAnalyticsCampaigns(
+export const getAnalyticsCampaigns = withPermission('nav:sites', async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+  { params }: { params: Promise<{ id: string }> },
+  actor: Actor,
+) => {
   try {
     const { id: siteId } = await params;
     const db = getDb();
+    if (!ownsSite(db, actor.organizationId, siteId)) return notFound();
+    const ownIds = ownPropertyIds(db, actor.organizationId);
     const { searchParams } = new URL(request.url);
     const propertyId = getSitePropertyId(db, siteId);
 
@@ -519,9 +585,9 @@ export async function getAnalyticsCampaigns(
         SUM(CASE WHEN payment_status = 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as revenue,
         SUM(CASE WHEN payment_status != 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END) as unpaid_revenue
       FROM reservations
-      WHERE ${getSourceFilter(siteId, propertyId)} AND status != 'cancelled'
+      WHERE ${getSourceFilter(siteId, propertyId, ownIds)} AND status != 'cancelled'
     `;
-    const bookingsParams: any[] = getSourceParams(siteId, propertyId);
+    const bookingsParams: any[] = getSourceParams(siteId, propertyId, ownIds);
     if (dateType === 'check_in') {
       bookingsSql += ' AND check_in >= ? AND check_in <= ?';
       bookingsParams.push(dateFrom, dateTo);
@@ -589,15 +655,18 @@ export async function getAnalyticsCampaigns(
     console.error('Error fetching campaigns analytics:', error?.message || error);
     return NextResponse.json({ error: 'Failed to fetch campaigns analytics' }, { status: 500 });
   }
-}
+});
 
-export async function getAnalyticsFunnel(
+export const getAnalyticsFunnel = withPermission('nav:sites', async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+  { params }: { params: Promise<{ id: string }> },
+  actor: Actor,
+) => {
   try {
     const { id: siteId } = await params;
     const db = getDb();
+    if (!ownsSite(db, actor.organizationId, siteId)) return notFound();
+    const ownIds = ownPropertyIds(db, actor.organizationId);
     const { searchParams } = new URL(request.url);
     const propertyId = getSitePropertyId(db, siteId);
 
@@ -641,7 +710,7 @@ export async function getAnalyticsFunnel(
       let sql = `
         SELECT COUNT(*) as count 
         FROM reservations 
-        WHERE ${getSourceFilter(siteId, propertyId)} AND status != 'cancelled'
+        WHERE ${getSourceFilter(siteId, propertyId, ownIds)} AND status != 'cancelled'
       `;
       const p = [source, 'widget'];
       
@@ -766,7 +835,7 @@ export async function getAnalyticsFunnel(
     console.error('Error fetching site funnel analytics:', error?.message || error);
     return NextResponse.json({ error: 'Failed to fetch funnel analytics' }, { status: 500 });
   }
-}
+});
 
 
 

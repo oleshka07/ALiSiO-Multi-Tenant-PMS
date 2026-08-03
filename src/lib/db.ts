@@ -410,7 +410,24 @@ function buildSchema(database: any) {
     CREATE INDEX IF NOT EXISTS idx_availability_blocks_unit ON availability_blocks(unit_id, date_from, date_to);
   `);
 
-  // ─── Seed initial data ────────────────────────────────  // Seed data
+  // ─── Seed initial data ────────────────────────────────
+  //
+  // Demo data — a sample hotel, twenty bookings and an owner account — is for
+  // local evaluation. In production it is refused unless the operator names a
+  // password: a fresh production database used to come up with a known owner
+  // login, and that account sat on a public domain until somebody noticed.
+  //
+  // A production instance is populated with scripts/provision-org.mjs, which
+  // creates a real customer and prints a generated password once.
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction && !process.env.SEED_ADMIN_PASSWORD) {
+    console.warn(
+      '[Seed] Production database created empty — demo data is not seeded without ' +
+      'SEED_ADMIN_PASSWORD. Create the first customer with ' +
+      'node scripts/provision-org.mjs --name … --slug … --email …',
+    );
+    return;
+  }
   seedData(database);
 }
 
@@ -4994,8 +5011,9 @@ function seedData(database: any) {
   insertFee.run('fee_clean', propId, 'Cleaning', 'per_stay', 500);
   insertFee.run('fee_tax', propId, 'City tax', 'per_person_per_night', 50);
 
-  // Demo owner. Credentials are overridable so a real deployment never ships
-  // with a known password; the defaults exist only for local evaluation.
+  // Demo owner. Reachable only in development or with an explicit
+  // SEED_ADMIN_PASSWORD — the caller above refuses to seed production
+  // otherwise, so the literal below can never become a live credential.
   const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@demo.local';
   const adminPassword = process.env.SEED_ADMIN_PASSWORD || 'demo1234';
   database
