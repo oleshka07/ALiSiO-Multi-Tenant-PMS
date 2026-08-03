@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import fs from 'fs';
 import path from 'path';
 
@@ -30,13 +30,13 @@ export async function uploadPhoto(request: NextRequest) {
       return NextResponse.json({ error: 'File too large. Max 5MB.' }, { status: 400 });
     }
 
-    const db = getDb();
+    const sql = getSql();
     const entityId = unitTypeId || propertyId;
     const entityType = unitTypeId ? 'unit_type' : 'property';
 
     const table = entityType === 'unit_type' ? 'unit_type_photos' : 'property_photos';
     const fkCol = entityType === 'unit_type' ? 'unit_type_id' : 'property_id';
-    const count = (db.prepare(`SELECT COUNT(*) as cnt FROM ${table} WHERE ${fkCol} = ?`).get(entityId) as any)?.cnt || 0;
+    const count = (await sql.row<any>(`SELECT COUNT(*) as cnt FROM ${table} WHERE ${fkCol} = ?`, [entityId]) as any)?.cnt || 0;
     if (count >= 10) {
       return NextResponse.json({ error: 'Max 10 photos per entity' }, { status: 400 });
     }
@@ -52,14 +52,13 @@ export async function uploadPhoto(request: NextRequest) {
     fs.writeFileSync(filePath, Buffer.from(arrayBuffer));
 
     const url = `/api/photos/${entityType}/${entityId}/${fileName}`;
-    db.prepare(`INSERT INTO ${table} (${fkCol}, url, caption, sort_order) VALUES (?, ?, ?, ?)`)
-      .run(entityId, url, caption, sortOrder);
+    await sql.run(`INSERT INTO ${table} (${fkCol}, url, caption, sort_order) VALUES (?, ?, ?, ?)`, [entityId, url, caption, sortOrder]);
 
     // Sync with unit_types table if it's a unit_type photo
     if (entityType === 'unit_type') {
-      const allPhotos = db.prepare(`SELECT url FROM unit_type_photos WHERE unit_type_id = ? ORDER BY sort_order ASC, created_at ASC`).all(entityId) as any[];
+      const allPhotos = await sql.rows<any>(`SELECT url FROM unit_type_photos WHERE unit_type_id = ? ORDER BY sort_order ASC, created_at ASC`, [entityId]) as any[];
       const photosCsv = allPhotos.map(p => p.url).join(',');
-      db.prepare(`UPDATE unit_types SET photos = ? WHERE id = ?`).run(photosCsv, entityId);
+      await sql.run(`UPDATE unit_types SET photos = ? WHERE id = ?`, [photosCsv, entityId]);
     }
 
     return NextResponse.json({ success: true, url });
@@ -77,10 +76,10 @@ export async function deletePhoto(request: NextRequest) {
 
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-    const db = getDb();
+    const sql = getSql();
     const table = type === 'property' ? 'property_photos' : 'unit_type_photos';
 
-    const photo = db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id) as any;
+    const photo = await sql.row<any>(`SELECT * FROM ${table} WHERE id = ?`, [id]) as any;
     if (!photo) return NextResponse.json({ error: 'Photo not found' }, { status: 404 });
 
     if (photo.url?.startsWith('/api/photos/')) {
@@ -89,7 +88,7 @@ export async function deletePhoto(request: NextRequest) {
       try { fs.unlinkSync(filePath); } catch { /* file may not exist */ }
     }
 
-    db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+    await sql.run(`DELETE FROM ${table} WHERE id = ?`, [id]);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

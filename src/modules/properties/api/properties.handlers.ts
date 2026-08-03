@@ -17,7 +17,7 @@ type IdParams = { params: Promise<{ id: string }> };
 
 export const listProperties = withActor(async (_req, _ctx, actor: Actor) => {
   try {
-    return NextResponse.json(propertiesRepo.listProperties(actor.organizationId));
+    return NextResponse.json(await propertiesRepo.listProperties(actor.organizationId));
   } catch (error) {
     console.error('GET /api/properties error:', error);
     return NextResponse.json({ error: 'Failed to fetch properties' }, { status: 500 });
@@ -33,7 +33,7 @@ export const createProperty = withPermission('manage_properties', async (request
       return NextResponse.json({ error: 'Name and slug are required' }, { status: 400 });
     }
 
-    const created = propertiesRepo.createProperty(actor.organizationId, {
+    const created = await propertiesRepo.createProperty(actor.organizationId, {
       name, slug, address, city, country, phone, email, check_in_time, check_out_time,
     });
     return NextResponse.json(created, { status: 201 });
@@ -50,7 +50,7 @@ export const createProperty = withPermission('manage_properties', async (request
 export const getProperty = withActor(async (_request, context: IdParams, actor: Actor) => {
   try {
     const { id } = await context.params;
-    const result = propertiesRepo.getPropertyById(actor.organizationId, id);
+    const result = await propertiesRepo.getPropertyById(actor.organizationId, id);
     if (!result) return NextResponse.json({ error: 'Property not found' }, { status: 404 });
     return NextResponse.json(result);
   } catch (error) {
@@ -63,7 +63,7 @@ export const updateProperty = withPermission('manage_properties', async (request
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const updated = propertiesRepo.updateProperty(actor.organizationId, id, body);
+    const updated = await propertiesRepo.updateProperty(actor.organizationId, id, body);
     if (!updated) return NextResponse.json({ error: 'Property not found' }, { status: 404 });
     return NextResponse.json(updated);
   } catch (error) {
@@ -75,7 +75,7 @@ export const updateProperty = withPermission('manage_properties', async (request
 export const deleteProperty = withPermission('manage_properties', async (_request, context: IdParams, actor: Actor) => {
   try {
     const { id } = await context.params;
-    const result = propertiesRepo.deleteProperty(actor.organizationId, id);
+    const result = await propertiesRepo.deleteProperty(actor.organizationId, id);
     if (!result.ok) {
       const status = result.error === 'Not found' ? 404 : 400;
       return NextResponse.json({ error: result.error }, { status });

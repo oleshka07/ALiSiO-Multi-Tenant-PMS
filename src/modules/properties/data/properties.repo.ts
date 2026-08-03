@@ -1,4 +1,4 @@
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 /**
  * Every function here takes the caller's organization and constrains on it.
@@ -14,8 +14,9 @@ import { getDb } from '@core/db';
  * never confirm that someone else's row exists.
  */
 
-export function listProperties(organizationId: string) {
-  return getDb().prepare(`
+export async function listProperties(organizationId: string) {
+  const sql = getSql();
+  return await sql.rows<any>(`
     SELECT
       p.*,
       (SELECT COUNT(*) FROM categories c WHERE c.property_id = p.id) as category_count,
@@ -25,52 +26,51 @@ export function listProperties(organizationId: string) {
     FROM properties p
     WHERE p.organization_id = ?
     ORDER BY p.created_at
-  `).all(organizationId);
+  `, [organizationId]);
 }
 
 /** True when the property exists *and* belongs to this organization. */
-function owns(db: any, organizationId: string, id: string): boolean {
-  return !!db.prepare('SELECT 1 FROM properties WHERE id = ? AND organization_id = ?').get(id, organizationId);
+async function owns(organizationId: string, id: string): Promise<boolean> {
+  const sql = getSql();
+  return !!await sql.row<any>('SELECT 1 FROM properties WHERE id = ? AND organization_id = ?', [id, organizationId]);
 }
 
-export function getPropertyById(organizationId: string, id: string) {
-  const db = getDb();
+export async function getPropertyById(organizationId: string, id: string) {
+  const sql = getSql();
 
-  const property = db
-    .prepare('SELECT * FROM properties WHERE id = ? AND organization_id = ?')
-    .get(id, organizationId);
+  const property = await sql.row<any>('SELECT * FROM properties WHERE id = ? AND organization_id = ?', [id, organizationId]);
   if (!property) return null;
 
   // The children below are reached through property_id, which the lookup above
   // has already tied to this organization.
-  const categories = db.prepare(`
+  const categories = await sql.rows<any>(`
     SELECT c.*, COUNT(u.id) as unit_count
     FROM categories c
     LEFT JOIN units u ON u.category_id = c.id AND u.is_active = 1
     WHERE c.property_id = ?
     GROUP BY c.id
     ORDER BY c.sort_order
-  `).all(id);
+  `, [id]);
 
-  const buildings = db.prepare(`
+  const buildings = await sql.rows<any>(`
     SELECT b.*, COUNT(u.id) as unit_count
     FROM buildings b
     LEFT JOIN units u ON u.building_id = b.id AND u.is_active = 1
     WHERE b.property_id = ?
     GROUP BY b.id
     ORDER BY b.sort_order
-  `).all(id);
+  `, [id]);
 
-  const unitTypes = db.prepare(`
+  const unitTypes = await sql.rows<any>(`
     SELECT ut.*, COUNT(u.id) as unit_count
     FROM unit_types ut
     LEFT JOIN units u ON u.unit_type_id = ut.id AND u.is_active = 1
     WHERE ut.property_id = ? AND ut.is_active = 1
     GROUP BY ut.id
     ORDER BY ut.sort_order
-  `).all(id);
+  `, [id]);
 
-  const units = db.prepare(`
+  const units = await sql.rows<any>(`
     SELECT u.*,
       ut.name as unit_type_name, ut.code as unit_type_code,
       c.name as category_name, c.type as category_type, c.icon as category_icon, c.color as category_color,
@@ -81,7 +81,7 @@ export function getPropertyById(organizationId: string, id: string) {
     LEFT JOIN buildings b ON u.building_id = b.id
     WHERE u.property_id = ?
     ORDER BY c.sort_order, b.sort_order, ut.sort_order, u.sort_order
-  `).all(id);
+  `, [id]);
 
   return { property, categories, buildings, unitTypes, units };
 }
@@ -98,23 +98,21 @@ export interface CreatePropertyInput {
   check_out_time?: string;
 }
 
-export function createProperty(organizationId: string, input: CreatePropertyInput) {
-  const db = getDb();
-  const result = db.prepare(`
+export async function createProperty(organizationId: string, input: CreatePropertyInput) {
+  const sql = getSql();
+  const result = await sql.run(`
     INSERT INTO properties (organization_id, name, slug, address, city, country, phone, email, check_in_time, check_out_time)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    organizationId, input.name, input.slug,
+  `, [organizationId, input.name, input.slug,
     input.address ?? null, input.city ?? null, input.country ?? 'CZ',
     input.phone ?? null, input.email ?? null,
-    input.check_in_time ?? '15:00', input.check_out_time ?? '11:00',
-  );
-  return db.prepare('SELECT * FROM properties WHERE rowid = ?').get(result.lastInsertRowid);
+    input.check_in_time ?? '15:00', input.check_out_time ?? '11:00']);
+  return await sql.row<any>('SELECT * FROM properties WHERE rowid = ?', [result.lastId]);
 }
 
-export function updateProperty(organizationId: string, id: string, fields: Record<string, unknown>) {
-  const db = getDb();
-  if (!owns(db, organizationId, id)) return null;
+export async function updateProperty(organizationId: string, id: string, fields: Record<string, unknown>) {
+  const sql = getSql();
+  if (!await owns(organizationId, id)) return null;
 
   const allowed = ['name', 'slug', 'address', 'city', 'country', 'phone', 'email', 'check_in_time', 'check_out_time', 'city_tax_per_night', 'is_active'];
   const updates: string[] = [];
@@ -134,19 +132,17 @@ export function updateProperty(organizationId: string, id: string, fields: Recor
 
   // organization_id is repeated in the WHERE clause, not left to the check
   // above alone: the guard and the write must not be able to drift apart.
-  db.prepare(`UPDATE properties SET ${updates.join(', ')} WHERE id = ? AND organization_id = ?`).run(...values);
-  return db.prepare('SELECT * FROM properties WHERE id = ? AND organization_id = ?').get(id, organizationId);
+  await sql.run(`UPDATE properties SET ${updates.join(', ')} WHERE id = ? AND organization_id = ?`, [...values]);
+  return await sql.row<any>('SELECT * FROM properties WHERE id = ? AND organization_id = ?', [id, organizationId]);
 }
 
-export function deleteProperty(organizationId: string, id: string): { ok: boolean; error?: string } {
-  const db = getDb();
-  if (!owns(db, organizationId, id)) return { ok: false, error: 'Not found' };
+export async function deleteProperty(organizationId: string, id: string): Promise<{ ok: boolean; error?: string }> {
+  const sql = getSql();
+  if (!await owns(organizationId, id)) return { ok: false, error: 'Not found' };
 
-  const count = db
-    .prepare('SELECT COUNT(*) as cnt FROM properties WHERE organization_id = ?')
-    .get(organizationId) as { cnt: number };
+  const count = await sql.row<any>('SELECT COUNT(*) as cnt FROM properties WHERE organization_id = ?', [organizationId]) as { cnt: number };
   if (count.cnt <= 1) return { ok: false, error: 'Cannot delete the last property' };
 
-  db.prepare('DELETE FROM properties WHERE id = ? AND organization_id = ?').run(id, organizationId);
+  await sql.run('DELETE FROM properties WHERE id = ? AND organization_id = ?', [id, organizationId]);
   return { ok: true };
 }

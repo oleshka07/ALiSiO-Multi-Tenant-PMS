@@ -13,7 +13,7 @@ type IdParams = { params: Promise<{ id: string }> };
 export const listUnitTypes = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const { searchParams } = new URL(request.url);
-    const rows = unitTypesRepo.listUnitTypes(actor.organizationId, {
+    const rows = await unitTypesRepo.listUnitTypes(actor.organizationId, {
       category: searchParams.get('category') || undefined,
     });
     return NextResponse.json(rows);
@@ -32,7 +32,7 @@ export const createUnitType = withPermission('manage_properties', async (request
       return NextResponse.json({ error: 'property_id, category_id, name, and code are required' }, { status: 400 });
     }
 
-    const created = unitTypesRepo.createUnitType(actor.organizationId, {
+    const created = await unitTypesRepo.createUnitType(actor.organizationId, {
       property_id, category_id, building_id, name, code, description,
       max_adults, max_children, max_occupancy, base_occupancy,
       beds_single, beds_double, beds_sofa, extra_bed_available, sort_order,
@@ -49,7 +49,7 @@ export const updateUnitType = withPermission('manage_properties', async (request
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const updated = unitTypesRepo.updateUnitType(actor.organizationId, id, body);
+    const updated = await unitTypesRepo.updateUnitType(actor.organizationId, id, body);
     if (!updated) return NextResponse.json({ error: 'Unit type not found' }, { status: 404 });
     return NextResponse.json(updated);
   } catch (error) {
@@ -61,7 +61,7 @@ export const updateUnitType = withPermission('manage_properties', async (request
 export const deleteUnitType = withPermission('manage_properties', async (_request, context: IdParams, actor: Actor) => {
   try {
     const { id } = await context.params;
-    const result = unitTypesRepo.deleteUnitType(actor.organizationId, id);
+    const result = await unitTypesRepo.deleteUnitType(actor.organizationId, id);
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.error === 'Not found' ? 404 : 400 });
     }

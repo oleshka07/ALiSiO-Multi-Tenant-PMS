@@ -13,7 +13,7 @@ type IdParams = { params: Promise<{ id: string }> };
 export const listBuildings = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const { searchParams } = new URL(request.url);
-    const rows = buildingsRepo.listBuildings(actor.organizationId, {
+    const rows = await buildingsRepo.listBuildings(actor.organizationId, {
       property_id: searchParams.get('property_id') || undefined,
     });
     return NextResponse.json(rows);
@@ -32,7 +32,7 @@ export const createBuilding = withPermission('manage_properties', async (request
       return NextResponse.json({ error: 'category_id, property_id, name, and code are required' }, { status: 400 });
     }
 
-    const created = buildingsRepo.createBuilding(actor.organizationId, {
+    const created = await buildingsRepo.createBuilding(actor.organizationId, {
       category_id, property_id, name, code, description, sort_order,
     });
     if (!created) return NextResponse.json({ error: 'Property or category not found' }, { status: 404 });
@@ -47,7 +47,7 @@ export const updateBuilding = withPermission('manage_properties', async (request
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const updated = buildingsRepo.updateBuilding(actor.organizationId, id, body);
+    const updated = await buildingsRepo.updateBuilding(actor.organizationId, id, body);
     if (!updated) return NextResponse.json({ error: 'Building not found' }, { status: 404 });
     return NextResponse.json(updated);
   } catch (error) {
@@ -59,7 +59,7 @@ export const updateBuilding = withPermission('manage_properties', async (request
 export const deleteBuilding = withPermission('manage_properties', async (_request, context: IdParams, actor: Actor) => {
   try {
     const { id } = await context.params;
-    const result = buildingsRepo.deleteBuilding(actor.organizationId, id);
+    const result = await buildingsRepo.deleteBuilding(actor.organizationId, id);
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.error === 'Not found' ? 404 : 400 });
     }

@@ -1,4 +1,4 @@
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope';
 
 /**
@@ -9,6 +9,7 @@ import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope'
  */
 
 export function listUnits(organizationId: string, filters: { category?: string; unitType?: string; includePool?: boolean } = {}) {
+  const sql = getSql();
   let query = `
     SELECT
       u.id, u.name, u.code, u.beds, u.zone, u.room_status, u.cleaning_status, u.sort_order, u.is_active, u.is_pool, u.lock_code, u.entry_photo_url,
@@ -42,7 +43,7 @@ export function listUnits(organizationId: string, filters: { category?: string; 
 
   query += ' ORDER BY c.sort_order, b.sort_order, ut.sort_order, u.sort_order';
 
-  return getDb().prepare(query).all(...params);
+  return sql.rows<any>(query, params);
 }
 
 export interface CreateUnitInput {
@@ -60,30 +61,28 @@ export interface CreateUnitInput {
 }
 
 /** Every id below arrives in the request body, so each is checked separately. */
-function ownsAllRefs(
+async function ownsAllRefs(
   organizationId: string,
   input: { property_id: string; category_id: string; unit_type_id: string; building_id?: string },
-): boolean {
-  if (!ownsProperty(organizationId, input.property_id)) return false;
-  if (!ownsViaProperty(organizationId, 'categories', input.category_id)) return false;
-  if (!ownsViaProperty(organizationId, 'unit_types', input.unit_type_id)) return false;
-  if (input.building_id && !ownsViaProperty(organizationId, 'buildings', input.building_id)) return false;
+): Promise<boolean> {
+  if (!await ownsProperty(organizationId, input.property_id)) return false;
+  if (!await ownsViaProperty(organizationId, 'categories', input.category_id)) return false;
+  if (!await ownsViaProperty(organizationId, 'unit_types', input.unit_type_id)) return false;
+  if (input.building_id && !await ownsViaProperty(organizationId, 'buildings', input.building_id)) return false;
   return true;
 }
 
-export function createUnit(organizationId: string, input: CreateUnitInput) {
-  if (!ownsAllRefs(organizationId, input)) return null;
+export async function createUnit(organizationId: string, input: CreateUnitInput) {
+  if (!await ownsAllRefs(organizationId, input)) return null;
 
-  const db = getDb();
-  const result = db.prepare(`
+  const sql = getSql();
+  const result = await sql.run(`
     INSERT INTO units (unit_type_id, property_id, category_id, building_id, name, code, floor, zone, beds, notes, sort_order)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    input.unit_type_id, input.property_id, input.category_id, input.building_id ?? null,
+  `, [input.unit_type_id, input.property_id, input.category_id, input.building_id ?? null,
     input.name, input.code, input.floor ?? null, input.zone ?? null,
-    input.beds ?? 0, input.notes ?? null, input.sort_order ?? 0
-  );
-  return db.prepare('SELECT * FROM units WHERE rowid = ?').get(result.lastInsertRowid);
+    input.beds ?? 0, input.notes ?? null, input.sort_order ?? 0]);
+  return await sql.row<any>('SELECT * FROM units WHERE rowid = ?', [result.lastId]);
 }
 
 export interface BulkCreateUnitsInput {
@@ -98,45 +97,45 @@ export interface BulkCreateUnitsInput {
   zone?: string;
 }
 
-export function bulkCreateUnits(organizationId: string, input: BulkCreateUnitsInput) {
+export async function bulkCreateUnits(organizationId: string, input: BulkCreateUnitsInput) {
   // Unchecked, this wrote up to two hundred rooms into another tenant's
   // property in a single call.
-  if (!ownsAllRefs(organizationId, input)) return [];
+  if (!await ownsAllRefs(organizationId, input)) return [];
 
-  const db = getDb();
-  const insert = db.prepare(`
-    INSERT INTO units (unit_type_id, property_id, category_id, building_id, name, code, beds, zone, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
+  const sql = getSql();
   const created: { name: string; code: string }[] = [];
 
-  db.transaction(() => {
+  await sql.tx(async (t) => {
     for (let i = input.from; i <= input.to; i++) {
       const name = `${input.prefix}${i}`;
       const code = `${input.prefix}${i}`;
       try {
-        insert.run(input.unit_type_id, input.property_id, input.category_id, input.building_id ?? null, name, code, input.beds ?? 0, input.zone ?? null, i);
+        await t.run(`
+          INSERT INTO units (unit_type_id, property_id, category_id, building_id, name, code, beds, zone, sort_order)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [input.unit_type_id, input.property_id, input.category_id, input.building_id ?? null, name, code, input.beds ?? 0, input.zone ?? null, i]);
         created.push({ name, code });
       } catch (e: unknown) {
+        // A name that already exists is skipped, not fatal: SQLite rolls back
+        // the failed statement, not the transaction, so the rest still lands.
         if (e instanceof Error && !e.message.includes('UNIQUE')) throw e;
       }
     }
-  })();
+  });
 
   return created;
 }
 
-export function updateUnit(organizationId: string, id: string, fields: Record<string, unknown>) {
-  if (!ownsViaProperty(organizationId, 'units', id)) return null;
+export async function updateUnit(organizationId: string, id: string, fields: Record<string, unknown>) {
+  if (!await ownsViaProperty(organizationId, 'units', id)) return null;
   // Reassignment must not move the unit into another tenant.
   for (const [field, table] of [
     ['category_id', 'categories'], ['unit_type_id', 'unit_types'], ['building_id', 'buildings'],
   ] as const) {
-    if (fields[field] && !ownsViaProperty(organizationId, table, String(fields[field]))) return null;
+    if (fields[field] && !await ownsViaProperty(organizationId, table, String(fields[field]))) return null;
   }
 
-  const db = getDb();
+  const sql = getSql();
 
   const nullableFields = ['building_id', 'floor', 'zone', 'notes', 'lock_code', 'entry_photo_url'];
   for (const f of nullableFields) {
@@ -159,24 +158,20 @@ export function updateUnit(organizationId: string, id: string, fields: Record<st
   updates.push("updated_at = datetime('now')");
   values.push(id, organizationId);
 
-  db.prepare(
-    `UPDATE units SET ${updates.join(', ')} WHERE id = ? AND ${propertyScopeSql('units')}`,
-  ).run(...values);
-  return db.prepare('SELECT * FROM units WHERE id = ?').get(id);
+  await sql.run(`UPDATE units SET ${updates.join(', ')} WHERE id = ? AND ${propertyScopeSql('units')}`, [...values]);
+  return await sql.row<any>('SELECT * FROM units WHERE id = ?', [id]);
 }
 
-export function deleteUnit(organizationId: string, id: string): { ok: boolean; error?: string } {
-  if (!ownsViaProperty(organizationId, 'units', id)) return { ok: false, error: 'Not found' };
+export async function deleteUnit(organizationId: string, id: string): Promise<{ ok: boolean; error?: string }> {
+  if (!await ownsViaProperty(organizationId, 'units', id)) return { ok: false, error: 'Not found' };
 
-  const db = getDb();
-  const resCount = db.prepare(
-    "SELECT COUNT(*) as cnt FROM reservations WHERE unit_id = ? AND status NOT IN ('cancelled', 'checked_out')"
-  ).get(id) as { cnt: number };
+  const sql = getSql();
+  const resCount = await sql.row<any>("SELECT COUNT(*) as cnt FROM reservations WHERE unit_id = ? AND status NOT IN ('cancelled', 'checked_out')", [id]) as { cnt: number };
 
   if (resCount.cnt > 0) {
     return { ok: false, error: `Cannot delete: ${resCount.cnt} active reservations exist for this unit.` };
   }
 
-  db.prepare(`DELETE FROM units WHERE id = ? AND ${propertyScopeSql('units')}`).run(id, organizationId);
+  await sql.run(`DELETE FROM units WHERE id = ? AND ${propertyScopeSql('units')}`, [id, organizationId]);
   return { ok: true };
 }

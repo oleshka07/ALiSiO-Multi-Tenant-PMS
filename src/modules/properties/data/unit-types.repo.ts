@@ -1,4 +1,4 @@
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope';
 
 /**
@@ -8,6 +8,7 @@ import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope'
  */
 
 export function listUnitTypes(organizationId: string, filters: { category?: string } = {}) {
+  const sql = getSql();
   let query = `
     SELECT
       ut.id, ut.name, ut.code, ut.max_adults, ut.max_children, ut.max_occupancy, ut.base_occupancy,
@@ -31,7 +32,7 @@ export function listUnitTypes(organizationId: string, filters: { category?: stri
 
   query += ' GROUP BY ut.id ORDER BY c.sort_order, ut.sort_order';
 
-  return getDb().prepare(query).all(...params);
+  return sql.rows<any>(query, params);
 }
 
 export interface CreateUnitTypeInput {
@@ -53,36 +54,34 @@ export interface CreateUnitTypeInput {
   sort_order?: number;
 }
 
-export function createUnitType(organizationId: string, input: CreateUnitTypeInput) {
+export async function createUnitType(organizationId: string, input: CreateUnitTypeInput) {
   // Ids arrive in the request body, so each is verified against the caller.
-  if (!ownsProperty(organizationId, input.property_id)) return null;
-  if (!ownsViaProperty(organizationId, 'categories', input.category_id)) return null;
-  if (input.building_id && !ownsViaProperty(organizationId, 'buildings', input.building_id)) return null;
+  if (!await ownsProperty(organizationId, input.property_id)) return null;
+  if (!await ownsViaProperty(organizationId, 'categories', input.category_id)) return null;
+  if (input.building_id && !await ownsViaProperty(organizationId, 'buildings', input.building_id)) return null;
 
-  const db = getDb();
-  const result = db.prepare(`
+  const sql = getSql();
+  const result = await sql.run(`
     INSERT INTO unit_types (property_id, category_id, building_id, name, code, description,
       max_adults, max_children, max_occupancy, base_occupancy,
       beds_single, beds_double, beds_sofa, extra_bed_available, photos, sort_order)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    input.property_id, input.category_id, input.building_id ?? null, input.name, input.code, input.description ?? null,
+  `, [input.property_id, input.category_id, input.building_id ?? null, input.name, input.code, input.description ?? null,
     input.max_adults ?? 2, input.max_children ?? 2, input.max_occupancy ?? 4, input.base_occupancy ?? 2,
     input.beds_single ?? 0, input.beds_double ?? 1, input.beds_sofa ?? 0, input.extra_bed_available ? 1 : 0, 
-    input.photos ?? null, input.sort_order ?? 0
-  );
-  return db.prepare('SELECT * FROM unit_types WHERE rowid = ?').get(result.lastInsertRowid);
+    input.photos ?? null, input.sort_order ?? 0]);
+  return await sql.row<any>('SELECT * FROM unit_types WHERE rowid = ?', [result.lastId]);
 }
 
-export function updateUnitType(organizationId: string, id: string, fields: Record<string, unknown>) {
-  if (!ownsViaProperty(organizationId, 'unit_types', id)) return null;
+export async function updateUnitType(organizationId: string, id: string, fields: Record<string, unknown>) {
+  if (!await ownsViaProperty(organizationId, 'unit_types', id)) return null;
   // Reassignment must not move the type into another tenant.
   if (fields.category_id !== undefined
-    && !ownsViaProperty(organizationId, 'categories', String(fields.category_id))) return null;
+    && !await ownsViaProperty(organizationId, 'categories', String(fields.category_id))) return null;
   if (fields.building_id
-    && !ownsViaProperty(organizationId, 'buildings', String(fields.building_id))) return null;
+    && !await ownsViaProperty(organizationId, 'buildings', String(fields.building_id))) return null;
 
-  const db = getDb();
+  const sql = getSql();
 
   const nullableFields = ['building_id', 'description'];
   for (const f of nullableFields) {
@@ -105,20 +104,18 @@ export function updateUnitType(organizationId: string, id: string, fields: Recor
   updates.push("updated_at = datetime('now')");
   values.push(id, organizationId);
 
-  db.prepare(
-    `UPDATE unit_types SET ${updates.join(', ')} WHERE id = ? AND ${propertyScopeSql('unit_types')}`,
-  ).run(...values);
-  return db.prepare('SELECT * FROM unit_types WHERE id = ?').get(id);
+  await sql.run(`UPDATE unit_types SET ${updates.join(', ')} WHERE id = ? AND ${propertyScopeSql('unit_types')}`, [...values]);
+  return await sql.row<any>('SELECT * FROM unit_types WHERE id = ?', [id]);
 }
 
-export function deleteUnitType(organizationId: string, id: string): { ok: boolean; error?: string } {
-  if (!ownsViaProperty(organizationId, 'unit_types', id)) return { ok: false, error: 'Not found' };
+export async function deleteUnitType(organizationId: string, id: string): Promise<{ ok: boolean; error?: string }> {
+  if (!await ownsViaProperty(organizationId, 'unit_types', id)) return { ok: false, error: 'Not found' };
 
-  const db = getDb();
-  const unitCount = db.prepare('SELECT COUNT(*) as cnt FROM units WHERE unit_type_id = ?').get(id) as { cnt: number };
+  const sql = getSql();
+  const unitCount = await sql.row<any>('SELECT COUNT(*) as cnt FROM units WHERE unit_type_id = ?', [id]) as { cnt: number };
   if (unitCount.cnt > 0) {
     return { ok: false, error: `Cannot delete: ${unitCount.cnt} units of this type exist. Delete units first.` };
   }
-  db.prepare(`DELETE FROM unit_types WHERE id = ? AND ${propertyScopeSql('unit_types')}`).run(id, organizationId);
+  await sql.run(`DELETE FROM unit_types WHERE id = ? AND ${propertyScopeSql('unit_types')}`, [id, organizationId]);
   return { ok: true };
 }

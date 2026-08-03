@@ -13,7 +13,7 @@ type IdParams = { params: Promise<{ id: string }> };
 export const listUnits = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const { searchParams } = new URL(request.url);
-    const rows = unitsRepo.listUnits(actor.organizationId, {
+    const rows = await unitsRepo.listUnits(actor.organizationId, {
       category: searchParams.get('category') || undefined,
       unitType: searchParams.get('unitType') || undefined,
       includePool: searchParams.get('include_pool') === '1',
@@ -40,7 +40,7 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
         return NextResponse.json({ error: 'Invalid range (max 200 units at once)' }, { status: 400 });
       }
 
-      const created = unitsRepo.bulkCreateUnits(actor.organizationId, {
+      const created = await unitsRepo.bulkCreateUnits(actor.organizationId, {
         property_id, category_id, building_id, unit_type_id, prefix, from, to, beds, zone,
       });
       // An empty result here means the referenced ids are not this tenant's —
@@ -57,7 +57,7 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
       return NextResponse.json({ error: 'unit_type_id, property_id, category_id, name, and code are required' }, { status: 400 });
     }
 
-    const unit = unitsRepo.createUnit(actor.organizationId, {
+    const unit = await unitsRepo.createUnit(actor.organizationId, {
       unit_type_id, property_id, category_id, building_id, name, code, floor, zone, beds, notes, sort_order,
     });
     if (!unit) return NextResponse.json({ error: 'Property, category, unit type or building not found' }, { status: 404 });
@@ -76,7 +76,7 @@ export const updateUnit = withPermission('manage_properties', async (request: Ne
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const updated = unitsRepo.updateUnit(actor.organizationId, id, body);
+    const updated = await unitsRepo.updateUnit(actor.organizationId, id, body);
     if (!updated) return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
     return NextResponse.json(updated);
   } catch (error) {
@@ -88,7 +88,7 @@ export const updateUnit = withPermission('manage_properties', async (request: Ne
 export const deleteUnit = withPermission('manage_properties', async (_request, context: IdParams, actor: Actor) => {
   try {
     const { id } = await context.params;
-    const result = unitsRepo.deleteUnit(actor.organizationId, id);
+    const result = await unitsRepo.deleteUnit(actor.organizationId, id);
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.error === 'Not found' ? 404 : 400 });
     }

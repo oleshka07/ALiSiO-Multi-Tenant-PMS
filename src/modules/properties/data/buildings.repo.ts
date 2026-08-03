@@ -1,4 +1,4 @@
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope';
 
 /**
@@ -8,6 +8,7 @@ import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope'
  */
 
 export function listBuildings(organizationId: string, filters: { property_id?: string } = {}) {
+  const sql = getSql();
   let query = `
     SELECT b.*, c.name as category_name, c.type as category_type,
       COUNT(u.id) as unit_count
@@ -26,7 +27,7 @@ export function listBuildings(organizationId: string, filters: { property_id?: s
 
   query += ' GROUP BY b.id ORDER BY b.sort_order';
 
-  return getDb().prepare(query).all(...params);
+  return sql.rows<any>(query, params);
 }
 
 export interface CreateBuildingInput {
@@ -38,27 +39,27 @@ export interface CreateBuildingInput {
   sort_order?: number;
 }
 
-export function createBuilding(organizationId: string, input: CreateBuildingInput) {
+export async function createBuilding(organizationId: string, input: CreateBuildingInput) {
   // Both ids arrive in the request body. The category is checked too, or a
   // building could be filed under another tenant's category.
-  if (!ownsProperty(organizationId, input.property_id)) return null;
-  if (!ownsViaProperty(organizationId, 'categories', input.category_id)) return null;
+  if (!await ownsProperty(organizationId, input.property_id)) return null;
+  if (!await ownsViaProperty(organizationId, 'categories', input.category_id)) return null;
 
-  const db = getDb();
-  const result = db.prepare(`
+  const sql = getSql();
+  const result = await sql.run(`
     INSERT INTO buildings (category_id, property_id, name, code, description, sort_order)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(input.category_id, input.property_id, input.name, input.code, input.description ?? null, input.sort_order ?? 0);
-  return db.prepare('SELECT * FROM buildings WHERE rowid = ?').get(result.lastInsertRowid);
+  `, [input.category_id, input.property_id, input.name, input.code, input.description ?? null, input.sort_order ?? 0]);
+  return await sql.row<any>('SELECT * FROM buildings WHERE rowid = ?', [result.lastId]);
 }
 
-export function updateBuilding(organizationId: string, id: string, fields: Record<string, unknown>) {
-  if (!ownsViaProperty(organizationId, 'buildings', id)) return null;
+export async function updateBuilding(organizationId: string, id: string, fields: Record<string, unknown>) {
+  if (!await ownsViaProperty(organizationId, 'buildings', id)) return null;
   // Reassigning the category must not move the building into another tenant.
   if (fields.category_id !== undefined
-    && !ownsViaProperty(organizationId, 'categories', String(fields.category_id))) return null;
+    && !await ownsViaProperty(organizationId, 'categories', String(fields.category_id))) return null;
 
-  const db = getDb();
+  const sql = getSql();
   const allowed = ['name', 'code', 'description', 'sort_order', 'category_id'];
   const updates: string[] = [];
   const values: unknown[] = [];
@@ -73,20 +74,18 @@ export function updateBuilding(organizationId: string, id: string, fields: Recor
   if (updates.length === 0) return null;
 
   values.push(id, organizationId);
-  db.prepare(
-    `UPDATE buildings SET ${updates.join(', ')} WHERE id = ? AND ${propertyScopeSql('buildings')}`,
-  ).run(...values);
-  return db.prepare('SELECT * FROM buildings WHERE id = ?').get(id);
+  await sql.run(`UPDATE buildings SET ${updates.join(', ')} WHERE id = ? AND ${propertyScopeSql('buildings')}`, [...values]);
+  return await sql.row<any>('SELECT * FROM buildings WHERE id = ?', [id]);
 }
 
-export function deleteBuilding(organizationId: string, id: string): { ok: boolean; error?: string } {
-  if (!ownsViaProperty(organizationId, 'buildings', id)) return { ok: false, error: 'Not found' };
+export async function deleteBuilding(organizationId: string, id: string): Promise<{ ok: boolean; error?: string }> {
+  if (!await ownsViaProperty(organizationId, 'buildings', id)) return { ok: false, error: 'Not found' };
 
-  const db = getDb();
-  const unitCount = db.prepare('SELECT COUNT(*) as cnt FROM units WHERE building_id = ?').get(id) as { cnt: number };
+  const sql = getSql();
+  const unitCount = await sql.row<any>('SELECT COUNT(*) as cnt FROM units WHERE building_id = ?', [id]) as { cnt: number };
   if (unitCount.cnt > 0) {
     return { ok: false, error: `Cannot delete: ${unitCount.cnt} units belong to this building. Delete units first.` };
   }
-  db.prepare(`DELETE FROM buildings WHERE id = ? AND ${propertyScopeSql('buildings')}`).run(id, organizationId);
+  await sql.run(`DELETE FROM buildings WHERE id = ? AND ${propertyScopeSql('buildings')}`, [id, organizationId]);
   return { ok: true };
 }

@@ -12,7 +12,7 @@ type IdParams = { params: Promise<{ id: string }> };
 
 export const listCategories = withActor(async (_req, _ctx, actor: Actor) => {
   try {
-    return NextResponse.json(categoriesRepo.listCategories(actor.organizationId));
+    return NextResponse.json(await categoriesRepo.listCategories(actor.organizationId));
   } catch (error) {
     console.error('GET /api/categories error:', error);
     return NextResponse.json({ error: 'Failed to fetch categories' }, { status: 500 });
@@ -32,7 +32,7 @@ export const createCategory = withPermission('manage_properties', async (request
       return NextResponse.json({ error: 'type must be glamping, resort, or camping' }, { status: 400 });
     }
 
-    const created = categoriesRepo.createCategory(actor.organizationId, {
+    const created = await categoriesRepo.createCategory(actor.organizationId, {
       property_id, name, type, description, sort_order, icon, color,
     });
     if (!created) return NextResponse.json({ error: 'Property not found' }, { status: 404 });
@@ -47,7 +47,7 @@ export const updateCategory = withPermission('manage_properties', async (request
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const updated = categoriesRepo.updateCategory(actor.organizationId, id, body);
+    const updated = await categoriesRepo.updateCategory(actor.organizationId, id, body);
     if (!updated) return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     return NextResponse.json(updated);
   } catch (error) {
@@ -59,7 +59,7 @@ export const updateCategory = withPermission('manage_properties', async (request
 export const deleteCategory = withPermission('manage_properties', async (_request, context: IdParams, actor: Actor) => {
   try {
     const { id } = await context.params;
-    const result = categoriesRepo.deleteCategory(actor.organizationId, id);
+    const result = await categoriesRepo.deleteCategory(actor.organizationId, id);
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.error === 'Not found' ? 404 : 400 });
     }

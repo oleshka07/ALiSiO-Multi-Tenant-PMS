@@ -7,7 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { getSessionUser } from '@core/auth';
 
 async function currentUser() {
@@ -26,20 +26,12 @@ export async function getGeneralSettings(): Promise<NextResponse> {
   const user = await currentUser();
   if (!user) return unauthorized();
   try {
-    const db = getDb();
-    const org = db
-      .prepare(
-        `SELECT id, name, slug, timezone, default_currency,
+    const sql = getSql();
+    const org = await sql.row<any>(`SELECT id, name, slug, timezone, default_currency,
                 legal_name, registration_no, vat_no, is_vat_payer, legal_address,
                 bank_name, bank_account, iban, swift, invoice_email, website, ocr_cloud_fallback
-         FROM organizations WHERE id = ?`,
-      )
-      .get(user.organization_id);
-    const property = db
-      .prepare(
-        'SELECT id, name, slug, address, city, country, phone, email, check_in_time, check_out_time FROM properties WHERE organization_id = ? ORDER BY created_at LIMIT 1',
-      )
-      .get(user.organization_id);
+         FROM organizations WHERE id = ?`, [user.organization_id]);
+    const property = await sql.row<any>('SELECT id, name, slug, address, city, country, phone, email, check_in_time, check_out_time FROM properties WHERE organization_id = ? ORDER BY created_at LIMIT 1', [user.organization_id]);
     return NextResponse.json({ organization: org ?? null, property: property ?? null, currencies: SUPPORTED_CURRENCIES });
   } catch (e: any) {
     console.error('GET /api/settings/general error:', e);
@@ -93,15 +85,12 @@ export async function saveGeneralSettings(request: NextRequest): Promise<NextRes
       return NextResponse.json({ error: 'IBAN виглядає некоректно' }, { status: 400 });
     }
 
-    const db = getDb();
-    db.prepare(
-      `UPDATE organizations SET name = ?, timezone = ?, default_currency = ?,
+    const sql = getSql();
+    await sql.run(`UPDATE organizations SET name = ?, timezone = ?, default_currency = ?,
          legal_name = ?, registration_no = ?, vat_no = ?, is_vat_payer = ?, legal_address = ?,
          bank_name = ?, bank_account = ?, iban = ?, swift = ?, invoice_email = ?, website = ?, ocr_cloud_fallback = ?,
          updated_at = datetime('now')
-       WHERE id = ?`,
-    ).run(
-      name,
+       WHERE id = ?`, [name,
       timezone,
       currency,
       str(org.legal_name),
@@ -115,18 +104,14 @@ export async function saveGeneralSettings(request: NextRequest): Promise<NextRes
       str(org.swift),
       str(org.invoice_email),
       str(org.website),
-      user.organization_id,
-    );
+      user.organization_id]);
 
     if (prop.id) {
       // The WHERE clause carries organization_id so a forged property id from
       // another tenant updates nothing instead of their record.
-      db.prepare(
-        `UPDATE properties SET name = ?, address = ?, city = ?, country = ?, phone = ?, email = ?,
+      await sql.run(`UPDATE properties SET name = ?, address = ?, city = ?, country = ?, phone = ?, email = ?,
            check_in_time = ?, check_out_time = ?, updated_at = datetime('now')
-         WHERE id = ? AND organization_id = ?`,
-      ).run(
-        String(prop.name ?? '').trim() || name,
+         WHERE id = ? AND organization_id = ?`, [String(prop.name ?? '').trim() || name,
         prop.address ?? null,
         prop.city ?? null,
         String(prop.country ?? 'CZ').toUpperCase().slice(0, 2),
@@ -135,8 +120,7 @@ export async function saveGeneralSettings(request: NextRequest): Promise<NextRes
         prop.check_in_time || '15:00',
         prop.check_out_time || '11:00',
         prop.id,
-        user.organization_id,
-      );
+        user.organization_id]);
     }
 
     return getGeneralSettings();

@@ -1,4 +1,4 @@
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope';
 
 const VALID_TYPES = ['glamping', 'resort', 'camping', 'facility', 'area', 'zone'] as const;
@@ -11,8 +11,9 @@ export type CategoryTypeValue = typeof VALID_TYPES[number];
  * carried.
  */
 
-export function listCategories(organizationId: string) {
-  return getDb().prepare(`
+export async function listCategories(organizationId: string) {
+  const sql = getSql();
+  return await sql.rows<any>(`
     SELECT
       c.id, c.name, c.type, c.icon, c.color, c.sort_order, c.description,
       c.show_in_tasks, c.show_in_finance, c.show_in_booking,
@@ -22,7 +23,7 @@ export function listCategories(organizationId: string) {
     WHERE ${propertyScopeSql('c')}
     GROUP BY c.id
     ORDER BY c.sort_order
-  `).all(organizationId);
+  `, [organizationId]);
 }
 
 export interface CreateCategoryInput {
@@ -42,29 +43,27 @@ export function validateCategoryType(type: string): type is CategoryTypeValue {
   return VALID_TYPES.includes(type as CategoryTypeValue);
 }
 
-export function createCategory(organizationId: string, input: CreateCategoryInput) {
+export async function createCategory(organizationId: string, input: CreateCategoryInput) {
   // property_id arrives in the request body, so it is caller-chosen until
   // proven otherwise: without this a tenant could attach a category to somebody
   // else's property.
-  if (!ownsProperty(organizationId, input.property_id)) return null;
+  if (!await ownsProperty(organizationId, input.property_id)) return null;
 
-  const db = getDb();
-  const result = db.prepare(`
+  const sql = getSql();
+  const result = await sql.run(`
     INSERT INTO categories (property_id, name, type, description, sort_order, icon, color, show_in_tasks, show_in_finance, show_in_booking)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    input.property_id, input.name, input.type, input.description ?? null,
+  `, [input.property_id, input.name, input.type, input.description ?? null,
     input.sort_order ?? 0, input.icon ?? null, input.color ?? null,
     input.show_in_tasks ?? 1, input.show_in_finance ?? 0,
-    input.show_in_booking ?? 1,
-  );
-  return db.prepare('SELECT * FROM categories WHERE rowid = ?').get(result.lastInsertRowid);
+    input.show_in_booking ?? 1]);
+  return await sql.row<any>('SELECT * FROM categories WHERE rowid = ?', [result.lastId]);
 }
 
-export function updateCategory(organizationId: string, id: string, fields: Record<string, unknown>) {
-  if (!ownsViaProperty(organizationId, 'categories', id)) return null;
+export async function updateCategory(organizationId: string, id: string, fields: Record<string, unknown>) {
+  if (!await ownsViaProperty(organizationId, 'categories', id)) return null;
 
-  const db = getDb();
+  const sql = getSql();
   const allowed = ['name', 'type', 'description', 'sort_order', 'icon', 'color',
     'show_in_tasks', 'show_in_finance', 'show_in_booking'];
   const updates: string[] = [];
@@ -82,21 +81,19 @@ export function updateCategory(organizationId: string, id: string, fields: Recor
   values.push(id, organizationId);
   // Scoped in the WHERE clause too, not only by the check above: the guard and
   // the write must not be able to drift apart.
-  db.prepare(
-    `UPDATE categories SET ${updates.join(', ')}
-     WHERE id = ? AND ${propertyScopeSql('categories')}`,
-  ).run(...values);
-  return db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+  await sql.run(`UPDATE categories SET ${updates.join(', ')}
+     WHERE id = ? AND ${propertyScopeSql('categories')}`, [...values]);
+  return await sql.row<any>('SELECT * FROM categories WHERE id = ?', [id]);
 }
 
-export function deleteCategory(organizationId: string, id: string): { ok: boolean; error?: string } {
-  if (!ownsViaProperty(organizationId, 'categories', id)) return { ok: false, error: 'Not found' };
+export async function deleteCategory(organizationId: string, id: string): Promise<{ ok: boolean; error?: string }> {
+  if (!await ownsViaProperty(organizationId, 'categories', id)) return { ok: false, error: 'Not found' };
 
-  const db = getDb();
-  const unitCount = db.prepare('SELECT COUNT(*) as cnt FROM units WHERE category_id = ?').get(id) as { cnt: number };
+  const sql = getSql();
+  const unitCount = await sql.row<any>('SELECT COUNT(*) as cnt FROM units WHERE category_id = ?', [id]) as { cnt: number };
   if (unitCount.cnt > 0) {
     return { ok: false, error: `Cannot delete: ${unitCount.cnt} units belong to this category. Delete units first.` };
   }
-  db.prepare(`DELETE FROM categories WHERE id = ? AND ${propertyScopeSql('categories')}`).run(id, organizationId);
+  await sql.run(`DELETE FROM categories WHERE id = ? AND ${propertyScopeSql('categories')}`, [id, organizationId]);
   return { ok: true };
 }
