@@ -4,7 +4,7 @@
  * when tasks are assigned, updated, or due.
  */
 
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { appBaseUrl } from '@core/app-url';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -41,14 +41,14 @@ export async function notifyTaskAssigned(opts: {
 }): Promise<void> {
   if (!BOT_TOKEN) return;
 
-  const db = getDb();
+  const sql = getSql();
   // Get the assignee's telegram_chat_id
-  const task = db.prepare(`
+  const task = await sql.row<any>(`
     SELECT t.assignee_id, u.telegram_chat_id, u.full_name
     FROM tasks t
     JOIN app_users u ON u.id = t.assignee_id
     WHERE t.id = ?
-  `).get(opts.taskId) as any;
+  `, [opts.taskId]) as any;
 
   if (!task?.telegram_chat_id) return;
 
@@ -79,13 +79,13 @@ export async function notifyTaskStatusChanged(opts: {
 }): Promise<void> {
   if (!BOT_TOKEN) return;
 
-  const db = getDb();
-  const task = db.prepare(`
+  const sql = getSql();
+  const task = await sql.row<any>(`
     SELECT t.assignee_id, u.telegram_chat_id, u.full_name
     FROM tasks t
     JOIN app_users u ON u.id = t.assignee_id
     WHERE t.id = ?
-  `).get(opts.taskId) as any;
+  `, [opts.taskId]) as any;
 
   if (!task?.telegram_chat_id) return;
 
@@ -105,50 +105,50 @@ export async function notifyTaskStatusChanged(opts: {
 /**
  * Get daily task summary for a user (used by daily digest).
  */
-export function getUserTaskSummary(userId: string): {
+export async function getUserTaskSummary(userId: string): Promise<{
   overdue: any[];
   today: any[];
   upcoming: any[];
   inProgress: any[];
-} {
-  const db = getDb();
+}> {
+  const sql = getSql();
   const now = new Date().toISOString().slice(0, 10);
   const weekEnd = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
 
-  const overdue = db.prepare(`
+  const overdue = await sql.rows<any>(`
     SELECT id, title, priority, due_date, project_id,
       (SELECT name FROM task_projects WHERE id = tasks.project_id) as project_name
     FROM tasks
     WHERE assignee_id = ? AND status NOT IN ('done','cancelled')
       AND due_date IS NOT NULL AND due_date < ?
     ORDER BY due_date
-  `).all(userId, now) as any[];
+  `, [userId, now]) as any[];
 
-  const today = db.prepare(`
+  const today = await sql.rows<any>(`
     SELECT id, title, priority, due_date, project_id,
       (SELECT name FROM task_projects WHERE id = tasks.project_id) as project_name
     FROM tasks
     WHERE assignee_id = ? AND status NOT IN ('done','cancelled')
       AND due_date = ?
     ORDER BY priority DESC
-  `).all(userId, now) as any[];
+  `, [userId, now]) as any[];
 
-  const upcoming = db.prepare(`
+  const upcoming = await sql.rows<any>(`
     SELECT id, title, priority, due_date, project_id,
       (SELECT name FROM task_projects WHERE id = tasks.project_id) as project_name
     FROM tasks
     WHERE assignee_id = ? AND status NOT IN ('done','cancelled')
       AND due_date > ? AND due_date <= ?
     ORDER BY due_date
-  `).all(userId, now, weekEnd) as any[];
+  `, [userId, now, weekEnd]) as any[];
 
-  const inProgress = db.prepare(`
+  const inProgress = await sql.rows<any>(`
     SELECT id, title, priority, due_date, project_id,
       (SELECT name FROM task_projects WHERE id = tasks.project_id) as project_name
     FROM tasks
     WHERE assignee_id = ? AND status = 'in_progress'
     ORDER BY due_date NULLS LAST
-  `).all(userId) as any[];
+  `, [userId]) as any[];
 
   return { overdue, today, upcoming, inProgress };
 }
@@ -159,11 +159,11 @@ export function getUserTaskSummary(userId: string): {
 export async function sendDailyTaskDigest(userId: string): Promise<boolean> {
   if (!BOT_TOKEN) return false;
 
-  const db = getDb();
-  const user = db.prepare('SELECT telegram_chat_id, full_name FROM app_users WHERE id = ?').get(userId) as any;
+  const sql = getSql();
+  const user = await sql.row<any>('SELECT telegram_chat_id, full_name FROM app_users WHERE id = ?', [userId]) as any;
   if (!user?.telegram_chat_id) return false;
 
-  const summary = getUserTaskSummary(userId);
+  const summary = await getUserTaskSummary(userId);
   const total = summary.overdue.length + summary.today.length + summary.upcoming.length + summary.inProgress.length;
   if (total === 0) return false;
 
@@ -220,10 +220,8 @@ export async function sendDailyTaskDigest(userId: string): Promise<boolean> {
  * Send daily digest to ALL users with telegram_chat_id.
  */
 export async function sendDailyTaskDigestAll(): Promise<{ sent: number; skipped: number }> {
-  const db = getDb();
-  const users = db.prepare(
-    "SELECT id FROM app_users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != '' AND is_active = 1"
-  ).all() as { id: string }[];
+  const sql = getSql();
+  const users = await sql.rows<any>("SELECT id FROM app_users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != '' AND is_active = 1") as { id: string }[];
 
   let sent = 0, skipped = 0;
   for (const u of users) {
@@ -236,8 +234,8 @@ export async function sendDailyTaskDigestAll(): Promise<{ sent: number; skipped:
 /**
  * List tasks for Telegram /tasks command — returns formatted text.
  */
-export function formatUserTasksForTelegram(userId: string): string {
-  const summary = getUserTaskSummary(userId);
+export async function formatUserTasksForTelegram(userId: string): Promise<string> {
+  const summary = await getUserTaskSummary(userId);
   const total = summary.overdue.length + summary.today.length + summary.upcoming.length + summary.inProgress.length;
 
   if (total === 0) return '✅ У вас немає активних задач!';

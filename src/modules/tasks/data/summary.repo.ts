@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
@@ -20,27 +20,29 @@ export interface TasksSummary {
   total: number;
 }
 
-export function getTasksSummary(): TasksSummary {
-  const db = getDb();
-  const org = requireOrganizationId(db);
+export async function getTasksSummary(): Promise<TasksSummary> {
+  const sql = getSql();
+  const org = requireOrganizationId(getDb());
   const today = new Date().toISOString().split('T')[0];
 
   const open = "status NOT IN ('done', 'cancelled') AND organization_id = ?";
 
-  const count = (where: string, ...params: unknown[]): number =>
-    (db.prepare(`SELECT COUNT(*) as cnt FROM tasks WHERE ${where}`).get(...params) as any).cnt;
+  const count = async (where: string, ...params: unknown[]): Promise<number> => {
+    const row = await sql.row<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM tasks WHERE ${where}`, params);
+    return row?.cnt ?? 0;
+  };
 
-  const overdueNames = (db.prepare(`
+  const overdueRows = await sql.rows<{ title: string }>(`
     SELECT title FROM tasks
     WHERE ${open} AND due_date IS NOT NULL AND due_date < ?
     ORDER BY due_date ASC LIMIT 3
-  `).all(org, today) as any[]).map((t) => t.title || '');
+  `, [org, today]);
 
   return {
-    overdue: count(`${open} AND due_date IS NOT NULL AND due_date < ?`, org, today),
-    overdueNames,
-    today: count(`${open} AND due_date = ?`, org, today),
-    inProgress: count("status = 'in_progress' AND organization_id = ?", org),
-    total: count(open, org),
+    overdue: await count(`${open} AND due_date IS NOT NULL AND due_date < ?`, org, today),
+    overdueNames: overdueRows.map((t) => t.title || ''),
+    today: await count(`${open} AND due_date = ?`, org, today),
+    inProgress: await count("status = 'in_progress' AND organization_id = ?", org),
+    total: await count(open, org),
   };
 }

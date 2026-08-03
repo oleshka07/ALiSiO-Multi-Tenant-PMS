@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
 import { verifyWebhookSignature } from '../domain/teya-client';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { eventBus } from '@core/event-bus';
 import { sendTelegramMessage } from '@notifications';
 // TODO: replace with eventBus.emit('crm.payment_received') when crm module is migrated
@@ -27,28 +27,27 @@ function resolveIntentKind(metadata: Record<string, string> | undefined): string
  * the table light. Wrapped in try/catch — audit logging must NEVER break
  * the webhook handler.
  */
-function logWebhook(
-  db: any,
+async function logWebhook(
   result: 'recorded' | 'no_match' | 'duplicate' | 'signature_invalid' | 'parse_error' | 'unhandled' | 'error',
   fields: Partial<{
     eventType: string; sessionId: string; transactionId: string; paymentRef: string;
     amount: number; currency: string; reservationId: string; operationId: string;
     errorMessage: string; rawPayload: string;
   }>,
-): void {
+): Promise<void> {
+  const sql = getSql();
   try {
-    db.prepare(`
+    await sql.run(`
       INSERT INTO payment_webhook_log
         (provider, event_type, session_id, transaction_id, payment_ref,
          amount, currency, result, error_message, reservation_id, operation_id, raw_payload)
       VALUES ('teya', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      fields.eventType || null, fields.sessionId || null, fields.transactionId || null,
+    `, [fields.eventType || null, fields.sessionId || null, fields.transactionId || null,
       fields.paymentRef || null, fields.amount ?? null, fields.currency || null,
       result, fields.errorMessage || null,
       fields.reservationId || null, fields.operationId || null,
       fields.rawPayload ? fields.rawPayload.substring(0, 8192) : null,
-    );
+    ]);
   } catch (e: any) {
     console.error('[Teya Webhook] Audit log insert failed (non-fatal):', e.message);
   }
@@ -56,7 +55,6 @@ function logWebhook(
 
 export async function teyaWebhook(req: Request): Promise<NextResponse> {
   let rawBodyForLog = '';
-  let dbForLog: any = null;
   try {
     const rawBody = await req.text();
     rawBodyForLog = rawBody;
@@ -64,18 +62,17 @@ export async function teyaWebhook(req: Request): Promise<NextResponse> {
 
     console.log('[Teya Webhook] RAW PAYLOAD:', rawBody.substring(0, 3000));
 
-    const db = getDb();
-    dbForLog = db;
+    const sql = getSql();
 
     // Require signature when public key is configured; reject unsigned payloads
     if (!signature && process.env.TEYA_WEBHOOK_PUBLIC_KEY) {
       console.error('[Teya Webhook] Missing signature header (public key is configured)');
-      logWebhook(db, 'signature_invalid', { rawPayload: rawBody, errorMessage: 'Missing x-teya-signature header' });
+      await logWebhook('signature_invalid', { rawPayload: rawBody, errorMessage: 'Missing x-teya-signature header' });
       return NextResponse.json({ error: 'Missing signature' }, { status: 401 });
     }
     if (signature && !verifyWebhookSignature(rawBody, signature)) {
       console.error('[Teya Webhook] Invalid signature');
-      logWebhook(db, 'signature_invalid', { rawPayload: rawBody });
+      await logWebhook('signature_invalid', { rawPayload: rawBody });
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
@@ -83,7 +80,7 @@ export async function teyaWebhook(req: Request): Promise<NextResponse> {
     try {
       event = JSON.parse(rawBody);
     } catch (parseErr: any) {
-      logWebhook(db, 'parse_error', { rawPayload: rawBody, errorMessage: parseErr.message });
+      await logWebhook('parse_error', { rawPayload: rawBody, errorMessage: parseErr.message });
       return NextResponse.json({ received: true, error: 'parse_error' });
     }
 
@@ -97,8 +94,8 @@ export async function teyaWebhook(req: Request): Promise<NextResponse> {
     const refs = extractPaymentRef(event);
 
     if (isPaymentSuccess(eventType, event)) {
-      const outcome = handlePaymentSuccess(db, event, eventType);
-      logWebhook(db, outcome.result, {
+      const outcome = await handlePaymentSuccess(event, eventType);
+      await logWebhook(outcome.result, {
         eventType, sessionId: refs.sessionId, transactionId: refs.transactionId,
         paymentRef: outcome.effectiveRef || refs.sessionId || refs.transactionId,
         amount: refs.amount, currency: refs.currency,
@@ -118,8 +115,8 @@ export async function teyaWebhook(req: Request): Promise<NextResponse> {
           .catch((e: any) => console.error('[Teya Webhook] emit completed error:', e));
       }
     } else if (isPaymentFailed(eventType, event)) {
-      handlePaymentFailed(db, event);
-      logWebhook(db, 'recorded', {
+      await handlePaymentFailed(event);
+      await logWebhook('recorded', {
         eventType, sessionId: refs.sessionId, transactionId: refs.transactionId,
         amount: refs.amount, currency: refs.currency, rawPayload: rawBody,
       });
@@ -129,23 +126,21 @@ export async function teyaWebhook(req: Request): Promise<NextResponse> {
           .catch((e: any) => console.error('[Teya Webhook] emit failed error:', e));
       }
     } else if (isRefund(eventType)) {
-      handleRefund(db, event);
-      logWebhook(db, 'recorded', {
+      await handleRefund(event);
+      await logWebhook('recorded', {
         eventType, sessionId: refs.sessionId, transactionId: refs.transactionId,
         amount: refs.amount, currency: refs.currency, rawPayload: rawBody,
       });
     } else {
       console.log('[Teya Webhook] Unhandled event:', eventType);
-      logWebhook(db, 'unhandled', { eventType, rawPayload: rawBody });
+      await logWebhook('unhandled', { eventType, rawPayload: rawBody });
     }
 
     return NextResponse.json({ received: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[Teya Webhook] Error:', message);
-    if (dbForLog) {
-      logWebhook(dbForLog, 'error', { errorMessage: message, rawPayload: rawBodyForLog });
-    }
+    await logWebhook('error', { errorMessage: message, rawPayload: rawBodyForLog });
     return NextResponse.json({ received: true, error: message });
   }
 }
@@ -192,18 +187,20 @@ interface SuccessOutcome {
   reservationId?: string;
 }
 
-function handlePaymentSuccess(db: any, event: any, eventType: string): SuccessOutcome {
+async function handlePaymentSuccess(event: any, eventType: string): Promise<SuccessOutcome> {
+  const sql = getSql();
   const { sessionId, transactionId, amount, currency } = extractPaymentRef(event);
 
   const merchantRef: string = event.data?.merchant_reference || event.merchant_reference || '';
   let payByLinkMatched = false;
   if (merchantRef) {
     try {
-      const r = db.prepare(
+      const r = await sql.run(
         "UPDATE reservations SET status = CASE WHEN status = 'tentative' THEN 'confirmed' ELSE status END, " +
         "payment_status = 'paid', updated_at = datetime('now') " +
-        "WHERE id = ? AND payment_status IN ('unpaid','payment_requested','prepaid','tentative')"
-      ).run(merchantRef);
+        "WHERE id = ? AND payment_status IN ('unpaid','payment_requested','prepaid','tentative')",
+        [merchantRef],
+      );
       if (r.changes > 0) {
         generateInvoiceForReservation(merchantRef, { confirmed: true, source: 'teya_webhook' });
         console.log('[Teya Webhook] Pay-by-Link / Direct matched reservation', merchantRef);
@@ -220,13 +217,13 @@ function handlePaymentSuccess(db: any, event: any, eventType: string): SuccessOu
   }
   console.log('[Teya Webhook] Processing payment success:', { eventType, sessionId, transactionId, amount, currency });
 
-  const result1 = db.prepare("UPDATE booking_service_orders SET payment_status = 'paid', status = 'confirmed' WHERE payment_id = ? AND payment_status IN ('pending', 'none')").run(paymentRef);
-  const result2 = db.prepare("UPDATE service_orders SET payment_status = 'paid', status = 'confirmed' WHERE payment_id = ? AND payment_status IN ('pending', 'none')").run(paymentRef);
-  const result3 = db.prepare("UPDATE reservations SET status = 'confirmed', payment_status = 'paid', updated_at = datetime('now') WHERE id IN (SELECT reservation_id FROM booking_service_orders WHERE payment_id = ?) AND status = 'tentative'").run(paymentRef);
-  const result4 = db.prepare("UPDATE reservations SET status = 'confirmed', payment_status = 'paid', updated_at = datetime('now') WHERE payment_id = ? AND status = 'tentative'").run(paymentRef);
+  const result1 = await sql.run("UPDATE booking_service_orders SET payment_status = 'paid', status = 'confirmed' WHERE payment_id = ? AND payment_status IN ('pending', 'none')", [paymentRef]);
+  const result2 = await sql.run("UPDATE service_orders SET payment_status = 'paid', status = 'confirmed' WHERE payment_id = ? AND payment_status IN ('pending', 'none')", [paymentRef]);
+  const result3 = await sql.run("UPDATE reservations SET status = 'confirmed', payment_status = 'paid', updated_at = datetime('now') WHERE id IN (SELECT reservation_id FROM booking_service_orders WHERE payment_id = ?) AND status = 'tentative'", [paymentRef]);
+  const result4 = await sql.run("UPDATE reservations SET status = 'confirmed', payment_status = 'paid', updated_at = datetime('now') WHERE payment_id = ? AND status = 'tentative'", [paymentRef]);
   // Also handle booking payments from guest page (reservation already 'confirmed' but payment_status='unpaid')
-  const result5 = db.prepare("UPDATE reservations SET payment_status = 'paid', updated_at = datetime('now') WHERE payment_id = ? AND payment_status IN ('unpaid', 'payment_requested')").run(paymentRef);
-  db.prepare("UPDATE service_time_slots SET booking_session_id = NULL, notes = 'paid' WHERE booking_session_id = ?").run(paymentRef);
+  const result5 = await sql.run("UPDATE reservations SET payment_status = 'paid', updated_at = datetime('now') WHERE payment_id = ? AND payment_status IN ('unpaid', 'payment_requested')", [paymentRef]);
+  await sql.run("UPDATE service_time_slots SET booking_session_id = NULL, notes = 'paid' WHERE booking_session_id = ?", [paymentRef]);
 
   const totalResChanges = result3.changes + result4.changes + result5.changes;
   console.log('[Teya Webhook] Payment confirmed:', { paymentRef, amount, currency, bookingOrders: result1.changes, serviceOrders: result2.changes, reservations: totalResChanges });
@@ -235,11 +232,11 @@ function handlePaymentSuccess(db: any, event: any, eventType: string): SuccessOu
   if (totalResChanges > 0) {
     try {
       // Find all reservations that were just updated
-      const affectedRes = db.prepare(`
+      const affectedRes = await sql.rows<any>(`
         SELECT id FROM reservations WHERE payment_id = ? AND payment_status = 'paid'
         UNION
         SELECT reservation_id FROM booking_service_orders WHERE payment_id = ? AND reservation_id IS NOT NULL
-      `).all(paymentRef, paymentRef) as any[];
+      `, [paymentRef, paymentRef]) as any[];
       import('@core/event-bus').then(({ eventBus }) => {
         for (const r of affectedRes) {
           const resId = r.id || r.reservation_id;
@@ -265,8 +262,8 @@ function handlePaymentSuccess(db: any, event: any, eventType: string): SuccessOu
   let txSoChanges = 0;
   let effectiveRef = paymentRef;
   if (result2.changes === 0 && !result1.changes && transactionId && transactionId !== paymentRef) {
-    const txFallback  = db.prepare("UPDATE service_orders SET payment_status = 'paid', status = 'confirmed' WHERE payment_id = ? AND payment_status IN ('pending', 'none')").run(transactionId);
-    const txFallback2 = db.prepare("UPDATE booking_service_orders SET payment_status = 'paid', status = 'confirmed' WHERE payment_id = ? AND payment_status IN ('pending', 'none')").run(transactionId);
+    const txFallback  = await sql.run("UPDATE service_orders SET payment_status = 'paid', status = 'confirmed' WHERE payment_id = ? AND payment_status IN ('pending', 'none')", [transactionId]);
+    const txFallback2 = await sql.run("UPDATE booking_service_orders SET payment_status = 'paid', status = 'confirmed' WHERE payment_id = ? AND payment_status IN ('pending', 'none')", [transactionId]);
     txSoChanges = txFallback.changes;
     txBsoChanges = txFallback2.changes;
     if (txSoChanges > 0 || txBsoChanges > 0) effectiveRef = transactionId;
@@ -278,11 +275,9 @@ function handlePaymentSuccess(db: any, event: any, eventType: string): SuccessOu
   // that were created before the column-fix was deployed.
   if (result2.changes === 0 && txSoChanges === 0 && paymentRef) {
     try {
-      const notesFallback = db.prepare(
-        `UPDATE service_orders SET payment_id = ?, payment_status = 'paid', status = 'confirmed'
+      const notesFallback = await sql.run(`UPDATE service_orders SET payment_id = ?, payment_status = 'paid', status = 'confirmed'
          WHERE payment_id IS NULL AND payment_status = 'pending'
-           AND notes LIKE '%' || ? || '%'`
-      ).run(paymentRef, paymentRef);
+           AND notes LIKE '%' || ? || '%'`, [paymentRef, paymentRef]);
       if (notesFallback.changes > 0) {
         txSoChanges += notesFallback.changes;
         console.log('[Teya Webhook] Fallback by notes JSON:', { paymentRef, matched: notesFallback.changes });
@@ -295,31 +290,31 @@ function handlePaymentSuccess(db: any, event: any, eventType: string): SuccessOu
 
   if (soTotal > 0) {
     try {
-      db.prepare(`
+      await sql.run(`
         UPDATE cart_events SET abandon_notified_at = datetime('now')
         WHERE reservation_id IN (
           SELECT reservation_id FROM service_orders WHERE payment_id = ?
         ) AND abandon_notified_at IS NULL
-      `).run(effectiveRef);
+      `, [effectiveRef]);
     } catch { /* non-critical */ }
   }
 
   let recorded: { reservationId?: string } | undefined;
-  if (bsoTotal > 0 || soTotal > 0) recorded = recordPayment(db, effectiveRef, amount, currency);
-  if (bsoTotal > 0) sendWidgetOrderTG(db, effectiveRef, currency);
-  if (soTotal > 0)  sendGuestOrderTG(db, effectiveRef, currency);
+  if (bsoTotal > 0 || soTotal > 0) recorded = await recordPayment(effectiveRef, amount, currency);
+  if (bsoTotal > 0) await sendWidgetOrderTG(effectiveRef, currency);
+  if (soTotal > 0)  await sendGuestOrderTG(effectiveRef, currency);
 
   // Booking payment via guest page (pay-booking) — send dedicated TG notification
   if (result5.changes > 0) {
-    sendBookingPaymentTG(db, effectiveRef, amount, currency);
+    await sendBookingPaymentTG(effectiveRef, amount, currency);
   }
 
   // Booking payment via widget (full booking checkout) — result4 path
   // Previously this was silently processed (status updated) but no TG was sent.
   if (result4.changes > 0 || payByLinkMatched) {
-    sendFullBookingWebhookTG(db, effectiveRef, amount, currency);
+    await sendFullBookingWebhookTG(effectiveRef, amount, currency);
     // ── Server-side Purchase tracking (GA4 Measurement Protocol + Meta CAPI) ──
-    sendServerSideAnalytics(db, effectiveRef, amount, currency).catch(() => {});
+    sendServerSideAnalytics(effectiveRef, amount, currency).catch(() => {});
   }
 
   // Auto-generate invoice when a reservation transitions to fully paid via webhook.
@@ -328,12 +323,12 @@ function handlePaymentSuccess(db: any, event: any, eventType: string): SuccessOu
   // leaving recently-paid bookings without an invoice (PAVEL MICHALEK, Ann-Kathrin Rechner).
   if (result3.changes > 0 || result4.changes > 0 || result5.changes > 0 || bsoTotal > 0) {
     try {
-      const paid = db.prepare(`
+      const paid = await sql.rows<any>(`
         SELECT DISTINCT r.id FROM reservations r
         WHERE r.payment_status = 'paid'
           AND (r.payment_id = ?
                OR r.id IN (SELECT reservation_id FROM booking_service_orders WHERE payment_id = ? AND reservation_id IS NOT NULL))
-      `).all(effectiveRef, effectiveRef) as Array<{ id: string }>;
+      `, [effectiveRef, effectiveRef]) as Array<{ id: string }>;
       for (const row of paid) {
         const invId = generateInvoiceForReservation(row.id, { confirmed: true, source: 'teya_webhook' });
         console.log('[Teya Webhook] Auto-invoice for reservation', row.id, '→', invId);
@@ -355,27 +350,30 @@ function handlePaymentSuccess(db: any, event: any, eventType: string): SuccessOu
   };
 }
 
-function handlePaymentFailed(db: any, event: any) {
+async function handlePaymentFailed(event: any) {
+  const sql = getSql();
   const { sessionId } = extractPaymentRef(event);
   if (!sessionId) return;
-  db.prepare("UPDATE booking_service_orders SET payment_status = 'failed' WHERE payment_id = ? AND payment_status = 'pending'").run(sessionId);
-  db.prepare("UPDATE service_orders SET payment_status = 'failed' WHERE payment_id = ? AND payment_status = 'pending'").run(sessionId);
-  db.prepare('UPDATE service_time_slots SET booked_count = MAX(0, booked_count - 1), booking_session_id = NULL WHERE booking_session_id = ?').run(sessionId);
+  await sql.run("UPDATE booking_service_orders SET payment_status = 'failed' WHERE payment_id = ? AND payment_status = 'pending'", [sessionId]);
+  await sql.run("UPDATE service_orders SET payment_status = 'failed' WHERE payment_id = ? AND payment_status = 'pending'", [sessionId]);
+  await sql.run('UPDATE service_time_slots SET booked_count = MAX(0, booked_count - 1), booking_session_id = NULL WHERE booking_session_id = ?', [sessionId]);
   console.log('[Teya Webhook] Payment failed, slots released:', sessionId);
 }
 
-function handleRefund(db: any, event: any) {
+async function handleRefund(event: any) {
+  const sql = getSql();
   const { sessionId, transactionId } = extractPaymentRef(event);
   const ref = sessionId || transactionId;
   if (!ref) return;
-  db.prepare("UPDATE booking_service_orders SET payment_status = 'refunded' WHERE payment_id = ? AND payment_status = 'paid'").run(ref);
-  db.prepare("UPDATE service_orders SET payment_status = 'refunded', status = 'cancelled' WHERE payment_id = ? AND payment_status = 'paid'").run(ref);
+  await sql.run("UPDATE booking_service_orders SET payment_status = 'refunded' WHERE payment_id = ? AND payment_status = 'paid'", [ref]);
+  await sql.run("UPDATE service_orders SET payment_status = 'refunded', status = 'cancelled' WHERE payment_id = ? AND payment_status = 'paid'", [ref]);
   console.log('[Teya Webhook] Refund confirmed:', ref);
 }
 
-function recordPayment(
-  db: any, paymentRef: string, _amount: number, _currency: string,
-): { reservationId?: string } | undefined {
+async function recordPayment(
+  paymentRef: string, _amount: number, _currency: string,
+): Promise<{ reservationId?: string } | undefined> {
+  const sql = getSql();
   // PMS-side state (booking_service_orders / service_orders / reservations)
   // is already updated above by the main handler — that's what guests see
   // as «оплачено» on the guest portal and what PMS check-in reads.
@@ -386,11 +384,11 @@ function recordPayment(
   // inbox. Until then, the gross-up vs the bank deposit is handled by the
   // Teya statement upload flow (clean-7).
   try {
-    const order = db.prepare(`
+    const order = await sql.row<any>(`
       SELECT reservation_id FROM booking_service_orders WHERE payment_id = ?
       UNION ALL
       SELECT reservation_id FROM service_orders WHERE payment_id = ? LIMIT 1
-    `).get(paymentRef, paymentRef) as { reservation_id?: string } | undefined;
+    `, [paymentRef, paymentRef]) as { reservation_id?: string } | undefined;
     return order ? { reservationId: order.reservation_id } : undefined;
   } catch (e: any) {
     console.error('[Teya Webhook] recordPayment lookup failed:', e.message);
@@ -398,9 +396,10 @@ function recordPayment(
   }
 }
 
-function sendWidgetOrderTG(db: any, paymentRef: string, currency: string) {
+async function sendWidgetOrderTG(paymentRef: string, currency: string) {
+  const sql = getSql();
   try {
-    const orders = db.prepare(`
+    const orders = await sql.rows<any>(`
       SELECT bso.*, ads.name as service_name, ads.name_en,
              mi.name_en as menu_item_name,
              r.id AS reservation_id, r.check_in, r.check_out, r.is_multi_room,
@@ -412,7 +411,7 @@ function sendWidgetOrderTG(db: any, paymentRef: string, currency: string) {
       LEFT JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
       WHERE bso.payment_id = ?
-    `).all(paymentRef) as any[];
+    `, [paymentRef]) as any[];
     if (!orders.length) return;
     const first = orders[0];
     const esc = (s: string) => s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
@@ -438,16 +437,17 @@ function sendWidgetOrderTG(db: any, paymentRef: string, currency: string) {
   } catch (e: any) { console.error('[Teya Webhook] sendWidgetOrderTG error:', e.message); }
 }
 
-function sendGuestOrderTG(db: any, paymentRef: string, currency: string) {
+async function sendGuestOrderTG(paymentRef: string, currency: string) {
+  const sql = getSql();
   try {
-    const orders = db.prepare(`
+    const orders = await sql.rows<any>(`
       SELECT so.*, ads.name as service_name, ads.name_en, ads.service_type,
              r.id AS reservation_id, r.check_in, r.check_out, r.is_multi_room,
              g.first_name, g.last_name, u.name as unit_name
       FROM service_orders so JOIN additional_services ads ON so.service_id = ads.id
       JOIN reservations r ON so.reservation_id = r.id JOIN guests g ON r.guest_id = g.id JOIN units u ON r.unit_id = u.id
       WHERE so.payment_id = ?
-    `).all(paymentRef) as any[];
+    `, [paymentRef]) as any[];
     if (!orders.length) return;
     const first = orders[0];
     const esc = (s: string) => s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
@@ -473,16 +473,17 @@ function sendGuestOrderTG(db: any, paymentRef: string, currency: string) {
   } catch { /* non-critical */ }
 }
 
-function sendBookingPaymentTG(db: any, paymentRef: string, amount: number, currency: string) {
+async function sendBookingPaymentTG(paymentRef: string, amount: number, currency: string) {
+  const sql = getSql();
   try {
-    const res = db.prepare(`
+    const res = await sql.row<any>(`
       SELECT r.id, r.check_in, r.check_out, r.total_price, r.currency,
              g.first_name, g.last_name, u.name as unit_name
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
       WHERE r.payment_id = ?
-    `).get(paymentRef) as any;
+    `, [paymentRef]) as any;
     if (!res) { console.log('[Teya Webhook] sendBookingPaymentTG: no reservation found for', paymentRef); return; }
     const esc = (s: string) => s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
     const displayAmount = Math.round(amount / 100); // Teya always sends minor units (cents)
@@ -505,9 +506,10 @@ function sendBookingPaymentTG(db: any, paymentRef: string, amount: number, curre
  * Triggered when a reservation with payment_id=<sessionId> transitions
  * from 'tentative' to 'confirmed' + 'paid' via webhook.
  */
-function sendFullBookingWebhookTG(db: any, paymentRef: string, amount: number, currency: string) {
+async function sendFullBookingWebhookTG(paymentRef: string, amount: number, currency: string) {
+  const sql = getSql();
   try {
-    const res = db.prepare(`
+    const res = await sql.row<any>(`
       SELECT r.id, r.check_in, r.check_out, r.total_price, r.currency,
              r.accommodation_type, r.accommodation_data,
              g.first_name, g.last_name, g.email, g.phone,
@@ -517,7 +519,7 @@ function sendFullBookingWebhookTG(db: any, paymentRef: string, amount: number, c
       LEFT JOIN units u ON r.unit_id = u.id
       WHERE r.payment_id = ?
       ORDER BY r.created_at DESC LIMIT 1
-    `).get(paymentRef) as any;
+    `, [paymentRef]) as any;
 
     if (!res) {
       console.log('[Teya Webhook] sendFullBookingWebhookTG: no reservation found for', paymentRef);
@@ -572,9 +574,10 @@ function sendFullBookingWebhookTG(db: any, paymentRef: string, amount: number, c
  *   META_PIXEL_ID        — Facebook pixel ID
  *   META_ACCESS_TOKEN    — System user access token
  */
-async function sendServerSideAnalytics(db: any, paymentRef: string, amount: number, currency: string): Promise<void> {
+async function sendServerSideAnalytics(paymentRef: string, amount: number, currency: string): Promise<void> {
+  const sql = getSql();
   try {
-    const res = db.prepare(`
+    const res = await sql.row<any>(`
       SELECT r.id, r.total_price, r.currency, r.check_in, r.check_out,
              r.ga_client_id, r.utm_params,
              g.email, g.phone
@@ -582,7 +585,7 @@ async function sendServerSideAnalytics(db: any, paymentRef: string, amount: numb
       LEFT JOIN guests g ON r.guest_id = g.id
       WHERE r.payment_id = ?
       ORDER BY r.created_at DESC LIMIT 1
-    `).get(paymentRef) as any;
+    `, [paymentRef]) as any;
 
     if (!res) return;
 

@@ -1,3 +1,4 @@
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import type { Task, TaskTag } from '../domain/types';
 import path from 'path';
@@ -10,15 +11,21 @@ function getOrgId(): string {
   return requireOrganizationId(getDb());
 }
 
-function fetchTagsForTask(taskId: string): TaskTag[] {
-  const db = getDb();
-  return db.prepare(`
+/**
+ * task_tag_links is the only table here without an organization_id — it is a
+ * link table. It reaches an organization through the task it links, which is
+ * why the join exists rather than a plain WHERE on the link row.
+ */
+async function fetchTagsForTask(taskId: string): Promise<TaskTag[]> {
+  const sql = getSql();
+  return await sql.rows<TaskTag>(`
     SELECT tt.*
     FROM task_tags tt
     JOIN task_tag_links ttl ON ttl.tag_id = tt.id
-    WHERE ttl.task_id = ?
+    JOIN tasks t ON t.id = ttl.task_id
+    WHERE ttl.task_id = ? AND t.organization_id = ? AND tt.organization_id = ?
     ORDER BY tt.name
-  `).all(taskId) as TaskTag[];
+  `, [taskId, getOrgId(), getOrgId()]);
 }
 
 // ─── List tasks with filters ──────────────────────────────
@@ -35,10 +42,10 @@ export interface ListTasksFilters {
   parent_id?: string | null;
 }
 
-export function listTasks(filters: ListTasksFilters = {}): Task[] {
-  const db = getDb();
-  const conditions: string[] = ['1=1'];
-  const params: unknown[] = [];
+export async function listTasks(filters: ListTasksFilters = {}): Promise<Task[]> {
+  const sql = getSql();
+  const conditions: string[] = ['t.organization_id = ?'];
+  const params: unknown[] = [getOrgId()];
 
   if (filters.project_id) {
     conditions.push('t.project_id = ?');
@@ -82,7 +89,7 @@ export function listTasks(filters: ListTasksFilters = {}): Task[] {
     }
   }
 
-  const rows = db.prepare(`
+  const rows = await sql.rows<Task>(`
     SELECT
       t.*,
       a.full_name  AS assignee_name,
@@ -99,11 +106,11 @@ export function listTasks(filters: ListTasksFilters = {}): Task[] {
     LEFT JOIN business_units p ON p.id = t.property_id
     WHERE ${conditions.join(' AND ')}
     ORDER BY t.sort_order, t.created_at DESC
-  `).all(...params) as Task[];
+  `, params);
 
   // Attach tags to each task
   for (const row of rows) {
-    row.tags = fetchTagsForTask(row.id);
+    row.tags = await fetchTagsForTask(row.id);
   }
 
   return rows;
@@ -111,10 +118,11 @@ export function listTasks(filters: ListTasksFilters = {}): Task[] {
 
 // ─── Get single task ──────────────────────────────────────
 
-export function getTaskById(id: string): (Task & { subtasks?: Task[] }) | null {
-  const db = getDb();
+export async function getTaskById(id: string): Promise<(Task & { subtasks?: Task[] }) | null> {
+  const sql = getSql();
+  const org = getOrgId();
 
-  const task = db.prepare(`
+  const task = await sql.row<Task>(`
     SELECT
       t.*,
       a.full_name  AS assignee_name,
@@ -129,15 +137,15 @@ export function getTaskById(id: string): (Task & { subtasks?: Task[] }) | null {
     LEFT JOIN app_users cr ON cr.id = t.created_by
     LEFT JOIN task_projects tp ON tp.id = t.project_id
     LEFT JOIN business_units p ON p.id = t.property_id
-    WHERE t.id = ?
-  `).get(id) as Task | undefined;
+    WHERE t.id = ? AND t.organization_id = ?
+  `, [id, org]);
 
   if (!task) return null;
 
-  task.tags = fetchTagsForTask(task.id);
+  task.tags = await fetchTagsForTask(task.id);
 
   // Fetch subtasks
-  const subtasks = db.prepare(`
+  const subtasks = await sql.rows<Task>(`
     SELECT
       t.*,
       a.full_name  AS assignee_name,
@@ -145,12 +153,12 @@ export function getTaskById(id: string): (Task & { subtasks?: Task[] }) | null {
     FROM tasks t
     LEFT JOIN app_users a  ON a.id = t.assignee_id
     LEFT JOIN app_users cr ON cr.id = t.created_by
-    WHERE t.parent_id = ?
+    WHERE t.parent_id = ? AND t.organization_id = ?
     ORDER BY t.sort_order, t.created_at
-  `).all(id) as Task[];
+  `, [id, org]);
 
   for (const sub of subtasks) {
-    sub.tags = fetchTagsForTask(sub.id);
+    sub.tags = await fetchTagsForTask(sub.id);
   }
 
   return { ...task, subtasks };
@@ -173,17 +181,17 @@ export interface CreateTaskInput {
   sort_order?: number;
 }
 
-export function createTask(input: CreateTaskInput): Task {
-  const db = getDb();
+export async function createTask(input: CreateTaskInput): Promise<Task> {
+  const sql = getSql();
   const orgId = getOrgId();
 
-  const result = db.prepare(`
+  const result = await sql.run(`
     INSERT INTO tasks (
       organization_id, title, description, project_id, parent_id,
       status, priority, due_date, due_time, assignee_id,
       created_by, property_id, sort_order
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `, [
     orgId,
     input.title,
     input.description ?? null,
@@ -197,15 +205,16 @@ export function createTask(input: CreateTaskInput): Task {
     input.created_by ?? null,
     input.property_id ?? null,
     input.sort_order ?? 0,
-  );
+  ]);
 
-  return getTaskById(db.prepare('SELECT id FROM tasks WHERE rowid = ?').get(result.lastInsertRowid)?.id)!;
+  const created = await sql.row<{ id: string }>('SELECT id FROM tasks WHERE rowid = ?', [result.lastId]);
+  return (await getTaskById(created!.id))!;
 }
 
 // ─── Update task ──────────────────────────────────────────
 
-export function updateTask(id: string, fields: Record<string, unknown>): Task | null {
-  const db = getDb();
+export async function updateTask(id: string, fields: Record<string, unknown>): Promise<Task | null> {
+  const sql = getSql();
   const allowed = [
     'title', 'description', 'project_id', 'parent_id',
     'status', 'priority', 'due_date', 'due_time',
@@ -234,26 +243,25 @@ export function updateTask(id: string, fields: Record<string, unknown>): Task | 
   if (updates.length === 0) return null;
 
   updates.push("updated_at = datetime('now')");
-  values.push(id);
+  values.push(id, getOrgId());
 
-  db.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  await sql.run(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ? AND organization_id = ?`, values);
   return getTaskById(id);
 }
 
 // ─── Delete task ──────────────────────────────────────────
 
-export function deleteTask(id: string): { ok: boolean } {
-  const db = getDb();
+export async function deleteTask(id: string): Promise<{ ok: boolean }> {
+  const sql = getSql();
+  const org = getOrgId();
 
   // Clean up attachment files from disk before cascade delete removes DB rows
   // Include attachments from subtasks (which will be cascade-deleted)
-  const attachments = db.prepare(`
-    SELECT url FROM task_attachments WHERE task_id = ?
-    UNION ALL
+  const attachments = await sql.rows<{ url: string }>(`
     SELECT a.url FROM task_attachments a
     JOIN tasks t ON a.task_id = t.id
-    WHERE t.parent_id = ?
-  `).all(id, id) as { url: string }[];
+    WHERE (t.id = ? OR t.parent_id = ?) AND t.organization_id = ?
+  `, [id, id, org]);
 
   const UPLOAD_DIR = path.join(process.cwd(), 'data', 'uploads', 'tasks');
   for (const att of attachments) {
@@ -264,54 +272,67 @@ export function deleteTask(id: string): { ok: boolean } {
     }
   }
 
-  db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
-  return { ok: true };
+  const res = await sql.run('DELETE FROM tasks WHERE id = ? AND organization_id = ?', [id, org]);
+  return { ok: res.changes > 0 };
 }
 
 // ─── Toggle task status ───────────────────────────────────
 
-export function toggleTaskStatus(id: string): Task | null {
-  const db = getDb();
-  const task = db.prepare('SELECT status FROM tasks WHERE id = ?').get(id) as { status: string } | undefined;
+export async function toggleTaskStatus(id: string): Promise<Task | null> {
+  const sql = getSql();
+  const org = getOrgId();
+  const task = await sql.row<{ status: string }>(
+    'SELECT status FROM tasks WHERE id = ? AND organization_id = ?', [id, org],
+  );
   if (!task) return null;
 
-  let newStatus: string;
-  if (task.status === 'done') {
-    newStatus = 'todo';
-  } else {
-    newStatus = 'done';
-  }
+  const newStatus = task.status === 'done' ? 'todo' : 'done';
 
   const completedAt = newStatus === 'done' ? "datetime('now')" : 'NULL';
-  db.prepare(`UPDATE tasks SET status = ?, completed_at = ${completedAt}, updated_at = datetime('now') WHERE id = ?`).run(newStatus, id);
+  await sql.run(
+    `UPDATE tasks SET status = ?, completed_at = ${completedAt}, updated_at = datetime('now') WHERE id = ? AND organization_id = ?`,
+    [newStatus, id, org],
+  );
 
   return getTaskById(id);
 }
 
 // ─── Reorder tasks ────────────────────────────────────────
 
-export function reorderTasks(updates: { id: string; sort_order: number }[]): void {
-  const db = getDb();
-  const stmt = db.prepare('UPDATE tasks SET sort_order = ?, updated_at = datetime(\'now\') WHERE id = ?');
-  const transaction = db.transaction(() => {
+export async function reorderTasks(updates: { id: string; sort_order: number }[]): Promise<void> {
+  const sql = getSql();
+  const org = getOrgId();
+  await sql.tx(async (t) => {
     for (const u of updates) {
-      stmt.run(u.sort_order, u.id);
+      await t.run(
+        "UPDATE tasks SET sort_order = ?, updated_at = datetime('now') WHERE id = ? AND organization_id = ?",
+        [u.sort_order, u.id, org],
+      );
     }
   });
-  transaction();
 }
 
 // ─── Set task tags ────────────────────────────────────────
 
-export function setTaskTags(taskId: string, tagIds: string[]): TaskTag[] {
-  const db = getDb();
-  const transaction = db.transaction(() => {
-    db.prepare('DELETE FROM task_tag_links WHERE task_id = ?').run(taskId);
-    const ins = db.prepare('INSERT INTO task_tag_links (task_id, tag_id) VALUES (?, ?)');
+export async function setTaskTags(taskId: string, tagIds: string[]): Promise<TaskTag[]> {
+  const sql = getSql();
+  const org = getOrgId();
+
+  // Both the task and every tag have to be this organization's, or the links
+  // would attach one company's tag to another company's task.
+  const owned = await sql.row<{ id: string }>(
+    'SELECT id FROM tasks WHERE id = ? AND organization_id = ?', [taskId, org],
+  );
+  if (!owned) return [];
+
+  await sql.tx(async (t) => {
+    await t.run('DELETE FROM task_tag_links WHERE task_id = ?', [taskId]);
     for (const tagId of tagIds) {
-      ins.run(taskId, tagId);
+      await t.run(
+        'INSERT INTO task_tag_links (task_id, tag_id) SELECT ?, id FROM task_tags WHERE id = ? AND organization_id = ?',
+        [taskId, tagId, org],
+      );
     }
   });
-  transaction();
   return fetchTagsForTask(taskId);
 }

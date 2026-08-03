@@ -485,6 +485,79 @@ async function main() {
     assert.strictEqual(stillOffForA.status, 403, "B's toggle changed A's features");
     console.log("  ok  a feature toggles per organization, not per server");
 
+    // ── Staff tasks ──────────────────────────────────────────────────────
+    // The tasks repositories put an organization on every INSERT and on no
+    // SELECT. So the writes were filed correctly and every read returned the
+    // whole server: B's task board listed A's titles, assignees and due dates,
+    // and B could rename or delete them by id.
+    const taskA = await call(cookieA, '/api/tasks', {
+      method: 'POST',
+      body: JSON.stringify({ title: 'Probe A: fix the boiler', priority: 'high' }),
+    });
+    assert.strictEqual(taskA.status, 201, `A could not create a task: ${taskA.status}`);
+    const tA = await taskA.json();
+
+    const tasksB = await (await call(cookieB, '/api/tasks')).json();
+    assert.ok(!tasksB.some((t) => t.id === tA.id), "B's task list contains A's task");
+    console.log("  ok  B's task list excludes A's tasks");
+
+    const readTaskB = await call(cookieB, `/api/tasks/${tA.id}`);
+    assert.strictEqual(readTaskB.status, 404, `B read A's task: ${readTaskB.status}`);
+
+    await call(cookieB, `/api/tasks/${tA.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: 'Hijacked' }),
+    });
+    const taskRow = db.prepare('SELECT title FROM tasks WHERE id = ?').get(tA.id);
+    assert.strictEqual(taskRow.title, 'Probe A: fix the boiler', "B renamed A's task");
+
+    await call(cookieB, `/api/tasks/${tA.id}`, { method: 'DELETE' });
+    assert.ok(db.prepare('SELECT 1 FROM tasks WHERE id = ?').get(tA.id), "B deleted A's task");
+    console.log("  ok  B cannot read, rename or delete A's task");
+
+    // Projects and tags are the same repositories with the same hole.
+    const projA = await call(cookieA, '/api/tasks/projects', {
+      method: 'POST', body: JSON.stringify({ name: 'Probe A project' }),
+    });
+    if (projA.status === 201) {
+      const pA = await projA.json();
+      const projectsB = await (await call(cookieB, '/api/tasks/projects')).json();
+      assert.ok(!projectsB.some((x) => x.id === pA.id), "B's project list contains A's project");
+      console.log("  ok  B's task projects exclude A's");
+    }
+
+    // ── Reports ──────────────────────────────────────────────────────────
+    // Revenue, occupancy and the city-tax return were computed over every
+    // reservation on the server. The city-tax report is the worse of the two:
+    // it is filed with the municipality and it carries guest names.
+    const repB = await call(cookieB, '/api/reports?from=2020-01-01&to=2030-01-01');
+    if (repB.ok) {
+      const r = await repB.json();
+      assert.strictEqual(r.summary.totalBookings, 0, `B's report counts ${r.summary.totalBookings} bookings it does not own`);
+      assert.strictEqual(r.summary.totalRevenue, 0, "B's report sums revenue it does not own");
+      console.log("  ok  B's report counts only its own bookings");
+    }
+
+    const taxB = await call(cookieB, '/api/reports/city-tax?month=2025-01');
+    if (taxB.ok) {
+      const t = await taxB.json();
+      assert.strictEqual(t.totalBookings, 0, `B's city-tax return lists ${t.totalBookings} stays it does not own`);
+      assert.strictEqual((t.bookings || []).length, 0, "B's city-tax return carries other guests' names");
+      console.log("  ok  B's city-tax return contains only its own guests");
+    }
+
+    // ── Alerts ───────────────────────────────────────────────────────────
+    // Worse than a leak: the panel opens with an UPDATE that archived every
+    // organization's stale confirmed bookings as no_show, so opening A's
+    // dashboard rewrote B's reservation statuses.
+    const alertsB = await call(cookieB, '/api/alerts');
+    if (alertsB.ok) {
+      const list = await alertsB.json();
+      assert.ok(Array.isArray(list), 'alerts did not return a list');
+      assert.strictEqual(list.length, 0, `B's alert panel shows ${list.length} alerts about other hotels' guests`);
+      console.log("  ok  B's alerts mention only its own bookings");
+    }
+
     console.log('isolation: all checks passed');
   } finally {
     cleanup();
@@ -493,8 +566,9 @@ async function main() {
 }
 
 main().catch((e) => {
-  cleanup();
-  db.close();
+  // The finally block has already cleaned up and closed the handle. Touching
+  // it again here threw "database connection is not open" — which is what got
+  // printed, instead of the assertion that actually failed.
   console.error('isolation CHECK FAILED:', e.message);
   process.exit(1);
 });

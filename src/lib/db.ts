@@ -83,8 +83,11 @@ export function getDb(): any {
       .catch((e: any) => console.log(`[${label}] tick-if-due error:`, e.message));
   };
 
-  // PR #8: run recurring templates if 24h has elapsed since last tick
-  tick('Recurring', () => import('@/modules/finance/data/recurring-engine'), 'runRecurringTickIfDue');
+  // PR #8: run recurring templates if 24h has elapsed since last tick.
+  // Relative, not '@/modules/...': this file also loads under plain node (the
+  // check scripts, scripts/*.mjs), where the alias does not exist and the tick
+  // failed on every boot with "Cannot find package '@/modules'".
+  tick('Recurring', () => import('../modules/finance/data/recurring-engine.ts'), 'runRecurringTickIfDue');
 
   return db;
 }

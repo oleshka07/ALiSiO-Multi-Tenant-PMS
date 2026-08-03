@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { eventBus } from '@core/event-bus';
 import { sendTelegramMessage } from '@notifications';
 
@@ -25,7 +25,7 @@ function verifySignature(body: string, signature: string): boolean {
 
 async function handleCrmDepositPaid(metadata: Record<string, string>, amountCzk: number, sessionId: string) {
   try {
-    const db = getDb();
+    const sql = getSql();
     const reservationIds = (metadata.reservation_ids || '').split(',').filter(Boolean);
     const leadId = metadata.lead_id || '';
     const guestName = metadata.guest_name || 'Гість';
@@ -39,7 +39,7 @@ async function handleCrmDepositPaid(metadata: Record<string, string>, amountCzk:
     const paidAt = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
     for (const resId of reservationIds) {
-      db.prepare(`
+      await sql.run(`
         UPDATE reservations SET
           status = 'confirmed',
           payment_status = 'prepaid',
@@ -47,7 +47,7 @@ async function handleCrmDepositPaid(metadata: Record<string, string>, amountCzk:
           deposit_paid_at = ?,
           updated_at = datetime('now')
         WHERE id = ?
-      `).run(paidAt, resId);
+      `, [paidAt, resId]);
 
       // Legacy: this used to INSERT into the `payments` table, which was
       // dropped in the finance refactor (clean-7). PMS-side state above
@@ -57,14 +57,14 @@ async function handleCrmDepositPaid(metadata: Record<string, string>, amountCzk:
     }
 
     if (leadId) {
-      db.prepare(`UPDATE crm_leads SET stage = 'booked', updated_at = datetime('now') WHERE id = ?`).run(leadId);
+      await sql.run(`UPDATE crm_leads SET stage = 'booked', updated_at = datetime('now') WHERE id = ?`, [leadId]);
     }
 
-    const res = db.prepare(`
+    const res = await sql.row<any>(`
       SELECT r.check_in, r.check_out, r.total_price, u.code as unit_code
       FROM reservations r JOIN units u ON r.unit_id = u.id
       WHERE r.id = ?
-    `).get(reservationIds[0]) as { check_in: string; check_out: string; total_price: number; unit_code: string } | undefined;
+    `, [reservationIds[0]]) as { check_in: string; check_out: string; total_price: number; unit_code: string } | undefined;
 
     const esc = (s: string) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { createPaymentLink } from '../domain/teya-client';
 import { getDefaultStore } from './create-payment-session';
 import { isPaymentConfigured } from '../data/site-credentials.repo';
@@ -19,16 +19,14 @@ export async function createReservationPaymentLink(
 ): Promise<NextResponse> {
   try {
     const { id } = await ctx.params;
-    const db = getDb();
+    const sql = getSql();
     const body = await req.json().catch(() => ({} as any));
 
-    const res = db.prepare(
-      `SELECT r.id, p.organization_id, r.total_price, r.currency
-       FROM reservations r JOIN properties p ON r.property_id = p.id WHERE r.id = ?`
-    ).get(id) as { id: string; organization_id: string; total_price: number; currency: string } | undefined;
+    const res = await sql.row<any>(`SELECT r.id, p.organization_id, r.total_price, r.currency
+       FROM reservations r JOIN properties p ON r.property_id = p.id WHERE r.id = ?`, [id]) as { id: string; organization_id: string; total_price: number; currency: string } | undefined;
     if (!res) return NextResponse.json({ error: 'Reservation not found' }, { status: 404 });
 
-    if (!isPaymentConfigured(res.organization_id)) {
+    if (!(await isPaymentConfigured(res.organization_id))) {
       return NextResponse.json({ error: 'Online payments are not available' }, { status: 403 });
     }
 
@@ -52,7 +50,7 @@ export async function createReservationPaymentLink(
     });
 
     // Store the link id so the webhook (and staff) can find the reservation.
-    try { db.prepare('UPDATE reservations SET payment_id = ? WHERE id = ?').run(link.id, id); } catch { /* non-fatal */ }
+    try { await sql.run('UPDATE reservations SET payment_id = ? WHERE id = ?', [link.id, id]); } catch { /* non-fatal */ }
 
     return NextResponse.json({ ok: true, url: link.url, id: link.id, status: link.status });
   } catch (e: unknown) {

@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const text = formatUserTasksForTelegram(user.id);
+    const text = await formatUserTasksForTelegram(user.id);
     return NextResponse.json({ text });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message }, { status: 500 });

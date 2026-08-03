@@ -5,7 +5,7 @@ type IdParams = { params: Promise<{ id: string }> };
 
 export async function listProjects(): Promise<NextResponse> {
   try {
-    const rows = projectsRepo.listProjects();
+    const rows = await projectsRepo.listProjects();
     return NextResponse.json(rows);
   } catch (error) {
     console.error('GET /api/tasks/projects error:', error);
@@ -22,7 +22,7 @@ export async function createProject(request: NextRequest): Promise<NextResponse>
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
     }
 
-    const created = projectsRepo.createProject(body);
+    const created = await projectsRepo.createProject(body);
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
     console.error('POST /api/tasks/projects error:', error);
@@ -33,7 +33,7 @@ export async function createProject(request: NextRequest): Promise<NextResponse>
 export async function getProject(_request: NextRequest, context: IdParams): Promise<NextResponse> {
   try {
     const { id } = await context.params;
-    const result = projectsRepo.getProjectById(id);
+    const result = await projectsRepo.getProjectById(id);
     if (!result) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     return NextResponse.json(result);
   } catch (error) {
@@ -46,7 +46,7 @@ export async function updateProject(request: NextRequest, context: IdParams): Pr
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const updated = projectsRepo.updateProject(id, body);
+    const updated = await projectsRepo.updateProject(id, body);
     if (!updated) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
     return NextResponse.json(updated);
   } catch (error) {
@@ -58,7 +58,7 @@ export async function updateProject(request: NextRequest, context: IdParams): Pr
 export async function deleteProject(_request: NextRequest, context: IdParams): Promise<NextResponse> {
   try {
     const { id } = await context.params;
-    projectsRepo.deleteProject(id);
+    await projectsRepo.deleteProject(id);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('DELETE /api/tasks/projects/:id error:', error);

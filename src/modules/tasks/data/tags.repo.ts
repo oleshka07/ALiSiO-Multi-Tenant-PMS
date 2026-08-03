@@ -1,3 +1,4 @@
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import type { TaskTag } from '../domain/types';
 import { requireOrganizationId } from '@core/auth/tenant-context';
@@ -10,16 +11,18 @@ function getOrgId(): string {
 
 // ─── List tags ────────────────────────────────────────────
 
-export function listTags(): TaskTag[] {
-  const db = getDb();
-  return db.prepare('SELECT * FROM task_tags ORDER BY name').all() as TaskTag[];
+export async function listTags(): Promise<TaskTag[]> {
+  const sql = getSql();
+  return await sql.rows<TaskTag>('SELECT * FROM task_tags WHERE organization_id = ? ORDER BY name', [getOrgId()]);
 }
 
 // ─── Get single tag ──────────────────────────────────────
 
-export function getTagById(id: string): TaskTag | null {
-  const db = getDb();
-  const tag = db.prepare('SELECT * FROM task_tags WHERE id = ?').get(id) as TaskTag | undefined;
+export async function getTagById(id: string): Promise<TaskTag | null> {
+  const sql = getSql();
+  const tag = await sql.row<TaskTag>(
+    'SELECT * FROM task_tags WHERE id = ? AND organization_id = ?', [id, getOrgId()],
+  );
   return tag ?? null;
 }
 
@@ -30,23 +33,23 @@ export interface CreateTagInput {
   color?: string;
 }
 
-export function createTag(input: CreateTagInput): TaskTag {
-  const db = getDb();
+export async function createTag(input: CreateTagInput): Promise<TaskTag> {
+  const sql = getSql();
   const orgId = getOrgId();
 
-  const result = db.prepare(`
+  const result = await sql.run(`
     INSERT INTO task_tags (organization_id, name, color)
     VALUES (?, ?, ?)
-  `).run(orgId, input.name, input.color ?? '#6c7086');
+  `, [orgId, input.name, input.color ?? '#6c7086']);
 
-  const row = db.prepare('SELECT id FROM task_tags WHERE rowid = ?').get(result.lastInsertRowid) as { id: string };
-  return getTagById(row.id)!;
+  const row = await sql.row<{ id: string }>('SELECT id FROM task_tags WHERE rowid = ?', [result.lastId]);
+  return (await getTagById(row!.id))!;
 }
 
 // ─── Update tag ──────────────────────────────────────────
 
-export function updateTag(id: string, fields: Record<string, unknown>): TaskTag | null {
-  const db = getDb();
+export async function updateTag(id: string, fields: Record<string, unknown>): Promise<TaskTag | null> {
+  const sql = getSql();
   const allowed = ['name', 'color'];
   const updates: string[] = [];
   const values: unknown[] = [];
@@ -60,17 +63,17 @@ export function updateTag(id: string, fields: Record<string, unknown>): TaskTag 
 
   if (updates.length === 0) return null;
 
-  values.push(id);
+  values.push(id, getOrgId());
 
-  db.prepare(`UPDATE task_tags SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  await sql.run(`UPDATE task_tags SET ${updates.join(', ')} WHERE id = ? AND organization_id = ?`, values);
   return getTagById(id);
 }
 
 // ─── Delete tag ──────────────────────────────────────────
 // task_tag_links has ON DELETE CASCADE on tag_id, so links are auto-removed
 
-export function deleteTag(id: string): { ok: boolean } {
-  const db = getDb();
-  db.prepare('DELETE FROM task_tags WHERE id = ?').run(id);
-  return { ok: true };
+export async function deleteTag(id: string): Promise<{ ok: boolean }> {
+  const sql = getSql();
+  const res = await sql.run('DELETE FROM task_tags WHERE id = ? AND organization_id = ?', [id, getOrgId()]);
+  return { ok: res.changes > 0 };
 }

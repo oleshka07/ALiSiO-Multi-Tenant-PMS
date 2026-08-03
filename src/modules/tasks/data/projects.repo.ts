@@ -1,3 +1,4 @@
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import type { TaskProject } from '../domain/types';
 import { requireOrganizationId } from '@core/auth/tenant-context';
@@ -10,32 +11,34 @@ function getOrgId(): string {
 
 // ─── List projects ────────────────────────────────────────
 
-export function listProjects(): TaskProject[] {
-  const db = getDb();
-  return db.prepare(`
+export async function listProjects(): Promise<TaskProject[]> {
+  const sql = getSql();
+  const org = getOrgId();
+  return await sql.rows<TaskProject>(`
     SELECT
       tp.*,
       p.name AS property_name,
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = tp.id) AS task_count
     FROM task_projects tp
     LEFT JOIN properties p ON p.id = tp.property_id
+    WHERE tp.organization_id = ?
     ORDER BY tp.sort_order, tp.created_at
-  `).all() as TaskProject[];
+  `, [org]);
 }
 
 // ─── Get single project ──────────────────────────────────
 
-export function getProjectById(id: string): TaskProject | null {
-  const db = getDb();
-  const project = db.prepare(`
+export async function getProjectById(id: string): Promise<TaskProject | null> {
+  const sql = getSql();
+  const project = await sql.row<TaskProject>(`
     SELECT
       tp.*,
       p.name AS property_name,
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = tp.id) AS task_count
     FROM task_projects tp
     LEFT JOIN properties p ON p.id = tp.property_id
-    WHERE tp.id = ?
-  `).get(id) as TaskProject | undefined;
+    WHERE tp.id = ? AND tp.organization_id = ?
+  `, [id, getOrgId()]);
   return project ?? null;
 }
 
@@ -51,14 +54,14 @@ export interface CreateProjectInput {
   sort_order?: number;
 }
 
-export function createProject(input: CreateProjectInput): TaskProject {
-  const db = getDb();
+export async function createProject(input: CreateProjectInput): Promise<TaskProject> {
+  const sql = getSql();
   const orgId = getOrgId();
 
-  const result = db.prepare(`
+  const result = await sql.run(`
     INSERT INTO task_projects (organization_id, name, description, color, icon, parent_id, property_id, sort_order)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `, [
     orgId,
     input.name,
     input.description ?? null,
@@ -67,16 +70,16 @@ export function createProject(input: CreateProjectInput): TaskProject {
     input.parent_id ?? null,
     input.property_id ?? null,
     input.sort_order ?? 0,
-  );
+  ]);
 
-  const row = db.prepare('SELECT id FROM task_projects WHERE rowid = ?').get(result.lastInsertRowid) as { id: string };
-  return getProjectById(row.id)!;
+  const row = await sql.row<{ id: string }>('SELECT id FROM task_projects WHERE rowid = ?', [result.lastId]);
+  return (await getProjectById(row!.id))!;
 }
 
 // ─── Update project ──────────────────────────────────────
 
-export function updateProject(id: string, fields: Record<string, unknown>): TaskProject | null {
-  const db = getDb();
+export async function updateProject(id: string, fields: Record<string, unknown>): Promise<TaskProject | null> {
+  const sql = getSql();
   const allowed = ['name', 'description', 'color', 'icon', 'parent_id', 'property_id', 'sort_order', 'is_archived'];
   const updates: string[] = [];
   const values: unknown[] = [];
@@ -91,16 +94,16 @@ export function updateProject(id: string, fields: Record<string, unknown>): Task
   if (updates.length === 0) return null;
 
   updates.push("updated_at = datetime('now')");
-  values.push(id);
+  values.push(id, getOrgId());
 
-  db.prepare(`UPDATE task_projects SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  await sql.run(`UPDATE task_projects SET ${updates.join(', ')} WHERE id = ? AND organization_id = ?`, values);
   return getProjectById(id);
 }
 
 // ─── Delete project ──────────────────────────────────────
 
-export function deleteProject(id: string): { ok: boolean } {
-  const db = getDb();
-  db.prepare('DELETE FROM task_projects WHERE id = ?').run(id);
-  return { ok: true };
+export async function deleteProject(id: string): Promise<{ ok: boolean }> {
+  const sql = getSql();
+  const res = await sql.run('DELETE FROM task_projects WHERE id = ? AND organization_id = ?', [id, getOrgId()]);
+  return { ok: res.changes > 0 };
 }

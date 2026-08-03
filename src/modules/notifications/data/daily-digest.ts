@@ -597,7 +597,7 @@ export async function sendDailyOperationalDigest(organizationId: string): Promis
   return runWithOrganization(org, async () => {
   const finance = getFinanceDigest(org);
   const bookings = getBookingsDigest(org);
-  const tasks = getTasksSummary();
+  const tasks = await getTasksSummary();
   const breakdown = getDetailedBreakdown(org);
   const text = formatDailyDigest(finance, bookings, tasks, breakdown);
   const detailedText = formatDetailedDigest(breakdown);

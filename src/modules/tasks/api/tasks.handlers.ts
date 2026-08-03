@@ -23,7 +23,7 @@ export async function listTasks(request: NextRequest): Promise<NextResponse> {
       filters.parent_id = parentId === '' ? null : parentId!;
     }
 
-    const rows = tasksRepo.listTasks(filters);
+    const rows = await tasksRepo.listTasks(filters);
     return NextResponse.json(rows);
   } catch (error) {
     console.error('GET /api/tasks error:', error);
@@ -40,14 +40,14 @@ export async function createTask(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Title is required' }, { status: 400 });
     }
 
-    const created = tasksRepo.createTask(body);
+    const created = await tasksRepo.createTask(body);
 
     // Set tags if provided
     if (body.tag_ids && Array.isArray(body.tag_ids)) {
-      tasksRepo.setTaskTags(created.id, body.tag_ids);
+      await tasksRepo.setTaskTags(created.id, body.tag_ids);
     }
 
-    const result = tasksRepo.getTaskById(created.id);
+    const result = await tasksRepo.getTaskById(created.id);
 
     // Telegram notification: task assigned
     if (result?.assignee_id) {
@@ -72,7 +72,7 @@ export async function createTask(request: NextRequest): Promise<NextResponse> {
 export async function getTask(_request: NextRequest, context: IdParams): Promise<NextResponse> {
   try {
     const { id } = await context.params;
-    const result = tasksRepo.getTaskById(id);
+    const result = await tasksRepo.getTaskById(id);
     if (!result) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
     return NextResponse.json(result);
   } catch (error) {
@@ -85,17 +85,17 @@ export async function updateTask(request: NextRequest, context: IdParams): Promi
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const oldTask = tasksRepo.getTaskById(id);
+    const oldTask = await tasksRepo.getTaskById(id);
 
     // Handle tags separately
     if (body.tag_ids && Array.isArray(body.tag_ids)) {
-      tasksRepo.setTaskTags(id, body.tag_ids);
+      await tasksRepo.setTaskTags(id, body.tag_ids);
       delete body.tag_ids;
     }
 
-    const updated = tasksRepo.updateTask(id, body);
+    const updated = await tasksRepo.updateTask(id, body);
     if (!updated) {
-      const task = tasksRepo.getTaskById(id);
+      const task = await tasksRepo.getTaskById(id);
       if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
       return NextResponse.json(task);
     }
@@ -135,7 +135,7 @@ export async function updateTask(request: NextRequest, context: IdParams): Promi
 export async function deleteTask(_request: NextRequest, context: IdParams): Promise<NextResponse> {
   try {
     const { id } = await context.params;
-    tasksRepo.deleteTask(id);
+    await tasksRepo.deleteTask(id);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('DELETE /api/tasks/:id error:', error);

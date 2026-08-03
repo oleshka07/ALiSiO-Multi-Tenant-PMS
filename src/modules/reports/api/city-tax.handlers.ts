@@ -1,10 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
+import type { Actor } from '@core/auth/session';
 
-export async function getCityTaxReport(request: Request) {
+/** reservations reach an organization through property_id — see reports.handlers.ts. */
+const OWN = (alias = '') => `${alias}property_id IN (SELECT id FROM properties WHERE organization_id = ?)`;
+
+export async function getCityTaxReport(request: Request, _ctx: unknown, actor: Actor) {
   try {
-    const db = getDb();
+    const sql = getSql();
+    const org = actor.organizationId;
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month') || new Date().toISOString().substring(0, 7);
 
@@ -12,7 +17,7 @@ export async function getCityTaxReport(request: Request) {
     const [y, m] = month.split('-').map(Number);
     const endDate = new Date(y, m, 1).toISOString().split('T')[0];
 
-    const bookings = db.prepare(`
+    const bookings = await sql.rows<any>(`
       SELECT
         r.id, r.check_in, r.check_out, r.nights, r.adults, r.children, r.status,
         r.source, r.total_price, r.city_tax_amount, r.city_tax_included, r.city_tax_paid,
@@ -23,10 +28,11 @@ export async function getCityTaxReport(request: Request) {
       JOIN guests g ON r.guest_id = g.id
       JOIN units u ON r.unit_id = u.id
       JOIN categories c ON u.category_id = c.id
-      WHERE r.status NOT IN ('cancelled', 'no_show')
+      WHERE ${OWN('r.')}
+        AND r.status NOT IN ('cancelled', 'no_show')
         AND r.check_in < ? AND r.check_out > ?
       ORDER BY r.check_in
-    `).all(endDate, startDate);
+    `, [org, endDate, startDate]);
 
     const totalGuests = bookings.reduce((s: number, b: any) => s + (b.adults || 0), 0);
     const totalTaxAmount = bookings.reduce((s: number, b: any) => s + (b.city_tax_amount || 0), 0);

@@ -33,7 +33,7 @@ async function handleSinglePay(
   const reservation = actionsRepo.getReservationForPay(token);
   if (!reservation) return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
 
-  if (!isPaymentConfigured(reservation.organization_id)) {
+  if (!(await isPaymentConfigured(reservation.organization_id))) {
     return NextResponse.json({ error: 'Online payments are not available' }, { status: 403 });
   }
 
@@ -98,7 +98,7 @@ async function handleSinglePay(
 
   try {
     const baseUrl = appBaseUrl();
-    const siteCredentials = resolveCredentialsForReservation(reservation.id);
+    const siteCredentials = await resolveCredentialsForReservation(reservation.id);
     const session = await createPaymentSession({
       kind: 'service_standalone',
       amount: totalPrice,
@@ -129,7 +129,7 @@ async function handleCartPay(token: string, items: CartItemInput[]): Promise<Nex
   const reservation = actionsRepo.getReservationForPay(token);
   if (!reservation) return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
 
-  if (!isPaymentConfigured(reservation.organization_id)) {
+  if (!(await isPaymentConfigured(reservation.organization_id))) {
     return NextResponse.json({ error: 'Online payments are not available' }, { status: 403 });
   }
 
@@ -275,7 +275,7 @@ async function handleCartPay(token: string, items: CartItemInput[]): Promise<Nex
 
   try {
     const baseUrl = appBaseUrl();
-    const siteCredentials = resolveCredentialsForReservation(reservation.id);
+    const siteCredentials = await resolveCredentialsForReservation(reservation.id);
     const session = await createPaymentSession({
       kind: 'service_cart',
       amount: grandTotal,

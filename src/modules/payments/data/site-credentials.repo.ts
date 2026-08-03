@@ -1,18 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { hasFeature } from '@core/features';
 import type { ResolvedSiteCredentials } from '../domain/types';
 import { getEnvStore } from '../api/create-payment-session';
 
-export function resolveSiteCredentials(opts: { slug?: string | null; id?: string | null }): ResolvedSiteCredentials | null {
+export async function resolveSiteCredentials(opts: { slug?: string | null; id?: string | null }): Promise<ResolvedSiteCredentials | null> {
   const slug = opts.slug || undefined;
   const id = opts.id || undefined;
   if (!slug && !id) return null;
 
-  const db = getDb();
+  const sql = getSql();
   const site = slug
-    ? (db.prepare('SELECT id, payment_config, site_url FROM booking_sites WHERE slug = ?').get(slug) as any)
-    : (db.prepare('SELECT id, payment_config, site_url FROM booking_sites WHERE id = ?').get(id!) as any);
+    ? await sql.row<any>('SELECT id, payment_config, site_url FROM booking_sites WHERE slug = ?', [slug])
+    : await sql.row<any>('SELECT id, payment_config, site_url FROM booking_sites WHERE id = ?', [id!]);
 
   if (!site) return null;
 
@@ -69,12 +70,12 @@ export function isGlobalTeyaConfigured(): boolean {
  * credentials exist. Callers ask this — not "is Teya configured" — so a second
  * provider changes this function, not every caller.
  */
-export function isPaymentConfigured(organizationId: string): boolean {
-  const db = getDb();
-  if (!hasFeature(db, organizationId, 'teya')) return false;
-  const sites = db
-    .prepare('SELECT payment_config FROM booking_sites WHERE organization_id = ?')
-    .all(organizationId) as any[];
+export async function isPaymentConfigured(organizationId: string): Promise<boolean> {
+  const sql = getSql();
+  if (!hasFeature(getDb(), organizationId, 'teya')) return false;
+  const sites = await sql.rows<{ payment_config: string }>(
+    'SELECT payment_config FROM booking_sites WHERE organization_id = ?', [organizationId],
+  );
   for (const s of sites) {
     try {
       const cfg = JSON.parse(s.payment_config || '{}');

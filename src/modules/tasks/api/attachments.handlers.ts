@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { withPermission, notFound, type Actor } from '@core/auth/session';
 
 /**
@@ -27,9 +27,9 @@ const MAX_BYTES = 10 * 1024 * 1024;
 type IdParams = { params: Promise<{ id: string }> };
 
 /** The task, if this organization owns it. */
-function ownedTask(db: any, organizationId: string, taskId: string): { id: string } | undefined {
-  return db.prepare('SELECT id FROM tasks WHERE id = ? AND organization_id = ?')
-    .get(taskId, organizationId);
+async function ownedTask(organizationId: string, taskId: string): Promise<{ id: string } | undefined> {
+  const sql = getSql();
+  return sql.row<{ id: string }>('SELECT id FROM tasks WHERE id = ? AND organization_id = ?', [taskId, organizationId]);
 }
 
 export const listTaskAttachments = withPermission('manage_tasks', async (
@@ -37,16 +37,16 @@ export const listTaskAttachments = withPermission('manage_tasks', async (
 ) => {
   try {
     const { id } = await params;
-    const db = getDb();
-    if (!ownedTask(db, actor.organizationId, id)) return notFound();
+    const sql = getSql();
+    if (!(await ownedTask(actor.organizationId, id))) return notFound();
 
-    const attachments = db.prepare(`
+    const attachments = await sql.rows<any>(`
       SELECT a.*, u.full_name as creator_name
       FROM task_attachments a
       LEFT JOIN app_users u ON a.created_by = u.id
       WHERE a.task_id = ? AND a.organization_id = ?
       ORDER BY a.created_at DESC
-    `).all(id, actor.organizationId);
+    `, [id, actor.organizationId]);
     return NextResponse.json(attachments);
   } catch (error: any) {
     console.error('GET task attachments error:', error?.message || error);
@@ -59,8 +59,8 @@ export const uploadTaskAttachment = withPermission('manage_tasks', async (
 ) => {
   try {
     const { id: taskId } = await params;
-    const db = getDb();
-    if (!ownedTask(db, actor.organizationId, taskId)) return notFound();
+    const sql = getSql();
+    if (!(await ownedTask(actor.organizationId, taskId))) return notFound();
 
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
@@ -82,14 +82,13 @@ export const uploadTaskAttachment = withPermission('manage_tasks', async (
     const filename = `${baseName}_${Date.now()}${ext}`;
     fs.writeFileSync(path.join(UPLOAD_DIR, filename), Buffer.from(await file.arrayBuffer()));
 
-    const result = db.prepare(`
+    const result = await sql.run(`
       INSERT INTO task_attachments (task_id, organization_id, filename, url, file_size, content_type, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(taskId, actor.organizationId, file.name, `/api/uploads/tasks/${filename}`,
-           file.size, file.type, actor.user.id);
+    `, [taskId, actor.organizationId, file.name, `/api/uploads/tasks/${filename}`,
+           file.size, file.type, actor.user.id]);
 
-    const attachment = db.prepare('SELECT * FROM task_attachments WHERE rowid = ?')
-      .get(result.lastInsertRowid);
+    const attachment = await sql.row<any>('SELECT * FROM task_attachments WHERE rowid = ?', [result.lastId]);
     return NextResponse.json(attachment, { status: 201 });
   } catch (error: any) {
     console.error('POST task attachment error:', error?.message || error);
@@ -107,10 +106,8 @@ export const deleteTaskAttachment = withPermission('manage_tasks', async (
       return NextResponse.json({ error: 'attachment_id required' }, { status: 400 });
     }
 
-    const db = getDb();
-    const attachment = db.prepare(
-      'SELECT * FROM task_attachments WHERE id = ? AND task_id = ? AND organization_id = ?',
-    ).get(attachment_id, taskId, actor.organizationId) as any;
+    const sql = getSql();
+    const attachment = await sql.row<any>('SELECT * FROM task_attachments WHERE id = ? AND task_id = ? AND organization_id = ?', [attachment_id, taskId, actor.organizationId]) as any;
     if (!attachment) return notFound();
 
     // The row goes whether or not the file is still on disk; a missing file
@@ -121,8 +118,7 @@ export const deleteTaskAttachment = withPermission('manage_tasks', async (
       try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); }
       catch (e: any) { console.error('task attachment file not removed:', e?.message); }
     }
-    db.prepare('DELETE FROM task_attachments WHERE id = ? AND organization_id = ?')
-      .run(attachment_id, actor.organizationId);
+    await sql.run('DELETE FROM task_attachments WHERE id = ? AND organization_id = ?', [attachment_id, actor.organizationId]);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

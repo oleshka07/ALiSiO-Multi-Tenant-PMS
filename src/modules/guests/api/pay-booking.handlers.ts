@@ -31,7 +31,7 @@ export async function payForBooking(
       return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
     }
 
-    if (!isPaymentConfigured(reservation.organization_id)) {
+    if (!(await isPaymentConfigured(reservation.organization_id))) {
       return NextResponse.json({ error: 'Online payments are not available' }, { status: 403 });
     }
 
@@ -69,7 +69,7 @@ export async function payForBooking(
     // ── Resolve per-site Teya credentials ────────────────────────
     // If this reservation was booked via a widget site (source = 'widget:<siteId>'),
     // route the payment to that site's Teya store. Otherwise fall back to ENV globals.
-    const siteCredentials = resolveCredentialsForReservation(reservation.id);
+    const siteCredentials = await resolveCredentialsForReservation(reservation.id);
 
     // ── Create Teya session ────────────────────────────────────
     // NOTE: We do NOT pass successUrl/cancelUrl to Teya because their v2 API

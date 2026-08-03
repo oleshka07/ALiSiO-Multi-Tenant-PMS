@@ -57,7 +57,7 @@ export async function createWidgetCheckoutSession(req: Request) {
     if (siteKey) {
       site = resolveSiteByKey(db, siteKey, 'id, organization_id, payment_config, site_url, slug, allowed_domains');
       if (site) {
-        siteCreds = resolveSiteCredentials({ id: site.id, slug: site.slug });
+        siteCreds = await resolveSiteCredentials({ id: site.id, slug: site.slug });
       } else {
         console.warn('[Checkout Session] Site not registered, using default ENV creds:', siteKey);
       }
@@ -80,7 +80,7 @@ export async function createWidgetCheckoutSession(req: Request) {
       payingOrg = undefined;
     }
 
-    if (!payingOrg || !isPaymentConfigured(payingOrg)) {
+    if (!payingOrg || !(await isPaymentConfigured(payingOrg))) {
       if (reservation_id) {
         // Fire email explicitly for offline/bank-transfer partner bookings
         try {
