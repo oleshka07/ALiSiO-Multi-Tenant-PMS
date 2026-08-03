@@ -92,3 +92,103 @@ export function integrationConfigured(
 ): boolean {
   return !!integrationCredentials(channel, organizationId);
 }
+
+// ─── The settings screen ──────────────────────────────────────────────────
+
+/**
+ * Which secret each integration needs, named the way its own dashboard names
+ * it. One list, read by both the API and the screen, so a new integration is
+ * one entry rather than three edits that can disagree.
+ *
+ * Teya is absent on purpose: payments are configured per booking site, not per
+ * organization, and that screen already exists (Сайти → Платежі).
+ */
+export const INTEGRATION_FIELDS: Record<string, { field: 'accessToken' | 'clientId' | 'clientSecret'; label: string; hint?: string }[]> = {
+  hostex: [{ field: 'accessToken', label: 'Access token', hint: 'Hostex → Settings → API' }],
+  pricelabs: [{ field: 'accessToken', label: 'API key', hint: 'PriceLabs → Account → API' }],
+  telegram: [{ field: 'accessToken', label: 'Bot token', hint: 'від @BotFather' }],
+  booking_com: [
+    { field: 'clientId', label: 'Client ID' },
+    { field: 'clientSecret', label: 'Client secret' },
+  ],
+};
+
+const COLUMN = { accessToken: 'access_token', clientId: 'client_id', clientSecret: 'client_secret' } as const;
+
+/**
+ * The last four characters, and nothing else.
+ *
+ * A settings screen has to show that a key is saved without showing the key:
+ * anyone who can open the page can read what it renders, and a token pasted
+ * back into a screenshot or a support chat is a token leaked.
+ */
+function mask(value?: string | null): string | null {
+  if (!value) return null;
+  return value.length <= 4 ? '••••' : `••••${value.slice(-4)}`;
+}
+
+export interface IntegrationStatus {
+  channel: string;
+  /** Per field: whether it is set, and a hint of the value — never the value. */
+  values: Record<string, string | null>;
+  /** true when the values are this organization's own, false when the server's. */
+  perOrganization: boolean;
+  configured: boolean;
+}
+
+/** What the settings screen shows for one integration. */
+export function integrationStatus(channel: IntegrationChannel, organizationId: string): IntegrationStatus {
+  const creds = integrationCredentials(channel, organizationId);
+  const values: Record<string, string | null> = {};
+  for (const { field } of INTEGRATION_FIELDS[channel] || []) {
+    values[field] = mask(creds?.[field]);
+  }
+  return {
+    channel,
+    values,
+    perOrganization: !!creds?.perOrganization,
+    configured: !!creds,
+  };
+}
+
+/**
+ * Save this organization's own credentials for one integration.
+ *
+ * An empty string clears a field — that is how an owner takes a key back off
+ * the server. Fields not named are left as they were, so saving only a client
+ * secret does not silently wipe the client id.
+ */
+export function saveIntegrationCredentials(
+  organizationId: string,
+  channel: IntegrationChannel,
+  values: Partial<Record<'accessToken' | 'clientId' | 'clientSecret', string>>,
+): void {
+  const db = getDb();
+  const allowed = new Set((INTEGRATION_FIELDS[channel] || []).map((f) => f.field));
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  for (const [key, value] of Object.entries(values)) {
+    if (!allowed.has(key as any)) continue;
+    sets.push(`${COLUMN[key as keyof typeof COLUMN]} = ?`);
+    params.push(value === '' ? null : value);
+  }
+  if (!sets.length) return;
+
+  const existing = db
+    .prepare('SELECT id FROM channel_credentials WHERE organization_id = ? AND channel = ?')
+    .get(organizationId, channel) as { id: string } | undefined;
+
+  if (existing) {
+    db.prepare(`UPDATE channel_credentials SET ${sets.join(', ')}, updated_at = datetime('now') WHERE id = ?`)
+      .run(...params, existing.id);
+    return;
+  }
+
+  const id = `cred_${channel}_${organizationId}`.slice(0, 60);
+  db.prepare(`
+    INSERT INTO channel_credentials (id, organization_id, channel, environment, created_at, updated_at)
+    VALUES (?, ?, ?, 'production', datetime('now'), datetime('now'))
+  `).run(id, organizationId, channel);
+  db.prepare(`UPDATE channel_credentials SET ${sets.join(', ')}, updated_at = datetime('now') WHERE id = ?`)
+    .run(...params, id);
+}

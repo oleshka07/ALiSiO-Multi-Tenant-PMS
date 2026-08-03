@@ -558,6 +558,40 @@ async function main() {
       console.log("  ok  B's alerts mention only its own bookings");
     }
 
+    // ── Integration keys ─────────────────────────────────────────────────
+    // The point of per-organization credentials is that B's Hostex token bills
+    // B and reaches B's listings. Two things have to hold: A must not see it,
+    // and the screen must not hand the raw token back to anyone — including
+    // its owner, since whoever opens the page can read what it renders.
+    const KEY = `hx_probe_${TAG}_wxyz9876`;
+    await call(cookieB, '/api/settings/features', {
+      method: 'PUT', body: JSON.stringify({ feature: 'hostex', enabled: true }),
+    });
+    const savedKey = await call(cookieB, '/api/settings/integration-credentials', {
+      method: 'PUT', body: JSON.stringify({ channel: 'hostex', values: { accessToken: KEY } }),
+    });
+    if (savedKey.ok) {
+      const back = await savedKey.text();
+      assert.ok(!back.includes(KEY), 'the save response echoed the raw token back');
+      assert.ok(back.includes('9876'), 'the save response did not confirm which key was stored');
+
+      const readB = await (await call(cookieB, '/api/settings/integration-credentials')).text();
+      assert.ok(!readB.includes(KEY), 'the settings screen returns the raw token');
+
+      const readA = await call(cookieA, '/api/settings/integration-credentials');
+      const bodyA = await readA.text();
+      assert.ok(!bodyA.includes(KEY), "A's settings screen carries B's token");
+      assert.ok(!bodyA.includes('9876'), "A's settings screen hints at B's token");
+      console.log("  ok  an integration key is B's alone, and never leaves the server");
+
+      // An organization without the feature cannot park a secret for it.
+      const offChannel = await call(cookieA, '/api/settings/integration-credentials', {
+        method: 'PUT', body: JSON.stringify({ channel: 'pricelabs', values: { accessToken: 'x' } }),
+      });
+      assert.strictEqual(offChannel.status, 409, `saving a key for a disabled integration returned ${offChannel.status}`);
+      console.log('  ok  a key cannot be saved for an integration that is off');
+    }
+
     console.log('isolation: all checks passed');
   } finally {
     cleanup();
