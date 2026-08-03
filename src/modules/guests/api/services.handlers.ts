@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as actionsRepo from '../data/guest-actions.repo';
 // TODO: replace with @channels eventBus event when channels module is migrated
-import { checkRateLimit } from '@/lib/rate-limit';
+import { checkRateLimit } from '@core/security/rate-limit';
 
 export async function orderServices(
   request: NextRequest,

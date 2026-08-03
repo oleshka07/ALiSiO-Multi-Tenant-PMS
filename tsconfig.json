@@ -32,6 +32,8 @@
       "@pricing/*": ["./src/modules/pricing/api/*"],
       "@finance": ["./src/modules/finance/api"],
       "@finance/*": ["./src/modules/finance/api/*"],
+      "@notifications": ["./src/modules/notifications/api"],
+      "@notifications/*": ["./src/modules/notifications/api/*"],
       "@channels": ["./src/modules/channels/api"],
       "@channels/*": ["./src/modules/channels/api/*"],
       "@reports": ["./src/modules/reports/api"],

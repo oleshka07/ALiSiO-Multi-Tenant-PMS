@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { money } from '@core/money';
-import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot'; // TODO: replace with eventBus
+import { sendTelegramMessage } from '@notifications'; // TODO: replace with eventBus
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',

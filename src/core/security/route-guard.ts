@@ -14,7 +14,7 @@
 import { NextResponse } from 'next/server';
 import { currentActor, type Actor } from '@core/auth/session';
 import { runWithOrganization } from '@core/auth/tenant-context';
-import { hasPermission, type Permission } from '@/lib/permissions';
+import { hasPermission, type Permission } from '@core/auth';
 
 /** What a guarded handler receives. The actor is added by the guard. */
 type GuardedHandler<C = any> = (request: any, context: C, actor: Actor) => Promise<Response> | Response;

@@ -11,7 +11,7 @@ import {
   ROLE_LABELS, ROLE_COLORS, PERMISSION_GROUPS, ROLE_DEFAULTS,
   ALL_PERMISSIONS, getUserPermissions,
   type Permission, type PermissionOverride,
-} from '@/lib/permissions';
+} from '@core/auth/permissions';
 import type { UserRole } from '@/types/database';
 
 interface UserData {

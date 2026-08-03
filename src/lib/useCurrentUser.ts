@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { UserRole } from '@/types/database';
-import type { Permission } from '@/lib/permissions';
+import type { Permission } from '@core/auth/permissions';
 
 export interface CurrentUser {
   id: string;

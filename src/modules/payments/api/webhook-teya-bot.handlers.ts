@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getDb } from '@core/db';
 import { eventBus } from '@core/event-bus';
-import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot';
+import { sendTelegramMessage } from '@notifications';
 
 const WEBHOOK_KEYS: Record<string, string> = {
   camping: process.env.TEYA_CAMPING_WEBHOOK_KEY || '',

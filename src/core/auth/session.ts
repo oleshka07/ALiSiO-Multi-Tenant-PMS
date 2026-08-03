@@ -12,8 +12,8 @@
  */
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getSessionUser, type SessionUser } from '@/lib/auth';
-import { hasPermission, type Permission } from '@/lib/permissions';
+import { getSessionUser, type SessionUser } from './auth';
+import { hasPermission, type Permission } from './permissions';
 import { runWithOrganization } from './tenant-context';
 
 export interface Actor {

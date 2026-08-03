@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getSessionUser, getSessionIdFromCookies } from '@/lib/auth';
+import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 
 type Ctx = { params: Promise<{ id: string }> };
 

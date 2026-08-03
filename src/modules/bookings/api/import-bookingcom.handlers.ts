@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getSessionUser } from '@/lib/auth';
-import { hasPermission } from '@/lib/permissions';
-import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot';
+import { getSessionUser } from '@core/auth';
+import { hasPermission } from '@core/auth';
+import { sendTelegramMessage } from '@notifications';
 import { getEurCzkRate } from '@/modules/finance/domain/cnb-rates';
 import { getDb, generateGuestToken } from '@core/db';
 import {

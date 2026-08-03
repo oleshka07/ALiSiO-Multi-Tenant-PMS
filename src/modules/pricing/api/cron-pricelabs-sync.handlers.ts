@@ -16,7 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { syncPriceLabsToCalendar } from '../data/pricelabs-sync';
-import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot';
+import { sendTelegramMessage } from '@notifications';
 
 export async function syncPriceLabsFromCron(request: NextRequest): Promise<NextResponse> {
   const expected = process.env.CRON_SECRET;

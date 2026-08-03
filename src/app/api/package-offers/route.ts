@@ -4,7 +4,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
-import { getSessionUser, getSessionIdFromCookies } from '@/lib/auth';
+import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 
 export async function GET(req: NextRequest) {
   try {

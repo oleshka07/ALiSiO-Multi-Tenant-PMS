@@ -7,8 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getSessionUser } from '@/lib/auth';
-import { hasPermission } from '@/lib/permissions';
+import { getSessionUser } from '@core/auth';
+import { hasPermission } from '@core/auth';
 import { syncPriceLabsToCalendar } from '@/modules/pricing/data/pricelabs-sync';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {

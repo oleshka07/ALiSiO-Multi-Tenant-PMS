@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { cloudOcrAllowed } from '@core/privacy/ocr-consent';
 import { ocrDocument } from '@/modules/guests/domain/ai/ocr-document';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { checkRateLimit } from '@core/security/rate-limit';
 
 export async function POST(
   request: Request,

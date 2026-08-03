@@ -14,7 +14,7 @@ import { cloudOcrAllowed } from '@core/privacy/ocr-consent';
 import { getDb } from '@core/db';
 import { ocrDocument } from '@/modules/guests/domain/ai/ocr-document';
 import { saveRegistrations } from '@/modules/guests/data/registration.repo';
-import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot';
+import { sendTelegramMessage } from '@notifications';
 import fs from 'fs';
 import path from 'path';
 

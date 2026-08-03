@@ -7,7 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getSessionUser } from '@/lib/auth';
+import { getSessionUser } from '@core/auth';
 import {
   DEFAULT_EVENTS,
   disconnectTelegram,

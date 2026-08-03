@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getSessionUser, getSessionIdFromCookies } from '@/lib/auth';
+import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 import { requirePropertyId } from '@core/auth/tenant-context';
 
 // GET /api/booking-sites — list all sites for property

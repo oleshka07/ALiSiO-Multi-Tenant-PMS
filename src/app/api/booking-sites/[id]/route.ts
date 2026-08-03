@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getSessionUser, getSessionIdFromCookies } from '@/lib/auth';
+import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 
 // GET /api/booking-sites/[id]
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

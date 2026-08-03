@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getDb } from '@core/db';
-import { getSessionUser } from '@/lib/auth';
+import { getSessionUser } from '@core/auth';
 
 /** Actor helper — same pattern as finance module's getOptionalActor */
 export async function getBookingActor(): Promise<{ id: string; name: string } | null> {

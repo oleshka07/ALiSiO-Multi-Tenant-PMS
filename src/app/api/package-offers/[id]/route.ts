@@ -5,7 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
-import { getSessionUser, getSessionIdFromCookies } from '@/lib/auth';
+import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 import { buildGiftCode, calcExpiresAt } from '@/modules/widget/domain/gift-card-builder';
 
 type Ctx = { params: Promise<{ id: string }> };

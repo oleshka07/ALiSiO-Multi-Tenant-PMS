@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getDb } from '@core/db';
-import { getSessionUser } from '@/lib/auth';
+import { getSessionUser } from '@core/auth';
 
 import { loadActiveRules, isRuleApplicable } from '../data/auto-rules-engine';
 import { requireOrganizationId } from '@core/auth/tenant-context';
@@ -325,7 +325,6 @@ export async function listOperations(request: NextRequest): Promise<NextResponse
 
     return NextResponse.json({ items, total: totalRow.n, page, pageSize });
   } catch (error: any) {
-    try { require('fs').appendFileSync('pms-error.log', new Date().toISOString() + ' GET /operations ERROR: ' + error.message + '\n' + error.stack + '\n'); } catch (e) {}
     console.error('GET /api/finance/operations error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

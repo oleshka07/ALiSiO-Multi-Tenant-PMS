@@ -1,7 +1,14 @@
 /**
- * Core Auth — public re-export.
- * Real implementation lives in src/lib/auth.ts + src/lib/permissions.ts until full migration.
- * Modules should import from '@core/auth', not directly from src/lib/auth.
+ * Core Auth — the front door.
+ *
+ * Sessions, password hashing and the permission model. This used to re-export
+ * from src/lib; the implementation lives here now, and '@core/auth' is what
+ * server code imports.
+ *
+ * A CLIENT component must import '@core/auth/permissions' instead: this file
+ * also exports the session helpers, which open the database, and pulling that
+ * into the browser bundle fails the build on `Can't resolve 'fs'`. The
+ * permission model itself is pure data and pure functions — safe anywhere.
  */
 export {
   hashPassword,
@@ -11,7 +18,7 @@ export {
   getSessionUser,
   getSessionIdFromCookies,
   type SessionUser,
-} from '@/lib/auth';
+} from './auth';
 
 export {
   ALL_PERMISSIONS,
@@ -24,4 +31,4 @@ export {
   NAV_PERMISSION_MAP,
   type Permission,
   type PermissionOverride,
-} from '@/lib/permissions';
+} from './permissions';

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getDb } from '@core/db';
-import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot';
+import { sendTelegramMessage } from '@notifications';
 import { maskLastName } from '@core/security/pii-mask';
 
 export interface NotifyOptions {

@@ -5,7 +5,7 @@ import { withActor, type Actor } from '@core/auth/session';
 import { ownedReservation } from '../data/owned.repo';
 import { generateInvoiceForReservation } from '@finance';
 import { cookies } from 'next/headers';
-import { getSessionUser } from '@/lib/auth';
+import { getSessionUser } from '@core/auth';
 import { writeBookingAudit, getBookingActor, buildBookingLabel } from './audit-log.handlers';
 
 export const getReservation = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {

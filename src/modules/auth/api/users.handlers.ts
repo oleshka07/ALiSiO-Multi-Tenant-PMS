@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getDb } from '@core/db';
 import { getSessionUser, hashPassword } from '@core/auth';
-import { getUserPermissions, type PermissionOverride, type Permission } from '@/lib/permissions';
+import { getUserPermissions, type PermissionOverride, type Permission } from '@core/auth';
 
 export async function listUsers() {
   try {

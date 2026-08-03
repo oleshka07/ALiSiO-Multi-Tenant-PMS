@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as tasksRepo from '../data/tasks.repo';
-import { getSessionUser, getSessionIdFromCookies } from '@/lib/auth';
+import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 import { notifyTaskAssigned, notifyTaskStatusChanged } from '../data/task-notifications';
 
 type IdParams = { params: Promise<{ id: string }> };

@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
 import { getDb } from '@core/db';
-import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot'; // TODO: replace with eventBus
+import { sendTelegramMessage } from '@notifications'; // TODO: replace with eventBus
 import { sendBookingConfirmationEmail } from '@bookings';
 
 export async function handlePaymentReturn(req: Request) {

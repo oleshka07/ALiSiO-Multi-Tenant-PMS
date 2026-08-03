@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getDb } from '@core/db';
-import { getSessionUser } from '@/lib/auth';
+import { getSessionUser } from '@core/auth';
 
 async function currentUser() {
   const store = await cookies();

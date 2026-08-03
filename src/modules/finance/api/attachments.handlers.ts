@@ -14,7 +14,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { cookies } from 'next/headers';
-import { getSessionUser } from '@/lib/auth';
+import { getSessionUser } from '@core/auth';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const DATA_DIR = path.join(process.cwd(), 'data');

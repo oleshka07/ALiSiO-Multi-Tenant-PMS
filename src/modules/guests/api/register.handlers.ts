@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import * as registrationRepo from '../data/registration.repo';
 // TODO: replace with @channels eventBus event when channels module is migrated
-import { checkRateLimit } from '@/lib/rate-limit';
-import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot';
+import { checkRateLimit } from '@core/security/rate-limit';
+import { sendTelegramMessage } from '@notifications';
 import { maskFullName, maskDob, maskDocNumber, maskDobForSheets, maskDocNumberForSheets } from '@core/security/pii-mask';
 
 /** POST to Google Apps Script (same endpoint as the Telegram bot uses) */

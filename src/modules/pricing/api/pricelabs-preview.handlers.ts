@@ -12,8 +12,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getListings, getListingPrices } from '../domain/pricelabs-client';
 import { getEurCzkRate } from '@/modules/finance/domain/cnb-rates';
 import { cookies } from 'next/headers';
-import { getSessionUser } from '@/lib/auth';
-import { hasPermission } from '@/lib/permissions';
+import { getSessionUser } from '@core/auth';
+import { hasPermission } from '@core/auth';
 import { getDb } from '@core/db';
 import { hasFeature, featureDisabled } from '@core/features';
 

@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getSessionUser, type SessionUser } from '@/lib/auth';
-import { hasPermission, type Permission } from '@/lib/permissions';
+import { getSessionUser, type SessionUser } from '@core/auth';
+import { hasPermission, type Permission } from '@core/auth';
 import { hasFinancePassphrase, isFinanceUnlocked } from './_finance-unlock';
 import type { Actor } from '@core/auth/session';
 import { runWithOrganization } from '@core/auth/tenant-context';

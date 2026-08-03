@@ -29,8 +29,8 @@ import {
   Target,
 } from 'lucide-react';
 import { useCurrentUser } from '@/lib/useCurrentUser';
-import { NAV_PERMISSION_MAP, ROLE_LABELS, ROLE_COLORS, hasPermission } from '@/lib/permissions';
-import type { Permission } from '@/lib/permissions';
+import { NAV_PERMISSION_MAP, ROLE_LABELS, ROLE_COLORS, hasPermission } from '@core/auth/permissions';
+import type { Permission } from '@core/auth/permissions';
 
 interface NavItem {
   label: string;

@@ -2,7 +2,7 @@
 // ALiSiO PMS — Auth Helpers
 // ============================================================
 
-import { getDb } from './db';
+import { getDb } from '@core/db';
 import { getUserPermissions, type Permission, type PermissionOverride } from './permissions';
 import type { UserRole } from '@/types/database';
 import bcrypt from 'bcryptjs';

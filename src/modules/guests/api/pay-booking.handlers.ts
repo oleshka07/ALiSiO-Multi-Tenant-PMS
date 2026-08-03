@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
 import { getDb } from '@core/db';
 import { createPaymentSession, resolveCredentialsForReservation, isPaymentConfigured } from '@payments';
-import { sendTelegramMessage } from '@/modules/notifications/data/telegram-bot';
+import { sendTelegramMessage } from '@notifications';
 
 export async function payForBooking(
   request: NextRequest,
