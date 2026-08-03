@@ -1,6 +1,6 @@
 import { getDb } from '@core/db';
 import { appBaseUrl } from '@core/app-url';
-import { sendEmail } from '@/lib/email';
+import { sendEmail } from '@core/mail/email';
 import { detectLanguage } from '@/app/guest/[token]/translations';
 
 function fmtPrice(n: number, currency: string): string {

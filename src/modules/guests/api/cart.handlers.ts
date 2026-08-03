@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
 import * as repo from '../data/guest-actions.repo';
 import { sendTelegramMessage } from '@notifications';
-import { sendEmail } from '@/lib/email';
+import { sendEmail } from '@core/mail/email';
 
 // ─── POST /api/guest/[token]/cart ────────────────────────────────────────────
 export async function handleCartEvent(

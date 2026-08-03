@@ -2,8 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as portalRepo from '../data/guest-portal.repo';
 // TODO: replace with @shared/translate when shared module exists
-import { extractTexts, extractServiceTexts, getStoredTranslations } from '@/lib/translate';
-import { translateContent, CONTENT_LANGS } from '@/lib/content-translations';
+import { extractTexts, extractServiceTexts, getStoredTranslations } from '@core/i18n/translate';
+import { translateContent, CONTENT_LANGS } from '@core/i18n/content-translations';
 import { sendAbandonNotifications } from './cart.handlers';
 
 export async function getGuestPortal(

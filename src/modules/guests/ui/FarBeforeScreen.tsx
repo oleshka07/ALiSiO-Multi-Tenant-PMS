@@ -1,6 +1,6 @@
 'use client';
 import type { Translations, Lang } from '@/app/guest/[token]/translations';
-import { translateContent } from '@/lib/content-translations';
+import { translateContent } from '@core/i18n/content-translations';
 
 interface Props {
   data: any;

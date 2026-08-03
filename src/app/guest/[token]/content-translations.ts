@@ -1,10 +1,10 @@
 // Re-exports from src/lib/content-translations.ts.
 // Kept here for backward compat with page.tsx import.
 
-export { translateContent, CONTENT_LANGS } from '@/lib/content-translations';
-export type { ContentLang } from '@/lib/content-translations';
+export { translateContent, CONTENT_LANGS } from '@core/i18n/content-translations';
+export type { ContentLang } from '@core/i18n/content-translations';
 
-import { translateContent } from '@/lib/content-translations';
+import { translateContent } from '@core/i18n/content-translations';
 import type { Lang } from './translations';
 
 export function translateAmenity(item: { icon: string; name: string }, lang: Lang): { icon: string; name: string } {

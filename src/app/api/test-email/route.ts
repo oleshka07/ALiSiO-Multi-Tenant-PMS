@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendEmail } from '@/lib/email';
+import { sendEmail } from '@core/mail/email';
 import { withOwner } from '@core/auth/session';
 
 // Sends mail to any address given in the query string, on the hotel's SMTP

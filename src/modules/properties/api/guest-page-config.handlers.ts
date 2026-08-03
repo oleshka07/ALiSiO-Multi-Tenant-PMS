@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 // TODO: move to @core/translate or emit event for translation
-import { extractTexts, translateAndStore } from '@/lib/translate';
+import { extractTexts, translateAndStore } from '@core/i18n/translate';
 
 export async function getGuestPageConfig(_request: NextRequest, { params }: { params: Promise<{ unitTypeId: string }> }) {
   try {

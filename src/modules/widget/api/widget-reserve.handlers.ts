@@ -577,7 +577,7 @@ export async function createWidgetReservation(request: NextRequest) {
     if (email) {
       try {
         const alisioAppUrl = appBaseUrl();
-        const { sendEmail } = await import('@/lib/email');
+        const { sendEmail } = await import('@core/mail/email');
         const propertyInfo = db.prepare(`
           SELECT p.name, u.name as unit_name
           FROM units u LEFT JOIN properties p ON u.property_id = p.id
@@ -705,7 +705,7 @@ export async function createWidgetReservation(request: NextRequest) {
 
         // Fire-and-forget immediate email sending via standard ALiSiO mail (email.cz)
         // We use import() dynamically so we don't have to await it, preventing UI freezing
-        import('@/lib/email').then(({ sendEmail }) => {
+        import('@core/mail/email').then(({ sendEmail }) => {
           sendEmail({
             to: email,
             subject: customizedSubject,

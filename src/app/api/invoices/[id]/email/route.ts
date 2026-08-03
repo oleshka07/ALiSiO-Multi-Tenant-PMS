@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOrgIdentity } from '@core/org-identity';
 import { getDb } from '@core/db';
 import { renderInvoiceHtml, type InvoiceData } from '@/modules/finance/domain/invoice-template';
-import { sendEmail } from '@/lib/email';
+import { sendEmail } from '@core/mail/email';
 import { requirePermission } from '@core/security/route-guard';
 
 export const POST = requirePermission('manage_documents', _POST);

@@ -3703,37 +3703,12 @@ function runMigrations(database: any) {
   `);
   database.exec('CREATE INDEX IF NOT EXISTS idx_stmt_upl_org ON fin_statement_uploads(organization_id)');
 
-  // Backfill receivables for existing channel-sourced reservations (one-time)
-  try {
-    const flagRow = database.prepare(
-      "SELECT value FROM fin_system_state WHERE key = 'pr15_receivables_backfilled'"
-    ).get() as { value: string } | undefined;
-    if (!flagRow) {
-      const orgRow = database.prepare("SELECT id FROM organizations LIMIT 1").get() as { id: string } | undefined;
-      if (orgRow) {
-        let backfillReceivables: ((db: any, orgId: string) => number) | null = null;
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          ({ backfillReceivables } = require('@/modules/finance/data/clearing-engine'));
-        } catch {
-          // The alias resolves only under the bundler. Plain node (the check
-          // scripts) cannot load it — and a database that has never seen the
-          // bundler has nothing to backfill. Write the flag so this does not
-          // re-log on every boot forever.
-          database.prepare(
-            "INSERT OR REPLACE INTO fin_system_state (key, value, updated_at) VALUES (?, ?, datetime('now'))"
-          ).run('pr15_receivables_backfilled', 'skipped: module unavailable outside the bundler');
-        }
-        if (backfillReceivables) {
-          const count = backfillReceivables(database, orgRow.id);
-          database.prepare(
-            "INSERT OR REPLACE INTO fin_system_state (key, value, updated_at) VALUES (?, ?, datetime('now'))"
-          ).run('pr15_receivables_backfilled', String(count));
-          console.log(`[DB] PR #15: backfilled ${count} channel receivables`);
-        }
-      }
-    }
-  } catch (e: any) { console.log('[DB] PR #15 receivables backfill:', e.message); }
+  // The PR #15 one-time receivables backfill used to live here. It loaded
+  // the clearing engine with require('@/modules/...') — an alias only the
+  // bundler understands, so under plain node it always threw, and after the
+  // finance move Turbopack could not resolve it either and the BUILD failed.
+  // The migration has run everywhere it was needed (fin_system_state carries
+  // its flag); a one-time backfill is not worth an unresolvable import.
 
   // --- Migration: create gift_cards table (feature/gift_cards) ---
   database.exec(`

@@ -6,7 +6,7 @@
  */
 import { getDb } from '@core/db';
 import { appBaseUrl } from '@core/app-url';
-import { sendEmail } from '@/lib/email';
+import { sendEmail } from '@core/mail/email';
 
 function fmtDate(iso?: string | null): string {
   if (!iso) return '—';

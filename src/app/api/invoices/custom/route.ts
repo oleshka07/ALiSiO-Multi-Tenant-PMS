@@ -27,7 +27,7 @@ import { getDb } from '@core/db';
 import { requirePermission } from '@core/security/route-guard';
 import { generateInvoicePdf } from '@/modules/finance/domain/invoice-pdf';
 import { generateIsdocXml }   from '@/modules/finance/domain/isdoc';
-import { sendEmail }           from '@/lib/email';
+import { sendEmail }           from '@core/mail/email';
 import { renderInvoiceHtml }   from '@/modules/finance/domain/invoice-template';
 import { allocateInvoiceNumber } from '@/modules/finance/domain/invoice-numbering';
 import type { Actor } from '@core/auth/session';
