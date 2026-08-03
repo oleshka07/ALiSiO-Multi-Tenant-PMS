@@ -7,7 +7,7 @@ import {
   Settings, Wallet, Receipt, TrendingUp,
   LogOut, MessageSquare, GitBranch, List,
 } from 'lucide-react';
-import { useCurrentUser } from '@/lib/useCurrentUser';
+import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 interface MobileMoreSheetProps {

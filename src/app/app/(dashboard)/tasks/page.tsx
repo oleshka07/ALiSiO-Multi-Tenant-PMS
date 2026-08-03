@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useDevice } from "@/lib/useDevice";
+import { useDevice } from "@/ui/hooks/useDevice";
 import MobileTasks from "@/components/mobile/pages/MobileTasks";
 import Header from "@/components/layout/Header";
-import { useMobileMenu } from "@/lib/MobileMenuContext";
+import { useMobileMenu } from "@/ui/MobileMenuContext";
 import {
   Plus,
   Search,

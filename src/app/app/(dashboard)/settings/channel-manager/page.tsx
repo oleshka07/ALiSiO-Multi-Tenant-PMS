@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/lib/MobileMenuContext';
+import { useMobileMenu } from '@/ui/MobileMenuContext';
 import {
   Plus, Edit3, Trash2, X, Save, Loader2, ArrowLeft,
   RefreshCw, Copy, Check, ExternalLink, Clock, AlertCircle,

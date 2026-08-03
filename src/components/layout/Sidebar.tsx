@@ -28,7 +28,7 @@ import {
   CheckSquare,
   Target,
 } from 'lucide-react';
-import { useCurrentUser } from '@/lib/useCurrentUser';
+import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { NAV_PERMISSION_MAP, ROLE_LABELS, ROLE_COLORS, hasPermission } from '@core/auth/permissions';
 import type { Permission } from '@core/auth/permissions';
 

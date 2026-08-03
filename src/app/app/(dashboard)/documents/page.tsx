@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/lib/MobileMenuContext';
+import { useMobileMenu } from '@/ui/MobileMenuContext';
 import {
   FileText, Download, Eye, RefreshCw, Receipt,
   CheckCircle, AlertCircle, Calendar, User,

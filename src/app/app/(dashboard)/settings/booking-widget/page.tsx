@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/lib/MobileMenuContext';
+import { useMobileMenu } from '@/ui/MobileMenuContext';
 
 type WidgetType = 'booking' | 'sauna' | 'tub' | 'breakfast';
 

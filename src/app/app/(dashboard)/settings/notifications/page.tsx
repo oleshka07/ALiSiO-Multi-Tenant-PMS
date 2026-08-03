@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, Save, Send, Unplug } from 'lucide-react';
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/lib/MobileMenuContext';
+import { useMobileMenu } from '@/ui/MobileMenuContext';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

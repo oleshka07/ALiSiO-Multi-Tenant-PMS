@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/lib/MobileMenuContext';
+import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { Save, Check, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { ImageUploadField } from '@/components/ui/ImageUploadField';

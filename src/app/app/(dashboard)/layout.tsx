@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import BottomNav from '@/components/layout/BottomNav';
 import MobileLayout from '@/components/mobile/MobileLayout';
-import { MobileMenuContext } from '@/lib/MobileMenuContext';
+import { MobileMenuContext } from '@/ui/MobileMenuContext';
 import ChatWidget from '@/components/ai/ChatWidget';
-import { useDevice } from '@/lib/useDevice';
+import { useDevice } from '@/ui/hooks/useDevice';
 
 export default function DashboardLayout({
   children,

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/lib/MobileMenuContext';
+import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { Loader2, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

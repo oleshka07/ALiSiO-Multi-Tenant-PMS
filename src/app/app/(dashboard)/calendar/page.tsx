@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/lib/MobileMenuContext';
-import { useDevice } from '@/lib/useDevice';
+import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { useDevice } from '@/ui/hooks/useDevice';
 import MobileCalendar from '@/components/mobile/pages/MobileCalendar';
 import GroupBookingModal from '@/components/booking/GroupBookingModal';
 import RoomAllocationModal from '@/components/booking/RoomAllocationModal';

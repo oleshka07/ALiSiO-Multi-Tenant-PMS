@@ -108,7 +108,8 @@ async function getAccessToken(
 
 /**
  * Create a Teya Checkout Session.
- * This is the ONLY function modules should call — do NOT import from @/lib/teya.
+ * This is the ONLY function modules should call — do NOT reach for the Teya
+ * client in domain/ directly.
  *
  * @example
  *   const session = await createPaymentSession({

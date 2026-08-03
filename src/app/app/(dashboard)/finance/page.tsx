@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Wallet, TrendingUp, TrendingDown, BarChart3, AlertTriangle, CheckCircle, Settings, ListChecks, Repeat, AlertOctagon, ShoppingBag } from 'lucide-react';
-import { useDevice } from '@/lib/useDevice';
+import { useDevice } from '@/ui/hooks/useDevice';
 import MobileFinanceOverview from '@/components/mobile/pages/MobileFinanceOverview';
 import ReconcileWidget from './_components/ReconcileWidget';
 

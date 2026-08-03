@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/lib/MobileMenuContext';
+import { useMobileMenu } from '@/ui/MobileMenuContext';
 import {
   Globe, Plus, Search, Trash2, ExternalLink, BarChart,
   Loader2, X, ToggleLeft, ToggleRight, Settings, Info

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/lib/MobileMenuContext';
+import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { Globe, ArrowLeft, Loader2 } from 'lucide-react';
 import { TABS } from './_components/SiteHelpers';
 import { AnalyticsTab } from './_components/AnalyticsTab';

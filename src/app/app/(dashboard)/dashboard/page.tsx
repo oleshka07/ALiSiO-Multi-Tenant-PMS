@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/lib/MobileMenuContext';
-import { useDevice } from '@/lib/useDevice';
+import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { useDevice } from '@/ui/hooks/useDevice';
 import MobileDashboard from '@/components/mobile/pages/MobileDashboard';
 import {
   ArrowDownRight,

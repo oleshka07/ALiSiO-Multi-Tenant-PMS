@@ -11,7 +11,7 @@ import TagsTab from './_components/TagsTab';
 import AutoRulesTab from './_components/AutoRulesTab';
 import RecurringTemplatesTab from './_components/RecurringTemplatesTab';
 import TeyaSyncTab from './_components/TeyaSyncTab';
-import { useCurrentUser } from '@/lib/useCurrentUser';
+import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import FinanceUsersTab from './_components/FinanceUsersTab';
 
 type TabId =

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/lib/MobileMenuContext';
+import { useMobileMenu } from '@/ui/MobileMenuContext';
 import {
   Plus, Pencil, Trash2, X, Check, Shield, Eye, EyeOff, Search, ChevronDown,
   MessageCircle, Key,

@@ -1,7 +1,7 @@
 'use client';
 
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/lib/MobileMenuContext';
+import { useMobileMenu } from '@/ui/MobileMenuContext';
 import Link from 'next/link';
 import {
   Building2,

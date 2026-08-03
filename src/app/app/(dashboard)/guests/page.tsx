@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
-import { useMobileMenu } from '@/lib/MobileMenuContext';
-import { useDevice } from '@/lib/useDevice';
+import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { useDevice } from '@/ui/hooks/useDevice';
 import MobileGuests from '@/components/mobile/pages/MobileGuests';
 import {
   Plus, Search, Eye, Edit3, X, Save, Trash2, Check,
