@@ -52,8 +52,13 @@ export function saveRegistrations(reservationId: string, organizationId: string,
 
   db.transaction(() => {
     // Get reservation nights for fee calculation
-    const reservation = db.prepare('SELECT adults, nights FROM reservations WHERE id = ?').get(reservationId) as any;
+    const reservation = db.prepare(`
+      SELECT r.adults, r.nights, p.city_tax_per_night
+      FROM reservations r JOIN properties p ON r.property_id = p.id
+      WHERE r.id = ?
+    `).get(reservationId) as any;
     const nights = reservation?.nights || 0;
+    const cityTaxPerNight = reservation?.city_tax_per_night ?? 0;
     const needed = reservation?.adults || 1;
 
     let isPrimary = 1;
@@ -74,7 +79,7 @@ export function saveRegistrations(reservationId: string, organizationId: string,
 
       // Calculate age for fee exemption
       let feeExempt = 0;
-      let feeAmount = nights * 20; // 20 CZK per night
+      let feeAmount = nights * cityTaxPerNight;
       let feeReason: string | null = null;
       if (guest.dateOfBirth) {
         const dob = new Date(guest.dateOfBirth);

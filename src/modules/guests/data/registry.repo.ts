@@ -93,7 +93,7 @@ export function getRegistryEntries(organizationId: string, filters: RegistryFilt
       rg.visa_number,
       COALESCE(rg.purpose_of_stay, 'Tourism') as purpose_of_stay,
       CASE WHEN rg.nationality IS NOT NULL AND rg.nationality != 'CZ' THEN 1 ELSE 0 END as is_foreigner,
-      CASE WHEN COALESCE(rg.fee_exempt, 0) = 1 THEN 0 ELSE r.nights * 20 END as fee_amount,
+      CASE WHEN COALESCE(rg.fee_exempt, 0) = 1 THEN 0 ELSE r.nights * p.city_tax_per_night END as fee_amount,
       COALESCE(rg.fee_exempt, 0) as fee_exempt,
       rg.fee_exempt_reason,
       COALESCE(rg.police_reported, 0) as police_reported,
@@ -108,6 +108,7 @@ export function getRegistryEntries(organizationId: string, filters: RegistryFilt
       rg.guest_id
     FROM reservation_guests rg
     JOIN reservations r ON rg.reservation_id = r.id
+    JOIN properties p ON r.property_id = p.id
     JOIN units u ON r.unit_id = u.id
     WHERE ${ORG_SCOPE} AND r.check_in >= ? AND r.check_in < ?
   `;
@@ -148,10 +149,11 @@ export function getRegistrySummary(organizationId: string, filters: { month: str
       SUM(CASE WHEN rg.nationality IS NOT NULL AND rg.nationality != 'CZ' THEN 1 ELSE 0 END) as foreigners,
       SUM(CASE WHEN rg.police_reported = 1 THEN 1 ELSE 0 END) as registeredPolice,
       SUM(CASE WHEN COALESCE(rg.police_reported, 0) = 0 AND rg.nationality IS NOT NULL AND rg.nationality != 'CZ' THEN 1 ELSE 0 END) as unregisteredPolice,
-      SUM(CASE WHEN COALESCE(rg.fee_exempt, 0) = 1 THEN 0 ELSE r.nights * 20 END) as totalFees,
+      SUM(CASE WHEN COALESCE(rg.fee_exempt, 0) = 1 THEN 0 ELSE r.nights * p.city_tax_per_night END) as totalFees,
       SUM(CASE WHEN rg.fee_exempt = 1 THEN 1 ELSE 0 END) as exemptGuests
     FROM reservation_guests rg
     JOIN reservations r ON rg.reservation_id = r.id
+    JOIN properties p ON r.property_id = p.id
     WHERE ${ORG_SCOPE} AND r.check_in >= ? AND r.check_in < ?
   `;
   const params: (string | number)[] = [organizationId, monthStart, monthEnd];

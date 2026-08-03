@@ -122,6 +122,7 @@ function buildSchema(database: any) {
       phone TEXT,
       email TEXT,
       check_in_time TEXT NOT NULL DEFAULT '15:00',
+      city_tax_per_night REAL NOT NULL DEFAULT 0,
       check_out_time TEXT NOT NULL DEFAULT '10:00',
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -4667,6 +4668,23 @@ function runMigrations(database: any) {
     // unambiguous; adding the organization would weaken it, not scope it.
   } catch (e: any) {
     console.error('[DB] per-organization uniqueness migration:', e.message);
+  }
+
+  // --- Migration: the city tax rate is the property's, not the code's ---
+  //
+  // The registry computed the fee as literal `nights * 20` — one country's
+  // rate from one year, applied to every hotel. Existing properties get 20 so
+  // nothing changes for them; a new property starts at 0 until its owner sets
+  // the real local rate in Settings.
+  try {
+    const propCols = (database.prepare('PRAGMA table_info(properties)').all() as any[])
+      .map((c: any) => c.name);
+    if (!propCols.includes('city_tax_per_night')) {
+      database.exec("ALTER TABLE properties ADD COLUMN city_tax_per_night REAL NOT NULL DEFAULT 0");
+      database.exec('UPDATE properties SET city_tax_per_night = 20');
+    }
+  } catch (e: any) {
+    console.error('[DB] city_tax_per_night migration:', e.message);
   }
 
   // --- Migration: categories.type is the hotel's own word ---

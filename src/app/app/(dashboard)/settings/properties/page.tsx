@@ -18,7 +18,7 @@ type AnyRow = Record<string, any>;
 interface PropertyRow extends AnyRow {
   id: string; name: string; slug: string; address?: string; city?: string;
   country?: string; phone?: string; email?: string;
-  check_in_time: string; check_out_time: string; is_active: number;
+  check_in_time: string; check_out_time: string; city_tax_per_night?: number; is_active: number;
   category_count: number; building_count: number; unit_count: number; unit_type_count: number;
 }
 
@@ -131,7 +131,7 @@ export default function SettingsPropertiesPage() {
   const [saving, setSaving] = useState(false);
 
   // ── Forms ──
-  const [propForm, setPropForm] = useState({ name: '', slug: '', address: '', city: '', country: 'CZ', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00' });
+  const [propForm, setPropForm] = useState({ name: '', slug: '', address: '', city: '', country: 'CZ', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00', city_tax_per_night: 0 });
   const [catForm, setCatForm] = useState({ name: '', type: 'glamping', description: '', icon: '🏕️', color: '#a78bfa', sort_order: 0, show_in_tasks: 1, show_in_finance: 0, show_in_booking: 1 });
   const [bldForm, setBldForm] = useState({ category_id: '', name: '', code: '', description: '', sort_order: 0 });
   const [utForm, setUtForm] = useState({ category_id: '', building_id: '', name: '', code: '', max_adults: 2, max_children: 2, max_occupancy: 4, base_occupancy: 2, beds_single: 0, beds_double: 1, beds_sofa: 0, extra_bed_available: 0, sort_order: 0 });
@@ -210,10 +210,11 @@ export default function SettingsPropertiesPage() {
         name: p.name, slug: p.slug, address: p.address || '', city: p.city || '',
         country: p.country || 'CZ', phone: p.phone || '', email: p.email || '',
         check_in_time: p.check_in_time, check_out_time: p.check_out_time,
+        city_tax_per_night: p.city_tax_per_night ?? 0,
       });
     } else {
       setEditId(null);
-      setPropForm({ name: '', slug: '', address: '', city: '', country: 'CZ', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00' });
+      setPropForm({ name: '', slug: '', address: '', city: '', country: 'CZ', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00', city_tax_per_night: 0 });
     }
     setModal('property');
   };
@@ -779,6 +780,11 @@ export default function SettingsPropertiesPage() {
             <div className="form-group">
               <label className="form-label">Check-out</label>
               <input className="form-input" type="time" value={propForm.check_out_time} onChange={e => setPropForm(p => ({ ...p, check_out_time: e.target.value }))} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Міський податок / ніч</label>
+              <input className="form-input" type="number" min="0" step="0.01" value={propForm.city_tax_per_night}
+                onChange={e => setPropForm(p => ({ ...p, city_tax_per_night: Number(e.target.value) }))} />
             </div>
           </div>
         </Modal>

@@ -1063,6 +1063,7 @@ CREATE TABLE "properties" (
   "is_active" BOOLEAN DEFAULT true NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "city_tax_per_night" DOUBLE PRECISION DEFAULT 0 NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "slug")
 );

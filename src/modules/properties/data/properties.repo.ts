@@ -116,7 +116,7 @@ export function updateProperty(organizationId: string, id: string, fields: Recor
   const db = getDb();
   if (!owns(db, organizationId, id)) return null;
 
-  const allowed = ['name', 'slug', 'address', 'city', 'country', 'phone', 'email', 'check_in_time', 'check_out_time', 'is_active'];
+  const allowed = ['name', 'slug', 'address', 'city', 'country', 'phone', 'email', 'check_in_time', 'check_out_time', 'city_tax_per_night', 'is_active'];
   const updates: string[] = [];
   const values: unknown[] = [];
 
