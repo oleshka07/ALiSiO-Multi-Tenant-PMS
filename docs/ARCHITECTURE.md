@@ -390,10 +390,16 @@ node scripts/check-isolation.mjs
   перевірити СЬОГОДНІ — без Postgres. Коли зʼявиться драйвер, змінюється
   одна функція `getSql()`, а не 1 440 місць виклику.
 
-  На шві вже: `dashboard`, `reports`, `dashboard/alerts`, `payments`,
-  `tasks`, `notifications/daily-digest`, `pricing`, `properties`, `guests`.
-  Далі по одному, кожен окремим комітом: `channels` (113 запитів) →
-  `bookings` (160) → `widget` (180) → `finance` (336, останній).
+  **Усі модулі на шві.** `getSql()` — єдиний спосіб дійти до бази з
+  модуля; `getDb()` лишився тільки там, де потрібна сама ручка:
+  `core/auth/tenant-context` (requireOrganizationId / requirePropertyId) і
+  `core/features` (hasFeature). Два модулі приймають `Sql` параметром, а не
+  беруть глобальну ручку — `widget/certificate.repo` і
+  `finance/invoice-numbering`: їхні self-check-и ганяють базу в пам'яті під
+  простим node, де псевдонім `@core/...` не резолвиться.
+
+  Далі: поставити драйвер `pg`, написати реалізацію `Sql` над ним
+  (`?` → `$1`), і змінити `getSql()`. Більше нічого.
 
   **Про автоматизацію цього переносу — застереження, куплене дорого.**
   Спокуса написати regex і прогнати його по всьому `src/` дуже велика, і
