@@ -92,7 +92,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       LEFT JOIN fin_operations p
         ON p.reservation_id = r.id AND p.op_type = 'income' AND p.status = 'completed'
       WHERE i.status = 'issued'
-        AND strftime('%Y-%m', i.issued_at) = ?
+        AND ${sql.dialect.month('i.issued_at')} = ?
         ${confirmedFilter}
       ORDER BY i.invoice_number ASC
     `, [month]);
@@ -148,7 +148,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       WHERE fo.op_type = 'income'
         AND fo.status = 'completed'
         AND fo.source IN ('airbnb', 'booking_com')
-        AND strftime('%Y-%m', fo.paid_at) = ?
+        AND ${sql.dialect.month('fo.paid_at')} = ?
         AND NOT EXISTS (
           SELECT 1 FROM invoices i
           JOIN reservations r ON i.reservation_id = r.id

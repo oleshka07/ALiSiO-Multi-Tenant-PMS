@@ -623,13 +623,25 @@ export async function getBalanceSheet(request: NextRequest): Promise<NextRespons
         AND r.status IN ('confirmed', 'tentative')
     `, [asOf, asOf]) as { total: number; cnt: number };
 
-    // Fixed assets: capex purchase cost minus straight-line depreciation
-    const fixedAssets = await sql.row<any>(`
-      SELECT COALESCE(SUM(MAX(0, amount - COALESCE(depreciation_monthly, 0) *
-        MAX(0, (julianday(?) - julianday(month || '-01')) / 30.44))), 0) AS total,
-        COUNT(*) AS cnt
+    // Fixed assets: capex purchase cost minus straight-line depreciation.
+    // The elapsed-months arithmetic used to run in SQL on julianday(); the same
+    // arithmetic here gives the same number and is portable. Dates are compared
+    // at UTC midnight, which is what julianday() of a 'YYYY-MM-DD' string meant.
+    type CapexRow = { amount: number | null; depreciation_monthly: number | null; month: string | null };
+    const capexRows = await sql.rows<CapexRow>(`
+      SELECT amount, depreciation_monthly, month
       FROM capex_items WHERE status = 'active'
-    `, [asOf]) as { total: number; cnt: number };
+    `) as CapexRow[];
+
+    const asOfDays = Date.parse(`${asOf}T00:00:00Z`) / 86400_000;
+    let fixedAssetsTotal = 0;
+    for (const c of capexRows) {
+      const startDays = Date.parse(`${c.month}-01T00:00:00Z`) / 86400_000;
+      const value = Math.max(0, (c.amount ?? 0) - (c.depreciation_monthly ?? 0) * Math.max(0, (asOfDays - startDays) / 30.44));
+      // An unparsable date gave NULL in SQL, which SUM skipped; NaN is skipped here.
+      if (Number.isFinite(value)) fixedAssetsTotal += value;
+    }
+    const fixedAssets = { total: fixedAssetsTotal, cnt: capexRows.length };
 
     const byCurrency: Record<string, { assets: number; liabilities: number; net: number }> = {};
     for (const a of assets) {

@@ -14,14 +14,16 @@ export async function GET(request: Request) {
     // and they didn't choose 'reception' strategy.
     
     // First let's get all upcoming check-ins in the next 48 hours that haven't received a reminder.
+    // UTC, because that is what SQLite's date('now', '+2 days') returned here.
+    const inTwoDays = new Date(Date.now() + 2 * 86400_000).toISOString().slice(0, 10);
     const pendingReservations = await sql.rows<{ id: string }>(`
       SELECT r.id 
       FROM reservations r
       WHERE r.status = 'confirmed' 
-        AND r.check_in = date('now', '+2 days')
+        AND r.check_in = ?
         AND ifnull(r.notes, '') NOT LIKE '%document_strategy:reception%'
         AND ifnull(r.internal_notes, '') NOT LIKE '%[GUEST_REMINDER_SENT]%'
-    `);
+    `, [inTwoDays]);
 
     // Ideally, we'd also check if they already registered by looking at the guests table count vs adults count.
     // For simplicity, we just check if any guest is linked. 

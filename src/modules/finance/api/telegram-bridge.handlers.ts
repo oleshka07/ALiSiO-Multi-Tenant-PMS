@@ -369,6 +369,8 @@ export async function listTelegramReservations(request: NextRequest): Promise<Ne
   try {
     const sql = getSql();
 
+    // UTC, because that is what SQLite's date('now') returned here.
+    const today = new Date().toISOString().slice(0, 10);
     const reservations = await sql.rows<any>(`
       SELECT r.id, r.check_in, r.check_out, r.status,
              g.first_name, g.last_name,
@@ -376,10 +378,10 @@ export async function listTelegramReservations(request: NextRequest): Promise<Ne
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
-      WHERE r.check_in <= date('now') AND r.check_out >= date('now')
+      WHERE r.check_in <= ? AND r.check_out >= ?
         AND r.status NOT IN ('cancelled', 'no_show')
       ORDER BY u.name
-    `);
+    `, [today, today]);
 
     return NextResponse.json({ reservations });
   } catch (error: any) {

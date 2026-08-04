@@ -91,7 +91,7 @@ export async function createUser(request: Request) {
       await sql.tx(async (t) => {
         for (const ov of permissions_overrides) {
           await t.run(
-            'INSERT OR REPLACE INTO user_permissions (user_id, permission, granted) VALUES (?, ?, ?)',
+            'INSERT INTO user_permissions (user_id, permission, granted) VALUES (?, ?, ?) ON CONFLICT (user_id, permission) DO UPDATE SET granted = excluded.granted',
             [id, ov.permission, ov.granted ? 1 : 0],
           );
         }

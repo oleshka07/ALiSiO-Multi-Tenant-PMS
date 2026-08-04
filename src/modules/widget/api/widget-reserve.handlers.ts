@@ -502,9 +502,10 @@ export async function createWidgetReservation(request: NextRequest) {
         try {
           const grId = `gr_${Date.now()}_widget`;
           await sql.run(`
-            INSERT OR IGNORE INTO guest_registrations
+            INSERT INTO guest_registrations
               (id, reservation_id, guest_id, is_primary, reg_status, purpose_of_stay, group_id)
             VALUES (?, ?, ?, 1, 'pending', 'Tourism', ?)
+            ON CONFLICT DO NOTHING
           `, [grId, resId, guestId, groupId]);
 
           // Also enrich the guest record with passport data

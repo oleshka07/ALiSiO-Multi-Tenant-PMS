@@ -34,7 +34,10 @@ psql "postgres://postgres:probe@localhost/alisio" -v ON_ERROR_STOP=1 -f db/postg
 docker rm -f pgtest
 ```
 
-Очікується: 127 таблиць, 118 політик, `rls: all checks passed`.
+Очікується: 92 таблиці, 84 політики, `rls: all checks passed`.
+Решта 8 таблиць — спільні для всього сервера (курси валют, довідники),
+у них немає organization_id, тож і політики немає. Генератор рахує їх
+окремо і падає, якщо зʼявиться таблиця з organization_id без політики.
 
 ## Що змінюється порівняно з SQLite (Фаза 1.4)
 

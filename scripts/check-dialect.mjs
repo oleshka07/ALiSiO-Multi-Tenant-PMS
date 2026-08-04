@@ -13,8 +13,9 @@
  * Rejects outright is the good case. The dangerous ones are the constructs both
  * accept with DIFFERENT meaning — those are listed here too, and marked.
  *
- * This is a report, not yet a gate: it fails today by design. Run it with
- * --strict once the count reaches zero, and add it to `npm run check` then.
+ * The count reached zero, so --strict is now part of `npm run check`. Anything
+ * that puts a SQLite-only spelling back fails the build rather than waiting to
+ * be discovered the day someone sets DB_DRIVER=postgres.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -61,7 +62,11 @@ function walk(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) walk(full);
-    else if (/\.tsx?$/.test(e.name) && !e.name.endsWith('.check.ts')) files.push(full);
+    // The two Sql implementations are where the SQLite and Postgres spellings
+    // legitimately live — counting them would mean the check can never reach
+    // zero, and a target that cannot be reached is not a target.
+    else if (/\.tsx?$/.test(e.name) && !e.name.endsWith('.check.ts')
+             && !/db[\\/](async|postgres)\.ts$/.test(full)) files.push(full);
   }
 }
 for (const r of ROOTS) walk(r);

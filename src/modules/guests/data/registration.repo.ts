@@ -35,7 +35,9 @@ export async function saveRegistrations(reservationId: string, organizationId: s
       INSERT INTO reservation_guests (reservation_id, first_name, last_name, date_of_birth, address, nationality, document_type, document_number, guest_id, fee_amount, fee_exempt, fee_exempt_reason, purpose_of_stay, visa_number)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     findGuest: `SELECT id FROM guests WHERE organization_id = ? AND LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) LIMIT 1`,
-    insertGuest: `INSERT INTO guests (organization_id, first_name, last_name, date_of_birth, country, address, document_type, document_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    // RETURNING rather than a follow-up lookup by rowid: guests.id is the
+    // table's own TEXT default, and Postgres has no rowid to look it up by.
+    insertGuest: `INSERT INTO guests (organization_id, first_name, last_name, date_of_birth, country, address, document_type, document_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     updateGuest: `UPDATE guests SET date_of_birth = COALESCE(?, date_of_birth), country = COALESCE(?, country), address = COALESCE(?, address), document_type = COALESCE(?, document_type), document_number = COALESCE(?, document_number), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
     insertGr: `
       INSERT INTO guest_registrations (id, reservation_id, guest_id, is_primary, reg_status, registered_at, consent_given, consent_at, consent_ip, purpose_of_stay, visa_number)
@@ -70,8 +72,7 @@ export async function saveRegistrations(reservationId: string, organizationId: s
         guestId = existing.id;
         await t.run(SQL.updateGuest, [guest.dateOfBirth ?? null, guest.nationality ?? null, guest.address ?? null, guest.documentType ?? null, guest.documentNumber ?? null, guestId]);
       } else {
-        const result = await t.run(SQL.insertGuest, [organizationId, guest.firstName, guest.lastName, guest.dateOfBirth ?? null, guest.nationality ?? null, guest.address ?? null, guest.documentType ?? null, guest.documentNumber ?? null]);
-        const newGuest = await t.row<any>('SELECT id FROM guests WHERE rowid = ?', [result.lastId]);
+        const newGuest = await t.row<{ id: string }>(SQL.insertGuest, [organizationId, guest.firstName, guest.lastName, guest.dateOfBirth ?? null, guest.nationality ?? null, guest.address ?? null, guest.documentType ?? null, guest.documentNumber ?? null]);
         guestId = newGuest?.id ?? null;
       }
 
@@ -122,7 +123,11 @@ export async function anonymizeOldRegistrations(monthsToKeep = 6): Promise<numbe
     const sql = getSql();
     
     // Find all registrations where the associated reservation check_out is older than X months
-    // and the data is not already anonymized
+    // and the data is not already anonymized.
+    // UTC and month-overflow normalisation (Aug 31 − 6 months → Mar 3) both match
+    // what SQLite's date('now', '-N months') did here.
+    const cutoff = new Date();
+    cutoff.setUTCMonth(cutoff.getUTCMonth() - monthsToKeep);
     const info = await sql.run(`
       UPDATE guest_registrations
       SET 
@@ -139,10 +144,10 @@ export async function anonymizeOldRegistrations(monthsToKeep = 6): Promise<numbe
         SELECT gr.id
         FROM guest_registrations gr
         JOIN reservations r ON gr.reservation_id = r.id
-        WHERE r.check_out < date('now', '-' || ? || ' months')
+        WHERE r.check_out < ?
           AND gr.first_name != 'Anonymized'
       )
-    `, [monthsToKeep]);
+    `, [cutoff.toISOString().slice(0, 10)]);
     return info.changes;
   } catch (error) {
     console.error('Failed to anonymize old registrations:', error);

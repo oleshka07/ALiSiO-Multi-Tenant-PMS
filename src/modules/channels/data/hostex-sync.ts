@@ -550,52 +550,19 @@ function detectMultiRoomMarker(stayCode: string | null | undefined): string | nu
 
 async function ensureHostexColumns() {
   const sql = getSql();
-  const cols = await sql.rows<any>("PRAGMA table_info(reservations)") as { name: string }[];
-  const colNames = cols.map((c: any) => c.name);
-
-  const newCols: [string, string][] = [
-    ['hostex_reservation_code', 'TEXT'],
-    ['hostex_stay_code', 'TEXT'],
-    ['hostex_channel_type', 'TEXT'],
-    ['hostex_channel_id', 'TEXT'],
-    ['hostex_listing_id', 'TEXT'],
-    ['total_rate_eur', 'REAL'],
-    ['commission_eur', 'REAL'],
-    ['net_rate_eur', 'REAL'],
-    ['channel_remarks', 'TEXT'],
-    ['is_prepaid', 'INTEGER DEFAULT 0'],
-    // Multi-room detection: when Hostex's stay_code carries an "_N-" marker
-    // (e.g. "9-5169043266_3-…"), the reservation is part of a Booking.com
-    // group booking that may span multiple cabins under one channel_id.
-    // We can't fetch siblings (Hostex API has no channel_id filter, and
-    // group bookings collapse into a single reservation_code), so we
-    // record the raw marker value for the operator to verify in Hostex
-    // and surface a warning in TG / admin UI.
-    ['is_multi_room', 'INTEGER DEFAULT 0'],
-    ['multi_room_marker', 'TEXT'],
-  ];
-
-  for (const [name, type] of newCols) {
-    if (!colNames.includes(name)) {
-      await sql.run(`ALTER TABLE reservations ADD COLUMN ${name} ${type}`);
-      console.log(`[Hostex] Added column reservations.${name}`);
-    }
-  }
-
+  // The Hostex columns on `reservations` are part of the schema itself — the
+  // boot migration in core/db adds them whether or not this integration ever
+  // runs, and payments.auto_created ships in that table's own CREATE. What is
+  // left here is what only Hostex needs.
   await sql.run('CREATE INDEX IF NOT EXISTS idx_reservations_hostex_code ON reservations(hostex_reservation_code)');
 
-  // Payments table was replaced by fin_operations in PR #6 — skip legacy ALTER if table is gone.
-  const paymentsTableExists = await sql.row<any>("SELECT name FROM sqlite_master WHERE type='table' AND name='payments'");
-  if (paymentsTableExists) {
-    const payCols = await sql.rows<any>("PRAGMA table_info(payments)") as { name: string }[];
-    if (!payCols.some((c: any) => c.name === 'auto_created')) {
-      await sql.run('ALTER TABLE payments ADD COLUMN auto_created INTEGER DEFAULT 0');
-    }
-  }
-
+  // A bare INTEGER PRIMARY KEY is still SQLite's implicit-key alias and still
+  // assigns max(id)+1. The keyword dropped from it only additionally forbade
+  // reusing an id after the highest row is deleted, and nothing ever deletes
+  // from this log — so what Postgres rejects was never load-bearing here.
   await sql.run(`
     CREATE TABLE IF NOT EXISTS hostex_sync_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id INTEGER PRIMARY KEY,
       sync_type TEXT NOT NULL,
       status TEXT NOT NULL,
       records_synced INTEGER DEFAULT 0,
@@ -664,8 +631,9 @@ async function ensureHostexColumns() {
         // the block that replaces it exists.
         await sql.tx(async (t) => {
           await t.run(`
-            INSERT OR IGNORE INTO availability_blocks (id, unit_id, date_from, date_to, reason, notes, hostex_code)
+            INSERT INTO availability_blocks (id, unit_id, date_from, date_to, reason, notes, hostex_code)
             VALUES (?, ?, ?, ?, 'blocked', ?, ?)
+            ON CONFLICT DO NOTHING
           `, [blockId, r.unit_id, r.check_in, r.check_out, r.notes || r.channel_remarks || 'Закрито в Hostex', r.hostex_reservation_code]);
           await t.run('DELETE FROM reservations WHERE id = ?', [r.id]);
         });
@@ -697,9 +665,16 @@ export async function seedPropertyMap(): Promise<{ unmapped: { id: number; title
   for (const prop of properties) {
     const unitId = (await mapHostexProperty(prop.id))?.unitId;
     if (unitId) {
+      // created_at stays out of the SET list on purpose: OR REPLACE used to
+      // delete the row and re-default it on every seed run, so the mapping
+      // always looked freshly created.
       await sql.run(`
-        INSERT OR REPLACE INTO hostex_property_map (hostex_property_id, hostex_title, unit_id, channels)
+        INSERT INTO hostex_property_map (hostex_property_id, hostex_title, unit_id, channels)
         VALUES (?, ?, ?, ?)
+        ON CONFLICT (hostex_property_id) DO UPDATE SET
+          hostex_title = excluded.hostex_title,
+          unit_id      = excluded.unit_id,
+          channels     = excluded.channels
       `, [prop.id, prop.title, unitId, JSON.stringify(prop.channels)]);
       console.log(`[Hostex] Mapped: ${prop.title} (${prop.id}) → ${unitId}`);
     } else {

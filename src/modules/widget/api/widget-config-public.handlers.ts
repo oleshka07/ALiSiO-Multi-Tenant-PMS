@@ -145,15 +145,12 @@ export async function getWidgetConfig(request: NextRequest) {
     // Fetch services available in widget
     let widgetServices: any[] = [];
     try {
-      const asColCheck = (await sql.rows<any>("PRAGMA table_info(additional_services)")).map((c: any) => c.name);
-      if (asColCheck.includes('available_in_widget')) {
-        widgetServices = await sql.rows<any>(`
-          SELECT id, name, name_en, description, price, currency, unit_label, icon, category, available_for
-          FROM additional_services
-          WHERE property_id = ? AND is_active = 1 AND available_in_widget = 1
-          ORDER BY sort_order
-        `, [property.id]);
-      }
+      widgetServices = await sql.rows<any>(`
+        SELECT id, name, name_en, description, price, currency, unit_label, icon, category, available_for
+        FROM additional_services
+        WHERE property_id = ? AND is_active = 1 AND available_in_widget = 1
+        ORDER BY sort_order
+      `, [property.id]);
     } catch { /* table may not exist yet */ }
 
     return NextResponse.json({

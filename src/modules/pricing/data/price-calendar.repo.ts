@@ -1,6 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import crypto from 'crypto';
 import { getSql } from '@core/db/async';
 import type { DayPrice, PriceUpsertInput } from '../domain/types';
+
+// The id used to be defaulted by a SQLite-only blob function inside the
+// INSERT. Same 32 lowercase hex chars, generated where both engines can.
+const newId = () => crypto.randomBytes(16).toString('hex');
 
 export async function getPriceMonth(unitTypeId: string, month: number, year: number): Promise<{ unitTypeId: string; month: number; year: number; days: DayPrice[] }> {
   const sql = getSql();
@@ -51,7 +56,7 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
     for (const p of prices) {
       await t.run(`
       INSERT INTO price_calendar (id, unit_type_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
-      VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(unit_type_id, date) DO UPDATE SET
         base_price = excluded.base_price,
         weekend_price = excluded.weekend_price,
@@ -61,7 +66,7 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
         cta = excluded.cta,
         ctd = excluded.ctd,
         updated_at = CURRENT_TIMESTAMP
-      `, [unitTypeId, p.date, p.base_price ?? 0, p.weekend_price ?? null, p.min_stay ?? 1, p.max_stay ?? null, p.closed ? 1 : 0, p.cta ? 1 : 0, p.ctd ? 1 : 0]);
+      `, [newId(), unitTypeId, p.date, p.base_price ?? 0, p.weekend_price ?? null, p.min_stay ?? 1, p.max_stay ?? null, p.closed ? 1 : 0, p.cta ? 1 : 0, p.ctd ? 1 : 0]);
     }
   });
 
@@ -128,7 +133,7 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
 
       await t.run(`
       INSERT INTO price_calendar (id, unit_type_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
-      VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(unit_type_id, date) DO UPDATE SET
         base_price = excluded.base_price,
         weekend_price = excluded.weekend_price,
@@ -138,7 +143,7 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
         cta = excluded.cta,
         ctd = excluded.ctd,
         updated_at = CURRENT_TIMESTAMP
-      `, [unitTypeId, dateStr, basePrice, weekendPrice, minStay, maxStay, closed, cta, ctd]);
+      `, [newId(), unitTypeId, dateStr, basePrice, weekendPrice, minStay, maxStay, closed, cta, ctd]);
       count++;
       current.setDate(current.getDate() + 1);
     }

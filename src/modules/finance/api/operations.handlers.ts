@@ -499,7 +499,7 @@ export async function createOperationInTx(
 
   if (input.tag_ids && input.tag_ids.length > 0) {
     for (const tagId of input.tag_ids) {
-      await sql.run('INSERT OR IGNORE INTO fin_operation_tags (operation_id, tag_id) VALUES (?, ?)', [id, tagId]);
+      await sql.run('INSERT INTO fin_operation_tags (operation_id, tag_id) VALUES (?, ?) ON CONFLICT DO NOTHING', [id, tagId]);
     }
   }
 
@@ -595,7 +595,7 @@ export async function updateOperation(
     if (Array.isArray(body.tag_ids)) {
       await sql.run('DELETE FROM fin_operation_tags WHERE operation_id = ?', [id]);
       for (const tagId of body.tag_ids) {
-        await sql.run('INSERT OR IGNORE INTO fin_operation_tags (operation_id, tag_id) VALUES (?, ?)', [id, tagId]);
+        await sql.run('INSERT INTO fin_operation_tags (operation_id, tag_id) VALUES (?, ?) ON CONFLICT DO NOTHING', [id, tagId]);
       }
     }
 

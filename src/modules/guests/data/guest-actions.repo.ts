@@ -1,5 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import crypto from 'crypto';
 import { getSql } from '@core/db/async';
+
+// The id used to be defaulted by a SQLite-only blob function inside the
+// INSERT. Same 32 lowercase hex chars, generated where both engines can.
+const newId = () => crypto.randomBytes(16).toString('hex');
 
 // ─── Feedback ─────────────────────────────────────────────────────────────────
 
@@ -13,8 +18,8 @@ export async function saveFeedback(reservationId: string, feedback: string) {
   const sql = getSql();
   await sql.run(`
     INSERT INTO reservation_activity (id, reservation_id, type, description, created_by, created_at)
-    VALUES (lower(hex(randomblob(16))), ?, 'guest_feedback', ?, 'guest', CURRENT_TIMESTAMP)
-  `, [reservationId, feedback.trim()]);
+    VALUES (?, ?, 'guest_feedback', ?, 'guest', CURRENT_TIMESTAMP)
+  `, [newId(), reservationId, feedback.trim()]);
 }
 
 // ─── Service Orders ───────────────────────────────────────────────────────────

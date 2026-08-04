@@ -197,7 +197,7 @@ export async function applyRulesToOperation(op: Operation, rules: ParsedRule[], 
 
   if (tagsAdded.size > 0) {
     for (const t of tagsAdded) {
-      await sql.run('INSERT OR IGNORE INTO fin_operation_tags (operation_id, tag_id) VALUES (?, ?)', [op.id, t]);
+      await sql.run('INSERT INTO fin_operation_tags (operation_id, tag_id) VALUES (?, ?) ON CONFLICT DO NOTHING', [op.id, t]);
     }
   }
 

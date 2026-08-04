@@ -137,16 +137,18 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
 
     // ─── 4. Stale pending operations ───────────────────────────
     {
+      // UTC, because that is what SQLite's date('now', '-7 days') returned here.
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10);
       const rows = await safeRun(async () => await sql.rows<any>(`
         SELECT id, op_type, amount, currency, paid_at, source, comment,
                reservation_id, source_ref
         FROM fin_operations
         WHERE status = 'pending'
           AND organization_id = ?
-          AND paid_at < date('now', '-7 days')
+          AND paid_at < ?
         ORDER BY paid_at ASC
         LIMIT 50
-      `, [org]), [] as any[]);
+      `, [org, sevenDaysAgo]), [] as any[]);
 
       const totalAmount = rows.reduce((s: number, r: any) => s + (r.amount || 0), 0);
 

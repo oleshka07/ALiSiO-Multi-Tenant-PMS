@@ -15,6 +15,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const site = await sql.row<any>("SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'", [id]);
     if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
 
+    // UTC, because that is what SQLite's date('now') returned here.
+    const today = new Date().toISOString().slice(0, 10);
+
     const listings = await sql.rows<any>(`
       SELECT
         sl.*,
@@ -28,7 +31,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           SELECT MIN(pc.base_price)
           FROM price_calendar pc
           WHERE pc.unit_type_id = ut.id
-            AND pc.date >= date('now')
+            AND pc.date >= ?
             AND pc.closed = 0
         ) AS base_price
       FROM site_listings sl
@@ -36,7 +39,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       LEFT JOIN unit_types ut ON COALESCE(sl.unit_type_id, u.unit_type_id) = ut.id
       WHERE sl.site_id = ?
       ORDER BY sl.sort_order, sl.created_at
-    `, [id]);
+    `, [today, id]);
 
     return NextResponse.json({ listings });
   } catch (error: any) {

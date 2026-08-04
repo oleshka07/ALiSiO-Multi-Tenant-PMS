@@ -8,9 +8,14 @@
 // Designed to be called from /api/cron/sync-pricelabs once per day.
 //
 
+import crypto from 'crypto';
 import { getSql } from '@core/db/async';
 import { getListings, getListingPrices } from '../domain/pricelabs-client';
 import { getEurCzkRate } from '@/modules/finance/domain/cnb-rates';
+
+// The id used to be defaulted by a SQLite-only blob function inside the
+// INSERT. Same 32 lowercase hex chars, generated where both engines can.
+const newId = () => crypto.randomBytes(16).toString('hex');
 
 /**
  * Hostex property_id → ALiSiO unit_id. Same map used by hostex-sync.ts.
@@ -169,14 +174,14 @@ export async function syncPriceLabsToCalendar(daysAhead = 90): Promise<SyncResul
         const closed = d.unbookable === 1 ? 1 : 0;
         await t.run(`
           INSERT INTO price_calendar (id, unit_type_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
-          VALUES (lower(hex(randomblob(16))), ?, ?, ?, NULL, ?, NULL, ?, 0, 0)
+          VALUES (?, ?, ?, ?, NULL, ?, NULL, ?, 0, 0)
           ON CONFLICT(unit_type_id, date) DO UPDATE SET
             base_price = excluded.base_price,
             weekend_price = NULL,
             min_stay = excluded.min_stay,
             closed = excluded.closed,
             updated_at = CURRENT_TIMESTAMP
-        `, [item.unit_type_id, d.date, baseCzk, minStay, closed]);
+        `, [newId(), item.unit_type_id, d.date, baseCzk, minStay, closed]);
         daysWritten += 1;
       }
       result.perListing.push({

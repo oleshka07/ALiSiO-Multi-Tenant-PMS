@@ -411,7 +411,7 @@ async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promi
       if (!/^\d{4}-\d{2}$/.test(month)) {
         return NextResponse.json({ error: 'month must be in YYYY-MM format' }, { status: 400 });
       }
-      query += ` AND (period = ? OR strftime('%Y-%m', issued_at) = ?)`;
+      query += ` AND (period = ? OR ${sql.dialect.month('issued_at')} = ?)`;
       params.push(month, month);
     }
 
@@ -428,7 +428,7 @@ async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promi
         checkQuery += ` AND (notes LIKE 'airbnb:%' OR notes LIKE 'booking:%' OR notes LIKE 'teya:%' OR series IN ('AIR', 'BKG', 'TEYA'))`;
       }
       if (month) {
-        checkQuery += ` AND (period = ? OR strftime('%Y-%m', issued_at) = ?)`;
+        checkQuery += ` AND (period = ? OR ${sql.dialect.month('issued_at')} = ?)`;
         checkParams.push(month, month);
       }
       const lockedCount = await sql.row(checkQuery, checkParams) as { count: number };

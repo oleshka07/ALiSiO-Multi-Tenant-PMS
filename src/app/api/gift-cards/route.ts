@@ -56,13 +56,15 @@ export const GET = await withPermission('manage_bookings', async (req: Request, 
     const giftCards = await sql.rows(statement, params);
 
     // Auto-expire: оновити статус прострочених ваучерів
+    // UTC, because that is what SQLite's date('now') returned here.
+    const today = new Date().toISOString().slice(0, 10);
     await sql.run(`
       UPDATE gift_cards SET status = 'expired', updated_at = CURRENT_TIMESTAMP
       WHERE organization_id = ?
         AND status IN ('active', 'paid')
         AND expires_at IS NOT NULL
-        AND expires_at < date('now')
-    `, [actor.organizationId]);
+        AND expires_at < ?
+    `, [actor.organizationId, today]);
 
     return NextResponse.json({ gift_cards: giftCards, templates: GIFT_CARD_TEMPLATES });
   } catch (err: unknown) {

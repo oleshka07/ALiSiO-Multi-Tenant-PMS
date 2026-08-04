@@ -40,6 +40,8 @@ export async function exportIcal(
     }
 
     const placeholders = unitIds.map(() => '?').join(',');
+    // UTC, because that is what SQLite's date('now', '-30 days') returned here.
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
     const reservations = await sql.rows<any>(`
       SELECT r.id, r.unit_id, r.check_in, r.check_out, r.status,
              COALESCE(g.first_name, 'OTA') as first_name,
@@ -48,8 +50,8 @@ export async function exportIcal(
       LEFT JOIN guests g ON r.guest_id = g.id
       WHERE r.unit_id IN (${placeholders})
         AND r.status IN ('confirmed', 'checked_in', 'tentative')
-        AND r.check_out >= date('now', '-30 days')
-    `, [...unitIds]) as any[];
+        AND r.check_out >= ?
+    `, [...unitIds, thirtyDaysAgo]) as any[];
 
     const events = reservations.map((r: any) => ({
       uid: `${r.id}@alisio-pms`,

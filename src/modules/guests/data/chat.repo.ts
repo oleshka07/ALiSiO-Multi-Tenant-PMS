@@ -1,5 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import crypto from 'crypto';
 import { getSql } from '@core/db/async';
+
+// The id used to be defaulted by a SQLite-only blob function inside the
+// INSERT. Same 32 lowercase hex chars, generated where both engines can.
+const newId = () => crypto.randomBytes(16).toString('hex');
 
 export async function getReservationIdByToken(token: string): Promise<string | null> {
   const sql = getSql();
@@ -14,7 +19,7 @@ export async function getChatMessages(reservationId: string) {
 
 export async function saveMessage(reservationId: string, sender: string, message: string) {
   const sql = getSql();
-  await sql.run('INSERT INTO guest_chat_messages (id, reservation_id, sender, message) VALUES (lower(hex(randomblob(16))), ?, ?, ?)', [reservationId, sender, message]);
+  await sql.run('INSERT INTO guest_chat_messages (id, reservation_id, sender, message) VALUES (?, ?, ?, ?)', [newId(), reservationId, sender, message]);
 }
 
 export async function getReservationForChat(token: string) {

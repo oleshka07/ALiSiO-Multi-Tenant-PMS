@@ -20,6 +20,8 @@ export async function listExchangeRates(_request: NextRequest): Promise<NextResp
       ORDER BY effective_from DESC, from_currency, to_currency
     `, [orgId]);
 
+    // UTC, because that is what SQLite's date('now') returned here.
+    const today = new Date().toISOString().slice(0, 10);
     const latest = await sql.rows<any>(`
       SELECT from_currency, to_currency, rate, effective_from
       FROM finance_exchange_rates fr
@@ -29,10 +31,10 @@ export async function listExchangeRates(_request: NextRequest): Promise<NextResp
           WHERE organization_id = fr.organization_id
             AND from_currency = fr.from_currency
             AND to_currency = fr.to_currency
-            AND effective_from <= date('now')
+            AND effective_from <= ?
         )
       ORDER BY from_currency, to_currency
-    `, [orgId]);
+    `, [orgId, today]);
 
     return NextResponse.json({ rates, latest });
   } catch (error: any) {
