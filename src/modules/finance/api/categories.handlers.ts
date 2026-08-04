@@ -34,8 +34,6 @@ interface CategoryRow {
   created_at: string;
 }
 
-const getOrgId = requireOrganizationId;
-
 async function countLinkedExpenseOps(categoryId: string): Promise<number> {
   const sql = getSql();
   const row = await sql.row<any>("SELECT COUNT(*) AS n FROM fin_operations WHERE category_id = ?", [categoryId]) as { n: number };
@@ -51,7 +49,7 @@ async function countChildren(categoryId: string): Promise<number> {
 export async function listCategories(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const opType = request.nextUrl.searchParams.get('op_type');
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
 
@@ -74,7 +72,7 @@ export async function listCategories(request: NextRequest): Promise<NextResponse
 export async function getCategoryTree(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
 
     const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = 1';
@@ -144,7 +142,7 @@ export async function createCategory(request: NextRequest): Promise<NextResponse
       finalClassifier = classifier;
     }
 
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const id = `ec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const maxOrder = await sql.row<any>("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM expense_categories WHERE organization_id = ? AND (parent_id IS ? OR parent_id = ?)", [orgId, parent_id, parent_id]) as { mx: number };
 

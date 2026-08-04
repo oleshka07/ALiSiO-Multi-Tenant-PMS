@@ -24,8 +24,6 @@ const ATTACH_ROOT = path.join(DATA_DIR, 'attachments');
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB per file
 const ALLOWED_MIME_PREFIXES = ['image/', 'application/pdf', 'application/vnd.', 'application/zip', 'text/'];
 
-const getOrgId = requireOrganizationId;
-
 function safeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 80);
 }
@@ -58,7 +56,7 @@ export async function uploadAttachment(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const { id: operationId } = await context.params;
 
     const op = await sql.row<any>("SELECT id FROM fin_operations WHERE id = ? AND organization_id = ?", [operationId, orgId]) as { id: string } | undefined;
@@ -115,7 +113,7 @@ export async function listOperationAttachments(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const { id: operationId } = await context.params;
 
     const rows = await sql.rows<any>(`
@@ -143,7 +141,7 @@ export async function downloadAttachment(
 ): Promise<Response> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const { id } = await context.params;
 
     const row = await sql.row<any>(`
@@ -183,7 +181,7 @@ export async function deleteAttachment(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const { id } = await context.params;
 
     const row = await sql.row<any>(`
@@ -210,7 +208,7 @@ export async function deleteAttachment(
 export async function getAttachmentCounts(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const idsParam = request.nextUrl.searchParams.get('ids') || '';
     const ids = idsParam.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 500);
     if (ids.length === 0) return NextResponse.json({ counts: {} });

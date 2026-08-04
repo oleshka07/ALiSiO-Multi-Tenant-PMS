@@ -10,8 +10,6 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-const SLOT_TTL_MINUTES = 15;
-
 export async function getWidgetServicesOptions() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
@@ -49,7 +47,7 @@ export async function getWidgetServices(request: NextRequest) {
           WHERE booking_session_id IS NOT NULL
             AND notes IS NULL
             AND created_at < datetime('now', '-' || ? || ' minutes')
-        `, [SLOT_TTL_MINUTES]);
+        `, [15]);
 
         const bookedSlots = await sql.rows<any>(`
           SELECT date, start_time, end_time, booked_count, max_capacity

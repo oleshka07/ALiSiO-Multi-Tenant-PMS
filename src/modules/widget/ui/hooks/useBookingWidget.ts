@@ -91,7 +91,7 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
       sessionId,
       eventType,
       page: '/booking',
-      utmParams: resolvedUtmParams,
+      resolvedUtmParams: resolvedUtmParams,
       lang,
       ...extra
     };
@@ -435,7 +435,6 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
       }
 
       // Use pre-resolved UTM params (captured via postMessage or own URL on mount)
-      const utmParams = resolvedUtmParams;
 
       const res = await fetch(`${API_BASE}/api/booking/reserve`, { 
         method:'POST', 
@@ -457,7 +456,7 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
           couponCode:offerApplied?.code||undefined, 
           extraCouponCode:extraCouponApplied?.code||undefined, 
           currency:availability?.units.find(u=>u.id===selectedUnitId)?.currency||siteCurrency||'CZK', 
-          utmParams,
+          resolvedUtmParams,
           handshakeToken,
           conversationId,
           lang,

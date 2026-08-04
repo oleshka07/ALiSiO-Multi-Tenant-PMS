@@ -6,8 +6,6 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const KINDS = ['client', 'supplier', 'employee', 'other'] as const;
 type Kind = typeof KINDS[number];
-
-const MAX_ALIASES = 50;
 const MAX_ALIAS_LEN = 100;
 
 interface CounterpartyRow {
@@ -40,8 +38,8 @@ function normalizeAliases(input: unknown): string[] {
   if (!Array.isArray(input)) {
     throw new Error('aliases must be an array of strings');
   }
-  if (input.length > MAX_ALIASES) {
-    throw new Error(`Максимум ${MAX_ALIASES} синонімів`);
+  if (input.length > 50) {
+    throw new Error(`Максимум ${50} синонімів`);
   }
   const seen = new Set<string>();
   const result: string[] = [];

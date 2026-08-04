@@ -4,8 +4,6 @@ import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
-const MAX_NAME_LEN = 50;
-
 const getOrgId = requireOrganizationId;
 
 export async function listTags(request: NextRequest): Promise<NextResponse> {
@@ -34,8 +32,8 @@ export async function createTag(request: NextRequest): Promise<NextResponse> {
     if (!name || typeof name !== 'string' || !name.trim()) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 });
     }
-    if (name.trim().length > MAX_NAME_LEN) {
-      return NextResponse.json({ error: `Назва тега не може бути довшою за ${MAX_NAME_LEN} символів` }, { status: 400 });
+    if (name.trim().length > 50) {
+      return NextResponse.json({ error: `Назва тега не може бути довшою за ${50} символів` }, { status: 400 });
     }
 
     const orgId = getOrgId(getDb());
@@ -80,8 +78,8 @@ export async function updateTag(
       if (typeof name !== 'string' || !name.trim()) {
         return NextResponse.json({ error: 'name must be a non-empty string' }, { status: 400 });
       }
-      if (name.trim().length > MAX_NAME_LEN) {
-        return NextResponse.json({ error: `Назва тега не може бути довшою за ${MAX_NAME_LEN} символів` }, { status: 400 });
+      if (name.trim().length > 50) {
+        return NextResponse.json({ error: `Назва тега не може бути довшою за ${50} символів` }, { status: 400 });
       }
       fields.push('name = ?'); params.push(name.trim());
     }

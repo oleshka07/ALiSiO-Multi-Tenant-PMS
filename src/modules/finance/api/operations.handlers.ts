@@ -52,8 +52,6 @@ export async function writeOperationAudit(
   }
 }
 
-const getOrgId = requireOrganizationId;
-
 async function computeAmountCompany(amount: number, currency: string, paidAt: string): Promise<number> {
   const sql = getSql();
   if (currency === 'CZK') return amount;
@@ -130,7 +128,7 @@ async function enrichOperation(row: any): Promise<any> {
 export async function listOperations(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const sp = request.nextUrl.searchParams;
     const opTypeRaw = sp.get('op_type');
     const opTypes = opTypeRaw ? opTypeRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -517,7 +515,7 @@ export async function createOperationInTx(
 export async function createOperation(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const body = (await request.json()) as CreateOperationInput;
     const actor = await getOptionalActor();
     const id = await createOperationInTx(orgId, body, actor);
@@ -739,7 +737,7 @@ export async function duplicateOperation(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const { id } = await context.params;
     const src = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]) as any;
     if (!src) return NextResponse.json({ error: 'Operation not found' }, { status: 404 });
@@ -781,7 +779,7 @@ export async function applyRecurringSuggestion(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
     const confirm = body.confirm !== false;

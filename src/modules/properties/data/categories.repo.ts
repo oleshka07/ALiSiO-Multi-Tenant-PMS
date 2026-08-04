@@ -50,14 +50,17 @@ export async function createCategory(organizationId: string, input: CreateCatego
   if (!await ownsProperty(organizationId, input.property_id)) return null;
 
   const sql = getSql();
-  const result = await sql.run(`
+  const result = await sql.row<any>(
+    `
     INSERT INTO categories (property_id, name, type, description, sort_order, icon, color, show_in_tasks, show_in_finance, show_in_booking)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [input.property_id, input.name, input.type, input.description ?? null,
+    RETURNING *`,
+    [input.property_id, input.name, input.type, input.description ?? null,
     input.sort_order ?? 0, input.icon ?? null, input.color ?? null,
     input.show_in_tasks ?? 1, input.show_in_finance ?? 0,
-    input.show_in_booking ?? 1]);
-  return await sql.row<any>('SELECT * FROM categories WHERE rowid = ?', [result.lastId]);
+    input.show_in_booking ?? 1],
+  );
+  return result;
 }
 
 export async function updateCategory(organizationId: string, id: string, fields: Record<string, unknown>) {

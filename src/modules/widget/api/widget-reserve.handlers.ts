@@ -237,8 +237,6 @@ export async function createWidgetReservation(request: NextRequest) {
         return NextResponse.json({ error: 'This unit is blocked for the selected dates' }, { status: 409, headers: CORS_HEADERS });
       }
     }
-
-    const STUB_PRICE = 2500;
     let prices: any[] = [];
     if (hasPriceCalendar) {
       prices = await sql.rows<any>(`
@@ -260,7 +258,7 @@ export async function createWidgetReservation(request: NextRequest) {
       const dayOfWeek = current.getDay();
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6;
       const priceEntry = priceMap.get(dateStr);
-      let dayPrice = STUB_PRICE;
+      let dayPrice = 2500;
       if (priceOverride != null) {
         dayPrice = priceOverride;
       } else if (priceEntry) {

@@ -37,13 +37,14 @@ export async function createTag(input: CreateTagInput): Promise<TaskTag> {
   const sql = getSql();
   const orgId = getOrgId();
 
-  const result = await sql.run(`
+  const result = await sql.row<any>(
+    `
     INSERT INTO task_tags (organization_id, name, color)
     VALUES (?, ?, ?)
-  `, [orgId, input.name, input.color ?? '#6c7086']);
-
-  const row = await sql.row<{ id: string }>('SELECT id FROM task_tags WHERE rowid = ?', [result.lastId]);
-  return (await getTagById(row!.id))!;
+    RETURNING id`,
+    [orgId, input.name, input.color ?? '#6c7086'],
+  );
+  return (await getTagById(result!.id))!;
 }
 
 // ─── Update tag ──────────────────────────────────────────

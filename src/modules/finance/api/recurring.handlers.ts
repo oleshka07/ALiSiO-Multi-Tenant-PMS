@@ -8,12 +8,10 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 const SCHEDULES = ['daily', 'weekly', 'monthly', 'yearly'] as const;
 const OP_TYPES = ['income', 'expense', 'transfer'] as const;
 
-const getOrgId = requireOrganizationId;
-
 export async function listRecurringTemplates(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const includeInactive = request.nextUrl.searchParams.get('archived') === '1';
     const where = includeInactive ? 't.organization_id = ?' : 't.organization_id = ? AND t.is_active = 1';
     const rows = await sql.rows<any>(`
@@ -68,7 +66,7 @@ export async function createRecurringTemplate(request: NextRequest): Promise<Nex
       return NextResponse.json({ error: 'transfer requires both accounts' }, { status: 400 });
     }
 
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const id = `rt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     await sql.run(`
       INSERT INTO fin_recurring_templates

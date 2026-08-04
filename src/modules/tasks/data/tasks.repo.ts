@@ -185,13 +185,15 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
   const sql = getSql();
   const orgId = getOrgId();
 
-  const result = await sql.run(`
+  const result = await sql.row<any>(
+    `
     INSERT INTO tasks (
       organization_id, title, description, project_id, parent_id,
       status, priority, due_date, due_time, assignee_id,
       created_by, property_id, sort_order
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [
+    RETURNING id`,
+    [
     orgId,
     input.title,
     input.description ?? null,
@@ -205,10 +207,9 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
     input.created_by ?? null,
     input.property_id ?? null,
     input.sort_order ?? 0,
-  ]);
-
-  const created = await sql.row<{ id: string }>('SELECT id FROM tasks WHERE rowid = ?', [result.lastId]);
-  return (await getTaskById(created!.id))!;
+  ],
+  );
+  return (await getTaskById(result!.id))!;
 }
 
 // ─── Update task ──────────────────────────────────────────

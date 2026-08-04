@@ -66,7 +66,6 @@ export async function isFinanceUnlocked(sessionId: string | undefined): Promise<
 }
 
 // ─── Brute-force throttle for unlock attempts (in-memory, per user) ──────────
-const MAX_UNLOCK_ATTEMPTS = 5;
 const UNLOCK_WINDOW_MS = 15 * 60 * 1000;
 const unlockAttempts = new Map<string, { count: number; resetAt: number }>();
 
@@ -79,7 +78,7 @@ export function checkUnlockRateLimit(userId: string): boolean {
     return true;
   }
   entry.count++;
-  return entry.count <= MAX_UNLOCK_ATTEMPTS;
+  return entry.count <= 5;
 }
 
 export function clearUnlockRateLimit(userId: string): void {

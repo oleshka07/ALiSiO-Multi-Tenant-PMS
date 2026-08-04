@@ -126,23 +126,21 @@ export function buildPdf(tables: PdfTable[]): Promise<Buffer> {
       const widths = t.colWidths && t.colWidths.length === t.headers.length
         ? t.colWidths
         : t.headers.map(() => pageWidth / t.headers.length);
-
-      const rowHeight = 18;
       const startY = doc.y;
       let y = startY;
 
       doc.fontSize(9).font('Helvetica-Bold').fillColor('#1F2937');
-      doc.rect(doc.page.margins.left, y - 2, pageWidth, rowHeight).fill('#EFF1F5').fillColor('#1F2937');
+      doc.rect(doc.page.margins.left, y - 2, pageWidth, 18).fill('#EFF1F5').fillColor('#1F2937');
       let x = doc.page.margins.left;
       t.headers.forEach((h, i) => {
         doc.text(h, x + 4, y + 2, { width: widths[i] - 8, ellipsis: true });
         x += widths[i];
       });
-      y += rowHeight;
+      y += 18;
 
       doc.font('Helvetica').fontSize(8).fillColor('#000');
       for (const row of t.rows) {
-        if (y + rowHeight > doc.page.height - doc.page.margins.bottom) {
+        if (y + 18 > doc.page.height - doc.page.margins.bottom) {
           doc.addPage();
           y = doc.page.margins.top;
         }
@@ -160,13 +158,13 @@ export function buildPdf(tables: PdfTable[]): Promise<Buffer> {
           x += widths[i];
         });
         doc.fillColor('#000');
-        y += rowHeight;
+        y += 18;
       }
 
       if (t.totalsRow) {
-        if (y + rowHeight > doc.page.height - doc.page.margins.bottom) { doc.addPage(); y = doc.page.margins.top; }
+        if (y + 18 > doc.page.height - doc.page.margins.bottom) { doc.addPage(); y = doc.page.margins.top; }
         doc.font('Helvetica-Bold').fontSize(9);
-        doc.rect(doc.page.margins.left, y - 2, pageWidth, rowHeight).fill('#E0E7FF').fillColor('#1F2937');
+        doc.rect(doc.page.margins.left, y - 2, pageWidth, 18).fill('#E0E7FF').fillColor('#1F2937');
         x = doc.page.margins.left;
         t.totalsRow.forEach((cell, i) => {
           const text = cell === null || cell === undefined ? '' : String(cell);

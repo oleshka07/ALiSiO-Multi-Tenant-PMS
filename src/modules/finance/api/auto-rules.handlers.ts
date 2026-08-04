@@ -10,8 +10,6 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const OP_TYPES = ['income', 'expense', 'any'] as const;
 
-const getOrgId = requireOrganizationId;
-
 async function enrichRule(row: AutoRuleRow) {
   const sql = getSql();
   const parsed = parseRule(row);
@@ -45,7 +43,7 @@ function validateActions(actions: unknown): Actions {
 export async function listAutoRules(_request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const rows = await sql.rows<any>(`
       SELECT * FROM fin_auto_rules
       WHERE organization_id = ?
@@ -79,7 +77,7 @@ export async function createAutoRule(request: NextRequest): Promise<NextResponse
       return NextResponse.json({ error: e.message }, { status: 400 });
     }
 
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const id = `ar_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const maxOrder = await sql.row<any>("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM fin_auto_rules WHERE organization_id = ?", [orgId]) as { mx: number };
 
@@ -179,7 +177,7 @@ export async function toggleAutoRule(
 export async function applyAutoRulesToOperations(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const body = await request.json().catch(() => ({}));
     const { operation_ids, from, to, op_type } = body;
 
@@ -219,7 +217,7 @@ export async function applyAutoRulesToOperations(request: NextRequest): Promise<
 export async function autoMatchCounterpartiesAllOps(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const body = await request.json().catch(() => ({}));
     const onlyUnmatched = body.only_unmatched !== false;
 

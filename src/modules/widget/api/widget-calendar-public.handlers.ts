@@ -206,7 +206,6 @@ export async function getWidgetCalendar(request: NextRequest) {
     }
 
     // ── 9. Build day array ──────────────────────────────────────────────────
-    const STUB_PRICE = 2500;
     const days: { date: string; status: 'available' | 'booked' | 'partial'; price: number | null }[] = [];
 
     for (let d = 1; d <= daysInMonth; d++) {
@@ -231,7 +230,7 @@ export async function getWidgetCalendar(request: NextRequest) {
       const pe = priceMap.get(dateStr);
       let price: number | null = pe
         ? (isWeekend && pe.min_weekend_price != null ? pe.min_weekend_price : pe.min_price)
-        : (unitTypes.length > 0 ? STUB_PRICE : null);
+        : (unitTypes.length > 0 ? 2500 : null);
 
       if (activeRatePlan) {
         if (status !== 'booked') {

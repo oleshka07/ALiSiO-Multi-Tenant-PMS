@@ -58,10 +58,12 @@ export async function createProject(input: CreateProjectInput): Promise<TaskProj
   const sql = getSql();
   const orgId = getOrgId();
 
-  const result = await sql.run(`
+  const result = await sql.row<any>(
+    `
     INSERT INTO task_projects (organization_id, name, description, color, icon, parent_id, property_id, sort_order)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, [
+    RETURNING id`,
+    [
     orgId,
     input.name,
     input.description ?? null,
@@ -70,10 +72,9 @@ export async function createProject(input: CreateProjectInput): Promise<TaskProj
     input.parent_id ?? null,
     input.property_id ?? null,
     input.sort_order ?? 0,
-  ]);
-
-  const row = await sql.row<{ id: string }>('SELECT id FROM task_projects WHERE rowid = ?', [result.lastId]);
-  return (await getProjectById(row!.id))!;
+  ],
+  );
+  return (await getProjectById(result!.id))!;
 }
 
 // ─── Update project ──────────────────────────────────────

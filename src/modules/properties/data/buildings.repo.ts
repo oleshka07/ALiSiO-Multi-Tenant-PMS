@@ -46,11 +46,14 @@ export async function createBuilding(organizationId: string, input: CreateBuildi
   if (!await ownsViaProperty(organizationId, 'categories', input.category_id)) return null;
 
   const sql = getSql();
-  const result = await sql.run(`
+  const result = await sql.row<any>(
+    `
     INSERT INTO buildings (category_id, property_id, name, code, description, sort_order)
     VALUES (?, ?, ?, ?, ?, ?)
-  `, [input.category_id, input.property_id, input.name, input.code, input.description ?? null, input.sort_order ?? 0]);
-  return await sql.row<any>('SELECT * FROM buildings WHERE rowid = ?', [result.lastId]);
+    RETURNING *`,
+    [input.category_id, input.property_id, input.name, input.code, input.description ?? null, input.sort_order ?? 0],
+  );
+  return result;
 }
 
 export async function updateBuilding(organizationId: string, id: string, fields: Record<string, unknown>) {

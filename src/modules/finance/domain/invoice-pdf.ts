@@ -218,7 +218,6 @@ export async function generateInvoicePdf(data: InvoicePdfInput): Promise<Buffer>
     //  reference: company name at y=29.5, FAKTURA at same y, h=13
     // ═══════════════════════════════════════════════════════════════════════
     const HDR_Y   = 28;
-    const HDR_BOT = 48;
 
     B(13).fillColor(BLACK)
       .text(SUPPLIER.name, ML, HDR_Y, { lineBreak: false });
@@ -233,7 +232,7 @@ export async function generateInvoicePdf(data: InvoicePdfInput): Promise<Buffer>
         width: CR - ML, align: 'right', lineBreak: false,
       });
 
-    hline(HDR_BOT);
+    hline(48);
 
     // ═══════════════════════════════════════════════════════════════════════
     //  2. MAIN BLOCK — single bordered rect with inner dividers
@@ -241,7 +240,7 @@ export async function generateInvoicePdf(data: InvoicePdfInput): Promise<Buffer>
     //  Right: Variabilní/Odběratel (top) + empty (bottom)
     //  reference: section 1 y=50–170, section 2 y=185–240
     // ═══════════════════════════════════════════════════════════════════════
-    const MB_Y = HDR_BOT + 2;  // main block top
+    const MB_Y = 48 + 2;  // main block top
 
     // ── Left top: Dodavatel content ──────────────────────────────────────
     let lTopLines = [

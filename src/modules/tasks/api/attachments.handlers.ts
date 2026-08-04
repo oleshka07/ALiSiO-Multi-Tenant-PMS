@@ -11,7 +11,7 @@ import { withPermission, notFound, type Actor } from '@core/auth/session';
  * This lived in the route file and wrote SQL against the tasks table from
  * outside the module — the reach that makes a module impossible to lift out.
  * It was also unscoped in all three directions: GET listed attachments for any
- * task id, POST attached a file to any task, and DELETE removed any attachment
+ * task id, POST attached a file to any task, and DELETE removed any result
  * by id. GET and DELETE did not look at the session at all.
  */
 
@@ -82,16 +82,17 @@ export const uploadTaskAttachment = withPermission('manage_tasks', async (
     const filename = `${baseName}_${Date.now()}${ext}`;
     fs.writeFileSync(path.join(UPLOAD_DIR, filename), Buffer.from(await file.arrayBuffer()));
 
-    const result = await sql.run(`
+    const result = await sql.row<any>(
+    `
       INSERT INTO task_attachments (task_id, organization_id, filename, url, file_size, content_type, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [taskId, actor.organizationId, file.name, `/api/uploads/tasks/${filename}`,
-           file.size, file.type, actor.user.id]);
-
-    const attachment = await sql.row<any>('SELECT * FROM task_attachments WHERE rowid = ?', [result.lastId]);
-    return NextResponse.json(attachment, { status: 201 });
+    RETURNING *`,
+    [taskId, actor.organizationId, file.name, `/api/uploads/tasks/${filename}`,
+           file.size, file.type, actor.user.id],
+  );
+    return NextResponse.json(result, { status: 201 });
   } catch (error: any) {
-    console.error('POST task attachment error:', error?.message || error);
+    console.error('POST task result error:', error?.message || error);
     return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
   }
 });
@@ -107,22 +108,22 @@ export const deleteTaskAttachment = withPermission('manage_tasks', async (
     }
 
     const sql = getSql();
-    const attachment = await sql.row<any>('SELECT * FROM task_attachments WHERE id = ? AND task_id = ? AND organization_id = ?', [attachment_id, taskId, actor.organizationId]) as any;
-    if (!attachment) return notFound();
+    const result = await sql.row<any>('SELECT * FROM task_attachments WHERE id = ? AND task_id = ? AND organization_id = ?', [attachment_id, taskId, actor.organizationId]) as any;
+    if (!result) return notFound();
 
     // The row goes whether or not the file is still on disk; a missing file
-    // must not leave an attachment nobody can remove.
-    const filename = String(attachment.url || '').split('/').pop();
+    // must not leave an result nobody can remove.
+    const filename = String(result.url || '').split('/').pop();
     if (filename) {
       const filePath = path.join(UPLOAD_DIR, filename);
       try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); }
-      catch (e: any) { console.error('task attachment file not removed:', e?.message); }
+      catch (e: any) { console.error('task result file not removed:', e?.message); }
     }
     await sql.run('DELETE FROM task_attachments WHERE id = ? AND organization_id = ?', [attachment_id, actor.organizationId]);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('DELETE task attachment error:', error?.message || error);
-    return NextResponse.json({ error: 'Failed to delete attachment' }, { status: 500 });
+    console.error('DELETE task result error:', error?.message || error);
+    return NextResponse.json({ error: 'Failed to delete result' }, { status: 500 });
   }
 });

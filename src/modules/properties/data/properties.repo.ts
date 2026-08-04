@@ -100,14 +100,17 @@ export interface CreatePropertyInput {
 
 export async function createProperty(organizationId: string, input: CreatePropertyInput) {
   const sql = getSql();
-  const result = await sql.run(`
+  const result = await sql.row<any>(
+    `
     INSERT INTO properties (organization_id, name, slug, address, city, country, phone, email, check_in_time, check_out_time)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [organizationId, input.name, input.slug,
+    RETURNING *`,
+    [organizationId, input.name, input.slug,
     input.address ?? null, input.city ?? null, input.country ?? 'CZ',
     input.phone ?? null, input.email ?? null,
-    input.check_in_time ?? '15:00', input.check_out_time ?? '11:00']);
-  return await sql.row<any>('SELECT * FROM properties WHERE rowid = ?', [result.lastId]);
+    input.check_in_time ?? '15:00', input.check_out_time ?? '11:00'],
+  );
+  return result;
 }
 
 export async function updateProperty(organizationId: string, id: string, fields: Record<string, unknown>) {

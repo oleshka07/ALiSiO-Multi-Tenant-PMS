@@ -76,13 +76,16 @@ export async function createUnit(organizationId: string, input: CreateUnitInput)
   if (!await ownsAllRefs(organizationId, input)) return null;
 
   const sql = getSql();
-  const result = await sql.run(`
+  const result = await sql.row<any>(
+    `
     INSERT INTO units (unit_type_id, property_id, category_id, building_id, name, code, floor, zone, beds, notes, sort_order)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [input.unit_type_id, input.property_id, input.category_id, input.building_id ?? null,
+    RETURNING *`,
+    [input.unit_type_id, input.property_id, input.category_id, input.building_id ?? null,
     input.name, input.code, input.floor ?? null, input.zone ?? null,
-    input.beds ?? 0, input.notes ?? null, input.sort_order ?? 0]);
-  return await sql.row<any>('SELECT * FROM units WHERE rowid = ?', [result.lastId]);
+    input.beds ?? 0, input.notes ?? null, input.sort_order ?? 0],
+  );
+  return result;
 }
 
 export interface BulkCreateUnitsInput {

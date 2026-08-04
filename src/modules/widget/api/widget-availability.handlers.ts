@@ -216,7 +216,6 @@ export async function getAvailability(request: NextRequest) {
       const breakdown: { date: string; dayName: string; price: number; isWeekend: boolean }[] = [];
       let totalPrice = 0;
       let hasPricing = false;
-      const STUB_PRICE = 2500;
 
       if (hasDates && ciDate) {
         if (activeBundle && activeBundle.is_active) {
@@ -266,7 +265,7 @@ export async function getAvailability(request: NextRequest) {
             const isWeekend = dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6;
             const priceEntry = priceMap.get(dateStr);
 
-            let dayPrice = STUB_PRICE;
+            let dayPrice = 2500;
             if (unit.price_override != null) {
               dayPrice = unit.price_override;
               hasPricing = true;

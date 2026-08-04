@@ -103,7 +103,6 @@ export async function getWidgetConfig(request: NextRequest) {
           defaultUnitTypeId = ut.id;
 
           const hasPriceCalendar = existingTables.has('price_calendar');
-          const STUB_PRICE = 2500;
           let total = 0;
 
           if (hasPriceCalendar) {
@@ -124,7 +123,7 @@ export async function getWidgetConfig(request: NextRequest) {
                 const dayOfWeek = current.getDay();
                 const isWeekend = dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6;
                 const priceEntry = priceMap.get(dateStr);
-                let dayPrice = STUB_PRICE;
+                let dayPrice = 2500;
                 if (priceEntry) {
                   dayPrice = isWeekend && priceEntry.weekend_price != null
                     ? priceEntry.weekend_price : priceEntry.base_price;
@@ -132,9 +131,9 @@ export async function getWidgetConfig(request: NextRequest) {
                 total += dayPrice;
                 current.setDate(current.getDate() + 1);
               }
-            } catch { total = STUB_PRICE * 2; }
+            } catch { total = 2500 * 2; }
           } else {
-            total = STUB_PRICE * 2;
+            total = 2500 * 2;
           }
           defaultPrice = total;
           break;

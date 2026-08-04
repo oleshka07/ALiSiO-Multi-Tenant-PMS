@@ -12,8 +12,6 @@ import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
-const orgId = requireOrganizationId;
-
 interface SectionResult {
   key: string;
   title: string;
@@ -32,7 +30,7 @@ async function safeRun<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
 export async function getFinanceAudit(_request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const org = orgId(getDb());
+    const org = requireOrganizationId(getDb());
     const sections: SectionResult[] = [];
 
     // ─── 1. Multi-currency leak: amount vs amount_company ──────

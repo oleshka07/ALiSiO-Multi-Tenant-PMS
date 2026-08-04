@@ -6,8 +6,6 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const ALLOWED_TYPES = ['cash', 'bank', 'card', 'investment', 'clearing', 'other'];
 
-const getOrgId = requireOrganizationId;
-
 async function selectAccountsWithBalance(orgId: string, opts: { includeArchived?: boolean } = {}): Promise<any[]> {
   const sql = getSql();
   const where = opts.includeArchived ? 'WHERE fa.organization_id = ?' : 'WHERE fa.organization_id = ? AND fa.is_active = 1';
@@ -48,7 +46,7 @@ async function countLinkedOperations(accountId: string): Promise<number> {
 export async function listAccounts(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
     const accounts = await selectAccountsWithBalance(orgId, { includeArchived });
     return NextResponse.json(accounts);
@@ -85,7 +83,7 @@ export async function createAccount(request: NextRequest): Promise<NextResponse>
       return NextResponse.json({ error: 'credit_limit is only allowed for card accounts' }, { status: 400 });
     }
 
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const id = `acct_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     await sql.run(`
       INSERT INTO finance_accounts
@@ -203,7 +201,7 @@ export async function reconcileAccount(
       return NextResponse.json({ error: 'actual_balance must be a number' }, { status: 400 });
     }
 
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const accounts = await selectAccountsWithBalance(orgId, { includeArchived: true });
     const account = accounts.find((a: any) => a.id === id);
     if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 404 });

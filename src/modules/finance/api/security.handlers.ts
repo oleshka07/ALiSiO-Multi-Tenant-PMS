@@ -6,8 +6,6 @@ import {
   checkUnlockRateLimit, clearUnlockRateLimit,
 } from './_finance-unlock';
 
-const MIN_LEN = 8;
-
 // GET /api/finance/security/status
 export async function getFinanceSecurityStatus(_request?: Request): Promise<Response> {
   const r = await resolveFinanceOwner();
@@ -30,9 +28,9 @@ export async function setupFinancePassphrase(request: Request): Promise<Response
   }
   const body = await request.json().catch(() => ({}));
   const passphrase = typeof body?.passphrase === 'string' ? body.passphrase : '';
-  if (passphrase.length < MIN_LEN) {
+  if (passphrase.length < 8) {
     return NextResponse.json(
-      { error: `Пароль має містити щонайменше ${MIN_LEN} символів` },
+      { error: `Пароль має містити щонайменше ${8} символів` },
       { status: 400 },
     );
   }

@@ -3,8 +3,6 @@ import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
-const orgId = requireOrganizationId;
-
 function mapExpense(cnameLower: string, commentLower: string, classifier: string, stdGroup: string): { rowId: string, childName: string } {
     const is = (searchStr: string) => cnameLower.includes(searchStr) || commentLower.includes(searchStr);
     
@@ -63,7 +61,7 @@ function mapExpense(cnameLower: string, commentLower: string, classifier: string
 export async function getPnl2(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const org = orgId(getDb());
+    const org = requireOrganizationId(getDb());
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month') || new Date().toISOString().substring(0, 7);
 

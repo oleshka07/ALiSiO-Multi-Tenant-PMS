@@ -61,16 +61,19 @@ export async function createUnitType(organizationId: string, input: CreateUnitTy
   if (input.building_id && !await ownsViaProperty(organizationId, 'buildings', input.building_id)) return null;
 
   const sql = getSql();
-  const result = await sql.run(`
+  const result = await sql.row<any>(
+    `
     INSERT INTO unit_types (property_id, category_id, building_id, name, code, description,
       max_adults, max_children, max_occupancy, base_occupancy,
       beds_single, beds_double, beds_sofa, extra_bed_available, photos, sort_order)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [input.property_id, input.category_id, input.building_id ?? null, input.name, input.code, input.description ?? null,
+    RETURNING *`,
+    [input.property_id, input.category_id, input.building_id ?? null, input.name, input.code, input.description ?? null,
     input.max_adults ?? 2, input.max_children ?? 2, input.max_occupancy ?? 4, input.base_occupancy ?? 2,
     input.beds_single ?? 0, input.beds_double ?? 1, input.beds_sofa ?? 0, input.extra_bed_available ? 1 : 0, 
-    input.photos ?? null, input.sort_order ?? 0]);
-  return await sql.row<any>('SELECT * FROM unit_types WHERE rowid = ?', [result.lastId]);
+    input.photos ?? null, input.sort_order ?? 0],
+  );
+  return result;
 }
 
 export async function updateUnitType(organizationId: string, id: string, fields: Record<string, unknown>) {

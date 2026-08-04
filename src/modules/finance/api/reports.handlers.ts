@@ -38,7 +38,7 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
     const month = searchParams.get('month') || new Date().toISOString().substring(0, 7);
     // Capex, accruals and depreciation all carry organization_id and none of
     // the three used it: EBITDA was computed from every company's numbers.
-    const org = orgId(getDb());
+    const org = requireOrganizationId(getDb());
 
     const revenue = await monthRevenueSql(month, org);
     const expenses = await monthExpensesSql(month, org);
@@ -224,12 +224,10 @@ function generateMonthList(from: string, to: string): string[] {
   return result;
 }
 
-const orgId = requireOrganizationId;
-
 export async function getCashflowMatrix(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const org = orgId(getDb());
+    const org = requireOrganizationId(getDb());
     const { searchParams } = new URL(request.url);
     const today = new Date();
     const defaultTo = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -375,7 +373,7 @@ export async function getCashflowMatrix(request: NextRequest): Promise<NextRespo
 export async function getPnlMatrix(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const org = orgId(getDb());
+    const org = requireOrganizationId(getDb());
     const { searchParams } = new URL(request.url);
     const today = new Date();
     const defaultTo = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -539,7 +537,7 @@ export async function getFinancialIndicators(request: NextRequest): Promise<Next
 
     // Canonical definitions (money-metrics): revenue nets refunds and
     // excludes financing inflows — same number as the overview shows.
-    const mm = await getMonthMoney(orgId(getDb()), month);
+    const mm = await getMonthMoney(requireOrganizationId(getDb()), month);
     const revenue = mm.revenue;
     const cogs = mm.cogs;
     const variable = mm.variable;
@@ -568,7 +566,7 @@ export async function getFinancialIndicators(request: NextRequest): Promise<Next
 export async function getBalanceSheet(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const org = orgId(getDb());
+    const org = requireOrganizationId(getDb());
     const { searchParams } = new URL(request.url);
     const asOf = searchParams.get('as_of') || new Date().toISOString().substring(0, 10);
 
@@ -610,7 +608,7 @@ export async function getBalanceSheet(request: NextRequest): Promise<NextRespons
       SELECT COALESCE(SUM(COALESCE(expected_net, gross_amount, 0)), 0) AS total, COUNT(*) AS cnt
       FROM fin_channel_receivables
       WHERE organization_id = ? AND status IN ('expected', 'in_statement')
-    `, [orgId(getDb())]) as { total: number; cnt: number };
+    `, [requireOrganizationId(getDb())]) as { total: number; cnt: number };
 
     // Guest prepayments for FUTURE stays: money received, service not yet
     // delivered — a liability until check-in (CZK)
@@ -661,7 +659,7 @@ export async function getBalanceSheet(request: NextRequest): Promise<NextRespons
 export async function getProjectProfitability(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const org = orgId(getDb());
+    const org = requireOrganizationId(getDb());
     const { searchParams } = new URL(request.url);
     const today = new Date();
     const defaultTo = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -743,7 +741,7 @@ export async function getProjectProfitability(request: NextRequest): Promise<Nex
 export async function getAccountStatement(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const org = orgId(getDb());
+    const org = requireOrganizationId(getDb());
     const { searchParams } = new URL(request.url);
     const accountId = searchParams.get('account_id');
     if (!accountId) return NextResponse.json({ error: 'account_id is required' }, { status: 400 });
@@ -805,7 +803,7 @@ export async function getAccountStatement(request: NextRequest): Promise<NextRes
 export async function getPlanFactReport(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const org = orgId(getDb());
+    const org = requireOrganizationId(getDb());
     const { searchParams } = new URL(request.url);
     const year = Number(searchParams.get('year') || new Date().getFullYear());
     const month = Number(searchParams.get('month') || new Date().getMonth() + 1);
@@ -878,7 +876,7 @@ export async function getPlanFactReport(request: NextRequest): Promise<NextRespo
 export async function getOperationsForDrillDown(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const org = orgId(getDb());
+    const org = requireOrganizationId(getDb());
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
     const categoryId = searchParams.get('category_id');

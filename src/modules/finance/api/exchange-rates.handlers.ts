@@ -4,8 +4,6 @@ import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
-const getOrgId = requireOrganizationId;
-
 function isIsoDate(value: any): boolean {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -15,7 +13,7 @@ const ISO_CURRENCY = /^[A-Z]{3}$/;
 export async function listExchangeRates(_request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const rates = await sql.rows<any>(`
       SELECT * FROM finance_exchange_rates
       WHERE organization_id = ?
@@ -64,7 +62,7 @@ export async function upsertExchangeRate(request: NextRequest): Promise<NextResp
       return NextResponse.json({ error: 'effective_from must be YYYY-MM-DD' }, { status: 400 });
     }
 
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
 
     if (id) {
       const existing = await sql.row<any>("SELECT * FROM finance_exchange_rates WHERE id = ? AND organization_id = ?", [id, orgId]);
@@ -114,7 +112,7 @@ export async function deleteExchangeRate(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const { id } = await context.params;
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
     const existing = await sql.row<any>("SELECT * FROM finance_exchange_rates WHERE id = ? AND organization_id = ?", [id, orgId]);
@@ -134,7 +132,7 @@ export async function deleteExchangeRate(
 export async function getCurrentRate(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = requireOrganizationId(getDb());
     const { searchParams } = new URL(request.url);
     const fromCur = (searchParams.get('from') || '').toUpperCase();
     const toCur = (searchParams.get('to') || 'CZK').toUpperCase();

@@ -4,7 +4,6 @@ import { verifyPassword, createSession } from '@core/auth';
 
 // ─── Login rate limiter (in-memory) ────────────────────────────────
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
-const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 function checkLoginRateLimit(ip: string): boolean {
@@ -15,7 +14,7 @@ function checkLoginRateLimit(ip: string): boolean {
     return true;
   }
   entry.count++;
-  return entry.count <= MAX_LOGIN_ATTEMPTS;
+  return entry.count <= 5;
 }
 
 // Cleanup stale entries every 30 minutes
