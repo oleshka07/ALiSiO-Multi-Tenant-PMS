@@ -58,7 +58,7 @@ export async function updateGuestPageConfig(request: NextRequest, { params }: { 
       }
 
       if (sets.length > 0) {
-        sets.push("updated_at = datetime('now')");
+        sets.push("updated_at = CURRENT_TIMESTAMP");
         values.push(unitTypeId);
         await sql.run(`UPDATE guest_page_config SET ${sets.join(', ')} WHERE unit_type_id = ?`, [...values]);
       }

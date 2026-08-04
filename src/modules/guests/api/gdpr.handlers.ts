@@ -103,7 +103,7 @@ export const eraseGuestData = withPermission('manage_guests', async (_request, {
         UPDATE guests
         SET email = NULL,
             phone = NULL,
-            updated_at = datetime('now')
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND organization_id = ?
       `, [id, actor.organizationId]);
 

@@ -226,7 +226,7 @@ export async function processReservation(
   if (reservation.status === 'cancelled') {
     if (existing) {
       await sql.run(`
-        UPDATE reservations SET status = 'cancelled', updated_at = datetime('now')
+        UPDATE reservations SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `, [existing.id]);
       // Enqueue availability sync (room is now free)
@@ -261,7 +261,7 @@ export async function processReservation(
         rate_rewriting_info = ?,
         cancellation_policy = ?,
         meal_plan = ?,
-        updated_at = datetime('now')
+        updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [guestId, unit?.id || null,
       reservation.checkIn, reservation.checkOut, nights,

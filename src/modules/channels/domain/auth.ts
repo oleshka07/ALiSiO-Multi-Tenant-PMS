@@ -68,7 +68,7 @@ export async function refreshToken(connectionId: string): Promise<string> {
   // Clear cached token
   await sql.run(`
     UPDATE channel_credentials SET access_token = NULL, token_expires_at = NULL,
-    updated_at = datetime('now')
+    updated_at = CURRENT_TIMESTAMP
     WHERE id = (SELECT credentials_id FROM channel_connections WHERE id = ?)
   `, [connectionId]);
 
@@ -125,7 +125,7 @@ async function fetchNewToken(
     const sql = getSql();
     await sql.run(`
       UPDATE channel_credentials
-      SET access_token = ?, token_expires_at = ?, updated_at = datetime('now')
+      SET access_token = ?, token_expires_at = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [result.jwt, expiresAt, credentialsId]);
 

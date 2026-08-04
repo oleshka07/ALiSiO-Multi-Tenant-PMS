@@ -184,7 +184,7 @@ export const updateReservation = withActor(async (request: NextRequest, { params
     }
 
     if (sets.length > 0) {
-      sets.push("updated_at = datetime('now')");
+      sets.push("updated_at = CURRENT_TIMESTAMP");
       values.push(id);
       const statement = `UPDATE reservations SET ${sets.join(', ')} WHERE id = ?`;
       console.log('[PATCH] SQL:', statement, 'values:', values);
@@ -265,7 +265,7 @@ export const updateReservation = withActor(async (request: NextRequest, { params
       if (body.nights) { cascadeFields.push('nights = ?'); cascadeValues.push(body.nights); }
       if (body.source) { cascadeFields.push('source = ?'); cascadeValues.push(body.source); }
       if (cascadeFields.length > 0) {
-        cascadeFields.push("updated_at = datetime('now')");
+        cascadeFields.push("updated_at = CURRENT_TIMESTAMP");
         cascadeValues.push(id);
         await sql.run(`UPDATE reservations SET ${cascadeFields.join(', ')} WHERE parent_id = ?`, [...cascadeValues]);
       }

@@ -78,8 +78,8 @@ export async function isPeriodLocked(sql: Sql, organizationId: string, series: s
 export async function lockPeriod(sql: Sql, organizationId: string, series: string, month: string): Promise<void> {
   await sql.tx(async (t) => {
     await t.run(
-      "INSERT INTO invoice_periods (organization_id, series, month, status, locked_at) VALUES (?, ?, ?, 'locked', datetime('now')) " +
-      "ON CONFLICT(organization_id, series, month) DO UPDATE SET status = 'locked', locked_at = datetime('now')",
+      "INSERT INTO invoice_periods (organization_id, series, month, status, locked_at) VALUES (?, ?, ?, 'locked', CURRENT_TIMESTAMP) " +
+      "ON CONFLICT(organization_id, series, month) DO UPDATE SET status = 'locked', locked_at = CURRENT_TIMESTAMP",
       [organizationId, series, month],
     );
     await t.run("UPDATE invoices SET locked = 1 WHERE organization_id = ? AND series = ? AND substr(COALESCE(period, issued_at), 1, 7) = ?", [organizationId, series, month]);

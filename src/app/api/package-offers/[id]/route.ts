@@ -31,7 +31,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       }
     }
     if (!sets.length) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
-    sets.push(`updated_at = datetime('now')`);
+    sets.push(`updated_at = CURRENT_TIMESTAMP`);
     vals.push(id);
     db.prepare(`UPDATE gift_card_bundles SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     return NextResponse.json({ ok: true });
@@ -46,7 +46,7 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { id } = await ctx.params;
     const db = getDb();
-    db.prepare(`UPDATE gift_card_bundles SET is_active = 0, updated_at = datetime('now') WHERE id = ?`).run(id);
+    db.prepare(`UPDATE gift_card_bundles SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(id);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 });

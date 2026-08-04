@@ -53,7 +53,7 @@ export const registerGuest = withActor(async (request: NextRequest, { params }: 
       guestId = existingGuest.id;
       await sql.run(`
         UPDATE guests SET first_name=?, last_name=?, date_of_birth=?, document_type=?,
-        document_number=?, nationality=?, country=?, address=?, updated_at=datetime('now')
+        document_number=?, nationality=?, country=?, address=?, updated_at=CURRENT_TIMESTAMP
         WHERE id=?
       `, [firstName, lastName, dateOfBirth || null, documentType || null,
         documentNumber, nationality || null, country || null, address || null, guestId]);
@@ -76,7 +76,7 @@ export const registerGuest = withActor(async (request: NextRequest, { params }: 
     const regId = `gr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     await sql.run(`
       INSERT INTO guest_registrations (id, reservation_id, guest_id, is_primary, registered_at)
-      VALUES (?, ?, ?, ?, datetime('now'))
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     `, [regId, id, guestId, isPrimary ? 1 : 0]);
 
     updateRegistrationStatus(id);

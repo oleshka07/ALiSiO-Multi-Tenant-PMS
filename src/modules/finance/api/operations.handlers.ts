@@ -588,7 +588,7 @@ export async function updateOperation(
       fields.push('updated_by_user_id = ?');
       params.push(actor.id);
     }
-    fields.push("updated_at = datetime('now')");
+    fields.push("updated_at = CURRENT_TIMESTAMP");
 
     if (fields.length === 1) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
     params.push(id);
@@ -684,7 +684,7 @@ export async function mergeOperations(request: NextRequest): Promise<NextRespons
 
     await sql.run(`
       UPDATE fin_operations 
-      SET op_type = 'transfer', account_to_id = ?, category_id = NULL, updated_at = datetime('now')
+      SET op_type = 'transfer', account_to_id = ?, category_id = NULL, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [incOp.account_to_id, expOp.id]);
 
@@ -813,7 +813,7 @@ export async function applyRecurringSuggestion(
           counterparty_id = COALESCE(?, counterparty_id),
           comment = CASE WHEN comment IS NULL OR comment = '' THEN ? ELSE comment END,
           suggested_recurring_id = NULL,
-          updated_at = datetime('now')
+          updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [tpl.category_id, tpl.project_id, tpl.counterparty_id, tpl.comment, id]);
 

@@ -129,7 +129,7 @@ export async function updateAutoRule(
     if (body.is_active !== undefined) { fields.push('is_active = ?'); params.push(body.is_active ? 1 : 0); }
     if (body.stop_on_match !== undefined) { fields.push('stop_on_match = ?'); params.push(body.stop_on_match ? 1 : 0); }
     if (body.sort_order !== undefined) { fields.push('sort_order = ?'); params.push(Number(body.sort_order) || 0); }
-    fields.push("updated_at = datetime('now')");
+    fields.push("updated_at = CURRENT_TIMESTAMP");
     if (fields.length === 1) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
     params.push(id);
@@ -168,7 +168,7 @@ export async function toggleAutoRule(
     const row = await sql.row<any>("SELECT is_active FROM fin_auto_rules WHERE id = ?", [id]) as { is_active: number } | undefined;
     if (!row) return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
     const next = typeof body.is_active === 'boolean' ? (body.is_active ? 1 : 0) : (row.is_active ? 0 : 1);
-    await sql.run("UPDATE fin_auto_rules SET is_active = ?, updated_at = datetime('now') WHERE id = ?", [next, id]);
+    await sql.run("UPDATE fin_auto_rules SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [next, id]);
     const updated = await sql.row<any>("SELECT * FROM fin_auto_rules WHERE id = ?", [id]) as AutoRuleRow;
     return NextResponse.json(await enrichRule(updated));
   } catch (error: any) {

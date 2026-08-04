@@ -119,7 +119,7 @@ export async function dequeueJob(): Promise<{
   // Mark as processing
   await sql.run(`
     UPDATE ari_sync_queue
-    SET status = 'processing', attempts = attempts + 1, updated_at = datetime('now')
+    SET status = 'processing', attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `, [job.id]);
 
@@ -143,7 +143,7 @@ export async function dequeueJob(): Promise<{
 export async function markCompleted(jobId: string): Promise<void> {
   const sql = getSql();
   await sql.run(`
-    UPDATE ari_sync_queue SET status = 'completed', updated_at = datetime('now')
+    UPDATE ari_sync_queue SET status = 'completed', updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `, [jobId]);
 }
@@ -159,14 +159,14 @@ export async function markFailed(jobId: string, error: string): Promise<void> {
     // Re-queue with lower priority (delay retry)
     await sql.run(`
       UPDATE ari_sync_queue
-      SET status = 'pending', last_error = ?, priority = priority + 1, updated_at = datetime('now')
+      SET status = 'pending', last_error = ?, priority = priority + 1, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [error, jobId]);
   } else {
     // Permanently failed
     await sql.run(`
       UPDATE ari_sync_queue
-      SET status = 'failed', last_error = ?, updated_at = datetime('now')
+      SET status = 'failed', last_error = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [error, jobId]);
   }

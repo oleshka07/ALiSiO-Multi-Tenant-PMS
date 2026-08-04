@@ -233,7 +233,7 @@ export async function updateTask(id: string, fields: Record<string, unknown>): P
 
   // Auto-set completed_at when status changes to done
   if (fields.status === 'done' && fields.completed_at === undefined) {
-    updates.push("completed_at = datetime('now')");
+    updates.push("completed_at = CURRENT_TIMESTAMP");
   }
   // Clear completed_at when moving out of done
   if (fields.status && fields.status !== 'done' && fields.completed_at === undefined) {
@@ -242,7 +242,7 @@ export async function updateTask(id: string, fields: Record<string, unknown>): P
 
   if (updates.length === 0) return null;
 
-  updates.push("updated_at = datetime('now')");
+  updates.push("updated_at = CURRENT_TIMESTAMP");
   values.push(id, getOrgId());
 
   await sql.run(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ? AND organization_id = ?`, values);
@@ -288,9 +288,9 @@ export async function toggleTaskStatus(id: string): Promise<Task | null> {
 
   const newStatus = task.status === 'done' ? 'todo' : 'done';
 
-  const completedAt = newStatus === 'done' ? "datetime('now')" : 'NULL';
+  const completedAt = newStatus === 'done' ? "CURRENT_TIMESTAMP" : 'NULL';
   await sql.run(
-    `UPDATE tasks SET status = ?, completed_at = ${completedAt}, updated_at = datetime('now') WHERE id = ? AND organization_id = ?`,
+    `UPDATE tasks SET status = ?, completed_at = ${completedAt}, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?`,
     [newStatus, id, org],
   );
 
@@ -305,7 +305,7 @@ export async function reorderTasks(updates: { id: string; sort_order: number }[]
   await sql.tx(async (t) => {
     for (const u of updates) {
       await t.run(
-        "UPDATE tasks SET sort_order = ?, updated_at = datetime('now') WHERE id = ? AND organization_id = ?",
+        "UPDATE tasks SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?",
         [u.sort_order, u.id, org],
       );
     }

@@ -101,7 +101,7 @@ export async function updateUnitType(organizationId: string, id: string, fields:
 
   if (updates.length === 0) return null;
 
-  updates.push("updated_at = datetime('now')");
+  updates.push("updated_at = CURRENT_TIMESTAMP");
   values.push(id, organizationId);
 
   await sql.run(`UPDATE unit_types SET ${updates.join(', ')} WHERE id = ? AND ${propertyScopeSql('unit_types')}`, [...values]);

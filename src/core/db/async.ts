@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { createRequire } from 'node:module';
 import { getDb } from './index.ts';
 
 /**
@@ -104,9 +105,33 @@ export function sqliteSql(db: any = null): Sql {
 /**
  * The handle a module should ask for.
  *
- * One function to change when Postgres arrives — everything above it is
- * already written against the interface.
+ * `DB_DRIVER=postgres` decides, and DATABASE_URL only supplies the connection
+ * string. Two variables rather than one, on purpose: DATABASE_URL is already
+ * set in .env.example, in both deploy templates and in at least one developer's
+ * .env.local, left over from a scaffold and pointing at a Postgres that is not
+ * running. Keying the engine on it alone means any of those switches a live
+ * install the moment this ships — and the application cannot run on Postgres
+ * yet (see scripts/check-dialect.mjs). An engine change should be something
+ * someone typed, not something a stale line implies.
+ *
+ * The pool is built once and lazily: importing this file must not open a
+ * connection, because scripts and checks import it without ever querying.
  */
+let pgSql: Sql | null = null;
+
 export function getSql(): Sql {
-  return sqliteSql();
+  if (process.env.DB_DRIVER !== 'postgres') return sqliteSql();
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error('DB_DRIVER=postgres but DATABASE_URL is empty');
+
+  if (!pgSql) {
+    // Loaded here rather than imported at the top so a SQLite install never
+    // pulls the driver in at all. createRequire, not a bare require(): this
+    // file is an ES module, and node refuses a module that mixes the two.
+    const require = createRequire(import.meta.url);
+    const { Pool } = require('pg');
+    const { postgresSql } = require('./postgres.ts');
+    pgSql = postgresSql(new Pool({ connectionString: url })) as Sql;
+  }
+  return pgSql;
 }

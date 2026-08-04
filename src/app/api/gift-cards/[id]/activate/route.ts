@@ -51,8 +51,8 @@ export const POST = await withPermission('manage_bookings', async (
       UPDATE gift_cards
       SET status = 'activated',
           reservation_id = ?,
-          activated_at = datetime('now'),
-          updated_at = datetime('now')
+          activated_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(reservation_id, id);
 

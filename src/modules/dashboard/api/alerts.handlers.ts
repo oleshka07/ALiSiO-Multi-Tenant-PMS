@@ -23,7 +23,7 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
 
     await sql.run(`
       UPDATE reservations
-      SET status = 'no_show', updated_at = datetime('now')
+      SET status = 'no_show', updated_at = CURRENT_TIMESTAMP
       WHERE ${OWN()} AND check_in < ? AND status = 'confirmed'
     `, [org, archiveCutoff]);
 

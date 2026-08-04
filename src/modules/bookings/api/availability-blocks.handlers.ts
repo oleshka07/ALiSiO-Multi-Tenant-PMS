@@ -40,7 +40,7 @@ export const createAvailabilityBlock = withActor(async (request: Request, _ctx, 
     const id = `blk_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
     await sql.run(`
       INSERT INTO availability_blocks (id, organization_id, unit_id, date_from, date_to, reason, notes, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `, [id, actor.organizationId, unit_id, date_from, date_to, reason || 'maintenance', notes || null]);
     return NextResponse.json({ ok: true, id });
   } catch (e: any) {

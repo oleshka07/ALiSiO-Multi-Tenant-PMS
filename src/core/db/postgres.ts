@@ -1,0 +1,156 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import type { Sql } from './async.ts';
+import { currentOrganizationId } from '../auth/tenant-context.ts';
+
+/**
+ * The `Sql` seam over Postgres.
+ *
+ * Everything the modules call is already written against `Sql` — four methods,
+ * positional parameters, `?` placeholders. This is the second implementation of
+ * that interface, and it is the only file that knows Postgres exists.
+ *
+ * Three things it has to get right, and each one is a way to lose data or leak
+ * it if got wrong:
+ *
+ *   1. Placeholders. The seam writes `?`; Postgres wants `$1, $2`. Translating
+ *      by counting question marks would corrupt any query containing one inside
+ *      a string literal — `WHERE note LIKE '%?%'` — so the rewrite walks the
+ *      text and skips quoted sections.
+ *
+ *   2. Transactions need ONE connection. `pool.query()` picks an arbitrary
+ *      connection per call, so BEGIN and COMMIT issued through the pool can
+ *      land on different ones: the work commits nothing and the connection is
+ *      returned to the pool still inside a transaction. `tx` checks a
+ *      connection out and every statement inside it goes through that.
+ *
+ *   3. Row-level security. The policies in db/postgres/schema.sql read
+ *      `current_setting('app.organization_id')`. Without it a query returns no
+ *      rows — which is the safe direction, but only if the parameter is set for
+ *      the connection actually running the query. It is set per checkout, from
+ *      the ambient tenant context, so a handler that forgot to scope its SQL
+ *      still cannot read another organization's rows.
+ */
+
+/** The little of `pg` this file needs — so a test can pass something else. */
+export interface PgClient {
+  query(text: string, params?: unknown[]): Promise<{ rows: any[]; rowCount: number | null }>;
+  /**
+   * A script of several statements. Postgres only accepts those over the
+   * SIMPLE query protocol, which is what `pg` uses when query() is called
+   * without parameters — but a driver that always uses the extended protocol
+   * (PGlite does) needs a separate entry point, so the interface names one.
+   */
+  exec?(text: string): Promise<unknown>;
+}
+export interface PgConnection extends PgClient {
+  release(): void;
+}
+export interface PgPool extends PgClient {
+  connect(): Promise<PgConnection>;
+}
+
+/**
+ * `?` → `$1, $2, …`, skipping anything inside quotes.
+ *
+ * Single quotes are SQL strings, double quotes are identifiers, and a doubled
+ * quote inside either is an escaped quote rather than the end of it. Dollar
+ * quoting ($$…$$) does not appear in this codebase and is not handled; if it
+ * ever does, it goes here.
+ */
+export function toDollarParams(sql: string): string {
+  let out = '';
+  let n = 0;
+  let quote: string | null = null;
+
+  for (let i = 0; i < sql.length; i++) {
+    const c = sql[i];
+
+    if (quote) {
+      out += c;
+      if (c === quote) {
+        if (sql[i + 1] === quote) { out += sql[++i]; }   // an escaped quote
+        else quote = null;
+      }
+      continue;
+    }
+
+    if (c === "'" || c === '"') { quote = c; out += c; continue; }
+    if (c === '?') { out += `$${++n}`; continue; }
+    out += c;
+  }
+  return out;
+}
+
+/** Set the tenant for this connection, so RLS has something to match on. */
+async function scopeToTenant(client: PgClient): Promise<void> {
+  const org = currentOrganizationId();
+  // set_config with a parameter, not string interpolation: the organization id
+  // comes from a session and must never be pasted into SQL.
+  await client.query('SELECT set_config($1, $2, false)', ['app.organization_id', org ?? '']);
+}
+
+function methods(client: PgClient, scoped: boolean): Sql {
+  const run = async (text: string, params: unknown[] = []) => {
+    if (!scoped) await scopeToTenant(client);
+    return client.query(toDollarParams(text), params);
+  };
+
+  return {
+    async rows<T = any>(text: string, params: unknown[] = []): Promise<T[]> {
+      return (await run(text, params)).rows as T[];
+    },
+
+    async row<T = any>(text: string, params: unknown[] = []): Promise<T | undefined> {
+      return (await run(text, params)).rows[0] as T | undefined;
+    },
+
+    async run(text: string, params: unknown[] = []) {
+      const r = await run(text, params);
+      // Postgres does not hand back a generated id unless asked. A caller that
+      // needs one writes RETURNING id and reads it from `rows` — `lastId` is
+      // filled here only when the statement already returned something.
+      const first = r.rows[0] as Record<string, unknown> | undefined;
+      return {
+        changes: r.rowCount ?? 0,
+        lastId: (first?.id ?? undefined) as string | number | undefined,
+      };
+    },
+
+    async exec(text: string) {
+      if (!scoped) await scopeToTenant(client);
+      if (client.exec) await client.exec(text);
+      else await client.query(text);
+    },
+
+    async tx<T>(): Promise<T> {
+      throw new Error('nested transaction: use the handle the callback was given');
+    },
+  };
+}
+
+export function postgresSql(pool: PgPool): Sql {
+  const outer = methods(pool, false);
+
+  return {
+    ...outer,
+
+    async tx<T>(fn: (t: Sql) => Promise<T>): Promise<T> {
+      // One connection for the whole transaction — see the note at the top.
+      const client = await pool.connect();
+      try {
+        await scopeToTenant(client);
+        await client.query('BEGIN');
+        try {
+          const out = await fn(methods(client, true));
+          await client.query('COMMIT');
+          return out;
+        } catch (e) {
+          try { await client.query('ROLLBACK'); } catch { /* already rolled back */ }
+          throw e;
+        }
+      } finally {
+        client.release();
+      }
+    },
+  };
+}

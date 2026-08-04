@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
         (id, site_id, template_id, name, discount_type, offer_amount,
          valid_from, valid_until, min_nights, max_nights,
          allowed_days, applies_to, redemption_limit, generated_count, created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
     `).run(
       ruleId, site_id, template_id || null, resolvedName,
       discount_type, Number(offer_amount),
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
          valid_from, valid_until, min_nights, max_nights,
          max_uses, redemption_limit, site_id, allowed_days,
          applies_to, is_active, gift_card_rule_id, created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,datetime('now'))
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,CURRENT_TIMESTAMP)
     `);
 
     const generated: string[] = [];

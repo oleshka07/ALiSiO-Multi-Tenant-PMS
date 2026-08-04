@@ -48,7 +48,7 @@ export async function updatePropertyGuestConfig(request: NextRequest) {
         }
       }
       if (sets.length > 0) {
-        sets.push("updated_at = datetime('now')");
+        sets.push("updated_at = CURRENT_TIMESTAMP");
         values.push(property_id);
         await sql.run(`UPDATE property_guest_config SET ${sets.join(', ')} WHERE property_id = ?`, [...values]);
       }

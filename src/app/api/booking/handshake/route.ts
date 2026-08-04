@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     // Clean up expired handshakes
     db.prepare(`
       DELETE FROM widget_handshakes 
-      WHERE expires_at < datetime('now')
+      WHERE expires_at < CURRENT_TIMESTAMP
     `).run();
 
     // Resolve site configuration to check if authorized

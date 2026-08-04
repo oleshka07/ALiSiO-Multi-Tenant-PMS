@@ -83,7 +83,7 @@ export async function claimCertificate(sql: Sql, certificateId: string, reservat
   const r = await sql.run(`
     UPDATE gift_cards
     SET status = 'activated', reservation_id = ?,
-        activated_at = datetime('now'), updated_at = datetime('now')
+        activated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
     WHERE id = ? AND status IN ('active', 'paid')
   `, [reservationId, certificateId]);
   return r.changes === 1;

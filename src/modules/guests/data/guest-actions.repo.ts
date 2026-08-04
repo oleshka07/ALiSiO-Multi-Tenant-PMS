@@ -13,7 +13,7 @@ export async function saveFeedback(reservationId: string, feedback: string) {
   const sql = getSql();
   await sql.run(`
     INSERT INTO reservation_activity (id, reservation_id, type, description, created_by, created_at)
-    VALUES (lower(hex(randomblob(16))), ?, 'guest_feedback', ?, 'guest', datetime('now'))
+    VALUES (lower(hex(randomblob(16))), ?, 'guest_feedback', ?, 'guest', CURRENT_TIMESTAMP)
   `, [reservationId, feedback.trim()]);
 }
 
@@ -184,7 +184,7 @@ export async function getPendingAbandonNotifications(guestToken: string, minMinu
 
 export async function markAbandonNotified(eventId: string) {
   const sql = getSql();
-  await sql.run("UPDATE cart_events SET abandon_notified_at = datetime('now') WHERE id = ?", [eventId]);
+  await sql.run("UPDATE cart_events SET abandon_notified_at = CURRENT_TIMESTAMP WHERE id = ?", [eventId]);
 }
 
 /** Batch-fetch services by IDs for a given property */

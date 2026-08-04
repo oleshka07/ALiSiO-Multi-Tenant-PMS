@@ -24,7 +24,7 @@ export async function updateIcalChannel(
         source_code = ?,
         sync_interval_minutes = ?,
         is_active = ?,
-        updated_at = datetime('now')
+        updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [ical_url ?? existing.ical_url,
       source_code ?? existing.source_code,

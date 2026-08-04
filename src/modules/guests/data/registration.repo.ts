@@ -36,14 +36,14 @@ export async function saveRegistrations(reservationId: string, organizationId: s
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     findGuest: `SELECT id FROM guests WHERE organization_id = ? AND LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) LIMIT 1`,
     insertGuest: `INSERT INTO guests (organization_id, first_name, last_name, date_of_birth, country, address, document_type, document_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    updateGuest: `UPDATE guests SET date_of_birth = COALESCE(?, date_of_birth), country = COALESCE(?, country), address = COALESCE(?, address), document_type = COALESCE(?, document_type), document_number = COALESCE(?, document_number), updated_at = datetime('now') WHERE id = ?`,
+    updateGuest: `UPDATE guests SET date_of_birth = COALESCE(?, date_of_birth), country = COALESCE(?, country), address = COALESCE(?, address), document_type = COALESCE(?, document_type), document_number = COALESCE(?, document_number), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
     insertGr: `
       INSERT INTO guest_registrations (id, reservation_id, guest_id, is_primary, reg_status, registered_at, consent_given, consent_at, consent_ip, purpose_of_stay, visa_number)
-      VALUES (?, ?, ?, ?, 'completed', datetime('now'), 1, datetime('now'), ?, ?, ?)
+      VALUES (?, ?, ?, ?, 'completed', CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP, ?, ?, ?)
       ON CONFLICT(id) DO NOTHING`,
     updateGrCompleted: `
       UPDATE guest_registrations
-      SET guest_id = ?, reg_status = 'completed', consent_given = 1, consent_at = datetime('now'), consent_ip = ?, purpose_of_stay = ?, visa_number = ?, registered_at = datetime('now')
+      SET guest_id = ?, reg_status = 'completed', consent_given = 1, consent_at = CURRENT_TIMESTAMP, consent_ip = ?, purpose_of_stay = ?, visa_number = ?, registered_at = CURRENT_TIMESTAMP
       WHERE reservation_id = ? AND is_primary = ?`,
     findExistingGr: `SELECT id FROM guest_registrations WHERE reservation_id = ? AND is_primary = ?`,
   };

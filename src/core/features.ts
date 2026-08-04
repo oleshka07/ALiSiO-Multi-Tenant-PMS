@@ -39,7 +39,7 @@ export function listFeatures(db: any, organizationId: string): Record<FeatureKey
 export function setFeature(db: any, organizationId: string, feature: FeatureKey, enabled: boolean): void {
   db.prepare(`
     INSERT INTO organization_features (organization_id, feature, enabled, updated_at)
-    VALUES (?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(organization_id, feature)
     DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at
   `).run(organizationId, feature, enabled ? 1 : 0);

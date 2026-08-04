@@ -66,7 +66,7 @@ export async function login(request: Request) {
       return NextResponse.json({ error: 'Невірний email або пароль' }, { status: 401 });
     }
 
-    await sql.run("UPDATE app_users SET last_login = datetime('now') WHERE id = ?", [user.id]);
+    await sql.run("UPDATE app_users SET last_login = CURRENT_TIMESTAMP WHERE id = ?", [user.id]);
 
     const sessionId = createSession(user.id);
 

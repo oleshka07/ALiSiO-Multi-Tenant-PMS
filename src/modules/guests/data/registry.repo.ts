@@ -197,7 +197,7 @@ export async function markPoliceReported(organizationId: string, id: string, ref
   await sql.run(`
     UPDATE reservation_guests
     SET police_reported = 1,
-        police_reported_at = datetime('now'),
+        police_reported_at = CURRENT_TIMESTAMP,
         police_report_ref = ?
     WHERE id = ?
   `, [ref ?? null, id]);

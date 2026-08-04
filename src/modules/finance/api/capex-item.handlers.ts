@@ -40,7 +40,7 @@ export async function updateCapexItem(
         amount = COALESCE(?, amount), counterparty = ?, purchase_date = COALESCE(?, purchase_date),
         month = COALESCE(?, month), useful_life_months = COALESCE(?, useful_life_months),
         depreciation_monthly = COALESCE(?, depreciation_monthly), status = COALESCE(?, status),
-        notes = ?, updated_at = datetime('now')
+        notes = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [name, asset_type, business_unit_id ?? null, amount, counterparty ?? null, purchase_date, month, useful_life_months, depMonthly, status, notes ?? null, id]);
 

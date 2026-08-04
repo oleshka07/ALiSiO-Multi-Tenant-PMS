@@ -69,7 +69,7 @@ async function syncChannel(channel: any) {
         ));
         if (existing.check_in !== event.dtstart || existing.check_out !== event.dtend) {
           await sql.run(`
-            UPDATE reservations SET check_in = ?, check_out = ?, nights = ?, updated_at = datetime('now')
+            UPDATE reservations SET check_in = ?, check_out = ?, nights = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
           `, [event.dtstart, event.dtend, nights, existing.id]);
           eventsUpdated++;
@@ -117,7 +117,7 @@ async function syncChannel(channel: any) {
       }
     }
 
-    await sql.run("UPDATE ical_channels SET last_synced_at = datetime('now') WHERE id = ?", [channel.id]);
+    await sql.run("UPDATE ical_channels SET last_synced_at = CURRENT_TIMESTAMP WHERE id = ?", [channel.id]);
     await sql.run(`
       INSERT INTO ical_sync_log (id, channel_id, status, events_found, events_created, events_updated)
       VALUES (?, ?, 'success', ?, ?, ?)

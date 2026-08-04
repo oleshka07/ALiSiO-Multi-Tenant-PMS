@@ -36,7 +36,7 @@ export async function setFinancePassphrase(userId: string, passphrase: string): 
     VALUES (?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
       passphrase_hash = excluded.passphrase_hash,
-      updated_at = datetime('now')
+      updated_at = CURRENT_TIMESTAMP
   `, [userId, hash, salt]);
 }
 
@@ -61,7 +61,7 @@ export async function lockFinance(sessionId: string): Promise<void> {
 export async function isFinanceUnlocked(sessionId: string | undefined): Promise<boolean> {
   if (!sessionId) return false;
   const sql = getSql();
-  const row = await sql.row<any>("SELECT 1 FROM sessions WHERE id = ? AND finance_unlocked_until IS NOT NULL AND finance_unlocked_until > datetime('now')", [sessionId]);
+  const row = await sql.row<any>("SELECT 1 FROM sessions WHERE id = ? AND finance_unlocked_until IS NOT NULL AND finance_unlocked_until > CURRENT_TIMESTAMP", [sessionId]);
   return !!row;
 }
 

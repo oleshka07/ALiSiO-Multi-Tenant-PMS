@@ -60,7 +60,7 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
         closed = excluded.closed,
         cta = excluded.cta,
         ctd = excluded.ctd,
-        updated_at = datetime('now')
+        updated_at = CURRENT_TIMESTAMP
       `, [unitTypeId, p.date, p.base_price ?? 0, p.weekend_price ?? null, p.min_stay ?? 1, p.max_stay ?? null, p.closed ? 1 : 0, p.cta ? 1 : 0, p.ctd ? 1 : 0]);
     }
   });
@@ -137,7 +137,7 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
         closed = excluded.closed,
         cta = excluded.cta,
         ctd = excluded.ctd,
-        updated_at = datetime('now')
+        updated_at = CURRENT_TIMESTAMP
       `, [unitTypeId, dateStr, basePrice, weekendPrice, minStay, maxStay, closed, cta, ctd]);
       count++;
       current.setDate(current.getDate() + 1);

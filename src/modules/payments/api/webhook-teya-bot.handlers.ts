@@ -45,7 +45,7 @@ async function handleCrmDepositPaid(metadata: Record<string, string>, amountCzk:
           payment_status = 'prepaid',
           deposit_status = 'paid',
           deposit_paid_at = ?,
-          updated_at = datetime('now')
+          updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `, [paidAt, resId]);
 
@@ -57,7 +57,7 @@ async function handleCrmDepositPaid(metadata: Record<string, string>, amountCzk:
     }
 
     if (leadId) {
-      await sql.run(`UPDATE crm_leads SET stage = 'booked', updated_at = datetime('now') WHERE id = ?`, [leadId]);
+      await sql.run(`UPDATE crm_leads SET stage = 'booked', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [leadId]);
     }
 
     const res = await sql.row<any>(`

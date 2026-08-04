@@ -32,7 +32,7 @@ export async function PATCH(
       'valid_weekdays'
     ];
 
-    const setClauses: string[] = ["updated_at = datetime('now')"];
+    const setClauses: string[] = ["updated_at = CURRENT_TIMESTAMP"];
     const values: any[] = [];
 
     for (const key of allowed) {
@@ -82,7 +82,7 @@ export async function DELETE(
     const plan = db.prepare('SELECT id FROM site_rate_plans WHERE id = ? AND site_id = ?').get(planId, id);
     if (!plan) return NextResponse.json({ error: 'Rate plan not found' }, { status: 404 });
 
-    db.prepare("UPDATE site_rate_plans SET is_active = 0, updated_at = datetime('now') WHERE id = ?").run(planId);
+    db.prepare("UPDATE site_rate_plans SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(planId);
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('DELETE rate-plan error:', error?.message);

@@ -59,7 +59,7 @@ export const PATCH = await withPermission('manage_bookings', async (req, { param
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
-    sets.push("updated_at = datetime('now')");
+    sets.push("updated_at = CURRENT_TIMESTAMP");
     vals.push(id, actor.organizationId);
 
     db.prepare(`UPDATE gift_cards SET ${sets.join(', ')} WHERE id = ? AND organization_id = ?`).run(...vals);
@@ -86,7 +86,7 @@ export const DELETE = await withPermission('manage_bookings', async (_req, { par
     }
 
     db.prepare(`
-      UPDATE gift_cards SET status = 'cancelled', updated_at = datetime('now')
+      UPDATE gift_cards SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND organization_id = ?
     `).run(id, actor.organizationId);
 

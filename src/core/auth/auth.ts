@@ -60,7 +60,7 @@ export function getSessionUser(sessionId: string | undefined): SessionUser | nul
     SELECT u.id, u.organization_id, u.email, u.full_name, u.phone, u.role, u.is_active
     FROM sessions s
     JOIN app_users u ON u.id = s.user_id
-    WHERE s.id = ? AND s.expires_at > datetime('now') AND u.is_active = 1
+    WHERE s.id = ? AND s.expires_at > CURRENT_TIMESTAMP AND u.is_active = 1
   `).get(sessionId);
 
   if (!row) return null;

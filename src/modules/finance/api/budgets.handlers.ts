@@ -52,7 +52,7 @@ export async function upsertBudget(request: NextRequest): Promise<NextResponse> 
     `, [orgId, year, month, category_id, category_id, project_id, project_id]) as { id: string } | undefined;
 
     if (existing) {
-      await sql.run("UPDATE fin_budgets SET planned_amount = ?, updated_at = datetime('now') WHERE id = ?", [planned_amount, existing.id]);
+      await sql.run("UPDATE fin_budgets SET planned_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [planned_amount, existing.id]);
       const updated = await sql.row<any>("SELECT * FROM fin_budgets WHERE id = ?", [existing.id]);
       return NextResponse.json(updated);
     }

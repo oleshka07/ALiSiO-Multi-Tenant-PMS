@@ -27,7 +27,7 @@ export async function listConnections(organizationId: string) {
   const connections = await sql.rows<any>(`
     SELECT cc.*,
       cred.environment, cred.client_id,
-      (cred.access_token IS NOT NULL AND cred.token_expires_at > datetime('now')) as token_valid
+      (cred.access_token IS NOT NULL AND cred.token_expires_at > CURRENT_TIMESTAMP) as token_valid
     FROM channel_connections cc
     LEFT JOIN channel_credentials cred ON cc.credentials_id = cred.id
     WHERE cc.organization_id = ?
@@ -45,7 +45,7 @@ export async function getConnection(organizationId: string, id: string) {
   const conn = await sql.row<any>(`
     SELECT cc.*,
       cred.environment, cred.client_id,
-      (cred.access_token IS NOT NULL AND cred.token_expires_at > datetime('now')) as token_valid
+      (cred.access_token IS NOT NULL AND cred.token_expires_at > CURRENT_TIMESTAMP) as token_valid
     FROM channel_connections cc
     LEFT JOIN channel_credentials cred ON cc.credentials_id = cred.id
     WHERE cc.id = ? AND cc.organization_id = ?
@@ -114,7 +114,7 @@ export async function updateConnection(organizationId: string, id: string, body:
 
   if (updates.length === 0) return false;
 
-  updates.push("updated_at = datetime('now')");
+  updates.push("updated_at = CURRENT_TIMESTAMP");
   values.push(id, organizationId);
   await sql.run(`UPDATE channel_connections SET ${updates.join(', ')} WHERE id = ? AND organization_id = ?`, [...values]);
   return true;
@@ -143,7 +143,7 @@ export async function getActiveReservationConnections() {
 export async function markConnectionSynced(id: string) {
   const sql = getSql();
   await sql.run(`
-    UPDATE channel_connections SET last_synced_at = datetime('now'), updated_at = datetime('now')
+    UPDATE channel_connections SET last_synced_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `, [id]);
 }
@@ -204,7 +204,7 @@ export async function upsertMapping(
     await sql.run(`
       UPDATE channel_room_mapping
       SET external_room_type_id = ?, external_rate_plan_id = ?,
-        is_active = 1, updated_at = datetime('now')
+        is_active = 1, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [input.external_room_type_id || '', input.external_rate_plan_id || '', existing.id]);
     return { id: existing.id, created: false };

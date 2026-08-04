@@ -177,7 +177,7 @@ export async function updateServiceOrder(req: NextRequest) {
     switch (action) {
       case 'complete': {
         if (isBSO) {
-          await sql.run("UPDATE booking_service_orders SET status = 'completed', completed_at = datetime('now') WHERE id = ?", [id]);
+          await sql.run("UPDATE booking_service_orders SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?", [id]);
         }
         if (isSO) {
           await sql.run("UPDATE service_orders SET status = 'completed' WHERE id = ?", [id]);

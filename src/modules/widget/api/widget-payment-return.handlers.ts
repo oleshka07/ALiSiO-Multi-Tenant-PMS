@@ -42,13 +42,13 @@ export async function handlePaymentReturn(req: Request) {
         // Update tentative → confirmed+paid, OR confirmed → paid (for direct booking payments)
         resResult = await sql.run(`
           UPDATE reservations
-          SET payment_status = 'paid', updated_at = datetime('now')
+          SET payment_status = 'paid', updated_at = CURRENT_TIMESTAMP
           WHERE id = ? AND payment_status IN ('unpaid', 'payment_requested', 'prepaid')
         `, [reservationId]);
 
         // Also update tentative status to confirmed
         await sql.run(`
-          UPDATE reservations SET status = 'confirmed', updated_at = datetime('now')
+          UPDATE reservations SET status = 'confirmed', updated_at = CURRENT_TIMESTAMP
           WHERE id = ? AND status = 'tentative'
         `, [reservationId]);
 

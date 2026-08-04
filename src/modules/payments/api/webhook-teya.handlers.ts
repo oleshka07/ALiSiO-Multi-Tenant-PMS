@@ -197,7 +197,7 @@ async function handlePaymentSuccess(event: any, eventType: string): Promise<Succ
     try {
       const r = await sql.run(
         "UPDATE reservations SET status = CASE WHEN status = 'tentative' THEN 'confirmed' ELSE status END, " +
-        "payment_status = 'paid', updated_at = datetime('now') " +
+        "payment_status = 'paid', updated_at = CURRENT_TIMESTAMP " +
         "WHERE id = ? AND payment_status IN ('unpaid','payment_requested','prepaid','tentative')",
         [merchantRef],
       );
@@ -219,10 +219,10 @@ async function handlePaymentSuccess(event: any, eventType: string): Promise<Succ
 
   const result1 = await sql.run("UPDATE booking_service_orders SET payment_status = 'paid', status = 'confirmed' WHERE payment_id = ? AND payment_status IN ('pending', 'none')", [paymentRef]);
   const result2 = await sql.run("UPDATE service_orders SET payment_status = 'paid', status = 'confirmed' WHERE payment_id = ? AND payment_status IN ('pending', 'none')", [paymentRef]);
-  const result3 = await sql.run("UPDATE reservations SET status = 'confirmed', payment_status = 'paid', updated_at = datetime('now') WHERE id IN (SELECT reservation_id FROM booking_service_orders WHERE payment_id = ?) AND status = 'tentative'", [paymentRef]);
-  const result4 = await sql.run("UPDATE reservations SET status = 'confirmed', payment_status = 'paid', updated_at = datetime('now') WHERE payment_id = ? AND status = 'tentative'", [paymentRef]);
+  const result3 = await sql.run("UPDATE reservations SET status = 'confirmed', payment_status = 'paid', updated_at = CURRENT_TIMESTAMP WHERE id IN (SELECT reservation_id FROM booking_service_orders WHERE payment_id = ?) AND status = 'tentative'", [paymentRef]);
+  const result4 = await sql.run("UPDATE reservations SET status = 'confirmed', payment_status = 'paid', updated_at = CURRENT_TIMESTAMP WHERE payment_id = ? AND status = 'tentative'", [paymentRef]);
   // Also handle booking payments from guest page (reservation already 'confirmed' but payment_status='unpaid')
-  const result5 = await sql.run("UPDATE reservations SET payment_status = 'paid', updated_at = datetime('now') WHERE payment_id = ? AND payment_status IN ('unpaid', 'payment_requested')", [paymentRef]);
+  const result5 = await sql.run("UPDATE reservations SET payment_status = 'paid', updated_at = CURRENT_TIMESTAMP WHERE payment_id = ? AND payment_status IN ('unpaid', 'payment_requested')", [paymentRef]);
   await sql.run("UPDATE service_time_slots SET booking_session_id = NULL, notes = 'paid' WHERE booking_session_id = ?", [paymentRef]);
 
   const totalResChanges = result3.changes + result4.changes + result5.changes;
@@ -291,7 +291,7 @@ async function handlePaymentSuccess(event: any, eventType: string): Promise<Succ
   if (soTotal > 0) {
     try {
       await sql.run(`
-        UPDATE cart_events SET abandon_notified_at = datetime('now')
+        UPDATE cart_events SET abandon_notified_at = CURRENT_TIMESTAMP
         WHERE reservation_id IN (
           SELECT reservation_id FROM service_orders WHERE payment_id = ?
         ) AND abandon_notified_at IS NULL

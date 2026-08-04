@@ -111,7 +111,7 @@ export async function updateRecurringTemplate(
         params.push(typeof v === 'boolean' ? (v ? 1 : 0) : (v === '' ? null : v));
       }
     }
-    fields.push("updated_at = datetime('now')");
+    fields.push("updated_at = CURRENT_TIMESTAMP");
     if (fields.length === 1) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
     params.push(id);
     await sql.run(`UPDATE fin_recurring_templates SET ${fields.join(', ')} WHERE id = ?`, [...params]);
@@ -146,7 +146,7 @@ export async function toggleRecurringTemplate(
     const { id } = await context.params;
     const row = await sql.row<any>("SELECT is_active FROM fin_recurring_templates WHERE id = ?", [id]) as any;
     if (!row) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
-    await sql.run("UPDATE fin_recurring_templates SET is_active = ?, updated_at = datetime('now') WHERE id = ?", [row.is_active ? 0 : 1, id]);
+    await sql.run("UPDATE fin_recurring_templates SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [row.is_active ? 0 : 1, id]);
     return NextResponse.json(await sql.row<any>("SELECT * FROM fin_recurring_templates WHERE id = ?", [id]));
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

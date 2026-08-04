@@ -175,7 +175,7 @@ export async function syncPriceLabsToCalendar(daysAhead = 90): Promise<SyncResul
             weekend_price = NULL,
             min_stay = excluded.min_stay,
             closed = excluded.closed,
-            updated_at = datetime('now')
+            updated_at = CURRENT_TIMESTAMP
         `, [item.unit_type_id, d.date, baseCzk, minStay, closed]);
         daysWritten += 1;
       }

@@ -96,7 +96,7 @@ export async function createWidgetReservation(request: NextRequest) {
       
       const handshake = await sql.row<any>(`
         SELECT token FROM widget_handshakes 
-        WHERE token = ? AND expires_at > datetime('now')
+        WHERE token = ? AND expires_at > CURRENT_TIMESTAMP
       `, [handshakeToken]) as { token: string } | undefined;
 
       if (!handshake) {
@@ -516,7 +516,7 @@ export async function createWidgetReservation(request: NextRequest) {
                 document_number  = COALESCE(?, document_number),
                 date_of_birth    = COALESCE(?, date_of_birth),
                 country          = COALESCE(?, country),
-                updated_at       = datetime('now')
+                updated_at       = CURRENT_TIMESTAMP
             WHERE id = ?
           `, [documentType || null,
             documentNumber || null,

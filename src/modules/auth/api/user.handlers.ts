@@ -63,7 +63,7 @@ export const updateUser = withPermission('manage_users', async (
 
     if (body.password) {
       const passwordHash = hashPassword(body.password);
-      await sql.run("UPDATE app_users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?", [passwordHash, id]);
+      await sql.run("UPDATE app_users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [passwordHash, id]);
     }
 
     // The PIN a receptionist types to confirm a cash payment from the booking
@@ -71,13 +71,13 @@ export const updateUser = withPermission('manage_users', async (
     // marking money as received. Sending null clears it.
     if (body.payment_pin !== undefined) {
       if (body.payment_pin === null || body.payment_pin === '') {
-        await sql.run("UPDATE app_users SET payment_pin_hash = NULL, updated_at = datetime('now') WHERE id = ?", [id]);
+        await sql.run("UPDATE app_users SET payment_pin_hash = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [id]);
       } else {
         const pin = String(body.payment_pin).trim();
         if (!/^\d{4,8}$/.test(pin)) {
           return NextResponse.json({ error: 'PIN має бути 4–8 цифр' }, { status: 400 });
         }
-        await sql.run("UPDATE app_users SET payment_pin_hash = ?, updated_at = datetime('now') WHERE id = ?", [bcrypt.hashSync(pin, 10), id]);
+        await sql.run("UPDATE app_users SET payment_pin_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [bcrypt.hashSync(pin, 10), id]);
       }
     }
 
@@ -103,7 +103,7 @@ export const updateUser = withPermission('manage_users', async (
 
       await sql.run(`
         UPDATE app_users
-        SET full_name = ?, email = ?, phone = ?, telegram_chat_id = ?, role = ?, is_active = ?, default_cash_account_id = ?, updated_at = datetime('now')
+        SET full_name = ?, email = ?, phone = ?, telegram_chat_id = ?, role = ?, is_active = ?, default_cash_account_id = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND organization_id = ?
       `, [fullName, email, phone, telegramChatId, role, isActive, cashAcct, id, actor.organizationId]);
     }

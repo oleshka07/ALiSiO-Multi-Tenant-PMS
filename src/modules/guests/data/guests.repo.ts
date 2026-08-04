@@ -139,7 +139,7 @@ export async function updateGuest(organizationId: string, id: string, body: Reco
 
   if (sets.length === 0) return false;
 
-  sets.push("updated_at = datetime('now')");
+  sets.push("updated_at = CURRENT_TIMESTAMP");
   values.push(id, organizationId);
   const res = await sql.run(`UPDATE guests SET ${sets.join(', ')} WHERE id = ? AND organization_id = ?`, [...values]);
   return res.changes > 0;

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { createOperationInTx } from '../api/operations.handlers';
+import { createOperationInTx } from '../api/operations.handlers.ts';
 import { getSql } from '@core/db/async';
 
 export type Schedule = 'daily' | 'weekly' | 'monthly' | 'yearly';
@@ -105,7 +105,7 @@ export async function materializeTemplate(template: Template, asOfDate: string):
     UPDATE fin_recurring_templates
     SET last_run_at = ?, next_run_at = ?, runs_created = runs_created + 1,
         is_active = CASE WHEN ? THEN 0 ELSE is_active END,
-        updated_at = datetime('now')
+        updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `, [runDate, nextDate, stopRun ? 1 : 0, template.id]);
 
@@ -173,7 +173,7 @@ export async function runRecurringTickIfDue(): Promise<boolean> {
   const result = await runRecurringTick();
   await sql.run(`
     INSERT INTO fin_system_state (key, value) VALUES ('last_recurring_tick', ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
   `, [new Date().toISOString()]);
 
   if (result.created > 0 || result.errors.length > 0) {

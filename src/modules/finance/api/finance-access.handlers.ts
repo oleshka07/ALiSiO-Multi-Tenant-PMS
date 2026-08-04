@@ -149,7 +149,7 @@ export async function upsertFinanceAccess(request: NextRequest, context: any): P
 
     await sql.run(`
       INSERT INTO finance_user_access (user_id, is_enabled, period_mode, allowed_tabs, allowed_accounts, can_export, read_only, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(user_id) DO UPDATE SET
         is_enabled = excluded.is_enabled,
         period_mode = excluded.period_mode,
@@ -157,7 +157,7 @@ export async function upsertFinanceAccess(request: NextRequest, context: any): P
         allowed_accounts = excluded.allowed_accounts,
         can_export = excluded.can_export,
         read_only = excluded.read_only,
-        updated_at = datetime('now')
+        updated_at = CURRENT_TIMESTAMP
     `, [userId,
       is_enabled ? 1 : 0,
       period_mode,

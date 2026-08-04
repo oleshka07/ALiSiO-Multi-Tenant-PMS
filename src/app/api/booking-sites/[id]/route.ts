@@ -47,7 +47,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
 
     const allowed = ['name', 'slug', 'site_url', 'type', 'currency', 'status', 'design_config', 'widget_config', 'allowed_domains'];
-    const setClauses: string[] = ["updated_at = datetime('now')"];
+    const setClauses: string[] = ["updated_at = CURRENT_TIMESTAMP"];
     const values: any[] = [];
 
     for (const key of allowed) {
@@ -95,7 +95,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
 
     db.prepare(
-      "UPDATE booking_sites SET status = 'deleted', updated_at = datetime('now') WHERE id = ?"
+      "UPDATE booking_sites SET status = 'deleted', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
     ).run(id);
 
     return NextResponse.json({ success: true });

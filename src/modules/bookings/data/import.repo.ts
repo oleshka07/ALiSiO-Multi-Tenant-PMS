@@ -203,7 +203,7 @@ export async function cancelReservation(reservationId: string): Promise<void> {
   const sql = getSql();
   await sql.run(`
     UPDATE reservations
-    SET status = 'cancelled', updated_at = datetime('now')
+    SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `, [reservationId]);
 }

@@ -93,7 +93,7 @@ export async function translateAndStore(texts: string[], force = false): Promise
     ON CONFLICT (text_hash, lang) DO UPDATE SET
       translated_text = excluded.translated_text,
       source_text = excluded.source_text,
-      created_at = datetime('now')
+      created_at = CURRENT_TIMESTAMP
   `);
 
   for (const lang of GUEST_LANGS) {

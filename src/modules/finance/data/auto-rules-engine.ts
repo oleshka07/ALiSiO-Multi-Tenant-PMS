@@ -192,7 +192,7 @@ export async function applyRulesToOperation(op: Operation, rules: ParsedRule[], 
     const fields = Object.keys(changes).map((k) => `${k} = ?`).join(', ');
     const vals = Object.values(changes);
     vals.push(op.id);
-    await sql.run(`UPDATE fin_operations SET ${fields}, updated_at = datetime('now') WHERE id = ?`, [...vals]);
+    await sql.run(`UPDATE fin_operations SET ${fields}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [...vals]);
   }
 
   if (tagsAdded.size > 0) {

@@ -179,7 +179,7 @@ export function saveIntegrationCredentials(
     .get(organizationId, channel) as { id: string } | undefined;
 
   if (existing) {
-    db.prepare(`UPDATE channel_credentials SET ${sets.join(', ')}, updated_at = datetime('now') WHERE id = ?`)
+    db.prepare(`UPDATE channel_credentials SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
       .run(...params, existing.id);
     return;
   }
@@ -187,8 +187,8 @@ export function saveIntegrationCredentials(
   const id = `cred_${channel}_${organizationId}`.slice(0, 60);
   db.prepare(`
     INSERT INTO channel_credentials (id, organization_id, channel, environment, created_at, updated_at)
-    VALUES (?, ?, ?, 'production', datetime('now'), datetime('now'))
+    VALUES (?, ?, ?, 'production', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
   `).run(id, organizationId, channel);
-  db.prepare(`UPDATE channel_credentials SET ${sets.join(', ')}, updated_at = datetime('now') WHERE id = ?`)
+  db.prepare(`UPDATE channel_credentials SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
     .run(...params, id);
 }

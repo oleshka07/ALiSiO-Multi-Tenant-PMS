@@ -19,7 +19,7 @@ export async function listCredentials(organizationId: string) {
       CASE WHEN client_secret != '' THEN '●●●●●●●●' ELSE '' END as client_secret_masked,
       (access_token IS NOT NULL) as has_token,
       token_expires_at,
-      (access_token IS NOT NULL AND token_expires_at > datetime('now')) as token_valid,
+      (access_token IS NOT NULL AND token_expires_at > CURRENT_TIMESTAMP) as token_valid,
       created_at, updated_at
     FROM channel_credentials
     WHERE organization_id = ?
@@ -47,7 +47,7 @@ export async function upsertCredentials(
     await sql.run(`
       UPDATE channel_credentials
       SET client_id = ?, client_secret = ?, access_token = NULL,
-        token_expires_at = NULL, updated_at = datetime('now')
+        token_expires_at = NULL, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND organization_id = ?
     `, [input.client_id, input.client_secret, credId, organizationId]);
   } else {
@@ -62,7 +62,7 @@ export async function upsertCredentials(
   // none yet — never to another tenant's.
   await sql.run(`
     UPDATE channel_connections
-    SET credentials_id = ?, updated_at = datetime('now')
+    SET credentials_id = ?, updated_at = CURRENT_TIMESTAMP
     WHERE channel = ? AND organization_id = ? AND credentials_id IS NULL
   `, [credId, input.channel, organizationId]);
 

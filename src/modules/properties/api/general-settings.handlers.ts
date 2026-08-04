@@ -89,7 +89,7 @@ export async function saveGeneralSettings(request: NextRequest): Promise<NextRes
     await sql.run(`UPDATE organizations SET name = ?, timezone = ?, default_currency = ?,
          legal_name = ?, registration_no = ?, vat_no = ?, is_vat_payer = ?, legal_address = ?,
          bank_name = ?, bank_account = ?, iban = ?, swift = ?, invoice_email = ?, website = ?, ocr_cloud_fallback = ?,
-         updated_at = datetime('now')
+         updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`, [name,
       timezone,
       currency,
@@ -110,7 +110,7 @@ export async function saveGeneralSettings(request: NextRequest): Promise<NextRes
       // The WHERE clause carries organization_id so a forged property id from
       // another tenant updates nothing instead of their record.
       await sql.run(`UPDATE properties SET name = ?, address = ?, city = ?, country = ?, phone = ?, email = ?,
-           check_in_time = ?, check_out_time = ?, updated_at = datetime('now')
+           check_in_time = ?, check_out_time = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ? AND organization_id = ?`, [String(prop.name ?? '').trim() || name,
         prop.address ?? null,
         prop.city ?? null,

@@ -85,7 +85,7 @@ export async function updateWidgetPriceItem(req: Request, actor: Actor) {
           unit_label = COALESCE(?, unit_label),
           notes = ?,
           is_active = COALESCE(?, is_active),
-          updated_at = datetime('now')
+          updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND organization_id = ?
     `, [rate_standard ?? null,
       rate_holiday ?? null,

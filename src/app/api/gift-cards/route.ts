@@ -56,7 +56,7 @@ export const GET = await withPermission('manage_bookings', async (req: Request, 
 
     // Auto-expire: оновити статус прострочених ваучерів
     db.prepare(`
-      UPDATE gift_cards SET status = 'expired', updated_at = datetime('now')
+      UPDATE gift_cards SET status = 'expired', updated_at = CURRENT_TIMESTAMP
       WHERE organization_id = ?
         AND status IN ('active', 'paid')
         AND expires_at IS NOT NULL

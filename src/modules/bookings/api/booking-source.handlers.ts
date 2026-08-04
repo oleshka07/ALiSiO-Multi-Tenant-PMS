@@ -24,7 +24,7 @@ export async function updateBookingSource(request: Request, { params }: { params
     await sql.run(`
       UPDATE booking_sources SET
         name = ?, code = ?, icon_letter = ?, color = ?, sort_order = ?, is_active = ?,
-        commission_percent = ?, updated_at = datetime('now')
+        commission_percent = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [name ?? existing.name,
       code ?? existing.code,

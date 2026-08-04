@@ -155,7 +155,7 @@ export async function updateUnit(organizationId: string, id: string, fields: Rec
 
   if (updates.length === 0) return null;
 
-  updates.push("updated_at = datetime('now')");
+  updates.push("updated_at = CURRENT_TIMESTAMP");
   values.push(id, organizationId);
 
   await sql.run(`UPDATE units SET ${updates.join(', ')} WHERE id = ? AND ${propertyScopeSql('units')}`, [...values]);

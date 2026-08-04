@@ -240,7 +240,7 @@ async function processReservation(res: HostexReservation, result: SyncResult) {
   if (res.status === 'cancelled' || res.status === 'denied' || res.status === 'timeout') {
     const existing = await sql.row<any>('SELECT id FROM reservations WHERE hostex_reservation_code = ?', [res.reservation_code]) as any;
     if (existing) {
-      await sql.run("UPDATE reservations SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?", [existing.id]);
+      await sql.run("UPDATE reservations SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [existing.id]);
       result.updated++;
       result.synced++;
     } else {
@@ -326,7 +326,7 @@ async function processReservation(res: HostexReservation, result: SyncResult) {
         channel_remarks = ?, is_prepaid = ?,
         notes = ?,
         is_multi_room = ?, multi_room_marker = ?${tokenClause},
-        updated_at = datetime('now')
+        updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [...params]);
 
@@ -601,7 +601,7 @@ async function ensureHostexColumns() {
       records_synced INTEGER DEFAULT 0,
       error_message TEXT,
       started_at TEXT,
-      completed_at TEXT DEFAULT (datetime('now'))
+      completed_at TEXT DEFAULT (CURRENT_TIMESTAMP)
     )
   `);
 
@@ -611,7 +611,7 @@ async function ensureHostexColumns() {
       hostex_title TEXT,
       unit_id TEXT NOT NULL,
       channels TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (CURRENT_TIMESTAMP)
     )
   `);
 
@@ -624,7 +624,7 @@ async function ensureHostexColumns() {
       reason TEXT DEFAULT 'blocked',
       notes TEXT,
       hostex_code TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (CURRENT_TIMESTAMP)
     )
   `);
 
@@ -681,7 +681,7 @@ async function logSync(syncType: string, status: string, count: number, error?: 
   const sql = getSql();
   await sql.run(`
     INSERT INTO hostex_sync_log (sync_type, status, records_synced, error_message, started_at)
-    VALUES (?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
   `, [syncType, status, count, error || null]);
 }
 

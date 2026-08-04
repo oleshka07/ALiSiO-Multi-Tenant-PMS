@@ -62,7 +62,7 @@ export async function updateGroupBooking(request: NextRequest, { params }: { par
     }
 
     if (sets.length > 0) {
-      sets.push("updated_at = datetime('now')");
+      sets.push("updated_at = CURRENT_TIMESTAMP");
       values.push(id);
       await sql.run(`UPDATE reservation_groups SET ${sets.join(', ')} WHERE id = ?`, [...values]);
     }
