@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { getSql } from '@core/db/async';
 //
 // Investor Portal v2 — Asset Performance Score
 //
@@ -27,11 +28,11 @@ const WINDOW_MONTHS = 12;
  * Get asset performance score for one business_unit (= one asset).
  * Considers the trailing-12m actual run-rate vs the contractual target.
  */
-export function getAssetPerformanceScore(
-  db: any,
+export async function getAssetPerformanceScore(
   businessUnitId: string,
   asOfDate?: string,
-): PerformanceScoreResult {
+): Promise<PerformanceScoreResult> {
+  const sql = getSql();
   const today = asOfDate || new Date().toISOString().substring(0, 10);
   const windowStart = (() => {
     const d = new Date(today + 'T00:00:00Z');
@@ -40,19 +41,19 @@ export function getAssetPerformanceScore(
   })();
 
   // Sum of investor_payouts on this BU in the window
-  const paidRow = db.prepare(`
+  const paidRow = await sql.row<any>(`
     SELECT COALESCE(SUM(amount), 0) AS s
     FROM investor_payouts
     WHERE project_id = ? AND paid_at >= ? AND paid_at <= ?
-  `).get(businessUnitId, windowStart, today) as { s: number };
+  `, [businessUnitId, windowStart, today]) as { s: number };
   const paidTrailing12m = paidRow.s;
 
   // Total invested capital + target_apy (weighted by amount if multiple lots)
-  const invRows = db.prepare(`
+  const invRows = await sql.rows<any>(`
     SELECT amount, target_apy, equity_pct
     FROM investor_investments
     WHERE project_id = ? AND is_active = 1
-  `).all(businessUnitId) as Array<{ amount: number; target_apy: number | null; equity_pct: number | null }>;
+  `, [businessUnitId]) as Array<{ amount: number; target_apy: number | null; equity_pct: number | null }>;
 
   if (invRows.length === 0) {
     return { score: 'unknown', actual_apy: null, target_apy: null, ratio: null, reason: 'no active investments' };
@@ -109,19 +110,19 @@ export function getAssetPerformanceScore(
  * Bulk: scores for every BU an investor is invested in.
  * Used to render coloured bars across the assets list in one pass.
  */
-export function getPerformanceScoresForInvestor(
-  db: any,
+export async function getPerformanceScoresForInvestor(
   investorId: string,
   asOfDate?: string,
-): Map<string, PerformanceScoreResult> {
-  const buIds = (db.prepare(`
+): Promise<Map<string, PerformanceScoreResult>> {
+  const sql = getSql();
+  const buIds = (await sql.rows<any>(`
     SELECT DISTINCT project_id FROM investor_investments
     WHERE investor_id = ? AND is_active = 1 AND project_id IS NOT NULL
-  `).all(investorId) as Array<{ project_id: string }>).map((r) => r.project_id);
+  `, [investorId]) as Array<{ project_id: string }>).map((r) => r.project_id);
 
   const out = new Map<string, PerformanceScoreResult>();
   for (const buId of buIds) {
-    out.set(buId, getAssetPerformanceScore(db, buId, asOfDate));
+    out.set(buId, await getAssetPerformanceScore(buId, asOfDate));
   }
   return out;
 }

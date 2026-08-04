@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { getMonthMoney } from '../data/money-metrics';
 import { requireOrganizationId } from '@core/auth/tenant-context';
@@ -21,39 +22,37 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 // every cash report must use them so the numbers agree across pages.
 // revenue = income (non-financing) − refunds; expenses include tax and
 // uncategorized spending, exclude capex/financing (separate buckets).
-function monthRevenueSql(month: string, db: any, org: string): number {
-  return getMonthMoney(db, org, month).revenue;
+async function monthRevenueSql(month: string, org: string): Promise<number> {
+  return (await getMonthMoney(org, month)).revenue;
 }
 
-function monthExpensesSql(month: string, db: any, org: string): number {
-  const m = getMonthMoney(db, org, month);
+async function monthExpensesSql(month: string, org: string): Promise<number> {
+  const m = await getMonthMoney(org, month);
   return m.expenses_operating + m.tax;
 }
 
 export async function getFinanceOverview(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month') || new Date().toISOString().substring(0, 7);
     // Capex, accruals and depreciation all carry organization_id and none of
     // the three used it: EBITDA was computed from every company's numbers.
-    const org = orgId(db);
+    const org = orgId(getDb());
 
-    const revenue = monthRevenueSql(month, db, org);
-    const expenses = monthExpensesSql(month, db, org);
+    const revenue = await monthRevenueSql(month, org);
+    const expenses = await monthExpensesSql(month, org);
 
-    const capexRow = db.prepare(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM capex_items WHERE organization_id = ? AND month = ?`
-    ).get(org, month) as any;
-    const pendingAccruals = db.prepare(`
+    const capexRow = await sql.row<any>(`SELECT COALESCE(SUM(amount), 0) as total FROM capex_items WHERE organization_id = ? AND month = ?`, [org, month]) as any;
+    const pendingAccruals = await sql.row<any>(`
       SELECT COALESCE(SUM(ABS(a.amount)), 0) as total, COUNT(*) as cnt
       FROM accruals a WHERE a.organization_id = ? AND a.month = ? AND a.status = 'pending'
-    `).get(org, month) as any;
-    const depRow = db.prepare(`
+    `, [org, month]) as any;
+    const depRow = await sql.row<any>(`
       SELECT COALESCE(SUM(depreciation_monthly), 0) as total
       FROM capex_items
       WHERE organization_id = ? AND status = 'active' AND depreciation_monthly > 0
-    `).get(org) as any;
+    `, [org]) as any;
 
     const ebitda = revenue - expenses - pendingAccruals.total;
     const margin = revenue > 0 ? ((ebitda / revenue) * 100) : 0;
@@ -66,13 +65,13 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
       months.push(d.toISOString().substring(0, 7));
     }
 
-    const monthlyData = months.map(m => {
-      const rev = monthRevenueSql(m, db, org);
-      const exp = monthExpensesSql(m, db, org);
+    const monthlyData = await Promise.all(months.map(async (m) => {
+      const rev = await monthRevenueSql(m, org);
+      const exp = await monthExpensesSql(m, org);
       return { month: m, revenue: rev, expenses: exp, ebitda: rev - exp };
-    });
+    }));
 
-    const buBreakdown = db.prepare(`
+    const buBreakdown = await sql.rows<any>(`
       SELECT bu.id, bu.name,
              COALESCE(SUM(CASE WHEN o.op_type = 'income' AND COALESCE(ec.classifier, ec.std_group) NOT IN ('financing', 'Financing') THEN o.amount_company
                               WHEN o.op_type = 'expense' AND COALESCE(o.payment_subtype,'') = 'refund' THEN -o.amount_company
@@ -87,32 +86,32 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
       LEFT JOIN expense_categories ec ON ec.id = o.category_id
       WHERE bu.organization_id = ? AND bu.is_active = 1 AND bu.is_shared = 0
       GROUP BY bu.id ORDER BY bu.sort_order
-    `).all(month, org) as any[];
+    `, [month, org]) as any[];
 
     // Only PENDING accruals are added on top of cash expenses. Paid accruals
     // are already (or will be) real fin_operations — adding them here counted
     // the same expense twice.
-    const buAccruals = db.prepare(`
+    const buAccruals = await sql.rows<any>(`
       SELECT a.business_unit_id, COALESCE(SUM(ABS(a.amount)), 0) as total
       FROM accruals a
       WHERE a.organization_id = ? AND a.month = ? AND a.status = 'pending'
       GROUP BY a.business_unit_id
-    `).all(org, month) as any[];
+    `, [org, month]) as any[];
     for (const acc of buAccruals) {
       const bu = buBreakdown.find((b: any) => b.id === acc.business_unit_id);
       if (bu) bu.expenses += acc.total;
     }
 
-    const noProjectRows = db.prepare(`
+    const noProjectRows = await sql.row<any>(`
       SELECT COUNT(*) as cnt FROM fin_operations
       WHERE organization_id = ? AND op_type = 'expense' AND project_id IS NULL
-    `).get(org) as any;
-    const totalExpRows = db.prepare(`
+    `, [org]) as any;
+    const totalExpRows = await sql.row<any>(`
       SELECT COUNT(*) as cnt FROM fin_operations WHERE organization_id = ? AND op_type = 'expense'
-    `).get(org) as any;
+    `, [org]) as any;
 
     // Expected payments (unpaid confirmed reservations)
-    const expectedRow = db.prepare(`
+    const expectedRow = await sql.row<any>(`
       SELECT COALESCE(SUM(
         r.total_price
         - COALESCE((SELECT SUM(amount) FROM fin_operations
@@ -131,7 +130,7 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
           - COALESCE((SELECT SUM(amount) FROM fin_operations
                      WHERE reservation_id = r.id AND op_type = 'expense' AND payment_subtype = 'refund' AND status = 'completed'), 0)
         )
-    `).get(org) as any;
+    `, [org]) as any;
 
     const alerts = [
       { metric: 'Транзакцій без BU', value: noProjectRows.cnt, threshold: Math.max(1, totalExpRows.cnt * 0.03), status: noProjectRows.cnt > totalExpRows.cnt * 0.03 ? 'RED' : 'GREEN' },
@@ -139,7 +138,7 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
       { metric: 'Неоплачені бронювання', value: expectedRow.cnt, threshold: 0, status: expectedRow.cnt > 0 ? 'YELLOW' : 'GREEN' },
     ];
 
-    const recent = db.prepare(`
+    const recent = await sql.rows<any>(`
       SELECT o.*,
              ec.name as category_name, ec.icon as category_icon, ec.color as category_color,
              bu.name as bu_name
@@ -148,7 +147,7 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
       LEFT JOIN business_units bu ON o.project_id = bu.id
       WHERE o.op_type = 'expense' AND COALESCE(o.payment_subtype,'') != 'refund'
       ORDER BY o.paid_at DESC, o.created_at DESC LIMIT 10
-    `).all();
+    `);
 
     return NextResponse.json({
       month,
@@ -229,8 +228,8 @@ const orgId = requireOrganizationId;
 
 export async function getCashflowMatrix(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const org = orgId(db);
+    const sql = getSql();
+    const org = orgId(getDb());
     const { searchParams } = new URL(request.url);
     const today = new Date();
     const defaultTo = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -261,7 +260,7 @@ export async function getCashflowMatrix(request: NextRequest): Promise<NextRespo
       params.push(...tagIds);
     }
 
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT
         ec.id AS cat_id, ec.name AS cat_name, ec.icon AS cat_icon,
         ec.classifier, ec.op_type AS cat_op_type, ec.parent_id,
@@ -272,7 +271,7 @@ export async function getCashflowMatrix(request: NextRequest): Promise<NextRespo
       WHERE ${where.join(' AND ')}
         AND o.op_type != 'transfer'
       GROUP BY COALESCE(ec.id, ''), o.op_type, month
-    `).all(...params) as any[];
+    `, [...params]) as any[];
 
     // Build category tree + month data
     const categoryMap = new Map<string, MatrixRow>();
@@ -320,9 +319,9 @@ export async function getCashflowMatrix(request: NextRequest): Promise<NextRespo
     for (const m of months) netByMonth[m] = incomeByMonth[m] - expenseByMonth[m];
 
     // Opening/ending balances (sum across all accounts) per month
-    const accountsRows = db.prepare(`
+    const accountsRows = await sql.rows<any>(`
       SELECT id, initial_balance FROM finance_accounts WHERE organization_id = ? AND is_active = 1
-    `).all(org) as { id: string; initial_balance: number }[];
+    `, [org]) as { id: string; initial_balance: number }[];
     const accountIds = accountsRows.map((a) => a.id);
     const initialBalSum = accountsRows.reduce((s, a) => s + (a.initial_balance || 0), 0);
 
@@ -336,22 +335,22 @@ export async function getCashflowMatrix(request: NextRequest): Promise<NextRespo
     for (const m of months) paidDeltaByMonth[m] = 0;
     if (accountIds.length > 0) {
       const plh = accountIds.map(() => '?').join(',');
-      const prior = db.prepare(`
+      const prior = await sql.row<any>(`
         SELECT
           COALESCE((SELECT SUM(amount_company) FROM fin_operations WHERE account_to_id IN (${plh}) AND status='completed' AND paid_at < ?), 0)
           - COALESCE((SELECT SUM(amount_company) FROM fin_operations WHERE account_from_id IN (${plh}) AND status='completed' AND paid_at < ?), 0)
           AS delta
-      `).get(...accountIds, fromDate, ...accountIds, fromDate) as { delta: number };
+      `, [...accountIds, fromDate, ...accountIds, fromDate]) as { delta: number };
       runningBalance += prior.delta;
 
-      const deltas = db.prepare(`
+      const deltas = await sql.rows<any>(`
         SELECT strftime('%Y-%m', paid_at) AS m,
           COALESCE(SUM(CASE WHEN account_to_id IN (${plh}) THEN amount_company ELSE 0 END), 0)
           - COALESCE(SUM(CASE WHEN account_from_id IN (${plh}) THEN amount_company ELSE 0 END), 0) AS delta
         FROM fin_operations
         WHERE status = 'completed' AND strftime('%Y-%m', paid_at) BETWEEN ? AND ?
         GROUP BY strftime('%Y-%m', paid_at)
-      `).all(...accountIds, ...accountIds, months[0], months[months.length - 1]) as { m: string; delta: number }[];
+      `, [...accountIds, ...accountIds, months[0], months[months.length - 1]]) as { m: string; delta: number }[];
       for (const d of deltas) if (d.m in paidDeltaByMonth) paidDeltaByMonth[d.m] = d.delta;
     }
     for (const m of months) {
@@ -375,8 +374,8 @@ export async function getCashflowMatrix(request: NextRequest): Promise<NextRespo
 
 export async function getPnlMatrix(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const org = orgId(db);
+    const sql = getSql();
+    const org = orgId(getDb());
     const { searchParams } = new URL(request.url);
     const today = new Date();
     const defaultTo = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -394,7 +393,7 @@ export async function getPnlMatrix(request: NextRequest): Promise<NextResponse> 
       ? `AND o.id IN (SELECT operation_id FROM fin_operation_tags WHERE tag_id IN (${tagIds.map(() => '?').join(',')}))`
       : '';
 
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT
         ec.id AS cat_id, ec.name AS cat_name, ec.icon AS cat_icon,
         COALESCE(ec.classifier, 'other') AS classifier,
@@ -409,7 +408,7 @@ export async function getPnlMatrix(request: NextRequest): Promise<NextResponse> 
         AND o.op_type != 'transfer'
         ${tagFilter}
       GROUP BY COALESCE(ec.id, ''), o.op_type, month
-    `).all(from, to, org, ...tagIds) as any[];
+    `, [from, to, org, ...tagIds]) as any[];
 
     // Classify
     const byClassifier: Record<string, MatrixRow[]> = {
@@ -534,13 +533,13 @@ export async function getPnlMatrix(request: NextRequest): Promise<NextResponse> 
 
 export async function getFinancialIndicators(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month') || new Date().toISOString().substring(0, 7);
 
     // Canonical definitions (money-metrics): revenue nets refunds and
     // excludes financing inflows — same number as the overview shows.
-    const mm = getMonthMoney(db, orgId(db), month);
+    const mm = await getMonthMoney(orgId(getDb()), month);
     const revenue = mm.revenue;
     const cogs = mm.cogs;
     const variable = mm.variable;
@@ -568,12 +567,12 @@ export async function getFinancialIndicators(request: NextRequest): Promise<Next
 
 export async function getBalanceSheet(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const org = orgId(db);
+    const sql = getSql();
+    const org = orgId(getDb());
     const { searchParams } = new URL(request.url);
     const asOf = searchParams.get('as_of') || new Date().toISOString().substring(0, 10);
 
-    const accounts = db.prepare(`
+    const accounts = await sql.rows<any>(`
       SELECT fa.id, fa.name, fa.type, fa.currency, fa.credit_limit, fa.color, fa.initial_balance,
         (
           fa.initial_balance
@@ -594,7 +593,7 @@ export async function getBalanceSheet(request: NextRequest): Promise<NextRespons
       FROM finance_accounts fa
       WHERE fa.organization_id = ? AND fa.is_active = 1
       ORDER BY fa.type, fa.sort_order, fa.name
-    `).all(asOf, asOf, org) as any[];
+    `, [asOf, asOf, org]) as any[];
 
     const assets = accounts.filter((a) => a.type !== 'card').map((a) => ({ ...a, section: 'assets' }));
     const liabilities = accounts.filter((a) => a.type === 'card').map((a) => {
@@ -607,30 +606,30 @@ export async function getBalanceSheet(request: NextRequest): Promise<NextRespons
     // `expected_gross` has never existed on this table — the column is
     // gross_amount — so the whole balance sheet answered 500. It was also
     // summing every organization's receivables into one number.
-    const otaReceivables = db.prepare(`
+    const otaReceivables = await sql.row<any>(`
       SELECT COALESCE(SUM(COALESCE(expected_net, gross_amount, 0)), 0) AS total, COUNT(*) AS cnt
       FROM fin_channel_receivables
       WHERE organization_id = ? AND status IN ('expected', 'in_statement')
-    `).get(orgId(db)) as { total: number; cnt: number };
+    `, [orgId(getDb())]) as { total: number; cnt: number };
 
     // Guest prepayments for FUTURE stays: money received, service not yet
     // delivered — a liability until check-in (CZK)
-    const guestPrepayments = db.prepare(`
+    const guestPrepayments = await sql.row<any>(`
       SELECT COALESCE(SUM(o.amount_company), 0) AS total, COUNT(DISTINCT o.reservation_id) AS cnt
       FROM fin_operations o
       JOIN reservations r ON r.id = o.reservation_id
       WHERE o.op_type = 'income' AND o.status = 'completed'
         AND o.paid_at <= ? AND r.check_in > ?
         AND r.status IN ('confirmed', 'tentative')
-    `).get(asOf, asOf) as { total: number; cnt: number };
+    `, [asOf, asOf]) as { total: number; cnt: number };
 
     // Fixed assets: capex purchase cost minus straight-line depreciation
-    const fixedAssets = db.prepare(`
+    const fixedAssets = await sql.row<any>(`
       SELECT COALESCE(SUM(MAX(0, amount - COALESCE(depreciation_monthly, 0) *
         MAX(0, (julianday(?) - julianday(month || '-01')) / 30.44))), 0) AS total,
         COUNT(*) AS cnt
       FROM capex_items WHERE status = 'active'
-    `).get(asOf) as { total: number; cnt: number };
+    `, [asOf]) as { total: number; cnt: number };
 
     const byCurrency: Record<string, { assets: number; liabilities: number; net: number }> = {};
     for (const a of assets) {
@@ -661,8 +660,8 @@ export async function getBalanceSheet(request: NextRequest): Promise<NextRespons
 
 export async function getProjectProfitability(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const org = orgId(db);
+    const sql = getSql();
+    const org = orgId(getDb());
     const { searchParams } = new URL(request.url);
     const today = new Date();
     const defaultTo = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -676,7 +675,7 @@ export async function getProjectProfitability(request: NextRequest): Promise<Nex
 
     // Operating view: refunds net against income; CapEx and financing flows
     // are separated so a build-out year doesn't read as operating loss.
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT bu.id AS project_id, bu.name AS project_name, bu.is_shared,
              CASE
                WHEN o.op_type = 'income' AND COALESCE(ec.classifier, '') = 'financing' THEN 'financing_in'
@@ -693,7 +692,7 @@ export async function getProjectProfitability(request: NextRequest): Promise<Nex
         AND strftime('%Y-%m', o.${basis}) BETWEEN ? AND ?
         AND o.op_type != 'transfer'
       GROUP BY bu.id, bucket, month
-    `).all(org, from, to) as any[];
+    `, [org, from, to]) as any[];
 
     const projectMap = new Map<string, any>();
     for (const r of rows) {
@@ -743,18 +742,18 @@ export async function getProjectProfitability(request: NextRequest): Promise<Nex
 
 export async function getAccountStatement(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const org = orgId(db);
+    const sql = getSql();
+    const org = orgId(getDb());
     const { searchParams } = new URL(request.url);
     const accountId = searchParams.get('account_id');
     if (!accountId) return NextResponse.json({ error: 'account_id is required' }, { status: 400 });
     const from = searchParams.get('from') || '2000-01-01';
     const to = searchParams.get('to') || new Date().toISOString().substring(0, 10);
 
-    const account = db.prepare(`SELECT * FROM finance_accounts WHERE id = ? AND organization_id = ?`).get(accountId, org) as any;
+    const account = await sql.row<any>(`SELECT * FROM finance_accounts WHERE id = ? AND organization_id = ?`, [accountId, org]) as any;
     if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
 
-    const openingRow = db.prepare(`
+    const openingRow = await sql.row<any>(`
       SELECT ? + COALESCE((SELECT SUM(
               CASE WHEN o.currency = ? THEN o.amount ELSE o.amount_company END
             ) FROM fin_operations o
@@ -763,10 +762,10 @@ export async function getAccountStatement(request: NextRequest): Promise<NextRes
               CASE WHEN o.currency = ? THEN o.amount ELSE o.amount_company END
             ) FROM fin_operations o
             WHERE o.account_from_id = ? AND o.status = 'completed' AND o.paid_at < ?), 0) AS bal
-    `).get(account.initial_balance, account.currency, accountId, from, account.currency, accountId, from) as { bal: number };
+    `, [account.initial_balance, account.currency, accountId, from, account.currency, accountId, from]) as { bal: number };
     const opening = Number(openingRow.bal) || 0;
 
-    const ops = db.prepare(`
+    const ops = await sql.rows<any>(`
       SELECT o.*,
              CASE
                WHEN o.op_type = 'transfer' AND o.account_from_id = ? THEN -(CASE WHEN o.currency = ? THEN o.amount ELSE o.amount_company END)
@@ -785,7 +784,7 @@ export async function getAccountStatement(request: NextRequest): Promise<NextRes
         AND (o.account_from_id = ? OR o.account_to_id = ?)
         AND o.paid_at BETWEEN ? AND ?
       ORDER BY o.paid_at ASC, o.created_at ASC
-    `).all(accountId, account.currency, accountId, account.currency, account.currency, account.currency, org, accountId, accountId, from, to) as any[];
+    `, [accountId, account.currency, accountId, account.currency, account.currency, account.currency, org, accountId, accountId, from, to]) as any[];
 
     let running = opening;
     const items = ops.map((o) => {
@@ -805,33 +804,33 @@ export async function getAccountStatement(request: NextRequest): Promise<NextRes
 
 export async function getPlanFactReport(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const org = orgId(db);
+    const sql = getSql();
+    const org = orgId(getDb());
     const { searchParams } = new URL(request.url);
     const year = Number(searchParams.get('year') || new Date().getFullYear());
     const month = Number(searchParams.get('month') || new Date().getMonth() + 1);
     const by = searchParams.get('by') === 'project' ? 'project' : 'category';
     const monthStr = `${year}-${String(month).padStart(2, '0')}`;
 
-    const budgets = db.prepare(`SELECT * FROM fin_budgets WHERE organization_id = ? AND year = ? AND month = ?`).all(org, year, month) as any[];
+    const budgets = await sql.rows<any>(`SELECT * FROM fin_budgets WHERE organization_id = ? AND year = ? AND month = ?`, [org, year, month]) as any[];
     // Facts on child categories roll up to their root parent so they match the
     // root-level budget rows (entities below are parent_id IS NULL only).
     const facts = by === 'project'
-      ? db.prepare(`
+      ? await sql.rows<any>(`
           SELECT o.project_id AS key, o.op_type, SUM(o.amount_company) AS total
           FROM fin_operations o
           WHERE o.status = 'completed' AND o.organization_id = ?
             AND strftime('%Y-%m', o.paid_at) = ? AND o.op_type != 'transfer'
           GROUP BY o.project_id, o.op_type
-        `).all(org, monthStr) as any[]
-      : db.prepare(`
+        `, [org, monthStr]) as any[]
+      : await sql.rows<any>(`
           SELECT COALESCE(ec.parent_id, o.category_id) AS key, o.op_type, SUM(o.amount_company) AS total
           FROM fin_operations o
           LEFT JOIN expense_categories ec ON o.category_id = ec.id
           WHERE o.status = 'completed' AND o.organization_id = ?
             AND strftime('%Y-%m', o.paid_at) = ? AND o.op_type != 'transfer'
           GROUP BY COALESCE(ec.parent_id, o.category_id), o.op_type
-        `).all(org, monthStr) as any[];
+        `, [org, monthStr]) as any[];
 
     const factMap = new Map<string, { income: number; expense: number }>();
     for (const f of facts) {
@@ -843,8 +842,8 @@ export async function getPlanFactReport(request: NextRequest): Promise<NextRespo
     }
 
     const entities = by === 'project'
-      ? db.prepare("SELECT id, name, unit_type AS description FROM business_units WHERE organization_id = ? AND is_active = 1 ORDER BY sort_order").all(org) as any[]
-      : db.prepare("SELECT id, name, icon, op_type FROM expense_categories WHERE organization_id = ? AND is_active = 1 AND parent_id IS NULL ORDER BY sort_order").all(org) as any[];
+      ? await sql.rows<any>("SELECT id, name, unit_type AS description FROM business_units WHERE organization_id = ? AND is_active = 1 ORDER BY sort_order", [org]) as any[]
+      : await sql.rows<any>("SELECT id, name, icon, op_type FROM expense_categories WHERE organization_id = ? AND is_active = 1 AND parent_id IS NULL ORDER BY sort_order", [org]) as any[];
 
     const budgetMap = new Map<string, { id: string; amount: number }>();
     for (const b of budgets) {
@@ -878,8 +877,8 @@ export async function getPlanFactReport(request: NextRequest): Promise<NextRespo
 // --- original drill-down handler below ---
 export async function getOperationsForDrillDown(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const org = orgId(db);
+    const sql = getSql();
+    const org = orgId(getDb());
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
     const categoryId = searchParams.get('category_id');
@@ -902,7 +901,7 @@ export async function getOperationsForDrillDown(request: NextRequest): Promise<N
       params.push(...tagIds);
     }
 
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT o.*, ec.name AS category_name, ec.icon AS category_icon,
              bu.name AS project_name, cp.name AS counterparty_name,
              afr.name AS account_from_name, ato.name AS account_to_name
@@ -915,7 +914,7 @@ export async function getOperationsForDrillDown(request: NextRequest): Promise<N
       WHERE ${where.join(' AND ')}
       ORDER BY o.${basis} DESC
       LIMIT 500
-    `).all(...params);
+    `, [...params]);
     return NextResponse.json({ operations: rows });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -924,14 +923,14 @@ export async function getOperationsForDrillDown(request: NextRequest): Promise<N
 
 export async function getExpectedPayments(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { searchParams } = new URL(request.url);
     const fromDate = searchParams.get('from') || new Date().toISOString().substring(0, 10);
     const toDate = searchParams.get('to') || (() => {
       const d = new Date(); d.setMonth(d.getMonth() + 3); return d.toISOString().substring(0, 10);
     })();
 
-    const bookings = db.prepare(`
+    const bookings = await sql.rows<any>(`
       SELECT r.id, r.check_in, r.check_out, r.nights, r.adults, r.children,
              r.status, r.payment_status, r.total_price, r.source, r.currency, r.commission_amount,
              g.first_name, g.last_name, g.email,
@@ -947,7 +946,7 @@ export async function getExpectedPayments(request: NextRequest): Promise<NextRes
       WHERE r.status IN ('confirmed', 'checked_in', 'tentative') AND r.payment_status != 'paid'
         AND r.check_in >= ? AND r.check_in <= ?
       ORDER BY r.check_in ASC
-    `).all(fromDate, toDate) as any[];
+    `, [fromDate, toDate]) as any[];
 
     const items = bookings.map(b => {
       const netPaid = b.paid_amount - b.refunded_amount;

@@ -17,6 +17,7 @@
  * export. While open, invoices in it can be freely deleted/renumbered. Once
  * locked, numbers are frozen — corrections must go through a storno (credit note).
  */
+import type { Sql } from '../../../core/db/async.ts';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 interface SeriesDef { series: string; prefix: string; }
@@ -40,62 +41,61 @@ export interface AllocatedNumber { invoiceNumber: string; series: string; seqNo:
  * atomically. Wrapped in a better-sqlite3 transaction (synchronous,
  * single-writer) so concurrent requests can never get the same number.
  */
-export function allocateInvoiceNumber(
-  db: any,
+export async function allocateInvoiceNumber(
+  sql: Sql,
   organizationId: string,
   channel: string,
   year: number,
-): AllocatedNumber {
+): Promise<AllocatedNumber> {
   const { series, prefix } = seriesForChannel(channel);
-  const run = db.transaction(() => {
-    db.prepare(
+  // Increment and read in one transaction: two requests must never come away
+  // with the same number.
+  const seqNo = await sql.tx(async (t) => {
+    await t.run(
       'INSERT INTO invoice_counters (organization_id, series, year, last_no) VALUES (?, ?, ?, 1) ' +
-      'ON CONFLICT(organization_id, series, year) DO UPDATE SET last_no = last_no + 1'
-    ).run(organizationId, series, year);
-    const row = db.prepare(
-      'SELECT last_no FROM invoice_counters WHERE organization_id = ? AND series = ? AND year = ?'
-    ).get(organizationId, series, year) as { last_no: number };
-    return row.last_no;
+      'ON CONFLICT(organization_id, series, year) DO UPDATE SET last_no = last_no + 1',
+      [organizationId, series, year],
+    );
+    const row = await t.row<{ last_no: number }>(
+      'SELECT last_no FROM invoice_counters WHERE organization_id = ? AND series = ? AND year = ?',
+      [organizationId, series, year],
+    );
+    return row!.last_no;
   });
-  const seqNo = run();
   return { invoiceNumber: `${prefix}${year}-${String(seqNo).padStart(3, '0')}`, series, seqNo };
 }
 
-export function periodStatus(db: any, organizationId: string, series: string, month: string): 'open' | 'locked' {
-  const row = db.prepare(
-    'SELECT status FROM invoice_periods WHERE organization_id = ? AND series = ? AND month = ?'
-  ).get(organizationId, series, month) as { status: string } | undefined;
+export async function periodStatus(sql: Sql, organizationId: string, series: string, month: string): Promise<'open' | 'locked'> {
+  const row = await sql.row<{ status: string }>('SELECT status FROM invoice_periods WHERE organization_id = ? AND series = ? AND month = ?', [organizationId, series, month]);
   return (row?.status === 'locked') ? 'locked' : 'open';
 }
 
-export function isPeriodLocked(db: any, organizationId: string, series: string, month: string): boolean {
-  return periodStatus(db, organizationId, series, month) === 'locked';
+export async function isPeriodLocked(sql: Sql, organizationId: string, series: string, month: string): Promise<boolean> {
+  return (await periodStatus(sql, organizationId, series, month)) === 'locked';
 }
 
 /** Lock a (series, month): freeze numbers and mark member invoices immutable. */
-export function lockPeriod(db: any, organizationId: string, series: string, month: string): void {
-  db.transaction(() => {
-    db.prepare(
+export async function lockPeriod(sql: Sql, organizationId: string, series: string, month: string): Promise<void> {
+  await sql.tx(async (t) => {
+    await t.run(
       "INSERT INTO invoice_periods (organization_id, series, month, status, locked_at) VALUES (?, ?, ?, 'locked', datetime('now')) " +
-      "ON CONFLICT(organization_id, series, month) DO UPDATE SET status = 'locked', locked_at = datetime('now')"
-    ).run(organizationId, series, month);
-    db.prepare(
-      "UPDATE invoices SET locked = 1 WHERE organization_id = ? AND series = ? AND substr(COALESCE(period, issued_at), 1, 7) = ?"
-    ).run(organizationId, series, month);
-  })();
+      "ON CONFLICT(organization_id, series, month) DO UPDATE SET status = 'locked', locked_at = datetime('now')",
+      [organizationId, series, month],
+    );
+    await t.run("UPDATE invoices SET locked = 1 WHERE organization_id = ? AND series = ? AND substr(COALESCE(period, issued_at), 1, 7) = ?", [organizationId, series, month]);
+  });
 }
 
 /** Re-open a locked period (admin correction before it's been filed). */
-export function unlockPeriod(db: any, organizationId: string, series: string, month: string): void {
-  db.transaction(() => {
-    db.prepare(
+export async function unlockPeriod(sql: Sql, organizationId: string, series: string, month: string): Promise<void> {
+  await sql.tx(async (t) => {
+    await t.run(
       "INSERT INTO invoice_periods (organization_id, series, month, status) VALUES (?, ?, ?, 'open') " +
-      "ON CONFLICT(organization_id, series, month) DO UPDATE SET status = 'open', locked_at = NULL"
-    ).run(organizationId, series, month);
-    db.prepare(
-      "UPDATE invoices SET locked = 0 WHERE organization_id = ? AND series = ? AND substr(COALESCE(period, issued_at), 1, 7) = ?"
-    ).run(organizationId, series, month);
-  })();
+      "ON CONFLICT(organization_id, series, month) DO UPDATE SET status = 'open', locked_at = NULL",
+      [organizationId, series, month],
+    );
+    await t.run("UPDATE invoices SET locked = 0 WHERE organization_id = ? AND series = ? AND substr(COALESCE(period, issued_at), 1, 7) = ?", [organizationId, series, month]);
+  });
 }
 
 /**
@@ -103,11 +103,12 @@ export function unlockPeriod(db: any, organizationId: string, series: string, mo
  * An invoice belonging to another organization is not this caller's to judge,
  * so it reads as locked rather than as editable.
  */
-export function isInvoiceLocked(db: any, organizationId: string, invoiceId: string): boolean {
-  const row = db.prepare(
-    'SELECT series, COALESCE(period, substr(issued_at,1,7)) AS month, locked FROM invoices WHERE id = ? AND organization_id = ?'
-  ).get(invoiceId, organizationId) as { series: string; month: string; locked: number } | undefined;
+export async function isInvoiceLocked(sql: Sql, organizationId: string, invoiceId: string): Promise<boolean> {
+  const row = await sql.row<{ series: string; month: string; locked: number }>(
+    'SELECT series, COALESCE(period, substr(issued_at,1,7)) AS month, locked FROM invoices WHERE id = ? AND organization_id = ?',
+    [invoiceId, organizationId],
+  );
   if (!row) return true;
   if (row.locked) return true;
-  return isPeriodLocked(db, organizationId, row.series || 'HOUSE', row.month);
+  return await isPeriodLocked(sql, organizationId, row.series || 'HOUSE', row.month);
 }

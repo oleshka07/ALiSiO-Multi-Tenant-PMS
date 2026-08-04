@@ -6,7 +6,7 @@ import { withPermission, notFound, type Actor } from '@core/auth/session';
 type IdParams = { params: Promise<{ id: string }> };
 
 // GET /api/gift-cards/[id]
-export const GET = withPermission('manage_bookings', async (_req, { params }: IdParams, actor: Actor) => {
+export const GET = await withPermission('manage_bookings', async (_req, { params }: IdParams, actor: Actor) => {
   try {
     const db = getDb();
     const { id } = await params;
@@ -28,7 +28,7 @@ export const GET = withPermission('manage_bookings', async (_req, { params }: Id
 });
 
 // PATCH /api/gift-cards/[id] — оновити поля ваучера
-export const PATCH = withPermission('manage_bookings', async (req, { params }: IdParams, actor: Actor) => {
+export const PATCH = await withPermission('manage_bookings', async (req, { params }: IdParams, actor: Actor) => {
   try {
     const db = getDb();
     const { id } = await params;
@@ -73,7 +73,7 @@ export const PATCH = withPermission('manage_bookings', async (req, { params }: I
 });
 
 // DELETE /api/gift-cards/[id] — м'яке видалення (→ cancelled)
-export const DELETE = withPermission('manage_bookings', async (_req, { params }: IdParams, actor: Actor) => {
+export const DELETE = await withPermission('manage_bookings', async (_req, { params }: IdParams, actor: Actor) => {
   try {
     const db = getDb();
     const { id } = await params;

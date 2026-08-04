@@ -16,6 +16,7 @@
 //
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { createOperationInTx } from './operations.handlers';
 import { requireOrganizationId } from '@core/auth/tenant-context';
@@ -57,34 +58,35 @@ function authorizeBridge(request: NextRequest): { ok: true } | { ok: false; resp
   return { ok: true };
 }
 
-function defaultCashAccountId(db: any, orgId: string, currency: string, recordedBy?: string | null): { accountId: string | null; actorUser: { id: string; name: string } | null } {
+async function defaultCashAccountId(orgId: string, currency: string, recordedBy?: string | null): Promise<{ accountId: string | null; actorUser: { id: string; name: string } | null }> {
+  const sql = getSql();
   let actorUser: { id: string; name: string } | null = null;
   if (recordedBy && recordedBy.trim().length > 0) {
     const cleanName = recordedBy.trim();
-    const userRow = db.prepare(`
+    const userRow = await sql.row<any>(`
       SELECT id, name, default_cash_account_id FROM app_users
       WHERE is_active = 1 AND (name LIKE ? OR first_name LIKE ? OR username LIKE ?)
       LIMIT 1
-    `).get(`%${cleanName}%`, `%${cleanName}%`, `%${cleanName}%`) as { id: string; name: string; default_cash_account_id: string | null } | undefined;
+    `, [`%${cleanName}%`, `%${cleanName}%`, `%${cleanName}%`]) as { id: string; name: string; default_cash_account_id: string | null } | undefined;
 
     if (userRow) {
       actorUser = { id: userRow.id, name: userRow.name };
       if (userRow.default_cash_account_id) {
-        const acct = db.prepare(`
+        const acct = await sql.row<any>(`
           SELECT id FROM finance_accounts WHERE id = ? AND is_active = 1
-        `).get(userRow.default_cash_account_id) as { id: string } | undefined;
+        `, [userRow.default_cash_account_id]) as { id: string } | undefined;
         if (acct) return { accountId: acct.id, actorUser };
       }
     }
   }
 
-  const row = db.prepare(`
+  const row = await sql.row<any>(`
     SELECT id FROM finance_accounts
     WHERE organization_id = ? AND currency = ? AND is_active = 1
       AND type IN ('cash', 'bank')
     ORDER BY (type = 'cash') DESC, sort_order ASC, created_at ASC
     LIMIT 1
-  `).get(orgId, currency) as { id: string } | undefined;
+  `, [orgId, currency]) as { id: string } | undefined;
   return { accountId: row?.id || null, actorUser };
 }
 
@@ -119,8 +121,8 @@ export async function recordTelegramOperation(request: NextRequest): Promise<Nex
       return NextResponse.json({ error: 'chat_id and message_id are required for dedup' }, { status: 400 });
     }
 
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
 
     const sourceTagMap: Record<string, string> = {
       sauna_income: 'telegram_sauna',
@@ -143,15 +145,13 @@ export async function recordTelegramOperation(request: NextRequest): Promise<Nex
     const paidAt = body.paid_at || new Date().toISOString();
 
     // Idempotency check — has this Telegram message already been imported?
-    const existing = db.prepare(
-      "SELECT id FROM fin_operations WHERE source = ? AND source_ref = ? LIMIT 1"
-    ).get(sourceTag, sourceRef) as { id: string } | undefined;
+    const existing = await sql.row<any>("SELECT id FROM fin_operations WHERE source = ? AND source_ref = ? LIMIT 1", [sourceTag, sourceRef]) as { id: string } | undefined;
     if (existing) {
       return NextResponse.json({ operation_id: existing.id, was_new: false }, { status: 200 });
     }
 
     // Resolve account & actor
-    const { accountId, actorUser } = defaultCashAccountId(db, orgId, currency, body.recorded_by);
+    const { accountId, actorUser } = await defaultCashAccountId(orgId, currency, body.recorded_by);
 
     let accountFromId: string | null = null;
     let accountToId: string | null = null;
@@ -191,7 +191,7 @@ export async function recordTelegramOperation(request: NextRequest): Promise<Nex
     // from finance_exchange_rates and errors loudly if none exists.
     const fxRate = body.fx_rate || null;
 
-    const operationId = createOperationInTx(db, orgId, {
+    const operationId = await createOperationInTx(orgId, {
       op_type: opType as 'income' | 'expense' | 'transfer',
       account_from_id: accountFromId,
       account_to_id: accountToId,
@@ -229,7 +229,7 @@ export async function listTelegramOperations(request: NextRequest): Promise<Next
   if (!auth.ok) return auth.response;
 
   try {
-    const db = getDb();
+    const sql = getSql();
     const sp = request.nextUrl.searchParams;
     const sourceFilter = sp.get('source');
     const limit = Math.min(200, parseInt(sp.get('limit') || '50', 10));
@@ -241,13 +241,13 @@ export async function listTelegramOperations(request: NextRequest): Promise<Next
       params.push(sourceFilter);
     }
 
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT id, op_type, amount, currency, paid_at, comment, source, source_ref, status, created_at
       FROM fin_operations
       WHERE ${where.join(' AND ')}
       ORDER BY created_at DESC
       LIMIT ${limit}
-    `).all(...params);
+    `, [...params]);
 
     return NextResponse.json({ items: rows });
   } catch (error: any) {
@@ -267,8 +267,8 @@ export async function listTelegramCategories(request: NextRequest): Promise<Next
   if (!auth.ok) return auth.response;
 
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const sp = request.nextUrl.searchParams;
     const opType = sp.get('op_type'); // 'income' | 'expense'
 
@@ -279,24 +279,24 @@ export async function listTelegramCategories(request: NextRequest): Promise<Next
       params.push(opType);
     }
 
-    const categories = db.prepare(`
+    const categories = await sql.rows<any>(`
       SELECT id, name, icon, op_type, parent_id
       FROM expense_categories
       WHERE ${where.join(' AND ')}
       ORDER BY parent_id NULLS FIRST, sort_order, name
-    `).all(...params);
+    `, [...params]);
 
-    const projects = db.prepare(`
+    const projects = await sql.rows<any>(`
       SELECT id, name FROM business_units
       WHERE organization_id = ? AND is_active = 1
       ORDER BY sort_order, name
-    `).all(orgId);
+    `, [orgId]);
 
-    const accounts = db.prepare(`
+    const accounts = await sql.rows<any>(`
       SELECT id, name, type, currency FROM finance_accounts
       WHERE organization_id = ? AND is_active = 1
       ORDER BY sort_order, name
-    `).all(orgId);
+    `, [orgId]);
 
     return NextResponse.json({ categories, projects, accounts });
   } catch (error: any) {
@@ -315,15 +315,15 @@ export async function listTelegramAccounts(request: NextRequest): Promise<NextRe
   if (!auth.ok) return auth.response;
 
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
 
-    const accounts = db.prepare(`
+    const accounts = await sql.rows<any>(`
       SELECT id, name, type, currency, initial_balance
       FROM finance_accounts
       WHERE organization_id = ? AND is_active = 1
       ORDER BY sort_order, name
-    `).all(orgId);
+    `, [orgId]);
 
     return NextResponse.json({ accounts });
   } catch (error: any) {
@@ -342,14 +342,14 @@ export async function listTelegramServices(request: NextRequest): Promise<NextRe
   if (!auth.ok) return auth.response;
 
   try {
-    const db = getDb();
+    const sql = getSql();
 
-    const services = db.prepare(`
+    const services = await sql.rows<any>(`
       SELECT id, name, name_en, icon, price, currency, service_type
       FROM additional_services
       WHERE is_active = 1
       ORDER BY sort_order
-    `).all();
+    `);
 
     return NextResponse.json({ services });
   } catch (error: any) {
@@ -369,9 +369,9 @@ export async function listTelegramReservations(request: NextRequest): Promise<Ne
   if (!auth.ok) return auth.response;
 
   try {
-    const db = getDb();
+    const sql = getSql();
 
-    const reservations = db.prepare(`
+    const reservations = await sql.rows<any>(`
       SELECT r.id, r.check_in, r.check_out, r.status,
              g.first_name, g.last_name,
              u.name AS unit_name, u.id AS unit_id
@@ -381,7 +381,7 @@ export async function listTelegramReservations(request: NextRequest): Promise<Ne
       WHERE r.check_in <= date('now') AND r.check_out >= date('now')
         AND r.status NOT IN ('cancelled', 'no_show')
       ORDER BY u.name
-    `).all();
+    `);
 
     return NextResponse.json({ reservations });
   } catch (error: any) {
@@ -417,11 +417,11 @@ export async function createTelegramServiceOrder(request: NextRequest): Promise<
       return NextResponse.json({ error: 'total_price must be a positive number' }, { status: 400 });
     }
 
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
 
     // Look up service name for the fin_operation description
-    const service = db.prepare('SELECT id, name, currency FROM additional_services WHERE id = ?').get(service_id) as
+    const service = await sql.row<any>('SELECT id, name, currency FROM additional_services WHERE id = ?', [service_id]) as
       { id: string; name: string; currency?: string } | undefined;
     if (!service) {
       return NextResponse.json({ error: 'Service not found' }, { status: 404 });
@@ -430,13 +430,12 @@ export async function createTelegramServiceOrder(request: NextRequest): Promise<
     const orderId = `bso_tg_${Date.now()}`;
     const now = new Date().toISOString();
 
-    db.prepare(`
+    await sql.run(`
       INSERT INTO booking_service_orders
         (id, reservation_id, service_id, quantity, unit_price, total_price,
          status, payment_status, service_date, options_json, created_at)
       VALUES (?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?)
-    `).run(
-      orderId,
+    `, [orderId,
       reservation_id === 'none' ? null : reservation_id,
       service_id,
       quantity || 1,
@@ -445,8 +444,7 @@ export async function createTelegramServiceOrder(request: NextRequest): Promise<
       payment_status || 'pending',
       service_date || now.substring(0, 10),
       JSON.stringify({ recorded_by: recorded_by || null, payment_method: payment_method || null }),
-      now,
-    );
+      now]);
 
     let finOperationId: string | null = null;
 
@@ -454,11 +452,11 @@ export async function createTelegramServiceOrder(request: NextRequest): Promise<
     if (payment_status === 'paid') {
       try {
         const currency = (service.currency || 'CZK').toUpperCase();
-        const { accountId, actorUser } = defaultCashAccountId(db, orgId, currency, recorded_by);
+        const { accountId, actorUser } = await defaultCashAccountId(orgId, currency, recorded_by);
 
         if (accountId) {
           const finResId = (reservation_id && reservation_id !== 'none') ? reservation_id : null;
-          finOperationId = createOperationInTx(db, orgId, {
+          finOperationId = await createOperationInTx(orgId, {
             op_type: 'income',
             account_to_id: accountId,
             amount: total_price,
@@ -478,7 +476,7 @@ export async function createTelegramServiceOrder(request: NextRequest): Promise<
       }
     }
 
-    const order = db.prepare('SELECT * FROM booking_service_orders WHERE id = ?').get(orderId);
+    const order = await sql.row<any>('SELECT * FROM booking_service_orders WHERE id = ?', [orderId]);
 
     return NextResponse.json({
       success: true,

@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { getSql } from '@core/db/async';
 //
 // Investor Portal v2 — Cashback Schedule Calculator
 //
@@ -80,14 +81,12 @@ function bucketize(deltaPct: number): CashbackStatusBucket {
  * @param investmentId   investor_investments.id
  * @param asOfDate    'YYYY-MM-DD' — the slice date; default = today
  */
-export function computeCashbackStatus(
-  db: any,
+export async function computeCashbackStatus(
   investmentId: string,
   asOfDate?: string,
-): CashbackStatus {
-  const inv = db.prepare(
-    "SELECT id, investor_id, cashback_schedule_json FROM investor_investments WHERE id = ?"
-  ).get(investmentId) as { id: string; investor_id: string; cashback_schedule_json: string | null } | undefined;
+): Promise<CashbackStatus> {
+  const sql = getSql();
+  const inv = await sql.row<any>("SELECT id, investor_id, cashback_schedule_json FROM investor_investments WHERE id = ?", [investmentId]) as { id: string; investor_id: string; cashback_schedule_json: string | null } | undefined;
 
   const empty = (status: CashbackStatusBucket): CashbackStatus => ({
     status,
@@ -145,14 +144,14 @@ export function computeCashbackStatus(
   // Actual payouts for this investment's project (only EUR for now —
   // schedule.currency is the contract currency; mismatched currencies
   // are skipped with a console warn).
-  const payoutRows = db.prepare(`
+  const payoutRows = await sql.rows<any>(`
     SELECT amount, currency, paid_at
     FROM investor_payouts
     WHERE investor_id = ?
       AND project_id = (SELECT project_id FROM investor_investments WHERE id = ?)
       AND paid_at <= ?
     ORDER BY paid_at
-  `).all(inv.investor_id, investmentId, today) as Array<{ amount: number; currency: string; paid_at: string }>;
+  `, [inv.investor_id, investmentId, today]) as Array<{ amount: number; currency: string; paid_at: string }>;
 
   const paidPeriods = new Map<string, number>();
   let cumulativePaid = 0;
@@ -189,14 +188,12 @@ export function computeCashbackStatus(
  * Aggregate cashback status across all of an investor's active investments.
  * Used by the portfolio-level hero card.
  */
-export function computeAggregatePortfolioCashback(
-  db: any,
+export async function computeAggregatePortfolioCashback(
   investorId: string,
   asOfDate?: string,
-): CashbackStatus {
-  const investmentIds = (db.prepare(
-    "SELECT id FROM investor_investments WHERE investor_id = ? AND is_active = 1"
-  ).all(investorId) as Array<{ id: string }>).map((r) => r.id);
+): Promise<CashbackStatus> {
+  const sql = getSql();
+  const investmentIds = (await sql.rows<any>("SELECT id FROM investor_investments WHERE investor_id = ? AND is_active = 1", [investorId]) as Array<{ id: string }>).map((r) => r.id);
 
   if (investmentIds.length === 0) {
     return {
@@ -218,7 +215,7 @@ export function computeAggregatePortfolioCashback(
   let hasAnySchedule = false;
 
   for (const id of investmentIds) {
-    const s = computeCashbackStatus(db, id, asOfDate);
+    const s = await computeCashbackStatus(id, asOfDate);
     if (s.schedule.length > 0) hasAnySchedule = true;
     cumulativePaid    += s.cumulative_paid_eur;
     cumulativePlanned += s.cumulative_planned_eur;

@@ -21,6 +21,7 @@
  *   action?       'pdf' | 'save'  - 'pdf' = just download, 'save' = save + return JSON
  */
 
+import { getSql } from '@core/db/async';
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrgIdentity } from '@core/org-identity';
 import { getDb } from '@core/db';
@@ -46,6 +47,7 @@ import type { Actor } from '@core/auth/session';
 export const POST = requirePermission('manage_documents', _POST);
 async function _POST(req: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
+    const sql = getSql();
     const body  = await req.json();
     const {
       description, amount, currency = 'CZK',
@@ -85,7 +87,7 @@ async function _POST(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Nex
     })();
 
     const invoiceId     = `inv_custom_${Date.now()}`;
-    const { invoiceNumber } = allocateInvoiceNumber(db, actor.organizationId, 'house', new Date().getFullYear());
+    const { invoiceNumber } = await allocateInvoiceNumber(sql, actor.organizationId, 'house', new Date().getFullYear());
 
     db.prepare(`
       INSERT INTO invoices

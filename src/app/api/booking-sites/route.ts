@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     // new booking site to whichever property the server created first.
     let propId: string;
     try {
-      propId = requirePropertyId(db, property_id);
+      propId = requirePropertyId(getDb(), property_id);
     } catch (e: any) {
       return NextResponse.json({ error: e.message }, { status: 400 });
     }

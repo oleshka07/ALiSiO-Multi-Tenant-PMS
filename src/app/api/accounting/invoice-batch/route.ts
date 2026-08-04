@@ -18,6 +18,7 @@ import { getDb } from '@core/db';
 import { requireOwner } from '@core/security/route-guard';
 import { allocateInvoiceNumber, seriesForChannel, isPeriodLocked } from '@/modules/finance/domain/invoice-numbering';
 import type { Actor } from '@core/auth/session';
+import { getSql } from '@core/db/async';
 
 // ─── CSV utilities ──────────────────────────────────────────────────────────
 
@@ -374,6 +375,7 @@ export const DELETE = requireOwner(_DELETE);
 async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
     const db = getDb();
+    const sql = getSql();
     const url = new URL(request.url);
     const channel = url.searchParams.get('channel')?.toLowerCase(); // 'airbnb', 'booking', 'teya', or 'all'
     const month = url.searchParams.get('month'); // optional 'YYYY-MM'
@@ -471,6 +473,7 @@ export const POST = requireOwner(_POST);
 async function _POST(request: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
     const db = getDb();
+    const sql = getSql();
     const form = await request.formData();
     const file    = form.get('file');
     const channel = (form.get('channel') as string ?? '').toLowerCase();
@@ -499,12 +502,13 @@ async function _POST(request: NextRequest, _ctx: unknown, actor: Actor): Promise
     const today = new Date().toISOString().slice(0, 10);
     const results: BatchInvoiceResult[] = [];
 
-    const createInvoice = db.transaction((row: BatchRow) => {
+    const createInvoice = (row: BatchRow) => sql.tx(async (t) => {
       // Dedup: check if already exists via notes field
       const noteKey = `${row.source}:${row.source_ref}`;
-      const existing = db.prepare(
-        "SELECT id, invoice_number FROM invoices WHERE organization_id = ? AND notes = ? AND status = 'issued' LIMIT 1"
-      ).get(actor.organizationId, noteKey) as { id: string; invoice_number: string } | undefined;
+      const existing = await t.row<{ id: string; invoice_number: string }>(
+        "SELECT id, invoice_number FROM invoices WHERE organization_id = ? AND notes = ? AND status = 'issued' LIMIT 1",
+        [actor.organizationId, noteKey],
+      );
 
       if (existing) {
         return { id: existing.id, number: existing.invoice_number, created: false };
@@ -514,22 +518,22 @@ async function _POST(request: NextRequest, _ctx: unknown, actor: Actor): Promise
       const issued = (row.date || today);
       const period = issued.slice(0, 7);
       const { series } = seriesForChannel(row.source);
-      if (isPeriodLocked(db, actor.organizationId, series, period)) {
+      if (await isPeriodLocked(sql, actor.organizationId, series, period)) {
         throw new Error(`Období ${series} ${period} je uzamčeno — nové faktury nelze přidat.`);
       }
       const invId  = `inv_batch_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
-      const { invoiceNumber: invNum } = allocateInvoiceNumber(db, actor.organizationId, row.source, new Date().getFullYear());
+      const { invoiceNumber: invNum } = await allocateInvoiceNumber(sql, actor.organizationId, row.source, new Date().getFullYear());
       const due    = row.date > today ? row.date : today;
 
       // For rows that need a guest name, store a placeholder
       const buyerName = row.needs_guest_name ? 'DOPLNIT JMÉNO' : (fixMojibake(row.guest_name) || null);
 
-      db.prepare(`
+      await t.run(`
         INSERT INTO invoices
           (id, organization_id, invoice_number, issued_at, due_date, amount, currency, status, notes, is_custom,
            custom_buyer_name, custom_description, is_credit_note, series, period, confirmed, confirmation_source)
         VALUES (?, ?, ?, ?, ?, ?, ?, 'issued', ?, 1, ?, ?, ?, ?, ?, 1, ?)
-      `).run(
+      `, [
         invId, actor.organizationId, invNum, issued, due,
         row.amount, row.currency,
         noteKey,
@@ -538,7 +542,7 @@ async function _POST(request: NextRequest, _ctx: unknown, actor: Actor): Promise
         row.is_credit_note ? 1 : 0,
         series, period,
         `statement:${row.source}`,
-      );
+      ]);
 
       return { id: invId, number: invNum, created: true };
     });
@@ -547,7 +551,7 @@ async function _POST(request: NextRequest, _ctx: unknown, actor: Actor): Promise
       // Process both income rows AND credit notes (refunds)
       if (row.op_type !== 'income' && !row.is_credit_note) continue;
       try {
-        const { id, number, created } = createInvoice(row) as { id: string; number: string; created: boolean };
+        const { id, number, created } = await createInvoice(row);
         results.push({
           source_ref:       row.source_ref,
           invoice_id:       id,

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
@@ -17,13 +18,15 @@ interface ProjectRow {
 
 const getOrgId = requireOrganizationId;
 
-function countChildren(db: any, projectId: string): number {
-  const row = db.prepare("SELECT COUNT(*) AS n FROM business_units WHERE parent_id = ?").get(projectId) as { n: number };
+async function countChildren(projectId: string): Promise<number> {
+  const sql = getSql();
+  const row = await sql.row<any>("SELECT COUNT(*) AS n FROM business_units WHERE parent_id = ?", [projectId]) as { n: number };
   return row.n;
 }
 
 interface LinkedCount { table: string; count: number }
-function countLinkedRows(db: any, projectId: string): { total: number; breakdown: LinkedCount[] } {
+async function countLinkedRows(projectId: string): Promise<{ total: number; breakdown: LinkedCount[] }> {
+  const sql = getSql();
   const tables: { table: string; column: string }[] = [
     { table: 'expenses',           column: 'business_unit_id' },
     { table: 'income',             column: 'business_unit_id' },
@@ -36,7 +39,7 @@ function countLinkedRows(db: any, projectId: string): { total: number; breakdown
   let total = 0;
   for (const t of tables) {
     try {
-      const row = db.prepare(`SELECT COUNT(*) AS n FROM ${t.table} WHERE ${t.column} = ?`).get(projectId) as { n: number };
+      const row = await sql.row<any>(`SELECT COUNT(*) AS n FROM ${t.table} WHERE ${t.column} = ?`, [projectId]) as { n: number };
       if (row.n > 0) breakdown.push({ table: t.table, count: row.n });
       total += row.n;
     } catch {
@@ -48,15 +51,15 @@ function countLinkedRows(db: any, projectId: string): { total: number; breakdown
 
 export async function listProjects(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
     const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = 1';
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT * FROM business_units
       WHERE ${where}
       ORDER BY sort_order ASC, name ASC
-    `).all(orgId);
+    `, [orgId]);
     return NextResponse.json(rows);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -65,15 +68,15 @@ export async function listProjects(request: NextRequest): Promise<NextResponse> 
 
 export async function getProjectTree(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
     const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = 1';
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT * FROM business_units
       WHERE ${where}
       ORDER BY sort_order ASC, name ASC
-    `).all(orgId) as ProjectRow[];
+    `, [orgId]) as ProjectRow[];
 
     const roots = rows.filter((r) => r.parent_id === null);
     const childrenByParent = new Map<string, ProjectRow[]>();
@@ -92,7 +95,7 @@ export async function getProjectTree(request: NextRequest): Promise<NextResponse
 
 export async function createProject(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
     const { name, parent_id = null, is_shared = 0, unit_type, sort_order } = body;
 
@@ -101,39 +104,35 @@ export async function createProject(request: NextRequest): Promise<NextResponse>
     }
 
     if (parent_id) {
-      const parent = db.prepare("SELECT * FROM business_units WHERE id = ?").get(parent_id) as ProjectRow | undefined;
+      const parent = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [parent_id]) as ProjectRow | undefined;
       if (!parent) return NextResponse.json({ error: 'Parent project not found' }, { status: 404 });
       if (parent.parent_id !== null) {
         return NextResponse.json({ error: 'Підпроєкт не можна створити всередині іншого підпроєкта. Дозволено максимум 2 рівні.' }, { status: 400 });
       }
     }
 
-    const orgId = getOrgId(db);
+    const orgId = getOrgId(getDb());
     const id = `bu_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const maxOrder = db.prepare(
-      "SELECT COALESCE(MAX(sort_order), 0) AS mx FROM business_units WHERE organization_id = ? AND (parent_id IS ? OR parent_id = ?)"
-    ).get(orgId, parent_id, parent_id) as { mx: number };
+    const maxOrder = await sql.row<any>("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM business_units WHERE organization_id = ? AND (parent_id IS ? OR parent_id = ?)", [orgId, parent_id, parent_id]) as { mx: number };
 
     // A subproject cannot be "is_shared" on its own — inherit from parent.
     let finalIsShared = is_shared ? 1 : 0;
     if (parent_id) {
-      const parent = db.prepare("SELECT is_shared FROM business_units WHERE id = ?").get(parent_id) as { is_shared: number };
+      const parent = await sql.row<any>("SELECT is_shared FROM business_units WHERE id = ?", [parent_id]) as { is_shared: number };
       finalIsShared = parent.is_shared;
     }
 
-    db.prepare(`
+    await sql.run(`
       INSERT INTO business_units
         (id, organization_id, name, unit_type, is_shared, is_active, sort_order, parent_id)
       VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-    `).run(
-      id, orgId, name.trim(),
+    `, [id, orgId, name.trim(),
       unit_type || name.trim(),
       finalIsShared,
       Number(sort_order) || (maxOrder.mx + 1),
-      parent_id,
-    );
+      parent_id]);
 
-    const created = db.prepare("SELECT * FROM business_units WHERE id = ?").get(id);
+    const created = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]);
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -145,12 +144,12 @@ export async function updateProject(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
     const body = await request.json();
     const { name, unit_type, is_shared, sort_order } = body;
 
-    const existing = db.prepare("SELECT * FROM business_units WHERE id = ?").get(id) as ProjectRow | undefined;
+    const existing = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]) as ProjectRow | undefined;
     if (!existing) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
     const isRoot = existing.parent_id === null;
@@ -170,16 +169,16 @@ export async function updateProject(
       }
       fields.push('is_shared = ?'); params.push(is_shared ? 1 : 0);
       // Propagate to children
-      db.prepare("UPDATE business_units SET is_shared = ? WHERE parent_id = ?").run(is_shared ? 1 : 0, id);
+      await sql.run("UPDATE business_units SET is_shared = ? WHERE parent_id = ?", [is_shared ? 1 : 0, id]);
     }
     if (sort_order !== undefined) { fields.push('sort_order = ?'); params.push(Number(sort_order) || 0); }
 
     if (fields.length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
     params.push(id);
-    db.prepare(`UPDATE business_units SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+    await sql.run(`UPDATE business_units SET ${fields.join(', ')} WHERE id = ?`, [...params]);
 
-    const updated = db.prepare("SELECT * FROM business_units WHERE id = ?").get(id);
+    const updated = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]);
     return NextResponse.json(updated);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -191,20 +190,20 @@ export async function archiveProject(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
     const archived = body.archived !== false;
 
-    const existing = db.prepare("SELECT id FROM business_units WHERE id = ?").get(id);
+    const existing = await sql.row<any>("SELECT id FROM business_units WHERE id = ?", [id]);
     if (!existing) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
-    db.prepare("UPDATE business_units SET is_active = ? WHERE id = ?").run(archived ? 0 : 1, id);
+    await sql.run("UPDATE business_units SET is_active = ? WHERE id = ?", [archived ? 0 : 1, id]);
     if (archived) {
-      db.prepare("UPDATE business_units SET is_active = 0 WHERE parent_id = ?").run(id);
+      await sql.run("UPDATE business_units SET is_active = 0 WHERE parent_id = ?", [id]);
     }
 
-    const updated = db.prepare("SELECT * FROM business_units WHERE id = ?").get(id);
+    const updated = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]);
     return NextResponse.json(updated);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -216,13 +215,13 @@ export async function deleteProject(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
 
-    const existing = db.prepare("SELECT * FROM business_units WHERE id = ?").get(id) as ProjectRow | undefined;
+    const existing = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]) as ProjectRow | undefined;
     if (!existing) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
-    const childCount = countChildren(db, id);
+    const childCount = await countChildren(id);
     if (childCount > 0) {
       return NextResponse.json(
         { error: `Маєте ${childCount} підпроєкт${childCount === 1 ? '' : 'и'}. Спершу видаліть або архівуйте їх.`, children: childCount },
@@ -230,7 +229,7 @@ export async function deleteProject(
       );
     }
 
-    const { total, breakdown } = countLinkedRows(db, id);
+    const { total, breakdown } = await countLinkedRows(id);
     if (total > 0) {
       const parts = breakdown.map((b) => `${b.table}: ${b.count}`).join(', ');
       return NextResponse.json(
@@ -239,7 +238,7 @@ export async function deleteProject(
       );
     }
 
-    db.prepare("DELETE FROM business_units WHERE id = ?").run(id);
+    await sql.run("DELETE FROM business_units WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -251,24 +250,24 @@ export async function moveProject(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
     const body = await request.json();
     const { parent_id, sort_order } = body;
 
-    const existing = db.prepare("SELECT * FROM business_units WHERE id = ?").get(id) as ProjectRow | undefined;
+    const existing = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]) as ProjectRow | undefined;
     if (!existing) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
     if (parent_id !== undefined && parent_id !== null) {
       if (parent_id === id) {
         return NextResponse.json({ error: 'Проєкт не може бути батьком сам собі' }, { status: 400 });
       }
-      const newParent = db.prepare("SELECT * FROM business_units WHERE id = ?").get(parent_id) as ProjectRow | undefined;
+      const newParent = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [parent_id]) as ProjectRow | undefined;
       if (!newParent) return NextResponse.json({ error: 'Parent project not found' }, { status: 404 });
       if (newParent.parent_id !== null) {
         return NextResponse.json({ error: 'Обраний батько сам є підпроєктом. Дозволено максимум 2 рівні.' }, { status: 400 });
       }
-      const childCount = countChildren(db, id);
+      const childCount = await countChildren(id);
       if (childCount > 0) {
         return NextResponse.json({ error: 'Проєкт має підпроєкти — спершу переоформіть або видаліть їх, щоб уникнути 3-го рівня.' }, { status: 400 });
       }
@@ -281,8 +280,8 @@ export async function moveProject(
     if (fields.length === 0) return NextResponse.json({ error: 'Nothing to move' }, { status: 400 });
     params.push(id);
 
-    db.prepare(`UPDATE business_units SET ${fields.join(', ')} WHERE id = ?`).run(...params);
-    const updated = db.prepare("SELECT * FROM business_units WHERE id = ?").get(id);
+    await sql.run(`UPDATE business_units SET ${fields.join(', ')} WHERE id = ?`, [...params]);
+    const updated = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]);
     return NextResponse.json(updated);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -13,8 +13,8 @@ export async function getFinanceSecurityStatus(_request?: Request): Promise<Resp
   const r = await resolveFinanceOwner();
   if (r instanceof NextResponse) return r;
   return NextResponse.json({
-    hasPassphrase: hasFinancePassphrase(r.user.id),
-    unlocked: isFinanceUnlocked(r.sessionId),
+    hasPassphrase: await hasFinancePassphrase(r.user.id),
+    unlocked: await isFinanceUnlocked(r.sessionId),
   });
 }
 
@@ -22,7 +22,7 @@ export async function getFinanceSecurityStatus(_request?: Request): Promise<Resp
 export async function setupFinancePassphrase(request: Request): Promise<Response> {
   const r = await resolveFinanceOwner();
   if (r instanceof NextResponse) return r;
-  if (hasFinancePassphrase(r.user.id)) {
+  if (await hasFinancePassphrase(r.user.id)) {
     return NextResponse.json(
       { error: 'Пароль фінансів уже встановлено', code: 'ALREADY_SET' },
       { status: 409 },
@@ -36,8 +36,8 @@ export async function setupFinancePassphrase(request: Request): Promise<Response
       { status: 400 },
     );
   }
-  setFinancePassphrase(r.user.id, passphrase);
-  unlockFinance(r.sessionId);
+  await setFinancePassphrase(r.user.id, passphrase);
+  await unlockFinance(r.sessionId);
   return NextResponse.json({ ok: true });
 }
 
@@ -46,7 +46,7 @@ export async function unlockFinanceHandler(request: Request): Promise<Response> 
   const r = await resolveFinanceOwner();
   if (r instanceof NextResponse) return r;
 
-  if (!hasFinancePassphrase(r.user.id)) {
+  if (!await hasFinancePassphrase(r.user.id)) {
     return NextResponse.json(
       { error: 'Пароль фінансів не встановлено', code: 'NOT_SET' },
       { status: 400 },
@@ -64,7 +64,7 @@ export async function unlockFinanceHandler(request: Request): Promise<Response> 
   if (!passphrase) {
     return NextResponse.json({ error: 'Введіть пароль' }, { status: 400 });
   }
-  if (!verifyFinancePassphrase(r.user.id, passphrase)) {
+  if (!await verifyFinancePassphrase(r.user.id, passphrase)) {
     return NextResponse.json(
       { error: 'Невірний пароль', code: 'INVALID_PASSPHRASE' },
       { status: 401 },
@@ -72,7 +72,7 @@ export async function unlockFinanceHandler(request: Request): Promise<Response> 
   }
 
   clearUnlockRateLimit(r.user.id);
-  unlockFinance(r.sessionId);
+  await unlockFinance(r.sessionId);
   return NextResponse.json({ ok: true });
 }
 
@@ -80,6 +80,6 @@ export async function unlockFinanceHandler(request: Request): Promise<Response> 
 export async function lockFinanceHandler(_request?: Request): Promise<Response> {
   const r = await resolveFinanceOwner();
   if (r instanceof NextResponse) return r;
-  lockFinance(r.sessionId);
+  await lockFinance(r.sessionId);
   return NextResponse.json({ ok: true });
 }

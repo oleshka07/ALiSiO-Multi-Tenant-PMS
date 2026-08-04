@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
@@ -13,15 +14,15 @@ const ISO_CURRENCY = /^[A-Z]{3}$/;
 
 export async function listExchangeRates(_request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
-    const rates = db.prepare(`
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
+    const rates = await sql.rows<any>(`
       SELECT * FROM finance_exchange_rates
       WHERE organization_id = ?
       ORDER BY effective_from DESC, from_currency, to_currency
-    `).all(orgId);
+    `, [orgId]);
 
-    const latest = db.prepare(`
+    const latest = await sql.rows<any>(`
       SELECT from_currency, to_currency, rate, effective_from
       FROM finance_exchange_rates fr
       WHERE organization_id = ?
@@ -33,7 +34,7 @@ export async function listExchangeRates(_request: NextRequest): Promise<NextResp
             AND effective_from <= date('now')
         )
       ORDER BY from_currency, to_currency
-    `).all(orgId);
+    `, [orgId]);
 
     return NextResponse.json({ rates, latest });
   } catch (error: any) {
@@ -43,7 +44,7 @@ export async function listExchangeRates(_request: NextRequest): Promise<NextResp
 
 export async function upsertExchangeRate(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
     const { id, from_currency, to_currency, rate, effective_from } = body;
 
@@ -63,44 +64,44 @@ export async function upsertExchangeRate(request: NextRequest): Promise<NextResp
       return NextResponse.json({ error: 'effective_from must be YYYY-MM-DD' }, { status: 400 });
     }
 
-    const orgId = getOrgId(db);
+    const orgId = getOrgId(getDb());
 
     if (id) {
-      const existing = db.prepare("SELECT * FROM finance_exchange_rates WHERE id = ? AND organization_id = ?").get(id, orgId);
+      const existing = await sql.row<any>("SELECT * FROM finance_exchange_rates WHERE id = ? AND organization_id = ?", [id, orgId]);
       if (!existing) return NextResponse.json({ error: 'Rate not found' }, { status: 404 });
-      db.prepare(`
+      await sql.run(`
         UPDATE finance_exchange_rates
         SET from_currency = ?, to_currency = ?, rate = ?, effective_from = ?
         WHERE id = ?
-      `).run(fromCur, toCur, numericRate, effective_from, id);
-      const updated = db.prepare("SELECT * FROM finance_exchange_rates WHERE id = ?").get(id);
+      `, [fromCur, toCur, numericRate, effective_from, id]);
+      const updated = await sql.row<any>("SELECT * FROM finance_exchange_rates WHERE id = ?", [id]);
       return NextResponse.json(updated);
     }
 
     const newId = `fx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     try {
-      db.prepare(`
+      await sql.run(`
         INSERT INTO finance_exchange_rates
           (id, organization_id, from_currency, to_currency, rate, effective_from)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).run(newId, orgId, fromCur, toCur, numericRate, effective_from);
+      `, [newId, orgId, fromCur, toCur, numericRate, effective_from]);
     } catch (e: any) {
       if (String(e.message).includes('UNIQUE')) {
-        db.prepare(`
+        await sql.run(`
           UPDATE finance_exchange_rates
           SET rate = ?
           WHERE organization_id = ? AND from_currency = ? AND to_currency = ? AND effective_from = ?
-        `).run(numericRate, orgId, fromCur, toCur, effective_from);
-        const upd = db.prepare(`
+        `, [numericRate, orgId, fromCur, toCur, effective_from]);
+        const upd = await sql.row<any>(`
           SELECT * FROM finance_exchange_rates
           WHERE organization_id = ? AND from_currency = ? AND to_currency = ? AND effective_from = ?
-        `).get(orgId, fromCur, toCur, effective_from);
+        `, [orgId, fromCur, toCur, effective_from]);
         return NextResponse.json(upd, { status: 200 });
       }
       throw e;
     }
 
-    const created = db.prepare("SELECT * FROM finance_exchange_rates WHERE id = ?").get(newId);
+    const created = await sql.row<any>("SELECT * FROM finance_exchange_rates WHERE id = ?", [newId]);
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -112,13 +113,13 @@ export async function deleteExchangeRate(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const { id } = await context.params;
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
-    const existing = db.prepare("SELECT * FROM finance_exchange_rates WHERE id = ? AND organization_id = ?").get(id, orgId);
+    const existing = await sql.row<any>("SELECT * FROM finance_exchange_rates WHERE id = ? AND organization_id = ?", [id, orgId]);
     if (!existing) return NextResponse.json({ error: 'Rate not found' }, { status: 404 });
-    db.prepare("DELETE FROM finance_exchange_rates WHERE id = ?").run(id);
+    await sql.run("DELETE FROM finance_exchange_rates WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -132,8 +133,8 @@ export async function deleteExchangeRate(
  */
 export async function getCurrentRate(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const { searchParams } = new URL(request.url);
     const fromCur = (searchParams.get('from') || '').toUpperCase();
     const toCur = (searchParams.get('to') || 'CZK').toUpperCase();
@@ -144,22 +145,22 @@ export async function getCurrentRate(request: NextRequest): Promise<NextResponse
     }
 
     // 1. Exact or earlier rate for the requested date
-    let row = db.prepare(`
+    let row = await sql.row<any>(`
       SELECT rate, effective_from FROM finance_exchange_rates
       WHERE organization_id = ? AND from_currency = ? AND to_currency = ? AND effective_from <= ?
       ORDER BY effective_from DESC LIMIT 1
-    `).get(orgId, fromCur, toCur, date) as { rate: number; effective_from: string } | undefined;
+    `, [orgId, fromCur, toCur, date]) as { rate: number; effective_from: string } | undefined;
 
     if (row) {
       return NextResponse.json({ rate: row.rate, effective_from: row.effective_from, is_fallback: false });
     }
 
     // 2. Fallback: latest rate of any date
-    row = db.prepare(`
+    row = await sql.row<any>(`
       SELECT rate, effective_from FROM finance_exchange_rates
       WHERE organization_id = ? AND from_currency = ? AND to_currency = ?
       ORDER BY effective_from DESC LIMIT 1
-    `).get(orgId, fromCur, toCur) as { rate: number; effective_from: string } | undefined;
+    `, [orgId, fromCur, toCur]) as { rate: number; effective_from: string } | undefined;
 
     if (row) {
       return NextResponse.json({ rate: row.rate, effective_from: row.effective_from, is_fallback: true });

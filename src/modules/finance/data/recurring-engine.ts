@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createOperationInTx } from '../api/operations.handlers';
+import { getSql } from '@core/db/async';
 
 export type Schedule = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
@@ -74,12 +75,13 @@ export function advanceSchedule(current: string, schedule: Schedule, scheduleDay
  * Writes to DB, advances template.next_run_at.
  * Returns the created operation id.
  */
-export function materializeTemplate(db: any, template: Template, asOfDate: string): string {
+export async function materializeTemplate(template: Template, asOfDate: string): Promise<string> {
+  const sql = getSql();
   const runDate = template.next_run_at;
   const today = asOfDate || new Date().toISOString().substring(0, 10);
   const isFuture = runDate > today;
 
-  const operationId = createOperationInTx(db, template.organization_id, {
+  const operationId = await createOperationInTx(template.organization_id, {
     op_type: template.op_type,
     account_from_id: template.account_from_id,
     account_to_id: template.account_to_id,
@@ -99,13 +101,13 @@ export function materializeTemplate(db: any, template: Template, asOfDate: strin
 
   const nextDate = advanceSchedule(runDate, template.schedule, template.schedule_day);
   const stopRun = template.end_at && nextDate > template.end_at;
-  db.prepare(`
+  await sql.run(`
     UPDATE fin_recurring_templates
     SET last_run_at = ?, next_run_at = ?, runs_created = runs_created + 1,
         is_active = CASE WHEN ? THEN 0 ELSE is_active END,
         updated_at = datetime('now')
     WHERE id = ?
-  `).run(runDate, nextDate, stopRun ? 1 : 0, template.id);
+  `, [runDate, nextDate, stopRun ? 1 : 0, template.id]);
 
   return operationId;
 }
@@ -115,7 +117,8 @@ export function materializeTemplate(db: any, template: Template, asOfDate: strin
  * Lookahead defaults to 30 days so planned operations show up in calendar early.
  * Returns count created.
  */
-export function runRecurringTick(db: any, lookaheadDays = 30): { created: number; templates: number; errors: string[] } {
+export async function runRecurringTick(lookaheadDays = 30): Promise<{ created: number; templates: number; errors: string[] }> {
+  const sql = getSql();
   const today = new Date();
   const lookahead = new Date(today);
   lookahead.setDate(today.getDate() + lookaheadDays);
@@ -128,24 +131,24 @@ export function runRecurringTick(db: any, lookaheadDays = 30): { created: number
 
   // Keep looping until no due templates remain (safety cap 1000 iterations)
   for (let i = 0; i < 1000; i++) {
-    const due = db.prepare(`
+    const due = await sql.rows<any>(`
       SELECT * FROM fin_recurring_templates
       WHERE is_active = 1 AND next_run_at <= ?
         AND (end_at IS NULL OR next_run_at <= end_at)
       ORDER BY next_run_at ASC
       LIMIT 50
-    `).all(lookaheadIso) as Template[];
+    `, [lookaheadIso]) as Template[];
 
     if (due.length === 0) break;
 
     for (const t of due) {
       try {
-        materializeTemplate(db, t, todayIso);
+        await materializeTemplate(t, todayIso);
         created++;
       } catch (e: any) {
         errors.push(`${t.id} (${t.name}): ${e.message}`);
         // Deactivate failing template to avoid infinite loop
-        db.prepare("UPDATE fin_recurring_templates SET is_active = 0 WHERE id = ?").run(t.id);
+        await sql.run("UPDATE fin_recurring_templates SET is_active = 0 WHERE id = ?", [t.id]);
       }
     }
     templatesTouched += due.length;
@@ -158,19 +161,20 @@ export function runRecurringTick(db: any, lookaheadDays = 30): { created: number
  * Runs tick only if it hasn't been run in the last ~24 hours.
  * Uses fin_system_state to track last run.
  */
-export function runRecurringTickIfDue(db: any): boolean {
-  const lastRow = db.prepare("SELECT value FROM fin_system_state WHERE key = 'last_recurring_tick'").get() as { value: string } | undefined;
+export async function runRecurringTickIfDue(): Promise<boolean> {
+  const sql = getSql();
+  const lastRow = await sql.row<any>("SELECT value FROM fin_system_state WHERE key = 'last_recurring_tick'") as { value: string } | undefined;
   const now = Date.now();
   if (lastRow?.value) {
     const last = new Date(lastRow.value).getTime();
     if (now - last < 23 * 60 * 60 * 1000) return false; // less than 23 hours
   }
 
-  const result = runRecurringTick(db);
-  db.prepare(`
+  const result = await runRecurringTick();
+  await sql.run(`
     INSERT INTO fin_system_state (key, value) VALUES ('last_recurring_tick', ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
-  `).run(new Date().toISOString());
+  `, [new Date().toISOString()]);
 
   if (result.created > 0 || result.errors.length > 0) {
     console.log(`[Recurring] Tick: created ${result.created} ops from ${result.templates} templates, ${result.errors.length} errors`);
@@ -219,22 +223,22 @@ export interface RecurringSuggestion {
  *   - same counterparty_id (if op has one)
  *   - schedule_day close to op date day-of-month (within ±5 days)
  */
-export function findRecurringSuggestion(
-  db: any,
+export async function findRecurringSuggestion(
   orgId: string,
   op: { op_type: string; amount: number; currency: string; counterparty_id: string | null; paid_at: string },
-): RecurringSuggestion | null {
+): Promise<RecurringSuggestion | null> {
+  const sql = getSql();
   const tolerance = op.amount * AMOUNT_TOLERANCE_PCT;
   const minAmt = op.amount - tolerance;
   const maxAmt = op.amount + tolerance;
 
-  const candidates = db.prepare(`
+  const candidates = await sql.rows<any>(`
     SELECT id, name, amount, category_id, project_id, counterparty_id, comment, schedule_day
     FROM fin_recurring_templates
     WHERE organization_id = ? AND is_active = 1
       AND op_type = ? AND currency = ?
       AND amount BETWEEN ? AND ?
-  `).all(orgId, op.op_type, op.currency, minAmt, maxAmt) as any[];
+  `, [orgId, op.op_type, op.currency, minAmt, maxAmt]) as any[];
 
   if (candidates.length === 0) return null;
 
@@ -274,16 +278,15 @@ export function findRecurringSuggestion(
  * Convenience: find suggestion for an op + write suggested_recurring_id
  * onto the operation row in one shot. Used by bank-inbox-engine.
  */
-export function tagOpWithRecurringSuggestion(
-  db: any,
+export async function tagOpWithRecurringSuggestion(
   orgId: string,
   opId: string,
   op: { op_type: string; amount: number; currency: string; counterparty_id: string | null; paid_at: string },
-): RecurringSuggestion | null {
-  const suggestion = findRecurringSuggestion(db, orgId, op);
+): Promise<RecurringSuggestion | null> {
+  const sql = getSql();
+  const suggestion = await findRecurringSuggestion(orgId, op);
   if (suggestion) {
-    db.prepare("UPDATE fin_operations SET suggested_recurring_id = ? WHERE id = ?")
-      .run(suggestion.template_id, opId);
+    await sql.run("UPDATE fin_operations SET suggested_recurring_id = ? WHERE id = ?", [suggestion.template_id, opId]);
   }
   return suggestion;
 }
@@ -301,11 +304,12 @@ export interface ForecastOp {
   date: string;
 }
 
-export function forecastUpcoming(db: any, orgId: string, fromDate: string, toDate: string): ForecastOp[] {
-  const templates = db.prepare(`
+export async function forecastUpcoming(orgId: string, fromDate: string, toDate: string): Promise<ForecastOp[]> {
+  const sql = getSql();
+  const templates = await sql.rows<any>(`
     SELECT * FROM fin_recurring_templates
     WHERE organization_id = ? AND is_active = 1
-  `).all(orgId) as Template[];
+  `, [orgId]) as Template[];
 
   const result: ForecastOp[] = [];
   for (const t of templates) {

@@ -9,6 +9,7 @@
 //
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -56,12 +57,11 @@ export async function uploadAttachment(
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const { id: operationId } = await context.params;
 
-    const op = db.prepare("SELECT id FROM fin_operations WHERE id = ? AND organization_id = ?")
-      .get(operationId, orgId) as { id: string } | undefined;
+    const op = await sql.row<any>("SELECT id FROM fin_operations WHERE id = ? AND organization_id = ?", [operationId, orgId]) as { id: string } | undefined;
     if (!op) return NextResponse.json({ error: 'Operation not found' }, { status: 404 });
 
     const form = await request.formData();
@@ -91,14 +91,14 @@ export async function uploadAttachment(
     fs.writeFileSync(fullPath, buf);
 
     const userId = await getCurrentUserId();
-    db.prepare(`
+    await sql.run(`
       INSERT INTO fin_operation_attachments
         (id, organization_id, operation_id, file_name, storage_path,
          mime_type, size_bytes, uploaded_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(attachmentId, orgId, operationId, file.name, relPath, mime, file.size, userId);
+    `, [attachmentId, orgId, operationId, file.name, relPath, mime, file.size, userId]);
 
-    const row = db.prepare("SELECT * FROM fin_operation_attachments WHERE id = ?").get(attachmentId);
+    const row = await sql.row<any>("SELECT * FROM fin_operation_attachments WHERE id = ?", [attachmentId]);
     return NextResponse.json({ ok: true, attachment: row }, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -114,18 +114,18 @@ export async function listOperationAttachments(
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const { id: operationId } = await context.params;
 
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT a.id, a.file_name, a.mime_type, a.size_bytes, a.uploaded_by,
              a.created_at, u.full_name AS uploaded_by_name
       FROM fin_operation_attachments a
       LEFT JOIN app_users u ON u.id = a.uploaded_by
       WHERE a.organization_id = ? AND a.operation_id = ?
       ORDER BY a.created_at DESC
-    `).all(orgId, operationId);
+    `, [orgId, operationId]);
     return NextResponse.json({ items: rows });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -142,14 +142,14 @@ export async function downloadAttachment(
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const { id } = await context.params;
 
-    const row = db.prepare(`
+    const row = await sql.row<any>(`
       SELECT * FROM fin_operation_attachments
       WHERE id = ? AND organization_id = ?
-    `).get(id, orgId) as any;
+    `, [id, orgId]) as any;
     if (!row) return NextResponse.json({ error: 'Attachment not found' }, { status: 404 });
 
     const fullPath = path.join(DATA_DIR, row.storage_path);
@@ -182,20 +182,20 @@ export async function deleteAttachment(
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const { id } = await context.params;
 
-    const row = db.prepare(`
+    const row = await sql.row<any>(`
       SELECT storage_path FROM fin_operation_attachments
       WHERE id = ? AND organization_id = ?
-    `).get(id, orgId) as { storage_path: string } | undefined;
+    `, [id, orgId]) as { storage_path: string } | undefined;
     if (!row) return NextResponse.json({ error: 'Attachment not found' }, { status: 404 });
 
     const fullPath = path.join(DATA_DIR, row.storage_path);
     try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch { /* ignore disk error */ }
 
-    db.prepare("DELETE FROM fin_operation_attachments WHERE id = ?").run(id);
+    await sql.run("DELETE FROM fin_operation_attachments WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -209,18 +209,18 @@ export async function deleteAttachment(
  */
 export async function getAttachmentCounts(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const idsParam = request.nextUrl.searchParams.get('ids') || '';
     const ids = idsParam.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 500);
     if (ids.length === 0) return NextResponse.json({ counts: {} });
 
     const placeholders = ids.map(() => '?').join(',');
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT operation_id, COUNT(*) AS cnt FROM fin_operation_attachments
       WHERE organization_id = ? AND operation_id IN (${placeholders})
       GROUP BY operation_id
-    `).all(orgId, ...ids) as { operation_id: string; cnt: number }[];
+    `, [orgId, ...ids]) as { operation_id: string; cnt: number }[];
 
     const counts: Record<string, number> = {};
     for (const r of rows) counts[r.operation_id] = r.cnt;

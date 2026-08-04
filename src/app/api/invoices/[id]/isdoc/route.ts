@@ -60,7 +60,7 @@ async function _GET(
     // Real accounting date: check-in → payment → creation (never import date).
     const documentDate = (data.check_in || data.payment_date || data.issued_at || '').slice(0, 10);
     // Foreign-currency (OTA/EUR) → CZK at the rate effective on the document date.
-    const conv = await convertToCzkAuto(db, data.amount || 0, data.currency || 'CZK', documentDate);
+    const conv = await convertToCzkAuto(data.amount || 0, data.currency || 'CZK', documentDate);
     const czkAmount = conv.converted ? conv.amountCzk : (data.amount || 0);
 
     // Buyer: explicit company always; personal guest only at/above 9900 CZK.

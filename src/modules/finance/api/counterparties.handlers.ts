@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
@@ -64,15 +65,16 @@ function enrich(row: CounterpartyRow) {
   return { ...row, aliases: parseAliases(row.aliases_json) };
 }
 
-function countChildren(db: any, id: string): number {
-  const r = db.prepare("SELECT COUNT(*) AS n FROM finance_counterparties WHERE parent_id = ?").get(id) as { n: number };
+async function countChildren(id: string): Promise<number> {
+  const sql = getSql();
+  const r = await sql.row<any>("SELECT COUNT(*) AS n FROM finance_counterparties WHERE parent_id = ?", [id]) as { n: number };
   return r.n;
 }
 
 export async function listCounterparties(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const kind = request.nextUrl.searchParams.get('kind');
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
     const search = request.nextUrl.searchParams.get('search');
@@ -83,11 +85,11 @@ export async function listCounterparties(request: NextRequest): Promise<NextResp
     if (kind && KINDS.includes(kind as Kind)) { where.push('kind = ?'); params.push(kind); }
     if (search) { where.push('name LIKE ?'); params.push(`%${search}%`); }
 
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT * FROM finance_counterparties
       WHERE ${where.join(' AND ')}
       ORDER BY sort_order ASC, name ASC
-    `).all(...params) as CounterpartyRow[];
+    `, [...params]) as CounterpartyRow[];
     return NextResponse.json(rows.map(enrich));
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -96,16 +98,16 @@ export async function listCounterparties(request: NextRequest): Promise<NextResp
 
 export async function getCounterpartyTree(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
     const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = 1';
 
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT * FROM finance_counterparties
       WHERE ${where}
       ORDER BY sort_order ASC, name ASC
-    `).all(orgId) as CounterpartyRow[];
+    `, [orgId]) as CounterpartyRow[];
 
     const enriched = rows.map(enrich);
     const roots = enriched.filter((r) => r.parent_id === null);
@@ -133,7 +135,7 @@ export async function getCounterpartyTree(request: NextRequest): Promise<NextRes
 
 export async function createCounterparty(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
     const { name, parent_id = null, kind, aliases, icon, color, note, sort_order } = body;
 
@@ -143,7 +145,7 @@ export async function createCounterparty(request: NextRequest): Promise<NextResp
 
     let finalKind: Kind | null = null;
     if (parent_id) {
-      const parent = db.prepare("SELECT * FROM finance_counterparties WHERE id = ?").get(parent_id) as CounterpartyRow | undefined;
+      const parent = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [parent_id]) as CounterpartyRow | undefined;
       if (!parent) return NextResponse.json({ error: 'Parent counterparty not found' }, { status: 404 });
       if (parent.parent_id !== null) {
         return NextResponse.json({ error: 'Підконтрагента не можна створити всередині іншого підконтрагента. Дозволено максимум 2 рівні.' }, { status: 400 });
@@ -162,26 +164,22 @@ export async function createCounterparty(request: NextRequest): Promise<NextResp
       catch (e: any) { return NextResponse.json({ error: e.message }, { status: 400 }); }
     }
 
-    const orgId = getOrgId(db);
+    const orgId = getOrgId(getDb());
     const id = `cp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const maxOrder = db.prepare(
-      "SELECT COALESCE(MAX(sort_order), 0) AS mx FROM finance_counterparties WHERE organization_id = ? AND (parent_id IS ? OR parent_id = ?)"
-    ).get(orgId, parent_id, parent_id) as { mx: number };
+    const maxOrder = await sql.row<any>("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM finance_counterparties WHERE organization_id = ? AND (parent_id IS ? OR parent_id = ?)", [orgId, parent_id, parent_id]) as { mx: number };
 
-    db.prepare(`
+    await sql.run(`
       INSERT INTO finance_counterparties
         (id, organization_id, name, parent_id, kind, note, aliases_json, icon, color, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id, orgId, name.trim(), parent_id, finalKind,
+    `, [id, orgId, name.trim(), parent_id, finalKind,
       note || null,
       JSON.stringify(aliasArr),
       icon || null,
       color || '#6b7280',
-      Number(sort_order) || (maxOrder.mx + 1),
-    );
+      Number(sort_order) || (maxOrder.mx + 1)]);
 
-    const created = db.prepare("SELECT * FROM finance_counterparties WHERE id = ?").get(id) as CounterpartyRow;
+    const created = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow;
     return NextResponse.json(enrich(created), { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -193,12 +191,12 @@ export async function updateCounterparty(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
     const body = await request.json();
     const { name, kind, aliases, icon, color, note, sort_order } = body;
 
-    const existing = db.prepare("SELECT * FROM finance_counterparties WHERE id = ?").get(id) as CounterpartyRow | undefined;
+    const existing = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow | undefined;
     if (!existing) return NextResponse.json({ error: 'Counterparty not found' }, { status: 404 });
 
     const isRoot = existing.parent_id === null;
@@ -219,7 +217,7 @@ export async function updateCounterparty(
         return NextResponse.json({ error: `kind must be one of ${KINDS.join(', ')}` }, { status: 400 });
       }
       fields.push('kind = ?'); params.push(kind || null);
-      db.prepare("UPDATE finance_counterparties SET kind = ? WHERE parent_id = ?").run(kind || null, id);
+      await sql.run("UPDATE finance_counterparties SET kind = ? WHERE parent_id = ?", [kind || null, id]);
     }
     if (aliases !== undefined) {
       try {
@@ -237,9 +235,9 @@ export async function updateCounterparty(
     if (fields.length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
     params.push(id);
-    db.prepare(`UPDATE finance_counterparties SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+    await sql.run(`UPDATE finance_counterparties SET ${fields.join(', ')} WHERE id = ?`, [...params]);
 
-    const updated = db.prepare("SELECT * FROM finance_counterparties WHERE id = ?").get(id) as CounterpartyRow;
+    const updated = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow;
     return NextResponse.json(enrich(updated));
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -251,20 +249,20 @@ export async function archiveCounterparty(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
     const archived = body.archived !== false;
 
-    const existing = db.prepare("SELECT id FROM finance_counterparties WHERE id = ?").get(id);
+    const existing = await sql.row<any>("SELECT id FROM finance_counterparties WHERE id = ?", [id]);
     if (!existing) return NextResponse.json({ error: 'Counterparty not found' }, { status: 404 });
 
-    db.prepare("UPDATE finance_counterparties SET is_active = ? WHERE id = ?").run(archived ? 0 : 1, id);
+    await sql.run("UPDATE finance_counterparties SET is_active = ? WHERE id = ?", [archived ? 0 : 1, id]);
     if (archived) {
-      db.prepare("UPDATE finance_counterparties SET is_active = 0 WHERE parent_id = ?").run(id);
+      await sql.run("UPDATE finance_counterparties SET is_active = 0 WHERE parent_id = ?", [id]);
     }
 
-    const updated = db.prepare("SELECT * FROM finance_counterparties WHERE id = ?").get(id) as CounterpartyRow;
+    const updated = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow;
     return NextResponse.json(enrich(updated));
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -276,13 +274,13 @@ export async function deleteCounterparty(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
 
-    const existing = db.prepare("SELECT * FROM finance_counterparties WHERE id = ?").get(id) as CounterpartyRow | undefined;
+    const existing = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow | undefined;
     if (!existing) return NextResponse.json({ error: 'Counterparty not found' }, { status: 404 });
 
-    const childCount = countChildren(db, id);
+    const childCount = await countChildren(id);
     if (childCount > 0) {
       return NextResponse.json(
         { error: `Маєте ${childCount} підконтрагент${childCount === 1 ? 'а' : 'и'}. Спершу видаліть або архівуйте їх.`, children: childCount },
@@ -290,7 +288,7 @@ export async function deleteCounterparty(
       );
     }
 
-    db.prepare("DELETE FROM finance_counterparties WHERE id = ?").run(id);
+    await sql.run("DELETE FROM finance_counterparties WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -302,19 +300,19 @@ export async function moveCounterparty(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
     const body = await request.json();
     const { parent_id, sort_order } = body;
 
-    const existing = db.prepare("SELECT * FROM finance_counterparties WHERE id = ?").get(id) as CounterpartyRow | undefined;
+    const existing = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow | undefined;
     if (!existing) return NextResponse.json({ error: 'Counterparty not found' }, { status: 404 });
 
     if (parent_id !== undefined && parent_id !== null) {
       if (parent_id === id) {
         return NextResponse.json({ error: 'Контрагент не може бути батьком сам собі' }, { status: 400 });
       }
-      const newParent = db.prepare("SELECT * FROM finance_counterparties WHERE id = ?").get(parent_id) as CounterpartyRow | undefined;
+      const newParent = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [parent_id]) as CounterpartyRow | undefined;
       if (!newParent) return NextResponse.json({ error: 'Parent counterparty not found' }, { status: 404 });
       if (newParent.parent_id !== null) {
         return NextResponse.json({ error: 'Обраний батько сам є підконтрагентом. Дозволено максимум 2 рівні.' }, { status: 400 });
@@ -322,7 +320,7 @@ export async function moveCounterparty(
       if (newParent.kind !== existing.kind) {
         return NextResponse.json({ error: `Батько має тип «${newParent.kind || 'не вказано'}», а контрагент — «${existing.kind || 'не вказано'}». Переміщення заборонено.` }, { status: 400 });
       }
-      const childCount = countChildren(db, id);
+      const childCount = await countChildren(id);
       if (childCount > 0) {
         return NextResponse.json({ error: 'Контрагент має підконтрагентів — спершу переоформіть або видаліть їх, щоб уникнути 3-го рівня.' }, { status: 400 });
       }
@@ -335,8 +333,8 @@ export async function moveCounterparty(
     if (fields.length === 0) return NextResponse.json({ error: 'Nothing to move' }, { status: 400 });
     params.push(id);
 
-    db.prepare(`UPDATE finance_counterparties SET ${fields.join(', ')} WHERE id = ?`).run(...params);
-    const updated = db.prepare("SELECT * FROM finance_counterparties WHERE id = ?").get(id) as CounterpartyRow;
+    await sql.run(`UPDATE finance_counterparties SET ${fields.join(', ')} WHERE id = ?`, [...params]);
+    const updated = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow;
     return NextResponse.json(enrich(updated));
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -345,14 +343,14 @@ export async function moveCounterparty(
 
 export async function getAliasSuggestions(_request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
-    const rows = db.prepare(`
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
+    const rows = await sql.rows<any>(`
       SELECT comment AS txt, COUNT(*) AS n FROM fin_operations
         WHERE organization_id = ? AND counterparty_id IS NULL
           AND comment IS NOT NULL AND TRIM(comment) != ''
         GROUP BY comment
-    `).all(orgId) as { txt: string; n: number }[];
+    `, [orgId]) as { txt: string; n: number }[];
 
     const agg = new Map<string, number>();
     for (const r of rows) {
@@ -362,9 +360,7 @@ export async function getAliasSuggestions(_request: NextRequest): Promise<NextRe
     }
 
     const usedAliases = new Set<string>();
-    const cpRows = db.prepare(
-      "SELECT aliases_json FROM finance_counterparties WHERE organization_id = ? AND is_active = 1"
-    ).all(orgId) as { aliases_json: string }[];
+    const cpRows = await sql.rows<any>("SELECT aliases_json FROM finance_counterparties WHERE organization_id = ? AND is_active = 1", [orgId]) as { aliases_json: string }[];
     for (const cp of cpRows) {
       for (const a of parseAliases(cp.aliases_json)) usedAliases.add(a);
     }

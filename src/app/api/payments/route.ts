@@ -96,7 +96,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ? `Внесено: ${actor.name}${notes ? ' · ' + notes : ''}`
         : (notes || null);
 
-      const { operationId } = createPaymentOperation({
+      const { operationId } = await createPaymentOperation({
         reservationId: reservation_id,
         amount: Math.abs(Number(amount)),
         method,

@@ -6,7 +6,7 @@ import { withPermission, notFound, type Actor } from '@core/auth/session';
 // Both the voucher and the reservation come from the request, so both are
 // checked against the caller's organization: unqualified, one hotel's voucher
 // could be redeemed against another hotel's booking.
-export const POST = withPermission('manage_bookings', async (
+export const POST = await withPermission('manage_bookings', async (
   req: Request,
   { params }: { params: Promise<{ id: string }> },
   actor: Actor,

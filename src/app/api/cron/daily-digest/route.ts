@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   try {
     const db = getDb();
     const organizations = (db.prepare('SELECT id, name FROM organizations').all() as { id: string; name: string }[])
-      .filter((o) => hasFeature(db, o.id, 'telegram'));
+      .filter((o) => hasFeature(getDb(), o.id, 'telegram'));
 
     const results: { organization: string; sent: boolean; error?: string }[] = [];
     for (const org of organizations) {

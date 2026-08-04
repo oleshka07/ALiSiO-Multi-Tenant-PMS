@@ -10,40 +10,40 @@
 import { syncCnbRates } from './cnb-rates';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { money } from '@core/money';
+import { getSql } from '@core/db/async';
+import { getDb } from '@core/db';
 
-function orgId(db: any): string | null {
-  try { return requireOrganizationId(db); } catch { return null; }
+function orgId(): string | null {
+  try { return requireOrganizationId(getDb()); } catch { return null; }
 }
 
 /**
  * Rate to turn 1 unit of `from` into CZK, effective on or before `dateIso`.
  * Returns null when no usable rate exists.
  */
-export function getCzkRate(db: any, from: string, dateIso: string): number | null {
+export async function getCzkRate(from: string, dateIso: string): Promise<number | null> {
+  const sql = getSql();
   const cur = (from || 'CZK').toUpperCase();
   if (cur === 'CZK') return 1;
-  const oid = orgId(db);
+  const oid = orgId();
   if (!oid) return null;
   const date = (dateIso || '').slice(0, 10);
 
-  const dated = (f: string, t: string) =>
-    (db.prepare(
-      `SELECT rate FROM finance_exchange_rates
+  const dated = async (f: string, t: string) =>
+    (await sql.row<any>(`SELECT rate FROM finance_exchange_rates
        WHERE organization_id = ? AND from_currency = ? AND to_currency = ?
-         AND effective_from <= ? ORDER BY effective_from DESC LIMIT 1`
-    ).get(oid, f, t, date) as { rate: number } | undefined)?.rate;
-  const latest = (f: string, t: string) =>
-    (db.prepare(
-      `SELECT rate FROM finance_exchange_rates
+         AND effective_from <= ? ORDER BY effective_from DESC LIMIT 1`, [oid, f, t, date]) as { rate: number } | undefined)?.rate;
+  const latest = async (f: string, t: string) =>
+    (await sql.row<any>(`SELECT rate FROM finance_exchange_rates
        WHERE organization_id = ? AND from_currency = ? AND to_currency = ?
-       ORDER BY effective_from DESC LIMIT 1`
-    ).get(oid, f, t) as { rate: number } | undefined)?.rate;
+       ORDER BY effective_from DESC LIMIT 1`, [oid, f, t]) as { rate: number } | undefined)?.rate;
 
   // 1 EUR = ~25 CZK → direct (EUR→CZK) should be > 1; inverse (CZK→EUR) < 1.
-  for (const [d, i] of [
-    [dated(cur, 'CZK'), dated('CZK', cur)],
-    [latest(cur, 'CZK'), latest('CZK', cur)],
-  ] as Array<[number | undefined, number | undefined]>) {
+  const pairs: Array<[number | undefined, number | undefined]> = [
+    [await dated(cur, 'CZK'), await dated('CZK', cur)],
+    [await latest(cur, 'CZK'), await latest('CZK', cur)],
+  ];
+  for (const [d, i] of pairs) {
     if (d != null && d > 1) return d;
     if (i != null && i > 0 && i < 1) return 1 / i;
     if (d != null && d > 0) return d;
@@ -65,12 +65,12 @@ export interface CzkConversion {
  * When already CZK, or no rate is available, returns converted=false and leaves
  * the amount untouched (never fabricates an FX rate).
  */
-export function convertToCzk(db: any, amount: number, currency: string, dateIso: string): CzkConversion {
+export async function convertToCzk(amount: number, currency: string, dateIso: string): Promise<CzkConversion> {
   const cur = (currency || 'CZK').toUpperCase();
   if (cur === 'CZK') {
     return { amountCzk: amount, rate: 1, original: amount, currency: 'CZK', converted: false };
   }
-  const rate = getCzkRate(db, cur, dateIso);
+  const rate = await getCzkRate(cur, dateIso);
   if (rate == null) {
     return { amountCzk: amount, rate: 0, original: amount, currency: cur, converted: false };
   }
@@ -83,15 +83,15 @@ export function convertToCzk(db: any, amount: number, currency: string, dateIso:
  * works" with no cron or manual entry. Falls back to the original currency if
  * ČNB is unreachable (never fabricates a rate).
  */
-export async function convertToCzkAuto(db: any, amount: number, currency: string, dateIso: string): Promise<CzkConversion> {
+export async function convertToCzkAuto(amount: number, currency: string, dateIso: string): Promise<CzkConversion> {
   const cur = (currency || 'CZK').toUpperCase();
   if (cur === 'CZK') return { amountCzk: amount, rate: 1, original: amount, currency: 'CZK', converted: false };
 
-  let rate = getCzkRate(db, cur, dateIso);
+  let rate = await getCzkRate(cur, dateIso);
   if (rate == null) {
     try {
-      await syncCnbRates(db, { date: (dateIso || '').slice(0, 10), currencies: [cur] });
-      rate = getCzkRate(db, cur, dateIso);
+      await syncCnbRates({ date: (dateIso || '').slice(0, 10), currencies: [cur] });
+      rate = await getCzkRate(cur, dateIso);
     } catch { /* offline / feed error — leave rate null, keep original currency */ }
   }
   if (rate == null) return { amountCzk: amount, rate: 0, original: amount, currency: cur, converted: false };

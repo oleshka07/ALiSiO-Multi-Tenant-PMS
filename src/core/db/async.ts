@@ -35,6 +35,16 @@ export interface Sql {
   /** A statement that writes. Returns how many rows it changed. */
   run(sql: string, params?: unknown[]): Promise<{ changes: number; lastId?: string | number }>;
   /**
+   * Several statements at once, no parameters — schema only.
+   *
+   * `run` prepares, and a prepared statement is exactly one statement; a
+   * CREATE TABLE block separated by semicolons fails with "the supplied SQL
+   * string contains more than one statement". Both drivers can execute a
+   * script directly, so the seam names that rather than making every caller
+   * split its own DDL.
+   */
+  exec(sql: string): Promise<void>;
+  /**
    * Several statements, all or nothing.
    *
    * The callback receives a handle scoped to the transaction; using the outer
@@ -65,6 +75,10 @@ export function sqliteSql(db: any = null): Sql {
     async run(sql: string, params: unknown[] = []) {
       const r = handle().prepare(sql).run(...params);
       return { changes: r.changes as number, lastId: r.lastInsertRowid as number };
+    },
+
+    async exec(sql: string) {
+      handle().exec(sql);
     },
 
     async tx<T>(fn: (t: Sql) => Promise<T>): Promise<T> {

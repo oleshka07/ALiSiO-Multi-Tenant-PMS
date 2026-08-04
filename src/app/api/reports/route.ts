@@ -1,3 +1,3 @@
 import { getReport } from '@reports';
 import { withPermission } from '@core/auth/session';
-export const GET = withPermission('view_reports', getReport);
+export const GET = await withPermission('view_reports', getReport);

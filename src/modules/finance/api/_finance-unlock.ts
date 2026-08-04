@@ -3,7 +3,7 @@
 // Finance step-up passphrase — data layer (synchronous better-sqlite3)
 //
 // Opt-in "second password" for the finance module:
-//   - hasFinancePassphrase(userId) === false  → finance is NOT locked
+//   - await hasFinancePassphrase(userId) === false  → finance is NOT locked
 //     (owner-only access still applies). The owner can enable it.
 //   - once set, the owner must unlock per session before reaching finance.
 //
@@ -14,57 +14,54 @@
 import { getDb } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import { getSql } from '@core/db/async';
 
 const UNLOCK_MINUTES = (() => {
   const n = Number(process.env.FINANCE_UNLOCK_MINUTES ?? '60');
   return Number.isFinite(n) && n > 0 ? n : 60;
 })();
 
-export function hasFinancePassphrase(userId: string): boolean {
-  const db = getDb();
-  const row = db.prepare('SELECT user_id FROM finance_security WHERE user_id = ?').get(userId);
+export async function hasFinancePassphrase(userId: string): Promise<boolean> {
+  const sql = getSql();
+  const row = await sql.row<any>('SELECT user_id FROM finance_security WHERE user_id = ?', [userId]);
   return !!row;
 }
 
-export function setFinancePassphrase(userId: string, passphrase: string): void {
-  const db = getDb();
+export async function setFinancePassphrase(userId: string, passphrase: string): Promise<void> {
+  const sql = getSql();
   const hash = bcrypt.hashSync(passphrase, 12);
   const salt = crypto.randomBytes(16).toString('hex');
-  db.prepare(`
+  await sql.run(`
     INSERT INTO finance_security (user_id, passphrase_hash, kdf_salt)
     VALUES (?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
       passphrase_hash = excluded.passphrase_hash,
       updated_at = datetime('now')
-  `).run(userId, hash, salt);
+  `, [userId, hash, salt]);
 }
 
-export function verifyFinancePassphrase(userId: string, passphrase: string): boolean {
-  const db = getDb();
-  const row = db.prepare(
-    'SELECT passphrase_hash FROM finance_security WHERE user_id = ?',
-  ).get(userId) as { passphrase_hash: string } | undefined;
+export async function verifyFinancePassphrase(userId: string, passphrase: string): Promise<boolean> {
+  const sql = getSql();
+  const row = await sql.row<any>('SELECT passphrase_hash FROM finance_security WHERE user_id = ?', [userId]) as { passphrase_hash: string } | undefined;
   if (!row) return false;
   return bcrypt.compareSync(passphrase, row.passphrase_hash);
 }
 
-export function unlockFinance(sessionId: string): void {
-  const db = getDb();
+export async function unlockFinance(sessionId: string): Promise<void> {
+  const sql = getSql();
   const until = new Date(Date.now() + UNLOCK_MINUTES * 60 * 1000).toISOString();
-  db.prepare('UPDATE sessions SET finance_unlocked_until = ? WHERE id = ?').run(until, sessionId);
+  await sql.run('UPDATE sessions SET finance_unlocked_until = ? WHERE id = ?', [until, sessionId]);
 }
 
-export function lockFinance(sessionId: string): void {
-  const db = getDb();
-  db.prepare('UPDATE sessions SET finance_unlocked_until = NULL WHERE id = ?').run(sessionId);
+export async function lockFinance(sessionId: string): Promise<void> {
+  const sql = getSql();
+  await sql.run('UPDATE sessions SET finance_unlocked_until = NULL WHERE id = ?', [sessionId]);
 }
 
-export function isFinanceUnlocked(sessionId: string | undefined): boolean {
+export async function isFinanceUnlocked(sessionId: string | undefined): Promise<boolean> {
   if (!sessionId) return false;
-  const db = getDb();
-  const row = db.prepare(
-    "SELECT 1 FROM sessions WHERE id = ? AND finance_unlocked_until IS NOT NULL AND finance_unlocked_until > datetime('now')",
-  ).get(sessionId);
+  const sql = getSql();
+  const row = await sql.row<any>("SELECT 1 FROM sessions WHERE id = ? AND finance_unlocked_until IS NOT NULL AND finance_unlocked_until > datetime('now')", [sessionId]);
   return !!row;
 }
 

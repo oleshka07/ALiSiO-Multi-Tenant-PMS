@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { getSql } from '@core/db/async';
 // ════════════════════════════════════════════════════════════
 // Canonical month money metrics — SINGLE DEFINITION of revenue/expenses
 // for every cash-based report (overview, indicators, P&L, cashflow).
@@ -62,8 +63,9 @@ const CLS_SQL = `
  * every company on the server. One hotel's overview quietly included another
  * hotel's income — the kind of wrong that looks like a plausible number.
  */
-export function getMonthMoney(db: any, organizationId: string, month: string): MonthMoney {
-  const rows = db.prepare(`
+export async function getMonthMoney(organizationId: string, month: string): Promise<MonthMoney> {
+  const sql = getSql();
+  const rows = await sql.rows<any>(`
     SELECT o.op_type,
            CASE WHEN o.op_type = 'expense' AND COALESCE(o.payment_subtype, '') = 'refund'
                 THEN 1 ELSE 0 END AS is_refund,
@@ -76,7 +78,7 @@ export function getMonthMoney(db: any, organizationId: string, month: string): M
       AND o.op_type != 'transfer'
       AND strftime('%Y-%m', o.paid_at) = ?
     GROUP BY o.op_type, is_refund, cls
-  `).all(organizationId, month) as { op_type: string; is_refund: number; cls: string; total: number }[];
+  `, [organizationId, month]) as { op_type: string; is_refund: number; cls: string; total: number }[];
 
   const m: MonthMoney = {
     month,

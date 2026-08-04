@@ -1,12 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function listExpenseCategories(): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const categories = db.prepare(`SELECT * FROM expense_categories WHERE is_active = 1 ORDER BY sort_order ASC`).all();
+    const sql = getSql();
+    const categories = await sql.rows<any>(`SELECT * FROM expense_categories WHERE is_active = 1 ORDER BY sort_order ASC`);
     return NextResponse.json(categories);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -15,15 +16,15 @@ export async function listExpenseCategories(): Promise<NextResponse> {
 
 export async function createExpenseCategory(request: Request): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
     const { name, std_group, pnl_line, alloc_method, icon, color } = body;
 
     if (!name || !std_group || !pnl_line) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
 
-    const orgRow = { id: requireOrganizationId(db) } as any;
+    const orgRow = { id: requireOrganizationId(getDb()) } as any;
     const id = `ec_${Date.now()}`;
-    const maxOrder = db.prepare("SELECT MAX(sort_order) as mx FROM expense_categories").get() as any;
+    const maxOrder = await sql.row<any>("SELECT MAX(sort_order) as mx FROM expense_categories") as any;
 
     // Keep both classification axes in sync — a category without
     // op_type/classifier is invisible to the matrix reports.
@@ -38,12 +39,12 @@ export async function createExpenseCategory(request: Request): Promise<NextRespo
     };
     const axis = AXIS[std_group] || { op_type: 'other', classifier: 'other' };
 
-    db.prepare(`
+    await sql.run(`
       INSERT INTO expense_categories (id, organization_id, name, std_group, pnl_line, alloc_method, icon, color, sort_order, op_type, classifier)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, orgRow.id, name, std_group, pnl_line, alloc_method || 'DIRECT', icon || '📋', color || '#6b7280', (maxOrder?.mx || 0) + 1, axis.op_type, axis.classifier);
+    `, [id, orgRow.id, name, std_group, pnl_line, alloc_method || 'DIRECT', icon || '📋', color || '#6b7280', (maxOrder?.mx || 0) + 1, axis.op_type, axis.classifier]);
 
-    return NextResponse.json(db.prepare("SELECT * FROM expense_categories WHERE id = ?").get(id), { status: 201 });
+    return NextResponse.json(await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [id]), { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

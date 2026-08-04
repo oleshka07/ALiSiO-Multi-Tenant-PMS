@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import {
   createOperationInTx,
   recalcReservationPaymentStatus,
@@ -44,7 +44,8 @@ export interface CreatePaymentOperationInput {
  * null when no clearing account is seeded for this combination — caller
  * should then fall back AND tag the operation as needs_review.
  */
-function findClearingAccount(db: any, orgId: string, channelType: string | undefined, currency: string): string | null {
+async function findClearingAccount(orgId: string, channelType: string | undefined, currency: string): Promise<string | null> {
+  const sql = getSql();
   if (!channelType) return null;
   const ch = channelType.toLowerCase();
   const display = ch === 'booking.com' || ch === 'booking_com' || ch === 'booking'
@@ -55,9 +56,7 @@ function findClearingAccount(db: any, orgId: string, channelType: string | undef
     : null;
   if (!display) return null;
   const wanted = `${display} (${currency.toUpperCase()})`;
-  const row = db.prepare(
-    "SELECT id FROM finance_accounts WHERE organization_id = ? AND name = ? AND type = 'clearing' AND is_active = 1 LIMIT 1"
-  ).get(orgId, wanted) as { id: string } | undefined;
+  const row = await sql.row<any>("SELECT id FROM finance_accounts WHERE organization_id = ? AND name = ? AND type = 'clearing' AND is_active = 1 LIMIT 1", [orgId, wanted]) as { id: string } | undefined;
   return row?.id || null;
 }
 
@@ -69,8 +68,8 @@ function findClearingAccount(db: any, orgId: string, channelType: string | undef
  * This replaces direct INSERT INTO payments across hostex-sync, Teya webhook,
  * and widget-payment-return handlers.
  */
-export function createPaymentOperation(input: CreatePaymentOperationInput): { operationId: string } {
-  const db = getDb();
+export async function createPaymentOperation(input: CreatePaymentOperationInput): Promise<{ operationId: string }> {
+  const sql = getSql();
   const {
     reservationId, amount, method, paymentSubtype, source,
     currency = 'CZK',
@@ -83,11 +82,11 @@ export function createPaymentOperation(input: CreatePaymentOperationInput): { op
 
   // Get organization_id via reservations -> properties (+ stay dates for
   // accrual attribution below)
-  const row = db.prepare(`
+  const row = await sql.row<any>(`
     SELECT prop.organization_id AS org_id, r.check_in, r.check_out
     FROM reservations r JOIN properties prop ON r.property_id = prop.id
     WHERE r.id = ?
-  `).get(reservationId) as { org_id: string; check_in: string | null; check_out: string | null } | undefined;
+  `, [reservationId]) as { org_id: string; check_in: string | null; check_out: string | null } | undefined;
   if (!row) throw new Error(`Reservation ${reservationId} not found`);
 
   const isRefund = paymentSubtype === 'refund';
@@ -98,15 +97,15 @@ export function createPaymentOperation(input: CreatePaymentOperationInput): { op
   // operations list immediately sees which booking the money is for
   // («Hostex Airbnb · RES-123 · John Doe · 2026-05-20»). Caller's
   // explicit comment always wins.
-  const resContext = (() => {
+  const resContext = await (async () => {
     try {
-      const ctx = db.prepare(`
+      const ctx = await sql.row<any>(`
         SELECT r.id, r.check_in,
                TRIM(COALESCE(g.first_name, '') || ' ' || COALESCE(g.last_name, '')) AS guest_name
         FROM reservations r
         LEFT JOIN guests g ON g.id = r.guest_id
         WHERE r.id = ?
-      `).get(reservationId) as { id: string; check_in: string | null; guest_name: string | null } | undefined;
+      `, [reservationId]) as { id: string; check_in: string | null; guest_name: string | null } | undefined;
       if (!ctx) return null;
       const parts = [
         `RES ${ctx.id.slice(0, 8)}`,
@@ -130,15 +129,15 @@ export function createPaymentOperation(input: CreatePaymentOperationInput): { op
   let resolvedAccountId = accountId;
   let needsReview = 0;
   if (!resolvedAccountId && source === 'hostex') {
-    resolvedAccountId = findClearingAccount(db, row.org_id, input.channelType, currency) || undefined;
+    resolvedAccountId = await findClearingAccount(row.org_id, input.channelType, currency) || undefined;
   }
   if (!resolvedAccountId) {
-    const fallback = db.prepare(`
+    const fallback = await sql.row<any>(`
       SELECT id FROM finance_accounts
       WHERE organization_id = ? AND currency = ?
         AND type IN ('cash', 'bank') AND is_active = 1
       ORDER BY sort_order ASC, created_at ASC LIMIT 1
-    `).get(row.org_id, currency) as { id: string } | undefined;
+    `, [row.org_id, currency]) as { id: string } | undefined;
     resolvedAccountId = fallback?.id || undefined;
     if (source === 'hostex' || source === 'teia' || source === 'booking_widget') {
       needsReview = 1;
@@ -151,11 +150,11 @@ export function createPaymentOperation(input: CreatePaymentOperationInput): { op
   // Non-cash methods (card, bank_transfer, online, booking_platform, etc.) arrive
   // via bank statement import and will be recorded when the real bank transaction lands.
   if (method !== 'cash') {
-    recalcReservationPaymentStatus(db, reservationId);
+    await recalcReservationPaymentStatus(reservationId);
     return { operationId: '' };
   }
 
-  const operationId = createOperationInTx(db, row.org_id, {
+  const operationId = await createOperationInTx(row.org_id, {
     op_type: opType,
     account_from_id: isRefund ? (resolvedAccountId || null) : null,
     account_to_id: isRefund ? null : (resolvedAccountId || null),
@@ -176,7 +175,7 @@ export function createPaymentOperation(input: CreatePaymentOperationInput): { op
     needs_review: needsReview,
   }, input.actor || null);
 
-  recalcReservationPaymentStatus(db, reservationId);
+  await recalcReservationPaymentStatus(reservationId);
 
   // Auto-rules: payment-bridge ops (Hostex / Teia / widget / manual
   // payment) start with no category / counterparty / project. Run the
@@ -184,10 +183,10 @@ export function createPaymentOperation(input: CreatePaymentOperationInput): { op
   // already do. Failure here must not break the payment write — wrapped
   // in try/catch with console-only logging.
   try {
-    const rules = loadActiveRules(db, row.org_id);
+    const rules = await loadActiveRules(row.org_id);
     if (rules.length > 0) {
-      const op = db.prepare('SELECT * FROM fin_operations WHERE id = ?').get(operationId) as any;
-      if (op) applyRulesToOperation(db, op, rules, row.org_id);
+      const op = await sql.row<any>('SELECT * FROM fin_operations WHERE id = ?', [operationId]) as any;
+      if (op) await applyRulesToOperation(op, rules, row.org_id);
     }
   } catch (e: any) {
     console.error('[payment-bridge] auto-rules apply failed (non-fatal):', e.message);
@@ -200,19 +199,19 @@ export function createPaymentOperation(input: CreatePaymentOperationInput): { op
  * Check if a payment operation already exists for a reservation matching
  * the given source + source_ref. Used by Hostex sync to avoid duplicates.
  */
-export function hasPaymentOperation(reservationId: string, source: PaymentSource, sourceRef?: string): boolean {
-  const db = getDb();
+export async function hasPaymentOperation(reservationId: string, source: PaymentSource, sourceRef?: string): Promise<boolean> {
+  const sql = getSql();
   if (sourceRef) {
-    const row = db.prepare(`
+    const row = await sql.row<any>(`
       SELECT id FROM fin_operations
       WHERE reservation_id = ? AND source = ? AND source_ref = ? LIMIT 1
-    `).get(reservationId, source, sourceRef);
+    `, [reservationId, source, sourceRef]);
     return !!row;
   }
-  const row = db.prepare(`
+  const row = await sql.row<any>(`
     SELECT id FROM fin_operations
     WHERE reservation_id = ? AND source = ? LIMIT 1
-  `).get(reservationId, source);
+  `, [reservationId, source]);
   return !!row;
 }
 
@@ -220,9 +219,9 @@ export function hasPaymentOperation(reservationId: string, source: PaymentSource
  * Delete all payment operations associated with a reservation.
  * Used by cleanup-ical handler.
  */
-export function deletePaymentOperationsForReservation(reservationId: string): number {
-  const db = getDb();
-  db.prepare('UPDATE bank_transactions SET matched_operation_id = NULL WHERE matched_operation_id IN (SELECT id FROM fin_operations WHERE reservation_id = ?)').run(reservationId);
-  const result = db.prepare('DELETE FROM fin_operations WHERE reservation_id = ?').run(reservationId);
+export async function deletePaymentOperationsForReservation(reservationId: string): Promise<number> {
+  const sql = getSql();
+  await sql.run('UPDATE bank_transactions SET matched_operation_id = NULL WHERE matched_operation_id IN (SELECT id FROM fin_operations WHERE reservation_id = ?)', [reservationId]);
+  const result = await sql.run('DELETE FROM fin_operations WHERE reservation_id = ?', [reservationId]);
   return result.changes;
 }

@@ -14,7 +14,7 @@ import { withPermission } from '@core/auth/session';
  * hotel's OpenAI bill, and the cloud-consent flag it honours belongs to an
  * organization it had no way to identify.
  */
-export const POST = withPermission('manage_guests', async (req: Request) => {
+export const POST = await withPermission('manage_guests', async (req: Request) => {
   try {
     const { image } = await req.json();
     if (!image) {

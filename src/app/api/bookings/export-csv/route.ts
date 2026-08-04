@@ -11,7 +11,7 @@ import ExcelJS from 'exceljs';
  * Filters by check-in OR check-out overlap with the range.
  * Excludes cancelled, no_show, child sub-bookings.
  */
-export const GET = withPermission('view_reports', async (request: NextRequest, _ctx, actor) => {
+export const GET = await withPermission('view_reports', async (request: NextRequest, _ctx, actor) => {
   try {
     const db = getDb();
     const { searchParams } = new URL(request.url);

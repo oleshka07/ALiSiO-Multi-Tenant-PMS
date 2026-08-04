@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import {
   applyRulesToOperation, loadActiveRules, parseRule,
@@ -11,9 +12,10 @@ const OP_TYPES = ['income', 'expense', 'any'] as const;
 
 const getOrgId = requireOrganizationId;
 
-function enrichRule(db: any, row: AutoRuleRow) {
+async function enrichRule(row: AutoRuleRow) {
+  const sql = getSql();
   const parsed = parseRule(row);
-  const matchCount = db.prepare("SELECT COUNT(*) AS n FROM fin_auto_rule_matches WHERE rule_id = ?").get(row.id) as { n: number };
+  const matchCount = await sql.row<any>("SELECT COUNT(*) AS n FROM fin_auto_rule_matches WHERE rule_id = ?", [row.id]) as { n: number };
   return { ...parsed, match_count: matchCount.n };
 }
 
@@ -42,14 +44,14 @@ function validateActions(actions: unknown): Actions {
 
 export async function listAutoRules(_request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
-    const rows = db.prepare(`
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
+    const rows = await sql.rows<any>(`
       SELECT * FROM fin_auto_rules
       WHERE organization_id = ?
       ORDER BY sort_order ASC, created_at ASC
-    `).all(orgId) as AutoRuleRow[];
-    return NextResponse.json(rows.map((r) => enrichRule(db, r)));
+    `, [orgId]) as AutoRuleRow[];
+    return NextResponse.json(await Promise.all(rows.map((r) => enrichRule(r))));
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -57,7 +59,7 @@ export async function listAutoRules(_request: NextRequest): Promise<NextResponse
 
 export async function createAutoRule(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
     const { name, op_type = 'any', conditions = [], actions = {}, is_active = true, stop_on_match = false, sort_order } = body;
 
@@ -77,23 +79,21 @@ export async function createAutoRule(request: NextRequest): Promise<NextResponse
       return NextResponse.json({ error: e.message }, { status: 400 });
     }
 
-    const orgId = getOrgId(db);
+    const orgId = getOrgId(getDb());
     const id = `ar_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const maxOrder = db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM fin_auto_rules WHERE organization_id = ?").get(orgId) as { mx: number };
+    const maxOrder = await sql.row<any>("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM fin_auto_rules WHERE organization_id = ?", [orgId]) as { mx: number };
 
-    db.prepare(`
+    await sql.run(`
       INSERT INTO fin_auto_rules
         (id, organization_id, name, op_type, conditions_json, actions_json, is_active, stop_on_match, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id, orgId, name.trim(), op_type,
+    `, [id, orgId, name.trim(), op_type,
       JSON.stringify(parsedConditions), JSON.stringify(parsedActions),
       is_active ? 1 : 0, stop_on_match ? 1 : 0,
-      Number(sort_order) || (maxOrder.mx + 1),
-    );
+      Number(sort_order) || (maxOrder.mx + 1)]);
 
-    const row = db.prepare("SELECT * FROM fin_auto_rules WHERE id = ?").get(id) as AutoRuleRow;
-    return NextResponse.json(enrichRule(db, row), { status: 201 });
+    const row = await sql.row<any>("SELECT * FROM fin_auto_rules WHERE id = ?", [id]) as AutoRuleRow;
+    return NextResponse.json(await enrichRule(row), { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -104,10 +104,10 @@ export async function updateAutoRule(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
     const body = await request.json();
-    const existing = db.prepare("SELECT * FROM fin_auto_rules WHERE id = ?").get(id);
+    const existing = await sql.row<any>("SELECT * FROM fin_auto_rules WHERE id = ?", [id]);
     if (!existing) return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
 
     const fields: string[] = [];
@@ -133,9 +133,9 @@ export async function updateAutoRule(
     if (fields.length === 1) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
     params.push(id);
-    db.prepare(`UPDATE fin_auto_rules SET ${fields.join(', ')} WHERE id = ?`).run(...params);
-    const row = db.prepare("SELECT * FROM fin_auto_rules WHERE id = ?").get(id) as AutoRuleRow;
-    return NextResponse.json(enrichRule(db, row));
+    await sql.run(`UPDATE fin_auto_rules SET ${fields.join(', ')} WHERE id = ?`, [...params]);
+    const row = await sql.row<any>("SELECT * FROM fin_auto_rules WHERE id = ?", [id]) as AutoRuleRow;
+    return NextResponse.json(await enrichRule(row));
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -146,11 +146,11 @@ export async function deleteAutoRule(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
-    const existing = db.prepare("SELECT id FROM fin_auto_rules WHERE id = ?").get(id);
+    const existing = await sql.row<any>("SELECT id FROM fin_auto_rules WHERE id = ?", [id]);
     if (!existing) return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
-    db.prepare('DELETE FROM fin_auto_rules WHERE id = ?').run(id);
+    await sql.run('DELETE FROM fin_auto_rules WHERE id = ?', [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -162,15 +162,15 @@ export async function toggleAutoRule(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
-    const row = db.prepare("SELECT is_active FROM fin_auto_rules WHERE id = ?").get(id) as { is_active: number } | undefined;
+    const row = await sql.row<any>("SELECT is_active FROM fin_auto_rules WHERE id = ?", [id]) as { is_active: number } | undefined;
     if (!row) return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
     const next = typeof body.is_active === 'boolean' ? (body.is_active ? 1 : 0) : (row.is_active ? 0 : 1);
-    db.prepare("UPDATE fin_auto_rules SET is_active = ?, updated_at = datetime('now') WHERE id = ?").run(next, id);
-    const updated = db.prepare("SELECT * FROM fin_auto_rules WHERE id = ?").get(id) as AutoRuleRow;
-    return NextResponse.json(enrichRule(db, updated));
+    await sql.run("UPDATE fin_auto_rules SET is_active = ?, updated_at = datetime('now') WHERE id = ?", [next, id]);
+    const updated = await sql.row<any>("SELECT * FROM fin_auto_rules WHERE id = ?", [id]) as AutoRuleRow;
+    return NextResponse.json(await enrichRule(updated));
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -178,25 +178,25 @@ export async function toggleAutoRule(
 
 export async function applyAutoRulesToOperations(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const body = await request.json().catch(() => ({}));
     const { operation_ids, from, to, op_type } = body;
 
     let ops: Operation[];
     if (Array.isArray(operation_ids) && operation_ids.length > 0) {
       const placeholders = operation_ids.map(() => '?').join(',');
-      ops = db.prepare(`SELECT * FROM fin_operations WHERE id IN (${placeholders})`).all(...operation_ids) as Operation[];
+      ops = await sql.rows<any>(`SELECT * FROM fin_operations WHERE id IN (${placeholders})`, [...operation_ids]) as Operation[];
     } else {
       const where: string[] = ['organization_id = ?'];
       const params: any[] = [orgId];
       if (from) { where.push('paid_at >= ?'); params.push(from); }
       if (to) { where.push('paid_at <= ?'); params.push(to); }
       if (op_type) { where.push('op_type = ?'); params.push(op_type); }
-      ops = db.prepare(`SELECT * FROM fin_operations WHERE ${where.join(' AND ')}`).all(...params) as Operation[];
+      ops = await sql.rows<any>(`SELECT * FROM fin_operations WHERE ${where.join(' AND ')}`, [...params]) as Operation[];
     }
 
-    const rules = loadActiveRules(db, orgId);
+    const rules = await loadActiveRules(orgId);
     if (rules.length === 0) {
       return NextResponse.json({ processed: ops.length, changed: 0, rulesCount: 0, results: [] });
     }
@@ -204,7 +204,7 @@ export async function applyAutoRulesToOperations(request: NextRequest): Promise<
     const results = [];
     let changedCount = 0;
     for (const op of ops) {
-      const result = applyRulesToOperation(db, op, rules, orgId);
+      const result = await applyRulesToOperation(op, rules, orgId);
       if (Object.keys(result.changes).length > 0 || result.tagsAdded.length > 0) {
         changedCount++;
         results.push(result);
@@ -218,15 +218,15 @@ export async function applyAutoRulesToOperations(request: NextRequest): Promise<
 
 export async function autoMatchCounterpartiesAllOps(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const body = await request.json().catch(() => ({}));
     const onlyUnmatched = body.only_unmatched !== false;
 
     const where = onlyUnmatched
       ? 'organization_id = ? AND counterparty_id IS NULL AND comment IS NOT NULL'
       : 'organization_id = ? AND comment IS NOT NULL';
-    const ops = db.prepare(`SELECT * FROM fin_operations WHERE ${where}`).all(orgId) as Operation[];
+    const ops = await sql.rows<any>(`SELECT * FROM fin_operations WHERE ${where}`, [orgId]) as Operation[];
 
     // Synthetic rule that only auto-matches counterparty
     const syntheticRule = {
@@ -243,7 +243,7 @@ export async function autoMatchCounterpartiesAllOps(request: NextRequest): Promi
 
     let matched = 0;
     for (const op of ops) {
-      const result = applyRulesToOperation(db, op, [syntheticRule], orgId);
+      const result = await applyRulesToOperation(op, [syntheticRule], orgId);
       if (result.changes.counterparty_id) matched++;
     }
     return NextResponse.json({ processed: ops.length, matched });

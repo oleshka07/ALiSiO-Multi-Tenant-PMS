@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 // ─────────────────────────────────────────────────────────────────
 // Finance User Access — API handlers
@@ -50,11 +50,9 @@ function safeJsonParse(s: string | null, fallback: any): any {
  * Check if a user has finance access via the finance_user_access table.
  * Used by _guard.ts to authorize non-owner users.
  */
-export function isFinanceUserEnabled(userId: string): boolean {
-  const db = getDb();
-  const row = db.prepare(
-    'SELECT 1 FROM finance_user_access WHERE user_id = ? AND is_enabled = 1'
-  ).get(userId);
+export async function isFinanceUserEnabled(userId: string): Promise<boolean> {
+  const sql = getSql();
+  const row = await sql.row<any>('SELECT 1 FROM finance_user_access WHERE user_id = ? AND is_enabled = 1', [userId]);
   return !!row;
 }
 
@@ -62,11 +60,9 @@ export function isFinanceUserEnabled(userId: string): boolean {
  * Get the full access configuration for a user.
  * Returns null if no access record exists.
  */
-export function getFinanceAccessForUser(userId: string): FinanceAccessParsed | null {
-  const db = getDb();
-  const row = db.prepare(
-    'SELECT * FROM finance_user_access WHERE user_id = ?'
-  ).get(userId) as FinanceAccessRow | undefined;
+export async function getFinanceAccessForUser(userId: string): Promise<FinanceAccessParsed | null> {
+  const sql = getSql();
+  const row = await sql.row<any>('SELECT * FROM finance_user_access WHERE user_id = ?', [userId]) as FinanceAccessRow | undefined;
   if (!row) return null;
   return parseAccess(row);
 }
@@ -78,9 +74,9 @@ export function getFinanceAccessForUser(userId: string): FinanceAccessParsed | n
  */
 export async function listFinanceAccess(): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
 
-    const users = db.prepare(`
+    const users = await sql.rows<any>(`
       SELECT u.id, u.full_name, u.email, u.role, u.is_active,
              fa.is_enabled, fa.period_mode, fa.allowed_tabs,
              fa.allowed_accounts, fa.can_export, fa.read_only
@@ -88,7 +84,7 @@ export async function listFinanceAccess(): Promise<NextResponse> {
       LEFT JOIN finance_user_access fa ON fa.user_id = u.id
       WHERE u.role != 'owner'
       ORDER BY u.full_name
-    `).all() as any[];
+    `) as any[];
 
     const result = users.map((u) => ({
       id: u.id,
@@ -119,7 +115,7 @@ export async function listFinanceAccess(): Promise<NextResponse> {
  */
 export async function upsertFinanceAccess(request: NextRequest, context: any): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const params = await context.params;
     const userId = params.id;
 
@@ -128,7 +124,7 @@ export async function upsertFinanceAccess(request: NextRequest, context: any): P
     }
 
     // Verify user exists and is not owner
-    const user = db.prepare('SELECT id, role FROM app_users WHERE id = ?').get(userId) as any;
+    const user = await sql.row<any>('SELECT id, role FROM app_users WHERE id = ?', [userId]) as any;
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
@@ -151,7 +147,7 @@ export async function upsertFinanceAccess(request: NextRequest, context: any): P
       return NextResponse.json({ error: 'period_mode must be all or month' }, { status: 400 });
     }
 
-    db.prepare(`
+    await sql.run(`
       INSERT INTO finance_user_access (user_id, is_enabled, period_mode, allowed_tabs, allowed_accounts, can_export, read_only, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
       ON CONFLICT(user_id) DO UPDATE SET
@@ -162,15 +158,13 @@ export async function upsertFinanceAccess(request: NextRequest, context: any): P
         can_export = excluded.can_export,
         read_only = excluded.read_only,
         updated_at = datetime('now')
-    `).run(
-      userId,
+    `, [userId,
       is_enabled ? 1 : 0,
       period_mode,
       JSON.stringify(allowed_tabs),
       JSON.stringify(allowed_accounts),
       can_export ? 1 : 0,
-      read_only ? 1 : 0,
-    );
+      read_only ? 1 : 0]);
 
     return NextResponse.json({ ok: true });
   } catch (error: any) {
@@ -185,11 +179,11 @@ export async function upsertFinanceAccess(request: NextRequest, context: any): P
  */
 export async function deleteFinanceAccess(_request: NextRequest, context: any): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const params = await context.params;
     const userId = params.id;
 
-    db.prepare('DELETE FROM finance_user_access WHERE user_id = ?').run(userId);
+    await sql.run('DELETE FROM finance_user_access WHERE user_id = ?', [userId]);
 
     return NextResponse.json({ ok: true });
   } catch (error: any) {
@@ -204,7 +198,7 @@ export async function deleteFinanceAccess(_request: NextRequest, context: any): 
  */
 export async function getMyFinanceAccess(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
 
     // Extract user from cookie — we import lazily to avoid circular deps
     const { cookies } = await import('next/headers');
@@ -233,7 +227,7 @@ export async function getMyFinanceAccess(request: NextRequest): Promise<NextResp
       });
     }
 
-    const access = getFinanceAccessForUser(user.id);
+    const access = await getFinanceAccessForUser(user.id);
     if (!access || !access.is_enabled) {
       return NextResponse.json({ error: 'No finance access' }, { status: 403 });
     }

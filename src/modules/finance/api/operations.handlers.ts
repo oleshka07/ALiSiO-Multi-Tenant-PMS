@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { getSessionUser } from '@core/auth';
 
@@ -27,26 +28,24 @@ export async function getOptionalActor(): Promise<OperationActor | null> {
   } catch { return null; }
 }
 
-export function writeOperationAudit(
-  db: any,
+export async function writeOperationAudit(
   operationId: string,
   action: 'create' | 'update' | 'delete' | 'convert',
   actor: OperationActor | null,
   beforeRow: any,
   afterRow: any,
-): void {
+): Promise<void> {
+  const sql = getSql();
   const id = `aud_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   try {
-    db.prepare(`
+    await sql.run(`
       INSERT INTO fin_operation_audit
         (id, operation_id, action, user_id, user_name, before_json, after_json)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id, operationId, action,
+    `, [id, operationId, action,
       actor?.id || null, actor?.name || null,
       beforeRow ? JSON.stringify(beforeRow) : null,
-      afterRow ? JSON.stringify(afterRow) : null,
-    );
+      afterRow ? JSON.stringify(afterRow) : null]);
   } catch (e: any) {
     // Audit must never break the main mutation. Log and continue.
     console.error('[fin_operation_audit] write failed (non-fatal):', e?.message);
@@ -55,25 +54,26 @@ export function writeOperationAudit(
 
 const getOrgId = requireOrganizationId;
 
-function computeAmountCompany(db: any, amount: number, currency: string, paidAt: string): number {
+async function computeAmountCompany(amount: number, currency: string, paidAt: string): Promise<number> {
+  const sql = getSql();
   if (currency === 'CZK') return amount;
 
   // Prefer the latest rate effective ON or BEFORE the operation date.
-  let rate = db.prepare(`
+  let rate = await sql.row<any>(`
     SELECT rate FROM finance_exchange_rates
     WHERE from_currency = ? AND to_currency = 'CZK' AND effective_from <= ?
     ORDER BY effective_from DESC LIMIT 1
-  `).get(currency, paidAt) as { rate: number } | undefined;
+  `, [currency, paidAt]) as { rate: number } | undefined;
 
   // No historical rate yet — fall back to the latest known rate of any
   // date so we never silently treat a foreign-currency op as 1:1 (EUR
   // 100 → 100 CZK was a real bug that under-reported income by ~25×).
   if (!rate) {
-    rate = db.prepare(`
+    rate = await sql.row<any>(`
       SELECT rate FROM finance_exchange_rates
       WHERE from_currency = ? AND to_currency = 'CZK'
       ORDER BY effective_from DESC LIMIT 1
-    `).get(currency) as { rate: number } | undefined;
+    `, [currency]) as { rate: number } | undefined;
     if (rate) {
       console.warn(`[finance] computeAmountCompany: no rate for ${currency}→CZK on ${paidAt}, using latest available rate ${rate.rate}`);
     }
@@ -89,29 +89,31 @@ function computeAmountCompany(db: any, amount: number, currency: string, paidAt:
   return amount * rate.rate;
 }
 
-function getTagsFor(db: any, operationId: string): string[] {
-  const rows = db.prepare(`
+async function getTagsFor(operationId: string): Promise<string[]> {
+  const sql = getSql();
+  const rows = await sql.rows<any>(`
     SELECT t.name FROM fin_operation_tags ot
     JOIN finance_tags t ON t.id = ot.tag_id
     WHERE ot.operation_id = ?
     ORDER BY t.sort_order, t.name
-  `).all(operationId) as { name: string }[];
+  `, [operationId]) as { name: string }[];
   return rows.map((r) => r.name);
 }
 
 /** Batch-fetch tags for multiple operations in one query. */
-function getBatchTags(db: any, operationIds: string[]): Record<string, string[]> {
+async function getBatchTags(operationIds: string[]): Promise<Record<string, string[]>> {
+  const sql = getSql();
   if (operationIds.length === 0) return {};
   const map: Record<string, string[]> = {};
   for (let i = 0; i < operationIds.length; i += 500) {
     const chunk = operationIds.slice(i, i + 500);
     const ph = chunk.map(() => '?').join(',');
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT ot.operation_id, t.name FROM fin_operation_tags ot
       JOIN finance_tags t ON t.id = ot.tag_id
       WHERE ot.operation_id IN (${ph})
       ORDER BY t.sort_order, t.name
-    `).all(...chunk) as { operation_id: string; name: string }[];
+    `, [...chunk]) as { operation_id: string; name: string }[];
     for (const r of rows) {
       if (!map[r.operation_id]) map[r.operation_id] = [];
       map[r.operation_id].push(r.name);
@@ -120,15 +122,15 @@ function getBatchTags(db: any, operationIds: string[]): Record<string, string[]>
   return map;
 }
 
-function enrichOperation(db: any, row: any): any {
+async function enrichOperation(row: any): Promise<any> {
   if (!row) return row;
-  return { ...row, tags: getTagsFor(db, row.id) };
+  return { ...row, tags: await getTagsFor(row.id) };
 }
 
 export async function listOperations(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const sp = request.nextUrl.searchParams;
     const opTypeRaw = sp.get('op_type');
     const opTypes = opTypeRaw ? opTypeRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -232,15 +234,15 @@ export async function listOperations(request: NextRequest): Promise<NextResponse
     }
 
     const whereSql = where.join(' AND ');
-    const totalRow = db.prepare(`
+    const totalRow = await sql.row<any>(`
       SELECT COUNT(*) AS n 
       FROM fin_operations o 
       LEFT JOIN finance_accounts afr ON afr.id = o.account_from_id
       LEFT JOIN finance_accounts ato ON ato.id = o.account_to_id
       WHERE ${whereSql}
-    `).get(...params) as { n: number };
+    `, [...params]) as { n: number };
 
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT
         o.*,
         ec.name  AS category_name,  ec.icon  AS category_icon,  ec.color AS category_color,
@@ -259,9 +261,9 @@ export async function listOperations(request: NextRequest): Promise<NextResponse
       WHERE ${whereSql}
       ORDER BY o.paid_at DESC, o.created_at DESC, o.id DESC
       LIMIT ? OFFSET ?
-    `).all(...params, pageSize, (page - 1) * pageSize) as any[];
+    `, [...params, pageSize, (page - 1) * pageSize]) as any[];
 
-    const tagMap = getBatchTags(db, rows.map((r: any) => r.id));
+    const tagMap = await getBatchTags(rows.map((r: any) => r.id));
     const items = rows.map((r: any) => ({ ...r, tags: tagMap[r.id] || [] }));
 
     // Running balance per account: for every visible operation, show the
@@ -281,22 +283,20 @@ export async function listOperations(request: NextRequest): Promise<NextResponse
     const visibleIds = new Set(items.map((i: any) => i.id));
 
     for (const acctId of allAccountIds) {
-      const acct = db.prepare(
-        'SELECT initial_balance, currency FROM finance_accounts WHERE id = ?'
-      ).get(acctId) as any;
+      const acct = await sql.row<any>('SELECT initial_balance, currency FROM finance_accounts WHERE id = ?', [acctId]) as any;
       if (!acct) continue;
 
       // Get ALL operations touching this account, in chronological order.
       // Use the SAME currency-aware amount as the sidebar balance:
       //   CASE WHEN o.currency = fa.currency THEN o.amount ELSE o.amount_company END
-      const allOps = db.prepare(`
+      const allOps = await sql.rows<any>(`
         SELECT id, account_to_id, account_from_id,
           CASE WHEN currency = ? THEN amount ELSE amount_company END AS effective_amount
         FROM fin_operations
         WHERE (account_to_id = ? OR account_from_id = ?)
           AND status = 'completed'
         ORDER BY paid_at ASC, created_at ASC, id ASC
-      `).all(acct.currency, acctId, acctId) as any[];
+      `, [acct.currency, acctId, acctId]) as any[];
 
       // Walk through ALL ops computing cumulative balance
       let running = Number(acct.initial_balance || 0);
@@ -335,16 +335,16 @@ export async function getOperation(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
-    const row = db.prepare(`
+    const row = await sql.row<any>(`
       SELECT o.*, rt.name AS suggested_recurring_name
       FROM fin_operations o
       LEFT JOIN fin_recurring_templates rt ON rt.id = o.suggested_recurring_id
       WHERE o.id = ?
-    `).get(id);
+    `, [id]);
     if (!row) return NextResponse.json({ error: 'Operation not found' }, { status: 404 });
-    return NextResponse.json(enrichOperation(db, row));
+    return NextResponse.json(await enrichOperation(row));
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -380,20 +380,20 @@ interface CreateOperationInput {
   fx_rate_override?: number;
 }
 
-export function autoResolveCategory(
-  db: any,
+export async function autoResolveCategory(
   orgId: string,
   opType: string,
   comment?: string | null,
   source?: string | null,
-): string | null {
+): Promise<string | null> {
+  const sql = getSql();
   if (opType === 'transfer') return null;
 
   const text = `${comment || ''} ${source || ''}`.toLowerCase();
 
   // 1. Try active auto-rules
   try {
-    const rules = loadActiveRules(db, orgId);
+    const rules = await loadActiveRules(orgId);
     for (const rule of rules) {
       if (rule.actions.set_category_id && rule.conditions) {
         if (isRuleApplicable(rule, { comment, source, op_type: opType } as any)) {
@@ -421,23 +421,23 @@ export function autoResolveCategory(
 
   // 3. Fallbacks by op_type
   if (opType === 'income') {
-    const defaultInc = db.prepare("SELECT id FROM expense_categories WHERE organization_id = ? AND op_type = 'income' ORDER BY sort_order ASC LIMIT 1").get(orgId) as { id: string } | undefined;
+    const defaultInc = await sql.row<any>("SELECT id FROM expense_categories WHERE organization_id = ? AND op_type = 'income' ORDER BY sort_order ASC LIMIT 1", [orgId]) as { id: string } | undefined;
     return defaultInc?.id || 'ec_accommodation';
   }
   if (opType === 'expense') {
-    const defaultExp = db.prepare("SELECT id FROM expense_categories WHERE organization_id = ? AND op_type = 'expense' ORDER BY sort_order ASC LIMIT 1").get(orgId) as { id: string } | undefined;
+    const defaultExp = await sql.row<any>("SELECT id FROM expense_categories WHERE organization_id = ? AND op_type = 'expense' ORDER BY sort_order ASC LIMIT 1", [orgId]) as { id: string } | undefined;
     return defaultExp?.id || 'ec_other_exp';
   }
 
   return null;
 }
 
-export function createOperationInTx(
-  db: any,
+export async function createOperationInTx(
   orgId: string,
   input: CreateOperationInput,
   actor?: OperationActor | null,
-): string {
+): Promise<string> {
+  const sql = getSql();
   const createdBy = actor?.id || null;
   const { op_type, amount, paid_at } = input;
   if (!(OP_TYPES as readonly string[]).includes(op_type)) {
@@ -463,7 +463,7 @@ export function createOperationInTx(
   const accruedAt = input.accrued_at || paid_at;
   const amountCompany = (input.fx_rate_override && input.fx_rate_override > 0)
     ? amount * input.fx_rate_override
-    : computeAmountCompany(db, amount, currency, paid_at);
+    : await computeAmountCompany(amount, currency, paid_at);
   const fxRate = (input.fx_rate_override && input.fx_rate_override > 0)
     ? input.fx_rate_override
     : (currency === 'CZK' ? null : (amountCompany / amount) || null);
@@ -473,9 +473,9 @@ export function createOperationInTx(
   const idPrefix = op_type === 'income' ? 'inc' : op_type === 'expense' ? 'exp' : 'txfr';
   const id = `${idPrefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
-  const categoryId = op_type === 'transfer' ? null : (input.category_id || autoResolveCategory(db, orgId, op_type, input.comment, source));
+  const categoryId = op_type === 'transfer' ? null : (input.category_id || await autoResolveCategory(orgId, op_type, input.comment, source));
 
-  db.prepare(`
+  await sql.run(`
     INSERT INTO fin_operations
       (id, organization_id, op_type,
        account_from_id, account_to_id,
@@ -486,8 +486,7 @@ export function createOperationInTx(
        comment, is_planned, source, source_ref, created_by,
        needs_review)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id, orgId, op_type,
+  `, [id, orgId, op_type,
     input.account_from_id || null, input.account_to_id || null,
     amount, currency, input.amount_to || null, input.currency_to || null,
     fxRate, amountCompany,
@@ -498,35 +497,35 @@ export function createOperationInTx(
     input.reservation_id || null, status, input.method || null, input.payment_subtype || null,
     input.comment || null, input.is_planned ? 1 : 0, source, input.source_ref || null,
     createdBy || null,
-    input.needs_review ? 1 : 0,
-  );
+    input.needs_review ? 1 : 0]);
 
   if (input.tag_ids && input.tag_ids.length > 0) {
-    const insertTag = db.prepare('INSERT OR IGNORE INTO fin_operation_tags (operation_id, tag_id) VALUES (?, ?)');
-    for (const tagId of input.tag_ids) insertTag.run(id, tagId);
+    for (const tagId of input.tag_ids) {
+      await sql.run('INSERT OR IGNORE INTO fin_operation_tags (operation_id, tag_id) VALUES (?, ?)', [id, tagId]);
+    }
   }
 
   if (createdBy) {
-    db.prepare('UPDATE fin_operations SET updated_by_user_id = ? WHERE id = ?').run(createdBy, id);
+    await sql.run('UPDATE fin_operations SET updated_by_user_id = ? WHERE id = ?', [createdBy, id]);
   }
-  const afterRow = db.prepare('SELECT * FROM fin_operations WHERE id = ?').get(id);
-  writeOperationAudit(db, id, 'create', actor || null, null, afterRow);
+  const afterRow = await sql.row<any>('SELECT * FROM fin_operations WHERE id = ?', [id]);
+  await writeOperationAudit(id, 'create', actor || null, null, afterRow);
 
   return id;
 }
 
 export async function createOperation(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const body = (await request.json()) as CreateOperationInput;
     const actor = await getOptionalActor();
-    const id = createOperationInTx(db, orgId, body, actor);
-    const created = db.prepare("SELECT * FROM fin_operations WHERE id = ?").get(id);
+    const id = await createOperationInTx(orgId, body, actor);
+    const created = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]);
 
-    if (body.reservation_id) recalcReservationPaymentStatus(db, body.reservation_id);
+    if (body.reservation_id) await recalcReservationPaymentStatus(body.reservation_id);
 
-    return NextResponse.json(enrichOperation(db, created), { status: 201 });
+    return NextResponse.json(await enrichOperation(created), { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
@@ -537,9 +536,9 @@ export async function updateOperation(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
-    const existing = db.prepare("SELECT * FROM fin_operations WHERE id = ?").get(id) as any;
+    const existing = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]) as any;
     if (!existing) return NextResponse.json({ error: 'Operation not found' }, { status: 404 });
 
     const body = await request.json();
@@ -573,7 +572,7 @@ export async function updateOperation(
       const newPaid = body.paid_at ?? existing.paid_at;
       const amountCompany = (body.fx_rate_override && body.fx_rate_override > 0)
         ? newAmount * body.fx_rate_override
-        : computeAmountCompany(db, newAmount, newCurrency, newPaid);
+        : await computeAmountCompany(newAmount, newCurrency, newPaid);
       fields.push('amount_company = ?');
       params.push(amountCompany);
       if (body.fx_rate_override && body.fx_rate_override > 0) {
@@ -593,24 +592,25 @@ export async function updateOperation(
 
     if (fields.length === 1) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
     params.push(id);
-    db.prepare(`UPDATE fin_operations SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+    await sql.run(`UPDATE fin_operations SET ${fields.join(', ')} WHERE id = ?`, [...params]);
 
     if (Array.isArray(body.tag_ids)) {
-      db.prepare('DELETE FROM fin_operation_tags WHERE operation_id = ?').run(id);
-      const ins = db.prepare('INSERT OR IGNORE INTO fin_operation_tags (operation_id, tag_id) VALUES (?, ?)');
-      for (const tagId of body.tag_ids) ins.run(id, tagId);
+      await sql.run('DELETE FROM fin_operation_tags WHERE operation_id = ?', [id]);
+      for (const tagId of body.tag_ids) {
+        await sql.run('INSERT OR IGNORE INTO fin_operation_tags (operation_id, tag_id) VALUES (?, ?)', [id, tagId]);
+      }
     }
 
-    const updated = db.prepare("SELECT * FROM fin_operations WHERE id = ?").get(id);
+    const updated = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]);
     const resId = (updated as any)?.reservation_id ?? existing.reservation_id;
-    if (resId) recalcReservationPaymentStatus(db, resId);
+    if (resId) await recalcReservationPaymentStatus(resId);
 
     // Mark 'convert' when op_type changed (e.g. expense → transfer), else
     // a routine 'update' — lets the audit UI render them differently.
     const action: 'update' | 'convert' = body.op_type !== undefined && body.op_type !== existing.op_type ? 'convert' : 'update';
-    writeOperationAudit(db, id, action, actor, existing, updated);
+    await writeOperationAudit(id, action, actor, existing, updated);
 
-    return NextResponse.json(enrichOperation(db, updated));
+    return NextResponse.json(await enrichOperation(updated));
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -621,20 +621,20 @@ export async function deleteOperation(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
-    const existing = db.prepare("SELECT * FROM fin_operations WHERE id = ?").get(id) as any;
+    const existing = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]) as any;
     if (!existing) return NextResponse.json({ error: 'Operation not found' }, { status: 404 });
 
     // Capture actor + snapshot the row BEFORE delete so the audit row
     // survives the row being gone (FK-free by design — see W4a).
     const actor = await getOptionalActor();
-    writeOperationAudit(db, id, 'delete', actor, existing, null);
+    await writeOperationAudit(id, 'delete', actor, existing, null);
 
-    db.prepare('UPDATE bank_transactions SET matched_operation_id = NULL WHERE matched_operation_id = ?').run(id);
-    db.prepare('DELETE FROM fin_operations WHERE id = ?').run(id);
+    await sql.run('UPDATE bank_transactions SET matched_operation_id = NULL WHERE matched_operation_id = ?', [id]);
+    await sql.run('DELETE FROM fin_operations WHERE id = ?', [id]);
 
-    if (existing.reservation_id) recalcReservationPaymentStatus(db, existing.reservation_id);
+    if (existing.reservation_id) await recalcReservationPaymentStatus(existing.reservation_id);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -643,15 +643,15 @@ export async function deleteOperation(
 
 export async function mergeOperations(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
     if (!Array.isArray(body.ids) || body.ids.length !== 2) {
       return NextResponse.json({ error: 'Очікується рівно 2 ідентифікатори' }, { status: 400 });
     }
 
     const [id1, id2] = body.ids;
-    const op1 = db.prepare("SELECT * FROM fin_operations WHERE id = ?").get(id1) as any;
-    const op2 = db.prepare("SELECT * FROM fin_operations WHERE id = ?").get(id2) as any;
+    const op1 = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id1]) as any;
+    const op2 = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id2]) as any;
 
     if (!op1 || !op2) {
       return NextResponse.json({ error: 'Операції не знайдено' }, { status: 404 });
@@ -682,24 +682,24 @@ export async function mergeOperations(request: NextRequest): Promise<NextRespons
       category_id: null
     };
 
-    db.prepare(`
+    await sql.run(`
       UPDATE fin_operations 
       SET op_type = 'transfer', account_to_id = ?, category_id = NULL, updated_at = datetime('now')
       WHERE id = ?
-    `).run(incOp.account_to_id, expOp.id);
+    `, [incOp.account_to_id, expOp.id]);
 
     // Audit the conversion
-    writeOperationAudit(db, expOp.id, 'convert', actor, expOp, updatedExp);
+    await writeOperationAudit(expOp.id, 'convert', actor, expOp, updatedExp);
 
     // Re-link bank transactions from the deleted income operation to the new transfer operation
-    db.prepare('UPDATE bank_transactions SET matched_operation_id = ? WHERE matched_operation_id = ?').run(expOp.id, incOp.id);
+    await sql.run('UPDATE bank_transactions SET matched_operation_id = ? WHERE matched_operation_id = ?', [expOp.id, incOp.id]);
     
     // Audit and delete the income operation
-    writeOperationAudit(db, incOp.id, 'delete', actor, incOp, null);
-    db.prepare('DELETE FROM fin_operations WHERE id = ?').run(incOp.id);
+    await writeOperationAudit(incOp.id, 'delete', actor, incOp, null);
+    await sql.run('DELETE FROM fin_operations WHERE id = ?', [incOp.id]);
 
-    if (incOp.reservation_id) recalcReservationPaymentStatus(db, incOp.reservation_id);
-    if (expOp.reservation_id) recalcReservationPaymentStatus(db, expOp.reservation_id);
+    if (incOp.reservation_id) await recalcReservationPaymentStatus(incOp.reservation_id);
+    if (expOp.reservation_id) await recalcReservationPaymentStatus(expOp.reservation_id);
 
     return NextResponse.json({ ok: true, merged_into: expOp.id });
 
@@ -718,15 +718,15 @@ export async function getOperationAudit(
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT id, operation_id, action, user_id, user_name,
              before_json, after_json, performed_at
       FROM fin_operation_audit
       WHERE operation_id = ?
       ORDER BY performed_at DESC, id DESC
-    `).all(id);
+    `, [id]);
     return NextResponse.json({ items: rows });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -738,15 +738,15 @@ export async function duplicateOperation(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const { id } = await context.params;
-    const src = db.prepare("SELECT * FROM fin_operations WHERE id = ?").get(id) as any;
+    const src = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]) as any;
     if (!src) return NextResponse.json({ error: 'Operation not found' }, { status: 404 });
 
     const actor = await getOptionalActor();
     const today = new Date().toISOString().substring(0, 10);
-    const newId = createOperationInTx(db, orgId, {
+    const newId = await createOperationInTx(orgId, {
       op_type: src.op_type,
       account_from_id: src.account_from_id,
       account_to_id: src.account_to_id,
@@ -760,10 +760,10 @@ export async function duplicateOperation(
       comment: src.comment,
       source: 'manual',
       status: 'completed',
-      tag_ids: getTagIds(db, id),
+      tag_ids: await getTagIds(id),
     }, actor);
-    const created = db.prepare("SELECT * FROM fin_operations WHERE id = ?").get(newId);
-    return NextResponse.json(enrichOperation(db, created), { status: 201 });
+    const created = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [newId]);
+    return NextResponse.json(await enrichOperation(created), { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
@@ -780,15 +780,13 @@ export async function applyRecurringSuggestion(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
     const confirm = body.confirm !== false;
 
-    const op = db.prepare(
-      "SELECT id, suggested_recurring_id FROM fin_operations WHERE id = ? AND organization_id = ?"
-    ).get(id, orgId) as { id: string; suggested_recurring_id: string | null } | undefined;
+    const op = await sql.row<any>("SELECT id, suggested_recurring_id FROM fin_operations WHERE id = ? AND organization_id = ?", [id, orgId]) as { id: string; suggested_recurring_id: string | null } | undefined;
     if (!op) return NextResponse.json({ error: 'Operation not found' }, { status: 404 });
 
     if (!op.suggested_recurring_id) {
@@ -797,20 +795,18 @@ export async function applyRecurringSuggestion(
 
     if (!confirm) {
       // Just dismiss
-      db.prepare("UPDATE fin_operations SET suggested_recurring_id = NULL WHERE id = ?").run(id);
+      await sql.run("UPDATE fin_operations SET suggested_recurring_id = NULL WHERE id = ?", [id]);
       return NextResponse.json({ ok: true, action: 'dismissed' });
     }
 
-    const tpl = db.prepare(
-      "SELECT category_id, project_id, counterparty_id, comment FROM fin_recurring_templates WHERE id = ?"
-    ).get(op.suggested_recurring_id) as any;
+    const tpl = await sql.row<any>("SELECT category_id, project_id, counterparty_id, comment FROM fin_recurring_templates WHERE id = ?", [op.suggested_recurring_id]) as any;
     if (!tpl) {
       // Template was deleted — just dismiss
-      db.prepare("UPDATE fin_operations SET suggested_recurring_id = NULL WHERE id = ?").run(id);
+      await sql.run("UPDATE fin_operations SET suggested_recurring_id = NULL WHERE id = ?", [id]);
       return NextResponse.json({ ok: true, action: 'dismissed_orphan' });
     }
 
-    db.prepare(`
+    await sql.run(`
       UPDATE fin_operations
       SET category_id     = COALESCE(?, category_id),
           project_id      = COALESCE(?, project_id),
@@ -819,23 +815,25 @@ export async function applyRecurringSuggestion(
           suggested_recurring_id = NULL,
           updated_at = datetime('now')
       WHERE id = ?
-    `).run(tpl.category_id, tpl.project_id, tpl.counterparty_id, tpl.comment, id);
+    `, [tpl.category_id, tpl.project_id, tpl.counterparty_id, tpl.comment, id]);
 
-    const updated = db.prepare("SELECT * FROM fin_operations WHERE id = ?").get(id);
-    return NextResponse.json({ ok: true, action: 'applied', operation: enrichOperation(db, updated) });
+    const updated = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]);
+    return NextResponse.json({ ok: true, action: 'applied', operation: enrichOperation(updated) });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-function getTagIds(db: any, operationId: string): string[] {
-  const rows = db.prepare('SELECT tag_id FROM fin_operation_tags WHERE operation_id = ?').all(operationId) as { tag_id: string }[];
+async function getTagIds(operationId: string): Promise<string[]> {
+  const sql = getSql();
+  const rows = await sql.rows<any>('SELECT tag_id FROM fin_operation_tags WHERE operation_id = ?', [operationId]) as { tag_id: string }[];
   return rows.map((r) => r.tag_id);
 }
 
 // Public helpers reused across modules ───────────────────────────────
 
-export function getReservationPaymentTotals(db: any, reservationId: string): { paid: number; refunded: number } {
+export async function getReservationPaymentTotals(reservationId: string): Promise<{ paid: number; refunded: number }> {
+  const sql = getSql();
   // Sum every real income / refund op for the reservation. The signal-vs-
   // real dedup is no longer needed: signals stopped being created in
   // PR clean-1, legacy ones were deleted in PR clean-2, the column itself
@@ -843,21 +841,20 @@ export function getReservationPaymentTotals(db: any, reservationId: string): { p
   // relies on reservation.is_prepaid (set by hostex-sync), not on any
   // fin_operation existing here — and recalcReservationPaymentStatus
   // already early-returns for is_prepaid=1.
-  const paidRow = db.prepare(`
+  const paidRow = await sql.row<any>(`
     SELECT COALESCE(SUM(amount), 0) AS s FROM fin_operations
     WHERE reservation_id = ? AND op_type = 'income' AND status = 'completed'
-  `).get(reservationId) as { s: number };
-  const refundRow = db.prepare(`
+  `, [reservationId]) as { s: number };
+  const refundRow = await sql.row<any>(`
     SELECT COALESCE(SUM(amount), 0) AS s FROM fin_operations
     WHERE reservation_id = ? AND op_type = 'expense' AND payment_subtype = 'refund' AND status = 'completed'
-  `).get(reservationId) as { s: number };
+  `, [reservationId]) as { s: number };
   return { paid: paidRow.s, refunded: refundRow.s };
 }
 
-export function recalcReservationPaymentStatus(db: any, reservationId: string): void {
-  const res = db.prepare(
-    'SELECT id, total_price, is_prepaid FROM reservations WHERE id = ?',
-  ).get(reservationId) as { id: string; total_price: number; is_prepaid: number } | undefined;
+export async function recalcReservationPaymentStatus(reservationId: string): Promise<void> {
+  const sql = getSql();
+  const res = await sql.row<any>('SELECT id, total_price, is_prepaid FROM reservations WHERE id = ?', [reservationId]) as { id: string; total_price: number; is_prepaid: number } | undefined;
   if (!res) return;
 
   // Channel-prepaid reservations (Booking / Airbnb / VRBO with is_prepaid=1
@@ -868,7 +865,7 @@ export function recalcReservationPaymentStatus(db: any, reservationId: string): 
   // 'partial' or 'unpaid'. PMS check-in trusts the platform flag.
   if (res.is_prepaid === 1) return;
 
-  const { paid, refunded } = getReservationPaymentTotals(db, reservationId);
+  const { paid, refunded } = await getReservationPaymentTotals(reservationId);
   const net = paid - refunded;
   const total = Number(res.total_price) || 0;
   let paymentStatus: 'unpaid' | 'partial' | 'paid' = 'unpaid';
@@ -876,10 +873,10 @@ export function recalcReservationPaymentStatus(db: any, reservationId: string): 
   else if (net > 0) paymentStatus = 'partial';
 
   // Read old status before update for TG notification editing
-  const oldRow = db.prepare('SELECT payment_status FROM reservations WHERE id = ?').get(reservationId) as any;
+  const oldRow = await sql.row<any>('SELECT payment_status FROM reservations WHERE id = ?', [reservationId]) as any;
   const oldPaymentStatus = oldRow?.payment_status || 'unpaid';
 
-  db.prepare('UPDATE reservations SET payment_status = ? WHERE id = ?').run(paymentStatus, reservationId);
+  await sql.run('UPDATE reservations SET payment_status = ? WHERE id = ?', [paymentStatus, reservationId]);
 
   // Emit event if status changed
   if (oldPaymentStatus !== paymentStatus) {

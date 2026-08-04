@@ -15,7 +15,7 @@ import { buildGiftCode, getGiftCardTemplate, calcExpiresAt, GIFT_CARD_TEMPLATES 
  */
 
 // GET /api/gift-cards — список ваучерів
-export const GET = withPermission('manage_bookings', async (req: Request, _ctx, actor: Actor) => {
+export const GET = await withPermission('manage_bookings', async (req: Request, _ctx, actor: Actor) => {
   try {
     const db = getDb();
     const url = new URL(req.url);
@@ -72,7 +72,7 @@ export const GET = withPermission('manage_bookings', async (req: Request, _ctx, 
 });
 
 // POST /api/gift-cards — створити ваучер
-export const POST = withPermission('manage_bookings', async (req: Request, _ctx, actor: Actor) => {
+export const POST = await withPermission('manage_bookings', async (req: Request, _ctx, actor: Actor) => {
   try {
     const db = getDb();
     const body = await req.json();
@@ -110,7 +110,7 @@ export const POST = withPermission('manage_bookings', async (req: Request, _ctx,
     // The property_id arrives in the request body, so it is verified against
     // the session's organization rather than trusted.
     try {
-      property_id = requirePropertyId(db, property_id);
+      property_id = requirePropertyId(getDb(), property_id);
     } catch (e: unknown) {
       return NextResponse.json(
         { error: e instanceof Error ? e.message : 'property_id or valid site_id is required' },

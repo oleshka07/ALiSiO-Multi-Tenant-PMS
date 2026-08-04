@@ -11,7 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { renderInvoiceHtml, type InvoiceData } from '@/modules/finance/domain/invoice-template';
 import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
 import { allocateInvoiceNumber, isInvoiceLocked } from '@/modules/finance/domain/invoice-numbering';
@@ -22,10 +22,9 @@ import type { Actor } from '@core/auth/session';
  * is called from the payment and booking lifecycle, where there is no session
  * to read — the reservation itself is the authority on whose invoice this is.
  */
-function organizationOfReservation(db: any, reservationId: string): string | null {
-  const row = db.prepare(
-    'SELECT p.organization_id AS org FROM reservations r JOIN properties p ON p.id = r.property_id WHERE r.id = ?'
-  ).get(reservationId) as { org: string } | undefined;
+async function organizationOfReservation(reservationId: string): Promise<string | null> {
+  const sql = getSql();
+  const row = await sql.row<any>('SELECT p.organization_id AS org FROM reservations r JOIN properties p ON p.id = r.property_id WHERE r.id = ?', [reservationId]) as { org: string } | undefined;
   return row?.org ?? null;
 }
 
@@ -46,40 +45,37 @@ export function resolveDocumentDate(row: {
  * Create an invoice record for a reservation.
  * Idempotent — if invoice already exists for this reservation, returns existing id.
  */
-export function generateInvoiceForReservation(
+export async function generateInvoiceForReservation(
   reservationId: string,
   opts: { confirmed?: boolean; source?: string } = {},
-): string | null {
+): Promise<string | null> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const confirmed = opts.confirmed ? 1 : 0;
     const confirmationSource = opts.source || (opts.confirmed ? 'confirmed' : 'manual');
 
     // Idempotency check — skip if invoice already exists (not cancelled). If it
     // exists but was unconfirmed and this call carries a confirmation (Teya/cash),
     // upgrade it to confirmed.
-    const existing = db.prepare(
-      "SELECT id, confirmed FROM invoices WHERE reservation_id = ? AND status != 'cancelled'"
-    ).get(reservationId) as { id: string; confirmed: number } | undefined;
+    const existing = await sql.row<any>("SELECT id, confirmed FROM invoices WHERE reservation_id = ? AND status != 'cancelled'", [reservationId]) as { id: string; confirmed: number } | undefined;
 
     if (existing) {
       if (confirmed && !existing.confirmed) {
-        db.prepare("UPDATE invoices SET confirmed = 1, confirmation_source = ? WHERE id = ?")
-          .run(confirmationSource, existing.id);
+        await sql.run("UPDATE invoices SET confirmed = 1, confirmation_source = ? WHERE id = ?", [confirmationSource, existing.id]);
       }
       return existing.id;
     }
 
     // Fetch reservation basic data
-    const res = db.prepare(`
+    const res = await sql.row<any>(`
       SELECT total_price, currency, check_out
       FROM reservations
       WHERE id = ?
-    `).get(reservationId) as { total_price: number; currency: string; check_out: string } | undefined;
+    `, [reservationId]) as { total_price: number; currency: string; check_out: string } | undefined;
 
     if (!res) return null;
 
-    const organizationId = organizationOfReservation(db, reservationId);
+    const organizationId = await organizationOfReservation(reservationId);
     if (!organizationId) {
       console.error('[Invoices] reservation', reservationId, 'has no organization — refusing to number an invoice');
       return null;
@@ -88,15 +84,15 @@ export function generateInvoiceForReservation(
     const invoiceId = `inv_${Date.now()}`;
     const today = new Date().toISOString().split('T')[0];
     // Direct-booking invoices use the HOUSE series (plain YYYY-NNN), allocated atomically.
-    const { invoiceNumber } = allocateInvoiceNumber(db, organizationId, 'house', new Date().getFullYear());
+    const { invoiceNumber } = await allocateInvoiceNumber(sql, organizationId, 'house', new Date().getFullYear());
     // Due date: check-out date (service rendered on departure)
     const dueDate = res.check_out > today ? res.check_out : today;
     const period = (res.check_out || today).slice(0, 7);
 
-    db.prepare(`
+    await sql.run(`
       INSERT INTO invoices (id, organization_id, reservation_id, invoice_number, issued_at, due_date, amount, currency, status, series, period, confirmed, confirmation_source)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'issued', 'HOUSE', ?, ?, ?)
-    `).run(invoiceId, organizationId, reservationId, invoiceNumber, today, dueDate, res.total_price, res.currency || 'CZK', period, confirmed, confirmationSource);
+    `, [invoiceId, organizationId, reservationId, invoiceNumber, today, dueDate, res.total_price, res.currency || 'CZK', period, confirmed, confirmationSource]);
 
     console.log(`[Invoices] Created ${invoiceNumber} for reservation ${reservationId}`);
     return invoiceId;
@@ -110,25 +106,21 @@ export function generateInvoiceForReservation(
  * Cancel an existing invoice and generate a fresh one for the same reservation.
  * The old invoice is soft-deleted (status → 'cancelled'), not removed from DB.
  */
-export function reissueInvoiceForReservation(reservationId: string): string | null {
+export async function reissueInvoiceForReservation(reservationId: string): Promise<string | null> {
   try {
-    const db = getDb();
+    const sql = getSql();
     // A locked (filed) invoice cannot be cancelled/renumbered — it must be
     // corrected with a storno (credit note) instead.
-    const current = db.prepare(
-      "SELECT id FROM invoices WHERE reservation_id = ? AND status != 'cancelled'"
-    ).get(reservationId) as { id: string } | undefined;
-    const organizationId = organizationOfReservation(db, reservationId);
+    const current = await sql.row<any>("SELECT id FROM invoices WHERE reservation_id = ? AND status != 'cancelled'", [reservationId]) as { id: string } | undefined;
+    const organizationId = await organizationOfReservation(reservationId);
     if (!organizationId) return null;
-    if (current && isInvoiceLocked(db, organizationId, current.id)) {
+    if (current && await isInvoiceLocked(sql, organizationId, current.id)) {
       throw new Error('Invoice period is locked — use a storno (credit note) to correct it.');
     }
     // Cancel all existing non-cancelled invoices for this reservation
-    db.prepare(
-      "UPDATE invoices SET status = 'cancelled' WHERE reservation_id = ? AND status != 'cancelled'"
-    ).run(reservationId);
+    await sql.run("UPDATE invoices SET status = 'cancelled' WHERE reservation_id = ? AND status != 'cancelled'", [reservationId]);
     // Force-create a new invoice (existing check now passes since all are cancelled)
-    return generateInvoiceForReservation(reservationId);
+    return await generateInvoiceForReservation(reservationId);
   } catch (e: any) {
     console.error('[Invoices] reissue error:', e.message);
     return null;
@@ -142,8 +134,8 @@ export function reissueInvoiceForReservation(reservationId: string): string | nu
  */
 export async function listInvoices(_request: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const rows = db.prepare(`
+    const sql = getSql();
+    const rows = await sql.rows<any>(`
       SELECT
         i.id, i.invoice_number, i.issued_at, i.due_date,
         i.amount, i.currency, i.status, i.reservation_id,
@@ -156,7 +148,7 @@ export async function listInvoices(_request: NextRequest, _ctx: unknown, actor: 
       WHERE i.organization_id = ?
       ORDER BY i.issued_at DESC, i.invoice_number DESC
       LIMIT 200
-    `).all(actor.organizationId);
+    `, [actor.organizationId]);
     return NextResponse.json(rows);
   } catch (e: any) {
     console.error('[Invoices] listInvoices error:', e.message);
@@ -174,14 +166,14 @@ export async function getInvoiceHtml(
   actor: Actor,
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const asDownload = searchParams.get('format') === 'download';
 
     // LEFT JOIN units/guests so a deleted unit or guest doesn't drop the entire
     // row and turn into a misleading 404. The template tolerates null fields.
-    const data = db.prepare(`
+    const data = await sql.row<any>(`
       SELECT
         i.id, i.invoice_number, i.issued_at, i.due_date,
         i.amount, i.currency, i.status, i.reservation_id,
@@ -217,7 +209,7 @@ export async function getInvoiceHtml(
       WHERE i.id = ? AND i.organization_id = ?
       ORDER BY p.paid_at DESC
       LIMIT 1
-    `).get(id, actor.organizationId) as InvoiceData | undefined;
+    `, [id, actor.organizationId]) as InvoiceData | undefined;
 
     if (!data) {
       console.error('[Invoices] getInvoiceHtml: no row for invoice id', id);
@@ -226,7 +218,7 @@ export async function getInvoiceHtml(
 
     // Real accounting date + CZK conversion for foreign-currency (OTA) invoices.
     data.document_date = resolveDocumentDate(data);
-    const conv = await convertToCzkAuto(db, data.amount || 0, data.currency || 'CZK', data.document_date);
+    const conv = await convertToCzkAuto(data.amount || 0, data.currency || 'CZK', data.document_date);
     if (conv.converted) {
       data.amount = conv.amountCzk;
       data.currency = 'CZK';
@@ -272,15 +264,15 @@ export async function getInvoiceByReservation(
   actor: Actor,
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await params;
-    const row = db.prepare(`
+    const row = await sql.row<any>(`
       SELECT id, invoice_number, issued_at, amount, currency, status
       FROM invoices
       WHERE reservation_id = ? AND organization_id = ? AND status = 'issued'
       ORDER BY issued_at DESC
       LIMIT 1
-    `).get(id, actor.organizationId) as { id: string; invoice_number: string; issued_at: string; amount: number; currency: string; status: string } | undefined;
+    `, [id, actor.organizationId]) as { id: string; invoice_number: string; issued_at: string; amount: number; currency: string; status: string } | undefined;
     return NextResponse.json(row ?? null);
   } catch (e: any) {
     console.error('[Invoices] getInvoiceByReservation error:', e.message);
@@ -297,23 +289,19 @@ export async function reissueInvoiceHandler(
   { params }: { params: Promise<{ id: string }> },
   actor: Actor,
 ): Promise<NextResponse> {
+  const sql = getSql();
   try {
     const { id } = await params;
     // The reservation id comes from the URL; reissuing someone else's invoice
     // would cancel their document and burn a number out of their sequence.
-    const owned = getDb().prepare(
-      'SELECT 1 FROM reservations r JOIN properties p ON p.id = r.property_id WHERE r.id = ? AND p.organization_id = ?'
-    ).get(id, actor.organizationId);
+    const owned = await sql.row<any>('SELECT 1 FROM reservations r JOIN properties p ON p.id = r.property_id WHERE r.id = ? AND p.organization_id = ?', [id, actor.organizationId]);
     if (!owned) return NextResponse.json({ error: 'Reservation not found' }, { status: 404 });
 
-    const newInvoiceId = reissueInvoiceForReservation(id);
+    const newInvoiceId = await reissueInvoiceForReservation(id);
     if (!newInvoiceId) {
       return NextResponse.json({ error: 'Failed to reissue invoice' }, { status: 500 });
     }
-    const db = getDb();
-    const invoice = db.prepare(
-      'SELECT id, invoice_number, issued_at, amount, currency FROM invoices WHERE id = ?'
-    ).get(newInvoiceId) as { id: string; invoice_number: string; issued_at: string; amount: number; currency: string };
+    const invoice = await sql.row<any>('SELECT id, invoice_number, issued_at, amount, currency FROM invoices WHERE id = ?', [newInvoiceId]) as { id: string; invoice_number: string; issued_at: string; amount: number; currency: string };
     return NextResponse.json({ success: true, invoice });
   } catch (e: any) {
     console.error('[Invoices] reissueInvoiceHandler error:', e.message);

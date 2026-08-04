@@ -24,7 +24,7 @@ async function handle(request: NextRequest): Promise<NextResponse> {
     const date = searchParams.get('date') || undefined;
     const currencies = searchParams.get('currencies')?.split(',').map(c => c.trim()).filter(Boolean);
 
-    const result = await syncCnbRates(getDb(), { date, currencies });
+    const result = await syncCnbRates({ date, currencies });
     console.log('[ČNB Rates] Synced', result.date, '→', result.upserted.join(', ') || '(none)');
     return NextResponse.json({ ok: true, ...result });
   } catch (e: unknown) {

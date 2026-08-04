@@ -1,3 +1,5 @@
+import { getSql } from '@core/db/async';
+import { getDb } from '@core/db';
 /**
  * ALiSiO PMS — ČNB (Czech National Bank) daily FX rates.
  *
@@ -84,8 +86,8 @@ export async function fetchCnbFixing(dateIso?: string): Promise<CnbFixing> {
   return parseCnbDaily(await fetchText(url));
 }
 
-function orgId(db: any): string | null {
-  try { return requireOrganizationId(db); } catch { return null; }
+function orgId(): string | null {
+  try { return requireOrganizationId(getDb()); } catch { return null; }
 }
 
 export interface CnbSyncResult {
@@ -99,32 +101,32 @@ export interface CnbSyncResult {
  * finance_exchange_rates (effective_from = fixing date). Idempotent.
  */
 export async function syncCnbRates(
-  db: any,
   opts: { date?: string; currencies?: string[] } = {},
 ): Promise<CnbSyncResult> {
-  const oid = orgId(db);
+  const oid = orgId();
   if (!oid) throw new Error('No organization found');
   const want = (opts.currencies || DEFAULT_CNB_CURRENCIES).map(c => c.toUpperCase());
 
   const fixing = await fetchCnbFixing(opts.date);
-  const upsert = db.prepare(`
-    INSERT INTO finance_exchange_rates (organization_id, from_currency, to_currency, rate, effective_from)
-    VALUES (?, ?, 'CZK', ?, ?)
-    ON CONFLICT(organization_id, from_currency, to_currency, effective_from)
-    DO UPDATE SET rate = excluded.rate
-  `);
+  const sql = getSql();
 
   const upserted: string[] = [];
   const skipped: string[] = [];
-  const tx = db.transaction(() => {
+  // One fixing is one day's rates: a half-written set would price part of a
+  // day at yesterday's rate.
+  await sql.tx(async (t) => {
     for (const cur of want) {
       const rate = fixing.rates[cur];
       if (rate == null) { skipped.push(cur); continue; }
-      upsert.run(oid, cur, rate, fixing.date);
+      await t.run(`
+        INSERT INTO finance_exchange_rates (organization_id, from_currency, to_currency, rate, effective_from)
+        VALUES (?, ?, 'CZK', ?, ?)
+        ON CONFLICT(organization_id, from_currency, to_currency, effective_from)
+        DO UPDATE SET rate = excluded.rate
+      `, [oid, cur, rate, fixing.date]);
       upserted.push(cur);
     }
   });
-  tx();
 
   return { date: fixing.date, upserted, skipped };
 }

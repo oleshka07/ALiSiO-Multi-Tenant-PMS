@@ -202,7 +202,7 @@ async function handlePaymentSuccess(event: any, eventType: string): Promise<Succ
         [merchantRef],
       );
       if (r.changes > 0) {
-        generateInvoiceForReservation(merchantRef, { confirmed: true, source: 'teya_webhook' });
+        await generateInvoiceForReservation(merchantRef, { confirmed: true, source: 'teya_webhook' });
         console.log('[Teya Webhook] Pay-by-Link / Direct matched reservation', merchantRef);
         payByLinkMatched = true;
         // DO NOT RETURN HERE! We must continue to send emails, TG, and Analytics!
@@ -330,7 +330,7 @@ async function handlePaymentSuccess(event: any, eventType: string): Promise<Succ
                OR r.id IN (SELECT reservation_id FROM booking_service_orders WHERE payment_id = ? AND reservation_id IS NOT NULL))
       `, [effectiveRef, effectiveRef]) as Array<{ id: string }>;
       for (const row of paid) {
-        const invId = generateInvoiceForReservation(row.id, { confirmed: true, source: 'teya_webhook' });
+        const invId = await generateInvoiceForReservation(row.id, { confirmed: true, source: 'teya_webhook' });
         console.log('[Teya Webhook] Auto-invoice for reservation', row.id, '→', invId);
       }
     } catch (e: any) {

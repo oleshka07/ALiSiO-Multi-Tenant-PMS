@@ -10,9 +10,11 @@
 import assert from 'node:assert';
 import Database from 'better-sqlite3';
 import { allocateInvoiceNumber, lockPeriod, isPeriodLocked } from './invoice-numbering.ts';
+import { sqliteSql } from '../../../core/db/async.ts';
 
 const db = new Database(':memory:');
-db.exec(`
+const sql = sqliteSql(db);
+await sql.exec(`
   CREATE TABLE invoice_counters (
     organization_id TEXT NOT NULL, series TEXT NOT NULL, year INTEGER NOT NULL,
     last_no INTEGER NOT NULL DEFAULT 0,
@@ -35,8 +37,8 @@ const B = 'org_b';
 const YEAR = 2026;
 
 // Each organization starts its own sequence at 1.
-const a1 = allocateInvoiceNumber(db, A, 'house', YEAR);
-const b1 = allocateInvoiceNumber(db, B, 'house', YEAR);
+const a1 = await allocateInvoiceNumber(sql, A, 'house', YEAR);
+const b1 = await allocateInvoiceNumber(sql, B, 'house', YEAR);
 assert.strictEqual(a1.invoiceNumber, '2026-001', `A got ${a1.invoiceNumber}`);
 assert.strictEqual(b1.invoiceNumber, '2026-001', `B got ${b1.invoiceNumber} — it read A's counter`);
 console.log('  ok  both organizations issue 2026-001');
@@ -49,19 +51,19 @@ assert.throws(() => ins.run('a1dup', A, a1.invoiceNumber), /UNIQUE/, 'a number w
 console.log('  ok  the same number in two organizations is accepted, twice in one is not');
 
 // A's second invoice is 002 regardless of how many B has issued.
-allocateInvoiceNumber(db, B, 'house', YEAR);
-allocateInvoiceNumber(db, B, 'house', YEAR);
-assert.strictEqual(allocateInvoiceNumber(db, A, 'house', YEAR).invoiceNumber, '2026-002');
+await allocateInvoiceNumber(sql, B, 'house', YEAR);
+await allocateInvoiceNumber(sql, B, 'house', YEAR);
+assert.strictEqual((await allocateInvoiceNumber(sql, A, 'house', YEAR)).invoiceNumber, '2026-002');
 console.log("  ok  B's invoices do not advance A's sequence");
 
 // Series are still independent within an organization.
-assert.strictEqual(allocateInvoiceNumber(db, A, 'booking', YEAR).invoiceNumber, 'BKG-2026-001');
+assert.strictEqual((await allocateInvoiceNumber(sql, A, 'booking', YEAR)).invoiceNumber, 'BKG-2026-001');
 console.log('  ok  each series keeps its own sequence');
 
 // Locking a period is per organization too.
-lockPeriod(db, A, 'HOUSE', '2026-01');
-assert.strictEqual(isPeriodLocked(db, A, 'HOUSE', '2026-01'), true);
-assert.strictEqual(isPeriodLocked(db, B, 'HOUSE', '2026-01'), false, "A's lock froze B's period");
+await lockPeriod(sql, A, 'HOUSE', '2026-01');
+assert.strictEqual(await isPeriodLocked(sql, A, 'HOUSE', '2026-01'), true);
+assert.strictEqual(await isPeriodLocked(sql, B, 'HOUSE', '2026-01'), false, "A's lock froze B's period");
 console.log("  ok  A locking a period does not lock B's");
 
 console.log('invoice-numbering: all checks passed');

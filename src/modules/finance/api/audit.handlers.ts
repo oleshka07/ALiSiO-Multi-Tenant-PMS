@@ -8,6 +8,7 @@
 // Powers /finance/audit (hidden UI).
 //
 import { NextRequest, NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
@@ -24,19 +25,19 @@ interface SectionResult {
   description?: string;
 }
 
-function safeRun<T>(fn: () => T, fallback: T): T {
-  try { return fn(); } catch { return fallback; }
+async function safeRun<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  try { return await fn(); } catch { return fallback; }
 }
 
 export async function getFinanceAudit(_request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const org = orgId(db);
+    const sql = getSql();
+    const org = orgId(getDb());
     const sections: SectionResult[] = [];
 
     // ─── 1. Multi-currency leak: amount vs amount_company ──────
     {
-      const rows = safeRun(() => db.prepare(`
+      const rows = await safeRun(async () => await sql.rows<any>(`
         SELECT op_type, currency,
                COUNT(*) AS ops,
                ROUND(SUM(amount), 2) AS sum_amount,
@@ -46,7 +47,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
         WHERE currency != 'CZK' AND status = 'completed' AND organization_id = ?
         GROUP BY op_type, currency
         ORDER BY ABS(SUM(amount_company) - SUM(amount)) DESC
-      `).all(org), [] as any[]);
+      `, [org]), [] as any[]);
 
       const totalHidden = rows.reduce((s: number, r: any) => s + Math.abs(r.hidden_delta_czk || 0), 0);
       const totalOps = rows.reduce((s: number, r: any) => s + (r.ops || 0), 0);
@@ -67,7 +68,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
 
     // ─── 2. Phantom paid reservations ──────────────────────────
     {
-      const rows = safeRun(() => db.prepare(`
+      const rows = await safeRun(async () => await sql.rows<any>(`
         SELECT r.id, r.source, r.payment_status, r.is_prepaid,
                r.total_price, r.currency, r.check_in, r.check_out,
                COALESCE(g.first_name, '') || ' ' || COALESCE(g.last_name, '') AS guest_name,
@@ -87,7 +88,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
           )
         ORDER BY r.check_in DESC
         LIMIT 50
-      `).all(), [] as any[]);
+      `), [] as any[]);
 
       const totalMissing = rows.reduce((s: number, r: any) => s + (r.total_price || 0), 0);
 
@@ -107,7 +108,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
 
     // ─── 3. CapEx potential duplicates ─────────────────────────
     {
-      const rows = safeRun(() => db.prepare(`
+      const rows = await safeRun(async () => await sql.rows<any>(`
         SELECT ci.id AS capex_id, ci.name, ci.amount AS capex_amount,
                ci.month, ci.fin_operation_id AS linked_op,
                fo.id AS suspect_op_id, fo.amount AS op_amount, fo.paid_at,
@@ -122,7 +123,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
         WHERE ci.fin_operation_id IS NULL OR ci.fin_operation_id != fo.id
         ORDER BY ci.month DESC
         LIMIT 30
-      `).all(), [] as any[]);
+      `), [] as any[]);
 
       sections.push({
         key: 'capex_dup',
@@ -138,7 +139,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
 
     // ─── 4. Stale pending operations ───────────────────────────
     {
-      const rows = safeRun(() => db.prepare(`
+      const rows = await safeRun(async () => await sql.rows<any>(`
         SELECT id, op_type, amount, currency, paid_at, source, comment,
                reservation_id, source_ref
         FROM fin_operations
@@ -147,7 +148,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
           AND paid_at < date('now', '-7 days')
         ORDER BY paid_at ASC
         LIMIT 50
-      `).all(org), [] as any[]);
+      `, [org]), [] as any[]);
 
       const totalAmount = rows.reduce((s: number, r: any) => s + (r.amount || 0), 0);
 
@@ -167,7 +168,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
 
     // ─── 5. Orphan receivables ─────────────────────────────────
     {
-      const rows = safeRun(() => db.prepare(`
+      const rows = await safeRun(async () => await sql.rows<any>(`
         SELECT rcv.id, rcv.channel_source, rcv.external_reservation_id,
                rcv.gross_amount, rcv.currency, rcv.check_in, rcv.check_out,
                rcv.status, fa.name AS clearing_account
@@ -177,7 +178,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
           AND rcv.reservation_id IS NULL
         ORDER BY rcv.check_in DESC
         LIMIT 30
-      `).all(org), [] as any[]);
+      `, [org]), [] as any[]);
 
       sections.push({
         key: 'orphan_recv',
@@ -193,7 +194,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
 
     // ─── 6. Accruals неоплачені, але місяць давно минув ────────
     {
-      const rows = safeRun(() => db.prepare(`
+      const rows = await safeRun(async () => await sql.rows<any>(`
         SELECT id, description, amount, month, accrual_type, status,
                business_unit_id, category_id
         FROM accruals
@@ -202,7 +203,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
           AND month < strftime('%Y-%m', date('now', '-2 months'))
         ORDER BY month ASC
         LIMIT 50
-      `).all(org), [] as any[]);
+      `, [org]), [] as any[]);
 
       const total = rows.reduce((s: number, r: any) => s + Math.abs(r.amount || 0), 0);
 
@@ -222,13 +223,13 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
 
     // ─── 7. Cascade-delete risk ────────────────────────────────
     {
-      const row = safeRun(() => db.prepare(`
+      const row = await safeRun(async () => await sql.row<any>(`
         SELECT COUNT(*) AS ops, COALESCE(SUM(amount_company), 0) AS sum_czk
         FROM fin_operations
         WHERE reservation_id IS NOT NULL
           AND status = 'completed'
           AND organization_id = ?
-      `).get(org) as any, { ops: 0, sum_czk: 0 });
+      `, [org]) as any, { ops: 0, sum_czk: 0 });
 
       sections.push({
         key: 'cascade_risk',
@@ -247,11 +248,11 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
 
     // ─── 9. needs_review queue ─────────────────────────────────
     {
-      const row = safeRun(() => db.prepare(`
+      const row = await safeRun(async () => await sql.row<any>(`
         SELECT COUNT(*) AS n, COALESCE(SUM(amount_company), 0) AS sum_czk
         FROM fin_operations
         WHERE needs_review = 1 AND organization_id = ?
-      `).get(org) as any, { n: 0, sum_czk: 0 });
+      `, [org]) as any, { n: 0, sum_czk: 0 });
 
       sections.push({
         key: 'needs_review',
@@ -266,12 +267,12 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
 
     // ─── 10. Loose fin_operation_audit consistency ─────────────
     {
-      const row = safeRun(() => db.prepare(`
+      const row = await safeRun(async () => await sql.row<any>(`
         SELECT COUNT(DISTINCT a.operation_id) AS audited_ops,
                (SELECT COUNT(*) FROM fin_operations) AS total_ops
         FROM fin_operation_audit a
         WHERE a.action = 'create'
-      `).get() as any, { audited_ops: 0, total_ops: 0 });
+      `) as any, { audited_ops: 0, total_ops: 0 });
 
       const coverage = row.total_ops > 0 ? Math.round((row.audited_ops / row.total_ops) * 100) : 0;
 
@@ -287,14 +288,14 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
     }
 
     // ─── 11. Totals summary ────────────────────────────────────
-    const totals = safeRun(() => db.prepare(`
+    const totals = await safeRun(async () => await sql.row<any>(`
       SELECT
         (SELECT COUNT(*) FROM fin_operations WHERE organization_id = ?) AS total_ops,
         (SELECT COUNT(*) FROM fin_operations WHERE status='completed' AND organization_id = ?) AS completed_ops,
         (SELECT COUNT(*) FROM finance_accounts WHERE organization_id = ? AND is_active=1) AS active_accounts,
         (SELECT COUNT(*) FROM fin_channel_receivables WHERE organization_id = ?) AS receivables,
         (SELECT COUNT(*) FROM reservations) AS reservations
-    `).get(org, org, org, org) as any, {});
+    `, [org, org, org, org]) as any, {});
 
     return NextResponse.json({
       generated_at: new Date().toISOString(),

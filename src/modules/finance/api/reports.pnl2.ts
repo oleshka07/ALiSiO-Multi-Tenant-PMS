@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
@@ -61,16 +62,16 @@ function mapExpense(cnameLower: string, commentLower: string, classifier: string
 
 export async function getPnl2(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const org = orgId(db);
+    const sql = getSql();
+    const org = orgId(getDb());
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month') || new Date().toISOString().substring(0, 7);
 
-    const originalBus = db.prepare(`
+    const originalBus = await sql.rows<any>(`
       SELECT id, name FROM business_units
       WHERE is_active = 1 AND is_shared = 0 AND name != 'На перегляд' AND organization_id = ?
       ORDER BY sort_order
-    `).all(org) as any[];
+    `, [org]) as any[];
 
     // Every active business unit is its own column; costs that belong to no
     // unit — or to a shared one, which the query above already excludes —
@@ -86,22 +87,22 @@ export async function getPnl2(request: NextRequest): Promise<NextResponse> {
     const bus = originalBus.map((bu) => ({ id: bu.id, name: bu.name }));
 
     // Fetch operations
-    const ops = db.prepare(`
+    const ops = await sql.rows<any>(`
       SELECT o.amount_company, o.op_type, o.payment_subtype, o.project_id, o.comment,
              ec.id as cat_id, ec.name as cat_name, COALESCE(ec.classifier, 'other') as classifier, ec.std_group
       FROM fin_operations o
       LEFT JOIN expense_categories ec ON o.category_id = ec.id
       WHERE o.status = 'completed' AND o.organization_id = ?
         AND strftime('%Y-%m', o.paid_at) = ?
-    `).all(org, month) as any[];
+    `, [org, month]) as any[];
 
     // Fetch capex depreciation
-    const depRows = db.prepare(`
+    const depRows = await sql.rows<any>(`
       SELECT business_unit_id, SUM(depreciation_monthly) as total
       FROM capex_items
       WHERE status = 'active' AND depreciation_monthly > 0 AND organization_id = ?
       GROUP BY business_unit_id
-    `).all(org) as any[];
+    `, [org]) as any[];
     
     // We'll return an array of rows
     const createRow = (key: string, name: string, type: 'data' | 'calc' | 'calc_pct', childrenOrder: string[] = []) => {

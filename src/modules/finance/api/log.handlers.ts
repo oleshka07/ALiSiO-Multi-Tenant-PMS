@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 // Transaction log — single SELECT from fin_operations (post-PR #6).
 // Reports all operations with shape compatible with the previous union-based log.
 export async function getFinanceLog(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
     const dateFrom = searchParams.get('date_from');
@@ -49,16 +49,16 @@ export async function getFinanceLog(request: NextRequest): Promise<NextResponse>
 
     const whereSql = where.join(' AND ');
 
-    const countRow = db.prepare(`
+    const countRow = await sql.row<any>(`
       SELECT COUNT(*) AS total FROM fin_operations o
       LEFT JOIN expense_categories    ec ON ec.id = o.category_id
       LEFT JOIN finance_counterparties cp ON cp.id = o.counterparty_id
       LEFT JOIN reservations           r ON r.id = o.reservation_id
       LEFT JOIN guests                 g ON g.id = r.guest_id
       WHERE ${whereSql}
-    `).get(...params) as { total: number };
+    `, [...params]) as { total: number };
 
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT
         CASE
           WHEN o.reservation_id IS NOT NULL THEN 'payment'
@@ -99,7 +99,7 @@ export async function getFinanceLog(request: NextRequest): Promise<NextResponse>
       WHERE ${whereSql}
       ORDER BY o.paid_at DESC, o.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(...params, limit, offset);
+    `, [...params, limit, offset]);
 
     return NextResponse.json({ transactions: rows, total: countRow.total, page, limit });
   } catch (error: any) {

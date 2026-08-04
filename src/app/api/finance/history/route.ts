@@ -20,7 +20,7 @@ import { withFinanceRead } from '@finance/_guard';
  *   user   – partial match on user_name
  *   search – searches in before_json, after_json, user_name
  */
-export const GET = withFinanceRead(async (request: NextRequest, _ctx, actor) => {
+export const GET = await withFinanceRead(async (request: NextRequest, _ctx, actor) => {
   try {
     const db = getDb();
     const sp = request.nextUrl.searchParams;

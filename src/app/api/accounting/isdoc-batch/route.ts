@@ -101,7 +101,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       if (!inv.invoice_number) continue;
 
       const documentDate = (inv.check_in || inv.payment_date || inv.issued_at || '').slice(0, 10);
-      const conv = await convertToCzkAuto(db, inv.amount || 0, inv.currency || 'CZK', documentDate);
+      const conv = await convertToCzkAuto(inv.amount || 0, inv.currency || 'CZK', documentDate);
       const czkAmount = conv.converted ? conv.amountCzk : (inv.amount || 0);
 
       // Buyer: explicit company always; personal guest only at/above 9900 CZK.
@@ -176,7 +176,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       }
 
       const documentDate = (op.paid_at || '').slice(0, 10);
-      const conv = await convertToCzkAuto(db, op.amount || 0, op.currency || 'EUR', documentDate);
+      const conv = await convertToCzkAuto(op.amount || 0, op.currency || 'EUR', documentDate);
       const czkAmount = conv.converted ? conv.amountCzk : (op.amount || 0);
 
       const xml = generateIsdocXml({

@@ -180,7 +180,7 @@ async function buildIsdocBytes(db: any, row: any): Promise<Uint8Array> {
   // Real document date + CZK conversion + issue+14 dates + 9900 buyer rule —
   // identical to /api/invoices/[id]/isdoc so single and ZIP output match.
   const documentDate = (row.check_in || row.payment_date || row.issued_at || '').slice(0, 10);
-  const conv = await convertToCzkAuto(db, row.amount || 0, row.currency || 'CZK', documentDate);
+  const conv = await convertToCzkAuto(row.amount || 0, row.currency || 'CZK', documentDate);
   const czkAmount = conv.converted ? conv.amountCzk : (row.amount || 0);
 
   const hasCompany = !!(row.custom_buyer_name || row.invoice_company_name)?.trim();
@@ -237,7 +237,7 @@ async function buildIsdocBytes(db: any, row: any): Promise<Uint8Array> {
 
 async function buildPdfBytes(db: any, row: any): Promise<Uint8Array> {
   const documentDate = ((row.check_in as string | null) || (row.payment_date as string | null) || (row.issued_at as string | null) || '').slice(0, 10);
-  const conv = await convertToCzkAuto(db, (row.amount as number) || 0, (row.currency as string) || 'CZK', documentDate);
+  const conv = await convertToCzkAuto((row.amount as number) || 0, (row.currency as string) || 'CZK', documentDate);
   const czkAmount = conv.converted ? conv.amountCzk : ((row.amount as number) || 0);
 
   const companyName = (row.custom_buyer_name || row.invoice_company_name) as string | null;

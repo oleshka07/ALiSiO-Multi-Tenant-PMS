@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
@@ -7,9 +8,10 @@ const ALLOWED_TYPES = ['cash', 'bank', 'card', 'investment', 'clearing', 'other'
 
 const getOrgId = requireOrganizationId;
 
-function selectAccountsWithBalance(db: any, orgId: string, opts: { includeArchived?: boolean } = {}): any[] {
+async function selectAccountsWithBalance(orgId: string, opts: { includeArchived?: boolean } = {}): Promise<any[]> {
+  const sql = getSql();
   const where = opts.includeArchived ? 'WHERE fa.organization_id = ?' : 'WHERE fa.organization_id = ? AND fa.is_active = 1';
-  return db.prepare(`
+  return await sql.rows<any>(`
     SELECT
       fa.*,
       (
@@ -31,23 +33,24 @@ function selectAccountsWithBalance(db: any, orgId: string, opts: { includeArchiv
     FROM finance_accounts fa
     ${where}
     ORDER BY fa.sort_order, fa.name
-  `).all(orgId);
+  `, [orgId]);
 }
 
-function countLinkedOperations(db: any, accountId: string): number {
-  const row = db.prepare(`
+async function countLinkedOperations(accountId: string): Promise<number> {
+  const sql = getSql();
+  const row = await sql.row<any>(`
     SELECT COUNT(*) AS n FROM fin_operations
     WHERE account_from_id = ? OR account_to_id = ?
-  `).get(accountId, accountId) as { n: number };
+  `, [accountId, accountId]) as { n: number };
   return row.n;
 }
 
 export async function listAccounts(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
-    const accounts = selectAccountsWithBalance(db, orgId, { includeArchived });
+    const accounts = await selectAccountsWithBalance(orgId, { includeArchived });
     return NextResponse.json(accounts);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -56,7 +59,7 @@ export async function listAccounts(request: NextRequest): Promise<NextResponse> 
 
 export async function createAccount(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
     const {
       name,
@@ -82,15 +85,15 @@ export async function createAccount(request: NextRequest): Promise<NextResponse>
       return NextResponse.json({ error: 'credit_limit is only allowed for card accounts' }, { status: 400 });
     }
 
-    const orgId = getOrgId(db);
+    const orgId = getOrgId(getDb());
     const id = `acct_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    db.prepare(`
+    await sql.run(`
       INSERT INTO finance_accounts
         (id, organization_id, name, type, currency, initial_balance, credit_limit, iban, color, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, orgId, name, type, currency, initial_balance, credit_limit, iban, color, sort_order);
+    `, [id, orgId, name, type, currency, initial_balance, credit_limit, iban, color, sort_order]);
 
-    const account = db.prepare("SELECT * FROM finance_accounts WHERE id = ?").get(id);
+    const account = await sql.row<any>("SELECT * FROM finance_accounts WHERE id = ?", [id]);
     return NextResponse.json(account, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -99,7 +102,7 @@ export async function createAccount(request: NextRequest): Promise<NextResponse>
 
 export async function updateAccount(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
     const { id, name, type, currency, initial_balance, credit_limit, iban, color, sort_order, is_active } = body;
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
@@ -122,9 +125,9 @@ export async function updateAccount(request: NextRequest): Promise<NextResponse>
     if (fields.length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
     params.push(id);
-    db.prepare(`UPDATE finance_accounts SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+    await sql.run(`UPDATE finance_accounts SET ${fields.join(', ')} WHERE id = ?`, [...params]);
 
-    const account = db.prepare("SELECT * FROM finance_accounts WHERE id = ?").get(id);
+    const account = await sql.row<any>("SELECT * FROM finance_accounts WHERE id = ?", [id]);
     return NextResponse.json(account);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -133,12 +136,12 @@ export async function updateAccount(request: NextRequest): Promise<NextResponse>
 
 export async function archiveAccount(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
     const { id, archived = true } = body;
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
-    db.prepare("UPDATE finance_accounts SET is_active = ? WHERE id = ?").run(archived ? 0 : 1, id);
-    const account = db.prepare("SELECT * FROM finance_accounts WHERE id = ?").get(id);
+    await sql.run("UPDATE finance_accounts SET is_active = ? WHERE id = ?", [archived ? 0 : 1, id]);
+    const account = await sql.row<any>("SELECT * FROM finance_accounts WHERE id = ?", [id]);
     if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     return NextResponse.json(account);
   } catch (error: any) {
@@ -151,14 +154,14 @@ export async function deleteAccount(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
-    const account = db.prepare("SELECT * FROM finance_accounts WHERE id = ?").get(id);
+    const account = await sql.row<any>("SELECT * FROM finance_accounts WHERE id = ?", [id]);
     if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
 
-    const linked = countLinkedOperations(db, id);
+    const linked = await countLinkedOperations(id);
     if (linked > 0) {
       return NextResponse.json(
         { error: `Маєте ${linked} операцій, прив'язаних до рахунку. Архівуйте замість видалення.`, linked_operations: linked },
@@ -166,24 +169,23 @@ export async function deleteAccount(
       );
     }
 
-    db.prepare("DELETE FROM finance_accounts WHERE id = ?").run(id);
+    await sql.run("DELETE FROM finance_accounts WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-function ensureReconcileCategory(db: any, orgId: string): string {
-  const existing = db.prepare(
-    "SELECT id FROM expense_categories WHERE organization_id = ? AND name = 'Звірка залишків' LIMIT 1"
-  ).get(orgId) as { id: string } | undefined;
+async function ensureReconcileCategory(orgId: string): Promise<string> {
+  const sql = getSql();
+  const existing = await sql.row<any>("SELECT id FROM expense_categories WHERE organization_id = ? AND name = 'Звірка залишків' LIMIT 1", [orgId]) as { id: string } | undefined;
   if (existing) return existing.id;
   const id = `ec_reconcile_${Date.now().toString(36)}`;
-  db.prepare(`
+  await sql.run(`
     INSERT INTO expense_categories
       (id, organization_id, name, std_group, pnl_line, include_in_pnl, include_in_cash, alloc_method, is_capex, icon, color, sort_order, is_active)
     VALUES (?, ?, 'Звірка залишків', 'Other', 'Звірка залишків', 0, 1, 'NONE', 0, '⚖️', '#94a3b8', 999, 1)
-  `).run(id, orgId);
+  `, [id, orgId]);
   return id;
 }
 
@@ -192,7 +194,7 @@ export async function reconcileAccount(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
     const body = await request.json();
     const { actual_balance, note } = body;
@@ -201,8 +203,8 @@ export async function reconcileAccount(
       return NextResponse.json({ error: 'actual_balance must be a number' }, { status: 400 });
     }
 
-    const orgId = getOrgId(db);
-    const accounts = selectAccountsWithBalance(db, orgId, { includeArchived: true });
+    const orgId = getOrgId(getDb());
+    const accounts = await selectAccountsWithBalance(orgId, { includeArchived: true });
     const account = accounts.find((a: any) => a.id === id);
     if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
 
@@ -216,10 +218,10 @@ export async function reconcileAccount(
     const today = new Date().toISOString().substring(0, 10);
     const description = note?.trim() || `Звірка залишків (${account.name})`;
     const adjustmentType: 'income' | 'expense' = delta > 0 ? 'income' : 'expense';
-    const categoryId = delta > 0 ? null : ensureReconcileCategory(db, orgId);
+    const categoryId = delta > 0 ? null : await ensureReconcileCategory(orgId);
 
     const { createOperationInTx } = await import('./operations.handlers');
-    const adjustmentId = createOperationInTx(db, orgId, {
+    const adjustmentId = await createOperationInTx(orgId, {
       op_type: adjustmentType,
       account_to_id: delta > 0 ? id : null,
       account_from_id: delta > 0 ? null : id,

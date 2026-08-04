@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { getSql } from '@core/db/async';
 
 export type ConditionField =
   | 'comment' | 'amount' | 'amount_company'
@@ -126,13 +127,14 @@ function parseAliases(json: string | null): string[] {
   } catch { return []; }
 }
 
-function findCounterpartyByText(db: any, orgId: string, text: string): string | null {
+async function findCounterpartyByText(orgId: string, text: string): Promise<string | null> {
+  const sql = getSql();
   if (!text) return null;
   const haystack = text.toUpperCase();
-  const rows = db.prepare(`
+  const rows = await sql.rows<any>(`
     SELECT id, aliases_json, sort_order FROM finance_counterparties
     WHERE organization_id = ? AND is_active = 1
-  `).all(orgId) as { id: string; aliases_json: string; sort_order: number }[];
+  `, [orgId]) as { id: string; aliases_json: string; sort_order: number }[];
   let best: { id: string; len: number; sort: number } | null = null;
   for (const r of rows) {
     for (const a of parseAliases(r.aliases_json)) {
@@ -152,7 +154,8 @@ function findCounterpartyByText(db: any, orgId: string, text: string): string | 
  * Writes changes to fin_operations and logs matches.
  * Returns the delta (what changed).
  */
-export function applyRulesToOperation(db: any, op: Operation, rules: ParsedRule[], orgId: string): ApplyResult {
+export async function applyRulesToOperation(op: Operation, rules: ParsedRule[], orgId: string): Promise<ApplyResult> {
+  const sql = getSql();
   const changes: Record<string, any> = {};
   const rulesFired: string[] = [];
   const tagsAdded = new Set<string>();
@@ -172,7 +175,7 @@ export function applyRulesToOperation(db: any, op: Operation, rules: ParsedRule[
       changes.counterparty_id = a.set_counterparty_id;
     }
     if (a.auto_match_counterparty && changes.counterparty_id === undefined && op.counterparty_id === null) {
-      const matchedId = findCounterpartyByText(db, orgId, op.comment || '');
+      const matchedId = await findCounterpartyByText(orgId, op.comment || '');
       if (matchedId) changes.counterparty_id = matchedId;
     }
     if (a.set_comment !== undefined && changes.comment === undefined) {
@@ -189,31 +192,32 @@ export function applyRulesToOperation(db: any, op: Operation, rules: ParsedRule[
     const fields = Object.keys(changes).map((k) => `${k} = ?`).join(', ');
     const vals = Object.values(changes);
     vals.push(op.id);
-    db.prepare(`UPDATE fin_operations SET ${fields}, updated_at = datetime('now') WHERE id = ?`).run(...vals);
+    await sql.run(`UPDATE fin_operations SET ${fields}, updated_at = datetime('now') WHERE id = ?`, [...vals]);
   }
 
   if (tagsAdded.size > 0) {
-    const ins = db.prepare('INSERT OR IGNORE INTO fin_operation_tags (operation_id, tag_id) VALUES (?, ?)');
-    for (const t of tagsAdded) ins.run(op.id, t);
+    for (const t of tagsAdded) {
+      await sql.run('INSERT OR IGNORE INTO fin_operation_tags (operation_id, tag_id) VALUES (?, ?)', [op.id, t]);
+    }
   }
 
   if (rulesFired.length > 0) {
-    const logMatch = db.prepare('INSERT INTO fin_auto_rule_matches (rule_id, operation_id) VALUES (?, ?)');
     for (const rid of rulesFired) {
       // Skip synthetic rules that don't exist in fin_auto_rules table
       if (rid.startsWith('synthetic_')) continue;
-      logMatch.run(rid, op.id);
+      await sql.run('INSERT INTO fin_auto_rule_matches (rule_id, operation_id) VALUES (?, ?)', [rid, op.id]);
     }
   }
 
   return { operationId: op.id, changes, rulesFired, tagsAdded: [...tagsAdded] };
 }
 
-export function loadActiveRules(db: any, orgId: string): ParsedRule[] {
-  const rows = db.prepare(`
+export async function loadActiveRules(orgId: string): Promise<ParsedRule[]> {
+  const sql = getSql();
+  const rows = await sql.rows<any>(`
     SELECT * FROM fin_auto_rules
     WHERE organization_id = ? AND is_active = 1
     ORDER BY sort_order ASC, created_at ASC
-  `).all(orgId) as AutoRuleRow[];
+  `, [orgId]) as AutoRuleRow[];
   return rows.map(parseRule);
 }

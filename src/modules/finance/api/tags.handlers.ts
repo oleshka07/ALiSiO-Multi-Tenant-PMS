@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
@@ -9,15 +10,15 @@ const getOrgId = requireOrganizationId;
 
 export async function listTags(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
-    const orgId = getOrgId(db);
+    const sql = getSql();
+    const orgId = getOrgId(getDb());
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
     const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = 1';
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT * FROM finance_tags
       WHERE ${where}
       ORDER BY sort_order ASC, name ASC
-    `).all(orgId);
+    `, [orgId]);
     return NextResponse.json(rows);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -26,7 +27,7 @@ export async function listTags(request: NextRequest): Promise<NextResponse> {
 
 export async function createTag(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
     const { name, color, sort_order } = body;
 
@@ -37,17 +38,15 @@ export async function createTag(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: `Назва тега не може бути довшою за ${MAX_NAME_LEN} символів` }, { status: 400 });
     }
 
-    const orgId = getOrgId(db);
+    const orgId = getOrgId(getDb());
     const id = `tag_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const maxOrder = db.prepare(
-      "SELECT COALESCE(MAX(sort_order), 0) AS mx FROM finance_tags WHERE organization_id = ?"
-    ).get(orgId) as { mx: number };
+    const maxOrder = await sql.row<any>("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM finance_tags WHERE organization_id = ?", [orgId]) as { mx: number };
 
     try {
-      db.prepare(`
+      await sql.run(`
         INSERT INTO finance_tags (id, organization_id, name, color, sort_order)
         VALUES (?, ?, ?, ?, ?)
-      `).run(id, orgId, name.trim(), color || '#6b7280', Number(sort_order) || (maxOrder.mx + 1));
+      `, [id, orgId, name.trim(), color || '#6b7280', Number(sort_order) || (maxOrder.mx + 1)]);
     } catch (e: any) {
       if (String(e.message).includes('UNIQUE')) {
         return NextResponse.json({ error: `Тег «${name.trim()}» уже існує` }, { status: 409 });
@@ -55,7 +54,7 @@ export async function createTag(request: NextRequest): Promise<NextResponse> {
       throw e;
     }
 
-    const created = db.prepare("SELECT * FROM finance_tags WHERE id = ?").get(id);
+    const created = await sql.row<any>("SELECT * FROM finance_tags WHERE id = ?", [id]);
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -67,12 +66,12 @@ export async function updateTag(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
     const body = await request.json();
     const { name, color, sort_order } = body;
 
-    const existing = db.prepare("SELECT * FROM finance_tags WHERE id = ?").get(id);
+    const existing = await sql.row<any>("SELECT * FROM finance_tags WHERE id = ?", [id]);
     if (!existing) return NextResponse.json({ error: 'Tag not found' }, { status: 404 });
 
     const fields: string[] = [];
@@ -93,7 +92,7 @@ export async function updateTag(
 
     params.push(id);
     try {
-      db.prepare(`UPDATE finance_tags SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+      await sql.run(`UPDATE finance_tags SET ${fields.join(', ')} WHERE id = ?`, [...params]);
     } catch (e: any) {
       if (String(e.message).includes('UNIQUE')) {
         return NextResponse.json({ error: 'Тег з такою назвою уже існує' }, { status: 409 });
@@ -101,7 +100,7 @@ export async function updateTag(
       throw e;
     }
 
-    const updated = db.prepare("SELECT * FROM finance_tags WHERE id = ?").get(id);
+    const updated = await sql.row<any>("SELECT * FROM finance_tags WHERE id = ?", [id]);
     return NextResponse.json(updated);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -113,16 +112,16 @@ export async function archiveTag(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
     const archived = body.archived !== false;
 
-    const existing = db.prepare("SELECT id FROM finance_tags WHERE id = ?").get(id);
+    const existing = await sql.row<any>("SELECT id FROM finance_tags WHERE id = ?", [id]);
     if (!existing) return NextResponse.json({ error: 'Tag not found' }, { status: 404 });
 
-    db.prepare("UPDATE finance_tags SET is_active = ? WHERE id = ?").run(archived ? 0 : 1, id);
-    const updated = db.prepare("SELECT * FROM finance_tags WHERE id = ?").get(id);
+    await sql.run("UPDATE finance_tags SET is_active = ? WHERE id = ?", [archived ? 0 : 1, id]);
+    const updated = await sql.row<any>("SELECT * FROM finance_tags WHERE id = ?", [id]);
     return NextResponse.json(updated);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -134,13 +133,13 @@ export async function deleteTag(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await context.params;
 
-    const existing = db.prepare("SELECT id FROM finance_tags WHERE id = ?").get(id);
+    const existing = await sql.row<any>("SELECT id FROM finance_tags WHERE id = ?", [id]);
     if (!existing) return NextResponse.json({ error: 'Tag not found' }, { status: 404 });
 
-    db.prepare("DELETE FROM finance_tags WHERE id = ?").run(id);
+    await sql.run("DELETE FROM finance_tags WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

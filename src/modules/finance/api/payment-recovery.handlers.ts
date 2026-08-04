@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { createPaymentOperation, hasPaymentOperation } from './payment-bridge';
 
 // ════════════════════════════════════════════════════════════
@@ -32,9 +32,9 @@ interface OrphanRow {
 
 export async function listOrphanPayments(): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
 
-    const bsoRows = db.prepare(`
+    const bsoRows = await sql.rows<any>(`
       SELECT
         'booking_service_orders' AS source_table,
         bso.id AS order_id,
@@ -68,9 +68,9 @@ export async function listOrphanPayments(): Promise<NextResponse> {
             )
         )
       ORDER BY bso.created_at DESC
-    `).all() as OrphanRow[];
+    `) as OrphanRow[];
 
-    const soRows = db.prepare(`
+    const soRows = await sql.rows<any>(`
       SELECT
         'service_orders' AS source_table,
         so.id AS order_id,
@@ -104,7 +104,7 @@ export async function listOrphanPayments(): Promise<NextResponse> {
             )
         )
       ORDER BY so.created_at DESC
-    `).all() as OrphanRow[];
+    `) as OrphanRow[];
 
     return NextResponse.json({
       orphans: [...bsoRows, ...soRows].sort(
@@ -125,7 +125,7 @@ export async function listOrphanPayments(): Promise<NextResponse> {
 
 export async function listPaidServices(req: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { searchParams } = new URL(req.url);
     const from = searchParams.get('from');
     const to = searchParams.get('to');
@@ -200,8 +200,8 @@ export async function listPaidServices(req: NextRequest): Promise<NextResponse> 
       ${dateWhere}
     `;
 
-    const bso = db.prepare(bsoSql).all(...dateParams) as any[];
-    const so = db.prepare(soSql).all(...dateParams) as any[];
+    const bso = await sql.rows<any>(bsoSql, [...dateParams]) as any[];
+    const so = await sql.rows<any>(soSql, [...dateParams]) as any[];
     let rows = [...bso, ...so].sort(
       (a, b) => (b.created_at || '').localeCompare(a.created_at || ''),
     );
@@ -251,11 +251,11 @@ export async function restoreOrphanPayment(req: Request): Promise<NextResponse> 
       return NextResponse.json({ error: 'invalid source_table' }, { status: 400 });
     }
 
-    const db = getDb();
-    const order = db.prepare(`
+    const sql = getSql();
+    const order = await sql.row<any>(`
       SELECT id, reservation_id, service_id, total_price, payment_id, payment_status, created_at
       FROM ${source_table} WHERE id = ?
-    `).get(order_id) as {
+    `, [order_id]) as {
       id: string; reservation_id: string | null; service_id: string;
       total_price: number; payment_id: string | null; payment_status: string;
       created_at: string;
@@ -275,7 +275,7 @@ export async function restoreOrphanPayment(req: Request): Promise<NextResponse> 
     }
 
     const paymentRef = order.payment_id || order.reservation_id;
-    if (hasPaymentOperation(order.reservation_id, 'teia', paymentRef)) {
+    if (await hasPaymentOperation(order.reservation_id, 'teia', paymentRef)) {
       return NextResponse.json({
         ok: false,
         reason: 'duplicate',
@@ -283,7 +283,7 @@ export async function restoreOrphanPayment(req: Request): Promise<NextResponse> 
       });
     }
 
-    const { operationId } = createPaymentOperation({
+    const { operationId } = await createPaymentOperation({
       reservationId: order.reservation_id,
       amount: Math.abs(Number(order.total_price)),
       currency,

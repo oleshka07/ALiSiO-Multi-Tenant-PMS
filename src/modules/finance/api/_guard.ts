@@ -45,8 +45,8 @@ const FINANCE_ALLOWLIST: ReadonlySet<string> = new Set(
 
 import { isFinanceUserEnabled, getFinanceAccessForUser } from './finance-access.handlers';
 
-export function isFinanceAuthorized(user: SessionUser): boolean {
-  return user.role === 'owner' || FINANCE_ALLOWLIST.has(user.id) || isFinanceUserEnabled(user.id);
+export async function isFinanceAuthorized(user: SessionUser): Promise<boolean> {
+  return user.role === 'owner' || FINANCE_ALLOWLIST.has(user.id) || await isFinanceUserEnabled(user.id);
 }
 
 // ── Per-user ACL enforcement (allowed_tabs / read_only / can_export) ─────────
@@ -89,14 +89,14 @@ function isFinanceExportPath(pathname: string): boolean {
  * are unrestricted. Returns a 403 NextResponse to short-circuit, or null to
  * proceed.
  */
-function financeAclError(
+async function financeAclError(
   user: SessionUser,
   pathname: string,
   isWrite: boolean,
-): NextResponse | null {
+): Promise<NextResponse | null> {
   if (user.role === 'owner' || FINANCE_ALLOWLIST.has(user.id)) return null;
 
-  const access = getFinanceAccessForUser(user.id);
+  const access = await getFinanceAccessForUser(user.id);
   if (!access) return null; // enabled gate already passed; be permissive on missing row
 
   if (isWrite && access.read_only) {
@@ -153,18 +153,18 @@ async function requireFinanceUser(
   // A session with no organization cannot be scoped, so it cannot be trusted
   // with money.
   if (!user.organization_id) return unauthenticated();
-  if (!isFinanceAuthorized(user)) {
+  if (!await isFinanceAuthorized(user)) {
     return forbidden('Доступ до фінансів лише для власника');
   }
   // Opt-in step-up: once a finance passphrase is set, every session must unlock.
-  if (hasFinancePassphrase(user.id) && !isFinanceUnlocked(sessionId)) {
+  if (await hasFinancePassphrase(user.id) && !await isFinanceUnlocked(sessionId)) {
     return forbidden('Фінансовий розділ заблоковано. Введіть пароль фінансів.', {
       code: 'FINANCE_LOCKED',
     });
   }
   // Per-user ACL: tab allow-list / read-only / export (owner is unrestricted).
   if (request) {
-    const aclError = financeAclError(user, request.nextUrl.pathname, isWrite);
+    const aclError = await financeAclError(user, request.nextUrl.pathname, isWrite);
     if (aclError) return aclError;
   }
   return { user, organizationId: user.organization_id };
@@ -180,7 +180,7 @@ export async function resolveFinanceOwner(): Promise<
 > {
   const { sessionId, user } = await getSession();
   if (!user || !sessionId) return unauthenticated();
-  if (!isFinanceAuthorized(user)) {
+  if (!await isFinanceAuthorized(user)) {
     return forbidden('Доступ до фінансів лише для власника');
   }
   return { user, sessionId };
@@ -195,7 +195,7 @@ export async function resolveFinanceOwner(): Promise<
  * functions (payment-bridge) must NOT be wrapped — they have their own auth
  * and no user session.
  */
-export function withFinanceRead<TCtx = unknown>(
+export function withFinanceRead<TCtx = any>(
   handler: FinanceHandler<TCtx>,
 ): GuardedRoute<TCtx> {
   return async (request, context) => {
@@ -211,7 +211,7 @@ export function withFinanceRead<TCtx = unknown>(
  * check additionally documents intent and stays correct if the access policy
  * above is later widened via the allow-list.
  */
-export function withPermission<TCtx = unknown>(
+export function withPermission<TCtx = any>(
   permission: Permission,
   handler: FinanceHandler<TCtx>,
 ): GuardedRoute<TCtx> {
@@ -229,7 +229,7 @@ export function withPermission<TCtx = unknown>(
  * Write guard requiring ANY of the given permissions (plus the finance access
  * policy). Useful for handlers usable under more than one permission.
  */
-export function withAnyPermission<TCtx = unknown>(
+export function withAnyPermission<TCtx = any>(
   permissions: Permission[],
   handler: FinanceHandler<TCtx>,
 ): GuardedRoute<TCtx> {

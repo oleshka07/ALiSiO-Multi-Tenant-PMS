@@ -12,9 +12,11 @@ import { getDb } from '@core/db';
 import { requireOwner } from '@core/security/route-guard';
 import { lockPeriod, unlockPeriod, seriesForChannel } from '@/modules/finance/domain/invoice-numbering';
 import type { Actor } from '@core/auth/session';
+import { getSql } from '@core/db/async';
 
 export const GET = requireOwner(async (_request, _ctx, actor: Actor): Promise<NextResponse> => {
   const db = getDb();
+    const sql = getSql();
   const periods = db.prepare(
     'SELECT series, month, status, locked_at FROM invoice_periods WHERE organization_id = ? ORDER BY month DESC, series'
   ).all(actor.organizationId);
@@ -35,11 +37,12 @@ export const POST = requireOwner(async (request: NextRequest, _ctx, actor: Actor
       return NextResponse.json({ error: 'series and month=YYYY-MM are required' }, { status: 400 });
     }
     const db = getDb();
+    const sql = getSql();
     if (action === 'unlock') {
-      unlockPeriod(db, actor.organizationId, resolvedSeries, month);
+      await unlockPeriod(sql, actor.organizationId, resolvedSeries, month);
       return NextResponse.json({ ok: true, series: resolvedSeries, month, status: 'open' });
     }
-    lockPeriod(db, actor.organizationId, resolvedSeries, month);
+    await lockPeriod(sql, actor.organizationId, resolvedSeries, month);
     return NextResponse.json({ ok: true, series: resolvedSeries, month, status: 'locked' });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

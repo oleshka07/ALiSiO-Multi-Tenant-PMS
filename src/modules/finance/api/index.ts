@@ -7,8 +7,8 @@
 //   FINANCE_EXTRA_USER_IDS allow-list entry) can reach it. The edge middleware
 //   only checks cookie presence; real session validation happens in the guard.
 //
-//   - withFinanceRead(...)   → all reads (session + owner)
-//   - withPermission(...)    → all writes (session + owner + feature permission)
+//   - await withFinanceRead(...)   → all reads (session + owner)
+//   - await withPermission(...)    → all writes (session + owner + feature permission)
 //
 // NOT wrapped (own auth / no user session):
 //   - payment-bridge (createPaymentOperation, hasPaymentOperation,
@@ -26,7 +26,7 @@ import { withPermission, withFinanceRead } from './_guard';
 
 // ─── Finance step-up passphrase (security) — self-guarded, owner-only ─────────
 // These must stay reachable while finance is locked, so they are NOT wrapped
-// with withFinanceRead/withPermission (which require an unlocked session).
+// with withFinanceRead/await withPermission(which require an unlocked session).
 export {
   getFinanceSecurityStatus, setupFinancePassphrase,
   unlockFinanceHandler, lockFinanceHandler,
@@ -41,33 +41,33 @@ import {
   getProjectProfitability as _getProjectProfitability, getAccountStatement as _getAccountStatement,
   getPlanFactReport as _getPlanFactReport,
 } from './reports.handlers';
-export const getFinanceOverview      = withFinanceRead(_getFinanceOverview);
-export const getExpectedPayments     = withFinanceRead(_getExpectedPayments);
-export const getCashflowMatrix       = withFinanceRead(_getCashflowMatrix);
-export const getPnlMatrix            = withFinanceRead(_getPnlMatrix);
-export const getFinancialIndicators  = withFinanceRead(_getFinancialIndicators);
-export const getOperationsForDrillDown = withFinanceRead(_getOperationsForDrillDown);
-export const getBalanceSheet         = withFinanceRead(_getBalanceSheet);
-export const getProjectProfitability = withFinanceRead(_getProjectProfitability);
-export const getAccountStatement     = withFinanceRead(_getAccountStatement);
-export const getPlanFactReport       = withFinanceRead(_getPlanFactReport);
+export const getFinanceOverview      = await withFinanceRead(_getFinanceOverview);
+export const getExpectedPayments     = await withFinanceRead(_getExpectedPayments);
+export const getCashflowMatrix       = await withFinanceRead(_getCashflowMatrix);
+export const getPnlMatrix            = await withFinanceRead(_getPnlMatrix);
+export const getFinancialIndicators  = await withFinanceRead(_getFinancialIndicators);
+export const getOperationsForDrillDown = await withFinanceRead(_getOperationsForDrillDown);
+export const getBalanceSheet         = await withFinanceRead(_getBalanceSheet);
+export const getProjectProfitability = await withFinanceRead(_getProjectProfitability);
+export const getAccountStatement     = await withFinanceRead(_getAccountStatement);
+export const getPlanFactReport       = await withFinanceRead(_getPlanFactReport);
 
 // ─── Budgets ──────────────────────────────────────────────────
 import {
   listBudgets as _listBudgets,
   upsertBudget as _upsertBudget, deleteBudget as _deleteBudget,
 } from './budgets.handlers';
-export const listBudgets  = withFinanceRead(_listBudgets);
-export const upsertBudget = withPermission('manage_finance_settings', _upsertBudget);
-export const deleteBudget = withPermission('manage_finance_settings', _deleteBudget);
+export const listBudgets  = await withFinanceRead(_listBudgets);
+export const upsertBudget = await withPermission('manage_finance_settings', _upsertBudget);
+export const deleteBudget = await withPermission('manage_finance_settings', _deleteBudget);
 
 // ─── Expense categories (legacy compat) ───────────────────────
 import {
   listExpenseCategories as _listExpenseCategories,
   createExpenseCategory as _createExpenseCategory,
 } from './expense-categories.handlers';
-export const listExpenseCategories = withFinanceRead(_listExpenseCategories);
-export const createExpenseCategory = withPermission('manage_finance_settings', _createExpenseCategory);
+export const listExpenseCategories = await withFinanceRead(_listExpenseCategories);
+export const createExpenseCategory = await withPermission('manage_finance_settings', _createExpenseCategory);
 
 // ─── Categories (PR #2) ───────────────────────────────────────
 import {
@@ -76,17 +76,17 @@ import {
   archiveCategory as _archiveCategory, deleteCategory as _deleteCategory,
   moveCategory as _moveCategory,
 } from './categories.handlers';
-export const listCategories  = withFinanceRead(_listCategories);
-export const getCategoryTree = withFinanceRead(_getCategoryTree);
-export const createCategory  = withPermission('manage_finance_settings', _createCategory);
-export const updateCategory  = withPermission('manage_finance_settings', _updateCategory);
-export const archiveCategory = withPermission('manage_finance_settings', _archiveCategory);
-export const deleteCategory  = withPermission('manage_finance_settings', _deleteCategory);
-export const moveCategory    = withPermission('manage_finance_settings', _moveCategory);
+export const listCategories  = await withFinanceRead(_listCategories);
+export const getCategoryTree = await withFinanceRead(_getCategoryTree);
+export const createCategory  = await withPermission('manage_finance_settings', _createCategory);
+export const updateCategory  = await withPermission('manage_finance_settings', _updateCategory);
+export const archiveCategory = await withPermission('manage_finance_settings', _archiveCategory);
+export const deleteCategory  = await withPermission('manage_finance_settings', _deleteCategory);
+export const moveCategory    = await withPermission('manage_finance_settings', _moveCategory);
 
 // ─── Business units (legacy read) ─────────────────────────────
 import { listBusinessUnits as _listBusinessUnits } from './business-units.handlers';
-export const listBusinessUnits = withFinanceRead(_listBusinessUnits);
+export const listBusinessUnits = await withFinanceRead(_listBusinessUnits);
 
 // ─── Projects (PR #3) ─────────────────────────────────────────
 import {
@@ -95,13 +95,13 @@ import {
   archiveProject as _archiveProject, deleteProject as _deleteProject,
   moveProject as _moveProject,
 } from './projects.handlers';
-export const listProjects   = withFinanceRead(_listProjects);
-export const getProjectTree = withFinanceRead(_getProjectTree);
-export const createProject  = withPermission('manage_finance_settings', _createProject);
-export const updateProject  = withPermission('manage_finance_settings', _updateProject);
-export const archiveProject = withPermission('manage_finance_settings', _archiveProject);
-export const deleteProject  = withPermission('manage_finance_settings', _deleteProject);
-export const moveProject    = withPermission('manage_finance_settings', _moveProject);
+export const listProjects   = await withFinanceRead(_listProjects);
+export const getProjectTree = await withFinanceRead(_getProjectTree);
+export const createProject  = await withPermission('manage_finance_settings', _createProject);
+export const updateProject  = await withPermission('manage_finance_settings', _updateProject);
+export const archiveProject = await withPermission('manage_finance_settings', _archiveProject);
+export const deleteProject  = await withPermission('manage_finance_settings', _deleteProject);
+export const moveProject    = await withPermission('manage_finance_settings', _moveProject);
 
 // ─── Counterparties (PR #4) ───────────────────────────────────
 import {
@@ -111,14 +111,14 @@ import {
   archiveCounterparty as _archiveCounterparty, deleteCounterparty as _deleteCounterparty,
   moveCounterparty as _moveCounterparty,
 } from './counterparties.handlers';
-export const listCounterparties      = withFinanceRead(_listCounterparties);
-export const getCounterpartyTree     = withFinanceRead(_getCounterpartyTree);
-export const getAliasSuggestions     = withFinanceRead(_getAliasSuggestions);
-export const createCounterparty  = withPermission('manage_finance_settings', _createCounterparty);
-export const updateCounterparty  = withPermission('manage_finance_settings', _updateCounterparty);
-export const archiveCounterparty = withPermission('manage_finance_settings', _archiveCounterparty);
-export const deleteCounterparty  = withPermission('manage_finance_settings', _deleteCounterparty);
-export const moveCounterparty    = withPermission('manage_finance_settings', _moveCounterparty);
+export const listCounterparties      = await withFinanceRead(_listCounterparties);
+export const getCounterpartyTree     = await withFinanceRead(_getCounterpartyTree);
+export const getAliasSuggestions     = await withFinanceRead(_getAliasSuggestions);
+export const createCounterparty  = await withPermission('manage_finance_settings', _createCounterparty);
+export const updateCounterparty  = await withPermission('manage_finance_settings', _updateCounterparty);
+export const archiveCounterparty = await withPermission('manage_finance_settings', _archiveCounterparty);
+export const deleteCounterparty  = await withPermission('manage_finance_settings', _deleteCounterparty);
+export const moveCounterparty    = await withPermission('manage_finance_settings', _moveCounterparty);
 
 // ─── Tags (PR #5) ─────────────────────────────────────────────
 import {
@@ -126,11 +126,11 @@ import {
   createTag as _createTag, updateTag as _updateTag,
   archiveTag as _archiveTag, deleteTag as _deleteTag,
 } from './tags.handlers';
-export const listTags   = withFinanceRead(_listTags);
-export const createTag  = withPermission('manage_finance_settings', _createTag);
-export const updateTag  = withPermission('manage_finance_settings', _updateTag);
-export const archiveTag = withPermission('manage_finance_settings', _archiveTag);
-export const deleteTag  = withPermission('manage_finance_settings', _deleteTag);
+export const listTags   = await withFinanceRead(_listTags);
+export const createTag  = await withPermission('manage_finance_settings', _createTag);
+export const updateTag  = await withPermission('manage_finance_settings', _updateTag);
+export const archiveTag = await withPermission('manage_finance_settings', _archiveTag);
+export const deleteTag  = await withPermission('manage_finance_settings', _deleteTag);
 
 // ─── CapEx (legacy) ───────────────────────────────────────────
 import { listCapex as _listCapex, createCapex as _createCapex } from './capex.handlers';
@@ -138,11 +138,11 @@ import {
   getCapexItem as _getCapexItem,
   updateCapexItem as _updateCapexItem, deleteCapexItem as _deleteCapexItem,
 } from './capex-item.handlers';
-export const listCapex       = withFinanceRead(_listCapex);
-export const getCapexItem    = withFinanceRead(_getCapexItem);
-export const createCapex     = withPermission('manage_finance_settings', _createCapex);
-export const updateCapexItem = withPermission('manage_finance_settings', _updateCapexItem);
-export const deleteCapexItem = withPermission('manage_finance_settings', _deleteCapexItem);
+export const listCapex       = await withFinanceRead(_listCapex);
+export const getCapexItem    = await withFinanceRead(_getCapexItem);
+export const createCapex     = await withPermission('manage_finance_settings', _createCapex);
+export const updateCapexItem = await withPermission('manage_finance_settings', _updateCapexItem);
+export const deleteCapexItem = await withPermission('manage_finance_settings', _deleteCapexItem);
 
 
 
@@ -155,10 +155,10 @@ import {
   getInvoiceByReservation as _getInvoiceByReservation,
   reissueInvoiceHandler as _reissueInvoiceHandler,
 } from './invoices.handlers';
-export const listInvoices            = withFinanceRead(_listInvoices);
-export const getInvoiceHtml          = withFinanceRead(_getInvoiceHtml);
-export const getInvoiceByReservation = withFinanceRead(_getInvoiceByReservation);
-export const reissueInvoiceHandler   = withPermission('manage_finance_settings', _reissueInvoiceHandler);
+export const listInvoices            = await withFinanceRead(_listInvoices);
+export const getInvoiceHtml          = await withFinanceRead(_getInvoiceHtml);
+export const getInvoiceByReservation = await withFinanceRead(_getInvoiceByReservation);
+export const reissueInvoiceHandler   = await withPermission('manage_finance_settings', _reissueInvoiceHandler);
 
 // ─── Invoice Reconciliation Journal ───────────────────────────
 
@@ -169,30 +169,30 @@ import {
   archiveAccount as _archiveAccount, deleteAccount as _deleteAccount,
   reconcileAccount as _reconcileAccount,
 } from './accounts.handlers';
-export const listAccounts     = withFinanceRead(_listAccounts);
-export const createAccount    = withPermission('manage_finance_settings', _createAccount);
-export const updateAccount    = withPermission('manage_finance_settings', _updateAccount);
-export const archiveAccount   = withPermission('manage_finance_settings', _archiveAccount);
-export const deleteAccount    = withPermission('manage_finance_settings', _deleteAccount);
-export const reconcileAccount = withPermission('manage_finance_settings', _reconcileAccount);
+export const listAccounts     = await withFinanceRead(_listAccounts);
+export const createAccount    = await withPermission('manage_finance_settings', _createAccount);
+export const updateAccount    = await withPermission('manage_finance_settings', _updateAccount);
+export const archiveAccount   = await withPermission('manage_finance_settings', _archiveAccount);
+export const deleteAccount    = await withPermission('manage_finance_settings', _deleteAccount);
+export const reconcileAccount = await withPermission('manage_finance_settings', _reconcileAccount);
 
 // ─── Exchange rates (PR #1) ───────────────────────────────────
 import {
   listExchangeRates as _listExchangeRates, getCurrentRate as _getCurrentRate,
   upsertExchangeRate as _upsertExchangeRate, deleteExchangeRate as _deleteExchangeRate,
 } from './exchange-rates.handlers';
-export const listExchangeRates  = withFinanceRead(_listExchangeRates);
-export const getCurrentRate     = withFinanceRead(_getCurrentRate);
-export const upsertExchangeRate = withPermission('manage_finance_settings', _upsertExchangeRate);
-export const deleteExchangeRate = withPermission('manage_finance_settings', _deleteExchangeRate);
+export const listExchangeRates  = await withFinanceRead(_listExchangeRates);
+export const getCurrentRate     = await withFinanceRead(_getCurrentRate);
+export const upsertExchangeRate = await withPermission('manage_finance_settings', _upsertExchangeRate);
+export const deleteExchangeRate = await withPermission('manage_finance_settings', _deleteExchangeRate);
 
 // ─── Audit log ────────────────────────────────────────────────
 import { getFinanceLog as _getFinanceLog } from './log.handlers';
-export const getFinanceLog = withFinanceRead(_getFinanceLog);
+export const getFinanceLog = await withFinanceRead(_getFinanceLog);
 
 // ─── Read-only finance audit (hidden /finance/audit page) ─────
 import { getFinanceAudit as _getFinanceAudit } from './audit.handlers';
-export const getFinanceAudit = withFinanceRead(_getFinanceAudit);
+export const getFinanceAudit = await withFinanceRead(_getFinanceAudit);
 
 // ─── Operations (PR #6) — manage_payments ─────────────────────
 // getReservationPaymentTotals / recalcReservationPaymentStatus are internal
@@ -208,15 +208,15 @@ import {
   mergeOperations as _mergeOperations,
   applyRecurringSuggestion as _applyRecurringSuggestion,
 } from './operations.handlers';
-export const listOperations    = withFinanceRead(_listOperations);
-export const getOperation      = withFinanceRead(_getOperation);
-export const getOperationAudit = withFinanceRead(_getOperationAudit);
-export const createOperation    = withPermission('manage_payments', _createOperation);
-export const updateOperation    = withPermission('manage_payments', _updateOperation);
-export const deleteOperation    = withPermission('manage_payments', _deleteOperation);
-export const mergeOperations    = withPermission('manage_payments', _mergeOperations);
-export const duplicateOperation = withPermission('manage_payments', _duplicateOperation);
-export const applyRecurringSuggestion = withPermission('manage_payments', _applyRecurringSuggestion);
+export const listOperations    = await withFinanceRead(_listOperations);
+export const getOperation      = await withFinanceRead(_getOperation);
+export const getOperationAudit = await withFinanceRead(_getOperationAudit);
+export const createOperation    = await withPermission('manage_payments', _createOperation);
+export const updateOperation    = await withPermission('manage_payments', _updateOperation);
+export const deleteOperation    = await withPermission('manage_payments', _deleteOperation);
+export const mergeOperations    = await withPermission('manage_payments', _mergeOperations);
+export const duplicateOperation = await withPermission('manage_payments', _duplicateOperation);
+export const applyRecurringSuggestion = await withPermission('manage_payments', _applyRecurringSuggestion);
 
 // ─── Payment bridge — INTERNAL (no HTTP, no guard) ────────────
 export {
@@ -231,13 +231,13 @@ import {
   applyAutoRulesToOperations as _applyAutoRulesToOperations,
   autoMatchCounterpartiesAllOps as _autoMatchCounterpartiesAllOps,
 } from './auto-rules.handlers';
-export const listAutoRules = withFinanceRead(_listAutoRules);
-export const createAutoRule = withPermission('manage_finance_settings', _createAutoRule);
-export const updateAutoRule = withPermission('manage_finance_settings', _updateAutoRule);
-export const deleteAutoRule = withPermission('manage_finance_settings', _deleteAutoRule);
-export const toggleAutoRule = withPermission('manage_finance_settings', _toggleAutoRule);
-export const applyAutoRulesToOperations    = withPermission('manage_finance_settings', _applyAutoRulesToOperations);
-export const autoMatchCounterpartiesAllOps = withPermission('manage_finance_settings', _autoMatchCounterpartiesAllOps);
+export const listAutoRules = await withFinanceRead(_listAutoRules);
+export const createAutoRule = await withPermission('manage_finance_settings', _createAutoRule);
+export const updateAutoRule = await withPermission('manage_finance_settings', _updateAutoRule);
+export const deleteAutoRule = await withPermission('manage_finance_settings', _deleteAutoRule);
+export const toggleAutoRule = await withPermission('manage_finance_settings', _toggleAutoRule);
+export const applyAutoRulesToOperations    = await withPermission('manage_finance_settings', _applyAutoRulesToOperations);
+export const autoMatchCounterpartiesAllOps = await withPermission('manage_finance_settings', _autoMatchCounterpartiesAllOps);
 
 // ─── Recurring templates + calendar (PR #8) ───────────────────
 import {
@@ -248,12 +248,12 @@ import {
   toggleRecurringTemplate as _toggleRecurringTemplate,
   runRecurringNow as _runRecurringNow,
 } from './recurring.handlers';
-export const listRecurringTemplates  = withFinanceRead(_listRecurringTemplates);
-export const createRecurringTemplate = withPermission('manage_finance_settings', _createRecurringTemplate);
-export const updateRecurringTemplate = withPermission('manage_finance_settings', _updateRecurringTemplate);
-export const deleteRecurringTemplate = withPermission('manage_finance_settings', _deleteRecurringTemplate);
-export const toggleRecurringTemplate = withPermission('manage_finance_settings', _toggleRecurringTemplate);
-export const runRecurringNow         = withPermission('manage_finance_settings', _runRecurringNow);
+export const listRecurringTemplates  = await withFinanceRead(_listRecurringTemplates);
+export const createRecurringTemplate = await withPermission('manage_finance_settings', _createRecurringTemplate);
+export const updateRecurringTemplate = await withPermission('manage_finance_settings', _updateRecurringTemplate);
+export const deleteRecurringTemplate = await withPermission('manage_finance_settings', _deleteRecurringTemplate);
+export const toggleRecurringTemplate = await withPermission('manage_finance_settings', _toggleRecurringTemplate);
+export const runRecurringNow         = await withPermission('manage_finance_settings', _runRecurringNow);
 
 
 
@@ -263,10 +263,10 @@ import {
   exportOperations as _exportOperations, exportCashflow as _exportCashflow,
   exportPnl as _exportPnl, exportStatement as _exportStatement,
 } from './export.handlers';
-export const exportOperations = withFinanceRead(_exportOperations);
-export const exportCashflow    = withFinanceRead(_exportCashflow);
-export const exportPnl         = withFinanceRead(_exportPnl);
-export const exportStatement   = withFinanceRead(_exportStatement);
+export const exportOperations = await withFinanceRead(_exportOperations);
+export const exportCashflow    = await withFinanceRead(_exportCashflow);
+export const exportPnl         = await withFinanceRead(_exportPnl);
+export const exportStatement   = await withFinanceRead(_exportStatement);
 
 
 // ─── Telegram bridge (PR #17) — Bearer token auth, no session ──
@@ -281,11 +281,11 @@ import {
   downloadAttachment as _downloadAttachment, getAttachmentCounts as _getAttachmentCounts,
   uploadAttachment as _uploadAttachment, deleteAttachment as _deleteAttachment,
 } from './attachments.handlers';
-export const listOperationAttachments = withFinanceRead(_listOperationAttachments);
-export const downloadAttachment       = withFinanceRead(_downloadAttachment);
-export const getAttachmentCounts      = withFinanceRead(_getAttachmentCounts);
-export const uploadAttachment = withPermission('manage_payments', _uploadAttachment);
-export const deleteAttachment = withPermission('manage_payments', _deleteAttachment);
+export const listOperationAttachments = await withFinanceRead(_listOperationAttachments);
+export const downloadAttachment       = await withFinanceRead(_downloadAttachment);
+export const getAttachmentCounts      = await withFinanceRead(_getAttachmentCounts);
+export const uploadAttachment = await withPermission('manage_payments', _uploadAttachment);
+export const deleteAttachment = await withPermission('manage_payments', _deleteAttachment);
 
 
 
@@ -295,9 +295,9 @@ import {
   listOrphanPayments as _listOrphanPayments, listPaidServices as _listPaidServices,
   restoreOrphanPayment as _restoreOrphanPayment,
 } from './payment-recovery.handlers';
-export const listOrphanPayments = withFinanceRead(_listOrphanPayments);
-export const listPaidServices   = withFinanceRead(_listPaidServices);
-export const restoreOrphanPayment = withPermission('manage_payments', _restoreOrphanPayment);
+export const listOrphanPayments = await withFinanceRead(_listOrphanPayments);
+export const listPaidServices   = await withFinanceRead(_listPaidServices);
+export const restoreOrphanPayment = await withPermission('manage_payments', _restoreOrphanPayment);
 
 
 // ─── Finance user access (owner-only management + self-read) ──
@@ -307,9 +307,9 @@ import {
   deleteFinanceAccess as _deleteFinanceAccess,
   getMyFinanceAccess as _getMyFinanceAccess,
 } from './finance-access.handlers';
-export const listFinanceAccess    = withPermission('manage_users', _listFinanceAccess);
-export const upsertFinanceAccess  = withPermission('manage_users', _upsertFinanceAccess);
-export const deleteFinanceAccess  = withPermission('manage_users', _deleteFinanceAccess);
-export const getMyFinanceAccess   = withFinanceRead(_getMyFinanceAccess);
+export const listFinanceAccess    = await withPermission('manage_users', _listFinanceAccess);
+export const upsertFinanceAccess  = await withPermission('manage_users', _upsertFinanceAccess);
+export const deleteFinanceAccess  = await withPermission('manage_users', _deleteFinanceAccess);
+export const getMyFinanceAccess   = await withFinanceRead(_getMyFinanceAccess);
 
 // Re-export auth helpers for use in _guard.ts and other modules
