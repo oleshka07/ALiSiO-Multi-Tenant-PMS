@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import type { Sql } from '../../../core/db/async.ts';
 
 /**
  * Gift certificate redemption for the widget.
@@ -32,18 +33,18 @@ export type CertificateAnswer =
 
 const AT_DESK = 'Цей сертифікат погашається на рецепції — бронюйте, і його зарахують при заселенні.';
 
-export function quoteCertificate(
-  db: any,
+export async function quoteCertificate(
+  sql: Sql,
   organizationId: string,
   code: string,
   totalPrice: number,
   currency: string,
-): CertificateAnswer {
-  const row = db.prepare(`
+): Promise<CertificateAnswer> {
+  const row = await sql.row<any>(`
     SELECT id, code, value_type, face_value, currency, status, expires_at
     FROM gift_cards
     WHERE organization_id = ? AND UPPER(code) = UPPER(TRIM(?))
-  `).get(organizationId, code) as any;
+  `, [organizationId, code]) as any;
 
   if (!row) return { valid: false, message: 'Сертифікат не знайдено.' };
   if (row.status === 'activated') return { valid: false, message: 'Сертифікат уже використано.' };
@@ -78,12 +79,12 @@ export function quoteCertificate(
  * two simultaneous redemptions impossible: the second UPDATE changes nothing
  * and the caller takes the discount back.
  */
-export function claimCertificate(db: any, certificateId: string, reservationId: string): boolean {
-  const r = db.prepare(`
+export async function claimCertificate(sql: Sql, certificateId: string, reservationId: string): Promise<boolean> {
+  const r = await sql.run(`
     UPDATE gift_cards
     SET status = 'activated', reservation_id = ?,
         activated_at = datetime('now'), updated_at = datetime('now')
     WHERE id = ? AND status IN ('active', 'paid')
-  `).run(reservationId, certificateId);
+  `, [reservationId, certificateId]);
   return r.changes === 1;
 }

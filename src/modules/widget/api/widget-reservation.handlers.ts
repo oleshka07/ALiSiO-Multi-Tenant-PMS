@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -19,8 +19,8 @@ export async function getWidgetReservation(req: NextRequest) {
       return NextResponse.json({ error: 'id is required' }, { status: 400, headers: CORS_HEADERS });
     }
 
-    const db = getDb();
-    const r = db.prepare(`
+    const sql = getSql();
+    const r = await sql.row<any>(`
       SELECT r.id, r.unit_id, r.check_in, r.check_out, r.nights,
              r.adults, r.children, r.status, r.payment_status, r.total_price,
              u.name AS unit_name,
@@ -29,7 +29,7 @@ export async function getWidgetReservation(req: NextRequest) {
       LEFT JOIN units u ON u.id = r.unit_id
       LEFT JOIN guests g ON g.id = r.guest_id
       WHERE r.id = ?
-    `).get(id) as any;
+    `, [id]) as any;
 
     if (!r) {
       return NextResponse.json({ error: 'Not found' }, { status: 404, headers: CORS_HEADERS });
@@ -37,7 +37,7 @@ export async function getWidgetReservation(req: NextRequest) {
 
     let services: any[] = [];
     try {
-      services = db.prepare(`
+      services = await sql.rows<any>(`
         SELECT bso.id, bso.service_id, bso.quantity, bso.service_date,
                bso.unit_price, bso.total_price, bso.status, bso.payment_status,
                bso.options_json, bso.menu_item_id,
@@ -46,7 +46,7 @@ export async function getWidgetReservation(req: NextRequest) {
         LEFT JOIN additional_services s ON s.id = bso.service_id
         WHERE bso.reservation_id = ?
         ORDER BY bso.id
-      `).all(id) as any[];
+      `, [id]) as any[];
     } catch { /* optional table */ }
 
     return NextResponse.json({

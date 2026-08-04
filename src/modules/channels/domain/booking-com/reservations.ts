@@ -237,7 +237,7 @@ export async function processReservation(
   }
 
   // Find or create guest
-  const guestId = findOrCreateGuest(reservation);
+  const guestId = await findOrCreateGuest(reservation);
 
   // Find matching unit
   const unit = await findMatchingUnit(connectionId, reservation);

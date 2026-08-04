@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { hasFeature, featureDisabled } from '@core/features';
 import { resolveSiteByKey } from '../data/site.repo';
@@ -23,11 +24,10 @@ export async function getWidgetSiteConfig(req: NextRequest) {
       return NextResponse.json({ error: 'slug is required' }, { status: 400, headers: CORS_HEADERS });
     }
     
-    const db = getDb();
+    const sql = getSql();
     // Accepts an id, a slug, or the hostname the widget is embedded on — the
     // last of which used to be one hardcoded alias for the first customer.
-    const site = resolveSiteByKey(
-      db, slug,
+    const site = await resolveSiteByKey(slug,
       'id, organization_id, name, slug, design_config, widget_config, payment_config, currency, site_url, allowed_domains',
     ) as any;
 
@@ -35,26 +35,26 @@ export async function getWidgetSiteConfig(req: NextRequest) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: CORS_HEADERS });
     }
 
-    if (!hasFeature(db, site.organization_id, 'widget')) {
+    if (!hasFeature(getDb(), site.organization_id, 'widget')) {
       return featureDisabled('widget', CORS_HEADERS);
     }
 
     // Payment is offered only when the organization has Teya at all — the env
     // fallback used to make every site on the server claim it takes cards.
     const payCfg = JSON.parse(site.payment_config || '{}');
-    const hasPayment = hasFeature(db, site.organization_id, 'teya')
+    const hasPayment = hasFeature(getDb(), site.organization_id, 'teya')
       && (!!(payCfg.enabled && payCfg.provider === 'teya' && payCfg.teya?.client_id)
         || !!process.env.TEYA_CLIENT_ID);
 
     let maxAdults = 2;
     let maxChildren = 2;
     try {
-      const maxCap = db.prepare(`
+      const maxCap = await sql.row<any>(`
         SELECT MAX(ut.max_adults) as maxA, MAX(ut.max_children) as maxC
         FROM site_listings sl
         JOIN unit_types ut ON sl.unit_type_id = ut.id
         WHERE sl.site_id = ? AND sl.is_active = 1
-      `).get(site.id) as any;
+      `, [site.id]) as any;
       if (maxCap && maxCap.maxA) maxAdults = maxCap.maxA;
       if (maxCap && maxCap.maxC) maxChildren = maxCap.maxC;
     } catch (e) {

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 export const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -14,7 +14,7 @@ export async function getWidgetCalendarOptions() {
 
 export async function getWidgetCalendar(request: NextRequest) {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { searchParams } = new URL(request.url);
     const propertyId  = searchParams.get('propertyId');
     const unitId      = searchParams.get('unitId');
@@ -24,7 +24,7 @@ export async function getWidgetCalendar(request: NextRequest) {
     const ratePlanId  = searchParams.get('ratePlanId') || searchParams.get('ratePlan');
 
     const existingTables = new Set(
-      (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[])
+      (await sql.rows<any>("SELECT name FROM sqlite_master WHERE type='table'") as { name: string }[])
         .map(t => t.name)
     );
     const hasAvailBlocks   = existingTables.has('availability_blocks');
@@ -40,13 +40,13 @@ export async function getWidgetCalendar(request: NextRequest) {
     if ((siteSlug || siteId) && hasBookingSites && hasSiteListings) {
       let site: any;
       if (siteSlug) {
-        site = db.prepare("SELECT id FROM booking_sites WHERE (slug = ? OR id = ?) AND status != 'deleted'").get(siteSlug, siteSlug);
+        site = await sql.row<any>("SELECT id FROM booking_sites WHERE (slug = ? OR id = ?) AND status != 'deleted'", [siteSlug, siteSlug]);
       } else {
-        site = db.prepare("SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'").get(siteId);
+        site = await sql.row<any>("SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'", [siteId]);
       }
       if (site) {
         siteIdObj = site.id;
-        const listings = db.prepare('SELECT unit_id FROM site_listings WHERE site_id = ?').all(site.id) as any[];
+        const listings = await sql.rows<any>('SELECT unit_id FROM site_listings WHERE site_id = ?', [site.id]) as any[];
         siteUnitIds = listings.map((l: any) => l.unit_id);
       }
     }
@@ -54,9 +54,9 @@ export async function getWidgetCalendar(request: NextRequest) {
     let activeRatePlan: any = null;
     if (siteIdObj) {
       if (ratePlanId) {
-        activeRatePlan = db.prepare('SELECT * FROM site_rate_plans WHERE id = ? AND site_id = ?').get(ratePlanId, siteIdObj);
+        activeRatePlan = await sql.row<any>('SELECT * FROM site_rate_plans WHERE id = ? AND site_id = ?', [ratePlanId, siteIdObj]);
       } else {
-        activeRatePlan = db.prepare('SELECT * FROM site_rate_plans WHERE is_default = 1 AND site_id = ? LIMIT 1').get(siteIdObj);
+        activeRatePlan = await sql.row<any>('SELECT * FROM site_rate_plans WHERE is_default = 1 AND site_id = ? LIMIT 1', [siteIdObj]);
       }
     }
 
@@ -71,17 +71,17 @@ export async function getWidgetCalendar(request: NextRequest) {
     let property: any;
 
     if (targetUnitId) {
-      const u = db.prepare('SELECT property_id FROM units WHERE id = ?').get(targetUnitId) as any;
+      const u = await sql.row<any>('SELECT property_id FROM units WHERE id = ?', [targetUnitId]) as any;
       if (u) property = { id: u.property_id };
     }
 
     if (!property && siteUnitIds && siteUnitIds.length > 0) {
-      const u = db.prepare('SELECT property_id FROM units WHERE id = ?').get(siteUnitIds[0]) as any;
+      const u = await sql.row<any>('SELECT property_id FROM units WHERE id = ?', [siteUnitIds[0]]) as any;
       if (u) property = { id: u.property_id };
     }
 
     if (!property && propertyId) {
-      property = db.prepare('SELECT id FROM properties WHERE id = ? AND is_active = 1').get(propertyId);
+      property = await sql.row<any>('SELECT id FROM properties WHERE id = ? AND is_active = 1', [propertyId]);
     }
 
     if (!property) {
@@ -114,93 +114,93 @@ export async function getWidgetCalendar(request: NextRequest) {
     // ── 5. Total unit count ─────────────────────────────────────────────────
     let totalCount = 0;
     if (targetUnitId) {
-      const row = db.prepare('SELECT COUNT(*) as cnt FROM units WHERE id = ? AND is_active = 1').get(targetUnitId) as any;
+      const row = await sql.row<any>('SELECT COUNT(*) as cnt FROM units WHERE id = ? AND is_active = 1', [targetUnitId]) as any;
       totalCount = row?.cnt || 0;
     } else if (siteUnitIds && siteUnitIds.length > 0) {
       const ph  = siteUnitIds.map(() => '?').join(',');
-      const row = db.prepare(`SELECT COUNT(*) as cnt FROM units WHERE id IN (${ph}) AND is_active = 1`).get(...siteUnitIds) as any;
+      const row = await sql.row<any>(`SELECT COUNT(*) as cnt FROM units WHERE id IN (${ph}) AND is_active = 1`, [...siteUnitIds]) as any;
       totalCount = row?.cnt || 0;
     } else {
       // Fallback: every bookable unit in the property. Filtering to one
       // category type ('glamping') returned an empty calendar to every hotel
       // that does not use the first customer's vocabulary.
-      const row = db.prepare(`
+      const row = await sql.row<any>(`
         SELECT COUNT(*) as cnt FROM units u
         JOIN unit_types ut ON u.unit_type_id = ut.id
         WHERE u.is_active = 1 AND u.room_status = 'available' AND ut.property_id = ?
-      `).get(property.id) as any;
+      `, [property.id]) as any;
       totalCount = row?.cnt || 0;
     }
 
     // ── 6. Reservations ─────────────────────────────────────────────────────
     let reservations: any[];
     if (targetUnitId) {
-      reservations = db.prepare(`
+      reservations = await sql.rows<any>(`
         SELECT r.unit_id, r.check_in, r.check_out FROM reservations r
         WHERE r.unit_id = ?
           AND r.status NOT IN ('cancelled', 'no_show')
           AND r.check_in < ? AND r.check_out > ?
-      `).all(targetUnitId, nextMonthStart, monthStart) as any[];
+      `, [targetUnitId, nextMonthStart, monthStart]) as any[];
     } else if (siteUnitIds && siteUnitIds.length > 0) {
       const ph = siteUnitIds.map(() => '?').join(',');
-      reservations = db.prepare(`
+      reservations = await sql.rows<any>(`
         SELECT r.unit_id, r.check_in, r.check_out FROM reservations r
         WHERE r.unit_id IN (${ph})
           AND r.status NOT IN ('cancelled', 'no_show')
           AND r.check_in < ? AND r.check_out > ?
-      `).all(...siteUnitIds, nextMonthStart, monthStart) as any[];
+      `, [...siteUnitIds, nextMonthStart, monthStart]) as any[];
     } else {
-      reservations = db.prepare(`
+      reservations = await sql.rows<any>(`
         SELECT r.unit_id, r.check_in, r.check_out FROM reservations r
         JOIN units u ON r.unit_id = u.id
         JOIN unit_types ut ON u.unit_type_id = ut.id
         WHERE ut.property_id = ?
           AND r.status NOT IN ('cancelled', 'no_show')
           AND r.check_in < ? AND r.check_out > ?
-      `).all(property.id, nextMonthStart, monthStart) as any[];
+      `, [property.id, nextMonthStart, monthStart]) as any[];
     }
 
     // ── 7. Availability blocks ──────────────────────────────────────────────
     let blocks: any[] = [];
     if (hasAvailBlocks) {
       if (targetUnitId) {
-        blocks = db.prepare(`
+        blocks = await sql.rows<any>(`
           SELECT ab.unit_id, ab.date_from, ab.date_to FROM availability_blocks ab
           WHERE ab.unit_id = ? AND ab.date_from < ? AND ab.date_to > ?
-        `).all(targetUnitId, nextMonthStart, monthStart) as any[];
+        `, [targetUnitId, nextMonthStart, monthStart]) as any[];
       } else if (siteUnitIds && siteUnitIds.length > 0) {
         const ph = siteUnitIds.map(() => '?').join(',');
-        blocks = db.prepare(`
+        blocks = await sql.rows<any>(`
           SELECT ab.unit_id, ab.date_from, ab.date_to FROM availability_blocks ab
           WHERE ab.unit_id IN (${ph}) AND ab.date_from < ? AND ab.date_to > ?
-        `).all(...siteUnitIds, nextMonthStart, monthStart) as any[];
+        `, [...siteUnitIds, nextMonthStart, monthStart]) as any[];
       } else {
-        blocks = db.prepare(`
+        blocks = await sql.rows<any>(`
           SELECT ab.unit_id, ab.date_from, ab.date_to FROM availability_blocks ab
           JOIN units u ON ab.unit_id = u.id
           JOIN unit_types ut ON u.unit_type_id = ut.id
           WHERE ut.property_id = ?
             AND ab.date_from < ? AND ab.date_to > ?
-        `).all(property.id, nextMonthStart, monthStart) as any[];
+        `, [property.id, nextMonthStart, monthStart]) as any[];
       }
     }
 
     // ── 8. Price map (optional) ─────────────────────────────────────────────
-    const unitTypes = db.prepare(`
+    const unitTypes = await sql.rows<any>(`
       SELECT ut.id FROM unit_types ut
       WHERE ut.is_active = 1 AND ut.property_id = ?
-    `).all(property.id) as any[];
+    `, [property.id]) as any[];
 
     const priceMap = new Map<string, any>();
     if (hasPriceCalendar && unitTypes.length > 0) {
       try {
         const ph = unitTypes.map(() => '?').join(',');
-        const priceRows = db.prepare(`
+        const priceRows = await sql.rows<any>(`
           SELECT pc.date, MIN(pc.base_price) as min_price, MIN(pc.weekend_price) as min_weekend_price
           FROM price_calendar pc
           WHERE pc.unit_type_id IN (${ph}) AND pc.date >= ? AND pc.date <= ?
           GROUP BY pc.date
-        `).all(...unitTypes.map((ut: any) => ut.id), monthStart, monthEnd) as any[];
+        `, [...unitTypes.map((ut: any) => ut.id), monthStart, monthEnd]) as any[];
         for (const p of priceRows) priceMap.set(p.date, p);
       } catch { /* price_calendar not available */ }
     }

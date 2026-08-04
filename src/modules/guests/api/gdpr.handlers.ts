@@ -32,7 +32,7 @@ export const exportGuestData = withPermission('manage_guests', async (_request, 
     const { id } = await params;
     const sql = getSql();
 
-    const guest = ownGuest(actor.organizationId, id);
+    const guest = await ownGuest(actor.organizationId, id);
     if (!guest) return NextResponse.json({ error: 'Guest not found' }, { status: 404 });
 
     // Constrained through properties as well as by guest_id: a guest row and a

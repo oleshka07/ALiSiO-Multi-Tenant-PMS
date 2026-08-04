@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { eventBus } from '@core/event-bus';
 import { notifyReservationCreated } from '@bookings';
@@ -40,29 +41,27 @@ export async function createWidgetReservationOptions(request: NextRequest) {
 export async function createWidgetReservation(request: NextRequest) {
   try {
     await ensureSubscribers();
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
 
     const siteId = body.siteId;
     const siteSlug = body.siteSlug;
 
     // Failsafe table creation for handshakes
-    db.prepare(`
+    await sql.run(`
       CREATE TABLE IF NOT EXISTS widget_handshakes (
         token TEXT PRIMARY KEY,
         site_id TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         expires_at DATETIME
       )
-    `).run();
+    `);
 
     // Which hosts this site trusts — its own domain plus allowed_domains.
     let originSite: SiteRow | undefined;
     const searchSite = siteId || siteSlug;
     if (searchSite) {
-      originSite = db.prepare(
-        "SELECT id, slug, site_url, allowed_domains FROM booking_sites WHERE (id = ? OR slug = ?) AND status != 'deleted'",
-      ).get(searchSite, searchSite) as SiteRow | undefined;
+      originSite = await sql.row<any>("SELECT id, slug, site_url, allowed_domains FROM booking_sites WHERE (id = ? OR slug = ?) AND status != 'deleted'", [searchSite, searchSite]) as SiteRow | undefined;
     }
 
     const origin = request.headers.get('origin');
@@ -95,17 +94,17 @@ export async function createWidgetReservation(request: NextRequest) {
         return NextResponse.json({ error: 'Security handshake token required' }, { status: 403, headers: dynamicHeaders });
       }
       
-      const handshake = db.prepare(`
+      const handshake = await sql.row<any>(`
         SELECT token FROM widget_handshakes 
         WHERE token = ? AND expires_at > datetime('now')
-      `).get(handshakeToken) as { token: string } | undefined;
+      `, [handshakeToken]) as { token: string } | undefined;
 
       if (!handshake) {
         return NextResponse.json({ error: 'Security handshake expired or invalid. Please retry.' }, { status: 403, headers: dynamicHeaders });
       }
 
       // Single-use token: consume it immediately
-      db.prepare('DELETE FROM widget_handshakes WHERE token = ?').run(handshakeToken);
+      await sql.run('DELETE FROM widget_handshakes WHERE token = ?', [handshakeToken]);
     }
 
     const {
@@ -159,22 +158,22 @@ export async function createWidgetReservation(request: NextRequest) {
     const nights = Math.round((coDate.getTime() - ciDate.getTime()) / 86400000);
 
     const existingTables = new Set(
-      (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[])
+      (await sql.rows<any>("SELECT name FROM sqlite_master WHERE type='table'") as { name: string }[])
         .map(t => t.name)
     );
     const hasAvailBlocks = existingTables.has('availability_blocks');
     const hasPromotions = existingTables.has('promotions');
     const hasPriceCalendar = existingTables.has('price_calendar');
 
-    const unit = db.prepare(`
+    const unit = await sql.row<any>(`
       SELECT u.id, u.name, u.code, u.property_id, u.unit_type_id
       FROM units u
       JOIN categories c ON u.category_id = c.id
       WHERE u.id = ? AND u.is_active = 1 AND u.room_status = 'available'
-    `).get(unitId) as any;
+    `, [unitId]) as any;
 
     if (unit && siteId && existingTables.has('site_listings')) {
-      const allowed = db.prepare('SELECT 1 FROM site_listings WHERE site_id = ? AND unit_id = ?').get(siteId, unitId);
+      const allowed = await sql.row<any>('SELECT 1 FROM site_listings WHERE site_id = ? AND unit_id = ?', [siteId, unitId]);
       if (!allowed) {
         // A staging host used to be allowed to book units the site does not
         // list. That was one hotel's deploy preview written into production
@@ -193,10 +192,8 @@ export async function createWidgetReservation(request: NextRequest) {
 
     // Public endpoint: the organization comes from the unit being booked, and
     // it must have bought the widget for this booking to exist at all.
-    const unitOrg = db.prepare(
-      'SELECT organization_id FROM properties WHERE id = ?'
-    ).get(unit.property_id) as { organization_id: string } | undefined;
-    if (!unitOrg || !hasFeature(db, unitOrg.organization_id, 'widget')) {
+    const unitOrg = await sql.row<any>('SELECT organization_id FROM properties WHERE id = ?', [unit.property_id]) as { organization_id: string } | undefined;
+    if (!unitOrg || !hasFeature(getDb(), unitOrg.organization_id, 'widget')) {
       return featureDisabled('widget', CORS_HEADERS);
     }
 
@@ -206,11 +203,11 @@ export async function createWidgetReservation(request: NextRequest) {
 
     if (siteId) {
       if (existingTables.has('booking_sites')) {
-        const site = db.prepare('SELECT name FROM booking_sites WHERE id = ?').get(siteId) as any;
+        const site = await sql.row<any>('SELECT name FROM booking_sites WHERE id = ?', [siteId]) as any;
         if (site) siteName = `widget:${siteId}`; // unified format: widget:<siteId>
       }
       if (existingTables.has('site_listings')) {
-        const listing = db.prepare('SELECT price_override, thank_you_url FROM site_listings WHERE site_id = ? AND unit_id = ?').get(siteId, unitId) as any;
+        const listing = await sql.row<any>('SELECT price_override, thank_you_url FROM site_listings WHERE site_id = ? AND unit_id = ?', [siteId, unitId]) as any;
         if (listing) {
           if (listing.price_override != null) priceOverride = listing.price_override;
           if (listing.thank_you_url) thankYouUrl = listing.thank_you_url;
@@ -218,24 +215,24 @@ export async function createWidgetReservation(request: NextRequest) {
       }
     }
 
-    const isBooked = db.prepare(`
+    const isBooked = await sql.row<any>(`
       SELECT 1 FROM reservations r
       WHERE r.unit_id = ?
         AND r.status NOT IN ('cancelled', 'no_show')
         AND r.check_in < ? AND r.check_out > ?
       LIMIT 1
-    `).get(unitId, checkOut, checkIn);
+    `, [unitId, checkOut, checkIn]);
 
     if (isBooked) {
       return NextResponse.json({ error: 'This unit is already booked for the selected dates' }, { status: 409, headers: CORS_HEADERS });
     }
 
     if (hasAvailBlocks) {
-      const isBlocked = db.prepare(`
+      const isBlocked = await sql.row<any>(`
         SELECT 1 FROM availability_blocks
         WHERE unit_id = ? AND date_from < ? AND date_to > ?
         LIMIT 1
-      `).get(unitId, checkOut, checkIn);
+      `, [unitId, checkOut, checkIn]);
       if (isBlocked) {
         return NextResponse.json({ error: 'This unit is blocked for the selected dates' }, { status: 409, headers: CORS_HEADERS });
       }
@@ -244,12 +241,12 @@ export async function createWidgetReservation(request: NextRequest) {
     const STUB_PRICE = 2500;
     let prices: any[] = [];
     if (hasPriceCalendar) {
-      prices = db.prepare(`
+      prices = await sql.rows<any>(`
         SELECT pc.date, pc.base_price, pc.weekend_price
         FROM price_calendar pc
         WHERE pc.unit_type_id = ? AND pc.date >= ? AND pc.date < ?
         ORDER BY pc.date ASC
-      `).all(unit.unit_type_id, checkIn, checkOut) as any[];
+      `, [unit.unit_type_id, checkIn, checkOut]) as any[];
     }
 
     const priceMap = new Map<string, any>();
@@ -275,9 +272,7 @@ export async function createWidgetReservation(request: NextRequest) {
     }
 
     let extraPersonTotal = 0;
-    const unitTypeInfo = db.prepare(
-      'SELECT base_occupancy, extra_person_charge, pet_allowed, pet_charge FROM unit_types WHERE id = ?'
-    ).get(unit.unit_type_id) as any;
+    const unitTypeInfo = await sql.row<any>('SELECT base_occupancy, extra_person_charge, pet_allowed, pet_charge FROM unit_types WHERE id = ?', [unit.unit_type_id]) as any;
     if (unitTypeInfo) {
       const baseOcc = unitTypeInfo.base_occupancy || 2;
       const extraGuests = Math.max(0, adults - baseOcc);
@@ -298,20 +293,20 @@ export async function createWidgetReservation(request: NextRequest) {
     if (couponCode) {
       try {
         const code = String(couponCode).toUpperCase().trim();
-        offer = db.prepare(`
+        offer = await sql.row<any>(`
           SELECT * FROM coupons
           WHERE code = ? AND is_active = 1
             AND (valid_from IS NULL OR valid_from <= ?)
             AND (valid_until IS NULL OR valid_until >= ?)
             AND (max_uses IS NULL OR current_uses < max_uses)
-        `).get(code, checkOut, checkIn) as any;
+        `, [code, checkOut, checkIn]) as any;
 
         if (!offer) {
-          offer = db.prepare(`
+          offer = await sql.row<any>(`
             SELECT * FROM gift_card_bundles 
             WHERE coupon_code = ? AND is_active = 1 
               AND (redemption_limit IS NULL OR current_uses < redemption_limit)
-          `).get(code) as any;
+          `, [code]) as any;
           if (offer) isBundle = true;
         }
 
@@ -321,7 +316,7 @@ export async function createWidgetReservation(request: NextRequest) {
             offerDiscount = Math.max(0, totalPrice - offer.price);
             // Bundle sets its own price and currency
             resCurrency = offer.currency || resCurrency;
-            db.prepare('UPDATE gift_card_bundles SET current_uses = current_uses + 1 WHERE id = ?').run(offer.id);
+            await sql.run('UPDATE gift_card_bundles SET current_uses = current_uses + 1 WHERE id = ?', [offer.id]);
           } else {
             if (offer.discount_type === 'percentage') {
               offerDiscount = Math.round(totalPrice * offer.offer_amount / 100);
@@ -330,7 +325,7 @@ export async function createWidgetReservation(request: NextRequest) {
             } else {
               offerDiscount = offer.offer_amount;
             }
-            db.prepare('UPDATE coupons SET current_uses = current_uses + 1 WHERE id = ?').run(offer.id);
+            await sql.run('UPDATE coupons SET current_uses = current_uses + 1 WHERE id = ?', [offer.id]);
           }
         }
       } catch (err: any) { 
@@ -348,7 +343,7 @@ export async function createWidgetReservation(request: NextRequest) {
     if (certificateCode) {
       const remaining = Math.max(0, totalPrice - offerDiscount);
       const answer = bookingQuantity === 1
-        ? quoteCertificate(db, unitOrg.organization_id, String(certificateCode), remaining, resCurrency)
+        ? await quoteCertificate(sql, unitOrg.organization_id, String(certificateCode), remaining, resCurrency)
         : { valid: false as const, message: 'Для групових бронювань сертифікат зараховує рецепція.' };
       if (answer.valid) {
         certificateDiscount = answer.quote.amount;
@@ -363,13 +358,13 @@ export async function createWidgetReservation(request: NextRequest) {
     if (extraCouponCode) {
       try {
         const extraCode = String(extraCouponCode).toUpperCase().trim();
-        const extraOffer = db.prepare(`
+        const extraOffer = await sql.row<any>(`
           SELECT * FROM coupons
           WHERE code = ? AND is_active = 1
             AND (valid_from IS NULL OR valid_from <= ?)
             AND (valid_until IS NULL OR valid_until >= ?)
             AND (max_uses IS NULL OR current_uses < max_uses)
-        `).get(extraCode, checkOut, checkIn) as any;
+        `, [extraCode, checkOut, checkIn]) as any;
 
         if (extraOffer) {
           // Calculate discount based on the price AFTER package/first offer
@@ -381,7 +376,7 @@ export async function createWidgetReservation(request: NextRequest) {
           } else {
             extraDiscount = extraOffer.offer_amount;
           }
-          db.prepare('UPDATE coupons SET current_uses = current_uses + 1 WHERE id = ?').run(extraOffer.id);
+          await sql.run('UPDATE coupons SET current_uses = current_uses + 1 WHERE id = ?', [extraOffer.id]);
         }
       } catch (err: any) {
         console.error('[Extra Coupon validation error]', err);
@@ -390,30 +385,22 @@ export async function createWidgetReservation(request: NextRequest) {
 
     const finalPrice = Math.max(0, totalPrice - offerDiscount - certificateDiscount - extraDiscount);
 
-    const org = { id: requireOrganizationId(db) } as { id: string };
+    const org = { id: requireOrganizationId(getDb()) } as { id: string };
 
     let guestId: string;
     if (email) {
-      const existing = db.prepare(
-        'SELECT id FROM guests WHERE email = ? AND organization_id = ?'
-      ).get(email, org.id) as { id: string } | undefined;
+      const existing = await sql.row<any>('SELECT id FROM guests WHERE email = ? AND organization_id = ?', [email, org.id]) as { id: string } | undefined;
 
       if (existing) {
         guestId = existing.id;
-        db.prepare(
-          'UPDATE guests SET first_name = ?, last_name = ?, phone = COALESCE(?, phone), updated_at = datetime(\'now\') WHERE id = ?'
-        ).run(firstName, lastName, phone || null, guestId);
+        await sql.run('UPDATE guests SET first_name = ?, last_name = ?, phone = COALESCE(?, phone), updated_at = datetime(\'now\') WHERE id = ?', [firstName, lastName, phone || null, guestId]);
       } else {
         guestId = `g_${Date.now()}`;
-        db.prepare(
-          'INSERT INTO guests (id, organization_id, first_name, last_name, email, phone) VALUES (?, ?, ?, ?, ?, ?)'
-        ).run(guestId, org.id, firstName, lastName, email, phone || null);
+        await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name, email, phone) VALUES (?, ?, ?, ?, ?, ?)', [guestId, org.id, firstName, lastName, email, phone || null]);
       }
     } else {
       guestId = `g_${Date.now()}`;
-      db.prepare(
-        'INSERT INTO guests (id, organization_id, first_name, last_name, phone) VALUES (?, ?, ?, ?, ?)'
-      ).run(guestId, org.id, firstName, lastName, phone || null);
+      await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name, phone) VALUES (?, ?, ?, ?, ?)', [guestId, org.id, firstName, lastName, phone || null]);
     }
 
     const resStatus = finalPrice === 0 ? 'confirmed' : 'tentative';
@@ -437,17 +424,15 @@ export async function createWidgetReservation(request: NextRequest) {
     if (bookingQuantity > 1) {
       groupId = `grp_${Date.now()}`;
       try {
-        db.prepare(`
+        await sql.run(`
           INSERT INTO reservation_groups
             (id, property_id, guest_id, group_type, check_in, check_out, nights,
              total_price, currency, source, status, payment_status)
           VALUES (?, ?, ?, 'custom', ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          groupId, unit.property_id, guestId,
+        `, [groupId, unit.property_id, guestId,
           checkIn, checkOut, nights,
           finalPrice * bookingQuantity, resCurrency,
-          siteName, resStatus, payStatus
-        );
+          siteName, resStatus, payStatus]);
       } catch (grpErr: any) {
         console.error('[Reserve] Failed to create reservation_group:', grpErr.message);
         groupId = null; // non-fatal — reservations will have no group link
@@ -455,10 +440,10 @@ export async function createWidgetReservation(request: NextRequest) {
     }
 
     // Helper to generate a unique guest_page_token
-    const generateToken = (): string => {
+    const generateToken = async (): Promise<string> => {
       for (let attempt = 0; attempt < 5; attempt++) {
         const t = Math.random().toString(36).slice(2, 14);
-        const existing = db.prepare('SELECT 1 FROM reservations WHERE guest_page_token = ?').get(t);
+        const existing = await sql.row<any>('SELECT 1 FROM reservations WHERE guest_page_token = ?', [t]);
         if (!existing) return t;
       }
       return `${Math.random().toString(36).slice(2)}_${Date.now()}`;
@@ -468,7 +453,7 @@ export async function createWidgetReservation(request: NextRequest) {
 
     for (let slot = 1; slot <= bookingQuantity; slot++) {
       const resId = `r_${Date.now()}_${slot}`;
-      const guestPageToken = generateToken();
+      const guestPageToken = await generateToken();
 
       const notesArr = [];
       if (paymentMethod) notesArr.push(`payment_method:${paymentMethod}`);
@@ -476,7 +461,7 @@ export async function createWidgetReservation(request: NextRequest) {
       if (certificateNote) notesArr.push(certificateNote);
       const finalNotes = notesArr.length > 0 ? notesArr.join(' | ') : null;
 
-      db.prepare(`
+      await sql.run(`
         INSERT INTO reservations (
           id, property_id, unit_id, guest_id, check_in, check_out,
           nights, adults, children, status, payment_status, source,
@@ -485,34 +470,30 @@ export async function createWidgetReservation(request: NextRequest) {
           booking_lang, country_code, widget_session_id, group_id, notes
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        resId, unit.property_id, unitId, guestId,
+      `, [resId, unit.property_id, unitId, guestId,
         checkIn, checkOut, nights, adults, children,
         resStatus, payStatus, siteName, finalPrice, resCurrency, null,
         JSON.stringify([couponCode, extraCouponCode].filter(Boolean)),
         guestPageToken,
         utmSource, utmMedium, utmCampaign, utmContent, utmTerm, gaClientId,
         lang, countryCode, session_id_to_store, groupId,
-        finalNotes
-      );
+        finalNotes]);
 
       // The certificate is attached to the first reservation, with a status
       // guard against a simultaneous second use. If somebody else claimed it
       // between the quote above and this line, the discount is taken back:
       // the booking survives at full price and the note says why.
       if (slot === 1 && certificateClaimId) {
-        if (claimCertificate(db, certificateClaimId, resId)) {
-          db.prepare(
-            "UPDATE gift_cards SET notes = COALESCE(notes, '') || ? WHERE id = ?"
-          ).run(` | widget:${resId}`, certificateClaimId);
+        if (await claimCertificate(sql, certificateClaimId, resId)) {
+          await sql.run("UPDATE gift_cards SET notes = COALESCE(notes, '') || ? WHERE id = ?", [` | widget:${resId}`, certificateClaimId]);
         } else {
-          db.prepare(`
+          await sql.run(`
             UPDATE reservations
             SET total_price = total_price + ?,
                 notes = COALESCE(notes, '') || ?
             WHERE id = ?
-          `).run(certificateDiscount,
-                 ' | Сертифікат не зараховано: використаний іншим бронюванням.', resId);
+          `, [certificateDiscount,
+                 ' | Сертифікат не зараховано: використаний іншим бронюванням.', resId]);
           certificateDiscount = 0;
         }
       }
@@ -522,14 +503,14 @@ export async function createWidgetReservation(request: NextRequest) {
       if (slot === 1 && documentNumber) {
         try {
           const grId = `gr_${Date.now()}_widget`;
-          db.prepare(`
+          await sql.run(`
             INSERT OR IGNORE INTO guest_registrations
               (id, reservation_id, guest_id, is_primary, reg_status, purpose_of_stay, group_id)
             VALUES (?, ?, ?, 1, 'pending', 'Tourism', ?)
-          `).run(grId, resId, guestId, groupId);
+          `, [grId, resId, guestId, groupId]);
 
           // Also enrich the guest record with passport data
-          db.prepare(`
+          await sql.run(`
             UPDATE guests
             SET document_type    = COALESCE(?, document_type),
                 document_number  = COALESCE(?, document_number),
@@ -537,13 +518,11 @@ export async function createWidgetReservation(request: NextRequest) {
                 country          = COALESCE(?, country),
                 updated_at       = datetime('now')
             WHERE id = ?
-          `).run(
-            documentType || null,
+          `, [documentType || null,
             documentNumber || null,
             dateOfBirth   || null,
             guestCountry  || null,
-            guestId
-          );
+            guestId]);
         } catch (grErr: any) {
           console.error('[Reserve] Failed to save guest_registration draft:', grErr.message);
           // Non-fatal — reservation already created
@@ -578,11 +557,11 @@ export async function createWidgetReservation(request: NextRequest) {
       try {
         const alisioAppUrl = appBaseUrl();
         const { sendEmail } = await import('@core/mail/email');
-        const propertyInfo = db.prepare(`
+        const propertyInfo = await sql.row<any>(`
           SELECT p.name, u.name as unit_name
           FROM units u LEFT JOIN properties p ON u.property_id = p.id
           WHERE u.id = ?
-        `).get(unitId) as any;
+        `, [unitId]) as any;
         const propertyName = propertyInfo?.name || 'ALiSiO';
         const unitName = propertyInfo?.unit_name || '';
 
@@ -592,7 +571,7 @@ export async function createWidgetReservation(request: NextRequest) {
 
         let widgetConfig: any = {};
         if (siteId) {
-          const siteRow = db.prepare('SELECT widget_config FROM booking_sites WHERE id = ?').get(siteId) as any;
+          const siteRow = await sql.row<any>('SELECT widget_config FROM booking_sites WHERE id = ?', [siteId]) as any;
           if (siteRow?.widget_config) {
             try {
               widgetConfig = JSON.parse(siteRow.widget_config);
@@ -758,13 +737,13 @@ export async function createWidgetReservation(request: NextRequest) {
           // Only insert services that are included/free in the bundle
           if (!inc.service_id || (!inc.free && !inc.isIncluded)) continue;
           // Verify the service exists
-          const svcExists = db.prepare('SELECT id FROM additional_services WHERE id = ?').get(inc.service_id);
+          const svcExists = await sql.row<any>('SELECT id FROM additional_services WHERE id = ?', [inc.service_id]);
           if (!svcExists) continue;
 
-          db.prepare(`
+          await sql.run(`
             INSERT INTO service_orders (id, reservation_id, service_id, quantity, total_price, status, payment_status, service_date, notes)
             VALUES (?, ?, ?, 1, 0, 'confirmed', 'paid', NULL, ?)
-          `).run(`so_bundle_${Date.now()}_${i}`, resId, inc.service_id, bundleNotes);
+          `, [`so_bundle_${Date.now()}_${i}`, resId, inc.service_id, bundleNotes]);
         }
       } catch (bundleErr: any) {
         console.error('[Reserve] Failed to create bundle service_orders:', bundleErr.message);
@@ -825,15 +804,15 @@ export async function createWidgetReservation(request: NextRequest) {
 export async function getWidgetReservation(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
     
-    const res = db.prepare(`
+    const res = await sql.row<any>(`
       SELECT r.id as reservationId, r.check_in as checkIn, r.check_out as checkOut, r.nights, r.total_price as totalPrice, r.currency,
              u.name as unitName
       FROM reservations r
       JOIN units u ON r.unit_id = u.id
       WHERE r.id = ?
-    `).get(id) as any;
+    `, [id]) as any;
 
     if (!res) {
       return NextResponse.json({ error: 'Reservation not found' }, { status: 404, headers: CORS_HEADERS });

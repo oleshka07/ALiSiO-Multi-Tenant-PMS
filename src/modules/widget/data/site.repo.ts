@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { getSql } from '@core/db/async';
 
 /**
  * Finding a booking site, and deciding which hosts it trusts.
@@ -72,20 +73,17 @@ export function siteAllowsHost(site: SiteRow | null | undefined, host: string | 
  * standing in for — a widget on kv.example.com finds the site whose site_url
  * or allowed_domains names that host, without anyone editing this file.
  */
-export function resolveSiteByKey(db: any, key: string | null | undefined, columns = '*'): SiteRow | undefined {
+export async function resolveSiteByKey(key: string | null | undefined, columns = '*'): Promise<SiteRow | undefined> {
+  const sql = getSql();
   if (!key) return undefined;
 
-  const direct = db
-    .prepare(`SELECT ${columns} FROM booking_sites WHERE slug = ? OR id = ?`)
-    .get(key, key) as SiteRow | undefined;
+  const direct = await sql.row<any>(`SELECT ${columns} FROM booking_sites WHERE slug = ? OR id = ?`, [key, key]) as SiteRow | undefined;
   if (direct) return direct;
 
   const host = hostOf(key);
   if (!host) return undefined;
 
-  const candidates = db
-    .prepare(`SELECT ${columns} FROM booking_sites WHERE site_url IS NOT NULL OR allowed_domains IS NOT NULL`)
-    .all() as SiteRow[];
+  const candidates = await sql.rows<any>(`SELECT ${columns} FROM booking_sites WHERE site_url IS NOT NULL OR allowed_domains IS NOT NULL`) as SiteRow[];
   return candidates.find((s) => {
     const own = hostOf(s.site_url);
     if (own && (host === own || host.endsWith(`.${own}`))) return true;

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { money } from '@core/money';
 import { sendTelegramMessage } from '@notifications'; // TODO: replace with eventBus
 
@@ -18,7 +18,7 @@ export async function getWidgetServicesOptions() {
 
 export async function getWidgetServices(request: NextRequest) {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { searchParams } = new URL(request.url);
     const checkIn = searchParams.get('checkIn');
     const checkOut = searchParams.get('checkOut');
@@ -26,7 +26,7 @@ export async function getWidgetServices(request: NextRequest) {
     const siteId = searchParams.get('siteId') || '';
 
     const existingTables = new Set(
-      (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[])
+      (await sql.rows<any>("SELECT name FROM sqlite_master WHERE type='table'") as { name: string }[])
         .map(t => t.name)
     );
 
@@ -35,7 +35,7 @@ export async function getWidgetServices(request: NextRequest) {
     }
 
     if (serviceId && checkIn && checkOut) {
-      const service = db.prepare('SELECT * FROM additional_services WHERE id = ? AND is_active = 1').get(serviceId) as any;
+      const service = await sql.row<any>('SELECT * FROM additional_services WHERE id = ? AND is_active = 1', [serviceId]) as any;
       if (!service) {
         return NextResponse.json({ error: 'Service not found' }, { status: 404, headers: CORS_HEADERS });
       }
@@ -43,26 +43,24 @@ export async function getWidgetServices(request: NextRequest) {
       const result: any = { ...formatService(service) };
 
       if (service.service_type === 'slot_booking' && existingTables.has('service_time_slots')) {
-        db.prepare(`
+        await sql.run(`
           UPDATE service_time_slots
           SET booked_count = MAX(0, booked_count - 1), booking_session_id = NULL
           WHERE booking_session_id IS NOT NULL
             AND notes IS NULL
             AND created_at < datetime('now', '-' || ? || ' minutes')
-        `).run(SLOT_TTL_MINUTES);
+        `, [SLOT_TTL_MINUTES]);
 
-        const bookedSlots = db.prepare(`
+        const bookedSlots = await sql.rows<any>(`
           SELECT date, start_time, end_time, booked_count, max_capacity
           FROM service_time_slots
           WHERE service_id = ? AND date >= ? AND date < ? AND booked_count >= max_capacity
-        `).all(serviceId, checkIn, checkOut) as any[];
+        `, [serviceId, checkIn, checkOut]) as any[];
         result.bookedSlots = bookedSlots;
       }
 
       if (service.service_type === 'menu_selection' && existingTables.has('menu_items')) {
-        const items = db.prepare(
-          'SELECT * FROM menu_items WHERE service_id = ? AND is_available = 1 ORDER BY sort_order'
-        ).all(serviceId) as any[];
+        const items = await sql.rows<any>('SELECT * FROM menu_items WHERE service_id = ? AND is_available = 1 ORDER BY sort_order', [serviceId]) as any[];
         result.menuItems = items.map(item => ({
           id: item.id,
           name: item.name,
@@ -80,9 +78,7 @@ export async function getWidgetServices(request: NextRequest) {
       }
 
       if (existingTables.has('service_addons')) {
-        const addons = db.prepare(
-          'SELECT * FROM service_addons WHERE service_id = ? ORDER BY sort_order'
-        ).all(serviceId) as any[];
+        const addons = await sql.rows<any>('SELECT * FROM service_addons WHERE service_id = ? ORDER BY sort_order', [serviceId]) as any[];
         result.addons = addons.map(a => ({
           id: a.id,
           name: a.name,
@@ -106,7 +102,7 @@ export async function getWidgetServices(request: NextRequest) {
 
     if (siteId && hasSiteServices) {
       // Services enabled for this booking site (defaulting to enabled if no explicit config)
-      services = db.prepare(`
+      services = await sql.rows<any>(`
         SELECT s.*, ss.price_override, ss.photo_override,
                COALESCE(ss.sort_order, s.sort_order) as site_sort_order, 
                COALESCE(ss.is_enabled, 1) as is_enabled
@@ -114,7 +110,7 @@ export async function getWidgetServices(request: NextRequest) {
         LEFT JOIN site_services ss ON ss.service_id = s.id AND ss.site_id = ?
         WHERE s.is_active = 1 AND COALESCE(ss.is_enabled, 1) = 1
         ORDER BY COALESCE(ss.sort_order, s.sort_order), s.sort_order
-      `).all(siteId) as any[];
+      `, [siteId]) as any[];
 
       // Apply price_override where set
       services = services.map(s => ({
@@ -124,18 +120,18 @@ export async function getWidgetServices(request: NextRequest) {
     } else {
       // Fallback: the property's active services. The old filter also let
       // through available_for = 'glamping', one hotel's category name.
-      services = db.prepare(`
+      services = await sql.rows<any>(`
         SELECT * FROM additional_services
         WHERE is_active = 1 AND available_for = 'all'
         ORDER BY sort_order
-      `).all() as any[];
+      `) as any[];
     }
 
     const ratePlanId = searchParams.get('ratePlanId') || searchParams.get('ratePlan');
     let includedServices: string[] = [];
 
     if (ratePlanId) {
-      const ratePlan = db.prepare('SELECT * FROM rate_plans WHERE id = ? OR code = ?').get(ratePlanId, ratePlanId) as any;
+      const ratePlan = await sql.row<any>('SELECT * FROM rate_plans WHERE id = ? OR code = ?', [ratePlanId, ratePlanId]) as any;
       if (ratePlan && ratePlan.included_services_json) {
         try {
           includedServices = JSON.parse(ratePlan.included_services_json);
@@ -165,7 +161,7 @@ export async function getWidgetServices(request: NextRequest) {
 export async function bookWidgetService(request: NextRequest) {
 
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
     const { action } = body;
 
@@ -179,7 +175,7 @@ export async function bookWidgetService(request: NextRequest) {
         );
       }
 
-      const service = db.prepare('SELECT * FROM additional_services WHERE id = ?').get(serviceId) as any;
+      const service = await sql.row<any>('SELECT * FROM additional_services WHERE id = ?', [serviceId]) as any;
       if (!service) {
         return NextResponse.json({ error: 'Service not found' }, { status: 404, headers: CORS_HEADERS });
       }
@@ -188,7 +184,7 @@ export async function bookWidgetService(request: NextRequest) {
 
       let appliedPromo: string | null = null;
       if (couponCode) {
-        const offer = db.prepare('SELECT * FROM coupons WHERE code = ? AND is_active = 1').get(String(couponCode).toUpperCase().trim()) as any;
+        const offer = await sql.row<any>('SELECT * FROM coupons WHERE code = ? AND is_active = 1', [String(couponCode).toUpperCase().trim()]) as any;
         if (offer) {
           let applicable = true;
           if (offer.applicable_services) {
@@ -209,7 +205,7 @@ export async function bookWidgetService(request: NextRequest) {
             } else if (offer.discount_type === 'percentage') {
               pricePerHour = pricePerHour * (1 - offer.offer_amount / 100);
             }
-            db.prepare('UPDATE coupons SET current_uses = current_uses + 1 WHERE id = ?').run(offer.id);
+            await sql.run('UPDATE coupons SET current_uses = current_uses + 1 WHERE id = ?', [offer.id]);
             console.log('[Booking] Applied offer:', offer.code, '→', pricePerHour, 'CZK/hr');
           }
         }
@@ -218,17 +214,17 @@ export async function bookWidgetService(request: NextRequest) {
       let totalPrice = money(pricePerHour * hours);
 
       const existingTables = new Set(
-        (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[])
+        (await sql.rows<any>("SELECT name FROM sqlite_master WHERE type='table'") as { name: string }[])
           .map(t => t.name)
       );
 
       if (existingTables.has('service_time_slots')) {
         for (let h = 0; h < hours; h++) {
           const slotStart = `${String(startHour + h).padStart(2, '0')}:00`;
-          const existing = db.prepare(`
+          const existing = await sql.row<any>(`
             SELECT id FROM service_time_slots
             WHERE service_id = ? AND date = ? AND start_time = ? AND booked_count >= max_capacity
-          `).get(serviceId, date, slotStart) as any;
+          `, [serviceId, date, slotStart]) as any;
 
           if (existing) {
             return NextResponse.json(
@@ -243,7 +239,7 @@ export async function bookWidgetService(request: NextRequest) {
       const addonDetails: any[] = [];
       if (addons && existingTables.has('service_addons')) {
         for (const addon of addons) {
-          const addonRow = db.prepare('SELECT * FROM service_addons WHERE id = ?').get(addon.id) as any;
+          const addonRow = await sql.row<any>('SELECT * FROM service_addons WHERE id = ?', [addon.id]) as any;
           if (addonRow) {
             const qty = addon.quantity || 1;
             addonTotal += addonRow.price * qty;
@@ -259,58 +255,55 @@ export async function bookWidgetService(request: NextRequest) {
         const slotEnd = `${String(startHour + h + 1).padStart(2, '0')}:00`;
         const slotId = `slot_${Date.now()}_${h}`;
 
-        const existingSlot = db.prepare(`
+        const existingSlot = await sql.row<any>(`
           SELECT id, booked_count FROM service_time_slots
           WHERE service_id = ? AND date = ? AND start_time = ?
-        `).get(serviceId, date, slotStart) as any;
+        `, [serviceId, date, slotStart]) as any;
 
         if (existingSlot) {
-          db.prepare('UPDATE service_time_slots SET booked_count = booked_count + 1, reservation_id = ? WHERE id = ?')
-            .run(reservationId || null, existingSlot.id);
+          await sql.run('UPDATE service_time_slots SET booked_count = booked_count + 1, reservation_id = ? WHERE id = ?', [reservationId || null, existingSlot.id]);
           slotIds.push(existingSlot.id);
         } else {
-          db.prepare(`
+          await sql.run(`
             INSERT INTO service_time_slots (id, service_id, date, start_time, end_time, max_capacity, booked_count, reservation_id)
             VALUES (?, ?, ?, ?, ?, 1, 1, ?)
-          `).run(slotId, serviceId, date, slotStart, slotEnd, reservationId || null);
+          `, [slotId, serviceId, date, slotStart, slotEnd, reservationId || null]);
           slotIds.push(slotId);
         }
       }
 
       if (paymentId) {
         for (const sid of slotIds) {
-          db.prepare('UPDATE service_time_slots SET booking_session_id = ? WHERE id = ?').run(paymentId, sid);
+          await sql.run('UPDATE service_time_slots SET booking_session_id = ? WHERE id = ?', [paymentId, sid]);
         }
       }
 
       if (existingTables.has('booking_service_orders')) {
         const orderId = `bso_${Date.now()}`;
         const { site_id } = body;
-        db.prepare(`
+        await sql.run(`
           INSERT INTO booking_service_orders (id, reservation_id, service_id, quantity, service_date, time_slot_id, options_json, unit_price, total_price, status, payment_id, payment_status, coupon_code, site_id)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?)
-        `).run(
-          orderId, reservationId || null, serviceId, hours, date, slotIds[0],
+        `, [orderId, reservationId || null, serviceId, hours, date, slotIds[0],
           JSON.stringify({ persons: persons || 1, addons: addonDetails, hours, startHour }),
           pricePerHour, totalPrice,
           paymentId || null,
           paymentId ? 'pending' : 'none',
           appliedPromo,
-          site_id || null
-        );
+          site_id || null]);
       }
 
       try {
         const esc = (s: string) => s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
         let guestInfo = 'Зовнішній клієнт';
         if (reservationId) {
-          const guest = db.prepare(`
+          const guest = await sql.row<any>(`
             SELECT g.first_name, g.last_name, u.name as unit_name
             FROM reservations r
             JOIN guests g ON r.guest_id = g.id
             LEFT JOIN units u ON r.unit_id = u.id
             WHERE r.id = ?
-          `).get(reservationId) as any;
+          `, [reservationId]) as any;
           if (guest) guestInfo = `${esc(guest.first_name)} ${esc(guest.last_name)}${guest.unit_name ? ' · ' + esc(guest.unit_name) : ''}`;
         }
         const svcName = service.name_en || service.name;
@@ -352,7 +345,7 @@ export async function bookWidgetService(request: NextRequest) {
       const orderDetails: any[] = [];
 
       for (const item of items) {
-        const menuItem = db.prepare('SELECT * FROM menu_items WHERE id = ? AND is_available = 1').get(item.menuItemId) as any;
+        const menuItem = await sql.row<any>('SELECT * FROM menu_items WHERE id = ? AND is_available = 1', [item.menuItemId]) as any;
         if (!menuItem) continue;
 
         const qty = item.quantity || 1;
@@ -361,10 +354,10 @@ export async function bookWidgetService(request: NextRequest) {
 
         if (reservationId) {
           const orderId = `bso_${Date.now()}_${menuItem.id}`;
-          db.prepare(`
+          await sql.run(`
             INSERT INTO booking_service_orders (id, reservation_id, service_id, menu_item_id, quantity, service_date, unit_price, total_price, status, payment_id, payment_status)
             VALUES (?, ?, 'svc_breakfast', ?, ?, ?, ?, ?, 'confirmed', ?, ?)
-          `).run(orderId, reservationId, menuItem.id, qty, serviceDate || null, menuItem.price, itemTotal, paymentId || null, paymentId ? 'pending' : 'none');
+          `, [orderId, reservationId, menuItem.id, qty, serviceDate || null, menuItem.price, itemTotal, paymentId || null, paymentId ? 'pending' : 'none']);
         }
 
         orderDetails.push({
@@ -385,30 +378,28 @@ export async function bookWidgetService(request: NextRequest) {
         return NextResponse.json({ error: 'serviceId and reservationId required' }, { status: 400, headers: CORS_HEADERS });
       }
 
-      const service = db.prepare('SELECT * FROM additional_services WHERE id = ?').get(serviceId) as any;
+      const service = await sql.row<any>('SELECT * FROM additional_services WHERE id = ?', [serviceId]) as any;
       if (!service) {
         return NextResponse.json({ error: 'Service not found' }, { status: 404, headers: CORS_HEADERS });
       }
 
       const qty = reqQuantity || 1;
       const existingTables = new Set(
-        (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[])
+        (await sql.rows<any>("SELECT name FROM sqlite_master WHERE type='table'") as { name: string }[])
           .map(t => t.name)
       );
 
       if (existingTables.has('booking_service_orders')) {
-        const existing = db.prepare(
-          'SELECT id FROM booking_service_orders WHERE reservation_id = ? AND service_id = ?'
-        ).get(reservationId, serviceId) as any;
+        const existing = await sql.row<any>('SELECT id FROM booking_service_orders WHERE reservation_id = ? AND service_id = ?', [reservationId, serviceId]) as any;
 
         if (existing) {
-          db.prepare('DELETE FROM booking_service_orders WHERE id = ?').run(existing.id);
+          await sql.run('DELETE FROM booking_service_orders WHERE id = ?', [existing.id]);
         } else {
           const orderId = `bso_${Date.now()}_${serviceId}`;
-          db.prepare(`
+          await sql.run(`
             INSERT INTO booking_service_orders (id, reservation_id, service_id, quantity, unit_price, total_price, status)
             VALUES (?, ?, ?, ?, ?, ?, 'confirmed')
-          `).run(orderId, reservationId, serviceId, qty, service.price, service.price * qty);
+          `, [orderId, reservationId, serviceId, qty, service.price, service.price * qty]);
         }
       }
 

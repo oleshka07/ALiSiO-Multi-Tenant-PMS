@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { quoteCertificate } from '../data/certificate.repo';
 
 const CORS_HEADERS = {
@@ -15,7 +15,7 @@ export async function getAvailabilityOptions() {
 
 export async function getAvailability(request: NextRequest) {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { searchParams } = new URL(request.url);
     const checkIn = searchParams.get('checkIn');
     const checkOut = searchParams.get('checkOut');
@@ -35,7 +35,7 @@ export async function getAvailability(request: NextRequest) {
     let allowedSiteUrl: string | null = null;
     const lookupSite = siteId || siteSlug;
     if (lookupSite) {
-      const site = db.prepare("SELECT id, organization_id, currency, site_url FROM booking_sites WHERE (slug = ? OR id = ?) AND status != 'deleted'").get(lookupSite, lookupSite) as any;
+      const site = await sql.row<any>("SELECT id, organization_id, currency, site_url FROM booking_sites WHERE (slug = ? OR id = ?) AND status != 'deleted'", [lookupSite, lookupSite]) as any;
       siteOrganizationId = site?.organization_id || null;
       siteCurrency = site?.currency || siteCurrency;
       if (site) {
@@ -80,14 +80,14 @@ export async function getAvailability(request: NextRequest) {
 
     if (siteIdObj) {
       if (ratePlanId) {
-        activeRatePlan = db.prepare('SELECT * FROM site_rate_plans WHERE id = ? AND site_id = ?').get(ratePlanId, siteIdObj);
+        activeRatePlan = await sql.row<any>('SELECT * FROM site_rate_plans WHERE id = ? AND site_id = ?', [ratePlanId, siteIdObj]);
       } else {
-        activeRatePlan = db.prepare('SELECT * FROM site_rate_plans WHERE is_default = 1 AND site_id = ? LIMIT 1').get(siteIdObj);
+        activeRatePlan = await sql.row<any>('SELECT * FROM site_rate_plans WHERE is_default = 1 AND site_id = ? LIMIT 1', [siteIdObj]);
       }
     }
 
     if (bundleId) {
-      activeBundle = db.prepare('SELECT * FROM gift_card_bundles WHERE id = ? OR coupon_code = ?').get(bundleId, bundleId);
+      activeBundle = await sql.row<any>('SELECT * FROM gift_card_bundles WHERE id = ? OR coupon_code = ?', [bundleId, bundleId]);
     }
 
 
@@ -150,14 +150,14 @@ export async function getAvailability(request: NextRequest) {
     }
 
     const existingTables = new Set(
-      (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[])
+      (await sql.rows<any>("SELECT name FROM sqlite_master WHERE type='table'") as { name: string }[])
         .map(t => t.name)
     );
     const hasAvailBlocks = existingTables.has('availability_blocks');
     const hasPromotions = existingTables.has('promotions');
     const hasPriceCalendar = existingTables.has('price_calendar');
 
-    const units = db.prepare(`
+    const units = await sql.rows<any>(`
       SELECT u.id, u.name, u.code, u.beds, u.room_status, u.is_active,
              ut.id as unit_type_id, ut.name as type_name, ut.code as type_code,
              ut.photos as type_photos,
@@ -181,32 +181,32 @@ export async function getAvailability(request: NextRequest) {
         ${categoryType ? 'AND c.type = ?' : ''}
       GROUP BY u.id
       ORDER BY u.sort_order, u.name
-    `).all(...[
+    `, [...[
       ...(siteIdObj ? [siteIdObj] : []),
       ...(categoryType ? [categoryType] : [])
-    ]) as any[];
+    ]]) as any[];
 
     const results = [];
 
     for (const unit of units) {
       if (hasDates) {
-        const isBooked = db.prepare(`
+        const isBooked = await sql.row<any>(`
           SELECT 1 FROM reservations r
           WHERE r.unit_id = ?
             AND r.status NOT IN ('cancelled', 'no_show')
             AND r.check_in < ? AND r.check_out > ?
           LIMIT 1
-        `).get(unit.id, checkOut, checkIn);
+        `, [unit.id, checkOut, checkIn]);
 
         if (isBooked) continue;
 
         if (hasAvailBlocks) {
-          const isBlocked = db.prepare(`
+          const isBlocked = await sql.row<any>(`
             SELECT 1 FROM availability_blocks
             WHERE unit_id = ?
               AND date_from < ? AND date_to > ?
             LIMIT 1
-          `).get(unit.id, checkOut, checkIn);
+          `, [unit.id, checkOut, checkIn]);
           if (isBlocked) continue;
         }
       }
@@ -248,12 +248,12 @@ export async function getAvailability(request: NextRequest) {
           }
         } else {
           if (hasPriceCalendar) {
-            prices = db.prepare(`
+            prices = await sql.rows<any>(`
               SELECT pc.date, pc.base_price, pc.weekend_price
               FROM price_calendar pc
               WHERE pc.unit_type_id = ? AND pc.date >= ? AND pc.date < ?
               ORDER BY pc.date ASC
-            `).all(unit.unit_type_id, checkIn, checkOut) as any[];
+            `, [unit.unit_type_id, checkIn, checkOut]) as any[];
           }
 
           const priceMap = new Map<string, any>();
@@ -350,13 +350,13 @@ export async function getAvailability(request: NextRequest) {
 
     let offerDiscount: { name: string; discountType: string; offerAmount: number; finalDiscount: number } | null = null;
     if (couponCode && hasPromotions) {
-      const offer = db.prepare(`
+      const offer = await sql.row<any>(`
         SELECT * FROM promotions
         WHERE coupon_code = ? AND is_active = 1
           AND (date_from IS NULL OR date_from <= ?)
           AND (date_to IS NULL OR date_to >= ?)
           AND (usage_limit IS NULL OR usage_count < usage_limit)
-      `).get(couponCode, checkOut, checkIn) as any;
+      `, [couponCode, checkOut, checkIn]) as any;
 
       if (offer) {
         offerDiscount = {
@@ -374,7 +374,7 @@ export async function getAvailability(request: NextRequest) {
     let certificate: { code: string; amount: number; valid: boolean; message?: string } | null = null;
     if (certificateCode) {
       if (siteOrganizationId) {
-        const answer = quoteCertificate(db, siteOrganizationId, certificateCode, Number.MAX_SAFE_INTEGER, siteCurrency);
+        const answer = await quoteCertificate(sql, siteOrganizationId, certificateCode, Number.MAX_SAFE_INTEGER, siteCurrency);
         certificate = answer.valid
           ? { code: certificateCode, amount: answer.quote.amount, valid: true }
           : { code: certificateCode, amount: 0, valid: false, message: answer.message };

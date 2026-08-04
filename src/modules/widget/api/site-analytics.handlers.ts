@@ -1,6 +1,6 @@
 ﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { withPermission, notFound, type Actor } from '@core/auth/session';
 
 function getToday(): string {
@@ -17,9 +17,10 @@ function calculateDelta(current: number, prev: number): number {
   return Math.round(((current - prev) / prev) * 100 * 10) / 10;
 }
 
-function getSitePropertyId(db: any, siteId: string): string | null {
+async function getSitePropertyId(siteId: string): Promise<string | null> {
+  const sql = getSql();
   if (siteId === 'all') return null;
-  const row = db.prepare('SELECT property_id FROM booking_sites WHERE id = ?').get(siteId) as any;
+  const row = await sql.row<any>('SELECT property_id FROM booking_sites WHERE id = ?', [siteId]) as any;
   return row ? row.property_id : null;
 }
 
@@ -34,19 +35,20 @@ function getSitePropertyId(db: any, siteId: string): string | null {
  * 'all' means "every site I own", so it is scoped by the organization rather
  * than by a single site id.
  */
-function ownsSite(db: any, organizationId: string, siteId: string): boolean {
+async function ownsSite(organizationId: string, siteId: string): Promise<boolean> {
+  const sql = getSql();
   if (siteId === 'all') return true;
-  return !!db.prepare(`
+  return !!await sql.row<any>(`
     SELECT 1 FROM booking_sites bs
     JOIN properties p ON bs.property_id = p.id
     WHERE bs.id = ? AND p.organization_id = ?
-  `).get(siteId, organizationId);
+  `, [siteId, organizationId]);
 }
 
 /** Restrict an 'all' query to the caller's own properties. */
-function ownPropertyIds(db: any, organizationId: string): string[] {
-  return (db.prepare('SELECT id FROM properties WHERE organization_id = ?')
-    .all(organizationId) as { id: string }[]).map((r) => r.id);
+async function ownPropertyIds(organizationId: string): Promise<string[]> {
+  const sql = getSql();
+  return (await sql.rows<any>('SELECT id FROM properties WHERE organization_id = ?', [organizationId]) as { id: string }[]).map((r) => r.id);
 }
 
 /**
@@ -70,8 +72,9 @@ function getSourceParams(siteId: string, propertyId: string | null, ownIds: stri
 }
 
 
-function getReservationsStats(db: any, siteId: string, propertyId: string | null, ownIds: string[], from: string, to: string, dateType: string) {
-  let sql = `
+async function getReservationsStats(siteId: string, propertyId: string | null, ownIds: string[], from: string, to: string, dateType: string) {
+  const sql = getSql();
+  let statement = `
     SELECT 
       COUNT(*) as count,
       COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN (total_price - COALESCE(commission_amount, 0)) ELSE 0 END), 0) as revenue,
@@ -82,13 +85,13 @@ function getReservationsStats(db: any, siteId: string, propertyId: string | null
   `;
   const params: any[] = getSourceParams(siteId, propertyId, ownIds);
   if (dateType === 'check_in') {
-    sql += ' AND check_in >= ? AND check_in <= ?';
+    statement += ' AND check_in >= ? AND check_in <= ?';
     params.push(from, to);
   } else {
-    sql += ' AND created_at >= ? AND created_at <= ?';
+    statement += ' AND created_at >= ? AND created_at <= ?';
     params.push(`${from} 00:00:00`, `${to} 23:59:59`);
   }
-  return db.prepare(sql).get(...params) as { count: number; revenue: number; unpaid_revenue: number; avg_check: number };
+  return await sql.row<any>(statement, [...params]) as { count: number; revenue: number; unpaid_revenue: number; avg_check: number };
 }
 
 /**
@@ -99,21 +102,22 @@ function getReservationsStats(db: any, siteId: string, propertyId: string | null
  * was always 0. Conversion, which divides by it, was therefore always 0 too:
  * the whole funnel read as if nobody had ever opened the widget.
  */
-function getSessionsCount(db: any, siteId: string, ownIds: string[], from: string, to: string) {
+async function getSessionsCount(siteId: string, ownIds: string[], from: string, to: string) {
+  const sql = getSql();
   const lo = `${from}T00:00:00Z`;
   const hi = `${to}T23:59:59Z`;
   if (siteId === 'all') {
     if (!ownIds.length) return 0;
     const ph = ownIds.map(() => '?').join(',');
-    const sql = `SELECT COUNT(DISTINCT e.session_id) as count
+    const statement = `SELECT COUNT(DISTINCT e.session_id) as count
                  FROM widget_events e
                  JOIN booking_sites bs ON e.site_id = bs.id
                  WHERE bs.property_id IN (${ph}) AND e.created_at >= ? AND e.created_at <= ?`;
-    const row = db.prepare(sql).get(...ownIds, lo, hi) as { count: number };
+    const row = await sql.row<any>(statement, [...ownIds, lo, hi]) as { count: number };
     return row ? row.count : 0;
   }
-  const sql = `SELECT COUNT(DISTINCT session_id) as count FROM widget_events WHERE site_id = ? AND created_at >= ? AND created_at <= ?`;
-  const row = db.prepare(sql).get(siteId, lo, hi) as { count: number };
+  const statement = `SELECT COUNT(DISTINCT session_id) as count FROM widget_events WHERE site_id = ? AND created_at >= ? AND created_at <= ?`;
+  const row = await sql.row<any>(statement, [siteId, lo, hi]) as { count: number };
   return row ? row.count : 0;
 }
 
@@ -123,20 +127,21 @@ export const getAnalyticsOverview = withPermission('nav:sites', async (
   actor: Actor,
 ) => {
   try {
+  const sql = getSql();
     const { id: siteId } = await params;
-    const db = getDb();
-    if (!ownsSite(db, actor.organizationId, siteId)) return notFound();
-    const ownIds = ownPropertyIds(db, actor.organizationId);
+    const statement = getSql();
+    if (!await ownsSite(actor.organizationId, siteId)) return notFound();
+    const ownIds = await ownPropertyIds(actor.organizationId);
     const { searchParams } = new URL(request.url);
-    const propertyId = getSitePropertyId(db, siteId);
+    const propertyId = await getSitePropertyId(siteId);
 
     const dateFrom = searchParams.get('date_from') || getFirstDayOfMonth();
     const dateTo = searchParams.get('date_to') || getToday();
     const dateType = searchParams.get('date_type') || 'created_at';
 
     // Current period stats
-    const currentStats = getReservationsStats(db, siteId, propertyId, ownIds, dateFrom, dateTo, dateType);
-    const currentSessions = getSessionsCount(db, siteId, ownIds, dateFrom, dateTo);
+    const currentStats = await getReservationsStats(siteId, propertyId, ownIds, dateFrom, dateTo, dateType);
+    const currentSessions = await getSessionsCount(siteId, ownIds, dateFrom, dateTo);
     const currentConversion = currentSessions > 0 ? (currentStats.count / currentSessions) * 100 : 0;
 
     // Previous period dates
@@ -154,8 +159,8 @@ export const getAnalyticsOverview = withPermission('nav:sites', async (
     const prevTo = prevToDate.toISOString().split('T')[0];
 
     // Previous period stats
-    const prevStats = getReservationsStats(db, siteId, propertyId, ownIds, prevFrom, prevTo, dateType);
-    const prevSessions = getSessionsCount(db, siteId, ownIds, prevFrom, prevTo);
+    const prevStats = await getReservationsStats(siteId, propertyId, ownIds, prevFrom, prevTo, dateType);
+    const prevSessions = await getSessionsCount(siteId, ownIds, prevFrom, prevTo);
     const prevConversion = prevSessions > 0 ? (prevStats.count / prevSessions) * 100 : 0;
 
     return NextResponse.json({
@@ -195,12 +200,13 @@ export const getAnalyticsTraffic = withPermission('nav:sites', async (
   actor: Actor,
 ) => {
   try {
+  const sql = getSql();
     const { id: siteId } = await params;
-    const db = getDb();
-    if (!ownsSite(db, actor.organizationId, siteId)) return notFound();
-    const ownIds = ownPropertyIds(db, actor.organizationId);
+    const statement = getSql();
+    if (!await ownsSite(actor.organizationId, siteId)) return notFound();
+    const ownIds = await ownPropertyIds(actor.organizationId);
     const { searchParams } = new URL(request.url);
-    const propertyId = getSitePropertyId(db, siteId);
+    const propertyId = await getSitePropertyId(siteId);
 
     const dateFrom = searchParams.get('date_from') || getFirstDayOfMonth();
     const dateTo = searchParams.get('date_to') || getToday();
@@ -214,18 +220,18 @@ export const getAnalyticsTraffic = withPermission('nav:sites', async (
 
     // Query 1: sessions by utm_source
     const sessionsRows = siteId === 'all'
-      ? db.prepare(`
+      ? await sql.rows<any>(`
           SELECT utm_source, COUNT(DISTINCT session_id) as sessions
           FROM widget_events
           WHERE created_at >= ? AND created_at <= ? AND utm_source IS NOT NULL
           GROUP BY utm_source
-        `).all(fromTime, toTime) as any[]
-      : db.prepare(`
+        `, [fromTime, toTime]) as any[]
+      : await sql.rows<any>(`
           SELECT utm_source, COUNT(DISTINCT session_id) as sessions
           FROM widget_events
           WHERE site_id = ? AND created_at >= ? AND created_at <= ? AND utm_source IS NOT NULL
           GROUP BY utm_source
-        `).all(siteId, fromTime, toTime) as any[];
+        `, [siteId, fromTime, toTime]) as any[];
 
     // Query 2: bookings by utm_source
     let bookingsSql = `
@@ -247,7 +253,7 @@ export const getAnalyticsTraffic = withPermission('nav:sites', async (
     }
     bookingsSql += ' GROUP BY utm_source';
 
-    const bookingsRows = db.prepare(bookingsSql).all(...bookingsParams) as any[];
+    const bookingsRows = await sql.rows<any>(bookingsSql, [...bookingsParams]) as any[];
 
     // Merge logic
     const utmStatsMap = new Map<string, { utm_source: string; sessions: number; bookings: number; revenue: number; unpaid_revenue: number }>();
@@ -310,12 +316,13 @@ export const getAnalyticsGeo = withPermission('nav:sites', async (
   actor: Actor,
 ) => {
   try {
+  const sql = getSql();
     const { id: siteId } = await params;
-    const db = getDb();
-    if (!ownsSite(db, actor.organizationId, siteId)) return notFound();
-    const ownIds = ownPropertyIds(db, actor.organizationId);
+    const statement = getSql();
+    if (!await ownsSite(actor.organizationId, siteId)) return notFound();
+    const ownIds = await ownPropertyIds(actor.organizationId);
     const { searchParams } = new URL(request.url);
-    const propertyId = getSitePropertyId(db, siteId);
+    const propertyId = await getSitePropertyId(siteId);
 
     const dateFrom = searchParams.get('date_from') || getFirstDayOfMonth();
     const dateTo = searchParams.get('date_to') || getToday();
@@ -327,18 +334,18 @@ export const getAnalyticsGeo = withPermission('nav:sites', async (
 
     // 1. Language analytics
     const langSessions = siteId === 'all'
-      ? db.prepare(`
+      ? await sql.rows<any>(`
           SELECT lang, COUNT(DISTINCT session_id) as sessions
           FROM widget_events
           WHERE created_at >= ? AND created_at <= ? AND lang IS NOT NULL
           GROUP BY lang
-        `).all(fromTime, toTime) as any[]
-      : db.prepare(`
+        `, [fromTime, toTime]) as any[]
+      : await sql.rows<any>(`
           SELECT lang, COUNT(DISTINCT session_id) as sessions
           FROM widget_events
           WHERE site_id = ? AND created_at >= ? AND created_at <= ? AND lang IS NOT NULL
           GROUP BY lang
-        `).all(siteId, fromTime, toTime) as any[];
+        `, [siteId, fromTime, toTime]) as any[];
 
     let langBookingsSql = `
       SELECT 
@@ -349,7 +356,7 @@ export const getAnalyticsGeo = withPermission('nav:sites', async (
       FROM reservations
       WHERE ${getSourceFilter(siteId, propertyId, ownIds)} AND status != 'cancelled' AND booking_lang IS NOT NULL
     `;
-    const langParams = [source, 'widget'];
+    const langParams = [...getSourceParams(siteId, propertyId, ownIds)];
     if (dateType === 'check_in') {
       langBookingsSql += ' AND check_in >= ? AND check_in <= ?';
       langParams.push(dateFrom, dateTo);
@@ -359,7 +366,7 @@ export const getAnalyticsGeo = withPermission('nav:sites', async (
     }
     langBookingsSql += ' GROUP BY booking_lang';
 
-    const langBookings = db.prepare(langBookingsSql).all(...langParams) as any[];
+    const langBookings = await sql.rows<any>(langBookingsSql, [...langParams]) as any[];
 
     // Merge languages
     const langMap = new Map<string, { lang: string; sessions: number; bookings: number; revenue: number; unpaid_revenue: number }>();
@@ -385,18 +392,18 @@ export const getAnalyticsGeo = withPermission('nav:sites', async (
 
     // 2. Country analytics
     const countrySessions = siteId === 'all'
-      ? db.prepare(`
+      ? await sql.rows<any>(`
           SELECT country as country_code, COUNT(DISTINCT session_id) as sessions
           FROM widget_events
           WHERE created_at >= ? AND created_at <= ? AND country IS NOT NULL
           GROUP BY country
-        `).all(fromTime, toTime) as any[]
-      : db.prepare(`
+        `, [fromTime, toTime]) as any[]
+      : await sql.rows<any>(`
           SELECT country as country_code, COUNT(DISTINCT session_id) as sessions
           FROM widget_events
           WHERE site_id = ? AND created_at >= ? AND created_at <= ? AND country IS NOT NULL
           GROUP BY country
-        `).all(siteId, fromTime, toTime) as any[];
+        `, [siteId, fromTime, toTime]) as any[];
 
     let countrySql = `
       SELECT 
@@ -407,7 +414,7 @@ export const getAnalyticsGeo = withPermission('nav:sites', async (
       FROM reservations
       WHERE ${getSourceFilter(siteId, propertyId, ownIds)} AND status != 'cancelled' AND country_code IS NOT NULL
     `;
-    const countryParams = [source, 'widget'];
+    const countryParams = [...getSourceParams(siteId, propertyId, ownIds)];
     if (dateType === 'check_in') {
       countrySql += ' AND check_in >= ? AND check_in <= ?';
       countryParams.push(dateFrom, dateTo);
@@ -417,7 +424,7 @@ export const getAnalyticsGeo = withPermission('nav:sites', async (
     }
     countrySql += ' GROUP BY country_code';
 
-    const countryBookings = db.prepare(countrySql).all(...countryParams) as any[];
+    const countryBookings = await sql.rows<any>(countrySql, [...countryParams]) as any[];
 
     // Merge countries
     const countryMap = new Map<string, { country_code: string; sessions: number; bookings: number; revenue: number; unpaid_revenue: number }>();
@@ -454,12 +461,13 @@ export const getAnalyticsListings = withPermission('nav:sites', async (
   actor: Actor,
 ) => {
   try {
+  const sql = getSql();
     const { id: siteId } = await params;
-    const db = getDb();
-    if (!ownsSite(db, actor.organizationId, siteId)) return notFound();
-    const ownIds = ownPropertyIds(db, actor.organizationId);
+    const statement = getSql();
+    if (!await ownsSite(actor.organizationId, siteId)) return notFound();
+    const ownIds = await ownPropertyIds(actor.organizationId);
     const { searchParams } = new URL(request.url);
-    const propertyId = getSitePropertyId(db, siteId);
+    const propertyId = await getSitePropertyId(siteId);
 
     const dateFrom = searchParams.get('date_from') || getFirstDayOfMonth();
     const dateTo = searchParams.get('date_to') || getToday();
@@ -492,7 +500,7 @@ export const getAnalyticsListings = withPermission('nav:sites', async (
     }
     utSql += ' GROUP BY ut.id ORDER BY bookings DESC';
 
-    const unitTypes = db.prepare(utSql).all(...utParams) as any[];
+    const unitTypes = await sql.rows<any>(utSql, [...utParams]) as any[];
 
     // 2. Category breakdowns
     let catSql = `
@@ -517,7 +525,7 @@ export const getAnalyticsListings = withPermission('nav:sites', async (
     }
     catSql += ' GROUP BY c.id ORDER BY bookings DESC';
 
-    const categories = db.prepare(catSql).all(...catParams) as any[];
+    const categories = await sql.rows<any>(catSql, [...catParams]) as any[];
 
     return NextResponse.json({
       unitTypes: unitTypes.map(ut => ({ ...ut, revenue: Math.round(ut.revenue), unpaid_revenue: Math.round(ut.unpaid_revenue || 0) })),
@@ -535,12 +543,13 @@ export const getAnalyticsCampaigns = withPermission('nav:sites', async (
   actor: Actor,
 ) => {
   try {
+  const sql = getSql();
     const { id: siteId } = await params;
-    const db = getDb();
-    if (!ownsSite(db, actor.organizationId, siteId)) return notFound();
-    const ownIds = ownPropertyIds(db, actor.organizationId);
+    const statement = getSql();
+    if (!await ownsSite(actor.organizationId, siteId)) return notFound();
+    const ownIds = await ownPropertyIds(actor.organizationId);
     const { searchParams } = new URL(request.url);
-    const propertyId = getSitePropertyId(db, siteId);
+    const propertyId = await getSitePropertyId(siteId);
 
     const dateFrom = searchParams.get('date_from') || getFirstDayOfMonth();
     const dateTo = searchParams.get('date_to') || getToday();
@@ -554,7 +563,7 @@ export const getAnalyticsCampaigns = withPermission('nav:sites', async (
 
     // 1. Sessions by Campaign keys
     const campaignsSessions = siteId === 'all'
-      ? db.prepare(`
+      ? await sql.rows<any>(`
           SELECT 
             COALESCE(utm_source, '(direct)') as utm_source, 
             COALESCE(utm_medium, '(none)') as utm_medium, 
@@ -563,8 +572,8 @@ export const getAnalyticsCampaigns = withPermission('nav:sites', async (
           FROM widget_events
           WHERE created_at >= ? AND created_at <= ?
           GROUP BY utm_source, utm_medium, utm_campaign
-        `).all(fromTime, toTime) as any[]
-      : db.prepare(`
+        `, [fromTime, toTime]) as any[]
+      : await sql.rows<any>(`
           SELECT 
             COALESCE(utm_source, '(direct)') as utm_source, 
             COALESCE(utm_medium, '(none)') as utm_medium, 
@@ -573,7 +582,7 @@ export const getAnalyticsCampaigns = withPermission('nav:sites', async (
           FROM widget_events
           WHERE site_id = ? AND created_at >= ? AND created_at <= ?
           GROUP BY utm_source, utm_medium, utm_campaign
-        `).all(siteId, fromTime, toTime) as any[];
+        `, [siteId, fromTime, toTime]) as any[];
 
     // 2. Bookings by Campaign keys
     let bookingsSql = `
@@ -597,7 +606,7 @@ export const getAnalyticsCampaigns = withPermission('nav:sites', async (
     }
     bookingsSql += ' GROUP BY utm_source, utm_medium, utm_campaign';
 
-    const campaignsBookings = db.prepare(bookingsSql).all(...bookingsParams) as any[];
+    const campaignsBookings = await sql.rows<any>(bookingsSql, [...bookingsParams]) as any[];
 
     // Merge campaigns
     const campaignMap = new Map<string, { utm_source: string; utm_medium: string; utm_campaign: string; sessions: number; bookings: number; revenue: number; unpaid_revenue: number }>();
@@ -663,12 +672,13 @@ export const getAnalyticsFunnel = withPermission('nav:sites', async (
   actor: Actor,
 ) => {
   try {
+  const sql = getSql();
     const { id: siteId } = await params;
-    const db = getDb();
-    if (!ownsSite(db, actor.organizationId, siteId)) return notFound();
-    const ownIds = ownPropertyIds(db, actor.organizationId);
+    const statement = getSql();
+    if (!await ownsSite(actor.organizationId, siteId)) return notFound();
+    const ownIds = await ownPropertyIds(actor.organizationId);
     const { searchParams } = new URL(request.url);
-    const propertyId = getSitePropertyId(db, siteId);
+    const propertyId = await getSitePropertyId(siteId);
 
     const dateFrom = searchParams.get('date_from') || getFirstDayOfMonth();
     const dateTo = searchParams.get('date_to') || getToday();
@@ -679,68 +689,68 @@ export const getAnalyticsFunnel = withPermission('nav:sites', async (
     const toTime = `${dateTo}T23:59:59Z`;
 
     // Helpers to query events
-    const getEventSessions = (eventType: string) => {
-      let sql = `
+    const getEventSessions = async (eventType: string) => {
+      let statement = `
         SELECT COUNT(DISTINCT session_id) as count 
         FROM widget_events 
         WHERE ${siteId === 'all' ? '1=1 AND ' : 'site_id = ? AND '}event_type = ? AND created_at >= ? AND created_at <= ?
       `;
       const p: any[] = siteId === 'all' ? [eventType, fromTime, toTime] : [siteId, eventType, fromTime, toTime];
       if (eventType === 'page_view' && pageFilter && pageFilter !== 'all') {
-        sql += ' AND page = ?';
+        statement += ' AND page = ?';
         p.push(pageFilter);
       }
-      const row = db.prepare(sql).get(...p) as { count: number };
+      const row = await sql.row<any>(statement, [...p]) as { count: number };
       return row ? row.count : 0;
     };
 
     // 1-7. Widget event steps
-    const siteViews = getEventSessions('page_view');
-    const bookClicks = getEventSessions('widget_opened');
-    const step1 = getEventSessions('widget_step_1');
-    const step2 = getEventSessions('widget_step_2');
-    const step3 = getEventSessions('widget_step_3');
-    const step4 = getEventSessions('widget_step_4');
-    const step5 = getEventSessions('widget_step_5');
+    const siteViews = await getEventSessions('page_view');
+    const bookClicks = await getEventSessions('widget_opened');
+    const step1 = await getEventSessions('widget_step_1');
+    const step2 = await getEventSessions('widget_step_2');
+    const step3 = await getEventSessions('widget_step_3');
+    const step4 = await getEventSessions('widget_step_4');
+    const step5 = await getEventSessions('widget_step_5');
 
     // Removed old step 8 (crmLeads) as it is now in the Contact Funnel
     // 9-11. Reservations counts
-    const getReservationsFunnelCount = (statusFilter?: string, paidFilter?: boolean) => {
+    const getReservationsFunnelCount = async (statusFilter?: string, paidFilter?: boolean) => {
       const source = `widget:${siteId}`;
-      let sql = `
+      let statement = `
         SELECT COUNT(*) as count 
         FROM reservations 
         WHERE ${getSourceFilter(siteId, propertyId, ownIds)} AND status != 'cancelled'
       `;
-      const p = [source, 'widget'];
+      const p = [...getSourceParams(siteId, propertyId, ownIds)];
       
       if (statusFilter) {
         if (statusFilter === 'checked_in') {
-          sql += " AND status IN ('checked_in', 'checked_out')";
+          statement += " AND status IN ('checked_in', 'checked_out')";
         } else {
-          sql += ' AND status = ?';
+          statement += ' AND status = ?';
           p.push(statusFilter);
         }
       }
       if (paidFilter) {
-        sql += " AND payment_status = 'paid'";
+        statement += " AND payment_status = 'paid'";
       }
       
       if (dateType === 'check_in') {
-        sql += ' AND check_in >= ? AND check_in <= ?';
+        statement += ' AND check_in >= ? AND check_in <= ?';
         p.push(dateFrom, dateTo);
       } else {
-        sql += ' AND created_at >= ? AND created_at <= ?';
+        statement += ' AND created_at >= ? AND created_at <= ?';
         p.push(`${dateFrom} 00:00:00`, `${dateTo} 23:59:59`);
       }
       
-      const row = db.prepare(sql).get(...p) as { count: number };
+      const row = await sql.row<any>(statement, [...p]) as { count: number };
       return row ? row.count : 0;
     };
 
-    const bookingsCreated = getReservationsFunnelCount();
-    const bookingsCheckedIn = getReservationsFunnelCount('checked_in');
-    const bookingsPaid = getReservationsFunnelCount(undefined, true);
+    const bookingsCreated = await getReservationsFunnelCount();
+    const bookingsCheckedIn = await getReservationsFunnelCount('checked_in');
+    const bookingsPaid = await getReservationsFunnelCount(undefined, true);
 
     const funnelWidgetRaw = [
       { step: 1, name: "Відвідування сайту", count: siteViews, key: "site_views" },
@@ -771,7 +781,7 @@ export const getAnalyticsFunnel = withPermission('nav:sites', async (
       FROM site_incoming_leads 
       WHERE site_id = ? AND created_at >= ? AND created_at <= ?
     `;
-    const submittedLeads = db.prepare(leadsSql).all(siteId, `${dateFrom} 00:00:00`, `${dateTo} 23:59:59`) as any[];
+    const submittedLeads = await sql.rows<any>(leadsSql, [siteId, `${dateFrom} 00:00:00`, `${dateTo} 23:59:59`]) as any[];
     const leadsSubmitted = submittedLeads.length;
 
     let leadsProcessed = 0;
@@ -804,7 +814,7 @@ export const getAnalyticsFunnel = withPermission('nav:sites', async (
           JOIN guests g ON r.guest_id = g.id
           WHERE (${guestCond}) AND r.created_at >= ? AND r.status != 'cancelled'
         `;
-        const linkedReservations = db.prepare(resSql).all(`${dateFrom} 00:00:00`) as any[];
+        const linkedReservations = await sql.rows<any>(resSql, [`${dateFrom} 00:00:00`]) as any[];
         
         leadsBooked = linkedReservations.length;
         leadsCheckedIn = linkedReservations.filter(r => r.status === 'checked_in' || r.status === 'checked_out').length;

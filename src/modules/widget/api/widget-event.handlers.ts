@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 export async function trackWidgetEventOptions(request: NextRequest) {
   const origin = request.headers.get('origin');
@@ -22,7 +22,7 @@ export async function trackWidgetEvent(request: NextRequest) {
   };
 
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
 
     const site_id = body.site_id || body.siteId;
@@ -46,7 +46,7 @@ export async function trackWidgetEvent(request: NextRequest) {
     }
 
     // Check if site exists by ID or slug
-    const site = db.prepare("SELECT id, site_url FROM booking_sites WHERE (id = ? OR slug = ?) AND status != 'deleted'").get(site_id, site_id) as any;
+    const site = await sql.row<any>("SELECT id, site_url FROM booking_sites WHERE (id = ? OR slug = ?) AND status != 'deleted'", [site_id, site_id]) as any;
     if (!site) {
       return NextResponse.json({ error: 'Site not found or deleted' }, { status: 404, headers });
     }
@@ -68,13 +68,12 @@ export async function trackWidgetEvent(request: NextRequest) {
     }
 
     // Insert event using the resolved site.id
-    db.prepare(`
+    await sql.run(`
       INSERT INTO widget_events (
         site_id, session_id, event_type, step, page,
         utm_source, utm_medium, utm_campaign, lang, reservation_id, country
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      site.id,
+    `, [site.id,
       session_id || null,
       event_type,
       step !== undefined ? step : null,
@@ -84,8 +83,7 @@ export async function trackWidgetEvent(request: NextRequest) {
       utm_campaign || null,
       lang || null,
       reservation_id || null,
-      country
-    );
+      country]);
 
     return NextResponse.json({ success: true }, { status: 200, headers });
   } catch (error: any) {

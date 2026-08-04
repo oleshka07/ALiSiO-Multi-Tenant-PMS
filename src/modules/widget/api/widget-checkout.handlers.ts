@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { createPaymentSession, resolveSiteCredentials, isPaymentConfigured } from '@payments';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { hasFeature, featureDisabled } from '@core/features';
@@ -40,7 +41,7 @@ export async function createWidgetCheckoutSession(req: Request) {
       description: clientDescription,
     } = body;
 
-    const db = getDb();
+    const sql = getSql();
 
     // пінг щоб оновити проект на сервері
 
@@ -55,7 +56,7 @@ export async function createWidgetCheckoutSession(req: Request) {
     // property site not registered in booking_sites can still take payment.
     const siteKey: string | undefined = site_slug || clientSiteId;
     if (siteKey) {
-      site = resolveSiteByKey(db, siteKey, 'id, organization_id, payment_config, site_url, slug, allowed_domains');
+      site = await resolveSiteByKey(siteKey, 'id, organization_id, payment_config, site_url, slug, allowed_domains');
       if (site) {
         siteCreds = await resolveSiteCredentials({ id: site.id, slug: site.slug });
       } else {
@@ -74,8 +75,8 @@ export async function createWidgetCheckoutSession(req: Request) {
     let payingOrg: string | undefined;
     try {
       payingOrg = (reservation_id
-        ? (db.prepare('SELECT p.organization_id FROM reservations r JOIN properties p ON r.property_id = p.id WHERE r.id = ?').get(reservation_id) as any)?.organization_id
-        : undefined) || site?.organization_id || requireOrganizationId(db);
+        ? (await sql.row<any>('SELECT p.organization_id FROM reservations r JOIN properties p ON r.property_id = p.id WHERE r.id = ?', [reservation_id]) as any)?.organization_id
+        : undefined) || site?.organization_id || requireOrganizationId(getDb());
     } catch {
       payingOrg = undefined;
     }
@@ -101,7 +102,7 @@ export async function createWidgetCheckoutSession(req: Request) {
 
     if (service_id && service_date) {
       // Service-only order (e.g. Sauna/Tub/Breakfast from Guest Page widget)
-      const svc = db.prepare('SELECT name, name_en, price, currency, service_type FROM additional_services WHERE id = ?').get(service_id) as any;
+      const svc = await sql.row<any>('SELECT name, name_en, price, currency, service_type FROM additional_services WHERE id = ?', [service_id]) as any;
       if (!svc) return NextResponse.json({ error: 'Service not found' }, { status: 404, headers: CORS_HEADERS });
 
       const isBreakfast = svc.service_type === 'menu_selection' || service_id === 'svc_breakfast';
@@ -111,7 +112,7 @@ export async function createWidgetCheckoutSession(req: Request) {
       // Apply Coupon code discount if provided
       if (body.couponCode) {
         try {
-          const offer = db.prepare("SELECT discount_type, offer_amount FROM coupons WHERE code = ? AND is_active = 1").get(body.couponCode) as any;
+          const offer = await sql.row<any>("SELECT discount_type, offer_amount FROM coupons WHERE code = ? AND is_active = 1", [body.couponCode]) as any;
           if (offer) {
             if (offer.discount_type === 'fixed_price') {
               basePrice = offer.offer_amount;
@@ -153,7 +154,7 @@ export async function createWidgetCheckoutSession(req: Request) {
           // If addon price not sent from client, look up in DB
           if (!addon.price && addon.id) {
             try {
-              const dbAddon = db.prepare("SELECT price FROM service_addons WHERE id = ?").get(addon.id) as any;
+              const dbAddon = await sql.row<any>("SELECT price FROM service_addons WHERE id = ?", [addon.id]) as any;
               if (dbAddon) amount += (dbAddon.price || 0) * addonQty;
             } catch { /* */ }
           }
@@ -162,7 +163,7 @@ export async function createWidgetCheckoutSession(req: Request) {
 
     } else if (reservation_id) {
       // Main Reservation payment
-      const res = db.prepare('SELECT total_price, currency FROM reservations WHERE id = ?').get(reservation_id) as any;
+      const res = await sql.row<any>('SELECT total_price, currency FROM reservations WHERE id = ?', [reservation_id]) as any;
       if (!res) return NextResponse.json({ error: 'Reservation not found' }, { status: 404, headers: CORS_HEADERS });
 
       amount = res.total_price || 0;
@@ -172,16 +173,14 @@ export async function createWidgetCheckoutSession(req: Request) {
       // Short-circuit: reservation is already fully covered (e.g. 100% offer) — no Teya needed
       if (amount === 0) {
         try {
-          db.prepare("UPDATE reservations SET payment_status = 'paid', status = 'confirmed' WHERE id = ? AND payment_status != 'paid'").run(reservation_id);
+          await sql.run("UPDATE reservations SET payment_status = 'paid', status = 'confirmed' WHERE id = ? AND payment_status != 'paid'", [reservation_id]);
         } catch { /* non-fatal */ }
         return NextResponse.json({ session_url: null, already_paid: true }, { headers: CORS_HEADERS });
       }
 
       // Also add unpaid service_orders to the total
       try {
-        const svcOrders = db.prepare(
-          "SELECT SUM(total_price) as svc_total FROM service_orders WHERE reservation_id = ? AND status = 'pending'"
-        ).get(reservation_id) as any;
+        const svcOrders = await sql.row<any>("SELECT SUM(total_price) as svc_total FROM service_orders WHERE reservation_id = ? AND status = 'pending'", [reservation_id]) as any;
         if (svcOrders?.svc_total) amount += svcOrders.svc_total;
       } catch (err: any) {
         console.error('[Checkout Session] Error calculating service_orders:', err.message);
@@ -193,7 +192,7 @@ export async function createWidgetCheckoutSession(req: Request) {
         if (clientCurrency) currency = clientCurrency;
         if (clientDescription) description = clientDescription;
         // Backfill reservation with the correct total
-        try { db.prepare('UPDATE reservations SET total_price = ?, currency = ? WHERE id = ?').run(amount, currency, reservation_id); } catch { /* */ }
+        try { await sql.run('UPDATE reservations SET total_price = ?, currency = ? WHERE id = ?', [amount, currency, reservation_id]); } catch { /* */ }
       }
       // Legacy fallback: booking/page.tsx sends amount directly (no reservation_id)
     } else if (clientAmount && typeof clientAmount === 'number' && clientAmount > 0) {
@@ -209,7 +208,7 @@ export async function createWidgetCheckoutSession(req: Request) {
 
     // Step 1: Create preliminary order for services if needed
     let orderId: string | null = null;
-    const svcInfo = service_id ? db.prepare('SELECT service_type FROM additional_services WHERE id = ?').get(service_id) as any : null;
+    const svcInfo = service_id ? await sql.row<any>('SELECT service_type FROM additional_services WHERE id = ?', [service_id]) as any : null;
     const isBreakfastOrder = svcInfo?.service_type === 'menu_selection' || service_id === 'svc_breakfast';
 
     if (service_id && service_date) {
@@ -225,14 +224,12 @@ export async function createWidgetCheckoutSession(req: Request) {
             menu_items: clientMenuItems || [],
             payment_id: 'pending_teya'
           };
-          db.prepare(`
+          await sql.run(`
             INSERT INTO service_orders (id, reservation_id, service_id, quantity, total_price, status, payment_status, service_date, notes)
             VALUES (?, ?, ?, ?, ?, 'pending', 'pending', ?, ?)
-          `).run(
-            orderId, reservation_id || 'system_fallback', service_id,
+          `, [orderId, reservation_id || 'system_fallback', service_id,
             bDays.length,  // quantity = number of breakfast days
-            amount, bDays[0], JSON.stringify(notesObj)
-          );
+            amount, bDays[0], JSON.stringify(notesObj)]);
         } else {
           // Slot service (sauna, tub): keep existing behavior
           const h = hours || 2;
@@ -245,12 +242,10 @@ export async function createWidgetCheckoutSession(req: Request) {
             unit_price: amount / h,
             payment_id: 'pending_teya'
           };
-          db.prepare(`
+          await sql.run(`
             INSERT INTO service_orders (id, reservation_id, service_id, quantity, total_price, status, payment_status, service_date, notes)
             VALUES (?, ?, ?, ?, ?, 'pending', 'pending', ?, ?)
-          `).run(
-            orderId, reservation_id || 'system_fallback', service_id, h, amount, service_date || null, JSON.stringify(notesObj)
-          );
+          `, [orderId, reservation_id || 'system_fallback', service_id, h, amount, service_date || null, JSON.stringify(notesObj)]);
         }
       } catch (dbErr: any) {
         console.error('[Checkout Session] DB error inserting service_orders:', dbErr.message);
@@ -263,13 +258,13 @@ export async function createWidgetCheckoutSession(req: Request) {
       let unitName = '';
       if (reservation_id) {
         try {
-          const resInfo = db.prepare(`
+          const resInfo = await sql.row<any>(`
             SELECT r.id, rg.first_name, rg.last_name, u.name as unit_name
             FROM reservations r
             LEFT JOIN reservation_guests rg ON rg.reservation_id = r.id
             LEFT JOIN units u ON u.id = r.unit_id
             WHERE r.id = ?
-          `).get(reservation_id) as any;
+          `, [reservation_id]) as any;
           if (resInfo) {
             guestName = [resInfo.first_name, resInfo.last_name].filter(Boolean).join(' ');
             unitName = resInfo.unit_name || '';
@@ -364,7 +359,7 @@ export async function createWidgetCheckoutSession(req: Request) {
 
     if (reservation_id) {
       try {
-        const tokenRes = db.prepare('SELECT guest_page_token FROM reservations WHERE id = ?').get(reservation_id) as any;
+        const tokenRes = await sql.row<any>('SELECT guest_page_token FROM reservations WHERE id = ?', [reservation_id]) as any;
         if (tokenRes?.guest_page_token) {
           const sep = returnTo.includes('?') ? '&' : '?';
           returnTo = `${returnTo}${sep}guest_page_token=${tokenRes.guest_page_token}`;
@@ -428,20 +423,20 @@ export async function createWidgetCheckoutSession(req: Request) {
 
       if (reservation_id) {
         try {
-          db.prepare('UPDATE reservations SET payment_id = ? WHERE id = ?').run(session.sessionId, reservation_id);
+          await sql.run('UPDATE reservations SET payment_id = ? WHERE id = ?', [session.sessionId, reservation_id]);
         } catch (e: any) { console.error('[Checkout Session] Update res payment_id error:', e.message); }
       }
 
       if (orderId) {
         try {
           // Update payment_id COLUMN (critical for webhook matching) AND notes JSON
-          const so = db.prepare("SELECT notes FROM service_orders WHERE id = ?").get(orderId) as any;
+          const so = await sql.row<any>("SELECT notes FROM service_orders WHERE id = ?", [orderId]) as any;
           if (so && so.notes) {
             const parsed = JSON.parse(so.notes);
             parsed.payment_id = session.sessionId;
-            db.prepare('UPDATE service_orders SET payment_id = ?, notes = ? WHERE id = ?').run(session.sessionId, JSON.stringify(parsed), orderId);
+            await sql.run('UPDATE service_orders SET payment_id = ?, notes = ? WHERE id = ?', [session.sessionId, JSON.stringify(parsed), orderId]);
           } else {
-            db.prepare('UPDATE service_orders SET payment_id = ? WHERE id = ?').run(session.sessionId, orderId);
+            await sql.run('UPDATE service_orders SET payment_id = ? WHERE id = ?', [session.sessionId, orderId]);
           }
         } catch { /* */ }
       }

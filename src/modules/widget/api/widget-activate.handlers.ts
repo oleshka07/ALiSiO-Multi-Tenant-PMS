@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -24,12 +24,12 @@ export async function validatePromo(request: NextRequest) {
       return NextResponse.json({ valid: false, error: 'Code is required' }, { status: 400, headers: CORS_HEADERS });
     }
 
-    const db = getDb();
-    let offer = db.prepare('SELECT * FROM coupons WHERE code = ? AND is_active = 1').get(code) as any;
+    const sql = getSql();
+    let offer = await sql.row<any>('SELECT * FROM coupons WHERE code = ? AND is_active = 1', [code]) as any;
     let isBundle = false;
 
     if (!offer) {
-      offer = db.prepare('SELECT * FROM gift_card_bundles WHERE coupon_code = ? AND is_active = 1').get(code) as any;
+      offer = await sql.row<any>('SELECT * FROM gift_card_bundles WHERE coupon_code = ? AND is_active = 1', [code]) as any;
       if (offer) isBundle = true;
     }
 

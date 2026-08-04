@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { hasFeature, featureDisabled } from '@core/features';
 
@@ -15,7 +16,7 @@ export async function getWidgetConfigOptions() {
 
 export async function getWidgetConfig(request: NextRequest) {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { searchParams } = new URL(request.url);
     const propertyId = searchParams.get('propertyId');
 
@@ -28,26 +29,24 @@ export async function getWidgetConfig(request: NextRequest) {
         { status: 400, headers: CORS_HEADERS },
       );
     }
-    const property = db
-      .prepare('SELECT * FROM properties WHERE id = ? AND is_active = 1')
-      .get(propertyId) as any;
+    const property = await sql.row<any>('SELECT * FROM properties WHERE id = ? AND is_active = 1', [propertyId]) as any;
 
     if (!property) {
       return NextResponse.json({ error: 'Property not found' }, { status: 404, headers: CORS_HEADERS });
     }
 
-    if (!hasFeature(db, property.organization_id, 'widget')) {
+    if (!hasFeature(getDb(), property.organization_id, 'widget')) {
       return featureDisabled('widget', CORS_HEADERS);
     }
 
-    const unitTypes = db.prepare(`
+    const unitTypes = await sql.rows<any>(`
       SELECT ut.id, ut.name, ut.code, ut.description,
              ut.max_adults, ut.max_children, ut.max_occupancy, ut.base_occupancy,
              ut.beds_single, ut.beds_double, ut.beds_sofa
       FROM unit_types ut
       WHERE ut.is_active = 1 AND ut.property_id = ?
       ORDER BY ut.sort_order
-    `).all(property.id) as any[];
+    `, [property.id]) as any[];
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -57,7 +56,7 @@ export async function getWidgetConfig(request: NextRequest) {
     let defaultUnitTypeId: string | null = null;
 
     const existingTables = new Set(
-      (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[])
+      (await sql.rows<any>("SELECT name FROM sqlite_master WHERE type='table'") as { name: string }[])
         .map(t => t.name)
     );
     const hasAvailBlocks = existingTables.has('availability_blocks');
@@ -72,28 +71,28 @@ export async function getWidgetConfig(request: NextRequest) {
       const coStr = co.toISOString().split('T')[0];
 
       for (const ut of unitTypes) {
-        const allUnits = db.prepare(`
+        const allUnits = await sql.rows<any>(`
           SELECT u.id FROM units u
           WHERE u.unit_type_id = ? AND u.is_active = 1 AND u.room_status = 'available'
-        `).all(ut.id) as any[];
+        `, [ut.id]) as any[];
 
-        const bookedUnitIds = db.prepare(`
+        const bookedUnitIds = await sql.rows<any>(`
           SELECT DISTINCT r.unit_id FROM reservations r
           JOIN units u ON r.unit_id = u.id
           WHERE u.unit_type_id = ?
             AND r.status NOT IN ('cancelled', 'no_show')
             AND r.check_in < ? AND r.check_out > ?
-        `).all(ut.id, coStr, ciStr) as any[];
+        `, [ut.id, coStr, ciStr]) as any[];
 
         const bookedIds = new Set(bookedUnitIds.map((r: any) => r.unit_id));
 
         if (hasAvailBlocks) {
-          const blockedUnitIds = db.prepare(`
+          const blockedUnitIds = await sql.rows<any>(`
             SELECT DISTINCT ab.unit_id FROM availability_blocks ab
             JOIN units u ON ab.unit_id = u.id
             WHERE u.unit_type_id = ?
               AND ab.date_from < ? AND ab.date_to > ?
-          `).all(ut.id, coStr, ciStr) as any[];
+          `, [ut.id, coStr, ciStr]) as any[];
           for (const b of blockedUnitIds) bookedIds.add(b.unit_id);
         }
 
@@ -109,12 +108,12 @@ export async function getWidgetConfig(request: NextRequest) {
 
           if (hasPriceCalendar) {
             try {
-              const prices = db.prepare(`
+              const prices = await sql.rows<any>(`
                 SELECT pc.date, pc.base_price, pc.weekend_price
                 FROM price_calendar pc
                 WHERE pc.unit_type_id = ? AND pc.date >= ? AND pc.date < ?
                 ORDER BY pc.date ASC
-              `).all(ut.id, ciStr, coStr) as any[];
+              `, [ut.id, ciStr, coStr]) as any[];
 
               const priceMap = new Map<string, any>();
               for (const p of prices) priceMap.set(p.date, p);
@@ -147,14 +146,14 @@ export async function getWidgetConfig(request: NextRequest) {
     // Fetch services available in widget
     let widgetServices: any[] = [];
     try {
-      const asColCheck = db.prepare("PRAGMA table_info(additional_services)").all().map((c: any) => c.name);
+      const asColCheck = (await sql.rows<any>("PRAGMA table_info(additional_services)")).map((c: any) => c.name);
       if (asColCheck.includes('available_in_widget')) {
-        widgetServices = db.prepare(`
+        widgetServices = await sql.rows<any>(`
           SELECT id, name, name_en, description, price, currency, unit_label, icon, category, available_for
           FROM additional_services
           WHERE property_id = ? AND is_active = 1 AND available_in_widget = 1
           ORDER BY sort_order
-        `).all(property.id);
+        `, [property.id]);
       }
     } catch { /* table may not exist yet */ }
 

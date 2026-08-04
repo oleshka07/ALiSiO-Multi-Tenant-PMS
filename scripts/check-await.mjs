@@ -146,6 +146,19 @@ for (const f of files) {
       const prop = new RegExp(`(?<!await\\s)(?:\\w+\\.)?${name}\\s*\\([^)]*\\)\\.(?!then|catch|finally)\\w`);
       if (prop.test(line) && !new RegExp(`await[\\s(]*(?:\\w+\\.)?${name}`).test(line)) {
         findings.push({ file: f, line: i + 1, name, kind: 'читання поля з промісу', text: trimmed });
+        continue;
+      }
+
+      // Position 4: assigned to a variable, with no await on the way in.
+      // The widget price list shipped a promise straight into a SQL parameter
+      // — `const organizationId = organizationForSite(...)` — and SQLite
+      // answered "can only bind numbers, strings, bigints, buffers, and null".
+      // The three positions above all missed it: the promise travelled through
+      // a variable first. A promise held deliberately for a later await is
+      // rare enough here that the catch is worth the noise.
+      const assigned = new RegExp(`(?:const|let|var)\\s+\\w+\\s*(?::[^=]+)?=\\s*(?:\\w+\\.)?${name}\\s*\\(`);
+      if (assigned.test(line) && !/=\s*(?:await|\(await)/.test(line)) {
+        findings.push({ file: f, line: i + 1, name, kind: 'проміс покладено у змінну без await', text: trimmed });
       }
     }
   });

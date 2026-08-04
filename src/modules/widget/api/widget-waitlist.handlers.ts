@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { hasFeature, featureDisabled } from '@core/features';
 import { checkRateLimit } from '@core/security/rate-limit';
@@ -49,19 +50,19 @@ export async function joinWaitlist(request: NextRequest) {
       return NextResponse.json({ error: 'a valid email is required' }, { status: 400, headers: CORS_HEADERS });
     }
 
-    const db = getDb();
+    const sql = getSql();
 
     // The site decides which hotel this is — an invented id gets a 404, not a row.
-    const site = db.prepare(`
+    const site = await sql.row<any>(`
       SELECT bs.id, p.organization_id
       FROM booking_sites bs
       JOIN properties p ON bs.property_id = p.id
       WHERE bs.id = ? AND bs.status != 'deleted'
-    `).get(siteId) as { id: string; organization_id: string } | undefined;
+    `, [siteId]) as { id: string; organization_id: string } | undefined;
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: CORS_HEADERS });
     }
-    if (!hasFeature(db, site.organization_id, 'widget')) {
+    if (!hasFeature(getDb(), site.organization_id, 'widget')) {
       return featureDisabled('widget', CORS_HEADERS);
     }
 
@@ -73,10 +74,10 @@ export async function joinWaitlist(request: NextRequest) {
       return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: CORS_HEADERS });
     }
 
-    db.prepare(`
+    await sql.run(`
       INSERT INTO waitlist (site_id, unit_id, check_in, check_out, email, phone, name)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(site.id, cap(unitId, 64), checkIn, checkOut, cleanEmail, cap(phone, 32), cap(name, 120));
+    `, [site.id, cap(unitId, 64), checkIn, checkOut, cleanEmail, cap(phone, 32), cap(name, 120)]);
 
     return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
   } catch (error: any) {

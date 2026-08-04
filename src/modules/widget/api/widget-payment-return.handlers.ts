@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { sendTelegramMessage } from '@notifications'; // TODO: replace with eventBus
 import { sendBookingConfirmationEmail } from '@bookings';
 
@@ -13,21 +13,21 @@ export async function handlePaymentReturn(req: Request) {
 
   console.log(`[Payment Return] session=${sessionId}, status=${status}, return=${returnPath}`);
 
-  const db = getDb();
+  const sql = getSql();
 
   if (status === 'success') {
     try {
-      const bsoResult = db.prepare(`
+      const bsoResult = await sql.run(`
         UPDATE booking_service_orders
         SET payment_status = 'paid'
         WHERE payment_id = ? AND payment_status IN ('pending', 'none')
-      `).run(sessionId);
+      `, [sessionId]);
 
-      const soResult = db.prepare(`
+      const soResult = await sql.run(`
         UPDATE service_orders
         SET payment_status = 'paid', status = 'confirmed'
         WHERE payment_id = ? AND payment_status IN ('pending', 'none')
-      `).run(sessionId);
+      `, [sessionId]);
 
       // reservation_id can come from URL query param OR embedded in return path
       const returnUrlObj = new URL(returnPath, url.origin);
@@ -40,17 +40,17 @@ export async function handlePaymentReturn(req: Request) {
       let resResult = { changes: 0 };
       if (reservationId) {
         // Update tentative → confirmed+paid, OR confirmed → paid (for direct booking payments)
-        resResult = db.prepare(`
+        resResult = await sql.run(`
           UPDATE reservations
           SET payment_status = 'paid', updated_at = datetime('now')
           WHERE id = ? AND payment_status IN ('unpaid', 'payment_requested', 'prepaid')
-        `).run(reservationId);
+        `, [reservationId]);
 
         // Also update tentative status to confirmed
-        db.prepare(`
+        await sql.run(`
           UPDATE reservations SET status = 'confirmed', updated_at = datetime('now')
           WHERE id = ? AND status = 'tentative'
-        `).run(reservationId);
+        `, [reservationId]);
 
         // PMS state already updated above (reservations.payment_status='paid').
         // No fin_operation is created here — Teya widget money sits on the
@@ -58,35 +58,35 @@ export async function handlePaymentReturn(req: Request) {
         // statement arrives. TG notify the operator for visibility.
         // Always update service orders — idempotent on already-paid rows
         try {
-          db.prepare(`
+          await sql.run(`
             UPDATE service_orders SET payment_status = 'paid', status = 'confirmed'
             WHERE reservation_id = ? AND payment_status IN ('pending', 'unpaid', 'none')
               AND (payment_id = ? OR payment_id = 'pending_teya' OR payment_id IS NULL)
-          `).run(reservationId, sessionId);
+          `, [reservationId, sessionId]);
         } catch { /* table may not exist */ }
         try {
-          db.prepare(`
+          await sql.run(`
             UPDATE booking_service_orders SET payment_status = 'paid', status = 'confirmed'
             WHERE reservation_id = ? AND payment_status IN ('pending', 'unpaid', 'none')
               AND (payment_id = ? OR payment_id = 'pending_teya' OR payment_id IS NULL)
-          `).run(reservationId, sessionId);
+          `, [reservationId, sessionId]);
         } catch { /* table may not exist */ }
 
         // Mark the booking_draft as paid so the log table stays in sync
         try {
-          db.prepare(`UPDATE booking_drafts SET status = 'paid' WHERE reservation_id = ?`).run(reservationId);
+          await sql.run(`UPDATE booking_drafts SET status = 'paid' WHERE reservation_id = ?`, [reservationId]);
         } catch { /* table may not exist */ }
 
         // TG notification (only when this handler actually changed the status)
         if (resResult.changes > 0) {
           try {
-            const res = db.prepare('SELECT r.total_price, r.currency, u.name as unit_name FROM reservations r LEFT JOIN units u ON r.unit_id = u.id WHERE r.id = ?').get(reservationId) as any;
+            const res = await sql.row<any>('SELECT r.total_price, r.currency, u.name as unit_name FROM reservations r LEFT JOIN units u ON r.unit_id = u.id WHERE r.id = ?', [reservationId]) as any;
             if (res) {
               const esc = (s: string) => s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
               
               let draftInfo: any = null;
               try {
-                draftInfo = db.prepare('SELECT guest_name, guest_phone, check_in, check_out, utm_params FROM booking_drafts WHERE reservation_id = ?').get(reservationId) as any;
+                draftInfo = await sql.row<any>('SELECT guest_name, guest_phone, check_in, check_out, utm_params FROM booking_drafts WHERE reservation_id = ?', [reservationId]) as any;
               } catch {}
               
               let utmBlock = '';
@@ -132,11 +132,11 @@ export async function handlePaymentReturn(req: Request) {
         }
       }
 
-      db.prepare(`
+      await sql.run(`
         UPDATE service_time_slots
         SET booking_session_id = NULL, notes = 'paid'
         WHERE booking_session_id = ?
-      `).run(sessionId);
+      `, [sessionId]);
 
       console.log(`[Payment Return] Confirmed:`, {
         bsoOrders: bsoResult.changes,
@@ -151,7 +151,7 @@ export async function handlePaymentReturn(req: Request) {
 
       if (bsoResult.changes > 0 || soResult.changes > 0) {
         try {
-          const order = db.prepare(`
+          const order = await sql.row<any>(`
             SELECT bso.total_price, bso.service_date, bso.options_json, bso.service_id,
                    ads.name as service_name, ads.name_en,
                    g.first_name, g.last_name,
@@ -174,7 +174,7 @@ export async function handlePaymentReturn(req: Request) {
             JOIN units u2 ON r2.unit_id = u2.id
             WHERE so.payment_id = ?
             LIMIT 1
-          `).get(sessionId, sessionId) as any;
+          `, [sessionId, sessionId]) as any;
 
           if (order) {
             const esc = (s: string) => s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
@@ -205,28 +205,28 @@ export async function handlePaymentReturn(req: Request) {
 
   } else if (status === 'cancel' && sessionId) {
     try {
-      const released = db.prepare(`
+      const released = await sql.run(`
         UPDATE service_time_slots
         SET booked_count = MAX(0, booked_count - 1), booking_session_id = NULL
         WHERE booking_session_id = ?
-      `).run(sessionId);
+      `, [sessionId]);
 
-      db.prepare(`
+      await sql.run(`
         UPDATE booking_service_orders
         SET payment_status = 'cancelled'
         WHERE payment_id = ? AND payment_status = 'pending'
-      `).run(sessionId);
+      `, [sessionId]);
 
-      db.prepare(`
+      await sql.run(`
         UPDATE service_orders
         SET payment_status = 'cancelled'
         WHERE payment_id = ? AND payment_status = 'pending'
-      `).run(sessionId);
+      `, [sessionId]);
 
       console.log(`[Payment Return] Cancelled, slots released:`, released.changes);
 
       try {
-        const order = db.prepare(`
+        const order = await sql.row<any>(`
           SELECT ads.name_en, ads.name as service_name, bso.service_date, bso.total_price, bso.options_json,
                  g.first_name, g.last_name
           FROM booking_service_orders bso
@@ -235,7 +235,7 @@ export async function handlePaymentReturn(req: Request) {
           LEFT JOIN guests g ON r.guest_id = g.id
           WHERE bso.payment_id = ?
           LIMIT 1
-        `).get(sessionId) as any;
+        `, [sessionId]) as any;
         if (order) {
           const esc = (s: string) => s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
           const guestName = order.first_name ? `${esc(order.first_name)} ${esc(order.last_name)}` : 'Клієнт';
