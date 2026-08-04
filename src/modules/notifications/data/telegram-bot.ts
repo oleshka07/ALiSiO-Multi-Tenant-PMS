@@ -29,7 +29,7 @@ const IS_DEV = process.env.NODE_ENV === 'development';
  * message through another hotel's bot. The catch below then falls through to
  * the environment, which is the same behaviour as a missing settings row.
  */
-function resolveConfig(): { botToken: string; chatId: string; adminChatIds: string[] } {
+async function resolveConfig(): Promise<{ botToken: string; chatId: string; adminChatIds: string[] }> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { getDb } = require('@core/db');
@@ -39,7 +39,7 @@ function resolveConfig(): { botToken: string; chatId: string; adminChatIds: stri
     if (org) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { getTelegramConfig } = require('@/modules/notifications/data/telegram-config.repo');
-      const cfg = getTelegramConfig(org.id);
+      const cfg = await getTelegramConfig(org.id);
       if (cfg.botToken) return { botToken: cfg.botToken, chatId: cfg.chatId, adminChatIds: cfg.adminChatIds };
     }
   } catch {
@@ -58,16 +58,16 @@ function resolveConfig(): { botToken: string; chatId: string; adminChatIds: stri
   return { botToken, chatId, adminChatIds };
 }
 
-export function getChatId(): string {
-  return resolveConfig().chatId;
+export async function getChatId(): Promise<string> {
+  return (await resolveConfig()).chatId;
 }
 
-export function getBotToken(): string {
-  return resolveConfig().botToken;
+export async function getBotToken(): Promise<string> {
+  return (await resolveConfig()).botToken;
 }
 
-export function getAdminChatIds(): string[] {
-  return resolveConfig().adminChatIds;
+export async function getAdminChatIds(): Promise<string[]> {
+  return (await resolveConfig()).adminChatIds;
 }
 
 /** Map draftId → array of { chatId, messageId } for admin copies */
@@ -97,7 +97,7 @@ export async function sendTelegramMessage(
   inlineKeyboard?: { text: string; callback_data: string }[][],
   options?: { ownerOnly?: boolean },
 ): Promise<number | null> {
-  const { botToken, chatId, adminChatIds } = resolveConfig();
+  const { botToken, chatId, adminChatIds } = await resolveConfig();
   if (!botToken || !chatId) {
     console.warn('[Telegram] Bot not configured — skipping');
     return null;
@@ -136,7 +136,7 @@ async function sendToChat(
       body.reply_markup = JSON.stringify({ inline_keyboard: inlineKeyboard });
     }
 
-    const res = await fetch(`${apiBase(resolveConfig().botToken)}/sendMessage`, {
+    const res = await fetch(`${apiBase((await resolveConfig()).botToken)}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -163,7 +163,7 @@ export async function editTelegramMessage(
   inlineKeyboard?: { text: string; callback_data: string }[][],
   draftId?: string
 ): Promise<boolean> {
-  const { botToken, chatId } = resolveConfig();
+  const { botToken, chatId } = await resolveConfig();
   if (!botToken || !chatId) return false;
 
   // Edit primary message
@@ -173,7 +173,7 @@ export async function editTelegramMessage(
   if (draftId) {
     const adminCopies = adminMessageMap.get(draftId) || [];
     for (const copy of adminCopies) {
-      editInChat(copy.chatId, copy.messageId, text, inlineKeyboard).catch(err =>
+      await editInChat(copy.chatId, copy.messageId, text, inlineKeyboard).catch(err =>
         console.error(`[Telegram] Admin edit in ${copy.chatId} failed:`, err.message)
       );
     }
@@ -200,7 +200,7 @@ export async function editInChat(
       body.reply_markup = JSON.stringify({ inline_keyboard: inlineKeyboard });
     }
 
-    const res = await fetch(`${apiBase(resolveConfig().botToken)}/editMessageText`, {
+    const res = await fetch(`${apiBase((await resolveConfig()).botToken)}/editMessageText`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -222,7 +222,7 @@ export async function editInChat(
    Answer Callback Query (removes loading spinner on button)
    ──────────────────────────────────────────────────────── */
 export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
-  const { botToken } = resolveConfig();
+  const { botToken } = await resolveConfig();
   if (!botToken) return;
   try {
     await fetch(`${apiBase(botToken)}/answerCallbackQuery`, {
@@ -285,7 +285,7 @@ export async function sendDraftApproval(opts: {
   ];
 
   // Send to primary chat
-  const { chatId, adminChatIds } = resolveConfig();
+  const { chatId, adminChatIds } = await resolveConfig();
   const primaryMsgId = await sendToChat(chatId, text, keyboard);
 
   // Send to admin chats and track message IDs for later editing

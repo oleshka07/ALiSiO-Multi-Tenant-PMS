@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { verifyPassword, createSession } from '@core/auth';
 
 // ─── Login rate limiter (in-memory) ────────────────────────────────
@@ -45,11 +45,9 @@ export async function login(request: Request) {
       return NextResponse.json({ error: "Email та пароль обов'язкові" }, { status: 400 });
     }
 
-    const db = getDb();
+    const sql = getSql();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const user: any = db.prepare(
-      'SELECT id, email, full_name, role, password_hash, is_active FROM app_users WHERE email = ?'
-    ).get(email);
+    const user: any = await sql.row<any>('SELECT id, email, full_name, role, password_hash, is_active FROM app_users WHERE email = ?', [email]);
 
     if (!user) {
       return NextResponse.json({ error: 'Невірний email або пароль' }, { status: 401 });
@@ -68,7 +66,7 @@ export async function login(request: Request) {
       return NextResponse.json({ error: 'Невірний email або пароль' }, { status: 401 });
     }
 
-    db.prepare("UPDATE app_users SET last_login = datetime('now') WHERE id = ?").run(user.id);
+    await sql.run("UPDATE app_users SET last_login = datetime('now') WHERE id = ?", [user.id]);
 
     const sessionId = createSession(user.id);
 

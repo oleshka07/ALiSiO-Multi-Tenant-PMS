@@ -3,7 +3,7 @@
  * Tracks Telegram booking notification messages and edits them
  * when payment_status changes (strikethrough old + add new status).
  */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { editInChat, getChatId } from '@/modules/notifications/data/telegram-bot';
 
 const PAY_LABELS: Record<string, string> = {
@@ -21,19 +21,19 @@ function payLabel(status: string): string {
 /**
  * Store the Telegram message_id after sending a booking notification.
  */
-export function storeTgBookingMessage(
+export async function storeTgBookingMessage(
   reservationId: string,
   chatId: string,
   messageId: number,
   paymentStatus: string | null,
   text: string,
-): void {
+): Promise<void> {
   try {
-    const db = getDb();
-    db.prepare(`
+    const sql = getSql();
+    await sql.run(`
       INSERT INTO tg_booking_messages (reservation_id, chat_id, message_id, sent_payment_status, sent_text)
       VALUES (?, ?, ?, ?, ?)
-    `).run(reservationId, chatId, messageId, paymentStatus || 'unpaid', text);
+    `, [reservationId, chatId, messageId, paymentStatus || 'unpaid', text]);
   } catch (e: any) {
     console.error('[TG updater] store error:', e?.message);
   }
@@ -49,12 +49,12 @@ export async function updateBookingPaymentNotification(
   newPaymentStatus: string,
 ): Promise<void> {
   try {
-    const db = getDb();
-    const rows = db.prepare(`
+    const sql = getSql();
+    const rows = await sql.rows<any>(`
       SELECT id, chat_id, message_id, sent_payment_status, sent_text
       FROM tg_booking_messages
       WHERE reservation_id = ?
-    `).all(reservationId) as any[];
+    `, [reservationId]) as any[];
 
     if (!rows || rows.length === 0) return;
 
@@ -87,22 +87,22 @@ export async function updateBookingPaymentNotification(
       const ok = await editInChat(row.chat_id, row.message_id, updatedText);
 
       if (ok) {
-        db.prepare(`
+        await sql.run(`
           UPDATE tg_booking_messages
           SET sent_payment_status = ?, sent_text = ?
           WHERE id = ?
-        `).run(newPaymentStatus, updatedText, row.id);
+        `, [newPaymentStatus, updatedText, row.id]);
       } else {
         // Edit failed (likely >48h) — send a short update as new message
-        if (row.chat_id === getChatId()) {
+        if (row.chat_id === await getChatId()) {
           const { sendTelegramMessage } = await import('@/modules/notifications/data/telegram-bot');
-          const r = db.prepare(`
+          const r = await sql.row<any>(`
             SELECT r.id, g.first_name, g.last_name, u.name as unit_name
             FROM reservations r
             LEFT JOIN guests g ON g.id = r.guest_id
             LEFT JOIN units u ON u.id = r.unit_id
             WHERE r.id = ?
-          `).get(reservationId) as any;
+          `, [reservationId]) as any;
           if (r) {
             const name = `${r.first_name || ''} ${r.last_name || ''}`.trim() || 'Гість';
             await sendTelegramMessage(
@@ -113,9 +113,9 @@ export async function updateBookingPaymentNotification(
             );
           }
         }
-        db.prepare(`
+        await sql.run(`
           UPDATE tg_booking_messages SET sent_payment_status = ? WHERE id = ?
-        `).run(newPaymentStatus, row.id);
+        `, [newPaymentStatus, row.id]);
       }
     }
   } catch (e: any) {

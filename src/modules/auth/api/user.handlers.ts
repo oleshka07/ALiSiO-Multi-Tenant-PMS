@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { hashPassword } from '@core/auth';
 import { withPermission, notFound, type Actor } from '@core/auth/session';
 
@@ -17,9 +17,9 @@ import { withPermission, notFound, type Actor } from '@core/auth/session';
  */
 
 /** The user, if this organization owns it. */
-function ownedUser(db: any, organizationId: string, id: string): any {
-  return db.prepare('SELECT * FROM app_users WHERE id = ? AND organization_id = ?')
-    .get(id, organizationId);
+async function ownedUser(organizationId: string, id: string): Promise<any> {
+  const sql = getSql();
+  return await sql.row<any>('SELECT * FROM app_users WHERE id = ? AND organization_id = ?', [id, organizationId]);
 }
 
 export const getUser = withPermission('manage_users', async (
@@ -29,19 +29,17 @@ export const getUser = withPermission('manage_users', async (
 ) => {
   try {
     const { id } = await params;
-    const db = getDb();
-    const user = db.prepare(`
+    const sql = getSql();
+    const user = await sql.row<any>(`
       SELECT id, organization_id, email, full_name, phone, telegram_chat_id, role, is_active,
              default_cash_account_id, (payment_pin_hash IS NOT NULL) AS has_payment_pin,
              last_login, created_at, updated_at
       FROM app_users WHERE id = ? AND organization_id = ?
-    `).get(id, actor.organizationId);
+    `, [id, actor.organizationId]);
 
     if (!user) return notFound();
 
-    const overrides = db.prepare(
-      'SELECT permission, granted FROM user_permissions WHERE user_id = ?'
-    ).all(id);
+    const overrides = await sql.rows<any>('SELECT permission, granted FROM user_permissions WHERE user_id = ?', [id]);
 
     return NextResponse.json({ user, overrides });
   } catch (error) {
@@ -57,15 +55,15 @@ export const updateUser = withPermission('manage_users', async (
 ) => {
   try {
     const { id } = await params;
-    const db = getDb();
-    const existing = ownedUser(db, actor.organizationId, id);
+    const sql = getSql();
+    const existing = await ownedUser(actor.organizationId, id);
     if (!existing) return notFound();
 
     const body = await request.json();
 
     if (body.password) {
       const passwordHash = hashPassword(body.password);
-      db.prepare("UPDATE app_users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(passwordHash, id);
+      await sql.run("UPDATE app_users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?", [passwordHash, id]);
     }
 
     // The PIN a receptionist types to confirm a cash payment from the booking
@@ -73,14 +71,13 @@ export const updateUser = withPermission('manage_users', async (
     // marking money as received. Sending null clears it.
     if (body.payment_pin !== undefined) {
       if (body.payment_pin === null || body.payment_pin === '') {
-        db.prepare("UPDATE app_users SET payment_pin_hash = NULL, updated_at = datetime('now') WHERE id = ?").run(id);
+        await sql.run("UPDATE app_users SET payment_pin_hash = NULL, updated_at = datetime('now') WHERE id = ?", [id]);
       } else {
         const pin = String(body.payment_pin).trim();
         if (!/^\d{4,8}$/.test(pin)) {
           return NextResponse.json({ error: 'PIN має бути 4–8 цифр' }, { status: 400 });
         }
-        db.prepare("UPDATE app_users SET payment_pin_hash = ?, updated_at = datetime('now') WHERE id = ?")
-          .run(bcrypt.hashSync(pin, 10), id);
+        await sql.run("UPDATE app_users SET payment_pin_hash = ?, updated_at = datetime('now') WHERE id = ?", [bcrypt.hashSync(pin, 10), id]);
       }
     }
 
@@ -100,26 +97,27 @@ export const updateUser = withPermission('manage_users', async (
       // The cash account has to be this organization's, or the payments a
       // receptionist confirms would land in another hotel's books.
       if (cashAcct) {
-        const owned = db.prepare('SELECT 1 FROM finance_accounts WHERE id = ? AND organization_id = ?')
-          .get(cashAcct, actor.organizationId);
+        const owned = await sql.row<any>('SELECT 1 FROM finance_accounts WHERE id = ? AND organization_id = ?', [cashAcct, actor.organizationId]);
         if (!owned) return NextResponse.json({ error: 'Рахунок не знайдено' }, { status: 400 });
       }
 
-      db.prepare(`
+      await sql.run(`
         UPDATE app_users
         SET full_name = ?, email = ?, phone = ?, telegram_chat_id = ?, role = ?, is_active = ?, default_cash_account_id = ?, updated_at = datetime('now')
         WHERE id = ? AND organization_id = ?
-      `).run(fullName, email, phone, telegramChatId, role, isActive, cashAcct, id, actor.organizationId);
+      `, [fullName, email, phone, telegramChatId, role, isActive, cashAcct, id, actor.organizationId]);
     }
 
     if (body.permissions_overrides && Array.isArray(body.permissions_overrides)) {
-      db.prepare('DELETE FROM user_permissions WHERE user_id = ?').run(id);
-      const insertOverride = db.prepare(
-        'INSERT INTO user_permissions (user_id, permission, granted) VALUES (?, ?, ?)'
-      );
-      for (const ov of body.permissions_overrides) {
-        insertOverride.run(id, ov.permission, ov.granted ? 1 : 0);
-      }
+      await sql.tx(async (t) => {
+        await t.run('DELETE FROM user_permissions WHERE user_id = ?', [id]);
+        for (const ov of body.permissions_overrides) {
+          await t.run(
+            'INSERT INTO user_permissions (user_id, permission, granted) VALUES (?, ?, ?)',
+            [id, ov.permission, ov.granted ? 1 : 0],
+          );
+        }
+      });
     }
 
     return NextResponse.json({ success: true });
@@ -141,17 +139,17 @@ export const deleteUser = withPermission('manage_users', async (
       return NextResponse.json({ error: 'Не можна видалити себе' }, { status: 400 });
     }
 
-    const db = getDb();
-    const existing = ownedUser(db, actor.organizationId, id);
+    const sql = getSql();
+    const existing = await ownedUser(actor.organizationId, id);
     if (!existing) return notFound();
 
     if (existing.role === 'owner' && actor.user.role !== 'owner') {
       return NextResponse.json({ error: 'Не можна видалити Власника' }, { status: 403 });
     }
 
-    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
-    db.prepare('DELETE FROM user_permissions WHERE user_id = ?').run(id);
-    db.prepare('DELETE FROM app_users WHERE id = ? AND organization_id = ?').run(id, actor.organizationId);
+    await sql.run('DELETE FROM sessions WHERE user_id = ?', [id]);
+    await sql.run('DELETE FROM user_permissions WHERE user_id = ?', [id]);
+    await sql.run('DELETE FROM app_users WHERE id = ? AND organization_id = ?', [id, actor.organizationId]);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -551,7 +551,7 @@ function formatDailyDigest(
 // ─── Send to Telegram ────────────────────────────────────
 
 async function sendToChat(chatId: string, text: string): Promise<number | null> {
-  const BOT_TOKEN = getBotToken();
+  const BOT_TOKEN = await getBotToken();
   if (!BOT_TOKEN) return null;
   try {
     const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
@@ -601,7 +601,7 @@ export async function sendDailyOperationalDigest(organizationId: string): Promis
   let sent = false;
 
   // Send to primary chat — message 1 (general) + message 2 (detailed)
-  const CHAT_ID = getChatId();
+  const CHAT_ID = await getChatId();
   if (CHAT_ID) {
     const msgId = await sendToChat(CHAT_ID, text);
     sent = !!msgId;
@@ -611,7 +611,7 @@ export async function sendDailyOperationalDigest(organizationId: string): Promis
   }
 
   // Send copies to admin chats
-  for (const adminId of getAdminChatIds()) {
+  for (const adminId of await getAdminChatIds()) {
     sendToChat(adminId, text).catch(e =>
       console.error(`[DailyDigest] Admin send to ${adminId} failed:`, e.message)
     );

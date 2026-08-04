@@ -9,7 +9,7 @@
  * Env is still read as a fallback so an existing single-tenant deployment keeps
  * working until its owner saves the settings once.
  */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { decryptSecret, encryptSecret, secretsConfigured } from '@core/security/secrets';
 
 export interface TelegramConfig {
@@ -65,11 +65,10 @@ function envConfig(): Omit<TelegramConfig, 'source'> | null {
 }
 
 /** Resolve the effective config for one organization. */
-export function getTelegramConfig(organizationId: string): TelegramConfig {
+export async function getTelegramConfig(organizationId: string): Promise<TelegramConfig> {
+  const sql = getSql();
   try {
-    const row = getDb()
-      .prepare('SELECT config_json FROM crm_channels WHERE organization_id = ? AND channel_type = ? LIMIT 1')
-      .get(organizationId, CHANNEL_TYPE) as { config_json: string | null } | undefined;
+    const row = await sql.row<any>('SELECT config_json FROM crm_channels WHERE organization_id = ? AND channel_type = ? LIMIT 1', [organizationId, CHANNEL_TYPE]) as { config_json: string | null } | undefined;
 
     if (row?.config_json) {
       const cfg = JSON.parse(row.config_json) as {
@@ -98,8 +97,8 @@ export function getTelegramConfig(organizationId: string): TelegramConfig {
 }
 
 /** Shape safe to send to the browser: the token is replaced by a "is it set" flag. */
-export function getTelegramConfigPublic(organizationId: string) {
-  const cfg = getTelegramConfig(organizationId);
+export async function getTelegramConfigPublic(organizationId: string) {
+  const cfg = await getTelegramConfig(organizationId);
   return {
     hasToken: !!cfg.botToken,
     chatId: cfg.chatId,
@@ -118,11 +117,9 @@ export interface SaveTelegramInput {
   events: TelegramEvents;
 }
 
-export function saveTelegramConfig(organizationId: string, input: SaveTelegramInput): void {
-  const db = getDb();
-  const row = db
-    .prepare('SELECT id, config_json FROM crm_channels WHERE organization_id = ? AND channel_type = ? LIMIT 1')
-    .get(organizationId, CHANNEL_TYPE) as { id: string; config_json: string | null } | undefined;
+export async function saveTelegramConfig(organizationId: string, input: SaveTelegramInput): Promise<void> {
+  const sql = getSql();
+  const row = await sql.row<any>('SELECT id, config_json FROM crm_channels WHERE organization_id = ? AND channel_type = ? LIMIT 1', [organizationId, CHANNEL_TYPE]) as { id: string; config_json: string | null } | undefined;
 
   const existing = row?.config_json ? (JSON.parse(row.config_json) as { botTokenEnc?: string }) : {};
   const botTokenEnc = input.botToken
@@ -137,17 +134,14 @@ export function saveTelegramConfig(organizationId: string, input: SaveTelegramIn
   });
 
   if (row) {
-    db.prepare('UPDATE crm_channels SET config_json = ?, is_active = 1 WHERE id = ?').run(config, row.id);
+    await sql.run('UPDATE crm_channels SET config_json = ?, is_active = 1 WHERE id = ?', [config, row.id]);
   } else {
-    db.prepare(
-      'INSERT INTO crm_channels (id, organization_id, channel_type, name, config_json, is_active) VALUES (?, ?, ?, ?, ?, 1)',
-    ).run(`ch_telegram_${organizationId}`, organizationId, CHANNEL_TYPE, 'Telegram Bot', config);
+    await sql.run('INSERT INTO crm_channels (id, organization_id, channel_type, name, config_json, is_active) VALUES (?, ?, ?, ?, ?, 1)', [`ch_telegram_${organizationId}`, organizationId, CHANNEL_TYPE, 'Telegram Bot', config]);
   }
 }
 
 /** Forget the stored credentials for this organization. */
-export function disconnectTelegram(organizationId: string): void {
-  getDb()
-    .prepare('UPDATE crm_channels SET config_json = NULL, is_active = 0 WHERE organization_id = ? AND channel_type = ?')
-    .run(organizationId, CHANNEL_TYPE);
+export async function disconnectTelegram(organizationId: string): Promise<void> {
+  const sql = getSql();
+  await sql.run('UPDATE crm_channels SET config_json = NULL, is_active = 0 WHERE organization_id = ? AND channel_type = ?', [organizationId, CHANNEL_TYPE]);
 }

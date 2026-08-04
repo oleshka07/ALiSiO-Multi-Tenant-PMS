@@ -35,7 +35,7 @@ export async function getNotificationSettings(): Promise<NextResponse> {
   if (!user) return unauthorized();
   if (!canManage(user.role)) return forbidden();
   try {
-    return NextResponse.json(getTelegramConfigPublic(user.organization_id));
+    return NextResponse.json(await getTelegramConfigPublic(user.organization_id));
   } catch (e: any) {
     console.error('GET /api/settings/notifications error:', e);
     return NextResponse.json({ error: 'Не вдалося прочитати налаштування' }, { status: 500 });
@@ -79,13 +79,13 @@ export async function saveNotificationSettings(request: NextRequest): Promise<Ne
     const bad = adminChatIds.find((id: string) => !/^-?\d+$/.test(id));
     if (bad) return NextResponse.json({ error: `Некоректний Chat ID адміністратора: ${bad}` }, { status: 400 });
 
-    saveTelegramConfig(user.organization_id, {
+    await saveTelegramConfig(user.organization_id, {
       botToken: botToken || undefined,
       chatId,
       adminChatIds,
       events: coerceEvents(body.events),
     });
-    return NextResponse.json(getTelegramConfigPublic(user.organization_id));
+    return NextResponse.json(await getTelegramConfigPublic(user.organization_id));
   } catch (e: any) {
     console.error('PUT /api/settings/notifications error:', e);
     return NextResponse.json({ error: e?.message || 'Не вдалося зберегти' }, { status: 500 });
@@ -97,8 +97,8 @@ export async function deleteNotificationSettings(): Promise<NextResponse> {
   if (!user) return unauthorized();
   if (!canManage(user.role)) return forbidden();
   try {
-    disconnectTelegram(user.organization_id);
-    return NextResponse.json(getTelegramConfigPublic(user.organization_id));
+    await disconnectTelegram(user.organization_id);
+    return NextResponse.json(await getTelegramConfigPublic(user.organization_id));
   } catch (e: any) {
     console.error('DELETE /api/settings/notifications error:', e);
     return NextResponse.json({ error: 'Не вдалося відключити' }, { status: 500 });
@@ -115,7 +115,7 @@ export async function testNotificationSettings(): Promise<NextResponse> {
   if (!user) return unauthorized();
   if (!canManage(user.role)) return forbidden();
 
-  const cfg = getTelegramConfig(user.organization_id);
+  const cfg = await getTelegramConfig(user.organization_id);
   if (!cfg.botToken) {
     return NextResponse.json({ ok: false, error: 'Токен не збережено' }, { status: 400 });
   }
