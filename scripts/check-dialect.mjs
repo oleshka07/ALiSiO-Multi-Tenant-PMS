@@ -20,6 +20,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Application code only. src/lib/db.ts is deliberately NOT here: it is the
+// SQLite bootstrap — the schema and its migrations — and on Postgres it is
+// replaced wholesale by db/postgres/schema.sql rather than translated. It is
+// full of PRAGMA, AUTOINCREMENT and datetime('now') and always will be.
 const ROOTS = ['src/modules', 'src/core', 'src/app/api'];
 
 /**
@@ -103,6 +107,9 @@ for (const rule of loud) {
 }
 
 console.log(`  разом гучних (синтаксична помилка на Postgres): ${loudTotal}`);
+console.log('  перевірено: src/modules, src/core, src/app/api — код застосунку.');
+console.log('  НЕ перевірено: src/lib/db.ts — це створення схеми SQLite, яке на');
+console.log('  Postgres заміняє db/postgres/schema.sql, а не переклад.');
 const quietTotal = quiet.reduce((n, r) => n + found.get(r.id).length, 0);
 console.log(`  тихих (обидва виконають, результат може різнитись): ${quietTotal} — переглянути раз, не блокує\n`);
 

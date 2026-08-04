@@ -18,6 +18,14 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const monthsParam = searchParams.get('months');
     const months = monthsParam ? parseInt(monthsParam, 10) : 6;
+    // Refused here as well as in the repository: a bad window on this endpoint
+    // should be a 400 the caller can see, not an exception in a cron log.
+    if (!Number.isInteger(months) || months < 1 || months > 600) {
+      return NextResponse.json(
+        { error: 'months must be a whole number between 1 and 600' },
+        { status: 400 },
+      );
+    }
 
     const anonymizedCount = await anonymizeOldRegistrations(months);
 

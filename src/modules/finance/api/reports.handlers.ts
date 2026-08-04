@@ -570,7 +570,15 @@ export async function getBalanceSheet(request: NextRequest): Promise<NextRespons
     const sql = getSql();
     const org = requireOrganizationId(getDb());
     const { searchParams } = new URL(request.url);
-    const asOf = searchParams.get('as_of') || new Date().toISOString().substring(0, 10);
+    // Normalised to a bare date, and refused if it is not one. The SQL this
+    // replaced ran through julianday(), which accepted a timestamp too; the
+    // arithmetic below does not, and would report zero fixed assets rather
+    // than fail — a balance sheet wrong in one line only.
+    const asOfRaw = searchParams.get('as_of');
+    const asOf = asOfRaw ? asOfRaw.slice(0, 10) : new Date().toISOString().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf) || Number.isNaN(Date.parse(`${asOf}T00:00:00Z`))) {
+      return NextResponse.json({ error: 'as_of must be a date, YYYY-MM-DD' }, { status: 400 });
+    }
 
     const accounts = await sql.rows<any>(`
       SELECT fa.id, fa.name, fa.type, fa.currency, fa.credit_limit, fa.color, fa.initial_balance,

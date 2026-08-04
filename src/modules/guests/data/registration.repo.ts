@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from '@core/db/async';
 import type { RegisteredGuest } from '../domain/types';
+import { retentionCutoff } from '../domain/retention';
 
 export async function getReservationForRegistration(token: string) {
   const sql = getSql();
@@ -119,15 +120,14 @@ export async function saveRegistrations(reservationId: string, organizationId: s
 // ── GDPR Data Retention ───────────────────────────────────────────────────
 
 export async function anonymizeOldRegistrations(monthsToKeep = 6): Promise<number> {
+  // retentionCutoff refuses a window that would put the cutoff in the future
+  // and anonymise every guest in the database — see domain/retention.ts. The
+  // throw is deliberate: this is the one operation with no undo, so a caller
+  // that asked for something impossible should fail, not be corrected.
+  const cutoff = retentionCutoff(monthsToKeep);
+
   try {
     const sql = getSql();
-    
-    // Find all registrations where the associated reservation check_out is older than X months
-    // and the data is not already anonymized.
-    // UTC and month-overflow normalisation (Aug 31 − 6 months → Mar 3) both match
-    // what SQLite's date('now', '-N months') did here.
-    const cutoff = new Date();
-    cutoff.setUTCMonth(cutoff.getUTCMonth() - monthsToKeep);
     const info = await sql.run(`
       UPDATE guest_registrations
       SET 
@@ -147,7 +147,7 @@ export async function anonymizeOldRegistrations(monthsToKeep = 6): Promise<numbe
         WHERE r.check_out < ?
           AND gr.first_name != 'Anonymized'
       )
-    `, [cutoff.toISOString().slice(0, 10)]);
+    `, [cutoff]);
     return info.changes;
   } catch (error) {
     console.error('Failed to anonymize old registrations:', error);

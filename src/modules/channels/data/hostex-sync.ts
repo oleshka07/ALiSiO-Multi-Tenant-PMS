@@ -556,44 +556,10 @@ async function ensureHostexColumns() {
   // left here is what only Hostex needs.
   await sql.run('CREATE INDEX IF NOT EXISTS idx_reservations_hostex_code ON reservations(hostex_reservation_code)');
 
-  // A bare INTEGER PRIMARY KEY is still SQLite's implicit-key alias and still
-  // assigns max(id)+1. The keyword dropped from it only additionally forbade
-  // reusing an id after the highest row is deleted, and nothing ever deletes
-  // from this log — so what Postgres rejects was never load-bearing here.
-  await sql.run(`
-    CREATE TABLE IF NOT EXISTS hostex_sync_log (
-      id INTEGER PRIMARY KEY,
-      sync_type TEXT NOT NULL,
-      status TEXT NOT NULL,
-      records_synced INTEGER DEFAULT 0,
-      error_message TEXT,
-      started_at TEXT,
-      completed_at TEXT DEFAULT (CURRENT_TIMESTAMP)
-    )
-  `);
-
-  await sql.run(`
-    CREATE TABLE IF NOT EXISTS hostex_property_map (
-      hostex_property_id INTEGER PRIMARY KEY,
-      hostex_title TEXT,
-      unit_id TEXT NOT NULL,
-      channels TEXT,
-      created_at TEXT DEFAULT (CURRENT_TIMESTAMP)
-    )
-  `);
-
-  await sql.run(`
-    CREATE TABLE IF NOT EXISTS availability_blocks (
-      id TEXT PRIMARY KEY,
-      unit_id TEXT NOT NULL,
-      date_from TEXT NOT NULL,
-      date_to TEXT NOT NULL,
-      reason TEXT DEFAULT 'blocked',
-      notes TEXT,
-      hostex_code TEXT,
-      created_at TEXT DEFAULT (CURRENT_TIMESTAMP)
-    )
-  `);
+  // hostex_sync_log, hostex_property_map and availability_blocks used to be
+  // created here as well. The boot migration in core/db creates all three
+  // before any request is served, so these were no-ops — and the two copies
+  // had already drifted apart, which is the actual reason they are gone.
 
   // Migration 1: Backfill guest_page_token for existing Hostex bookings without token
   try {
