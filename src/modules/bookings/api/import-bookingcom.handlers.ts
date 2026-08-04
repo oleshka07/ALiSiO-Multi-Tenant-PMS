@@ -24,6 +24,7 @@ import {
   findPoolUnit,
 } from '../data/import.repo';
 import { money } from '@core/money';
+import { getSql } from '@core/db/async';
 
 export interface PlannedUnit {
   unitId: string;
@@ -93,13 +94,13 @@ function overlappingClaimedUnits(claimedSlots: ClaimedSlot[], checkIn: string, c
     .map((s) => s.unitId);
 }
 
-function planRow(
+async function planRow(
   row: BookingComRow,
   claimedSlots: ClaimedSlot[] = [],
   mode: 'draft' | 'auto' = 'auto',
-): Pick<PreviewRow, 'matchedUnitType' | 'freeUnitId' | 'freeUnitName' | 'plannedUnits' | 'existing' | 'action' | 'warnings'> {
+): Promise<Pick<PreviewRow, 'matchedUnitType' | 'freeUnitId' | 'freeUnitName' | 'plannedUnits' | 'existing' | 'action' | 'warnings'>> {
   const warnings: string[] = [];
-  const existing = findReservationByBcomId(row.bookNumber);
+  const existing = await findReservationByBcomId(row.bookNumber);
   const isCancelInExcel = row.status === 'cancelled_by_guest' || row.status === 'cancelled';
 
   if (isCancelInExcel) {
@@ -122,18 +123,18 @@ function planRow(
     // so we can re-create with corrected per-room guest counts.
     // This allows re-importing the same Excel file to fix broken drafts.
     if (mode === 'draft' && existing.status === 'draft') {
-      const db = getDb();
+      const sql = getSql();
       // Delete children first (sub-bookings and child reservations)
-      const children = db.prepare('SELECT id FROM reservations WHERE parent_id = ?').all(existing.id);
+      const children = await sql.rows<any>('SELECT id FROM reservations WHERE parent_id = ?', [existing.id]);
       for (const child of children) {
-        db.prepare('DELETE FROM reservation_sub_bookings WHERE child_reservation_id = ?').run((child as any).id);
-        db.prepare('DELETE FROM reservations WHERE id = ?').run((child as any).id);
+        await sql.run('DELETE FROM reservation_sub_bookings WHERE child_reservation_id = ?', [(child as any).id]);
+        await sql.run('DELETE FROM reservations WHERE id = ?', [(child as any).id]);
       }
       // Delete orphan drafts with same bcom_reservation_id (independent draft cards)
-      db.prepare("DELETE FROM reservations WHERE bcom_reservation_id = ? AND status = 'draft' AND id != ?").run(row.bookNumber, existing.id);
+      await sql.run("DELETE FROM reservations WHERE bcom_reservation_id = ? AND status = 'draft' AND id != ?", [row.bookNumber, existing.id]);
       // Delete master sub-booking links and the master itself
-      db.prepare('DELETE FROM reservation_sub_bookings WHERE reservation_id = ?').run(existing.id);
-      db.prepare('DELETE FROM reservations WHERE id = ?').run(existing.id);
+      await sql.run('DELETE FROM reservation_sub_bookings WHERE reservation_id = ?', [existing.id]);
+      await sql.run('DELETE FROM reservations WHERE id = ?', [existing.id]);
       warnings.push(`Попередній draft #${row.bookNumber} видалено — створюється заново з правильною кількістю гостей`);
       // Fall through to create new draft below
     } else {
@@ -143,7 +144,7 @@ function planRow(
 
   // Draft mode: skip room matching entirely — everything goes to pool unit.
   if (mode === 'draft') {
-    const pool = findPoolUnit();
+    const pool = await findPoolUnit();
     if (!pool) {
       warnings.push('Pool unit (Чорновик F) не знайдено в БД');
       return { matchedUnitType: null, freeUnitId: null, freeUnitName: null, plannedUnits: [], existing: null, action: 'skip-no-unit-type', warnings };
@@ -210,7 +211,7 @@ function planRow(
 
   if (perRoomCapacity.length > 0) {
     for (const cap of perRoomCapacity) {
-      const free = findFreeResortUnitByCapacity(cap, row.checkIn, row.checkOut, usedUnitIds);
+      const free = await findFreeResortUnitByCapacity(cap, row.checkIn, row.checkOut, usedUnitIds);
       if (!free) break; // can't fill all rooms — fall through to single-type fallback
       plannedUnits.push({
         unitId: free.id, unitName: free.name, capacity: cap,
@@ -224,9 +225,9 @@ function planRow(
   // give us anything (rare — exotic type names).
   if (plannedUnits.length === 0) {
     const primaryType = row.unitTypes[0] || row.unitTypeRaw;
-    const matched = primaryType ? findUnitTypeByName(primaryType) : null;
+    const matched = primaryType ? await findUnitTypeByName(primaryType) : null;
     if (matched) {
-      const free = findFreeResortUnit(matched.id, row.checkIn, row.checkOut);
+      const free = await findFreeResortUnit(matched.id, row.checkIn, row.checkOut);
       // Honour cross-row claims here too, even though findFreeResortUnit
       // currently doesn't accept excludeUnitIds — skip if the only candidate
       // was already claimed.
@@ -314,7 +315,7 @@ export async function previewBookingComImport(request: NextRequest): Promise<Nex
       );
     }
 
-    const propertyId = findResortPropertyId();
+    const propertyId = await findResortPropertyId();
 
     // Walk rows in order, accumulating the units we have already promised to
     // earlier rows. This makes the preview's per-row plan internally consistent:
@@ -322,7 +323,7 @@ export async function previewBookingComImport(request: NextRequest): Promise<Nex
     const claimedSlots: ClaimedSlot[] = [];
     const rows: PreviewRow[] = [];
     for (const r of parsed.rows) {
-      const planned = planRow(r, claimedSlots, mode);
+      const planned = await planRow(r, claimedSlots, mode);
       rows.push({ ...r, ...planned });
       if (planned.action === 'create') {
         for (const u of planned.plannedUnits) {
@@ -387,7 +388,7 @@ export async function confirmBookingComImport(request: NextRequest): Promise<Nex
     }
     const mode = (body as any).mode === 'auto' ? 'auto' : 'draft';
 
-    const propertyId = findResortPropertyId();
+    const propertyId = await findResortPropertyId();
     if (!propertyId) {
       return NextResponse.json({ error: 'Resort property не знайдено' }, { status: 422 });
     }
@@ -412,7 +413,7 @@ export async function confirmBookingComImport(request: NextRequest): Promise<Nex
 
     for (const row of body.rows) {
       try {
-        const plan = planRow(row, claimedSlots, mode);
+        const plan = await planRow(row, claimedSlots, mode);
 
         if (plan.action === 'create') {
           if (plan.plannedUnits.length === 0) {
@@ -461,7 +462,7 @@ export async function confirmBookingComImport(request: NextRequest): Promise<Nex
                 isMultiRoom ? `Кімната ${i + 1} з ${roomCount}` : '',
               ].filter(Boolean).join('\n');
 
-              const draftResId = insertImportedReservation({
+              const draftResId = await insertImportedReservation({
                 propertyId,
                 unitId: unit.unitId,
                 guestId,
@@ -503,7 +504,7 @@ export async function confirmBookingComImport(request: NextRequest): Promise<Nex
                   isEurRow ? `Конвертовано з EUR за курсом ${eurToCzk.toFixed(3)} (ČNB)` : '',
                 ].filter(Boolean).join('\n');
 
-                masterResId = insertImportedReservation({
+                masterResId = await insertImportedReservation({
                   propertyId,
                   unitId: unit.unitId,
                   guestId,
@@ -526,11 +527,11 @@ export async function confirmBookingComImport(request: NextRequest): Promise<Nex
                 claimedSlots.push({ unitId: unit.unitId, checkIn: row.checkIn, checkOut: row.checkOut });
               } else {
                 // Child reservation linked to master via parent_id
-                const db = getDb();
+                const sql = getSql();
                 const childResId = `bcom_xls_${Date.now()}_${Math.random().toString(36).slice(2, 6)}_c${i}`;
                 const childToken = generateGuestToken();
 
-                db.prepare(`
+                await sql.run(`
                   INSERT INTO reservations (
                     id, property_id, unit_id, guest_id, parent_id,
                     check_in, check_out, nights, adults, children,
@@ -538,30 +539,26 @@ export async function confirmBookingComImport(request: NextRequest): Promise<Nex
                     external_uid, bcom_reservation_id,
                     commission_amount, notes, guest_page_token
                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', 'booking_com', 0, ?, ?, ?, 0, ?, ?)
-                `).run(
-                  childResId, propertyId, unit.unitId, guestId, masterResId,
+                `, [childResId, propertyId, unit.unitId, guestId, masterResId,
                   row.checkIn, row.checkOut, row.duration || 1,
                   unit.capacity, 0,
                   'confirmed',
                   row.currency || 'CZK',
                   row.bookNumber, row.bookNumber,
                   `Sub-booking: Кімната ${i + 1} з ${roomCount} (${unit.unitName})\nBooking.com #${row.bookNumber}`,
-                  childToken
-                );
+                  childToken]);
 
                 // Create sub-booking link
                 const subId = `sub_bcom_${Date.now()}_${i}`;
-                db.prepare(`
+                await sql.run(`
                   INSERT INTO reservation_sub_bookings (
                     id, reservation_id, child_reservation_id, label,
                     adults, children, infants, subtotal, notes, sort_order
                   ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
-                `).run(
-                  subId, masterResId, childResId,
+                `, [subId, masterResId, childResId,
                   `Кімната ${i + 1} (${unit.unitName})`,
                   unit.capacity, 0,
-                  `Booking.com #${row.bookNumber}`, i
-                );
+                  `Booking.com #${row.bookNumber}`, i]);
 
                 created++;
                 details.push({ bookNumber: row.bookNumber, action: 'create', reservationId: childResId });
@@ -570,7 +567,7 @@ export async function confirmBookingComImport(request: NextRequest): Promise<Nex
             }
           }
         } else if (plan.action === 'cancel' && plan.existing) {
-          cancelReservation(plan.existing.id);
+          await cancelReservation(plan.existing.id);
           cancelled++;
           details.push({ bookNumber: row.bookNumber, action: 'cancel', reservationId: plan.existing.id });
         } else {

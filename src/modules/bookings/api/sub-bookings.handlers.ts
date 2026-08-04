@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { money } from '@core/money';
+import { getSql } from '@core/db/async';
 
 /**
  * GET /api/bookings/[id]/sub-bookings
@@ -10,14 +11,14 @@ import { money } from '@core/money';
 export async function listSubBookings(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
 
-    const reservation = db.prepare('SELECT id FROM reservations WHERE id = ?').get(id);
+    const reservation = await sql.row<any>('SELECT id FROM reservations WHERE id = ?', [id]);
     if (!reservation) {
       return NextResponse.json({ error: 'Reservation not found' }, { status: 404 });
     }
 
-    const subBookings = db.prepare(`
+    const subBookings = await sql.rows<any>(`
       SELECT sb.*,
         cr.unit_id as child_unit_id,
         cr.status as child_status,
@@ -29,19 +30,17 @@ export async function listSubBookings(_request: NextRequest, { params }: { param
       LEFT JOIN units u ON cr.unit_id = u.id
       WHERE sb.reservation_id = ?
       ORDER BY sb.sort_order, sb.created_at
-    `).all(id) as any[];
+    `, [id]) as any[];
 
     // Attach line items to each sub-booking
-    const lineItemsStmt = db.prepare(`
-      SELECT * FROM reservation_line_items
-      WHERE sub_booking_id = ?
-      ORDER BY sort_order
-    `);
-
-    const result = subBookings.map((sb: any) => ({
+    const result = await Promise.all(subBookings.map(async (sb: any) => ({
       ...sb,
-      lineItems: lineItemsStmt.all(sb.id),
-    }));
+      lineItems: await sql.rows<any>(`
+        SELECT * FROM reservation_line_items
+        WHERE sub_booking_id = ?
+        ORDER BY sort_order
+      `, [sb.id]),
+    })));
 
     return NextResponse.json(result);
   } catch (e: any) {
@@ -57,15 +56,15 @@ export async function listSubBookings(_request: NextRequest, { params }: { param
 export async function createSubBooking(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
 
-    const master = db.prepare(`
+    const master = await sql.row<any>(`
       SELECT r.*, g.first_name, g.last_name
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
       WHERE r.id = ? AND r.parent_id IS NULL
-    `).get(id) as any;
+    `, [id]) as any;
     if (!master) {
       return NextResponse.json({ error: 'Master reservation not found' }, { status: 404 });
     }
@@ -86,19 +85,19 @@ export async function createSubBooking(request: NextRequest, { params }: { param
     // If sub-booking targets a DIFFERENT unit → create child reservation
     if (unitId && unitId !== master.unit_id) {
       // Check availability
-      const overlap = db.prepare(`
+      const overlap = await sql.row<any>(`
         SELECT 1 FROM reservations
         WHERE unit_id = ? AND status NOT IN ('cancelled', 'no_show')
           AND check_in < ? AND check_out > ?
         LIMIT 1
-      `).get(unitId, master.check_out, master.check_in);
+      `, [unitId, master.check_out, master.check_in]);
       if (overlap) {
         return NextResponse.json({ error: 'Цей юніт вже зайнятий на ці дати' }, { status: 409 });
       }
 
       childReservationId = `r_${Date.now()}_child`;
       const childToken = generateGuestToken();
-      db.prepare(`
+      await sql.run(`
         INSERT INTO reservations (
           id, property_id, unit_id, guest_id, parent_id,
           check_in, check_out, nights, adults, children, infants,
@@ -106,45 +105,42 @@ export async function createSubBooking(request: NextRequest, { params }: { param
           guest_page_token, notes
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        childReservationId, master.property_id, unitId, master.guest_id, master.id,
+      `, [childReservationId, master.property_id, unitId, master.guest_id, master.id,
         master.check_in, master.check_out, master.nights, adults, children, infants,
         master.status, master.payment_status, master.source, subtotal, master.currency,
-        childToken, `Sub-booking: ${label}`
-      );
+        childToken, `Sub-booking: ${label}`]);
     }
 
     // Create sub-booking record
     const subId = `sub_${Date.now()}`;
-    const maxOrder = (db.prepare(
-      'SELECT COALESCE(MAX(sort_order), -1) as mx FROM reservation_sub_bookings WHERE reservation_id = ?'
-    ).get(id) as any).mx;
+    const maxOrder = (await sql.row<any>('SELECT COALESCE(MAX(sort_order), -1) as mx FROM reservation_sub_bookings WHERE reservation_id = ?', [id]) as any).mx;
 
-    db.prepare(`
+    await sql.run(`
       INSERT INTO reservation_sub_bookings (
         id, reservation_id, child_reservation_id, label,
         adults, children, infants, subtotal, notes, sort_order
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(subId, id, childReservationId, label, adults, children, infants, subtotal, notes, maxOrder + 1);
+    `, [subId, id, childReservationId, label, adults, children, infants, subtotal, notes, maxOrder + 1]);
 
     // Create line items if provided
     if (Array.isArray(lineItems) && lineItems.length > 0) {
-      const insertItem = db.prepare(`
-        INSERT INTO reservation_line_items (
-          id, sub_booking_id, description, quantity, unit_price, total, category, sort_order
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (let i = 0; i < lineItems.length; i++) {
-        const item = lineItems[i];
-        const itemId = `li_${Date.now()}_${i}`;
-        const itemTotal = money(item.total ?? (item.quantity || 1) * (item.unit_price || 0));
-        insertItem.run(
-          itemId, subId, item.description || '', item.quantity || 1,
-          item.unit_price || 0, itemTotal, item.category || 'other', i
-        );
-      }
+      // All the items together: a sub-booking with half its lines priced
+      // is worse than one with none.
+      await sql.tx(async (t) => {
+        for (let i = 0; i < lineItems.length; i++) {
+          const item = lineItems[i];
+          const itemId = `li_${Date.now()}_${i}`;
+          const itemTotal = money(item.total ?? (item.quantity || 1) * (item.unit_price || 0));
+          await t.run(`
+          INSERT INTO reservation_line_items (
+            id, sub_booking_id, description, quantity, unit_price, total, category, sort_order
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `, [itemId, subId, item.description || '', item.quantity || 1,
+            item.unit_price || 0, itemTotal, item.category || 'other', i]);
+        }
+      });
     }
 
     return NextResponse.json({ id: subId, childReservationId }, { status: 201 });
@@ -161,12 +157,10 @@ export async function createSubBooking(request: NextRequest, { params }: { param
 export async function updateSubBooking(request: NextRequest, { params }: { params: Promise<{ id: string; subId: string }> }) {
   try {
     const { id, subId } = await params;
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
 
-    const existing = db.prepare(
-      'SELECT * FROM reservation_sub_bookings WHERE id = ? AND reservation_id = ?'
-    ).get(subId, id) as any;
+    const existing = await sql.row<any>('SELECT * FROM reservation_sub_bookings WHERE id = ? AND reservation_id = ?', [subId, id]) as any;
     if (!existing) {
       return NextResponse.json({ error: 'Sub-booking not found' }, { status: 404 });
     }
@@ -183,7 +177,7 @@ export async function updateSubBooking(request: NextRequest, { params }: { param
 
     if (sets.length > 0) {
       values.push(subId);
-      db.prepare(`UPDATE reservation_sub_bookings SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+      await sql.run(`UPDATE reservation_sub_bookings SET ${sets.join(', ')} WHERE id = ?`, [...values]);
     }
 
     // If child reservation exists, sync adults/children/subtotal
@@ -196,28 +190,29 @@ export async function updateSubBooking(request: NextRequest, { params }: { param
       if (body.subtotal !== undefined) { childUpdates.push('total_price = ?'); childValues.push(body.subtotal); }
       if (childUpdates.length > 0) {
         childValues.push(existing.child_reservation_id);
-        db.prepare(`UPDATE reservations SET ${childUpdates.join(', ')} WHERE id = ?`).run(...childValues);
+        await sql.run(`UPDATE reservations SET ${childUpdates.join(', ')} WHERE id = ?`, [...childValues]);
       }
     }
 
     // Handle line items update (replace all)
     if (body.lineItems !== undefined && Array.isArray(body.lineItems)) {
-      db.prepare('DELETE FROM reservation_line_items WHERE sub_booking_id = ?').run(subId);
-      const insertItem = db.prepare(`
-        INSERT INTO reservation_line_items (
-          id, sub_booking_id, description, quantity, unit_price, total, category, sort_order
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (let i = 0; i < body.lineItems.length; i++) {
-        const item = body.lineItems[i];
-        const itemId = `li_${Date.now()}_${i}`;
-        const itemTotal = money(item.total ?? (item.quantity || 1) * (item.unit_price || 0));
-        insertItem.run(
-          itemId, subId, item.description || '', item.quantity || 1,
-          item.unit_price || 0, itemTotal, item.category || 'other', i
-        );
-      }
+      await sql.run('DELETE FROM reservation_line_items WHERE sub_booking_id = ?', [subId]);
+      // All the items together: a sub-booking with half its lines priced
+      // is worse than one with none.
+      await sql.tx(async (t) => {
+        for (let i = 0; i < body.lineItems.length; i++) {
+          const item = body.lineItems[i];
+          const itemId = `li_${Date.now()}_${i}`;
+          const itemTotal = money(item.total ?? (item.quantity || 1) * (item.unit_price || 0));
+          await t.run(`
+          INSERT INTO reservation_line_items (
+            id, sub_booking_id, description, quantity, unit_price, total, category, sort_order
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `, [itemId, subId, item.description || '', item.quantity || 1,
+            item.unit_price || 0, itemTotal, item.category || 'other', i]);
+        }
+      });
     }
 
     return NextResponse.json({ success: true });
@@ -233,22 +228,20 @@ export async function updateSubBooking(request: NextRequest, { params }: { param
 export async function deleteSubBooking(_request: NextRequest, { params }: { params: Promise<{ id: string; subId: string }> }) {
   try {
     const { id, subId } = await params;
-    const db = getDb();
+    const sql = getSql();
 
-    const existing = db.prepare(
-      'SELECT * FROM reservation_sub_bookings WHERE id = ? AND reservation_id = ?'
-    ).get(subId, id) as any;
+    const existing = await sql.row<any>('SELECT * FROM reservation_sub_bookings WHERE id = ? AND reservation_id = ?', [subId, id]) as any;
     if (!existing) {
       return NextResponse.json({ error: 'Sub-booking not found' }, { status: 404 });
     }
 
     // Delete child reservation if exists (cascade will clean up line items via FK)
     if (existing.child_reservation_id) {
-      db.prepare('DELETE FROM reservations WHERE id = ? AND parent_id = ?').run(existing.child_reservation_id, id);
+      await sql.run('DELETE FROM reservations WHERE id = ? AND parent_id = ?', [existing.child_reservation_id, id]);
     }
 
     // Delete sub-booking (line items cascade via FK ON DELETE CASCADE)
-    db.prepare('DELETE FROM reservation_sub_bookings WHERE id = ?').run(subId);
+    await sql.run('DELETE FROM reservation_sub_bookings WHERE id = ?', [subId]);
 
     return NextResponse.json({ success: true });
   } catch (e: any) {

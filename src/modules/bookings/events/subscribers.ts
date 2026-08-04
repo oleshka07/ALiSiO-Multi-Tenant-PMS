@@ -1,5 +1,5 @@
 import { eventBus } from '@core/event-bus';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 // Need to use the internal data layer here since we are inside the bookings module
 import { sendBookingConfirmationEmail } from '../data/send-confirmation-email';
 
@@ -11,16 +11,16 @@ export async function registerBookingsSubscribers() {
         return;
       }
 
-      const db = getDb();
+      const sql = getSql();
       
-      const row = db.prepare(`
+      const row = await sql.row<any>(`
         SELECT id FROM reservations WHERE payment_id = ?
         UNION
         SELECT reservation_id FROM booking_service_orders WHERE payment_id = ? AND reservation_id IS NOT NULL
         UNION
         SELECT reservation_id FROM service_orders WHERE payment_id = ? AND reservation_id IS NOT NULL
         LIMIT 1
-      `).get(payload.paymentId, payload.paymentId, payload.paymentId) as { id: string } | undefined;
+      `, [payload.paymentId, payload.paymentId, payload.paymentId]) as { id: string } | undefined;
 
       if (row?.id) {
         // We must await it in serverless environments (Vercel) so the lambda doesn't freeze

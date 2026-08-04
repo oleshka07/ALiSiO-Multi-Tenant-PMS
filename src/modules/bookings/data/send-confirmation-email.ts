@@ -4,7 +4,7 @@
  * (Teya webhook or admin-PIN). Idempotency is the caller's job: only call
  * after a payment_status update where `.changes > 0` so we don't email twice.
  */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { appBaseUrl } from '@core/app-url';
 import { sendEmail } from '@core/mail/email';
 
@@ -21,9 +21,9 @@ function fmtPrice(n: number, currency: string): string {
 }
 
 export async function sendBookingConfirmationEmail(reservationId: string, origin?: string): Promise<boolean> {
-  const db = getDb();
+  const sql = getSql();
 
-  const row = db.prepare(`
+  const row = await sql.row<any>(`
     SELECT r.id, r.unit_id, r.check_in, r.check_out, r.nights, r.adults, r.children,
            r.total_price, r.currency, r.guest_page_token, r.payment_status,
            g.first_name, g.last_name, g.email,
@@ -34,7 +34,7 @@ export async function sendBookingConfirmationEmail(reservationId: string, origin
     LEFT JOIN units u ON r.unit_id = u.id
     LEFT JOIN properties p ON r.property_id = p.id
     WHERE r.id = ?
-  `).get(reservationId) as any;
+  `, [reservationId]) as any;
 
   if (!row) {
     console.warn(`[BookingEmail] Reservation ${reservationId} not found`);
@@ -57,12 +57,12 @@ export async function sendBookingConfirmationEmail(reservationId: string, origin
   let widgetConfig: any = {};
   if (row.unit_id) {
     try {
-      const siteRow = db.prepare(`
+      const siteRow = await sql.row<any>(`
         SELECT bs.widget_config FROM site_listings sl
         JOIN booking_sites bs ON sl.site_id = bs.id
         WHERE sl.unit_id = ? AND sl.is_active = 1
         LIMIT 1
-      `).get(row.unit_id) as any;
+      `, [row.unit_id]) as any;
       if (siteRow?.widget_config) {
         widgetConfig = JSON.parse(siteRow.widget_config);
       }

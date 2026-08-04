@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { getSessionUser } from '@core/auth';
 
 /** Actor helper — same pattern as finance module's getOptionalActor */
@@ -16,24 +16,24 @@ export async function getBookingActor(): Promise<{ id: string; name: string } | 
 }
 
 /** Build a human-readable label for a booking that survives deletion */
-export function buildBookingLabel(db: any, reservationId: string): string {
+export async function buildBookingLabel(reservationId: string): Promise<string> {
+  const sql = getSql();
   try {
-    const row = db.prepare(`
+    const row = await sql.row<any>(`
       SELECT r.check_in, r.check_out, r.source, u.code as unit_code,
              g.first_name, g.last_name
       FROM reservations r
       LEFT JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
       WHERE r.id = ?
-    `).get(reservationId) as any;
+    `, [reservationId]) as any;
     if (!row) return reservationId;
     return `${row.first_name || ''} ${row.last_name || ''} · ${row.unit_code || ''} · ${row.check_in}–${row.check_out}`.trim();
   } catch { return reservationId; }
 }
 
 /** Write an audit entry to booking_activity_log */
-export function writeBookingAudit(
-  db: any,
+export async function writeBookingAudit(
   reservationId: string,
   action: string,
   details: string,
@@ -41,21 +41,20 @@ export function writeBookingAudit(
   beforeRow: any,
   afterRow: any,
   bookingLabel?: string,
-): void {
+): Promise<void> {
+  const sql = getSql();
   const id = `bal_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   try {
-    const label = bookingLabel || buildBookingLabel(db, reservationId);
-    db.prepare(`
+    const label = bookingLabel || await buildBookingLabel(reservationId);
+    await sql.run(`
       INSERT INTO booking_activity_log
         (id, reservation_id, action, details, user_id, user_name, before_json, after_json, booking_label)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id, reservationId, action, details,
+    `, [id, reservationId, action, details,
       actor?.id || null, actor?.name || null,
       beforeRow ? JSON.stringify(beforeRow) : null,
       afterRow ? JSON.stringify(afterRow) : null,
-      label,
-    );
+      label]);
   } catch (e: any) {
     console.error('[booking_activity_log] write failed (non-fatal):', e?.message);
   }
@@ -72,13 +71,13 @@ export async function listBookingAudit(request: NextRequest): Promise<NextRespon
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const db = getDb();
+    const sql = getSql();
     const { searchParams } = new URL(request.url);
     const reservationId = searchParams.get('reservation_id');
     const limit = Math.min(200, parseInt(searchParams.get('limit') || '50', 10));
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
-    let sql = `
+    let statement = `
       SELECT id, reservation_id, action, details, user_id, user_name,
              before_json, after_json, booking_label, created_at
       FROM booking_activity_log
@@ -86,14 +85,14 @@ export async function listBookingAudit(request: NextRequest): Promise<NextRespon
     const params: any[] = [];
 
     if (reservationId) {
-      sql += ' WHERE reservation_id = ?';
+      statement += ' WHERE reservation_id = ?';
       params.push(reservationId);
     }
 
-    sql += ' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?';
+    statement += ' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
-    const rows = db.prepare(sql).all(...params);
+    const rows = await sql.rows<any>(statement, params);
     return NextResponse.json({ items: rows });
   } catch (error: any) {
     console.error('GET /api/audit/bookings error:', error?.message || error);

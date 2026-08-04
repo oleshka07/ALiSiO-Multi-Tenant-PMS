@@ -6,10 +6,11 @@ import { notifyReservationCreated } from '../domain/reservation-tg-notify';
 import { writeBookingAudit, getBookingActor } from './audit-log.handlers';
 import { withActor, type Actor } from '@core/auth/session';
 import { ownedUnit } from '../data/owned.repo';
+import { getSql } from '@core/db/async';
 
 export const listReservations = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { searchParams } = new URL(request.url);
 
     const status = searchParams.get('status') || '';
@@ -115,7 +116,7 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
 
     query += ' ORDER BY r.check_in ASC';
 
-    const rows = db.prepare(query).all(...params);
+    const rows = await sql.rows<any>(query, params);
 
     return NextResponse.json(rows);
   } catch (error) {
@@ -126,7 +127,7 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
 
 export const createReservation = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
 
     const {
@@ -143,17 +144,17 @@ export const createReservation = withActor(async (request: NextRequest, _ctx, ac
     }
 
     // Wrong tenant's unit looks exactly like a missing one.
-    const unit = ownedUnit(db, actor.organizationId, unitId);
+    const unit = await ownedUnit(actor.organizationId, unitId);
     if (!unit) {
       return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
     }
 
-    const overlap = db.prepare(`
+    const overlap = await sql.row<any>(`
       SELECT 1 FROM reservations
       WHERE unit_id = ? AND status NOT IN ('cancelled', 'no_show')
         AND check_in < ? AND check_out > ?
       LIMIT 1
-    `).get(unitId, checkOut, checkIn);
+    `, [unitId, checkOut, checkIn]);
     if (overlap) {
       return NextResponse.json({ error: 'This unit is already booked for the selected dates' }, { status: 409 });
     }
@@ -174,7 +175,7 @@ export const createReservation = withActor(async (request: NextRequest, _ctx, ac
     if (commissionOverride !== undefined && commissionOverride !== null) {
       commissionAmount = Number(commissionOverride);
     } else if (source) {
-      const bsRow = db.prepare('SELECT commission_percent FROM booking_sources WHERE code = ?').get(source) as { commission_percent: number } | undefined;
+      const bsRow = await sql.row<any>('SELECT commission_percent FROM booking_sources WHERE code = ?', [source]) as { commission_percent: number } | undefined;
       if (bsRow && bsRow.commission_percent > 0) {
         commissionAmount = Math.round((totalPrice || 0) * bsRow.commission_percent / 100);
       }
@@ -187,18 +188,18 @@ export const createReservation = withActor(async (request: NextRequest, _ctx, ac
     const bookingStatus = status || 'confirmed';
     const guestPageToken = (bookingStatus === 'confirmed' || bookingStatus === 'checked_in') ? generateGuestToken() : null;
 
-    db.prepare(`
+    await sql.run(`
       INSERT INTO reservations (id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, commission_amount, guest_page_token, city_tax_amount, city_tax_included, city_tax_paid, internal_notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(resId, unit.property_id, unitId, guestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', totalPrice || 0, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null);
+    `, [resId, unit.property_id, unitId, guestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', totalPrice || 0, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null]);
 
-    notifyReservationCreated(resId, { sourceLabel: `Ручне додавання · ${source || 'direct'}` });
+    await notifyReservationCreated(resId, { sourceLabel: `Ручне додавання · ${source || 'direct'}` });
 
     // Audit log
     try {
       const actor = await getBookingActor();
-      const afterRow = db.prepare('SELECT * FROM reservations WHERE id = ?').get(resId);
-      writeBookingAudit(db, resId, 'created', `Створено: ${firstName} ${lastName} · ${source || 'direct'}`, actor, null, afterRow);
+      const afterRow = await sql.row<any>('SELECT * FROM reservations WHERE id = ?', [resId]);
+      await writeBookingAudit(resId, 'created', `Створено: ${firstName} ${lastName} · ${source || 'direct'}`, actor, null, afterRow);
     } catch { /* non-critical */ }
 
     return NextResponse.json({ id: resId, guestId, guestPageToken }, { status: 201 });

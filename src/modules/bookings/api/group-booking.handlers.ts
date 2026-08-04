@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 export async function getGroupBooking(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
 
-    const group = db.prepare(`
+    const group = await sql.row<any>(`
       SELECT rg.*,
         g.first_name, g.last_name, g.email as guest_email, g.phone as guest_phone,
         b.name as building_name, b.code as building_code
@@ -15,13 +15,13 @@ export async function getGroupBooking(_request: NextRequest, { params }: { param
       JOIN guests g ON rg.guest_id = g.id
       LEFT JOIN buildings b ON rg.building_id = b.id
       WHERE rg.id = ?
-    `).get(id);
+    `, [id]);
 
     if (!group) {
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
 
-    const rooms = db.prepare(`
+    const rooms = await sql.rows<any>(`
       SELECT r.id, r.unit_id, r.adults, r.children, r.status, r.total_price,
         u.name as unit_name, u.code as unit_code,
         g.first_name, g.last_name, g.email as guest_email, g.phone as guest_phone,
@@ -31,7 +31,7 @@ export async function getGroupBooking(_request: NextRequest, { params }: { param
       JOIN guests g ON r.guest_id = g.id
       WHERE r.group_id = ?
       ORDER BY u.sort_order, u.code
-    `).all(id);
+    `, [id]);
 
     return NextResponse.json({ ...group as any, rooms });
   } catch (e: any) {
@@ -42,10 +42,10 @@ export async function getGroupBooking(_request: NextRequest, { params }: { param
 export async function updateGroupBooking(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
 
-    const existing = db.prepare('SELECT * FROM reservation_groups WHERE id = ?').get(id) as any;
+    const existing = await sql.row<any>('SELECT * FROM reservation_groups WHERE id = ?', [id]) as any;
     if (!existing) {
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
@@ -64,7 +64,7 @@ export async function updateGroupBooking(request: NextRequest, { params }: { par
     if (sets.length > 0) {
       sets.push("updated_at = datetime('now')");
       values.push(id);
-      db.prepare(`UPDATE reservation_groups SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+      await sql.run(`UPDATE reservation_groups SET ${sets.join(', ')} WHERE id = ?`, [...values]);
     }
 
     if (body.first_name || body.last_name || body.guest_phone) {
@@ -75,27 +75,27 @@ export async function updateGroupBooking(request: NextRequest, { params }: { par
       if (body.guest_phone !== undefined) { guestUpdate.push('phone = ?'); guestValues.push(body.guest_phone); }
       if (guestUpdate.length > 0) {
         guestValues.push(existing.guest_id);
-        db.prepare(`UPDATE guests SET ${guestUpdate.join(', ')} WHERE id = ?`).run(...guestValues);
+        await sql.run(`UPDATE guests SET ${guestUpdate.join(', ')} WHERE id = ?`, [...guestValues]);
       }
     }
 
     if (body.status) {
-      db.prepare('UPDATE reservations SET status = ? WHERE group_id = ?').run(body.status, id);
+      await sql.run('UPDATE reservations SET status = ? WHERE group_id = ?', [body.status, id]);
     }
     if (body.payment_status) {
-      db.prepare('UPDATE reservations SET payment_status = ? WHERE group_id = ?').run(body.payment_status, id);
+      await sql.run('UPDATE reservations SET payment_status = ? WHERE group_id = ?', [body.payment_status, id]);
     }
     if (body.check_in) {
-      db.prepare('UPDATE reservations SET check_in = ? WHERE group_id = ?').run(body.check_in, id);
+      await sql.run('UPDATE reservations SET check_in = ? WHERE group_id = ?', [body.check_in, id]);
     }
     if (body.check_out) {
-      db.prepare('UPDATE reservations SET check_out = ? WHERE group_id = ?').run(body.check_out, id);
+      await sql.run('UPDATE reservations SET check_out = ? WHERE group_id = ?', [body.check_out, id]);
     }
     if (body.nights) {
-      db.prepare('UPDATE reservations SET nights = ? WHERE group_id = ?').run(body.nights, id);
+      await sql.run('UPDATE reservations SET nights = ? WHERE group_id = ?', [body.nights, id]);
     }
     if (body.source) {
-      db.prepare('UPDATE reservations SET source = ? WHERE group_id = ?').run(body.source, id);
+      await sql.run('UPDATE reservations SET source = ? WHERE group_id = ?', [body.source, id]);
     }
 
     return NextResponse.json({ success: true });
@@ -107,10 +107,10 @@ export async function updateGroupBooking(request: NextRequest, { params }: { par
 export async function deleteGroupBooking(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
 
-    db.prepare('DELETE FROM reservations WHERE group_id = ?').run(id);
-    db.prepare('DELETE FROM reservation_groups WHERE id = ?').run(id);
+    await sql.run('DELETE FROM reservations WHERE group_id = ?', [id]);
+    await sql.run('DELETE FROM reservation_groups WHERE id = ?', [id]);
 
     return NextResponse.json({ success: true });
   } catch (e: any) {

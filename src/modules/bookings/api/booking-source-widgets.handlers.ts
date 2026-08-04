@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 /**
  * GET /api/booking-sources/widget-sites
@@ -14,23 +14,21 @@ import { getDb } from '@core/db';
  */
 export async function listWidgetSiteSources() {
   try {
-    const db = getDb();
+    const sql = getSql();
 
     // Guard: table may not exist in older DBs
-    const tableExists = db.prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='booking_sites'"
-    ).get();
+    const tableExists = await sql.row<any>("SELECT name FROM sqlite_master WHERE type='table' AND name='booking_sites'");
 
     if (!tableExists) {
       return NextResponse.json([]);
     }
 
-    const sites = db.prepare(`
+    const sites = await sql.rows<any>(`
       SELECT id, name, slug, site_url, status
       FROM booking_sites
       WHERE status != 'deleted'
       ORDER BY name
-    `).all() as any[];
+    `) as any[];
 
     const rows = sites.map((s) => ({
       code: `widget:${s.id}`,

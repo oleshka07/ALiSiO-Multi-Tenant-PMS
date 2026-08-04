@@ -1,4 +1,4 @@
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { appBaseUrl } from '@core/app-url';
 import { sendEmail } from '@core/mail/email';
 import { detectLanguage } from '@/app/guest/[token]/translations';
@@ -8,9 +8,9 @@ function fmtPrice(n: number, currency: string): string {
 }
 
 export async function sendAbandonedCartEmail(reservationId: string, origin?: string): Promise<boolean> {
-  const db = getDb();
+  const sql = getSql();
 
-  const row = db.prepare(`
+  const row = await sql.row<any>(`
     SELECT r.id, r.check_in, r.check_out, r.nights, r.total_price, r.currency, r.guest_page_token,
            g.first_name, g.email, g.phone,
            u.name as unit_name, u.thank_you_url,
@@ -20,7 +20,7 @@ export async function sendAbandonedCartEmail(reservationId: string, origin?: str
     LEFT JOIN units u ON r.unit_id = u.id
     LEFT JOIN properties p ON r.property_id = p.id
     WHERE r.id = ?
-  `).get(reservationId) as any;
+  `, [reservationId]) as any;
 
   if (!row || !row.email || !row.guest_page_token) {
     return false;

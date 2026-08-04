@@ -7,16 +7,17 @@ import { generateInvoiceForReservation } from '@finance';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@core/auth';
 import { writeBookingAudit, getBookingActor, buildBookingLabel } from './audit-log.handlers';
+import { getSql } from '@core/db/async';
 
 export const getReservation = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await params;
-    if (!ownedReservation(db, actor.organizationId, id)) {
+    if (!await ownedReservation(actor.organizationId, id)) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const row = db.prepare(`
+    const row = await sql.row<any>(`
       SELECT
         r.*, r.guest_page_token, g.first_name, g.last_name, g.email as guest_email, g.phone as guest_phone, g.country as guest_country,
         u.name as unit_name, u.code as unit_code,
@@ -30,14 +31,14 @@ export const getReservation = withActor(async (_request: NextRequest, { params }
       JOIN categories c ON u.category_id = c.id
       JOIN unit_types ut ON u.unit_type_id = ut.id
       WHERE r.id = ?
-    `).get(id);
+    `, [id]);
 
     if (!row) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
     // Attach sub-bookings + line items
-    const subBookings = db.prepare(`
+    const subBookings = await sql.rows<any>(`
       SELECT sb.*,
         cr.unit_id as child_unit_id,
         cr.payment_status as child_payment_status,
@@ -48,20 +49,18 @@ export const getReservation = withActor(async (_request: NextRequest, { params }
       LEFT JOIN units u2 ON cr.unit_id = u2.id
       WHERE sb.reservation_id = ?
       ORDER BY sb.sort_order, sb.created_at
-    `).all(id) as any[];
+    `, [id]) as any[];
 
-    const lineItemsStmt = db.prepare(
-      'SELECT * FROM reservation_line_items WHERE sub_booking_id = ? ORDER BY sort_order'
-    );
-    const subBookingsWithItems = subBookings.map((sb: any) => ({
+    const subBookingsWithItems = await Promise.all(subBookings.map(async (sb: any) => ({
       ...sb,
-      lineItems: lineItemsStmt.all(sb.id),
-    }));
+      lineItems: await sql.rows<any>(
+        'SELECT * FROM reservation_line_items WHERE sub_booking_id = ? ORDER BY sort_order',
+        [sb.id],
+      ),
+    })));
 
     // Count children
-    const childCount = (db.prepare(
-      'SELECT COUNT(*) as n FROM reservations WHERE parent_id = ?'
-    ).get(id) as any).n;
+    const childCount = (await sql.row<any>('SELECT COUNT(*) as n FROM reservations WHERE parent_id = ?', [id]) as any).n;
 
     return NextResponse.json({
       ...row as any,
@@ -76,9 +75,9 @@ export const getReservation = withActor(async (_request: NextRequest, { params }
 
 export const updateReservation = withActor(async (request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await params;
-    if (!ownedReservation(db, actor.organizationId, id)) {
+    if (!await ownedReservation(actor.organizationId, id)) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     const body = await request.json();
@@ -99,10 +98,10 @@ export const updateReservation = withActor(async (request: NextRequest, { params
     const values: (string | number)[] = [];
 
     // Capture full row snapshot BEFORE the update for audit trail
-    const beforeSnapshot = db.prepare('SELECT * FROM reservations WHERE id = ?').get(id);
+    const beforeSnapshot = await sql.row<any>('SELECT * FROM reservations WHERE id = ?', [id]);
 
     if (body.status === 'checked_in') {
-      const current = db.prepare('SELECT payment_status, registration_status FROM reservations WHERE id = ?').get(id) as any;
+      const current = await sql.row<any>('SELECT payment_status, registration_status FROM reservations WHERE id = ?', [id]) as any;
       const payStatus = body.payment_status || current?.payment_status;
       const regStatus = current?.registration_status;
 
@@ -119,9 +118,7 @@ export const updateReservation = withActor(async (request: NextRequest, { params
     // value back at us.
     let prevUnitLabel: string | null = null;
     if (body.unit_id !== undefined) {
-      const prevRow = db.prepare(
-        'SELECT u.name AS unit_name, r.unit_id FROM reservations r LEFT JOIN units u ON u.id = r.unit_id WHERE r.id = ?',
-      ).get(id) as { unit_name?: string; unit_id?: string } | undefined;
+      const prevRow = await sql.row<any>('SELECT u.name AS unit_name, r.unit_id FROM reservations r LEFT JOIN units u ON u.id = r.unit_id WHERE r.id = ?', [id]) as { unit_name?: string; unit_id?: string } | undefined;
       prevUnitLabel = prevRow?.unit_name || prevRow?.unit_id || null;
     }
 
@@ -132,21 +129,19 @@ export const updateReservation = withActor(async (request: NextRequest, { params
     // Staging pool units intentionally hold many bookings at once — skip
     // the check when the target unit is a pool.
     if (body.unit_id !== undefined || body.check_in !== undefined || body.check_out !== undefined) {
-      const current = db.prepare(
-        'SELECT unit_id, check_in, check_out FROM reservations WHERE id = ?',
-      ).get(id) as { unit_id: string; check_in: string; check_out: string } | undefined;
+      const current = await sql.row<any>('SELECT unit_id, check_in, check_out FROM reservations WHERE id = ?', [id]) as { unit_id: string; check_in: string; check_out: string } | undefined;
       if (current) {
         const targetUnit = body.unit_id !== undefined ? body.unit_id : current.unit_id;
         const targetIn  = body.check_in   !== undefined ? body.check_in  : current.check_in;
         const targetOut = body.check_out  !== undefined ? body.check_out : current.check_out;
-        const targetUnitRow = db.prepare('SELECT is_pool FROM units WHERE id = ?').get(targetUnit) as { is_pool?: number } | undefined;
+        const targetUnitRow = await sql.row<any>('SELECT is_pool FROM units WHERE id = ?', [targetUnit]) as { is_pool?: number } | undefined;
         if (!targetUnitRow?.is_pool) {
-          const overlap = db.prepare(`
+          const overlap = await sql.row<any>(`
             SELECT id FROM reservations
             WHERE unit_id = ? AND id <> ? AND status NOT IN ('cancelled', 'no_show')
               AND check_in < ? AND check_out > ?
             LIMIT 1
-          `).get(targetUnit, id, targetOut, targetIn) as { id: string } | undefined;
+          `, [targetUnit, id, targetOut, targetIn]) as { id: string } | undefined;
           if (overlap) {
             return NextResponse.json(
               { error: 'Кімната зайнята на ці дати іншим бронюванням', conflictBookingId: overlap.id },
@@ -165,7 +160,7 @@ export const updateReservation = withActor(async (request: NextRequest, { params
     }
 
     if (body.status && (body.status === 'confirmed' || body.status === 'checked_in')) {
-      const existing = db.prepare('SELECT guest_page_token FROM reservations WHERE id = ?').get(id) as any;
+      const existing = await sql.row<any>('SELECT guest_page_token FROM reservations WHERE id = ?', [id]) as any;
       if (!existing?.guest_page_token) {
         sets.push('guest_page_token = ?');
         values.push(generateGuestToken());
@@ -174,7 +169,7 @@ export const updateReservation = withActor(async (request: NextRequest, { params
 
     // Generate guest token on demand (from mobile footer buttons)
     if (body.generate_guest_token) {
-      const existing = db.prepare('SELECT guest_page_token FROM reservations WHERE id = ?').get(id) as any;
+      const existing = await sql.row<any>('SELECT guest_page_token FROM reservations WHERE id = ?', [id]) as any;
       if (!existing?.guest_page_token) {
         sets.push('guest_page_token = ?');
         values.push(generateGuestToken());
@@ -184,16 +179,16 @@ export const updateReservation = withActor(async (request: NextRequest, { params
     // Track old payment_status for TG notification editing
     let oldPaymentStatus: string | null = null;
     if (body.payment_status) {
-      const oldRes = db.prepare('SELECT payment_status FROM reservations WHERE id = ?').get(id) as any;
+      const oldRes = await sql.row<any>('SELECT payment_status FROM reservations WHERE id = ?', [id]) as any;
       oldPaymentStatus = oldRes?.payment_status || null;
     }
 
     if (sets.length > 0) {
       sets.push("updated_at = datetime('now')");
       values.push(id);
-      const sql = `UPDATE reservations SET ${sets.join(', ')} WHERE id = ?`;
-      console.log('[PATCH] SQL:', sql, 'values:', values);
-      const result = db.prepare(sql).run(...values);
+      const statement = `UPDATE reservations SET ${sets.join(', ')} WHERE id = ?`;
+      console.log('[PATCH] SQL:', statement, 'values:', values);
+      const result = await sql.run(statement, values);
       console.log('[PATCH] result:', JSON.stringify(result));
     }
 
@@ -209,7 +204,7 @@ export const updateReservation = withActor(async (request: NextRequest, { params
     }
 
     if (body.firstName || body.lastName || body.email || body.phone) {
-      const res = db.prepare('SELECT guest_id FROM reservations WHERE id = ?').get(id) as any;
+      const res = await sql.row<any>('SELECT guest_id FROM reservations WHERE id = ?', [id]) as any;
       if (res) {
         const guestSets: string[] = [];
         const guestVals: string[] = [];
@@ -221,7 +216,7 @@ export const updateReservation = withActor(async (request: NextRequest, { params
 
         if (guestSets.length > 0) {
           guestVals.push(res.guest_id);
-          db.prepare(`UPDATE guests SET ${guestSets.join(', ')} WHERE id = ?`).run(...guestVals);
+          await sql.run(`UPDATE guests SET ${guestSets.join(', ')} WHERE id = ?`, [...guestVals]);
         }
       }
     }
@@ -229,13 +224,13 @@ export const updateReservation = withActor(async (request: NextRequest, { params
     // --- Audit logging with user + before/after ---
     try {
       const actor = await getBookingActor();
-      const afterRow = db.prepare('SELECT * FROM reservations WHERE id = ?').get(id);
+      const afterRow = await sql.row<any>('SELECT * FROM reservations WHERE id = ?', [id]);
       const logActions: { action: string; details: string }[] = [];
       if (body.status) logActions.push({ action: 'status_change', details: `Статус → ${body.status}` });
       if (body.payment_status) logActions.push({ action: 'payment_status_change', details: `Оплата → ${body.payment_status}` });
       if (body.total_price !== undefined) logActions.push({ action: 'price_change', details: `Ціна → ${body.total_price} CZK` });
       if (body.unit_id !== undefined) {
-        const nextRow = db.prepare('SELECT name FROM units WHERE id = ?').get(body.unit_id) as { name?: string } | undefined;
+        const nextRow = await sql.row<any>('SELECT name FROM units WHERE id = ?', [body.unit_id]) as { name?: string } | undefined;
         const before = prevUnitLabel || '—';
         const after  = nextRow?.name || body.unit_id;
         logActions.push({ action: 'unit_change', details: `Юніт: ${before} → ${after}` });
@@ -245,7 +240,7 @@ export const updateReservation = withActor(async (request: NextRequest, { params
       if (body.internal_notes !== undefined) logActions.push({ action: 'internal_notes_change', details: 'Внутрішні нотатки змінено' });
       if (body.registration_status) logActions.push({ action: 'registration_change', details: `Реєстрація → ${body.registration_status}` });
       for (const log of logActions) {
-        writeBookingAudit(db, id, log.action, log.details, actor, beforeSnapshot, afterRow);
+        await writeBookingAudit(id, log.action, log.details, actor, beforeSnapshot, afterRow);
       }
     } catch { /* non-critical */ }
 
@@ -272,14 +267,12 @@ export const updateReservation = withActor(async (request: NextRequest, { params
       if (cascadeFields.length > 0) {
         cascadeFields.push("updated_at = datetime('now')");
         cascadeValues.push(id);
-        db.prepare(
-          `UPDATE reservations SET ${cascadeFields.join(', ')} WHERE parent_id = ?`
-        ).run(...cascadeValues);
+        await sql.run(`UPDATE reservations SET ${cascadeFields.join(', ')} WHERE parent_id = ?`, [...cascadeValues]);
       }
     } catch (cascErr) { console.error('[PATCH] cascade to children error (non-fatal):', cascErr); }
 
     // Return updated booking with guest_page_token
-    const updated = db.prepare('SELECT guest_page_token FROM reservations WHERE id = ?').get(id) as any;
+    const updated = await sql.row<any>('SELECT guest_page_token FROM reservations WHERE id = ?', [id]) as any;
     return NextResponse.json({ success: true, guest_page_token: updated?.guest_page_token || null });
   } catch (error: any) {
     console.error('PATCH /api/bookings/[id] error:', error?.message || error);
@@ -289,41 +282,41 @@ export const updateReservation = withActor(async (request: NextRequest, { params
 
 export const deleteReservation = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, sessionActor: Actor) => {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { id } = await params;
-    if (!ownedReservation(db, sessionActor.organizationId, id)) {
+    if (!await ownedReservation(sessionActor.organizationId, id)) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
     // Capture snapshot + actor BEFORE deletion for audit
-    const beforeSnapshot = db.prepare('SELECT * FROM reservations WHERE id = ?').get(id) as any;
-    const label = buildBookingLabel(db, id);
+    const beforeSnapshot = await sql.row<any>('SELECT * FROM reservations WHERE id = ?', [id]) as any;
+    const label = await buildBookingLabel(id);
     const actor = await getBookingActor();
 
-    db.transaction(() => {
+    await sql.tx(async (t) => {
       // 2. Delete related cart events (keep activity logs — no cascade)
-      db.prepare('DELETE FROM cart_events WHERE reservation_id = ?').run(id);
+      await t.run('DELETE FROM cart_events WHERE reservation_id = ?', [id]);
 
       // 3. Delete service orders
-      db.prepare('DELETE FROM service_orders WHERE reservation_id = ?').run(id);
-      db.prepare('DELETE FROM booking_service_orders WHERE reservation_id = ?').run(id);
+      await t.run('DELETE FROM service_orders WHERE reservation_id = ?', [id]);
+      await t.run('DELETE FROM booking_service_orders WHERE reservation_id = ?', [id]);
 
       // 4. Delete sub-booking structures (bundles)
-      db.prepare(`
+      await t.run(`
         DELETE FROM reservation_line_items 
         WHERE sub_booking_id IN (SELECT id FROM reservation_sub_bookings WHERE reservation_id = ?)
-      `).run(id);
-      db.prepare('DELETE FROM reservation_sub_bookings WHERE reservation_id = ? OR child_reservation_id = ?').run(id, id);
+      `, [id]);
+      await t.run('DELETE FROM reservation_sub_bookings WHERE reservation_id = ? OR child_reservation_id = ?', [id, id]);
 
       // 5. Delete child reservations
-      db.prepare('DELETE FROM reservations WHERE parent_id = ?').run(id);
+      await t.run('DELETE FROM reservations WHERE parent_id = ?', [id]);
 
       // 6. Finally delete the main reservation
-      db.prepare('DELETE FROM reservations WHERE id = ?').run(id);
-    })();
+      await t.run('DELETE FROM reservations WHERE id = ?', [id]);
+    });
 
     // Write audit AFTER deletion (FK removed in migration, so this works)
-    writeBookingAudit(db, id, 'deleted', `Видалено: ${label}`, actor, beforeSnapshot, null, label);
+    await writeBookingAudit(id, 'deleted', `Видалено: ${label}`, actor, beforeSnapshot, null, label);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

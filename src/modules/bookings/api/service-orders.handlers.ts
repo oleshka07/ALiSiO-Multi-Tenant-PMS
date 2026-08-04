@@ -1,15 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 export async function listServiceOrders(req: NextRequest) {
   try {
-    const db = getDb();
+    const sql = getSql();
     const url = new URL(req.url);
     const dateParam = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
     const period = url.searchParams.get('period') || 'day';
 
-    try { db.prepare("ALTER TABLE booking_service_orders ADD COLUMN completed_at TEXT DEFAULT NULL").run(); } catch { /* exists */ }
+    try { await sql.run("ALTER TABLE booking_service_orders ADD COLUMN completed_at TEXT DEFAULT NULL"); } catch { /* exists */ }
 
     let dateFilter = '';
     if (period === 'day') {
@@ -18,7 +18,7 @@ export async function listServiceOrders(req: NextRequest) {
       dateFilter = `AND bso.service_date >= '${dateParam}' AND bso.service_date <= date('${dateParam}', '+7 days')`;
     }
 
-    const widgetOrders = db.prepare(`
+    const widgetOrders = await sql.rows<any>(`
       SELECT
         bso.id, bso.reservation_id, bso.service_id, bso.quantity,
         bso.service_date, bso.options_json, bso.unit_price, bso.total_price,
@@ -38,7 +38,7 @@ export async function listServiceOrders(req: NextRequest) {
         AND bso.status != 'cancelled'
         AND bso.payment_status NOT IN ('failed', 'refunded')
       ORDER BY bso.service_date ASC, bso.created_at DESC
-    `).all() as any[];
+    `) as any[];
 
     const orders = widgetOrders.map(o => {
       let startHour = null, endHour = null;
@@ -79,7 +79,7 @@ export async function listServiceOrders(req: NextRequest) {
       soDateFilter = `AND COALESCE(so.service_date, r.check_in) >= '${dateParam}' AND COALESCE(so.service_date, r.check_in) <= date('${dateParam}', '+7 days')`;
     }
 
-    const guestOrders = db.prepare(`
+    const guestOrders = await sql.rows<any>(`
       SELECT
         so.id, so.reservation_id, so.service_id, so.quantity,
         so.total_price, so.status, so.payment_status, so.created_at,
@@ -98,7 +98,7 @@ export async function listServiceOrders(req: NextRequest) {
         AND so.payment_status NOT IN ('failed', 'refunded')
       ORDER BY so.created_at DESC
       LIMIT 50
-    `).all() as any[];
+    `) as any[];
 
     const gOrders = guestOrders.map(o => {
       let startHour = null, endHour = null;
@@ -159,7 +159,7 @@ export async function listServiceOrders(req: NextRequest) {
 
 export async function updateServiceOrder(req: NextRequest) {
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await req.json();
     const { id, action } = body;
 
@@ -167,8 +167,8 @@ export async function updateServiceOrder(req: NextRequest) {
       return NextResponse.json({ error: 'id and action required' }, { status: 400 });
     }
 
-    const isBSO = db.prepare('SELECT id FROM booking_service_orders WHERE id = ?').get(id);
-    const isSO = db.prepare('SELECT id FROM service_orders WHERE id = ?').get(id);
+    const isBSO = await sql.row<any>('SELECT id FROM booking_service_orders WHERE id = ?', [id]);
+    const isSO = await sql.row<any>('SELECT id FROM service_orders WHERE id = ?', [id]);
 
     if (!isBSO && !isSO) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
@@ -177,29 +177,29 @@ export async function updateServiceOrder(req: NextRequest) {
     switch (action) {
       case 'complete': {
         if (isBSO) {
-          db.prepare("UPDATE booking_service_orders SET status = 'completed', completed_at = datetime('now') WHERE id = ?").run(id);
+          await sql.run("UPDATE booking_service_orders SET status = 'completed', completed_at = datetime('now') WHERE id = ?", [id]);
         }
         if (isSO) {
-          db.prepare("UPDATE service_orders SET status = 'completed' WHERE id = ?").run(id);
+          await sql.run("UPDATE service_orders SET status = 'completed' WHERE id = ?", [id]);
         }
         break;
       }
       case 'cancel': {
         if (isBSO) {
-          db.prepare("UPDATE booking_service_orders SET status = 'cancelled', payment_status = 'cancelled' WHERE id = ?").run(id);
-          db.prepare("UPDATE service_time_slots SET booked_count = MAX(0, booked_count - 1) WHERE id IN (SELECT time_slot_id FROM booking_service_orders WHERE id = ?)").run(id);
+          await sql.run("UPDATE booking_service_orders SET status = 'cancelled', payment_status = 'cancelled' WHERE id = ?", [id]);
+          await sql.run("UPDATE service_time_slots SET booked_count = MAX(0, booked_count - 1) WHERE id IN (SELECT time_slot_id FROM booking_service_orders WHERE id = ?)", [id]);
         }
         if (isSO) {
-          db.prepare("UPDATE service_orders SET status = 'cancelled', payment_status = 'cancelled' WHERE id = ?").run(id);
+          await sql.run("UPDATE service_orders SET status = 'cancelled', payment_status = 'cancelled' WHERE id = ?", [id]);
         }
         break;
       }
       case 'reopen': {
         if (isBSO) {
-          db.prepare("UPDATE booking_service_orders SET status = 'confirmed', completed_at = NULL WHERE id = ?").run(id);
+          await sql.run("UPDATE booking_service_orders SET status = 'confirmed', completed_at = NULL WHERE id = ?", [id]);
         }
         if (isSO) {
-          db.prepare("UPDATE service_orders SET status = 'confirmed' WHERE id = ?").run(id);
+          await sql.run("UPDATE service_orders SET status = 'confirmed' WHERE id = ?", [id]);
         }
         break;
       }

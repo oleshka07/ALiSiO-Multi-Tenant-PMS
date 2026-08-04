@@ -2,6 +2,7 @@
 import { getDb, generateGuestToken } from '@core/db';
 import { findOrCreateGuest } from '@guests';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { getSql } from '@core/db/async';
 
 export interface UnitTypeMatch {
   id: string;
@@ -24,15 +25,15 @@ export interface ExistingReservation {
 }
 
 /** Resolve the resort property id (first property whose units belong to a resort category). */
-export function findResortPropertyId(): string | null {
-  const db = getDb();
-  const row = db.prepare(`
+export async function findResortPropertyId(): Promise<string | null> {
+  const sql = getSql();
+  const row = await sql.row<any>(`
     SELECT u.property_id as id
     FROM units u
     JOIN categories c ON c.id = u.category_id
     WHERE c.type = 'resort'
     LIMIT 1
-  `).get() as any;
+  `) as any;
   return row?.id || null;
 }
 
@@ -41,27 +42,27 @@ export function findResortPropertyId(): string | null {
  * Strategy: case-insensitive contains on unit_types.name.
  * Returns null if no match — caller should warn the user.
  */
-export function findUnitTypeByName(name: string): UnitTypeMatch | null {
+export async function findUnitTypeByName(name: string): Promise<UnitTypeMatch | null> {
   if (!name) return null;
-  const db = getDb();
+  const sql = getSql();
   const lower = name.toLowerCase().trim();
 
-  const exact = db.prepare(`
+  const exact = await sql.row<any>(`
     SELECT ut.id, ut.name, ut.code
     FROM unit_types ut
     JOIN categories c ON c.id = ut.category_id
     WHERE c.type = 'resort' AND LOWER(ut.name) = ?
     LIMIT 1
-  `).get(lower) as any;
+  `, [lower]) as any;
   if (exact) return exact;
 
-  const fuzzy = db.prepare(`
+  const fuzzy = await sql.row<any>(`
     SELECT ut.id, ut.name, ut.code
     FROM unit_types ut
     JOIN categories c ON c.id = ut.category_id
     WHERE c.type = 'resort' AND LOWER(ut.name) LIKE ?
     LIMIT 1
-  `).get(`%${lower}%`) as any;
+  `, [`%${lower}%`]) as any;
   return fuzzy || null;
 }
 
@@ -71,13 +72,13 @@ export function findUnitTypeByName(name: string): UnitTypeMatch | null {
 const PREFER_F_ORDER = "CASE WHEN b.code = 'F' THEN 0 ELSE 1 END ASC";
 
 /** Find any free resort unit of the given type for the given dates. */
-export function findFreeResortUnit(
+export async function findFreeResortUnit(
   unitTypeId: string,
   checkIn: string,
   checkOut: string,
-): FreeUnit | null {
-  const db = getDb();
-  const row = db.prepare(`
+): Promise<FreeUnit | null> {
+  const sql = getSql();
+  const row = await sql.row<any>(`
     SELECT u.id, u.name, u.code, u.unit_type_id, b.code AS building_code
     FROM units u
     JOIN categories c ON c.id = u.category_id
@@ -92,7 +93,7 @@ export function findFreeResortUnit(
       )
     ORDER BY ${PREFER_F_ORDER}, u.sort_order ASC, u.name ASC
     LIMIT 1
-  `).get(unitTypeId, checkOut, checkIn) as any;
+  `, [unitTypeId, checkOut, checkIn]) as any;
   return row || null;
 }
 
@@ -111,13 +112,13 @@ export function findFreeResortUnit(
  * Excludes the optional `excludeUnitIds` set so a multi-room booking does
  * not pick the same unit twice for two rooms in the same group.
  */
-export function findFreeResortUnitByCapacity(
+export async function findFreeResortUnitByCapacity(
   capacity: number,
   checkIn: string,
   checkOut: string,
   excludeUnitIds: string[] = [],
-): FreeUnit | null {
-  const db = getDb();
+): Promise<FreeUnit | null> {
+  const sql = getSql();
   const excludeClause = excludeUnitIds.length > 0
     ? `AND u.id NOT IN (${excludeUnitIds.map(() => '?').join(',')})`
     : '';
@@ -130,7 +131,7 @@ export function findFreeResortUnitByCapacity(
   const occExpr = 'COALESCE(u.beds, ut.base_occupancy, ut.max_occupancy, ut.max_adults, 0)';
 
   // Pass 1 — exact match. Building F preferred over any other building.
-  const exact = db.prepare(`
+  const exact = await sql.row<any>(`
     SELECT u.id, u.name, u.code, u.unit_type_id, b.code AS building_code
     FROM units u
     JOIN categories c ON c.id = u.category_id
@@ -147,11 +148,11 @@ export function findFreeResortUnitByCapacity(
       ${excludeClause}
     ORDER BY ${PREFER_F_ORDER}, u.sort_order ASC, u.name ASC
     LIMIT 1
-  `).get(capacity, checkOut, checkIn, ...excludeUnitIds) as any;
+  `, [capacity, checkOut, checkIn, ...excludeUnitIds]) as any;
   if (exact) return exact;
 
   // Pass 2 — round up to the smallest unit type that fits, still preferring F.
-  const roundUp = db.prepare(`
+  const roundUp = await sql.row<any>(`
     SELECT u.id, u.name, u.code, u.unit_type_id, b.code AS building_code
     FROM units u
     JOIN categories c ON c.id = u.category_id
@@ -168,43 +169,43 @@ export function findFreeResortUnitByCapacity(
       ${excludeClause}
     ORDER BY ${PREFER_F_ORDER}, ${occExpr} ASC, u.sort_order ASC, u.name ASC
     LIMIT 1
-  `).get(capacity, checkOut, checkIn, ...excludeUnitIds) as any;
+  `, [capacity, checkOut, checkIn, ...excludeUnitIds]) as any;
   return roundUp || null;
 }
 
 /** Find the pool (staging) unit for Building F. */
-export function findPoolUnit(): FreeUnit | null {
-  const db = getDb();
-  const row = db.prepare(`
+export async function findPoolUnit(): Promise<FreeUnit | null> {
+  const sql = getSql();
+  const row = await sql.row<any>(`
     SELECT u.id, u.name, u.code, u.unit_type_id, b.code AS building_code
     FROM units u
     LEFT JOIN buildings b ON b.id = u.building_id
     WHERE u.is_pool = 1
     ORDER BY u.name ASC
     LIMIT 1
-  `).get() as any;
+  `) as any;
   return row || null;
 }
 
 /** Find a reservation already imported with this Booking.com book number. */
-export function findReservationByBcomId(bookNumber: string): ExistingReservation | null {
-  const db = getDb();
-  const row = db.prepare(`
+export async function findReservationByBcomId(bookNumber: string): Promise<ExistingReservation | null> {
+  const sql = getSql();
+  const row = await sql.row<any>(`
     SELECT id, status, unit_id FROM reservations
     WHERE bcom_reservation_id = ? OR external_uid = ?
     LIMIT 1
-  `).get(bookNumber, bookNumber) as any;
+  `, [bookNumber, bookNumber]) as any;
   return row || null;
 }
 
 /** Mark an existing reservation as cancelled (for cancelled_by_guest rows). */
-export function cancelReservation(reservationId: string): void {
-  const db = getDb();
-  db.prepare(`
+export async function cancelReservation(reservationId: string): Promise<void> {
+  const sql = getSql();
+  await sql.run(`
     UPDATE reservations
     SET status = 'cancelled', updated_at = datetime('now')
     WHERE id = ?
-  `).run(reservationId);
+  `, [reservationId]);
 }
 
 /**
@@ -220,8 +221,8 @@ export async function findOrCreateGuestForImport(args: {
   phone: string | null;
   address: string | null;
 }): Promise<string> {
-  const db = getDb();
-  const org = { id: requireOrganizationId(db) } as any;
+  const sql = getSql();
+  const org = { id: requireOrganizationId(getDb()) } as any;
   return (await findOrCreateGuest({
     organizationId: org?.id,
     firstName: args.firstName,
@@ -253,12 +254,12 @@ export interface InsertReservationArgs {
   commissionEur?: number | null;
 }
 
-export function insertImportedReservation(args: InsertReservationArgs): string {
-  const db = getDb();
+export async function insertImportedReservation(args: InsertReservationArgs): Promise<string> {
+  const sql = getSql();
   const resId = `bcom_xls_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const guestPageToken = generateGuestToken();
 
-  db.prepare(`
+  await sql.run(`
     INSERT INTO reservations (
       id, property_id, unit_id, guest_id,
       check_in, check_out, nights, adults, children,
@@ -267,15 +268,13 @@ export function insertImportedReservation(args: InsertReservationArgs): string {
       commission_amount, notes, guest_page_token,
       total_rate_eur, commission_eur
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', 'booking_com', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    resId, args.propertyId, args.unitId, args.guestId,
+  `, [resId, args.propertyId, args.unitId, args.guestId,
     args.checkIn, args.checkOut, args.nights, args.adults, args.children,
     args.status || 'confirmed',
     args.totalPrice, args.currency,
     args.bcomReservationId, args.bcomReservationId,
     args.commissionAmount, args.notes, guestPageToken,
-    args.totalRateEur ?? null, args.commissionEur ?? null,
-  );
+    args.totalRateEur ?? null, args.commissionEur ?? null]);
 
   return resId;
 }

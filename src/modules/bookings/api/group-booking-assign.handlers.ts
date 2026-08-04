@@ -1,12 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
 export async function assignGuest(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id: groupId } = await params;
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
     const { reservationId, firstName, lastName, email, phone } = body;
 
@@ -14,36 +15,30 @@ export async function assignGuest(request: NextRequest, { params }: { params: Pr
       return NextResponse.json({ error: "Обов'язкові поля: reservationId, ім'я, прізвище" }, { status: 400 });
     }
 
-    const reservation = db.prepare(
-      'SELECT id, guest_id FROM reservations WHERE id = ? AND group_id = ?'
-    ).get(reservationId, groupId) as any;
+    const reservation = await sql.row<any>('SELECT id, guest_id FROM reservations WHERE id = ? AND group_id = ?', [reservationId, groupId]) as any;
 
     if (!reservation) {
       return NextResponse.json({ error: 'Reservation not found in this group' }, { status: 404 });
     }
 
-    const org = { id: requireOrganizationId(db) } as any;
+    const org = { id: requireOrganizationId(getDb()) } as any;
 
     let guestId: string;
     if (email) {
-      const existing = db.prepare('SELECT id FROM guests WHERE email = ? AND organization_id = ?').get(email, org.id) as any;
+      const existing = await sql.row<any>('SELECT id FROM guests WHERE email = ? AND organization_id = ?', [email, org.id]) as any;
       if (existing) {
         guestId = existing.id;
-        db.prepare('UPDATE guests SET first_name = ?, last_name = ?, phone = COALESCE(?, phone), updated_at = datetime(\'now\') WHERE id = ?')
-          .run(firstName, lastName, phone || null, guestId);
+        await sql.run('UPDATE guests SET first_name = ?, last_name = ?, phone = COALESCE(?, phone), updated_at = datetime(\'now\') WHERE id = ?', [firstName, lastName, phone || null, guestId]);
       } else {
         guestId = `g_${Date.now()}`;
-        db.prepare('INSERT INTO guests (id, organization_id, first_name, last_name, email, phone) VALUES (?, ?, ?, ?, ?, ?)')
-          .run(guestId, org.id, firstName, lastName, email, phone || null);
+        await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name, email, phone) VALUES (?, ?, ?, ?, ?, ?)', [guestId, org.id, firstName, lastName, email, phone || null]);
       }
     } else {
       guestId = `g_${Date.now()}`;
-      db.prepare('INSERT INTO guests (id, organization_id, first_name, last_name, phone) VALUES (?, ?, ?, ?, ?)')
-        .run(guestId, org.id, firstName, lastName, phone || null);
+      await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name, phone) VALUES (?, ?, ?, ?, ?)', [guestId, org.id, firstName, lastName, phone || null]);
     }
 
-    db.prepare('UPDATE reservations SET guest_id = ?, updated_at = datetime(\'now\') WHERE id = ?')
-      .run(guestId, reservationId);
+    await sql.run('UPDATE reservations SET guest_id = ?, updated_at = datetime(\'now\') WHERE id = ?', [guestId, reservationId]);
 
     return NextResponse.json({ success: true, guestId });
   } catch (e: any) {

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { sendTelegramMessage } from '@notifications';
 import { maskLastName } from '@core/security/pii-mask';
 
@@ -16,8 +16,8 @@ function escHtml(s: unknown): string {
 
 export async function notifyReservationCreated(reservationId: string, options: NotifyOptions = {}): Promise<void> {
   try {
-    const db = getDb();
-    const r = db.prepare(`
+    const sql = getSql();
+    const r = await sql.row<any>(`
       SELECT r.id, r.check_in, r.check_out, r.nights,
              r.adults, r.children,
              r.total_price, r.currency, r.status, r.payment_status, r.source,
@@ -30,7 +30,7 @@ export async function notifyReservationCreated(reservationId: string, options: N
       LEFT JOIN units u ON u.id = r.unit_id
       LEFT JOIN categories c ON c.id = u.category_id
       WHERE r.id = ?
-    `).get(reservationId) as any;
+    `, [reservationId]) as any;
 
     if (!r) {
       console.warn('[TG notify] reservation not found:', reservationId);
@@ -102,19 +102,17 @@ export interface GroupNotifyArgs {
   extraFooter?: string;
 }
 
-export function notifyGroupBookingCreated(args: GroupNotifyArgs): void {
+export async function notifyGroupBookingCreated(args: GroupNotifyArgs): Promise<void> {
   try {
-    const db = getDb();
-    const codes = args.reservationIds
-      .map((id) => {
-        const u = db.prepare(`
-          SELECT u.code, u.name FROM reservations r
-          LEFT JOIN units u ON u.id = r.unit_id
-          WHERE r.id = ?
-        `).get(id) as any;
-        return u?.code || u?.name || '?';
-      })
-      .filter(Boolean);
+    const sql = getSql();
+    const codes = (await Promise.all(args.reservationIds.map(async (id) => {
+      const u = await sql.row<{ code?: string; name?: string }>(`
+        SELECT u.code, u.name FROM reservations r
+        LEFT JOIN units u ON u.id = r.unit_id
+        WHERE r.id = ?
+      `, [id]);
+      return u?.code || u?.name || '?';
+    }))).filter(Boolean);
 
     const lines = [
       `📥 <b>Нове групове бронювання</b> · ${escHtml(args.sourceLabel)}`,
