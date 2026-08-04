@@ -391,9 +391,9 @@ node scripts/check-isolation.mjs
   одна функція `getSql()`, а не 1 440 місць виклику.
 
   На шві вже: `dashboard`, `reports`, `dashboard/alerts`, `payments`,
-  `tasks`, `notifications/daily-digest`, `pricing`, `properties`. Далі по
-  одному, кожен окремим комітом: `channels` (113 запитів) → `guests` (86)
-  → `bookings` (160) → `widget` (180) → `finance` (336, останній).
+  `tasks`, `notifications/daily-digest`, `pricing`, `properties`, `guests`.
+  Далі по одному, кожен окремим комітом: `channels` (113 запитів) →
+  `bookings` (160) → `widget` (180) → `finance` (336, останній).
 
   **Про автоматизацію цього переносу — застереження, куплене дорого.**
   Спокуса написати regex і прогнати його по всьому `src/` дуже велика, і
