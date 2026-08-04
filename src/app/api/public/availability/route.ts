@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getSql } from '@core/db/async';
 
 /**
  * GET /api/public/availability
@@ -30,31 +30,31 @@ export async function GET(req: NextRequest) {
     const toDate  = new Date(today); toDate.setDate(toDate.getDate() + 365);
     const toStr   = url.searchParams.get('to') || toDate.toISOString().split('T')[0];
 
-    const db = getDb();
+    const sql = getSql();
 
     let rows: any[];
 
     if (unit_id) {
-      rows = db.prepare(`
+      rows = await sql.rows<any>(`
         SELECT check_in, check_out FROM reservations
         WHERE unit_id = ?
           AND status NOT IN ('cancelled','no_show')
           AND check_out > ? AND check_in < ?
         ORDER BY check_in
-      `).all(unit_id, fromStr, toStr) as any[];
+      `, [unit_id, fromStr, toStr]);
     } else {
       // All units of this unit_type
-      const units = db.prepare(`SELECT id FROM units WHERE unit_type_id = ?`).all(unit_type_id!) as any[];
+      const units = await sql.rows<any>(`SELECT id FROM units WHERE unit_type_id = ?`, [unit_type_id!]);
       if (units.length === 0) return NextResponse.json({ bookedRanges: [], bookedDates: [] });
       const placeholders = units.map(() => '?').join(',');
       const ids = units.map((u: any) => u.id);
-      rows = db.prepare(`
+      rows = await sql.rows<any>(`
         SELECT check_in, check_out FROM reservations
         WHERE unit_id IN (${placeholders})
           AND status NOT IN ('cancelled','no_show')
           AND check_out > ? AND check_in < ?
         ORDER BY check_in
-      `).all(...ids, fromStr, toStr) as any[];
+      `, [...ids, fromStr, toStr]);
     }
 
     // Expand ranges to individual booked dates

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { formatUserTasksForTelegram } from '@tasks';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 // GET /api/tasks/telegram?chat_id=123 — returns task list for Telegram user
 //
@@ -23,10 +23,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'chat_id required' }, { status: 400 });
     }
 
-    const db = getDb();
-    const user = db.prepare(
-      "SELECT id FROM app_users WHERE telegram_chat_id = ? AND is_active = 1"
-    ).get(chatId) as { id: string } | undefined;
+    const sql = getSql();
+    const user = await sql.row<{ id: string }>(
+      "SELECT id FROM app_users WHERE telegram_chat_id = ? AND is_active = 1",
+      [chatId]
+    );
 
     if (!user) {
       return NextResponse.json({

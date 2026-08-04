@@ -24,7 +24,6 @@
 import { getSql } from '@core/db/async';
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrgIdentity } from '@core/org-identity';
-import { getDb } from '@core/db';
 import { requirePermission } from '@core/security/route-guard';
 import { generateInvoicePdf } from '@/modules/finance/domain/invoice-pdf';
 import { generateIsdocXml }   from '@/modules/finance/domain/isdoc';
@@ -79,7 +78,6 @@ async function _POST(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Nex
       return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 });
     }
 
-    const db      = getDb();
     const today   = new Date().toISOString().slice(0, 10);
     const due     = dueDate || (() => {
       const d = new Date(); d.setDate(d.getDate() + 14);
@@ -89,7 +87,7 @@ async function _POST(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Nex
     const invoiceId     = `inv_custom_${Date.now()}`;
     const { invoiceNumber } = await allocateInvoiceNumber(sql, actor.organizationId, 'house', new Date().getFullYear());
 
-    db.prepare(`
+    await sql.run(`
       INSERT INTO invoices
         (id, organization_id, reservation_id, invoice_number, issued_at, due_date, amount, currency, status,
          is_custom, custom_buyer_name, custom_buyer_ico, custom_buyer_dic,
@@ -97,7 +95,7 @@ async function _POST(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Nex
          custom_description, custom_email)
       VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 'issued',
               1, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `, [
       invoiceId, actor.organizationId, invoiceNumber, today, due, totalAmount, currency,
       buyerName    || null,
       buyerIco     || null,
@@ -107,7 +105,7 @@ async function _POST(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Nex
       buyerCountry || null,
       primaryDesc,
       emailTo      || null,
-    );
+    ]);
 
     console.log(`[CustomInvoice] Created ${invoiceNumber} (${invoiceId}) amount=${totalAmount} ${currency} items=${itemList?.length ?? 1}`);
 

@@ -114,11 +114,40 @@ const BUILTIN = new Set([
 // Names too generic to attribute to one declaration.
 const AMBIGUOUS = new Set(['load', 'save', 'submit', 'refresh', 'reload', 'handler', 'main', 'init']);
 
+/**
+ * The seam's own methods, which BUILTIN deliberately hides.
+ *
+ * `row`, `rows`, `run` and `exec` are on that list because `db.prepare(x).run()`
+ * and `array.map()` are not somebody's async function. But on the seam handle
+ * they are exactly that — and a missing `await sql.row(...)` is the single most
+ * likely mistake in this migration, so hiding it would make the whole check
+ * decorative. A reviewer pointed this out; the clean exit before this rule was
+ * not evidence of anything.
+ *
+ * Matched by handle name rather than by declaration: `sql` and `t` are the two
+ * names the interface is ever bound to, by convention throughout the codebase.
+ */
+// The `(?:<[^>]*>)?` matters: nearly every call is written `sql.row<Thing>(…)`,
+// and a pattern that only allowed a bare `(` matched none of them.
+const SEAM_CALL = /(?<!await\s)(?<!\.)\b(?:sql|t)\.(rows?|run|exec|tx)\s*(?:<[^>]*>)?\s*\(/;
+// `return sql.rows(…)` is fine — the promise goes to a caller that awaits it.
+const SEAM_OK = /(?:await|return|=>)\s*(?:\(await\s*)?(?:sql|t)\.(?:rows?|run|exec|tx)\s*(?:<[^>]*>)?\s*\(|\.then\(|Promise\.(?:all|allSettled)/;
+
 const findings = [];
 for (const f of files) {
   const src = fs.readFileSync(f, 'utf8');
   const lines = src.split('\n');
   const scope = namesInScope(f, src);
+
+  lines.forEach((line, i) => {
+    const t = line.trim();
+    if (!t.startsWith('//') && !t.startsWith('*') && SEAM_CALL.test(line) && !SEAM_OK.test(line)) {
+      findings.push({
+        file: f, line: i + 1, name: 'sql',
+        kind: 'виклик шва без await', text: t.slice(0, 110),
+      });
+    }
+  });
 
   lines.forEach((line, i) => {
     const trimmed = line.trim();

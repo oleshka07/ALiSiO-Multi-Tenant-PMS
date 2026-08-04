@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getSql } from '@core/db/async';
 import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 
 /* ─── GET /api/coupons?site_id=xxx ─── */
@@ -9,19 +9,19 @@ export async function GET(req: NextRequest) {
     const user = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const db = getDb();
+    const sql = getSql();
     const url = new URL(req.url);
     const siteId = url.searchParams.get('site_id');
     const ruleId = url.searchParams.get('rule_id');
 
-    let sql = 'SELECT * FROM coupons WHERE 1=1';
+    let statement = 'SELECT * FROM coupons WHERE 1=1';
     const params: (string | number)[] = [];
 
-    if (siteId) { sql += ' AND site_id = ?'; params.push(siteId); }
-    if (ruleId) { sql += ' AND gift_card_rule_id = ?'; params.push(ruleId); }
+    if (siteId) { statement += ' AND site_id = ?'; params.push(siteId); }
+    if (ruleId) { statement += ' AND gift_card_rule_id = ?'; params.push(ruleId); }
 
-    sql += ' ORDER BY created_at DESC';
-    const codes = db.prepare(sql).all(...params);
+    statement += ' ORDER BY created_at DESC';
+    const codes = await sql.rows(statement, params);
 
     return NextResponse.json(codes);
   } catch (e: any) {
@@ -53,10 +53,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'code and offer_amount are required' }, { status: 400 });
     }
 
-    const db = getDb();
+    const sql = getSql();
 
     const id = `promo_${Date.now()}`;
-    db.prepare(`
+    await sql.run(`
       INSERT INTO coupons
         (id, code, description, discount_type, offer_amount,
          valid_from, valid_until,
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
          max_uses, redemption_limit,
          site_id, allowed_days, applies_to, applied_listings, applicable_services, is_active)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
-    `).run(
+    `, [
       id,
       String(code).toUpperCase().trim(),
       description || null,
@@ -81,9 +81,9 @@ export async function POST(req: NextRequest) {
       applies_to || 'services',
       applied_listings ? JSON.stringify(applied_listings) : null,
       applicable_services ? JSON.stringify(applicable_services) : null,
-    );
+    ]);
 
-    const created = db.prepare('SELECT * FROM coupons WHERE id = ?').get(id);
+    const created = await sql.row('SELECT * FROM coupons WHERE id = ?', [id]);
     return NextResponse.json({ code: created }, { status: 201 });
   } catch (e: any) {
     if (e?.message?.includes('UNIQUE')) {

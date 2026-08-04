@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getSql } from '@core/db/async';
 import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 
 // GET /api/booking-sites/[id]
@@ -10,10 +10,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
-    const db = getDb();
-    const site = db.prepare(
-      "SELECT * FROM booking_sites WHERE id = ? AND status != 'deleted'"
-    ).get(id) as any;
+    const sql = getSql();
+    const site = await sql.row<any>(
+      "SELECT * FROM booking_sites WHERE id = ? AND status != 'deleted'", [id]
+    );
 
     if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
 
@@ -38,12 +38,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
 
-    const site = db.prepare(
-      "SELECT * FROM booking_sites WHERE id = ? AND status != 'deleted'"
-    ).get(id) as any;
+    const site = await sql.row<any>(
+      "SELECT * FROM booking_sites WHERE id = ? AND status != 'deleted'", [id]
+    );
     if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
 
     const allowed = ['name', 'slug', 'site_url', 'type', 'currency', 'status', 'design_config', 'widget_config', 'allowed_domains'];
@@ -63,9 +63,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     values.push(id);
-    db.prepare(`UPDATE booking_sites SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+    await sql.run(`UPDATE booking_sites SET ${setClauses.join(', ')} WHERE id = ?`, values);
 
-    const updated = db.prepare('SELECT * FROM booking_sites WHERE id = ?').get(id) as any;
+    const updated = await sql.row<any>('SELECT * FROM booking_sites WHERE id = ?', [id]);
     if (updated.design_config) {
       try { updated.design_config = JSON.parse(updated.design_config); } catch { /* */ }
     }
@@ -87,16 +87,16 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
 
-    const site = db.prepare(
-      "SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'"
-    ).get(id);
+    const site = await sql.row<any>(
+      "SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'", [id]
+    );
     if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
 
-    db.prepare(
-      "UPDATE booking_sites SET status = 'deleted', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-    ).run(id);
+    await sql.run(
+      "UPDATE booking_sites SET status = 'deleted', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [id]
+    );
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

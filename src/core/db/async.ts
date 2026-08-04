@@ -52,6 +52,29 @@ export interface Sql {
    * `sql` inside it would run outside the transaction, so it is not passed.
    */
   tx<T>(fn: (t: Sql) => Promise<T>): Promise<T>;
+
+  /**
+   * The handful of expressions the two engines genuinely spell differently.
+   *
+   * Almost all SQL in this codebase is portable once the placeholders are, and
+   * where a SQLite spelling had a standard equivalent it was simply replaced —
+   * `datetime('now')` became `CURRENT_TIMESTAMP`, `WHERE rowid = ?` became
+   * `RETURNING`. These are what is left after that: cases with no shared
+   * spelling at all, because the column types differ. `paid_at` is TEXT in
+   * SQLite and TIMESTAMPTZ in Postgres, so `substr(paid_at, 1, 7)` works on one
+   * and `to_char(paid_at, 'YYYY-MM')` on the other, and neither works on both.
+   *
+   * Naming them here keeps the divergence in one file instead of scattering
+   * `if (postgres)` through twenty reports.
+   */
+  readonly dialect: Dialect;
+}
+
+export interface Dialect {
+  /** 'YYYY-MM' of a timestamp column, for grouping by month. */
+  month(column: string): string;
+  /** Day of the week as a number, 0 = Sunday — the SQLite convention. */
+  dayOfWeek(column: string): string;
 }
 
 /**
@@ -61,10 +84,18 @@ export interface Sql {
  * resolve immediately. That is the point: the call SHAPE is what the migration
  * needs to change, and it can change now, before Postgres exists.
  */
+/** SQLite stores these columns as TEXT, so its own date functions apply. */
+const SQLITE_DIALECT: Dialect = {
+  month: (column) => `strftime('%Y-%m', ${column})`,
+  dayOfWeek: (column) => `CAST(strftime('%w', ${column}) AS INTEGER)`,
+};
+
 export function sqliteSql(db: any = null): Sql {
   const handle = () => db || getDb();
 
   const impl: Sql = {
+    dialect: SQLITE_DIALECT,
+
     async rows<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
       return handle().prepare(sql).all(...params) as T[];
     },

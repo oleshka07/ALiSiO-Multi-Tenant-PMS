@@ -12,7 +12,7 @@
  * Returns: ZIP with Content-Disposition: attachment; filename="isdoc-YYYY-MM.zip"
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { generateIsdocXml } from '@/modules/finance/domain/isdoc';
 import { requireOwner } from '@core/security/route-guard';
 import type { InvoiceData } from '@/modules/finance/domain/invoice-template';
@@ -55,7 +55,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Invalid month format. Use YYYY-MM.' }, { status: 400 });
     }
 
-    const db = getDb();
+    const sql = getSql();
     const zip = new JSZip();
     let count = 0;
     const usedNames = new Set<string>();
@@ -72,7 +72,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
     };
 
     // ── 1. Reservation-based invoices ────────────────────────────────
-    const invoices = db.prepare(`
+    const invoices = await sql.rows<InvoiceData & { payment_method?: string }>(`
       SELECT
         i.id, i.invoice_number, i.issued_at, i.due_date, i.amount, i.currency,
         r.check_in, r.check_out, r.nights, r.adults, r.children,
@@ -95,7 +95,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
         AND strftime('%Y-%m', i.issued_at) = ?
         ${confirmedFilter}
       ORDER BY i.invoice_number ASC
-    `).all(month) as (InvoiceData & { payment_method?: string })[];
+    `, [month]);
 
     for (const inv of invoices) {
       if (!inv.invoice_number) continue;
@@ -137,7 +137,10 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
     }
 
     // ── 2. OTA operations without invoice (standalone ISDOCs) ────────
-    const otaOps = db.prepare(`
+    const otaOps = await sql.rows<{
+      op_id: string; source_ref: string; source: string; paid_at: string;
+      amount: number; currency: string; comment: string | null; method: string | null;
+    }>(`
       SELECT
         fo.id as op_id, fo.source_ref, fo.source, fo.paid_at,
         fo.amount, fo.currency, fo.comment, fo.method
@@ -156,10 +159,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
           AND i.status = 'issued'
         )
       ORDER BY fo.paid_at ASC
-    `).all(month) as {
-      op_id: string; source_ref: string; source: string; paid_at: string;
-      amount: number; currency: string; comment: string | null; method: string | null;
-    }[];
+    `, [month]);
 
     // Sequential counter for OTA invoices (standalone, not in invoices table)
     let otaSeq = count + 1;

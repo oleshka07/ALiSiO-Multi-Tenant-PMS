@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 import { hostexBulkSync } from '@channels';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 const CRON_SECRET = process.env.CRON_SECRET || '';
 
-function isAuthorized(request: NextRequest): boolean {
+async function isAuthorized(request: NextRequest): Promise<boolean> {
   if (CRON_SECRET) {
     const secret = request.headers.get('x-cron-secret')
       || new URL(request.url).searchParams.get('secret');
@@ -14,7 +14,7 @@ function isAuthorized(request: NextRequest): boolean {
   const sessionId = request.cookies.get('session_id')?.value;
   if (sessionId) {
     try {
-      const session = getDb().prepare('SELECT id FROM sessions WHERE id = ?').get(sessionId);
+      const session = await getSql().row<{ id: string }>('SELECT id FROM sessions WHERE id = ?', [sessionId]);
       if (session) return true;
     } catch { /* ignore */ }
   }
@@ -24,7 +24,7 @@ function isAuthorized(request: NextRequest): boolean {
 
 // GET /api/hostex/bulk-sync — triggered by cron or UI
 export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  if (!(await isAuthorized(request))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   return await hostexBulkSync(request);

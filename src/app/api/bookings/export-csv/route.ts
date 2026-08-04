@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { withPermission, type Actor } from '@core/auth/session';
 import ExcelJS from 'exceljs';
 
@@ -13,7 +13,7 @@ import ExcelJS from 'exceljs';
  */
 export const GET = await withPermission('view_reports', async (request: NextRequest, _ctx, actor) => {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { searchParams } = new URL(request.url);
     const from = searchParams.get('from') || '';
     const to = searchParams.get('to') || '';
@@ -75,18 +75,18 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
 
     query += ' ORDER BY r.check_in ASC, g.last_name ASC';
 
-    const rows = db.prepare(query).all(...params) as any[];
+    const rows = await sql.rows<any>(query, params);
 
     // Payment info: fetch sum per reservation
     const paymentSums: Record<string, { total: number; methods: string[] }> = {};
     try {
-      const pRows = db.prepare(`
+      const pRows = await sql.rows<any>(`
         SELECT reservation_id, SUM(amount) as total,
                GROUP_CONCAT(DISTINCT method) as methods
         FROM booking_payments
         WHERE reservation_id IN (${rows.map(() => '?').join(',')})
         GROUP BY reservation_id
-      `).all(...rows.map(r => r.reservation_id)) as any[];
+      `, rows.map(r => r.reservation_id));
       for (const p of pRows) {
         paymentSums[p.reservation_id] = { total: p.total, methods: (p.methods || '').split(',') };
       }

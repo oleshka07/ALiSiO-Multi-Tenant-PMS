@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getSql } from '@core/db/async';
 import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 
 // GET /api/booking-sites/[id]/listings
@@ -10,12 +10,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
 
-    const site = db.prepare("SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'").get(id);
+    const site = await sql.row<any>("SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'", [id]);
     if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
 
-    const listings = db.prepare(`
+    const listings = await sql.rows<any>(`
       SELECT
         sl.*,
         u.name  AS unit_name,
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       LEFT JOIN unit_types ut ON COALESCE(sl.unit_type_id, u.unit_type_id) = ut.id
       WHERE sl.site_id = ?
       ORDER BY sl.sort_order, sl.created_at
-    `).all(id) as any[];
+    `, [id]);
 
     return NextResponse.json({ listings });
   } catch (error: any) {
@@ -52,10 +52,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
 
-    const site = db.prepare("SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'").get(id);
+    const site = await sql.row<any>("SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'", [id]);
     if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
 
     const items: any[] = Array.isArray(body) ? body : [body];
@@ -71,17 +71,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         return NextResponse.json({ error: 'Вкажіть лише unit_id або unit_type_id, не обидва' }, { status: 400 });
       }
 
-      const existing = db.prepare(
-        'SELECT id FROM site_listings WHERE site_id = ? AND (unit_id = ? OR unit_type_id = ?)'
-      ).get(id, unit_id || null, unit_type_id || null);
+      const existing = await sql.row<any>(
+        'SELECT id FROM site_listings WHERE site_id = ? AND (unit_id = ? OR unit_type_id = ?)',
+        [id, unit_id || null, unit_type_id || null]
+      );
       if (existing) continue;
 
-      const result = db.prepare(`
+      // No transaction around the loop: the items are independent, and a bad one
+      // already bails out with a 400 while the rows before it stay added.
+      // RETURNING rather than a read back by rowid: Postgres has no rowid.
+      const row = await sql.row<any>(`
         INSERT INTO site_listings (site_id, unit_id, unit_type_id, price_override, rules_override, max_inventory, external_url)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(id, unit_id || null, unit_type_id || null, price_override ?? null, rules_override ?? null, max_inventory ?? null, external_url ?? null);
+        RETURNING *
+      `, [id, unit_id || null, unit_type_id || null, price_override ?? null, rules_override ?? null, max_inventory ?? null, external_url ?? null]);
 
-      const row = db.prepare('SELECT * FROM site_listings WHERE rowid = ?').get(result.lastInsertRowid);
       created.push(row);
     }
 

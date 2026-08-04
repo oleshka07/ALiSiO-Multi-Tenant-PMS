@@ -6,7 +6,7 @@
  *          IČO, DIČ, Adresa, Popis, Suma, Měna, Stav, Rezervace ID
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { requireOwner } from '@core/security/route-guard';
 import type { Actor } from '@core/auth/session';
 
@@ -18,7 +18,7 @@ async function _GET(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Next
     const from    = searchParams.get('from')    || null;
     const to      = searchParams.get('to')      || null;
 
-    const db = getDb();
+    const sql = getSql();
 
     // Build query. The organization is not optional here: this writes every
     // matching invoice into a file, and unqualified it wrote every hotel's.
@@ -45,7 +45,7 @@ async function _GET(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Next
 
     const where = 'WHERE ' + conditions.join(' AND ');
 
-    const rows = db.prepare(`
+    const rows = await sql.rows<Record<string, unknown>>(`
       SELECT
         i.invoice_number,
         i.issued_at,
@@ -78,7 +78,7 @@ async function _GET(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Next
       LEFT JOIN units u ON u.id = r.unit_id
       ${where}
       ORDER BY i.issued_at DESC
-    `).all(...params) as Record<string, unknown>[];
+    `, params);
 
     // Build CSV
     const HEADERS = [

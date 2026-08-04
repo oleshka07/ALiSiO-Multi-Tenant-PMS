@@ -91,7 +91,7 @@ export async function getPnl2(request: NextRequest): Promise<NextResponse> {
       FROM fin_operations o
       LEFT JOIN expense_categories ec ON o.category_id = ec.id
       WHERE o.status = 'completed' AND o.organization_id = ?
-        AND strftime('%Y-%m', o.paid_at) = ?
+        AND ${sql.dialect.month('o.paid_at')} = ?
     `, [org, month]) as any[];
 
     // Fetch capex depreciation

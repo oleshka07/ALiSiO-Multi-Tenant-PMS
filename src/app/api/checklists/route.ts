@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { withActor, type Actor } from '@core/auth/session';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -22,17 +22,17 @@ import { withActor, type Actor } from '@core/auth/session';
  */
 export const GET = withActor(async (_req, _ctx, actor: Actor) => {
   try {
-    const db = getDb();
+    const sql = getSql();
 
     // Scoped: unqualified this listed every hotel's dirty rooms.
-    const dirtyUnits = db.prepare(`
+    const dirtyUnits = await sql.rows<any>(`
       SELECT u.id, u.code, u.name, u.cleaning_status, u.building_id
       FROM units u
       JOIN properties p ON p.id = u.property_id
       WHERE p.organization_id = ?
         AND u.cleaning_status IN ('dirty', 'in_progress')
       ORDER BY u.code ASC
-    `).all(actor.organizationId) as any[];
+    `, [actor.organizationId]);
 
     return NextResponse.json({
       success: true,

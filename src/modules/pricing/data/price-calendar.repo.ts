@@ -73,7 +73,7 @@ export async function getBulkPrices(organizationId: string, startDate: string, e
   return await sql.rows<any>(`
     SELECT pc.unit_type_id, pc.date, pc.base_price, pc.weekend_price,
       CASE
-        WHEN (CAST(strftime('%w', pc.date) AS INTEGER) IN (0, 5, 6)) AND pc.weekend_price IS NOT NULL
+        WHEN (${sql.dialect.dayOfWeek('pc.date')} IN (0, 5, 6)) AND pc.weekend_price IS NOT NULL
         THEN pc.weekend_price
         ELSE pc.base_price
       END as effective_price

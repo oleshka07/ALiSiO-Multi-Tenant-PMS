@@ -192,16 +192,22 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
 
     // ─── 6. Accruals неоплачені, але місяць давно минув ────────
     {
+      // Two months back, as 'YYYY-MM'. Worked out here rather than in SQL:
+      // both engines can subtract months, neither with the same words.
+      const cutoff = new Date();
+      cutoff.setMonth(cutoff.getMonth() - 2);
+      const cutoffMonth = cutoff.toISOString().slice(0, 7);
+
       const rows = await safeRun(async () => await sql.rows<any>(`
         SELECT id, description, amount, month, accrual_type, status,
                business_unit_id, category_id
         FROM accruals
         WHERE organization_id = ?
           AND status = 'pending'
-          AND month < strftime('%Y-%m', date('now', '-2 months'))
+          AND month < ?
         ORDER BY month ASC
         LIMIT 50
-      `, [org]), [] as any[]);
+      `, [org, cutoffMonth]), [] as any[]);
 
       const total = rows.reduce((s: number, r: any) => s + Math.abs(r.amount || 0), 0);
 

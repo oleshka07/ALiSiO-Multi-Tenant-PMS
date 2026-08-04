@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { sendAbandonedCartEmail } from '@/modules/bookings/data/send-abandoned-cart-email';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
-    const db = getDb();
+    const sql = getSql();
     
     // PROD MODE: Check for carts created more than 30 minutes ago
-    const abandonedReservations = db.prepare(`
+    const abandonedReservations = await sql.rows<{ id: string }>(`
       SELECT id 
       FROM reservations 
       WHERE status = 'tentative' 
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
         AND created_at < datetime('now', '-30 minute') 
         AND created_at > datetime('now', '-120 minute')
         AND ifnull(internal_notes, '') NOT LIKE '%[ABANDONED_CART_SENT]%'
-    `).all() as { id: string }[];
+    `);
 
     if (!abandonedReservations.length) {
       return NextResponse.json({ ok: true, processed: 0, message: 'No abandoned carts found' });
@@ -30,11 +30,11 @@ export async function GET(request: Request) {
       const sent = await sendAbandonedCartEmail(res.id, origin);
       if (sent) {
         // Mark as sent
-        db.prepare(`
+        await sql.run(`
           UPDATE reservations 
           SET internal_notes = ifnull(internal_notes, '') || '\n[ABANDONED_CART_SENT]'
           WHERE id = ?
-        `).run(res.id);
+        `, [res.id]);
         processed++;
       }
     }

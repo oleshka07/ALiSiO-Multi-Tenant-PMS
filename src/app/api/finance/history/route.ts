@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { withFinanceRead } from '@finance/_guard';
 
 /**
@@ -22,7 +22,7 @@ import { withFinanceRead } from '@finance/_guard';
  */
 export const GET = await withFinanceRead(async (request: NextRequest, _ctx, actor) => {
   try {
-    const db = getDb();
+    const sql = getSql();
     const sp = request.nextUrl.searchParams;
 
     const page  = Math.max(1, parseInt(sp.get('page')  || '1',  10));
@@ -63,12 +63,13 @@ export const GET = await withFinanceRead(async (request: NextRequest, _ctx, acto
     const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
 
     // Count
-    const totalRow = db.prepare(
-      `SELECT COUNT(*) AS n FROM fin_operation_audit a ${whereSql}`
-    ).get(...params) as { n: number };
+    const totalRow = await sql.row<any>(
+      `SELECT COUNT(*) AS n FROM fin_operation_audit a ${whereSql}`,
+      params,
+    ) as { n: number };
 
     // Fetch audit rows with LEFT JOIN to live operation + account
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT
         a.id,
         a.operation_id,
@@ -93,10 +94,13 @@ export const GET = await withFinanceRead(async (request: NextRequest, _ctx, acto
       ${whereSql}
       ORDER BY a.performed_at DESC, a.id DESC
       LIMIT ? OFFSET ?
-    `).all(...params, limit, (page - 1) * limit) as any[];
+    `, [...params, limit, (page - 1) * limit]);
 
-    // Enrich: prefer live data, fall back to JSON snapshots for deleted ops
-    const items = rows.map((r: any) => {
+    // Enrich: prefer live data, fall back to JSON snapshots for deleted ops.
+    // A loop rather than .map(): the account fallback below is a query, and an
+    // async callback would hand back an array of promises.
+    const items: any[] = [];
+    for (const r of rows) {
       let opAmount:  number | null = r.live_amount  ?? null;
       let opCurrency: string | null = r.live_currency ?? null;
       let opType:    string | null = r.live_op_type  ?? null;
@@ -121,14 +125,14 @@ export const GET = await withFinanceRead(async (request: NextRequest, _ctx, acto
           if (!accountName) {
             const accId = snapshot.account_to_id || snapshot.account_from_id;
             if (accId) {
-              const accRow = db.prepare('SELECT name FROM finance_accounts WHERE id = ?').get(accId) as { name: string } | undefined;
+              const accRow = await sql.row<{ name: string }>('SELECT name FROM finance_accounts WHERE id = ?', [accId]);
               if (accRow) accountName = accRow.name;
             }
           }
         }
       }
 
-      return {
+      items.push({
         id:           r.id,
         operation_id: r.operation_id,
         action:       r.action,
@@ -142,8 +146,8 @@ export const GET = await withFinanceRead(async (request: NextRequest, _ctx, acto
         op_type:      opType,
         op_comment:   opComment,
         account_name: accountName,
-      };
-    });
+      });
+    }
 
     return NextResponse.json({ items, total: totalRow.n, page, limit });
   } catch (error: any) {

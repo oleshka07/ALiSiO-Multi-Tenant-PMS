@@ -1,4 +1,4 @@
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
@@ -12,16 +12,16 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const db = getDb();
-    
+    const sql = getSql();
+
     // 6 years retention for Evidenční kniha
     const cutoffDate = new Date();
     cutoffDate.setFullYear(cutoffDate.getFullYear() - 6);
     const cutoffStr = cutoffDate.toISOString().split('T')[0];
 
-    db.transaction(() => {
+    await sql.tx(async (t) => {
       // 1. Anonymize reservation_guests where reservation check_out is older than 6 years
-      db.prepare(`
+      await t.run(`
         UPDATE reservation_guests
         SET first_name = 'Anonymized',
             last_name = 'Anonymized',
@@ -35,11 +35,11 @@ export async function GET(request: NextRequest) {
         WHERE reservation_id IN (
           SELECT id FROM reservations WHERE check_out < ?
         ) AND first_name != 'Anonymized'
-      `).run(cutoffStr);
+      `, [cutoffStr]);
 
       // 2. Anonymize guests table if they have NO reservations newer than 6 years
       // and their last update was > 6 years ago
-      db.prepare(`
+      await t.run(`
         UPDATE guests
         SET first_name = 'Anonymized',
             last_name = 'Anonymized',
@@ -64,16 +64,16 @@ export async function GET(request: NextRequest) {
           WHERE r.check_out >= ?
         )
         AND first_name != 'Anonymized'
-      `).run(cutoffStr, cutoffStr);
+      `, [cutoffStr, cutoffStr]);
 
       // 3. Delete from guest_registrations if reservation is older than 6 years
-      db.prepare(`
+      await t.run(`
         DELETE FROM guest_registrations
         WHERE reservation_id IN (
           SELECT id FROM reservations WHERE check_out < ?
         )
-      `).run(cutoffStr);
-    })();
+      `, [cutoffStr]);
+    });
 
     return NextResponse.json({ success: true, message: 'Data retention policy applied successfully' });
   } catch (error: any) {

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Sql } from './async.ts';
+import type { Sql, Dialect } from './async.ts';
 import { currentOrganizationId } from '../auth/tenant-context.ts';
 
 /**
@@ -89,6 +89,18 @@ async function scopeToTenant(client: PgClient): Promise<void> {
   await client.query('SELECT set_config($1, $2, false)', ['app.organization_id', org ?? '']);
 }
 
+/**
+ * Postgres stores these columns as TIMESTAMPTZ, so the date functions are the
+ * standard ones rather than SQLite's string formatters.
+ *
+ * dayOfWeek follows the SQLite convention (0 = Sunday) because the callers do;
+ * EXTRACT(DOW) happens to agree.
+ */
+const POSTGRES_DIALECT: Dialect = {
+  month: (column) => `to_char(${column}, 'YYYY-MM')`,
+  dayOfWeek: (column) => `EXTRACT(DOW FROM ${column})::int`,
+};
+
 function methods(client: PgClient, scoped: boolean): Sql {
   const run = async (text: string, params: unknown[] = []) => {
     if (!scoped) await scopeToTenant(client);
@@ -96,6 +108,8 @@ function methods(client: PgClient, scoped: boolean): Sql {
   };
 
   return {
+    dialect: POSTGRES_DIALECT,
+
     async rows<T = any>(text: string, params: unknown[] = []): Promise<T[]> {
       return (await run(text, params)).rows as T[];
     },

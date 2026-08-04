@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { createPaymentOperation } from '@/modules/finance/api/payment-bridge';
 import { getOptionalActor } from '@/modules/finance/api/operations.handlers';
 import { withActor, type Actor } from '@core/auth/session';
@@ -16,7 +16,7 @@ import { withActor, type Actor } from '@core/auth/session';
 // live here is gone with the is_pms_signal column.
 export const GET = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { searchParams } = new URL(request.url);
     const reservationId = searchParams.get('reservation_id');
     const groupId = searchParams.get('group_id');
@@ -44,7 +44,7 @@ export const GET = withActor(async (request: NextRequest, _ctx, actor: Actor) =>
       params.push(groupId);
     }
 
-    const rows = db.prepare(`
+    const rows = await sql.rows<any>(`
       SELECT o.id, o.reservation_id, o.amount, o.currency, o.method,
              o.payment_subtype AS type,
              o.status, o.paid_at, o.comment AS notes, o.source_ref,
@@ -52,7 +52,7 @@ export const GET = withActor(async (request: NextRequest, _ctx, actor: Actor) =>
       FROM fin_operations o
       WHERE ${where.join(' AND ')}
       ORDER BY o.paid_at DESC
-    `).all(...params);
+    `, params);
     return NextResponse.json(rows);
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -68,7 +68,7 @@ const CASH_METHODS = new Set(['cash']);
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
     const { reservation_id, amount, method = 'cash', type = 'partial', notes, paid_at } = body;
     if (!reservation_id || !amount) {
@@ -86,9 +86,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // Without this, every cash payment falls to the first cash account by sort_order (Олег's).
       let accountId: string | undefined;
       if (actor?.id) {
-        const userRow = db.prepare(
-          'SELECT default_cash_account_id FROM app_users WHERE id = ?'
-        ).get(actor.id) as { default_cash_account_id: string | null } | undefined;
+        const userRow = await sql.row<{ default_cash_account_id: string | null }>(
+          'SELECT default_cash_account_id FROM app_users WHERE id = ?',
+          [actor.id],
+        );
         accountId = userRow?.default_cash_account_id || undefined;
       }
 
@@ -114,9 +115,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Marker path — no fin_operation. Only update reservation.payment_status
     // and write an audit row to booking_activity_log so the operator has a
     // trail of who marked what.
-    const res = db.prepare(
+    const res = await sql.row<{ id: string; total_price: number; payment_status: string; is_prepaid: number }>(
       'SELECT id, total_price, payment_status, is_prepaid FROM reservations WHERE id = ?',
-    ).get(reservation_id) as { id: string; total_price: number; payment_status: string; is_prepaid: number } | undefined;
+      [reservation_id],
+    );
     if (!res) return NextResponse.json({ error: 'reservation not found' }, { status: 404 });
 
     // Channel-prepaid reservations (Hostex Booking/Airbnb/VRBO with is_prepaid=1)
@@ -129,17 +131,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       else if (type === 'deposit')      nextStatus = 'partial';
       else if (type === 'partial')      nextStatus = 'partial';
       if (nextStatus !== res.payment_status) {
-        db.prepare('UPDATE reservations SET payment_status = ?, updated_at = datetime(\'now\') WHERE id = ?')
-          .run(nextStatus, reservation_id);
+        await sql.run(
+          'UPDATE reservations SET payment_status = ?, updated_at = datetime(\'now\') WHERE id = ?',
+          [nextStatus, reservation_id],
+        );
         statusChanged = true;
       }
     }
 
     try {
       const detailsLine = `${method} ${type} ${Math.abs(Number(amount))}${notes ? ' — ' + notes : ''}`;
-      db.prepare(
+      await sql.run(
         "INSERT INTO booking_activity_log (id, reservation_id, action, details) VALUES (?, ?, 'payment_marker', ?)",
-      ).run(`al_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, reservation_id, detailsLine);
+        [`al_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, reservation_id, detailsLine],
+      );
     } catch { /* non-critical */ }
 
     return NextResponse.json({

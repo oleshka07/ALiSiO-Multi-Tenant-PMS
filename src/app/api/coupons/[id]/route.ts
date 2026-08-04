@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getSql } from '@core/db/async';
 import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -10,9 +10,9 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await ctx.params;
-    const db = getDb();
-    
-    db.prepare('DELETE FROM coupons WHERE id = ?').run(id);
+    const sql = getSql();
+
+    await sql.run('DELETE FROM coupons WHERE id = ?', [id]);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 });
@@ -25,7 +25,7 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await ctx.params;
-    const db = getDb();
+    const sql = getSql();
     const body = await req.json();
     const allowed = [
       'code', 'discount_type', 'offer_amount', 'valid_from', 'valid_until',
@@ -59,9 +59,9 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
     if (sets.length === 0) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
     
     vals.push(id);
-    db.prepare(`UPDATE coupons SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
-    
-    const updated = db.prepare('SELECT * FROM coupons WHERE id = ?').get(id);
+    await sql.run(`UPDATE coupons SET ${sets.join(', ')} WHERE id = ?`, vals);
+
+    const updated = await sql.row('SELECT * FROM coupons WHERE id = ?', [id]);
     return NextResponse.json({ code: updated });
   } catch (err: unknown) {
     const e = err as Error;

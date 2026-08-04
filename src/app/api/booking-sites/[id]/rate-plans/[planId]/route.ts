@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getSql } from '@core/db/async';
 import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 
 // PATCH /api/booking-sites/[id]/rate-plans/[planId]
@@ -13,14 +13,14 @@ export async function PATCH(
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id, planId } = await params;
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
 
-    const plan = db.prepare('SELECT * FROM site_rate_plans WHERE id = ? AND site_id = ?').get(planId, id);
+    const plan = await sql.row<any>('SELECT * FROM site_rate_plans WHERE id = ? AND site_id = ?', [planId, id]);
     if (!plan) return NextResponse.json({ error: 'Rate plan not found' }, { status: 404 });
 
     if (body.is_default) {
-      db.prepare('UPDATE site_rate_plans SET is_default = 0 WHERE site_id = ?').run(id);
+      await sql.run('UPDATE site_rate_plans SET is_default = 0 WHERE site_id = ?', [id]);
     }
 
     const jsonFields = ['payment_schedule', 'meals_included', 'applied_listings', 'valid_weekdays'];
@@ -52,9 +52,9 @@ export async function PATCH(
     }
 
     values.push(planId);
-    db.prepare(`UPDATE site_rate_plans SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+    await sql.run(`UPDATE site_rate_plans SET ${setClauses.join(', ')} WHERE id = ?`, values);
 
-    const updated = db.prepare('SELECT * FROM site_rate_plans WHERE id = ?').get(planId) as any;
+    const updated = await sql.row<any>('SELECT * FROM site_rate_plans WHERE id = ?', [planId]);
     try { updated.payment_schedule = JSON.parse(updated.payment_schedule); } catch { /* */ }
     try { updated.meals_included = JSON.parse(updated.meals_included); } catch { /* */ }
     try { updated.applied_listings = JSON.parse(updated.applied_listings); } catch { /* */ }
@@ -77,12 +77,12 @@ export async function DELETE(
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id, planId } = await params;
-    const db = getDb();
+    const sql = getSql();
 
-    const plan = db.prepare('SELECT id FROM site_rate_plans WHERE id = ? AND site_id = ?').get(planId, id);
+    const plan = await sql.row<any>('SELECT id FROM site_rate_plans WHERE id = ? AND site_id = ?', [planId, id]);
     if (!plan) return NextResponse.json({ error: 'Rate plan not found' }, { status: 404 });
 
-    db.prepare("UPDATE site_rate_plans SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(planId);
+    await sql.run("UPDATE site_rate_plans SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [planId]);
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('DELETE rate-plan error:', error?.message);

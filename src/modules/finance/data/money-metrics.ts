@@ -76,7 +76,7 @@ export async function getMonthMoney(organizationId: string, month: string): Prom
     WHERE o.organization_id = ?
       AND o.status = 'completed'
       AND o.op_type != 'transfer'
-      AND strftime('%Y-%m', o.paid_at) = ?
+      AND ${sql.dialect.month('o.paid_at')} = ?
     GROUP BY o.op_type, is_refund, cls
   `, [organizationId, month]) as { op_type: string; is_refund: number; cls: string; total: number }[];
 

@@ -3,7 +3,7 @@
  * Downloads a PDF for any stored invoice (reservation-based or custom).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { generateInvoicePdf } from '@/modules/finance/domain/invoice-pdf';
 import { requirePermission } from '@core/security/route-guard';
 import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
@@ -16,9 +16,9 @@ async function _GET(
 ): Promise<NextResponse> {
   try {
     const { id } = await params;
-    const db     = getDb();
+    const sql    = getSql();
 
-    const row = db.prepare(`
+    const row = await sql.row<Record<string, unknown>>(`
       SELECT
         i.id, i.invoice_number, i.issued_at, i.due_date,
         i.amount, i.currency, i.is_custom,
@@ -39,7 +39,7 @@ async function _GET(
         ON p.reservation_id = r.id AND p.op_type = 'income' AND p.status = 'completed'
       WHERE i.id = ?
       ORDER BY p.paid_at DESC LIMIT 1
-    `).get(id) as Record<string, unknown> | undefined;
+    `, [id]);
 
     if (!row) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });

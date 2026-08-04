@@ -10,7 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { requirePermission } from '@core/security/route-guard';
 
 export const PATCH = requirePermission('manage_documents', _PATCH);
@@ -27,18 +27,20 @@ async function _PATCH(
       return NextResponse.json({ error: 'guest_name required' }, { status: 400 });
     }
 
-    const db = getDb();
-    const invoice = db.prepare(
-      "SELECT id FROM invoices WHERE id = ? AND status = 'issued' LIMIT 1"
-    ).get(id) as { id: string } | undefined;
+    const sql = getSql();
+    const invoice = await sql.row<{ id: string }>(
+      "SELECT id FROM invoices WHERE id = ? AND status = 'issued' LIMIT 1",
+      [id],
+    );
 
     if (!invoice) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
     }
 
-    db.prepare(
-      "UPDATE invoices SET custom_buyer_name = ? WHERE id = ?"
-    ).run(name, id);
+    await sql.run(
+      "UPDATE invoices SET custom_buyer_name = ? WHERE id = ?",
+      [name, id],
+    );
 
     return NextResponse.json({ ok: true, id, guest_name: name });
   } catch (e: any) {

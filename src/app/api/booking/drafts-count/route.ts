@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { withActor, type Actor } from '@core/auth/session';
 
 /**
@@ -11,10 +11,10 @@ import { withActor, type Actor } from '@core/auth/session';
  * only caller is the dashboard calendar, which always has a session.
  */
 export const GET = withActor(async (_req, _ctx, actor: Actor) => {
-  const db = getDb();
+  const sql = getSql();
   // Excludes OTA/channel blocks: fake reservations injected by iCal/Hostex
   // that are not real guests.
-  const row = db.prepare(`
+  const row = await sql.row<{ count: number }>(`
     SELECT COUNT(*) as count FROM reservations r
     JOIN units u ON u.id = r.unit_id
     JOIN guests g ON g.id = r.guest_id
@@ -25,7 +25,7 @@ export const GET = withActor(async (_req, _ctx, actor: Actor) => {
       AND LOWER(g.first_name || ' ' || g.last_name) NOT LIKE '%ota%block%'
       AND LOWER(g.first_name || ' ' || g.last_name) NOT LIKE '%channel%block%'
       AND LOWER(g.first_name || ' ' || g.last_name) NOT LIKE '%hostex%block%'
-  `).get(actor.organizationId) as { count: number };
+  `, [actor.organizationId]);
   return NextResponse.json({ count: row?.count || 0 });
 });
 

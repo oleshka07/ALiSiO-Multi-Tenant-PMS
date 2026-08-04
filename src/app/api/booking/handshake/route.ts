@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import crypto from 'crypto';
 
 const CORS_HEADERS = {
@@ -14,36 +14,36 @@ export async function OPTIONS() {
 
 export async function GET(request: NextRequest) {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { searchParams } = new URL(request.url);
     const siteSlug = searchParams.get('siteSlug') || '';
     const siteId = searchParams.get('siteId') || '';
 
     // Create table if it doesn't exist
-    db.prepare(`
+    await sql.run(`
       CREATE TABLE IF NOT EXISTS widget_handshakes (
         token TEXT PRIMARY KEY,
         site_id TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         expires_at DATETIME
       )
-    `).run();
+    `);
 
     // Clean up expired handshakes
-    db.prepare(`
+    await sql.run(`
       DELETE FROM widget_handshakes 
       WHERE expires_at < CURRENT_TIMESTAMP
-    `).run();
+    `);
 
     // Resolve site configuration to check if authorized
     let resolvedSiteId = siteId;
     let allowedSiteUrl = null;
     if (siteSlug || siteId) {
-      const site = db.prepare(`
+      const site = await sql.row<{ id: string; site_url: string | null }>(`
         SELECT id, site_url 
         FROM booking_sites 
         WHERE (slug = ? OR id = ?) AND status != 'deleted'
-      `).get(siteSlug || siteId, siteSlug || siteId) as { id: string; site_url: string | null } | undefined;
+      `, [siteSlug || siteId, siteSlug || siteId]);
       
       if (site) {
         resolvedSiteId = site.id;
@@ -80,10 +80,10 @@ export async function GET(request: NextRequest) {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', ' ').replace(/\..+/, ''); // 10 minutes from now
 
-    db.prepare(`
+    await sql.run(`
       INSERT INTO widget_handshakes (token, site_id, expires_at)
       VALUES (?, ?, ?)
-    `).run(token, resolvedSiteId, expiresAt);
+    `, [token, resolvedSiteId, expiresAt]);
 
     return NextResponse.json({ token }, { headers: responseHeaders });
   } catch (error: any) {

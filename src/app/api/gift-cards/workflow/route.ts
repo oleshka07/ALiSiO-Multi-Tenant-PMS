@@ -24,7 +24,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 import { getGiftCardTemplate } from '@/modules/widget/domain/gift-card-builder';
 
@@ -42,11 +42,11 @@ export async function GET(req: NextRequest) {
     const user = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const db = getDb();
+    const sql = getSql();
     const siteId = new URL(req.url).searchParams.get('site_id');
     if (!siteId) return NextResponse.json({ error: 'site_id required' }, { status: 400 });
 
-    const rules = db.prepare(`
+    const rules = await sql.rows(`
       SELECT r.*,
              COUNT(p.id) AS total_codes,
              SUM(CASE WHEN p.current_uses > 0 THEN 1 ELSE 0 END) AS used_codes
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
       WHERE r.site_id = ?
       GROUP BY r.id
       ORDER BY r.created_at DESC
-    `).all(siteId);
+    `, [siteId]);
 
     return NextResponse.json({ rules });
   } catch (err: unknown) {
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     const user = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const db = getDb();
+    const sql = getSql();
     const body = await req.json();
     const {
       site_id,
@@ -97,13 +97,13 @@ export async function POST(req: NextRequest) {
 
     // Зберегти правило
     const ruleId = `vr_${Date.now()}`;
-    db.prepare(`
+    await sql.run(`
       INSERT INTO gift_card_automation_rules
         (id, site_id, template_id, name, discount_type, offer_amount,
          valid_from, valid_until, min_nights, max_nights,
          allowed_days, applies_to, redemption_limit, generated_count, created_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
-    `).run(
+    `, [
       ruleId, site_id, template_id || null, resolvedName,
       discount_type, Number(offer_amount),
       valid_from || null, valid_until || null,
@@ -111,31 +111,31 @@ export async function POST(req: NextRequest) {
       max_nights ? Number(max_nights) : null,
       allowed_days ? JSON.stringify(allowed_days) : null,
       applies_to, Number(redemption_limit), Number(count),
-    );
+    ]);
 
     // Визначити prefix для кодів з шаблону
     const prefix = tpl ? tpl.id.toUpperCase().slice(0, 4) : 'CMPN';
 
     // Генерувати промокоди в транзакції
-    const insertPromo = db.prepare(`
+    const INSERT_PROMO = `
       INSERT INTO coupons
         (id, code, discount_type, offer_amount,
          valid_from, valid_until, min_nights, max_nights,
          max_uses, redemption_limit, site_id, allowed_days,
          applies_to, is_active, gift_card_rule_id, created_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,CURRENT_TIMESTAMP)
-    `);
+    `;
 
     const generated: string[] = [];
-    const generateBatch = db.transaction(() => {
+    await sql.tx(async (t) => {
       let attempts = 0;
       while (generated.length < count && attempts < count * 3) {
         attempts++;
         const code = generateCampaignToken(prefix);
-        const exists = db.prepare('SELECT id FROM coupons WHERE code = ?').get(code);
+        const exists = await t.row('SELECT id FROM coupons WHERE code = ?', [code]);
         if (exists) continue;
         const pid = `p_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-        insertPromo.run(
+        await t.run(INSERT_PROMO, [
           pid, code, discount_type, Number(offer_amount),
           valid_from || null, valid_until || null,
           min_nights ? Number(min_nights) : null,
@@ -144,12 +144,10 @@ export async function POST(req: NextRequest) {
           site_id,
           allowed_days ? JSON.stringify(allowed_days) : null,
           applies_to, ruleId,
-        );
+        ]);
         generated.push(code);
       }
     });
-
-    generateBatch();
 
     return NextResponse.json({
       rule_id: ruleId,
@@ -170,13 +168,13 @@ export async function DELETE(req: NextRequest) {
     const user = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const db = getDb();
+    const sql = getSql();
     const ruleId = new URL(req.url).searchParams.get('rule_id');
     if (!ruleId) return NextResponse.json({ error: 'rule_id required' }, { status: 400 });
 
     // Не видаляти вже використані коди — лише деактивувати
-    db.prepare(`UPDATE coupons SET is_active = 0 WHERE gift_card_rule_id = ? AND current_uses = 0`).run(ruleId);
-    db.prepare(`DELETE FROM gift_card_automation_rules WHERE id = ?`).run(ruleId);
+    await sql.run(`UPDATE coupons SET is_active = 0 WHERE gift_card_rule_id = ? AND current_uses = 0`, [ruleId]);
+    await sql.run(`DELETE FROM gift_card_automation_rules WHERE id = ?`, [ruleId]);
 
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {

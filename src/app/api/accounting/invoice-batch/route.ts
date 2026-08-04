@@ -14,7 +14,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
 import { requireOwner } from '@core/security/route-guard';
 import { allocateInvoiceNumber, seriesForChannel, isPeriodLocked } from '@/modules/finance/domain/invoice-numbering';
 import type { Actor } from '@core/auth/session';
@@ -374,7 +373,6 @@ export interface BatchInvoiceResult {
 export const DELETE = requireOwner(_DELETE);
 async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
-    const db = getDb();
     const sql = getSql();
     const url = new URL(request.url);
     const channel = url.searchParams.get('channel')?.toLowerCase(); // 'airbnb', 'booking', 'teya', or 'all'
@@ -433,7 +431,7 @@ async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promi
         checkQuery += ` AND (period = ? OR strftime('%Y-%m', issued_at) = ?)`;
         checkParams.push(month, month);
       }
-      const lockedCount = db.prepare(checkQuery).get(...checkParams) as { count: number };
+      const lockedCount = await sql.row(checkQuery, checkParams) as { count: number };
       if (lockedCount.count > 0) {
         return NextResponse.json({
           error: `Знайдено ${lockedCount.count} заблокованих фактур. Ви не можете видалити їх без примусового прапорця (force=true).`,
@@ -444,12 +442,10 @@ async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promi
     }
 
     // Run delete inside a transaction to keep it atomic
-    const runDelete = db.transaction(() => {
-      const result = db.prepare(query).run(...params);
+    const deletedCount = await sql.tx(async (t) => {
+      const result = await t.run(query, params);
       return result.changes;
     });
-
-    const deletedCount = runDelete();
 
     const channelLabelMap: Record<string, string> = {
       airbnb: 'Airbnb',
@@ -472,7 +468,6 @@ async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promi
 export const POST = requireOwner(_POST);
 async function _POST(request: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
-    const db = getDb();
     const sql = getSql();
     const form = await request.formData();
     const file    = form.get('file');
@@ -518,11 +513,11 @@ async function _POST(request: NextRequest, _ctx: unknown, actor: Actor): Promise
       const issued = (row.date || today);
       const period = issued.slice(0, 7);
       const { series } = seriesForChannel(row.source);
-      if (await isPeriodLocked(sql, actor.organizationId, series, period)) {
+      if (await isPeriodLocked(t, actor.organizationId, series, period)) {
         throw new Error(`Období ${series} ${period} je uzamčeno — nové faktury nelze přidat.`);
       }
       const invId  = `inv_batch_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
-      const { invoiceNumber: invNum } = await allocateInvoiceNumber(sql, actor.organizationId, row.source, new Date().getFullYear());
+      const { invoiceNumber: invNum } = await allocateInvoiceNumber(t, actor.organizationId, row.source, new Date().getFullYear());
       const due    = row.date > today ? row.date : today;
 
       // For rows that need a guest name, store a placeholder

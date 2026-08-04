@@ -4,7 +4,7 @@
  */
 import { getInvoiceHtml } from '@finance';
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { requireOwner } from '@core/security/route-guard';
 
 export const GET = getInvoiceHtml;
@@ -18,18 +18,19 @@ async function _DELETE(
     const { id } = await params;
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-    const db = getDb();
+    const sql = getSql();
 
     // Fetch invoice info before deletion (for logging)
-    const inv = db.prepare(
-      'SELECT invoice_number, amount, currency FROM invoices WHERE id = ?'
-    ).get(id) as { invoice_number: string; amount: number; currency: string } | undefined;
+    const inv = await sql.row<{ invoice_number: string; amount: number; currency: string }>(
+      'SELECT invoice_number, amount, currency FROM invoices WHERE id = ?',
+      [id],
+    );
 
     if (!inv) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
     }
 
-    db.prepare('DELETE FROM invoices WHERE id = ?').run(id);
+    await sql.run('DELETE FROM invoices WHERE id = ?', [id]);
 
     console.log(`[InvoiceDelete] Deleted ${inv.invoice_number} (${id}) amount=${inv.amount} ${inv.currency}`);
 

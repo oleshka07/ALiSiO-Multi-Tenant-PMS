@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 import { requirePropertyId } from '@core/auth/tenant-context';
 
@@ -10,15 +11,15 @@ export async function GET(_req: NextRequest) {
     const session = getSessionUser(getSessionIdFromCookies(_req.headers.get('cookie')));
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const db = getDb();
-    const sites = db.prepare(`
+    const sql = getSql();
+    const sites = await sql.rows<any>(`
       SELECT
         bs.*,
         (SELECT COUNT(*) FROM site_listings sl WHERE sl.site_id = bs.id) as listings_count
       FROM booking_sites bs
       WHERE bs.status != 'deleted'
       ORDER BY bs.created_at DESC
-    `).all() as any[];
+    `);
 
     return NextResponse.json({ sites });
   } catch (error: any) {
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
     const session = getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
     const { name, type = 'self-hosted', currency = 'CZK', property_id } = body;
 
@@ -67,17 +68,17 @@ export async function POST(request: NextRequest) {
     let slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `site-${Date.now()}`;
     
     // Ensure slug uniqueness
-    const existing = db.prepare('SELECT id FROM booking_sites WHERE slug = ?').get(slug);
+    const existing = await sql.row<any>('SELECT id FROM booking_sites WHERE slug = ?', [slug]);
     if (existing) {
       slug = `${slug}-${Math.random().toString(36).substring(2, 5)}`;
     }
 
-    const result = db.prepare(`
+    // RETURNING rather than a read back by rowid: Postgres has no rowid.
+    const site = await sql.row<any>(`
       INSERT INTO booking_sites (property_id, name, slug, type, currency, design_config, widget_config, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(propId, name.trim(), slug, type, currency, defaultDesignConfig, defaultWidgetConfig, session.id);
-
-    const site = db.prepare('SELECT * FROM booking_sites WHERE rowid = ?').get(result.lastInsertRowid) as any;
+      RETURNING *
+    `, [propId, name.trim(), slug, type, currency, defaultDesignConfig, defaultWidgetConfig, session.id]);
 
     return NextResponse.json({ site }, { status: 201 });
   } catch (error: any) {

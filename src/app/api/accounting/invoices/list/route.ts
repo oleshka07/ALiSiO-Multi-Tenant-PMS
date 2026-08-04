@@ -9,13 +9,13 @@
  *   search  = free-text (matches invoice_number, buyer_name, amount)
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/core/db';
+import { getSql } from '@core/db/async';
 import { requireOwner } from '@core/security/route-guard';
 
 export const GET = requireOwner(_GET);
 async function _GET(request: NextRequest): Promise<NextResponse> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const { searchParams } = new URL(request.url);
     const source = searchParams.get('source') || 'all';
     const search = (searchParams.get('search') || '').trim();
@@ -25,7 +25,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
 
     // Build the base query — LEFT JOINs so custom/batch invoices without
     // reservation_id are still returned.
-    const rows: any[] = db.prepare(`
+    const rows: any[] = await sql.rows<any>(`
       SELECT
         i.id,
         i.invoice_number,
@@ -62,7 +62,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       LEFT JOIN units       u ON r.unit_id  = u.id
       ORDER BY i.issued_at DESC, i.invoice_number DESC
       LIMIT 1000
-    `).all();
+    `);
 
     // Apply source + search filters in JS (simpler than dynamic SQL for SQLite)
     let filtered = rows;

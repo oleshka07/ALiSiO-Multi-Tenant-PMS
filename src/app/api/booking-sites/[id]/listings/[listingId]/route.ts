@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getSql } from '@core/db/async';
 import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 
 // PATCH /api/booking-sites/[id]/listings/[listingId]
@@ -13,12 +13,12 @@ export async function PATCH(
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id, listingId } = await params;
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
 
-    const listing = db.prepare(
-      'SELECT id FROM site_listings WHERE id = ? AND site_id = ?'
-    ).get(listingId, id);
+    const listing = await sql.row<any>(
+      'SELECT id FROM site_listings WHERE id = ? AND site_id = ?', [listingId, id]
+    );
     if (!listing) return NextResponse.json({ error: 'Listing not found' }, { status: 404 });
 
     const allowed = ['price_override', 'has_rules_override', 'rules_override', 'max_inventory', 'external_url', 'thank_you_url', 'default_lang', 'sort_order', 'photos'];
@@ -37,9 +37,9 @@ export async function PATCH(
     }
 
     values.push(listingId);
-    db.prepare(`UPDATE site_listings SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+    await sql.run(`UPDATE site_listings SET ${setClauses.join(', ')} WHERE id = ?`, values);
 
-    const updated = db.prepare('SELECT * FROM site_listings WHERE id = ?').get(listingId);
+    const updated = await sql.row<any>('SELECT * FROM site_listings WHERE id = ?', [listingId]);
     return NextResponse.json({ listing: updated });
   } catch (error: any) {
     console.error('PATCH listing error:', error?.message);
@@ -57,14 +57,14 @@ export async function DELETE(
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id, listingId } = await params;
-    const db = getDb();
+    const sql = getSql();
 
-    const listing = db.prepare(
-      'SELECT id FROM site_listings WHERE id = ? AND site_id = ?'
-    ).get(listingId, id);
+    const listing = await sql.row<any>(
+      'SELECT id FROM site_listings WHERE id = ? AND site_id = ?', [listingId, id]
+    );
     if (!listing) return NextResponse.json({ error: 'Listing not found' }, { status: 404 });
 
-    db.prepare('DELETE FROM site_listings WHERE id = ?').run(listingId);
+    await sql.run('DELETE FROM site_listings WHERE id = ?', [listingId]);
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('DELETE listing error:', error?.message);

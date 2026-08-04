@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getSql } from '@core/db/async';
 import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 
 // GET /api/booking-sites/[id]/rate-plans
@@ -10,16 +10,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
 
-    const site = db.prepare("SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'").get(id);
+    const site = await sql.row<any>("SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'", [id]);
     if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
 
-    const plans = db.prepare(`
+    const plans = await sql.rows<any>(`
       SELECT * FROM site_rate_plans
       WHERE site_id = ? AND is_active = 1
       ORDER BY is_default DESC, created_at ASC
-    `).all(id) as any[];
+    `, [id]);
 
     for (const plan of plans) {
       try { plan.payment_schedule = JSON.parse(plan.payment_schedule); } catch { /* */ }
@@ -42,10 +42,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
 
-    const site = db.prepare("SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'").get(id);
+    const site = await sql.row<any>("SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'", [id]);
     if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
 
     const {
@@ -76,20 +76,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     if (is_default) {
-      db.prepare('UPDATE site_rate_plans SET is_default = 0 WHERE site_id = ?').run(id);
+      await sql.run('UPDATE site_rate_plans SET is_default = 0 WHERE site_id = ?', [id]);
     }
 
     // Normalise legacy 'derived' value → 'dependent' (DB CHECK constraint)
     const safePricingMode = pricing_mode === 'derived' ? 'dependent' : pricing_mode;
 
-    const result = db.prepare(`
+    // RETURNING rather than a read back by rowid: Postgres has no rowid.
+    const plan = await sql.row<any>(`
       INSERT INTO site_rate_plans (
         site_id, name, is_default, cancellation_policy, payment_schedule,
         meals_included, min_days_before_checkin, same_day_cutoff_hour,
         min_stay, max_stay, pricing_mode, applied_listings,
         pricing_modifier_percent, pricing_modifier_type, derived_from_plan_id, valid_weekdays
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+      RETURNING *
+    `, [
       id, name.trim(), is_default ? 1 : 0, cancellation_policy,
       JSON.stringify(payment_schedule),
       JSON.stringify(meals_included),
@@ -98,10 +100,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       JSON.stringify(applied_listings),
       pricing_modifier_percent, pricing_modifier_type, derived_from_plan_id,
       valid_weekdays ? JSON.stringify(valid_weekdays) : null
-    );
-
-
-    const plan = db.prepare('SELECT * FROM site_rate_plans WHERE rowid = ?').get(result.lastInsertRowid) as any;
+    ]);
     try { plan.payment_schedule = JSON.parse(plan.payment_schedule); } catch { /* */ }
     try { plan.meals_included = JSON.parse(plan.meals_included); } catch { /* */ }
     try { plan.applied_listings = JSON.parse(plan.applied_listings); } catch { /* */ }

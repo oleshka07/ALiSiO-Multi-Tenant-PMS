@@ -8,7 +8,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrgIdentity } from '@core/org-identity';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { renderInvoiceHtml, type InvoiceData } from '@/modules/finance/domain/invoice-template';
 import { sendEmail } from '@core/mail/email';
 import { requirePermission } from '@core/security/route-guard';
@@ -21,10 +21,10 @@ async function _POST(
   try {
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
-    const db = getDb();
+    const sql = getSql();
 
     // Fetch full invoice data (same query as getInvoiceHtml)
-    const data = db.prepare(`
+    const data = await sql.row<InvoiceData>(`
       SELECT
         i.id, i.invoice_number, i.issued_at, i.due_date,
         i.amount, i.currency, i.status, i.reservation_id,
@@ -55,7 +55,7 @@ async function _POST(
         ON p.reservation_id = r.id AND p.op_type = 'income' AND p.status = 'completed'
       WHERE i.id = ?
       ORDER BY p.paid_at DESC LIMIT 1
-    `).get(id) as InvoiceData | undefined;
+    `, [id]);
 
     if (!data || !data.invoice_number) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });

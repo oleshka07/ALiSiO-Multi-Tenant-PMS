@@ -36,7 +36,7 @@ export async function getFinanceLog(request: NextRequest): Promise<NextResponse>
       where.push("o.op_type = 'transfer'");
     }
 
-    if (month) { where.push("strftime('%Y-%m', o.paid_at) = ?"); params.push(month); }
+    if (month) { where.push(`${sql.dialect.month('o.paid_at')} = ?`); params.push(month); }
     if (dateFrom) { where.push('o.paid_at >= ?'); params.push(dateFrom); }
     if (dateTo) { where.push('o.paid_at <= ?'); params.push(dateTo); }
     if (account_id) { where.push('(o.account_from_id = ? OR o.account_to_id = ?)'); params.push(account_id, account_id); }

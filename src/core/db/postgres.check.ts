@@ -16,6 +16,7 @@
 import assert from 'node:assert';
 import { PGlite } from '@electric-sql/pglite';
 import { postgresSql, toDollarParams, type PgConnection, type PgPool } from './postgres.ts';
+import { sqliteSql } from './async.ts';
 import { runWithOrganization } from '../auth/tenant-context.ts';
 
 // ─── Placeholder rewriting ──────────────────────────────────────────────────
@@ -137,6 +138,34 @@ await runWithOrganization('org_tx', async () => {
   assert.strictEqual(v, 'org_tx', 'a transaction ran without the tenant set');
 });
 console.log('  ok  the ambient organization reaches every connection, transactions included');
+
+// ─── The dialect fragments agree ────────────────────────────────────────────
+// `strftime('%Y-%m', paid_at)` and `to_char(paid_at, 'YYYY-MM')` are two
+// spellings of one idea, and every monthly report groups by it. If they ever
+// disagreed the numbers would simply land in different months — no error, just
+// wrong revenue. So the two are run side by side on the same instant.
+{
+  const Database = (await import('better-sqlite3')).default;
+  const lite = new Database(':memory:');
+  lite.exec("CREATE TABLE d (ts TEXT); INSERT INTO d VALUES ('2026-03-09 14:25:00')");
+  const liteSql = sqliteSql(lite);
+
+  await sql.exec("CREATE TABLE d (ts TIMESTAMPTZ); INSERT INTO d VALUES ('2026-03-09 14:25:00+00')");
+
+  const liteMonth = (await liteSql.row<{ m: string }>(`SELECT ${liteSql.dialect.month('ts')} AS m FROM d`))?.m;
+  const pgMonth = (await sql.row<{ m: string }>(`SELECT ${sql.dialect.month('ts')} AS m FROM d`))?.m;
+  assert.strictEqual(liteMonth, '2026-03', 'SQLite month fragment');
+  assert.strictEqual(pgMonth, liteMonth, 'the two engines group into different months');
+
+  // 2026-03-09 is a Monday: 1 under both conventions.
+  const liteDow = (await liteSql.row<{ d: number }>(`SELECT ${liteSql.dialect.dayOfWeek('ts')} AS d FROM d`))?.d;
+  const pgDow = (await sql.row<{ d: number }>(`SELECT ${sql.dialect.dayOfWeek('ts')} AS d FROM d`))?.d;
+  assert.strictEqual(Number(liteDow), 1, 'SQLite day-of-week fragment');
+  assert.strictEqual(Number(pgDow), Number(liteDow), 'the two engines number weekdays differently');
+
+  lite.close();
+  console.log('  ok  month and weekday mean the same thing on both engines');
+}
 
 await pg.close();
 console.log('postgres sql: the same contract as SQLite, on Postgres itself');

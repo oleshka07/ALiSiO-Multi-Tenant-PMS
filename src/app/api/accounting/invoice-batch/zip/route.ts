@@ -14,7 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql, type Sql } from '@core/db/async';
 import { generateIsdocXml } from '@/modules/finance/domain/isdoc';
 import { requireOwner } from '@core/security/route-guard';
 import { generateInvoicePdf } from '@/modules/finance/domain/invoice-pdf';
@@ -122,8 +122,8 @@ function buildZip(files: Array<{ name: string; data: Uint8Array }>): Buffer {
 
 // ─── Shared DB query helpers ──────────────────────────────────────────────────
 
-function getInvoiceForIsdoc(db: any, id: string) {
-  return db.prepare(`
+function getInvoiceForIsdoc(sql: Sql, id: string) {
+  return sql.row<any>(`
     SELECT
       i.id, i.invoice_number, i.issued_at, i.due_date,
       i.amount, i.currency, i.status, i.reservation_id,
@@ -146,11 +146,11 @@ function getInvoiceForIsdoc(db: any, id: string) {
       ON p.reservation_id = r.id AND p.op_type = 'income' AND p.status = 'completed'
     WHERE i.id = ?
     ORDER BY p.paid_at DESC LIMIT 1
-  `).get(id);
+  `, [id]);
 }
 
-function getInvoiceForPdf(db: any, id: string) {
-  return db.prepare(`
+function getInvoiceForPdf(sql: Sql, id: string) {
+  return sql.row<any>(`
     SELECT
       i.id, i.invoice_number, i.issued_at, i.due_date,
       i.amount, i.currency, i.is_custom, i.is_credit_note, i.notes,
@@ -171,12 +171,12 @@ function getInvoiceForPdf(db: any, id: string) {
       ON p.reservation_id = r.id AND p.op_type = 'income' AND p.status = 'completed'
     WHERE i.id = ?
     ORDER BY p.paid_at DESC LIMIT 1
-  `).get(id);
+  `, [id]);
 }
 
 // ─── ISDOC generation (reused from /api/invoices/[id]/isdoc) ─────────────────
 
-async function buildIsdocBytes(db: any, row: any): Promise<Uint8Array> {
+async function buildIsdocBytes(sql: Sql, row: any): Promise<Uint8Array> {
   // Real document date + CZK conversion + issue+14 dates + 9900 buyer rule —
   // identical to /api/invoices/[id]/isdoc so single and ZIP output match.
   const documentDate = (row.check_in || row.payment_date || row.issued_at || '').slice(0, 10);
@@ -235,7 +235,7 @@ async function buildIsdocBytes(db: any, row: any): Promise<Uint8Array> {
 
 // ─── PDF generation (reused from /api/invoices/[id]/pdf) ─────────────────────
 
-async function buildPdfBytes(db: any, row: any): Promise<Uint8Array> {
+async function buildPdfBytes(sql: Sql, row: any): Promise<Uint8Array> {
   const documentDate = ((row.check_in as string | null) || (row.payment_date as string | null) || (row.issued_at as string | null) || '').slice(0, 10);
   const conv = await convertToCzkAuto((row.amount as number) || 0, (row.currency as string) || 'CZK', documentDate);
   const czkAmount = conv.converted ? conv.amountCzk : ((row.amount as number) || 0);
@@ -307,7 +307,7 @@ async function _POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'format must be "isdoc" or "pdf"' }, { status: 400 });
     }
 
-    const db = getDb();
+    const sql = getSql();
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
     const zipName = `${today}_${channel}_${format}.zip`;
     const ext = format === 'isdoc' ? '.isdoc' : '.pdf';
@@ -318,14 +318,14 @@ async function _POST(request: NextRequest): Promise<NextResponse> {
     for (const id of ids) {
       try {
         if (format === 'isdoc') {
-          const row = getInvoiceForIsdoc(db, id) as any;
+          const row = await getInvoiceForIsdoc(sql, id) as any;
           if (!row || !row.invoice_number) { errors.push(`${id}: not found`); continue; }
-          const data = await buildIsdocBytes(db, row);
+          const data = await buildIsdocBytes(sql, row);
           files.push({ name: `faktura-${row.invoice_number}${ext}`, data });
         } else {
-          const row = getInvoiceForPdf(db, id) as any;
+          const row = await getInvoiceForPdf(sql, id) as any;
           if (!row || !row.invoice_number) { errors.push(`${id}: not found`); continue; }
-          const data = await buildPdfBytes(db, row);
+          const data = await buildPdfBytes(sql, row);
           files.push({ name: `faktura-${row.invoice_number}${ext}`, data });
         }
       } catch (err: any) {

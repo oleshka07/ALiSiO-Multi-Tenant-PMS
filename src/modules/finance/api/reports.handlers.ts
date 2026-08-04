@@ -7,7 +7,7 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 
 // Helpers: SQL fragments that filter fin_operations by semantic slice.
 // A "payment" operation = income or refund tied to a reservation (source IN ('booking_widget','teia','hostex','manual') with reservation_id).
-// A "regular expense" = op_type='expense' without payment_subtype (not a refund).
+// A "regular expense` = op_type='expense' without payment_subtype (not a refund).
 //
 // The is_pms_signal filter that used to live here is gone — channel
 // prepayments aren't recorded as fin_operations any more (see PR
@@ -82,7 +82,7 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
                                THEN o.amount_company ELSE 0 END), 0) as expenses,
              COALESCE(SUM(CASE WHEN o.op_type = 'expense' AND ec.is_capex = 1 THEN o.amount_company ELSE 0 END), 0) as capex
       FROM business_units bu
-      LEFT JOIN fin_operations o ON o.project_id = bu.id AND strftime('%Y-%m', o.paid_at) = ? AND o.status = 'completed'
+      LEFT JOIN fin_operations o ON o.project_id = bu.id AND ${sql.dialect.month('o.paid_at')} = ? AND o.status = 'completed'
       LEFT JOIN expense_categories ec ON ec.id = o.category_id
       WHERE bu.organization_id = ? AND bu.is_active = 1 AND bu.is_shared = 0
       GROUP BY bu.id ORDER BY bu.sort_order
@@ -237,6 +237,7 @@ export async function getCashflowMatrix(request: NextRequest): Promise<NextRespo
     const from = searchParams.get('from') || defaultFrom;
     const to = searchParams.get('to') || defaultTo;
     const basis = searchParams.get('basis') === 'accrued' ? 'accrued_at' : 'paid_at';
+    const monthOf = sql.dialect.month(`o.${basis}`);
     const accountId = searchParams.get('account_id');
     const projectId = searchParams.get('project_id');
     const tagIds = (searchParams.get('tag_ids') || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -246,8 +247,8 @@ export async function getCashflowMatrix(request: NextRequest): Promise<NextRespo
     const toDate = `${to}-31`;
 
     const where: string[] = [
-      "o.status = 'completed'",
-      `strftime('%Y-%m', o.${basis}) BETWEEN ? AND ?`,
+      `o.status = 'completed'`,
+      `${monthOf} BETWEEN ? AND ?`,
       'o.organization_id = ?',
     ];
     const params: any[] = [from, to, org];
@@ -262,7 +263,7 @@ export async function getCashflowMatrix(request: NextRequest): Promise<NextRespo
       SELECT
         ec.id AS cat_id, ec.name AS cat_name, ec.icon AS cat_icon,
         ec.classifier, ec.op_type AS cat_op_type, ec.parent_id,
-        o.op_type, strftime('%Y-%m', o.${basis}) AS month,
+        o.op_type, ${monthOf} AS month,
         SUM(o.amount_company) AS total
       FROM fin_operations o
       LEFT JOIN expense_categories ec ON ec.id = o.category_id
@@ -324,8 +325,8 @@ export async function getCashflowMatrix(request: NextRequest): Promise<NextRespo
     const initialBalSum = accountsRows.reduce((s, a) => s + (a.initial_balance || 0), 0);
 
     // Balances always live on the PAID basis (money on accounts is a cash
-    // fact) — independent of the flows basis above, so "ending = opening +
-    // net" stays true only when basis='paid'; on accrued basis the balance
+    // fact) — independent of the flows basis above, so `ending = opening +
+    // net` stays true only when basis='paid'; on accrued basis the balance
     // rows still show real account state instead of a fictional equation.
     const monthBalances: Record<string, { opening: number; ending: number }> = {};
     let runningBalance = initialBalSum;
@@ -342,12 +343,12 @@ export async function getCashflowMatrix(request: NextRequest): Promise<NextRespo
       runningBalance += prior.delta;
 
       const deltas = await sql.rows<any>(`
-        SELECT strftime('%Y-%m', paid_at) AS m,
+        SELECT ${sql.dialect.month('paid_at')} AS m,
           COALESCE(SUM(CASE WHEN account_to_id IN (${plh}) THEN amount_company ELSE 0 END), 0)
           - COALESCE(SUM(CASE WHEN account_from_id IN (${plh}) THEN amount_company ELSE 0 END), 0) AS delta
         FROM fin_operations
-        WHERE status = 'completed' AND strftime('%Y-%m', paid_at) BETWEEN ? AND ?
-        GROUP BY strftime('%Y-%m', paid_at)
+        WHERE status = 'completed' AND ${sql.dialect.month('paid_at')} BETWEEN ? AND ?
+        GROUP BY ${sql.dialect.month('paid_at')}
       `, [...accountIds, ...accountIds, months[0], months[months.length - 1]]) as { m: string; delta: number }[];
       for (const d of deltas) if (d.m in paidDeltaByMonth) paidDeltaByMonth[d.m] = d.delta;
     }
@@ -383,6 +384,7 @@ export async function getPnlMatrix(request: NextRequest): Promise<NextResponse> 
     const from = searchParams.get('from') || defaultFrom;
     const to = searchParams.get('to') || defaultTo;
     const basis = searchParams.get('basis') === 'paid' ? 'paid_at' : 'accrued_at';
+    const monthOf = sql.dialect.month(`o.${basis}`);
     const tagIds = (searchParams.get('tag_ids') || '').split(',').map((s) => s.trim()).filter(Boolean);
 
     const months = generateMonthList(from, to);
@@ -396,12 +398,12 @@ export async function getPnlMatrix(request: NextRequest): Promise<NextResponse> 
         ec.id AS cat_id, ec.name AS cat_name, ec.icon AS cat_icon,
         COALESCE(ec.classifier, 'other') AS classifier,
         ec.op_type AS cat_op_type, ec.parent_id,
-        o.op_type, strftime('%Y-%m', o.${basis}) AS month,
+        o.op_type, ${monthOf} AS month,
         SUM(o.amount_company) AS total
       FROM fin_operations o
       LEFT JOIN expense_categories ec ON ec.id = o.category_id
       WHERE o.status = 'completed'
-        AND strftime('%Y-%m', o.${basis}) BETWEEN ? AND ?
+        AND ${monthOf} BETWEEN ? AND ?
         AND o.organization_id = ?
         AND o.op_type != 'transfer'
         ${tagFilter}
@@ -668,6 +670,7 @@ export async function getProjectProfitability(request: NextRequest): Promise<Nex
     const from = searchParams.get('from') || defaultFrom;
     const to = searchParams.get('to') || defaultTo;
     const basis = searchParams.get('basis') === 'accrued' ? 'accrued_at' : 'paid_at';
+    const monthOf = sql.dialect.month(`o.${basis}`);
 
     const months = generateMonthList(from, to);
 
@@ -682,12 +685,12 @@ export async function getProjectProfitability(request: NextRequest): Promise<Nex
                WHEN COALESCE(ec.classifier, '') IN ('capex', 'financing') OR COALESCE(ec.is_capex, 0) = 1 THEN 'capex_fin'
                ELSE 'expense'
              END AS bucket,
-             strftime('%Y-%m', o.${basis}) AS month, SUM(o.amount_company) AS total
+             ${monthOf} AS month, SUM(o.amount_company) AS total
       FROM fin_operations o
       JOIN business_units bu ON bu.id = o.project_id
       LEFT JOIN expense_categories ec ON ec.id = o.category_id
       WHERE o.status = 'completed' AND o.organization_id = ?
-        AND strftime('%Y-%m', o.${basis}) BETWEEN ? AND ?
+        AND ${monthOf} BETWEEN ? AND ?
         AND o.op_type != 'transfer'
       GROUP BY bu.id, bucket, month
     `, [org, from, to]) as any[];
@@ -818,7 +821,7 @@ export async function getPlanFactReport(request: NextRequest): Promise<NextRespo
           SELECT o.project_id AS key, o.op_type, SUM(o.amount_company) AS total
           FROM fin_operations o
           WHERE o.status = 'completed' AND o.organization_id = ?
-            AND strftime('%Y-%m', o.paid_at) = ? AND o.op_type != 'transfer'
+            AND ${sql.dialect.month('o.paid_at')} = ? AND o.op_type != 'transfer'
           GROUP BY o.project_id, o.op_type
         `, [org, monthStr]) as any[]
       : await sql.rows<any>(`
@@ -826,7 +829,7 @@ export async function getPlanFactReport(request: NextRequest): Promise<NextRespo
           FROM fin_operations o
           LEFT JOIN expense_categories ec ON o.category_id = ec.id
           WHERE o.status = 'completed' AND o.organization_id = ?
-            AND strftime('%Y-%m', o.paid_at) = ? AND o.op_type != 'transfer'
+            AND ${sql.dialect.month('o.paid_at')} = ? AND o.op_type != 'transfer'
           GROUP BY COALESCE(ec.parent_id, o.category_id), o.op_type
         `, [org, monthStr]) as any[];
 
@@ -882,10 +885,11 @@ export async function getOperationsForDrillDown(request: NextRequest): Promise<N
     const categoryId = searchParams.get('category_id');
     const opType = searchParams.get('op_type');
     const basis = searchParams.get('basis') === 'paid' ? 'paid_at' : 'accrued_at';
+    const monthOf = sql.dialect.month(`o.${basis}`);
 
     const where: string[] = ["o.status = 'completed'", 'o.organization_id = ?'];
     const params: any[] = [org];
-    if (month) { where.push(`strftime('%Y-%m', o.${basis}) = ?`); params.push(month); }
+    if (month) { where.push(`${monthOf} = ?`); params.push(month); }
     if (categoryId === 'null' || categoryId === '_uncategorized') {
       where.push('o.category_id IS NULL');
     } else if (categoryId) {
