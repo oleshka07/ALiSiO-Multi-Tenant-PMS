@@ -17,7 +17,9 @@ export async function getReservationByToken(token: string) {
       b.id as building_id, b.name as building_name, b.code as building_code,
       p.name as property_name, p.address as property_address, p.city as property_city,
       p.country as property_country, p.phone as property_phone, p.email as property_email,
-      p.check_in_time, p.check_out_time
+      p.check_in_time, p.check_out_time,
+      p.organization_id,
+      o.language as organization_language
     FROM reservations r
     JOIN guests g ON r.guest_id = g.id
     JOIN units u ON r.unit_id = u.id
@@ -25,6 +27,7 @@ export async function getReservationByToken(token: string) {
     JOIN unit_types ut ON u.unit_type_id = ut.id
     LEFT JOIN buildings b ON u.building_id = b.id
     JOIN properties p ON r.property_id = p.id
+    JOIN organizations o ON p.organization_id = o.id
     WHERE r.guest_page_token = ?
   `, [token]) as any;
 

@@ -95,6 +95,7 @@ CREATE TABLE "app_users" (
   "role" TEXT DEFAULT 'receptionist' NOT NULL,
   "is_active" BOOLEAN DEFAULT true NOT NULL,
   "last_login" TEXT,
+  "language" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "default_cash_account_id" TEXT,
@@ -203,11 +204,11 @@ CREATE TABLE "booking_service_orders" (
   "total_price" NUMERIC(14,2) DEFAULT 0 NOT NULL,
   "status" TEXT DEFAULT 'pending' NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "completed_at" TIMESTAMPTZ,
   "payment_id" TEXT,
   "payment_status" TEXT DEFAULT 'none',
   "coupon_code" TEXT,
   "site_id" TEXT,
-  "completed_at" TIMESTAMPTZ,
   PRIMARY KEY ("id"),
   CHECK (status IN ('pending', 'confirmed', 'cancelled')),
   CHECK (payment_status IN ('none', 'pending', 'paid', 'failed', 'refunded'))
@@ -822,13 +823,13 @@ CREATE TABLE "guest_registrations" (
   "is_primary" BOOLEAN DEFAULT false,
   "registered_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now(),
+  "reg_status" TEXT DEFAULT 'not_started' NOT NULL,
+  "group_id" TEXT,
   "consent_given" BIGINT DEFAULT 0,
   "consent_at" TIMESTAMPTZ,
   "consent_ip" TEXT,
   "purpose_of_stay" TEXT,
   "visa_number" TEXT,
-  "reg_status" TEXT DEFAULT 'not_started' NOT NULL,
-  "group_id" TEXT,
   PRIMARY KEY ("id")
 );
 
@@ -994,6 +995,7 @@ CREATE TABLE "organizations" (
   "slug" TEXT NOT NULL,
   "timezone" TEXT DEFAULT 'Europe/Prague' NOT NULL,
   "default_currency" TEXT DEFAULT 'CZK' NOT NULL,
+  "language" TEXT DEFAULT 'uk' NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "legal_name" TEXT,
@@ -1060,11 +1062,11 @@ CREATE TABLE "properties" (
   "phone" TEXT,
   "email" TEXT,
   "check_in_time" TEXT DEFAULT '15:00' NOT NULL,
+  "city_tax_per_night" DOUBLE PRECISION DEFAULT 0 NOT NULL,
   "check_out_time" TEXT DEFAULT '10:00' NOT NULL,
   "is_active" BOOLEAN DEFAULT true NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "city_tax_per_night" DOUBLE PRECISION DEFAULT 0 NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "slug")
 );
@@ -1373,9 +1375,9 @@ CREATE TABLE "site_listings" (
   "external_url" TEXT,
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "photos" TEXT,
   "thank_you_url" TEXT,
   "default_lang" TEXT,
-  "photos" TEXT,
   PRIMARY KEY ("id")
 );
 
@@ -1962,9 +1964,6 @@ ALTER TABLE "widget_price_list" ADD CONSTRAINT "fk_widget_price_list_organizatio
 
 -- ── Indexes ─────────────────────────────────────────────────────────────
 
-CREATE INDEX "idx_accruals_month" ON "accruals" ("month");
-CREATE INDEX "idx_accruals_org" ON "accruals" ("organization_id");
-CREATE INDEX "idx_accruals_status" ON "accruals" ("status");
 CREATE INDEX "idx_ari_log_conn" ON "ari_sync_log" ("connection_id");
 CREATE INDEX "idx_ari_log_created" ON "ari_sync_log" ("created_at");
 CREATE INDEX "idx_ari_log_ruid" ON "ari_sync_log" ("ruid");
@@ -2060,7 +2059,6 @@ CREATE INDEX "idx_reservations_dates" ON "reservations" ("check_in", "check_out"
 CREATE INDEX "idx_reservations_external_uid" ON "reservations" ("external_uid");
 CREATE INDEX "idx_reservations_guest" ON "reservations" ("guest_id");
 CREATE UNIQUE INDEX "idx_reservations_guest_token" ON "reservations" ("guest_page_token");
-CREATE INDEX "idx_reservations_hostex_code" ON "reservations" ("hostex_reservation_code");
 CREATE INDEX "idx_reservations_parent" ON "reservations" ("parent_id");
 CREATE INDEX "idx_reservations_property" ON "reservations" ("property_id");
 CREATE INDEX "idx_reservations_status" ON "reservations" ("status");

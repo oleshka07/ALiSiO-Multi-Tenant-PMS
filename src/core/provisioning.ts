@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { getDb } from './db/index.ts';
 import { FEATURES, setFeature, type FeatureKey } from './features.ts';
 import { getSql } from './db/async.ts';
+import { DEFAULT_LANGUAGE, LANGUAGE_CODES, isLanguage } from './i18n/languages.ts';
 
 /**
  * Creating a customer.
@@ -41,6 +42,13 @@ export interface NewOrganization {
   country?: string;
   currency?: string;
   timezone?: string;
+  /**
+   * The hotel's base language. Its staff get the interface in it, and it is
+   * the language its people type content in — so it is also the source the
+   * guest-facing translations are made from. Defaults to Ukrainian, which is
+   * what the product itself is still written in.
+   */
+  language?: string;
   /** Features to switch on immediately. Everything else stays off. */
   enable?: FeatureKey[];
 }
@@ -49,7 +57,23 @@ export interface ProvisionedOrganization {
   organizationId: string;
   propertyId: string;
   ownerId: string;
+  language: string;
 }
+
+/**
+ * The one seeded category, in the hotel's own language. It exists so the
+ * calendar has a group to draw and the hotel renames it on day one — but
+ * handing a German hotel a category called "Номери" is a poor first screen.
+ */
+const DEFAULT_CATEGORY_NAME: Record<string, string> = {
+  uk: 'Номери',
+  en: 'Rooms',
+  de: 'Zimmer',
+  cs: 'Pokoje',
+  pl: 'Pokoje',
+  nl: 'Kamers',
+  fr: 'Chambres',
+};
 
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])?$/;
 
@@ -69,6 +93,14 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     throw new Error('ownerPassword must be at least 12 characters');
   }
 
+  // Rejected rather than quietly defaulted: a typo here means the hotel's
+  // staff get the wrong interface and its content is translated from the
+  // wrong source, and neither is obvious from the inside.
+  const language = input.language?.trim().toLowerCase() || DEFAULT_LANGUAGE;
+  if (!isLanguage(language)) {
+    throw new Error(`language must be one of: ${LANGUAGE_CODES.join(', ')}`);
+  }
+
   // Checked before the transaction so the caller gets the real reason rather
   // than a UNIQUE constraint message.
   if (await sql.row<any>('SELECT 1 FROM organizations WHERE slug = ?', [slug])) {
@@ -85,9 +117,9 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
 
   await sql.tx(async (t) => {
     await t.run(`
-      INSERT INTO organizations (id, name, slug, timezone, default_currency)
-      VALUES (?, ?, ?, ?, ?)
-    `, [organizationId, name, slug, input.timezone || 'Europe/Prague', input.currency || 'CZK']);
+      INSERT INTO organizations (id, name, slug, timezone, default_currency, language)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [organizationId, name, slug, input.timezone || 'Europe/Prague', input.currency || 'CZK', language]);
 
     // Currency lives on the organization; a property carries location and
     // times. (getOrgIdentity and the ARI push both read it from there.)
@@ -104,9 +136,11 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     // purpose — the hotel renames it, and the type is now free text.
     await t.run(`
       INSERT INTO categories (id, property_id, name, type, sort_order)
-      VALUES (?, ?, 'Номери', 'rooms', 1)
-    `, [categoryId, propertyId]);
+      VALUES (?, ?, ?, 'rooms', 1)
+    `, [categoryId, propertyId, DEFAULT_CATEGORY_NAME[language] ?? DEFAULT_CATEGORY_NAME.en]);
 
+    // The owner's language stays NULL: they follow the hotel, so changing the
+    // hotel's base language later moves them with it.
     await t.run(`
       INSERT INTO app_users (id, organization_id, email, full_name, role, password_hash)
       VALUES (?, ?, ?, ?, 'owner', ?)
@@ -119,5 +153,5 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     }
   });
 
-  return { organizationId, propertyId, ownerId };
+  return { organizationId, propertyId, ownerId, language };
 }

@@ -14,6 +14,7 @@ interface Organization {
   slug: string;
   timezone: string;
   default_currency: string;
+  language: string;
   legal_name: string | null;
   registration_no: string | null;
   vat_no: string | null;
@@ -54,6 +55,7 @@ export default function GeneralSettingsPage() {
   const [org, setOrg] = useState<Organization | null>(null);
   const [property, setProperty] = useState<Property | null>(null);
   const [currencies, setCurrencies] = useState<string[]>([]);
+  const [languages, setLanguages] = useState<{ code: string; native: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
@@ -69,6 +71,7 @@ export default function GeneralSettingsPage() {
       setOrg(data.organization);
       setProperty(data.property);
       setCurrencies(data.currencies ?? []);
+      setLanguages(data.languages ?? []);
     } catch (e: any) {
       showToast(`❌ ${e.message}`);
     } finally {
@@ -166,6 +169,18 @@ export default function GeneralSettingsPage() {
                       {currencies.map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
                     <div className="form-hint">Валюта звітів. Наявні операції не перераховуються.</div>
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Базова мова</label>
+                    <select className="form-select" value={org.language} onChange={(e) => setOrgField('language', e.target.value)}>
+                      {languages.map((l) => <option key={l.code} value={l.code}>{l.native}</option>)}
+                    </select>
+                    <div className="form-hint">
+                      Мова інтерфейсу для всіх, хто не обрав свою, і мова, якою ви вводите
+                      назви й описи. Від неї ж перекладається контент для гостей.
+                    </div>
                   </div>
                 </div>
               </div>

@@ -22,6 +22,8 @@ interface UserData {
   telegram_chat_id: string | null;
   role: UserRole;
   is_active: number;
+  /** null means this person follows the hotel's base language. */
+  language: string | null;
   last_login: string | null;
   created_at: string;
   permissions: Permission[];
@@ -37,12 +39,14 @@ interface UserForm {
   password: string;
   payment_pin: string;
   is_active: boolean;
+  /** '' means "follow the hotel" — the API stores that as NULL. */
+  language: string;
   overrides: PermissionOverride[];
 }
 
 const emptyForm: UserForm = {
   full_name: '', email: '', phone: '', telegram_chat_id: '', role: 'receptionist',
-  password: '', payment_pin: '', is_active: true, overrides: [],
+  password: '', payment_pin: '', is_active: true, language: '', overrides: [],
 };
 
 const ALL_ROLES: UserRole[] = ['owner', 'director', 'manager', 'receptionist', 'housekeeper', 'maintenance', 'accountant'];
@@ -61,6 +65,8 @@ export default function UsersPage() {
   const [error, setError] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [languages, setLanguages] = useState<{ code: string; native: string }[]>([]);
+  const [orgLanguage, setOrgLanguage] = useState('');
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -68,6 +74,8 @@ export default function UsersPage() {
       if (res.ok) {
         const data = await res.json();
         setUsers(data.users);
+        setLanguages(data.languages ?? []);
+        setOrgLanguage(data.organizationLanguage ?? '');
       }
     } catch {
       // ignore
@@ -77,6 +85,8 @@ export default function UsersPage() {
   }, []);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+  const orgLanguageName = languages.find(l => l.code === orgLanguage)?.native ?? '';
 
   // Filtered users
   const filtered = users.filter(u => {
@@ -106,6 +116,7 @@ export default function UsersPage() {
       password: '',
       payment_pin: '',
       is_active: user.is_active === 1,
+      language: user.language || '',
       overrides: user.overrides || [],
     });
     setEditId(user.id);
@@ -184,6 +195,7 @@ export default function UsersPage() {
             telegram_chat_id: form.telegram_chat_id || null,
             role: form.role,
             password: form.password,
+            language: form.language || null,
             permissions_overrides: form.overrides,
           }),
         });
@@ -197,6 +209,7 @@ export default function UsersPage() {
           telegram_chat_id: form.telegram_chat_id || null,
           role: form.role,
           is_active: form.is_active,
+          language: form.language || null,
           permissions_overrides: form.overrides,
         };
         if (form.password) payload.password = form.password;
@@ -458,6 +471,24 @@ export default function UsersPage() {
                   </label>
                   <input className="form-input" value={form.telegram_chat_id} onChange={e => setForm(prev => ({ ...prev, telegram_chat_id: e.target.value }))} placeholder="123456789" />
                   <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>Для сповіщень про задачі. Дізнатися: @userinfobot</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Мова інтерфейсу</label>
+                  <select
+                    className="form-input"
+                    value={form.language}
+                    onChange={e => setForm(prev => ({ ...prev, language: e.target.value }))}
+                  >
+                    <option value="">
+                      Як у готелю{orgLanguageName ? ` — ${orgLanguageName}` : ''}
+                    </option>
+                    {languages.map(l => (
+                      <option key={l.code} value={l.code}>{l.native}</option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                    «Як у готелю» — людина рухається за базовою мовою, якщо ви її потім зміните.
+                  </div>
                 </div>
                 <div className="form-group">
                   <label className="form-label">PIN для підтвердження оплати</label>

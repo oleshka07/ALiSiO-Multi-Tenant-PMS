@@ -3,6 +3,7 @@
 // ============================================================
 
 import { getSql } from '../db/async.ts';
+import { DEFAULT_LANGUAGE, type Language, isLanguage, parseLanguage } from '../i18n/languages.ts';
 import { getUserPermissions, type Permission, type PermissionOverride } from './permissions';
 import type { UserRole } from '@/types/database';
 import bcrypt from 'bcryptjs';
@@ -29,6 +30,12 @@ export interface SessionUser {
   role: UserRole;
   is_active: number;
   permissions: Permission[];
+  /** Effective language: the person's own choice, else the hotel's. */
+  language: Language;
+  /** The personal override alone — null when they follow the hotel. */
+  own_language: Language | null;
+  /** The hotel's base language, so a screen can label the default honestly. */
+  organization_language: Language;
 }
 
 export async function createSession(userId: string): Promise<string> {
@@ -54,10 +61,14 @@ export async function getSessionUser(sessionId: string | undefined): Promise<Ses
   const sql = getSql();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // language is resolved here rather than looked up again per screen: the
+  // person's own choice if they made one, otherwise the hotel's base language.
   const row: any = await sql.row<any>(`
-    SELECT u.id, u.organization_id, u.email, u.full_name, u.phone, u.role, u.is_active
+    SELECT u.id, u.organization_id, u.email, u.full_name, u.phone, u.role, u.is_active,
+           u.language AS own_language, o.language AS org_language
     FROM sessions s
     JOIN app_users u ON u.id = s.user_id
+    LEFT JOIN organizations o ON o.id = u.organization_id
     WHERE s.id = ? AND s.expires_at > CURRENT_TIMESTAMP AND u.is_active = 1
   `, [sessionId]);
 
@@ -81,6 +92,10 @@ export async function getSessionUser(sessionId: string | undefined): Promise<Ses
     role: row.role,
     is_active: row.is_active,
     permissions,
+    language: parseLanguage(row.own_language, parseLanguage(row.org_language, DEFAULT_LANGUAGE)),
+    /** What the person chose themselves; null means they follow the hotel. */
+    own_language: isLanguage(row.own_language) ? row.own_language : null,
+    organization_language: parseLanguage(row.org_language, DEFAULT_LANGUAGE),
   };
 }
 

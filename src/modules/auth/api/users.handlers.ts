@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { getSql } from '@core/db/async';
 import { getSessionUser, hashPassword } from '@core/auth';
 import { getUserPermissions, type PermissionOverride, type Permission } from '@core/auth';
+import { LANGUAGES, LANGUAGE_CODES, isLanguage } from '@core/i18n/languages';
 
 export async function listUsers() {
   try {
@@ -17,7 +18,7 @@ export async function listUsers() {
 
     const sql = getSql();
     const users = await sql.rows<any>(`
-      SELECT id, organization_id, email, full_name, phone, telegram_chat_id, role, is_active, last_login, created_at, updated_at
+      SELECT id, organization_id, email, full_name, phone, telegram_chat_id, role, is_active, language, last_login, created_at, updated_at
       FROM app_users
       WHERE organization_id = ?
       ORDER BY
@@ -44,7 +45,13 @@ export async function listUsers() {
       return { ...u, permissions, overrides: overridesList };
     }));
 
-    return NextResponse.json({ users: usersWithPermissions });
+    // The organization's language rides along so the screen can name the
+    // default instead of showing an empty select.
+    return NextResponse.json({
+      users: usersWithPermissions,
+      organizationLanguage: currentUser.organization_language,
+      languages: LANGUAGE_CODES.map((code) => ({ code, native: LANGUAGES[code].native })),
+    });
   } catch (error) {
     console.error('Users GET error:', error);
     return NextResponse.json({ error: 'Помилка сервера' }, { status: 500 });
@@ -62,7 +69,16 @@ export async function createUser(request: Request) {
     }
 
     const body = await request.json();
-    const { email, full_name, phone, telegram_chat_id, role, password, permissions_overrides } = body;
+    const { email, full_name, phone, telegram_chat_id, role, password, language, permissions_overrides } = body;
+
+    // Null or absent means the person follows the hotel's base language, which
+    // is what a new colleague should get unless someone says otherwise.
+    if (language != null && language !== '' && !isLanguage(language)) {
+      return NextResponse.json(
+        { error: `Мова не підтримується. Доступні: ${LANGUAGE_CODES.join(', ')}` },
+        { status: 400 },
+      );
+    }
 
     if (!email || !full_name || !role || !password) {
       return NextResponse.json({ error: "Заповніть усі обов'язкові поля" }, { status: 400 });
@@ -83,9 +99,9 @@ export async function createUser(request: Request) {
     const id = crypto.randomUUID().replace(/-/g, '').substring(0, 32);
 
     await sql.run(`
-      INSERT INTO app_users (id, organization_id, email, full_name, phone, telegram_chat_id, role, password_hash)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, currentUser.organization_id, email, full_name, phone || null, telegram_chat_id || null, role, passwordHash]);
+      INSERT INTO app_users (id, organization_id, email, full_name, phone, telegram_chat_id, role, password_hash, language)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, currentUser.organization_id, email, full_name, phone || null, telegram_chat_id || null, role, passwordHash, language || null]);
 
     if (permissions_overrides && Array.isArray(permissions_overrides)) {
       await sql.tx(async (t) => {

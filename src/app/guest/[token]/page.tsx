@@ -159,7 +159,10 @@ export default function GuestPage() {
         if (d.expired) return;
         const guestCountry = d.registeredGuests?.[0]?.address || null;
         const guestPhone = d.reservation?.guest_phone || null;
-        const detectedLang = detectLanguage(guestPhone, guestCountry);
+        // The hotel's base language, not English, is what the page falls back
+        // to when nothing about the guest says otherwise.
+        const hotelLang: Lang = ALL_LANGS.includes(d.language) ? d.language : 'en';
+        const detectedLang = detectLanguage(guestPhone, guestCountry, hotelLang);
         setLang(detectedLang);
         // Check for payment return
         if (typeof window !== 'undefined') {
