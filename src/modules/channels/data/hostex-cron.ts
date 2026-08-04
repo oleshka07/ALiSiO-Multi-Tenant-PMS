@@ -14,7 +14,7 @@ let initialized = false;
 const SYNC_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 const PMS_BASE_URL = appBaseUrl();
 
-export function startHostexCron() {
+export async function startHostexCron() {
   if (cronInterval) return;
 
   console.log('[Hostex Cron] Starting sync scheduler (every 10 min)');

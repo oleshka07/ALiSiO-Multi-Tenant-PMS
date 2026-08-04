@@ -7,7 +7,7 @@ import { withActor, withOwner, type Actor } from '@core/auth/session';
 
 export const listConnections = withActor(async (_req, _ctx, actor: Actor) => {
   try {
-    return NextResponse.json(connectionsRepo.listConnections(actor.organizationId));
+    return NextResponse.json(await connectionsRepo.listConnections(actor.organizationId));
   } catch (e: any) {
     console.error('GET /api/channels/connections error:', e?.message || e);
     return NextResponse.json({ error: 'Failed to fetch connections' }, { status: 500 });
@@ -23,7 +23,7 @@ export const createConnection = withOwner(async (request: NextRequest, _ctx, act
       return NextResponse.json({ error: 'Channel is required' }, { status: 400 });
     }
 
-    const id = connectionsRepo.createConnection(actor.organizationId, {
+    const id = await connectionsRepo.createConnection(actor.organizationId, {
       channel, external_property_id, connection_types, pricing_model,
     });
     return NextResponse.json({ id, status: 'created' }, { status: 201 });

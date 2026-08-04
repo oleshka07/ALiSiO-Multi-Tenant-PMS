@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 export async function updateIcalChannel(
   request: Request,
@@ -8,17 +8,17 @@ export async function updateIcalChannel(
 ) {
   try {
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
 
-    const existing = db.prepare('SELECT * FROM ical_channels WHERE id = ?').get(id) as any;
+    const existing = await sql.row<any>('SELECT * FROM ical_channels WHERE id = ?', [id]) as any;
     if (!existing) {
       return NextResponse.json({ error: 'Channel not found' }, { status: 404 });
     }
 
     const { ical_url, source_code, sync_interval_minutes, is_active } = body;
 
-    db.prepare(`
+    await sql.run(`
       UPDATE ical_channels SET
         ical_url = ?,
         source_code = ?,
@@ -26,15 +26,13 @@ export async function updateIcalChannel(
         is_active = ?,
         updated_at = datetime('now')
       WHERE id = ?
-    `).run(
-      ical_url ?? existing.ical_url,
+    `, [ical_url ?? existing.ical_url,
       source_code ?? existing.source_code,
       sync_interval_minutes ?? existing.sync_interval_minutes,
       is_active ?? existing.is_active,
-      id,
-    );
+      id]);
 
-    const updated = db.prepare('SELECT * FROM ical_channels WHERE id = ?').get(id);
+    const updated = await sql.row<any>('SELECT * FROM ical_channels WHERE id = ?', [id]);
     return NextResponse.json(updated);
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -47,15 +45,15 @@ export async function deleteIcalChannel(
 ) {
   try {
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
 
-    const existing = db.prepare('SELECT id FROM ical_channels WHERE id = ?').get(id);
+    const existing = await sql.row<any>('SELECT id FROM ical_channels WHERE id = ?', [id]);
     if (!existing) {
       return NextResponse.json({ error: 'Channel not found' }, { status: 404 });
     }
 
-    db.prepare('DELETE FROM ical_sync_log WHERE channel_id = ?').run(id);
-    db.prepare('DELETE FROM ical_channels WHERE id = ?').run(id);
+    await sql.run('DELETE FROM ical_sync_log WHERE channel_id = ?', [id]);
+    await sql.run('DELETE FROM ical_channels WHERE id = ?', [id]);
 
     return NextResponse.json({ success: true });
   } catch (e: any) {

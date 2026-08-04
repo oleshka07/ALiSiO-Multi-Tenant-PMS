@@ -15,6 +15,7 @@ import { getEurCzkRate } from '@/modules/finance/domain/cnb-rates';
 import { notifyReservationCreated } from '@/modules/bookings/domain/reservation-tg-notify';
 import { findOrCreateGuest as findOrCreateGuestUnified } from '@guests';
 import { money } from '@core/money';
+import { getSql } from '@core/db/async';
 
 // Public URL of the PMS (used to build guest page links sent to Hostex)
 const PMS_BASE_URL = appBaseUrl();
@@ -40,14 +41,15 @@ interface MappedUnit {
   organizationId: string;
 }
 
-function mapHostexProperty(db: any, hostexPropertyId: number): MappedUnit | null {
-  const row = db.prepare(`
+async function mapHostexProperty(hostexPropertyId: number): Promise<MappedUnit | null> {
+  const sql = getSql();
+  const row = await sql.row<any>(`
     SELECT m.unit_id, u.property_id, p.organization_id
     FROM hostex_property_map m
     JOIN units u ON m.unit_id = u.id
     JOIN properties p ON u.property_id = p.id
     WHERE m.hostex_property_id = ?
-  `).get(hostexPropertyId) as
+  `, [hostexPropertyId]) as
     { unit_id: string; property_id: string; organization_id: string } | undefined;
   if (!row) return null;
   return { unitId: row.unit_id, propertyId: row.property_id, organizationId: row.organization_id };
@@ -144,7 +146,7 @@ export interface SyncResult {
 }
 
 export async function syncReservations(): Promise<SyncResult> {
-  const db = getDb();
+  const sql = getSql();
   const result: SyncResult = {
     synced: 0,
     created: 0,
@@ -164,12 +166,12 @@ export async function syncReservations(): Promise<SyncResult> {
     console.log(`[Hostex Sync] Fetched ${reservations.length} reservations from Hostex`);
 
     // 3. Ensure DB tables/columns exist + run migrations
-    ensureHostexColumns(db);
+    ensureHostexColumns();
 
     // 4. Process each reservation
     for (const res of reservations) {
       try {
-        await processReservation(db, res, result);
+        await processReservation(res, result);
       } catch (e: any) {
         result.errors.push(`${res.reservation_code}: ${e.message}`);
         console.error(`[Hostex Sync] Error processing ${res.reservation_code}:`, e.message);
@@ -177,7 +179,7 @@ export async function syncReservations(): Promise<SyncResult> {
     }
 
     // 5. Log result
-    logSync(db, 'reservations', result.errors.length === 0 ? 'success' : 'partial',
+    logSync('reservations', result.errors.length === 0 ? 'success' : 'partial',
       result.synced, result.errors.join('; '));
 
     console.log(`[Hostex Sync] Done: ${result.created} created, ${result.updated} updated, ${result.skipped} skipped, ${result.errors.length} errors`);
@@ -185,7 +187,7 @@ export async function syncReservations(): Promise<SyncResult> {
   } catch (e: any) {
     result.errors.push(`Sync failed: ${e.message}`);
     console.error('[Hostex Sync] Fatal error:', e.message);
-    logSync(getDb(), 'reservations', 'error', 0, e.message);
+    await logSync('reservations', 'error', 0, e.message);
   }
 
   return result;
@@ -197,14 +199,14 @@ export async function syncReservations(): Promise<SyncResult> {
  * Much faster than a full sync for real-time webhook processing.
  */
 export async function syncSingleReservation(reservationCode: string): Promise<SyncResult> {
-  const db = getDb();
+  const sql = getSql();
   const result: SyncResult = { synced: 0, created: 0, updated: 0, skipped: 0, errors: [], eurCzkRate: 25.2 };
 
   try {
     const { getReservationByCode } = await import('../domain/hostex-client');
     const { getEurCzkRate: fetchRate } = await import('@/modules/finance/domain/cnb-rates');
     result.eurCzkRate = await fetchRate();
-    ensureHostexColumns(db);
+    ensureHostexColumns();
 
     const reservation = await getReservationByCode(reservationCode);
     if (!reservation) {
@@ -213,8 +215,8 @@ export async function syncSingleReservation(reservationCode: string): Promise<Sy
       return result;
     }
 
-    await processReservation(db, reservation, result);
-    logSync(db, 'webhook', result.errors.length === 0 ? 'success' : 'partial', result.synced, result.errors.join('; '));
+    await processReservation(reservation, result);
+    logSync('webhook', result.errors.length === 0 ? 'success' : 'partial', result.synced, result.errors.join('; '));
     console.log(`[Hostex Sync] Webhook sync done for ${reservationCode}: created=${result.created} updated=${result.updated}`);
   } catch (e: any) {
     result.errors.push(e.message);
@@ -226,18 +228,19 @@ export async function syncSingleReservation(reservationCode: string): Promise<Sy
 
 // ─── Process single reservation ───────────────────────────
 
-async function processReservation(db: any, res: HostexReservation, result: SyncResult) {
+async function processReservation(res: HostexReservation, result: SyncResult) {
+  const sql = getSql();
   // Blocked dates (owner/manual closures) → availability_blocks, NOT reservations
   if (BLOCKED_CHANNEL_TYPES.has(res.channel_type)) {
-    processBlockedDate(db, res, result);
+    processBlockedDate(res, result);
     return;
   }
 
   // Cancelled → mark in DB or skip
   if (res.status === 'cancelled' || res.status === 'denied' || res.status === 'timeout') {
-    const existing = db.prepare('SELECT id FROM reservations WHERE hostex_reservation_code = ?').get(res.reservation_code) as any;
+    const existing = await sql.row<any>('SELECT id FROM reservations WHERE hostex_reservation_code = ?', [res.reservation_code]) as any;
     if (existing) {
-      db.prepare("UPDATE reservations SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?").run(existing.id);
+      await sql.run("UPDATE reservations SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?", [existing.id]);
       result.updated++;
       result.synced++;
     } else {
@@ -247,7 +250,7 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
   }
 
   // Map property → unit → hotel
-  const mapped = mapHostexProperty(db, res.property_id);
+  const mapped = await mapHostexProperty(res.property_id);
   const unitId = mapped?.unitId;
   if (!mapped || !unitId) {
     console.warn(`[Hostex] UNMAPPED property_id=${res.property_id} guest="${res.guest_name}" stay_code="${res.stay_code}" channel="${res.channel_type}" listing="${res.listing_id}" check_in=${res.check_in_date}`);
@@ -272,12 +275,10 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
   const paymentStatus = paymentInfo.isPrepaid ? 'paid' : 'unpaid';
 
   // Find or create guest
-  const guestId = await findOrCreateGuest(db, res, mapped.organizationId);
+  const guestId = await findOrCreateGuest(res, mapped.organizationId);
 
   // Check if already in DB
-  const existing = db.prepare(
-    'SELECT id, status, payment_status, guest_page_token FROM reservations WHERE hostex_reservation_code = ?'
-  ).get(res.reservation_code) as any;
+  const existing = await sql.row<any>('SELECT id, status, payment_status, guest_page_token FROM reservations WHERE hostex_reservation_code = ?', [res.reservation_code]) as any;
 
   const checkIn = normalizeHostexDate(res.check_in_date);
   const checkOut = normalizeHostexDate(res.check_out_date);
@@ -314,7 +315,7 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
     if (newToken) params.push(newToken);
     params.push(existing.id);
 
-    db.prepare(`
+    await sql.run(`
       UPDATE reservations SET
         check_in = ?, check_out = ?, nights = ?,
         adults = ?, children = ?, infants = ?,
@@ -327,7 +328,7 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
         is_multi_room = ?, multi_room_marker = ?${tokenClause},
         updated_at = datetime('now')
       WHERE id = ?
-    `).run(...params);
+    `, [...params]);
 
     // Channel-mediated «sigals» (Hostex prepaid → fin_operation) removed.
     // Reservation.payment_status='paid' is set independently above from
@@ -352,7 +353,7 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
       // Only update if URL changed (avoid unnecessary API calls)
       const currentUrl = (res.custom_fields as any)?.guest_page_url || '';
       if (currentUrl !== guestPageUrl) {
-        updateReservationCustomField(res.stay_code, { guest_page_url: guestPageUrl }).catch(() => {});
+        await updateReservationCustomField(res.stay_code, { guest_page_url: guestPageUrl }).catch(() => {});
       }
     }
 
@@ -363,7 +364,7 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
     const newId = `hx_${res.reservation_code.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40)}`;
     const guestPageToken = (status === 'confirmed' || status === 'checked_in') ? generateGuestToken() : null;
 
-    db.prepare(`
+    await sql.run(`
       INSERT INTO reservations (
         id, property_id, unit_id, guest_id, check_in, check_out, nights,
         adults, children, infants, status, payment_status, source,
@@ -383,8 +384,7 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
         ?, ?,
         ?, ?
       )
-    `).run(
-      newId, mapped.propertyId, unitId, guestId,
+    `, [newId, mapped.propertyId, unitId, guestId,
       checkIn, checkOut, nights,
       res.number_of_adults, res.number_of_children, res.number_of_infants,
       status, paymentStatus, mapChannelToSource(res.channel_type),
@@ -393,8 +393,7 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
       res.channel_id, res.listing_id,
       totalEur, commissionEur, netEur,
       res.channel_remarks, paymentInfo.isPrepaid ? 1 : 0,
-      isMultiRoom, multiRoomMarker,
-    );
+      isMultiRoom, multiRoomMarker]);
 
     // No auto-payment fin_operation creation — see comment in the «existing
     // reservation» branch above. Hostex prepaid flag drives reservation
@@ -410,7 +409,7 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
     if (guestPageToken) {
       const guestPageUrl = `${PMS_BASE_URL}/guest/${guestPageToken}`;
       // Write to Hostex custom field — use {{cf.guest_page_url}} in Hostex message templates
-      updateReservationCustomField(res.stay_code, { guest_page_url: guestPageUrl }).catch(() => {});
+      await updateReservationCustomField(res.stay_code, { guest_page_url: guestPageUrl }).catch(() => {});
     }
 
     notifyReservationCreated(newId, {
@@ -427,16 +426,17 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
 
 // ─── Process blocked date (owner closure in Hostex) ────────
 
-function processBlockedDate(db: any, res: HostexReservation, result: SyncResult) {
-  const unitId = mapHostexProperty(db, res.property_id)?.unitId;
+async function processBlockedDate(res: HostexReservation, result: SyncResult) {
+  const sql = getSql();
+  const unitId = (await mapHostexProperty(res.property_id))?.unitId;
   if (!unitId) { result.skipped++; return; }
 
   const blockId = `hx_block_${res.reservation_code.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40)}`;
-  const existingBlock = db.prepare('SELECT id FROM availability_blocks WHERE id = ?').get(blockId);
+  const existingBlock = await sql.row<any>('SELECT id FROM availability_blocks WHERE id = ?', [blockId]);
 
   if (res.status === 'cancelled') {
     if (existingBlock) {
-      db.prepare('DELETE FROM availability_blocks WHERE id = ?').run(blockId);
+      await sql.run('DELETE FROM availability_blocks WHERE id = ?', [blockId]);
       result.updated++;
       result.synced++;
     } else {
@@ -450,14 +450,13 @@ function processBlockedDate(db: any, res: HostexReservation, result: SyncResult)
   const dateTo = normalizeHostexDate(res.check_out_date);
 
   if (existingBlock) {
-    db.prepare('UPDATE availability_blocks SET date_from = ?, date_to = ?, notes = ? WHERE id = ?')
-      .run(dateFrom, dateTo, notes, blockId);
+    await sql.run('UPDATE availability_blocks SET date_from = ?, date_to = ?, notes = ? WHERE id = ?', [dateFrom, dateTo, notes, blockId]);
     result.updated++;
   } else {
-    db.prepare(`
+    await sql.run(`
       INSERT INTO availability_blocks (id, unit_id, date_from, date_to, reason, notes, hostex_code)
       VALUES (?, ?, ?, ?, 'blocked', ?, ?)
-    `).run(blockId, unitId, dateFrom, dateTo, notes, res.reservation_code);
+    `, [blockId, unitId, dateFrom, dateTo, notes, res.reservation_code]);
     result.created++;
   }
 
@@ -466,7 +465,7 @@ function processBlockedDate(db: any, res: HostexReservation, result: SyncResult)
 
 // ─── Guest management ─────────────────────────────────────
 
-async function findOrCreateGuest(db: any, res: HostexReservation, organizationId: string): Promise<string> {
+async function findOrCreateGuest(res: HostexReservation, organizationId: string): Promise<string> {
   const guestData = res.guests?.[0];
   const rawEmail = guestData?.email || res.guest_email || '';
   // Booking's privacy-proxy emails (@guest.booking.com) are not stable identifiers
@@ -549,8 +548,9 @@ function detectMultiRoomMarker(stayCode: string | null | undefined): string | nu
 
 // ─── DB migrations for Hostex columns ─────────────────────
 
-function ensureHostexColumns(db: any) {
-  const cols = db.prepare("PRAGMA table_info(reservations)").all() as { name: string }[];
+async function ensureHostexColumns() {
+  const sql = getSql();
+  const cols = await sql.rows<any>("PRAGMA table_info(reservations)") as { name: string }[];
   const colNames = cols.map((c: any) => c.name);
 
   const newCols: [string, string][] = [
@@ -577,23 +577,23 @@ function ensureHostexColumns(db: any) {
 
   for (const [name, type] of newCols) {
     if (!colNames.includes(name)) {
-      db.exec(`ALTER TABLE reservations ADD COLUMN ${name} ${type}`);
+      await sql.run(`ALTER TABLE reservations ADD COLUMN ${name} ${type}`);
       console.log(`[Hostex] Added column reservations.${name}`);
     }
   }
 
-  db.exec('CREATE INDEX IF NOT EXISTS idx_reservations_hostex_code ON reservations(hostex_reservation_code)');
+  await sql.run('CREATE INDEX IF NOT EXISTS idx_reservations_hostex_code ON reservations(hostex_reservation_code)');
 
   // Payments table was replaced by fin_operations in PR #6 — skip legacy ALTER if table is gone.
-  const paymentsTableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='payments'").get();
+  const paymentsTableExists = await sql.row<any>("SELECT name FROM sqlite_master WHERE type='table' AND name='payments'");
   if (paymentsTableExists) {
-    const payCols = db.prepare("PRAGMA table_info(payments)").all() as { name: string }[];
+    const payCols = await sql.rows<any>("PRAGMA table_info(payments)") as { name: string }[];
     if (!payCols.some((c: any) => c.name === 'auto_created')) {
-      db.exec('ALTER TABLE payments ADD COLUMN auto_created INTEGER DEFAULT 0');
+      await sql.run('ALTER TABLE payments ADD COLUMN auto_created INTEGER DEFAULT 0');
     }
   }
 
-  db.exec(`
+  await sql.run(`
     CREATE TABLE IF NOT EXISTS hostex_sync_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sync_type TEXT NOT NULL,
@@ -605,7 +605,7 @@ function ensureHostexColumns(db: any) {
     )
   `);
 
-  db.exec(`
+  await sql.run(`
     CREATE TABLE IF NOT EXISTS hostex_property_map (
       hostex_property_id INTEGER PRIMARY KEY,
       hostex_title TEXT,
@@ -615,7 +615,7 @@ function ensureHostexColumns(db: any) {
     )
   `);
 
-  db.exec(`
+  await sql.run(`
     CREATE TABLE IF NOT EXISTS availability_blocks (
       id TEXT PRIMARY KEY,
       unit_id TEXT NOT NULL,
@@ -630,15 +630,16 @@ function ensureHostexColumns(db: any) {
 
   // Migration 1: Backfill guest_page_token for existing Hostex bookings without token
   try {
-    const missing = db.prepare(`
+    const missing = await sql.rows<any>(`
       SELECT id FROM reservations
       WHERE hostex_reservation_code IS NOT NULL
         AND (guest_page_token IS NULL OR guest_page_token = '')
         AND status IN ('confirmed', 'checked_in', 'tentative')
-    `).all() as { id: string }[];
+    `) as { id: string }[];
     if (missing.length > 0) {
-      const upd = db.prepare("UPDATE reservations SET guest_page_token = ? WHERE id = ?");
-      for (const r of missing) upd.run(generateGuestToken(), r.id);
+      for (const r of missing) {
+        await sql.run('UPDATE reservations SET guest_page_token = ? WHERE id = ?', [generateGuestToken(), r.id]);
+      }
       console.log(`[Hostex] Backfilled guest_page_token for ${missing.length} bookings`);
     }
   } catch (e: any) {
@@ -649,23 +650,25 @@ function ensureHostexColumns(db: any) {
   try {
     const BLOCKED_TYPES = ['owner', 'manual', 'owner_reservation', 'blocked', 'maintenance'];
     const ph = BLOCKED_TYPES.map(() => '?').join(', ');
-    const blockedRes = db.prepare(`
+    const blockedRes = await sql.rows<any>(`
       SELECT id, unit_id, check_in, check_out, notes, channel_remarks, hostex_reservation_code
       FROM reservations
       WHERE hostex_reservation_code IS NOT NULL
         AND hostex_channel_type IN (${ph})
-    `).all(...BLOCKED_TYPES) as any[];
+    `, [...BLOCKED_TYPES]) as any[];
 
     if (blockedRes.length > 0) {
-      const insBlock = db.prepare(`
-        INSERT OR IGNORE INTO availability_blocks (id, unit_id, date_from, date_to, reason, notes, hostex_code)
-        VALUES (?, ?, ?, ?, 'blocked', ?, ?)
-      `);
-      const delRes = db.prepare('DELETE FROM reservations WHERE id = ?');
       for (const r of blockedRes) {
         const blockId = `hx_block_${(r.hostex_reservation_code || r.id).replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40)}`;
-        insBlock.run(blockId, r.unit_id, r.check_in, r.check_out, r.notes || r.channel_remarks || 'Закрито в Hostex', r.hostex_reservation_code);
-        delRes.run(r.id);
+        // Both statements together: a reservation must not disappear unless
+        // the block that replaces it exists.
+        await sql.tx(async (t) => {
+          await t.run(`
+            INSERT OR IGNORE INTO availability_blocks (id, unit_id, date_from, date_to, reason, notes, hostex_code)
+            VALUES (?, ?, ?, ?, 'blocked', ?, ?)
+          `, [blockId, r.unit_id, r.check_in, r.check_out, r.notes || r.channel_remarks || 'Закрито в Hostex', r.hostex_reservation_code]);
+          await t.run('DELETE FROM reservations WHERE id = ?', [r.id]);
+        });
       }
       console.log(`[Hostex] Migrated ${blockedRes.length} blocked reservations → availability_blocks`);
     }
@@ -674,31 +677,30 @@ function ensureHostexColumns(db: any) {
   }
 }
 
-function logSync(db: any, syncType: string, status: string, count: number, error?: string) {
-  db.prepare(`
+async function logSync(syncType: string, status: string, count: number, error?: string) {
+  const sql = getSql();
+  await sql.run(`
     INSERT INTO hostex_sync_log (sync_type, status, records_synced, error_message, started_at)
     VALUES (?, ?, ?, ?, datetime('now'))
-  `).run(syncType, status, count, error || null);
+  `, [syncType, status, count, error || null]);
 }
 
 // ─── Property map seeding ─────────────────────────────────
 
 export async function seedPropertyMap(): Promise<{ unmapped: { id: number; title: string; channels: string[] }[] }> {
-  const db = getDb();
-  ensureHostexColumns(db);
+  const sql = getSql();
+  ensureHostexColumns();
 
   const properties = await getProperties();
-  const upsert = db.prepare(`
-    INSERT OR REPLACE INTO hostex_property_map (hostex_property_id, hostex_title, unit_id, channels)
-    VALUES (?, ?, ?, ?)
-  `);
-
   const unmapped: { id: number; title: string; channels: string[] }[] = [];
 
   for (const prop of properties) {
-    const unitId = mapHostexProperty(db, prop.id)?.unitId;
+    const unitId = (await mapHostexProperty(prop.id))?.unitId;
     if (unitId) {
-      upsert.run(prop.id, prop.title, unitId, JSON.stringify(prop.channels));
+      await sql.run(`
+        INSERT OR REPLACE INTO hostex_property_map (hostex_property_id, hostex_title, unit_id, channels)
+        VALUES (?, ?, ?, ?)
+      `, [prop.id, prop.title, unitId, JSON.stringify(prop.channels)]);
       console.log(`[Hostex] Mapped: ${prop.title} (${prop.id}) → ${unitId}`);
     } else {
       const channelTypes = (prop.channels || []).map((c: any) => c.channel_type);
@@ -712,11 +714,11 @@ export async function seedPropertyMap(): Promise<{ unmapped: { id: number; title
 
 // ─── Get sync status ──────────────────────────────────────
 
-export function getSyncStatus(): { lastSync: any; recentLogs: any[] } {
-  const db = getDb();
+export async function getSyncStatus(): Promise<{ lastSync: any; recentLogs: any[] }> {
+  const sql = getSql();
   try {
-    const lastSync = db.prepare('SELECT * FROM hostex_sync_log ORDER BY id DESC LIMIT 1').get();
-    const recentLogs = db.prepare('SELECT * FROM hostex_sync_log ORDER BY id DESC LIMIT 20').all();
+    const lastSync = await sql.row<any>('SELECT * FROM hostex_sync_log ORDER BY id DESC LIMIT 1');
+    const recentLogs = await sql.rows<any>('SELECT * FROM hostex_sync_log ORDER BY id DESC LIMIT 20');
     return { lastSync, recentLogs };
   } catch {
     return { lastSync: null, recentLogs: [] };

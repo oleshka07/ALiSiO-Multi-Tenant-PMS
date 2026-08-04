@@ -20,7 +20,7 @@ export async function pollReservations(): Promise<NextResponse> {
   }[] = [];
 
   try {
-    const connections = connectionsRepo.getActiveReservationConnections();
+    const connections = await connectionsRepo.getActiveReservationConnections();
 
     for (const conn of connections) {
       const connTypes = JSON.parse(conn.connection_types || '[]');
@@ -42,7 +42,7 @@ export async function pollReservations(): Promise<NextResponse> {
         const idsToAck: string[] = [];
         for (const res of newOnes) {
           try {
-            const result = processReservation(conn.id, res);
+            const result = await processReservation(conn.id, res);
             connResult.actions.push({ externalId: res.externalReservationId, action: result.action, pmsId: result.reservationId });
             idsToAck.push(res.externalReservationId);
           } catch (e: any) {
@@ -60,7 +60,7 @@ export async function pollReservations(): Promise<NextResponse> {
         const modIdsToAck: string[] = [];
         for (const mod of mods) {
           try {
-            const result = processReservation(conn.id, mod);
+            const result = await processReservation(conn.id, mod);
             connResult.actions.push({ externalId: mod.externalReservationId, action: `mod:${result.action}`, pmsId: result.reservationId });
             modIdsToAck.push(mod.externalReservationId);
           } catch (e: any) {
@@ -69,7 +69,7 @@ export async function pollReservations(): Promise<NextResponse> {
         }
         if (modIdsToAck.length > 0) await acknowledgeModifications(conn.id, modIdsToAck);
 
-        connectionsRepo.markConnectionSynced(conn.id);
+        await connectionsRepo.markConnectionSynced(conn.id);
       } catch (e: any) {
         connResult.errors.push(`Connection ${conn.id}: ${e.message}`);
       }

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 export async function runIcalCron(request: Request) {
   try {
@@ -12,8 +12,8 @@ export async function runIcalCron(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const db = getDb();
-    const channels = db.prepare(`
+    const sql = getSql();
+    const channels = await sql.rows<any>(`
       SELECT * FROM ical_channels
       WHERE is_active = 1
         AND ical_url IS NOT NULL
@@ -21,7 +21,7 @@ export async function runIcalCron(request: Request) {
           last_synced_at IS NULL
           OR datetime(last_synced_at, '+' || sync_interval_minutes || ' minutes') <= datetime('now')
         )
-    `).all() as any[];
+    `) as any[];
 
     if (channels.length === 0) {
       return NextResponse.json({ message: 'No channels need syncing', synced: 0 });

@@ -5,7 +5,7 @@
  * All calls authenticated via JWT, rate-limited, and RUID-logged.
  */
 
-import { getDb } from '@/lib/db';
+import { getDb } from '@core/db';
 import { authenticatedFetch } from '../auth';
 import { withRateLimit } from '../rate-limiter';
 import { logSyncRequest, extractRUID } from '../ruid-logger';
@@ -18,29 +18,30 @@ import {
 import { isSuccessResponse, parseErrorResponse } from '../xml/ota-parser';
 import { BOOKING_COM_URLS } from '../types';
 import type { ARIInventoryUpdate, ARIRateUpdate, ARIRestrictionUpdate, SyncResult, EnvironmentType } from '../types';
+import { getSql } from '@core/db/async';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * Get the environment for a connection (test or production)
  */
-function getEnvironment(connectionId: string): EnvironmentType {
-  const db = getDb();
-  const row = db.prepare(`
+async function getEnvironment(connectionId: string): Promise<EnvironmentType> {
+  const sql = getSql();
+  const row = await sql.row<any>(`
     SELECT cred.environment
     FROM channel_connections cc
     JOIN channel_credentials cred ON cc.credentials_id = cred.id
     WHERE cc.id = ?
-  `).get(connectionId) as any;
+  `, [connectionId]) as any;
   return (row?.environment as EnvironmentType) || 'test';
 }
 
 /**
  * Get the external property ID for a connection
  */
-function getPropertyId(connectionId: string): string {
-  const db = getDb();
-  const row = db.prepare('SELECT external_property_id FROM channel_connections WHERE id = ?').get(connectionId) as any;
+async function getPropertyId(connectionId: string): Promise<string> {
+  const sql = getSql();
+  const row = await sql.row<any>('SELECT external_property_id FROM channel_connections WHERE id = ?', [connectionId]) as any;
   if (!row?.external_property_id) {
     throw new Error(`Connection ${connectionId}: external_property_id not configured`);
   }
@@ -56,8 +57,8 @@ export async function pushInventory(
   connectionId: string,
   updates: ARIInventoryUpdate[],
 ): Promise<SyncResult> {
-  const env = getEnvironment(connectionId);
-  const hotelCode = getPropertyId(connectionId);
+  const env = await getEnvironment(connectionId);
+  const hotelCode = await getPropertyId(connectionId);
   const baseUrl = BOOKING_COM_URLS[env].supply;
   const endpoint = `${baseUrl}/ota/OTA_HotelInvNotif`;
 
@@ -74,8 +75,8 @@ export async function pushRates(
   connectionId: string,
   rates: ARIRateUpdate[],
 ): Promise<SyncResult> {
-  const env = getEnvironment(connectionId);
-  const hotelCode = getPropertyId(connectionId);
+  const env = await getEnvironment(connectionId);
+  const hotelCode = await getPropertyId(connectionId);
   const baseUrl = BOOKING_COM_URLS[env].supply;
   const endpoint = `${baseUrl}/ota/OTA_HotelRateAmountNotif`;
 
@@ -92,8 +93,8 @@ export async function pushRestrictions(
   connectionId: string,
   restrictions: ARIRestrictionUpdate[],
 ): Promise<SyncResult> {
-  const env = getEnvironment(connectionId);
-  const hotelCode = getPropertyId(connectionId);
+  const env = await getEnvironment(connectionId);
+  const hotelCode = await getPropertyId(connectionId);
   const baseUrl = BOOKING_COM_URLS[env].supply;
   const endpoint = `${baseUrl}/ota/OTA_HotelInvNotif`;
 
@@ -107,8 +108,8 @@ export async function pushRestrictions(
  * Read back current state from Booking.com for verification
  */
 export async function readBack(connectionId: string): Promise<string> {
-  const env = getEnvironment(connectionId);
-  const hotelCode = getPropertyId(connectionId);
+  const env = await getEnvironment(connectionId);
+  const hotelCode = await getPropertyId(connectionId);
   const baseUrl = BOOKING_COM_URLS[env].supply;
   const endpoint = `${baseUrl}/ota/OTA_HotelDescriptiveInfo`;
 
@@ -116,7 +117,7 @@ export async function readBack(connectionId: string): Promise<string> {
   const startTime = Date.now();
 
   const response = await withRateLimit('/ota/OTA_HotelDescriptiveInfo', async () => {
-    return authenticatedFetch(connectionId, endpoint, {
+    return await authenticatedFetch(connectionId, endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/xml', 'Accept': 'application/xml' },
       body: xmlBody,
@@ -126,7 +127,7 @@ export async function readBack(connectionId: string): Promise<string> {
   const responseBody = await response.text();
   const ruid = extractRUID(response.headers);
 
-  logSyncRequest({
+  await logSyncRequest({
     connectionId,
     direction: 'outbound',
     endpoint: '/ota/OTA_HotelDescriptiveInfo',
@@ -146,20 +147,20 @@ export async function readBack(connectionId: string): Promise<string> {
  * Build ARI updates from PMS price_calendar for a unit type + date range.
  * Returns the 3 types of updates needed by Booking.com.
  */
-export function buildARIFromPriceCalendar(
+export async function buildARIFromPriceCalendar(
   connectionId: string,
   unitTypeId: string,
   dateFrom: string,
   dateTo: string,
-): { inventory: ARIInventoryUpdate[]; rates: ARIRateUpdate[]; restrictions: ARIRestrictionUpdate[] } {
-  const db = getDb();
+): Promise<{ inventory: ARIInventoryUpdate[]; rates: ARIRateUpdate[]; restrictions: ARIRestrictionUpdate[] }> {
+  const sql = getSql();
 
   // Get mapping for this unit type
-  const mapping = db.prepare(`
+  const mapping = await sql.row<any>(`
     SELECT external_room_type_id, external_rate_plan_id
     FROM channel_room_mapping
     WHERE connection_id = ? AND unit_type_id = ? AND is_active = 1
-  `).get(connectionId, unitTypeId) as any;
+  `, [connectionId, unitTypeId]) as any;
 
   if (!mapping || !mapping.external_room_type_id) {
     return { inventory: [], rates: [], restrictions: [] };
@@ -171,34 +172,34 @@ export function buildARIFromPriceCalendar(
   // The currency these prices are actually in. It was the literal 'CZK', so a
   // hotel pricing in euros would have pushed euro amounts to Booking.com
   // labelled as koruna — the guest is then charged the wrong sum.
-  const currency = (db.prepare(`
+  const currency = (await sql.row<any>(`
     SELECT p.default_currency FROM unit_types ut
     JOIN properties p ON ut.property_id = p.id
     WHERE ut.id = ?
-  `).get(unitTypeId) as { default_currency?: string } | undefined)?.default_currency || 'CZK';
+  `, [unitTypeId]) as { default_currency?: string } | undefined)?.default_currency || 'CZK';
 
   // Get price calendar data
-  const prices = db.prepare(`
+  const prices = await sql.rows<any>(`
     SELECT * FROM price_calendar
     WHERE unit_type_id = ? AND date >= ? AND date <= ?
     ORDER BY date
-  `).all(unitTypeId, dateFrom, dateTo) as any[];
+  `, [unitTypeId, dateFrom, dateTo]) as any[];
 
   // Count total units of this type
-  const unitCount = db.prepare(`
+  const unitCount = await sql.row<any>(`
     SELECT COUNT(*) as cnt FROM units WHERE unit_type_id = ?
-  `).get(unitTypeId) as any;
+  `, [unitTypeId]) as any;
   const totalUnits = unitCount?.cnt || 1;
 
   // Count occupied units per date
-  const occupancy = db.prepare(`
+  const occupancy = await sql.rows<any>(`
     SELECT r.check_in, r.check_out
     FROM reservations r
     JOIN units u ON r.unit_id = u.id
     WHERE u.unit_type_id = ?
       AND r.status NOT IN ('cancelled', 'no_show')
       AND r.check_in <= ? AND r.check_out > ?
-  `).all(unitTypeId, dateTo, dateFrom) as any[];
+  `, [unitTypeId, dateTo, dateFrom]) as any[];
 
   // Build occupancy map
   const occupancyMap = new Map<string, number>();
@@ -275,7 +276,7 @@ async function sendOTARequest(
 
   try {
     const response = await withRateLimit(endpointPath, async () => {
-      return authenticatedFetch(connectionId, fullUrl, {
+      return await authenticatedFetch(connectionId, fullUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/xml',
@@ -324,7 +325,7 @@ async function sendOTARequest(
       ruid,
     };
   } finally {
-    logSyncRequest({
+    await logSyncRequest({
       connectionId,
       direction: 'outbound',
       endpoint: endpointPath,

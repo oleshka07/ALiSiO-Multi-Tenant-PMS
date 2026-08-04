@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { generateICal } from '@/modules/channels/domain/ical'; // TODO: move to @core/ical
 
 export async function exportIcal(
@@ -8,9 +8,9 @@ export async function exportIcal(
 ) {
   try {
     const { token } = await params;
-    const db = getDb();
+    const sql = getSql();
 
-    const channel = db.prepare('SELECT * FROM ical_channels WHERE export_token = ?').get(token) as any;
+    const channel = await sql.row<any>('SELECT * FROM ical_channels WHERE export_token = ?', [token]) as any;
     if (!channel) {
       return new Response(generateICal([], 'ALiSiO — Unknown'), {
         status: 200,
@@ -22,12 +22,12 @@ export async function exportIcal(
     let calName = 'ALiSiO';
 
     if (channel.channel_type === 'building') {
-      const building = db.prepare('SELECT name FROM buildings WHERE id = ?').get(channel.building_id) as any;
+      const building = await sql.row<any>('SELECT name FROM buildings WHERE id = ?', [channel.building_id]) as any;
       calName = `ALiSiO — ${building?.name || 'Building'}`;
-      const units = db.prepare('SELECT id FROM units WHERE building_id = ?').all(channel.building_id) as any[];
+      const units = await sql.rows<any>('SELECT id FROM units WHERE building_id = ?', [channel.building_id]) as any[];
       unitIds = units.map((u: any) => u.id);
     } else {
-      const unit = db.prepare('SELECT name FROM units WHERE id = ?').get(channel.unit_id) as any;
+      const unit = await sql.row<any>('SELECT name FROM units WHERE id = ?', [channel.unit_id]) as any;
       calName = `ALiSiO — ${unit?.name || 'Unit'}`;
       unitIds = [channel.unit_id];
     }
@@ -40,7 +40,7 @@ export async function exportIcal(
     }
 
     const placeholders = unitIds.map(() => '?').join(',');
-    const reservations = db.prepare(`
+    const reservations = await sql.rows<any>(`
       SELECT r.id, r.unit_id, r.check_in, r.check_out, r.status,
              COALESCE(g.first_name, 'OTA') as first_name,
              COALESCE(g.last_name, 'Blocked') as last_name
@@ -49,7 +49,7 @@ export async function exportIcal(
       WHERE r.unit_id IN (${placeholders})
         AND r.status IN ('confirmed', 'checked_in', 'tentative')
         AND r.check_out >= date('now', '-30 days')
-    `).all(...unitIds) as any[];
+    `, [...unitIds]) as any[];
 
     const events = reservations.map((r: any) => ({
       uid: `${r.id}@alisio-pms`,

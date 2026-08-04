@@ -4,25 +4,26 @@ import { getDb, generateGuestToken } from '@core/db';
 import { parseICal, extractGuestName } from '@/modules/channels/domain/ical'; // TODO: move to @core/ical
 import { notifyReservationCreated } from '@bookings';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { getSql } from '@core/db/async';
 
 export async function syncIcal(request: NextRequest) {
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json().catch(() => ({}));
     const { channel_id } = body as { channel_id?: string };
 
     let channels: any[];
     if (channel_id) {
-      const ch = db.prepare('SELECT * FROM ical_channels WHERE id = ? AND is_active = 1').get(channel_id) as any;
+      const ch = await sql.row<any>('SELECT * FROM ical_channels WHERE id = ? AND is_active = 1', [channel_id]) as any;
       if (!ch) return NextResponse.json({ error: 'Channel not found or inactive' }, { status: 404 });
       channels = [ch];
     } else {
-      channels = db.prepare('SELECT * FROM ical_channels WHERE is_active = 1 AND ical_url IS NOT NULL').all() as any[];
+      channels = await sql.rows<any>('SELECT * FROM ical_channels WHERE is_active = 1 AND ical_url IS NOT NULL') as any[];
     }
 
     const results: any[] = [];
     for (const channel of channels) {
-      const result = await syncChannel(db, channel);
+      const result = await syncChannel(channel);
       results.push(result);
     }
 
@@ -33,7 +34,8 @@ export async function syncIcal(request: NextRequest) {
   }
 }
 
-async function syncChannel(db: any, channel: any) {
+async function syncChannel(channel: any) {
+  const sql = getSql();
   const logId = `isl_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
   try {
@@ -52,26 +54,24 @@ async function syncChannel(db: any, channel: any) {
     let eventsCreated = 0;
     let eventsUpdated = 0;
 
-    const unitIds = getChannelUnitIds(db, channel);
+    const unitIds = await getChannelUnitIds(channel);
     if (unitIds.length === 0) throw new Error('No units found for this channel');
 
-    const org = { id: requireOrganizationId(db) } as any;
+    const org = { id: requireOrganizationId(getDb()) } as any;
 
     for (const event of events) {
       const externalUid = `ical_${channel.id}_${event.uid}`;
-      const existing = db.prepare(
-        'SELECT id, check_in, check_out FROM reservations WHERE external_uid = ?'
-      ).get(externalUid) as any;
+      const existing = await sql.row<any>('SELECT id, check_in, check_out FROM reservations WHERE external_uid = ?', [externalUid]) as any;
 
       if (existing) {
         const nights = Math.max(1, Math.round(
           (new Date(event.dtend).getTime() - new Date(event.dtstart).getTime()) / 86400000
         ));
         if (existing.check_in !== event.dtstart || existing.check_out !== event.dtend) {
-          db.prepare(`
+          await sql.run(`
             UPDATE reservations SET check_in = ?, check_out = ?, nights = ?, updated_at = datetime('now')
             WHERE id = ?
-          `).run(event.dtstart, event.dtend, nights, existing.id);
+          `, [event.dtstart, event.dtend, nights, existing.id]);
           eventsUpdated++;
         }
       } else {
@@ -80,8 +80,7 @@ async function syncChannel(db: any, channel: any) {
         const lastName = guestName ? channel.source_code.toUpperCase() : 'Blocked';
 
         const guestId = `g_ical_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-        db.prepare('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)')
-          .run(guestId, org.id, firstName, lastName);
+        await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)', [guestId, org.id, firstName, lastName]);
 
         const nights = Math.max(1, Math.round(
           (new Date(event.dtend).getTime() - new Date(event.dtstart).getTime()) / 86400000
@@ -89,24 +88,22 @@ async function syncChannel(db: any, channel: any) {
 
         const targetUnitId = channel.channel_type === 'unit'
           ? channel.unit_id
-          : findAvailableUnit(db, unitIds, event.dtstart, event.dtend);
+          : await findAvailableUnit(unitIds, event.dtstart, event.dtend);
 
         const resId = `r_ical_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
         const guestPageToken = generateGuestToken();
-        const unit = db.prepare('SELECT property_id FROM units WHERE id = ?').get(targetUnitId) as any;
+        const unit = await sql.row<any>('SELECT property_id FROM units WHERE id = ?', [targetUnitId]) as any;
 
-        db.prepare(`
+        await sql.run(`
           INSERT INTO reservations (id, property_id, unit_id, guest_id, check_in, check_out, nights,
             adults, children, status, payment_status, source, total_price, commission_amount,
             guest_page_token, external_uid, notes)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          resId, unit?.property_id || channel.property_id, targetUnitId, guestId,
+        `, [resId, unit?.property_id || channel.property_id, targetUnitId, guestId,
           event.dtstart, event.dtend, nights,
           1, 0, 'confirmed', 'paid', channel.source_code, 0, 0,
           guestPageToken, externalUid,
-          `iCal import: ${event.summary}`,
-        );
+          `iCal import: ${event.summary}`]);
 
         // Skip TG for "Blocked" iCal entries (no guest name) — those are owner closures, not real bookings
         if (guestName) {
@@ -120,33 +117,34 @@ async function syncChannel(db: any, channel: any) {
       }
     }
 
-    db.prepare("UPDATE ical_channels SET last_synced_at = datetime('now') WHERE id = ?").run(channel.id);
-    db.prepare(`
+    await sql.run("UPDATE ical_channels SET last_synced_at = datetime('now') WHERE id = ?", [channel.id]);
+    await sql.run(`
       INSERT INTO ical_sync_log (id, channel_id, status, events_found, events_created, events_updated)
       VALUES (?, ?, 'success', ?, ?, ?)
-    `).run(logId, channel.id, events.length, eventsCreated, eventsUpdated);
+    `, [logId, channel.id, events.length, eventsCreated, eventsUpdated]);
 
     return { channel_id: channel.id, status: 'success', events_found: events.length, events_created: eventsCreated, events_updated: eventsUpdated };
   } catch (e: any) {
-    db.prepare(`INSERT INTO ical_sync_log (id, channel_id, status, error_message) VALUES (?, ?, 'error', ?)`)
-      .run(logId, channel.id, e.message);
+    await sql.run(`INSERT INTO ical_sync_log (id, channel_id, status, error_message) VALUES (?, ?, 'error', ?)`, [logId, channel.id, e.message]);
     return { channel_id: channel.id, status: 'error', error: e.message };
   }
 }
 
-function getChannelUnitIds(db: any, channel: any): string[] {
+async function getChannelUnitIds(channel: any): Promise<string[]> {
+  const sql = getSql();
   if (channel.channel_type === 'unit') return [channel.unit_id];
-  const units = db.prepare('SELECT id FROM units WHERE building_id = ?').all(channel.building_id) as any[];
+  const units = await sql.rows<any>('SELECT id FROM units WHERE building_id = ?', [channel.building_id]) as any[];
   return units.map((u: any) => u.id);
 }
 
-function findAvailableUnit(db: any, unitIds: string[], checkIn: string, checkOut: string): string {
+async function findAvailableUnit(unitIds: string[], checkIn: string, checkOut: string): Promise<string> {
+  const sql = getSql();
   for (const uid of unitIds) {
-    const overlap = db.prepare(`
+    const overlap = await sql.row<any>(`
       SELECT id FROM reservations
       WHERE unit_id = ? AND status NOT IN ('cancelled', 'no_show')
         AND check_in < ? AND check_out > ?
-    `).get(uid, checkOut, checkIn);
+    `, [uid, checkOut, checkIn]);
     if (!overlap) return uid;
   }
   return unitIds[0];

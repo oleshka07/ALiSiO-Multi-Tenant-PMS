@@ -14,7 +14,7 @@ type IdParams = { params: Promise<{ id: string }> };
 export const getConnection = withActor(async (_request, { params }: IdParams, actor: Actor) => {
   try {
     const { id } = await params;
-    const conn = connectionsRepo.getConnection(actor.organizationId, id);
+    const conn = await connectionsRepo.getConnection(actor.organizationId, id);
     if (!conn) return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
     return NextResponse.json(conn);
   } catch (e: any) {
@@ -27,7 +27,7 @@ export const updateConnection = withOwner(async (request: NextRequest, { params 
   try {
     const { id } = await params;
     const body = await request.json();
-    const updated = connectionsRepo.updateConnection(actor.organizationId, id, body);
+    const updated = await connectionsRepo.updateConnection(actor.organizationId, id, body);
     // false covers "not yours", "nothing to change" and "credentials belong to
     // someone else"; 404 is the safe reading of all three.
     if (!updated) return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
@@ -41,7 +41,7 @@ export const updateConnection = withOwner(async (request: NextRequest, { params 
 export const deleteConnection = withOwner(async (_request, { params }: IdParams, actor: Actor) => {
   try {
     const { id } = await params;
-    const removed = connectionsRepo.deleteConnection(actor.organizationId, id);
+    const removed = await connectionsRepo.deleteConnection(actor.organizationId, id);
     if (!removed) return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
     return NextResponse.json({ status: 'deleted' });
   } catch (e: any) {

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 /**
  * OAuth credentials for channel managers (Booking.com and friends).
@@ -12,8 +12,9 @@ import { getDb } from '@core/db';
  * overwrote whichever organization happened to be first.
  */
 
-export function listCredentials(organizationId: string) {
-  return getDb().prepare(`
+export async function listCredentials(organizationId: string) {
+  const sql = getSql();
+  return await sql.rows<any>(`
     SELECT id, channel, environment, client_id,
       CASE WHEN client_secret != '' THEN '●●●●●●●●' ELSE '' END as client_secret_masked,
       (access_token IS NOT NULL) as has_token,
@@ -23,10 +24,10 @@ export function listCredentials(organizationId: string) {
     FROM channel_credentials
     WHERE organization_id = ?
     ORDER BY channel, environment
-  `).all(organizationId);
+  `, [organizationId]);
 }
 
-export function upsertCredentials(
+export async function upsertCredentials(
   organizationId: string,
   input: {
     channel: string;
@@ -34,38 +35,36 @@ export function upsertCredentials(
     client_id: string;
     client_secret: string;
   },
-): { id: string; created: boolean } {
-  const db = getDb();
+): Promise<{ id: string; created: boolean }> {
+  const sql = getSql();
 
-  const existing = db.prepare(
-    'SELECT id FROM channel_credentials WHERE organization_id = ? AND channel = ? AND environment = ?',
-  ).get(organizationId, input.channel, input.environment) as any;
+  const existing = await sql.row<any>('SELECT id FROM channel_credentials WHERE organization_id = ? AND channel = ? AND environment = ?', [organizationId, input.channel, input.environment]) as any;
 
   let credId: string;
 
   if (existing) {
     credId = existing.id;
-    db.prepare(`
+    await sql.run(`
       UPDATE channel_credentials
       SET client_id = ?, client_secret = ?, access_token = NULL,
         token_expires_at = NULL, updated_at = datetime('now')
       WHERE id = ? AND organization_id = ?
-    `).run(input.client_id, input.client_secret, credId, organizationId);
+    `, [input.client_id, input.client_secret, credId, organizationId]);
   } else {
     credId = `cred_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    db.prepare(`
+    await sql.run(`
       INSERT INTO channel_credentials (id, organization_id, channel, environment, client_id, client_secret)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(credId, organizationId, input.channel, input.environment, input.client_id, input.client_secret);
+    `, [credId, organizationId, input.channel, input.environment, input.client_id, input.client_secret]);
   }
 
   // Auto-link to this organization's connections of the same channel that have
   // none yet — never to another tenant's.
-  db.prepare(`
+  await sql.run(`
     UPDATE channel_connections
     SET credentials_id = ?, updated_at = datetime('now')
     WHERE channel = ? AND organization_id = ? AND credentials_id IS NULL
-  `).run(credId, input.channel, organizationId);
+  `, [credId, input.channel, organizationId]);
 
   return { id: credId, created: !existing };
 }

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 /**
  * Channel connections and room mappings.
@@ -17,14 +17,14 @@ import { getDb } from '@core/db';
  */
 
 /** True when the connection exists and belongs to this organization. */
-function ownsConnection(organizationId: string, id: string): boolean {
-  return !!getDb()
-    .prepare('SELECT 1 FROM channel_connections WHERE id = ? AND organization_id = ?')
-    .get(id, organizationId);
+async function ownsConnection(organizationId: string, id: string): Promise<boolean> {
+  const sql = getSql();
+  return !!await sql.row<any>('SELECT 1 FROM channel_connections WHERE id = ? AND organization_id = ?', [id, organizationId]);
 }
 
-export function listConnections(organizationId: string) {
-  const connections = getDb().prepare(`
+export async function listConnections(organizationId: string) {
+  const sql = getSql();
+  const connections = await sql.rows<any>(`
     SELECT cc.*,
       cred.environment, cred.client_id,
       (cred.access_token IS NOT NULL AND cred.token_expires_at > datetime('now')) as token_valid
@@ -32,7 +32,7 @@ export function listConnections(organizationId: string) {
     LEFT JOIN channel_credentials cred ON cc.credentials_id = cred.id
     WHERE cc.organization_id = ?
     ORDER BY cc.created_at DESC
-  `).all(organizationId) as any[];
+  `, [organizationId]) as any[];
 
   return connections.map((c) => ({
     ...c,
@@ -40,26 +40,26 @@ export function listConnections(organizationId: string) {
   }));
 }
 
-export function getConnection(organizationId: string, id: string) {
-  const db = getDb();
-  const conn = db.prepare(`
+export async function getConnection(organizationId: string, id: string) {
+  const sql = getSql();
+  const conn = await sql.row<any>(`
     SELECT cc.*,
       cred.environment, cred.client_id,
       (cred.access_token IS NOT NULL AND cred.token_expires_at > datetime('now')) as token_valid
     FROM channel_connections cc
     LEFT JOIN channel_credentials cred ON cc.credentials_id = cred.id
     WHERE cc.id = ? AND cc.organization_id = ?
-  `).get(id, organizationId) as any;
+  `, [id, organizationId]) as any;
 
   if (!conn) return null;
 
-  const mappings = db.prepare(`
+  const mappings = await sql.rows<any>(`
     SELECT crm.*, ut.name as unit_type_name, ut.code as unit_type_code
     FROM channel_room_mapping crm
     JOIN unit_types ut ON crm.unit_type_id = ut.id
     WHERE crm.connection_id = ?
     ORDER BY ut.name
-  `).all(id);
+  `, [id]);
 
   return {
     ...conn,
@@ -68,7 +68,7 @@ export function getConnection(organizationId: string, id: string) {
   };
 }
 
-export function createConnection(
+export async function createConnection(
   organizationId: string,
   input: {
     channel: string;
@@ -76,33 +76,30 @@ export function createConnection(
     connection_types?: string[];
     pricing_model?: string;
   },
-): string {
-  const db = getDb();
+): Promise<string> {
+  const sql = getSql();
   const id = `cc_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-  db.prepare(`
+  await sql.run(`
     INSERT INTO channel_connections
       (id, organization_id, channel, external_property_id, status, connection_types, pricing_model)
     VALUES (?, ?, ?, ?, 'pending', ?, ?)
-  `).run(
-    id, organizationId, input.channel,
+  `, [id, organizationId, input.channel,
     input.external_property_id || null,
     JSON.stringify(input.connection_types || ['RESERVATIONS', 'AVAILABILITY']),
-    input.pricing_model || 'Standard',
-  );
+    input.pricing_model || 'Standard']);
 
   return id;
 }
 
-export function updateConnection(organizationId: string, id: string, body: Record<string, any>): boolean {
-  if (!ownsConnection(organizationId, id)) return false;
+export async function updateConnection(organizationId: string, id: string, body: Record<string, any>): Promise<boolean> {
+  const sql = getSql();
+  if (!await ownsConnection(organizationId, id)) return false;
 
   // credentials_id comes from the request; pointing a connection at another
   // tenant's credentials would let it authenticate to the channel as them.
   if (body.credentials_id) {
-    const ok = getDb()
-      .prepare('SELECT 1 FROM channel_credentials WHERE id = ? AND organization_id = ?')
-      .get(body.credentials_id, organizationId);
+    const ok = await sql.row<any>('SELECT 1 FROM channel_credentials WHERE id = ? AND organization_id = ?', [body.credentials_id, organizationId]);
     if (!ok) return false;
   }
 
@@ -119,16 +116,13 @@ export function updateConnection(organizationId: string, id: string, body: Recor
 
   updates.push("updated_at = datetime('now')");
   values.push(id, organizationId);
-  getDb()
-    .prepare(`UPDATE channel_connections SET ${updates.join(', ')} WHERE id = ? AND organization_id = ?`)
-    .run(...values);
+  await sql.run(`UPDATE channel_connections SET ${updates.join(', ')} WHERE id = ? AND organization_id = ?`, [...values]);
   return true;
 }
 
-export function deleteConnection(organizationId: string, id: string): boolean {
-  const res = getDb()
-    .prepare('DELETE FROM channel_connections WHERE id = ? AND organization_id = ?')
-    .run(id, organizationId);
+export async function deleteConnection(organizationId: string, id: string): Promise<boolean> {
+  const sql = getSql();
+  const res = await sql.run('DELETE FROM channel_connections WHERE id = ? AND organization_id = ?', [id, organizationId]);
   return res.changes > 0;
 }
 
@@ -137,25 +131,27 @@ export function deleteConnection(organizationId: string, id: string): boolean {
  * returned so the caller can scope its work per row — this is background work
  * with no session behind it.
  */
-export function getActiveReservationConnections() {
-  return getDb().prepare(`
+export async function getActiveReservationConnections() {
+  const sql = getSql();
+  return await sql.rows<any>(`
     SELECT id, organization_id, channel, connection_types
     FROM channel_connections
     WHERE status = 'connected' AND credentials_id IS NOT NULL
-  `).all() as any[];
+  `) as any[];
 }
 
-export function markConnectionSynced(id: string) {
-  getDb().prepare(`
+export async function markConnectionSynced(id: string) {
+  const sql = getSql();
+  await sql.run(`
     UPDATE channel_connections SET last_synced_at = datetime('now'), updated_at = datetime('now')
     WHERE id = ?
-  `).run(id);
+  `, [id]);
 }
 
 // ─── Room Mapping ─────────────────────────────────────────────────────────────
 
-export function listMappings(organizationId: string, connectionId?: string) {
-  const db = getDb();
+export async function listMappings(organizationId: string, connectionId?: string) {
+  const sql = getSql();
   let query = `
     SELECT crm.*, ut.name as unit_type_name, ut.code as unit_type_code,
       ut.max_adults, ut.max_occupancy, ut.base_occupancy,
@@ -169,20 +165,20 @@ export function listMappings(organizationId: string, connectionId?: string) {
   if (connectionId) { query += ' AND crm.connection_id = ?'; values.push(connectionId); }
   query += ' ORDER BY ut.name';
 
-  const mappings = db.prepare(query).all(...values);
+  const mappings = await sql.rows<any>(query, values);
   // The unit types offered for mapping must be this tenant's, or the screen
   // would invite an operator to map a channel room onto someone else's type.
-  const unitTypes = db.prepare(`
+  const unitTypes = await sql.rows<any>(`
     SELECT ut.id, ut.name, ut.code, ut.max_adults, ut.max_occupancy, ut.base_occupancy
     FROM unit_types ut
     JOIN properties p ON p.id = ut.property_id
     WHERE p.organization_id = ?
     ORDER BY ut.name
-  `).all(organizationId);
+  `, [organizationId]);
   return { mappings, unitTypes };
 }
 
-export function upsertMapping(
+export async function upsertMapping(
   organizationId: string,
   input: {
     connection_id: string;
@@ -190,47 +186,46 @@ export function upsertMapping(
     external_room_type_id?: string;
     external_rate_plan_id?: string;
   },
-): { id: string; created: boolean } | null {
-  const db = getDb();
+): Promise<{ id: string; created: boolean } | null> {
+  const sql = getSql();
 
   // Both ids arrive in the request body; both must be this tenant's.
-  if (!ownsConnection(organizationId, input.connection_id)) return null;
-  const ownsUnitType = db.prepare(`
+  if (!await ownsConnection(organizationId, input.connection_id)) return null;
+  const ownsUnitType = await sql.row<any>(`
     SELECT 1 FROM unit_types ut
     JOIN properties p ON p.id = ut.property_id
     WHERE ut.id = ? AND p.organization_id = ?
-  `).get(input.unit_type_id, organizationId);
+  `, [input.unit_type_id, organizationId]);
   if (!ownsUnitType) return null;
 
-  const existing = db.prepare(
-    'SELECT id FROM channel_room_mapping WHERE connection_id = ? AND unit_type_id = ?',
-  ).get(input.connection_id, input.unit_type_id) as any;
+  const existing = await sql.row<any>('SELECT id FROM channel_room_mapping WHERE connection_id = ? AND unit_type_id = ?', [input.connection_id, input.unit_type_id]) as any;
 
   if (existing) {
-    db.prepare(`
+    await sql.run(`
       UPDATE channel_room_mapping
       SET external_room_type_id = ?, external_rate_plan_id = ?,
         is_active = 1, updated_at = datetime('now')
       WHERE id = ?
-    `).run(input.external_room_type_id || '', input.external_rate_plan_id || '', existing.id);
+    `, [input.external_room_type_id || '', input.external_rate_plan_id || '', existing.id]);
     return { id: existing.id, created: false };
   }
 
   const id = `crm_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-  db.prepare(`
+  await sql.run(`
     INSERT INTO channel_room_mapping
       (id, connection_id, unit_type_id, external_room_type_id, external_rate_plan_id)
     VALUES (?, ?, ?, ?, ?)
-  `).run(id, input.connection_id, input.unit_type_id, input.external_room_type_id || '', input.external_rate_plan_id || '');
+  `, [id, input.connection_id, input.unit_type_id, input.external_room_type_id || '', input.external_rate_plan_id || '']);
   return { id, created: true };
 }
 
-export function deleteMapping(organizationId: string, id: string): boolean {
-  const res = getDb().prepare(`
+export async function deleteMapping(organizationId: string, id: string): Promise<boolean> {
+  const sql = getSql();
+  const res = await sql.run(`
     DELETE FROM channel_room_mapping
     WHERE id = ? AND connection_id IN (
       SELECT id FROM channel_connections WHERE organization_id = ?
     )
-  `).run(id, organizationId);
+  `, [id, organizationId]);
   return res.changes > 0;
 }

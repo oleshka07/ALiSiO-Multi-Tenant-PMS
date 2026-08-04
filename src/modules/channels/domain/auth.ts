@@ -6,11 +6,12 @@
  * Auto-refreshes 5 minutes before expiry.
  */
 
-import { getDb } from '@/lib/db';
+import { getDb } from '@core/db';
 import { withRateLimit } from './rate-limiter';
 import { logSyncRequest, extractRUID } from './ruid-logger';
 import { BOOKING_COM_URLS } from './types';
 import type { EnvironmentType } from './types';
+import { getSql } from '@core/db/async';
 
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000; // Refresh 5 minutes before expiry
 
@@ -19,16 +20,16 @@ const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000; // Refresh 5 minutes before expir
  * Returns cached token if still valid, otherwise fetches a new one.
  */
 export async function getAccessToken(connectionId: string): Promise<string> {
-  const db = getDb();
+  const sql = getSql();
 
   // Get connection and its credentials
-  const conn = db.prepare(`
+  const conn = await sql.row<any>(`
     SELECT cc.*, cred.id as cred_id, cred.client_id, cred.client_secret,
            cred.access_token, cred.token_expires_at, cred.environment
     FROM channel_connections cc
     JOIN channel_credentials cred ON cc.credentials_id = cred.id
     WHERE cc.id = ?
-  `).get(connectionId) as Record<string, unknown> | undefined;
+  `, [connectionId]) as Record<string, unknown> | undefined;
 
   if (!conn) {
     throw new Error(`Connection ${connectionId} not found or has no credentials`);
@@ -62,16 +63,16 @@ export async function getAccessToken(connectionId: string): Promise<string> {
  * Force refresh the token for a connection (e.g., after a 401 response)
  */
 export async function refreshToken(connectionId: string): Promise<string> {
-  const db = getDb();
+  const sql = getSql();
 
   // Clear cached token
-  db.prepare(`
+  await sql.run(`
     UPDATE channel_credentials SET access_token = NULL, token_expires_at = NULL,
     updated_at = datetime('now')
     WHERE id = (SELECT credentials_id FROM channel_connections WHERE id = ?)
-  `).run(connectionId);
+  `, [connectionId]);
 
-  return getAccessToken(connectionId);
+  return await getAccessToken(connectionId);
 }
 
 /**
@@ -121,19 +122,19 @@ async function fetchNewToken(
 
     // Store token — expires in 1 hour
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    const db = getDb();
-    db.prepare(`
+    const sql = getSql();
+    await sql.run(`
       UPDATE channel_credentials
       SET access_token = ?, token_expires_at = ?, updated_at = datetime('now')
       WHERE id = ?
-    `).run(result.jwt, expiresAt, credentialsId);
+    `, [result.jwt, expiresAt, credentialsId]);
 
     console.log(`[Auth] Token refreshed for connection ${connectionId}, expires at ${expiresAt}`);
 
     return result.jwt;
   } finally {
     // Always log the request, success or failure
-    logSyncRequest({
+    await logSyncRequest({
       connectionId,
       direction: 'outbound',
       endpoint: '/token-based-authentication/exchange',
@@ -183,20 +184,20 @@ export async function authenticatedFetch(
 /**
  * Get credentials status for diagnostics (never exposes secrets)
  */
-export function getCredentialsStatus(connectionId: string): {
+export async function getCredentialsStatus(connectionId: string): Promise<{
   hasCredentials: boolean;
   hasToken: boolean;
   tokenExpiresAt: string | null;
   tokenValid: boolean;
   environment: string | null;
-} {
-  const db = getDb();
-  const conn = db.prepare(`
+}> {
+  const sql = getSql();
+  const conn = await sql.row<any>(`
     SELECT cred.client_id, cred.access_token, cred.token_expires_at, cred.environment
     FROM channel_connections cc
     JOIN channel_credentials cred ON cc.credentials_id = cred.id
     WHERE cc.id = ?
-  `).get(connectionId) as Record<string, unknown> | undefined;
+  `, [connectionId]) as Record<string, unknown> | undefined;
 
   if (!conn) {
     return { hasCredentials: false, hasToken: false, tokenExpiresAt: null, tokenValid: false, environment: null };

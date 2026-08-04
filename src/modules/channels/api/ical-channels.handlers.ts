@@ -2,11 +2,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { requirePropertyId } from '@core/auth/tenant-context';
+import { getSql } from '@core/db/async';
 
 export async function listIcalChannels() {
   try {
-    const db = getDb();
-    const channels = db.prepare(`
+    const sql = getSql();
+    const channels = await sql.rows<any>(`
       SELECT
         ic.*,
         CASE ic.channel_type
@@ -25,13 +26,13 @@ export async function listIcalChannels() {
       LEFT JOIN units u ON ic.unit_id = u.id
       LEFT JOIN booking_sources bs ON bs.code = ic.source_code
       ORDER BY ic.created_at
-    `).all();
-
-    const logStmt = db.prepare(`
-      SELECT * FROM ical_sync_log WHERE channel_id = ? ORDER BY synced_at DESC LIMIT 1
     `);
+
     for (const ch of channels as any[]) {
-      ch.last_log = logStmt.get(ch.id) || null;
+      ch.last_log = await sql.row<any>(
+        'SELECT * FROM ical_sync_log WHERE channel_id = ? ORDER BY synced_at DESC LIMIT 1',
+        [ch.id],
+      ) || null;
     }
 
     return NextResponse.json(channels);
@@ -42,7 +43,7 @@ export async function listIcalChannels() {
 
 export async function createIcalChannel(request: NextRequest) {
   try {
-    const db = getDb();
+    const sql = getSql();
     const body = await request.json();
     const { channel_type, building_id, unit_id, source_code, ical_url, sync_interval_minutes } = body;
 
@@ -59,16 +60,16 @@ export async function createIcalChannel(request: NextRequest) {
     }
 
     if (channel_type === 'building') {
-      const dup = db.prepare('SELECT id FROM ical_channels WHERE building_id = ? AND source_code = ?').get(building_id, source_code);
+      const dup = await sql.row<any>('SELECT id FROM ical_channels WHERE building_id = ? AND source_code = ?', [building_id, source_code]);
       if (dup) return NextResponse.json({ error: 'Channel already exists for this building + source' }, { status: 400 });
     } else {
-      const dup = db.prepare('SELECT id FROM ical_channels WHERE unit_id = ? AND source_code = ?').get(unit_id, source_code);
+      const dup = await sql.row<any>('SELECT id FROM ical_channels WHERE unit_id = ? AND source_code = ?', [unit_id, source_code]);
       if (dup) return NextResponse.json({ error: 'Channel already exists for this unit + source' }, { status: 400 });
     }
 
     let propertyId: string;
     try {
-      propertyId = requirePropertyId(db, body.property_id);
+      propertyId = requirePropertyId(getDb(), body.property_id);
     } catch (e: any) {
       return NextResponse.json({ error: e.message }, { status: 400 });
     }
@@ -76,18 +77,16 @@ export async function createIcalChannel(request: NextRequest) {
     const id = `ich_${Date.now()}`;
     const exportToken = generateGuestToken() + generateGuestToken();
 
-    db.prepare(`
+    await sql.run(`
       INSERT INTO ical_channels (id, property_id, channel_type, building_id, unit_id, source_code, ical_url, export_token, sync_interval_minutes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id, propertyId, channel_type,
+    `, [id, propertyId, channel_type,
       channel_type === 'building' ? building_id : null,
       channel_type === 'unit' ? unit_id : null,
       source_code, ical_url || null, exportToken,
-      sync_interval_minutes || 15,
-    );
+      sync_interval_minutes || 15]);
 
-    const created = db.prepare('SELECT * FROM ical_channels WHERE id = ?').get(id);
+    const created = await sql.row<any>('SELECT * FROM ical_channels WHERE id = ?', [id]);
     return NextResponse.json(created, { status: 201 });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

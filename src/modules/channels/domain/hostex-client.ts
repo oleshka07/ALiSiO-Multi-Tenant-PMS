@@ -292,7 +292,7 @@ export async function getAllReservations(): Promise<HostexReservation[]> {
 
 /**
  * Get single reservation by stay_code (only works for hostex_direct reservations).
- * For Airbnb/Booking.com reservations, use getReservationByCode() instead.
+ * For Airbnb/Booking.com reservations, use await getReservationByCode() instead.
  */
 export async function getReservation(stayCode: string): Promise<HostexReservation | null> {
   await rateLimitWait();

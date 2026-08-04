@@ -5,8 +5,9 @@
  * This logger stores all communications for debugging and certification.
  */
 
-import { getDb } from '@/lib/db';
+import { getDb } from '@core/db';
 import type { SyncDirection } from './types';
+import { getSql } from '@core/db/async';
 
 const MAX_BODY_LENGTH = 10240; // 10KB truncation for stored bodies
 
@@ -23,7 +24,7 @@ function generateLogId(): string {
 /**
  * Log an API request/response to ari_sync_log table
  */
-export function logSyncRequest(params: {
+export async function logSyncRequest(params: {
   connectionId: string;
   direction: SyncDirection;
   endpoint: string;
@@ -32,17 +33,16 @@ export function logSyncRequest(params: {
   responseBody?: string | null;
   ruid?: string | null;
   durationMs?: number | null;
-}): string {
-  const db = getDb();
+}): Promise<string> {
+  const sql = getSql();
   const id = generateLogId();
 
   try {
-    db.prepare(`
+    await sql.run(`
       INSERT INTO ari_sync_log (id, connection_id, direction, endpoint,
         request_body, response_status, response_body, ruid, duration_ms)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
+    `, [id,
       params.connectionId,
       params.direction,
       params.endpoint,
@@ -50,8 +50,7 @@ export function logSyncRequest(params: {
       params.responseStatus ?? null,
       truncate(params.responseBody),
       params.ruid ?? null,
-      params.durationMs ?? null,
-    );
+      params.durationMs ?? null]);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[RUID Logger] Failed to log:', msg);
@@ -74,26 +73,26 @@ export function extractRUID(headers: Headers): string | null {
 /**
  * Get recent sync logs for a connection
  */
-export function getSyncLogs(connectionId: string, limit: number = 50): unknown[] {
-  const db = getDb();
-  return db.prepare(`
+export async function getSyncLogs(connectionId: string, limit: number = 50): Promise<unknown[]> {
+  const sql = getSql();
+  return await sql.rows<any>(`
     SELECT * FROM ari_sync_log
     WHERE connection_id = ?
     ORDER BY created_at DESC
     LIMIT ?
-  `).all(connectionId, limit);
+  `, [connectionId, limit]);
 }
 
 /**
  * Get all sync logs (across connections) for a date range
  */
-export function getAllSyncLogs(params: {
+export async function getAllSyncLogs(params: {
   dateFrom?: string;
   dateTo?: string;
   direction?: SyncDirection;
   limit?: number;
-}): unknown[] {
-  const db = getDb();
+}): Promise<unknown[]> {
+  const sql = getSql();
   const conditions: string[] = [];
   const values: unknown[] = [];
 
@@ -113,12 +112,12 @@ export function getAllSyncLogs(params: {
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   values.push(params.limit || 100);
 
-  return db.prepare(`
+  return await sql.rows<any>(`
     SELECT sl.*, cc.channel, cc.external_property_id
     FROM ari_sync_log sl
     JOIN channel_connections cc ON sl.connection_id = cc.id
     ${where}
     ORDER BY sl.created_at DESC
     LIMIT ?
-  `).all(...values);
+  `, [...values]);
 }

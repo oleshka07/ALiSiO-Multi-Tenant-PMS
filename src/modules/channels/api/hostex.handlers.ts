@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { withActor, type Actor } from '@core/auth/session';
 import { hasFeature, featureDisabled } from '@core/features';
 import { syncReservations, syncSingleReservation, getSyncStatus, seedPropertyMap } from '../data/hostex-sync';
 import { getReservations, getProperties, setHostexOrganization } from '../domain/hostex-client';
+import { getDb } from '@core/db';
 
 // ─── /api/hostex/sync ─────────────────────────────────────────────────────────
 // hostexSync and hostexBulkSync stay bare: their routes are cron-secret
@@ -24,7 +25,7 @@ export const hostexSyncStatus = withActor(async (_req, _ctx, actor: Actor) => {
   if (!hasFeature(getDb(), actor.organizationId, 'hostex')) return featureDisabled('hostex');
   setHostexOrganization(actor.organizationId);
   try {
-    return NextResponse.json(getSyncStatus());
+    return NextResponse.json(await getSyncStatus());
   } catch (e: any) {
     return hostexError('request', e);
   }
@@ -68,9 +69,9 @@ export const hostexProperties = withActor(async (_req, _ctx, actor: Actor) => {
   setHostexOrganization(actor.organizationId);
   try {
     const properties = await getProperties();
-    const db = getDb();
+    const sql = getSql();
     let mappings: any[] = [];
-    try { mappings = db.prepare('SELECT * FROM hostex_property_map').all(); } catch { /* table may not exist yet */ }
+    try { mappings = await sql.rows<any>('SELECT * FROM hostex_property_map'); } catch { /* table may not exist yet */ }
     const mappingMap = new Map(mappings.map((m: any) => [m.hostex_property_id, m]));
     const result = properties.map(p => ({ ...p, mapping: mappingMap.get(p.id) || null, is_mapped: mappingMap.has(p.id) }));
     return NextResponse.json({ properties: result });

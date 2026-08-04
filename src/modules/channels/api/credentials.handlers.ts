@@ -14,7 +14,7 @@ import { withOwner, type Actor } from '@core/auth/session';
 
 export const listCredentials = withOwner(async (_req, _ctx, actor: Actor) => {
   try {
-    return NextResponse.json(credentialsRepo.listCredentials(actor.organizationId));
+    return NextResponse.json(await credentialsRepo.listCredentials(actor.organizationId));
   } catch (e: any) {
     console.error('GET /api/channels/credentials error:', e?.message || e);
     return NextResponse.json({ error: 'Failed to fetch credentials' }, { status: 500 });
@@ -33,7 +33,7 @@ export const upsertCredentials = withOwner(async (request: NextRequest, _ctx, ac
       );
     }
 
-    const result = credentialsRepo.upsertCredentials(actor.organizationId, {
+    const result = await credentialsRepo.upsertCredentials(actor.organizationId, {
       channel, environment, client_id, client_secret,
     });
     return NextResponse.json({ id: result.id, status: result.created ? 'created' : 'updated' });

@@ -6,8 +6,9 @@
  * bookings change in PMS, and processed by the cron-callable sync endpoint.
  */
 
-import { getDb } from '@/lib/db';
+import { getDb } from '@core/db';
 import type { SyncType, SyncJobStatus } from '../domain/types';
+import { getSql } from '@core/db/async';
 
 function generateJobId(): string {
   return `sq_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
@@ -20,40 +21,38 @@ function generateJobId(): string {
  * Automatically deduplicates — if a pending job for the same connection/type/unit/dates
  * already exists, it won't create a duplicate.
  */
-export function enqueueSync(params: {
+export async function enqueueSync(params: {
   connectionId: string;
   syncType: SyncType;
   unitTypeId?: string | null;
   dateFrom: string;
   dateTo: string;
   priority?: number;
-}): string | null {
-  const db = getDb();
+}): Promise<string | null> {
+  const sql = getSql();
   const priority = params.priority ?? 5;
 
   // Check for duplicate pending job
-  const existing = db.prepare(`
+  const existing = await sql.row<any>(`
     SELECT id FROM ari_sync_queue
     WHERE connection_id = ? AND sync_type = ? AND status = 'pending'
       AND (unit_type_id = ? OR (unit_type_id IS NULL AND ? IS NULL))
       AND date_from = ? AND date_to = ?
-  `).get(
-    params.connectionId, params.syncType,
+  `, [params.connectionId, params.syncType,
     params.unitTypeId ?? null, params.unitTypeId ?? null,
-    params.dateFrom, params.dateTo
-  ) as { id: string } | undefined;
+    params.dateFrom, params.dateTo]) as { id: string } | undefined;
 
   if (existing) {
     return existing.id; // Already queued
   }
 
   const id = generateJobId();
-  db.prepare(`
+  await sql.run(`
     INSERT INTO ari_sync_queue (id, connection_id, sync_type, unit_type_id,
       date_from, date_to, status, priority)
     VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
-  `).run(id, params.connectionId, params.syncType, params.unitTypeId ?? null,
-    params.dateFrom, params.dateTo, priority);
+  `, [id, params.connectionId, params.syncType, params.unitTypeId ?? null,
+    params.dateFrom, params.dateTo, priority]);
 
   return id;
 }
@@ -62,21 +61,21 @@ export function enqueueSync(params: {
  * Enqueue sync jobs for ALL active connections when pricing or availability changes.
  * This is called from pricing and booking API routes.
  */
-export function enqueueForAllConnections(params: {
+export async function enqueueForAllConnections(params: {
   syncType: SyncType;
   unitTypeId?: string | null;
   dateFrom: string;
   dateTo: string;
   priority?: number;
-}): number {
-  const db = getDb();
-  const connections = db.prepare(`
+}): Promise<number> {
+  const sql = getSql();
+  const connections = await sql.rows<any>(`
     SELECT id FROM channel_connections WHERE status = 'connected'
-  `).all() as Array<{ id: string }>;
+  `) as Array<{ id: string }>;
 
   let queued = 0;
   for (const conn of connections) {
-    const id = enqueueSync({
+    const id = await enqueueSync({
       connectionId: conn.id,
       syncType: params.syncType,
       unitTypeId: params.unitTypeId,
@@ -96,7 +95,7 @@ export function enqueueForAllConnections(params: {
  * Get the next pending job from the queue (highest priority, oldest first).
  * Marks it as 'processing'.
  */
-export function dequeueJob(): {
+export async function dequeueJob(): Promise<{
   id: string;
   connection_id: string;
   sync_type: SyncType;
@@ -105,24 +104,24 @@ export function dequeueJob(): {
   date_to: string;
   attempts: number;
   max_attempts: number;
-} | null {
-  const db = getDb();
+} | null> {
+  const sql = getSql();
 
-  const job = db.prepare(`
+  const job = await sql.row<any>(`
     SELECT * FROM ari_sync_queue
     WHERE status = 'pending'
     ORDER BY priority ASC, created_at ASC
     LIMIT 1
-  `).get() as Record<string, unknown> | undefined;
+  `) as Record<string, unknown> | undefined;
 
   if (!job) return null;
 
   // Mark as processing
-  db.prepare(`
+  await sql.run(`
     UPDATE ari_sync_queue
     SET status = 'processing', attempts = attempts + 1, updated_at = datetime('now')
     WHERE id = ?
-  `).run(job.id);
+  `, [job.id]);
 
   return {
     id: job.id as string,
@@ -141,36 +140,35 @@ export function dequeueJob(): {
 /**
  * Mark a job as completed.
  */
-export function markCompleted(jobId: string): void {
-  const db = getDb();
-  db.prepare(`
+export async function markCompleted(jobId: string): Promise<void> {
+  const sql = getSql();
+  await sql.run(`
     UPDATE ari_sync_queue SET status = 'completed', updated_at = datetime('now')
     WHERE id = ?
-  `).run(jobId);
+  `, [jobId]);
 }
 
 /**
  * Mark a job as failed. If under max_attempts, re-queue as pending.
  */
-export function markFailed(jobId: string, error: string): void {
-  const db = getDb();
-  const job = db.prepare('SELECT attempts, max_attempts FROM ari_sync_queue WHERE id = ?')
-    .get(jobId) as { attempts: number; max_attempts: number } | undefined;
+export async function markFailed(jobId: string, error: string): Promise<void> {
+  const sql = getSql();
+  const job = await sql.row<any>('SELECT attempts, max_attempts FROM ari_sync_queue WHERE id = ?', [jobId]) as { attempts: number; max_attempts: number } | undefined;
 
   if (job && job.attempts < job.max_attempts) {
     // Re-queue with lower priority (delay retry)
-    db.prepare(`
+    await sql.run(`
       UPDATE ari_sync_queue
       SET status = 'pending', last_error = ?, priority = priority + 1, updated_at = datetime('now')
       WHERE id = ?
-    `).run(error, jobId);
+    `, [error, jobId]);
   } else {
     // Permanently failed
-    db.prepare(`
+    await sql.run(`
       UPDATE ari_sync_queue
       SET status = 'failed', last_error = ?, updated_at = datetime('now')
       WHERE id = ?
-    `).run(error, jobId);
+    `, [error, jobId]);
   }
 }
 
@@ -179,18 +177,18 @@ export function markFailed(jobId: string, error: string): void {
 /**
  * Get queue statistics for monitoring dashboard.
  */
-export function getQueueStats(): {
+export async function getQueueStats(): Promise<{
   pending: number;
   processing: number;
   completed: number;
   failed: number;
   total: number;
-} {
-  const db = getDb();
-  const rows = db.prepare(`
+}> {
+  const sql = getSql();
+  const rows = await sql.rows<any>(`
     SELECT status, COUNT(*) as cnt FROM ari_sync_queue
     GROUP BY status
-  `).all() as Array<{ status: SyncJobStatus; cnt: number }>;
+  `) as Array<{ status: SyncJobStatus; cnt: number }>;
 
   const stats = { pending: 0, processing: 0, completed: 0, failed: 0, total: 0 };
   for (const row of rows) {
@@ -203,31 +201,31 @@ export function getQueueStats(): {
 /**
  * Get recent failed jobs (for error dashboard).
  */
-export function getFailedJobs(limit: number = 20): unknown[] {
-  const db = getDb();
-  return db.prepare(`
+export async function getFailedJobs(limit: number = 20): Promise<unknown[]> {
+  const sql = getSql();
+  return await sql.rows<any>(`
     SELECT sq.*, cc.channel, cc.external_property_id
     FROM ari_sync_queue sq
     JOIN channel_connections cc ON sq.connection_id = cc.id
     WHERE sq.status = 'failed'
     ORDER BY sq.updated_at DESC
     LIMIT ?
-  `).all(limit);
+  `, [limit]);
 }
 
 /**
  * Clear completed jobs older than N days (cleanup).
  */
-export function cleanupOldJobs(olderThanDays: number = 7): number {
-  const db = getDb();
+export async function cleanupOldJobs(olderThanDays: number = 7): Promise<number> {
+  const sql = getSql();
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - olderThanDays);
   const cutoffStr = cutoff.toISOString();
 
-  const result = db.prepare(`
+  const result = await sql.run(`
     DELETE FROM ari_sync_queue
     WHERE status = 'completed' AND updated_at < ?
-  `).run(cutoffStr);
+  `, [cutoffStr]);
 
   return result.changes;
 }

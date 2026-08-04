@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  return hostexSync();
+  return await hostexSync();
 }
 
 // GET /api/hostex/sync — sync status. Session-only: the caller is the calendar

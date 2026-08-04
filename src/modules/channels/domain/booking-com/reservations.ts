@@ -6,7 +6,7 @@
  * Acknowledges each reservation after processing.
  */
 
-import { getDb } from '@/lib/db';
+import { getDb } from '@core/db';
 import { authenticatedFetch } from '../auth';
 import { withRateLimit } from '../rate-limiter';
 import { logSyncRequest, extractRUID } from '../ruid-logger';
@@ -16,6 +16,7 @@ import { enqueueForAllConnections } from '../../data/sync-queue';
 import { BOOKING_COM_URLS } from '../types';
 import type { OTAReservation, EnvironmentType } from '../types';
 import { requireOrganizationId, requirePropertyId } from '@core/auth/tenant-context';
+import { getSql } from '@core/db/async';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -23,7 +24,7 @@ import { requireOrganizationId, requirePropertyId } from '@core/auth/tenant-cont
  * Pull new reservations from Booking.com
  */
 export async function pullNewReservations(connectionId: string): Promise<OTAReservation[]> {
-  const env = getEnvironmentForConn(connectionId);
+  const env = await getEnvironmentForConn(connectionId);
   const baseUrl = BOOKING_COM_URLS[env].secureSupply;
   const endpoint = `${baseUrl}/ota/OTA_HotelResNotif`;
 
@@ -34,7 +35,7 @@ export async function pullNewReservations(connectionId: string): Promise<OTARese
 
   try {
     const response = await withRateLimit('/ota/OTA_HotelResNotif', async () => {
-      return authenticatedFetch(connectionId, endpoint, {
+      return await authenticatedFetch(connectionId, endpoint, {
         method: 'GET',
         headers: { 'Accept': 'application/xml' },
         signal: AbortSignal.timeout(5 * 60 * 1000), // 5 min timeout per Booking.com docs
@@ -55,7 +56,7 @@ export async function pullNewReservations(connectionId: string): Promise<OTARese
     console.error(`[Reservations] Pull error:`, error.message);
     return [];
   } finally {
-    logSyncRequest({
+    await logSyncRequest({
       connectionId,
       direction: 'inbound',
       endpoint: '/ota/OTA_HotelResNotif',
@@ -76,7 +77,7 @@ export async function acknowledgeReservations(
 ): Promise<boolean> {
   if (reservationIds.length === 0) return true;
 
-  const env = getEnvironmentForConn(connectionId);
+  const env = await getEnvironmentForConn(connectionId);
   const baseUrl = BOOKING_COM_URLS[env].secureSupply;
   const endpoint = `${baseUrl}/ota/OTA_HotelResNotif`;
 
@@ -85,7 +86,7 @@ export async function acknowledgeReservations(
 
   try {
     const response = await withRateLimit('/ota/OTA_HotelResNotif', async () => {
-      return authenticatedFetch(connectionId, endpoint, {
+      return await authenticatedFetch(connectionId, endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/xml', 'Accept': 'application/xml' },
         body: xmlBody,
@@ -95,7 +96,7 @@ export async function acknowledgeReservations(
     const responseBody = await response.text();
     const ruid = extractRUID(response.headers);
 
-    logSyncRequest({
+    await logSyncRequest({
       connectionId,
       direction: 'outbound',
       endpoint: '/ota/OTA_HotelResNotif (ACK)',
@@ -117,7 +118,7 @@ export async function acknowledgeReservations(
  * Pull modifications and cancellations
  */
 export async function pullModifications(connectionId: string): Promise<OTAReservation[]> {
-  const env = getEnvironmentForConn(connectionId);
+  const env = await getEnvironmentForConn(connectionId);
   const baseUrl = BOOKING_COM_URLS[env].secureSupply;
   const endpoint = `${baseUrl}/ota/OTA_HotelResModifyNotif`;
 
@@ -125,7 +126,7 @@ export async function pullModifications(connectionId: string): Promise<OTAReserv
 
   try {
     const response = await withRateLimit('/ota/OTA_HotelResModifyNotif', async () => {
-      return authenticatedFetch(connectionId, endpoint, {
+      return await authenticatedFetch(connectionId, endpoint, {
         method: 'GET',
         headers: { 'Accept': 'application/xml' },
         signal: AbortSignal.timeout(5 * 60 * 1000),
@@ -135,7 +136,7 @@ export async function pullModifications(connectionId: string): Promise<OTAReserv
     const responseBody = await response.text();
     const ruid = extractRUID(response.headers);
 
-    logSyncRequest({
+    await logSyncRequest({
       connectionId,
       direction: 'inbound',
       endpoint: '/ota/OTA_HotelResModifyNotif',
@@ -162,14 +163,14 @@ export async function acknowledgeModifications(
 ): Promise<boolean> {
   if (reservationIds.length === 0) return true;
 
-  const env = getEnvironmentForConn(connectionId);
+  const env = await getEnvironmentForConn(connectionId);
   const baseUrl = BOOKING_COM_URLS[env].secureSupply;
   const endpoint = `${baseUrl}/ota/OTA_HotelResModifyNotif`;
   const xmlBody = buildResNotifAcknowledge(reservationIds);
 
   try {
     const response = await withRateLimit('/ota/OTA_HotelResModifyNotif', async () => {
-      return authenticatedFetch(connectionId, endpoint, {
+      return await authenticatedFetch(connectionId, endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/xml', 'Accept': 'application/xml' },
         body: xmlBody,
@@ -185,15 +186,15 @@ export async function acknowledgeModifications(
  * Get reservation summary for recovery after outage
  */
 export async function getReservationSummary(connectionId: string): Promise<string> {
-  const env = getEnvironmentForConn(connectionId);
-  const hotelCode = getPropertyIdForConn(connectionId);
+  const env = await getEnvironmentForConn(connectionId);
+  const hotelCode = await getPropertyIdForConn(connectionId);
   const baseUrl = BOOKING_COM_URLS[env].secureSupply;
   const endpoint = `${baseUrl}/xml/reservationssummary`;
 
   const xmlBody = buildReservationSummaryRequest(hotelCode);
 
   const response = await withRateLimit('/xml/reservationssummary', async () => {
-    return authenticatedFetch(connectionId, endpoint, {
+    return await authenticatedFetch(connectionId, endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/xml', 'Accept': 'application/xml' },
       body: xmlBody,
@@ -210,24 +211,24 @@ export async function getReservationSummary(connectionId: string): Promise<strin
  * Handles deduplication via external_uid / bcom_reservation_id.
  * Auto-creates guest if needed.
  */
-export function processReservation(
+export async function processReservation(
   connectionId: string,
   reservation: OTAReservation,
-): { action: 'created' | 'updated' | 'cancelled' | 'skipped'; reservationId: string | null } {
-  const db = getDb();
+): Promise<{ action: 'created' | 'updated' | 'cancelled' | 'skipped'; reservationId: string | null }> {
+  const sql = getSql();
 
   // Deduplication — check if we already have this reservation
-  const existing = db.prepare(`
+  const existing = await sql.row<any>(`
     SELECT id, status FROM reservations
     WHERE bcom_reservation_id = ? OR external_uid = ?
-  `).get(reservation.externalReservationId, reservation.externalReservationId) as any;
+  `, [reservation.externalReservationId, reservation.externalReservationId]) as any;
 
   if (reservation.status === 'cancelled') {
     if (existing) {
-      db.prepare(`
+      await sql.run(`
         UPDATE reservations SET status = 'cancelled', updated_at = datetime('now')
         WHERE id = ?
-      `).run(existing.id);
+      `, [existing.id]);
       // Enqueue availability sync (room is now free)
       enqueueAvailabilitySync(connectionId, reservation.checkIn, reservation.checkOut);
       return { action: 'cancelled', reservationId: existing.id };
@@ -236,10 +237,10 @@ export function processReservation(
   }
 
   // Find or create guest
-  const guestId = findOrCreateGuest(db, reservation);
+  const guestId = findOrCreateGuest(reservation);
 
   // Find matching unit
-  const unit = findMatchingUnit(db, connectionId, reservation);
+  const unit = await findMatchingUnit(connectionId, reservation);
 
   // Calculate nights
   const checkIn = new Date(reservation.checkIn);
@@ -248,7 +249,7 @@ export function processReservation(
 
   if (existing) {
     // Update existing reservation
-    db.prepare(`
+    await sql.run(`
       UPDATE reservations SET
         guest_id = ?, unit_id = ?,
         check_in = ?, check_out = ?, nights = ?,
@@ -262,8 +263,7 @@ export function processReservation(
         meal_plan = ?,
         updated_at = datetime('now')
       WHERE id = ?
-    `).run(
-      guestId, unit?.id || null,
+    `, [guestId, unit?.id || null,
       reservation.checkIn, reservation.checkOut, nights,
       reservation.adults, reservation.children,
       reservation.totalPrice, reservation.specialRequests || null,
@@ -273,21 +273,20 @@ export function processReservation(
       reservation.rateRewriting,
       reservation.cancellationPolicy,
       reservation.mealPlan,
-      existing.id,
-    );
+      existing.id]);
     return { action: 'updated', reservationId: existing.id };
   }
 
   // Create new reservation
   const resId = `bcom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const org = { id: requireOrganizationId(db) } as any;
+  const org = { id: requireOrganizationId(getDb()) } as any;
   // The channel sync runs without a session; the organization comes from the
   // connection being synced, and the property from that organization. Taking
   // the first row filed an incoming Booking.com reservation against whichever
   // hotel the server created first.
-  const prop = { id: requirePropertyId(db) } as any;
+  const prop = { id: requirePropertyId(getDb()) } as any;
 
-  db.prepare(`
+  await sql.run(`
     INSERT INTO reservations (
       id, property_id, unit_id, guest_id,
       check_in, check_out, nights, adults, children,
@@ -297,8 +296,7 @@ export function processReservation(
       price_per_night_json, promotions_applied,
       rate_rewriting_info, cancellation_policy, meal_plan
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    resId, prop?.id || null, unit?.id || null, guestId,
+  `, [resId, prop?.id || null, unit?.id || null, guestId,
     reservation.checkIn, reservation.checkOut, nights,
     reservation.adults, reservation.children,
     'confirmed', 'unpaid', 'booking_com', reservation.totalPrice,
@@ -308,8 +306,7 @@ export function processReservation(
     JSON.stringify(reservation.promotions),
     reservation.rateRewriting,
     reservation.cancellationPolicy,
-    reservation.mealPlan,
-  );
+    reservation.mealPlan]);
 
   // Enqueue availability sync (room is now occupied)
   enqueueAvailabilitySync(connectionId, reservation.checkIn, reservation.checkOut);
@@ -319,56 +316,56 @@ export function processReservation(
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-function getEnvironmentForConn(connectionId: string): EnvironmentType {
-  const db = getDb();
-  const row = db.prepare(`
+async function getEnvironmentForConn(connectionId: string): Promise<EnvironmentType> {
+  const sql = getSql();
+  const row = await sql.row<any>(`
     SELECT cred.environment FROM channel_connections cc
     JOIN channel_credentials cred ON cc.credentials_id = cred.id
     WHERE cc.id = ?
-  `).get(connectionId) as any;
+  `, [connectionId]) as any;
   return (row?.environment as EnvironmentType) || 'test';
 }
 
-function getPropertyIdForConn(connectionId: string): string {
-  const db = getDb();
-  const row = db.prepare('SELECT external_property_id FROM channel_connections WHERE id = ?').get(connectionId) as any;
+async function getPropertyIdForConn(connectionId: string): Promise<string> {
+  const sql = getSql();
+  const row = await sql.row<any>('SELECT external_property_id FROM channel_connections WHERE id = ?', [connectionId]) as any;
   return row?.external_property_id || '';
 }
 
-function findOrCreateGuest(db: any, res: OTAReservation): string {
+async function findOrCreateGuest(res: OTAReservation): Promise<string> {
+  const sql = getSql();
   // Try to find existing guest by email
   if (res.bookerEmail) {
-    const guest = db.prepare('SELECT id FROM guests WHERE email = ?').get(res.bookerEmail) as any;
+    const guest = await sql.row<any>('SELECT id FROM guests WHERE email = ?', [res.bookerEmail]) as any;
     if (guest) return guest.id;
   }
 
   // Create new guest
   const guestId = `g_bcom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const org = { id: requireOrganizationId(db) } as any;
+  const org = { id: requireOrganizationId(getDb()) } as any;
 
-  db.prepare(`
+  await sql.run(`
     INSERT INTO guests (id, organization_id, first_name, last_name, email, phone)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(
-    guestId, org?.id || null,
+  `, [guestId, org?.id || null,
     res.bookerFirstName, res.bookerLastName,
-    res.bookerEmail || null, res.bookerPhone || null,
-  );
+    res.bookerEmail || null, res.bookerPhone || null]);
 
   return guestId;
 }
 
-function findMatchingUnit(db: any, connectionId: string, res: OTAReservation): any {
+async function findMatchingUnit(connectionId: string, res: OTAReservation): Promise<any> {
+  const sql = getSql();
   // Find unit type via room mapping
-  const mapping = db.prepare(`
+  const mapping = await sql.row<any>(`
     SELECT unit_type_id FROM channel_room_mapping
     WHERE connection_id = ? AND external_room_type_id = ? AND is_active = 1
-  `).get(connectionId, res.roomTypeCode) as any;
+  `, [connectionId, res.roomTypeCode]) as any;
 
   if (!mapping) return null;
 
   // Find first available unit of this type for the dates
-  const unit = db.prepare(`
+  const unit = await sql.row<any>(`
     SELECT u.id FROM units u
     WHERE u.unit_type_id = ?
       AND u.id NOT IN (
@@ -379,14 +376,14 @@ function findMatchingUnit(db: any, connectionId: string, res: OTAReservation): a
       )
     ORDER BY u.sort_order, u.name
     LIMIT 1
-  `).get(mapping.unit_type_id, res.checkOut, res.checkIn) as any;
+  `, [mapping.unit_type_id, res.checkOut, res.checkIn]) as any;
 
   return unit || null;
 }
 
-function enqueueAvailabilitySync(connectionId: string, dateFrom: string, dateTo: string): void {
+async function enqueueAvailabilitySync(connectionId: string, dateFrom: string, dateTo: string): Promise<void> {
   try {
-    enqueueForAllConnections({
+    await enqueueForAllConnections({
       syncType: 'inventory',
       dateFrom,
       dateTo,
