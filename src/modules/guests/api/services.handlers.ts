@@ -12,7 +12,7 @@ export async function orderServices(
     const { token } = await params;
     const body = await request.json();
 
-    const reservation = actionsRepo.getReservationForServiceOrder(token);
+    const reservation = await actionsRepo.getReservationForServiceOrder(token);
     if (!reservation) return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
 
     const rl = checkRateLimit(token, 'service_order', 5, 10);
@@ -25,7 +25,7 @@ export async function orderServices(
       return NextResponse.json({ error: 'At least one service is required' }, { status: 400 });
     }
 
-    const orderedServices = actionsRepo.orderServices(reservation.id, services);
+    const orderedServices = await actionsRepo.orderServices(reservation.id, services);
     return NextResponse.json({ success: true, orderedServices });
   } catch (error: any) {
     console.error('POST /api/guest/[token]/services error:', error?.message || error);

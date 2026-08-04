@@ -30,14 +30,14 @@ async function handleSinglePay(
   quantity: number,
   serviceDates?: string[],
 ): Promise<NextResponse> {
-  const reservation = actionsRepo.getReservationForPay(token);
+  const reservation = await actionsRepo.getReservationForPay(token);
   if (!reservation) return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
 
   if (!(await isPaymentConfigured(reservation.organization_id))) {
     return NextResponse.json({ error: 'Online payments are not available' }, { status: 403 });
   }
 
-  const service = actionsRepo.getServiceForProperty(serviceId, reservation.property_id);
+  const service = await actionsRepo.getServiceForProperty(serviceId, reservation.property_id);
   if (!service) return NextResponse.json({ error: 'Service not found' }, { status: 404 });
 
   // Determine service dates: use provided dates, or check-in date as fallback
@@ -70,12 +70,12 @@ async function handleSinglePay(
   const orderIds: string[] = [];
   if (dates.length > 1) {
     for (const date of dates) {
-      const oid = actionsRepo.createPendingServiceOrder(reservation.id, serviceId, 1, service.price, date);
+      const oid = await actionsRepo.createPendingServiceOrder(reservation.id, serviceId, 1, service.price, date);
       if (!oid) return NextResponse.json({ error: 'Failed to create order' }, { status: 500 });
       orderIds.push(oid);
     }
   } else {
-    const oid = actionsRepo.createPendingServiceOrder(reservation.id, serviceId, effectiveQty, totalPrice, dates[0]);
+    const oid = await actionsRepo.createPendingServiceOrder(reservation.id, serviceId, effectiveQty, totalPrice, dates[0]);
     if (!oid) return NextResponse.json({ error: 'Failed to create order' }, { status: 500 });
     orderIds.push(oid);
   }
@@ -110,12 +110,12 @@ async function handleSinglePay(
       successUrl: `${baseUrl}/api/booking/payment-return?status=success&reservation_id=${encodeURIComponent(reservation.id)}&return=${encodeURIComponent(`/guest/${token}`)}`,
       cancelUrl: `${baseUrl}/api/booking/payment-return?status=cancel&reservation_id=${encodeURIComponent(reservation.id)}&return=${encodeURIComponent(`/guest/${token}`)}`,
     });
-    for (const oid of orderIds) actionsRepo.updateOrderPaymentId(oid, session.sessionId);
+    for (const oid of orderIds) await actionsRepo.updateOrderPaymentId(oid, session.sessionId);
     console.log(`[Guest Pay] Teya session created: ${session.sessionId}`);
     return NextResponse.json({ success: true, orderIds, session_url: session.sessionUrl, session_id: session.sessionId });
   } catch (teyaError: any) {
     console.error('[Guest Pay] Teya error:', teyaError.message);
-    for (const oid of orderIds) actionsRepo.markOrderPaymentFailed(oid);
+    for (const oid of orderIds) await actionsRepo.markOrderPaymentFailed(oid);
     sendTelegramMessage(
       `⚠️ <b>Помилка оплати</b>\n\n👤 ${escHtml(guestName)}\n✨ ${escHtml(serviceName)} × ${effectiveQty}\n` +
       `❌ Teya: ${escHtml(teyaError.message?.substring(0, 100))}\n\nЗамовлення створено, але оплата не вдалася.`,
@@ -126,7 +126,7 @@ async function handleSinglePay(
 
 // ─── Cart bulk pay ────────────────────────────────────────────────────────────
 async function handleCartPay(token: string, items: CartItemInput[]): Promise<NextResponse> {
-  const reservation = actionsRepo.getReservationForPay(token);
+  const reservation = await actionsRepo.getReservationForPay(token);
   if (!reservation) return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
 
   if (!(await isPaymentConfigured(reservation.organization_id))) {
@@ -134,7 +134,7 @@ async function handleCartPay(token: string, items: CartItemInput[]): Promise<Nex
   }
 
   const serviceIds = [...new Set(items.map((i) => i.serviceId))];
-  const services = actionsRepo.getServicesForCart(serviceIds, reservation.property_id);
+  const services = await actionsRepo.getServicesForCart(serviceIds, reservation.property_id);
   const svcMap = new Map(services.map((s: any) => [s.id, s]));
 
   type ResolvedSimple = {
@@ -215,12 +215,12 @@ async function handleCartPay(token: string, items: CartItemInput[]): Promise<Nex
       const dates = (r.serviceDates && r.serviceDates.length > 0) ? r.serviceDates : null;
       if (dates && dates.length > 1) {
         for (const date of dates) {
-          const oid = actionsRepo.createPendingServiceOrder(reservation.id, r.svc.id, 1, r.svc.price, date);
+          const oid = await actionsRepo.createPendingServiceOrder(reservation.id, r.svc.id, 1, r.svc.price, date);
           if (!oid) return NextResponse.json({ error: 'Failed to create order' }, { status: 500 });
           orderIds.push(oid);
         }
       } else {
-        const oid = actionsRepo.createPendingServiceOrder(reservation.id, r.svc.id, r.quantity, r.lineTotal, dates?.[0] || reservation.check_in);
+        const oid = await actionsRepo.createPendingServiceOrder(reservation.id, r.svc.id, r.quantity, r.lineTotal, dates?.[0] || reservation.check_in);
         if (!oid) return NextResponse.json({ error: 'Failed to create order' }, { status: 500 });
         orderIds.push(oid);
       }
@@ -235,11 +235,11 @@ async function handleCartPay(token: string, items: CartItemInput[]): Promise<Nex
         unit_price: r.svc.price,
         source: 'guest_cart',
       });
-      const oid = actionsRepo.createPendingServiceOrder(reservation.id, r.svc.id, r.hours, r.lineTotal, r.date, notes);
+      const oid = await actionsRepo.createPendingServiceOrder(reservation.id, r.svc.id, r.hours, r.lineTotal, r.date, notes);
       if (!oid) return NextResponse.json({ error: 'Failed to create order' }, { status: 500 });
       orderIds.push(oid);
     } else if (r.kind === 'breakfast') {
-      const ids = actionsRepo.createPendingBreakfastBundle(reservation.id, r.menuItems, r.serviceDates);
+      const ids = await actionsRepo.createPendingBreakfastBundle(reservation.id, r.menuItems, r.serviceDates);
       if (ids.length === 0) return NextResponse.json({ error: 'Failed to create breakfast orders' }, { status: 500 });
       bsoOrderIds.push(...ids);
     }
@@ -301,13 +301,13 @@ async function handleCartPay(token: string, items: CartItemInput[]): Promise<Nex
       successUrl: `${baseUrl}/api/booking/payment-return?status=success&reservation_id=${encodeURIComponent(reservation.id)}&return=${encodeURIComponent(`/guest/${token}`)}`,
       cancelUrl: `${baseUrl}/api/booking/payment-return?status=cancel&reservation_id=${encodeURIComponent(reservation.id)}&return=${encodeURIComponent(`/guest/${token}`)}`,
     });
-    for (const orderId of orderIds) actionsRepo.updateOrderPaymentId(orderId, session.sessionId);
-    for (const bsoId of bsoOrderIds) actionsRepo.updateBookingServiceOrderPaymentId(bsoId, session.sessionId);
+    for (const orderId of orderIds) await actionsRepo.updateOrderPaymentId(orderId, session.sessionId);
+    for (const bsoId of bsoOrderIds) await actionsRepo.updateBookingServiceOrderPaymentId(bsoId, session.sessionId);
     console.log(`[Cart Pay] Teya session: ${session.sessionId}`);
     return NextResponse.json({ success: true, orderIds, session_url: session.sessionUrl, session_id: session.sessionId });
   } catch (teyaError: any) {
     console.error('[Cart Pay] Teya error:', teyaError.message);
-    for (const orderId of orderIds) actionsRepo.markOrderPaymentFailed(orderId);
+    for (const orderId of orderIds) await actionsRepo.markOrderPaymentFailed(orderId);
     // Best-effort cleanup of breakfast bundle BSOs — leave them as 'pending'
     // on failure; they will be visible in the orphan tools if needed.
     return NextResponse.json({ error: 'Payment system temporarily unavailable. Please try again later.' }, { status: 503 });

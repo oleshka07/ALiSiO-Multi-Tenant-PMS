@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { createPaymentSession, resolveCredentialsForReservation, isPaymentConfigured } from '@payments';
 import { sendTelegramMessage } from '@notifications';
 
@@ -11,10 +11,10 @@ export async function payForBooking(
 ): Promise<NextResponse> {
   try {
     const { token } = await params;
-    const db = getDb();
+    const sql = getSql();
 
     // ── Resolve reservation by guest_page_token ─────────────────
-    const reservation = db.prepare(`
+    const reservation = await sql.row<any>(`
       SELECT r.id, p.organization_id, r.total_price, r.currency, r.payment_status, r.check_in, r.check_out,
              r.guest_page_expires_at,
              g.first_name, g.last_name,
@@ -25,7 +25,7 @@ export async function payForBooking(
       LEFT JOIN units u ON r.unit_id = u.id
       LEFT JOIN properties p ON r.property_id = p.id
       WHERE r.guest_page_token = ?
-    `).get(token) as any;
+    `, [token]) as any;
 
     if (!reservation) {
       return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
@@ -42,11 +42,11 @@ export async function payForBooking(
     }
 
     // ── Calculate remaining amount ──────────────────────────────
-    const paid = db.prepare(`
+    const paid = await sql.row<any>(`
       SELECT COALESCE(SUM(CASE WHEN op_type = 'income' THEN amount ELSE 0 END), 0)
            - COALESCE(SUM(CASE WHEN op_type = 'refund' THEN amount ELSE 0 END), 0) as net_paid
       FROM fin_operations WHERE reservation_id = ? AND status = 'completed'
-    `).get(reservation.id) as any;
+    `, [reservation.id]) as any;
 
     const netPaid = paid?.net_paid || 0;
     const remaining = Math.max(0, reservation.total_price - netPaid);
@@ -98,8 +98,7 @@ export async function payForBooking(
 
     // Update reservation payment_id for webhook matching
     try {
-      const db2 = getDb();
-      db2.prepare('UPDATE reservations SET payment_id = ? WHERE id = ?').run(session.sessionId, reservation.id);
+      await sql.run('UPDATE reservations SET payment_id = ? WHERE id = ?', [session.sessionId, reservation.id]);
     } catch { /* non-critical */ }
 
     // ── Telegram notification ──────────────────────────────────

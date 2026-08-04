@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import type { CreateGuestInput } from '../domain/types';
 
 /**
@@ -16,13 +16,13 @@ import type { CreateGuestInput } from '../domain/types';
  * two hotels running this system.
  */
 
-export function listGuests(
+export async function listGuests(
   organizationId: string,
   filters: { search?: string; country?: string } = {},
   page: number = 1,
   limit: number = 50,
 ) {
-  const db = getDb();
+  const sql = getSql();
   let where = 'WHERE g.organization_id = ?';
   const params: string[] = [organizationId];
 
@@ -37,7 +37,7 @@ export function listGuests(
   }
 
   const countQuery = `SELECT COUNT(*) as total FROM guests g ${where}`;
-  const totalRow = db.prepare(countQuery).get(...params) as { total: number };
+  const totalRow = await sql.row<{ total: number }>(countQuery, params) ?? { total: 0 };
   const total = totalRow.total;
 
   const offset = (page - 1) * limit;
@@ -64,14 +64,14 @@ export function listGuests(
     LIMIT ? OFFSET ?
   `;
   params.push(limit.toString(), offset.toString());
-  const data = db.prepare(query).all(...params);
+  const data = await sql.rows<any>(query, params);
 
   return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
-export function getGuestWithReservations(organizationId: string, id: string) {
-  const db = getDb();
-  const guest = db.prepare(`
+export async function getGuestWithReservations(organizationId: string, id: string) {
+  const sql = getSql();
+  const guest = await sql.row<any>(`
     SELECT g.*,
       (SELECT COUNT(*) FROM reservations r
         JOIN properties p ON p.id = r.property_id
@@ -80,11 +80,11 @@ export function getGuestWithReservations(organizationId: string, id: string) {
         JOIN properties p ON p.id = r.property_id
         WHERE r.guest_id = g.id AND p.organization_id = g.organization_id) as total_revenue
     FROM guests g WHERE g.id = ? AND g.organization_id = ?
-  `).get(id, organizationId);
+  `, [id, organizationId]);
 
   if (!guest) return null;
 
-  const reservations = db.prepare(`
+  const reservations = await sql.rows<any>(`
     SELECT r.id, r.check_in, r.check_out, r.nights, r.adults, r.children,
       r.status, r.payment_status, r.source, r.total_price, r.currency,
       u.name as unit_name, u.code as unit_code,
@@ -95,33 +95,31 @@ export function getGuestWithReservations(organizationId: string, id: string) {
     JOIN properties p ON p.id = r.property_id
     WHERE r.guest_id = ? AND p.organization_id = ?
     ORDER BY r.check_in DESC
-  `).all(id, organizationId);
+  `, [id, organizationId]);
 
   return { ...(guest as object), reservations };
 }
 
-export function createGuest(organizationId: string, input: CreateGuestInput): string {
-  const db = getDb();
+export async function createGuest(organizationId: string, input: CreateGuestInput): Promise<string> {
+  const sql = getSql();
   // `g_${Date.now()}` collides when two guests are created in the same
   // millisecond, which an import does routinely. A random suffix removes that.
   const guestId = `g_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-  db.prepare(`
+  await sql.run(`
     INSERT INTO guests (id, organization_id, first_name, last_name, email, phone, country, city, address, document_type, document_number, date_of_birth, notes)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    guestId, organizationId, input.firstName, input.lastName,
+  `, [guestId, organizationId, input.firstName, input.lastName,
     input.email ?? null, input.phone ?? null, input.country ?? null,
     input.city ?? null, input.address ?? null,
     input.documentType ?? null, input.documentNumber ?? null,
-    input.dateOfBirth ?? null, input.notes ?? null,
-  );
+    input.dateOfBirth ?? null, input.notes ?? null]);
 
   return guestId;
 }
 
-export function updateGuest(organizationId: string, id: string, body: Record<string, any>): boolean {
-  const db = getDb();
+export async function updateGuest(organizationId: string, id: string, body: Record<string, any>): Promise<boolean> {
+  const sql = getSql();
   const fieldMap: Record<string, string> = {
     firstName: 'first_name', lastName: 'last_name', email: 'email', phone: 'phone',
     country: 'country', city: 'city', address: 'address',
@@ -143,27 +141,23 @@ export function updateGuest(organizationId: string, id: string, body: Record<str
 
   sets.push("updated_at = datetime('now')");
   values.push(id, organizationId);
-  const res = db
-    .prepare(`UPDATE guests SET ${sets.join(', ')} WHERE id = ? AND organization_id = ?`)
-    .run(...values);
+  const res = await sql.run(`UPDATE guests SET ${sets.join(', ')} WHERE id = ? AND organization_id = ?`, [...values]);
   return res.changes > 0;
 }
 
-export function deleteGuest(organizationId: string, id: string): { ok: boolean; error?: string } {
-  const db = getDb();
-  const owned = db
-    .prepare('SELECT 1 FROM guests WHERE id = ? AND organization_id = ?')
-    .get(id, organizationId);
+export async function deleteGuest(organizationId: string, id: string): Promise<{ ok: boolean; error?: string }> {
+  const sql = getSql();
+  const owned = await sql.row<any>('SELECT 1 FROM guests WHERE id = ? AND organization_id = ?', [id, organizationId]);
   if (!owned) return { ok: false, error: 'Not found' };
 
-  const count = db.prepare(`
+  const count = await sql.row<any>(`
     SELECT COUNT(*) as cnt FROM reservations r
     JOIN properties p ON p.id = r.property_id
     WHERE r.guest_id = ? AND p.organization_id = ?
-  `).get(id, organizationId) as { cnt: number };
+  `, [id, organizationId]) as { cnt: number };
   if (count.cnt > 0) {
     return { ok: false, error: `Неможливо видалити гостя — є ${count.cnt} пов'язаних бронювань. Спочатку видаліть або перепризначте бронювання.` };
   }
-  db.prepare('DELETE FROM guests WHERE id = ? AND organization_id = ?').run(id, organizationId);
+  await sql.run('DELETE FROM guests WHERE id = ? AND organization_id = ?', [id, organizationId]);
   return { ok: true };
 }

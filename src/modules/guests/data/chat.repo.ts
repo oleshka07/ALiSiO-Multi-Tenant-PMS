@@ -1,25 +1,23 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
-export function getReservationIdByToken(token: string): string | null {
-  const row = getDb().prepare('SELECT id FROM reservations WHERE guest_page_token = ?').get(token) as any;
+export async function getReservationIdByToken(token: string): Promise<string | null> {
+  const sql = getSql();
+  const row = await sql.row<any>('SELECT id FROM reservations WHERE guest_page_token = ?', [token]) as any;
   return row?.id ?? null;
 }
 
-export function getChatMessages(reservationId: string) {
-  return getDb().prepare(
-    'SELECT id, sender, message, created_at FROM guest_chat_messages WHERE reservation_id = ? ORDER BY created_at ASC'
-  ).all(reservationId);
+export async function getChatMessages(reservationId: string) {
+  const sql = getSql();
+  return await sql.rows<any>('SELECT id, sender, message, created_at FROM guest_chat_messages WHERE reservation_id = ? ORDER BY created_at ASC', [reservationId]);
 }
 
-export function saveMessage(reservationId: string, sender: string, message: string) {
-  getDb().prepare(
-    'INSERT INTO guest_chat_messages (id, reservation_id, sender, message) VALUES (lower(hex(randomblob(16))), ?, ?, ?)'
-  ).run(reservationId, sender, message);
+export async function saveMessage(reservationId: string, sender: string, message: string) {
+  const sql = getSql();
+  await sql.run('INSERT INTO guest_chat_messages (id, reservation_id, sender, message) VALUES (lower(hex(randomblob(16))), ?, ?, ?)', [reservationId, sender, message]);
 }
 
-export function getReservationForChat(token: string) {
-  return getDb().prepare(
-    'SELECT r.id, r.guest_id, g.first_name, g.last_name, r.unit_id FROM reservations r LEFT JOIN guests g ON r.guest_id = g.id WHERE r.guest_page_token = ?'
-  ).get(token) as any;
+export async function getReservationForChat(token: string) {
+  const sql = getSql();
+  return await sql.row<any>('SELECT r.id, r.guest_id, g.first_name, g.last_name, r.unit_id FROM reservations r LEFT JOIN guests g ON r.guest_id = g.id WHERE r.guest_page_token = ?', [token]) as any;
 }

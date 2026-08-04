@@ -27,8 +27,8 @@ export const getRegistry = withPermission('manage_guests', async (request: NextR
     const search = searchParams.get('search') || undefined;
     const propertyId = searchParams.get('propertyId') || undefined;
 
-    const entries = registryRepo.getRegistryEntries(actor.organizationId, { month, foreignersOnly, unregisteredOnly, search, propertyId });
-    const summary = registryRepo.getRegistrySummary(actor.organizationId, { month, propertyId });
+    const entries = await registryRepo.getRegistryEntries(actor.organizationId, { month, foreignersOnly, unregisteredOnly, search, propertyId });
+    const summary = await registryRepo.getRegistrySummary(actor.organizationId, { month, propertyId });
 
     return NextResponse.json({ entries, summary });
   } catch (error: any) {
@@ -55,21 +55,21 @@ export const updateRegistryEntry = withPermission('manage_guests', async (
     let done: boolean;
     switch (action) {
       case 'mark_police':
-        done = registryRepo.markPoliceReported(org, id, body.ref || '');
+        done = await registryRepo.markPoliceReported(org, id, body.ref || '');
         break;
       case 'unmark_police':
-        done = registryRepo.unmarkPoliceReported(org, id);
+        done = await registryRepo.unmarkPoliceReported(org, id);
         break;
       case 'update_fee': {
         const { feeAmount, feeExempt, feeExemptReason } = body;
-        done = registryRepo.updateFee(org, id, { feeAmount, feeExempt, feeExemptReason });
+        done = await registryRepo.updateFee(org, id, { feeAmount, feeExempt, feeExemptReason });
         break;
       }
       case 'hide':
-        done = registryRepo.hideRegistryEntry(org, id);
+        done = await registryRepo.hideRegistryEntry(org, id);
         break;
       case 'unhide':
-        done = registryRepo.unhideRegistryEntry(org, id);
+        done = await registryRepo.unhideRegistryEntry(org, id);
         break;
       default:
         return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
@@ -95,7 +95,7 @@ export const exportRegistry = withPermission('manage_guests', async (request: Ne
     const search = searchParams.get('search') || undefined;
     const propertyId = searchParams.get('propertyId') || undefined;
 
-    const entries = registryRepo.getRegistryEntries(actor.organizationId, { month, foreignersOnly, unregisteredOnly, search, propertyId });
+    const entries = await registryRepo.getRegistryEntries(actor.organizationId, { month, foreignersOnly, unregisteredOnly, search, propertyId });
 
     const headers = [
       'Jméno', 'Příjmení', 'Datum narození', 'Státní příslušnost',

@@ -98,7 +98,7 @@ export async function registerGuests(
     const { token } = await params;
     const body = await request.json();
 
-    const reservation = registrationRepo.getReservationForRegistration(token);
+    const reservation = await registrationRepo.getReservationForRegistration(token);
     if (!reservation) return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
 
     const rl = checkRateLimit(token, 'registration', 3, 5);
@@ -143,7 +143,7 @@ export async function registerGuests(
     }
 
     const clientIp = request.headers.get('x-forwarded-for') || 'unknown';
-    const registeredGuests = registrationRepo.saveRegistrations(reservation.id, reservation.organization_id, parsedGuests, clientIp);
+    const registeredGuests = await registrationRepo.saveRegistrations(reservation.id, reservation.organization_id, parsedGuests, clientIp);
 
     // ── Auto-sync to Google Sheets (non-blocking) ─────────────────────────
     syncToGoogleSheets(parsedGuests, reservation).catch(() => {});

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { NextResponse } from 'next/server';
 import { withPermission, type Actor } from '@core/auth/session';
 import { getOrgIdentity } from '@core/org-identity';
@@ -22,41 +22,40 @@ import { getOrgIdentity } from '@core/org-identity';
 type IdParams = { params: Promise<{ id: string }> };
 
 /** The guest row, but only if this organization holds it. */
-function ownGuest(organizationId: string, id: string) {
-  return getDb()
-    .prepare('SELECT * FROM guests WHERE id = ? AND organization_id = ?')
-    .get(id, organizationId) as any;
+async function ownGuest(organizationId: string, id: string) {
+  const sql = getSql();
+  return await sql.row<any>('SELECT * FROM guests WHERE id = ? AND organization_id = ?', [id, organizationId]) as any;
 }
 
 export const exportGuestData = withPermission('manage_guests', async (_request, { params }: IdParams, actor: Actor) => {
   try {
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
 
     const guest = ownGuest(actor.organizationId, id);
     if (!guest) return NextResponse.json({ error: 'Guest not found' }, { status: 404 });
 
     // Constrained through properties as well as by guest_id: a guest row and a
     // stay could otherwise disagree about who owns them.
-    const bookings = db.prepare(`
+    const bookings = await sql.rows<any>(`
       SELECT r.* FROM reservations r
       JOIN properties p ON p.id = r.property_id
       WHERE r.guest_id = ? AND p.organization_id = ?
-    `).all(id, actor.organizationId) as any[];
+    `, [id, actor.organizationId]) as any[];
 
-    const registrations = db.prepare(`
+    const registrations = await sql.rows<any>(`
       SELECT rg.* FROM reservation_guests rg
       JOIN reservations r ON r.id = rg.reservation_id
       JOIN properties p ON p.id = r.property_id
       WHERE rg.guest_id = ? AND p.organization_id = ?
-    `).all(id, actor.organizationId) as any[];
+    `, [id, actor.organizationId]) as any[];
 
-    const consentLogs = db.prepare(`
+    const consentLogs = await sql.rows<any>(`
       SELECT gr.* FROM guest_registrations gr
       JOIN reservations r ON r.id = gr.reservation_id
       JOIN properties p ON p.id = r.property_id
       WHERE gr.guest_id = ? AND p.organization_id = ?
-    `).all(id, actor.organizationId) as any[];
+    `, [id, actor.organizationId]) as any[];
 
     // The controller named in the export is the tenant. It used to be one
     // specific company, written into the source.
@@ -84,9 +83,9 @@ export const exportGuestData = withPermission('manage_guests', async (_request, 
 export const eraseGuestData = withPermission('manage_guests', async (_request, { params }: IdParams, actor: Actor) => {
   try {
     const { id } = await params;
-    const db = getDb();
+    const sql = getSql();
 
-    if (!ownGuest(actor.organizationId, id)) {
+    if (!await ownGuest(actor.organizationId, id)) {
       return NextResponse.json({ error: 'Guest not found' }, { status: 404 });
     }
 
@@ -99,25 +98,25 @@ export const eraseGuestData = withPermission('manage_guests', async (_request, {
 
     let identityErased = false;
 
-    db.transaction(() => {
-      db.prepare(`
+    await sql.tx(async (t) => {
+      await t.run(`
         UPDATE guests
         SET email = NULL,
             phone = NULL,
             updated_at = datetime('now')
         WHERE id = ? AND organization_id = ?
-      `).run(id, actor.organizationId);
+      `, [id, actor.organizationId]);
 
-      const recentStays = db.prepare(`
+      const recentStays = await t.row<any>(`
         SELECT 1 FROM reservation_guests rg
         JOIN reservations r ON r.id = rg.reservation_id
         JOIN properties p ON p.id = r.property_id
         WHERE rg.guest_id = ? AND r.check_out >= ? AND p.organization_id = ?
         LIMIT 1
-      `).get(id, cutoffStr, actor.organizationId);
+      `, [id, cutoffStr, actor.organizationId]);
 
       if (!recentStays) {
-        db.prepare(`
+        await t.run(`
           UPDATE guests
           SET first_name = 'Anonymized',
               last_name = 'Anonymized',
@@ -127,10 +126,10 @@ export const eraseGuestData = withPermission('manage_guests', async (_request, {
               country = NULL,
               address = NULL
           WHERE id = ? AND organization_id = ?
-        `).run(id, actor.organizationId);
+        `, [id, actor.organizationId]);
 
         // The registry copy has to go too, or the identity survives there.
-        db.prepare(`
+        await t.run(`
           UPDATE reservation_guests
           SET first_name = 'Anonymized',
               last_name = 'Anonymized',
@@ -146,11 +145,11 @@ export const eraseGuestData = withPermission('manage_guests', async (_request, {
             JOIN properties p ON p.id = r.property_id
             WHERE p.organization_id = ?
           )
-        `).run(id, actor.organizationId);
+        `, [id, actor.organizationId]);
 
         identityErased = true;
       }
-    })();
+    });
 
     // Say which of the two actually happened: "processed" alone left the
     // operator unable to answer a guest asking what was deleted.

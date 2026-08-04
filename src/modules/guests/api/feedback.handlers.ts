@@ -14,10 +14,10 @@ export async function submitFeedback(
       return NextResponse.json({ error: 'Feedback is empty' }, { status: 400 });
     }
 
-    const reservationId = actionsRepo.getReservationIdByToken(token);
+    const reservationId = await actionsRepo.getReservationIdByToken(token);
     if (!reservationId) return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
 
-    actionsRepo.saveFeedback(reservationId, feedback);
+    await actionsRepo.saveFeedback(reservationId, feedback);
     return NextResponse.json({ ok: true });
   } catch (error: any) {
     console.error('POST /api/guest/[token]/feedback error:', error?.message || error);

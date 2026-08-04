@@ -213,23 +213,23 @@ export function cancelReservation(reservationId: string): void {
  * the helper falls back to phone, then to first+last name. Address/country
  * are filled in if missing on an existing row.
  */
-export function findOrCreateGuestForImport(args: {
+export async function findOrCreateGuestForImport(args: {
   firstName: string;
   lastName: string;
   country: string | null;
   phone: string | null;
   address: string | null;
-}): string {
+}): Promise<string> {
   const db = getDb();
   const org = { id: requireOrganizationId(db) } as any;
-  return findOrCreateGuest({
+  return (await findOrCreateGuest({
     organizationId: org?.id,
     firstName: args.firstName,
     lastName: args.lastName,
     phone: args.phone,
     address: args.address,
     country: args.country,
-  }).id;
+  })).id;
 }
 
 export interface InsertReservationArgs {

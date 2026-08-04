@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { money } from '@core/money';
 
 /**
@@ -76,7 +76,8 @@ function nextMonth(month: string): string {
 
 // ─── Queries ──────────────────────────────────────────
 
-export function getRegistryEntries(organizationId: string, filters: RegistryFilters): RegistryEntry[] {
+export async function getRegistryEntries(organizationId: string, filters: RegistryFilters): Promise<RegistryEntry[]> {
+  const sql = getSql();
   const monthStart = `${filters.month}-01`;
   const monthEnd = nextMonth(filters.month);
 
@@ -136,10 +137,11 @@ export function getRegistryEntries(organizationId: string, filters: RegistryFilt
 
   query += ' ORDER BY r.check_in, rg.last_name, rg.first_name';
 
-  return getDb().prepare(query).all(...params) as RegistryEntry[];
+  return await sql.rows<RegistryEntry>(query, params);
 }
 
-export function getRegistrySummary(organizationId: string, filters: { month: string; propertyId?: string }): RegistrySummary {
+export async function getRegistrySummary(organizationId: string, filters: { month: string; propertyId?: string }): Promise<RegistrySummary> {
+  const sql = getSql();
   const monthStart = `${filters.month}-01`;
   const monthEnd = nextMonth(filters.month);
 
@@ -165,7 +167,7 @@ export function getRegistrySummary(organizationId: string, filters: { month: str
 
   query += ' AND COALESCE(rg.is_hidden, 0) = 0';
 
-  const row = getDb().prepare(query).get(...params) as any;
+  const row = await sql.row<any>(query, params);
 
   return {
     totalGuests: row?.totalGuests ?? 0,
@@ -180,86 +182,90 @@ export function getRegistrySummary(organizationId: string, filters: { month: str
 // ─── Mutations ────────────────────────────────────────
 
 /** The row, if this organization owns it through the reservation's property. */
-function owns(organizationId: string, id: string): boolean {
-  return !!getDb().prepare(`
+async function owns(organizationId: string, id: string): Promise<boolean> {
+  const sql = getSql();
+  return !!await sql.row<any>(`
     SELECT 1 FROM reservation_guests rg
     JOIN reservations r ON r.id = rg.reservation_id
     WHERE rg.id = ? AND ${ORG_SCOPE}
-  `).get(id, organizationId);
+  `, [id, organizationId]);
 }
 
-export function markPoliceReported(organizationId: string, id: string, ref?: string): boolean {
-  if (!owns(organizationId, id)) return false;
-  getDb().prepare(`
+export async function markPoliceReported(organizationId: string, id: string, ref?: string): Promise<boolean> {
+  const sql = getSql();
+  if (!await owns(organizationId, id)) return false;
+  await sql.run(`
     UPDATE reservation_guests
     SET police_reported = 1,
         police_reported_at = datetime('now'),
         police_report_ref = ?
     WHERE id = ?
-  `).run(ref ?? null, id);
+  `, [ref ?? null, id]);
   return true;
 }
 
-export function unmarkPoliceReported(organizationId: string, id: string): boolean {
-  if (!owns(organizationId, id)) return false;
-  getDb().prepare(`
+export async function unmarkPoliceReported(organizationId: string, id: string): Promise<boolean> {
+  const sql = getSql();
+  if (!await owns(organizationId, id)) return false;
+  await sql.run(`
     UPDATE reservation_guests
     SET police_reported = 0,
         police_reported_at = NULL,
         police_report_ref = NULL
     WHERE id = ?
-  `).run(id);
+  `, [id]);
   return true;
 }
 
-export function updateFee(organizationId: string, id: string, data: { feeAmount: number; feeExempt: boolean; feeExemptReason?: string }): boolean {
-  if (!owns(organizationId, id)) return false;
-  getDb().prepare(`
+export async function updateFee(organizationId: string, id: string, data: { feeAmount: number; feeExempt: boolean; feeExemptReason?: string }): Promise<boolean> {
+  const sql = getSql();
+  if (!await owns(organizationId, id)) return false;
+  await sql.run(`
     UPDATE reservation_guests
     SET fee_amount = ?,
         fee_exempt = ?,
         fee_exempt_reason = ?
     WHERE id = ?
-  `).run(data.feeAmount, data.feeExempt ? 1 : 0, data.feeExemptReason ?? null, id);
+  `, [data.feeAmount, data.feeExempt ? 1 : 0, data.feeExemptReason ?? null, id]);
   return true;
 }
 
-export function calculateFees(organizationId: string, month: string, feePerNight: number): number {
-  const db = getDb();
+export async function calculateFees(organizationId: string, month: string, feePerNight: number): Promise<number> {
+  const sql = getSql();
   const monthStart = `${month}-01`;
   const monthEnd = nextMonth(month);
 
   // Fetch all non-exempt guests for the month
-  const rows = db.prepare(`
+  const rows = await sql.rows<any>(`
     SELECT rg.id, r.nights
     FROM reservation_guests rg
     JOIN reservations r ON rg.reservation_id = r.id
     WHERE ${ORG_SCOPE} AND r.check_in >= ? AND r.check_in < ?
       AND COALESCE(rg.fee_exempt, 0) = 0
-  `).all(organizationId, monthStart, monthEnd) as { id: string; nights: number }[];
+  `, [organizationId, monthStart, monthEnd]) as { id: string; nights: number }[];
 
   let total = 0;
-  const update = db.prepare('UPDATE reservation_guests SET fee_amount = ? WHERE id = ?');
-
-  db.transaction(() => {
+  await sql.tx(async (t) => {
     for (const row of rows) {
       const fee = money(row.nights * feePerNight);
-      update.run(fee, row.id);
+      await t.run('UPDATE reservation_guests SET fee_amount = ? WHERE id = ?', [fee, row.id]);
       total += fee;
     }
-  })();
+  });
 
   return total;
 }
 
-export function hideRegistryEntry(organizationId: string, id: string): boolean {
-  if (!owns(organizationId, id)) return false;
-  getDb().prepare('UPDATE reservation_guests SET is_hidden = 1 WHERE id = ?').run(id);
+export async function hideRegistryEntry(organizationId: string, id: string): Promise<boolean> {
+  const sql = getSql();
+  if (!await owns(organizationId, id)) return false;
+  await sql.run('UPDATE reservation_guests SET is_hidden = 1 WHERE id = ?', [id]);
   return true;
 }
 
-export function unhideRegistryEntry(organizationId: string, id: string): boolean {
-  if (!owns(organizationId, id)) return false;
-  getDb().prepare('UPDATE reservation_guests SET is_hidden = 0 WHERE id = ?').run(id);
+export async function unhideRegistryEntry(organizationId: string, id: string): Promise<boolean> {
+  const sql = getSql();
+  if (!await owns(organizationId, id)) return false;
+  await sql.run('UPDATE reservation_guests SET is_hidden = 0 WHERE id = ?', [id]);
   return true;
 }

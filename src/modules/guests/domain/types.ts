@@ -30,7 +30,7 @@ export interface CreateGuestInput {
 export interface RegisteredGuest {
   firstName: string;
   lastName: string;
-  // null is meaningful here, not merely "absent": saveRegistrations() passes
+  // null is meaningful here, not merely "absent": await saveRegistrations() passes
   // these through COALESCE(?, existing), so null means "keep the stored value".
   dateOfBirth?: string | null;
   address?: string | null;

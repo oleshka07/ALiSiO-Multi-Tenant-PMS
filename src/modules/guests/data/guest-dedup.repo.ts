@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
 export interface GuestDedupArgs {
   organizationId: string;
@@ -37,8 +37,8 @@ export interface GuestDedupResult {
  *
  * Caller is responsible for providing a valid organizationId.
  */
-export function findOrCreateGuest(args: GuestDedupArgs): GuestDedupResult {
-  const db = getDb();
+export async function findOrCreateGuest(args: GuestDedupArgs): Promise<GuestDedupResult> {
+  const sql = getSql();
   const orgId = args.organizationId;
   const firstName = (args.firstName || '').trim();
   const lastName = (args.lastName || '').trim();
@@ -52,23 +52,17 @@ export function findOrCreateGuest(args: GuestDedupArgs): GuestDedupResult {
   let matchedBy: GuestDedupResult['matchedBy'] = 'created';
 
   if (looksLikeRealEmail(email)) {
-    existing = db.prepare(
-      'SELECT id FROM guests WHERE LOWER(email) = LOWER(?) AND organization_id = ? LIMIT 1',
-    ).get(email, orgId);
+    existing = await sql.row<any>('SELECT id FROM guests WHERE LOWER(email) = LOWER(?) AND organization_id = ? LIMIT 1', [email, orgId]);
     if (existing) matchedBy = 'email';
   }
 
   if (!existing && looksLikePhone(phone)) {
-    existing = db.prepare(
-      'SELECT id FROM guests WHERE phone = ? AND organization_id = ? LIMIT 1',
-    ).get(phone, orgId);
+    existing = await sql.row<any>('SELECT id FROM guests WHERE phone = ? AND organization_id = ? LIMIT 1', [phone, orgId]);
     if (existing) matchedBy = 'phone';
   }
 
   if (!existing && firstName && lastName) {
-    existing = db.prepare(
-      'SELECT id FROM guests WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) AND organization_id = ? LIMIT 1',
-    ).get(firstName, lastName, orgId);
+    existing = await sql.row<any>('SELECT id FROM guests WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) AND organization_id = ? LIMIT 1', [firstName, lastName, orgId]);
     if (existing) matchedBy = 'name';
   }
 
@@ -93,23 +87,21 @@ export function findOrCreateGuest(args: GuestDedupArgs): GuestDedupResult {
     if (updates.length > 0) {
       updates.push("updated_at = datetime('now')");
       values.push(existing.id);
-      db.prepare(`UPDATE guests SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+      await sql.run(`UPDATE guests SET ${updates.join(', ')} WHERE id = ?`, [...values]);
     }
     return { id: existing.id, isNew: false, matchedBy };
   }
 
   // Create new
   const guestId = `g_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  db.prepare(`
+  await sql.run(`
     INSERT INTO guests (
       id, organization_id, first_name, last_name,
       email, phone, address, city, country, nationality,
       date_of_birth, document_type, document_number
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    guestId, orgId, firstName, lastName,
+  `, [guestId, orgId, firstName, lastName,
     email || null, phone || null, args.address || null, args.city || null, args.country || null, args.nationality || null,
-    args.dateOfBirth || null, args.documentType || null, args.documentNumber || null,
-  );
+    args.dateOfBirth || null, args.documentType || null, args.documentNumber || null]);
   return { id: guestId, isNew: true, matchedBy: 'created' };
 }

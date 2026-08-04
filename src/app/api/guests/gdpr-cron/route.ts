@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     const monthsParam = searchParams.get('months');
     const months = monthsParam ? parseInt(monthsParam, 10) : 6;
 
-    const anonymizedCount = anonymizeOldRegistrations(months);
+    const anonymizedCount = await anonymizeOldRegistrations(months);
 
     return NextResponse.json({
       success: true,

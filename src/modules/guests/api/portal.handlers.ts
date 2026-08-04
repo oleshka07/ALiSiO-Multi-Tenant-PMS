@@ -13,12 +13,12 @@ export async function getGuestPortal(
   try {
     const { token } = await params;
 
-    const reservation = portalRepo.getReservationByToken(token);
+    const reservation = await portalRepo.getReservationByToken(token);
     if (!reservation) {
       // Tell apart "no such token" from "token exists but refs are broken"
       // so the client can show a useful message and we can find the row in
       // /finance / room-allocation manually.
-      const stub = portalRepo.getReservationStubByToken(token);
+      const stub = await portalRepo.getReservationStubByToken(token);
       if (stub) {
         console.warn(`[GuestPortal] Token resolves to reservation ${stub.id} but full JOIN failed`);
         return NextResponse.json(
@@ -37,7 +37,7 @@ export async function getGuestPortal(
     const isExpired = now > expiryDate;
 
     if (isExpired) {
-      const unitTypes = portalRepo.getUnitTypesForRebooking();
+      const unitTypes = await portalRepo.getUnitTypesForRebooking();
       return NextResponse.json({
         expired: true,
         guestName: reservation.first_name,
@@ -56,19 +56,19 @@ export async function getGuestPortal(
     if (today >= checkIn && today <= checkOut) phase = 'checked_in';
     else if (today > checkOut) phase = 'post_checkout';
 
-    const registeredGuests = portalRepo.getRegisteredGuests(reservation.id);
-    const payments = portalRepo.getPaymentsSummary(reservation.id);
-    const unitTypePhotos = portalRepo.getUnitTypePhotos(reservation.unit_type_id);
-    const propertyPhotos = portalRepo.getPropertyPhotos(reservation.property_id);
-    const services = portalRepo.getAvailableServices(reservation.property_id, reservation.category_type);
-    const orderedServices = portalRepo.getOrderedServices(reservation.id);
-    const guestPageConfig = portalRepo.getGuestPageConfig(reservation.unit_type_id, reservation.property_id, reservation.unit_id);
+    const registeredGuests = await portalRepo.getRegisteredGuests(reservation.id);
+    const payments = await portalRepo.getPaymentsSummary(reservation.id);
+    const unitTypePhotos = await portalRepo.getUnitTypePhotos(reservation.unit_type_id);
+    const propertyPhotos = await portalRepo.getPropertyPhotos(reservation.property_id);
+    const services = await portalRepo.getAvailableServices(reservation.property_id, reservation.category_type);
+    const orderedServices = await portalRepo.getOrderedServices(reservation.id);
+    const guestPageConfig = await portalRepo.getGuestPageConfig(reservation.unit_type_id, reservation.property_id, reservation.unit_id);
 
     const propertyName = reservation.property_name || '';
 
     // ── Variant B: send abandon notifications if >30min pending ──────────
     // Fire-and-forget — does not block the page response
-    sendAbandonNotifications(token, propertyName).catch(() => {});
+    await sendAbandonNotifications(token, propertyName).catch(() => {});
 
     return NextResponse.json({
       expired: false,

@@ -17,7 +17,7 @@ export const listGuests = withActor(async (request: NextRequest, _ctx, actor: Ac
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '50', 10);
 
-    const result = guestsRepo.listGuests(
+    const result = await guestsRepo.listGuests(
       actor.organizationId,
       { search: search || undefined, country: country || undefined },
       page,
@@ -39,7 +39,7 @@ export const createGuest = withPermission('manage_guests', async (request: NextR
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
     }
 
-    const guestId = guestsRepo.createGuest(actor.organizationId, body);
+    const guestId = await guestsRepo.createGuest(actor.organizationId, body);
     return NextResponse.json({ id: guestId }, { status: 201 });
   } catch (error: any) {
     console.error('POST /api/guests error:', error);

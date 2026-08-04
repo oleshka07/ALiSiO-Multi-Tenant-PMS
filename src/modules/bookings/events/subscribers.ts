@@ -3,7 +3,7 @@ import { getDb } from '@core/db';
 // Need to use the internal data layer here since we are inside the bookings module
 import { sendBookingConfirmationEmail } from '../data/send-confirmation-email';
 
-export function registerBookingsSubscribers() {
+export async function registerBookingsSubscribers() {
   eventBus.on('payment.completed', async (payload) => {
     try {
       // We only send booking confirmations for full or deposit payments related to bookings

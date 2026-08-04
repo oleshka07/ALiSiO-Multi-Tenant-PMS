@@ -15,7 +15,7 @@ type IdParams = { params: Promise<{ id: string }> };
 export const getGuest = withActor(async (_request, { params }: IdParams, actor: Actor) => {
   try {
     const { id } = await params;
-    const guest = guestsRepo.getGuestWithReservations(actor.organizationId, id);
+    const guest = await guestsRepo.getGuestWithReservations(actor.organizationId, id);
     if (!guest) return NextResponse.json({ error: 'Guest not found' }, { status: 404 });
     return NextResponse.json(guest);
   } catch (error: any) {
@@ -28,7 +28,7 @@ export const updateGuest = withPermission('manage_guests', async (request: NextR
   try {
     const { id } = await params;
     const body = await request.json();
-    const updated = guestsRepo.updateGuest(actor.organizationId, id, body);
+    const updated = await guestsRepo.updateGuest(actor.organizationId, id, body);
     // Now false for both "nothing to change" and "not this tenant's guest";
     // 404 is the safe reading of either.
     if (!updated) return NextResponse.json({ error: 'Guest not found' }, { status: 404 });
@@ -42,7 +42,7 @@ export const updateGuest = withPermission('manage_guests', async (request: NextR
 export const deleteGuest = withPermission('manage_guests', async (_request, { params }: IdParams, actor: Actor) => {
   try {
     const { id } = await params;
-    const result = guestsRepo.deleteGuest(actor.organizationId, id);
+    const result = await guestsRepo.deleteGuest(actor.organizationId, id);
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.error === 'Not found' ? 404 : 409 });
     }

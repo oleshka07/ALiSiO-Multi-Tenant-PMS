@@ -272,7 +272,7 @@ async function processReservation(db: any, res: HostexReservation, result: SyncR
   const paymentStatus = paymentInfo.isPrepaid ? 'paid' : 'unpaid';
 
   // Find or create guest
-  const guestId = findOrCreateGuest(db, res, mapped.organizationId);
+  const guestId = await findOrCreateGuest(db, res, mapped.organizationId);
 
   // Check if already in DB
   const existing = db.prepare(
@@ -466,7 +466,7 @@ function processBlockedDate(db: any, res: HostexReservation, result: SyncResult)
 
 // ─── Guest management ─────────────────────────────────────
 
-function findOrCreateGuest(db: any, res: HostexReservation, organizationId: string): string {
+async function findOrCreateGuest(db: any, res: HostexReservation, organizationId: string): Promise<string> {
   const guestData = res.guests?.[0];
   const rawEmail = guestData?.email || res.guest_email || '';
   // Booking's privacy-proxy emails (@guest.booking.com) are not stable identifiers
@@ -477,14 +477,14 @@ function findOrCreateGuest(db: any, res: HostexReservation, organizationId: stri
   const country = guestData?.country || null;
 
   const { firstName, lastName } = splitGuestName(name);
-  return findOrCreateGuestUnified({
+  return (await findOrCreateGuestUnified({
     organizationId,
     firstName,
     lastName,
     email,
     phone,
     country,
-  }).id;
+  })).id;
 }
 
 // ─── Status mapping ───────────────────────────────────────

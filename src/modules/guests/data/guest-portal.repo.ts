@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 
-export function getReservationByToken(token: string) {
-  const db = getDb();
-  const row = db.prepare(`
+export async function getReservationByToken(token: string) {
+  const sql = getSql();
+  const row = await sql.row<any>(`
     SELECT
       r.id, r.check_in, r.check_out, r.nights, r.adults, r.children, r.infants,
       r.status, r.payment_status, r.total_price, r.currency, r.notes, r.source,
@@ -26,15 +26,13 @@ export function getReservationByToken(token: string) {
     LEFT JOIN buildings b ON u.building_id = b.id
     JOIN properties p ON r.property_id = p.id
     WHERE r.guest_page_token = ?
-  `).get(token) as any;
+  `, [token]) as any;
 
   // Diagnostic: when the full JOIN returns nothing, separate "token doesn't
   // exist" from "token exists but a referenced row is missing/broken" — the
   // latter looks identical to the user (Booking not found) without logs.
   if (!row) {
-    const bareRow = db.prepare(
-      'SELECT id, guest_id, unit_id, property_id FROM reservations WHERE guest_page_token = ?'
-    ).get(token) as any;
+    const bareRow = await sql.row<any>('SELECT id, guest_id, unit_id, property_id FROM reservations WHERE guest_page_token = ?', [token]) as any;
     if (bareRow) {
       console.error(
         `[GuestPortal] Reservation ${bareRow.id} exists for token ${token.slice(0, 6)}… but ` +
@@ -49,53 +47,57 @@ export function getReservationByToken(token: string) {
 // Cheap existence check: used by the portal handler to distinguish
 // "this token has never been issued" from "the token maps to a reservation
 // whose related rows are broken (data integrity issue)".
-export function getReservationStubByToken(token: string) {
-  return getDb().prepare(
-    'SELECT id, guest_id, unit_id, property_id FROM reservations WHERE guest_page_token = ?'
-  ).get(token) as { id: string; guest_id: string; unit_id: string; property_id: string } | undefined;
+export async function getReservationStubByToken(token: string) {
+  const sql = getSql();
+  return await sql.row<any>('SELECT id, guest_id, unit_id, property_id FROM reservations WHERE guest_page_token = ?', [token]) as { id: string; guest_id: string; unit_id: string; property_id: string } | undefined;
 }
 
-export function getUnitTypesForRebooking() {
-  return getDb().prepare(`
+export async function getUnitTypesForRebooking() {
+  const sql = getSql();
+  return await sql.rows<any>(`
     SELECT ut.id, ut.name, ut.code, ut.description, ut.max_adults, ut.max_children, ut.base_occupancy,
            c.name as category_name, c.type as category_type, c.icon as category_icon
     FROM unit_types ut
     JOIN categories c ON ut.category_id = c.id
     ORDER BY c.type, ut.sort_order
-  `).all();
+  `);
 }
 
-export function getRegisteredGuests(reservationId: string) {
-  return getDb().prepare('SELECT * FROM reservation_guests WHERE reservation_id = ? ORDER BY created_at').all(reservationId);
+export async function getRegisteredGuests(reservationId: string) {
+  const sql = getSql();
+  return await sql.rows<any>('SELECT * FROM reservation_guests WHERE reservation_id = ? ORDER BY created_at', [reservationId]);
 }
 
-export function getPaymentsSummary(reservationId: string) {
+export async function getPaymentsSummary(reservationId: string) {
+  const sql = getSql();
   // Post PR #6: sum from fin_operations. Income = paid, refund-expense = refunded.
-  return getDb().prepare(`
+  return await sql.row<any>(`
     SELECT
       COALESCE(SUM(CASE WHEN op_type = 'income' THEN amount ELSE 0 END), 0) as total_paid,
       COALESCE(SUM(CASE WHEN op_type = 'expense' AND payment_subtype = 'refund' THEN amount ELSE 0 END), 0) as total_refunded
     FROM fin_operations
     WHERE reservation_id = ? AND status = 'completed'
-  `).get(reservationId) as any;
+  `, [reservationId]) as any;
 }
 
-export function getUnitTypePhotos(unitTypeId: string) {
-  return getDb().prepare('SELECT * FROM unit_type_photos WHERE unit_type_id = ? ORDER BY sort_order').all(unitTypeId);
+export async function getUnitTypePhotos(unitTypeId: string) {
+  const sql = getSql();
+  return await sql.rows<any>('SELECT * FROM unit_type_photos WHERE unit_type_id = ? ORDER BY sort_order', [unitTypeId]);
 }
 
-export function getPropertyPhotos(propertyId: string) {
-  return getDb().prepare('SELECT * FROM property_photos WHERE property_id = ? ORDER BY sort_order').all(propertyId);
+export async function getPropertyPhotos(propertyId: string) {
+  const sql = getSql();
+  return await sql.rows<any>('SELECT * FROM property_photos WHERE property_id = ? ORDER BY sort_order', [propertyId]);
 }
 
-export function getAvailableServices(propertyId: string, categoryType: string) {
-  return getDb().prepare(
-    "SELECT * FROM additional_services WHERE property_id = ? AND is_active = 1 AND (available_for = 'all' OR available_for = ?) ORDER BY sort_order"
-  ).all(propertyId, categoryType);
+export async function getAvailableServices(propertyId: string, categoryType: string) {
+  const sql = getSql();
+  return await sql.rows<any>("SELECT * FROM additional_services WHERE property_id = ? AND is_active = 1 AND (available_for = 'all' OR available_for = ?) ORDER BY sort_order", [propertyId, categoryType]);
 }
 
-export function getOrderedServices(reservationId: string) {
-  return getDb().prepare(`
+export async function getOrderedServices(reservationId: string) {
+  const sql = getSql();
+  return await sql.rows<any>(`
     SELECT so.id, so.service_id, so.quantity, so.total_price, so.status,
            so.payment_status, so.service_date, so.created_at,
            ads.name as service_name, ads.name_en, ads.icon as service_icon,
@@ -104,24 +106,24 @@ export function getOrderedServices(reservationId: string) {
     JOIN additional_services ads ON so.service_id = ads.id
     WHERE so.reservation_id = ?
     ORDER BY so.created_at DESC
-  `).all(reservationId);
+  `, [reservationId]);
 }
 
-export function getGuestPageConfig(unitTypeId: string, propertyId: string, unitId?: string) {
-  const db = getDb();
-  const unitTypeConfig = db.prepare('SELECT * FROM guest_page_config WHERE unit_type_id = ?').get(unitTypeId) as any || null;
+export async function getGuestPageConfig(unitTypeId: string, propertyId: string, unitId?: string) {
+  const sql = getSql();
+  const unitTypeConfig = await sql.row<any>('SELECT * FROM guest_page_config WHERE unit_type_id = ?', [unitTypeId]) as any || null;
 
   // Per-unit overrides (lock_code, entry_photo_url)
   let unitOverrides: any = null;
   if (unitId) {
     try {
-      unitOverrides = db.prepare('SELECT lock_code, entry_photo_url FROM units WHERE id = ?').get(unitId) as any;
+      unitOverrides = await sql.row<any>('SELECT lock_code, entry_photo_url FROM units WHERE id = ?', [unitId]) as any;
     } catch { /* columns may not exist yet */ }
   }
 
   let propertyConfig: any = null;
   try {
-    propertyConfig = db.prepare('SELECT * FROM property_guest_config WHERE property_id = ?').get(propertyId) as any || null;
+    propertyConfig = await sql.row<any>('SELECT * FROM property_guest_config WHERE property_id = ?', [propertyId]) as any || null;
   } catch { /* table may not exist yet */ }
 
   const merged = !propertyConfig ? { ...unitTypeConfig } : {

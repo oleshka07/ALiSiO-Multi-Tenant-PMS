@@ -160,7 +160,7 @@ export const createReservation = withActor(async (request: NextRequest, _ctx, ac
 
     const org = { id: actor.organizationId };
 
-    const dedup = findOrCreateGuest({
+    const dedup = await findOrCreateGuest({
       organizationId: org.id,
       firstName,
       lastName,

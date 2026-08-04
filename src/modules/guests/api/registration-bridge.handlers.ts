@@ -11,7 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { cloudOcrAllowed } from '@core/privacy/ocr-consent';
-import { getDb } from '@core/db';
+import { getSql } from '@core/db/async';
 import { ocrDocument } from '@/modules/guests/domain/ai/ocr-document';
 import { saveRegistrations } from '@/modules/guests/data/registration.repo';
 import { sendTelegramMessage } from '@notifications';
@@ -39,10 +39,10 @@ export async function getTodayCheckIns(request: NextRequest) {
   const auth = authorizeBridge(request);
   if (!auth.ok) return auth.response;
 
-  const db = getDb();
+  const sql = getSql();
   const today = new Date().toISOString().split('T')[0];
 
-  const rows = db.prepare(`
+  const rows = await sql.rows<any>(`
     SELECT r.id, r.check_in, r.check_out, r.adults, r.children,
            r.registration_status, r.status,
            g.first_name, g.last_name,
@@ -53,7 +53,7 @@ export async function getTodayCheckIns(request: NextRequest) {
     WHERE r.check_in = ?
       AND r.status IN ('confirmed', 'checked_in')
     ORDER BY u.code ASC
-  `).all(today) as any[];
+  `, [today]) as any[];
 
   return NextResponse.json({
     date: today,
@@ -89,10 +89,10 @@ export async function registerFromPhotos(request: NextRequest) {
       return NextResponse.json({ error: 'reservation_id is required' }, { status: 400 });
     }
 
-    const db = getDb();
+    const sql = getSql();
 
     // Verify reservation exists
-    const reservation = db.prepare(`
+    const reservation = await sql.row<any>(`
       SELECT r.id, r.adults, r.children, r.check_in, r.check_out,
              p.organization_id,
              g.first_name as booking_first_name, g.last_name as booking_last_name,
@@ -102,7 +102,7 @@ export async function registerFromPhotos(request: NextRequest) {
       JOIN guests g ON r.guest_id = g.id
       JOIN units u ON r.unit_id = u.id
       WHERE r.id = ?
-    `).get(reservationId) as any;
+    `, [reservationId]) as any;
 
     if (!reservation) {
       return NextResponse.json({ error: 'Reservation not found' }, { status: 404 });
@@ -188,7 +188,7 @@ export async function registerFromPhotos(request: NextRequest) {
     }
 
     // Save registrations
-    const saved = saveRegistrations(
+    const saved = await saveRegistrations(
       reservationId,
       reservation.organization_id,
       ocrResults.map(r => ({

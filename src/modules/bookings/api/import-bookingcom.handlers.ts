@@ -421,7 +421,7 @@ export async function confirmBookingComImport(request: NextRequest): Promise<Nex
             continue;
           }
           const { firstName, lastName } = normalizeName(row.bookedBy || row.guestName);
-          const guestId = findOrCreateGuestForImport({
+          const guestId = await findOrCreateGuestForImport({
             firstName,
             lastName,
             country: row.bookerCountry,

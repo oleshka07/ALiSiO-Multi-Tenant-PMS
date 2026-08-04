@@ -93,13 +93,13 @@ export async function createGroupBooking(request: NextRequest) {
       return NextResponse.json({ error: 'Unit not found' }, { status: 400 });
     }
 
-    const guestId = findOrCreateGuest({
+    const guestId = (await findOrCreateGuest({
       organizationId: org.id,
       firstName,
       lastName,
       email: email || null,
       phone: phone || null,
-    }).id;
+    })).id;
 
     const groupId = `grp_${Date.now()}`;
     db.prepare(`

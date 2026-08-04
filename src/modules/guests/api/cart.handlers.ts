@@ -22,10 +22,10 @@ export async function handleCartEvent(
     }
 
     // Resolve reservation
-    const reservationId = repo.getReservationIdByToken(token);
+    const reservationId = await repo.getReservationIdByToken(token);
 
     // Log the event
-    repo.logCartEvent({
+    await repo.logCartEvent({
       reservationId,
       guestToken: token,
       serviceId: service_id ?? null,
@@ -49,7 +49,7 @@ export async function sendAbandonNotifications(
   propertyName: string,
 ): Promise<void> {
   try {
-    const event = repo.getPendingAbandonNotifications(guestToken, 30);
+    const event = await repo.getPendingAbandonNotifications(guestToken, 30);
     if (!event) return;
 
     // Parse cart items from JSON snapshot
@@ -142,7 +142,7 @@ export async function sendAbandonNotifications(
     }
 
     // Mark as notified
-    repo.markAbandonNotified(event.id);
+    await repo.markAbandonNotified(event.id);
     console.log(`[Cart Abandon] Notified for token ${guestToken}`);
   } catch (err: any) {
     console.error('[Cart Abandon] sendAbandonNotifications error:', err.message);
