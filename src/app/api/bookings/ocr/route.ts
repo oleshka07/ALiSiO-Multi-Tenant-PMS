@@ -22,7 +22,7 @@ export const POST = await withPermission('manage_guests', async (req: Request) =
     }
 
     const dataUrl = image.includes('base64,') ? image : `data:image/jpeg;base64,${image}`;
-    const result = await ocrDocument(dataUrl, { allowCloudFallback: cloudOcrAllowed() });
+    const result = await ocrDocument(dataUrl, { allowCloudFallback: await cloudOcrAllowed() });
 
     return NextResponse.json({ success: true, data: result });
   } catch (err: any) {

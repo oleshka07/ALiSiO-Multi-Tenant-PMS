@@ -12,7 +12,7 @@ import { getSessionUser } from '@core/auth';
 
 async function currentUser() {
   const store = await cookies();
-  return getSessionUser(store.get('session_id')?.value);
+  return await getSessionUser(store.get('session_id')?.value);
 }
 
 const unauthorized = () => NextResponse.json({ error: 'Не авторизовано' }, { status: 401 });

@@ -120,7 +120,7 @@ async function financeAclError(
 async function getSession(): Promise<{ sessionId: string | undefined; user: SessionUser | null }> {
   const store = await cookies();
   const sessionId = store.get('session_id')?.value;
-  return { sessionId, user: getSessionUser(sessionId) };
+  return { sessionId, user: await getSessionUser(sessionId) };
 }
 
 function unauthenticated(): NextResponse {

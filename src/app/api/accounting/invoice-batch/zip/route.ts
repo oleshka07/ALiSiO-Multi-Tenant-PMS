@@ -216,7 +216,7 @@ async function buildIsdocBytes(sql: Sql, row: any): Promise<Uint8Array> {
     : undefined;
   const issueDate = documentDate || (row.issued_at || new Date().toISOString()).slice(0, 10);
 
-  const xml = generateIsdocXml({
+  const xml = await generateIsdocXml({
     invoiceNumber:  row.invoice_number,
     issueDate,
     taxPointDate:   dueDateFor(issueDate),

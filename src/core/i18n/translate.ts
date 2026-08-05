@@ -6,6 +6,7 @@
  */
 import { getDb } from '@/lib/db';
 import crypto from 'crypto';
+import { getSql } from '../db/async.ts';
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 export const GUEST_LANGS = ['en', 'de', 'cs', 'pl', 'nl', 'fr'] as const;
@@ -83,18 +84,18 @@ export function extractServiceTexts(services: any[]): string[] {
 export async function translateAndStore(texts: string[], force = false): Promise<{ translated: number; skipped: number }> {
   if (!OPENAI_KEY || texts.length === 0) return { translated: 0, skipped: texts.length };
 
-  const db = getDb();
+  const sql = getSql();
   let translated = 0;
   let skipped = 0;
 
-  const upsert = db.prepare(`
+  const UPSERT = `
     INSERT INTO content_translations (text_hash, source_text, lang, translated_text)
     VALUES (?, ?, ?, ?)
     ON CONFLICT (text_hash, lang) DO UPDATE SET
       translated_text = excluded.translated_text,
       source_text = excluded.source_text,
       created_at = CURRENT_TIMESTAMP
-  `);
+  `;
 
   for (const lang of GUEST_LANGS) {
     const langName = LANG_NAMES[lang];
@@ -103,8 +104,7 @@ export async function translateAndStore(texts: string[], force = false): Promise
     const toTranslate: string[] = [];
     for (const text of texts) {
       if (!force) {
-        const existing = db.prepare('SELECT id FROM content_translations WHERE text_hash = ? AND lang = ?')
-          .get(textHash(text), lang) as any;
+        const existing = await sql.row<any>('SELECT id FROM content_translations WHERE text_hash = ? AND lang = ?', [textHash(text), lang]) as any;
         if (existing) { skipped++; continue; }
       }
       toTranslate.push(text);
@@ -153,7 +153,7 @@ Return ONLY the translations, one per line, prefixed with index like [0] transla
             const idx = parseInt(match[1]);
             const translatedText = match[2].trim();
             if (idx >= 0 && idx < batch.length && translatedText) {
-              upsert.run(textHash(batch[idx]), batch[idx], lang, translatedText);
+              await sql.run(UPSERT, [textHash(batch[idx]), batch[idx], lang, translatedText]);
               translated++;
             }
           }
@@ -172,15 +172,13 @@ Return ONLY the translations, one per line, prefixed with index like [0] transla
  * Look up stored translations for an array of source texts.
  * Returns: { "source text": { en: "...", de: "...", cs: "...", ... } }
  */
-export function getStoredTranslations(texts: string[]): Record<string, Record<string, string>> {
+export async function getStoredTranslations(texts: string[]): Promise<Record<string, Record<string, string>>> {
   if (texts.length === 0) return {};
-  const db = getDb();
+  const sql = getSql();
   const result: Record<string, Record<string, string>> = {};
 
   for (const text of texts) {
-    const rows = db.prepare(
-      'SELECT lang, translated_text FROM content_translations WHERE text_hash = ?'
-    ).all(textHash(text)) as any[];
+    const rows = await sql.rows<any>('SELECT lang, translated_text FROM content_translations WHERE text_hash = ?', [textHash(text)]) as any[];
 
     if (rows.length > 0) {
       result[text] = {};

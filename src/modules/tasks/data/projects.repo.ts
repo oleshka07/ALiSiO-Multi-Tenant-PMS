@@ -5,15 +5,15 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 
 // ─── Helpers ───────────────────────────────────────────────
 
-function getOrgId(): string {
-  return requireOrganizationId(getDb());
+async function getOrgId(): Promise<string> {
+  return await requireOrganizationId();
 }
 
 // ─── List projects ────────────────────────────────────────
 
 export async function listProjects(): Promise<TaskProject[]> {
   const sql = getSql();
-  const org = getOrgId();
+  const org = await getOrgId();
   return await sql.rows<TaskProject>(`
     SELECT
       tp.*,
@@ -38,7 +38,7 @@ export async function getProjectById(id: string): Promise<TaskProject | null> {
     FROM task_projects tp
     LEFT JOIN properties p ON p.id = tp.property_id
     WHERE tp.id = ? AND tp.organization_id = ?
-  `, [id, getOrgId()]);
+  `, [id, await getOrgId()]);
   return project ?? null;
 }
 
@@ -56,7 +56,7 @@ export interface CreateProjectInput {
 
 export async function createProject(input: CreateProjectInput): Promise<TaskProject> {
   const sql = getSql();
-  const orgId = getOrgId();
+  const orgId = await getOrgId();
 
   const result = await sql.row<any>(
     `
@@ -95,7 +95,7 @@ export async function updateProject(id: string, fields: Record<string, unknown>)
   if (updates.length === 0) return null;
 
   updates.push("updated_at = CURRENT_TIMESTAMP");
-  values.push(id, getOrgId());
+  values.push(id, await getOrgId());
 
   await sql.run(`UPDATE task_projects SET ${updates.join(', ')} WHERE id = ? AND organization_id = ?`, values);
   return getProjectById(id);
@@ -105,6 +105,6 @@ export async function updateProject(id: string, fields: Record<string, unknown>)
 
 export async function deleteProject(id: string): Promise<{ ok: boolean }> {
   const sql = getSql();
-  const res = await sql.run('DELETE FROM task_projects WHERE id = ? AND organization_id = ?', [id, getOrgId()]);
+  const res = await sql.run('DELETE FROM task_projects WHERE id = ? AND organization_id = ?', [id, await getOrgId()]);
   return { ok: res.changes > 0 };
 }

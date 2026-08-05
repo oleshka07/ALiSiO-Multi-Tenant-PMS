@@ -50,7 +50,7 @@ async function countLinkedRows(projectId: string): Promise<{ total: number; brea
 export async function listProjects(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = requireOrganizationId(getDb());
+    const orgId = await requireOrganizationId();
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
     const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = 1';
     const rows = await sql.rows<any>(`
@@ -67,7 +67,7 @@ export async function listProjects(request: NextRequest): Promise<NextResponse> 
 export async function getProjectTree(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = requireOrganizationId(getDb());
+    const orgId = await requireOrganizationId();
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
     const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = 1';
     const rows = await sql.rows<any>(`
@@ -109,7 +109,7 @@ export async function createProject(request: NextRequest): Promise<NextResponse>
       }
     }
 
-    const orgId = requireOrganizationId(getDb());
+    const orgId = await requireOrganizationId();
     const id = `bu_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const maxOrder = await sql.row<any>("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM business_units WHERE organization_id = ? AND (parent_id IS ? OR parent_id = ?)", [orgId, parent_id, parent_id]) as { mx: number };
 

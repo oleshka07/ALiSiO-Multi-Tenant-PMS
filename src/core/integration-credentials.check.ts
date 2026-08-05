@@ -27,42 +27,42 @@ process.env.HOSTEX_ACCESS_TOKEN = 'env-token';
 delete process.env.PRICELABS_API_KEY;
 
 const { getDb } = await import('./db/index.ts');
+const { getSql } = await import('./db/async.ts');
 const { integrationCredentials, integrationConfigured } = await import('./integration-credentials.ts');
 
-const db = getDb();
+const sql = getSql();
 const org = (suffix: string) => `__cred_check__${suffix}`;
 for (const s of ['a', 'b']) {
-  db.prepare('INSERT OR IGNORE INTO organizations (id, name, slug) VALUES (?, ?, ?)')
-    .run(org(s), `Cred ${s}`, `__cred_check__${s}`);
+  await sql.run('INSERT OR IGNORE INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org(s), `Cred ${s}`, `__cred_check__${s}`]);
 }
-db.prepare(`
+await sql.run(`
   INSERT INTO channel_credentials (id, organization_id, channel, environment, access_token)
   VALUES ('__cred_check__a_hostex', ?, 'hostex', 'production', 'token-of-a')
-`).run(org('a'));
+`, [org('a')]);
 
 // A's own token wins over the server's.
-const a = integrationCredentials('hostex', org('a'));
+const a = await integrationCredentials('hostex', org('a'));
 assert.strictEqual(a?.accessToken, 'token-of-a', "A did not get its own token");
 assert.strictEqual(a?.perOrganization, true, "A's token is not marked as its own");
 
 // B saved nothing, so it falls back to the server — and critically NOT to A's.
-const b = integrationCredentials('hostex', org('b'));
+const b = await integrationCredentials('hostex', org('b'));
 assert.strictEqual(b?.accessToken, 'env-token', "B did not fall back to the environment");
 assert.notStrictEqual(b?.accessToken, 'token-of-a', "B is using A's Hostex account");
 assert.strictEqual(b?.perOrganization, false);
 
 // No organization at all — the environment, never a guess.
-const none = integrationCredentials('hostex', null);
+const none = await integrationCredentials('hostex', null);
 assert.strictEqual(none?.accessToken, 'env-token', 'a caller without an organization got something unexpected');
 assert.notStrictEqual(none?.accessToken, 'token-of-a', "a background job picked a tenant's account");
 
 // Nothing anywhere is "not configured", not an exception.
-assert.strictEqual(integrationCredentials('pricelabs', org('a')), null);
-assert.strictEqual(integrationConfigured('pricelabs', org('a')), false);
-assert.strictEqual(integrationConfigured('hostex', org('b')), true);
+assert.strictEqual(await integrationCredentials('pricelabs', org('a')), null);
+assert.strictEqual(await integrationConfigured('pricelabs', org('a')), false);
+assert.strictEqual(await integrationConfigured('hostex', org('b')), true);
 
-db.prepare('DELETE FROM channel_credentials WHERE organization_id LIKE ?').run('__cred_check__%');
-db.prepare('DELETE FROM organizations WHERE id LIKE ?').run('__cred_check__%');
+await sql.run('DELETE FROM channel_credentials WHERE organization_id LIKE ?', ['__cred_check__%']);
+await sql.run('DELETE FROM organizations WHERE id LIKE ?', ['__cred_check__%']);
 
 try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); }
 catch { /* Windows holds the file a moment; the OS temp dir cleans itself */ }

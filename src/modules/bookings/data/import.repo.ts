@@ -222,7 +222,7 @@ export async function findOrCreateGuestForImport(args: {
   address: string | null;
 }): Promise<string> {
   const sql = getSql();
-  const org = { id: requireOrganizationId(getDb()) } as any;
+  const org = { id: await requireOrganizationId() } as any;
   return (await findOrCreateGuest({
     organizationId: org?.id,
     firstName: args.firstName,

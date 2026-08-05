@@ -10,8 +10,8 @@
  * honoured so an existing single-tenant deployment keeps working until its
  * owner fills in Settings → General.
  */
-import { getDb } from '@core/db';
-import { requireOrganizationId } from '@core/auth/tenant-context';
+import { getSql } from './db/async.ts';
+import { requireOrganizationId } from './auth/tenant-context.ts';
 
 export interface OrgIdentity {
   name: string;
@@ -43,22 +43,20 @@ const EMPTY: OrgIdentity = {
  * handler sets, and which still resolves a single-organization install without
  * anyone passing anything.
  */
-export function getOrgIdentity(organizationId?: string): OrgIdentity {
+export async function getOrgIdentity(organizationId?: string): Promise<OrgIdentity> {
   let row: any;
   try {
-    const db = getDb();
-    const orgId = organizationId || requireOrganizationId(db);
-    row = db.prepare('SELECT * FROM organizations WHERE id = ?').get(orgId);
+    const sql = getSql();
+    const orgId = organizationId || await requireOrganizationId();
+    row = await sql.row<any>('SELECT * FROM organizations WHERE id = ?', [orgId]);
   } catch {
     row = undefined;
   }
 
   let phone = '';
   try {
-    const db = getDb();
-    const prop = db
-      .prepare('SELECT phone FROM properties WHERE organization_id = ? ORDER BY created_at LIMIT 1')
-      .get(row?.id ?? organizationId ?? '') as { phone?: string } | undefined;
+    const sql = getSql();
+    const prop = await sql.row<any>('SELECT phone FROM properties WHERE organization_id = ? ORDER BY created_at LIMIT 1', [row?.id ?? organizationId ?? '']) as { phone?: string } | undefined;
     phone = prop?.phone ?? '';
   } catch {
     /* property is optional */

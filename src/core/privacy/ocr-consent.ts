@@ -1,4 +1,4 @@
-import { getDb } from '@core/db';
+import { getSql } from '../db/async.ts';
 
 /**
  * Is this organization willing to have identity documents read in the cloud?
@@ -16,12 +16,12 @@ import { getDb } from '@core/db';
  * ponytail: resolves the single organization when no id is given. Takes the id
  * from the request once tenant context lands.
  */
-export function cloudOcrAllowed(organizationId?: string): boolean {
+export async function cloudOcrAllowed(organizationId?: string): Promise<boolean> {
   try {
-    const db = getDb();
+    const sql = getSql();
     const row = (organizationId
-      ? db.prepare('SELECT ocr_cloud_fallback AS v FROM organizations WHERE id = ?').get(organizationId)
-      : db.prepare('SELECT ocr_cloud_fallback AS v FROM organizations ORDER BY created_at LIMIT 1').get()) as
+      ? await sql.row<any>('SELECT ocr_cloud_fallback AS v FROM organizations WHERE id = ?', [organizationId])
+      : await sql.row<any>('SELECT ocr_cloud_fallback AS v FROM organizations ORDER BY created_at LIMIT 1')) as
       | { v: number | null }
       | undefined;
     return !!row?.v;

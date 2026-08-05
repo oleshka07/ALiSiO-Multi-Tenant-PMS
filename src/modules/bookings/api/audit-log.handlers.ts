@@ -9,7 +9,7 @@ export async function getBookingActor(): Promise<{ id: string; name: string } | 
   try {
     const store = await cookies();
     const sessionId = store.get('session_id')?.value;
-    const user = getSessionUser(sessionId);
+    const user = await getSessionUser(sessionId);
     if (!user) return null;
     return { id: user.id, name: user.full_name };
   } catch { return null; }
@@ -66,7 +66,7 @@ export async function listBookingAudit(request: NextRequest): Promise<NextRespon
     // Auth check: owner only
     const store = await cookies();
     const sessionId = store.get('session_id')?.value;
-    const user = getSessionUser(sessionId);
+    const user = await getSessionUser(sessionId);
     if (!user || user.role !== 'owner') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

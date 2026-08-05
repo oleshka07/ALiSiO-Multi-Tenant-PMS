@@ -7,8 +7,8 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 
 // ─── Helpers ───────────────────────────────────────────────
 
-function getOrgId(): string {
-  return requireOrganizationId(getDb());
+async function getOrgId(): Promise<string> {
+  return await requireOrganizationId();
 }
 
 /**
@@ -18,6 +18,7 @@ function getOrgId(): string {
  */
 async function fetchTagsForTask(taskId: string): Promise<TaskTag[]> {
   const sql = getSql();
+  const org = await getOrgId();
   return await sql.rows<TaskTag>(`
     SELECT tt.*
     FROM task_tags tt
@@ -25,7 +26,7 @@ async function fetchTagsForTask(taskId: string): Promise<TaskTag[]> {
     JOIN tasks t ON t.id = ttl.task_id
     WHERE ttl.task_id = ? AND t.organization_id = ? AND tt.organization_id = ?
     ORDER BY tt.name
-  `, [taskId, getOrgId(), getOrgId()]);
+  `, [taskId, org, org]);
 }
 
 // ─── List tasks with filters ──────────────────────────────
@@ -45,7 +46,7 @@ export interface ListTasksFilters {
 export async function listTasks(filters: ListTasksFilters = {}): Promise<Task[]> {
   const sql = getSql();
   const conditions: string[] = ['t.organization_id = ?'];
-  const params: unknown[] = [getOrgId()];
+  const params: unknown[] = [await getOrgId()];
 
   if (filters.project_id) {
     conditions.push('t.project_id = ?');
@@ -120,7 +121,7 @@ export async function listTasks(filters: ListTasksFilters = {}): Promise<Task[]>
 
 export async function getTaskById(id: string): Promise<(Task & { subtasks?: Task[] }) | null> {
   const sql = getSql();
-  const org = getOrgId();
+  const org = await getOrgId();
 
   const task = await sql.row<Task>(`
     SELECT
@@ -183,7 +184,7 @@ export interface CreateTaskInput {
 
 export async function createTask(input: CreateTaskInput): Promise<Task> {
   const sql = getSql();
-  const orgId = getOrgId();
+  const orgId = await getOrgId();
 
   const result = await sql.row<any>(
     `
@@ -244,7 +245,7 @@ export async function updateTask(id: string, fields: Record<string, unknown>): P
   if (updates.length === 0) return null;
 
   updates.push("updated_at = CURRENT_TIMESTAMP");
-  values.push(id, getOrgId());
+  values.push(id, await getOrgId());
 
   await sql.run(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ? AND organization_id = ?`, values);
   return getTaskById(id);
@@ -254,7 +255,7 @@ export async function updateTask(id: string, fields: Record<string, unknown>): P
 
 export async function deleteTask(id: string): Promise<{ ok: boolean }> {
   const sql = getSql();
-  const org = getOrgId();
+  const org = await getOrgId();
 
   // Clean up attachment files from disk before cascade delete removes DB rows
   // Include attachments from subtasks (which will be cascade-deleted)
@@ -281,7 +282,7 @@ export async function deleteTask(id: string): Promise<{ ok: boolean }> {
 
 export async function toggleTaskStatus(id: string): Promise<Task | null> {
   const sql = getSql();
-  const org = getOrgId();
+  const org = await getOrgId();
   const task = await sql.row<{ status: string }>(
     'SELECT status FROM tasks WHERE id = ? AND organization_id = ?', [id, org],
   );
@@ -302,7 +303,7 @@ export async function toggleTaskStatus(id: string): Promise<Task | null> {
 
 export async function reorderTasks(updates: { id: string; sort_order: number }[]): Promise<void> {
   const sql = getSql();
-  const org = getOrgId();
+  const org = await getOrgId();
   await sql.tx(async (t) => {
     for (const u of updates) {
       await t.run(
@@ -317,7 +318,7 @@ export async function reorderTasks(updates: { id: string; sort_order: number }[]
 
 export async function setTaskTags(taskId: string, tagIds: string[]): Promise<TaskTag[]> {
   const sql = getSql();
-  const org = getOrgId();
+  const org = await getOrgId();
 
   // Both the task and every tag have to be this organization's, or the links
   // would attach one company's tag to another company's task.

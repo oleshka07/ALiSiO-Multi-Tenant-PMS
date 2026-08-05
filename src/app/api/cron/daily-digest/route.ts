@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
 import { getSql } from '@core/db/async';
 import { hasFeature } from '@core/features';
 import { sendDailyOperationalDigest } from '@/modules/notifications/data/daily-digest';
@@ -25,8 +24,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const sql = getSql();
-    const organizations = (await sql.rows<{ id: string; name: string }>('SELECT id, name FROM organizations'))
-      .filter((o) => hasFeature(getDb(), o.id, 'telegram'));
+    const organizations: { id: string; name: string }[] = [];
+    for (const o of await sql.rows<{ id: string; name: string }>('SELECT id, name FROM organizations')) {
+      if (await hasFeature(o.id, 'telegram')) organizations.push(o);
+    }
 
     const results: { organization: string; sent: boolean; error?: string }[] = [];
     for (const org of organizations) {

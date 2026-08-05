@@ -86,7 +86,7 @@ async function _GET(
       desc += ` (${fmt(data.check_in)} – ${fmt(data.check_out)})`;
     }
 
-    const xml = generateIsdocXml({
+    const xml = await generateIsdocXml({
       invoiceNumber:  data.invoice_number,
       issueDate:      documentDate || (data.issued_at || '').slice(0, 10),
       // DUZP + splatnost = issue date + 14 days (accounting requirement).

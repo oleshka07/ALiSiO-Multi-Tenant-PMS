@@ -110,7 +110,7 @@ export async function withRateLimit<T>(
 ): Promise<T> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // Check rate limit before making request
-    const check = checkRateLimit(endpoint);
+    const check = await checkRateLimit(endpoint);
     if (!check.allowed) {
       console.log(`[Rate Limiter] Waiting ${check.retryAfterMs}ms for ${endpoint} (${check.currentCount}/${check.limit})`);
       await sleep(check.retryAfterMs!);

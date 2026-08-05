@@ -67,7 +67,7 @@ export async function login(request: Request) {
 
     await sql.run("UPDATE app_users SET last_login = CURRENT_TIMESTAMP WHERE id = ?", [user.id]);
 
-    const sessionId = createSession(user.id);
+    const sessionId = await createSession(user.id);
 
     const response = NextResponse.json({
       success: true,

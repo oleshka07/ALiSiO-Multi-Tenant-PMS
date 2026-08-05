@@ -57,7 +57,7 @@ async function syncChannel(channel: any) {
     const unitIds = await getChannelUnitIds(channel);
     if (unitIds.length === 0) throw new Error('No units found for this channel');
 
-    const org = { id: requireOrganizationId(getDb()) } as any;
+    const org = { id: await requireOrganizationId() } as any;
 
     for (const event of events) {
       const externalUid = `ical_${channel.id}_${event.uid}`;

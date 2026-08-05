@@ -44,7 +44,7 @@ export async function createCapex(request: Request): Promise<NextResponse> {
 
     if (!name || !amount || !purchase_date) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
 
-    const orgRow = { id: requireOrganizationId(getDb()) } as any;
+    const orgRow = { id: await requireOrganizationId() } as any;
     const id = `capex_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const month = purchase_date.substring(0, 7);
     const depMonthly = useful_life_months && useful_life_months > 0 ? Math.round((amount / useful_life_months) * 100) / 100 : 0;

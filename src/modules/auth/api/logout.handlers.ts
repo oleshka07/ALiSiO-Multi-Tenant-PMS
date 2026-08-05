@@ -8,7 +8,7 @@ export async function logout() {
     const sessionId = cookieStore.get('session_id')?.value;
 
     if (sessionId) {
-      deleteSession(sessionId);
+      await deleteSession(sessionId);
     }
 
     const response = NextResponse.json({ success: true });

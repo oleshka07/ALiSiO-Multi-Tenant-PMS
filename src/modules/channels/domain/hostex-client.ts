@@ -25,8 +25,8 @@ export function setHostexOrganization(organizationId: string | null): void {
   currentOrganizationId = organizationId;
 }
 
-function hostexToken(): string | undefined {
-  return integrationCredentials('hostex', currentOrganizationId)?.accessToken;
+async function hostexToken(): Promise<string | undefined> {
+  return (await integrationCredentials('hostex', currentOrganizationId))?.accessToken;
 }
 
 /** Thrown when the integration has not been configured, so callers can answer 503. */
@@ -152,11 +152,11 @@ async function rateLimitWait(): Promise<void> {
 }
 
 // ─── Core HTTP client ─────────────────────────────────────
-function hostexRequest<T>(method: string, path: string, body?: any): Promise<HostexApiResponse<T>> {
+async function hostexRequest<T>(method: string, path: string, body?: any): Promise<HostexApiResponse<T>> {
   // Without this, node's http layer throws `Invalid value "undefined" for
   // header "Hostex-Access-Token"` and every caller reported a 500 — which
   // reads as a broken server rather than an integration nobody turned on.
-  const token = hostexToken();
+  const token = await hostexToken();
   if (!token) return Promise.reject(new HostexNotConfiguredError());
 
   return new Promise((resolve, reject) => {

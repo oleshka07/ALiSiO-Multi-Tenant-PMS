@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const KINDS = ['client', 'supplier', 'employee', 'other'] as const;
@@ -72,7 +71,7 @@ async function countChildren(id: string): Promise<number> {
 export async function listCounterparties(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = await getOrgId();
     const kind = request.nextUrl.searchParams.get('kind');
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
     const search = request.nextUrl.searchParams.get('search');
@@ -97,7 +96,7 @@ export async function listCounterparties(request: NextRequest): Promise<NextResp
 export async function getCounterpartyTree(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = await getOrgId();
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
     const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = 1';
 
@@ -162,7 +161,7 @@ export async function createCounterparty(request: NextRequest): Promise<NextResp
       catch (e: any) { return NextResponse.json({ error: e.message }, { status: 400 }); }
     }
 
-    const orgId = getOrgId(getDb());
+    const orgId = await getOrgId();
     const id = `cp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const maxOrder = await sql.row<any>("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM finance_counterparties WHERE organization_id = ? AND (parent_id IS ? OR parent_id = ?)", [orgId, parent_id, parent_id]) as { mx: number };
 
@@ -342,7 +341,7 @@ export async function moveCounterparty(
 export async function getAliasSuggestions(_request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = await getOrgId();
     const rows = await sql.rows<any>(`
       SELECT comment AS txt, COUNT(*) AS n FROM fin_operations
         WHERE organization_id = ? AND counterparty_id IS NULL

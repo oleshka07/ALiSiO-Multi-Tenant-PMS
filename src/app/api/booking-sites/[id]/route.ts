@@ -6,7 +6,7 @@ import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 // GET /api/booking-sites/[id]
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
+    const session = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 // PATCH /api/booking-sites/[id]
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
+    const session = await getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
@@ -83,7 +83,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 // DELETE /api/booking-sites/[id] — soft delete
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
+    const session = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;

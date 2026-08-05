@@ -35,14 +35,14 @@ export async function getWidgetSiteConfig(req: NextRequest) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: CORS_HEADERS });
     }
 
-    if (!hasFeature(getDb(), site.organization_id, 'widget')) {
+    if (!await hasFeature(site.organization_id, 'widget')) {
       return featureDisabled('widget', CORS_HEADERS);
     }
 
     // Payment is offered only when the organization has Teya at all — the env
     // fallback used to make every site on the server claim it takes cards.
     const payCfg = JSON.parse(site.payment_config || '{}');
-    const hasPayment = hasFeature(getDb(), site.organization_id, 'teya')
+    const hasPayment = await hasFeature(site.organization_id, 'teya')
       && (!!(payCfg.enabled && payCfg.provider === 'teya' && payCfg.teya?.client_id)
         || !!process.env.TEYA_CLIENT_ID);
 

@@ -18,6 +18,7 @@
  * becomes a loud failure rather than a silent write into another tenant's data.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { getSql } from '../db/async.ts';
 
 const store = new AsyncLocalStorage<string>();
 
@@ -36,11 +37,12 @@ export function currentOrganizationId(): string | null {
  * `db` is the better-sqlite3 handle; passed in to avoid importing the database
  * module from the auth layer.
  */
-export function requireOrganizationId(db: any): string {
+export async function requireOrganizationId(): Promise<string> {
+  const sql = getSql();
   const ambient = store.getStore();
   if (ambient) return ambient;
 
-  const rows = db.prepare('SELECT id FROM organizations LIMIT 2').all() as { id: string }[];
+  const rows = await sql.rows<any>('SELECT id FROM organizations LIMIT 2') as { id: string }[];
   if (rows.length === 1) return rows[0].id;
   if (rows.length === 0) throw new Error('No organization exists');
   throw new Error(
@@ -59,20 +61,17 @@ export function requireOrganizationId(db: any): string {
  * customers have exactly one — and where there are several the caller has to
  * say which.
  */
-export function requirePropertyId(db: any, explicitId?: string | null): string {
-  const organizationId = requireOrganizationId(db);
+export async function requirePropertyId(explicitId?: string | null): Promise<string> {
+  const sql = getSql();
+  const organizationId = await requireOrganizationId();
 
   if (explicitId) {
-    const owned = db
-      .prepare('SELECT 1 FROM properties WHERE id = ? AND organization_id = ?')
-      .get(explicitId, organizationId);
+    const owned = await sql.row<any>('SELECT 1 FROM properties WHERE id = ? AND organization_id = ?', [explicitId, organizationId]);
     if (!owned) throw new Error('Property not found');
     return explicitId;
   }
 
-  const rows = db
-    .prepare('SELECT id FROM properties WHERE organization_id = ? LIMIT 2')
-    .all(organizationId) as { id: string }[];
+  const rows = await sql.rows<any>('SELECT id FROM properties WHERE organization_id = ? LIMIT 2', [organizationId]) as { id: string }[];
   if (rows.length === 1) return rows[0].id;
   if (rows.length === 0) throw new Error('This organization has no property yet');
   throw new Error('This organization has more than one property — property_id is required');

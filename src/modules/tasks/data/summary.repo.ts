@@ -22,7 +22,7 @@ export interface TasksSummary {
 
 export async function getTasksSummary(): Promise<TasksSummary> {
   const sql = getSql();
-  const org = requireOrganizationId(getDb());
+  const org = await requireOrganizationId();
   const today = new Date().toISOString().split('T')[0];
 
   const open = "status NOT IN ('done', 'cancelled') AND organization_id = ?";

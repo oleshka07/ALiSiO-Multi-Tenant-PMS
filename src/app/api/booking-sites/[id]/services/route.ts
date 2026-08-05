@@ -6,7 +6,7 @@ import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 // GET /api/booking-sites/[id]/services
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
+    const session = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 // POST /api/booking-sites/[id]/services — toggle enable/disable + price_override
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
+    const session = await getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id } = await params;

@@ -8,7 +8,7 @@ import { requirePropertyId } from '@core/auth/tenant-context';
 // GET /api/booking-sites — list all sites for property
 export async function GET(_req: NextRequest) {
   try {
-    const session = getSessionUser(getSessionIdFromCookies(_req.headers.get('cookie')));
+    const session = await getSessionUser(getSessionIdFromCookies(_req.headers.get('cookie')));
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const sql = getSql();
@@ -31,7 +31,7 @@ export async function GET(_req: NextRequest) {
 // POST /api/booking-sites — create new site
 export async function POST(request: NextRequest) {
   try {
-    const session = getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
+    const session = await getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const sql = getSql();
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     // new booking site to whichever property the server created first.
     let propId: string;
     try {
-      propId = requirePropertyId(getDb(), property_id);
+      propId = await requirePropertyId(property_id);
     } catch (e: any) {
       return NextResponse.json({ error: e.message }, { status: 400 });
     }

@@ -9,7 +9,7 @@ export async function listUsers() {
   try {
     const cookieStore = await cookies();
     const sessionId = cookieStore.get('session_id')?.value;
-    const currentUser = getSessionUser(sessionId);
+    const currentUser = await getSessionUser(sessionId);
 
     if (!currentUser || !currentUser.permissions.includes('manage_users')) {
       return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });
@@ -55,7 +55,7 @@ export async function createUser(request: Request) {
   try {
     const cookieStore = await cookies();
     const sessionId = cookieStore.get('session_id')?.value;
-    const currentUser = getSessionUser(sessionId);
+    const currentUser = await getSessionUser(sessionId);
 
     if (!currentUser || !currentUser.permissions.includes('manage_users')) {
       return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });

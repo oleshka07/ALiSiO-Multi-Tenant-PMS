@@ -35,7 +35,7 @@ export async function getWidgetConfig(request: NextRequest) {
       return NextResponse.json({ error: 'Property not found' }, { status: 404, headers: CORS_HEADERS });
     }
 
-    if (!hasFeature(getDb(), property.organization_id, 'widget')) {
+    if (!await hasFeature(property.organization_id, 'widget')) {
       return featureDisabled('widget', CORS_HEADERS);
     }
 

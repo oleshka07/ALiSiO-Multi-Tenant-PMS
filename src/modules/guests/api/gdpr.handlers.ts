@@ -59,7 +59,7 @@ export const exportGuestData = withPermission('manage_guests', async (_request, 
 
     // The controller named in the export is the tenant. It used to be one
     // specific company, written into the source.
-    const identity = getOrgIdentity(actor.organizationId);
+    const identity = await getOrgIdentity(actor.organizationId);
 
     return NextResponse.json({
       generatedAt: new Date().toISOString(),

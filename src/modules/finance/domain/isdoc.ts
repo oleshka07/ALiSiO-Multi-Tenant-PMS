@@ -35,8 +35,8 @@ function splitAddress(address: string): { street: string; zip: string; city: str
   return { street: parts.slice(0, -1).join(', '), zip: m[1], city: m[2] };
 }
 
-function supplier() {
-  const id = getOrgIdentity();
+async function supplier() {
+  const id = await getOrgIdentity();
   const addr = splitAddress(id.legalAddress || '');
   return {
     ico:     id.registrationNo,
@@ -143,8 +143,8 @@ function uuid(): string {
  * Generate ISDOC v6.0.2 XML string for a single invoice.
  * For neplátce DPH: VAT = 0, all amounts are equal (excl = incl = payable).
  */
-export function generateIsdocXml(input: IsdocInput): string {
-  const SUPPLIER = supplier();
+export async function generateIsdocXml(input: IsdocInput): Promise<string> {
+  const SUPPLIER = await supplier();
   const {
     invoiceNumber,
     issueDate,

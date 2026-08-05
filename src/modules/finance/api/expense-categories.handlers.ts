@@ -22,7 +22,7 @@ export async function createExpenseCategory(request: Request): Promise<NextRespo
 
     if (!name || !std_group || !pnl_line) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
 
-    const orgRow = { id: requireOrganizationId(getDb()) } as any;
+    const orgRow = { id: await requireOrganizationId() } as any;
     const id = `ec_${Date.now()}`;
     const maxOrder = await sql.row<any>("SELECT MAX(sort_order) as mx FROM expense_categories") as any;
 

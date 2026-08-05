@@ -61,7 +61,7 @@ function mapExpense(cnameLower: string, commentLower: string, classifier: string
 export async function getPnl2(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const org = requireOrganizationId(getDb());
+    const org = await requireOrganizationId();
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month') || new Date().toISOString().substring(0, 7);
 

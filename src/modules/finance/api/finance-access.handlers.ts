@@ -209,7 +209,7 @@ export async function getMyFinanceAccess(request: NextRequest): Promise<NextResp
     }
 
     const { getSessionUser } = await import('@core/auth');
-    const user = getSessionUser(sessionId);
+    const user = await getSessionUser(sessionId);
     if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }

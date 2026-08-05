@@ -86,8 +86,8 @@ export async function fetchCnbFixing(dateIso?: string): Promise<CnbFixing> {
   return parseCnbDaily(await fetchText(url));
 }
 
-function orgId(): string | null {
-  try { return requireOrganizationId(getDb()); } catch { return null; }
+async function orgId(): Promise<string | null> {
+  try { return await requireOrganizationId(); } catch { return null; }
 }
 
 export interface CnbSyncResult {
@@ -103,7 +103,7 @@ export interface CnbSyncResult {
 export async function syncCnbRates(
   opts: { date?: string; currencies?: string[] } = {},
 ): Promise<CnbSyncResult> {
-  const oid = orgId();
+  const oid = await orgId();
   if (!oid) throw new Error('No organization found');
   const want = (opts.currencies || DEFAULT_CNB_CURRENCIES).map(c => c.toUpperCase());
 

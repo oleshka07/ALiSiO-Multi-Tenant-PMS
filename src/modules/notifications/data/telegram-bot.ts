@@ -35,7 +35,7 @@ async function resolveConfig(): Promise<{ botToken: string; chatId: string; admi
     const { getDb } = require('@core/db');
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { requireOrganizationId } = require('@core/auth/tenant-context');
-    const org = { id: requireOrganizationId(getDb()) as string };
+    const org = { id: await requireOrganizationId() as string };
     if (org) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { getTelegramConfig } = require('@/modules/notifications/data/telegram-config.repo');

@@ -9,7 +9,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; listingId: string }> }
 ) {
   try {
-    const session = getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
+    const session = await getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id, listingId } = await params;
@@ -53,7 +53,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; listingId: string }> }
 ) {
   try {
-    const session = getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
+    const session = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { id, listingId } = await params;

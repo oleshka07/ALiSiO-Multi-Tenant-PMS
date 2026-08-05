@@ -13,7 +13,7 @@ import { FEATURES, listFeatures, setFeature, type FeatureKey } from '@core/featu
 export const getOrgFeatures = withOwner(async (_req, _ctx, actor: Actor) => {
   return NextResponse.json({
     catalog: FEATURES,
-    features: listFeatures(getDb(), actor.organizationId),
+    features: await listFeatures(actor.organizationId),
   });
 });
 
@@ -23,6 +23,6 @@ export const updateOrgFeature = withOwner(async (request: Request, _ctx, actor: 
     return NextResponse.json({ error: 'Потрібно: feature (відомий ключ) і enabled (boolean)' }, { status: 400 });
   }
   const db = getDb();
-  setFeature(db, actor.organizationId, feature as FeatureKey, enabled);
-  return NextResponse.json({ features: listFeatures(db, actor.organizationId) });
+  await setFeature(actor.organizationId, feature as FeatureKey, enabled);
+  return NextResponse.json({ features: await listFeatures(actor.organizationId) });
 });

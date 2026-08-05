@@ -69,7 +69,7 @@ export async function createIcalChannel(request: NextRequest) {
 
     let propertyId: string;
     try {
-      propertyId = requirePropertyId(getDb(), body.property_id);
+      propertyId = await requirePropertyId(body.property_id);
     } catch (e: any) {
       return NextResponse.json({ error: e.message }, { status: 400 });
     }

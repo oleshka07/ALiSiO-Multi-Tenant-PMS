@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getDb } from './db/index.ts';
+import { getSql } from './db/async.ts';
 
 /**
  * Whose Hostex account is this? Whose PriceLabs key?
@@ -55,18 +56,19 @@ function fromEnv(channel: IntegrationChannel): IntegrationCredentials | null {
  * correct: a background job cannot guess whose account to use, and silently
  * picking one hotel's would be the bug this whole file exists to prevent.
  */
-export function integrationCredentials(
+export async function integrationCredentials(
   channel: IntegrationChannel,
   organizationId?: string | null,
-): IntegrationCredentials | null {
+): Promise<IntegrationCredentials | null> {
+  const sql = getSql();
   if (organizationId) {
     try {
-      const row = getDb().prepare(`
+      const row = await sql.row<any>(`
         SELECT client_id, client_secret, access_token
         FROM channel_credentials
         WHERE organization_id = ? AND channel = ?
         ORDER BY updated_at DESC LIMIT 1
-      `).get(organizationId, channel) as
+      `, [organizationId, channel]) as
         { client_id?: string; client_secret?: string; access_token?: string } | undefined;
 
       if (row && (row.access_token || row.client_id)) {
@@ -86,11 +88,11 @@ export function integrationCredentials(
 }
 
 /** Is this integration usable at all for this organization? */
-export function integrationConfigured(
+export async function integrationConfigured(
   channel: IntegrationChannel,
   organizationId?: string | null,
-): boolean {
-  return !!integrationCredentials(channel, organizationId);
+): Promise<boolean> {
+  return !!await integrationCredentials(channel, organizationId);
 }
 
 // ─── The settings screen ──────────────────────────────────────────────────
@@ -137,8 +139,8 @@ export interface IntegrationStatus {
 }
 
 /** What the settings screen shows for one integration. */
-export function integrationStatus(channel: IntegrationChannel, organizationId: string): IntegrationStatus {
-  const creds = integrationCredentials(channel, organizationId);
+export async function integrationStatus(channel: IntegrationChannel, organizationId: string): Promise<IntegrationStatus> {
+  const creds = await integrationCredentials(channel, organizationId);
   const values: Record<string, string | null> = {};
   for (const { field } of INTEGRATION_FIELDS[channel] || []) {
     values[field] = mask(creds?.[field]);
@@ -158,12 +160,12 @@ export function integrationStatus(channel: IntegrationChannel, organizationId: s
  * the server. Fields not named are left as they were, so saving only a client
  * secret does not silently wipe the client id.
  */
-export function saveIntegrationCredentials(
+export async function saveIntegrationCredentials(
   organizationId: string,
   channel: IntegrationChannel,
   values: Partial<Record<'accessToken' | 'clientId' | 'clientSecret', string>>,
-): void {
-  const db = getDb();
+): Promise<void> {
+  const sql = getSql();
   const allowed = new Set((INTEGRATION_FIELDS[channel] || []).map((f) => f.field));
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -174,21 +176,17 @@ export function saveIntegrationCredentials(
   }
   if (!sets.length) return;
 
-  const existing = db
-    .prepare('SELECT id FROM channel_credentials WHERE organization_id = ? AND channel = ?')
-    .get(organizationId, channel) as { id: string } | undefined;
+  const existing = await sql.row<any>('SELECT id FROM channel_credentials WHERE organization_id = ? AND channel = ?', [organizationId, channel]) as { id: string } | undefined;
 
   if (existing) {
-    db.prepare(`UPDATE channel_credentials SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-      .run(...params, existing.id);
+    await sql.run(`UPDATE channel_credentials SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [...params, existing.id]);
     return;
   }
 
   const id = `cred_${channel}_${organizationId}`.slice(0, 60);
-  db.prepare(`
+  await sql.run(`
     INSERT INTO channel_credentials (id, organization_id, channel, environment, created_at, updated_at)
     VALUES (?, ?, ?, 'production', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-  `).run(id, organizationId, channel);
-  db.prepare(`UPDATE channel_credentials SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-    .run(...params, id);
+  `, [id, organizationId, channel]);
+  await sql.run(`UPDATE channel_credentials SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [...params, id]);
 }

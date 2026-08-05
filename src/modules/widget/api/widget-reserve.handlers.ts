@@ -193,7 +193,7 @@ export async function createWidgetReservation(request: NextRequest) {
     // Public endpoint: the organization comes from the unit being booked, and
     // it must have bought the widget for this booking to exist at all.
     const unitOrg = await sql.row<any>('SELECT organization_id FROM properties WHERE id = ?', [unit.property_id]) as { organization_id: string } | undefined;
-    if (!unitOrg || !hasFeature(getDb(), unitOrg.organization_id, 'widget')) {
+    if (!unitOrg || !await hasFeature(unitOrg.organization_id, 'widget')) {
       return featureDisabled('widget', CORS_HEADERS);
     }
 
@@ -383,7 +383,7 @@ export async function createWidgetReservation(request: NextRequest) {
 
     const finalPrice = Math.max(0, totalPrice - offerDiscount - certificateDiscount - extraDiscount);
 
-    const org = { id: requireOrganizationId(getDb()) } as { id: string };
+    const org = { id: await requireOrganizationId() } as { id: string };
 
     let guestId: string;
     if (email) {

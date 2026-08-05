@@ -62,14 +62,14 @@ export async function joinWaitlist(request: NextRequest) {
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: CORS_HEADERS });
     }
-    if (!hasFeature(getDb(), site.organization_id, 'widget')) {
+    if (!await hasFeature(site.organization_id, 'widget')) {
       return featureDisabled('widget', CORS_HEADERS);
     }
 
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim()
       || request.headers.get('x-real-ip')
       || 'unknown';
-    const limit = checkRateLimit(`waitlist:${ip}`, 'registration', 10, 60);
+    const limit = await checkRateLimit(`waitlist:${ip}`, 'registration', 10, 60);
     if (!limit.allowed) {
       return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: CORS_HEADERS });
     }

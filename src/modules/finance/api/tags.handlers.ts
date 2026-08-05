@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
 const getOrgId = requireOrganizationId;
@@ -9,7 +8,7 @@ const getOrgId = requireOrganizationId;
 export async function listTags(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = getOrgId(getDb());
+    const orgId = await getOrgId();
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
     const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = 1';
     const rows = await sql.rows<any>(`
@@ -36,7 +35,7 @@ export async function createTag(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: `Назва тега не може бути довшою за ${50} символів` }, { status: 400 });
     }
 
-    const orgId = getOrgId(getDb());
+    const orgId = await getOrgId();
     const id = `tag_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const maxOrder = await sql.row<any>("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM finance_tags WHERE organization_id = ?", [orgId]) as { mx: number };
 

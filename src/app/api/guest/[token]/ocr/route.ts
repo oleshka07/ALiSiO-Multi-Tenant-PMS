@@ -11,7 +11,7 @@ export async function POST(
   const { token } = await params;
   if (!token) return NextResponse.json({ error: 'Missing token' }, { status: 400 });
 
-  const rl = checkRateLimit(token, 'ocr' as any, 5, 10); // 5 requests per 10 minutes max
+  const rl = await checkRateLimit(token, 'ocr' as any, 5, 10); // 5 requests per 10 minutes max
   if (!rl.allowed) {
     return NextResponse.json({ error: 'Too many OCR attempts. Please try again later.' }, { status: 429 });
   }
@@ -28,7 +28,7 @@ export async function POST(
 
     // Pass the full data URL (data:image/...;base64,...) to OCR
     const dataUrl = image.includes('base64,') ? image : `data:image/jpeg;base64,${image}`;
-    const result = await ocrDocument(dataUrl, { allowCloudFallback: cloudOcrAllowed() });
+    const result = await ocrDocument(dataUrl, { allowCloudFallback: await cloudOcrAllowed() });
 
     return NextResponse.json({ success: true, data: result });
   } catch (err: any) {

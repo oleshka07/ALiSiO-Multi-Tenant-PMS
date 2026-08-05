@@ -159,8 +159,8 @@ async function _POST(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Nex
           invoice_company_country: buyerCountry || null,
           invoice_company_email:   emailTo,
         };
-        const html = renderInvoiceHtml(fakeData);
-        const orgName = getOrgIdentity().name || 'PMS';
+        const html = await renderInvoiceHtml(fakeData);
+        const orgName = (await getOrgIdentity()).name || 'PMS';
 
         await sendEmail({
           to:      emailTo.trim(),

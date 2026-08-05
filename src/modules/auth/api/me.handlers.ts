@@ -8,14 +8,14 @@ export async function getMe() {
   try {
     const cookieStore = await cookies();
     const sessionId = cookieStore.get('session_id')?.value;
-    const user = getSessionUser(sessionId);
+    const user = await getSessionUser(sessionId);
 
     if (!user) {
       return NextResponse.json({ error: 'Не авторизовано' }, { status: 401 });
     }
 
     // The same registry the routes enforce — the sidebar only mirrors it.
-    const features = user.organization_id ? listFeatures(getDb(), user.organization_id) : {};
+    const features = user.organization_id ? await listFeatures(user.organization_id) : {};
 
     return NextResponse.json({ user, features });
   } catch (error) {

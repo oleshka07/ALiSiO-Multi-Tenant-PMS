@@ -64,15 +64,15 @@ export function setPriceLabsOrganization(organizationId: string | null): void {
   currentOrganizationId = organizationId;
 }
 
-function apiKey(): string {
-  const key = integrationCredentials('pricelabs', currentOrganizationId)?.accessToken;
+async function apiKey(): Promise<string> {
+  const key = (await integrationCredentials('pricelabs', currentOrganizationId))?.accessToken;
   if (!key) throw new PriceLabsNotConfiguredError();
   return key;
 }
 
-function headers(): Record<string, string> {
+function headers(key: string): Record<string, string> {
   return {
-    'X-API-Key': apiKey(),
+    'X-API-Key': key,
     'Content-Type': 'application/json',
     Accept: 'application/json',
   };
@@ -80,7 +80,7 @@ function headers(): Record<string, string> {
 
 /** GET /v1/listings — every listing visible to this API key. */
 export async function getListings(): Promise<PriceLabsListing[]> {
-  const res = await fetch(`${BASE}/listings`, { headers: headers() });
+  const res = await fetch(`${BASE}/listings`, { headers: headers(await apiKey()) });
   if (!res.ok) {
     throw new Error(`PriceLabs /listings ${res.status}: ${await res.text()}`);
   }
@@ -96,7 +96,7 @@ export async function getListingPrices(
 ): Promise<PriceLabsListingPrices[]> {
   const res = await fetch(`${BASE}/listing_prices`, {
     method: 'POST',
-    headers: headers(),
+    headers: headers(await apiKey()),
     body: JSON.stringify({ listings, dateFrom, dateTo }),
   });
   if (!res.ok) {

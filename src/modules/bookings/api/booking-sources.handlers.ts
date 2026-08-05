@@ -15,7 +15,7 @@ export const listBookingSources = withActor(async () => {
       JOIN properties p ON p.id = bs.property_id
       WHERE p.organization_id = ?
       ORDER BY bs.sort_order, bs.name
-    `, [requireOrganizationId(getDb())]);
+    `, [await requireOrganizationId()]);
     return NextResponse.json(sources);
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -34,7 +34,7 @@ export const createBookingSource = withActor(async (request: Request) => {
 
     let propertyId: string;
     try {
-      propertyId = requirePropertyId(getDb(), body.property_id);
+      propertyId = await requirePropertyId(body.property_id);
     } catch (e: any) {
       return NextResponse.json({ error: e.message }, { status: 400 });
     }

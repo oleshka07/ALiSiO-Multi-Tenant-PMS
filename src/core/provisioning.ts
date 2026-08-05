@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { getDb } from './db/index.ts';
 import { FEATURES, setFeature, type FeatureKey } from './features.ts';
+import { getSql } from './db/async.ts';
 
 /**
  * Creating a customer.
@@ -52,8 +53,8 @@ export interface ProvisionedOrganization {
 
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])?$/;
 
-export function provisionOrganization(input: NewOrganization): ProvisionedOrganization {
-  const db = getDb();
+export async function provisionOrganization(input: NewOrganization): Promise<ProvisionedOrganization> {
+  const sql = getSql();
 
   const name = input.name?.trim();
   const slug = input.slug?.trim().toLowerCase();
@@ -70,10 +71,10 @@ export function provisionOrganization(input: NewOrganization): ProvisionedOrgani
 
   // Checked before the transaction so the caller gets the real reason rather
   // than a UNIQUE constraint message.
-  if (db.prepare('SELECT 1 FROM organizations WHERE slug = ?').get(slug)) {
+  if (await sql.row<any>('SELECT 1 FROM organizations WHERE slug = ?', [slug])) {
     throw new Error(`slug "${slug}" is taken`);
   }
-  if (db.prepare('SELECT 1 FROM app_users WHERE lower(email) = ?').get(email)) {
+  if (await sql.row<any>('SELECT 1 FROM app_users WHERE lower(email) = ?', [email])) {
     throw new Error(`a user with email "${email}" already exists`);
   }
 
@@ -82,43 +83,41 @@ export function provisionOrganization(input: NewOrganization): ProvisionedOrgani
   const ownerId = `user_${crypto.randomBytes(8).toString('hex')}`;
   const categoryId = `cat_${crypto.randomBytes(8).toString('hex')}`;
 
-  db.transaction(() => {
-    db.prepare(`
+  await sql.tx(async (t) => {
+    await t.run(`
       INSERT INTO organizations (id, name, slug, timezone, default_currency)
       VALUES (?, ?, ?, ?, ?)
-    `).run(organizationId, name, slug, input.timezone || 'Europe/Prague', input.currency || 'CZK');
+    `, [organizationId, name, slug, input.timezone || 'Europe/Prague', input.currency || 'CZK']);
 
     // Currency lives on the organization; a property carries location and
     // times. (getOrgIdentity and the ARI push both read it from there.)
-    db.prepare(`
+    await t.run(`
       INSERT INTO properties (id, organization_id, name, slug, city, country)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      propertyId, organizationId,
+    `, [propertyId, organizationId,
       input.propertyName || name,
       `${slug}-1`,
       input.city || null,
-      input.country || 'CZ',
-    );
+      input.country || 'CZ']);
 
     // One category so the calendar has a group to draw. Its name is generic on
     // purpose — the hotel renames it, and the type is now free text.
-    db.prepare(`
+    await t.run(`
       INSERT INTO categories (id, property_id, name, type, sort_order)
       VALUES (?, ?, 'Номери', 'rooms', 1)
-    `).run(categoryId, propertyId);
+    `, [categoryId, propertyId]);
 
-    db.prepare(`
+    await t.run(`
       INSERT INTO app_users (id, organization_id, email, full_name, role, password_hash)
       VALUES (?, ?, ?, ?, 'owner', ?)
-    `).run(ownerId, organizationId, email, input.ownerName || name, bcrypt.hashSync(input.ownerPassword, 10));
+    `, [ownerId, organizationId, email, input.ownerName || name, bcrypt.hashSync(input.ownerPassword, 10)]);
 
     // Every feature gets a row, so the state is explicit rather than absent.
     const wanted = new Set(input.enable || []);
     for (const key of Object.keys(FEATURES) as FeatureKey[]) {
-      setFeature(db, organizationId, key, wanted.has(key));
+      await setFeature(organizationId, key, wanted.has(key));
     }
-  })();
+  });
 
   return { organizationId, propertyId, ownerId };
 }

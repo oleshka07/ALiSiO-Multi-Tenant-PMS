@@ -171,6 +171,22 @@ for (const f of files) {
         continue;
       }
 
+      // Position 4: called inline inside a parameter array or argument list.
+      // `sql.run(text, [id, getOrgId()])` binds a promise: SQLite refuses the
+      // bind outright, Postgres stringifies it and writes '[object Promise]'
+      // as the tenant id. Found the hard way — the isolation check failed with
+      // "can only bind numbers, strings, bigints, buffers, and null" while this
+      // file reported clean, because it only looked at assignments.
+      // Empty parens, in an array or argument position: `[id, getOrgId()]`.
+      // Inside a template literal `\s` is just `s`, hence the doubled
+      // backslashes — the first version matched `requireOwner(_DELETE)`
+      // and reported a function reference as a promise.
+      const inline = new RegExp(`[\\[,(]\\s*(?:\\w+\\.)?${name}\\s*\\(\\s*\\)`);
+      if (inline.test(line) && !new RegExp(`await\\s*(?:\\w+\\.)?${name}`).test(line)) {
+        findings.push({ file: f, line: i + 1, name, kind: "проміс як аргумент — прив'язується у запит", text: trimmed });
+        continue;
+      }
+
       // Position 3: a property read off the call — `name(x).cnt`, `name(x).length`.
       const prop = new RegExp(`(?<!await\\s)(?:\\w+\\.)?${name}\\s*\\([^)]*\\)\\.(?!then|catch|finally)\\w`);
       if (prop.test(line) && !new RegExp(`await[\\s(]*(?:\\w+\\.)?${name}`).test(line)) {

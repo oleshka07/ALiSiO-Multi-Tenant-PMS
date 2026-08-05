@@ -85,12 +85,12 @@ export async function getGuestPortal(
       services,
       orderedServices,
       guestPageConfig,
-      translations: (() => {
+      translations: await (async () => {
         try {
           const cfgTexts = extractTexts(guestPageConfig || {});
           const svcTexts = extractServiceTexts(services as any[]);
           const allTexts = [...new Set([...cfgTexts, ...svcTexts])];
-          const result = getStoredTranslations(allTexts);
+          const result = await getStoredTranslations(allTexts);
           // Fill any gaps with the static dictionary so the client never falls back to Ukrainian
           // for known standard content, even when OpenAI translations aren't in the DB yet.
           for (const text of allTexts) {

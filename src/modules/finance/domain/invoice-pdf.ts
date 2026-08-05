@@ -65,8 +65,8 @@ const ROWBDR  = '#dddddd';  // table row borders
 // Resolved per call from the organization record. These were literals naming
 // one real company — address, IČO, phone, mailbox and IBAN — so every tenant's
 // invoice asked guests to pay into that same bank account.
-function supplierOf() {
-  const id = getOrgIdentity();
+async function supplierOf() {
+  const id = await getOrgIdentity();
   // legal_address is one field; split on the last comma for the two-line layout.
   const addr = id.legalAddress.trim();
   const cut = addr.lastIndexOf(',');
@@ -82,8 +82,8 @@ function supplierOf() {
   };
 }
 
-function bankOf() {
-  const id = getOrgIdentity();
+async function bankOf() {
+  const id = await getOrgIdentity();
   return { name: id.bankName, account: id.bankAccount, code: '', iban: id.iban, bic: id.swift };
 }
 
@@ -156,8 +156,8 @@ function textHeight(doc: PDFKit.PDFDocument, text: string, width: number, fontSi
 export async function generateInvoicePdf(data: InvoicePdfInput): Promise<Buffer> {
   // Resolved once per document rather than at module load, so a change in
   // Settings takes effect on the next invoice without a restart.
-  const SUPPLIER = supplierOf();
-  const BANK = bankOf();
+  const SUPPLIER = await supplierOf();
+  const BANK = await bankOf();
   return new Promise((resolve, reject) => {
     const isCreditNote = data.isCreditNote === true;
     const currency     = data.currency     || 'CZK';

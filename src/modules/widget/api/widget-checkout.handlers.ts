@@ -76,7 +76,7 @@ export async function createWidgetCheckoutSession(req: Request) {
     try {
       payingOrg = (reservation_id
         ? (await sql.row<any>('SELECT p.organization_id FROM reservations r JOIN properties p ON r.property_id = p.id WHERE r.id = ?', [reservation_id]) as any)?.organization_id
-        : undefined) || site?.organization_id || requireOrganizationId(getDb());
+        : undefined) || site?.organization_id || await requireOrganizationId();
     } catch {
       payingOrg = undefined;
     }

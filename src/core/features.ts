@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { getSql } from './db/async.ts';
 
 /**
  * The feature registry: which integrations this organization actually bought.
@@ -20,29 +21,29 @@ export const FEATURES = {
 
 export type FeatureKey = keyof typeof FEATURES;
 
-export function hasFeature(db: any, organizationId: string, feature: FeatureKey): boolean {
-  const row = db
-    .prepare('SELECT enabled FROM organization_features WHERE organization_id = ? AND feature = ?')
-    .get(organizationId, feature) as { enabled: number } | undefined;
+export async function hasFeature(organizationId: string, feature: FeatureKey): Promise<boolean> {
+  const sql = getSql();
+  const row = await sql.row<any>('SELECT enabled FROM organization_features WHERE organization_id = ? AND feature = ?', [organizationId, feature]) as { enabled: number } | undefined;
   return row ? row.enabled === 1 : false;
 }
 
 /** Every feature with its state — for the settings screen and /api/auth/me. */
-export function listFeatures(db: any, organizationId: string): Record<FeatureKey, boolean> {
+export async function listFeatures(organizationId: string): Promise<Record<FeatureKey, boolean>> {
   const out = {} as Record<FeatureKey, boolean>;
   for (const key of Object.keys(FEATURES) as FeatureKey[]) {
-    out[key] = hasFeature(db, organizationId, key);
+    out[key] = await hasFeature(organizationId, key);
   }
   return out;
 }
 
-export function setFeature(db: any, organizationId: string, feature: FeatureKey, enabled: boolean): void {
-  db.prepare(`
+export async function setFeature(organizationId: string, feature: FeatureKey, enabled: boolean): Promise<void> {
+  const sql = getSql();
+  await sql.run(`
     INSERT INTO organization_features (organization_id, feature, enabled, updated_at)
     VALUES (?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(organization_id, feature)
     DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at
-  `).run(organizationId, feature, enabled ? 1 : 0);
+  `, [organizationId, feature, enabled ? 1 : 0]);
 }
 
 /**

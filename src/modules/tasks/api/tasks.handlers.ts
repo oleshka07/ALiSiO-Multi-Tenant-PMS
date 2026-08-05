@@ -51,7 +51,7 @@ export async function createTask(request: NextRequest): Promise<NextResponse> {
 
     // Telegram notification: task assigned
     if (result?.assignee_id) {
-      const user = getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
+      const user = await getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
       notifyTaskAssigned({
         taskId: result.id,
         taskTitle: result.title,
@@ -101,7 +101,7 @@ export async function updateTask(request: NextRequest, context: IdParams): Promi
     }
 
     // Telegram notifications (fire-and-forget)
-    const user = getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
+    const user = await getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
     
     // Notify if assignee changed
     if (body.assignee_id && oldTask && body.assignee_id !== oldTask.assignee_id) {

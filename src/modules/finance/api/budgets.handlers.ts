@@ -7,7 +7,7 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 export async function listBudgets(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = requireOrganizationId(getDb());
+    const orgId = await requireOrganizationId();
     const sp = request.nextUrl.searchParams;
     const year = sp.get('year');
     const month = sp.get('month');
@@ -42,7 +42,7 @@ export async function upsertBudget(request: NextRequest): Promise<NextResponse> 
       return NextResponse.json({ error: 'planned_amount must be a number' }, { status: 400 });
     }
 
-    const orgId = requireOrganizationId(getDb());
+    const orgId = await requireOrganizationId();
     const existing = await sql.row<any>(`
       SELECT id FROM fin_budgets
       WHERE organization_id = ? AND year = ? AND month = ?

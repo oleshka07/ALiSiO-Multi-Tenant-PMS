@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@core/db';
 import { withOwner, type Actor } from '@core/auth/session';
 import { hasFeature, type FeatureKey } from '@core/features';
 import {
@@ -7,6 +6,7 @@ import {
   integrationStatus,
   saveIntegrationCredentials,
   type IntegrationChannel,
+  type IntegrationStatus,
 } from '@core/integration-credentials';
 
 /**
@@ -22,15 +22,14 @@ import {
 const CHANNELS = Object.keys(INTEGRATION_FIELDS) as IntegrationChannel[];
 
 export const getIntegrationCredentials = withOwner(async (_req, _ctx, actor: Actor) => {
-  const db = getDb();
-  return NextResponse.json({
-    fields: INTEGRATION_FIELDS,
-    // Only integrations this organization actually has. booking_com has no
-    // feature key of its own — it rides on the channel manager.
-    status: CHANNELS
-      .filter((c) => c === 'booking_com' || hasFeature(db, actor.organizationId, c as FeatureKey))
-      .map((c) => integrationStatus(c, actor.organizationId)),
-  });
+  // Only integrations this organization actually has. booking_com has no
+  // feature key of its own — it rides on the channel manager.
+  const status: IntegrationStatus[] = [];
+  for (const c of CHANNELS) {
+    if (c !== 'booking_com' && !(await hasFeature(actor.organizationId, c as FeatureKey))) continue;
+    status.push(await integrationStatus(c, actor.organizationId));
+  }
+  return NextResponse.json({ fields: INTEGRATION_FIELDS, status });
 });
 
 export const updateIntegrationCredentials = withOwner(async (request: Request, _ctx, actor: Actor) => {
@@ -46,7 +45,7 @@ export const updateIntegrationCredentials = withOwner(async (request: Request, _
   // Saving a key for an integration the organization has not enabled would
   // store a secret nothing can use — and hide the real problem, which is that
   // the feature is off.
-  if (channel !== 'booking_com' && !hasFeature(getDb(), actor.organizationId, channel as FeatureKey)) {
+  if (channel !== 'booking_com' && !await hasFeature(actor.organizationId, channel as FeatureKey)) {
     return NextResponse.json({ error: 'Спочатку увімкніть цю інтеграцію' }, { status: 409 });
   }
 
@@ -59,6 +58,6 @@ export const updateIntegrationCredentials = withOwner(async (request: Request, _
     return NextResponse.json({ error: 'Жодного відомого поля' }, { status: 400 });
   }
 
-  saveIntegrationCredentials(actor.organizationId, channel as IntegrationChannel, clean);
-  return NextResponse.json({ status: integrationStatus(channel as IntegrationChannel, actor.organizationId) });
+  await saveIntegrationCredentials(actor.organizationId, channel as IntegrationChannel, clean);
+  return NextResponse.json({ status: await integrationStatus(channel as IntegrationChannel, actor.organizationId) });
 });

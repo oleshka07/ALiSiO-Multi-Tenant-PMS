@@ -2,7 +2,7 @@
 // ALiSiO PMS — Auth Helpers
 // ============================================================
 
-import { getDb } from '@core/db';
+import { getSql } from '../db/async.ts';
 import { getUserPermissions, type Permission, type PermissionOverride } from './permissions';
 import type { UserRole } from '@/types/database';
 import bcrypt from 'bcryptjs';
@@ -31,45 +31,41 @@ export interface SessionUser {
   permissions: Permission[];
 }
 
-export function createSession(userId: string): string {
-  const db = getDb();
+export async function createSession(userId: string): Promise<string> {
+  const sql = getSql();
   const sessionId = crypto.randomUUID();
   const expiresAt = new Date(
     Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000
   ).toISOString();
 
-  db.prepare(
-    'INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)'
-  ).run(sessionId, userId, expiresAt);
+  await sql.run('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)', [sessionId, userId, expiresAt]);
 
   return sessionId;
 }
 
-export function deleteSession(sessionId: string): void {
-  const db = getDb();
-  db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+export async function deleteSession(sessionId: string): Promise<void> {
+  const sql = getSql();
+  await sql.run('DELETE FROM sessions WHERE id = ?', [sessionId]);
 }
 
-export function getSessionUser(sessionId: string | undefined): SessionUser | null {
+export async function getSessionUser(sessionId: string | undefined): Promise<SessionUser | null> {
   if (!sessionId) return null;
 
-  const db = getDb();
+  const sql = getSql();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const row: any = db.prepare(`
+  const row: any = await sql.row<any>(`
     SELECT u.id, u.organization_id, u.email, u.full_name, u.phone, u.role, u.is_active
     FROM sessions s
     JOIN app_users u ON u.id = s.user_id
     WHERE s.id = ? AND s.expires_at > CURRENT_TIMESTAMP AND u.is_active = 1
-  `).get(sessionId);
+  `, [sessionId]);
 
   if (!row) return null;
 
   // Load permission overrides
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const overrides: PermissionOverride[] = db.prepare(
-    'SELECT permission, granted FROM user_permissions WHERE user_id = ?'
-  ).all(row.id).map((o: any) => ({
+  const overrides: PermissionOverride[] = (await sql.rows<any>('SELECT permission, granted FROM user_permissions WHERE user_id = ?', [row.id])).map((o: any) => ({
     permission: o.permission as Permission,
     granted: o.granted === 1,
   }));

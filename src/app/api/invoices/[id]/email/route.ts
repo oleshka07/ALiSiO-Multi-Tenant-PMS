@@ -77,7 +77,7 @@ async function _POST(
     const to = recipientRaw.trim();
 
     // Generate HTML
-    const html = renderInvoiceHtml(data);
+    const html = await renderInvoiceHtml(data);
 
     const guestName = data.invoice_company_name
       || `${data.guest_first_name || ''} ${data.guest_last_name || ''}`.trim()
@@ -85,7 +85,7 @@ async function _POST(
 
     // Brand name and address were literals naming one company, so every
     // tenant's invoice email would have gone out under it.
-    const identity = getOrgIdentity();
+    const identity = await getOrgIdentity();
     const orgName = identity.name || 'PMS';
     const orgAddress = identity.legalAddress;
     const orgEmail = identity.email;

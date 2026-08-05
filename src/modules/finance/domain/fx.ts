@@ -13,8 +13,8 @@ import { money } from '@core/money';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 
-function orgId(): string | null {
-  try { return requireOrganizationId(getDb()); } catch { return null; }
+async function orgId(): Promise<string | null> {
+  try { return await requireOrganizationId(); } catch { return null; }
 }
 
 /**
@@ -25,7 +25,7 @@ export async function getCzkRate(from: string, dateIso: string): Promise<number 
   const sql = getSql();
   const cur = (from || 'CZK').toUpperCase();
   if (cur === 'CZK') return 1;
-  const oid = orgId();
+  const oid = await orgId();
   if (!oid) return null;
   const date = (dateIso || '').slice(0, 10);
 

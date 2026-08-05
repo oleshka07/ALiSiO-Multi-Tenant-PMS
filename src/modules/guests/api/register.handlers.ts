@@ -101,7 +101,7 @@ export async function registerGuests(
     const reservation = await registrationRepo.getReservationForRegistration(token);
     if (!reservation) return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
 
-    const rl = checkRateLimit(token, 'registration', 3, 5);
+    const rl = await checkRateLimit(token, 'registration', 3, 5);
     if (!rl.allowed) {
       return NextResponse.json({ error: 'Too many requests. Please wait a few minutes.' }, { status: 429 });
     }

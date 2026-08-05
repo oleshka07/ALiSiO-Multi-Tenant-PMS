@@ -113,7 +113,7 @@ export const POST = await withPermission('manage_bookings', async (req: Request,
     // The property_id arrives in the request body, so it is verified against
     // the session's organization rather than trusted.
     try {
-      property_id = requirePropertyId(getDb(), property_id);
+      property_id = await requirePropertyId(property_id);
     } catch (e: unknown) {
       return NextResponse.json(
         { error: e instanceof Error ? e.message : 'property_id or valid site_id is required' },

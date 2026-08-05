@@ -21,7 +21,7 @@ export async function assignGuest(request: NextRequest, { params }: { params: Pr
       return NextResponse.json({ error: 'Reservation not found in this group' }, { status: 404 });
     }
 
-    const org = { id: requireOrganizationId(getDb()) } as any;
+    const org = { id: await requireOrganizationId() } as any;
 
     let guestId: string;
     if (email) {

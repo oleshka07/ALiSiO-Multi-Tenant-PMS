@@ -86,7 +86,7 @@ export async function createGroupBooking(request: NextRequest) {
       (new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000
     ));
 
-    const org = { id: requireOrganizationId(getDb()) } as any;
+    const org = { id: await requireOrganizationId() } as any;
     const firstUnit = await sql.row<any>('SELECT property_id FROM units WHERE id = ?', [finalUnitIds[0]]) as any;
     if (!firstUnit) {
       return NextResponse.json({ error: 'Unit not found' }, { status: 400 });

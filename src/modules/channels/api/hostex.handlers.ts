@@ -22,7 +22,7 @@ export async function hostexSync(): Promise<NextResponse> {
 }
 
 export const hostexSyncStatus = withActor(async (_req, _ctx, actor: Actor) => {
-  if (!hasFeature(getDb(), actor.organizationId, 'hostex')) return featureDisabled('hostex');
+  if (!await hasFeature(actor.organizationId, 'hostex')) return featureDisabled('hostex');
   setHostexOrganization(actor.organizationId);
   try {
     return NextResponse.json(await getSyncStatus());
@@ -34,7 +34,7 @@ export const hostexSyncStatus = withActor(async (_req, _ctx, actor: Actor) => {
 // ─── /api/hostex/reservations ─────────────────────────────────────────────────
 
 export const hostexReservations = withActor(async (request, _ctx, actor: Actor) => {
-  if (!hasFeature(getDb(), actor.organizationId, 'hostex')) return featureDisabled('hostex');
+  if (!await hasFeature(actor.organizationId, 'hostex')) return featureDisabled('hostex');
   setHostexOrganization(actor.organizationId);
   try {
     const url = new URL(request.url);
@@ -65,7 +65,7 @@ function hostexError(where: string, e: any): NextResponse {
 }
 
 export const hostexProperties = withActor(async (_req, _ctx, actor: Actor) => {
-  if (!hasFeature(getDb(), actor.organizationId, 'hostex')) return featureDisabled('hostex');
+  if (!await hasFeature(actor.organizationId, 'hostex')) return featureDisabled('hostex');
   setHostexOrganization(actor.organizationId);
   try {
     const properties = await getProperties();

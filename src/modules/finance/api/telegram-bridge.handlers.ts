@@ -120,7 +120,7 @@ export async function recordTelegramOperation(request: NextRequest): Promise<Nex
     }
 
     const sql = getSql();
-    const orgId = requireOrganizationId(getDb());
+    const orgId = await requireOrganizationId();
 
     const sourceTagMap: Record<string, string> = {
       sauna_income: 'telegram_sauna',
@@ -266,7 +266,7 @@ export async function listTelegramCategories(request: NextRequest): Promise<Next
 
   try {
     const sql = getSql();
-    const orgId = requireOrganizationId(getDb());
+    const orgId = await requireOrganizationId();
     const sp = request.nextUrl.searchParams;
     const opType = sp.get('op_type'); // 'income' | 'expense'
 
@@ -314,7 +314,7 @@ export async function listTelegramAccounts(request: NextRequest): Promise<NextRe
 
   try {
     const sql = getSql();
-    const orgId = requireOrganizationId(getDb());
+    const orgId = await requireOrganizationId();
 
     const accounts = await sql.rows<any>(`
       SELECT id, name, type, currency, initial_balance
@@ -418,7 +418,7 @@ export async function createTelegramServiceOrder(request: NextRequest): Promise<
     }
 
     const sql = getSql();
-    const orgId = requireOrganizationId(getDb());
+    const orgId = await requireOrganizationId();
 
     // Look up service name for the fin_operation description
     const service = await sql.row<any>('SELECT id, name, currency FROM additional_services WHERE id = ?', [service_id]) as

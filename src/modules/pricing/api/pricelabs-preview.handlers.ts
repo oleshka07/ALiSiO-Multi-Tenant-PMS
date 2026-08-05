@@ -25,7 +25,7 @@ async function requirePricingPerm(): Promise<NextResponse | null> {
   if (!hasPermission(user.permissions, 'manage_pricing')) {
     return NextResponse.json({ error: 'Потрібен дозвіл manage_pricing' }, { status: 403 });
   }
-  if (!hasFeature(getDb(), user.organization_id, 'pricelabs')) {
+  if (!await hasFeature(user.organization_id, 'pricelabs')) {
     return featureDisabled('pricelabs') as NextResponse;
   }
   // The client is stateless about whose account it uses until told.

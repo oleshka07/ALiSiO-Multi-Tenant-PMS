@@ -163,7 +163,7 @@ export async function registerFromPhotos(request: NextRequest) {
         // OCR via URL (the file is served by /api/uploads/...)
         const photoUrl = `${baseUrl}/api/uploads/registrations/${filename}`;
         console.log(`[TG Registration] OCR photo ${i + 1}/${photos.length}: ${filename}`);
-        const result = await ocrDocument(photoUrl, { allowCloudFallback: cloudOcrAllowed() });
+        const result = await ocrDocument(photoUrl, { allowCloudFallback: await cloudOcrAllowed() });
         
         if (result.confidence > 15) {
           ocrResults.push(result);

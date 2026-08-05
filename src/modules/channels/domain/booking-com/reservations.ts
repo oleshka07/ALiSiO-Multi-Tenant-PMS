@@ -279,12 +279,12 @@ export async function processReservation(
 
   // Create new reservation
   const resId = `bcom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const org = { id: requireOrganizationId(getDb()) } as any;
+  const org = { id: await requireOrganizationId() } as any;
   // The channel sync runs without a session; the organization comes from the
   // connection being synced, and the property from that organization. Taking
   // the first row filed an incoming Booking.com reservation against whichever
   // hotel the server created first.
-  const prop = { id: requirePropertyId(getDb()) } as any;
+  const prop = { id: await requirePropertyId() } as any;
 
   await sql.run(`
     INSERT INTO reservations (
@@ -342,7 +342,7 @@ async function findOrCreateGuest(res: OTAReservation): Promise<string> {
 
   // Create new guest
   const guestId = `g_bcom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const org = { id: requireOrganizationId(getDb()) } as any;
+  const org = { id: await requireOrganizationId() } as any;
 
   await sql.run(`
     INSERT INTO guests (id, organization_id, first_name, last_name, email, phone)

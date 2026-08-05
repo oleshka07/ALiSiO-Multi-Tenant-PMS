@@ -72,7 +72,7 @@ export function isGlobalTeyaConfigured(): boolean {
  */
 export async function isPaymentConfigured(organizationId: string): Promise<boolean> {
   const sql = getSql();
-  if (!hasFeature(getDb(), organizationId, 'teya')) return false;
+  if (!await hasFeature(organizationId, 'teya')) return false;
   const sites = await sql.rows<{ payment_config: string }>(
     'SELECT payment_config FROM booking_sites WHERE organization_id = ?', [organizationId],
   );

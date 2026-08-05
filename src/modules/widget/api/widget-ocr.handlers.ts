@@ -18,7 +18,7 @@ export async function processWidgetOcr(request: NextRequest) {
     const ip = request.headers.get('x-forwarded-for') || request.headers.get('cf-connecting-ip') || 'unknown';
     
     // Strict rate limit: 5 requests per hour per IP to prevent OCR abuse
-    const rateLimit = checkRateLimit(`widget_ocr_${ip}`, 'registration', 5, 60);
+    const rateLimit = await checkRateLimit(`widget_ocr_${ip}`, 'registration', 5, 60);
     if (!rateLimit.allowed) {
       return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: CORS_HEADERS });
     }
@@ -34,7 +34,7 @@ export async function processWidgetOcr(request: NextRequest) {
     const mimeType = file.type || 'image/jpeg';
     const dataUrl = `data:${mimeType};base64,${base64}`;
 
-    const result = await ocrDocument(dataUrl, { allowCloudFallback: cloudOcrAllowed() });
+    const result = await ocrDocument(dataUrl, { allowCloudFallback: await cloudOcrAllowed() });
     
     return NextResponse.json({
       success: true,

@@ -30,7 +30,7 @@ async function safeRun<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
 export async function getFinanceAudit(_request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const org = requireOrganizationId(getDb());
+    const org = await requireOrganizationId();
     const sections: SectionResult[] = [];
 
     // ─── 1. Multi-currency leak: amount vs amount_company ──────

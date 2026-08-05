@@ -64,8 +64,8 @@ export interface InvoiceData {
  * record now (Settings → General), resolved through the tenant context of the
  * request that asked for the document.
  */
-function supplier() {
-  const id = getOrgIdentity();
+async function supplier() {
+  const id = await getOrgIdentity();
   return {
     name: id.name,
     address: id.legalAddress,
@@ -119,8 +119,8 @@ function formatCountry(code: string | null | undefined): string {
   return countries[code.toUpperCase()] || code;
 }
 
-export function renderInvoiceHtml(data: InvoiceData): string {
-  const SUP = supplier();
+export async function renderInvoiceHtml(data: InvoiceData): Promise<string> {
+  const SUP = await supplier();
   // Defensive: any of these can arrive as null from a LEFT JOIN with deleted
   // units/guests, or from legacy rows that pre-date a column being NOT NULL.
   const invoiceNumber = data.invoice_number || data.id || '—';

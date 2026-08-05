@@ -119,7 +119,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
         country: inv.invoice_company_country || inv.guest_country || undefined,
       } : undefined;
 
-      const xml = generateIsdocXml({
+      const xml = await generateIsdocXml({
         invoiceNumber:  inv.invoice_number,
         issueDate:      documentDate || (inv.issued_at || '').slice(0, 10),
         taxPointDate:   dueDateFor(documentDate || (inv.issued_at || '').slice(0, 10)),
@@ -179,7 +179,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       const conv = await convertToCzkAuto(op.amount || 0, op.currency || 'EUR', documentDate);
       const czkAmount = conv.converted ? conv.amountCzk : (op.amount || 0);
 
-      const xml = generateIsdocXml({
+      const xml = await generateIsdocXml({
         invoiceNumber:  virtualNumber,
         issueDate:      documentDate,
         taxPointDate:   dueDateFor(documentDate),

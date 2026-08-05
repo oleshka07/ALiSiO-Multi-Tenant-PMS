@@ -44,7 +44,7 @@ export const registerGuest = withActor(async (request: NextRequest, { params }: 
       return NextResponse.json({ error: 'Missing required fields (name + document)' }, { status: 400 });
     }
 
-    const org = { id: requireOrganizationId(getDb()) } as { id: string };
+    const org = { id: await requireOrganizationId() } as { id: string };
 
     let guestId: string;
     const existingGuest = await sql.row<any>('SELECT id FROM guests WHERE document_number = ? AND organization_id = ?', [documentNumber, org.id]) as { id: string } | undefined;

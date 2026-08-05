@@ -15,7 +15,7 @@ export async function orderServices(
     const reservation = await actionsRepo.getReservationForServiceOrder(token);
     if (!reservation) return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
 
-    const rl = checkRateLimit(token, 'service_order', 5, 10);
+    const rl = await checkRateLimit(token, 'service_order', 5, 10);
     if (!rl.allowed) {
       return NextResponse.json({ error: 'Too many requests. Please wait a few minutes.' }, { status: 429 });
     }

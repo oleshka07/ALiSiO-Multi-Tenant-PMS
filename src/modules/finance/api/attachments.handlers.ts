@@ -35,7 +35,7 @@ function ensureDir(p: string): void {
 async function getCurrentUserId(): Promise<string | null> {
   const store = await cookies();
   const sessionId = store.get('session_id')?.value;
-  const user = getSessionUser(sessionId);
+  const user = await getSessionUser(sessionId);
   return user?.id || null;
 }
 
@@ -56,7 +56,7 @@ export async function uploadAttachment(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = requireOrganizationId(getDb());
+    const orgId = await requireOrganizationId();
     const { id: operationId } = await context.params;
 
     const op = await sql.row<any>("SELECT id FROM fin_operations WHERE id = ? AND organization_id = ?", [operationId, orgId]) as { id: string } | undefined;
@@ -113,7 +113,7 @@ export async function listOperationAttachments(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = requireOrganizationId(getDb());
+    const orgId = await requireOrganizationId();
     const { id: operationId } = await context.params;
 
     const rows = await sql.rows<any>(`
@@ -141,7 +141,7 @@ export async function downloadAttachment(
 ): Promise<Response> {
   try {
     const sql = getSql();
-    const orgId = requireOrganizationId(getDb());
+    const orgId = await requireOrganizationId();
     const { id } = await context.params;
 
     const row = await sql.row<any>(`
@@ -181,7 +181,7 @@ export async function deleteAttachment(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = requireOrganizationId(getDb());
+    const orgId = await requireOrganizationId();
     const { id } = await context.params;
 
     const row = await sql.row<any>(`
@@ -208,7 +208,7 @@ export async function deleteAttachment(
 export async function getAttachmentCounts(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const orgId = requireOrganizationId(getDb());
+    const orgId = await requireOrganizationId();
     const idsParam = request.nextUrl.searchParams.get('ids') || '';
     const ids = idsParam.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 500);
     if (ids.length === 0) return NextResponse.json({ counts: {} });

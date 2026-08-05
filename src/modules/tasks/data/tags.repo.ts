@@ -5,15 +5,15 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 
 // ─── Helpers ───────────────────────────────────────────────
 
-function getOrgId(): string {
-  return requireOrganizationId(getDb());
+async function getOrgId(): Promise<string> {
+  return await requireOrganizationId();
 }
 
 // ─── List tags ────────────────────────────────────────────
 
 export async function listTags(): Promise<TaskTag[]> {
   const sql = getSql();
-  return await sql.rows<TaskTag>('SELECT * FROM task_tags WHERE organization_id = ? ORDER BY name', [getOrgId()]);
+  return await sql.rows<TaskTag>('SELECT * FROM task_tags WHERE organization_id = ? ORDER BY name', [await getOrgId()]);
 }
 
 // ─── Get single tag ──────────────────────────────────────
@@ -21,7 +21,7 @@ export async function listTags(): Promise<TaskTag[]> {
 export async function getTagById(id: string): Promise<TaskTag | null> {
   const sql = getSql();
   const tag = await sql.row<TaskTag>(
-    'SELECT * FROM task_tags WHERE id = ? AND organization_id = ?', [id, getOrgId()],
+    'SELECT * FROM task_tags WHERE id = ? AND organization_id = ?', [id, await getOrgId()],
   );
   return tag ?? null;
 }
@@ -35,7 +35,7 @@ export interface CreateTagInput {
 
 export async function createTag(input: CreateTagInput): Promise<TaskTag> {
   const sql = getSql();
-  const orgId = getOrgId();
+  const orgId = await getOrgId();
 
   const result = await sql.row<any>(
     `
@@ -64,7 +64,7 @@ export async function updateTag(id: string, fields: Record<string, unknown>): Pr
 
   if (updates.length === 0) return null;
 
-  values.push(id, getOrgId());
+  values.push(id, await getOrgId());
 
   await sql.run(`UPDATE task_tags SET ${updates.join(', ')} WHERE id = ? AND organization_id = ?`, values);
   return getTagById(id);
@@ -75,6 +75,6 @@ export async function updateTag(id: string, fields: Record<string, unknown>): Pr
 
 export async function deleteTag(id: string): Promise<{ ok: boolean }> {
   const sql = getSql();
-  const res = await sql.run('DELETE FROM task_tags WHERE id = ? AND organization_id = ?', [id, getOrgId()]);
+  const res = await sql.run('DELETE FROM task_tags WHERE id = ? AND organization_id = ?', [id, await getOrgId()]);
   return { ok: res.changes > 0 };
 }

@@ -12,9 +12,9 @@
 // finance access policy on top, and hand the same Actor to the handler so a
 // finance query has an organization id in hand like every other query.
 import { NextResponse } from 'next/server';
-import { currentActor, type Actor } from '@core/auth/session';
-import { runWithOrganization } from '@core/auth/tenant-context';
-import { hasPermission, type Permission } from '@core/auth';
+import { currentActor, type Actor } from '../auth/session.ts';
+import { runWithOrganization } from '../auth/tenant-context.ts';
+import { hasPermission, type Permission } from '../auth/index.ts';
 
 /** What a guarded handler receives. The actor is added by the guard. */
 type GuardedHandler<C = any> = (request: any, context: C, actor: Actor) => Promise<Response> | Response;
@@ -46,7 +46,7 @@ export function requireOwner<C = any>(handler: GuardedHandler<C>): RouteHandler<
       // Check DB-based access as a fallback
       try {
         const { isFinanceUserEnabled } = await import('@/modules/finance/api/finance-access.handlers');
-        if (!isFinanceUserEnabled(u.id)) {
+        if (!(await isFinanceUserEnabled(u.id))) {
           return forbidden('Доступ лише для власника');
         }
       } catch {

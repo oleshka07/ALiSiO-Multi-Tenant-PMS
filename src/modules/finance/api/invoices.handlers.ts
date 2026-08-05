@@ -225,7 +225,7 @@ export async function getInvoiceHtml(
       data.foreign_note = foreignNote(conv);
     }
 
-    const html = renderInvoiceHtml(data);
+    const html = await renderInvoiceHtml(data);
 
     if (asDownload) {
       return new NextResponse(html, {
