@@ -96,6 +96,69 @@ data volume to `deploy/backups/` before touching anything, rebuilds, and waits
 for the app to answer. If it does not come up within 60 seconds it prints the
 container logs and exits non-zero.
 
+## How the server gets the code
+
+There is no webhook and no CI. The server holds its own clone at `/opt/alisio`
+and `deploy.sh` pulls into it:
+
+```bash
+git fetch origin "$BRANCH"
+git checkout "$BRANCH"
+git reset --hard "origin/$BRANCH"
+```
+
+Two consequences worth knowing before you run it.
+
+**`reset --hard` discards anything edited on the server.** That is deliberate —
+the deployed tree must equal the branch, or "what is running" becomes a
+question nobody can answer. But it means a quick fix typed directly on the
+server disappears at the next deploy, silently and without a copy. Edit
+locally, push, deploy. `deploy/env.beta`, `deploy/env.prod` and
+`deploy/backups/` survive because they are not tracked.
+
+**Pushing to GitHub deploys nothing.** The branch moves; the server keeps
+serving the previous build until someone runs the command. So a push is safe
+at any time, and the deploy is a separate, deliberate act:
+
+```bash
+ssh <server> 'cd /opt/alisio && ./deploy/deploy.sh beta'
+```
+
+The remote is HTTPS on a public repository, so the fetch needs no deploy key.
+Making the repository private means adding one — or switching the remote to
+SSH — before the next deploy, and the failure would be at fetch time, before
+anything is touched.
+
+### What a deploy does, in order
+
+1. Refuses to start unless `APP_SECRET_KEY` in the env file is 64 hex
+   characters. Without it the integration credentials in the database cannot
+   be decrypted, and that surfaces days later as "Telegram stopped working".
+2. Fetches and hard-resets to the branch.
+3. Archives the data volume to `deploy/backups/` — before touching anything,
+   so a bad deploy is undoable. Thirty copies are kept.
+4. Rebuilds the image and restarts the container.
+5. Waits up to 90 seconds for health, and health means **a POST to
+   `/api/auth/login` with junk credentials answering 401 or 400** — a request
+   that has to reach the users table. `GET /login` renders from the bundle
+   alone: a build that could not load `better-sqlite3` once passed that check
+   while every data route returned 500.
+
+If it does not come up, it prints the container logs and exits non-zero. It
+does not roll back on its own — see Rollback below.
+
+### The database engine is not chosen by the deploy
+
+`DATABASE_URL` is present in both env files and is **inert on its own**. The
+engine is chosen by `DB_DRIVER=postgres`, which is set nowhere. That is two
+variables on purpose: `DATABASE_URL` was left in the env files by a scaffold
+and points at a Postgres that does not exist, so keying the engine on it would
+have taken both environments down at the first deploy after the Postgres
+driver shipped.
+
+Moving to Postgres is a separate, deliberate change — see
+[db/postgres/README.md](../db/postgres/README.md).
+
 ## Rollback
 
 ```bash
