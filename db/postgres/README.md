@@ -39,6 +39,44 @@ docker rm -f pgtest
 у них немає organization_id, тож і політики немає. Генератор рахує їх
 окремо і падає, якщо зʼявиться таблиця з organization_id без політики.
 
+## Перехід зі SQLite — по кроках
+
+Порядок має значення. `DB_DRIVER=postgres` без кроків 1–4 просто покладе
+застосунок: він підключиться до порожньої бази й не знайде жодного користувача.
+
+```bash
+# 1. Підняти Postgres
+docker compose up -d postgres          # локально, порт 5433
+
+# 2. Схема: 92 таблиці, 84 політики ізоляції
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/postgres/schema.sql
+
+# 3. Доказ, що ізоляція справді працює. Очікується `rls: all checks passed`
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/postgres/rls-check.sql
+
+# 4. Дані. Спершу вхолосту — покаже, що переїде і що загубиться
+node scripts/pg-import.mjs "$DATABASE_URL" --dry-run
+node scripts/pg-import.mjs "$DATABASE_URL"
+
+# 5. Тільки тепер перемикач
+DB_DRIVER=postgres DATABASE_URL="$DATABASE_URL" npm run start
+
+# 6. Перевірити на живому: 39 тверджень ізоляції і 129 маршрутів
+node scripts/check-isolation.mjs
+node scripts/smoke-routes.mjs
+```
+
+Застосунок має підключатися РОЛЛЮ, яка не є власником таблиць.
+`FORCE ROW LEVEL SECURITY` покриває й власника, але покладатись лише на це
+означає, що одна таблиця без `FORCE` — це тихе читання всієї таблиці.
+
+Перед кроком 4 зупиніть застосунок. Перелив одноразовий і не доганяє зміни,
+які приходять під час роботи.
+
+Відкат: SQLite-файл нікуди не дівається. Приберіть `DB_DRIVER` — і застосунок
+працює як працював. Тому перемикач і зроблено окремою змінною, а не
+похідною від наявності `DATABASE_URL`.
+
 ## Що змінюється порівняно з SQLite (Фаза 1.4)
 
 | Було | Стало | Чому |
