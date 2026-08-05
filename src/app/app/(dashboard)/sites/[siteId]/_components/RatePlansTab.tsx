@@ -1,10 +1,12 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, Plus } from 'lucide-react';
 import type { RatePlan, Listing } from '../_types';
 
 export function RatePlansTab({ siteId, onCountChange }: { siteId: string; onCountChange?: (n: number) => void }) {
+  const t = useT();
   const [plans, setPlans] = useState<RatePlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [listings, setListings] = useState<Listing[]>([]);
@@ -73,7 +75,7 @@ export function RatePlansTab({ siteId, onCountChange }: { siteId: string; onCoun
             >
               <div style={{ fontWeight: 500, fontSize: 14 }}>{plan.name || 'Без назви'}</div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
-                {plan.applied_listings ? plan.applied_listings.length : 0} оголошень
+                {plan.applied_listings ? plan.applied_listings.length : 0} {t('оголошень')}
               </div>
             </div>
           ))}
@@ -82,7 +84,7 @@ export function RatePlansTab({ siteId, onCountChange }: { siteId: string; onCoun
             style={{ marginTop: 8, justifyContent: 'flex-start', color: 'var(--accent-primary)' }}
             onClick={() => setSelectedPlanId('new')}
           >
-            <Plus size={16} /> Новий тарифний план
+            <Plus size={16} /> {t('Новий тарифний план')}
           </button>
         </div>
       </div>
@@ -91,14 +93,14 @@ export function RatePlansTab({ siteId, onCountChange }: { siteId: string; onCoun
       <div style={{ flex: 1, paddingLeft: 32, paddingBottom: 64 }}>
         {!selectedPlanId ? (
           <div style={{ color: 'var(--text-secondary)', fontSize: 14, maxWidth: 600 }}>
-            <h3 style={{ fontSize: 18, color: 'var(--text-primary)', marginBottom: 12 }}>Установіть декілька цін для ваших оголошень</h3>
-            <p style={{ marginBottom: 16 }}>У деяких випадках ви можете захотіти встановити кілька різних цін для вашого оголошення:</p>
+            <h3 style={{ fontSize: 18, color: 'var(--text-primary)', marginBottom: 12 }}>{t('Установіть декілька цін для ваших оголошень')}</h3>
+            <p style={{ marginBottom: 16 }}>{t('У деяких випадках ви можете захотіти встановити кілька різних цін для вашого оголошення:')}</p>
             <ul style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-              <li>Дозволити різним правилам скасування відповідати різним цінам.</li>
-              <li>Пропонувати додаткові знижки за раннє бронювання або для довгострокових гостей.</li>
-              <li>Встановити різні ціни для гостей, які включають сніданок у своє бронювання.</li>
+              <li>{t('Дозволити різним правилам скасування відповідати різним цінам.')}</li>
+              <li>{t('Пропонувати додаткові знижки за раннє бронювання або для довгострокових гостей.')}</li>
+              <li>{t('Встановити різні ціни для гостей, які включають сніданок у своє бронювання.')}</li>
             </ul>
-            <p>Ви можете досягти цього, створивши декілька тарифних планів і застосовуючи їх до різних оголошень. Гості зможуть вибрати бажану ціну при бронюванні.</p>
+            <p>{t('Ви можете досягти цього, створивши декілька тарифних планів і застосовуючи їх до різних оголошень. Гості зможуть вибрати бажану ціну при бронюванні.')}</p>
           </div>
         ) : (
           <RatePlanForm 
@@ -122,6 +124,7 @@ export function RatePlansTab({ siteId, onCountChange }: { siteId: string; onCoun
 }
 
 function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: { siteId: string; plan?: RatePlan | null; listings: Listing[]; allPlans: RatePlan[]; onSaved: () => void; onDeleted: () => void }) {
+  const t = useT();
   const isNew = !plan;
 
   // The standard/default plan — used as the base for all Derived plans
@@ -217,30 +220,30 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
     <div style={{ display: 'flex', flexDirection: 'column', gap: 32, maxWidth: 650 }}>
       {/* Cancellation */}
       <div>
-        <h4 style={{ margin: '0 0 12px 0', fontSize: 16 }}>Політика скасування</h4>
-        <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, display: 'block' }}>Коли гість запитує повернення, дозволена сума буде розрахована на основі цих правил.</span>
+        <h4 style={{ margin: '0 0 12px 0', fontSize: 16 }}>{t('Політика скасування')}</h4>
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, display: 'block' }}>{t('Коли гість запитує повернення, дозволена сума буде розрахована на основі цих правил.')}</span>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <input type="radio" name={`cancel_${isNew ? 'new' : plan?.id}`} checked={form.cancellation_policy === 'non_refundable'} onChange={() => setForm(f => ({ ...f, cancellation_policy: 'non_refundable' }))} />
-            <span style={{ fontSize: 14 }}>Без повернення (Безвозвратно)</span>
+            <span style={{ fontSize: 14 }}>{t('Без повернення (Безвозвратно)')}</span>
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <input type="radio" name={`cancel_${isNew ? 'new' : plan?.id}`} checked={form.cancellation_policy === 'full_refund'} onChange={() => setForm(f => ({ ...f, cancellation_policy: 'full_refund' }))} />
-            <span style={{ fontSize: 14 }}>Повний повернення в будь-який час</span>
+            <span style={{ fontSize: 14 }}>{t('Повний повернення в будь-який час')}</span>
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <input type="radio" name={`cancel_${isNew ? 'new' : plan?.id}`} checked={form.cancellation_policy === 'flexible'} onChange={() => setForm(f => ({ ...f, cancellation_policy: 'flexible' }))} />
-            <span style={{ fontSize: 14 }}>Гнучке (Flexible)</span>
+            <span style={{ fontSize: 14 }}>{t('Гнучке (Flexible)')}</span>
           </label>
         </div>
       </div>
 
       {/* Payments */}
       <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 24 }}>
-        <h4 style={{ margin: '0 0 12px 0', fontSize: 16 }}>Графік платежів</h4>
+        <h4 style={{ margin: '0 0 12px 0', fontSize: 16 }}>{t('Графік платежів')}</h4>
         <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, display: 'block', lineHeight: 1.5 }}>
-          Гостям дозволяється оплатити вартість номера до 3 частин. У міру наближення крайнього терміну Hostex відправить гостю повідомлення.
+          {t('Гостям дозволяється оплатити вартість номера до 3 частин. У міру наближення крайнього терміну Hostex відправить гостю повідомлення.')}
         </span>
         <div style={{ background: 'var(--surface-secondary)', padding: '16px', borderRadius: 8, fontSize: 14, border: '1px solid var(--border-primary)' }}>
           <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
@@ -248,7 +251,7 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
               <strong style={{ color: '#0f172a' }}>100</strong>
               <span style={{ color: '#475569' }}>%</span>
             </div>
-            <span style={{ color: 'var(--text-secondary)' }}>підлягає оплаті при бронюванні</span>
+            <span style={{ color: 'var(--text-secondary)' }}>{t('підлягає оплаті при бронюванні')}</span>
           </div>
         </div>
       </div>
@@ -257,17 +260,17 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
 
       {/* Stay restrictions */}
       <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 24 }}>
-        <h4 style={{ margin: '0 0 12px 0', fontSize: 16 }}>Час до бронювання</h4>
-        <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, display: 'block' }}>Кількість днів до дати заїзду, за які гості можуть забронювати.</span>
+        <h4 style={{ margin: '0 0 12px 0', fontSize: 16 }}>{t('Час до бронювання')}</h4>
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, display: 'block' }}>{t('Кількість днів до дати заїзду, за які гості можуть забронювати.')}</span>
         <div className="form-group" style={{ maxWidth: 300 }}>
-          <label className="form-label">Гості можуть бронювати за (мінімум днів)</label>
+          <label className="form-label">{t('Гості можуть бронювати за (мінімум днів)')}</label>
           <input className="form-input" type="number" min={0} value={form.min_days_before_checkin} onChange={e => setForm(f => ({ ...f, min_days_before_checkin: +e.target.value }))} />
         </div>
         {form.min_days_before_checkin === 0 && (
           <div className="form-group" style={{ maxWidth: 300, marginTop: 12 }}>
-            <label className="form-label">Гості можуть бронювати в той же день до (година)</label>
+            <label className="form-label">{t('Гості можуть бронювати в той же день до (година)')}</label>
             <select className="form-input" value={form.same_day_cutoff_hour === null ? '' : form.same_day_cutoff_hour} onChange={e => setForm(f => ({ ...f, same_day_cutoff_hour: e.target.value === '' ? null : +e.target.value }))}>
-              <option value="">Не обмежено</option>
+              <option value="">{t('Не обмежено')}</option>
               {Array.from({ length: 24 }).map((_, i) => (
                 <option key={i} value={i}>{i.toString().padStart(2, '0')}:00</option>
               ))}
@@ -275,22 +278,22 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
           </div>
         )}
 
-        <h4 style={{ margin: '32px 0 12px 0', fontSize: 16 }}>Тривалість поїздки</h4>
-        <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, display: 'block' }}>Максимальна та мінімальна кількість днів, які гості можуть забронювати.</span>
+        <h4 style={{ margin: '32px 0 12px 0', fontSize: 16 }}>{t('Тривалість поїздки')}</h4>
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, display: 'block' }}>{t('Максимальна та мінімальна кількість днів, які гості можуть забронювати.')}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 14 }}>Тривалість перебування має бути між</span>
+          <span style={{ fontSize: 14 }}>{t('Тривалість перебування має бути між')}</span>
           <input className="form-input" style={{ width: 80, padding: '6px 10px' }} type="number" min={1} value={form.min_stay} onChange={e => setForm(f => ({ ...f, min_stay: +e.target.value }))} />
-          <span style={{ fontSize: 14 }}>і</span>
+          <span style={{ fontSize: 14 }}>{t('і')}</span>
           <input className="form-input" style={{ width: 80, padding: '6px 10px' }} type="number" min={1} value={form.max_stay} onChange={e => setForm(f => ({ ...f, max_stay: +e.target.value }))} />
-          <span style={{ fontSize: 14 }}>днів</span>
+          <span style={{ fontSize: 14 }}>{t('днів')}</span>
         </div>
       </div>
 
       
       {/* Valid Weekdays */}
       <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 24 }}>
-        <h4 style={{ margin: '0 0 12px 0', fontSize: 16 }}>Діє лише в ці дні тижня</h4>
-        <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, display: 'block' }}>Якщо юзер обере інші дні, цей тариф не буде застосовано.</span>
+        <h4 style={{ margin: '0 0 12px 0', fontSize: 16 }}>{t('Діє лише в ці дні тижня')}</h4>
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, display: 'block' }}>{t('Якщо юзер обере інші дні, цей тариф не буде застосовано.')}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {[
             { id: 'mon', label: 'Пн' }, { id: 'tue', label: 'Вт' }, { id: 'wed', label: 'Ср' },
@@ -324,7 +327,7 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
             style={{ marginLeft: 8, color: 'var(--text-secondary)' }}
             onClick={() => setForm(f => ({ ...f, valid_weekdays: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] }))}
           >
-            скинути
+            {t('скинути')}
           </button>
         </div>
       </div>
@@ -332,30 +335,30 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
 
       {/* Pricing Mode */}
       <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 24 }}>
-        <h4 style={{ margin: '0 0 12px 0', fontSize: 16 }}>Режим ціноутворення</h4>
+        <h4 style={{ margin: '0 0 12px 0', fontSize: 16 }}>{t('Режим ціноутворення')}</h4>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer', padding: 16, border: '1px solid var(--border-primary)', borderRadius: 8, background: form.pricing_mode === 'independent' ? 'var(--surface-secondary)' : 'transparent' }}>
             <input type="radio" name={`pricing_${isNew ? 'new' : plan?.id}`} value="independent" checked={form.pricing_mode === 'independent'} onChange={() => setForm(f => ({ ...f, pricing_mode: 'independent' }))} style={{ marginTop: 2 }} />
             <div>
-              <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Установіть ціни незалежно для цього тарифного плану.</div>
+              <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>{t('Установіть ціни незалежно для цього тарифного плану.')}</div>
             </div>
           </label>
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer', padding: 16, border: '1px solid var(--border-primary)', borderRadius: 8, background: form.pricing_mode === 'dependent' ? 'var(--surface-secondary)' : 'transparent' }}>
             <input type="radio" name={`pricing_${isNew ? 'new' : plan?.id}`} value="dependent" checked={form.pricing_mode === 'dependent'} onChange={() => setForm(f => ({ ...f, pricing_mode: 'dependent' }))} style={{ marginTop: 2 }} />
             <div>
-              <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Ціна цього тарифного плану залежить від цін інших тарифних планів.</div>
+              <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>{t('Ціна цього тарифного плану залежить від цін інших тарифних планів.')}</div>
               {form.pricing_mode === 'dependent' && (
                 <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 14 }}>Ціна становить</span>
+                  <span style={{ fontSize: 14 }}>{t('Ціна становить')}</span>
                   <input type="number" min="0" max="100" className="form-input" style={{ width: 80, padding: '6px 10px' }} value={form.pricing_modifier_percent} onChange={e => setForm(f => ({ ...f, pricing_modifier_percent: +e.target.value }))} />
                   <span style={{ fontSize: 14 }}>%</span>
                   <select className="form-input" style={{ width: 100, padding: '6px 10px' }} value={form.pricing_modifier_type} onChange={e => setForm(f => ({ ...f, pricing_modifier_type: e.target.value }))}>
-                    <option value="less">менше</option>
-                    <option value="more">більше</option>
+                    <option value="less">{t('менше')}</option>
+                    <option value="more">{t('більше')}</option>
                   </select>
-                  <span style={{ fontSize: 14 }}>ніж</span>
+                  <span style={{ fontSize: 14 }}>{t('ніж')}</span>
                   <select className="form-input" style={{ width: 200, padding: '6px 10px' }} value={form.derived_from_plan_id} onChange={e => setForm(f => ({ ...f, derived_from_plan_id: e.target.value }))}>
-                    <option value="" disabled>Оберіть тарифний план</option>
+                    <option value="" disabled>{t('Оберіть тарифний план')}</option>
                     {[...allPlans.filter(p => p.id !== plan?.id)]
                       .sort((a, b) => (b.is_default ?? 0) - (a.is_default ?? 0))
                       .map(p => (
@@ -375,8 +378,8 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
       {/* Applied Listings */}
       {listings.length > 0 && (
         <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 24 }}>
-          <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>Застосовані оголошення</h4>
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, display: 'block' }}>Після вибору гості побачать цей тарифний план при бронюванні.</span>
+          <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>{t('Застосовані оголошення')}</h4>
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, display: 'block' }}>{t('Після вибору гості побачать цей тарифний план при бронюванні.')}</span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {listings.map(l => (
               <label key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontSize: 14, background: 'var(--surface-secondary)', padding: '12px 16px', borderRadius: 8, border: '1px solid var(--border-primary)' }}>
@@ -393,7 +396,7 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
 
       {/* Name */}
       <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 24 }}>
-        <h4 style={{ margin: '0 0 12px 0', fontSize: 16 }}>Назва тарифного плану</h4>
+        <h4 style={{ margin: '0 0 12px 0', fontSize: 16 }}>{t('Назва тарифного плану')}</h4>
         <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12, display: 'block' }}>Це ім&apos;я буде показано гостям, постарайтесь обрати привабливе.</span>
         <div className="form-group" style={{ marginBottom: 0 }}>
           <input className="form-input" style={{ fontSize: 16, padding: '12px 16px' }} placeholder="Standart price" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
@@ -404,7 +407,7 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
       <div style={{ paddingTop: 16 }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
           <input type="checkbox" checked={form.is_default} onChange={e => setForm(f => ({ ...f, is_default: e.target.checked }))} />
-          <span style={{ fontSize: 14, fontWeight: 500 }}>Встановити як тариф за замовчуванням</span>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>{t('Встановити як тариф за замовчуванням')}</span>
         </label>
       </div>
 
@@ -415,7 +418,7 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
         </button>
         {!isNew && (
           <button className="btn btn-ghost" style={{ color: '#ef4444', padding: '10px 24px', fontSize: 14 }} onClick={handleDelete}>
-            Видалити
+            {t('Видалити')}
           </button>
         )}
       </div>

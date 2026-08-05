@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useEffect, useState, useCallback } from 'react';
 
 interface DayPrice {
@@ -66,6 +67,7 @@ interface SyncResult {
 }
 
 export default function PriceLabsPreviewPage() {
+  const t = useT();
   const [data, setData] = useState<PreviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,19 +106,19 @@ export default function PriceLabsPreviewPage() {
     <div style={{ padding: '24px 32px', maxWidth: 1400, margin: '0 auto' }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>PriceLabs — Preview</h1>
       <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 24 }}>
-        Read-only: показує, що PriceLabs віддає по 6 будинках. В БД нічого не пишеться. Конвертація EUR→CZK за щоденним курсом ČNB.
+        {t('Read-only: показує, що PriceLabs віддає по 6 будинках. В БД нічого не пишеться. Конвертація EUR→CZK за щоденним курсом ČNB.')}
       </p>
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
         <label style={{ fontSize: 13 }}>
-          Днів вперед:{' '}
+          {t('Днів вперед:')}{' '}
           <input type="number" min={1} max={365} value={days} onChange={(e) => setDays(parseInt(e.target.value, 10) || 30)}
                  style={{ padding: '4px 8px', width: 80, fontSize: 13 }} />
         </label>
         {data && (
           <select value={filterId} onChange={(e) => setFilterId(e.target.value)}
                   style={{ padding: '4px 8px', fontSize: 13 }}>
-            <option value="">Усі будинки</option>
+            <option value="">{t('Усі будинки')}</option>
             {data.listingsSummary.map((l) => (
               <option key={l.id} value={l.id}>{l.name}</option>
             ))}
@@ -146,7 +148,7 @@ export default function PriceLabsPreviewPage() {
         </button>
         {data && (
           <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-tertiary)' }}>
-            Курс EUR→CZK: <b>{data.eurToCzk.toFixed(3)}</b> · {data.from} — {data.to}
+            {t('Курс EUR→CZK:')} <b>{data.eurToCzk.toFixed(3)}</b> · {data.from} — {data.to}
           </span>
         )}
       </div>
@@ -163,22 +165,21 @@ export default function PriceLabsPreviewPage() {
             {syncResult.ok ? '✅ Sync завершено' : '⚠️ Sync завершено з помилками'}
           </div>
           <div style={{ fontSize: 13, marginBottom: 6 }}>
-            Записано <b>{syncResult.daysWrittenTotal}</b> днів у price_calendar ({syncResult.dateFrom} → {syncResult.dateTo}).
-            Будинків: <b>{syncResult.listingsResolved}</b>
-            {syncResult.listingsSkipped > 0 && <> · пропущено: <b>{syncResult.listingsSkipped}</b></>}
+            {t('Записано')} <b>{syncResult.daysWrittenTotal}</b> {t('днів у price_calendar (')}{syncResult.dateFrom} → {syncResult.dateTo}{t('). Будинків:')} <b>{syncResult.listingsResolved}</b>
+            {syncResult.listingsSkipped > 0 && <> {t('· пропущено:')} <b>{syncResult.listingsSkipped}</b></>}
           </div>
           {syncResult.perListing.length > 0 && (
             <ul style={{ fontSize: 12, margin: '8px 0', paddingLeft: 20 }}>
               {syncResult.perListing.map((p) => (
                 <li key={p.pl_id}>
-                  <b>{p.unit_name}</b> · unit_type=<code>{p.unit_type_id.slice(0, 12)}…</code> · {p.days_written} днів
+                  <b>{p.unit_name}</b> · unit_type=<code>{p.unit_type_id.slice(0, 12)}…</code> · {p.days_written} {t('днів')}
                 </li>
               ))}
             </ul>
           )}
           {syncResult.conflicts.length > 0 && (
             <div style={{ marginTop: 8, padding: 8, background: 'rgba(245,158,11,0.1)', borderRadius: 4, fontSize: 12, color: '#92400e' }}>
-              ⚠️ <b>Конфлікти unit_type</b> — кілька будинків ділять один тип, останній перезаписав попередні:
+              ⚠️ <b>{t('Конфлікти unit_type')}</b> {t('— кілька будинків ділять один тип, останній перезаписав попередні:')}
               <ul style={{ marginTop: 4, paddingLeft: 20 }}>
                 {syncResult.conflicts.map((c, i) => (
                   <li key={i}>{c.listing_names.join(' / ')}</li>
@@ -192,7 +193,7 @@ export default function PriceLabsPreviewPage() {
             </div>
           )}
           <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-tertiary)' }}>
-            Перевір на сторінці <a href="/app/pricing" style={{ textDecoration: 'underline' }}>/pricing</a> чи з'явились ціни в календарі для кожного будинку.
+            {t('Перевір на сторінці')} <a href="/app/pricing" style={{ textDecoration: 'underline' }}>/pricing</a> {t('чи з\'явились ціни в календарі для кожного будинку.')}
           </div>
         </div>
       )}
@@ -223,20 +224,20 @@ export default function PriceLabsPreviewPage() {
               <h2 style={{ fontSize: 16, marginBottom: 8 }}>
                 {l.listing_name}{' '}
                 <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-tertiary)' }}>
-                  · оновлено {new Date(l.last_refreshed_at).toLocaleString('uk-UA')}
+                  {t('· оновлено')} {new Date(l.last_refreshed_at).toLocaleString('uk-UA')}
                 </span>
               </h2>
               <div style={{ overflowX: 'auto', background: 'var(--surface-elevated)', borderRadius: 8 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr style={{ background: 'var(--surface)' }}>
-                      <th style={th}>Дата</th>
-                      <th style={th}>Ціна EUR</th>
-                      <th style={th}>Ціна CZK</th>
+                      <th style={th}>{t('Дата')}</th>
+                      <th style={th}>{t('Ціна EUR')}</th>
+                      <th style={th}>{t('Ціна CZK')}</th>
                       <th style={th}>Override</th>
-                      <th style={th}>Алгоритм EUR</th>
+                      <th style={th}>{t('Алгоритм EUR')}</th>
                       <th style={th}>Min stay</th>
-                      <th style={th}>Бронь?</th>
+                      <th style={th}>{t('Бронь?')}</th>
                       <th style={th}>Demand</th>
                     </tr>
                   </thead>

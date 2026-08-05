@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Chart } from "react-google-charts";
 import {
@@ -24,6 +25,7 @@ interface AnalyticsTabProps {
 }
 
 export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps) {
+  const t = useT();
   const [activeSection, setActiveSection] = useState<'overview' | 'funnel' | 'traffic' | 'geo' | 'listings' | 'campaigns'>('overview');
   
   // Date Filters (default: 1st of current month to today)
@@ -143,7 +145,7 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
     if (totalSessions === 0) {
       return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-secondary)', fontSize: 13 }}>
-          Немає даних про джерела сесій
+          {t('Немає даних про джерела сесій')}
         </div>
       );
     }
@@ -196,7 +198,7 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
             justifyContent: 'center'
           }}>
             <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>{totalSessions}</span>
-            <span style={{ fontSize: 9, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>сесій</span>
+            <span style={{ fontSize: 9, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('сесій')}</span>
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minWidth: 150 }}>
@@ -256,15 +258,15 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
             onChange={e => setDateType(e.target.value as any)}
             style={{ width: 180, padding: '6px 32px 6px 10px', backgroundPosition: 'right 8px center' }}
           >
-            <option value="created_at">За датою створення</option>
-            <option value="check_in">За датою заїзду</option>
+            <option value="created_at">{t('За датою створення')}</option>
+            <option value="check_in">{t('За датою заїзду')}</option>
           </select>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {/* Currency Switcher */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>Валюта:</span>
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>{t('Валюта:')}</span>
             <div style={{ display: 'flex', background: 'var(--bg-tertiary)', borderRadius: 6, padding: 2, border: '1px solid var(--border-primary)' }}>
               {(['CZK', 'EUR', 'USD'] as const).map(cur => (
                 <button
@@ -291,7 +293,7 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
           {/* Refresh Button */}
           <button className="btn btn-secondary" onClick={fetchData} style={{ padding: '6px 12px', height: 32 }}>
             <RefreshCw size={14} className={loading ? 'spin' : ''} />
-            Оновити
+            {t('Оновити')}
           </button>
         </div>
       </div>
@@ -307,7 +309,7 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
               style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '12px 16px' }}
             >
               <BarChart3 size={16} />
-              Загальний огляд
+              {t('Загальний огляд')}
             </button>
             {siteId !== 'all' && (
               <button
@@ -316,7 +318,7 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                 style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '12px 16px' }}
               >
                 <Filter size={16} />
-                Воронка конверсії
+                {t('Воронка конверсії')}
               </button>
             )}
             <button
@@ -325,7 +327,7 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
               style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '12px 16px' }}
             >
               <Globe size={16} />
-              Джерела трафіку
+              {t('Джерела трафіку')}
             </button>
             <button
               onClick={() => setActiveSection('geo')}
@@ -333,7 +335,7 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
               style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '12px 16px' }}
             >
               <MapPin size={16} />
-              Географія
+              {t('Географія')}
             </button>
             <button
               onClick={() => setActiveSection('listings')}
@@ -341,7 +343,7 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
               style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '12px 16px' }}
             >
               <Home size={16} />
-              Категорії та житло
+              {t('Категорії та житло')}
             </button>
             <button
               onClick={() => setActiveSection('campaigns')}
@@ -349,7 +351,7 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
               style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '12px 16px' }}
             >
               <Target size={16} />
-              Кампанії (UTM)
+              {t('Кампанії (UTM)')}
             </button>
           </div>
         </div>
@@ -359,19 +361,19 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
           {loading ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 300, gap: 12 }}>
               <Loader2 size={32} className="spin" style={{ color: 'var(--accent-primary)' }} />
-              <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Завантаження аналітики...</span>
+              <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{t('Завантаження аналітики...')}</span>
             </div>
           ) : error ? (
             <div className="card" style={{ borderLeft: '4px solid var(--accent-danger)', padding: 16 }}>
-              <div style={{ fontWeight: 600, color: 'var(--accent-danger)' }}>Помилка завантаження</div>
+              <div style={{ fontWeight: 600, color: 'var(--accent-danger)' }}>{t('Помилка завантаження')}</div>
               <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 4 }}>{error}</div>
               <button className="btn btn-secondary btn-sm" onClick={fetchData} style={{ marginTop: 12 }}>
-                Спробувати знову
+                {t('Спробувати знову')}
               </button>
             </div>
           ) : !data ? (
             <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>
-              Немає даних для відображення за обраний період.
+              {t('Немає даних для відображення за обраний період.')}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -382,56 +384,56 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                   {/* KPI Grid */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
                     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Чистий дохід</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('Чистий дохід')}</span>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                         <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{formatValue(data.current.revenue)}</span>
                         {renderDelta(data.deltas.revenue)}
                       </div>
                       <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                        vs {formatValue(data.previous.revenue)} в минулому
+                        vs {formatValue(data.previous.revenue)} {t('в минулому')}
                       </span>
                     </div>
 
                     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8, background: 'rgba(234, 179, 8, 0.05)', borderColor: 'rgba(234, 179, 8, 0.2)' }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: '#ca8a04', textTransform: 'uppercase', letterSpacing: 0.5 }}>Очікує оплату (До оплати)</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#ca8a04', textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('Очікує оплату (До оплати)')}</span>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                         <span style={{ fontSize: 22, fontWeight: 800, color: '#ca8a04' }}>{formatValue(data.current.unpaidRevenue || 0)}</span>
                       </div>
                       <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                        Сума бронювань, які ще не оплачені
+                        {t('Сума бронювань, які ще не оплачені')}
                       </span>
                     </div>
 
                     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Бронювання</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('Бронювання')}</span>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                         <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{data.current.bookings}</span>
                         {renderDelta(data.deltas.bookings)}
                       </div>
                       <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                        vs {data.previous.bookings} в минулому
+                        vs {data.previous.bookings} {t('в минулому')}
                       </span>
                     </div>
 
                     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Середній чек</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('Середній чек')}</span>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                         <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{formatValue(data.current.avgCheck)}</span>
                         {renderDelta(data.deltas.avgCheck)}
                       </div>
                       <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                        vs {formatValue(data.previous.avgCheck)} в минулому
+                        vs {formatValue(data.previous.avgCheck)} {t('в минулому')}
                       </span>
                     </div>
 
                     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Конверсія %</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('Конверсія %')}</span>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                         <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{data.current.conversion}%</span>
                         {renderDelta(data.deltas.conversion)}
                       </div>
                       <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                        vs {data.previous.conversion}% в минулому
+                        vs {data.previous.conversion}{t('% в минулому')}
                       </span>
                     </div>
                   </div>
@@ -439,21 +441,21 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                   {/* Sessions KPI & Traffic Pie Chart */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24 }}>
                     <div className="card" style={{ display: 'flex', flexDirection: 'column', justifySelf: 'stretch', gap: 16 }}>
-                      <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Відвідуваність сайту (Сесії)</h4>
+                      <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{t('Відвідуваність сайту (Сесії)')}</h4>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                         <span style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)' }}>{data.current.sessions}</span>
                         {renderDelta(data.deltas.sessions)}
                       </div>
                       <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-                        Кількість унікальних сесій користувачів, які відвідали сайт та взаємодіяли з віджетом бронювання.
+                        {t('Кількість унікальних сесій користувачів, які відвідали сайт та взаємодіяли з віджетом бронювання.')}
                       </div>
                       <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 12, fontSize: 11, color: 'var(--text-tertiary)' }}>
-                        Попередній період: <strong>{data.previous.sessions}</strong> сесій
+                        {t('Попередній період:')} <strong>{data.previous.sessions}</strong> {t('сесій')}
                       </div>
                     </div>
 
                     <div className="card" style={{ display: 'flex', flexDirection: 'column', justifySelf: 'stretch', gap: 16 }}>
-                      <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Джерела відвідувань (Top 5)</h4>
+                      <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{t('Джерела відвідувань (Top 5)')}</h4>
                       {secondaryData ? (
                         <DonutChart items={secondaryData} />
                       ) : (
@@ -471,13 +473,13 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                 <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
                     <div>
-                      <h4 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Конверсійна воронка відвідувача</h4>
-                      <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>Поетапна аналітика дій від входу на сайт до повної оплати бронювання</p>
+                      <h4 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{t('Конверсійна воронка відвідувача')}</h4>
+                      <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>{t('Поетапна аналітика дій від входу на сайт до повної оплати бронювання')}</p>
                     </div>
 
                     {/* Funnel subfilter toggle (Option A vs B) */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>Фільтр сторінок:</span>
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>{t('Фільтр сторінок:')}</span>
                       <select
                         className="form-select"
                         value={pageFilter}
@@ -487,10 +489,10 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                         }}
                         style={{ width: 220, padding: '4px 28px 4px 10px', fontSize: 12, backgroundPosition: 'right 6px center' }}
                       >
-                        <option value="all">Всі сторінки разом (Option A)</option>
-                        <option value="/">Тільки Головна сторінка (/)</option>
-                        <option value="/booking">Тільки сторінка бронювання (/booking)</option>
-                        <option value="/contact">Тільки контакти (/contact)</option>
+                        <option value="all">{t('Всі сторінки разом (Option A)')}</option>
+                        <option value="/">{t('Тільки Головна сторінка (/)')}</option>
+                        <option value="/booking">{t('Тільки сторінка бронювання (/booking)')}</option>
+                        <option value="/contact">{t('Тільки контакти (/contact)')}</option>
                       </select>
                     </div>
                   </div>
@@ -558,12 +560,12 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                           {/* Conversion indicators */}
                           <div style={{ width: 180, display: 'flex', gap: 12, fontSize: 12, flexShrink: 0 }}>
                             <div style={{ flex: 1 }}>
-                              <span style={{ color: 'var(--text-tertiary)' }}>Загальна:</span>{' '}
+                              <span style={{ color: 'var(--text-tertiary)' }}>{t('Загальна:')}</span>{' '}
                               <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{stepItem.conversionFromFirst}%</span>
                             </div>
                             {idx > 0 && (
                               <div style={{ flex: 1 }}>
-                                <span style={{ color: 'var(--text-tertiary)' }}>Крок:</span>{' '}
+                                <span style={{ color: 'var(--text-tertiary)' }}>{t('Крок:')}</span>{' '}
                                 <span style={{ fontWeight: 700, color: 'var(--accent-info)' }}>{stepItem.conversionFromPrevious}%</span>
                               </div>
                             )}
@@ -580,8 +582,8 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                 <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
                     <div>
-                      <h4 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Воронка: Форми зворотного зв'язку</h4>
-                      <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>Конверсія лідів, що залишили заявку через контактну форму сайту</p>
+                      <h4 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{t('Воронка: Форми зворотного зв\'язку')}</h4>
+                      <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>{t('Конверсія лідів, що залишили заявку через контактну форму сайту')}</p>
                     </div>
                   </div>
 
@@ -621,12 +623,12 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
 
                           <div style={{ width: 180, display: 'flex', gap: 12, fontSize: 12, flexShrink: 0 }}>
                             <div style={{ flex: 1 }}>
-                              <span style={{ color: 'var(--text-tertiary)' }}>Загальна:</span>{' '}
+                              <span style={{ color: 'var(--text-tertiary)' }}>{t('Загальна:')}</span>{' '}
                               <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{stepItem.conversionFromFirst}%</span>
                             </div>
                             {idx > 0 && (
                               <div style={{ flex: 1 }}>
-                                <span style={{ color: 'var(--text-tertiary)' }}>Крок:</span>{' '}
+                                <span style={{ color: 'var(--text-tertiary)' }}>{t('Крок:')}</span>{' '}
                                 <span style={{ fontWeight: 700, color: 'var(--accent-info)' }}>{stepItem.conversionFromPrevious}%</span>
                               </div>
                             )}
@@ -642,14 +644,14 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
               {activeSection === 'traffic' && data.data && Array.isArray(data.data) && (
                 <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                    <h4 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Джерела переходу на сайт</h4>
+                    <h4 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{t('Джерела переходу на сайт')}</h4>
                     
                     {/* Search Bar */}
                     <div style={{ position: 'relative', width: 240 }}>
                       <input
                         type="text"
                         className="form-input"
-                        placeholder="Пошук джерела..."
+                        placeholder={t('Пошук джерела...')}
                         value={searchQuery}
                         onChange={e => {
                           setSearchQuery(e.target.value);
@@ -666,12 +668,12 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                     <table className="table">
                       <thead>
                         <tr>
-                          <th>Джерело (UTM Source)</th>
-                          <th style={{ textAlign: 'right' }}>Сесії</th>
-                          <th style={{ textAlign: 'right' }}>Бронювання</th>
-                          <th style={{ textAlign: 'right' }}>Дохід</th>
-                          <th style={{ textAlign: 'right' }}>До оплати</th>
-                          <th style={{ textAlign: 'right' }}>Конверсія %</th>
+                          <th>{t('Джерело (UTM Source)')}</th>
+                          <th style={{ textAlign: 'right' }}>{t('Сесії')}</th>
+                          <th style={{ textAlign: 'right' }}>{t('Бронювання')}</th>
+                          <th style={{ textAlign: 'right' }}>{t('Дохід')}</th>
+                          <th style={{ textAlign: 'right' }}>{t('До оплати')}</th>
+                          <th style={{ textAlign: 'right' }}>{t('Конверсія %')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -684,7 +686,7 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                             return (
                               <tr>
                                 <td colSpan={5} style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-tertiary)' }}>
-                                  Джерела за запитом не знайдені
+                                  {t('Джерела за запитом не знайдені')}
                                 </td>
                               </tr>
                             );
@@ -717,17 +719,17 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                         disabled={currentPage === 1}
                         onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                       >
-                        Попередня
+                        {t('Попередня')}
                       </button>
                       <span style={{ display: 'inline-flex', alignItems: 'center', padding: '0 12px', fontSize: 12, color: 'var(--text-secondary)' }}>
-                        Сторінка {currentPage} з {data.pagination.totalPages}
+                        {t('Сторінка')} {currentPage} {t('з')} {data.pagination.totalPages}
                       </span>
                       <button
                         className="btn btn-secondary btn-sm"
                         disabled={currentPage === data.pagination.totalPages}
                         onClick={() => setCurrentPage(prev => Math.min(data.pagination.totalPages, prev + 1))}
                       >
-                        Наступна
+                        {t('Наступна')}
                       </button>
                     </div>
                   )}
@@ -739,7 +741,7 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                   {/* Map Component */}
                   <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    <h4 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Карта відвідувань (Сесії)</h4>
+                    <h4 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{t('Карта відвідувань (Сесії)')}</h4>
                     <div style={{ height: 400, background: 'var(--bg-tertiary)', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border-primary)' }}>
                       <Chart
                         chartType="GeoChart"
@@ -762,22 +764,22 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24 }}>
                   {/* Languages Column */}
                   <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Мовні преференції</h4>
+                    <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{t('Мовні преференції')}</h4>
                     <div className="table-wrapper">
                       <table className="table" style={{ fontSize: 12 }}>
                         <thead>
                           <tr>
-                            <th>Мова</th>
-                            <th style={{ textAlign: 'right' }}>Сесії</th>
-                            <th style={{ textAlign: 'right' }}>Бронювання</th>
-                            <th style={{ textAlign: 'right' }}>Дохід</th>
-                            <th style={{ textAlign: 'right' }}>До оплати</th>
+                            <th>{t('Мова')}</th>
+                            <th style={{ textAlign: 'right' }}>{t('Сесії')}</th>
+                            <th style={{ textAlign: 'right' }}>{t('Бронювання')}</th>
+                            <th style={{ textAlign: 'right' }}>{t('Дохід')}</th>
+                            <th style={{ textAlign: 'right' }}>{t('До оплати')}</th>
                           </tr>
                         </thead>
                         <tbody>
                           {data.languages.length === 0 ? (
                             <tr>
-                              <td colSpan={4} style={{ textAlign: 'center', padding: 12, color: 'var(--text-tertiary)' }}>Немає даних</td>
+                              <td colSpan={4} style={{ textAlign: 'center', padding: 12, color: 'var(--text-tertiary)' }}>{t('Немає даних')}</td>
                             </tr>
                           ) : (
                             data.languages.map((item: any, idx: number) => (
@@ -797,23 +799,23 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
 
                   {/* Countries Column */}
                   <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Країни (за Cloudflare Headers)</h4>
+                    <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{t('Країни (за Cloudflare Headers)')}</h4>
                     <div className="table-wrapper">
                       <table className="table" style={{ fontSize: 12 }}>
                         <thead>
                           <tr>
-                            <th>Країна</th>
-                            <th style={{ textAlign: 'right' }}>Сесії</th>
-                            <th style={{ textAlign: 'right' }}>Бронювання</th>
-                            <th style={{ textAlign: 'right' }}>Дохід</th>
-                            <th style={{ textAlign: 'right' }}>До оплати</th>
-                            <th style={{ textAlign: 'right' }}>Конверсія %</th>
+                            <th>{t('Країна')}</th>
+                            <th style={{ textAlign: 'right' }}>{t('Сесії')}</th>
+                            <th style={{ textAlign: 'right' }}>{t('Бронювання')}</th>
+                            <th style={{ textAlign: 'right' }}>{t('Дохід')}</th>
+                            <th style={{ textAlign: 'right' }}>{t('До оплати')}</th>
+                            <th style={{ textAlign: 'right' }}>{t('Конверсія %')}</th>
                           </tr>
                         </thead>
                         <tbody>
                           {data.countries.length === 0 ? (
                             <tr>
-                              <td colSpan={5} style={{ textAlign: 'center', padding: 12, color: 'var(--text-tertiary)' }}>Немає даних</td>
+                              <td colSpan={5} style={{ textAlign: 'center', padding: 12, color: 'var(--text-tertiary)' }}>{t('Немає даних')}</td>
                             </tr>
                           ) : (
                             data.countries.map((item: any, idx: number) => (
@@ -844,21 +846,21 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24 }}>
                   {/* Unit Types Column */}
                   <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Типи номерів / Об'єкти</h4>
+                    <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{t('Типи номерів / Об\'єкти')}</h4>
                     <div className="table-wrapper">
                       <table className="table" style={{ fontSize: 12 }}>
                         <thead>
                           <tr>
-                            <th>Тип</th>
-                            <th style={{ textAlign: 'right' }}>Бронювання</th>
-                            <th style={{ textAlign: 'right' }}>Дохід</th>
-                            <th style={{ textAlign: 'right' }}>До оплати</th>
+                            <th>{t('Тип')}</th>
+                            <th style={{ textAlign: 'right' }}>{t('Бронювання')}</th>
+                            <th style={{ textAlign: 'right' }}>{t('Дохід')}</th>
+                            <th style={{ textAlign: 'right' }}>{t('До оплати')}</th>
                           </tr>
                         </thead>
                         <tbody>
                           {data.unitTypes.length === 0 ? (
                             <tr>
-                              <td colSpan={3} style={{ textAlign: 'center', padding: 12, color: 'var(--text-tertiary)' }}>Немає даних</td>
+                              <td colSpan={3} style={{ textAlign: 'center', padding: 12, color: 'var(--text-tertiary)' }}>{t('Немає даних')}</td>
                             </tr>
                           ) : (
                             data.unitTypes.map((item: any, idx: number) => (
@@ -877,21 +879,21 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
 
                   {/* Categories Column */}
                   <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Категорії у віджеті</h4>
+                    <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{t('Категорії у віджеті')}</h4>
                     <div className="table-wrapper">
                       <table className="table" style={{ fontSize: 12 }}>
                         <thead>
                           <tr>
-                            <th>Категорія</th>
-                            <th style={{ textAlign: 'right' }}>Бронювання</th>
-                            <th style={{ textAlign: 'right' }}>Дохід</th>
-                            <th style={{ textAlign: 'right' }}>До оплати</th>
+                            <th>{t('Категорія')}</th>
+                            <th style={{ textAlign: 'right' }}>{t('Бронювання')}</th>
+                            <th style={{ textAlign: 'right' }}>{t('Дохід')}</th>
+                            <th style={{ textAlign: 'right' }}>{t('До оплати')}</th>
                           </tr>
                         </thead>
                         <tbody>
                           {data.categories.length === 0 ? (
                             <tr>
-                              <td colSpan={3} style={{ textAlign: 'center', padding: 12, color: 'var(--text-tertiary)' }}>Немає даних</td>
+                              <td colSpan={3} style={{ textAlign: 'center', padding: 12, color: 'var(--text-tertiary)' }}>{t('Немає даних')}</td>
                             </tr>
                           ) : (
                             data.categories.map((item: any, idx: number) => (
@@ -915,8 +917,8 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                 <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
                     <div>
-                      <h4 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>UTM Маркетингові кампанії</h4>
-                      <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>Детальна аналітика по рекламних каналах, медіа та назвах кампаній</p>
+                      <h4 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>{t('UTM Маркетингові кампанії')}</h4>
+                      <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>{t('Детальна аналітика по рекламних каналах, медіа та назвах кампаній')}</p>
                     </div>
 
                     {/* Search Bar */}
@@ -924,7 +926,7 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                       <input
                         type="text"
                         className="form-input"
-                        placeholder="Пошук кампанії..."
+                        placeholder={t('Пошук кампанії...')}
                         value={searchQuery}
                         onChange={e => {
                           setSearchQuery(e.target.value);
@@ -944,11 +946,11 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                           <th>Source</th>
                           <th>Medium</th>
                           <th>Campaign</th>
-                          <th style={{ textAlign: 'right' }}>Сесії</th>
-                          <th style={{ textAlign: 'right' }}>Бронювання</th>
-                          <th style={{ textAlign: 'right' }}>Дохід</th>
-                          <th style={{ textAlign: 'right' }}>До оплати</th>
-                          <th style={{ textAlign: 'right' }}>Конверсія %</th>
+                          <th style={{ textAlign: 'right' }}>{t('Сесії')}</th>
+                          <th style={{ textAlign: 'right' }}>{t('Бронювання')}</th>
+                          <th style={{ textAlign: 'right' }}>{t('Дохід')}</th>
+                          <th style={{ textAlign: 'right' }}>{t('До оплати')}</th>
+                          <th style={{ textAlign: 'right' }}>{t('Конверсія %')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -963,7 +965,7 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                             return (
                               <tr>
                                 <td colSpan={7} style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-tertiary)' }}>
-                                  Кампанії за запитом не знайдені
+                                  {t('Кампанії за запитом не знайдені')}
                                 </td>
                               </tr>
                             );
@@ -998,17 +1000,17 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                         disabled={currentPage === 1}
                         onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                       >
-                        Попередня
+                        {t('Попередня')}
                       </button>
                       <span style={{ display: 'inline-flex', alignItems: 'center', padding: '0 12px', fontSize: 12, color: 'var(--text-secondary)' }}>
-                        Сторінка {currentPage} з {data.pagination.totalPages}
+                        {t('Сторінка')} {currentPage} {t('з')} {data.pagination.totalPages}
                       </span>
                       <button
                         className="btn btn-secondary btn-sm"
                         disabled={currentPage === data.pagination.totalPages}
                         onClick={() => setCurrentPage(prev => Math.min(data.pagination.totalPages, prev + 1))}
                       >
-                        Наступна
+                        {t('Наступна')}
                       </button>
                     </div>
                   )}

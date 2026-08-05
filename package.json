@@ -16,7 +16,9 @@
     "audit": "node scripts/audit.mjs",
     "audit:tenant": "node scripts/audit-tenant.mjs",
     "audit:routes": "node scripts/audit-routes.mjs",
-    "check:isolation": "node scripts/check-isolation.mjs"
+    "check:isolation": "node scripts/check-isolation.mjs",
+    "check:i18n": "node scripts/check-translations.mjs",
+    "i18n:extract": "node scripts/extract-strings.mjs"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",

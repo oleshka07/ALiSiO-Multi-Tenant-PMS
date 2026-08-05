@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, ChevronDown, ChevronRight } from 'lucide-react';
 import ProjectModal, { ProjectFormValues } from './ProjectModal';
@@ -24,6 +25,7 @@ interface TreeResponse {
 }
 
 export default function ProjectsTab() {
+  const t = useT();
   const [data, setData] = useState<TreeResponse>({ tree: [] });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -129,29 +131,29 @@ export default function ProjectsTab() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 20 }}>Проєкти</h2>
+        <h2 style={{ margin: 0, fontSize: 20 }}>{t('Проєкти')}</h2>
         <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-          {data.tree.length} кореневих
+          {data.tree.length} {t('кореневих')}
         </span>
         <div style={{ flex: 1 }} />
         <button
           onClick={() => setEditing({ parent: null })}
           style={addBtnStyle}
         >
-          <Plus size={16} /> Додати проєкт
+          <Plus size={16} /> {t('Додати проєкт')}
         </button>
       </div>
 
       <input
         type="text"
-        placeholder="Пошук проєкту..."
+        placeholder={t('Пошук проєкту...')}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         style={searchStyle}
       />
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Завантаження…')}</div>
       ) : filtered.length === 0 ? (
         <div style={emptyStyle}>
           {search ? 'Нічого не знайдено.' : 'Проєктів ще немає. Натисніть «Додати проєкт».'}

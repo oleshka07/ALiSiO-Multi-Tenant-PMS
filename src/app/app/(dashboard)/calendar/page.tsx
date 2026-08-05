@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -156,6 +157,7 @@ export default function CalendarPage() {
 }
 
 function CalendarDesktop() {
+  const tUi = useT();
   // ─── State ──────
   const onMenuClick = useMobileMenu();
   const [units, setUnits] = useState<UnitRow[]>([]);
@@ -586,9 +588,9 @@ function CalendarDesktop() {
   if (loading) {
     return (
       <>
-        <Header title="Календар" onMenuClick={onMenuClick} />
+        <Header title={tUi('Календар')} onMenuClick={onMenuClick} />
         <div className="app-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '50vh' }}>
-          <Loader2 size={24} className="animate-pulse" /> <span style={{ marginLeft: 8, color: 'var(--text-secondary)' }}>Завантаження...</span>
+          <Loader2 size={24} className="animate-pulse" /> <span style={{ marginLeft: 8, color: 'var(--text-secondary)' }}>{tUi('Завантаження...')}</span>
         </div>
       </>
     );
@@ -596,7 +598,7 @@ function CalendarDesktop() {
 
   return (
     <>
-      <Header title="Календар" onMenuClick={onMenuClick} />
+      <Header title={tUi('Календар')} onMenuClick={onMenuClick} />
       <div className="app-content" style={{ padding: '16px 24px', paddingTop: 'calc(var(--header-height) + 16px)', display: 'grid', gridTemplateRows: 'auto auto 1fr', height: 'calc(100vh - 16px)', overflow: 'hidden' }}>
 
         {/* ─── Toolbar ───────────────────── */}
@@ -610,11 +612,11 @@ function CalendarDesktop() {
           {/* Row 1: Nav + Month + Zoom + Actions */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <button className="btn btn-secondary btn-sm" onClick={() => setNavOffset(p => p - 2)} title="−2 тижні" style={{ padding: '4px 6px' }}><ChevronLeft size={14} /><ChevronLeft size={14} style={{ marginLeft: -8 }} /></button>
-              <button className="btn btn-secondary btn-sm" onClick={() => setNavOffset(p => p - 1)} title="−1 тиждень" style={{ padding: '4px 6px' }}><ChevronLeft size={14} /></button>
-              <button className="btn btn-secondary btn-sm" onClick={scrollToToday} style={{ fontSize: 11, padding: '4px 8px' }}>Сьогодні</button>
-              <button className="btn btn-secondary btn-sm" onClick={() => setNavOffset(p => p + 1)} title="+1 тиждень" style={{ padding: '4px 6px' }}><ChevronRight size={14} /></button>
-              <button className="btn btn-secondary btn-sm" onClick={() => setNavOffset(p => p + 2)} title="+2 тижні" style={{ padding: '4px 6px' }}><ChevronRight size={14} /><ChevronRight size={14} style={{ marginLeft: -8 }} /></button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setNavOffset(p => p - 2)} title={tUi('−2 тижні')} style={{ padding: '4px 6px' }}><ChevronLeft size={14} /><ChevronLeft size={14} style={{ marginLeft: -8 }} /></button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setNavOffset(p => p - 1)} title={tUi('−1 тиждень')} style={{ padding: '4px 6px' }}><ChevronLeft size={14} /></button>
+              <button className="btn btn-secondary btn-sm" onClick={scrollToToday} style={{ fontSize: 11, padding: '4px 8px' }}>{tUi('Сьогодні')}</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setNavOffset(p => p + 1)} title={tUi('+1 тиждень')} style={{ padding: '4px 6px' }}><ChevronRight size={14} /></button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setNavOffset(p => p + 2)} title={tUi('+2 тижні')} style={{ padding: '4px 6px' }}><ChevronRight size={14} /><ChevronRight size={14} style={{ marginLeft: -8 }} /></button>
               <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', marginLeft: 8, whiteSpace: 'nowrap' }}>
                 {MONTH_NAMES[timelineStart.getMonth()]} – {MONTH_NAMES[days[days.length - 1]?.getMonth()]} {days[days.length - 1]?.getFullYear()}
               </span>
@@ -630,7 +632,7 @@ function CalendarDesktop() {
                   }}>{ZOOM_LEVELS[z].label}</button>
                 ))}
               </div>
-              <button className="btn btn-secondary btn-sm" onClick={() => fetchData()} title="Оновити дані" style={{ padding: '4px 6px' }}><RefreshCw size={14} /></button>
+              <button className="btn btn-secondary btn-sm" onClick={() => fetchData()} title={tUi('Оновити дані')} style={{ padding: '4px 6px' }}><RefreshCw size={14} /></button>
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={async () => {
@@ -649,59 +651,59 @@ function CalendarDesktop() {
                   setSyncing(false);
                 }}
                 disabled={syncing}
-                title="Синхронізувати з Hostex"
+                title={tUi('Синхронізувати з Hostex')}
                 style={{ padding: '4px 8px', fontSize: 11, gap: 4, opacity: syncing ? 0.6 : 1 }}
               >
                 {syncing ? <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <span>🔄</span>}
                 {syncing ? ' Синх...' : ' Hostex'}
               </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowGroupModal(true)} style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Users size={14} /> Групове</button>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowRoomAllocation(true)} title="Розселення по кімнатах (Building View)" style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Building2 size={14} /> Будова</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowGroupModal(true)} style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Users size={14} /> {tUi('Групове')}</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowRoomAllocation(true)} title={tUi('Розселення по кімнатах (Building View)')} style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Building2 size={14} /> {tUi('Будова')}</button>
               {draftCount > 0 && (
                 <button
                   className="draft-pool-badge"
                   onClick={() => setShowRoomAllocation(true)}
                   title={`${draftCount} бронювань у чорновику — натисніть для розподілу`}
                 >
-                  📋 {draftCount} в чорновику
+                  📋 {draftCount} {tUi('в чорновику')}
                 </button>
               )}
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowExportModal(true)} title="Скачати звіт" style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Download size={14} /> Звіт</button>
-              <button className="btn btn-primary btn-sm" onClick={() => { setNewBookingPrefill(null); setShowNewBooking(true); }} style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Plus size={14} /> Нове</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowExportModal(true)} title={tUi('Скачати звіт')} style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Download size={14} /> {tUi('Звіт')}</button>
+              <button className="btn btn-primary btn-sm" onClick={() => { setNewBookingPrefill(null); setShowNewBooking(true); }} style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Plus size={14} /> {tUi('Нове')}</button>
             </div>
           </div>
 
           {/* Row 2: Filters + Range indicator */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <select className="form-select" style={{ width: 100, fontSize: 11, padding: '4px 6px' }} value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
-              <option value="">Категорії</option>
+              <option value="">{tUi('Категорії')}</option>
               {[...new Set(units.map(u => u.category_type))].sort().map(cat => (
                 <option key={cat} value={cat}>{categoryConfig[cat]?.label || cat}</option>
               ))}
             </select>
             <div style={{ position: 'relative' }}>
               <Search size={12} style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-              <input className="form-input" placeholder="Пошук..." value={search} onChange={e => setSearch(e.target.value)}
+              <input className="form-input" placeholder={tUi('Пошук...')} value={search} onChange={e => setSearch(e.target.value)}
                 style={{ fontSize: 11, padding: '4px 8px 4px 22px', width: 120 }} />
             </div>
             <select className="form-select" style={{ width: 110, fontSize: 11, padding: '4px 6px' }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-              <option value="">Статуси</option>
+              <option value="">{tUi('Статуси')}</option>
               {Object.entries(STATUS_MAP).map(([k, v]) => (<option key={k} value={k}>{v.label}</option>))}
             </select>
             <select className="form-select" style={{ width: 110, fontSize: 11, padding: '4px 6px' }} value={cleaningFilter} onChange={e => setCleaningFilter(e.target.value)}>
-              <option value="">🧹 Все</option>
-              <option value="clean">✓ Чисто</option>
-              <option value="dirty">✗ Брудно</option>
-              <option value="in_progress">⟳ Прибір.</option>
+              <option value="">{tUi('🧹 Все')}</option>
+              <option value="clean">{tUi('✓ Чисто')}</option>
+              <option value="dirty">{tUi('✗ Брудно')}</option>
+              <option value="in_progress">{tUi('⟳ Прибір.')}</option>
             </select>
             <select className="form-select" style={{ width: 110, fontSize: 11, padding: '4px 6px' }} value={paymentFilter} onChange={e => setPaymentFilter(e.target.value)}>
-              <option value="">💰 Все</option>
+              <option value="">{tUi('💰 Все')}</option>
               {Object.entries(PAYMENT_STATUS_MAP).map(([k, v]) => (<option key={k} value={k}>{v.icon} {v.label}</option>))}
             </select>
             {rangeStart && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', fontSize: 11, color: 'var(--accent-primary)', fontWeight: 600 }}>
-                <CalendarDays size={12} /> Заїзд: {rangeStart.date} — оберіть виїзд
-                <button className="btn btn-ghost btn-sm" onClick={() => setRangeStart(null)} style={{ padding: '2px 6px', fontSize: 10 }}><X size={10} /> Скасувати</button>
+                <CalendarDays size={12} /> {tUi('Заїзд:')} {rangeStart.date} {tUi('— оберіть виїзд')}
+                <button className="btn btn-ghost btn-sm" onClick={() => setRangeStart(null)} style={{ padding: '2px 6px', fontSize: 10 }}><X size={10} /> {tUi('Скасувати')}</button>
               </div>
             )}
           </div>
@@ -710,9 +712,9 @@ function CalendarDesktop() {
         {/* ─── Today Alerts Banner ─── */}
         {!loading && (todayAlerts.checkIns.length > 0 || todayAlerts.checkOuts.length > 0 || todayAlerts.unpaid.length > 0) && (
           <div style={{ display: 'flex', gap: 12, padding: '6px 12px', fontSize: 11, fontWeight: 600, flexWrap: 'wrap', borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', margin: '0 0 4px 0' }}>
-            {todayAlerts.checkIns.length > 0 && <span style={{ color: 'var(--accent-success)' }}>✈ {todayAlerts.checkIns.length} заїздів сьогодні</span>}
-            {todayAlerts.checkOuts.length > 0 && <span style={{ color: 'var(--accent-primary)' }}>🚶 {todayAlerts.checkOuts.length} виїздів сьогодні</span>}
-            {todayAlerts.unpaid.length > 0 && <span style={{ color: 'var(--accent-warning)' }}>⚠ {todayAlerts.unpaid.length} неоплачених</span>}
+            {todayAlerts.checkIns.length > 0 && <span style={{ color: 'var(--accent-success)' }}>✈ {todayAlerts.checkIns.length} {tUi('заїздів сьогодні')}</span>}
+            {todayAlerts.checkOuts.length > 0 && <span style={{ color: 'var(--accent-primary)' }}>🚶 {todayAlerts.checkOuts.length} {tUi('виїздів сьогодні')}</span>}
+            {todayAlerts.unpaid.length > 0 && <span style={{ color: 'var(--accent-warning)' }}>⚠ {todayAlerts.unpaid.length} {tUi('неоплачених')}</span>}
           </div>
         )}
 
@@ -732,10 +734,10 @@ function CalendarDesktop() {
               background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column',
             }}>
               <div style={{ height: HEADER_H, display: 'flex', alignItems: 'center', padding: '0 12px', fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 600 }}>
-                Юніти ({filteredUnits.length})
+                {tUi('Юніти (')}{filteredUnits.length})
               </div>
               <div style={{ height: AVAIL_H, display: 'flex', alignItems: 'center', padding: '0 12px', fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 600, borderTop: '1px solid var(--border-primary)', background: 'var(--bg-tertiary)' }}>
-                Вільних
+                {tUi('Вільних')}
               </div>
             </div>
 
@@ -830,7 +832,7 @@ function CalendarDesktop() {
                     }}>
                       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
                         <div style={{ fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{unit.name}</div>
-                        {unit.beds > 0 && <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{unit.beds} місць</div>}
+                        {unit.beds > 0 && <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{unit.beds} {tUi('місць')}</div>}
                       </div>
                       {/* Cleaning status indicator */}
                       <div title={`Прибирання: ${unit.cleaning_status}`} style={{
@@ -936,12 +938,12 @@ function CalendarDesktop() {
                                 {/* Top-left alert badges */}
                                 <div style={{ position: 'absolute', top: -4, left: -4, display: 'flex', gap: 2, zIndex: 10 }}>
                                   {(booking.payment_status === 'unpaid' || booking.payment_status === 'partial') && (
-                                    <div title="Не оплачено / Борг" style={{ background: '#3b82f6', color: '#fff', width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
+                                    <div title={tUi('Не оплачено / Борг')} style={{ background: '#3b82f6', color: '#fff', width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
                                       <Coins size={10} />
                                     </div>
                                   )}
                                   {booking.registration_status !== 'registered' && (
-                                    <div title="Немає документів / Не зареєстровано" style={{ background: '#3b82f6', color: '#fff', width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
+                                    <div title={tUi('Немає документів / Не зареєстровано')} style={{ background: '#3b82f6', color: '#fff', width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
                                       <FileText size={10} />
                                     </div>
                                   )}
@@ -951,10 +953,10 @@ function CalendarDesktop() {
                                   {booking.first_name} {booking.last_name}
                                 </span>
                                 <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', whiteSpace: 'nowrap' }}>
-                                  {booking.nights}н.
+                                  {booking.nights}{tUi('н.')}
                                 </span>
                                 {(booking as any).parent_id && (
-                                  <span style={{ fontSize: 10 }} title="Дочірнє бронювання (група)">🔗</span>
+                                  <span style={{ fontSize: 10 }} title={tUi('Дочірнє бронювання (група)')}>🔗</span>
                                 )}
                                 {(booking as any).hostex_channel_type && (
                                   <span style={{ fontSize: 10 }} title={`Hostex: ${(booking as any).hostex_channel_type}`}>🌐</span>
@@ -997,7 +999,7 @@ function CalendarDesktop() {
                                   }}
                                 >
                                   <span style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    🔒 Закрито
+                                    {tUi('🔒 Закрито')}
                                   </span>
                                 </div>
                               );
@@ -1040,11 +1042,11 @@ function CalendarDesktop() {
           }}>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{b.first_name} {b.last_name}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px', fontSize: 12 }}>
-              <div><span style={{ color: 'var(--text-tertiary)' }}>Заїзд:</span> {b.check_in}</div>
-              <div><span style={{ color: 'var(--text-tertiary)' }}>Виїзд:</span> {b.check_out}</div>
-              <div><span style={{ color: 'var(--text-tertiary)' }}>Ночей:</span> {b.nights}</div>
-              <div><span style={{ color: 'var(--text-tertiary)' }}>Гостей:</span> {b.adults} дор.{b.children > 0 ? ` + ${b.children} діт.` : ''}</div>
-              <div><span style={{ color: 'var(--text-tertiary)' }}>Сума:</span> <strong>{(b.total_price || 0).toLocaleString()} CZK</strong></div>
+              <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Заїзд:')}</span> {b.check_in}</div>
+              <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Виїзд:')}</span> {b.check_out}</div>
+              <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Ночей:')}</span> {b.nights}</div>
+              <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Гостей:')}</span> {b.adults} {tUi('дор.')}{b.children > 0 ? ` + ${b.children} діт.` : ''}</div>
+              <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Сума:')}</span> <strong>{(b.total_price || 0).toLocaleString()} CZK</strong></div>
               <div><span style={{ color: pm.color }}>{pm.icon} {pm.label}</span></div>
             </div>
             <div style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -1092,7 +1094,7 @@ function CalendarDesktop() {
         <div className="modal-overlay" onClick={() => setEditBooking(null)}>
           <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">Редагувати бронювання</h3>
+              <h3 className="modal-title">{tUi('Редагувати бронювання')}</h3>
               <button className="modal-close" onClick={() => setEditBooking(null)}><X size={18} /></button>
             </div>
             <div className="modal-body">
@@ -1120,7 +1122,7 @@ function CalendarDesktop() {
         <div className="modal-overlay" onClick={() => { setShowNewBooking(false); setRangeStart(null); setNewBookingPrefill(null); }}>
           <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">Нове бронювання</h3>
+              <h3 className="modal-title">{tUi('Нове бронювання')}</h3>
               <button className="modal-close" onClick={() => { setShowNewBooking(false); setRangeStart(null); setNewBookingPrefill(null); }}><X size={18} /></button>
             </div>
             <div className="modal-body">
@@ -1170,7 +1172,7 @@ function CalendarDesktop() {
 
       {/* Floating "Today" button – mobile only */}
       <button className="floating-btn" onClick={scrollToToday}>
-        Сьогодні
+        {tUi('Сьогодні')}
       </button>
 
       {/* ─── Mobile responsive styles ─── */}
@@ -1220,6 +1222,7 @@ function ExportReportModal({ onClose, timelineStart, timelineEnd }: {
   timelineStart: Date;
   timelineEnd: Date;
 }) {
+  const tUi = useT();
   const today = new Date();
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const lastOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
@@ -1302,8 +1305,8 @@ function ExportReportModal({ onClose, timelineStart, timelineEnd }: {
               <FileSpreadsheet size={18} color="#fff" />
             </div>
             <div>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Звіт по бронюваннях</h3>
-              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-tertiary)' }}>Оберіть діапазон та формат</p>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{tUi('Звіт по бронюваннях')}</h3>
+              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Оберіть діапазон та формат')}</p>
             </div>
           </div>
           <button onClick={onClose} style={{
@@ -1335,12 +1338,12 @@ function ExportReportModal({ onClose, timelineStart, timelineEnd }: {
         {/* Date range */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>Від</label>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>{tUi('Від')}</label>
             <input type="date" className="form-input" value={fromDate} onChange={e => setFromDate(e.target.value)}
               style={{ width: '100%', fontSize: 13, padding: '8px 10px' }} />
           </div>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>До</label>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>{tUi('До')}</label>
             <input type="date" className="form-input" value={toDate} onChange={e => setToDate(e.target.value)}
               style={{ width: '100%', fontSize: 13, padding: '8px 10px' }} />
           </div>
@@ -1349,17 +1352,17 @@ function ExportReportModal({ onClose, timelineStart, timelineEnd }: {
         {/* Category + Format */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>Категорія</label>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>{tUi('Категорія')}</label>
             <select className="form-select" value={category} onChange={e => setCategory(e.target.value)}
               style={{ width: '100%', fontSize: 13, padding: '8px 10px' }}>
-              <option value="">Всі категорії</option>
+              <option value="">{tUi('Всі категорії')}</option>
               <option value="glamping">Glamping</option>
               <option value="resort">Resort</option>
               <option value="camping">Camping</option>
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>Формат</label>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>{tUi('Формат')}</label>
             <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border-primary)' }}>
               {(['xlsx', 'csv'] as const).map(f => (
                 <button key={f} onClick={() => setFormat(f)} style={{
@@ -1385,7 +1388,7 @@ function ExportReportModal({ onClose, timelineStart, timelineEnd }: {
 
         {/* Actions */}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button className="btn btn-secondary" onClick={onClose} style={{ padding: '8px 16px', fontSize: 13 }}>Скасувати</button>
+          <button className="btn btn-secondary" onClick={onClose} style={{ padding: '8px 16px', fontSize: 13 }}>{tUi('Скасувати')}</button>
           <button className="btn btn-primary" onClick={handleDownload} disabled={downloading || !fromDate || !toDate}
             style={{
               padding: '8px 20px', fontSize: 13, gap: 6,

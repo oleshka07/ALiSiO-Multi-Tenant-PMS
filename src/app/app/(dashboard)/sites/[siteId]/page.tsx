@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Header from '@/components/layout/Header';
@@ -33,6 +34,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function SiteDetailPage() {
+  const tUi = useT();
   const params = useParams<{ siteId: string }>();
   const siteId = params?.siteId as string;
   const router = useRouter();
@@ -100,7 +102,7 @@ export default function SiteDetailPage() {
 
   if (loading) return (
     <>
-      <Header title="Завантаження..." onMenuClick={onMenuClick} />
+      <Header title={tUi('Завантаження...')} onMenuClick={onMenuClick} />
       <div className="app-content" style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
         <Loader2 size={36} className="spin" style={{ color: 'var(--accent-primary)' }} />
       </div>
@@ -109,10 +111,10 @@ export default function SiteDetailPage() {
 
   if (!site) return (
     <>
-      <Header title="Сайт не знайдено" onMenuClick={onMenuClick} />
+      <Header title={tUi('Сайт не знайдено')} onMenuClick={onMenuClick} />
       <div className="app-content" style={{ padding: 40, textAlign: 'center' }}>
-        <div style={{ fontSize: 16, marginBottom: 12 }}>Сайт не знайдено або видалено</div>
-        <button className="btn btn-primary" onClick={() => router.push('/app/sites')}><ArrowLeft size={16} /> Назад до списку</button>
+        <div style={{ fontSize: 16, marginBottom: 12 }}>{tUi('Сайт не знайдено або видалено')}</div>
+        <button className="btn btn-primary" onClick={() => router.push('/app/sites')}><ArrowLeft size={16} /> {tUi('Назад до списку')}</button>
       </div>
     </>
   );
@@ -125,7 +127,7 @@ export default function SiteDetailPage() {
         {/* Breadcrumb */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <button className="btn btn-ghost" onClick={() => router.push('/app/sites')} style={{ padding: '6px 10px' }}>
-            <ArrowLeft size={16} /> Сайти
+            <ArrowLeft size={16} /> {tUi('Сайти')}
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Globe size={18} style={{ color: 'var(--accent-primary)' }} />

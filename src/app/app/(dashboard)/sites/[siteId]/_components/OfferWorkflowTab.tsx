@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, Plus, Trash2, Zap, Copy, Check, CopyPlus } from 'lucide-react';
 import { Modal } from './SiteHelpers';
@@ -45,6 +46,7 @@ const emptyForm = () => ({
 function CodesModal({ ruleId, siteId, open, onClose }: {
   ruleId: string; siteId: string; open: boolean; onClose: () => void;
 }) {
+  const tUi = useT();
   const [codes, setCodes] = useState<{ code: string; current_uses: number; is_active: number }[]>([]);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState('');
@@ -71,22 +73,22 @@ function CodesModal({ ruleId, siteId, open, onClose }: {
   const used = codes.filter(c => c.current_uses > 0);
 
   return (
-    <Modal open={open} onClose={onClose} title="Промокоди правила" size="lg">
+    <Modal open={open} onClose={onClose} title={tUi('Промокоди правила')} size="lg">
       {loading ? (
         <div style={{ padding: 40, textAlign: 'center' }}><Loader2 size={24} className="spin" /></div>
       ) : (
         <>
           <div style={{ display: 'flex', gap: 12, marginBottom: 16, fontSize: 13 }}>
             <span style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', padding: '4px 12px', borderRadius: 99, fontWeight: 600 }}>
-              ✓ Вільних: {unused.length}
+              {tUi('✓ Вільних:')} {unused.length}
             </span>
             <span style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '4px 12px', borderRadius: 99, fontWeight: 600 }}>
-              ✗ Використано: {used.length}
+              {tUi('✗ Використано:')} {used.length}
             </span>
             {unused.length > 0 && (
               <button className="btn btn-ghost" style={{ marginLeft: 'auto', fontSize: 12 }} onClick={copyAll}>
                 {copied === 'all' ? <Check size={13} /> : <Copy size={13} />}
-                Копіювати всі вільні
+                {tUi('Копіювати всі вільні')}
               </button>
             )}
           </div>
@@ -118,6 +120,7 @@ function CodesModal({ ruleId, siteId, open, onClose }: {
 }
 
 export function OfferWorkflowTab({ siteId }: { siteId: string }) {
+  const tUi = useT();
   const [rules, setRules] = useState<AutoRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -199,13 +202,13 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
       {/* Header */}
       <div style={{ marginBottom: 8 }}>
         <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-          <Plus size={16} /> Згенерувати промокоди
+          <Plus size={16} /> {tUi('Згенерувати промокоди')}
         </button>
       </div>
 
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'rgba(139,92,246,0.06)', borderRadius: 10, border: '1px solid rgba(139,92,246,0.15)' }}>
         <Zap size={16} style={{ color: '#8b5cf6', flexShrink: 0 }} />
-        <span><strong>Масові промокоди:</strong> Створіть кампанію, і система автоматично згенерує вказану кількість унікальних промокодів (напр., 50 кодів зі знижкою 10%). Ви зможете роздати їх блогерам, партнерам або використати в email-розсилках. Кожен такий код може бути використаний лише вказану кількість разів.</span>
+        <span><strong>{tUi('Масові промокоди:')}</strong> {tUi('Створіть кампанію, і система автоматично згенерує вказану кількість унікальних промокодів (напр., 50 кодів зі знижкою 10%). Ви зможете роздати їх блогерам, партнерам або використати в email-розсилках. Кожен такий код може бути використаний лише вказану кількість разів.')}</span>
       </div>
 
       {/* Rules list */}
@@ -214,8 +217,8 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
       ) : rules.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-secondary)' }}>
           <Zap size={40} style={{ margin: '0 auto 12px', opacity: 0.2 }} />
-          <div style={{ fontWeight: 600 }}>Кампаній ще немає</div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>Створіть першу кампанію, щоб згенерувати унікальні промокоди</div>
+          <div style={{ fontWeight: 600 }}>{tUi('Кампаній ще немає')}</div>
+          <div style={{ fontSize: 13, marginTop: 4 }}>{tUi('Створіть першу кампанію, щоб згенерувати унікальні промокоди')}</div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -234,17 +237,17 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
                       {tpl && <span style={{ fontSize: 18 }}>{tpl.emoji}</span>}
                       <span style={{ fontWeight: 700, fontSize: 14 }}>{rule.name}</span>
                       <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', fontWeight: 600 }}>
-                        {rule.offer_amount}{rule.discount_type === 'percentage' ? '%' : ` ${rule.applies_to === 'listings' ? 'CZK' : 'CZK'}`} знижка
+                        {rule.offer_amount}{rule.discount_type === 'percentage' ? '%' : ` ${rule.applies_to === 'listings' ? 'CZK' : 'CZK'}`} {tUi('знижка')}
                       </span>
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '4px 16px', fontSize: 12, color: 'var(--text-secondary)' }}>
-                      {tpl && <span>📦 Шаблон: {tpl.name}</span>}
-                      <span>🎟 Кодів: {rule.total_codes} ({rule.used_codes} використано)</span>
-                      {rule.valid_until && <span>⏳ До: {rule.valid_until}</span>}
+                      {tpl && <span>{tUi('📦 Шаблон:')} {tpl.name}</span>}
+                      <span>{tUi('🎟 Кодів:')} {rule.total_codes} ({rule.used_codes} {tUi('використано)')}</span>
+                      {rule.valid_until && <span>{tUi('⏳ До:')} {rule.valid_until}</span>}
                       <span>📅 {daysLabel}</span>
-                      {rule.min_nights && <span>🌙 Від {rule.min_nights} ночей</span>}
-                      <span>🔄 Ліміт: {rule.redemption_limit}x</span>
+                      {rule.min_nights && <span>{tUi('🌙 Від')} {rule.min_nights} {tUi('ночей')}</span>}
+                      <span>{tUi('🔄 Ліміт:')} {rule.redemption_limit}x</span>
                     </div>
 
                     {/* Progress bar */}
@@ -254,7 +257,7 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
                           <div style={{ height: '100%', borderRadius: 99, width: `${usedPct}%`, background: usedPct > 80 ? '#ef4444' : usedPct > 50 ? '#f59e0b' : '#22c55e', transition: 'width .3s' }} />
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 3 }}>
-                          {rule.total_codes - rule.used_codes} вільних з {rule.total_codes}
+                          {rule.total_codes - rule.used_codes} {tUi('вільних з')} {rule.total_codes}
                         </div>
                       </div>
                     )}
@@ -263,7 +266,7 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                     <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 10px' }}
                       onClick={() => setViewCodesRule(rule.id)}>
-                      <Copy size={13} /> Коди
+                      <Copy size={13} /> {tUi('Коди')}
                     </button>
                     <button className="btn btn-ghost" style={{ padding: '5px 8px', color: 'var(--text-secondary)' }} onClick={() => {
                       setForm({
@@ -281,11 +284,11 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
                         redemption_limit: rule.redemption_limit || 1,
                       });
                       setShowCreate(true);
-                    }} title="Дублювати правило (генерує нову партію)">
+                    }} title={tUi('Дублювати правило (генерує нову партію)')}>
                       <CopyPlus size={14} />
                     </button>
                     <button className="btn btn-ghost" style={{ padding: '5px 8px', color: '#ef4444' }}
-                      onClick={() => handleDelete(rule.id, rule.name)} title="Деактивувати та в архів">
+                      onClick={() => handleDelete(rule.id, rule.name)} title={tUi('Деактивувати та в архів')}>
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -297,11 +300,11 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
       )}
 
       {/* Create modal */}
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Згенерувати масові промокоди" size="lg"
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title={tUi('Згенерувати масові промокоди')} size="lg"
         footer={<>
-          <button className="btn btn-ghost" onClick={() => setShowCreate(false)}>Скасувати</button>
+          <button className="btn btn-ghost" onClick={() => setShowCreate(false)}>{tUi('Скасувати')}</button>
           <button className="btn btn-primary" onClick={handleCreate} disabled={creating}>
-            {creating ? <Loader2 size={14} className="spin" /> : <Zap size={14} />} Згенерувати
+            {creating ? <Loader2 size={14} className="spin" /> : <Zap size={14} />} {tUi('Згенерувати')}
           </button>
         </>}
       >
@@ -313,8 +316,8 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <button type="button" onClick={() => setForm(f => ({ ...f, template_id: '' }))}
                 style={{ padding: '8px 10px', borderRadius: 8, fontSize: 12, cursor: 'pointer', textAlign: 'left', border: `2px solid ${!form.template_id ? 'var(--accent-primary)' : 'var(--border-primary)'}`, background: !form.template_id ? 'var(--accent-primary-dim)' : 'var(--surface-secondary)' }}>
-                <div style={{ fontWeight: 600 }}>Без шаблону</div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Власні параметри</div>
+                <div style={{ fontWeight: 600 }}>{tUi('Без шаблону')}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{tUi('Власні параметри')}</div>
               </button>
               {GIFT_CARD_TEMPLATES.map(t => (
                 <button key={t.id} type="button" onClick={() => setForm(f => ({ ...f, template_id: t.id, rule_name: f.rule_name || t.name }))}
@@ -328,27 +331,27 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
 
           {/* Rule name */}
           <div className="form-group">
-            <label className="form-label">Назва правила</label>
-            <input className="form-input" placeholder="Наприклад: Літня знижка 15%" value={form.rule_name}
+            <label className="form-label">{tUi('Назва правила')}</label>
+            <input className="form-input" placeholder={tUi('Наприклад: Літня знижка 15%')} value={form.rule_name}
               onChange={e => setForm(f => ({ ...f, rule_name: e.target.value }))} />
           </div>
 
           {/* Count + discount */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Кількість кодів (1–500)</label>
+              <label className="form-label">{tUi('Кількість кодів (1–500)')}</label>
               <input className="form-input" type="number" min={1} max={500} value={form.count}
                 onChange={e => setForm(f => ({ ...f, count: +e.target.value }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Тип знижки</label>
+              <label className="form-label">{tUi('Тип знижки')}</label>
               <select className="form-select" value={form.discount_type} onChange={e => setForm(f => ({ ...f, discount_type: e.target.value as 'percentage' | 'fixed_amount' }))}>
-                <option value="percentage">Відсоток (%)</option>
-                <option value="fixed_amount">Фіксована сума (CZK)</option>
+                <option value="percentage">{tUi('Відсоток (%)')}</option>
+                <option value="fixed_amount">{tUi('Фіксована сума (CZK)')}</option>
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Розмір знижки</label>
+              <label className="form-label">{tUi('Розмір знижки')}</label>
               <input className="form-input" type="number" min={0} value={form.offer_amount}
                 onChange={e => setForm(f => ({ ...f, offer_amount: +e.target.value }))}
                 placeholder={form.discount_type === 'percentage' ? '15' : '500'} />
@@ -358,11 +361,11 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
           {/* Dates */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Коди діють від</label>
+              <label className="form-label">{tUi('Коди діють від')}</label>
               <input className="form-input" type="date" value={form.valid_from} onChange={e => setForm(f => ({ ...f, valid_from: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Коди діють до</label>
+              <label className="form-label">{tUi('Коди діють до')}</label>
               <input className="form-input" type="date" value={form.valid_until} onChange={e => setForm(f => ({ ...f, valid_until: e.target.value }))} />
             </div>
           </div>
@@ -370,17 +373,17 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
           {/* Nights */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Мін. ночей</label>
+              <label className="form-label">{tUi('Мін. ночей')}</label>
               <input className="form-input" type="number" min={1} value={form.min_nights}
                 onChange={e => setForm(f => ({ ...f, min_nights: +e.target.value }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Макс. ночей</label>
-              <input className="form-input" type="number" min={1} placeholder="Без ліміту"
+              <label className="form-label">{tUi('Макс. ночей')}</label>
+              <input className="form-input" type="number" min={1} placeholder={tUi('Без ліміту')}
                 value={form.max_nights} onChange={e => setForm(f => ({ ...f, max_nights: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Ліміт / код</label>
+              <label className="form-label">{tUi('Ліміт / код')}</label>
               <input className="form-input" type="number" min={1} value={form.redemption_limit}
                 onChange={e => setForm(f => ({ ...f, redemption_limit: +e.target.value }))} />
             </div>
@@ -388,7 +391,7 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
 
           {/* Applies to */}
           <div className="form-group">
-            <label className="form-label">Застосовується до</label>
+            <label className="form-label">{tUi('Застосовується до')}</label>
             <div style={{ display: 'flex', gap: 8 }}>
               {([['listings', '🏠 Оголошення'], ['services', '🛎 Сервіси'], ['both', '🏠+🛎 Обидва']] as const).map(([val, label]) => (
                 <button key={val} type="button" onClick={() => setForm(f => ({ ...f, applies_to: val }))}
@@ -401,7 +404,7 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
 
           {/* Days */}
           <div className="form-group">
-            <label className="form-label">Дні тижня <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11 }}>{form.allowed_days.length === 0 ? '(всі дні)' : ''}</span></label>
+            <label className="form-label">{tUi('Дні тижня')} <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11 }}>{form.allowed_days.length === 0 ? '(всі дні)' : ''}</span></label>
             <div style={{ display: 'flex', gap: 6 }}>
               {DAYS.map(d => {
                 const on = form.allowed_days.includes(d);
@@ -426,11 +429,11 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
       />
 
       {/* Last generated codes modal */}
-      <Modal open={showLastCodes} onClose={() => setShowLastCodes(false)} title="Згенеровані промокоди" size="lg"
-        footer={<button className="btn btn-primary" onClick={() => setShowLastCodes(false)}>Закрити</button>}
+      <Modal open={showLastCodes} onClose={() => setShowLastCodes(false)} title={tUi('Згенеровані промокоди')} size="lg"
+        footer={<button className="btn btn-primary" onClick={() => setShowLastCodes(false)}>{tUi('Закрити')}</button>}
       >
         <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
-          Ці коди вже збережено в системі. Їх можна роздати клієнтам, які придбали ваучер.
+          {tUi('Ці коди вже збережено в системі. Їх можна роздати клієнтам, які придбали ваучер.')}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8, maxHeight: 360, overflowY: 'auto' }}>
           {lastCodes.map(code => (
@@ -443,7 +446,7 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
           navigator.clipboard.writeText(lastCodes.join('\n'));
           showToast('Скопійовано!');
         }}>
-          <Copy size={13} /> Копіювати всі
+          <Copy size={13} /> {tUi('Копіювати всі')}
         </button>
       </Modal>
 

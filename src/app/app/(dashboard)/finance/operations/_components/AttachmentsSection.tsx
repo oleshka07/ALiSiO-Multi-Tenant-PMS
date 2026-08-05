@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Paperclip, Upload, Trash2, FileText, Image as ImageIcon, FileArchive, ExternalLink } from 'lucide-react';
 
@@ -31,6 +32,7 @@ function MimeIcon({ mime }: { mime: string | null }) {
 }
 
 export default function AttachmentsSection({ operationId }: Props) {
+  const t = useT();
   const [items, setItems] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -92,7 +94,7 @@ export default function AttachmentsSection({ operationId }: Props) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <Paperclip size={14} color="var(--text-secondary)" />
         <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>
-          Документи {items.length > 0 && `(${items.length})`}
+          {t('Документи')} {items.length > 0 && `(${items.length})`}
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <input
@@ -117,13 +119,13 @@ export default function AttachmentsSection({ operationId }: Props) {
 
       {!operationId ? (
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-          Документи доступні після збереження операції
+          {t('Документи доступні після збереження операції')}
         </div>
       ) : loading ? (
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('Завантаження…')}</div>
       ) : items.length === 0 ? (
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', padding: '8px 0' }}>
-          Немає прикріплених документів. Підтримує: фото, PDF, Excel, ZIP (до 25 МБ).
+          {t('Немає прикріплених документів. Підтримує: фото, PDF, Excel, ZIP (до 25 МБ).')}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -148,7 +150,7 @@ export default function AttachmentsSection({ operationId }: Props) {
                 type="button"
                 onClick={() => handleDelete(a.id, a.file_name)}
                 style={delBtn}
-                title="Видалити"
+                title={t('Видалити')}
               >
                 <Trash2 size={12} />
               </button>

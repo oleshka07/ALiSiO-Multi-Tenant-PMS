@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, AlertTriangle, RefreshCw, CheckCircle2 } from 'lucide-react';
@@ -19,6 +20,7 @@ interface OrphanRow {
 }
 
 export default function OrphanPaymentsPage() {
+  const t = useT();
   const [rows, setRows] = useState<OrphanRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState<string | null>(null);
@@ -75,38 +77,36 @@ export default function OrphanPaymentsPage() {
           <AlertTriangle size={24} color="#f59e0b" /> Orphan Payments
         </h1>
         <button onClick={fetchRows} disabled={loading} style={{ ...btn, background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
-          <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : undefined} /> Оновити
+          <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : undefined} /> {t('Оновити')}
         </button>
       </div>
 
       <p style={{ marginTop: 8, color: 'var(--text-secondary)', fontSize: 13 }}>
-        Замовлення зі статусом <code>paid</code>, але без відповідного запису у fin_operations.
-        Зазвичай це симптом збою Teya webhook'а (sessionId vs transactionId, падіння в обробнику тощо).
-        Натисни «Створити fin_operation» — це додасть платіж у фінансову систему ретроспективно.
+        {t('Замовлення зі статусом')} <code>paid</code>{t(', але без відповідного запису у fin_operations. Зазвичай це симптом збою Teya webhook\'а (sessionId vs transactionId, падіння в обробнику тощо). Натисни «Створити fin_operation» — це додасть платіж у фінансову систему ретроспективно.')}
       </p>
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Завантаження…')}</div>
       ) : rows.length === 0 ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)', border: '1px dashed var(--border-primary)', borderRadius: 10, marginTop: 16 }}>
-          ✓ Orphan-платежів не знайдено
+          {t('✓ Orphan-платежів не знайдено')}
         </div>
       ) : (
         <>
           <div style={{ marginTop: 16, marginBottom: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
-            Знайдено: <b>{rows.length}</b> · Загальна сума: <b>{total.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} CZK</b>
+            {t('Знайдено:')} <b>{rows.length}</b> {t('· Загальна сума:')} <b>{total.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} CZK</b>
           </div>
           <div style={{ border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: 'var(--bg-secondary)' }}>
-                  <th style={th}>Дата</th>
-                  <th style={th}>Гість / Юніт</th>
-                  <th style={th}>Послуга</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Сума</th>
+                  <th style={th}>{t('Дата')}</th>
+                  <th style={th}>{t('Гість / Юніт')}</th>
+                  <th style={th}>{t('Послуга')}</th>
+                  <th style={{ ...th, textAlign: 'right' }}>{t('Сума')}</th>
                   <th style={th}>Payment ID</th>
-                  <th style={th}>Джерело</th>
-                  <th style={th}>Дія</th>
+                  <th style={th}>{t('Джерело')}</th>
+                  <th style={th}>{t('Дія')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -132,7 +132,7 @@ export default function OrphanPaymentsPage() {
                       <td style={td}>
                         {recovered ? (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#22c55e', fontSize: 12, fontWeight: 600 }}>
-                            <CheckCircle2 size={14} /> Створено
+                            <CheckCircle2 size={14} /> {t('Створено')}
                           </span>
                         ) : (
                           <button

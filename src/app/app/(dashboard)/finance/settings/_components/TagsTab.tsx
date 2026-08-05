@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Pencil, Archive, RotateCcw, Trash2 } from 'lucide-react';
 import TagModal, { TagFormValues } from './TagModal';
@@ -14,6 +15,7 @@ export interface Tag {
 }
 
 export default function TagsTab() {
+  const tUi = useT();
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
@@ -87,30 +89,30 @@ export default function TagsTab() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 20 }}>Теги</h2>
+        <h2 style={{ margin: 0, fontSize: 20 }}>{tUi('Теги')}</h2>
         <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-          {tags.filter((t) => t.is_active).length} активних
+          {tags.filter((t) => t.is_active).length} {tUi('активних')}
         </span>
         <div style={{ flex: 1 }} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-secondary)' }}>
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
-          Показати архівовані
+          {tUi('Показати архівовані')}
         </label>
         <button onClick={() => setEditing('new')} style={addBtnStyle}>
-          <Plus size={16} /> Додати тег
+          <Plus size={16} /> {tUi('Додати тег')}
         </button>
       </div>
 
       <input
         type="text"
-        placeholder="Пошук тега..."
+        placeholder={tUi('Пошук тега...')}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         style={searchStyle}
       />
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Завантаження…')}</div>
       ) : filtered.length === 0 ? (
         <div style={emptyStyle}>
           {search ? 'Нічого не знайдено.' : 'Тегів ще немає. Теги — це крос-тематичні мітки для операцій (напр. «Терміново», «Одноразове», «На перегляд»).'}
@@ -119,7 +121,7 @@ export default function TagsTab() {
         <>
           <div style={previewBoxStyle}>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
-              Попередній вигляд:
+              {tUi('Попередній вигляд:')}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {filtered.filter((t) => t.is_active).map((t) => (
@@ -134,10 +136,10 @@ export default function TagsTab() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ background: 'var(--bg-secondary)' }}>
-                  <th style={thStyle}>Тег</th>
-                  <th style={thStyle}>Колір</th>
-                  <th style={{ ...thStyle, width: 100, textAlign: 'right' }}>Порядок</th>
-                  <th style={{ ...thStyle, width: 160 }}>Дії</th>
+                  <th style={thStyle}>{tUi('Тег')}</th>
+                  <th style={thStyle}>{tUi('Колір')}</th>
+                  <th style={{ ...thStyle, width: 100, textAlign: 'right' }}>{tUi('Порядок')}</th>
+                  <th style={{ ...thStyle, width: 160 }}>{tUi('Дії')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -154,7 +156,7 @@ export default function TagsTab() {
                         {t.name}
                       </span>
                       {!t.is_active && (
-                        <span style={{ color: 'var(--text-secondary)', fontSize: 12, marginLeft: 8 }}>(архів)</span>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: 12, marginLeft: 8 }}>{tUi('(архів)')}</span>
                       )}
                     </td>
                     <td style={tdStyle}>
@@ -166,7 +168,7 @@ export default function TagsTab() {
                     </td>
                     <td style={{ ...tdStyle, textAlign: 'right' }}>{t.sort_order}</td>
                     <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                      <button onClick={() => setEditing(t)} style={iconBtnStyle} title="Редагувати"><Pencil size={14} /></button>
+                      <button onClick={() => setEditing(t)} style={iconBtnStyle} title={tUi('Редагувати')}><Pencil size={14} /></button>
                       <button
                         onClick={() => handleArchiveToggle(t)}
                         style={iconBtnStyle}
@@ -174,7 +176,7 @@ export default function TagsTab() {
                       >
                         {t.is_active ? <Archive size={14} /> : <RotateCcw size={14} />}
                       </button>
-                      <button onClick={() => handleDelete(t)} style={{ ...iconBtnStyle, color: '#dc2626' }} title="Видалити">
+                      <button onClick={() => handleDelete(t)} style={{ ...iconBtnStyle, color: '#dc2626' }} title={tUi('Видалити')}>
                         <Trash2 size={14} />
                       </button>
                     </td>

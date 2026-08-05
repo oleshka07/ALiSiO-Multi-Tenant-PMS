@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, Search, ExternalLink, Calendar, MapPin, Target, RefreshCw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -10,6 +11,7 @@ interface BookingsTabProps {
 }
 
 export function BookingsTab({ siteId }: BookingsTabProps) {
+  const t = useT();
   const router = useRouter();
   const [bookings, setBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -142,31 +144,31 @@ export function BookingsTab({ siteId }: BookingsTabProps) {
             <input 
               type="text" 
               className="form-input" 
-              placeholder="Пошук за іменем, UTM..." 
+              placeholder={t('Пошук за іменем, UTM...')} 
               value={search} 
               onChange={e => setSearch(e.target.value)} 
               style={{ paddingLeft: 32, height: 32 }} 
             />
           </div>
           <select className="form-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ height: 32, padding: '4px 10px', fontSize: 13, width: 140 }}>
-            <option value="">Всі статуси</option>
-            <option value="confirmed">Підтверджені</option>
-            <option value="tentative">Попередні</option>
-            <option value="cancelled">Скасовані</option>
-            <option value="checked_in">Заселені</option>
-            <option value="checked_out">Виселені</option>
+            <option value="">{t('Всі статуси')}</option>
+            <option value="confirmed">{t('Підтверджені')}</option>
+            <option value="tentative">{t('Попередні')}</option>
+            <option value="cancelled">{t('Скасовані')}</option>
+            <option value="checked_in">{t('Заселені')}</option>
+            <option value="checked_out">{t('Виселені')}</option>
           </select>
           <select className="form-input" value={paymentFilter} onChange={e => setPaymentFilter(e.target.value)} style={{ height: 32, padding: '4px 10px', fontSize: 13, width: 140 }}>
-            <option value="">Всі оплати</option>
-            <option value="paid">Оплачено</option>
-            <option value="unpaid">Не оплачено</option>
-            <option value="payment_requested">Запит оплати</option>
+            <option value="">{t('Всі оплати')}</option>
+            <option value="paid">{t('Оплачено')}</option>
+            <option value="unpaid">{t('Не оплачено')}</option>
+            <option value="payment_requested">{t('Запит оплати')}</option>
           </select>
         </div>
 
         <button className="btn btn-secondary" onClick={fetchBookings} style={{ padding: '6px 12px', height: 32 }}>
           <RefreshCw size={14} className={loading ? 'spin' : ''} />
-          Оновити
+          {t('Оновити')}
         </button>
       </div>
 
@@ -178,19 +180,19 @@ export function BookingsTab({ siteId }: BookingsTabProps) {
           </div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-secondary)' }}>
-            Не знайдено бронювань за вказаний період
+            {t('Не знайдено бронювань за вказаний період')}
           </div>
         ) : (
           <div className="table-wrapper">
             <table className="table">
               <thead>
                 <tr>
-                  <th onClick={() => handleSort('created_at')} style={{ cursor: 'pointer', userSelect: 'none' }}>ID / Створено {sortField === 'created_at' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</th>
-                  <th onClick={() => handleSort('guest')} style={{ cursor: 'pointer', userSelect: 'none' }}>Гість {sortField === 'guest' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</th>
-                  <th onClick={() => handleSort('check_in')} style={{ cursor: 'pointer', userSelect: 'none' }}>Будинок / Дати {sortField === 'check_in' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</th>
-                  <th onClick={() => handleSort('total_price')} style={{ cursor: 'pointer', userSelect: 'none' }}>Сума {sortField === 'total_price' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</th>
-                  <th>Джерело (UTM)</th>
-                  <th>Деталі (Креатив/Ключ)</th>
+                  <th onClick={() => handleSort('created_at')} style={{ cursor: 'pointer', userSelect: 'none' }}>{t('ID / Створено')} {sortField === 'created_at' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</th>
+                  <th onClick={() => handleSort('guest')} style={{ cursor: 'pointer', userSelect: 'none' }}>{t('Гість')} {sortField === 'guest' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</th>
+                  <th onClick={() => handleSort('check_in')} style={{ cursor: 'pointer', userSelect: 'none' }}>{t('Будинок / Дати')} {sortField === 'check_in' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</th>
+                  <th onClick={() => handleSort('total_price')} style={{ cursor: 'pointer', userSelect: 'none' }}>{t('Сума')} {sortField === 'total_price' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}</th>
+                  <th>{t('Джерело (UTM)')}</th>
+                  <th>{t('Деталі (Креатив/Ключ)')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -212,7 +214,7 @@ export function BookingsTab({ siteId }: BookingsTabProps) {
                     <td>
                       <div style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>{b.unit_name || b.unit_code}</div>
                       <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                        {b.check_in} <span style={{color:'var(--text-tertiary)'}}>→</span> {b.check_out} ({b.nights} н.)
+                        {b.check_in} <span style={{color:'var(--text-tertiary)'}}>→</span> {b.check_out} ({b.nights} {t('н.)')}
                       </div>
                     </td>
                     <td>
@@ -262,10 +264,10 @@ export function BookingsTab({ siteId }: BookingsTabProps) {
                   onClick={() => setPage(p => p - 1)}
                   style={{ padding: '6px 12px' }}
                 >
-                  Попередня
+                  {t('Попередня')}
                 </button>
                 <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-                  Сторінка {page} з {totalPages}
+                  {t('Сторінка')} {page} {t('з')} {totalPages}
                 </span>
                 <button 
                   className="btn btn-secondary" 
@@ -273,7 +275,7 @@ export function BookingsTab({ siteId }: BookingsTabProps) {
                   onClick={() => setPage(p => p + 1)}
                   style={{ padding: '6px 12px' }}
                 >
-                  Наступна
+                  {t('Наступна')}
                 </button>
               </div>
             )}

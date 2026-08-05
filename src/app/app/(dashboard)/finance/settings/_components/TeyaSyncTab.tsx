@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import { CreditCard, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
 
@@ -49,6 +50,7 @@ function defaultRange(): { from: string; to: string } {
 }
 
 export default function TeyaSyncTab() {
+  const t = useT();
   const [range, setRange] = useState(defaultRange());
   const [status, setStatus] = useState<SyncStatus | null>(null);
   const [running, setRunning] = useState(false);
@@ -114,19 +116,17 @@ export default function TeyaSyncTab() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
         <CreditCard size={20} color="#3b82f6" />
-        <h2 style={{ margin: 0, fontSize: 18 }}>Teya — синхронізація транзакцій</h2>
+        <h2 style={{ margin: 0, fontSize: 18 }}>{t('Teya — синхронізація транзакцій')}</h2>
       </div>
 
       <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
-        Підтягує всі Teya-транзакції за період через API. Webhook ловить тільки платежі через наш checkout —
-        платежі з телефону / POS-терміналу / ресторану повз нього. Цей sync їх дотягує і створює fin_operations
-        для ще-не-записаних. <b>Дублі не створюються</b> — матчинг по transaction_id.
+        {t('Підтягує всі Teya-транзакції за період через API. Webhook ловить тільки платежі через наш checkout — платежі з телефону / POS-терміналу / ресторану повз нього. Цей sync їх дотягує і створює fin_operations для ще-не-записаних.')} <b>{t('Дублі не створюються')}</b> {t('— матчинг по transaction_id.')}
       </p>
 
       {/* CSV import — reliable fallback for terminal/POS payments */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 8 }}>
-        <span style={{ fontSize: 13, fontWeight: 600 }}>📄 Імпорт CSV (експорт транзакцій Teya)</span>
-        <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Валюта:</label>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>{t('📄 Імпорт CSV (експорт транзакцій Teya)')}</span>
+        <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('Валюта:')}</label>
         <select value={csvCurrency} onChange={e => setCsvCurrency(e.target.value)} style={{ padding: '4px 8px', borderRadius: 6 }}>
           <option value="CZK">CZK</option>
           <option value="EUR">EUR</option>
@@ -138,12 +138,12 @@ export default function TeyaSyncTab() {
           onChange={e => { const f = e.target.files?.[0]; if (f) importCsv(f); e.currentTarget.value = ''; }}
           style={{ fontSize: 12 }}
         />
-        {csvBusy && <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Обробка…</span>}
+        {csvBusy && <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('Обробка…')}</span>}
         {csvMsg && <span style={{ fontSize: 12 }}>{csvMsg}</span>}
       </div>
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, padding: 12, background: 'var(--bg-secondary)', borderRadius: 8 }}>
-        <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Період:</label>
+        <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('Період:')}</label>
         <input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} style={input} />
         <span style={{ color: 'var(--text-secondary)' }}>—</span>
         <input type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} style={input} />
@@ -165,30 +165,30 @@ export default function TeyaSyncTab() {
       {/* Last sync status */}
       {status && !status.never_run && (
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, padding: '8px 12px', borderLeft: '3px solid var(--border-primary)' }}>
-          Останній запуск: <b>{status.updated_at}</b> · період <b>{status.from} → {status.to}</b><br />
-          Знайдено <b>{status.fetched}</b> · вже у PMS <b>{status.matched}</b> · нових (звірка) <b>{status.created}</b> · пропущено <b>{status.skipped}</b>
+          {t('Останній запуск:')} <b>{status.updated_at}</b> {t('· період')} <b>{status.from} → {status.to}</b><br />
+          {t('Знайдено')} <b>{status.fetched}</b> {t('· вже у PMS')} <b>{status.matched}</b> {t('· нових (звірка)')} <b>{status.created}</b> {t('· пропущено')} <b>{status.skipped}</b>
           {(status.errors ?? 0) > 0 && <span style={{ color: '#ef4444' }}> · errors <b>{status.errors}</b></span>}
         </div>
       )}
 
       {error && (
         <div style={{ padding: 12, background: 'rgba(239,68,68,0.1)', border: '1px solid #ef4444', borderRadius: 8, color: '#ef4444', fontSize: 13, marginBottom: 16 }}>
-          <b>Помилка:</b> {error}
+          <b>{t('Помилка:')}</b> {error}
         </div>
       )}
 
       {result && (
         <div style={{ padding: 16, border: '1px solid var(--border-primary)', borderRadius: 10, marginBottom: 16 }}>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
-            Результат sync: {result.from} → {result.to}
+            {t('Результат sync:')} {result.from} → {result.to}
           </div>
           <div style={{ display: 'flex', gap: 16, marginBottom: 12, fontSize: 13, flexWrap: 'wrap' }}>
-            <span>Знайдено в Teya: <b>{result.fetched}</b></span>
+            <span>{t('Знайдено в Teya:')} <b>{result.fetched}</b></span>
             <span style={{ color: '#22c55e', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <CheckCircle2 size={14} /> Matched (вже у PMS): <b>{result.matched}</b>
+              <CheckCircle2 size={14} /> {t('Matched (вже у PMS):')} <b>{result.matched}</b>
             </span>
             <span style={{ color: '#3b82f6', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <RefreshCw size={14} /> Нових (ще не в банку): <b>{result.created}</b>
+              <RefreshCw size={14} /> {t('Нових (ще не в банку):')} <b>{result.created}</b>
             </span>
             {result.skipped > 0 && (
               <span style={{ color: 'var(--text-secondary)' }}>Skipped: <b>{result.skipped}</b></span>
@@ -203,11 +203,11 @@ export default function TeyaSyncTab() {
           {result.created > 0 && (
             <details>
               <summary style={{ cursor: 'pointer', fontSize: 12, color: '#3b82f6', fontWeight: 600 }}>
-                Показати нові ({result.created}) — є в Teya, ще немає в банк-виписці (не записано)
+                {t('Показати нові (')}{result.created}{t(') — є в Teya, ще немає в банк-виписці (не записано)')}
               </summary>
               <table style={{ width: '100%', marginTop: 8, fontSize: 12, borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr><th style={th}>Txn ID</th><th style={th}>Дата</th><th style={th}>Сума</th><th style={th}>Status</th></tr>
+                  <tr><th style={th}>Txn ID</th><th style={th}>{t('Дата')}</th><th style={th}>{t('Сума')}</th><th style={th}>Status</th></tr>
                 </thead>
                 <tbody>
                   {result.outcomes.filter((o) => o.outcome === 'created').map((o, i) => (
@@ -226,7 +226,7 @@ export default function TeyaSyncTab() {
           {result.errors > 0 && (
             <details style={{ marginTop: 8 }}>
               <summary style={{ cursor: 'pointer', fontSize: 12, color: '#ef4444', fontWeight: 600 }}>
-                Помилки ({result.errors})
+                {t('Помилки (')}{result.errors})
               </summary>
               <ul style={{ margin: '8px 0', paddingLeft: 20, fontSize: 12 }}>
                 {result.outcomes.filter((o) => o.outcome === 'error').map((o, i) => (
@@ -241,11 +241,9 @@ export default function TeyaSyncTab() {
       )}
 
       <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 8, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-        <b>Налаштування:</b> Teya OAuth credentials мають містити scope <code style={{ padding: '1px 4px', background: 'var(--bg-primary)', borderRadius: 3 }}>transactions/list</code>.
-        Якщо отримуєш 401/403 — зайди в Teya developer портал і додай цей scope до твого app, потім запусти sync знову.
+        <b>{t('Налаштування:')}</b> {t('Teya OAuth credentials мають містити scope')} <code style={{ padding: '1px 4px', background: 'var(--bg-primary)', borderRadius: 3 }}>transactions/list</code>{t('. Якщо отримуєш 401/403 — зайди в Teya developer портал і додай цей scope до твого app, потім запусти sync знову.')}
         <br /><br />
-        <b>Це лише звірка — в операції нічого не пишеться.</b> Гроші в операції приходять <u>тільки</u> з банк-виписки та ручної готівки.
-        Teya виплачує на банк денним батчем, тож запис платежів тут дублював би ті самі гроші. «Нові» = є в Teya, але ще не впали в банк-виписку (зʼявляться пізніше самі).
+        <b>{t('Це лише звірка — в операції нічого не пишеться.')}</b> {t('Гроші в операції приходять')} <u>{t('тільки')}</u> {t('з банк-виписки та ручної готівки. Teya виплачує на банк денним батчем, тож запис платежів тут дублював би ті самі гроші. «Нові» = є в Teya, але ще не впали в банк-виписку (зʼявляться пізніше самі).')}
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, RefreshCw, Filter, X, Search, Building2 } from 'lucide-react';
@@ -161,19 +162,20 @@ function FiltersSheet({
   onClose: () => void;
   onClear: () => void;
 }) {
+  const tUi = useT();
   return (
     <>
       <div className="m-sheet-backdrop" onClick={onClose} />
       <div className="m-sheet" style={{ maxHeight: '70dvh' }}>
         <div className="m-sheet-handle" />
         <div className="m-sheet-header">
-          <h2 style={{ fontSize: 17 }}>Фільтри</h2>
+          <h2 style={{ fontSize: 17 }}>{tUi('Фільтри')}</h2>
           <button className="m-header-btn" onClick={onClose}><X size={20} /></button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
 
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 8, textTransform: 'uppercase' }}>Статус</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 8, textTransform: 'uppercase' }}>{tUi('Статус')}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {[{ k: '', l: 'Всі' }, ...Object.keys(STATUS_LABELS).map(k => ({ k, l: STATUS_LABELS[k] }))].map(opt => (
                 <button
@@ -190,7 +192,7 @@ function FiltersSheet({
           </div>
 
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 8, textTransform: 'uppercase' }}>Оплата</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 8, textTransform: 'uppercase' }}>{tUi('Оплата')}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {[{ k: '', l: 'Всі' }, ...Object.keys(PAYMENT_LABELS).map(k => ({ k, l: `${PAYMENT_ICONS[k]} ${PAYMENT_LABELS[k]}` }))].map(opt => (
                 <button
@@ -207,7 +209,7 @@ function FiltersSheet({
           </div>
 
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 8, textTransform: 'uppercase' }}>Прибирання</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 8, textTransform: 'uppercase' }}>{tUi('Прибирання')}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {[{ k: '', l: 'Всі' }, ...Object.keys(CLEAN_LABELS).map(k => ({ k, l: CLEAN_LABELS[k] }))].map(opt => (
                 <button
@@ -231,7 +233,7 @@ function FiltersSheet({
                 background: 'var(--bg-tertiary)', color: 'var(--text-secondary)',
                 fontSize: 14, fontWeight: 600, cursor: 'pointer',
               }}
-            >Скинути</button>
+            >{tUi('Скинути')}</button>
             <button
               onClick={onClose}
               style={{
@@ -239,7 +241,7 @@ function FiltersSheet({
                 background: 'var(--accent-primary)', color: '#fff',
                 fontSize: 14, fontWeight: 700, cursor: 'pointer',
               }}
-            >Готово</button>
+            >{tUi('Готово')}</button>
           </div>
         </div>
       </div>
@@ -250,6 +252,7 @@ function FiltersSheet({
 // ─── Main ──────────────────────────────────────────────────
 
 export default function MobileCalendar() {
+  const tUi = useT();
   const [units, setUnits] = useState<UnitRow[]>([]);
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [blocks, setBlocks] = useState<AvailabilityBlock[]>([]);
@@ -576,7 +579,7 @@ export default function MobileCalendar() {
               boxShadow: viewMode === 'gantt' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none',
             }}
           >
-            📊 Сітка
+            {tUi('📊 Сітка')}
           </button>
           <button
             onClick={() => setViewMode('shift')}
@@ -587,7 +590,7 @@ export default function MobileCalendar() {
               boxShadow: viewMode === 'shift' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none',
             }}
           >
-            📋 Зміна
+            {tUi('📋 Зміна')}
           </button>
         </div>
       </div>
@@ -598,7 +601,7 @@ export default function MobileCalendar() {
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
           <input
             className="form-input"
-            placeholder="Юніт..."
+            placeholder={tUi('Юніт...')}
             value={search}
             onChange={e => setSearch(e.target.value)}
             autoFocus
@@ -614,14 +617,14 @@ export default function MobileCalendar() {
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>{monthLabel}</span>
-          <button onClick={goToday} style={todayBtn}>Сьогодні</button>
+          <button onClick={goToday} style={todayBtn}>{tUi('Сьогодні')}</button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           {category === 'resort' && (
             <button
               onClick={() => setShowRoomAllocation(true)}
               style={{ ...navBtn, color: 'var(--accent-primary)' }}
-              title="Розселення по кімнатах Будови F"
+              title={tUi('Розселення по кімнатах Будови F')}
             >
               <Building2 size={15} />
             </button>
@@ -653,9 +656,9 @@ export default function MobileCalendar() {
           background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)',
           fontSize: 11, fontWeight: 600, flexWrap: 'wrap',
         }}>
-          {todayAlerts.checkIns > 0 && <span style={{ color: '#22c55e' }}>✈ {todayAlerts.checkIns} заїздів</span>}
-          {todayAlerts.checkOuts > 0 && <span style={{ color: '#60a5fa' }}>🚶 {todayAlerts.checkOuts} виїздів</span>}
-          {todayAlerts.unpaid > 0 && <span style={{ color: '#f59e0b' }}>⚠ {todayAlerts.unpaid} неоплачених</span>}
+          {todayAlerts.checkIns > 0 && <span style={{ color: '#22c55e' }}>✈ {todayAlerts.checkIns} {tUi('заїздів')}</span>}
+          {todayAlerts.checkOuts > 0 && <span style={{ color: '#60a5fa' }}>🚶 {todayAlerts.checkOuts} {tUi('виїздів')}</span>}
+          {todayAlerts.unpaid > 0 && <span style={{ color: '#f59e0b' }}>⚠ {todayAlerts.unpaid} {tUi('неоплачених')}</span>}
         </div>
       )}
 
@@ -667,7 +670,7 @@ export default function MobileCalendar() {
           fontSize: 12, fontWeight: 600, display: 'flex', flexDirection: 'column', gap: 6,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--accent-primary)', fontWeight: 700 }}>📅 Заїзд: {rangeStart.date} (натисніть другу дату на сітці)</span>
+            <span style={{ color: 'var(--accent-primary)', fontWeight: 700 }}>{tUi('📅 Заїзд:')} {rangeStart.date} {tUi('(натисніть другу дату на сітці)')}</span>
             <button
               onClick={() => setRangeStart(null)}
               style={{ border: 'none', background: 'transparent', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 2 }}
@@ -693,7 +696,7 @@ export default function MobileCalendar() {
               }}
               style={{ padding: '4px 10px', borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
             >
-              🔒 Закрити доступ
+              {tUi('🔒 Закрити доступ')}
             </button>
           </div>
         </div>
@@ -705,15 +708,15 @@ export default function MobileCalendar() {
           {/* Operational Summary Cards */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 12, padding: '10px 8px', textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 700 }}>🛬 ЗАЇЗДИ</div>
+              <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 700 }}>{tUi('🛬 ЗАЇЗДИ')}</div>
               <div style={{ fontSize: 20, fontWeight: 800, color: '#3b82f6', marginTop: 2 }}>{shiftCheckIns.length}</div>
             </div>
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 12, padding: '10px 8px', textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 700 }}>🛫 ВИЇЗДИ</div>
+              <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 700 }}>{tUi('🛫 ВИЇЗДИ')}</div>
               <div style={{ fontSize: 20, fontWeight: 800, color: '#8b5cf6', marginTop: 2 }}>{shiftCheckOuts.length}</div>
             </div>
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 12, padding: '10px 8px', textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 700 }}>🧹 БРУДНО</div>
+              <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 700 }}>{tUi('🧹 БРУДНО')}</div>
               <div style={{ fontSize: 20, fontWeight: 800, color: '#ef4444', marginTop: 2 }}>{dirtyUnits.length}</div>
             </div>
           </div>
@@ -721,11 +724,11 @@ export default function MobileCalendar() {
           {/* Arrivals List */}
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
-              🛬 Заїзди сьогодні ({shiftCheckIns.length})
+              {tUi('🛬 Заїзди сьогодні (')}{shiftCheckIns.length})
             </div>
             {shiftCheckIns.length === 0 ? (
               <div style={{ fontSize: 13, color: 'var(--text-tertiary)', background: 'var(--bg-card)', padding: '12px 14px', borderRadius: 12, border: '1px solid var(--border-primary)' }}>
-                Сьогодні немає нових заїздів
+                {tUi('Сьогодні немає нових заїздів')}
               </div>
             ) : (
               shiftCheckIns.map(b => (
@@ -734,7 +737,7 @@ export default function MobileCalendar() {
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 15 }}>{b.first_name} {b.last_name}</div>
                       <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                        Юніт: <strong style={{ color: 'var(--text-primary)' }}>{b.unit_code}</strong> · {b.nights} ноч.
+                        {tUi('Юніт:')} <strong style={{ color: 'var(--text-primary)' }}>{b.unit_code}</strong> · {b.nights} {tUi('ноч.')}
                       </div>
                     </div>
                     {b.status === 'confirmed' ? (
@@ -743,11 +746,11 @@ export default function MobileCalendar() {
                         className="m-action-btn m-action-btn-primary"
                         style={{ padding: '6px 12px', fontSize: 12 }}
                       >
-                        Заселити
+                        {tUi('Заселити')}
                       </button>
                     ) : (
                       <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: 'rgba(20,184,166,0.15)', color: '#14b8a6' }}>
-                        Заселено
+                        {tUi('Заселено')}
                       </span>
                     )}
                   </div>
@@ -759,11 +762,11 @@ export default function MobileCalendar() {
           {/* Departures List */}
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
-              🛫 Виїзди сьогодні ({shiftCheckOuts.length})
+              {tUi('🛫 Виїзди сьогодні (')}{shiftCheckOuts.length})
             </div>
             {shiftCheckOuts.length === 0 ? (
               <div style={{ fontSize: 13, color: 'var(--text-tertiary)', background: 'var(--bg-card)', padding: '12px 14px', borderRadius: 12, border: '1px solid var(--border-primary)' }}>
-                Сьогодні немає виїздів
+                {tUi('Сьогодні немає виїздів')}
               </div>
             ) : (
               shiftCheckOuts.map(b => (
@@ -772,7 +775,7 @@ export default function MobileCalendar() {
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 15 }}>{b.first_name} {b.last_name}</div>
                       <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                        Юніт: <strong style={{ color: 'var(--text-primary)' }}>{b.unit_code}</strong>
+                        {tUi('Юніт:')} <strong style={{ color: 'var(--text-primary)' }}>{b.unit_code}</strong>
                       </div>
                     </div>
                     {b.status === 'checked_in' ? (
@@ -781,11 +784,11 @@ export default function MobileCalendar() {
                         className="m-action-btn"
                         style={{ padding: '6px 12px', fontSize: 12, background: 'rgba(139,92,246,0.15)', color: '#8b5cf6', border: '1px solid rgba(139,92,246,0.3)' }}
                       >
-                        Виселити
+                        {tUi('Виселити')}
                       </button>
                     ) : (
                       <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: 'rgba(139,92,246,0.15)', color: '#8b5cf6' }}>
-                        Виселено
+                        {tUi('Виселено')}
                       </span>
                     )}
                   </div>
@@ -797,11 +800,11 @@ export default function MobileCalendar() {
           {/* Cleaning / Dirty Units */}
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
-              🧹 Прибирання ({dirtyUnits.length} брудних)
+              {tUi('🧹 Прибирання (')}{dirtyUnits.length} {tUi('брудних)')}
             </div>
             {dirtyUnits.length === 0 ? (
               <div style={{ fontSize: 13, color: 'var(--text-tertiary)', background: 'var(--bg-card)', padding: '12px 14px', borderRadius: 12, border: '1px solid var(--border-primary)' }}>
-                Всі номери прибрані! ✨
+                {tUi('Всі номери прибрані! ✨')}
               </div>
             ) : (
               dirtyUnits.map(u => (
@@ -825,7 +828,7 @@ export default function MobileCalendar() {
                       className="m-action-btn"
                       style={{ padding: '6px 12px', fontSize: 12, background: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}
                     >
-                      ✓ Позначити чисто
+                      {tUi('✓ Позначити чисто')}
                     </button>
                   </div>
                 </div>
@@ -843,7 +846,7 @@ export default function MobileCalendar() {
         {/* LEFT STICKY COLUMN */}
         <div style={{ width: LEFT_W, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-primary)', zIndex: 2 }}>
           <div style={{ height: HEADER_H, flexShrink: 0, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-primary)' }} />
-          <div style={{ height: AVAIL_H, flexShrink: 0, background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Вільних</div>
+          <div style={{ height: AVAIL_H, flexShrink: 0, background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{tUi('Вільних')}</div>
           <div style={{ overflowY: 'scroll', flex: 1, scrollbarWidth: 'none' } as React.CSSProperties} id="gantt-left">
             {Array.from(groups.entries()).map(([building, us]) => (
               <div key={building}>
@@ -933,7 +936,7 @@ export default function MobileCalendar() {
           {/* Grid body */}
           <div style={{ position: 'relative', width: gridWidth }}>
             {loading && units.length === 0 ? (
-              <div style={{ padding: 24, color: 'var(--text-tertiary)', textAlign: 'center', fontSize: 13 }}>Завантаження...</div>
+              <div style={{ padding: 24, color: 'var(--text-tertiary)', textAlign: 'center', fontSize: 13 }}>{tUi('Завантаження...')}</div>
             ) : (
               Array.from(groups.entries()).map(([building, us]) => (
                 <div key={building}>
@@ -1073,7 +1076,7 @@ export default function MobileCalendar() {
       {/* Create booking sheet */}
       {showCreateSheet && (
         <BookingFormSheet
-          title="Нове бронювання"
+          title={tUi('Нове бронювання')}
           mode="create"
           initial={newBookingPrefill || undefined}
           unitTypes={unitTypes}
@@ -1087,7 +1090,7 @@ export default function MobileCalendar() {
       {/* Edit booking sheet */}
       {editBooking && (
         <BookingFormSheet
-          title="Редагувати бронювання"
+          title={tUi('Редагувати бронювання')}
           mode="edit"
           bookingId={editBooking.id}
           initial={editInitial}
@@ -1124,20 +1127,20 @@ export default function MobileCalendar() {
           <div className="m-sheet" style={{ maxHeight: '60dvh' }}>
             <div className="m-sheet-handle" />
             <div className="m-sheet-header">
-              <h2 style={{ fontSize: 17 }}>🔒 Блокування номера</h2>
+              <h2 style={{ fontSize: 17 }}>{tUi('🔒 Блокування номера')}</h2>
               <button className="m-header-btn" onClick={() => setViewBlock(null)}><X size={20} /></button>
             </div>
             <div style={{ padding: '0 16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ background: 'var(--bg-secondary)', borderRadius: 12, padding: 14 }}>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>
-                  Юніт: {units.find(u => u.id === viewBlock.unit_id)?.code || viewBlock.unit_id}
+                  {tUi('Юніт:')} {units.find(u => u.id === viewBlock.unit_id)?.code || viewBlock.unit_id}
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
-                  Дати закриття: <strong>{viewBlock.date_from}</strong> → <strong>{viewBlock.date_to}</strong>
+                  {tUi('Дати закриття:')} <strong>{viewBlock.date_from}</strong> → <strong>{viewBlock.date_to}</strong>
                 </div>
                 {viewBlock.notes && (
                   <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 6 }}>
-                    Примітка: {viewBlock.notes}
+                    {tUi('Примітка:')} {viewBlock.notes}
                   </div>
                 )}
               </div>
@@ -1152,7 +1155,7 @@ export default function MobileCalendar() {
                 className="m-action-btn m-action-btn-danger"
                 style={{ width: '100%', padding: 12, borderRadius: 10, fontSize: 14, fontWeight: 700 }}
               >
-                🔓 Видалити блокування (Розблокувати)
+                {tUi('🔓 Видалити блокування (Розблокувати)')}
               </button>
             </div>
           </div>

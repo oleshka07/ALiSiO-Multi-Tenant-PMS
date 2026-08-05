@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
@@ -55,6 +56,7 @@ function fmt(n: number) {
 }
 
 export default function MobileFinanceOverview() {
+  const t = useT();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [kpi, setKpi] = useState<KPI | null>(null);
   const [recentTx, setRecentTx] = useState<Transaction[]>([]);
@@ -93,13 +95,13 @@ export default function MobileFinanceOverview() {
       {/* Total balance */}
       <div style={{ background: 'linear-gradient(135deg, #14b8a6, #3b82f6)', borderRadius: 18, padding: '20px 18px', marginBottom: 14, color: '#fff' }}>
         <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.8, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-          Загальний баланс
+          {t('Загальний баланс')}
         </div>
         <div style={{ fontSize: 32, fontWeight: 800, lineHeight: 1 }}>
           {Math.round(totalBalance).toLocaleString('cs-CZ')} Kč
         </div>
         <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-          {accounts.length} рахунків
+          {accounts.length} {t('рахунків')}
         </div>
       </div>
 
@@ -127,7 +129,7 @@ export default function MobileFinanceOverview() {
       {kpi && (
         <>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5, margin: '14px 0 8px' }}>
-            {month} — підсумок
+            {month} {t('— підсумок')}
           </div>
           <div className="m-kpi-grid" style={{ marginBottom: 14 }}>
             <div className="m-kpi-card">
@@ -135,14 +137,14 @@ export default function MobileFinanceOverview() {
                 <TrendingUp size={18} color="#22c55e" />
               </div>
               <div className="m-kpi-value" style={{ color: '#22c55e', fontSize: 20 }}>{fmt(kpi.revenue)}</div>
-              <div className="m-kpi-label">Дохід</div>
+              <div className="m-kpi-label">{t('Дохід')}</div>
             </div>
             <div className="m-kpi-card">
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
                 <TrendingDown size={18} color="#ef4444" />
               </div>
               <div className="m-kpi-value" style={{ color: '#ef4444', fontSize: 20 }}>{fmt(kpi.expenses)}</div>
-              <div className="m-kpi-label">Витрати</div>
+              <div className="m-kpi-label">{t('Витрати')}</div>
             </div>
             <div className="m-kpi-card">
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
@@ -158,7 +160,7 @@ export default function MobileFinanceOverview() {
                 <Wallet size={18} color="#8b5cf6" />
               </div>
               <div className="m-kpi-value" style={{ color: '#8b5cf6', fontSize: 20 }}>{kpi.margin}%</div>
-              <div className="m-kpi-label">Маржа</div>
+              <div className="m-kpi-label">{t('Маржа')}</div>
             </div>
           </div>
         </>
@@ -169,13 +171,13 @@ export default function MobileFinanceOverview() {
         <Link href="/app/finance/operations" style={{ textDecoration: 'none' }}>
           <div style={{ background: 'rgba(99,102,241,0.12)', borderRadius: 14, padding: '12px 8px', textAlign: 'center', cursor: 'pointer' }}>
             <FileText size={20} color="#6366f1" style={{ marginBottom: 4 }} />
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#6366f1' }}>Журнал</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#6366f1' }}>{t('Журнал')}</div>
           </div>
         </Link>
         <Link href="/app/finance/expenses" style={{ textDecoration: 'none' }}>
           <div style={{ background: 'rgba(239,68,68,0.10)', borderRadius: 14, padding: '12px 8px', textAlign: 'center', cursor: 'pointer' }}>
             <Receipt size={20} color="#ef4444" style={{ marginBottom: 4 }} />
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#ef4444' }}>Витрати</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#ef4444' }}>{t('Витрати')}</div>
           </div>
         </Link>
         <Link href="/app/finance/cashflow" style={{ textDecoration: 'none' }}>
@@ -189,10 +191,10 @@ export default function MobileFinanceOverview() {
       {/* Recent transactions */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-          Останні транзакції
+          {t('Останні транзакції')}
         </div>
         <Link href="/app/finance/operations" style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 12, color: 'var(--accent-primary)', textDecoration: 'none', fontWeight: 600 }}>
-          Всі <ArrowRight size={12} />
+          {t('Всі')} <ArrowRight size={12} />
         </Link>
       </div>
 
@@ -203,7 +205,7 @@ export default function MobileFinanceOverview() {
       ) : recentTx.length === 0 ? (
         <div className="m-empty" style={{ padding: 24 }}>
           <div className="m-empty-icon">💳</div>
-          <div>Немає транзакцій за цей місяць</div>
+          <div>{t('Немає транзакцій за цей місяць')}</div>
         </div>
       ) : (
         recentTx.map(tx => {

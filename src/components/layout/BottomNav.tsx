@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -22,6 +23,7 @@ const tabs = [
 ];
 
 export default function BottomNav({ onMoreClick }: BottomNavProps) {
+  const t = useT();
   const pathname = usePathname();
 
   return (
@@ -37,7 +39,7 @@ export default function BottomNav({ onMoreClick }: BottomNavProps) {
               className={`bottom-nav-item ${isActive ? 'active' : ''}`}
             >
               <Icon size={20} />
-              <span>{tab.label}</span>
+              <span>{t(tab.label)}</span>
             </Link>
           );
         })}
@@ -46,7 +48,7 @@ export default function BottomNav({ onMoreClick }: BottomNavProps) {
           onClick={onMoreClick}
         >
           <MoreHorizontal size={20} />
-          <span>Більше</span>
+          <span>{t('Більше')}</span>
         </button>
       </div>
     </nav>

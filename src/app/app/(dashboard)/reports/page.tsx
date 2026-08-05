@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -84,6 +85,7 @@ const PRESETS: { key: string; label: string }[] = [
 ];
 
 export default function ReportsPage() {
+  const tUi = useT();
   const initRange = getPresetRange('thisMonth');
   const [from, setFrom] = useState(initRange[0]);
   const [to, setTo] = useState(initRange[1]);
@@ -119,11 +121,11 @@ export default function ReportsPage() {
 
   return (
     <>
-      <Header title="Звіти" onMenuClick={onMenuClick} />
+      <Header title={tUi('Звіти')} onMenuClick={onMenuClick} />
       <div className="app-content">
         <div className="page-header">
           <div>
-            <h2 className="page-title">Аналітика продажів</h2>
+            <h2 className="page-title">{tUi('Аналітика продажів')}</h2>
             <div className="page-subtitle">
               {from === to ? from : `${from} — ${to}`}
               {data?.period?.days && ` (${data.period.days} днів)`}
@@ -131,9 +133,9 @@ export default function ReportsPage() {
           </div>
           <div className="flex gap-2">
             <button className="btn btn-secondary" onClick={() => setIsGlampingModalOpen(true)}>
-              <Tent size={16} /> Глемпінг по будинках
+              <Tent size={16} /> {tUi('Глемпінг по будинках')}
             </button>
-            <button className="btn btn-secondary" onClick={fetchReport} title="Оновити">
+            <button className="btn btn-secondary" onClick={fetchReport} title={tUi('Оновити')}>
               <RefreshCw size={16} />
             </button>
           </div>
@@ -152,11 +154,11 @@ export default function ReportsPage() {
             ))}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <label style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Від:</label>
+            <label style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{tUi('Від:')}</label>
             <input className="form-input" type="date" value={from}
               style={{ width: 160, fontSize: 13 }}
               onChange={e => { setFrom(e.target.value); setActivePreset(''); }} />
-            <label style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>До:</label>
+            <label style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{tUi('До:')}</label>
             <input className="form-input" type="date" value={to}
               style={{ width: 160, fontSize: 13 }}
               onChange={e => { setTo(e.target.value); setActivePreset(''); }} />
@@ -166,7 +168,7 @@ export default function ReportsPage() {
         {loading ? (
           <div style={{ textAlign: 'center', padding: 64 }}>
             <Loader2 size={28} className="animate-pulse" style={{ display: 'inline-block' }} />
-            <div style={{ marginTop: 8, color: 'var(--text-tertiary)' }}>Завантаження...</div>
+            <div style={{ marginTop: 8, color: 'var(--text-tertiary)' }}>{tUi('Завантаження...')}</div>
           </div>
         ) : (
           <>
@@ -174,22 +176,22 @@ export default function ReportsPage() {
             <div className="stats-grid">
               <div className="stat-card">
                 <div className="stat-icon blue"><TrendingUp size={22} /></div>
-                <div><div className="stat-value">{summary.occupancyPct || 0}%</div><div className="stat-label">Завантаженість</div></div>
+                <div><div className="stat-value">{summary.occupancyPct || 0}%</div><div className="stat-label">{tUi('Завантаженість')}</div></div>
               </div>
               <div className="stat-card">
                 <div className="stat-icon green"><BarChart3 size={22} /></div>
                 <div>
                   <div className="stat-value">{(summary.totalRevenue || 0).toLocaleString()}</div>
-                  <div className="stat-label">Вартість бронювань (CZK, по заїзду) ≈ {toEur(summary.totalRevenue || 0)} EUR</div>
+                  <div className="stat-label">{tUi('Вартість бронювань (CZK, по заїзду) ≈')} {toEur(summary.totalRevenue || 0)} EUR</div>
                 </div>
               </div>
               <div className="stat-card">
                 <div className="stat-icon yellow"><Calendar size={22} /></div>
-                <div><div className="stat-value">{summary.totalBookings || 0}</div><div className="stat-label">Бронювань</div></div>
+                <div><div className="stat-value">{summary.totalBookings || 0}</div><div className="stat-label">{tUi('Бронювань')}</div></div>
               </div>
               <div className="stat-card">
                 <div className="stat-icon purple"><Users size={22} /></div>
-                <div><div className="stat-value">{summary.totalGuests || 0}</div><div className="stat-label">Гостей</div></div>
+                <div><div className="stat-value">{summary.totalGuests || 0}</div><div className="stat-label">{tUi('Гостей')}</div></div>
               </div>
             </div>
 
@@ -197,10 +199,10 @@ export default function ReportsPage() {
             <div className="reports-two-col">
               {/* Revenue by category */}
               <div className="card">
-                <div className="card-header"><h3 className="card-title">Бронювання по категоріях</h3></div>
+                <div className="card-header"><h3 className="card-title">{tUi('Бронювання по категоріях')}</h3></div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {Object.entries(catData).length === 0 ? (
-                    <div style={{ color: 'var(--text-tertiary)', fontSize: 13, textAlign: 'center', padding: 24 }}>Немає даних</div>
+                    <div style={{ color: 'var(--text-tertiary)', fontSize: 13, textAlign: 'center', padding: 24 }}>{tUi('Немає даних')}</div>
                   ) : (
                     Object.entries(catData).map(([cat, info]: [string, any]) => {
                       const cfg = CATEGORY_LABELS[cat] || { label: cat, color: '#888' };
@@ -213,7 +215,7 @@ export default function ReportsPage() {
                             <span style={{ fontWeight: 700 }}>
                               {info.revenue.toLocaleString()} CZK
                               <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, marginLeft: 6, fontSize: 11 }}>
-                                {info.bookings} брон. · сер. {avgCheck.toLocaleString()} CZK
+                                {info.bookings} {tUi('брон. · сер.')} {avgCheck.toLocaleString()} CZK
                               </span>
                             </span>
                           </div>
@@ -230,7 +232,7 @@ export default function ReportsPage() {
               {/* Payment by method */}
               <div className="card">
                 <div className="card-header">
-                  <h3 className="card-title">Оплати по методах</h3>
+                  <h3 className="card-title">{tUi('Оплати по методах')}</h3>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Wallet size={14} style={{ color: 'var(--text-tertiary)' }} />
                     <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--accent-primary)' }}>
@@ -241,7 +243,7 @@ export default function ReportsPage() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {Object.entries(methodData).length === 0 ? (
-                    <div style={{ color: 'var(--text-tertiary)', fontSize: 13, textAlign: 'center', padding: 24 }}>Немає транзакцій</div>
+                    <div style={{ color: 'var(--text-tertiary)', fontSize: 13, textAlign: 'center', padding: 24 }}>{tUi('Немає транзакцій')}</div>
                   ) : (
                     Object.entries(methodData).sort(([, a], [, b]) => (b as number) - (a as number)).map(([method, amount]) => {
                       const cfg = METHOD_LABELS[method] || { label: method, icon: '💰', color: '#888' };
@@ -270,24 +272,24 @@ export default function ReportsPage() {
 
             {/* Summary table */}
             <div className="card" style={{ marginTop: 16 }}>
-              <div className="card-header"><h3 className="card-title">Зведена таблиця по категоріях</h3></div>
+              <div className="card-header"><h3 className="card-title">{tUi('Зведена таблиця по категоріях')}</h3></div>
 
               {/* Desktop table */}
               <div className="table-wrapper desktop-only" style={{ border: 'none' }}>
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Категорія</th>
-                      <th>Бронювань</th>
-                      <th>Ночей</th>
-                      <th>Вартість бронювань (CZK)</th>
+                      <th>{tUi('Категорія')}</th>
+                      <th>{tUi('Бронювань')}</th>
+                      <th>{tUi('Ночей')}</th>
+                      <th>{tUi('Вартість бронювань (CZK)')}</th>
                       <th>≈ EUR</th>
-                      <th>Сер. чек</th>
+                      <th>{tUi('Сер. чек')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {Object.entries(catData).length === 0 ? (
-                      <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 20 }}>Немає даних</td></tr>
+                      <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 20 }}>{tUi('Немає даних')}</td></tr>
                     ) : (
                       Object.entries(catData).map(([cat, info]: [string, any]) => {
                         const cfg = CATEGORY_LABELS[cat] || { label: cat, color: '#888' };
@@ -306,7 +308,7 @@ export default function ReportsPage() {
                     )}
                     {Object.entries(catData).length > 0 && (
                       <tr style={{ fontWeight: 700, borderTop: '2px solid var(--border-primary)' }}>
-                        <td>Всього</td>
+                        <td>{tUi('Всього')}</td>
                         <td>{summary.totalBookings}</td>
                         <td>{Object.values(catData).reduce((s: number, v: any) => s + (v as any).nights, 0)}</td>
                         <td style={{ color: 'var(--accent-primary)' }}>{(summary.totalRevenue || 0).toLocaleString()}</td>
@@ -321,7 +323,7 @@ export default function ReportsPage() {
               {/* Mobile card view */}
               <div className="mobile-only">
                 {Object.entries(catData).length === 0 ? (
-                  <div style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 20 }}>Немає даних</div>
+                  <div style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 20 }}>{tUi('Немає даних')}</div>
                 ) : (
                   <div className="card-list">
                     {Object.entries(catData).map(([cat, info]: [string, any]) => {
@@ -334,9 +336,9 @@ export default function ReportsPage() {
                             <span className="report-category-card-value">{info.revenue.toLocaleString()} CZK</span>
                           </div>
                           <div className="report-category-card-stats">
-                            <span>{info.bookings} брон.</span>
-                            <span>{info.nights} ночей</span>
-                            <span>сер. {avgCheck.toLocaleString()} CZK</span>
+                            <span>{info.bookings} {tUi('брон.')}</span>
+                            <span>{info.nights} {tUi('ночей')}</span>
+                            <span>{tUi('сер.')} {avgCheck.toLocaleString()} CZK</span>
                           </div>
                         </div>
                       );
@@ -344,12 +346,12 @@ export default function ReportsPage() {
                     {/* Total */}
                     <div className="report-category-card" style={{ borderColor: 'var(--accent-primary)', borderWidth: 2 }}>
                       <div className="report-category-card-header">
-                        <span style={{ fontWeight: 700, fontSize: 14 }}>Всього</span>
+                        <span style={{ fontWeight: 700, fontSize: 14 }}>{tUi('Всього')}</span>
                         <span className="report-category-card-value" style={{ fontSize: 18 }}>{(summary.totalRevenue || 0).toLocaleString()} CZK</span>
                       </div>
                       <div className="report-category-card-stats">
-                        <span>{summary.totalBookings} брон.</span>
-                        <span>{Object.values(catData).reduce((s: number, v: any) => s + (v as any).nights, 0)} ночей</span>
+                        <span>{summary.totalBookings} {tUi('брон.')}</span>
+                        <span>{Object.values(catData).reduce((s: number, v: any) => s + (v as any).nights, 0)} {tUi('ночей')}</span>
                         <span>≈ {toEur(summary.totalRevenue || 0)} EUR</span>
                       </div>
                     </div>

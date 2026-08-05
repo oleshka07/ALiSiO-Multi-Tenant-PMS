@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { GripVertical, Pencil, Archive, RotateCcw, Trash2, Plus } from 'lucide-react';
 import type { Counterparty, Kind } from './CounterpartiesTab';
@@ -36,6 +37,7 @@ export default function CounterpartyTreeRow({
   onDelete,
   onMove,
 }: Props) {
+  const t = useT();
   const [dragOver, setDragOver] = useState<'above' | 'below' | 'onto' | null>(null);
 
   function handleDragStart(e: React.DragEvent) {
@@ -122,28 +124,28 @@ export default function CounterpartyTreeRow({
       <span style={{ fontWeight: isRoot ? 600 : 400, flex: 1, minWidth: 0 }}>
         {counterparty.name}
         {!counterparty.is_active && (
-          <span style={{ color: 'var(--text-secondary)', fontSize: 12, marginLeft: 6 }}>(архів)</span>
+          <span style={{ color: 'var(--text-secondary)', fontSize: 12, marginLeft: 6 }}>{t('(архів)')}</span>
         )}
       </span>
 
       {isRoot && counterparty.kind && <Badge>{KIND_LABELS[counterparty.kind]}</Badge>}
       {aliasCount > 0 && (
         <Badge title={counterparty.aliases.join(', ')}>
-          {aliasCount} синонім{aliasCount === 1 ? '' : aliasCount < 5 ? 'и' : 'ів'}
+          {aliasCount} {t('синонім')}{aliasCount === 1 ? '' : aliasCount < 5 ? 'и' : 'ів'}
         </Badge>
       )}
 
       <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
         {isRoot && onAddChild && (
-          <button onClick={onAddChild} style={{ ...iconBtnStyle, color: 'var(--accent, #6366f1)' }} title="Додати підконтрагента">
+          <button onClick={onAddChild} style={{ ...iconBtnStyle, color: 'var(--accent, #6366f1)' }} title={t('Додати підконтрагента')}>
             <Plus size={15} />
           </button>
         )}
-        <button onClick={onEdit} style={iconBtnStyle} title="Редагувати"><Pencil size={14} /></button>
+        <button onClick={onEdit} style={iconBtnStyle} title={t('Редагувати')}><Pencil size={14} /></button>
         <button onClick={onArchiveToggle} style={iconBtnStyle} title={counterparty.is_active ? 'Архівувати' : 'Відновити'}>
           {counterparty.is_active ? <Archive size={14} /> : <RotateCcw size={14} />}
         </button>
-        <button onClick={onDelete} style={{ ...iconBtnStyle, color: '#dc2626' }} title="Видалити"><Trash2 size={14} /></button>
+        <button onClick={onDelete} style={{ ...iconBtnStyle, color: '#dc2626' }} title={t('Видалити')}><Trash2 size={14} /></button>
       </div>
     </div>
   );

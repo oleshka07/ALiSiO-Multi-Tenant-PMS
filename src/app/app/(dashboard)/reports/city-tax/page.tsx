@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -19,6 +20,7 @@ const TAX_STATUS: Record<string, { label: string; color: string; icon: string }>
 };
 
 export default function CityTaxReportPage() {
+  const t = useT();
   const onMenuClick = useMobileMenu();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
@@ -68,7 +70,7 @@ export default function CityTaxReportPage() {
 
   return (
     <>
-      <Header title="Туристичний збір" onMenuClick={onMenuClick} />
+      <Header title={t('Туристичний збір')} onMenuClick={onMenuClick} />
       <div className="app-content" style={{ padding: '16px 24px', paddingTop: 'calc(var(--header-height) + 16px)' }}>
 
         {/* Month selector */}
@@ -81,12 +83,12 @@ export default function CityTaxReportPage() {
           <div style={{ fontSize: 18, fontWeight: 700, minWidth: 160, textAlign: 'center' }}>{monthLabel}</div>
           <button className="btn btn-secondary btn-sm" onClick={nextMonth}><ChevronRight size={16} /></button>
           <div style={{ flex: 1 }} />
-          <a href={`/app/reports`} className="btn btn-secondary btn-sm">← Звіти</a>
+          <a href={`/app/reports`} className="btn btn-secondary btn-sm">{t('← Звіти')}</a>
         </div>
 
         {loading ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh', gap: 8 }}>
-            <Loader2 size={20} className="animate-pulse" /> <span style={{ color: 'var(--text-secondary)' }}>Завантаження...</span>
+            <Loader2 size={20} className="animate-pulse" /> <span style={{ color: 'var(--text-secondary)' }}>{t('Завантаження...')}</span>
           </div>
         ) : data ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -94,27 +96,27 @@ export default function CityTaxReportPage() {
             {/* Summary cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
               <div style={{ padding: 20, background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)' }}>
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Бронювань</div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Бронювань')}</div>
                 <div style={{ fontSize: 28, fontWeight: 700, marginTop: 8 }}>{data.totalBookings}</div>
               </div>
               <div style={{ padding: 20, background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)' }}>
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Гостей (дорослих)</div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Гостей (дорослих)')}</div>
                 <div style={{ fontSize: 28, fontWeight: 700, marginTop: 8 }}>{data.totalGuests}</div>
               </div>
               <div style={{ padding: 20, background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)' }}>
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Збір до сплати</div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Збір до сплати')}</div>
                 <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--accent-primary)', marginTop: 8 }}>{(data.totalTaxAmount || 0).toLocaleString()} CZK</div>
               </div>
               <div style={{ padding: 20, background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)' }}>
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Оплачено</div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Оплачено')}</div>
                 <div style={{ fontSize: 28, fontWeight: 700, color: '#22c55e', marginTop: 8 }}>{(data.totalTaxPaid || 0).toLocaleString()} CZK</div>
               </div>
               <div style={{ padding: 20, background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)' }}>
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Очікує оплати</div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Очікує оплати')}</div>
                 <div style={{ fontSize: 28, fontWeight: 700, color: '#f59e0b', marginTop: 8 }}>{(data.totalTaxPending || 0).toLocaleString()} CZK</div>
               </div>
               <div style={{ padding: 20, background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)' }}>
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Включено у ціну</div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Включено у ціну')}</div>
                 <div style={{ fontSize: 28, fontWeight: 700, color: '#a78bfa', marginTop: 8 }}>{(data.totalTaxIncluded || 0).toLocaleString()} CZK</div>
               </div>
             </div>
@@ -122,13 +124,13 @@ export default function CityTaxReportPage() {
             {/* By source */}
             {data.bySource && Object.keys(data.bySource).length > 0 && (
               <div style={{ padding: 20, background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)' }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>По джерелам</div>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>{t('По джерелам')}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr repeat(4, auto)', gap: '8px 20px', fontSize: 13 }}>
-                  <div style={{ fontWeight: 600, color: 'var(--text-tertiary)', fontSize: 11, textTransform: 'uppercase' }}>Джерело</div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-tertiary)', fontSize: 11, textTransform: 'uppercase', textAlign: 'right' }}>Бронювань</div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-tertiary)', fontSize: 11, textTransform: 'uppercase', textAlign: 'right' }}>Збір</div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-tertiary)', fontSize: 11, textTransform: 'uppercase', textAlign: 'right' }}>Оплачено</div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-tertiary)', fontSize: 11, textTransform: 'uppercase', textAlign: 'right' }}>Очікує</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-tertiary)', fontSize: 11, textTransform: 'uppercase' }}>{t('Джерело')}</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-tertiary)', fontSize: 11, textTransform: 'uppercase', textAlign: 'right' }}>{t('Бронювань')}</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-tertiary)', fontSize: 11, textTransform: 'uppercase', textAlign: 'right' }}>{t('Збір')}</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-tertiary)', fontSize: 11, textTransform: 'uppercase', textAlign: 'right' }}>{t('Оплачено')}</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-tertiary)', fontSize: 11, textTransform: 'uppercase', textAlign: 'right' }}>{t('Очікує')}</div>
                   {Object.entries(data.bySource).map(([src, d]: [string, any]) => (
                     <div key={src} style={{ display: 'contents' }}>
                       <div style={{ fontWeight: 600 }}>{sourceLabel(src)}</div>
@@ -144,20 +146,20 @@ export default function CityTaxReportPage() {
 
             {/* Bookings table */}
             <div style={{ padding: 20, background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)' }}>
-              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Деталі бронювань ({data.bookings?.length || 0})</div>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>{t('Деталі бронювань (')}{data.bookings?.length || 0})</div>
               <div style={{ overflowX: 'auto' }}>
                 <table className="data-table" style={{ fontSize: 13 }}>
                   <thead>
                     <tr>
-                      <th>Гість</th>
-                      <th>Юніт</th>
-                      <th>Заїзд</th>
-                      <th>Виїзд</th>
-                      <th>Дорослих</th>
-                      <th>Джерело</th>
-                      <th style={{ textAlign: 'right' }}>Збір</th>
-                      <th>Включено</th>
-                      <th>Статус</th>
+                      <th>{t('Гість')}</th>
+                      <th>{t('Юніт')}</th>
+                      <th>{t('Заїзд')}</th>
+                      <th>{t('Виїзд')}</th>
+                      <th>{t('Дорослих')}</th>
+                      <th>{t('Джерело')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('Збір')}</th>
+                      <th>{t('Включено')}</th>
+                      <th>{t('Статус')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -187,7 +189,7 @@ export default function CityTaxReportPage() {
             </div>
           </div>
         ) : (
-          <div style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 40 }}>Немає даних</div>
+          <div style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 40 }}>{t('Немає даних')}</div>
         )}
       </div>
     </>

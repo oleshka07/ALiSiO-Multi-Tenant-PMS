@@ -43,7 +43,7 @@ const { provisionOrganization } = await import('../src/core/provisioning.ts');
 
 let result;
 try {
-  result = provisionOrganization({
+  result = await provisionOrganization({
     name,
     slug,
     ownerEmail: email,

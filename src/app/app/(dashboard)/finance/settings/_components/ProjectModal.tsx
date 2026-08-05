@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import type { Project, ProjectNode } from './ProjectsTab';
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function ProjectModal({ initial, parent, onClose, onSave }: Props) {
+  const t = useT();
   const isSubproject = !!parent;
   const inheritedShared = parent?.is_shared === 1;
   const isEditingSubproject = initial && initial.parent_id !== null;
@@ -70,7 +72,7 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
           <button type="button" onClick={onClose} style={closeBtnStyle}><X size={18} /></button>
         </div>
 
-        <Field label="Назва">
+        <Field label={t('Назва')}>
           <input
             type="text"
             value={name}
@@ -80,12 +82,12 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
           />
         </Field>
 
-        <Field label="Опис (опц.)">
+        <Field label={t('Опис (опц.)')}>
           <input
             type="text"
             value={unitType}
             onChange={(e) => setUnitType(e.target.value)}
-            placeholder="Напр. «Міні-готель / 16 номерів»"
+            placeholder={t('Напр. «Міні-готель / 16 номерів»')}
             style={inputStyle}
           />
         </Field>
@@ -98,7 +100,7 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
               onChange={(e) => setIsShared(e.target.checked)}
               disabled={sharedDisabled}
             />
-            <span style={{ fontSize: 14 }}>Це спільний проєкт (розподіляється на усі)</span>
+            <span style={{ fontSize: 14 }}>{t('Це спільний проєкт (розподіляється на усі)')}</span>
           </label>
           <div style={hintStyle}>
             {sharedDisabled
@@ -107,7 +109,7 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
           </div>
         </div>
 
-        <Field label="Порядок сортування">
+        <Field label={t('Порядок сортування')}>
           <input
             type="number"
             value={sortOrder}
@@ -119,7 +121,7 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
         {error && <div style={{ color: '#dc2626', fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-          <button type="button" onClick={onClose} style={btnSecondaryStyle}>Відміна</button>
+          <button type="button" onClick={onClose} style={btnSecondaryStyle}>{t('Відміна')}</button>
           <button type="submit" disabled={saving} style={btnPrimaryStyle}>
             {saving ? 'Збереження…' : (initial ? 'Зберегти' : 'Створити')}
           </button>

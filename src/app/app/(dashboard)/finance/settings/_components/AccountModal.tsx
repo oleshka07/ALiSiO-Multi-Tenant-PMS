@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import type { Account } from './AccountsTab';
@@ -33,6 +34,7 @@ const CURRENCIES = ['CZK', 'EUR', 'USD', 'UAH', 'PLN', 'GBP'];
 const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#0ea5e9', '#64748b'];
 
 export default function AccountModal({ initial, onClose, onSave }: Props) {
+  const t = useT();
   const [name, setName] = useState(initial?.name || '');
   const [type, setType] = useState<Account['type']>(initial?.type || 'cash');
   const [currency, setCurrency] = useState(initial?.currency || 'CZK');
@@ -89,24 +91,24 @@ export default function AccountModal({ initial, onClose, onSave }: Props) {
           <button type="button" onClick={onClose} style={closeBtnStyle}><X size={18} /></button>
         </div>
 
-        <Field label="Назва">
+        <Field label={t('Назва')}>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} autoFocus />
         </Field>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Field label="Тип">
+          <Field label={t('Тип')}>
             <select value={type} onChange={(e) => setType(e.target.value as Account['type'])} style={inputStyle}>
               {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </Field>
-          <Field label="Валюта">
+          <Field label={t('Валюта')}>
             <select value={currency} onChange={(e) => setCurrency(e.target.value)} style={inputStyle}>
               {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </Field>
         </div>
 
-        <Field label="Стартовий залишок">
+        <Field label={t('Стартовий залишок')}>
           <input
             type="number"
             step="0.01"
@@ -117,7 +119,7 @@ export default function AccountModal({ initial, onClose, onSave }: Props) {
         </Field>
 
         {type === 'card' && (
-          <Field label="Кредитний ліміт">
+          <Field label={t('Кредитний ліміт')}>
             <input
               type="number"
               step="0.01"
@@ -125,13 +127,13 @@ export default function AccountModal({ initial, onClose, onSave }: Props) {
               value={creditLimit}
               onChange={(e) => setCreditLimit(e.target.value === '' ? '' : Number(e.target.value))}
               style={inputStyle}
-              placeholder="Напр. 50000"
+              placeholder={t('Напр. 50000')}
             />
           </Field>
         )}
 
         {(type === 'bank' || type === 'card') && (
-          <Field label="IBAN (для авто-роутингу банк-виписок)">
+          <Field label={t('IBAN (для авто-роутингу банк-виписок)')}>
             <input
               type="text"
               value={iban}
@@ -141,12 +143,12 @@ export default function AccountModal({ initial, onClose, onSave }: Props) {
               autoComplete="off"
             />
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
-              IBAN використовується щоб автоматично прив'язувати XML-виписки KB до цього рахунку. Можна писати з пробілами — нормалізується автоматично.
+              {t('IBAN використовується щоб автоматично прив\'язувати XML-виписки KB до цього рахунку. Можна писати з пробілами — нормалізується автоматично.')}
             </div>
           </Field>
         )}
 
-        <Field label="Колір">
+        <Field label={t('Колір')}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {COLORS.map((c) => (
               <button
@@ -166,7 +168,7 @@ export default function AccountModal({ initial, onClose, onSave }: Props) {
           </div>
         </Field>
 
-        <Field label="Порядок сортування">
+        <Field label={t('Порядок сортування')}>
           <input
             type="number"
             value={sortOrder}
@@ -180,7 +182,7 @@ export default function AccountModal({ initial, onClose, onSave }: Props) {
         )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-          <button type="button" onClick={onClose} style={btnSecondaryStyle}>Відміна</button>
+          <button type="button" onClick={onClose} style={btnSecondaryStyle}>{t('Відміна')}</button>
           <button type="submit" disabled={saving} style={btnPrimaryStyle}>
             {saving ? 'Збереження…' : (initial ? 'Зберегти' : 'Створити')}
           </button>

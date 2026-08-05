@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Target, Pencil, Check } from 'lucide-react';
@@ -25,6 +26,7 @@ function formatCZK(n: number): string {
 }
 
 export default function PlanFactPage() {
+  const tUi = useT();
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState(() => {
@@ -77,30 +79,30 @@ export default function PlanFactPage() {
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Link href="/app/finance/reports" style={backLink}><ArrowLeft size={14} /></Link>
         <h1 style={{ margin: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Target size={24} /> План/Факт
+          <Target size={24} /> {tUi('План/Факт')}
         </h1>
         <div style={{ display: 'flex', gap: 4, background: 'var(--bg-secondary)', borderRadius: 8, padding: 3, border: '1px solid var(--border-primary)' }}>
-          <button onClick={() => setBy('category')} style={{ ...tabBtn, ...(by === 'category' ? tabActive : {}) }}>По категоріях</button>
-          <button onClick={() => setBy('project')} style={{ ...tabBtn, ...(by === 'project' ? tabActive : {}) }}>По проєктах</button>
+          <button onClick={() => setBy('category')} style={{ ...tabBtn, ...(by === 'category' ? tabActive : {}) }}>{tUi('По категоріях')}</button>
+          <button onClick={() => setBy('project')} style={{ ...tabBtn, ...(by === 'project' ? tabActive : {}) }}>{tUi('По проєктах')}</button>
         </div>
         <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} style={input} />
       </div>
 
       {loading || !data ? (
-        <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Завантаження…')}</div>
       ) : (
         <>
           <div style={{ display: 'flex', gap: 16, marginTop: 16, padding: 16, background: 'var(--bg-secondary)', borderRadius: 10 }}>
-            <div><div style={lbl}>Всього план</div><div style={val}>{formatCZK(totals.planned)} CZK</div></div>
-            <div><div style={lbl}>Всього факт</div><div style={val}>{formatCZK(totals.actual)} CZK</div></div>
+            <div><div style={lbl}>{tUi('Всього план')}</div><div style={val}>{formatCZK(totals.planned)} CZK</div></div>
+            <div><div style={lbl}>{tUi('Всього факт')}</div><div style={val}>{formatCZK(totals.actual)} CZK</div></div>
             <div>
-              <div style={lbl}>Відхилення</div>
+              <div style={lbl}>{tUi('Відхилення')}</div>
               <div style={{ ...val, color: totals.variance >= 0 ? '#22c55e' : '#ef4444' }}>{formatCZK(totals.variance)} CZK</div>
             </div>
           </div>
 
           <div style={{ marginTop: 16, padding: 10, background: 'rgba(99,102,241,0.08)', borderRadius: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
-            💡 Клік на значення «План» у рядку → введіть суму бюджету на цей місяць.
+            {tUi('💡 Клік на значення «План» у рядку → введіть суму бюджету на цей місяць.')}
           </div>
 
           <div style={{ marginTop: 12, border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
@@ -108,15 +110,15 @@ export default function PlanFactPage() {
               <thead>
                 <tr style={{ background: 'var(--bg-secondary)' }}>
                   <th style={{ ...th, textAlign: 'left' }}>{by === 'project' ? 'Проєкт' : 'Категорія'}</th>
-                  <th style={th}>План</th>
-                  <th style={th}>Факт</th>
-                  <th style={th}>Відхилення</th>
+                  <th style={th}>{tUi('План')}</th>
+                  <th style={th}>{tUi('Факт')}</th>
+                  <th style={th}>{tUi('Відхилення')}</th>
                   <th style={th}>%</th>
                 </tr>
               </thead>
               <tbody>
                 {data.rows.length === 0 ? (
-                  <tr><td colSpan={5} style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Немає рядків</td></tr>
+                  <tr><td colSpan={5} style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Немає рядків')}</td></tr>
                 ) : data.rows.map((r) => {
                   const isEditing = editing === r.id;
                   // Color logic: for income — actual ≥ planned = green; for expense — actual ≤ planned = green
@@ -170,7 +172,7 @@ export default function PlanFactPage() {
               </tbody>
               <tfoot>
                 <tr style={{ background: 'var(--bg-secondary)', fontWeight: 700 }}>
-                  <td style={tdLeft}>Разом</td>
+                  <td style={tdLeft}>{tUi('Разом')}</td>
                   <td style={td}>{formatCZK(totals.planned)}</td>
                   <td style={td}>{formatCZK(totals.actual)}</td>
                   <td style={{ ...td, color: totals.variance >= 0 ? '#22c55e' : '#ef4444' }}>

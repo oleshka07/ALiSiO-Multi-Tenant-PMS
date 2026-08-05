@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -138,6 +139,7 @@ const CHANNEL_INFO: Record<string, { name: string; color: string; icon: string }
 // ─── Main Page ──────────────────────────────────────────────
 
 export default function ChannelManagerPage() {
+  const tUi = useT();
   const [activeTab, setActiveTab] = useState<'api' | 'ical'>('api');
   const onMenuClick = useMobileMenu();
 
@@ -416,7 +418,7 @@ export default function ChannelManagerPage() {
 
   return (
     <>
-      <Header title="Канал-менеджер" onMenuClick={onMenuClick} />
+      <Header title={tUi('Канал-менеджер')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {toast && (
           <div style={{
@@ -433,10 +435,10 @@ export default function ChannelManagerPage() {
         <div className="page-header">
           <div>
             <Link href="/app/settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--text-tertiary)', fontSize: 12, marginBottom: 4, textDecoration: 'none' }}>
-              <ArrowLeft size={14} /> Налаштування
+              <ArrowLeft size={14} /> {tUi('Налаштування')}
             </Link>
-            <h2 className="page-title">Канал-менеджер</h2>
-            <div className="page-subtitle">API інтеграції та iCal синхронізація з OTA</div>
+            <h2 className="page-title">{tUi('Канал-менеджер')}</h2>
+            <div className="page-subtitle">{tUi('API інтеграції та iCal синхронізація з OTA')}</div>
           </div>
         </div>
 
@@ -452,7 +454,7 @@ export default function ChannelManagerPage() {
               marginBottom: -2, display: 'flex', alignItems: 'center', gap: 6,
             }}
           >
-            <Zap size={16} /> API Інтеграції
+            <Zap size={16} /> {tUi('API Інтеграції')}
             {connections.length > 0 && (
               <span style={{ background: 'var(--accent-primary)', color: '#fff', borderRadius: 10, padding: '1px 8px', fontSize: 11 }}>
                 {connections.length}
@@ -480,7 +482,7 @@ export default function ChannelManagerPage() {
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 64 }}>
-            <Loader2 size={24} className="animate-pulse" style={{ display: 'inline-block' }} /> Завантаження...
+            <Loader2 size={24} className="animate-pulse" style={{ display: 'inline-block' }} /> {tUi('Завантаження...')}
           </div>
         ) : activeTab === 'api' ? (
           /* ═══════════════════════════════════════════════════
@@ -526,7 +528,7 @@ export default function ChannelManagerPage() {
                   Додайте з&apos;єднання з Booking.com для real-time синхронізації бронювань та цін через їх Connectivity API
                 </div>
                 <button className="btn btn-primary" onClick={() => { setConnForm({ channel: 'booking_com', external_property_id: '', connection_types: ['RESERVATIONS', 'AVAILABILITY'] }); setShowConnModal(true); }}>
-                  <Plus size={16} /> Додати Booking.com
+                  <Plus size={16} /> {tUi('Додати Booking.com')}
                 </button>
               </div>
             ) : (
@@ -588,7 +590,7 @@ export default function ChannelManagerPage() {
                           >
                             {isConnected ? <WifiOff size={14} /> : <Wifi size={14} />}
                           </button>
-                          <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-danger)' }} onClick={() => handleDeleteConnection(conn)} title="Видалити">
+                          <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-danger)' }} onClick={() => handleDeleteConnection(conn)} title={tUi('Видалити')}>
                             <Trash2 size={14} />
                           </button>
                         </div>
@@ -614,19 +616,19 @@ export default function ChannelManagerPage() {
             {syncStats && syncStats.recentLogs.length > 0 && (
               <div style={{ marginTop: 24 }}>
                 <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, color: 'var(--text-primary)' }}>
-                  📜 Останні sync логи
+                  {tUi('📜 Останні sync логи')}
                 </h3>
                 <div className="card" style={{ padding: 0, overflow: 'auto' }}>
                   <table className="data-table" style={{ fontSize: 12 }}>
                     <thead>
                       <tr>
-                        <th>Час</th>
-                        <th>Канал</th>
-                        <th>Напрямок</th>
+                        <th>{tUi('Час')}</th>
+                        <th>{tUi('Канал')}</th>
+                        <th>{tUi('Напрямок')}</th>
                         <th>Endpoint</th>
                         <th>Status</th>
                         <th>RUID</th>
-                        <th>Час (ms)</th>
+                        <th>{tUi('Час (ms)')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -666,7 +668,7 @@ export default function ChannelManagerPage() {
                 {syncingAll ? 'Синхронізація...' : 'Синхронізувати все'}
               </button>
               <button className="btn btn-primary" onClick={openNewICal}>
-                <Plus size={16} /> Додати канал
+                <Plus size={16} /> {tUi('Додати канал')}
               </button>
             </div>
 
@@ -674,13 +676,13 @@ export default function ChannelManagerPage() {
               <div className="card" style={{ textAlign: 'center', padding: '48px 24px' }}>
                 <div style={{ fontSize: 48, marginBottom: 16 }}>📡</div>
                 <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: 'var(--text-primary)' }}>
-                  Немає налаштованих iCal каналів
+                  {tUi('Немає налаштованих iCal каналів')}
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginBottom: 20 }}>
-                  Додайте iCal канал для синхронізації з VRBO, Airbnb або іншим OTA
+                  {tUi('Додайте iCal канал для синхронізації з VRBO, Airbnb або іншим OTA')}
                 </div>
                 <button className="btn btn-primary" onClick={openNewICal}>
-                  <Plus size={16} /> Додати перший канал
+                  <Plus size={16} /> {tUi('Додати перший канал')}
                 </button>
               </div>
             ) : (
@@ -703,48 +705,48 @@ export default function ChannelManagerPage() {
                           <span className="badge" style={{ background: (ch.source_color || '#6c7086') + '22', color: ch.source_color || '#6c7086', fontWeight: 700, fontSize: 11 }}>
                             {ch.source_icon} {ch.source_name || ch.source_code}
                           </span>
-                          {!ch.is_active && <span className="badge badge-danger" style={{ fontSize: 10 }}>Вимкнено</span>}
+                          {!ch.is_active && <span className="badge badge-danger" style={{ fontSize: 10 }}>{tUi('Вимкнено')}</span>}
                         </div>
                         <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={12} /> Інтервал: {ch.sync_interval_minutes} хв</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={12} /> {tUi('Інтервал:')} {ch.sync_interval_minutes} {tUi('хв')}</span>
                           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                             {ch.last_log?.status === 'success'
                               ? <><CheckCircle size={12} style={{ color: 'var(--accent-success)' }} /> {formatTime(ch.last_synced_at)}</>
                               : ch.last_log?.status === 'error'
-                              ? <><AlertCircle size={12} style={{ color: 'var(--accent-danger)' }} /> Помилка</>
-                              : <>Ще не синхронізовано</>
+                              ? <><AlertCircle size={12} style={{ color: 'var(--accent-danger)' }} /> {tUi('Помилка')}</>
+                              : <>{tUi('Ще не синхронізовано')}</>
                             }
                           </span>
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                         {ch.ical_url && (
-                          <button className="btn btn-sm btn-secondary" onClick={() => handleSyncICal(ch.id)} disabled={syncing === ch.id} title="Синхронізувати">
+                          <button className="btn btn-sm btn-secondary" onClick={() => handleSyncICal(ch.id)} disabled={syncing === ch.id} title={tUi('Синхронізувати')}>
                             <RefreshCw size={14} className={syncing === ch.id ? 'animate-pulse' : ''} />
                           </button>
                         )}
-                        <button className="btn btn-sm btn-ghost btn-icon" onClick={() => openEditICal(ch)} title="Редагувати"><Edit3 size={14} /></button>
-                        <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-danger)' }} onClick={() => handleDeleteICal(ch)} title="Видалити"><Trash2 size={14} /></button>
+                        <button className="btn btn-sm btn-ghost btn-icon" onClick={() => openEditICal(ch)} title={tUi('Редагувати')}><Edit3 size={14} /></button>
+                        <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-danger)' }} onClick={() => handleDeleteICal(ch)} title={tUi('Видалити')}><Trash2 size={14} /></button>
                       </div>
                     </div>
                     <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {ch.ical_url && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 600, minWidth: 56 }}>⬇ Імпорт</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 600, minWidth: 56 }}>{tUi('⬇ Імпорт')}</span>
                           <code style={{ flex: 1, fontSize: 11, padding: '4px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {ch.ical_url}
                           </code>
                         </div>
                       )}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 600, minWidth: 56 }}>⬆ Експорт</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 600, minWidth: 56 }}>{tUi('⬆ Експорт')}</span>
                         <code style={{ flex: 1, fontSize: 11, padding: '4px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           /api/ical-export/{ch.export_token}
                         </code>
-                        <button className="btn btn-sm btn-ghost btn-icon" onClick={() => copyExportUrl(ch.export_token)} title="Копіювати URL" style={{ color: copiedToken === ch.export_token ? 'var(--accent-success)' : 'var(--text-tertiary)' }}>
+                        <button className="btn btn-sm btn-ghost btn-icon" onClick={() => copyExportUrl(ch.export_token)} title={tUi('Копіювати URL')} style={{ color: copiedToken === ch.export_token ? 'var(--accent-success)' : 'var(--text-tertiary)' }}>
                           {copiedToken === ch.export_token ? <Check size={14} /> : <Copy size={14} />}
                         </button>
-                        <a href={`/api/ical-export/${ch.export_token}`} target="_blank" className="btn btn-sm btn-ghost btn-icon" title="Відкрити iCal" style={{ color: 'var(--text-tertiary)' }}>
+                        <a href={`/api/ical-export/${ch.export_token}`} target="_blank" className="btn btn-sm btn-ghost btn-icon" title={tUi('Відкрити iCal')} style={{ color: 'var(--text-tertiary)' }}>
                           <ExternalLink size={14} />
                         </a>
                       </div>
@@ -767,16 +769,16 @@ export default function ChannelManagerPage() {
         <Modal
           open={showConnModal}
           onClose={() => setShowConnModal(false)}
-          title="Нове API з'єднання"
+          title={tUi('Нове API з\'єднання')}
           footer={<>
-            <button className="btn btn-secondary" onClick={() => setShowConnModal(false)}>Скасувати</button>
+            <button className="btn btn-secondary" onClick={() => setShowConnModal(false)}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={handleCreateConnection} disabled={saving}>
               <Save size={16} /> {saving ? 'Створення...' : 'Створити'}
             </button>
           </>}
         >
           <div className="form-group">
-            <label className="form-label">Канал *</label>
+            <label className="form-label">{tUi('Канал *')}</label>
             <select className="form-select" value={connForm.channel} onChange={e => setConnForm(p => ({ ...p, channel: e.target.value }))}>
               <option value="booking_com">🅱 Booking.com</option>
               <option value="airbnb">🏠 Airbnb</option>
@@ -786,7 +788,7 @@ export default function ChannelManagerPage() {
           </div>
           <div className="form-group">
             <label className="form-label">External Property ID</label>
-            <input className="form-input" placeholder="Наприклад: 12345678" value={connForm.external_property_id} onChange={e => setConnForm(p => ({ ...p, external_property_id: e.target.value }))} />
+            <input className="form-input" placeholder={tUi('Наприклад: 12345678')} value={connForm.external_property_id} onChange={e => setConnForm(p => ({ ...p, external_property_id: e.target.value }))} />
             <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
               ID вашого об&apos;єкту на платформі OTA (можна додати пізніше)
             </div>
@@ -821,21 +823,21 @@ export default function ChannelManagerPage() {
           onClose={() => setShowCredModal(false)}
           title="API Credentials"
           footer={<>
-            <button className="btn btn-secondary" onClick={() => setShowCredModal(false)}>Скасувати</button>
+            <button className="btn btn-secondary" onClick={() => setShowCredModal(false)}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={handleSaveCredentials} disabled={saving}>
               <Shield size={16} /> {saving ? 'Збереження...' : 'Зберегти'}
             </button>
           </>}
         >
           <div className="form-group">
-            <label className="form-label">Канал *</label>
+            <label className="form-label">{tUi('Канал *')}</label>
             <select className="form-select" value={credForm.channel} onChange={e => setCredForm(p => ({ ...p, channel: e.target.value }))}>
               <option value="booking_com">🅱 Booking.com</option>
               <option value="airbnb">🏠 Airbnb</option>
             </select>
           </div>
           <div className="form-group">
-            <label className="form-label">Середовище *</label>
+            <label className="form-label">{tUi('Середовище *')}</label>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className={`btn ${credForm.environment === 'test' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }} onClick={() => setCredForm(p => ({ ...p, environment: 'test' }))}>
                 🧪 Test
@@ -853,7 +855,7 @@ export default function ChannelManagerPage() {
             <label className="form-label">Client Secret *</label>
             <input className="form-input" type="password" placeholder="●●●●●●●●●●" value={credForm.client_secret} onChange={e => setCredForm(p => ({ ...p, client_secret: e.target.value }))} />
             <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
-              Отримані з Booking.com Provider Portal → Machine Accounts
+              {tUi('Отримані з Booking.com Provider Portal → Machine Accounts')}
             </div>
           </div>
         </Modal>
@@ -864,12 +866,12 @@ export default function ChannelManagerPage() {
           onClose={() => setShowMappingModal(false)}
           title={`Room Mapping — ${selectedConn ? (CHANNEL_INFO[selectedConn.channel]?.name || selectedConn.channel) : ''}`}
           width={640}
-          footer={<button className="btn btn-secondary" onClick={() => setShowMappingModal(false)}>Закрити</button>}
+          footer={<button className="btn btn-secondary" onClick={() => setShowMappingModal(false)}>{tUi('Закрити')}</button>}
         >
           {/* Existing mappings */}
           {mappingData.mappings.length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: 'var(--text-tertiary)' }}>АКТИВНІ MAPPING</div>
+              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: 'var(--text-tertiary)' }}>{tUi('АКТИВНІ MAPPING')}</div>
               <div style={{ display: 'grid', gap: 8 }}>
                 {mappingData.mappings.map(m => (
                   <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)' }}>
@@ -889,12 +891,12 @@ export default function ChannelManagerPage() {
           )}
 
           {/* Add new mapping */}
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: 'var(--text-tertiary)' }}>ДОДАТИ MAPPING</div>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: 'var(--text-tertiary)' }}>{tUi('ДОДАТИ MAPPING')}</div>
           <div style={{ display: 'grid', gap: 8 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Тип кімнати (PMS)</label>
+              <label className="form-label">{tUi('Тип кімнати (PMS)')}</label>
               <select className="form-select" value={mappingForm.unit_type_id} onChange={e => setMappingForm(p => ({ ...p, unit_type_id: e.target.value }))}>
-                <option value="">Оберіть...</option>
+                <option value="">{tUi('Оберіть...')}</option>
                 {mappingData.unitTypes.map(ut => (
                   <option key={ut.id} value={ut.id}>{ut.name} ({ut.code})</option>
                 ))}
@@ -911,7 +913,7 @@ export default function ChannelManagerPage() {
               </div>
             </div>
             <button className="btn btn-primary btn-sm" onClick={handleSaveMapping} disabled={!mappingForm.unit_type_id || saving}>
-              <Plus size={14} /> Зберегти mapping
+              <Plus size={14} /> {tUi('Зберегти mapping')}
             </button>
           </div>
         </Modal>
@@ -922,7 +924,7 @@ export default function ChannelManagerPage() {
           onClose={() => setShowICalModal(false)}
           title={editChannel ? 'Редагувати канал' : 'Новий iCal канал'}
           footer={<>
-            <button className="btn btn-secondary" onClick={() => setShowICalModal(false)}>Скасувати</button>
+            <button className="btn btn-secondary" onClick={() => setShowICalModal(false)}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={handleSaveICal} disabled={saving}>
               <Save size={16} /> {saving ? 'Збереження...' : 'Зберегти'}
             </button>
@@ -930,37 +932,37 @@ export default function ChannelManagerPage() {
         >
           {!editChannel && (<>
             <div className="form-group">
-              <label className="form-label">Тип каналу *</label>
+              <label className="form-label">{tUi('Тип каналу *')}</label>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className={`btn ${icalForm.channel_type === 'building' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }} onClick={() => setICalForm(p => ({ ...p, channel_type: 'building', unit_id: '' }))}>
-                  <Building2 size={16} /> Будівля
+                  <Building2 size={16} /> {tUi('Будівля')}
                 </button>
                 <button className={`btn ${icalForm.channel_type === 'unit' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }} onClick={() => setICalForm(p => ({ ...p, channel_type: 'unit', building_id: '' }))}>
-                  <Home size={16} /> Будинок
+                  <Home size={16} /> {tUi('Будинок')}
                 </button>
               </div>
             </div>
             {icalForm.channel_type === 'building' && (
               <div className="form-group">
-                <label className="form-label">Будівля *</label>
+                <label className="form-label">{tUi('Будівля *')}</label>
                 <select className="form-select" value={icalForm.building_id} onChange={e => setICalForm(p => ({ ...p, building_id: e.target.value }))}>
-                  <option value="">Оберіть...</option>
+                  <option value="">{tUi('Оберіть...')}</option>
                   {buildings.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>
             )}
             {icalForm.channel_type === 'unit' && (
               <div className="form-group">
-                <label className="form-label">Будинок (Glamping) *</label>
+                <label className="form-label">{tUi('Будинок (Glamping) *')}</label>
                 <select className="form-select" value={icalForm.unit_id} onChange={e => setICalForm(p => ({ ...p, unit_id: e.target.value }))}>
-                  <option value="">Оберіть...</option>
+                  <option value="">{tUi('Оберіть...')}</option>
                   {glampingUnits.map(u => <option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}
                 </select>
               </div>
             )}
           </>)}
           <div className="form-group">
-            <label className="form-label">Джерело (OTA) *</label>
+            <label className="form-label">{tUi('Джерело (OTA) *')}</label>
             <select className="form-select" value={icalForm.source_code} onChange={e => setICalForm(p => ({ ...p, source_code: e.target.value }))}>
               {sources.filter(s => !['direct', 'phone', 'whatsapp'].includes(s.code)).map(s => (
                 <option key={s.code} value={s.code}>{s.icon_letter} {s.name}</option>
@@ -968,19 +970,19 @@ export default function ChannelManagerPage() {
             </select>
           </div>
           <div className="form-group">
-            <label className="form-label">📥 iCal URL (імпорт)</label>
+            <label className="form-label">{tUi('📥 iCal URL (імпорт)')}</label>
             <input className="form-input" placeholder="https://www.vrbo.com/icalendar/...ics" value={icalForm.ical_url} onChange={e => setICalForm(p => ({ ...p, ical_url: e.target.value }))} />
             <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
-              Посилання з OTA платформи для імпорту бронювань.
+              {tUi('Посилання з OTA платформи для імпорту бронювань.')}
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">⏱ Інтервал синхронізації</label>
+            <label className="form-label">{tUi('⏱ Інтервал синхронізації')}</label>
             <select className="form-select" value={icalForm.sync_interval_minutes} onChange={e => setICalForm(p => ({ ...p, sync_interval_minutes: Number(e.target.value) }))}>
-              <option value={5}>5 хв</option>
-              <option value={15}>15 хв (рекомендовано)</option>
-              <option value={30}>30 хв</option>
-              <option value={60}>1 година</option>
+              <option value={5}>{tUi('5 хв')}</option>
+              <option value={15}>{tUi('15 хв (рекомендовано)')}</option>
+              <option value={30}>{tUi('30 хв')}</option>
+              <option value={60}>{tUi('1 година')}</option>
             </select>
           </div>
         </Modal>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useMemo } from 'react';
 import { X, Save, Building2, BedDouble, Check, Loader2 } from 'lucide-react';
 
@@ -13,6 +14,7 @@ interface GroupBookingModalProps {
 }
 
 export default function GroupBookingModal({ open, onClose, onCreated, bookingSources }: GroupBookingModalProps) {
+  const t = useT();
   const [mode, setMode] = useState<'building' | 'custom'>('building');
   const [buildings, setBuildings] = useState<any[]>([]);
   const [allUnits, setAllUnits] = useState<any[]>([]);
@@ -128,7 +130,7 @@ export default function GroupBookingModal({ open, onClose, onCreated, bookingSou
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
         <div className="modal-header">
-          <h3 className="modal-title">🏨 Групове бронювання</h3>
+          <h3 className="modal-title">{t('🏨 Групове бронювання')}</h3>
           <button className="modal-close" onClick={onClose}><X size={18} /></button>
         </div>
 
@@ -140,14 +142,14 @@ export default function GroupBookingModal({ open, onClose, onCreated, bookingSou
               style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
               onClick={() => { setMode('building'); setSelectedUnitIds([]); }}
             >
-              <Building2 size={16} /> Вся будівля
+              <Building2 size={16} /> {t('Вся будівля')}
             </button>
             <button
               className={`btn ${mode === 'custom' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
               onClick={() => { setMode('custom'); setSelectedBuildingId(''); }}
             >
-              <BedDouble size={16} /> Обрати кімнати
+              <BedDouble size={16} /> {t('Обрати кімнати')}
             </button>
           </div>
 
@@ -155,17 +157,17 @@ export default function GroupBookingModal({ open, onClose, onCreated, bookingSou
           <div className="card" style={{ marginBottom: 16, padding: 12 }}>
             {mode === 'building' ? (
               <>
-                <label className="form-label">Обрати будівлю</label>
+                <label className="form-label">{t('Обрати будівлю')}</label>
                 <select className="form-select" value={selectedBuildingId} onChange={e => setSelectedBuildingId(e.target.value)}>
-                  <option value="">— Оберіть будівлю —</option>
+                  <option value="">{t('— Оберіть будівлю —')}</option>
                   {buildings.map(b => (
-                    <option key={b.id} value={b.id}>{b.name} ({b.unit_count} кімнат)</option>
+                    <option key={b.id} value={b.id}>{b.name} ({b.unit_count} {t('кімнат)')}</option>
                   ))}
                 </select>
                 {buildingUnits.length > 0 && (
                   <div style={{ marginTop: 12 }}>
                     <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 6 }}>
-                      Кімнати ({buildingUnits.length}):
+                      {t('Кімнати (')}{buildingUnits.length}):
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {buildingUnits.map((u: any) => (
@@ -178,7 +180,7 @@ export default function GroupBookingModal({ open, onClose, onCreated, bookingSou
             ) : (
               <>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                  <button className={`btn btn-sm ${!categoryFilter ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setCategoryFilter('')}>Всі</button>
+                  <button className={`btn btn-sm ${!categoryFilter ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setCategoryFilter('')}>{t('Всі')}</button>
                   {categories.map(([type, name]) => (
                     <button key={type} className={`btn btn-sm ${categoryFilter === type ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setCategoryFilter(type)}>{name}</button>
@@ -186,7 +188,7 @@ export default function GroupBookingModal({ open, onClose, onCreated, bookingSou
                 </div>
 
                 <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Обрано: {selectedUnitIds.length} кімнат</span>
+                  <span>{t('Обрано:')} {selectedUnitIds.length} {t('кімнат')}</span>
                   <button className="btn btn-sm btn-ghost" onClick={() => selectAll(filteredUnits)}>
                     {filteredUnits.every(u => selectedUnitIds.includes(u.id)) ? 'Зняти все' : 'Обрати все'}
                   </button>
@@ -217,31 +219,31 @@ export default function GroupBookingModal({ open, onClose, onCreated, bookingSou
           {/* Dates */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Заїзд *</label>
+              <label className="form-label">{t('Заїзд *')}</label>
               <input className="form-input" type="date" value={form.checkIn}
                 onChange={e => setForm(p => ({ ...p, checkIn: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Виїзд *</label>
+              <label className="form-label">{t('Виїзд *')}</label>
               <input className="form-input" type="date" value={form.checkOut}
                 onChange={e => setForm(p => ({ ...p, checkOut: e.target.value }))} />
             </div>
           </div>
           {nights > 0 && (
             <div style={{ fontSize: 13, color: 'var(--accent-primary)', marginBottom: 12 }}>
-              📅 {nights} ночей × {roomCount} кімнат = {nights * roomCount} кімнато-ночей
+              📅 {nights} {t('ночей ×')} {roomCount} {t('кімнат =')} {nights * roomCount} {t('кімнато-ночей')}
             </div>
           )}
 
           {/* Price + source */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Загальна ціна</label>
+              <label className="form-label">{t('Загальна ціна')}</label>
               <input className="form-input" type="number" value={form.totalPrice}
                 onChange={e => setForm(p => ({ ...p, totalPrice: Number(e.target.value) }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Джерело</label>
+              <label className="form-label">{t('Джерело')}</label>
               <select className="form-select" value={form.source} onChange={e => setForm(p => ({ ...p, source: e.target.value }))}>
                 {bookingSources.map(s => (
                   <option key={s.code} value={s.code}>{s.name}</option>
@@ -253,16 +255,16 @@ export default function GroupBookingModal({ open, onClose, onCreated, bookingSou
 
           {/* Guest data */}
           <div style={{ borderTop: '1px solid var(--border-primary)', marginTop: 16, paddingTop: 16 }}>
-            <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Замовник групи</h4>
+            <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{t('Замовник групи')}</h4>
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Ім&apos;я *</label>
-                <input className="form-input" placeholder="Ім'я" value={form.firstName}
+                <input className="form-input" placeholder={t('Ім\'я')} value={form.firstName}
                   onChange={e => setForm(p => ({ ...p, firstName: e.target.value }))} />
               </div>
               <div className="form-group">
-                <label className="form-label">Прізвище *</label>
-                <input className="form-input" placeholder="Прізвище" value={form.lastName}
+                <label className="form-label">{t('Прізвище *')}</label>
+                <input className="form-input" placeholder={t('Прізвище')} value={form.lastName}
                   onChange={e => setForm(p => ({ ...p, lastName: e.target.value }))} />
               </div>
             </div>
@@ -273,7 +275,7 @@ export default function GroupBookingModal({ open, onClose, onCreated, bookingSou
                   onChange={e => setForm(p => ({ ...p, email: e.target.value }))} />
               </div>
               <div className="form-group">
-                <label className="form-label">Телефон</label>
+                <label className="form-label">{t('Телефон')}</label>
                 <input className="form-input" type="tel" placeholder="+420..." value={form.phone}
                   onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} />
               </div>
@@ -282,17 +284,17 @@ export default function GroupBookingModal({ open, onClose, onCreated, bookingSou
 
           {/* Notes */}
           <div className="form-group" style={{ marginTop: 8 }}>
-            <label className="form-label">Примітки</label>
+            <label className="form-label">{t('Примітки')}</label>
             <textarea className="form-input" rows={2} value={form.notes}
               onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
           </div>
         </div>
 
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Скасувати</button>
+          <button className="btn btn-secondary" onClick={onClose}>{t('Скасувати')}</button>
           <button className="btn btn-primary" onClick={handleCreate} disabled={saving}>
             {saving ? <Loader2 size={16} className="animate-pulse" /> : <Save size={16} />}
-            Створити ({roomCount} кімнат)
+            {t('Створити (')}{roomCount} {t('кімнат)')}
           </button>
         </div>
       </div>

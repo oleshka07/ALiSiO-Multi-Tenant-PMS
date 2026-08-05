@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import type { FinanceAccess } from './FinanceUsersTab';
@@ -30,6 +31,7 @@ const DEFAULT_ACCESS: FinanceAccess = {
 };
 
 export default function FinanceUserModal({ user, accounts, onClose, onSaved }: Props) {
+  const t = useT();
   const initial = user.access ?? DEFAULT_ACCESS;
 
   const [isEnabled, setIsEnabled] = useState(initial.is_enabled);
@@ -97,7 +99,7 @@ export default function FinanceUserModal({ user, accounts, onClose, onSaved }: P
       <div onClick={(e) => e.stopPropagation()} style={modalStyle}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, flex: 1 }}>⚙️ Доступ: {user.full_name}</h3>
+          <h3 style={{ margin: 0, flex: 1 }}>{t('⚙️ Доступ:')} {user.full_name}</h3>
           <button type="button" onClick={onClose} style={closeBtn}><X size={18} /></button>
         </div>
 
@@ -109,12 +111,12 @@ export default function FinanceUserModal({ user, accounts, onClose, onSaved }: P
             onChange={(e) => setIsEnabled(e.target.checked)}
             style={checkboxInput}
           />
-          <span>Увімкнути доступ до фінансів</span>
+          <span>{t('Увімкнути доступ до фінансів')}</span>
         </label>
 
         <div style={{ opacity: isEnabled ? 1 : 0.4, pointerEvents: isEnabled ? 'auto' : 'none' }}>
           {/* Period mode */}
-          <div style={sectionDivider}>📅 Період даних</div>
+          <div style={sectionDivider}>{t('📅 Період даних')}</div>
           <label style={radioRow}>
             <input
               type="radio"
@@ -122,7 +124,7 @@ export default function FinanceUserModal({ user, accounts, onClose, onSaved }: P
               checked={periodMode === 'month'}
               onChange={() => setPeriodMode('month')}
             />
-            <span>Тільки останній місяць</span>
+            <span>{t('Тільки останній місяць')}</span>
           </label>
           <label style={radioRow}>
             <input
@@ -131,7 +133,7 @@ export default function FinanceUserModal({ user, accounts, onClose, onSaved }: P
               checked={periodMode === 'all'}
               onChange={() => setPeriodMode('all')}
             />
-            <span>Весь період</span>
+            <span>{t('Весь період')}</span>
           </label>
 
           {/* Read-only */}
@@ -142,11 +144,11 @@ export default function FinanceUserModal({ user, accounts, onClose, onSaved }: P
               onChange={(e) => setReadOnly(e.target.checked)}
               style={checkboxInput}
             />
-            <span>Тільки перегляд (без створення/редагування)</span>
+            <span>{t('Тільки перегляд (без створення/редагування)')}</span>
           </label>
 
           {/* Tabs */}
-          <div style={sectionDivider}>📊 Доступні вкладки</div>
+          <div style={sectionDivider}>{t('📊 Доступні вкладки')}</div>
           <div style={checkboxGrid}>
             {ALL_TABS.map((tab) => (
               <label key={tab.value} style={checkboxRow}>
@@ -169,14 +171,14 @@ export default function FinanceUserModal({ user, accounts, onClose, onSaved }: P
               onChange={(e) => setCanExport(e.target.checked)}
               style={checkboxInput}
             />
-            <span>Дозволити експорт даних</span>
+            <span>{t('Дозволити експорт даних')}</span>
           </label>
 
           {/* Accounts */}
-          <div style={sectionDivider}>💰 Видимі рахунки</div>
+          <div style={sectionDivider}>{t('💰 Видимі рахунки')}</div>
           {accounts.length === 0 ? (
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
-              Немає рахунків. Додайте їх у вкладці «Рахунки».
+              {t('Немає рахунків. Додайте їх у вкладці «Рахунки».')}
             </div>
           ) : (
             <>
@@ -187,7 +189,7 @@ export default function FinanceUserModal({ user, accounts, onClose, onSaved }: P
                   onChange={toggleAllAccounts}
                   style={checkboxInput}
                 />
-                <span>Всі рахунки</span>
+                <span>{t('Всі рахунки')}</span>
               </label>
               <div style={checkboxGrid}>
                 {accounts.map((acc) => (
@@ -216,7 +218,7 @@ export default function FinanceUserModal({ user, accounts, onClose, onSaved }: P
 
         {/* Footer */}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>
-          <button type="button" onClick={onClose} style={btnSec}>Скасувати</button>
+          <button type="button" onClick={onClose} style={btnSec}>{t('Скасувати')}</button>
           <button type="button" onClick={handleSave} disabled={saving} style={btnPrim}>
             {saving ? 'Збереження…' : '💾 Зберегти'}
           </button>

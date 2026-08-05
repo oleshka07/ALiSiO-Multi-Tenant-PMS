@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { X, BookOpen, Users, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
@@ -10,6 +11,7 @@ interface MobileQuickCreateSheetProps {
 }
 
 export default function MobileQuickCreateSheet({ open, onClose }: MobileQuickCreateSheetProps) {
+  const t = useT();
   useBodyScrollLock(open);
 
   if (!open) return null;
@@ -20,7 +22,7 @@ export default function MobileQuickCreateSheet({ open, onClose }: MobileQuickCre
       <div className="m-sheet" style={{ paddingBottom: 24 }}>
         <div className="m-sheet-handle" />
         <div className="m-sheet-header">
-          <h2>⚡ Швидке створення</h2>
+          <h2>{t('⚡ Швидке створення')}</h2>
           <button className="m-header-btn" onClick={onClose}><X size={20} /></button>
         </div>
 
@@ -34,8 +36,8 @@ export default function MobileQuickCreateSheet({ open, onClose }: MobileQuickCre
               <BookOpen size={20} />
             </div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>Нове бронювання</div>
-              <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Забронювати юніт для гостя</div>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>{t('Нове бронювання')}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('Забронювати юніт для гостя')}</div>
             </div>
           </Link>
 
@@ -48,8 +50,8 @@ export default function MobileQuickCreateSheet({ open, onClose }: MobileQuickCre
               <Users size={20} />
             </div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>Новий гість</div>
-              <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Створити картку клієнта</div>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>{t('Новий гість')}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('Створити картку клієнта')}</div>
             </div>
           </Link>
 
@@ -62,8 +64,8 @@ export default function MobileQuickCreateSheet({ open, onClose }: MobileQuickCre
               <Wallet size={20} />
             </div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>Нова фінансова операція</div>
-              <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Записати дохід або витрату</div>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>{t('Нова фінансова операція')}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('Записати дохід або витрату')}</div>
             </div>
           </Link>
         </div>

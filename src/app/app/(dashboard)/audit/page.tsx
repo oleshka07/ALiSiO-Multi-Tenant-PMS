@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, ChevronDown, Search, RefreshCw } from 'lucide-react';
 
@@ -40,6 +41,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 export default function AuditPage() {
+  const t = useT();
   const [logs, setLogs] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
@@ -94,7 +96,7 @@ export default function AuditPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
         <Clock size={24} style={{ color: 'var(--text-accent)' }} />
         <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-          Журнал бронювань
+          {t('Журнал бронювань')}
         </h1>
         <button
           onClick={fetchLogs}
@@ -107,7 +109,7 @@ export default function AuditPage() {
           }}
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          Оновити
+          {t('Оновити')}
         </button>
       </div>
 
@@ -121,7 +123,7 @@ export default function AuditPage() {
             color: 'var(--text-tertiary)',
           }} />
           <input
-            placeholder="Пошук по імені, гостю, деталям..."
+            placeholder={t('Пошук по імені, гостю, деталям...')}
             value={filter}
             onChange={e => setFilter(e.target.value)}
             style={{
@@ -140,7 +142,7 @@ export default function AuditPage() {
             cursor: 'pointer', minWidth: 160,
           }}
         >
-          <option value="">Всі дії</option>
+          <option value="">{t('Всі дії')}</option>
           {uniqueActions.map(a => (
             <option key={a} value={a}>{ACTION_LABELS[a] || a}</option>
           ))}
@@ -154,16 +156,16 @@ export default function AuditPage() {
             cursor: 'pointer',
           }}
         >
-          <option value={50}>50 записів</option>
-          <option value={100}>100 записів</option>
-          <option value={200}>200 записів</option>
+          <option value={50}>{t('50 записів')}</option>
+          <option value={100}>{t('100 записів')}</option>
+          <option value={200}>{t('200 записів')}</option>
         </select>
       </div>
 
       {/* Content */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-tertiary)' }}>
-          Завантаження...
+          {t('Завантаження...')}
         </div>
       ) : filtered.length === 0 ? (
         <div style={{
@@ -171,8 +173,8 @@ export default function AuditPage() {
           background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border-primary)',
         }}>
           <Clock size={40} style={{ opacity: 0.3, marginBottom: 12 }} />
-          <div style={{ fontSize: 15 }}>Немає записів</div>
-          <div style={{ fontSize: 12, marginTop: 4 }}>Зміни будуть з'являтися тут автоматично</div>
+          <div style={{ fontSize: 15 }}>{t('Немає записів')}</div>
+          <div style={{ fontSize: 12, marginTop: 4 }}>{t('Зміни будуть з\'являтися тут автоматично')}</div>
         </div>
       ) : (
         <div style={{
@@ -267,7 +269,7 @@ export default function AuditPage() {
                                 JSON.stringify(before[k]) !== JSON.stringify(after[k]) &&
                                 !['updated_at', 'created_at'].includes(k)
                               );
-                              if (changed.length === 0) return <span style={{ color: 'var(--text-tertiary)' }}>Без змін у полях</span>;
+                              if (changed.length === 0) return <span style={{ color: 'var(--text-tertiary)' }}>{t('Без змін у полях')}</span>;
                               return changed.map(k => (
                                 <div key={k} style={{ marginBottom: 4 }}>
                                   <span style={{ color: 'var(--text-tertiary)' }}>{k}: </span>
@@ -284,7 +286,7 @@ export default function AuditPage() {
                                   )}
                                 </div>
                               ));
-                            } catch { return <span style={{ color: 'var(--text-tertiary)' }}>Помилка парсингу</span>; }
+                            } catch { return <span style={{ color: 'var(--text-tertiary)' }}>{t('Помилка парсингу')}</span>; }
                           })()}
                         </div>
                       )}

@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ListChecks, AlertCircle, CheckCircle2, ExternalLink } from 'lucide-react';
@@ -10,6 +11,7 @@ interface DashboardSummary {
 }
 
 export default function ReconcileWidget() {
+  const tUi = useT();
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -47,7 +49,7 @@ export default function ReconcileWidget() {
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
             {isClean ? (
-              <>🎉 Все чисто — задач і exceptions немає</>
+              <>{tUi('🎉 Все чисто — задач і exceptions немає')}</>
             ) : (
               <>
                 {taskCount > 0 && (
@@ -62,7 +64,7 @@ export default function ReconcileWidget() {
                     {exceptionCount} exception{exceptionCount === 1 ? '' : 's'}
                   </span>
                 )}
-                {' '}— перейди й розбери
+                {' '}{tUi('— перейди й розбери')}
               </>
             )}
           </div>
@@ -84,7 +86,7 @@ export default function ReconcileWidget() {
           ))}
           {(data.tasks.length + data.exceptions.length > 6) && (
             <div style={{ fontStyle: 'italic', marginTop: 4 }}>
-              + ще {data.tasks.length + data.exceptions.length - 6} →
+              {tUi('+ ще')} {data.tasks.length + data.exceptions.length - 6} →
             </div>
           )}
         </div>

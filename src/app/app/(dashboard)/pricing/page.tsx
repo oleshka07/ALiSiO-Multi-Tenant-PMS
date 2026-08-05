@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -74,6 +75,7 @@ function EditDayModal({ day, onSave, onClose }: {
   onSave: (data: Partial<PriceDay>) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const [basePrice, setBasePrice] = useState(day.base_price);
   const [weekendPrice, setWeekendPrice] = useState(day.weekend_price ?? '');
   const [minStay, setMinStay] = useState(day.min_stay);
@@ -92,21 +94,21 @@ function EditDayModal({ day, onSave, onClose }: {
         </div>
         <div className="modal-body">
           <div className="form-group">
-            <label className="form-label">Базова ціна (CZK)</label>
+            <label className="form-label">{t('Базова ціна (CZK)')}</label>
             <input className="form-input" type="number" value={basePrice} onChange={e => setBasePrice(Number(e.target.value))} min={0} />
           </div>
           <div className="form-group">
-            <label className="form-label">Ціна вихідних — Пт/Сб/Нд (CZK)</label>
-            <input className="form-input" type="number" value={weekendPrice} onChange={e => setWeekendPrice(e.target.value === '' ? '' : Number(e.target.value))} min={0} placeholder="Як базова" />
-            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Залиште порожнім щоб = базовій</span>
+            <label className="form-label">{t('Ціна вихідних — Пт/Сб/Нд (CZK)')}</label>
+            <input className="form-input" type="number" value={weekendPrice} onChange={e => setWeekendPrice(e.target.value === '' ? '' : Number(e.target.value))} min={0} placeholder={t('Як базова')} />
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Залиште порожнім щоб = базовій')}</span>
           </div>
           <div className="form-group">
-            <label className="form-label">Мін. ночей</label>
+            <label className="form-label">{t('Мін. ночей')}</label>
             <input className="form-input" type="number" value={minStay} onChange={e => setMinStay(Number(e.target.value))} min={1} max={30} />
           </div>
           <div className="form-row" style={{ gap: 16 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-              <input type="checkbox" checked={closed} onChange={e => setClosed(e.target.checked)} /> Закрито
+              <input type="checkbox" checked={closed} onChange={e => setClosed(e.target.checked)} /> {t('Закрито')}
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
               <input type="checkbox" checked={cta} onChange={e => setCta(e.target.checked)} /> CTA
@@ -117,7 +119,7 @@ function EditDayModal({ day, onSave, onClose }: {
           </div>
         </div>
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Скасувати</button>
+          <button className="btn btn-secondary" onClick={onClose}>{t('Скасувати')}</button>
           <button className="btn btn-primary" onClick={() => onSave({
             base_price: basePrice,
             weekend_price: weekendPrice === '' ? null : Number(weekendPrice),
@@ -126,7 +128,7 @@ function EditDayModal({ day, onSave, onClose }: {
             cta: cta ? 1 : 0,
             ctd: ctd ? 1 : 0,
           })}>
-            <Save size={14} /> Зберегти
+            <Save size={14} /> {t('Зберегти')}
           </button>
         </div>
       </div>
@@ -141,6 +143,7 @@ function BulkEditModal({ onSave, onClose }: {
   onSave: (data: any) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [basePrice, setBasePrice] = useState('');
@@ -167,58 +170,58 @@ function BulkEditModal({ onSave, onClose }: {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
         <div className="modal-header">
-          <h3 className="modal-title"><Edit3 size={16} style={{ display: 'inline', marginRight: 6 }} />Масове редагування цін</h3>
+          <h3 className="modal-title"><Edit3 size={16} style={{ display: 'inline', marginRight: 6 }} />{t('Масове редагування цін')}</h3>
           <button className="modal-close" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="modal-body">
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Від</label>
+              <label className="form-label">{t('Від')}</label>
               <input className="form-input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
             </div>
             <div className="form-group">
-              <label className="form-label">До</label>
+              <label className="form-label">{t('До')}</label>
               <input className="form-input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Застосувати до</label>
+            <label className="form-label">{t('Застосувати до')}</label>
             <select className="form-select" value={applyTo} onChange={e => setApplyTo(e.target.value as any)}>
-              <option value="all">Всі дні</option>
-              <option value="weekdays">Тільки будні (Пн-Чт)</option>
-              <option value="weekends">Тільки вихідні (Пт-Нд)</option>
+              <option value="all">{t('Всі дні')}</option>
+              <option value="weekdays">{t('Тільки будні (Пн-Чт)')}</option>
+              <option value="weekends">{t('Тільки вихідні (Пт-Нд)')}</option>
             </select>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Базова ціна (CZK)</label>
-              <input className="form-input" type="number" placeholder="Не змінювати" value={basePrice} onChange={e => setBasePrice(e.target.value)} min={0} />
+              <label className="form-label">{t('Базова ціна (CZK)')}</label>
+              <input className="form-input" type="number" placeholder={t('Не змінювати')} value={basePrice} onChange={e => setBasePrice(e.target.value)} min={0} />
             </div>
             <div className="form-group">
-              <label className="form-label">Ціна вихідних (CZK)</label>
-              <input className="form-input" type="number" placeholder="Не змінювати" value={weekendPrice} onChange={e => setWeekendPrice(e.target.value)} min={0} />
+              <label className="form-label">{t('Ціна вихідних (CZK)')}</label>
+              <input className="form-input" type="number" placeholder={t('Не змінювати')} value={weekendPrice} onChange={e => setWeekendPrice(e.target.value)} min={0} />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Мін. ночей</label>
-              <input className="form-input" type="number" placeholder="Не змінювати" value={minStay} onChange={e => setMinStay(e.target.value)} min={1} />
+              <label className="form-label">{t('Мін. ночей')}</label>
+              <input className="form-input" type="number" placeholder={t('Не змінювати')} value={minStay} onChange={e => setMinStay(e.target.value)} min={1} />
             </div>
             <div className="form-group">
-              <label className="form-label">Статус</label>
+              <label className="form-label">{t('Статус')}</label>
               <select className="form-select" value={closed === undefined ? '' : closed ? 'closed' : 'open'}
                 onChange={e => setClosed(e.target.value === '' ? undefined : e.target.value === 'closed')}>
-                <option value="">Не змінювати</option>
-                <option value="open">Відкрито</option>
-                <option value="closed">Закрито</option>
+                <option value="">{t('Не змінювати')}</option>
+                <option value="open">{t('Відкрито')}</option>
+                <option value="closed">{t('Закрито')}</option>
               </select>
             </div>
           </div>
         </div>
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Скасувати</button>
+          <button className="btn btn-secondary" onClick={onClose}>{t('Скасувати')}</button>
           <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-            {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />} Застосувати
+            {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />} {t('Застосувати')}
           </button>
         </div>
       </div>
@@ -230,6 +233,7 @@ function BulkEditModal({ onSave, onClose }: {
    Test Quote Section
    ================================================================ */
 function TestQuoteSection({ unitTypes }: { unitTypes: UnitType[] }) {
+  const t = useT();
   const [unitTypeId, setUnitTypeId] = useState('');
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
@@ -262,12 +266,12 @@ function TestQuoteSection({ unitTypes }: { unitTypes: UnitType[] }) {
       <div className="card-header">
         <h3 className="card-title">
           <Calculator size={16} style={{ display: 'inline', marginRight: 6, verticalAlign: 'text-bottom' }} />
-          Калькулятор вартості
+          {t('Калькулятор вартості')}
         </h3>
       </div>
       <div className="form-row">
         <div className="form-group">
-          <label className="form-label">Тип розміщення</label>
+          <label className="form-label">{t('Тип розміщення')}</label>
           <select className="form-select" value={unitTypeId} onChange={e => setUnitTypeId(e.target.value)}>
             {unitTypes.map(ut => <option key={ut.id} value={ut.id}>{ut.name}</option>)}
           </select>
@@ -275,26 +279,26 @@ function TestQuoteSection({ unitTypes }: { unitTypes: UnitType[] }) {
       </div>
       <div className="form-row">
         <div className="form-group">
-          <label className="form-label">Заїзд</label>
+          <label className="form-label">{t('Заїзд')}</label>
           <input className="form-input" type="date" value={checkIn} onChange={e => setCheckIn(e.target.value)} />
         </div>
         <div className="form-group">
-          <label className="form-label">Виїзд</label>
+          <label className="form-label">{t('Виїзд')}</label>
           <input className="form-input" type="date" value={checkOut} onChange={e => setCheckOut(e.target.value)} />
         </div>
       </div>
       <div className="form-row">
         <div className="form-group">
-          <label className="form-label">Дорослих</label>
+          <label className="form-label">{t('Дорослих')}</label>
           <input className="form-input" type="number" value={adults} onChange={e => setAdults(Number(e.target.value))} min={1} max={6} />
         </div>
         <div className="form-group">
-          <label className="form-label">Дітей</label>
+          <label className="form-label">{t('Дітей')}</label>
           <input className="form-input" type="number" value={children} onChange={e => setChildren(Number(e.target.value))} min={0} max={4} />
         </div>
         <div className="form-group" style={{ display: 'flex', alignItems: 'flex-end' }}>
           <button className="btn btn-primary" onClick={calculate} disabled={loading || !checkIn || !checkOut}>
-            {loading ? <Loader2 size={14} className="animate-pulse" /> : <Calculator size={14} />} Розрахувати
+            {loading ? <Loader2 size={14} className="animate-pulse" /> : <Calculator size={14} />} {t('Розрахувати')}
           </button>
         </div>
       </div>
@@ -303,11 +307,11 @@ function TestQuoteSection({ unitTypes }: { unitTypes: UnitType[] }) {
         <div style={{ marginTop: 16, padding: 16, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-primary)' }}>
           {!quote.hasPricing && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', marginBottom: 12, borderRadius: 'var(--radius-md)', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', fontSize: 13 }}>
-              <AlertTriangle size={14} /> Для {quote.missingDays} дн. не задано ціни — показано 0
+              <AlertTriangle size={14} /> {t('Для')} {quote.missingDays} {t('дн. не задано ціни — показано 0')}
             </div>
           )}
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            Покажчик вартості ({quote.nights} ночей)
+            {t('Покажчик вартості (')}{quote.nights} {t('ночей)')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
             {quote.breakdown.map(b => (
@@ -317,7 +321,7 @@ function TestQuoteSection({ unitTypes }: { unitTypes: UnitType[] }) {
               </div>
             ))}
             <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 6, marginTop: 4 }} className="flex justify-between">
-              <span>Проживання</span>
+              <span>{t('Проживання')}</span>
               <span style={{ fontWeight: 600 }}>{quote.accommodationTotal.toLocaleString()} CZK</span>
             </div>
             {quote.feeBreakdown.map(f => (
@@ -327,7 +331,7 @@ function TestQuoteSection({ unitTypes }: { unitTypes: UnitType[] }) {
               </div>
             ))}
             <div style={{ borderTop: '2px solid var(--accent-primary)', paddingTop: 8, marginTop: 4 }} className="flex justify-between">
-              <span style={{ fontWeight: 700, fontSize: 15 }}>Всього</span>
+              <span style={{ fontWeight: 700, fontSize: 15 }}>{t('Всього')}</span>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--accent-primary)' }}>{quote.total.toLocaleString()} CZK</div>
                 <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>≈ {(quote.total / CZK_TO_EUR).toFixed(0)} EUR</div>
@@ -344,6 +348,7 @@ function TestQuoteSection({ unitTypes }: { unitTypes: UnitType[] }) {
    Main Page
    ================================================================ */
 export default function PricingPage() {
+  const t = useT();
   const today = new Date();
   const onMenuClick = useMobileMenu();
 
@@ -464,7 +469,7 @@ export default function PricingPage() {
 
   return (
     <>
-      <Header title="Ціноутворення" onMenuClick={onMenuClick} />
+      <Header title={t('Ціноутворення')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {/* Toast */}
         {toast && (
@@ -482,17 +487,17 @@ export default function PricingPage() {
         {/* Header */}
         <div className="page-header">
           <div>
-            <h2 className="page-title">Ціноутворення</h2>
+            <h2 className="page-title">{t('Ціноутворення')}</h2>
             <div className="page-subtitle">
               {selectedUT ? `${selectedUT.name}` : 'Виберіть тип розміщення'} · {MONTH_NAMES[month - 1]} {year}
             </div>
           </div>
           <div className="flex gap-2">
-            <a className="btn btn-secondary" href="/app/pricing/pricelabs" title="Подивитися ціни з PriceLabs та запустити sync">
+            <a className="btn btn-secondary" href="/app/pricing/pricelabs" title={t('Подивитися ціни з PriceLabs та запустити sync')}>
               📈 PriceLabs
             </a>
             <button className="btn btn-secondary" onClick={() => setShowBulkEdit(true)}>
-              <Edit3 size={16} /> Масове редагування
+              <Edit3 size={16} /> {t('Масове редагування')}
             </button>
           </div>
         </div>
@@ -501,7 +506,7 @@ export default function PricingPage() {
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="form-row">
             <div className="form-group" style={{ flex: 2 }}>
-              <label className="form-label">Тип розміщення</label>
+              <label className="form-label">{t('Тип розміщення')}</label>
               <select className="form-select" value={selectedUnitType} onChange={e => setSelectedUnitType(e.target.value)}>
                 {unitTypes.map(ut => (
                   <option key={ut.id} value={ut.id}>{ut.category_type === 'glamping' ? '🏕️' : ut.category_type === 'resort' ? '🏨' : '⛺'} {ut.name}</option>
@@ -509,13 +514,13 @@ export default function PricingPage() {
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Режим</label>
+              <label className="form-label">{t('Режим')}</label>
               <div className="flex gap-2">
                 <button className={`btn btn-sm ${viewMode === 'calendar' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setViewMode('calendar')}>
-                  <Calendar size={14} /> Календар
+                  <Calendar size={14} /> {t('Календар')}
                 </button>
                 <button className={`btn btn-sm ${viewMode === 'list' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setViewMode('list')}>
-                  <List size={14} /> Таблиця
+                  <List size={14} /> {t('Таблиця')}
                 </button>
               </div>
             </div>
@@ -526,19 +531,19 @@ export default function PricingPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
           <div className="card" style={{ padding: '12px 16px', textAlign: 'center' }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--accent-primary)' }}>{stats.avgPrice.toLocaleString()}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Серед. ціна CZK</div>
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Серед. ціна CZK')}</div>
           </div>
           <div className="card" style={{ padding: '12px 16px', textAlign: 'center' }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: stats.withData === stats.total ? 'var(--accent-success)' : '#f59e0b' }}>{stats.withData}/{stats.total}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Днів з ціною</div>
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Днів з ціною')}</div>
           </div>
           <div className="card" style={{ padding: '12px 16px', textAlign: 'center' }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: stats.closedDays > 0 ? 'var(--accent-danger)' : 'var(--accent-success)' }}>{stats.closedDays}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Закритих днів</div>
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Закритих днів')}</div>
           </div>
           <div className="card" style={{ padding: '12px 16px', textAlign: 'center' }}>
             <div style={{ fontSize: 20, fontWeight: 700 }}>{stats.avgPrice > 0 ? Math.round(stats.avgPrice / CZK_TO_EUR) : 0}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Серед. EUR</div>
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Серед. EUR')}</div>
           </div>
         </div>
 
@@ -551,7 +556,7 @@ export default function PricingPage() {
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-tertiary)' }}>
-            <Loader2 size={24} className="animate-pulse" style={{ display: 'inline-block' }} /> Завантаження...
+            <Loader2 size={24} className="animate-pulse" style={{ display: 'inline-block' }} /> {t('Завантаження...')}
           </div>
         ) : viewMode === 'calendar' ? (
           /* ── Calendar View ── */
@@ -584,7 +589,7 @@ export default function PricingPage() {
                         </div>
                         {day.hasData && day.isWeekend && day.weekend_price != null && day.weekend_price !== day.base_price && (
                           <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
-                            буд. {day.base_price}
+                            {t('буд.')} {day.base_price}
                           </div>
                         )}
                         <div className="pricing-cell-badges">
@@ -609,15 +614,15 @@ export default function PricingPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Дата</th>
-                  <th>День</th>
-                  <th>Базова (CZK)</th>
-                  <th>Вихідні (CZK)</th>
-                  <th>Ефективна</th>
+                  <th>{t('Дата')}</th>
+                  <th>{t('День')}</th>
+                  <th>{t('Базова (CZK)')}</th>
+                  <th>{t('Вихідні (CZK)')}</th>
+                  <th>{t('Ефективна')}</th>
                   <th>Min Stay</th>
                   <th>CTA</th>
                   <th>CTD</th>
-                  <th>Статус</th>
+                  <th>{t('Статус')}</th>
                   <th></th>
                 </tr>
               </thead>
@@ -673,6 +678,7 @@ interface PriceListItem {
 }
 
 function WidgetPriceListSection() {
+  const t = useT();
   const [items, setItems] = useState<PriceListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
@@ -723,11 +729,11 @@ function WidgetPriceListSection() {
       <div className="card-header">
         <h3 className="card-title">
           <List size={16} style={{ display: 'inline', marginRight: 6, verticalAlign: 'text-bottom' }} />
-          Прайс-лист (Booking Widget)
+          {t('Прайс-лист (Booking Widget)')}
         </h3>
       </div>
       <div style={{ fontSize: 13, color: 'var(--text-tertiary)', padding: '0 16px 12px' }}>
-        Ці ціни використовуються у віджеті бронювання. Змініть тут — віджет підтягне автоматично.
+        {t('Ці ціни використовуються у віджеті бронювання. Змініть тут — віджет підтягне автоматично.')}
       </div>
 
       {categories.map(cat => {
@@ -742,12 +748,12 @@ function WidgetPriceListSection() {
               <table className="table" style={{ fontSize: 13 }}>
                 <thead>
                   <tr>
-                    <th>Назва</th>
+                    <th>{t('Назва')}</th>
                     <th>Standard (Kč)</th>
                     <th>Holiday (Kč)</th>
                     <th>Side Season (Kč)</th>
-                    <th>Одиниця</th>
-                    <th>Примітка</th>
+                    <th>{t('Одиниця')}</th>
+                    <th>{t('Примітка')}</th>
                     <th></th>
                   </tr>
                 </thead>

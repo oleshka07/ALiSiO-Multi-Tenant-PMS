@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import MobileHeader from './MobileHeader';
@@ -8,6 +9,7 @@ import MobileMoreSheet from './MobileMoreSheet';
 import MobileQuickCreateSheet from './MobileQuickCreateSheet';
 
 export default function MobileLayout({ children }: { children: React.ReactNode }) {
+  const t = useT();
   const [showMore, setShowMore] = useState(false);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
 
@@ -21,7 +23,7 @@ export default function MobileLayout({ children }: { children: React.ReactNode }
       {/* Global Quick Action FAB */}
       <button
         onClick={() => setShowQuickCreate(true)}
-        aria-label="Швидке створення"
+        aria-label={t('Швидке створення')}
         style={{
           position: 'fixed',
           bottom: 72,

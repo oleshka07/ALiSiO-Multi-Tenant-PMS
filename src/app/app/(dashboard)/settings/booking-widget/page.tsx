@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
@@ -15,6 +16,7 @@ const WIDGET_OPTIONS: { value: WidgetType; label: string; icon: string; desc: st
 ];
 
 export default function BookingWidgetSettingsPage() {
+  const t = useT();
   const onMenuClick = useMobileMenu();
   const [sites, setSites] = useState<any[]>([]);
   const [selectedSite, setSelectedSite] = useState('');
@@ -115,13 +117,13 @@ export default function BookingWidgetSettingsPage() {
 
   return (
     <>
-      <Header title="Віджети бронювання" onMenuClick={onMenuClick} />
+      <Header title={t('Віджети бронювання')} onMenuClick={onMenuClick} />
       <div className="app-content">
         <div className="page-header">
           <div>
-            <h2 className="page-title">Віджети бронювання</h2>
+            <h2 className="page-title">{t('Віджети бронювання')}</h2>
             <div className="page-subtitle">
-              Згенеруйте код для вставки на будь-який зовнішній сайт
+              {t('Згенеруйте код для вставки на будь-який зовнішній сайт')}
             </div>
           </div>
         </div>
@@ -130,13 +132,13 @@ export default function BookingWidgetSettingsPage() {
           {/* Left: Configuration */}
           <div className="card" style={{ padding: 24 }}>
             <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: 'var(--text-primary)' }}>
-              ⚙️ Налаштування
+              {t('⚙️ Налаштування')}
             </h3>
 
             {/* Widget Type Switcher */}
             <div style={{ marginBottom: 20 }}>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                Тип віджета
+                {t('Тип віджета')}
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 {WIDGET_OPTIONS.map(opt => (
@@ -167,7 +169,7 @@ export default function BookingWidgetSettingsPage() {
                 {/* Embed Mode Toggle */}
                 <div style={{ marginBottom: 16 }}>
                   <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                    Метод інтеграції
+                    {t('Метод інтеграції')}
                   </label>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <button
@@ -186,9 +188,9 @@ export default function BookingWidgetSettingsPage() {
                         transition: 'all .15s',
                       }}
                     >
-                      🚀 JS Embed (Новий)
+                      {t('🚀 JS Embed (Новий)')}
                       <div style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                        Для Clarity, Pixels, GTM
+                        {t('Для Clarity, Pixels, GTM')}
                       </div>
                     </button>
                     <button
@@ -207,9 +209,9 @@ export default function BookingWidgetSettingsPage() {
                         transition: 'all .15s',
                       }}
                     >
-                      🔲 Iframe (Класичний)
+                      {t('🔲 Iframe (Класичний)')}
                       <div style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                        Без скриптів на сайті
+                        {t('Без скриптів на сайті')}
                       </div>
                     </button>
                   </div>
@@ -217,7 +219,7 @@ export default function BookingWidgetSettingsPage() {
 
                 <div style={{ marginBottom: 14 }}>
                   <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                    Сайт бронювання
+                    {t('Сайт бронювання')}
                   </label>
                   <select
                     value={selectedSite}
@@ -236,7 +238,7 @@ export default function BookingWidgetSettingsPage() {
 
                 <div style={{ marginBottom: 14 }}>
                   <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                    Модель розміщення (опціонально)
+                    {t('Модель розміщення (опціонально)')}
                   </label>
                   <select
                     value={selectedUnit}
@@ -249,7 +251,7 @@ export default function BookingWidgetSettingsPage() {
                       opacity: loadingListings ? 0.6 : 1,
                     }}
                   >
-                    <option value="">Всі моделі</option>
+                    <option value="">{t('Всі моделі')}</option>
                     {listings.map((l: any) => (
                       <option key={l.unit_id || l.id} value={l.unit_id || ''}>
                         {l.unit_name || l.unit_type_name || l.unit_id}
@@ -258,7 +260,7 @@ export default function BookingWidgetSettingsPage() {
                     ))}
                   </select>
                   {loadingListings && (
-                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>⏳ Завантаження моделей...</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>{t('⏳ Завантаження моделей...')}</div>
                   )}
                   {!loadingListings && listings.length === 0 && selectedSite && (
                     <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>ℹ️ До цього сайту не прив&apos;язано жодної моделі</div>
@@ -270,7 +272,7 @@ export default function BookingWidgetSettingsPage() {
             {/* Language */}
             <div style={{ marginBottom: 14 }}>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                Мова за замовчуванням
+                {t('Мова за замовчуванням')}
               </label>
               <select
                 value={lang}
@@ -281,7 +283,7 @@ export default function BookingWidgetSettingsPage() {
                   background: 'var(--bg-primary)', color: 'var(--text-primary)',
                 }}
               >
-                <option value="uk">🇺🇦 Українська</option>
+                <option value="uk">{t('🇺🇦 Українська')}</option>
                 <option value="en">🇬🇧 English</option>
                 <option value="cs">🇨🇿 Čeština</option>
                 <option value="de">🇩🇪 Deutsch</option>
@@ -291,7 +293,7 @@ export default function BookingWidgetSettingsPage() {
             {/* Color */}
             <div style={{ marginBottom: 20 }}>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                Колір акценту
+                {t('Колір акценту')}
               </label>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input
@@ -315,10 +317,10 @@ export default function BookingWidgetSettingsPage() {
 
             {/* Embed Code */}
             <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: 'var(--text-primary)' }}>
-              📋 Код для вставки
+              {t('📋 Код для вставки')}
             </h3>
             <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8 }}>
-              Скопіюйте цей код та вставте його на ваш сайт у потрібне місце
+              {t('Скопіюйте цей код та вставте його на ваш сайт у потрібне місце')}
             </p>
             <div style={{ position: 'relative' }}>
               <pre
@@ -350,7 +352,7 @@ export default function BookingWidgetSettingsPage() {
                 marginTop: 12, padding: '10px 14px', borderRadius: 8,
                 background: '#eff6ff', border: '1px solid #bfdbfe', fontSize: 12, color: '#1e40af',
               }}>
-                💡 <strong>Кілька віджетів на одній сторінці:</strong> додайте <code>data-container=&quot;my-custom-id&quot;</code> та замініть <code>id</code> контейнера на відповідний.
+                💡 <strong>{t('Кілька віджетів на одній сторінці:')}</strong> {t('додайте')} <code>data-container=&quot;my-custom-id&quot;</code> {t('та замініть')} <code>id</code> {t('контейнера на відповідний.')}
               </div>
             )}
           </div>
@@ -358,7 +360,7 @@ export default function BookingWidgetSettingsPage() {
           {/* Right: Preview */}
           <div className="card" style={{ padding: 24 }}>
             <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: 'var(--text-primary)' }}>
-              👁️ Попередній перегляд
+              {t('👁️ Попередній перегляд')}
             </h3>
             <iframe
               key={`${widgetType}-${selectedSite}-${lang}-${color}`}

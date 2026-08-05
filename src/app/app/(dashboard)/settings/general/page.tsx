@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, Save } from 'lucide-react';
@@ -51,6 +52,7 @@ const TIMEZONES = [
 ];
 
 export default function GeneralSettingsPage() {
+  const t = useT();
   const onMenuClick = useMobileMenu();
   const [org, setOrg] = useState<Organization | null>(null);
   const [property, setProperty] = useState<Property | null>(null);
@@ -107,7 +109,7 @@ export default function GeneralSettingsPage() {
 
   return (
     <>
-      <Header title="Загальні налаштування" onMenuClick={onMenuClick} />
+      <Header title={t('Загальні налаштування')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {toast && (
           <div style={{
@@ -121,65 +123,64 @@ export default function GeneralSettingsPage() {
         <div className="page-header">
           <div>
             <Link href="/app/settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--text-tertiary)', fontSize: 12, marginBottom: 4, textDecoration: 'none' }}>
-              <ArrowLeft size={14} /> Налаштування
+              <ArrowLeft size={14} /> {t('Налаштування')}
             </Link>
-            <h2 className="page-title">Загальні налаштування</h2>
-            <div className="page-subtitle">Організація, валюта, часова зона та контакти обʼєкта</div>
+            <h2 className="page-title">{t('Загальні налаштування')}</h2>
+            <div className="page-subtitle">{t('Організація, валюта, часова зона та контакти обʼєкта')}</div>
           </div>
           <button className="btn btn-primary" onClick={save} disabled={saving || loading || !org}>
-            {saving ? <Loader2 size={16} className="animate-pulse" /> : <Save size={16} />} Зберегти
+            {saving ? <Loader2 size={16} className="animate-pulse" /> : <Save size={16} />} {t('Зберегти')}
           </button>
         </div>
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 64 }}>
-            <Loader2 size={24} className="animate-pulse" style={{ display: 'inline-block' }} /> Завантаження...
+            <Loader2 size={24} className="animate-pulse" style={{ display: 'inline-block' }} /> {t('Завантаження...')}
           </div>
         ) : !org ? (
-          <div className="card"><div style={{ padding: 24, color: 'var(--text-tertiary)' }}>Організацію не знайдено.</div></div>
+          <div className="card"><div style={{ padding: 24, color: 'var(--text-tertiary)' }}>{t('Організацію не знайдено.')}</div></div>
         ) : (
           <>
             <div className="card" style={{ marginBottom: 20 }}>
-              <div className="card-header"><div className="card-title">Організація</div></div>
+              <div className="card-header"><div className="card-title">{t('Організація')}</div></div>
               <div style={{ padding: 20 }}>
                 <div className="form-row">
                   <div className="form-group">
-                    <label className="form-label">Назва</label>
+                    <label className="form-label">{t('Назва')}</label>
                     <input className="form-input" value={org.name} onChange={(e) => setOrgField('name', e.target.value)} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Ідентифікатор</label>
+                    <label className="form-label">{t('Ідентифікатор')}</label>
                     <input className="form-input" value={org.slug} disabled />
-                    <div className="form-hint">Використовується в адресах. Зміна ламає наявні посилання.</div>
+                    <div className="form-hint">{t('Використовується в адресах. Зміна ламає наявні посилання.')}</div>
                   </div>
                 </div>
                 <div className="form-row">
                   <div className="form-group">
-                    <label className="form-label">Часова зона</label>
+                    <label className="form-label">{t('Часова зона')}</label>
                     <select className="form-select" value={org.timezone} onChange={(e) => setOrgField('timezone', e.target.value)}>
                       {(TIMEZONES.includes(org.timezone) ? TIMEZONES : [org.timezone, ...TIMEZONES]).map((tz) => (
                         <option key={tz} value={tz}>{tz}</option>
                       ))}
                     </select>
-                    <div className="form-hint">Визначає межу доби для заїздів, звітів і нічних задач.</div>
+                    <div className="form-hint">{t('Визначає межу доби для заїздів, звітів і нічних задач.')}</div>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Основна валюта</label>
+                    <label className="form-label">{t('Основна валюта')}</label>
                     <select className="form-select" value={org.default_currency} onChange={(e) => setOrgField('default_currency', e.target.value)}>
                       {currencies.map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
-                    <div className="form-hint">Валюта звітів. Наявні операції не перераховуються.</div>
+                    <div className="form-hint">{t('Валюта звітів. Наявні операції не перераховуються.')}</div>
                   </div>
                 </div>
                 <div className="form-row">
                   <div className="form-group">
-                    <label className="form-label">Базова мова</label>
+                    <label className="form-label">{t('Базова мова')}</label>
                     <select className="form-select" value={org.language} onChange={(e) => setOrgField('language', e.target.value)}>
                       {languages.map((l) => <option key={l.code} value={l.code}>{l.native}</option>)}
                     </select>
                     <div className="form-hint">
-                      Мова інтерфейсу для всіх, хто не обрав свою, і мова, якою ви вводите
-                      назви й описи. Від неї ж перекладається контент для гостей.
+                      {t('Мова інтерфейсу для всіх, хто не обрав свою, і мова, якою ви вводите назви й описи. Від неї ж перекладається контент для гостей.')}
                     </div>
                   </div>
                 </div>
@@ -187,29 +188,28 @@ export default function GeneralSettingsPage() {
             </div>
 
             <div className="card" style={{ marginBottom: 20 }}>
-              <div className="card-header"><div className="card-title">Реквізити для документів</div></div>
+              <div className="card-header"><div className="card-title">{t('Реквізити для документів')}</div></div>
               <div style={{ padding: 20 }}>
                 <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 16, lineHeight: 1.6 }}>
-                  Ці дані друкуються на інвойсах і показуються гостям. Поки вони порожні,
-                  документи виходять без реквізитів.
+                  {t('Ці дані друкуються на інвойсах і показуються гостям. Поки вони порожні, документи виходять без реквізитів.')}
                 </div>
                 <div className="form-row">
                   <div className="form-group">
-                    <label className="form-label">Юридична назва</label>
-                    <input className="form-input" value={org.legal_name ?? ''} onChange={(e) => setOrgField('legal_name', e.target.value)} placeholder="ТОВ «Назва», s.r.o., GmbH…" />
+                    <label className="form-label">{t('Юридична назва')}</label>
+                    <input className="form-input" value={org.legal_name ?? ''} onChange={(e) => setOrgField('legal_name', e.target.value)} placeholder={t('ТОВ «Назва», s.r.o., GmbH…')} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Юридична адреса</label>
+                    <label className="form-label">{t('Юридична адреса')}</label>
                     <input className="form-input" value={org.legal_address ?? ''} onChange={(e) => setOrgField('legal_address', e.target.value)} />
                   </div>
                 </div>
                 <div className="form-row">
                   <div className="form-group">
-                    <label className="form-label">IČO / ЄДРПОУ</label>
+                    <label className="form-label">{t('IČO / ЄДРПОУ')}</label>
                     <input className="form-input" value={org.registration_no ?? ''} onChange={(e) => setOrgField('registration_no', e.target.value)} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">DIČ / ПДВ-номер</label>
+                    <label className="form-label">{t('DIČ / ПДВ-номер')}</label>
                     <input className="form-input" value={org.vat_no ?? ''} onChange={(e) => setOrgField('vat_no', e.target.value)} placeholder="CZ12345678" />
                   </div>
                 </div>
@@ -217,17 +217,17 @@ export default function GeneralSettingsPage() {
                   <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                     <input type="checkbox" className="form-checkbox" checked={!!org.is_vat_payer}
                       onChange={(e) => setOrgField('is_vat_payer', e.target.checked ? 1 : 0)} />
-                    <span style={{ fontSize: 14 }}>Платник ПДВ</span>
+                    <span style={{ fontSize: 14 }}>{t('Платник ПДВ')}</span>
                   </label>
-                  <div className="form-hint">Впливає на те, як ПДВ показується в інвойсах.</div>
+                  <div className="form-hint">{t('Впливає на те, як ПДВ показується в інвойсах.')}</div>
                 </div>
                 <div className="form-row">
                   <div className="form-group">
-                    <label className="form-label">Банк</label>
+                    <label className="form-label">{t('Банк')}</label>
                     <input className="form-input" value={org.bank_name ?? ''} onChange={(e) => setOrgField('bank_name', e.target.value)} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Номер рахунку</label>
+                    <label className="form-label">{t('Номер рахунку')}</label>
                     <input className="form-input" value={org.bank_account ?? ''} onChange={(e) => setOrgField('bank_account', e.target.value)} />
                   </div>
                 </div>
@@ -235,7 +235,7 @@ export default function GeneralSettingsPage() {
                   <div className="form-group">
                     <label className="form-label">IBAN</label>
                     <input className="form-input" value={org.iban ?? ''} onChange={(e) => setOrgField('iban', e.target.value)} placeholder="CZ70 0100 0000 1313 5694 1027" />
-                    <div className="form-hint">Друкується на інвойсах — саме на цей рахунок платитимуть гості.</div>
+                    <div className="form-hint">{t('Друкується на інвойсах — саме на цей рахунок платитимуть гості.')}</div>
                   </div>
                   <div className="form-group">
                     <label className="form-label">SWIFT / BIC</label>
@@ -244,11 +244,11 @@ export default function GeneralSettingsPage() {
                 </div>
                 <div className="form-row">
                   <div className="form-group">
-                    <label className="form-label">Email для документів</label>
+                    <label className="form-label">{t('Email для документів')}</label>
                     <input className="form-input" type="email" value={org.invoice_email ?? ''} onChange={(e) => setOrgField('invoice_email', e.target.value)} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Сайт</label>
+                    <label className="form-label">{t('Сайт')}</label>
                     <input className="form-input" value={org.website ?? ''} onChange={(e) => setOrgField('website', e.target.value)} placeholder="https://…" />
                   </div>
                 </div>
@@ -256,11 +256,10 @@ export default function GeneralSettingsPage() {
             </div>
 
             <div className="card" style={{ marginBottom: 20 }}>
-              <div className="card-header"><div className="card-title">Документи гостей</div></div>
+              <div className="card-header"><div className="card-title">{t('Документи гостей')}</div></div>
               <div style={{ padding: 20 }}>
                 <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 14, lineHeight: 1.6 }}>
-                  Дані з паспортів і посвідчень зчитуються <strong>на цьому сервері</strong> —
-                  розпізнається машинозчитувана зона, фото нікуди не передається.
+                  {t('Дані з паспортів і посвідчень зчитуються')} <strong>{t('на цьому сервері')}</strong> {t('— розпізнається машинозчитувана зона, фото нікуди не передається.')}
                 </div>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
                   <input
@@ -271,11 +270,9 @@ export default function GeneralSettingsPage() {
                     style={{ marginTop: 3 }}
                   />
                   <span style={{ fontSize: 14 }}>
-                    Дозволити хмарне розпізнавання, коли локальне не впоралось
+                    {t('Дозволити хмарне розпізнавання, коли локальне не впоралось')}
                     <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4, lineHeight: 1.6 }}>
-                      Тоді <strong>фото документа надсилається в OpenAI (США)</strong>. Це передача
-                      персональних даних за межі ЄС: потрібно вказати OpenAI як субпроцесора у вашій
-                      політиці конфіденційності. Без цього гість просто заповнює поля вручну.
+                      {t('Тоді')} <strong>{t('фото документа надсилається в OpenAI (США)')}</strong>{t('. Це передача персональних даних за межі ЄС: потрібно вказати OpenAI як субпроцесора у вашій політиці конфіденційності. Без цього гість просто заповнює поля вручну.')}
                     </div>
                   </span>
                 </label>
@@ -284,35 +281,35 @@ export default function GeneralSettingsPage() {
 
             {property && (
               <div className="card">
-                <div className="card-header"><div className="card-title">Обʼєкт</div></div>
+                <div className="card-header"><div className="card-title">{t('Обʼєкт')}</div></div>
                 <div style={{ padding: 20 }}>
                   <div className="form-row">
                     <div className="form-group">
-                      <label className="form-label">Назва обʼєкта</label>
+                      <label className="form-label">{t('Назва обʼєкта')}</label>
                       <input className="form-input" value={property.name ?? ''} onChange={(e) => setPropField('name', e.target.value)} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Місто</label>
+                      <label className="form-label">{t('Місто')}</label>
                       <input className="form-input" value={property.city ?? ''} onChange={(e) => setPropField('city', e.target.value)} />
                     </div>
                   </div>
                   <div className="form-row">
                     <div className="form-group">
-                      <label className="form-label">Адреса</label>
+                      <label className="form-label">{t('Адреса')}</label>
                       <input className="form-input" value={property.address ?? ''} onChange={(e) => setPropField('address', e.target.value)} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Країна</label>
+                      <label className="form-label">{t('Країна')}</label>
                       <input className="form-input" maxLength={2} style={{ textTransform: 'uppercase' }}
                         value={property.country ?? ''} onChange={(e) => setPropField('country', e.target.value.toUpperCase())} />
-                      <div className="form-hint">Двобуквений код, напр. CZ</div>
+                      <div className="form-hint">{t('Двобуквений код, напр. CZ')}</div>
                     </div>
                   </div>
                   <div className="form-row">
                     <div className="form-group">
-                      <label className="form-label">Телефон</label>
+                      <label className="form-label">{t('Телефон')}</label>
                       <input className="form-input" value={property.phone ?? ''} onChange={(e) => setPropField('phone', e.target.value)} />
-                      <div className="form-hint">Показується гостям у листах і на гостьовій сторінці.</div>
+                      <div className="form-hint">{t('Показується гостям у листах і на гостьовій сторінці.')}</div>
                     </div>
                     <div className="form-group">
                       <label className="form-label">Email</label>
@@ -321,11 +318,11 @@ export default function GeneralSettingsPage() {
                   </div>
                   <div className="form-row">
                     <div className="form-group">
-                      <label className="form-label">Час заїзду</label>
+                      <label className="form-label">{t('Час заїзду')}</label>
                       <input className="form-input" type="time" value={property.check_in_time ?? '15:00'} onChange={(e) => setPropField('check_in_time', e.target.value)} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Час виїзду</label>
+                      <label className="form-label">{t('Час виїзду')}</label>
                       <input className="form-input" type="time" value={property.check_out_time ?? '11:00'} onChange={(e) => setPropField('check_out_time', e.target.value)} />
                     </div>
                   </div>

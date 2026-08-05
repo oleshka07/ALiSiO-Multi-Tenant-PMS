@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { Settings, Wallet, ArrowLeftRight, FolderTree, FolderKanban, Users, Tag, Zap, UserCog, Repeat, Mail, CreditCard } from 'lucide-react';
 import AccountsTab from './_components/AccountsTab';
@@ -47,6 +48,7 @@ const TABS: TabDef[] = [
 ];
 
 export default function FinanceSettingsPage() {
+  const tUi = useT();
   const [activeTab, setActiveTab] = useState<TabId>('accounts');
   const { features } = useCurrentUser();
   // An organization without Teya has no Teya sync tab — same registry the API enforces.
@@ -56,7 +58,7 @@ export default function FinanceSettingsPage() {
     <div className="page-container" style={{ maxWidth: 1200, margin: '0 auto' }}>
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Settings size={28} />
-        <h1 style={{ margin: 0 }}>Фінанси — Налаштування</h1>
+        <h1 style={{ margin: 0 }}>{tUi('Фінанси — Налаштування')}</h1>
       </div>
 
       <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginTop: 16 }}>
@@ -109,7 +111,7 @@ export default function FinanceSettingsPage() {
                       color: 'var(--text-secondary)',
                     }}
                   >
-                    незабаром
+                    {tUi('незабаром')}
                   </span>
                 )}
               </button>

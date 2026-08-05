@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { Loader2, Check, Save, Eye } from 'lucide-react';
 import { THEME_CONFIGS, THEMES, BUTTON_STYLES } from './SiteHelpers';
@@ -12,6 +13,7 @@ const BookingV2 = dynamic(() => import('@/modules/widget/ui/BookingV2'), {
 });
 
 export function DesignTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: DesignConfig) => void }) {
+  const tUi = useT();
   const [cfg, setCfg] = useState<DesignConfig>(site.design_config || {});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -43,7 +45,7 @@ export function DesignTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Desi
     <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start' }}>
       <div style={{ flex: '0 0 400px', minWidth: 0 }}>
         <div style={{ marginBottom: 28 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Тема</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{tUi('Тема')}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(110px,1fr))', gap: 8 }}>
             {THEMES.map(t => (
               <button key={t} onClick={() => setCfg(c => ({ ...c, theme: t, primary_color: THEME_CONFIGS[t].color }))}
@@ -64,7 +66,7 @@ export function DesignTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Desi
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Основний колір</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{tUi('Основний колір')}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <input type="color" value={cfg.primary_color || '#A2845E'} onChange={e => setCfg(c => ({ ...c, primary_color: e.target.value }))}
                 style={{ width: 44, height: 44, border: 'none', borderRadius: 8, cursor: 'pointer', padding: 2 }} />
@@ -76,7 +78,7 @@ export function DesignTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Desi
         </div>
 
         <div style={{ marginBottom: 24 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Стиль кнопок та елементів</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{tUi('Стиль кнопок та елементів')}</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             {BUTTON_STYLES.map(bs => {
               const isPill = bs.value.includes('pill');
@@ -99,7 +101,7 @@ export function DesignTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Desi
                     border: isOutline ? `1.5px solid ${cfg.primary_color || '#A2845E'}` : 'none',
                     fontSize: 11, fontWeight: 700,
                   }}>
-                    Кнопка
+                    {tUi('Кнопка')}
                   </div>
                 </button>
               );
@@ -110,7 +112,7 @@ export function DesignTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Desi
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
             <input type="checkbox" checked={!!cfg.show_shadow} onChange={e => setCfg(c => ({ ...c, show_shadow: e.target.checked }))} />
-            <span style={{ fontSize: 13 }}>Показувати тінь (shadow)</span>
+            <span style={{ fontSize: 13 }}>{tUi('Показувати тінь (shadow)')}</span>
           </label>
         </div>
 
@@ -123,10 +125,10 @@ export function DesignTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Desi
       <div style={{ flex: 1, minWidth: 0, position: 'sticky', top: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Мобільний вигляд (Smartphone)
+            {tUi('Мобільний вигляд (Smartphone)')}
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Eye size={12} /> Попередній перегляд
+            <Eye size={12} /> {tUi('Попередній перегляд')}
           </div>
         </div>
 
@@ -150,7 +152,7 @@ export function DesignTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Desi
         </div>
 
         <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 20, textAlign: 'center', background: 'var(--surface-secondary)', padding: '10px 16px', borderRadius: 12, border: '1px solid var(--border-primary)' }}>
-          💡 Ваш віджет повністю адаптований під мобільні пристрої. Ви можете протестувати всі кроки прямо в цьому вікні.
+          {tUi('💡 Ваш віджет повністю адаптований під мобільні пристрої. Ви можете протестувати всі кроки прямо в цьому вікні.')}
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { Loader2, Check, Save, ChevronDown, ChevronUp } from 'lucide-react';
 import { CopyBtn } from './SiteHelpers';
@@ -81,6 +82,7 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
 }
 
 export function WidgetTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: WidgetConfig) => void }) {
+  const t = useT();
   const [cfg, setCfg] = useState<WidgetConfig>(site.widget_config || {});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -107,17 +109,17 @@ export function WidgetTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Widg
 
   return (
     <div style={{ maxWidth: 740 }}>
-      <Step n={1} title="Налаштуйте URL результатів">
-        <div style={{ marginBottom: 8, fontSize: 13, color: 'var(--text-secondary)' }}>Сторінка вашого сайту, на яку будуть потрапляти гості після вибору дат:</div>
+      <Step n={1} title={t('Налаштуйте URL результатів')}>
+        <div style={{ marginBottom: 8, fontSize: 13, color: 'var(--text-secondary)' }}>{t('Сторінка вашого сайту, на яку будуть потрапляти гості після вибору дат:')}</div>
         <input className="form-input" placeholder="https://yoursite.com/booking" value={cfg.search_result_url || ''} onChange={e => setCfg(c => ({ ...c, search_result_url: e.target.value }))} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, cursor: 'pointer' }}>
           <input type="checkbox" checked={!!cfg.enable_prefill} onChange={e => setCfg(c => ({ ...c, enable_prefill: e.target.checked }))} />
-          <span style={{ fontSize: 13 }}>Автоматично підставляти дати в URL (prefill)</span>
+          <span style={{ fontSize: 13 }}>{t('Автоматично підставляти дати в URL (prefill)')}</span>
         </label>
       </Step>
 
-      <Step n={2} title="Мова віджета за замовчуванням">
-        <div style={{ marginBottom: 10, fontSize: 13, color: 'var(--text-secondary)' }}>Ця мова буде використана якщо сторінка не передає локаль.</div>
+      <Step n={2} title={t('Мова віджета за замовчуванням')}>
+        <div style={{ marginBottom: 10, fontSize: 13, color: 'var(--text-secondary)' }}>{t('Ця мова буде використана якщо сторінка не передає локаль.')}</div>
         <div style={{ display: 'flex', gap: 8 }}>
           {(['uk', 'cs', 'en', 'de'] as const).map(l => (
             <button key={l} type="button" onClick={() => setCfg(c => ({ ...c, default_lang: l }))}
@@ -132,7 +134,7 @@ export function WidgetTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Widg
           ))}
         </div>
         <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
-          Щоб передати локаль з батьківського сайту динамічно, вставте перед тегом скрипта:
+          {t('Щоб передати локаль з батьківського сайту динамічно, вставте перед тегом скрипта:')}
         </div>
         <div style={{ position: 'relative', marginTop: 6 }}>
           <pre style={{ background: 'var(--surface-secondary)', borderRadius: 8, padding: 12, fontSize: 11, overflowX: 'auto', margin: 0 }}>
@@ -144,21 +146,21 @@ export function WidgetTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Widg
         </div>
       </Step>
 
-      <Step n={3} title="Вставте JS-тег на ваш сайт">
+      <Step n={3} title={t('Вставте JS-тег на ваш сайт')}>
         <div style={{ position: 'relative' }}>
           <pre style={{ background: 'var(--surface-secondary)', borderRadius: 8, padding: 16, fontSize: 12, overflowX: 'auto', margin: 0 }}>{scriptTag}</pre>
           <div style={{ position: 'absolute', top: 8, right: 8 }}><CopyBtn text={scriptTag} /></div>
         </div>
       </Step>
 
-      <Step n={4} title="Або використайте iframe (альтернатива)">
-        <div style={{ marginBottom: 10, fontSize: 13, color: 'var(--text-secondary)' }}>Вставте цей iframe у ваш HTML код:</div>
+      <Step n={4} title={t('Або використайте iframe (альтернатива)')}>
+        <div style={{ marginBottom: 10, fontSize: 13, color: 'var(--text-secondary)' }}>{t('Вставте цей iframe у ваш HTML код:')}</div>
         <div style={{ position: 'relative', marginBottom: 16 }}>
           <pre style={{ background: 'var(--surface-secondary)', borderRadius: 8, padding: 16, fontSize: 12, overflowX: 'auto', margin: 0 }}>{iframeEmbed}</pre>
           <div style={{ position: 'absolute', top: 8, right: 8 }}><CopyBtn text={iframeEmbed} /></div>
         </div>
         <div style={{ marginBottom: 10, fontSize: 13, color: 'var(--text-secondary)' }}>
-          <strong>Увага (важливо для оплат):</strong> Щоб уникнути проблем із блокуванням платіжних систем (темний екран Teya) всередині iframe, обов'язково додайте цей скрипт-перехоплювач на ту ж сторінку, де стоїть iframe:
+          <strong>{t('Увага (важливо для оплат):')}</strong> {t('Щоб уникнути проблем із блокуванням платіжних систем (темний екран Teya) всередині iframe, обов\'язково додайте цей скрипт-перехоплювач на ту ж сторінку, де стоїть iframe:')}
         </div>
         <div style={{ position: 'relative' }}>
           <pre style={{ background: 'var(--surface-secondary)', borderRadius: 8, padding: 16, fontSize: 12, overflowX: 'auto', margin: 0 }}>{redirectScript}</pre>
@@ -166,35 +168,35 @@ export function WidgetTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Widg
         </div>
       </Step>
 
-      <Step n={5} title="Перевірте встановлення">
+      <Step n={5} title={t('Перевірте встановлення')}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
           Відкрийте ваш сайт і переконайтесь що кнопка/форма бронювання відображається. Бронювання буде прив&apos;язане до сайту <strong>{site.name}</strong>.
         </div>
       </Step>
 
-      <Step n={6} title="Системні налаштування">
+      <Step n={6} title={t('Системні налаштування')}>
         <div className="form-group" style={{ marginBottom: 16 }}>
-          <label className="form-label">Slug (ідентифікатор для вбудовування)</label>
+          <label className="form-label">{t('Slug (ідентифікатор для вбудовування)')}</label>
           <input className="form-input" value={site.slug || ''} readOnly style={{ background: 'var(--surface-secondary)', color: 'var(--text-tertiary)' }} />
-          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>Використовується в data-site attribute</div>
+          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>{t('Використовується в data-site attribute')}</div>
         </div>
         <div className="form-group">
-          <label className="form-label">URL вашого сайту (де вбудовано віджет)</label>
+          <label className="form-label">{t('URL вашого сайту (де вбудовано віджет)')}</label>
           <input className="form-input" placeholder="https://book.example.com"
             value={site.site_url || ''}
             onChange={e => onUpdate({ ...cfg, site_url: e.target.value })} />
-          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>Допомагає правильно генерувати посилання на бронювання</div>
+          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>{t('Допомагає правильно генерувати посилання на бронювання')}</div>
         </div>
       </Step>
 
-      <Step n={7} title="Контактне повідомлення після бронювання">
+      <Step n={7} title={t('Контактне повідомлення після бронювання')}>
         <div style={{ marginBottom: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
           Текст, який побачить гість на екрані підтвердження бронювання. Вкажіть email та телефон для зв&apos;язку.
         </div>
-        <input className="form-input" placeholder="Якщо щось — пиши на hello@yoursite.com або +420 000 000 000"
+        <input className="form-input" placeholder={t('Якщо щось — пиши на hello@yoursite.com або +420 000 000 000')}
           value={cfg.supportContact || ''}
           onChange={e => setCfg(c => ({ ...c, supportContact: e.target.value }))} />
-        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>Якщо порожньо — використовується текст за замовчуванням з налаштувань мови</div>
+        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>{t('Якщо порожньо — використовується текст за замовчуванням з налаштувань мови')}</div>
       </Step>
 
       <button className="btn btn-primary" onClick={save} disabled={saving}>

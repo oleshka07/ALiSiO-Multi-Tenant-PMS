@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -45,6 +46,7 @@ function Modal({ open, onClose, title, children, footer }: {
 }
 
 export default function BookingSourcesPage() {
+  const t = useT();
   const [sources, setSources] = useState<BookingSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -132,7 +134,7 @@ export default function BookingSourcesPage() {
 
   return (
     <>
-      <Header title="Джерела бронювань" onMenuClick={onMenuClick} />
+      <Header title={t('Джерела бронювань')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {toast && (
           <div style={{
@@ -149,19 +151,19 @@ export default function BookingSourcesPage() {
         <div className="page-header">
           <div>
             <Link href="/app/settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--text-tertiary)', fontSize: 12, marginBottom: 4, textDecoration: 'none' }}>
-              <ArrowLeft size={14} /> Налаштування
+              <ArrowLeft size={14} /> {t('Налаштування')}
             </Link>
-            <h2 className="page-title">Джерела бронювань</h2>
-            <div className="page-subtitle">Booking.com, Airbnb, Direct та інші канали</div>
+            <h2 className="page-title">{t('Джерела бронювань')}</h2>
+            <div className="page-subtitle">{t('Booking.com, Airbnb, Direct та інші канали')}</div>
           </div>
           <button className="btn btn-primary" onClick={openNew}>
-            <Plus size={16} /> Додати
+            <Plus size={16} /> {t('Додати')}
           </button>
         </div>
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 64 }}>
-            <Loader2 size={24} className="animate-pulse" style={{ display: 'inline-block' }} /> Завантаження...
+            <Loader2 size={24} className="animate-pulse" style={{ display: 'inline-block' }} /> {t('Завантаження...')}
           </div>
         ) : (
           <>
@@ -170,11 +172,11 @@ export default function BookingSourcesPage() {
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Іконка</th>
-                    <th>Назва</th>
-                    <th>Код</th>
-                    <th>Комісія</th>
-                    <th>Порядок</th>
+                    <th>{t('Іконка')}</th>
+                    <th>{t('Назва')}</th>
+                    <th>{t('Код')}</th>
+                    <th>{t('Комісія')}</th>
+                    <th>{t('Порядок')}</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -253,7 +255,7 @@ export default function BookingSourcesPage() {
           title={editSource ? 'Редагувати джерело' : 'Нове джерело'}
           footer={
             <>
-              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Скасувати</button>
+              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>{t('Скасувати')}</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={saving || !form.name || !form.code}>
                 <Save size={16} /> {saving ? 'Збереження...' : 'Зберегти'}
               </button>
@@ -261,38 +263,38 @@ export default function BookingSourcesPage() {
           }
         >
           <div className="form-group">
-            <label className="form-label">Назва *</label>
+            <label className="form-label">{t('Назва *')}</label>
             <input className="form-input" placeholder="Booking.com" value={form.name}
               onChange={(e) => handleNameChange(e.target.value)} />
           </div>
           <div className="form-group">
-            <label className="form-label">Код (унікальний) *</label>
+            <label className="form-label">{t('Код (унікальний) *')}</label>
             <input className="form-input" placeholder="booking_com" value={form.code}
               onChange={(e) => setForm(p => ({ ...p, code: e.target.value }))} />
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Іконка (літера/emoji)</label>
+              <label className="form-label">{t('Іконка (літера/emoji)')}</label>
               <input className="form-input" placeholder="B" value={form.icon_letter} maxLength={2}
                 onChange={(e) => setForm(p => ({ ...p, icon_letter: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Порядок</label>
+              <label className="form-label">{t('Порядок')}</label>
               <input className="form-input" type="number" value={form.sort_order}
                 onChange={(e) => setForm(p => ({ ...p, sort_order: Number(e.target.value) }))} />
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">💰 Комісія OTA (%)</label>
+            <label className="form-label">{t('💰 Комісія OTA (%)')}</label>
             <input className="form-input" type="number" min="0" max="100" step="0.5" placeholder="0"
               value={form.commission_percent}
               onChange={(e) => setForm(p => ({ ...p, commission_percent: Number(e.target.value) }))} />
             <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
-              Залиште 0 для прямих бронювань (Direct, Phone, WhatsApp)
+              {t('Залиште 0 для прямих бронювань (Direct, Phone, WhatsApp)')}
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label"><Palette size={14} style={{ verticalAlign: -2 }} /> Колір</label>
+            <label className="form-label"><Palette size={14} style={{ verticalAlign: -2 }} /> {t('Колір')}</label>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
               {PRESET_COLORS.map((c) => (
                 <button key={c} onClick={() => setForm(p => ({ ...p, color: c }))}

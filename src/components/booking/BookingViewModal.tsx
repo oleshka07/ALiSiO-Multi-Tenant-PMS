@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import React, { useState, useEffect } from 'react';
 import {
   Edit3, X, Save, Plus, Check, ArrowRight, Copy, ExternalLink,
@@ -70,6 +71,7 @@ export default function BookingViewModal({
   onClose, onEdit, onChangeStatus, onFetchPayments, onFetchBookings, onFetchRegistrations,
   showToast, setBooking,
 }: Props) {
+  const tUi = useT();
   const [viewTab, setViewTab] = useState<'payment' | 'registration' | 'groups' | 'tax' | 'notes' | 'history' | 'audit'>('payment');
   const [showPayForm, setShowPayForm] = useState(false);
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', type: 'partial', notes: '' });
@@ -262,26 +264,26 @@ export default function BookingViewModal({
   };
 
   return (
-    <Modal open={true} onClose={onClose} title="Бронювання" size="lg" hideTitle={true}
+    <Modal open={true} onClose={onClose} title={tUi('Бронювання')} size="lg" hideTitle={true}
       footer={<>
         <button className="btn btn-secondary" style={{ color: '#ef4444' }}
           onClick={() => { if (confirm('Точно скасувати бронь? Гість буде повідомлений.')) onChangeStatus(b.id, 'cancelled'); }}>
-          <X size={13} /> Скасувати бронь
+          <X size={13} /> {tUi('Скасувати бронь')}
         </button>
         <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
-          <button className="btn btn-secondary" onClick={onClose}>Закрити</button>
+          <button className="btn btn-secondary" onClick={onClose}>{tUi('Закрити')}</button>
           {b.guest_page_token && (
             <>
-              <button className="btn btn-secondary" title="Скопіювати" onClick={() => {
+              <button className="btn btn-secondary" title={tUi('Скопіювати')} onClick={() => {
                 navigator.clipboard.writeText(`${window.location.origin}/guest/${b.guest_page_token}`).then(() => showToast('Скопійовано!'));
-              }}><Copy size={14} /> Копіювати</button>
+              }}><Copy size={14} /> {tUi('Копіювати')}</button>
               <button className="btn btn-secondary" style={{ color: 'var(--accent-primary)' }}
                 onClick={() => window.open(`/guest/${b.guest_page_token}`, '_blank')}>
-                <ExternalLink size={14} /> Гостьова
+                <ExternalLink size={14} /> {tUi('Гостьова')}
               </button>
             </>
           )}
-          <button className="btn btn-primary" onClick={onEdit}><Edit3 size={14} /> Редагувати</button>
+          <button className="btn btn-primary" onClick={onEdit}><Edit3 size={14} /> {tUi('Редагувати')}</button>
         </div>
       </>}>
 
@@ -292,10 +294,7 @@ export default function BookingViewModal({
             background: '#f59e0b22', color: '#92400e', border: '1px solid #f59e0b',
             fontSize: 12, lineHeight: 1.4,
           }}>
-            <strong>⚠️ Multi-room booking</strong> — Hostex колапсує групове бронювання Booking.com в один запис.
-            Сума {total.toLocaleString()} {b.currency || 'CZK'} може покривати <strong>кілька будинків</strong>.
-            Перевір у Hostex (марker <code>{(b as any).multi_room_marker || '?'}</code>) скільки фактично кімнат
-            і за потреби створи окремі рядки — інакше календар не заблокує інші будинки.
+            <strong>⚠️ Multi-room booking</strong> {tUi('— Hostex колапсує групове бронювання Booking.com в один запис. Сума')} {total.toLocaleString()} {b.currency || 'CZK'} {tUi('може покривати')} <strong>{tUi('кілька будинків')}</strong>{tUi('. Перевір у Hostex (марker')} <code>{(b as any).multi_room_marker || '?'}</code>{tUi(') скільки фактично кімнат і за потреби створи окремі рядки — інакше календар не заблокує інші будинки.')}
           </div>
         ) : null}
         {/* ── Compact Header ── */}
@@ -309,12 +308,12 @@ export default function BookingViewModal({
                   style={{ padding: '2px 7px', background: 'var(--bg-tertiary)', borderRadius: 4, fontSize: 10.5, fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'ui-monospace, monospace', cursor: 'pointer', transition: 'background .15s', position: 'relative' }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-tertiary)')}
-                  title="Натисни щоб змінити будинок">{b.unit_code || b.unit_name}</span>
+                  title={tUi('Натисни щоб змінити будинок')}>{b.unit_code || b.unit_name}</span>
                 {unitPopupOpen && (
                   <>
                     <div onClick={() => setUnitPopupOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 29 }} />
                     <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: 10, padding: 6, width: 280, maxHeight: 300, overflowY: 'auto', boxShadow: '0 12px 32px -8px rgba(0,0,0,.5)', zIndex: 30 }}>
-                      <div style={{ padding: '6px 10px 4px', fontSize: 10, color: 'var(--text-tertiary)', letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 700 }}>Змінити будинок</div>
+                      <div style={{ padding: '6px 10px 4px', fontSize: 10, color: 'var(--text-tertiary)', letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 700 }}>{tUi('Змінити будинок')}</div>
                       {availableUnits.map(u => {
                         const isCurrent = u.id === (b as any).unit_id;
                         return (
@@ -341,7 +340,7 @@ export default function BookingViewModal({
                               <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</div>
                               <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{u.category_name}</div>
                             </div>
-                            {isCurrent && <span style={{ fontSize: 9, color: 'var(--accent-primary)', fontWeight: 600, padding: '2px 6px', background: 'rgba(79,142,255,.12)', borderRadius: 4 }}>Поточний</span>}
+                            {isCurrent && <span style={{ fontSize: 9, color: 'var(--accent-primary)', fontWeight: 600, padding: '2px 6px', background: 'rgba(79,142,255,.12)', borderRadius: 4 }}>{tUi('Поточний')}</span>}
                           </div>
                         );
                       })}
@@ -357,7 +356,7 @@ export default function BookingViewModal({
                   style={{ fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer', padding: '2px 5px', margin: '-2px -5px', borderRadius: 5, transition: 'background .15s', position: 'relative' }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-tertiary)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  title="Натисни щоб змінити дати">{b.check_in} → {b.check_out}</span>
+                  title={tUi('Натисни щоб змінити дати')}>{b.check_in} → {b.check_out}</span>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={(e) => e.stopPropagation()}>
                   <input type="date" value={datesEditCI} onChange={(e) => setDatesEditCI(e.target.value)}
@@ -398,7 +397,7 @@ export default function BookingViewModal({
                 </div>
               )}
               <span style={{ width: 3, height: 3, background: 'var(--text-tertiary)', borderRadius: '50%' }} />
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{b.nights} н. · {b.adults} дор.{b.children > 0 ? ` + ${b.children} діт.` : ''}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{b.nights} {tUi('н. ·')} {b.adults} {tUi('дор.')}{b.children > 0 ? ` + ${b.children} діт.` : ''}</span>
               {b.hostex_channel_type && (
                 <span className="badge" style={{ background: '#ff6b3522', color: '#ff6b35' }}>Hostex: {b.hostex_channel_type}</span>
               )}
@@ -414,7 +413,7 @@ export default function BookingViewModal({
                     <Phone size={13} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
                     <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>{b.guest_phone}</span>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <a href={`tel:${(b.guest_phone || '').replace(/[^\d+]/g, '')}`} style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 7, border: '1px solid #4ADE8040', background: '#4ADE801A', color: '#4ADE80', textDecoration: 'none' }} aria-label="Подзвонити">
+                      <a href={`tel:${(b.guest_phone || '').replace(/[^\d+]/g, '')}`} style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 7, border: '1px solid #4ADE8040', background: '#4ADE801A', color: '#4ADE80', textDecoration: 'none' }} aria-label={tUi('Подзвонити')}>
                         <Phone size={14} />
                       </a>
                       <div style={{ position: 'relative' }}>
@@ -456,7 +455,7 @@ export default function BookingViewModal({
                             <>
                               <div onClick={() => setWaPopupOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 19 }} />
                               <div onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: 11, padding: 6, width: 340, boxShadow: '0 16px 40px -8px rgba(0,0,0,.6)', zIndex: 20 }}>
-                                <div style={{ padding: '8px 10px 4px', fontSize: 10, color: 'var(--text-tertiary)', letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 700 }}>Швидкі шаблони <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 400, textTransform: 'none' }}>({lang.toUpperCase()})</span></div>
+                                <div style={{ padding: '8px 10px 4px', fontSize: 10, color: 'var(--text-tertiary)', letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 700 }}>{tUi('Швидкі шаблони')} <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 400, textTransform: 'none' }}>({lang.toUpperCase()})</span></div>
                                 {templates.map((t, i) => (
                                   <React.Fragment key={i}>
                                     {i === 1 && <div style={{ height: 1, background: 'var(--border-primary)', margin: '4px 8px' }} />}
@@ -466,7 +465,7 @@ export default function BookingViewModal({
                                       onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
                                       <div style={{ width: 28, height: 28, borderRadius: 7, background: i === 0 ? 'var(--bg-tertiary)' : 'rgba(34,197,94,.12)', color: i === 0 ? 'var(--text-secondary)' : '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 }}>{t.icon}</div>
                                       <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2, marginBottom: 2 }}>{t.name}{t.hasLink && <span style={{ display: 'inline-block', fontSize: 9, background: 'rgba(79,142,255,.12)', color: 'var(--accent-primary)', padding: '1px 5px', borderRadius: 3, fontWeight: 600, letterSpacing: '.04em', marginLeft: 5, verticalAlign: 'middle' }}>+ посилання</span>}</div>
+                                        <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2, marginBottom: 2 }}>{t.name}{t.hasLink && <span style={{ display: 'inline-block', fontSize: 9, background: 'rgba(79,142,255,.12)', color: 'var(--accent-primary)', padding: '1px 5px', borderRadius: 3, fontWeight: 600, letterSpacing: '.04em', marginLeft: 5, verticalAlign: 'middle' }}>{tUi('+ посилання')}</span>}</div>
                                         <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.35, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.preview}</div>
                                       </div>
                                     </div>
@@ -494,7 +493,7 @@ export default function BookingViewModal({
             {/* ── Marketing Attribution ── */}
             {(b.utm_source || b.utm_medium || b.utm_campaign) && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Джерело:</span>
+                <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Джерело:')}</span>
                 {b.utm_source && <span style={{ fontSize: 10, padding: '2px 6px', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', borderRadius: 4, fontFamily: 'ui-monospace, monospace' }}>src: {b.utm_source}</span>}
                 {b.utm_medium && <span style={{ fontSize: 10, padding: '2px 6px', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', borderRadius: 4, fontFamily: 'ui-monospace, monospace' }}>med: {b.utm_medium}</span>}
                 {b.utm_campaign && <span style={{ fontSize: 10, padding: '2px 6px', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', borderRadius: 4, fontFamily: 'ui-monospace, monospace' }}>cmp: {b.utm_campaign}</span>}
@@ -503,9 +502,9 @@ export default function BookingViewModal({
             )}
           </div>
           <div style={{ textAlign: 'right', position: 'relative' }}>
-            <button onClick={onClose} style={{ position: 'absolute', top: -2, right: -2, background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', borderRadius: 7, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-secondary)' }} aria-label="Закрити"><X size={14} /></button>
+            <button onClick={onClose} style={{ position: 'absolute', top: -2, right: -2, background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', borderRadius: 7, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-secondary)' }} aria-label={tUi('Закрити')}><X size={14} /></button>
             <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--accent-primary)', marginTop: 16 }}>{total.toLocaleString()} {b.currency || 'CZK'}</div>
-            {(b.commission_amount || 0) > 0 && <div style={{ fontSize: 11, color: '#f59e0b' }}>Комісія {(b.commission_amount || 0).toLocaleString()}</div>}
+            {(b.commission_amount || 0) > 0 && <div style={{ fontSize: 11, color: '#f59e0b' }}>{tUi('Комісія')} {(b.commission_amount || 0).toLocaleString()}</div>}
             {b.currency !== 'EUR' && <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>≈ {toEur(total)} EUR</div>}
             {b.created_at && (
               <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
@@ -528,7 +527,7 @@ export default function BookingViewModal({
               <div style={{ background: chipStyle.bg, border: `1px solid ${chipStyle.border}`, borderRadius: 10, padding: '10px 12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: chipStyle.dot, boxShadow: `0 0 0 3px ${chipStyle.dot}33`, flexShrink: 0 }} />
-                  <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600 }}>Бронь</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600 }}>{tUi('Бронь')}</span>
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 500, paddingLeft: 15, marginTop: 4, color: isCancelled ? '#ef4444' : 'var(--text-primary)' }}>{STATUS_MAP[b.status]?.label || b.status}</div>
               </div>
@@ -543,7 +542,7 @@ export default function BookingViewModal({
               <div onClick={() => setViewTab('payment')} style={{ background: chipStyle.bg, border: `1px solid ${chipStyle.border}`, borderRadius: 10, padding: '10px 12px', cursor: 'pointer' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: chipStyle.dot, boxShadow: `0 0 0 3px ${chipStyle.dot}33`, flexShrink: 0 }} />
-                  <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600 }}>Оплата</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600 }}>{tUi('Оплата')}</span>
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 500, paddingLeft: 15, marginTop: 4, color: isOk ? 'var(--text-primary)' : '#f59e0b' }}>{paid.toLocaleString()} / {total.toLocaleString()} {b.currency || 'CZK'}</div>
               </div>
@@ -557,7 +556,7 @@ export default function BookingViewModal({
               <div onClick={() => setViewTab('registration')} style={{ background: chipStyle.bg, border: `1px solid ${chipStyle.border}`, borderRadius: 10, padding: '10px 12px', cursor: 'pointer' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: chipStyle.dot, boxShadow: `0 0 0 3px ${chipStyle.dot}33`, flexShrink: 0 }} />
-                  <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600 }}>Документи</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600 }}>{tUi('Документи')}</span>
                 </div>
                 <div style={{ fontSize: 13, fontWeight: 500, paddingLeft: 15, marginTop: 4, color: isRegistered ? 'var(--text-primary)' : '#f59e0b' }}>{registrations.length} / {regNeeded}</div>
               </div>
@@ -591,7 +590,7 @@ export default function BookingViewModal({
                 onMouseLeave={(e) => canDoAction && (e.currentTarget.style.transform = '')}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: chipStyle.dot, boxShadow: isChecked ? `0 0 0 3px #22c55e33` : canDoAction ? `0 0 0 3px ${chipStyle.dot}44` : undefined, flexShrink: 0, ...(canDoAction && !isChecked ? { animation: 'pulse 2s ease-in-out infinite' } : {}) }} />
-                  <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600 }}>Заселення</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600 }}>{tUi('Заселення')}</span>
                 </div>
                 <div style={{ fontSize: 13, fontWeight: canDoAction ? 600 : 500, paddingLeft: 15, marginTop: 4, color: isChecked ? 'var(--text-primary)' : canDoAction ? chipStyle.dot : 'var(--text-tertiary)' }}>
                   {canDoAction && b.status === 'confirmed' ? '▶ Заселити' : canDoAction && b.status === 'checked_in' ? '▶ Виселити' : checkinText}
@@ -639,7 +638,7 @@ export default function BookingViewModal({
               <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 14, color: bc.label, flexShrink: 0 }}>⚡</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10, color: bc.label, letterSpacing: '.1em', textTransform: 'uppercase', fontWeight: 700, lineHeight: 1, marginBottom: 2 }}>Наступна дія</div>
+                  <div style={{ fontSize: 10, color: bc.label, letterSpacing: '.1em', textTransform: 'uppercase', fontWeight: 700, lineHeight: 1, marginBottom: 2 }}>{tUi('Наступна дія')}</div>
                   <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3 }}>{action.label} <small style={{ color: 'var(--text-tertiary)', fontWeight: 400, marginLeft: 6 }}>· {action.context}</small></div>
                 </div>
               </div>
@@ -671,7 +670,7 @@ export default function BookingViewModal({
                 borderBottom: viewTab === tab.key ? '2px solid var(--accent-primary)' : '2px solid transparent',
                 whiteSpace: 'nowrap', display: 'flex', gap: 6, alignItems: 'center',
               }}>
-              {tab.label}
+              {tUi(tab.label)}
               {tab.badge && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: 'rgba(245,158,11,0.15)', color: '#f59e0b', fontWeight: 700 }}>{tab.badge}</span>}
             </button>
           ))}
@@ -684,9 +683,9 @@ export default function BookingViewModal({
           {viewTab === 'payment' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-                <div><div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Всього</div><div style={{ fontSize: 16, fontWeight: 700, color: 'var(--accent-primary)' }}>{total.toLocaleString()} {b.currency || 'CZK'}</div></div>
-                <div><div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Оплачено</div><div style={{ fontSize: 16, fontWeight: 700, color: '#22c55e' }}>{paid.toLocaleString()} {b.currency || 'CZK'}</div></div>
-                <div><div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Залишок</div><div style={{ fontSize: 16, fontWeight: 700, color: remaining > 0 ? '#ef4444' : '#22c55e' }}>{remaining.toLocaleString()} {b.currency || 'CZK'}</div></div>
+                <div><div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Всього')}</div><div style={{ fontSize: 16, fontWeight: 700, color: 'var(--accent-primary)' }}>{total.toLocaleString()} {b.currency || 'CZK'}</div></div>
+                <div><div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Оплачено')}</div><div style={{ fontSize: 16, fontWeight: 700, color: '#22c55e' }}>{paid.toLocaleString()} {b.currency || 'CZK'}</div></div>
+                <div><div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Залишок')}</div><div style={{ fontSize: 16, fontWeight: 700, color: remaining > 0 ? '#ef4444' : '#22c55e' }}>{remaining.toLocaleString()} {b.currency || 'CZK'}</div></div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ flex: 1, background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-full)', height: 6, overflow: 'hidden' }}>
@@ -695,10 +694,10 @@ export default function BookingViewModal({
                 <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', letterSpacing: '.04em' }}>{pct}% · {b.currency || 'CZK'}</span>
                 {!showPayForm && (
                   <button onClick={() => setShowPayForm(true)} style={{ background: 'var(--accent-primary)', color: '#fff', padding: '7px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', border: 'none', cursor: 'pointer' }}>
-                    <Plus size={11} /> Платіж
+                    <Plus size={11} /> {tUi('Платіж')}
                   </button>
                 )}
-                <button onClick={createPayLink} disabled={payLinkBusy} title="Створити лінк оплати Teya (без терміну дії)"
+                <button onClick={createPayLink} disabled={payLinkBusy} title={tUi('Створити лінк оплати Teya (без терміну дії)')}
                   style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)', padding: '7px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', border: '1px solid var(--border-primary)', cursor: payLinkBusy ? 'wait' : 'pointer' }}>
                   🔗 {payLinkBusy ? 'Створення…' : 'Лінк оплати'}
                 </button>
@@ -707,12 +706,12 @@ export default function BookingViewModal({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '8px 10px', background: 'var(--bg-tertiary)', borderRadius: 7 }}>
                   <a href={payLink} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)', wordBreak: 'break-all', flex: 1 }}>{payLink}</a>
                   <button onClick={() => { navigator.clipboard.writeText(payLink).then(() => showToast('Скопійовано')); }}
-                    style={{ background: 'none', border: '1px solid var(--border-primary)', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>Копіювати</button>
+                    style={{ background: 'none', border: '1px solid var(--border-primary)', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>{tUi('Копіювати')}</button>
                 </div>
               )}
               {payments.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 6 }}>Транзакції</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 6 }}>{tUi('Транзакції')}</div>
                   {payments.map((p: any) => (
                     <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border-primary)', fontSize: 12 }}>
                       <span style={{ color: 'var(--text-tertiary)', minWidth: 70 }}>{p.paid_at || '—'}</span>
@@ -720,7 +719,7 @@ export default function BookingViewModal({
                       <span style={{ color: 'var(--text-secondary)' }}>{METHOD_LABELS[p.method] || p.method}</span>
                       <span style={{ color: 'var(--text-tertiary)' }}>{TYPE_LABELS[p.type] || p.type}</span>
                       {p.notes && <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.notes}</span>}
-                      <button style={{ background: 'none', border: 'none', color: 'var(--accent-danger)', cursor: 'pointer', padding: 2, marginLeft: 'auto', flexShrink: 0 }} title="Видалити"
+                      <button style={{ background: 'none', border: 'none', color: 'var(--accent-danger)', cursor: 'pointer', padding: 2, marginLeft: 'auto', flexShrink: 0 }} title={tUi('Видалити')}
                         onClick={async () => { if (!confirm('Видалити?')) return; await fetch(`/api/payments/${p.id}`, { method: 'DELETE' }); onFetchPayments(b.id); onFetchBookings(); showToast('Видалено'); }}>
                         <X size={12} />
                       </button>
@@ -733,10 +732,10 @@ export default function BookingViewModal({
                 <div style={{ padding: '14px 16px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: '#f59e0b' }}>
                     <span style={{ fontSize: 18 }}>⚠️</span>
-                    Безоплатне бронювання
+                    {tUi('Безоплатне бронювання')}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                    Ціна = 0 {b.currency || 'CZK'}. Це може бути промокод, бартер або помилка. Підтвердіть свідомо або встановіть реальну ціну.
+                    {tUi('Ціна = 0')} {b.currency || 'CZK'}{tUi('. Це може бути промокод, бартер або помилка. Підтвердіть свідомо або встановіть реальну ціну.')}
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button className="btn btn-sm btn-primary"
@@ -750,10 +749,10 @@ export default function BookingViewModal({
                         onFetchBookings();
                         showToast('✅ Безоплатне бронювання підтверджено');
                       }}>
-                      ✅ Підтвердити — це свідоме рішення
+                      {tUi('✅ Підтвердити — це свідоме рішення')}
                     </button>
                     <button className="btn btn-sm btn-secondary" onClick={onEdit}>
-                      ✏️ Встановити ціну
+                      {tUi('✏️ Встановити ціну')}
                     </button>
                   </div>
                 </div>
@@ -763,22 +762,22 @@ export default function BookingViewModal({
                   <div style={{ display: 'flex', gap: 8 }}>
                     <input className="form-input" type="number" placeholder={`Сума ${b.currency || 'CZK'}`} style={{ flex: 1, fontSize: 13 }} value={payForm.amount} onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))} />
                     <select className="form-select" style={{ width: 140, fontSize: 13 }} value={payForm.method} onChange={e => setPayForm(p => ({ ...p, method: e.target.value }))}>
-                      <option value="cash">💵 Готівка</option><option value="card">💳 Картою</option><option value="bank_transfer">🏦 Рахунок</option><option value="invoice">📄 Фактура</option><option value="booking_platform">🏨 Платформа бронювання</option>
+                      <option value="cash">{tUi('💵 Готівка')}</option><option value="card">{tUi('💳 Картою')}</option><option value="bank_transfer">{tUi('🏦 Рахунок')}</option><option value="invoice">{tUi('📄 Фактура')}</option><option value="booking_platform">{tUi('🏨 Платформа бронювання')}</option>
                     </select>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <select className="form-select" style={{ flex: 1, fontSize: 13 }} value={payForm.type} onChange={e => setPayForm(p => ({ ...p, type: e.target.value }))}>
-                      <option value="deposit">Передплата</option><option value="partial">Часткова</option><option value="full">Повна</option><option value="refund">Повернення</option>
+                      <option value="deposit">{tUi('Передплата')}</option><option value="partial">{tUi('Часткова')}</option><option value="full">{tUi('Повна')}</option><option value="refund">{tUi('Повернення')}</option>
                     </select>
-                    <input className="form-input" placeholder="Примітка" style={{ flex: 2, fontSize: 13 }} value={payForm.notes} onChange={e => setPayForm(p => ({ ...p, notes: e.target.value }))} />
+                    <input className="form-input" placeholder={tUi('Примітка')} style={{ flex: 2, fontSize: 13 }} value={payForm.notes} onChange={e => setPayForm(p => ({ ...p, notes: e.target.value }))} />
                   </div>
                   {payForm.method !== 'cash' && (
                     <div style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '6px 8px', background: 'rgba(99,102,241,0.08)', borderRadius: 6, lineHeight: 1.4 }}>
-                      ℹ️ Це <b>позначка статусу</b> — реальна транзакція з'явиться в Операціях, коли надійде з {payForm.method === 'card' ? 'Teya sync' : payForm.method === 'bank_transfer' ? 'банківської виписки' : payForm.method === 'booking_platform' ? 'виписки платформи' : 'фактичного джерела'}. Оплата картою / банком / платформою тут не створює подвійних записів у фінансах.
+                      {tUi('ℹ️ Це')} <b>{tUi('позначка статусу')}</b> {tUi('— реальна транзакція з\'явиться в Операціях, коли надійде з')} {payForm.method === 'card' ? 'Teya sync' : payForm.method === 'bank_transfer' ? 'банківської виписки' : payForm.method === 'booking_platform' ? 'виписки платформи' : 'фактичного джерела'}{tUi('. Оплата картою / банком / платформою тут не створює подвійних записів у фінансах.')}
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <button className="btn btn-sm btn-ghost" onClick={() => setShowPayForm(false)}>Скасувати</button>
+                    <button className="btn btn-sm btn-ghost" onClick={() => setShowPayForm(false)}>{tUi('Скасувати')}</button>
                     <button className="btn btn-sm btn-primary" disabled={!payForm.amount || Number(payForm.amount) <= 0}
                       onClick={async () => {
                         const res = await fetch('/api/payments', {
@@ -801,7 +800,7 @@ export default function BookingViewModal({
                   {remaining > 0 && (
                     <button className="btn btn-sm btn-ghost" style={{ fontSize: 11, alignSelf: 'flex-start' }}
                       onClick={() => setPayForm(p => ({ ...p, amount: String(remaining), type: remaining === total ? 'full' : 'partial' }))}>
-                      Залишок: {remaining.toLocaleString()} {b.currency || 'CZK'}
+                      {tUi('Залишок:')} {remaining.toLocaleString()} {b.currency || 'CZK'}
                     </button>
                   )}
                 </div>
@@ -823,7 +822,7 @@ export default function BookingViewModal({
                         }
                       }}
                     />
-                    🏢 На компанію
+                    {tUi('🏢 На компанію')}
                     {savingCompany && <Loader2 size={12} className="animate-spin" />}
                   </label>
                   {/* Invoice status inline */}
@@ -833,26 +832,26 @@ export default function BookingViewModal({
                       <span style={{ fontSize: 11, fontWeight: 600, color: '#22c55e' }}>{invoice.invoice_number}</span>
                       {/* Reconciliation badge — computed from already-loaded data */}
                       {Math.abs(invoice.amount - (b as any).total_price) <= 1 ? (
-                        <span title="Сума збігається з бронюванням" style={{ fontSize: 10, padding: '1px 6px', borderRadius: 20, background: 'rgba(34,197,94,0.12)', color: '#22c55e', fontWeight: 600 }}>🟢</span>
+                        <span title={tUi('Сума збігається з бронюванням')} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 20, background: 'rgba(34,197,94,0.12)', color: '#22c55e', fontWeight: 600 }}>🟢</span>
                       ) : (
-                        <span title={`Сума фактури ${invoice.amount} ≠ бронювання ${(b as any).total_price}`} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 20, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', fontWeight: 600 }}>🟡 Розбіжність</span>
+                        <span title={`Сума фактури ${invoice.amount} ≠ бронювання ${(b as any).total_price}`} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 20, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', fontWeight: 600 }}>{tUi('🟡 Розбіжність')}</span>
                       )}
                       <button className="btn btn-sm btn-ghost" style={{ fontSize: 10, padding: '2px 6px' }}
                         onClick={() => window.open(`/api/invoices/${invoice.id}`, '_blank')}>👁</button>
                       <button className="btn btn-sm btn-ghost" style={{ fontSize: 10, padding: '2px 6px', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 3 }}
                         onClick={handleReissue} disabled={reissuing}>
                         {reissuing ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
-                        Оновити
+                        {tUi('Оновити')}
                       </button>
                     </div>
                   ) : isPaid ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <Receipt size={13} style={{ color: '#f59e0b', flexShrink: 0 }} />
-                      <span style={{ fontSize: 11, color: '#f59e0b' }}>Не згенеровано</span>
+                      <span style={{ fontSize: 11, color: '#f59e0b' }}>{tUi('Не згенеровано')}</span>
                       <button className="btn btn-sm btn-primary" style={{ fontSize: 10, padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 3 }}
                         onClick={handleReissue} disabled={reissuing}>
                         {reissuing ? <Loader2 size={10} className="animate-spin" /> : <Receipt size={10} />}
-                        Згенерувати
+                        {tUi('Згенерувати')}
                       </button>
                     </div>
                   ) : null}
@@ -860,7 +859,7 @@ export default function BookingViewModal({
                 {companyMode && (
                   <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <input
-                      placeholder="Назва компанії *"
+                      placeholder={tUi('Назва компанії *')}
                       value={company.name}
                       onChange={(e) => setCompany({ ...company, name: e.target.value })}
                       onBlur={() => persistCompany(true, company)}
@@ -874,28 +873,28 @@ export default function BookingViewModal({
                       style={{ padding: '6px 10px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4 }}
                     />
                     <input
-                      placeholder="DIČ (опціонально)"
+                      placeholder={tUi('DIČ (опціонально)')}
                       value={company.dic}
                       onChange={(e) => setCompany({ ...company, dic: e.target.value })}
                       onBlur={() => persistCompany(true, company)}
                       style={{ padding: '6px 10px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4 }}
                     />
                     <input
-                      placeholder="Адреса"
+                      placeholder={tUi('Адреса')}
                       value={company.address}
                       onChange={(e) => setCompany({ ...company, address: e.target.value })}
                       onBlur={() => persistCompany(true, company)}
                       style={{ gridColumn: 'span 2', padding: '6px 10px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4 }}
                     />
                     <input
-                      placeholder="Місто"
+                      placeholder={tUi('Місто')}
                       value={company.city}
                       onChange={(e) => setCompany({ ...company, city: e.target.value })}
                       onBlur={() => persistCompany(true, company)}
                       style={{ padding: '6px 10px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4 }}
                     />
                     <input
-                      placeholder="Країна (CZ, SK, DE, …)"
+                      placeholder={tUi('Країна (CZ, SK, DE, …)')}
                       value={company.country}
                       onChange={(e) => setCompany({ ...company, country: e.target.value.toUpperCase() })}
                       onBlur={() => persistCompany(true, company)}
@@ -910,7 +909,7 @@ export default function BookingViewModal({
                     />
                     {invoice && (
                       <div style={{ gridColumn: 'span 2', fontSize: 11, color: 'var(--text-tertiary)' }}>
-                        ℹ️ Після зміни — натисни "Перевиставити" в блоці фактури нижче, щоб оновити документ.
+                        {tUi('ℹ️ Після зміни — натисни "Перевиставити" в блоці фактури нижче, щоб оновити документ.')}
                       </div>
                     )}
                   </div>
@@ -933,13 +932,13 @@ export default function BookingViewModal({
                   <div style={{ fontWeight: 700, fontSize: 14, color: isRegistered ? '#22c55e' : '#ef4444' }}>
                     {isRegistered ? 'Реєстрація завершена' : `Зареєструйте ще ${regNeeded - registrations.length} гостей`}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{registrations.length} з {regNeeded}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{registrations.length} {tUi('з')} {regNeeded}</div>
                 </div>
               </div>
 
               {registrations.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>Зареєстровані</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>{tUi('Зареєстровані')}</div>
                   {registrations.map((r: any) => (
                     <div key={r.reg_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', marginBottom: 6 }}>
                       <span style={{ fontSize: 20 }}>👤</span>
@@ -964,7 +963,7 @@ export default function BookingViewModal({
               {registrations.length < regNeeded && (
                 <div style={{ padding: 16, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px dashed var(--border-primary)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>➕ Гість #{registrations.length + 1}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{tUi('➕ Гість #')}{registrations.length + 1}</div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <input type="file" accept="image/*" capture="environment" ref={ocrFileRef} style={{ display: 'none' }}
                         onChange={async (e) => {
@@ -1020,7 +1019,7 @@ export default function BookingViewModal({
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <div>
-                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Прізвище *</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Прізвище *')}</label>
                       <input className="form-input" placeholder="ROTARU" value={regForm.lastName} onChange={e => setRegForm(p => ({ ...p, lastName: e.target.value }))} style={{ textTransform: 'uppercase' }} />
                     </div>
                     <div>
@@ -1028,36 +1027,36 @@ export default function BookingViewModal({
                       <input className="form-input" placeholder="MARIN" value={regForm.firstName} onChange={e => setRegForm(p => ({ ...p, firstName: e.target.value }))} />
                     </div>
                     <div>
-                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Дата народження</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Дата народження')}</label>
                       <input className="form-input" type="date" value={regForm.dateOfBirth} onChange={e => setRegForm(p => ({ ...p, dateOfBirth: e.target.value }))} />
                     </div>
                     <div>
-                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Тип документа</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Тип документа')}</label>
                       <select className="form-select" value={regForm.documentType} onChange={e => setRegForm(p => ({ ...p, documentType: e.target.value }))}>
                         <option value="ID_CARD">ID Card</option><option value="PASSPORT">Passport</option><option value="DRIVING_LICENCE">Driving Licence</option><option value="TRAVEL_DOCUMENT">Travel Document</option><option value="OTHER">Other</option>
                       </select>
                     </div>
                     <div>
-                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Номер документа *</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Номер документа *')}</label>
                       <input className="form-input" placeholder="RK381280" value={regForm.documentNumber} onChange={e => setRegForm(p => ({ ...p, documentNumber: e.target.value }))} />
                     </div>
                     <div>
-                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Національність</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Національність')}</label>
                       <input className="form-input" placeholder="Romanian" value={regForm.nationality} onChange={e => setRegForm(p => ({ ...p, nationality: e.target.value }))} />
                     </div>
                     <div>
-                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Країна (код)</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Країна (код)')}</label>
                       <input className="form-input" placeholder="ROU" maxLength={3} value={regForm.country} onChange={e => setRegForm(p => ({ ...p, country: e.target.value.toUpperCase() }))} />
                     </div>
                     <div style={{ gridColumn: '1 / -1' }}>
-                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Адреса</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Адреса')}</label>
                       <input className="form-input" placeholder="Str.C.A.Rosetti nr.15..." value={regForm.address} onChange={e => setRegForm(p => ({ ...p, address: e.target.value }))} />
                     </div>
                   </div>
                   <button className="btn btn-sm btn-primary" style={{ marginTop: 12, width: '100%' }}
                     disabled={savingReg || !regForm.lastName || !regForm.firstName || !regForm.documentNumber}
                     onClick={() => saveRegistration({ ...regForm, isPrimary: registrations.length === 0 })}>
-                    {savingReg ? <Loader2 size={14} className="animate-pulse" /> : <Check size={14} />} Зареєструвати
+                    {savingReg ? <Loader2 size={14} className="animate-pulse" /> : <Check size={14} />} {tUi('Зареєструвати')}
                   </button>
                 </div>
               )}
@@ -1079,14 +1078,14 @@ export default function BookingViewModal({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 16, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
                   <div>
-                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>🏛️ Туристичний збір</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('🏛️ Туристичний збір')}</div>
                     <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{taxAmt.toLocaleString()} CZK</div>
-                    {taxIncluded && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>Включено у вартість</div>}
+                    {taxIncluded && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{tUi('Включено у вартість')}</div>}
                   </div>
                   <span className="badge" style={{ background: ts.color + '22', color: ts.color, fontSize: 13 }}>{ts.icon} {ts.label}</span>
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                  {b.adults} дор. × {b.nights} н. × 25 CZK = {b.adults * b.nights * 25} CZK
+                  {b.adults} {tUi('дор. ×')} {b.nights} {tUi('н. × 25 CZK =')} {b.adults * b.nights * 25} CZK
                 </div>
               </div>
             );
@@ -1097,17 +1096,17 @@ export default function BookingViewModal({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {b.notes && (
                 <div style={{ padding: 16, background: 'rgba(59,130,246,0.08)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(59,130,246,0.2)' }}>
-                  <div style={{ fontSize: 11, color: '#3b82f6', textTransform: 'uppercase', fontWeight: 700, marginBottom: 8 }}>📋 Інформація (Hostex)</div>
+                  <div style={{ fontSize: 11, color: '#3b82f6', textTransform: 'uppercase', fontWeight: 700, marginBottom: 8 }}>{tUi('📋 Інформація (Hostex)')}</div>
                   <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{b.notes}</div>
                 </div>
               )}
               {b.internal_notes ? (
                 <div style={{ padding: 16, background: 'rgba(250,204,21,0.08)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(250,204,21,0.2)' }}>
-                  <div style={{ fontSize: 11, color: '#facc15', textTransform: 'uppercase', fontWeight: 700, marginBottom: 8 }}>📝 Внутрішні примітки</div>
+                  <div style={{ fontSize: 11, color: '#facc15', textTransform: 'uppercase', fontWeight: 700, marginBottom: 8 }}>{tUi('📝 Внутрішні примітки')}</div>
                   <div style={{ fontSize: 14, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{b.internal_notes}</div>
                 </div>
               ) : (
-                !b.notes && <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>Немає приміток</div>
+                !b.notes && <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>{tUi('Немає приміток')}</div>
               )}
               {b.guest_email && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>📧 {b.guest_email}</div>}
               {b.guest_phone && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}><Phone size={12} style={{ display: 'inline' }} /> {b.guest_phone}</div>}
@@ -1121,10 +1120,9 @@ export default function BookingViewModal({
               {subBookings.length === 0 && !showGroupForm && (
                 <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>
                   <div style={{ fontSize: 28, marginBottom: 8 }}>🏠</div>
-                  <p style={{ marginBottom: 8, fontWeight: 600, color: 'var(--text-secondary)' }}>Мульти-групове бронювання</p>
+                  <p style={{ marginBottom: 8, fontWeight: 600, color: 'var(--text-secondary)' }}>{tUi('Мульти-групове бронювання')}</p>
                   <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 4, maxWidth: 360, margin: '0 auto 16px' }}>
-                    Додайте групи гостей — кожна група прив'язується до свого юніту (кімната, будинок, місце на кемпінгу).
-                    Юніт автоматично блокується в календарі на ті ж дати.
+                    {tUi('Додайте групи гостей — кожна група прив\'язується до свого юніту (кімната, будинок, місце на кемпінгу). Юніт автоматично блокується в календарі на ті ж дати.')}
                   </p>
                 </div>
               )}
@@ -1153,13 +1151,13 @@ export default function BookingViewModal({
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: 14 }}>{sb.label || 'Без назви'}</div>
                         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                          <span>👥 {sb.adults} дор.{sb.children > 0 ? `, ${sb.children} діт.` : ''}</span>
+                          <span>👥 {sb.adults} {tUi('дор.')}{sb.children > 0 ? `, ${sb.children} діт.` : ''}</span>
                           {sb.child_unit_name ? (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 6, background: 'rgba(99,102,241,0.12)', color: '#6366f1', fontSize: 11, fontWeight: 600 }}>
-                              📅 {sb.child_unit_name} <span style={{ fontSize: 9, opacity: 0.7 }}>(в календарі)</span>
+                              📅 {sb.child_unit_name} <span style={{ fontSize: 9, opacity: 0.7 }}>{tUi('(в календарі)')}</span>
                             </span>
                           ) : (
-                            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>— той самий юніт</span>
+                            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('— той самий юніт')}</span>
                           )}
                         </div>
                       </div>
@@ -1181,7 +1179,7 @@ export default function BookingViewModal({
                         <button
                           onClick={(e) => { e.stopPropagation(); window.open(`/guest/${sb.child_guest_page_token}`, '_blank'); }}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent-primary)', padding: 4 }}
-                          title="Гостьова сторінка цієї групи"
+                          title={tUi('Гостьова сторінка цієї групи')}
                         >
                           <ExternalLink size={14} />
                         </button>
@@ -1196,7 +1194,7 @@ export default function BookingViewModal({
                           showToast('Групу видалено');
                         }}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: 4 }}
-                        title="Видалити групу"
+                        title={tUi('Видалити групу')}
                       >
                         <Trash2 size={14} />
                       </button>
@@ -1209,10 +1207,10 @@ export default function BookingViewModal({
                           <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
                             <thead>
                               <tr style={{ borderBottom: '1px solid var(--border-primary)', color: 'var(--text-tertiary)' }}>
-                                <th style={{ textAlign: 'left', padding: '4px 0', fontWeight: 500 }}>Опис</th>
-                                <th style={{ textAlign: 'right', padding: '4px 8px', fontWeight: 500, width: 50 }}>К-ть</th>
-                                <th style={{ textAlign: 'right', padding: '4px 8px', fontWeight: 500, width: 70 }}>Ціна</th>
-                                <th style={{ textAlign: 'right', padding: '4px 0', fontWeight: 500, width: 80 }}>Разом</th>
+                                <th style={{ textAlign: 'left', padding: '4px 0', fontWeight: 500 }}>{tUi('Опис')}</th>
+                                <th style={{ textAlign: 'right', padding: '4px 8px', fontWeight: 500, width: 50 }}>{tUi('К-ть')}</th>
+                                <th style={{ textAlign: 'right', padding: '4px 8px', fontWeight: 500, width: 70 }}>{tUi('Ціна')}</th>
+                                <th style={{ textAlign: 'right', padding: '4px 0', fontWeight: 500, width: 80 }}>{tUi('Разом')}</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1227,19 +1225,19 @@ export default function BookingViewModal({
                             </tbody>
                           </table>
                         ) : (
-                          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', padding: '8px 0' }}>Немає деталізації</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', padding: '8px 0' }}>{tUi('Немає деталізації')}</div>
                         )}
 
                         {/* Add line item form */}
                         {editingLineItems === sb.id ? (
                           <div style={{ marginTop: 8, display: 'flex', gap: 6, alignItems: 'end' }}>
-                            <input placeholder="Опис" value={newLineItem.description}
+                            <input placeholder={tUi('Опис')} value={newLineItem.description}
                               onChange={e => setNewLineItem(p => ({ ...p, description: e.target.value }))}
                               style={{ flex: 1, padding: '6px 8px', fontSize: 12, background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: 6, color: 'var(--text-primary)' }} />
-                            <input type="number" placeholder="К-ть" value={newLineItem.quantity}
+                            <input type="number" placeholder={tUi('К-ть')} value={newLineItem.quantity}
                               onChange={e => setNewLineItem(p => ({ ...p, quantity: Number(e.target.value) }))}
                               style={{ width: 50, padding: '6px 4px', fontSize: 12, background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: 6, color: 'var(--text-primary)', textAlign: 'right' }} />
-                            <input type="number" placeholder="Ціна" value={newLineItem.unit_price}
+                            <input type="number" placeholder={tUi('Ціна')} value={newLineItem.unit_price}
                               onChange={e => setNewLineItem(p => ({ ...p, unit_price: Number(e.target.value) }))}
                               style={{ width: 70, padding: '6px 4px', fontSize: 12, background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: 6, color: 'var(--text-primary)', textAlign: 'right' }} />
                             <button
@@ -1268,7 +1266,7 @@ export default function BookingViewModal({
                           <button onClick={() => setEditingLineItems(sb.id)}
                             style={{ marginTop: 8, padding: '4px 10px', fontSize: 11, background: 'none', border: '1px dashed var(--border-primary)', borderRadius: 6, cursor: 'pointer', color: 'var(--text-secondary)' }}
                           >
-                            + Додати рядок
+                            {tUi('+ Додати рядок')}
                           </button>
                         )}
 
@@ -1283,7 +1281,7 @@ export default function BookingViewModal({
                           }}>
                             <ExternalLink size={13} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>Гостьова сторінка цієї групи</div>
+                              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>{tUi('Гостьова сторінка цієї групи')}</div>
                               <div style={{ fontSize: 10, color: 'var(--text-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 /guest/{sb.child_guest_page_token}
                               </div>
@@ -1296,13 +1294,13 @@ export default function BookingViewModal({
                               }}
                               style={{ padding: '3px 8px', fontSize: 10, background: 'var(--accent-primary)', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 3 }}
                             >
-                              <Copy size={10} /> Копіювати
+                              <Copy size={10} /> {tUi('Копіювати')}
                             </button>
                             <button
                               onClick={() => window.open(`/guest/${sb.child_guest_page_token}`, '_blank')}
                               style={{ padding: '3px 8px', fontSize: 10, background: 'none', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap' }}
                             >
-                              Відкрити
+                              {tUi('Відкрити')}
                             </button>
                           </div>
                         )}
@@ -1326,7 +1324,7 @@ export default function BookingViewModal({
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Total бронювання</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{tUi('Total бронювання')}</div>
                     <div style={{ fontWeight: 700, fontSize: 15 }}>
                       {Number(b.total_price || 0).toLocaleString()} {b.currency || 'CZK'}
                     </div>
@@ -1345,45 +1343,45 @@ export default function BookingViewModal({
                   border: '1px solid var(--accent-primary)', borderRadius: 10,
                   padding: 14, background: 'var(--bg-secondary)',
                 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>➕ Нова група гостей</div>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>{tUi('➕ Нова група гостей')}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <div style={{ gridColumn: '1 / -1' }}>
-                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 4 }}>🏠 Юніт (кімната / місце) <span style={{ color: 'var(--accent-primary)' }}>*</span></label>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 4 }}>{tUi('🏠 Юніт (кімната / місце)')} <span style={{ color: 'var(--accent-primary)' }}>*</span></label>
                       <select value={groupForm.unitId} onChange={e => setGroupForm(p => ({ ...p, unitId: e.target.value }))}
                         style={{ width: '100%', padding: '8px 10px', fontSize: 13, background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: 6, color: 'var(--text-primary)' }}>
-                        <option value="">— Той самий юніт що й master ({(b as any).unit_name}) —</option>
+                        <option value="">{tUi('— Той самий юніт що й master (')}{(b as any).unit_name}) —</option>
                         {availableUnits.filter(u => u.id !== (b as any).unit_id).map(u => (
                           <option key={u.id} value={u.id}>{u.name} ({u.code}) — {u.category_name}</option>
                         ))}
                       </select>
                       {groupForm.unitId && (
                         <div style={{ fontSize: 11, color: '#22c55e', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                          📅 Цей юніт буде заблоковано в календарі на {(b as any).check_in} — {(b as any).check_out}
+                          {tUi('📅 Цей юніт буде заблоковано в календарі на')} {(b as any).check_in} — {(b as any).check_out}
                         </div>
                       )}
                     </div>
                     <div style={{ gridColumn: '1 / -1' }}>
-                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Назва групи</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Назва групи')}</label>
                       <input value={groupForm.label} onChange={e => setGroupForm(p => ({ ...p, label: e.target.value }))}
-                        placeholder="Напр. Сім'я Петренко — Mirror 1" style={{ width: '100%', padding: '8px 10px', fontSize: 13, background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: 6, color: 'var(--text-primary)' }} />
+                        placeholder={tUi('Напр. Сім\'я Петренко — Mirror 1')} style={{ width: '100%', padding: '8px 10px', fontSize: 13, background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: 6, color: 'var(--text-primary)' }} />
                     </div>
                     <div>
-                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Дорослі</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Дорослі')}</label>
                       <input type="number" min={1} value={groupForm.adults} onChange={e => setGroupForm(p => ({ ...p, adults: Number(e.target.value) }))}
                         style={{ width: '100%', padding: '8px 10px', fontSize: 13, background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: 6, color: 'var(--text-primary)' }} />
                     </div>
                     <div>
-                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Діти</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Діти')}</label>
                       <input type="number" min={0} value={groupForm.children} onChange={e => setGroupForm(p => ({ ...p, children: Number(e.target.value) }))}
                         style={{ width: '100%', padding: '8px 10px', fontSize: 13, background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: 6, color: 'var(--text-primary)' }} />
                     </div>
                     <div>
-                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>💰 Вартість цієї групи ({b.currency || 'CZK'})</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('💰 Вартість цієї групи (')}{b.currency || 'CZK'})</label>
                       <input type="number" min={0} value={groupForm.subtotal} onChange={e => setGroupForm(p => ({ ...p, subtotal: Number(e.target.value) }))}
                         style={{ width: '100%', padding: '8px 10px', fontSize: 13, background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: 6, color: 'var(--text-primary)' }} />
                     </div>
                     <div>
-                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Примітка</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Примітка')}</label>
                       <input value={groupForm.notes} onChange={e => setGroupForm(p => ({ ...p, notes: e.target.value }))}
                         style={{ width: '100%', padding: '8px 10px', fontSize: 13, background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: 6, color: 'var(--text-primary)' }} />
                     </div>
@@ -1391,7 +1389,7 @@ export default function BookingViewModal({
                   <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
                     <button onClick={() => { setShowGroupForm(false); setGroupForm({ label: '', unitId: '', adults: 1, children: 0, subtotal: 0, notes: '' }); }}
                       style={{ padding: '6px 14px', fontSize: 12, background: 'none', border: '1px solid var(--border-primary)', borderRadius: 6, cursor: 'pointer', color: 'var(--text-secondary)' }}
-                    >Скасувати</button>
+                    >{tUi('Скасувати')}</button>
                     <button
                       disabled={savingGroup || !groupForm.label}
                       onClick={async () => {
@@ -1417,7 +1415,7 @@ export default function BookingViewModal({
                       style={{ padding: '6px 14px', fontSize: 12, background: 'var(--accent-primary)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
                     >
                       {savingGroup ? <Loader2 size={14} className="spin" /> : <Plus size={14} />}
-                      Додати групу
+                      {tUi('Додати групу')}
                     </button>
                   </div>
                 </div>
@@ -1430,7 +1428,7 @@ export default function BookingViewModal({
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                   }}
                 >
-                  <Plus size={14} /> Додати групу
+                  <Plus size={14} /> {tUi('Додати групу')}
                 </button>
               )}
             </div>
@@ -1438,7 +1436,7 @@ export default function BookingViewModal({
 
           {viewTab === 'history' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-              {activityLog.length === 0 && <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>Немає записів</div>}
+              {activityLog.length === 0 && <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>{tUi('Немає записів')}</div>}
               {activityLog.map((log: any) => {
                 const icons: Record<string, string> = { status_change: '🔄', payment_status_change: '💳', price_change: '💰', note: '📝', created: '➕' };
                 return (
@@ -1458,7 +1456,7 @@ export default function BookingViewModal({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
               {auditLogs.length === 0 ? (
                 <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>
-                  Немає записів
+                  {tUi('Немає записів')}
                 </div>
               ) : (
                 auditLogs.map((log: any) => {
@@ -1513,7 +1511,7 @@ export default function BookingViewModal({
         {/* ── Persistent Notes ── */}
         <div style={{ marginTop: 12, background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 10, padding: '12px 14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: editingNotes ? 8 : (b.internal_notes ? 6 : 0) }}>
-            <span style={{ fontSize: 10, color: '#f59e0b', letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>📝 Примітка</span>
+            <span style={{ fontSize: 10, color: '#f59e0b', letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>{tUi('📝 Примітка')}</span>
             <button onClick={() => { if (editingNotes) { /* save */ fetch(`/api/bookings/${b.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ internal_notes: notesDraft }) }).then(() => { setBooking({ ...b, internal_notes: notesDraft }); showToast('Примітку збережено'); }); setEditingNotes(false); } else { setNotesDraft(b.internal_notes || ''); setEditingNotes(true); } }}
               style={{ fontSize: 11, color: editingNotes ? '#22c55e' : 'var(--text-tertiary)', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer' }}>
               {editingNotes ? '✓ Зберегти' : 'Редагувати'}
@@ -1521,19 +1519,19 @@ export default function BookingViewModal({
           </div>
           {editingNotes ? (
             <textarea value={notesDraft} onChange={(e) => setNotesDraft(e.target.value)}
-              placeholder="Додай контекст (алергії, побажання, пізній заїзд тощо)"
+              placeholder={tUi('Додай контекст (алергії, побажання, пізній заїзд тощо)')}
               style={{ width: '100%', fontSize: 13, lineHeight: 1.45, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-primary)', background: 'var(--bg-primary)', color: 'var(--text-primary)', resize: 'vertical', minHeight: 60 }} />
           ) : b.internal_notes ? (
             <div style={{ fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{b.internal_notes}</div>
           ) : (
             <div onClick={() => { setNotesDraft(''); setEditingNotes(true); }}
               style={{ fontSize: 13, color: 'var(--text-tertiary)', cursor: 'pointer', fontStyle: 'italic' }}>
-              Додай контекст для зміни (алергії, побажання, пізній заїзд тощо)
+              {tUi('Додай контекст для зміни (алергії, побажання, пізній заїзд тощо)')}
             </div>
           )}
           {b.notes && (
             <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(245,158,11,0.15)' }}>
-              <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 4, fontWeight: 600 }}>📥 Від гостя / Hostex</div>
+              <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 4, fontWeight: 600 }}>{tUi('📥 Від гостя / Hostex')}</div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>{b.notes}</div>
             </div>
           )}

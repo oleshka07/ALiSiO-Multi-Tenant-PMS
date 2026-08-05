@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, RefreshCw, ShoppingBag, AlertOctagon, CheckCircle2 } from 'lucide-react';
@@ -52,6 +53,7 @@ function describeOptions(options_json: string | null, service_date: string | nul
 }
 
 export default function PaidServicesPage() {
+  const t = useT();
   const today = new Date();
   const monthAgo = new Date(); monthAgo.setMonth(monthAgo.getMonth() - 3);
 
@@ -93,41 +95,40 @@ export default function PaidServicesPage() {
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Link href="/app/finance" style={backLink}><ArrowLeft size={14} /></Link>
         <h1 style={{ margin: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <ShoppingBag size={24} /> Оплачені послуги
+          <ShoppingBag size={24} /> {t('Оплачені послуги')}
         </h1>
         <button onClick={fetchRows} disabled={loading} style={{ ...btn, background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
-          <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : undefined} /> Оновити
+          <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : undefined} /> {t('Оновити')}
         </button>
       </div>
 
       <p style={{ marginTop: 8, color: 'var(--text-secondary)', fontSize: 13 }}>
-        Усі послуги, оплачені через віджет (Booking) або гостьову сторінку, з позначкою чи створено fin_operation.
-        Orphan-рядки (без fin_operation) можна відновити в окремій вкладці «Orphans».
+        {t('Усі послуги, оплачені через віджет (Booking) або гостьову сторінку, з позначкою чи створено fin_operation. Orphan-рядки (без fin_operation) можна відновити в окремій вкладці «Orphans».')}
       </p>
 
       <div style={{ display: 'flex', gap: 12, marginTop: 16, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-          Від
+          {t('Від')}
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ ...input, marginLeft: 6 }} />
         </label>
         <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-          До
+          {t('До')}
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ ...input, marginLeft: 6 }} />
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-secondary)' }}>
           <input type="checkbox" checked={onlyOrphans} onChange={(e) => setOnlyOrphans(e.target.checked)} />
-          Тільки orphans
+          {t('Тільки orphans')}
         </label>
         <Link href="/app/finance/payments/orphans" style={{ ...btn, color: '#a855f7', borderColor: '#a855f7', textDecoration: 'none', marginLeft: 'auto' }}>
-          <AlertOctagon size={14} /> Перейти до Orphans
+          <AlertOctagon size={14} /> {t('Перейти до Orphans')}
         </Link>
       </div>
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Завантаження…')}</div>
       ) : !data || data.services.length === 0 ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)', border: '1px dashed var(--border-primary)', borderRadius: 10 }}>
-          Оплачених послуг за цей період не знайдено
+          {t('Оплачених послуг за цей період не знайдено')}
         </div>
       ) : (
         <>
@@ -135,14 +136,14 @@ export default function PaidServicesPage() {
             display: 'flex', gap: 16, marginBottom: 12, padding: 12,
             background: 'var(--bg-secondary)', borderRadius: 8, flexWrap: 'wrap', fontSize: 13,
           }}>
-            <span>Записів: <b>{data.count}</b></span>
-            <span style={{ color: '#22c55e' }}>З fin_operation: <b>{data.with_fin_operation}</b></span>
+            <span>{t('Записів:')} <b>{data.count}</b></span>
+            <span style={{ color: '#22c55e' }}>{t('З fin_operation:')} <b>{data.with_fin_operation}</b></span>
             <span style={{ color: data.orphan_count > 0 ? '#a855f7' : 'var(--text-secondary)' }}>
               Orphan: <b>{data.orphan_count}</b>
             </span>
             {Object.entries(data.totals_by_currency).map(([cur, val]) => (
               <span key={cur} style={{ marginLeft: 'auto', fontWeight: 600 }}>
-                Сума: {val.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} {cur}
+                {t('Сума:')} {val.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} {cur}
               </span>
             ))}
           </div>
@@ -157,18 +158,18 @@ export default function PaidServicesPage() {
                 }}>
                   <span>{day}</span>
                   <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
-                    {rows.length} зап. · {fmtCZK(dayTotal)}
+                    {rows.length} {t('зап. ·')} {fmtCZK(dayTotal)}
                   </span>
                 </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-primary)' }}>
-                      <th style={th}>Час</th>
-                      <th style={th}>Гість / Юніт</th>
-                      <th style={th}>Послуга</th>
-                      <th style={{ ...th, textAlign: 'right' }}>К-сть</th>
-                      <th style={{ ...th, textAlign: 'right' }}>Сума</th>
-                      <th style={th}>Джерело</th>
+                      <th style={th}>{t('Час')}</th>
+                      <th style={th}>{t('Гість / Юніт')}</th>
+                      <th style={th}>{t('Послуга')}</th>
+                      <th style={{ ...th, textAlign: 'right' }}>{t('К-сть')}</th>
+                      <th style={{ ...th, textAlign: 'right' }}>{t('Сума')}</th>
+                      <th style={th}>{t('Джерело')}</th>
                       <th style={th}>fin_operation</th>
                     </tr>
                   </thead>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { Search, RefreshCw, Phone, Mail, MapPin, X, ChevronRight, User, Plus, Edit2, MessageCircle, Save } from 'lucide-react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
@@ -56,6 +57,7 @@ function GuestFormSheet({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useT();
   const [form, setForm] = useState({
     firstName: guest?.first_name || '',
     lastName: guest?.last_name || '',
@@ -142,24 +144,24 @@ function GuestFormSheet({
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Ім'я *</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Ім\'я *')}</label>
                 <input
                   className="form-input"
                   style={{ width: '100%', marginTop: 4, padding: '10px 12px', fontSize: 14 }}
                   value={form.firstName}
                   onChange={e => setForm({ ...form, firstName: e.target.value })}
-                  placeholder="Олександр"
+                  placeholder={t('Олександр')}
                   required
                 />
               </div>
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Прізвище *</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Прізвище *')}</label>
                 <input
                   className="form-input"
                   style={{ width: '100%', marginTop: 4, padding: '10px 12px', fontSize: 14 }}
                   value={form.lastName}
                   onChange={e => setForm({ ...form, lastName: e.target.value })}
-                  placeholder="Коваленко"
+                  placeholder={t('Коваленко')}
                   required
                 />
               </div>
@@ -167,7 +169,7 @@ function GuestFormSheet({
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Телефон</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Телефон')}</label>
                 <input
                   className="form-input"
                   style={{ width: '100%', marginTop: 4, padding: '10px 12px', fontSize: 14 }}
@@ -191,43 +193,43 @@ function GuestFormSheet({
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Країна</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Країна')}</label>
                 <input
                   className="form-input"
                   style={{ width: '100%', marginTop: 4, padding: '10px 12px', fontSize: 14 }}
                   value={form.country}
                   onChange={e => setForm({ ...form, country: e.target.value })}
-                  placeholder="Україна / Чехія"
+                  placeholder={t('Україна / Чехія')}
                 />
               </div>
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Місто</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Місто')}</label>
                 <input
                   className="form-input"
                   style={{ width: '100%', marginTop: 4, padding: '10px 12px', fontSize: 14 }}
                   value={form.city}
                   onChange={e => setForm({ ...form, city: e.target.value })}
-                  placeholder="Київ"
+                  placeholder={t('Київ')}
                 />
               </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Тип документа</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Тип документа')}</label>
                 <select
                   className="form-input"
                   style={{ width: '100%', marginTop: 4, padding: '10px 12px', fontSize: 14 }}
                   value={form.documentType}
                   onChange={e => setForm({ ...form, documentType: e.target.value })}
                 >
-                  <option value="PASSPORT">Закордонний паспорт</option>
-                  <option value="ID_CARD">ID картка / Паспорт</option>
-                  <option value="DRIVERS_LICENSE">Посвідчення водія</option>
+                  <option value="PASSPORT">{t('Закордонний паспорт')}</option>
+                  <option value="ID_CARD">{t('ID картка / Паспорт')}</option>
+                  <option value="DRIVERS_LICENSE">{t('Посвідчення водія')}</option>
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>№ документа</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('№ документа')}</label>
                 <input
                   className="form-input"
                   style={{ width: '100%', marginTop: 4, padding: '10px 12px', fontSize: 14 }}
@@ -239,13 +241,13 @@ function GuestFormSheet({
             </div>
 
             <div>
-              <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Примітки / VIP нотатки</label>
+              <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Примітки / VIP нотатки')}</label>
               <textarea
                 className="form-input"
                 style={{ width: '100%', marginTop: 4, padding: '10px 12px', fontSize: 14, minHeight: 70, resize: 'none' }}
                 value={form.notes}
                 onChange={e => setForm({ ...form, notes: e.target.value })}
-                placeholder="Побажання, алергії, переваги..."
+                placeholder={t('Побажання, алергії, переваги...')}
               />
             </div>
           </div>
@@ -256,7 +258,7 @@ function GuestFormSheet({
               onClick={onClose}
               style={{ flex: 1, padding: 12, borderRadius: 10, border: 'none', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
             >
-              Скасувати
+              {t('Скасувати')}
             </button>
             <button
               type="submit"
@@ -283,6 +285,7 @@ function GuestDetailSheet({
   onClose: () => void;
   onEdit: () => void;
 }) {
+  const t = useT();
   const [stays, setStays] = useState<ReservationRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -306,7 +309,7 @@ function GuestDetailSheet({
         <div className="m-sheet-header">
           <h2 style={{ fontSize: 17 }}>{guest.first_name} {guest.last_name}</h2>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="m-header-btn" onClick={onEdit} title="Редагувати"><Edit2 size={18} /></button>
+            <button className="m-header-btn" onClick={onEdit} title={t('Редагувати')}><Edit2 size={18} /></button>
             <button className="m-header-btn" onClick={onClose}><X size={20} /></button>
           </div>
         </div>
@@ -325,7 +328,7 @@ function GuestDetailSheet({
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 18, fontWeight: 700 }}>{guest.first_name} {guest.last_name}</div>
               <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                {guest.total_stays} перебування · {guest.total_revenue ? `${Math.round(guest.total_revenue).toLocaleString()} Kč` : '0 Kč'}
+                {guest.total_stays} {t('перебування ·')} {guest.total_revenue ? `${Math.round(guest.total_revenue).toLocaleString()} Kč` : '0 Kč'}
               </div>
             </div>
           </div>
@@ -338,7 +341,7 @@ function GuestDetailSheet({
                 className="m-action-btn m-action-btn-primary"
                 style={{ flex: 1, textDecoration: 'none', padding: '10px' }}
               >
-                <Phone size={14} /> Подзвонити
+                <Phone size={14} /> {t('Подзвонити')}
               </a>
               <a
                 href={`https://wa.me/${cleanPhone.replace(/^\+/, '')}`}
@@ -384,21 +387,21 @@ function GuestDetailSheet({
             )}
             {guest.notes && (
               <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border-primary)', fontSize: 12, color: 'var(--text-secondary)' }}>
-                <strong>Примітки:</strong> {guest.notes}
+                <strong>{t('Примітки:')}</strong> {guest.notes}
               </div>
             )}
           </div>
 
           {/* Stay history */}
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
-            Історія бронювань
+            {t('Історія бронювань')}
           </div>
           {loading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[1, 2, 3].map(i => <div key={i} className="m-skeleton" style={{ height: 56, borderRadius: 12 }} />)}
             </div>
           ) : stays.length === 0 ? (
-            <div className="m-empty" style={{ padding: 24 }}>Немає бронювань</div>
+            <div className="m-empty" style={{ padding: 24 }}>{t('Немає бронювань')}</div>
           ) : (
             stays.map(s => {
               const st = STATUS_MAP[s.status] || STATUS_MAP.draft;
@@ -411,7 +414,7 @@ function GuestDetailSheet({
                     </span>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                    {s.check_in} → {s.check_out} · {s.nights} ноч.
+                    {s.check_in} → {s.check_out} · {s.nights} {t('ноч.')}
                   </div>
                   {s.total_price > 0 && (
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginTop: 4 }}>
@@ -431,6 +434,7 @@ function GuestDetailSheet({
 // ─── Main Component ────────────────────────────────────────
 
 export default function MobileGuests({ openNew }: { openNew?: boolean }) {
+  const t = useT();
   const [guests, setGuests] = useState<GuestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -470,7 +474,7 @@ export default function MobileGuests({ openNew }: { openNew?: boolean }) {
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
           <input
             className="form-input"
-            placeholder="Ім'я, email, телефон..."
+            placeholder={t('Ім\'я, email, телефон...')}
             value={search}
             onChange={e => setSearch(e.target.value)}
             autoFocus
@@ -482,7 +486,7 @@ export default function MobileGuests({ openNew }: { openNew?: boolean }) {
       {/* Toolbar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <span style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 600 }}>
-          {guests.length} гостей
+          {guests.length} {t('гостей')}
         </span>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
@@ -494,7 +498,7 @@ export default function MobileGuests({ openNew }: { openNew?: boolean }) {
               color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer'
             }}
           >
-            <Plus size={14} /> Гість
+            <Plus size={14} /> {t('Гість')}
           </button>
           <button
             onClick={() => setShowSearch(p => !p)}
@@ -520,7 +524,7 @@ export default function MobileGuests({ openNew }: { openNew?: boolean }) {
       ) : guests.length === 0 ? (
         <div className="m-empty">
           <div className="m-empty-icon">👥</div>
-          <div>Гостей не знайдено</div>
+          <div>{t('Гостей не знайдено')}</div>
         </div>
       ) : (
         guests.map(g => (

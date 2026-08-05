@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/layout/Header';
@@ -60,6 +61,7 @@ function fmt(d: string) {
 
 /* ───── Main Page ───── */
 export default function SitesPage() {
+  const t = useT();
   const router = useRouter();
   const onMenuClick = useMobileMenu();
 
@@ -179,7 +181,7 @@ export default function SitesPage() {
   /* ── render ── */
   return (
     <>
-      <Header title="Сайти бронювання" onMenuClick={onMenuClick} />
+      <Header title={t('Сайти бронювання')} onMenuClick={onMenuClick} />
 
       <div className="app-content">
 
@@ -201,18 +203,18 @@ export default function SitesPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <Globe size={20} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
               <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                Сайти прямого бронювання
-                <button onClick={() => setShowSplash(true)} style={{ background: 'none', border: 'none', padding: 4, cursor: 'pointer', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center' }} title="Показати довідку">
+                {t('Сайти прямого бронювання')}
+                <button onClick={() => setShowSplash(true)} style={{ background: 'none', border: 'none', padding: 4, cursor: 'pointer', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center' }} title={t('Показати довідку')}>
                   <Info size={16} />
                 </button>
               </h2>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <button className="btn btn-secondary" onClick={() => router.push('/app/sites/all')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <BarChart size={16} /> Всі джерела (Аналітика)
+                <BarChart size={16} /> {t('Всі джерела (Аналітика)')}
               </button>
               <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-                <Plus size={16} /> Новий сайт
+                <Plus size={16} /> {t('Новий сайт')}
               </button>
             </div>
           </div>
@@ -232,17 +234,14 @@ export default function SitesPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                   <Globe size={22} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
                   <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    Сайти прямого бронювання
-                    <button onClick={() => setShowSplash(false)} style={{ background: 'none', border: 'none', padding: 4, cursor: 'pointer', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center' }} title="Приховати довідку">
+                    {t('Сайти прямого бронювання')}
+                    <button onClick={() => setShowSplash(false)} style={{ background: 'none', border: 'none', padding: 4, cursor: 'pointer', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center' }} title={t('Приховати довідку')}>
                       <Info size={16} />
                     </button>
                   </h2>
                 </div>
                 <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.65, margin: '0 0 10px' }}>
-                  Створіть власний сайт для прямого бронювання короткострокової оренди.
-                  Керуйте оголошеннями, тарифними планами та правилами бронювання в одному місці.
-                  Виберіть дизайн, підключіть онлайн-оплату через Stripe або PayPal і приймайте
-                  бронювання без посередників.
+                  {t('Створіть власний сайт для прямого бронювання короткострокової оренди. Керуйте оголошеннями, тарифними планами та правилами бронювання в одному місці. Виберіть дизайн, підключіть онлайн-оплату через Stripe або PayPal і приймайте бронювання без посередників.')}
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 20px' }}>
                   {[
@@ -257,10 +256,10 @@ export default function SitesPage() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <button className="btn btn-secondary" onClick={() => router.push('/app/sites/all')} style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-                  <BarChart size={16} /> Всі джерела (Аналітика)
+                  <BarChart size={16} /> {t('Всі джерела (Аналітика)')}
                 </button>
                 <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-                  <Plus size={16} /> Новий сайт
+                  <Plus size={16} /> {t('Новий сайт')}
                 </button>
               </div>
             </div>
@@ -274,7 +273,7 @@ export default function SitesPage() {
                   <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
                   <input
                     className="form-input"
-                    placeholder="Пошук сайтів..."
+                    placeholder={t('Пошук сайтів...')}
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     style={{ paddingLeft: 32, width: 260 }}
@@ -290,27 +289,27 @@ export default function SitesPage() {
               </div>
             ) : filtered.length === 0 && search ? (
               <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-secondary)' }}>
-                <div style={{ fontSize: 15, marginBottom: 8 }}>Сайтів не знайдено</div>
-                <div style={{ fontSize: 13 }}>Спробуйте змінити запит</div>
+                <div style={{ fontSize: 15, marginBottom: 8 }}>{t('Сайтів не знайдено')}</div>
+                <div style={{ fontSize: 13 }}>{t('Спробуйте змінити запит')}</div>
               </div>
             ) : filtered.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)' }}>
                 <Globe size={40} style={{ margin: '0 auto 12px', opacity: 0.2 }} />
-                <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Сайтів ще немає</div>
-                <div style={{ fontSize: 13 }}>Натисніть «Новий сайт» щоб почати</div>
+                <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>{t('Сайтів ще немає')}</div>
+                <div style={{ fontSize: 13 }}>{t('Натисніть «Новий сайт» щоб почати')}</div>
               </div>
             ) : (
               <div className="table-wrapper">
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Назва</th>
-                      <th>Тип</th>
-                      <th>Оголошень</th>
-                      <th>Валюта</th>
-                      <th>Статус</th>
-                      <th>Створено</th>
-                      <th style={{ textAlign: 'right' }}>Дії</th>
+                      <th>{t('Назва')}</th>
+                      <th>{t('Тип')}</th>
+                      <th>{t('Оголошень')}</th>
+                      <th>{t('Валюта')}</th>
+                      <th>{t('Статус')}</th>
+                      <th>{t('Створено')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('Дії')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -361,7 +360,7 @@ export default function SitesPage() {
                               </button>
                               <button
                                 className="btn btn-ghost"
-                                title="Налаштування"
+                                title={t('Налаштування')}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setEditSiteId(site.id);
@@ -376,7 +375,7 @@ export default function SitesPage() {
                               </button>
                               <button
                                 className="btn btn-ghost"
-                                title="Відкрити"
+                                title={t('Відкрити')}
                                 onClick={() => router.push(`/app/sites/${site.id}`)}
                                 style={{ padding: '4px 8px' }}
                               >
@@ -384,7 +383,7 @@ export default function SitesPage() {
                               </button>
                               <button
                                 className="btn btn-ghost"
-                                title="Видалити"
+                                title={t('Видалити')}
                                 onClick={() => handleDelete(site)}
                                 style={{ padding: '4px 8px', color: '#ef4444' }}
                               >
@@ -404,22 +403,22 @@ export default function SitesPage() {
             <Modal
               open={showCreate}
               onClose={() => setShowCreate(false)}
-              title="Новий сайт бронювання"
+              title={t('Новий сайт бронювання')}
               footer={
                 <>
-                  <button className="btn btn-ghost" onClick={() => setShowCreate(false)}>Скасувати</button>
+                  <button className="btn btn-ghost" onClick={() => setShowCreate(false)}>{t('Скасувати')}</button>
                   <button className="btn btn-primary" onClick={handleCreate} disabled={creating}>
                     {creating ? <Loader2 size={16} className="spin" /> : <Plus size={16} />}
-                    Створити
+                    {t('Створити')}
                   </button>
                 </>
               }
             >
               <div className="form-group">
-                <label className="form-label">Назва сайту *</label>
+                <label className="form-label">{t('Назва сайту *')}</label>
                 <input
                   className="form-input"
-                  placeholder="Наприклад: Glamping ALiSiO"
+                  placeholder={t('Наприклад: Glamping ALiSiO')}
                   value={newName}
                   onChange={e => setNewName(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleCreate()}
@@ -428,14 +427,14 @@ export default function SitesPage() {
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Тип</label>
+                  <label className="form-label">{t('Тип')}</label>
                   <select className="form-select" value={newType} onChange={e => setNewType(e.target.value as 'widget' | 'self-hosted')}>
-                    <option value="widget">Лише віджет</option>
+                    <option value="widget">{t('Лише віджет')}</option>
                     <option value="self-hosted">Self-hosted</option>
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Валюта</label>
+                  <label className="form-label">{t('Валюта')}</label>
                   <select className="form-select" value={newCurrency} onChange={e => setNewCurrency(e.target.value)}>
                     <option value="CZK">CZK</option>
                     <option value="EUR">EUR</option>
@@ -448,18 +447,18 @@ export default function SitesPage() {
               <div style={{ marginBottom: 8, padding: '12px 16px', borderRadius: 10, fontSize: 13, border: '1px solid var(--border-primary)', background: 'var(--surface-secondary)', lineHeight: 1.5 }}>
                 {newType === 'self-hosted' ? (
                   <>
-                    <div style={{ fontWeight: 600, marginBottom: 4 }}>🌐 Повноцінний сайт</div>
-                    Вибирайте цей варіант, <span style={{color:'var(--accent-primary)',fontWeight:600}}>якщо у вас немає свого сайту</span>. Ми створимо окрему сторінку з усіма вашими будиночками на нашому домені.
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>{t('🌐 Повноцінний сайт')}</div>
+                    {t('Вибирайте цей варіант,')} <span style={{color:'var(--accent-primary)',fontWeight:600}}>{t('якщо у вас немає свого сайту')}</span>{t('. Ми створимо окрему сторінку з усіма вашими будиночками на нашому домені.')}
                   </>
                 ) : (
                   <>
-                    <div style={{ fontWeight: 600, marginBottom: 4 }}>📌 Тільки віджет</div>
-                    Вибирайте цей варіант, <span style={{color:'var(--accent-primary)',fontWeight:600}}>якщо у вас вже є свій сайт</span> (Wix, WordPress тощо). Ви отримаєте код, який просто вставите на свою сторінку.
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>{t('📌 Тільки віджет')}</div>
+                    {t('Вибирайте цей варіант,')} <span style={{color:'var(--accent-primary)',fontWeight:600}}>{t('якщо у вас вже є свій сайт')}</span> {t('(Wix, WordPress тощо). Ви отримаєте код, який просто вставите на свою сторінку.')}
                   </>
                 )}
               </div>
               <div style={{ marginTop: 8, padding: '12px 16px', background: 'var(--surface-secondary)', borderRadius: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
-                💡 Після створення ви зможете налаштувати оголошення, дизайн, тарифні плани та інсталяційний код.
+                {t('💡 Після створення ви зможете налаштувати оголошення, дизайн, тарифні плани та інсталяційний код.')}
               </div>
             </Modal>
 
@@ -467,22 +466,22 @@ export default function SitesPage() {
             <Modal
               open={showEdit}
               onClose={() => setShowEdit(false)}
-              title="Налаштування сайту"
+              title={t('Налаштування сайту')}
               footer={
                 <>
-                  <button className="btn btn-ghost" onClick={() => setShowEdit(false)}>Скасувати</button>
+                  <button className="btn btn-ghost" onClick={() => setShowEdit(false)}>{t('Скасувати')}</button>
                   <button className="btn btn-primary" onClick={handleEdit} disabled={savingEdit}>
                     {savingEdit ? <Loader2 size={16} className="spin" /> : <Settings size={16} />}
-                    Зберегти
+                    {t('Зберегти')}
                   </button>
                 </>
               }
             >
               <div className="form-group">
-                <label className="form-label">Назва сайту *</label>
+                <label className="form-label">{t('Назва сайту *')}</label>
                 <input
                   className="form-input"
-                  placeholder="Наприклад: Glamping ALiSiO"
+                  placeholder={t('Наприклад: Glamping ALiSiO')}
                   value={editName}
                   onChange={e => setEditName(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleEdit()}
@@ -491,14 +490,14 @@ export default function SitesPage() {
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Тип</label>
+                  <label className="form-label">{t('Тип')}</label>
                   <select className="form-select" value={editType} onChange={e => setEditType(e.target.value as 'widget' | 'self-hosted')}>
-                    <option value="widget">Лише віджет</option>
+                    <option value="widget">{t('Лише віджет')}</option>
                     <option value="self-hosted">Self-hosted</option>
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Валюта</label>
+                  <label className="form-label">{t('Валюта')}</label>
                   <select className="form-select" value={editCurrency} onChange={e => setEditCurrency(e.target.value)}>
                     <option value="CZK">CZK</option>
                     <option value="EUR">EUR</option>
@@ -508,7 +507,7 @@ export default function SitesPage() {
                 </div>
               </div>
               <div className="form-group" style={{ marginTop: 16 }}>
-                <label className="form-label">Посилання на сайт</label>
+                <label className="form-label">{t('Посилання на сайт')}</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
                     className="form-input"
@@ -522,7 +521,7 @@ export default function SitesPage() {
                       showToast('Посилання скопійовано');
                     }}
                   >
-                    Копіювати
+                    {t('Копіювати')}
                   </button>
                   <button
                     className="btn btn-ghost"

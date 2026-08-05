@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -83,6 +84,7 @@ export default function DashboardPage() {
 }
 
 function DashboardDesktop() {
+  const t = useT();
   const [data, setData] = useState<DashboardData | null>(null);
   const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([]);
   const [soDate, setSoDate] = useState(new Date().toISOString().split('T')[0]);
@@ -143,7 +145,7 @@ function DashboardDesktop() {
       <>
         <Header title="Dashboard" onMenuClick={onMenuClick} />
         <div className="app-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '50vh' }}>
-          <Loader2 size={24} className="animate-pulse" /> <span style={{ marginLeft: 8, color: 'var(--text-secondary)' }}>Завантаження...</span>
+          <Loader2 size={24} className="animate-pulse" /> <span style={{ marginLeft: 8, color: 'var(--text-secondary)' }}>{t('Завантаження...')}</span>
         </div>
       </>
     );
@@ -161,7 +163,7 @@ function DashboardDesktop() {
             </div>
             <div>
               <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{data.arrivalsToday}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>Заїзди сьогодні</div>
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>{t('Заїзди сьогодні')}</div>
             </div>
           </div>
           <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 20 }}>
@@ -170,7 +172,7 @@ function DashboardDesktop() {
             </div>
             <div>
               <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{data.departuresToday}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>Виїзди сьогодні</div>
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>{t('Виїзди сьогодні')}</div>
             </div>
           </div>
           <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 20 }}>
@@ -179,7 +181,7 @@ function DashboardDesktop() {
             </div>
             <div>
               <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{data.occupancyRate}%</div>
-              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>Завантаженість</div>
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>{t('Завантаженість')}</div>
             </div>
           </div>
           <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 20 }}>
@@ -188,7 +190,7 @@ function DashboardDesktop() {
             </div>
             <div>
               <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{data.freeUnits}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>Вільних номерів</div>
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>{t('Вільних номерів')}</div>
             </div>
           </div>
         </div>
@@ -197,7 +199,7 @@ function DashboardDesktop() {
           <div className="card" style={{ marginBottom: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
               <h3 style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
-                <Flame size={16} style={{ color: '#f59e0b' }} /> Замовлення послуг
+                <Flame size={16} style={{ color: '#f59e0b' }} /> {t('Замовлення послуг')}
                 {serviceOrders.length > 0 && (
                   <span style={{ fontSize: 11, fontWeight: 700, background: 'rgba(245,158,11,0.15)', color: '#f59e0b', padding: '2px 8px', borderRadius: 10 }}>
                     {serviceOrders.length}
@@ -225,13 +227,13 @@ function DashboardDesktop() {
               </div>
             </div>
             {serviceOrders.length === 0 ? (
-              <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Немає замовлень на цю дату</div>
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>{t('Немає замовлень на цю дату')}</div>
             ) : (
             <>
             <div className="desktop-only">
               <table className="table">
                 <thead>
-                  <tr><th>Послуга</th><th>Гість</th><th>Дата / час</th><th>Юніт</th><th>Сума</th><th>Статус</th><th></th></tr>
+                  <tr><th>{t('Послуга')}</th><th>{t('Гість')}</th><th>{t('Дата / час')}</th><th>{t('Юніт')}</th><th>{t('Сума')}</th><th>{t('Статус')}</th><th></th></tr>
                 </thead>
                 <tbody>
                   {serviceOrders.map(o => (
@@ -255,21 +257,21 @@ function DashboardDesktop() {
                       <td style={{ whiteSpace: 'nowrap' }}>
                         {o.status === 'paid' || o.status === 'confirmed' ? (
                           <button onClick={() => handleOrderAction(o.id, 'complete')}
-                            title="Відмітити як виконано"
+                            title={t('Відмітити як виконано')}
                             style={{ padding: '4px 8px', borderRadius: 6, border: 'none', cursor: 'pointer', background: 'rgba(52,211,153,0.15)', color: 'var(--accent-success)', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            <Check size={12} /> Виконано
+                            <Check size={12} /> {t('Виконано')}
                           </button>
                         ) : o.status === 'completed' ? (
                           <button onClick={() => handleOrderAction(o.id, 'reopen')}
-                            title="Повернути"
+                            title={t('Повернути')}
                             style={{ padding: '4px 8px', borderRadius: 6, border: 'none', cursor: 'pointer', background: 'var(--surface-2)', color: 'var(--text-tertiary)', fontSize: 11 }}>
-                            ↩ Повернути
+                            {t('↩ Повернути')}
                           </button>
                         ) : o.status === 'pending' ? (
                           <button onClick={() => handleOrderAction(o.id, 'cancel')}
-                            title="Скасувати"
+                            title={t('Скасувати')}
                             style={{ padding: '4px 8px', borderRadius: 6, border: 'none', cursor: 'pointer', background: 'rgba(239,68,68,0.1)', color: 'var(--accent-danger)', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            <X size={12} /> Скасувати
+                            <X size={12} /> {t('Скасувати')}
                           </button>
                         ) : null}
                       </td>
@@ -320,20 +322,20 @@ function DashboardDesktop() {
           {/* Upcoming Arrivals */}
           <div className="card">
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <CalendarDays size={16} /> Найближчі заїзди
+              <CalendarDays size={16} /> {t('Найближчі заїзди')}
               <span style={{ fontSize: 11, fontWeight: 700, background: 'rgba(52,211,153,0.15)', color: 'var(--accent-success)', padding: '2px 8px', borderRadius: 10 }}>
                 {data.upcomingArrivals.length}
               </span>
             </h3>
             {data.upcomingArrivals.length === 0 ? (
-              <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Немає найближчих заїздів</div>
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>{t('Немає найближчих заїздів')}</div>
             ) : (
               <>
                 {/* Desktop table */}
                 <div className="desktop-only">
                   <table className="table">
                     <thead>
-                      <tr><th>Гість</th><th>Юніт</th><th>Заїзд</th><th>Ночей</th><th>Статус</th></tr>
+                      <tr><th>{t('Гість')}</th><th>{t('Юніт')}</th><th>{t('Заїзд')}</th><th>{t('Ночей')}</th><th>{t('Статус')}</th></tr>
                     </thead>
                     <tbody>
                       {data.upcomingArrivals.map(a => (
@@ -360,7 +362,7 @@ function DashboardDesktop() {
                           <div className="dashboard-event-card-name">{a.first_name} {a.last_name}</div>
                           <div className="dashboard-event-card-detail">
                             <span className="badge badge-primary" style={{ fontSize: 10, padding: '1px 6px' }}>{a.unit_code}</span>
-                            · {a.nights} ночей
+                            · {a.nights} {t('ночей')}
                           </div>
                         </div>
                         <div className="dashboard-event-card-right">
@@ -380,20 +382,20 @@ function DashboardDesktop() {
           {/* Departures Today */}
           <div className="card">
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <ArrowUpRight size={16} /> Виїзди сьогодні
+              <ArrowUpRight size={16} /> {t('Виїзди сьогодні')}
               <span style={{ fontSize: 11, fontWeight: 700, background: 'rgba(96,165,250,0.15)', color: 'var(--accent-info)', padding: '2px 8px', borderRadius: 10 }}>
                 {data.todayDepartures.length}
               </span>
             </h3>
             {data.todayDepartures.length === 0 ? (
-              <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Немає виїздів сьогодні</div>
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>{t('Немає виїздів сьогодні')}</div>
             ) : (
               <>
                 {/* Desktop table */}
                 <div className="desktop-only">
                   <table className="table">
                     <thead>
-                      <tr><th>Гість</th><th>Юніт</th><th>Виїзд</th><th>Прибирання</th></tr>
+                      <tr><th>{t('Гість')}</th><th>{t('Юніт')}</th><th>{t('Виїзд')}</th><th>{t('Прибирання')}</th></tr>
                     </thead>
                     <tbody>
                       {data.todayDepartures.map(d => (

@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { usePathname } from 'next/navigation';
 import { ArrowLeft, Bell, Search } from 'lucide-react';
 
@@ -23,6 +24,7 @@ const ROUTE_TITLES: Record<string, string> = {
 };
 
 export default function MobileHeader({ title, onBack, rightAction, showSearch, onSearch }: MobileHeaderProps) {
+  const t = useT();
   const pathname = usePathname();
   const pageTitle = title || ROUTE_TITLES[pathname] || 'ALiSiO';
 
@@ -30,7 +32,7 @@ export default function MobileHeader({ title, onBack, rightAction, showSearch, o
     <header className="m-header">
       <div className="m-header-left">
         {onBack ? (
-          <button className="m-header-btn" onClick={onBack} aria-label="Назад">
+          <button className="m-header-btn" onClick={onBack} aria-label={t('Назад')}>
             <ArrowLeft size={20} />
           </button>
         ) : (
@@ -40,12 +42,12 @@ export default function MobileHeader({ title, onBack, rightAction, showSearch, o
       <h1 className="m-header-title">{pageTitle}</h1>
       <div className="m-header-right">
         {showSearch && (
-          <button className="m-header-btn" onClick={onSearch} aria-label="Пошук">
+          <button className="m-header-btn" onClick={onSearch} aria-label={t('Пошук')}>
             <Search size={20} />
           </button>
         )}
         {rightAction}
-        <button className="m-header-btn m-header-bell" aria-label="Сповіщення">
+        <button className="m-header-btn m-header-bell" aria-label={t('Сповіщення')}>
           <Bell size={20} />
         </button>
       </div>

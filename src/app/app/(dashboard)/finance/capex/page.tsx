@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { Landmark, Plus, Edit2, Trash2, X } from 'lucide-react';
 
@@ -23,6 +24,7 @@ function formatCZK(n: number): string {
 }
 
 export default function CapexPage() {
+  const t = useT();
   const [items, setItems] = useState<CapexItem[]>([]);
   const [summary, setSummary] = useState<Summary>({ total_items: 0, total_amount: 0, active_items: 0, monthly_depreciation: 0 });
   const [bus, setBus] = useState<BU[]>([]);
@@ -80,10 +82,10 @@ export default function CapexPage() {
     <div className="page-container">
       <div className="page-header">
         <div>
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Landmark size={28} /> CAPEX — Реєстр капітальних витрат</h1>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Будівництво, обладнання, активи з амортизацією</p>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Landmark size={28} /> {t('CAPEX — Реєстр капітальних витрат')}</h1>
+          <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{t('Будівництво, обладнання, активи з амортизацією')}</p>
         </div>
-        <button className="btn btn-primary" onClick={openAdd}><Plus size={18} /> Додати CAPEX</button>
+        <button className="btn btn-primary" onClick={openAdd}><Plus size={18} /> {t('Додати CAPEX')}</button>
       </div>
 
       {/* Summary Cards */}
@@ -108,16 +110,16 @@ export default function CapexPage() {
         ) : items.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
             <Landmark size={48} strokeWidth={1} style={{ margin: '0 auto 1rem', opacity: 0.3 }} />
-            <p>Немає капітальних витрат</p>
-            <button className="btn btn-primary" onClick={openAdd} style={{ marginTop: '1rem' }}><Plus size={16} /> Додати перший CAPEX</button>
+            <p>{t('Немає капітальних витрат')}</p>
+            <button className="btn btn-primary" onClick={openAdd} style={{ marginTop: '1rem' }}><Plus size={16} /> {t('Додати перший CAPEX')}</button>
           </div>
         ) : (
           <table className="data-table" style={{ fontSize: '0.85rem' }}>
             <thead>
               <tr>
-                <th>Назва</th><th>Тип</th><th>BU</th><th>Дата</th>
-                <th style={{ textAlign: 'right' }}>Сума</th><th>Строк (міс)</th>
-                <th style={{ textAlign: 'right' }}>Амортизація/міс</th><th>Статус</th><th style={{ width: 80 }}></th>
+                <th>{t('Назва')}</th><th>{t('Тип')}</th><th>BU</th><th>{t('Дата')}</th>
+                <th style={{ textAlign: 'right' }}>{t('Сума')}</th><th>{t('Строк (міс)')}</th>
+                <th style={{ textAlign: 'right' }}>{t('Амортизація/міс')}</th><th>{t('Статус')}</th><th style={{ width: 80 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -159,65 +161,65 @@ export default function CapexPage() {
             </div>
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="form-group">
-                <label>Назва *</label>
-                <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Реконструкція даху будова F"
+                <label>{t('Назва *')}</label>
+                <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder={t('Реконструкція даху будова F')}
                   style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div className="form-group">
-                  <label>Тип активу</label>
+                  <label>{t('Тип активу')}</label>
                   <select value={form.asset_type} onChange={e => setForm({ ...form, asset_type: e.target.value })}
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }}>
                     {Object.entries(ASSET_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label>Бізнес-юніт</label>
+                  <label>{t('Бізнес-юніт')}</label>
                   <select value={form.business_unit_id} onChange={e => setForm({ ...form, business_unit_id: e.target.value })}
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }}>
-                    <option value="">Оберіть BU</option>
+                    <option value="">{t('Оберіть BU')}</option>
                     {bus.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div className="form-group">
-                  <label>Сума (CZK) *</label>
+                  <label>{t('Сума (CZK) *')}</label>
                   <input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="500000"
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
                 </div>
                 <div className="form-group">
-                  <label>Дата *</label>
+                  <label>{t('Дата *')}</label>
                   <input type="date" value={form.purchase_date} onChange={e => setForm({ ...form, purchase_date: e.target.value })}
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div className="form-group">
-                  <label>Контрагент</label>
-                  <input type="text" value={form.counterparty} onChange={e => setForm({ ...form, counterparty: e.target.value })} placeholder="Назва підрядника"
+                  <label>{t('Контрагент')}</label>
+                  <input type="text" value={form.counterparty} onChange={e => setForm({ ...form, counterparty: e.target.value })} placeholder={t('Назва підрядника')}
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
                 </div>
                 <div className="form-group">
-                  <label>Корисний строк (місяців)</label>
+                  <label>{t('Корисний строк (місяців)')}</label>
                   <input type="number" value={form.useful_life_months} onChange={e => setForm({ ...form, useful_life_months: e.target.value })} placeholder="60"
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
                 </div>
               </div>
               {form.amount && form.useful_life_months && parseInt(form.useful_life_months) > 0 && (
                 <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(245,158,11,0.1)', fontSize: '0.85rem' }}>
-                  📊 Амортизація: <strong>{formatCZK(parseFloat(form.amount) / parseInt(form.useful_life_months))} / місяць</strong>
-                  {' '}({parseInt(form.useful_life_months)} місяців = {Math.round(parseInt(form.useful_life_months) / 12 * 10) / 10} років)
+                  {t('📊 Амортизація:')} <strong>{formatCZK(parseFloat(form.amount) / parseInt(form.useful_life_months))} {t('/ місяць')}</strong>
+                  {' '}({parseInt(form.useful_life_months)} {t('місяців =')} {Math.round(parseInt(form.useful_life_months) / 12 * 10) / 10} {t('років)')}
                 </div>
               )}
               <div className="form-group">
-                <label>Нотатки</label>
+                <label>{t('Нотатки')}</label>
                 <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2}
                   style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', resize: 'vertical' }} />
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn" onClick={() => setShowModal(false)}>Скасувати</button>
+              <button className="btn" onClick={() => setShowModal(false)}>{t('Скасувати')}</button>
               <button className="btn btn-primary" onClick={handleSubmit} disabled={!form.name || !form.amount}>{editingId ? 'Зберегти' : 'Додати'}</button>
             </div>
           </div>

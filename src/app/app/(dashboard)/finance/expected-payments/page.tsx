@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, AlertTriangle, CheckCircle, Calendar, Users } from 'lucide-react';
 
@@ -33,6 +34,7 @@ const URGENCY_STYLES: Record<string, { bg: string; color: string; label: string;
 };
 
 export default function ExpectedPaymentsPage() {
+  const tUi = useT();
   const [items, setItems] = useState<ExpectedItem[]>([]);
   const [summary, setSummary] = useState<Summary>({ total_expected: 0, total_bookings: 0, overdue: 0, overdue_count: 0, urgent: 0, urgent_count: 0, soon: 0, soon_count: 0, upcoming: 0, upcoming_count: 0 });
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
@@ -62,17 +64,17 @@ export default function ExpectedPaymentsPage() {
     <div className="page-container">
       <div className="page-header">
         <div>
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Clock size={28} /> Очікувані оплати</h1>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Неоплачені бронювання та прогнозовані надходження</p>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Clock size={28} /> {tUi('Очікувані оплати')}</h1>
+          <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{tUi('Неоплачені бронювання та прогнозовані надходження')}</p>
         </div>
       </div>
 
       {/* Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
         <div className="card" style={{ padding: '1.25rem' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Всього очікується</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{tUi('Всього очікується')}</div>
           <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#6366f1', marginTop: '0.25rem' }}>{formatCZK(summary.total_expected)}</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{summary.total_bookings} бронювань</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{summary.total_bookings} {tUi('бронювань')}</div>
         </div>
         {(['overdue', 'urgent', 'soon', 'upcoming'] as const).map(key => {
           const s = URGENCY_STYLES[key];
@@ -81,7 +83,7 @@ export default function ExpectedPaymentsPage() {
               onClick={() => setFilterUrgency(filterUrgency === key ? '' : key)}>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{s.icon} {s.label}</div>
               <div style={{ fontSize: '1.25rem', fontWeight: 700, color: s.color, marginTop: '0.25rem' }}>{formatCZK(summary[key])}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{summary[`${key}_count`]} бронювань</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{summary[`${key}_count`]} {tUi('бронювань')}</div>
             </div>
           );
         })}
@@ -91,9 +93,9 @@ export default function ExpectedPaymentsPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
         {/* Weekly Timeline */}
         <div className="card" style={{ padding: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600 }}>📅 Прогноз надходжень (по тижнях)</h3>
+          <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600 }}>{tUi('📅 Прогноз надходжень (по тижнях)')}</h3>
           {timeline.length === 0 ? (
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Немає очікуваних оплат</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{tUi('Немає очікуваних оплат')}</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {timeline.map(t => (
@@ -114,7 +116,7 @@ export default function ExpectedPaymentsPage() {
 
         {/* By Category */}
         <div className="card" style={{ padding: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600 }}>🏷️ По категоріях</h3>
+          <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600 }}>{tUi('🏷️ По категоріях')}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {byCategory.map(c => (
               <div key={c.name} style={{ padding: '0.75rem', borderRadius: '8px', background: 'var(--surface-hover)' }}>
@@ -122,10 +124,10 @@ export default function ExpectedPaymentsPage() {
                   <span style={{ fontWeight: 500, fontSize: '0.875rem' }}>{c.name}</span>
                   <span style={{ fontWeight: 600, color: '#6366f1' }}>{formatCZK(c.amount)}</span>
                 </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{c.count} бронювань</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{c.count} {tUi('бронювань')}</div>
               </div>
             ))}
-            {byCategory.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Немає даних</p>}
+            {byCategory.length === 0 && <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{tUi('Немає даних')}</p>}
           </div>
         </div>
       </div>
@@ -137,17 +139,17 @@ export default function ExpectedPaymentsPage() {
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
             <CheckCircle size={48} strokeWidth={1} style={{ margin: '0 auto 1rem', opacity: 0.3 }} />
-            <p>Всі бронювання оплачені! 🎉</p>
+            <p>{tUi('Всі бронювання оплачені! 🎉')}</p>
           </div>
         ) : (
           <table className="data-table" style={{ fontSize: '0.85rem' }}>
             <thead>
               <tr>
-                <th></th><th>Гість</th><th>Юніт</th><th>Заїзд</th><th>Ночей</th><th>Джерело</th>
-                <th style={{ textAlign: 'right' }}>Повна ціна</th>
-                <th style={{ textAlign: 'right' }}>Оплачено</th>
-                <th style={{ textAlign: 'right' }}>Залишок</th>
-                <th>Днів до</th>
+                <th></th><th>{tUi('Гість')}</th><th>{tUi('Юніт')}</th><th>{tUi('Заїзд')}</th><th>{tUi('Ночей')}</th><th>{tUi('Джерело')}</th>
+                <th style={{ textAlign: 'right' }}>{tUi('Повна ціна')}</th>
+                <th style={{ textAlign: 'right' }}>{tUi('Оплачено')}</th>
+                <th style={{ textAlign: 'right' }}>{tUi('Залишок')}</th>
+                <th>{tUi('Днів до')}</th>
               </tr>
             </thead>
             <tbody>

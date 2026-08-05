@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Wallet, TrendingUp, TrendingDown, BarChart3, AlertTriangle, CheckCircle, Settings, ListChecks, Repeat, AlertOctagon, ShoppingBag } from 'lucide-react';
@@ -73,6 +74,7 @@ function getMonthLabel(m: string): string {
 }
 
 export default function FinanceOverviewPage() {
+  const t = useT();
   const { isMobile } = useDevice();
   if (isMobile) return <MobileFinanceOverview />;
 
@@ -97,7 +99,7 @@ export default function FinanceOverviewPage() {
   if (loading) {
     return (
       <div className="page-container">
-        <div className="page-header"><h1>💰 Фінанси — Огляд</h1></div>
+        <div className="page-header"><h1>{t('💰 Фінанси — Огляд')}</h1></div>
         <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
           <div className="spinner" />
         </div>
@@ -105,7 +107,7 @@ export default function FinanceOverviewPage() {
     );
   }
 
-  if (!data) return <div className="page-container"><p>Помилка завантаження</p></div>;
+  if (!data) return <div className="page-container"><p>{t('Помилка завантаження')}</p></div>;
 
   const maxBar = Math.max(...data.monthlyData.map(d => Math.max(d.revenue, d.expenses)), 1);
 
@@ -115,10 +117,10 @@ export default function FinanceOverviewPage() {
       <div className="page-header">
         <div>
           <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Wallet size={28} /> Фінанси — Огляд
+            <Wallet size={28} /> {t('Фінанси — Огляд')}
           </h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            CEO Dashboard — зведена фінансова панель
+            {t('CEO Dashboard — зведена фінансова панель')}
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -143,7 +145,7 @@ export default function FinanceOverviewPage() {
               color: 'var(--text-primary)', textDecoration: 'none', fontSize: 14,
             }}
           >
-            <ListChecks size={16} /> Операції
+            <ListChecks size={16} /> {t('Операції')}
           </Link>
           <Link
             href="/app/finance/clearing"
@@ -164,9 +166,9 @@ export default function FinanceOverviewPage() {
               border: '1px solid var(--border)', background: 'var(--surface)',
               color: 'var(--text-primary)', textDecoration: 'none', fontSize: 14,
             }}
-            title="Усі оплачені послуги по датах + статус fin_operation"
+            title={t('Усі оплачені послуги по датах + статус fin_operation')}
           >
-            <ShoppingBag size={16} /> Послуги
+            <ShoppingBag size={16} /> {t('Послуги')}
           </Link>
           <Link
             href="/app/finance/payments/orphans"
@@ -176,7 +178,7 @@ export default function FinanceOverviewPage() {
               border: '1px solid var(--border)', background: 'var(--surface)',
               color: 'var(--text-primary)', textDecoration: 'none', fontSize: 14,
             }}
-            title="Знайти платежі без fin_operation"
+            title={t('Знайти платежі без fin_operation')}
           >
             <AlertOctagon size={16} /> Orphans
           </Link>
@@ -195,7 +197,7 @@ export default function FinanceOverviewPage() {
               fontSize: 14,
             }}
           >
-            <Settings size={16} /> Налаштування
+            <Settings size={16} /> {t('Налаштування')}
           </Link>
         </div>
       </div>
@@ -205,13 +207,13 @@ export default function FinanceOverviewPage() {
       {/* KPI Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         <KPICard
-          title="Дохід"
+          title={t('Дохід')}
           value={formatCZK(data.kpi.revenue)}
           icon={<TrendingUp size={20} />}
           color="#22c55e"
         />
         <KPICard
-          title="Витрати"
+          title={t('Витрати')}
           value={formatCZK(data.kpi.expenses)}
           icon={<TrendingDown size={20} />}
           color="#ef4444"
@@ -223,7 +225,7 @@ export default function FinanceOverviewPage() {
           color={data.kpi.ebitda >= 0 ? '#22c55e' : '#ef4444'}
         />
         <KPICard
-          title="Маржа"
+          title={t('Маржа')}
           value={`${data.kpi.margin}%`}
           icon={<Wallet size={20} />}
           color="#8b5cf6"
@@ -236,7 +238,7 @@ export default function FinanceOverviewPage() {
         />
         {data.kpi.depreciation > 0 && (
           <KPICard
-            title="Амортизація/міс"
+            title={t('Амортизація/міс')}
             value={formatCZK(data.kpi.depreciation)}
             icon={<BarChart3 size={20} />}
             color="#f59e0b"
@@ -252,7 +254,7 @@ export default function FinanceOverviewPage() {
         )}
         {data.kpi.expectedPayments > 0 && (
           <KPICard
-            title="Очікується оплат"
+            title={t('Очікується оплат')}
             value={formatCZK(data.kpi.expectedPayments)}
             icon={<TrendingUp size={20} />}
             color="#6366f1"
@@ -264,7 +266,7 @@ export default function FinanceOverviewPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
         {/* Revenue vs Expenses Chart */}
         <div className="card" style={{ padding: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1.5rem', fontSize: '1rem', fontWeight: 600 }}>📊 Дохід vs Витрати по місяцях</h3>
+          <h3 style={{ marginBottom: '1.5rem', fontSize: '1rem', fontWeight: 600 }}>{t('📊 Дохід vs Витрати по місяцях')}</h3>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.75rem', height: '200px' }}>
             {data.monthlyData.map((d) => (
               <div key={d.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
@@ -296,17 +298,17 @@ export default function FinanceOverviewPage() {
           </div>
           <div style={{ display: 'flex', gap: '1.5rem', marginTop: '1rem', justifyContent: 'center' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem' }}>
-              <span style={{ width: 12, height: 12, borderRadius: 3, background: '#22c55e', display: 'inline-block' }} /> Дохід
+              <span style={{ width: 12, height: 12, borderRadius: 3, background: '#22c55e', display: 'inline-block' }} /> {t('Дохід')}
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem' }}>
-              <span style={{ width: 12, height: 12, borderRadius: 3, background: '#ef4444', display: 'inline-block' }} /> Витрати
+              <span style={{ width: 12, height: 12, borderRadius: 3, background: '#ef4444', display: 'inline-block' }} /> {t('Витрати')}
             </span>
           </div>
         </div>
 
         {/* BU Breakdown */}
         <div className="card" style={{ padding: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600 }}>🏢 По бізнес-юнітах</h3>
+          <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600 }}>{t('🏢 По бізнес-юнітах')}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {data.buBreakdown.map((bu) => (
               <div key={bu.id} style={{ padding: '0.75rem', borderRadius: '8px', background: 'var(--surface-hover)' }}>
@@ -331,7 +333,7 @@ export default function FinanceOverviewPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1.5rem' }}>
         {/* Alerts */}
         <div className="card" style={{ padding: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600 }}>⚠️ Контрольні точки</h3>
+          <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600 }}>{t('⚠️ Контрольні точки')}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {data.alerts.map((alert, i) => (
               <div key={i} style={{
@@ -341,19 +343,19 @@ export default function FinanceOverviewPage() {
                 {alert.status === 'GREEN' ? <CheckCircle size={18} color="#22c55e" /> : <AlertTriangle size={18} color={alert.status === 'RED' ? '#ef4444' : '#eab308'} />}
                 <div>
                   <div style={{ fontSize: '0.875rem', fontWeight: 500 }}>{alert.metric}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{alert.value} (поріг: {Math.round(alert.threshold)})</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{alert.value} {t('(поріг:')} {Math.round(alert.threshold)})</div>
                 </div>
               </div>
             ))}
             {data.alerts.length === 0 && (
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Немає активних попереджень</p>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{t('Немає активних попереджень')}</p>
             )}
           </div>
         </div>
 
         {/* Recent Transactions */}
         <div className="card" style={{ padding: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600 }}>📋 Останні транзакції</h3>
+          <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600 }}>{t('📋 Останні транзакції')}</h3>
           {data.recentTransactions.length === 0 ? (
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', textAlign: 'center', padding: '2rem' }}>
               Ще немає транзакцій. Додайте першу витрату через розділ &quot;Витрати&quot;.
@@ -362,11 +364,11 @@ export default function FinanceOverviewPage() {
             <table className="data-table" style={{ fontSize: '0.875rem' }}>
               <thead>
                 <tr>
-                  <th>Дата</th>
-                  <th>Категорія</th>
-                  <th>Опис</th>
+                  <th>{t('Дата')}</th>
+                  <th>{t('Категорія')}</th>
+                  <th>{t('Опис')}</th>
                   <th>BU</th>
-                  <th style={{ textAlign: 'right' }}>Сума</th>
+                  <th style={{ textAlign: 'right' }}>{t('Сума')}</th>
                 </tr>
               </thead>
               <tbody>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { GripVertical, Pencil, Archive, RotateCcw, Trash2, Plus } from 'lucide-react';
 import type { Project } from './ProjectsTab';
@@ -29,6 +30,7 @@ export default function ProjectTreeRow({
   onDelete,
   onMove,
 }: Props) {
+  const t = useT();
   const [dragOver, setDragOver] = useState<'above' | 'below' | 'onto' | null>(null);
 
   function handleDragStart(e: React.DragEvent) {
@@ -111,27 +113,27 @@ export default function ProjectTreeRow({
           </span>
         )}
         {!project.is_active && (
-          <span style={{ color: 'var(--text-secondary)', fontSize: 12, marginLeft: 6 }}>(архів)</span>
+          <span style={{ color: 'var(--text-secondary)', fontSize: 12, marginLeft: 6 }}>{t('(архів)')}</span>
         )}
       </span>
 
-      {project.is_shared === 1 && <Badge>Спільний</Badge>}
+      {project.is_shared === 1 && <Badge>{t('Спільний')}</Badge>}
 
       <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
         {isRoot && onAddChild && (
           <button
             onClick={onAddChild}
             style={{ ...iconBtnStyle, color: 'var(--accent, #6366f1)' }}
-            title="Додати підпроєкт"
+            title={t('Додати підпроєкт')}
           >
             <Plus size={15} />
           </button>
         )}
-        <button onClick={onEdit} style={iconBtnStyle} title="Редагувати"><Pencil size={14} /></button>
+        <button onClick={onEdit} style={iconBtnStyle} title={t('Редагувати')}><Pencil size={14} /></button>
         <button onClick={onArchiveToggle} style={iconBtnStyle} title={project.is_active ? 'Архівувати' : 'Відновити'}>
           {project.is_active ? <Archive size={14} /> : <RotateCcw size={14} />}
         </button>
-        <button onClick={onDelete} style={{ ...iconBtnStyle, color: '#dc2626' }} title="Видалити"><Trash2 size={14} /></button>
+        <button onClick={onDelete} style={{ ...iconBtnStyle, color: '#dc2626' }} title={t('Видалити')}><Trash2 size={14} /></button>
       </div>
     </div>
   );

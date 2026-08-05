@@ -1,11 +1,13 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { Lock, ShieldCheck, ShieldPlus, X, Loader2 } from 'lucide-react';
 
 type Status = { hasPassphrase: boolean; unlocked: boolean };
 
 export default function FinanceGate({ children }: { children: React.ReactNode }) {
+  const t = useT();
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<Status | null>(null);
   const [panel, setPanel] = useState<null | 'setup' | 'manage'>(null);
@@ -50,7 +52,7 @@ export default function FinanceGate({ children }: { children: React.ReactNode })
 
       <button
         onClick={() => setPanel(status?.hasPassphrase ? 'manage' : 'setup')}
-        title="Безпека фінансів"
+        title={t('Безпека фінансів')}
         style={fab}
       >
         {status?.hasPassphrase
@@ -73,6 +75,7 @@ export default function FinanceGate({ children }: { children: React.ReactNode })
 
 // ─── Unlock (full-screen, blocks finance) ──────────────────────────────────
 function UnlockScreen({ onUnlocked }: { onUnlocked: () => void }) {
+  const t = useT();
   const [pass, setPass] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -97,14 +100,14 @@ function UnlockScreen({ onUnlocked }: { onUnlocked: () => void }) {
       <form onSubmit={submit} style={card}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
           <div style={iconCircle}><Lock size={22} color="#b91c1c" /></div>
-          <h2 style={{ margin: 0, fontSize: 18, color: '#0f172a' }}>Фінансовий розділ заблоковано</h2>
+          <h2 style={{ margin: 0, fontSize: 18, color: '#0f172a' }}>{t('Фінансовий розділ заблоковано')}</h2>
           <p style={{ margin: 0, fontSize: 13, color: '#64748b', textAlign: 'center' }}>
-            Введіть пароль фінансів, щоб отримати доступ.
+            {t('Введіть пароль фінансів, щоб отримати доступ.')}
           </p>
         </div>
         <input
           type="password" autoFocus value={pass} onChange={(e) => setPass(e.target.value)}
-          placeholder="Пароль фінансів" style={input}
+          placeholder={t('Пароль фінансів')} style={input}
         />
         {err && <div style={errBox}>{err}</div>}
         <button type="submit" disabled={busy || !pass} style={primaryBtn}>
@@ -117,6 +120,7 @@ function UnlockScreen({ onUnlocked }: { onUnlocked: () => void }) {
 
 // ─── Setup (enable the passphrase) ─────────────────────────────────────────
 function SetupModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const t = useT();
   const [p1, setP1] = useState('');
   const [p2, setP2] = useState('');
   const [err, setErr] = useState('');
@@ -140,15 +144,13 @@ function SetupModal({ onClose, onDone }: { onClose: () => void; onDone: () => vo
   };
 
   return (
-    <Modal onClose={onClose} title="Увімкнути пароль фінансів">
+    <Modal onClose={onClose} title={t('Увімкнути пароль фінансів')}>
       <p style={{ margin: '0 0 12px', fontSize: 13, color: '#64748b' }}>
-        Окремий пароль, який запитуватиметься при вході у Фінанси — додатковий
-        захист, навіть якщо хтось отримає доступ до вашого облікового запису.
-        Запам’ятайте його: відновлення немає.
+        {t('Окремий пароль, який запитуватиметься при вході у Фінанси — додатковий захист, навіть якщо хтось отримає доступ до вашого облікового запису. Запам’ятайте його: відновлення немає.')}
       </p>
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <input type="password" autoFocus value={p1} onChange={(e) => setP1(e.target.value)} placeholder="Новий пароль фінансів" style={input} />
-        <input type="password" value={p2} onChange={(e) => setP2(e.target.value)} placeholder="Повторіть пароль" style={input} />
+        <input type="password" autoFocus value={p1} onChange={(e) => setP1(e.target.value)} placeholder={t('Новий пароль фінансів')} style={input} />
+        <input type="password" value={p2} onChange={(e) => setP2(e.target.value)} placeholder={t('Повторіть пароль')} style={input} />
         {err && <div style={errBox}>{err}</div>}
         <button type="submit" disabled={busy} style={primaryBtn}>{busy ? 'Збереження…' : 'Увімкнути'}</button>
       </form>
@@ -158,6 +160,7 @@ function SetupModal({ onClose, onDone }: { onClose: () => void; onDone: () => vo
 
 // ─── Manage (lock now) ─────────────────────────────────────────────────────
 function ManageModal({ onClose, onLocked }: { onClose: () => void; onLocked: () => void }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const lockNow = async () => {
     setBusy(true);
@@ -167,10 +170,9 @@ function ManageModal({ onClose, onLocked }: { onClose: () => void; onLocked: () 
     } finally { setBusy(false); }
   };
   return (
-    <Modal onClose={onClose} title="Безпека фінансів">
+    <Modal onClose={onClose} title={t('Безпека фінансів')}>
       <p style={{ margin: '0 0 12px', fontSize: 13, color: '#64748b' }}>
-        Пароль фінансів увімкнено. Розділ автоматично блокується після періоду
-        неактивності. Можете заблокувати зараз вручну.
+        {t('Пароль фінансів увімкнено. Розділ автоматично блокується після періоду неактивності. Можете заблокувати зараз вручну.')}
       </p>
       <button onClick={lockNow} disabled={busy} style={primaryBtn}>
         {busy ? '…' : 'Заблокувати зараз'}

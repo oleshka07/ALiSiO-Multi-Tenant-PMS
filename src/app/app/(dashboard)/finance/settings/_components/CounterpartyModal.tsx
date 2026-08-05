@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 import { X, Plus as PlusIcon } from 'lucide-react';
 import type { Counterparty, CounterpartyNode, Kind } from './CounterpartiesTab';
@@ -36,6 +37,7 @@ const ICONS = ['', '🤝', '🏪', '👷', '📋', '💼', '🏢', '✈️', '�
 interface Suggestion { text: string; count: number }
 
 export default function CounterpartyModal({ initial, parent, onClose, onSave }: Props) {
+  const t = useT();
   const isSubcounterparty = !!parent;
   const isEditingSub = initial && initial.parent_id !== null;
   const kindDisabled = isSubcounterparty || isEditingSub;
@@ -130,11 +132,11 @@ export default function CounterpartyModal({ initial, parent, onClose, onSave }: 
           <button type="button" onClick={onClose} style={closeBtnStyle}><X size={18} /></button>
         </div>
 
-        <Field label="Назва">
+        <Field label={t('Назва')}>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} autoFocus />
         </Field>
 
-        <Field label="Тип">
+        <Field label={t('Тип')}>
           <select
             value={kind}
             onChange={(e) => setKind(e.target.value as Kind | '')}
@@ -143,18 +145,18 @@ export default function CounterpartyModal({ initial, parent, onClose, onSave }: 
           >
             {KIND_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          {kindDisabled && <div style={hintStyle}>Успадковано від батька</div>}
+          {kindDisabled && <div style={hintStyle}>{t('Успадковано від батька')}</div>}
         </Field>
 
         <div style={{ marginBottom: 12 }}>
           <label style={{ display: 'block', fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>
-            Синоніми (для автоматчингу з банк-коментарів)
+            {t('Синоніми (для автоматчингу з банк-коментарів)')}
           </label>
           <div style={chipContainerStyle}>
             {aliases.map((a) => (
               <span key={a} style={chipStyle}>
                 {a}
-                <button type="button" onClick={() => removeAlias(a)} style={chipXBtn} aria-label="Видалити">
+                <button type="button" onClick={() => removeAlias(a)} style={chipXBtn} aria-label={t('Видалити')}>
                   <X size={12} />
                 </button>
               </span>
@@ -170,13 +172,13 @@ export default function CounterpartyModal({ initial, parent, onClose, onSave }: 
             />
           </div>
           <div style={hintStyle}>
-            Синоніми автоматично переводяться у ВЕРХНІЙ регістр. Пошук case-insensitive підрядком.
+            {t('Синоніми автоматично переводяться у ВЕРХНІЙ регістр. Пошук case-insensitive підрядком.')}
           </div>
 
           {visibleSuggestions.length > 0 && (
             <div style={suggestionsBoxStyle}>
               <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                Пропозиції з існуючих операцій:
+                {t('Пропозиції з існуючих операцій:')}
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {visibleSuggestions.map((s) => (
@@ -197,7 +199,7 @@ export default function CounterpartyModal({ initial, parent, onClose, onSave }: 
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Field label="Іконка">
+          <Field label={t('Іконка')}>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {ICONS.map((i) => (
                 <button
@@ -218,7 +220,7 @@ export default function CounterpartyModal({ initial, parent, onClose, onSave }: 
               ))}
             </div>
           </Field>
-          <Field label="Колір">
+          <Field label={t('Колір')}>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {COLORS.map((c) => (
                 <button
@@ -237,23 +239,23 @@ export default function CounterpartyModal({ initial, parent, onClose, onSave }: 
           </Field>
         </div>
 
-        <Field label="Нотатка (опц.)">
+        <Field label={t('Нотатка (опц.)')}>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
             style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }}
-            placeholder="Додаткова інформація: адреса, телефон, умови співпраці..."
+            placeholder={t('Додаткова інформація: адреса, телефон, умови співпраці...')}
           />
         </Field>
 
-        <Field label="Порядок сортування">
+        <Field label={t('Порядок сортування')}>
           <input type="number" value={sortOrder} onChange={(e) => setSortOrder(Number(e.target.value))} style={inputStyle} />
         </Field>
 
         {error && <div style={{ color: '#dc2626', fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-          <button type="button" onClick={onClose} style={btnSecondaryStyle}>Відміна</button>
+          <button type="button" onClick={onClose} style={btnSecondaryStyle}>{t('Відміна')}</button>
           <button type="submit" disabled={saving} style={btnPrimaryStyle}>
             {saving ? 'Збереження…' : (initial ? 'Зберегти' : 'Створити')}
           </button>

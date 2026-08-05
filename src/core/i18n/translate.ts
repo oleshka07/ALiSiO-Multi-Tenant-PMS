@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Server-side translation helper — translates a hotel's content into every
@@ -13,8 +12,7 @@ import crypto from 'crypto';
  * Storage: content_translations table (text_hash + lang → translated_text).
  * Trigger: called on admin save (config routes) and via /api/admin/retranslate.
  */
-import { getDb } from '@/lib/db';
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import { getSql } from '../db/async.ts';
 import { requireOrganizationId } from '../auth/tenant-context.ts';
 import { LANGUAGES, type Language, targetLanguages } from './languages.ts';

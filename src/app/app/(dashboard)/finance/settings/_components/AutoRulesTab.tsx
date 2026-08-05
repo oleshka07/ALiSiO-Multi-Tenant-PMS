@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, Play, Wand2, GripVertical } from 'lucide-react';
 import AutoRuleModal, { AutoRuleFormValues } from './AutoRuleModal';
@@ -30,6 +31,7 @@ const OP_TYPE_LABEL: Record<string, string> = {
 };
 
 export default function AutoRulesTab() {
+  const t = useT();
   const [rules, setRules] = useState<AutoRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<AutoRule | 'new' | null>(null);
@@ -113,9 +115,9 @@ export default function AutoRulesTab() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 20 }}>Автоправила</h2>
+        <h2 style={{ margin: 0, fontSize: 20 }}>{t('Автоправила')}</h2>
         <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-          {rules.filter((r) => r.is_active).length} активних з {rules.length}
+          {rules.filter((r) => r.is_active).length} {t('активних з')} {rules.length}
         </span>
         <div style={{ flex: 1 }} />
         <button onClick={handleAutoMatchCounterparties} disabled={matchBusy} style={{ ...btnSec, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -125,15 +127,15 @@ export default function AutoRulesTab() {
           <Play size={14} /> {applyBusy ? 'Застосування…' : 'Застосувати до існуючих'}
         </button>
         <button onClick={() => setEditing('new')} style={btnAdd}>
-          <Plus size={16} /> Додати правило
+          <Plus size={16} /> {t('Додати правило')}
         </button>
       </div>
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Завантаження…')}</div>
       ) : rules.length === 0 ? (
         <div style={emptyStyle}>
-          Правил ще немає. Створіть перше, щоб автоматично категоризувати операції за підрядком коментаря (напр. «FACEBK» → Маркетинг).
+          {t('Правил ще немає. Створіть перше, щоб автоматично категоризувати операції за підрядком коментаря (напр. «FACEBK» → Маркетинг).')}
         </div>
       ) : (
         <div style={{ border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
@@ -141,11 +143,11 @@ export default function AutoRulesTab() {
             <thead>
               <tr style={{ background: 'var(--bg-secondary)' }}>
                 <th style={th}></th>
-                <th style={th}>Назва</th>
-                <th style={th}>Тип</th>
-                <th style={{ ...th, textAlign: 'right' }}>Умов</th>
-                <th style={{ ...th, textAlign: 'right' }}>Спрацьовано</th>
-                <th style={{ ...th, width: 80 }}>Активне</th>
+                <th style={th}>{t('Назва')}</th>
+                <th style={th}>{t('Тип')}</th>
+                <th style={{ ...th, textAlign: 'right' }}>{t('Умов')}</th>
+                <th style={{ ...th, textAlign: 'right' }}>{t('Спрацьовано')}</th>
+                <th style={{ ...th, width: 80 }}>{t('Активне')}</th>
                 <th style={{ ...th, width: 100 }}></th>
               </tr>
             </thead>
@@ -155,7 +157,7 @@ export default function AutoRulesTab() {
                   <td style={td}><GripVertical size={14} style={{ color: 'var(--text-secondary)' }} /></td>
                   <td style={{ ...td, fontWeight: 500 }}>
                     {r.name}
-                    {r.stop_on_match ? <span style={badgeSmall} title="Зупиняє подальші правила">stop</span> : null}
+                    {r.stop_on_match ? <span style={badgeSmall} title={t('Зупиняє подальші правила')}>stop</span> : null}
                   </td>
                   <td style={td}>{OP_TYPE_LABEL[r.op_type]}</td>
                   <td style={{ ...td, textAlign: 'right' }}>{r.conditions.length}</td>
@@ -166,8 +168,8 @@ export default function AutoRulesTab() {
                     </label>
                   </td>
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                    <button onClick={() => setEditing(r)} style={iconBtn} title="Редагувати"><Pencil size={14} /></button>
-                    <button onClick={() => handleDelete(r)} style={{ ...iconBtn, color: '#dc2626' }} title="Видалити"><Trash2 size={14} /></button>
+                    <button onClick={() => setEditing(r)} style={iconBtn} title={t('Редагувати')}><Pencil size={14} /></button>
+                    <button onClick={() => handleDelete(r)} style={{ ...iconBtn, color: '#dc2626' }} title={t('Видалити')}><Trash2 size={14} /></button>
                   </td>
                 </tr>
               ))}

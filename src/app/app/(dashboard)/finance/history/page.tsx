@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Search, Filter, History, X } from 'lucide-react';
 
@@ -83,6 +84,7 @@ function todayStr(): string {
 /* ------------------------------------------------------------------ */
 
 export default function FinanceHistoryPage() {
+  const t = useT();
   const [items, setItems] = useState<AuditItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -145,9 +147,9 @@ export default function FinanceHistoryPage() {
       {/* Header */}
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>📋 Історія змін</h1>
+          <h1 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>{t('📋 Історія змін')}</h1>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>
-            Аудит фінансових операцій — хто, що, коли
+            {t('Аудит фінансових операцій — хто, що, коли')}
           </p>
         </div>
       </div>
@@ -162,18 +164,18 @@ export default function FinanceHistoryPage() {
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={input} />
 
           <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)} style={input}>
-            <option value="">Всі дії</option>
-            <option value="create">Створено</option>
-            <option value="update">Редаговано</option>
-            <option value="delete">Видалено</option>
-            <option value="convert">Конвертовано</option>
+            <option value="">{t('Всі дії')}</option>
+            <option value="create">{t('Створено')}</option>
+            <option value="update">{t('Редаговано')}</option>
+            <option value="delete">{t('Видалено')}</option>
+            <option value="convert">{t('Конвертовано')}</option>
           </select>
 
           <div style={{ position: 'relative', minWidth: 160 }}>
             <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: 'var(--text-secondary)' }} />
             <input
               type="text"
-              placeholder="Користувач…"
+              placeholder={t('Користувач…')}
               value={userSearch}
               onChange={(e) => setUserSearch(e.target.value)}
               style={{ ...input, paddingLeft: 30, width: '100%' }}
@@ -184,7 +186,7 @@ export default function FinanceHistoryPage() {
             <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: 'var(--text-secondary)' }} />
             <input
               type="text"
-              placeholder="Пошук у коментарях / операціях…"
+              placeholder={t('Пошук у коментарях / операціях…')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={{ ...input, paddingLeft: 30, width: '100%' }}
@@ -192,8 +194,8 @@ export default function FinanceHistoryPage() {
           </div>
 
           {hasFilters && (
-            <button onClick={clearFilters} style={clearBtn} title="Скинути фільтри">
-              <X size={14} /> Скинути
+            <button onClick={clearFilters} style={clearBtn} title={t('Скинути фільтри')}>
+              <X size={14} /> {t('Скинути')}
             </button>
           )}
         </div>
@@ -204,24 +206,24 @@ export default function FinanceHistoryPage() {
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>
             <History size={24} style={{ marginBottom: 8, opacity: 0.5, animation: 'spin 1.5s linear infinite' }} />
-            <div>Завантаження…</div>
+            <div>{t('Завантаження…')}</div>
           </div>
         ) : items.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)', border: '1px dashed var(--border-primary)', borderRadius: 10 }}>
-            Записів не знайдено за обраний період.
+            {t('Записів не знайдено за обраний період.')}
           </div>
         ) : (
           <div style={{ border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
             <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: 'var(--bg-secondary)' }}>
-                  <th style={th}>Дата/час</th>
-                  <th style={th}>Дія</th>
-                  <th style={th}>Користувач</th>
-                  <th style={th}>Операція</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Сума</th>
-                  <th style={th}>Рахунок</th>
-                  <th style={th}>Зміни</th>
+                  <th style={th}>{t('Дата/час')}</th>
+                  <th style={th}>{t('Дія')}</th>
+                  <th style={th}>{t('Користувач')}</th>
+                  <th style={th}>{t('Операція')}</th>
+                  <th style={{ ...th, textAlign: 'right' }}>{t('Сума')}</th>
+                  <th style={th}>{t('Рахунок')}</th>
+                  <th style={th}>{t('Зміни')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -302,7 +304,7 @@ export default function FinanceHistoryPage() {
                       <td style={{ ...td, maxWidth: 340 }}>
                         {(item.action === 'update' || item.action === 'convert') && (
                           changes.length === 0
-                            ? <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>(зміни поза tracked fields)</span>
+                            ? <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t('(зміни поза tracked fields)')}</span>
                             : (
                               <ul style={{ fontSize: 11, color: 'var(--text-secondary)', margin: 0, paddingLeft: 16, lineHeight: 1.5 }}>
                                 {changes.map((c, i) => <li key={i} style={{ fontFamily: 'monospace' }}>{c}</li>)}
@@ -357,8 +359,8 @@ export default function FinanceHistoryPage() {
             <ChevronLeft size={16} />
           </button>
           <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-            Сторінка <b style={{ color: 'var(--text-primary)' }}>{page}</b> з <b style={{ color: 'var(--text-primary)' }}>{totalPages}</b>
-            <span style={{ marginLeft: 8, fontSize: 11 }}>({total} записів)</span>
+            {t('Сторінка')} <b style={{ color: 'var(--text-primary)' }}>{page}</b> {t('з')} <b style={{ color: 'var(--text-primary)' }}>{totalPages}</b>
+            <span style={{ marginLeft: 8, fontSize: 11 }}>({total} {t('записів)')}</span>
           </span>
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}

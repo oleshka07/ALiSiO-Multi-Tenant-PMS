@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Search, RefreshCw, Phone, Plus, X, LogIn, LogOut, Building2, Pencil, Info, Link, MessageCircle } from 'lucide-react';
 import MobileBookingDetail from '@/components/booking/MobileBookingDetail';
@@ -107,6 +108,7 @@ interface MobileBookingsProps {
 }
 
 export default function MobileBookings({ openNew }: MobileBookingsProps) {
+  const t = useT();
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [units, setUnits] = useState<UnitRow[]>([]);
   const [unitTypes, setUnitTypes] = useState<BFUnitTypeRow[]>([]);
@@ -232,7 +234,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
           <input
             className="form-input"
-            placeholder="Ім'я, телефон, юніт..."
+            placeholder={t('Ім\'я, телефон, юніт...')}
             value={search}
             onChange={e => setSearch(e.target.value)}
             autoFocus
@@ -317,16 +319,16 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
             <button
               onClick={() => setShowRoomAllocation(true)}
               style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 10, background: 'rgba(91,124,255,0.12)', border: '1px solid rgba(91,124,255,0.3)', color: 'var(--accent-primary)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-              title="Розселення гостей по кімнатах Будови F"
+              title={t('Розселення гостей по кімнатах Будови F')}
             >
-              <Building2 size={13} /> Розселення
+              <Building2 size={13} /> {t('Розселення')}
             </button>
           )}
           <button
             onClick={() => setShowNewBooking(true)}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 10, background: 'var(--accent-primary)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
           >
-            <Plus size={14} /> Нове
+            <Plus size={14} /> {t('Нове')}
           </button>
           <button onClick={() => setShowSearch(p => !p)} style={{ background: 'transparent', border: 'none', color: showSearch ? 'var(--accent-primary)' : 'var(--text-tertiary)', cursor: 'pointer', padding: 4 }}>
             <Search size={16} />
@@ -345,7 +347,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
       ) : filtered.length === 0 ? (
         <div className="m-empty">
           <div className="m-empty-icon">📋</div>
-          <div>Нічого не знайдено</div>
+          <div>{t('Нічого не знайдено')}</div>
         </div>
       ) : (
         filtered.map(b => {
@@ -359,7 +361,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
                 <div style={{ flex: 1 }}>
                   <div className="m-card-title">{b.first_name} {b.last_name}</div>
                   <div className="m-card-subtitle">
-                    {b.unit_code} · {b.nights} ноч. · {b.check_in} → {b.check_out}
+                    {b.unit_code} · {b.nights} {t('ноч. ·')} {b.check_in} → {b.check_out}
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
@@ -391,7 +393,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
                     onClick={e => { e.stopPropagation(); handleChangeStatus(b.id, 'checked_in'); }}
                     style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 8, border: 'none', background: 'rgba(96,165,250,0.15)', color: '#60a5fa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                   >
-                    <LogIn size={12} /> Заселити
+                    <LogIn size={12} /> {t('Заселити')}
                   </button>
                 )}
                 {b.status === 'checked_in' && (
@@ -399,7 +401,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
                     onClick={e => { e.stopPropagation(); handleChangeStatus(b.id, 'checked_out'); }}
                     style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 8, border: 'none', background: 'rgba(167,139,250,0.15)', color: '#a78bfa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                   >
-                    <LogOut size={12} /> Виселити
+                    <LogOut size={12} /> {t('Виселити')}
                   </button>
                 )}
               </div>
@@ -409,16 +411,16 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
                 <button
                   className="m-action-btn"
                   onClick={e => { e.stopPropagation(); setEditBooking(b); }}
-                  title="Змінити"
-                  aria-label="Змінити"
+                  title={t('Змінити')}
+                  aria-label={t('Змінити')}
                 >
                   <Pencil size={18} />
                 </button>
                 <button
                   className="m-action-btn"
                   onClick={e => { e.stopPropagation(); openBooking(b); }}
-                  title="Деталі"
-                  aria-label="Деталі"
+                  title={t('Деталі')}
+                  aria-label={t('Деталі')}
                 >
                   <Info size={18} />
                 </button>
@@ -431,8 +433,8 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
                       navigator.clipboard.writeText(link);
                       alert('🔗 Посилання на сторінку гостя скопійовано!');
                     }}
-                    title="Скопіювати посилання"
-                    aria-label="Скопіювати посилання"
+                    title={t('Скопіювати посилання')}
+                    aria-label={t('Скопіювати посилання')}
                   >
                     <Link size={18} />
                   </button>
@@ -459,8 +461,8 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
                       await handleChangeStatus(b.id, 'cancelled');
                     }
                   }}
-                  title="Скасувати"
-                  aria-label="Скасувати"
+                  title={t('Скасувати')}
+                  aria-label={t('Скасувати')}
                 >
                   <X size={18} />
                 </button>
@@ -473,7 +475,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
       {/* New booking sheet */}
       {showNewBooking && (
         <BookingFormSheet
-          title="Нове бронювання"
+          title={t('Нове бронювання')}
           mode="create"
           unitTypes={unitTypes}
           allUnits={units as unknown as BFUnitRow[]}
@@ -486,7 +488,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
       {/* Edit booking sheet */}
       {editBooking && (
         <BookingFormSheet
-          title="Редагувати бронювання"
+          title={t('Редагувати бронювання')}
           mode="edit"
           bookingId={editBooking.id}
           initial={editInitial}

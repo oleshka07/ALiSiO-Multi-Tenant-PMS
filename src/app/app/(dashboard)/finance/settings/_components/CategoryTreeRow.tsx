@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { GripVertical, Pencil, Archive, RotateCcw, Trash2, Plus } from 'lucide-react';
 import type { Category, Classifier, OpType } from './CategoriesTab';
@@ -51,6 +52,7 @@ export default function CategoryTreeRow({
   onDelete,
   onMove,
 }: Props) {
+  const t = useT();
   const [dragOver, setDragOver] = useState<'above' | 'below' | 'onto' | null>(null);
 
   function handleDragStart(e: React.DragEvent) {
@@ -145,7 +147,7 @@ export default function CategoryTreeRow({
       <span style={{ fontWeight: isRoot ? 600 : 400, flex: 1, minWidth: 0 }}>
         {category.name}
         {!category.is_active && (
-          <span style={{ color: 'var(--text-secondary)', fontSize: 12, marginLeft: 6 }}>(архів)</span>
+          <span style={{ color: 'var(--text-secondary)', fontSize: 12, marginLeft: 6 }}>{t('(архів)')}</span>
         )}
       </span>
 
@@ -161,16 +163,16 @@ export default function CategoryTreeRow({
           <button
             onClick={onAddChild}
             style={{ ...iconBtnStyle, color: 'var(--accent, #6366f1)' }}
-            title="Додати підкатегорію"
+            title={t('Додати підкатегорію')}
           >
             <Plus size={15} />
           </button>
         )}
-        <button onClick={onEdit} style={iconBtnStyle} title="Редагувати"><Pencil size={14} /></button>
+        <button onClick={onEdit} style={iconBtnStyle} title={t('Редагувати')}><Pencil size={14} /></button>
         <button onClick={onArchiveToggle} style={iconBtnStyle} title={category.is_active ? 'Архівувати' : 'Відновити'}>
           {category.is_active ? <Archive size={14} /> : <RotateCcw size={14} />}
         </button>
-        <button onClick={onDelete} style={{ ...iconBtnStyle, color: '#dc2626' }} title="Видалити"><Trash2 size={14} /></button>
+        <button onClick={onDelete} style={{ ...iconBtnStyle, color: '#dc2626' }} title={t('Видалити')}><Trash2 size={14} /></button>
       </div>
     </div>
   );

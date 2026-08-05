@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -22,6 +23,7 @@ const TABS: { href: string; label: string }[] = [
 ];
 
 export default function FinanceTabs() {
+  const t = useT();
   const pathname = usePathname() || '';
 
   // Longest match wins, so /finance/reports/pnl highlights Звіти rather than
@@ -32,7 +34,7 @@ export default function FinanceTabs() {
   }, '');
 
   return (
-    <nav className="finance-tabs" aria-label="Розділи фінансів">
+    <nav className="finance-tabs" aria-label={t('Розділи фінансів')}>
       {TABS.map((tab) => (
         <Link
           key={tab.href}
@@ -40,7 +42,7 @@ export default function FinanceTabs() {
           className={`finance-tab ${active === tab.href ? 'active' : ''}`}
           aria-current={active === tab.href ? 'page' : undefined}
         >
-          {tab.label}
+          {t(tab.label)}
         </Link>
       ))}
     </nav>

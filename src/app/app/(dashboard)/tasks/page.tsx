@@ -1,5 +1,6 @@
 "use client";
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useDevice } from "@/ui/hooks/useDevice";
 import MobileTasks from "@/components/mobile/pages/MobileTasks";
@@ -185,6 +186,7 @@ function QuickAdd({
   projectId: string | null;
   onCreated: () => void;
 }) {
+  const tUi = useT();
   const [title, setTitle] = useState("");
   const [priority, setPriority] = useState("normal");
   const [saving, setSaving] = useState(false);
@@ -225,7 +227,7 @@ function QuickAdd({
         onKeyDown={(e) => {
           if (e.key === "Enter") handleSubmit();
         }}
-        placeholder="Додати задачу..."
+        placeholder={tUi('Додати задачу...')}
         disabled={saving}
       />
       <div className="quick-add-actions">
@@ -240,7 +242,7 @@ function QuickAdd({
             const idx = keys.indexOf(priority);
             setPriority(keys[(idx + 1) % keys.length]);
           }}
-          title="Пріоритет"
+          title={tUi('Пріоритет')}
         >
           <Flag size={12} style={{ color: PRIORITY_CONFIG[priority]?.color }} />
         </button>
@@ -282,6 +284,7 @@ function TaskDrawer({
   onUpdated: () => void;
   onDeleted: () => void;
 }) {
+  const tUi = useT();
   const [form, setForm] = useState({
     title: task.title,
     description: task.description || "",
@@ -530,7 +533,7 @@ function TaskDrawer({
               className="task-drawer-title"
               value={form.title}
               onChange={(e) => autoSave({ title: e.target.value })}
-              placeholder="Назва задачі..."
+              placeholder={tUi('Назва задачі...')}
               rows={1}
             />
           </div>
@@ -548,7 +551,7 @@ function TaskDrawer({
           <div className="task-drawer-section">
             <div className="task-drawer-field">
               <div className="task-drawer-field-label">
-                <Flag size={14} /> Пріоритет
+                <Flag size={14} /> {tUi('Пріоритет')}
               </div>
               <div className="task-drawer-field-value">
                 <select
@@ -566,7 +569,7 @@ function TaskDrawer({
 
             <div className="task-drawer-field">
               <div className="task-drawer-field-label">
-                <Calendar size={14} /> Дедлайн
+                <Calendar size={14} /> {tUi('Дедлайн')}
               </div>
               <div
                 className="task-drawer-field-value"
@@ -589,14 +592,14 @@ function TaskDrawer({
 
             <div className="task-drawer-field">
               <div className="task-drawer-field-label">
-                <User size={14} /> Відповідальний
+                <User size={14} /> {tUi('Відповідальний')}
               </div>
               <div className="task-drawer-field-value">
                 <select
                   value={form.assignee_id}
                   onChange={(e) => autoSave({ assignee_id: e.target.value })}
                 >
-                  <option value="">Не призначено</option>
+                  <option value="">{tUi('Не призначено')}</option>
                   {users.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.full_name}
@@ -608,7 +611,7 @@ function TaskDrawer({
 
             <div className="task-drawer-field">
               <div className="task-drawer-field-label">
-                <FolderOpen size={14} /> Проєкт
+                <FolderOpen size={14} /> {tUi('Проєкт')}
               </div>
               <div className="task-drawer-field-value">
                 <select
@@ -648,7 +651,7 @@ function TaskDrawer({
           {/* Tags */}
           <div className="task-drawer-section">
             <div className="task-drawer-section-title">
-              <Tag size={12} /> Теги
+              <Tag size={12} /> {tUi('Теги')}
             </div>
             <div className="tags-selector">
               {taskTags.map((tagId) => {
@@ -684,7 +687,7 @@ function TaskDrawer({
                   className="tags-add-btn"
                   onClick={() => setShowTagPicker(!showTagPicker)}
                 >
-                  <Plus size={10} /> Тег
+                  <Plus size={10} /> {tUi('Тег')}
                 </button>
                 {showTagPicker && (
                   <div
@@ -765,7 +768,7 @@ function TaskDrawer({
                             textAlign: "center",
                           }}
                         >
-                          Введіть назву нового тегу
+                          {tUi('Введіть назву нового тегу')}
                         </div>
                       )}
                     {/* Inline tag create */}
@@ -825,7 +828,7 @@ function TaskDrawer({
                                 });
                             }
                           }}
-                          placeholder="Новий тег... Enter"
+                          placeholder={tUi('Новий тег... Enter')}
                           style={{ flex: 1, fontSize: 11, padding: "4px 8px" }}
                         />
                       </div>
@@ -839,20 +842,20 @@ function TaskDrawer({
           {/* Description */}
           <div className="task-drawer-section">
             <div className="task-drawer-section-title">
-              <Hash size={12} /> Опис
+              <Hash size={12} /> {tUi('Опис')}
             </div>
             <textarea
               className="task-drawer-description"
               value={form.description}
               onChange={(e) => autoSave({ description: e.target.value })}
-              placeholder="Додати опис..."
+              placeholder={tUi('Додати опис...')}
             />
           </div>
 
           {/* Attachments */}
           <div className="task-drawer-section">
             <div className="task-drawer-section-title">
-              <Paperclip size={12} /> Фото та файли
+              <Paperclip size={12} /> {tUi('Фото та файли')}
               {attachments.length > 0 && (
                 <span
                   style={{
@@ -900,7 +903,7 @@ function TaskDrawer({
                       <button
                         className="task-attachment-delete"
                         onClick={() => handleDeleteAttachment(att.id)}
-                        title="Видалити"
+                        title={tUi('Видалити')}
                       >
                         <Trash2 size={12} />
                       </button>
@@ -943,7 +946,7 @@ function TaskDrawer({
           {/* Subtasks */}
           <div className="task-drawer-section">
             <div className="task-drawer-section-title">
-              <CheckSquare size={12} /> Підзадачі
+              <CheckSquare size={12} /> {tUi('Підзадачі')}
               {subtasks.length > 0 && (
                 <span
                   style={{
@@ -1007,7 +1010,7 @@ function TaskDrawer({
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleAddSubtask();
                   }}
-                  placeholder="Додати підзадачу..."
+                  placeholder={tUi('Додати підзадачу...')}
                 />
               </div>
             </div>
@@ -1027,17 +1030,17 @@ function TaskDrawer({
             }}
           >
             <div>
-              Створено:{" "}
+              {tUi('Створено:')}{" "}
               {task.created_at?.split("T")[0] || task.created_at?.split(" ")[0]}
             </div>
             {task.completed_at && (
               <div>
-                Завершено:{" "}
+                {tUi('Завершено:')}{" "}
                 {task.completed_at?.split("T")[0] ||
                   task.completed_at?.split(" ")[0]}
               </div>
             )}
-            {task.creator_name && <div>Автор: {task.creator_name}</div>}
+            {task.creator_name && <div>{tUi('Автор:')} {task.creator_name}</div>}
           </div>
 
           {/* Actions */}
@@ -1053,7 +1056,7 @@ function TaskDrawer({
               ) : (
                 <Check size={14} />
               )}
-              Зберегти
+              {tUi('Зберегти')}
             </button>
             <button
               className="btn btn-danger"
@@ -1065,7 +1068,7 @@ function TaskDrawer({
               ) : (
                 <X size={14} />
               )}
-              Видалити
+              {tUi('Видалити')}
             </button>
           </div>
         </div>
@@ -1088,6 +1091,7 @@ function CreateProjectModal({
   onCreated: () => void;
   projects: TaskProject[];
 }) {
+  const tUi = useT();
   const [name, setName] = useState("");
   const [color, setColor] = useState(PROJECT_COLORS[0]);
   const [icon, setIcon] = useState("📁");
@@ -1127,24 +1131,24 @@ function CreateProjectModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 className="modal-title">Новий проєкт</h3>
+          <h3 className="modal-title">{tUi('Новий проєкт')}</h3>
           <button className="modal-close" onClick={onClose}>
             <X size={18} />
           </button>
         </div>
         <div className="modal-body">
           <div className="form-group">
-            <label className="form-label">Назва *</label>
+            <label className="form-label">{tUi('Назва *')}</label>
             <input
               className="form-input"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Назва проєкту..."
+              placeholder={tUi('Назва проєкту...')}
               autoFocus
             />
           </div>
           <div className="form-group" style={{ marginTop: 12 }}>
-            <label className="form-label">Іконка</label>
+            <label className="form-label">{tUi('Іконка')}</label>
             <input
               className="form-input"
               value={icon}
@@ -1153,7 +1157,7 @@ function CreateProjectModal({
             />
           </div>
           <div className="form-group" style={{ marginTop: 12 }}>
-            <label className="form-label">Колір</label>
+            <label className="form-label">{tUi('Колір')}</label>
             <div className="project-color-picker">
               {PROJECT_COLORS.map((c) => (
                 <button
@@ -1166,13 +1170,13 @@ function CreateProjectModal({
             </div>
           </div>
           <div className="form-group" style={{ marginTop: 12 }}>
-            <label className="form-label">Батьківський проєкт</label>
+            <label className="form-label">{tUi('Батьківський проєкт')}</label>
             <select
               className="form-select"
               value={parentId}
               onChange={(e) => setParentId(e.target.value)}
             >
-              <option value="">Без батьківського</option>
+              <option value="">{tUi('Без батьківського')}</option>
               {projects
                 .filter((p) => !p.parent_id)
                 .map((p) => (
@@ -1185,7 +1189,7 @@ function CreateProjectModal({
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>
-            Скасувати
+            {tUi('Скасувати')}
           </button>
           <button
             className="btn btn-primary"
@@ -1197,7 +1201,7 @@ function CreateProjectModal({
             ) : (
               <Plus size={14} />
             )}
-            Створити
+            {tUi('Створити')}
           </button>
         </div>
       </div>
@@ -1217,6 +1221,7 @@ function CreateTagModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const tUi = useT();
   const [name, setName] = useState("");
   const [color, setColor] = useState("#6c7086");
   const [saving, setSaving] = useState(false);
@@ -1247,24 +1252,24 @@ function CreateTagModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 className="modal-title">Новий тег</h3>
+          <h3 className="modal-title">{tUi('Новий тег')}</h3>
           <button className="modal-close" onClick={onClose}>
             <X size={18} />
           </button>
         </div>
         <div className="modal-body">
           <div className="form-group">
-            <label className="form-label">Назва *</label>
+            <label className="form-label">{tUi('Назва *')}</label>
             <input
               className="form-input"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Назва тегу..."
+              placeholder={tUi('Назва тегу...')}
               autoFocus
             />
           </div>
           <div className="form-group" style={{ marginTop: 12 }}>
-            <label className="form-label">Колір</label>
+            <label className="form-label">{tUi('Колір')}</label>
             <div className="project-color-picker">
               {PROJECT_COLORS.map((c) => (
                 <button
@@ -1279,7 +1284,7 @@ function CreateTagModal({
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>
-            Скасувати
+            {tUi('Скасувати')}
           </button>
           <button
             className="btn btn-primary"
@@ -1291,7 +1296,7 @@ function CreateTagModal({
             ) : (
               <Plus size={14} />
             )}
-            Створити
+            {tUi('Створити')}
           </button>
         </div>
       </div>
@@ -1309,6 +1314,7 @@ export default function TasksPage() {
 }
 
 function TasksDesktop() {
+  const tUi = useT();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<TaskProject[]>([]);
   const [tags, setTags] = useState<TaskTag[]>([]);
@@ -1732,7 +1738,7 @@ function TasksDesktop() {
 
   return (
     <>
-      <Header title="Задачі" onMenuClick={onMenuClick} />
+      <Header title={tUi('Задачі')} onMenuClick={onMenuClick} />
       <div
         className="app-content"
         style={{ paddingLeft: 0, paddingRight: 0, paddingBottom: 0 }}
@@ -1742,7 +1748,7 @@ function TasksDesktop() {
           <div className="tasks-sidebar">
             {/* Quick filters */}
             <div className="tasks-sidebar-section">
-              <div className="tasks-sidebar-section-title">Фільтри</div>
+              <div className="tasks-sidebar-section-title">{tUi('Фільтри')}</div>
               <button
                 className={`tasks-sidebar-item ${selectedProject === null && selectedFilter === "all" ? "active" : ""}`}
                 onClick={() => {
@@ -1753,7 +1759,7 @@ function TasksDesktop() {
                 <span className="tasks-sidebar-item-icon">
                   <Inbox size={16} />
                 </span>
-                <span>Усі задачі</span>
+                <span>{tUi('Усі задачі')}</span>
                 <span className="tasks-sidebar-item-count">{totalTasks}</span>
               </button>
               <button
@@ -1766,7 +1772,7 @@ function TasksDesktop() {
                 <span className="tasks-sidebar-item-icon">
                   <Calendar size={16} />
                 </span>
-                <span>Сьогодні</span>
+                <span>{tUi('Сьогодні')}</span>
                 {todayTasks > 0 && (
                   <span className="tasks-sidebar-item-count">{todayTasks}</span>
                 )}
@@ -1781,7 +1787,7 @@ function TasksDesktop() {
                 <span className="tasks-sidebar-item-icon">
                   <Clock size={16} />
                 </span>
-                <span>Наступні 7 днів</span>
+                <span>{tUi('Наступні 7 днів')}</span>
               </button>
               {overdueTasks > 0 && (
                 <button
@@ -1795,7 +1801,7 @@ function TasksDesktop() {
                   <span className="tasks-sidebar-item-icon">
                     <AlertTriangle size={16} />
                   </span>
-                  <span>Прострочені</span>
+                  <span>{tUi('Прострочені')}</span>
                   <span
                     className="tasks-sidebar-item-count"
                     style={{
@@ -1811,7 +1817,7 @@ function TasksDesktop() {
 
             {/* Projects */}
             <div className="tasks-sidebar-section">
-              <div className="tasks-sidebar-section-title">Проєкти</div>
+              <div className="tasks-sidebar-section-title">{tUi('Проєкти')}</div>
               <button
                 className={`tasks-sidebar-item ${selectedProject === "" && selectedFilter === "all" ? "active" : ""}`}
                 onClick={() => {
@@ -1834,13 +1840,13 @@ function TasksDesktop() {
                 className="tasks-sidebar-add-btn"
                 onClick={() => setShowCreateProject(true)}
               >
-                <Plus size={14} /> Новий проєкт
+                <Plus size={14} /> {tUi('Новий проєкт')}
               </button>
             </div>
 
             {/* Tags */}
             <div className="tasks-sidebar-section">
-              <div className="tasks-sidebar-section-title">Теги</div>
+              <div className="tasks-sidebar-section-title">{tUi('Теги')}</div>
               {tags.map((tag) => (
                 <div
                   key={tag.id}
@@ -1858,7 +1864,7 @@ function TasksDesktop() {
                 className="tasks-sidebar-add-btn"
                 onClick={() => setShowCreateTag(true)}
               >
-                <Plus size={14} /> Новий тег
+                <Plus size={14} /> {tUi('Новий тег')}
               </button>
             </div>
           </div>
@@ -1868,23 +1874,23 @@ function TasksDesktop() {
             {/* Stats */}
             <div className="tasks-stats">
               <div className="tasks-stat-card">
-                <div className="tasks-stat-label">Всього</div>
+                <div className="tasks-stat-label">{tUi('Всього')}</div>
                 <div className="tasks-stat-value">{totalTasks}</div>
               </div>
               <div className="tasks-stat-card">
-                <div className="tasks-stat-label">Виконано</div>
+                <div className="tasks-stat-label">{tUi('Виконано')}</div>
                 <div className="tasks-stat-value" style={{ color: "#22c55e" }}>
                   {doneTasks}
                 </div>
               </div>
               <div className="tasks-stat-card">
-                <div className="tasks-stat-label">Сьогодні</div>
+                <div className="tasks-stat-label">{tUi('Сьогодні')}</div>
                 <div className="tasks-stat-value" style={{ color: "#3b82f6" }}>
                   {todayTasks}
                 </div>
               </div>
               <div className="tasks-stat-card">
-                <div className="tasks-stat-label">Прострочено</div>
+                <div className="tasks-stat-label">{tUi('Прострочено')}</div>
                 <div
                   className="tasks-stat-value"
                   style={{
@@ -1905,26 +1911,26 @@ function TasksDesktop() {
                     className={view === "list" ? "active" : ""}
                     onClick={() => setView("list")}
                   >
-                    <List size={14} /> Список
+                    <List size={14} /> {tUi('Список')}
                   </button>
                   <button
                     className={view === "kanban" ? "active" : ""}
                     onClick={() => setView("kanban")}
                   >
-                    <LayoutGrid size={14} /> Канбан
+                    <LayoutGrid size={14} /> {tUi('Канбан')}
                   </button>
                   <button
                     className={view === "table" ? "active" : ""}
                     onClick={() => setView("table")}
                   >
-                    <Table2 size={14} /> Таблиця
+                    <Table2 size={14} /> {tUi('Таблиця')}
                   </button>
                 </div>
                 <div className="tasks-search">
                   <Search size={14} className="tasks-search-icon" />
                   <input
                     className="form-input"
-                    placeholder="Пошук задач..."
+                    placeholder={tUi('Пошук задач...')}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
@@ -1934,7 +1940,7 @@ function TasksDesktop() {
                 <button
                   className="btn btn-secondary btn-icon"
                   onClick={fetchAll}
-                  title="Оновити"
+                  title={tUi('Оновити')}
                 >
                   <RefreshCw size={16} />
                 </button>
@@ -1965,7 +1971,7 @@ function TasksDesktop() {
                   className="animate-pulse"
                   style={{ display: "inline-block" }}
                 />
-                <div style={{ marginTop: 8 }}>Завантаження задач...</div>
+                <div style={{ marginTop: 8 }}>{tUi('Завантаження задач...')}</div>
               </div>
             )}
 
@@ -1975,9 +1981,9 @@ function TasksDesktop() {
                 {filteredTasks.length === 0 && (
                   <div className="tasks-empty">
                     <div className="tasks-empty-icon">📋</div>
-                    <div className="tasks-empty-title">Задач немає</div>
+                    <div className="tasks-empty-title">{tUi('Задач немає')}</div>
                     <div className="tasks-empty-desc">
-                      Створіть нову задачу за допомогою поля вище
+                      {tUi('Створіть нову задачу за допомогою поля вище')}
                     </div>
                   </div>
                 )}
@@ -2254,7 +2260,7 @@ function TasksDesktop() {
                               }
                             }}
                           >
-                            <Plus size={14} /> Додати
+                            <Plus size={14} /> {tUi('Додати')}
                           </button>
                         </div>
                       </div>
@@ -2270,15 +2276,15 @@ function TasksDesktop() {
                 <div className="tasks-table-filters">
                   <div className="tasks-table-filter-group">
                     <label className="tasks-table-filter-label">
-                      <Filter size={12} /> Статус
+                      <Filter size={12} /> {tUi('Статус')}
                     </label>
                     <select
                       className="tasks-table-filter-select"
                       value={filterStatus}
                       onChange={(e) => setFilterStatus(e.target.value)}
                     >
-                      <option value="active">Активні</option>
-                      <option value="all">Всі</option>
+                      <option value="active">{tUi('Активні')}</option>
+                      <option value="all">{tUi('Всі')}</option>
                       {Object.entries(STATUS_CONFIG).map(([k, v]) => (
                         <option key={k} value={k}>
                           {v.icon} {v.label}
@@ -2288,14 +2294,14 @@ function TasksDesktop() {
                   </div>
                   <div className="tasks-table-filter-group">
                     <label className="tasks-table-filter-label">
-                      <Flag size={12} /> Пріоритет
+                      <Flag size={12} /> {tUi('Пріоритет')}
                     </label>
                     <select
                       className="tasks-table-filter-select"
                       value={filterPriority}
                       onChange={(e) => setFilterPriority(e.target.value)}
                     >
-                      <option value="all">Всі</option>
+                      <option value="all">{tUi('Всі')}</option>
                       {Object.entries(PRIORITY_CONFIG).map(([k, v]) => (
                         <option key={k} value={k}>
                           {v.icon} {v.label}
@@ -2305,15 +2311,15 @@ function TasksDesktop() {
                   </div>
                   <div className="tasks-table-filter-group">
                     <label className="tasks-table-filter-label">
-                      <User size={12} /> Виконавець
+                      <User size={12} /> {tUi('Виконавець')}
                     </label>
                     <select
                       className="tasks-table-filter-select"
                       value={filterAssignee}
                       onChange={(e) => setFilterAssignee(e.target.value)}
                     >
-                      <option value="all">Всі</option>
-                      <option value="unassigned">Без виконавця</option>
+                      <option value="all">{tUi('Всі')}</option>
+                      <option value="unassigned">{tUi('Без виконавця')}</option>
                       {users.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.full_name}
@@ -2322,8 +2328,8 @@ function TasksDesktop() {
                     </select>
                   </div>
                   <div className="tasks-table-filter-count">
-                    {sortedTasks.length} з{" "}
-                    {tasks.filter((t) => !t.parent_id).length} задач
+                    {sortedTasks.length} {tUi('з')}{" "}
+                    {tasks.filter((t) => !t.parent_id).length} {tUi('задач')}
                   </div>
                 </div>
 
@@ -2336,35 +2342,35 @@ function TasksDesktop() {
                           className="tasks-table-th-sort"
                           onClick={() => toggleSort("title")}
                         >
-                          Назва <SortIcon col="title" />
+                          {tUi('Назва')} <SortIcon col="title" />
                         </th>
                         <th
                           className="tasks-table-th-sort"
                           style={{ width: 130 }}
                           onClick={() => toggleSort("status")}
                         >
-                          Статус <SortIcon col="status" />
+                          {tUi('Статус')} <SortIcon col="status" />
                         </th>
                         <th
                           className="tasks-table-th-sort"
                           style={{ width: 120 }}
                           onClick={() => toggleSort("priority")}
                         >
-                          Пріоритет <SortIcon col="priority" />
+                          {tUi('Пріоритет')} <SortIcon col="priority" />
                         </th>
                         <th
                           className="tasks-table-th-sort"
                           style={{ width: 150 }}
                           onClick={() => toggleSort("assignee")}
                         >
-                          Виконавець <SortIcon col="assignee" />
+                          {tUi('Виконавець')} <SortIcon col="assignee" />
                         </th>
                         <th
                           className="tasks-table-th-sort"
                           style={{ width: 150 }}
                           onClick={() => toggleSort("project")}
                         >
-                          Проєкт <SortIcon col="project" />
+                          {tUi('Проєкт')} <SortIcon col="project" />
                         </th>
                         <th
                           className="tasks-table-th-sort"
@@ -2378,7 +2384,7 @@ function TasksDesktop() {
                           style={{ width: 140 }}
                           onClick={() => toggleSort("due_date")}
                         >
-                          Дедлайн <SortIcon col="due_date" />
+                          {tUi('Дедлайн')} <SortIcon col="due_date" />
                         </th>
                       </tr>
                     </thead>
@@ -2393,7 +2399,7 @@ function TasksDesktop() {
                               color: "var(--text-tertiary)",
                             }}
                           >
-                            Задач немає
+                            {tUi('Задач немає')}
                           </td>
                         </tr>
                       )}

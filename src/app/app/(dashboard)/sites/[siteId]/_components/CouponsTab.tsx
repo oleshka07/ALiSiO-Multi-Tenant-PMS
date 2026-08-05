@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, Plus, Trash2, Percent, Copy, Check, Edit3, CopyPlus, Info } from 'lucide-react';
 import { Modal } from './SiteHelpers';
@@ -23,6 +24,7 @@ const emptyForm = () => ({
 });
 
 export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { siteId: string; siteCurrency?: string; onCountChange?: (n: number) => void }) {
+  const t = useT();
   const [codes, setCodes] = useState<Record<string, unknown>[]>([]);
   const [listings, setListings] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
@@ -125,15 +127,15 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
     <div>
       <div style={{ marginBottom: 8 }}>
         <button className="btn btn-primary" onClick={() => { setForm(emptyForm()); setEditId(null); setShowCreate(true); }}>
-          <Plus size={16} /> Новий промокод
+          <Plus size={16} /> {t('Новий промокод')}
         </button>
       </div>
 
       {!showSplash ? (
         <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, padding: '10px 14px', background: 'rgba(34,197,94,0.06)', borderRadius: 10, border: '1px solid rgba(34,197,94,0.15)', display: 'flex', alignItems: 'center', gap: 8, maxWidth: 400 }}>
           <Percent size={16} style={{ color: '#22c55e', flexShrink: 0 }} />
-          <span style={{ fontWeight: 600, flex: 1 }}>Промокоди</span>
-          <button onClick={() => setShowSplash(true)} style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center' }} title="Детальніше">
+          <span style={{ fontWeight: 600, flex: 1 }}>{t('Промокоди')}</span>
+          <button onClick={() => setShowSplash(true)} style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center' }} title={t('Детальніше')}>
             <Info size={16} />
           </button>
         </div>
@@ -141,23 +143,23 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
         <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, padding: '10px 14px', background: 'rgba(34,197,94,0.06)', borderRadius: 10, border: '1px solid rgba(34,197,94,0.15)', display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 400 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
             <Percent size={16} style={{ color: '#22c55e', flexShrink: 0 }} />
-            <span style={{ fontWeight: 600, flex: 1 }}>Промокоди</span>
-            <button onClick={() => setShowSplash(false)} style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', color: '#22c55e', display: 'flex', alignItems: 'center' }} title="Приховати">
+            <span style={{ fontWeight: 600, flex: 1 }}>{t('Промокоди')}</span>
+            <button onClick={() => setShowSplash(false)} style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', color: '#22c55e', display: 'flex', alignItems: 'center' }} title={t('Приховати')}>
               <Info size={16} />
             </button>
           </div>
-          <span>Промокод — це код на знижку для бронювання. Ви можете створювати їх вручну для акцій, або вони можуть генеруватись автоматично при купівлі ваучерів (див. вкладку Автоматизація).</span>
+          <span>{t('Промокод — це код на знижку для бронювання. Ви можете створювати їх вручну для акцій, або вони можуть генеруватись автоматично при купівлі ваучерів (див. вкладку Автоматизація).')}</span>
         </div>
       )}
 
       {codes.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-secondary)' }}>
           <Percent size={40} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
-          <div>Промо-кодів ще немає</div>
+          <div>{t('Промо-кодів ще немає')}</div>
         </div>
       ) : (
         <table className="data-table">
-          <thead><tr><th>Код</th><th>Знижка</th><th>Застосовується</th><th>Діє до</th><th>Ночей</th><th>Використано</th><th></th></tr></thead>
+          <thead><tr><th>{t('Код')}</th><th>{t('Знижка')}</th><th>{t('Застосовується')}</th><th>{t('Діє до')}</th><th>{t('Ночей')}</th><th>{t('Використано')}</th><th></th></tr></thead>
           <tbody>
             {codes.map(c => (
               <tr key={c.id as string}>
@@ -170,7 +172,7 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
                       setTimeout(() => setCopiedId(null), 2000);
                     }}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center' }}
-                    title="Копіювати код"
+                    title={t('Копіювати код')}
                   >
                     {copiedId === c.id ? <Check size={14} style={{ color: '#22c55e' }} /> : <Copy size={14} />}
                   </button>
@@ -208,7 +210,7 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
                       });
                       setEditId(String(c.id));
                       setShowCreate(true);
-                    }} title="Редагувати">
+                    }} title={t('Редагувати')}>
                       <Edit3 size={14} />
                     </button>
                     <button className="btn btn-ghost" style={{ padding: '4px 8px', color: 'var(--text-secondary)' }} onClick={() => {
@@ -228,10 +230,10 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
                       });
                       setEditId(null);
                       setShowCreate(true);
-                    }} title="Дублювати">
+                    }} title={t('Дублювати')}>
                       <CopyPlus size={14} />
                     </button>
-                    <button className="btn btn-ghost" style={{ padding: '4px 8px', color: '#ef4444' }} onClick={() => handleDelete(c.id as string)} title="Видалити">
+                    <button className="btn btn-ghost" style={{ padding: '4px 8px', color: '#ef4444' }} onClick={() => handleDelete(c.id as string)} title={t('Видалити')}>
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -244,14 +246,14 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title={editId ? "Редагувати промокод" : "Новий промокод"}
         footer={<>
-          <button className="btn btn-ghost" onClick={() => setShowCreate(false)}>Скасувати</button>
+          <button className="btn btn-ghost" onClick={() => setShowCreate(false)}>{t('Скасувати')}</button>
           <button className="btn btn-primary" onClick={handleCreate} disabled={creating}>
             {creating ? <Loader2 size={14} className="spin" /> : (editId ? <Check size={14} /> : <Plus size={14} />)} {editId ? "Зберегти" : "Створити"}
           </button>
         </>}>
 
         <div className="form-group">
-          <label className="form-label">Застосовується до</label>
+          <label className="form-label">{t('Застосовується до')}</label>
           <div style={{ display: 'flex', gap: 8 }}>
             {([['services', '🛎 Сервіси'], ['listings', '🏠 Оголошення'], ['both', '🏠+🛎 Обидва']] as const).map(([val, label]) => (
               <button key={val} type="button" onClick={() => setForm(f => ({ ...f, applies_to: val }))}
@@ -268,7 +270,7 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
         </div>
 
         <div className="form-group">
-          <label className="form-label">Код *</label>
+          <label className="form-label">{t('Код *')}</label>
           <input className="form-input" placeholder="SUMMER20" value={form.code}
             style={{ textTransform: 'uppercase' }}
             onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} autoFocus />
@@ -276,14 +278,14 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
 
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Тип знижки</label>
+            <label className="form-label">{t('Тип знижки')}</label>
             <select className="form-select" value={form.discount_type} onChange={e => setForm(f => ({ ...f, discount_type: e.target.value }))}>
-              <option value="percent">Відсоток (%)</option>
-              <option value="fixed">Фіксована сума</option>
+              <option value="percent">{t('Відсоток (%)')}</option>
+              <option value="fixed">{t('Фіксована сума')}</option>
             </select>
           </div>
           <div className="form-group">
-            <label className="form-label">Значення *</label>
+            <label className="form-label">{t('Значення *')}</label>
             <input className="form-input" type="number" min={0}
               placeholder={form.discount_type === 'percent' ? '20' : '500'}
               value={form.offer_amount} onChange={e => setForm(f => ({ ...f, offer_amount: e.target.value }))} />
@@ -292,37 +294,37 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
 
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Діє від</label>
+            <label className="form-label">{t('Діє від')}</label>
             <input className="form-input" type="date" value={form.valid_from} onChange={e => setForm(f => ({ ...f, valid_from: e.target.value }))} />
           </div>
           <div className="form-group">
-            <label className="form-label">Діє до</label>
+            <label className="form-label">{t('Діє до')}</label>
             <input className="form-input" type="date" value={form.valid_until} onChange={e => setForm(f => ({ ...f, valid_until: e.target.value }))} />
           </div>
         </div>
 
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Мін. ночей</label>
+            <label className="form-label">{t('Мін. ночей')}</label>
             <input className="form-input" type="number" min={1} value={form.min_nights}
               onChange={e => setForm(f => ({ ...f, min_nights: +e.target.value }))} />
           </div>
           <div className="form-group">
-            <label className="form-label">Макс. ночей</label>
-            <input className="form-input" type="number" min={1} placeholder="Без ліміту"
+            <label className="form-label">{t('Макс. ночей')}</label>
+            <input className="form-input" type="number" min={1} placeholder={t('Без ліміту')}
               value={form.max_nights} onChange={e => setForm(f => ({ ...f, max_nights: e.target.value }))} />
           </div>
         </div>
 
         <div className="form-group">
-          <label className="form-label">Ліміт використань</label>
-          <input className="form-input" type="number" min={0} placeholder="Без ліміту"
+          <label className="form-label">{t('Ліміт використань')}</label>
+          <input className="form-input" type="number" min={0} placeholder={t('Без ліміту')}
             value={form.redemption_limit} onChange={e => setForm(f => ({ ...f, redemption_limit: e.target.value }))} />
         </div>
 
         <div className="form-group">
           <label className="form-label">
-            Діє лише в ці дні тижня
+            {t('Діє лише в ці дні тижня')}
             <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 400, marginLeft: 6 }}>
               {form.allowed_days.length === 0 ? '(всі дні)' : ''}
             </span>
@@ -345,13 +347,13 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
             {form.allowed_days.length > 0 && (
               <button type="button" onClick={() => setForm(f => ({ ...f, allowed_days: [] }))}
                 style={{ fontSize: 11, color: 'var(--text-tertiary)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}>
-                скинути
+                {t('скинути')}
               </button>
             )}
           </div>
           {form.allowed_days.length === 0 && (
             <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
-              Не вибрано — промокод діє в будь-який день
+              {t('Не вибрано — промокод діє в будь-який день')}
             </div>
           )}
         </div>
@@ -359,7 +361,7 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
         {(form.applies_to === 'listings' || form.applies_to === 'both') && (
           <div className="form-group" style={{ marginTop: 14 }}>
             <label className="form-label">
-              Застосовується до будиночків 
+              {t('Застосовується до будиночків')} 
               <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11, marginLeft: 6 }}>
                 {form.applied_listings.length === 0 ? '(всі будиночки)' : `(${form.applied_listings.length} вибрано)`}
               </span>
@@ -398,7 +400,7 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
         {(form.applies_to === 'services' || form.applies_to === 'both') && (
           <div className="form-group" style={{ marginTop: 14 }}>
             <label className="form-label">
-              Застосовується до сервісів 
+              {t('Застосовується до сервісів')} 
               <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11, marginLeft: 6 }}>
                 {form.applicable_services.length === 0 ? '(всі сервіси)' : `(${form.applicable_services.length} вибрано)`}
               </span>

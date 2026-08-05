@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Check, Loader2, ToggleLeft, ToggleRight } from 'lucide-react';
@@ -24,6 +25,7 @@ interface Status {
 }
 
 export default function FeaturesSettingsPage() {
+  const t = useT();
   const onMenuClick = useMobileMenu();
   const [catalog, setCatalog] = useState<Record<string, string>>({});
   const [features, setFeatures] = useState<Record<string, boolean>>({});
@@ -97,15 +99,15 @@ export default function FeaturesSettingsPage() {
 
   return (
     <>
-      <Header title="Модулі та інтеграції" onMenuClick={onMenuClick} />
+      <Header title={t('Модулі та інтеграції')} onMenuClick={onMenuClick} />
       <div className="app-content">
         <div className="page-header">
           <div>
             <Link href="/app/settings" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-tertiary)', textDecoration: 'none', marginBottom: 8 }}>
-              <ArrowLeft size={14} /> Налаштування
+              <ArrowLeft size={14} /> {t('Налаштування')}
             </Link>
-            <h2 className="page-title">Модулі та інтеграції</h2>
-            <div className="page-subtitle">Вимкнене тут зникає з меню і перестає відповідати на запити</div>
+            <h2 className="page-title">{t('Модулі та інтеграції')}</h2>
+            <div className="page-subtitle">{t('Вимкнене тут зникає з меню і перестає відповідати на запити')}</div>
           </div>
         </div>
 
@@ -138,7 +140,7 @@ export default function FeaturesSettingsPage() {
                     <div style={{ padding: '0 20px 16px 20px' }}>
                       {st && !st.configured && (
                         <div style={{ fontSize: 12, color: 'var(--warning, #f5a524)', marginBottom: 10 }}>
-                          Ключа немає — інтеграція увімкнена, але відповідатиме помилкою
+                          {t('Ключа немає — інтеграція увімкнена, але відповідатиме помилкою')}
                         </div>
                       )}
                       {st?.configured && !st.perOrganization && (
@@ -153,7 +155,7 @@ export default function FeaturesSettingsPage() {
                             {f.label}
                             {st?.values[f.field] && (
                               <span style={{ color: 'var(--text-tertiary)', marginLeft: 8 }}>
-                                збережено: {st.values[f.field]}
+                                {t('збережено:')} {st.values[f.field]}
                               </span>
                             )}
                             {f.hint && <span style={{ color: 'var(--text-tertiary)', marginLeft: 8 }}>· {f.hint}</span>}
@@ -180,7 +182,7 @@ export default function FeaturesSettingsPage() {
                         </button>
                         {saved === key && (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--success, #30a46c)' }}>
-                            <Check size={14} /> Збережено
+                            <Check size={14} /> {t('Збережено')}
                           </span>
                         )}
                       </div>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, Plus, Trash2, Gift, Ticket, Check, Copy, CopyPlus } from 'lucide-react';
 import { Modal } from './SiteHelpers';
@@ -44,6 +45,7 @@ interface GiftCardTemplate {
 }
 
 export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; onCountChange?: (n: number) => void }) {
+  const tUi = useT();
   const [giftCards, setGiftCards] = useState<GiftCard[]>([]);
   const [templates, setTemplates] = useState<GiftCardTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,14 +138,14 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
       {/* Create button above filters */}
       <div style={{ marginBottom: 8 }}>
         <button className="btn btn-primary" onClick={() => { setTpl(null); setStep('pick'); setForm(emptyForm()); setShowCreate(true); }}>
-          <Plus size={16} /> Новий ваучер
+          <Plus size={16} /> {tUi('Новий ваучер')}
         </button>
       </div>
 
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, padding: '10px 14px', background: 'rgba(139,92,246,0.06)', borderRadius: 10, border: '1px solid rgba(139,92,246,0.15)', display: 'flex', gap: 8, maxWidth: 400 }}>
         <Gift size={16} style={{ color: '#8b5cf6', flexShrink: 0, marginTop: 1 }} />
         <span>
-          <strong>Подарунковий ваучер (Грошовий сертифікат)</strong> — це унікальний код на певну суму (напр., 2000 CZK), який ви видаєте конкретному гостю. Він працює як засіб платежу. Якщо ви хочете створити загальну акційну пропозицію для всіх (наприклад, пакет &quot;Осінній релакс&quot; або єдиний код знижки), використовуйте вкладки <strong>Пакети</strong> або <strong>Промокоди</strong>.
+          <strong>{tUi('Подарунковий ваучер (Грошовий сертифікат)')}</strong> — це унікальний код на певну суму (напр., 2000 CZK), який ви видаєте конкретному гостю. Він працює як засіб платежу. Якщо ви хочете створити загальну акційну пропозицію для всіх (наприклад, пакет &quot;Осінній релакс&quot; або єдиний код знижки), використовуйте вкладки <strong>{tUi('Пакети')}</strong> {tUi('або')} <strong>{tUi('Промокоди')}</strong>.
         </span>
       </div>
 
@@ -161,7 +163,7 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
       ) : giftCards.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-secondary)' }}>
           <Gift size={40} style={{ margin: '0 auto 12px', opacity: 0.2 }} />
-          <div style={{ fontSize: 15, fontWeight: 600 }}>Ваучерів ще немає</div>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>{tUi('Ваучерів ще немає')}</div>
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12 }}>
@@ -181,7 +183,7 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
                           setTimeout(() => setCopiedId(null), 2000);
                         }}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center' }}
-                        title="Копіювати код"
+                        title={tUi('Копіювати код')}
                       >
                         {copiedId === v.id ? <Check size={13} style={{ color: '#22c55e' }} /> : <Copy size={13} />}
                       </button>
@@ -192,17 +194,17 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {v.recipient_name && <span>🎁 {v.recipient_name}</span>}
                   <span>💰 {v.face_value?.toLocaleString('cs-CZ')} {v.currency}</span>
-                  {v.expires_at && <span>⏳ До: {new Date(v.expires_at).toLocaleDateString('uk-UA')}</span>}
+                  {v.expires_at && <span>{tUi('⏳ До:')} {new Date(v.expires_at).toLocaleDateString('uk-UA')}</span>}
                   {v.status === 'activated' && v.check_in && <span>✅ {new Date(v.check_in).toLocaleDateString('uk-UA')}</span>}
                 </div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
                   {(v.status === 'active' || v.status === 'paid') && (
                     <button className="btn btn-primary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => { setActiveCard(v); setActivationId(''); }}>
-                      <Ticket size={12} /> Погасити
+                      <Ticket size={12} /> {tUi('Погасити')}
                     </button>
                   )}
-                  {v.status === 'draft' && <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => handlePatch(v, 'active')}><Check size={12} /> Активувати</button>}
-                  {v.status === 'active' && <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => handlePatch(v, 'paid')}>💳 Оплачено</button>}
+                  {v.status === 'draft' && <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => handlePatch(v, 'active')}><Check size={12} /> {tUi('Активувати')}</button>}
+                  {v.status === 'active' && <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => handlePatch(v, 'paid')}>{tUi('💳 Оплачено')}</button>}
                   
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                     <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 8px', color: 'var(--text-secondary)' }} onClick={() => {
@@ -221,11 +223,11 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
                       setTpl(null);
                       setStep('fill');
                       setShowCreate(true);
-                    }} title="Дублювати ваучер (створить новий)">
+                    }} title={tUi('Дублювати ваучер (створить новий)')}>
                       <CopyPlus size={12} />
                     </button>
                     {!['activated', 'cancelled'].includes(v.status) && (
-                      <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 8px', color: '#ef4444' }} onClick={() => handleDelete(v)} title="Видалити">
+                      <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 8px', color: '#ef4444' }} onClick={() => handleDelete(v)} title={tUi('Видалити')}>
                         <Trash2 size={12} />
                       </button>
                     )}
@@ -237,27 +239,27 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
         </div>
       )}
 
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Новий ваучер" size="lg"
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title={tUi('Новий ваучер')} size="lg"
         footer={step === 'fill' ? (
           <>
-            <button className="btn btn-ghost" onClick={() => setStep('pick')}>← Назад</button>
+            <button className="btn btn-ghost" onClick={() => setStep('pick')}>{tUi('← Назад')}</button>
             <button className="btn btn-primary" onClick={handleCreate} disabled={creating}>
-              {creating ? <Loader2 size={14} className="spin" /> : <Gift size={14} />} Створити
+              {creating ? <Loader2 size={14} className="spin" /> : <Gift size={14} />} {tUi('Створити')}
             </button>
           </>
         ) : undefined}
       >
         {step === 'pick' ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>Оберіть шаблон або створіть власний ваучер:</div>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>{tUi('Оберіть шаблон або створіть власний ваучер:')}</div>
 
             {/* Без шаблону */}
             <div onClick={() => { setTpl(null); setStep('fill'); }}
               style={{ border: '2px dashed var(--border-primary)', borderRadius: 10, padding: '12px 14px', cursor: 'pointer', background: 'var(--surface-secondary)', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 22 }}>✏️</span>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 13 }}>Без шаблону</div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Вказати назву, суму та дані вручну</div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{tUi('Без шаблону')}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{tUi('Вказати назву, суму та дані вручну')}</div>
               </div>
             </div>
 
@@ -278,18 +280,18 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
               ? <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', fontSize: 13 }}>{tpl.emoji} <strong>{tpl.name}</strong> — {tpl.badge}</div>
               : (
                 <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--surface-secondary)', border: '1px solid var(--border-primary)' }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>✏️ Власний ваучер</div>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>{tUi('✏️ Власний ваучер')}</div>
                   <div className="form-row">
                     <div className="form-group" style={{ flex: 2 }}>
-                      <label className="form-label">Назва ваучера *</label>
-                      <input className="form-input" placeholder="Романтичний вікенд" value={form.custom_name} onChange={e => setForm(f => ({ ...f, custom_name: e.target.value }))} autoFocus />
+                      <label className="form-label">{tUi('Назва ваучера *')}</label>
+                      <input className="form-input" placeholder={tUi('Романтичний вікенд')} value={form.custom_name} onChange={e => setForm(f => ({ ...f, custom_name: e.target.value }))} autoFocus />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Сума</label>
+                      <label className="form-label">{tUi('Сума')}</label>
                       <input className="form-input" type="number" min={0} placeholder="4900" value={form.custom_face_value} onChange={e => setForm(f => ({ ...f, custom_face_value: e.target.value }))} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Валюта</label>
+                      <label className="form-label">{tUi('Валюта')}</label>
                       <select className="form-select" value={form.custom_currency} onChange={e => setForm(f => ({ ...f, custom_currency: e.target.value }))}>
                         <option>CZK</option>
                         <option>EUR</option>
@@ -302,33 +304,33 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
             }
             <div className="form-row">
               <div className="form-group"><label className="form-label">Ім&apos;я отримувача</label><input className="form-input" value={form.recipient_name} onChange={e => setForm(f => ({ ...f, recipient_name: e.target.value }))} /></div>
-              <div className="form-group"><label className="form-label">Email отримувача</label><input className="form-input" type="email" value={form.recipient_email} onChange={e => setForm(f => ({ ...f, recipient_email: e.target.value }))} /></div>
+              <div className="form-group"><label className="form-label">{tUi('Email отримувача')}</label><input className="form-input" type="email" value={form.recipient_email} onChange={e => setForm(f => ({ ...f, recipient_email: e.target.value }))} /></div>
             </div>
             <div className="form-row">
-              <div className="form-group"><label className="form-label">Покупець</label><input className="form-input" value={form.buyer_name} onChange={e => setForm(f => ({ ...f, buyer_name: e.target.value }))} /></div>
-              <div className="form-group"><label className="form-label">Телефон покупця</label><input className="form-input" value={form.buyer_phone} onChange={e => setForm(f => ({ ...f, buyer_phone: e.target.value }))} /></div>
+              <div className="form-group"><label className="form-label">{tUi('Покупець')}</label><input className="form-input" value={form.buyer_name} onChange={e => setForm(f => ({ ...f, buyer_name: e.target.value }))} /></div>
+              <div className="form-group"><label className="form-label">{tUi('Телефон покупця')}</label><input className="form-input" value={form.buyer_phone} onChange={e => setForm(f => ({ ...f, buyer_phone: e.target.value }))} /></div>
             </div>
-            <div className="form-group"><label className="form-label">Повідомлення</label><textarea className="form-input" rows={2} value={form.message} onChange={e => setForm(f => ({ ...f, message: e.target.value }))} style={{ resize: 'vertical' }} /></div>
+            <div className="form-group"><label className="form-label">{tUi('Повідомлення')}</label><textarea className="form-input" rows={2} value={form.message} onChange={e => setForm(f => ({ ...f, message: e.target.value }))} style={{ resize: 'vertical' }} /></div>
             <div className="form-row">
-              <div className="form-group"><label className="form-label">Термін дії (авто +{tpl?.validityMonths} міс.)</label><input className="form-input" type="date" value={form.expires_at} onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))} /></div>
-              <div className="form-group"><label className="form-label">Нотатки</label><input className="form-input" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} /></div>
+              <div className="form-group"><label className="form-label">{tUi('Термін дії (авто +')}{tpl?.validityMonths} {tUi('міс.)')}</label><input className="form-input" type="date" value={form.expires_at} onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))} /></div>
+              <div className="form-group"><label className="form-label">{tUi('Нотатки')}</label><input className="form-input" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} /></div>
             </div>
           </div>
         )}
       </Modal>
 
-      <Modal open={!!activeCard} onClose={() => setActiveCard(null)} title="Погашення ваучера"
-        footer={<><button className="btn btn-ghost" onClick={() => setActiveCard(null)}>Скасувати</button><button className="btn btn-primary" onClick={handleActivation} disabled={activating || !activationId.trim()}>{activating ? <Loader2 size={14} className="spin" /> : <Ticket size={14} />} Погасити</button></>}
+      <Modal open={!!activeCard} onClose={() => setActiveCard(null)} title={tUi('Погашення ваучера')}
+        footer={<><button className="btn btn-ghost" onClick={() => setActiveCard(null)}>{tUi('Скасувати')}</button><button className="btn btn-primary" onClick={handleActivation} disabled={activating || !activationId.trim()}>{activating ? <Loader2 size={14} className="spin" /> : <Ticket size={14} />} {tUi('Погасити')}</button></>}
       >
         {activeCard && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', fontSize: 13 }}>
               🎟️ <strong>{activeCard.code}</strong> — {activeCard.name}
-              {activeCard.recipient_name && <div style={{ color: 'var(--text-secondary)', marginTop: 2 }}>Для: {activeCard.recipient_name}</div>}
+              {activeCard.recipient_name && <div style={{ color: 'var(--text-secondary)', marginTop: 2 }}>{tUi('Для:')} {activeCard.recipient_name}</div>}
             </div>
             <div className="form-group">
-              <label className="form-label">ID бронювання *</label>
-              <input className="form-input" placeholder="reservation_id з PMS" value={activationId} onChange={e => setActivationId(e.target.value)} autoFocus />
+              <label className="form-label">{tUi('ID бронювання *')}</label>
+              <input className="form-input" placeholder={tUi('reservation_id з PMS')} value={activationId} onChange={e => setActivationId(e.target.value)} autoFocus />
             </div>
           </div>
         )}

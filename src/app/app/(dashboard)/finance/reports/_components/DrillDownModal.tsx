@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { X, ExternalLink } from 'lucide-react';
@@ -18,6 +19,7 @@ function formatMoney(n: number, currency: string): string {
 }
 
 export default function DrillDownModal({ month, categoryId, categoryName, opType, basis = 'paid', onClose }: Props) {
+  const t = useT();
   const [ops, setOps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -46,14 +48,14 @@ export default function DrillDownModal({ month, categoryId, categoryName, opType
         </div>
 
         <div style={{ padding: 10, background: 'var(--bg-secondary)', borderRadius: 8, marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: 'var(--text-secondary)' }}>Операцій: {ops.length}</span>
+          <span style={{ color: 'var(--text-secondary)' }}>{t('Операцій:')} {ops.length}</span>
           <span style={{ fontWeight: 700 }}>Σ {formatMoney(total, ops[0]?.currency || 'CZK')}</span>
         </div>
 
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Завантаження…')}</div>
         ) : ops.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Операцій не знайдено</div>
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Операцій не знайдено')}</div>
         ) : (
           <div style={{ maxHeight: '55vh', overflowY: 'auto' }}>
             {ops.map((o) => (
@@ -70,7 +72,7 @@ export default function DrillDownModal({ month, categoryId, categoryName, opType
                 <div style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: o.op_type === 'expense' ? '#ef4444' : '#22c55e' }}>
                   {o.op_type === 'expense' ? '−' : '+'} {formatMoney(o.amount, o.currency)}
                 </div>
-                <Link href={`/app/finance/operations?search=${encodeURIComponent(o.id)}`} style={{ marginLeft: 10, color: 'var(--text-secondary)' }} title="Відкрити">
+                <Link href={`/app/finance/operations?search=${encodeURIComponent(o.id)}`} style={{ marginLeft: 10, color: 'var(--text-secondary)' }} title={t('Відкрити')}>
                   <ExternalLink size={14} />
                 </Link>
               </div>

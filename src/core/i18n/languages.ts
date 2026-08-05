@@ -40,6 +40,13 @@ export const LANGUAGE_CODES = Object.keys(LANGUAGES) as Language[];
  */
 export const DEFAULT_LANGUAGE: Language = 'uk';
 
+/**
+ * The language the product's own interface is written in — the literals in the
+ * JSX. Distinct from an organization's language: the hotel chooses what its
+ * staff read, this is what the untranslated fallback is.
+ */
+export const UI_SOURCE_LANGUAGE: Language = 'uk';
+
 export function isLanguage(value: unknown): value is Language {
   return typeof value === 'string' && value in LANGUAGES;
 }

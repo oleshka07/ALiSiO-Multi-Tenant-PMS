@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -143,6 +144,7 @@ function Modal({ open, onClose, title, children, footer }: ModalProps) {
 
 // ─── Main Component ───────────────────────────────────────
 export default function SettingsUnitsPage() {
+  const tUi = useT();
   const onMenuClick = useMobileMenu();
 
   // Data from API
@@ -454,7 +456,7 @@ export default function SettingsUnitsPage() {
   if (loading) {
     return (
       <>
-        <Header title="Номери / Юніти" onMenuClick={onMenuClick} />
+        <Header title={tUi('Номери / Юніти')} onMenuClick={onMenuClick} />
         <div className="app-content" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 300 }}>
           <Loader2 size={32} className="spin" style={{ color: 'var(--accent-primary)' }} />
         </div>
@@ -464,13 +466,13 @@ export default function SettingsUnitsPage() {
 
   return (
     <>
-      <Header title="Номери / Юніти" onMenuClick={onMenuClick} />
+      <Header title={tUi('Номери / Юніти')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {/* Page header */}
         <div className="page-header">
           <div>
-            <h2 className="page-title">Управління юнітами</h2>
-            <div className="page-subtitle">Всього: {totalUnits} юнітів · {unitTypes.length} типів · {categories.length} категорій</div>
+            <h2 className="page-title">{tUi('Управління юнітами')}</h2>
+            <div className="page-subtitle">{tUi('Всього:')} {totalUnits} {tUi('юнітів ·')} {unitTypes.length} {tUi('типів ·')} {categories.length} {tUi('категорій')}</div>
           </div>
         </div>
 
@@ -478,7 +480,7 @@ export default function SettingsUnitsPage() {
         <div style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <BedDouble size={16} style={{ color: 'var(--text-tertiary)' }} />
-            <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>Типи кімнат</span>
+            <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{tUi('Типи кімнат')}</span>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {unitTypes.map(ut => (
@@ -519,7 +521,7 @@ export default function SettingsUnitsPage() {
                 <button
                   className="btn btn-sm btn-ghost"
                   onClick={(e) => { e.stopPropagation(); openAddType(group.categoryId); }}
-                  title="Додати тип кімнати"
+                  title={tUi('Додати тип кімнати')}
                 >
                   <Plus size={14} />
                 </button>
@@ -568,8 +570,8 @@ export default function SettingsUnitsPage() {
                                 </div>
                                 {unit.lock_code && (
                                   <div style={{ fontSize: 11, color: 'var(--accent-success)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                                    <Key size={10} /> Код: {unit.lock_code}
-                                    {unit.entry_photo_url && <><Camera size={10} style={{ marginLeft: 6 }} /> Фото</>}
+                                    <Key size={10} /> {tUi('Код:')} {unit.lock_code}
+                                    {unit.entry_photo_url && <><Camera size={10} style={{ marginLeft: 6 }} /> {tUi('Фото')}</>}
                                   </div>
                                 )}
                               </div>
@@ -599,7 +601,7 @@ export default function SettingsUnitsPage() {
           title={editingUnit ? `Редагувати: ${editingUnit.name}` : 'Додати новий юніт'}
           footer={
             <>
-              <button className="btn btn-secondary" onClick={() => setEditUnitModal(false)}>Скасувати</button>
+              <button className="btn btn-secondary" onClick={() => setEditUnitModal(false)}>{tUi('Скасувати')}</button>
               <button className="btn btn-primary" onClick={handleSaveUnit} disabled={saving}>
                 {saving ? <Loader2 size={14} className="spin" /> : <Save size={14} />}
                 {editingUnit ? 'Зберегти' : 'Створити'}
@@ -614,60 +616,60 @@ export default function SettingsUnitsPage() {
           )}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Назва</label>
-              <input className="form-input" value={unitForm.name} onChange={(e) => setUnitForm((p) => ({ ...p, name: e.target.value }))} placeholder="Напр.: F12" />
+              <label className="form-label">{tUi('Назва')}</label>
+              <input className="form-input" value={unitForm.name} onChange={(e) => setUnitForm((p) => ({ ...p, name: e.target.value }))} placeholder={tUi('Напр.: F12')} />
             </div>
             <div className="form-group">
-              <label className="form-label">Код</label>
-              <input className="form-input" value={unitForm.code} onChange={(e) => setUnitForm((p) => ({ ...p, code: e.target.value }))} placeholder="Напр.: F12" />
+              <label className="form-label">{tUi('Код')}</label>
+              <input className="form-input" value={unitForm.code} onChange={(e) => setUnitForm((p) => ({ ...p, code: e.target.value }))} placeholder={tUi('Напр.: F12')} />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Тип кімнати</label>
+              <label className="form-label">{tUi('Тип кімнати')}</label>
               <select className="form-select" value={unitForm.unit_type_id} onChange={(e) => setUnitForm((p) => ({ ...p, unit_type_id: e.target.value }))}>
-                <option value="">Оберіть тип</option>
+                <option value="">{tUi('Оберіть тип')}</option>
                 {unitTypes.map(ut => (
                   <option key={ut.id} value={ut.id}>{ut.name} ({ut.category_type})</option>
                 ))}
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Спальних місць</label>
+              <label className="form-label">{tUi('Спальних місць')}</label>
               <input className="form-input" type="number" value={unitForm.beds} onChange={(e) => setUnitForm((p) => ({ ...p, beds: Number(e.target.value) }))} />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Будова</label>
+              <label className="form-label">{tUi('Будова')}</label>
               <select className="form-select" value={unitForm.building_id} onChange={(e) => setUnitForm((p) => ({ ...p, building_id: e.target.value }))}>
-                <option value="">— Немає —</option>
+                <option value="">{tUi('— Немає —')}</option>
                 {buildings.map(b => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Зона</label>
-              <input className="form-input" value={unitForm.zone} onChange={(e) => setUnitForm((p) => ({ ...p, zone: e.target.value }))} placeholder="Напр.: FB" />
+              <label className="form-label">{tUi('Зона')}</label>
+              <input className="form-input" value={unitForm.zone} onChange={(e) => setUnitForm((p) => ({ ...p, zone: e.target.value }))} placeholder={tUi('Напр.: FB')} />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Статус</label>
+              <label className="form-label">{tUi('Статус')}</label>
               <select className="form-select" value={unitForm.room_status} onChange={(e) => setUnitForm((p) => ({ ...p, room_status: e.target.value }))}>
-                <option value="available">Доступний</option>
-                <option value="occupied">Зайнятий</option>
-                <option value="maintenance">Обслуговування</option>
-                <option value="blocked">Заблокований</option>
+                <option value="available">{tUi('Доступний')}</option>
+                <option value="occupied">{tUi('Зайнятий')}</option>
+                <option value="maintenance">{tUi('Обслуговування')}</option>
+                <option value="blocked">{tUi('Заблокований')}</option>
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Прибирання</label>
+              <label className="form-label">{tUi('Прибирання')}</label>
               <select className="form-select" value={unitForm.cleaning_status} onChange={(e) => setUnitForm((p) => ({ ...p, cleaning_status: e.target.value }))}>
-                <option value="clean">Чистий</option>
-                <option value="dirty">Брудний</option>
-                <option value="in_progress">Прибирається</option>
+                <option value="clean">{tUi('Чистий')}</option>
+                <option value="dirty">{tUi('Брудний')}</option>
+                <option value="in_progress">{tUi('Прибирається')}</option>
               </select>
             </div>
           </div>
@@ -675,22 +677,22 @@ export default function SettingsUnitsPage() {
           {/* Guest page: Entry code & photo */}
           <div style={{ borderTop: '1px solid var(--border-primary)', marginTop: 16, paddingTop: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Key size={14} /> Гостьова сторінка — код заїзду
+              <Key size={14} /> {tUi('Гостьова сторінка — код заїзду')}
             </div>
             <div className="form-row">
               <div className="form-group">
-                <label className="form-label">Код замка</label>
-                <input className="form-input" value={unitForm.lock_code} onChange={(e) => setUnitForm((p) => ({ ...p, lock_code: e.target.value }))} placeholder="Напр.: 4971#" />
+                <label className="form-label">{tUi('Код замка')}</label>
+                <input className="form-input" value={unitForm.lock_code} onChange={(e) => setUnitForm((p) => ({ ...p, lock_code: e.target.value }))} placeholder={tUi('Напр.: 4971#')} />
               </div>
             </div>
             <ImageUploadField
-              label="Фото входу / лок-бокса"
+              label={tUi('Фото входу / лок-бокса')}
               value={unitForm.entry_photo_url}
               onChange={(url) => setUnitForm((p) => ({ ...p, entry_photo_url: url }))}
               folder="entry-photos"
             />
             <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 6 }}>
-              💡 Якщо порожньо — буде використано код/фото з налаштувань типу кімнати (Guest Page Settings)
+              {tUi('💡 Якщо порожньо — буде використано код/фото з налаштувань типу кімнати (Guest Page Settings)')}
             </div>
           </div>
         </Modal>
@@ -702,7 +704,7 @@ export default function SettingsUnitsPage() {
           title={editingType ? `Редагувати тип: ${editingType.name}` : 'Додати тип кімнати'}
           footer={
             <>
-              <button className="btn btn-secondary" onClick={() => setEditTypeModal(false)}>Скасувати</button>
+              <button className="btn btn-secondary" onClick={() => setEditTypeModal(false)}>{tUi('Скасувати')}</button>
               <button className="btn btn-primary" onClick={handleSaveType} disabled={saving}>
                 {saving ? <Loader2 size={14} className="spin" /> : <Save size={14} />}
                 {editingType ? 'Зберегти' : 'Створити'}
@@ -717,28 +719,28 @@ export default function SettingsUnitsPage() {
           )}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Назва</label>
-              <input className="form-input" value={typeForm.name} onChange={(e) => setTypeForm((p) => ({ ...p, name: e.target.value }))} placeholder="Напр.: Stealth House (2 місця)" />
+              <label className="form-label">{tUi('Назва')}</label>
+              <input className="form-input" value={typeForm.name} onChange={(e) => setTypeForm((p) => ({ ...p, name: e.target.value }))} placeholder={tUi('Напр.: Stealth House (2 місця)')} />
             </div>
             <div className="form-group">
-              <label className="form-label">Код</label>
-              <input className="form-input" value={typeForm.code} onChange={(e) => setTypeForm((p) => ({ ...p, code: e.target.value }))} placeholder="Напр.: STEALTH" />
+              <label className="form-label">{tUi('Код')}</label>
+              <input className="form-input" value={typeForm.code} onChange={(e) => setTypeForm((p) => ({ ...p, code: e.target.value }))} placeholder={tUi('Напр.: STEALTH')} />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Категорія</label>
+              <label className="form-label">{tUi('Категорія')}</label>
               <select className="form-select" value={typeForm.category_id} onChange={(e) => setTypeForm((p) => ({ ...p, category_id: e.target.value }))}>
-                <option value="">Оберіть категорію</option>
+                <option value="">{tUi('Оберіть категорію')}</option>
                 {categories.map(c => (
                   <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
                 ))}
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Будова</label>
+              <label className="form-label">{tUi('Будова')}</label>
               <select className="form-select" value={typeForm.building_id} onChange={(e) => setTypeForm((p) => ({ ...p, building_id: e.target.value }))}>
-                <option value="">— Немає —</option>
+                <option value="">{tUi('— Немає —')}</option>
                 {buildings.map(b => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
@@ -747,7 +749,7 @@ export default function SettingsUnitsPage() {
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Макс. дорослих</label>
+              <label className="form-label">{tUi('Макс. дорослих')}</label>
               <input className="form-input" type="number" value={typeForm.max_adults} onChange={(e) => setTypeForm((p) => ({ ...p, max_adults: Number(e.target.value) }))} />
             </div>
             <div className="form-group">
@@ -757,11 +759,11 @@ export default function SettingsUnitsPage() {
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Одномісних ліжок</label>
+              <label className="form-label">{tUi('Одномісних ліжок')}</label>
               <input className="form-input" type="number" value={typeForm.beds_single} onChange={(e) => setTypeForm((p) => ({ ...p, beds_single: Number(e.target.value) }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Двомісних ліжок</label>
+              <label className="form-label">{tUi('Двомісних ліжок')}</label>
               <input className="form-input" type="number" value={typeForm.beds_double} onChange={(e) => setTypeForm((p) => ({ ...p, beds_double: Number(e.target.value) }))} />
             </div>
           </div>
@@ -771,13 +773,13 @@ export default function SettingsUnitsPage() {
         <Modal
           open={deleteUnitModal}
           onClose={() => setDeleteUnitModal(false)}
-          title="Видалити юніт"
+          title={tUi('Видалити юніт')}
           footer={
             <>
-              <button className="btn btn-secondary" onClick={() => setDeleteUnitModal(false)}>Скасувати</button>
+              <button className="btn btn-secondary" onClick={() => setDeleteUnitModal(false)}>{tUi('Скасувати')}</button>
               <button className="btn btn-danger" onClick={handleDeleteUnit} disabled={saving}>
                 {saving ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
-                Видалити
+                {tUi('Видалити')}
               </button>
             </>
           }
@@ -788,7 +790,7 @@ export default function SettingsUnitsPage() {
             </div>
           )}
           <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
-            Ви впевнені, що хочете видалити юніт <strong style={{ color: 'var(--text-primary)' }}>{deleteUnitTarget?.name}</strong>?
+            {tUi('Ви впевнені, що хочете видалити юніт')} <strong style={{ color: 'var(--text-primary)' }}>{deleteUnitTarget?.name}</strong>?
           </p>
         </Modal>
 
@@ -796,13 +798,13 @@ export default function SettingsUnitsPage() {
         <Modal
           open={deleteTypeModal}
           onClose={() => setDeleteTypeModal(false)}
-          title="Видалити тип кімнати"
+          title={tUi('Видалити тип кімнати')}
           footer={
             <>
-              <button className="btn btn-secondary" onClick={() => setDeleteTypeModal(false)}>Скасувати</button>
+              <button className="btn btn-secondary" onClick={() => setDeleteTypeModal(false)}>{tUi('Скасувати')}</button>
               <button className="btn btn-danger" onClick={handleDeleteType} disabled={saving}>
                 {saving ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
-                Видалити
+                {tUi('Видалити')}
               </button>
             </>
           }
@@ -813,10 +815,10 @@ export default function SettingsUnitsPage() {
             </div>
           )}
           <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
-            Ви впевнені, що хочете видалити тип <strong style={{ color: 'var(--text-primary)' }}>{deleteTypeTarget?.name}</strong>?
+            {tUi('Ви впевнені, що хочете видалити тип')} <strong style={{ color: 'var(--text-primary)' }}>{deleteTypeTarget?.name}</strong>?
           </p>
           <p style={{ color: 'var(--text-tertiary)', fontSize: 13, marginTop: 4 }}>
-            Спочатку потрібно видалити або перепризначити всі юніти цього типу.
+            {tUi('Спочатку потрібно видалити або перепризначити всі юніти цього типу.')}
           </p>
         </Modal>
       </div>

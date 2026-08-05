@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 import { X, Plus, Trash2 } from 'lucide-react';
 import type { AutoRule } from './AutoRulesTab';
@@ -52,6 +53,7 @@ const NUM_OPS = [
 ];
 
 export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
+  const tUi = useT();
   const [name, setName] = useState(initial?.name || '');
   const [opType, setOpType] = useState<'income' | 'expense' | 'any'>(initial?.op_type || 'any');
   const [conditions, setConditions] = useState<any[]>(initial?.conditions?.length ? initial.conditions : [{ field: 'comment', op: 'contains', value: '' }]);
@@ -143,20 +145,20 @@ export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
-          <Field label="Назва правила">
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} style={input} autoFocus placeholder="Напр. Facebook → Маркетинг" />
+          <Field label={tUi('Назва правила')}>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} style={input} autoFocus placeholder={tUi('Напр. Facebook → Маркетинг')} />
           </Field>
-          <Field label="Тип операції">
+          <Field label={tUi('Тип операції')}>
             <select value={opType} onChange={(e) => setOpType(e.target.value as any)} style={input}>
-              <option value="any">Будь-який</option>
-              <option value="income">Дохід</option>
-              <option value="expense">Витрата</option>
+              <option value="any">{tUi('Будь-який')}</option>
+              <option value="income">{tUi('Дохід')}</option>
+              <option value="expense">{tUi('Витрата')}</option>
             </select>
           </Field>
         </div>
 
         {/* Conditions */}
-        <div style={sectionHeader}>Умови (усі мають спрацювати)</div>
+        <div style={sectionHeader}>{tUi('Умови (усі мають спрацювати)')}</div>
         {conditions.map((c, idx) => {
           const fieldDef = FIELD_OPTIONS.find((f) => f.value === c.field);
           const opList = fieldDef?.numeric ? NUM_OPS : TEXT_OPS;
@@ -190,40 +192,40 @@ export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
                   type={fieldDef?.numeric ? 'number' : 'text'}
                   value={c.value ?? ''}
                   onChange={(e) => updateCondition(idx, { value: fieldDef?.numeric ? Number(e.target.value) : e.target.value })}
-                  style={input} placeholder="Значення"
+                  style={input} placeholder={tUi('Значення')}
                 />
               )}
-              <button type="button" onClick={() => removeCondition(idx)} style={{ ...iconBtn, color: '#dc2626' }} title="Видалити умову">
+              <button type="button" onClick={() => removeCondition(idx)} style={{ ...iconBtn, color: '#dc2626' }} title={tUi('Видалити умову')}>
                 <Trash2 size={14} />
               </button>
             </div>
           );
         })}
         <button type="button" onClick={addCondition} style={{ ...btnSec, marginBottom: 12 }}>
-          <Plus size={14} /> Додати умову
+          <Plus size={14} /> {tUi('Додати умову')}
         </button>
 
         {/* Actions */}
-        <div style={sectionHeader}>Дії</div>
+        <div style={sectionHeader}>{tUi('Дії')}</div>
 
-        <CheckField label="Встановити категорію">
+        <CheckField label={tUi('Встановити категорію')}>
           <select
             value={actions.set_category_id || ''}
             onChange={(e) => setActions((a) => ({ ...a, set_category_id: e.target.value || undefined }))}
             style={input}
           >
-            <option value="">— не робити —</option>
+            <option value="">{tUi('— не робити —')}</option>
             {categories.map((c: any) => <option key={c.id} value={c.id}>{c.icon || ''} {c.name}</option>)}
           </select>
         </CheckField>
 
-        <CheckField label="Встановити проєкт">
+        <CheckField label={tUi('Встановити проєкт')}>
           <select
             value={actions.set_project_id || ''}
             onChange={(e) => setActions((a) => ({ ...a, set_project_id: e.target.value || undefined }))}
             style={input}
           >
-            <option value="">— не робити —</option>
+            <option value="">{tUi('— не робити —')}</option>
             {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </CheckField>
@@ -236,7 +238,7 @@ export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
                 checked={!!actions.auto_match_counterparty}
                 onChange={() => setActions((a) => ({ ...a, auto_match_counterparty: true, set_counterparty_id: undefined }))}
               />
-              Автоматчинг контрагента (за aliases у коментарі)
+              {tUi('Автоматчинг контрагента (за aliases у коментарі)')}
             </label>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
               <input
@@ -244,7 +246,7 @@ export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
                 checked={!actions.auto_match_counterparty && !!actions.set_counterparty_id}
                 onChange={() => setActions((a) => ({ ...a, auto_match_counterparty: false, set_counterparty_id: a.set_counterparty_id || counterparties[0]?.id || '' }))}
               />
-              Вибрати контрагента вручну
+              {tUi('Вибрати контрагента вручну')}
             </label>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
               <input
@@ -252,7 +254,7 @@ export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
                 checked={!actions.auto_match_counterparty && !actions.set_counterparty_id}
                 onChange={() => setActions((a) => ({ ...a, auto_match_counterparty: false, set_counterparty_id: undefined }))}
               />
-              Не чіпати
+              {tUi('Не чіпати')}
             </label>
           </div>
           {!actions.auto_match_counterparty && actions.set_counterparty_id !== undefined && (
@@ -268,7 +270,7 @@ export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <label style={{ display: 'block', fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Додати теги</label>
+          <label style={{ display: 'block', fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>{tUi('Додати теги')}</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {tags.map((t: any) => {
               const on = (actions.add_tag_ids || []).includes(t.id);
@@ -289,25 +291,25 @@ export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
                 </button>
               );
             })}
-            {tags.length === 0 && <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Немає тегів — створіть у вкладці «Теги»</span>}
+            {tags.length === 0 && <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{tUi('Немає тегів — створіть у вкладці «Теги»')}</span>}
           </div>
         </div>
 
         <div style={{ marginBottom: 12, display: 'flex', gap: 18 }}>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
             <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-            Активне
+            {tUi('Активне')}
           </label>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
             <input type="checkbox" checked={stopOnMatch} onChange={(e) => setStopOnMatch(e.target.checked)} />
-            Зупинити наступні правила після спрацювання
+            {tUi('Зупинити наступні правила після спрацювання')}
           </label>
         </div>
 
         {error && <div style={{ color: '#dc2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} style={btnSecondary}>Відміна</button>
+          <button type="button" onClick={onClose} style={btnSecondary}>{tUi('Відміна')}</button>
           <button type="submit" disabled={saving} style={btnPrimary}>
             {saving ? 'Збереження…' : initial ? 'Зберегти' : 'Створити'}
           </button>

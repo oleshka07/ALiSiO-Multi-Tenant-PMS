@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -92,6 +93,7 @@ function rangesOverlap(aIn: string, aOut: string, bIn: string, bOut: string): bo
 }
 
 export default function RoomAllocationModal({ open, onClose, onChanged, buildingCode = BUILDING_F_CODE }: RoomAllocationModalProps) {
+  const tUi = useT();
   const [units, setUnits] = useState<UnitRow[]>([]);
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -661,10 +663,10 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
             <Building2 size={17} strokeWidth={1.9} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="ram-title">Будова {activeBuilding} · Розселення</div>
-            <div className="ram-subtitle">{roomUnits.length} кімнат</div>
+            <div className="ram-title">{tUi('Будова')} {activeBuilding} {tUi('· Розселення')}</div>
+            <div className="ram-subtitle">{roomUnits.length} {tUi('кімнат')}</div>
           </div>
-          <button className="ram-close" onClick={onClose} aria-label="Закрити">
+          <button className="ram-close" onClick={onClose} aria-label={tUi('Закрити')}>
             <X size={17} strokeWidth={2} />
           </button>
         </div>
@@ -677,7 +679,7 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
               className={`ram-tab ${activeBuilding === code ? 'ram-tab-active' : ''}`}
               onClick={() => { setActiveBuilding(code); setDetailBooking(null); setSelectedId(null); }}
             >
-              Будова {code}
+              {tUi('Будова')} {code}
             </button>
           ))}
         </div>
@@ -690,7 +692,7 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
           <button
             className={`ram-dp-date ${viewDate === todayISO ? 'ram-dp-today' : ''}`}
             onClick={() => setViewDate(todayISO)}
-            title="Повернутись на сьогодні"
+            title={tUi('Повернутись на сьогодні')}
           >
             <span className="ram-dp-label">{viewDateLabel}</span>
             <span className="ram-dp-weekday">{viewDateWeekday}</span>
@@ -701,10 +703,10 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
         </div>
 
         <div className="ram-statusbar">
-          <div className="ram-sb-item"><span className="ram-sb-k">Зайнято</span><span className="ram-sb-v ram-c-occ">{occupied}/{roomUnits.length}</span></div>
-          <div className="ram-sb-item"><span className="ram-sb-k">Вільно</span><span className="ram-sb-v ram-c-free">{Math.max(0, roomUnits.length - occupied)}</span></div>
-          <div className="ram-sb-item"><span className="ram-sb-k">Заїзди</span><span className="ram-sb-v ram-c-arr">{arrivalsOnDate}</span></div>
-          <div className="ram-sb-item"><span className="ram-sb-k">Виїзди</span><span className="ram-sb-v ram-c-lea">{departuresOnDate}</span></div>
+          <div className="ram-sb-item"><span className="ram-sb-k">{tUi('Зайнято')}</span><span className="ram-sb-v ram-c-occ">{occupied}/{roomUnits.length}</span></div>
+          <div className="ram-sb-item"><span className="ram-sb-k">{tUi('Вільно')}</span><span className="ram-sb-v ram-c-free">{Math.max(0, roomUnits.length - occupied)}</span></div>
+          <div className="ram-sb-item"><span className="ram-sb-k">{tUi('Заїзди')}</span><span className="ram-sb-v ram-c-arr">{arrivalsOnDate}</span></div>
+          <div className="ram-sb-item"><span className="ram-sb-k">{tUi('Виїзди')}</span><span className="ram-sb-v ram-c-lea">{departuresOnDate}</span></div>
         </div>
 
         {/* Чорновик is always visible and is a drop target so admins can
@@ -713,7 +715,7 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
         {poolUnitId && (
           <div className="ram-staging" data-ram-dropzone={poolUnitId} onClick={() => handleZoneClick(poolUnitId)}>
             <div className="ram-staging-head">
-              <span className="ram-staging-lbl">Чорновик</span>
+              <span className="ram-staging-lbl">{tUi('Чорновик')}</span>
               <span className="ram-staging-cnt">{stagingBookings.length}</span>
               <span className="ram-staging-tip">{stagingBookings.length > 0 ? 'тягни в кімнату ↓' : 'тягни сюди гостя без кімнати'}</span>
             </div>
@@ -724,21 +726,21 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
                 ))}
               </div>
             ) : (
-              <div className="ram-staging-empty">Усі гості розподілені ✓</div>
+              <div className="ram-staging-empty">{tUi('Усі гості розподілені ✓')}</div>
             )}
           </div>
         )}
 
         <div className="ram-legend">
-          <div className="ram-lg"><span className="ram-sw ram-sw-free" /> Вільна</div>
-          <div className="ram-lg"><span className="ram-sw ram-sw-stay" /> Проживає</div>
-          <div className="ram-lg"><span className="ram-sw ram-sw-arr" /> Заїзд</div>
-          <div className="ram-lg"><span className="ram-sw ram-sw-lea" /> Виїзд</div>
+          <div className="ram-lg"><span className="ram-sw ram-sw-free" /> {tUi('Вільна')}</div>
+          <div className="ram-lg"><span className="ram-sw ram-sw-stay" /> {tUi('Проживає')}</div>
+          <div className="ram-lg"><span className="ram-sw ram-sw-arr" /> {tUi('Заїзд')}</div>
+          <div className="ram-lg"><span className="ram-sw ram-sw-lea" /> {tUi('Виїзд')}</div>
         </div>
 
         {loading && (
           <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>
-            Завантаження…
+            {tUi('Завантаження…')}
           </div>
         )}
         {error && !loading && (
@@ -749,7 +751,7 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
         {!loading && !error && (
           <div className="ram-floor" ref={floorRef} onPointerDown={onPointerDown}>
             <div className="ram-wing">
-              <div className="ram-wing-label">Ліве крило</div>
+              <div className="ram-wing-label">{tUi('Ліве крило')}</div>
               <div className="ram-wing-list">
                 {leftWing.map(u => (
                   <RoomCard key={u.id} unit={u} guest={bookingByUnit.get(u.id) || null} upcoming={upcomingByUnit.get(u.id) || null} stateOf={stateOf} onTapEmpty={handleZoneClick} formatShort={fmt} viewDate={viewDate} />
@@ -759,7 +761,7 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
             </div>
             <div className="ram-corridor" />
             <div className="ram-wing">
-              <div className="ram-wing-label">Праве крило</div>
+              <div className="ram-wing-label">{tUi('Праве крило')}</div>
               <div className="ram-wing-list">
                 {rightWing.map(u => (
                   <RoomCard key={u.id} unit={u} guest={bookingByUnit.get(u.id) || null} upcoming={upcomingByUnit.get(u.id) || null} stateOf={stateOf} onTapEmpty={handleZoneClick} formatShort={fmt} viewDate={viewDate} />
@@ -773,8 +775,8 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
         {selectedGuest && (
           <div className="ram-selbar">
             <Check size={14} strokeWidth={2.2} />
-            <span>{selectedGuest.first_name} {selectedGuest.last_name} · обери кімнату</span>
-            <button className="ram-cancel-sel" onClick={clearSelection}>Скасувати</button>
+            <span>{selectedGuest.first_name} {selectedGuest.last_name} {tUi('· обери кімнату')}</span>
+            <button className="ram-cancel-sel" onClick={clearSelection}>{tUi('Скасувати')}</button>
           </div>
         )}
 
@@ -806,6 +808,7 @@ function RoomCard({ unit, guest, upcoming, stateOf, onTapEmpty, formatShort: fmt
   formatShort: (d: string) => string;
   viewDate: string;
 }) {
+  const tUi = useT();
   if (!guest) {
     // Show upcoming arrival tag on free rooms
     const upTag = upcoming ? (
@@ -828,7 +831,7 @@ function RoomCard({ unit, guest, upcoming, stateOf, onTapEmpty, formatShort: fmt
           </span>
         </div>
         <div className="ram-room-meta" style={{ marginTop: 2 }}>
-          <span className="ram-room-free-text">вільна</span>
+          <span className="ram-room-free-text">{tUi('вільна')}</span>
           {upTag && <span className={`ram-tag ${upTagClass}`}>{upTag}</span>}
           {upcoming && <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{upcoming.first_name}</span>}
         </div>
@@ -879,6 +882,7 @@ function StagingChip({ booking, stateOf, formatShort: fmt, onInfo }: {
   formatShort: (d: string) => string;
   onInfo: (b: BookingRow) => void;
 }) {
+  const tUi = useT();
   const st = stateOf(booking);
   const tag = st === 'arrive-today' ? 'сьогодні'
     : st === 'arrive-tomorrow' ? 'завтра'
@@ -897,7 +901,7 @@ function StagingChip({ booking, stateOf, formatShort: fmt, onInfo }: {
         {tag && <span className={`ram-tag ${tagClass}`}>{tag}</span>}
         <span className="ram-chip-dates">{fmt(booking.check_in)}–{fmt(booking.check_out)}</span>
         {booking.source && <span className="ram-chip-src">{booking.source}</span>}
-        <button className="ram-chip-info" onClick={(e) => { e.stopPropagation(); onInfo(booking); }} title="Деталі"><Info size={12} strokeWidth={2} /></button>
+        <button className="ram-chip-info" onClick={(e) => { e.stopPropagation(); onInfo(booking); }} title={tUi('Деталі')}><Info size={12} strokeWidth={2} /></button>
       </div>
     </div>
   );
@@ -909,6 +913,7 @@ function StagingDetailPanel({ booking, onClose, onDelete, fmt }: {
   onDelete: (id: string) => void;
   fmt: (d: string) => string;
 }) {
+  const tUi = useT();
   const [confirming, setConfirming] = useState(false);
   const party = partyOf(booking);
   return (
@@ -922,31 +927,31 @@ function StagingDetailPanel({ booking, onClose, onDelete, fmt }: {
         </div>
         <div className="ram-detail-grid">
           <div className="ram-detail-row">
-            <span className="ram-detail-k">Дати</span>
+            <span className="ram-detail-k">{tUi('Дати')}</span>
             <span className="ram-detail-v">{fmt(booking.check_in)} — {fmt(booking.check_out)}{booking.nights ? ` (${booking.nights} ноч.)` : ''}</span>
           </div>
           <div className="ram-detail-row">
-            <span className="ram-detail-k">Гості</span>
-            <span className="ram-detail-v">{booking.adults || 0} дор.{booking.children ? ` + ${booking.children} діт.` : ''} ({party} ос.)</span>
+            <span className="ram-detail-k">{tUi('Гості')}</span>
+            <span className="ram-detail-v">{booking.adults || 0} {tUi('дор.')}{booking.children ? ` + ${booking.children} діт.` : ''} ({party} {tUi('ос.)')}</span>
           </div>
           {booking.unit_type_name && (
             <div className="ram-detail-row">
-              <span className="ram-detail-k">Тип</span>
+              <span className="ram-detail-k">{tUi('Тип')}</span>
               <span className="ram-detail-v">{booking.unit_type_name}</span>
             </div>
           )}
           {booking.total_price != null && booking.total_price > 0 && (
             <div className="ram-detail-row">
-              <span className="ram-detail-k">Ціна</span>
+              <span className="ram-detail-k">{tUi('Ціна')}</span>
               <span className="ram-detail-v">{booking.total_price} {booking.currency || 'CZK'}</span>
             </div>
           )}
           <div className="ram-detail-row">
-            <span className="ram-detail-k">Джерело</span>
+            <span className="ram-detail-k">{tUi('Джерело')}</span>
             <span className="ram-detail-v">{booking.source || '—'}</span>
           </div>
           <div className="ram-detail-row">
-            <span className="ram-detail-k">Статус</span>
+            <span className="ram-detail-k">{tUi('Статус')}</span>
             <span className="ram-detail-v">{booking.status}</span>
           </div>
           {booking.guest_email && (
@@ -957,25 +962,25 @@ function StagingDetailPanel({ booking, onClose, onDelete, fmt }: {
           )}
           {booking.guest_phone && (
             <div className="ram-detail-row">
-              <span className="ram-detail-k">Телефон</span>
+              <span className="ram-detail-k">{tUi('Телефон')}</span>
               <span className="ram-detail-v">{booking.guest_phone}</span>
             </div>
           )}
           {booking.notes && (
             <div className="ram-detail-row">
-              <span className="ram-detail-k">Нотатки</span>
+              <span className="ram-detail-k">{tUi('Нотатки')}</span>
               <span className="ram-detail-v">{booking.notes}</span>
             </div>
           )}
         </div>
         <div className="ram-detail-actions">
           {!confirming ? (
-            <button className="ram-detail-del" onClick={() => setConfirming(true)}>🗑 Видалити бронювання</button>
+            <button className="ram-detail-del" onClick={() => setConfirming(true)}>{tUi('🗑 Видалити бронювання')}</button>
           ) : (
             <div className="ram-detail-confirm">
-              <span>Видалити {booking.first_name}?</span>
-              <button className="ram-detail-del-yes" onClick={() => onDelete(booking.id)}>Так</button>
-              <button className="ram-detail-del-no" onClick={() => setConfirming(false)}>Ні</button>
+              <span>{tUi('Видалити')} {booking.first_name}?</span>
+              <button className="ram-detail-del-yes" onClick={() => onDelete(booking.id)}>{tUi('Так')}</button>
+              <button className="ram-detail-del-no" onClick={() => setConfirming(false)}>{tUi('Ні')}</button>
             </div>
           )}
         </div>

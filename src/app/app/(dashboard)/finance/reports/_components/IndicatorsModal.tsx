@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 import { X, TrendingUp, TrendingDown } from 'lucide-react';
 
@@ -24,6 +25,7 @@ function formatCZK(n: number): string {
 }
 
 export default function IndicatorsModal({ onClose }: Props) {
+  const t = useT();
   const [month, setMonth] = useState(() => new Date().toISOString().substring(0, 7));
   const [data, setData] = useState<Indicators | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,29 +42,29 @@ export default function IndicatorsModal({ onClose }: Props) {
     <div style={overlayStyle} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} style={modalStyle}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16, gap: 10 }}>
-          <h3 style={{ margin: 0, flex: 1 }}>📈 Фінансові показники</h3>
+          <h3 style={{ margin: 0, flex: 1 }}>{t('📈 Фінансові показники')}</h3>
           <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={input} />
           <button type="button" onClick={onClose} style={closeBtn}><X size={18} /></button>
         </div>
 
         {loading || !data ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Завантаження…')}</div>
         ) : (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <KpiCard label="Виручка" value={formatCZK(data.revenue)} color="#22c55e" />
+              <KpiCard label={t('Виручка')} value={formatCZK(data.revenue)} color="#22c55e" />
               <KpiCard label="EBITDA" value={formatCZK(data.ebitda)} color={data.ebitda >= 0 ? '#22c55e' : '#ef4444'} subvalue={data.margin_pct !== null ? `${data.margin_pct}% маржа` : undefined} />
-              <KpiCard label="Валовий прибуток" value={formatCZK(data.gross_profit)} subvalue={data.gross_margin_pct !== null ? `${data.gross_margin_pct}% GP margin` : undefined} />
-              <KpiCard label="Маржинальний дохід" value={formatCZK(data.marginal_income)} />
+              <KpiCard label={t('Валовий прибуток')} value={formatCZK(data.gross_profit)} subvalue={data.gross_margin_pct !== null ? `${data.gross_margin_pct}% GP margin` : undefined} />
+              <KpiCard label={t('Маржинальний дохід')} value={formatCZK(data.marginal_income)} />
             </div>
 
             <div style={{ marginTop: 16, padding: 14, background: 'var(--bg-secondary)', borderRadius: 8, fontSize: 13 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8 }}>Формули</div>
-              <Formula label="Валовий прибуток" formula="Виручка − COGS" result={formatCZK(data.gross_profit)} details={`${formatCZK(data.revenue)} − ${formatCZK(data.cogs)}`} />
-              <Formula label="Маржинальний дохід" formula="Валовий прибуток − Змінні" result={formatCZK(data.marginal_income)} details={`${formatCZK(data.gross_profit)} − ${formatCZK(data.variable)}`} />
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8 }}>{t('Формули')}</div>
+              <Formula label={t('Валовий прибуток')} formula="Виручка − COGS" result={formatCZK(data.gross_profit)} details={`${formatCZK(data.revenue)} − ${formatCZK(data.cogs)}`} />
+              <Formula label={t('Маржинальний дохід')} formula="Валовий прибуток − Змінні" result={formatCZK(data.marginal_income)} details={`${formatCZK(data.gross_profit)} − ${formatCZK(data.variable)}`} />
               <Formula label="EBITDA" formula="Маржинальний дохід − Операційні" result={formatCZK(data.ebitda)} details={`${formatCZK(data.marginal_income)} − ${formatCZK(data.operational)}`} />
               {data.margin_pct !== null && (
-                <Formula label="Маржа (EBITDA %)" formula="(EBITDA ÷ Виручка) × 100" result={`${data.margin_pct}%`} details="" />
+                <Formula label={t('Маржа (EBITDA %)')} formula="(EBITDA ÷ Виручка) × 100" result={`${data.margin_pct}%`} details="" />
               )}
             </div>
           </>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 import Link from 'next/link';
@@ -106,14 +107,15 @@ const settingsItems = [
 ];
 
 export default function SettingsPage() {
+  const t = useT();
   const onMenuClick = useMobileMenu();
   return (
     <>
-      <Header title="Налаштування" onMenuClick={onMenuClick} />
+      <Header title={t('Налаштування')} onMenuClick={onMenuClick} />
       <div className="app-content">
         <div className="page-header">
           <div>
-            <h2 className="page-title">Налаштування системи</h2>
+            <h2 className="page-title">{t('Налаштування системи')}</h2>
             <div className="page-subtitle">Керування об&apos;єктами, юнітами, користувачами та інтеграціями</div>
           </div>
         </div>
