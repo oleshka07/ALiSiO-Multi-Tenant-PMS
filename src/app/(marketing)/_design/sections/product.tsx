@@ -48,14 +48,6 @@ export default function SectionProduct() {
             </p>
             <div style={{ marginTop: "14px", fontSize: "13.5px", color: "var(--acc,#3DDCC0)" }}>Open module →</div>
           </Link>
-          <Link href="/modules/crm" data-route="m-crm" data-reveal={true} style={{ opacity: "0", transform: "translateY(18px)", transition: "all .6s ease .05s", border: "1px solid rgba(255,255,255,.1)", borderRadius: "18px", padding: "28px", background: "#0C1013", color: "#ECEAE5", display: "block" }} className="dcx-h6">
-            <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "11px", color: "#5F676E" }}>05</div>
-            <h3 style={{ fontSize: "20px", fontWeight: "600", marginTop: "8px", letterSpacing: "-.02em" }}>CRM, Inbox &amp; AI</h3>
-            <p style={{ marginTop: "10px", fontSize: "14.5px", lineHeight: "1.6", color: "#8B939C" }}>
-              Kanban sales pipeline, one inbox for Telegram, e-mail and website chat, knowledge base trained on your property, replies in any language.
-            </p>
-            <div style={{ marginTop: "14px", fontSize: "13.5px", color: "var(--acc,#3DDCC0)" }}>Open module →</div>
-          </Link>
           <Link href="/modules/compliance" data-route="m-compliance" data-reveal={true} style={{ opacity: "0", transform: "translateY(18px)", transition: "all .6s ease .1s", border: "1px solid rgba(255,255,255,.1)", borderRadius: "18px", padding: "28px", background: "#0C1013", color: "#ECEAE5", display: "block" }} className="dcx-h6">
             <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "11px", color: "#5F676E" }}>06</div>
             <h3 style={{ fontSize: "20px", fontWeight: "600", marginTop: "8px", letterSpacing: "-.02em" }}>Compliance &amp; Trust</h3>

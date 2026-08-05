@@ -76,7 +76,6 @@ export default function SiteHeaderMarkup() {
             <Link href="/modules/channels" data-route="m-channels" style={{ color: "#ECEAE5", fontSize: "17px", padding: "13px 12px", borderRadius: "10px", display: "block" }}>Channel manager</Link>
             <Link href="/modules/finance" data-route="m-finance" style={{ color: "#ECEAE5", fontSize: "17px", padding: "13px 12px", borderRadius: "10px", display: "block" }}>Finance &amp; P&amp;L</Link>
             <Link href="/modules/guest-portal" data-route="m-guest" style={{ color: "#ECEAE5", fontSize: "17px", padding: "13px 12px", borderRadius: "10px", display: "block" }}>Guest Portal</Link>
-            <Link href="/modules/crm" data-route="m-crm" style={{ color: "#ECEAE5", fontSize: "17px", padding: "13px 12px", borderRadius: "10px", display: "block" }}>CRM &amp; AI inbox</Link>
             <Link href="/modules/compliance" data-route="m-compliance" style={{ color: "#ECEAE5", fontSize: "17px", padding: "13px 12px", borderRadius: "10px", display: "block" }}>Compliance</Link>
             <Link href="/modules/housekeeping" data-route="m-ops" style={{ color: "#ECEAE5", fontSize: "17px", padding: "13px 12px", borderRadius: "10px", display: "block" }}>Housekeeping &amp; tasks</Link>
           </div>
@@ -112,10 +111,6 @@ export default function SiteHeaderMarkup() {
         <Link href="/modules/guest-portal" data-route="m-guest" style={{ color: "#ECEAE5", padding: "12px 14px", borderRadius: "11px", display: "block" }} className="dcx-h11">
           <span style={{ display: "block", fontWeight: "600", fontSize: "15px" }}>Guest Portal</span>
           <span style={{ display: "block", fontSize: "13px", color: "#7F888F", marginTop: "3px" }}>Online check-in, upsells, signature</span>
-        </Link>
-        <Link href="/modules/crm" data-route="m-crm" style={{ color: "#ECEAE5", padding: "12px 14px", borderRadius: "11px", display: "block" }} className="dcx-h11">
-          <span style={{ display: "block", fontWeight: "600", fontSize: "15px" }}>CRM &amp; AI Inbox</span>
-          <span style={{ display: "block", fontSize: "13px", color: "#7F888F", marginTop: "3px" }}>One thread, 12 languages</span>
         </Link>
         <Link href="/modules/compliance" data-route="m-compliance" style={{ color: "#ECEAE5", padding: "12px 14px", borderRadius: "11px", display: "block" }} className="dcx-h11">
           <span style={{ display: "block", fontWeight: "600", fontSize: "15px" }}>Compliance &amp; Trust</span>

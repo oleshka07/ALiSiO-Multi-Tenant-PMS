@@ -43,12 +43,6 @@
       "route": "/modules/guest-portal"
     },
     {
-      "id": "m-crm",
-      "file": "module-crm",
-      "component": "SectionModuleCrm",
-      "route": "/modules/crm"
-    },
-    {
       "id": "m-compliance",
       "file": "module-compliance",
       "component": "SectionModuleCompliance",

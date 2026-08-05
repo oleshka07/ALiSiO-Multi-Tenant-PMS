@@ -17,7 +17,6 @@ const PAGES = [
   '/modules/channels',
   '/modules/finance',
   '/modules/guest-portal',
-  '/modules/crm',
   '/modules/compliance',
   '/modules/housekeeping',
   '/solutions',
@@ -59,6 +58,42 @@ test.describe('public marketing site', () => {
         .toBe(0);
     });
   }
+
+  test('every internal link on the site resolves', async ({ page, request }) => {
+    // A page can be deleted with the product it advertised and leave its links
+    // behind: /modules/crm went with `refactor: remove the CRM` while the
+    // header dropdown, the footer and the product grid still pointed at it, so
+    // the live site 404'd from three places. A list of pages would not have
+    // caught that — only following what the site actually links to does.
+    test.setTimeout(120_000);
+
+    // Seventeen navigations, and the webfonts come from Google — this test is
+    // about which links resolve, so anything off-origin is refused rather than
+    // waited on.
+    await page.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, (route) => route.abort());
+
+    const seen = new Set<string>();
+    for (const path of PAGES) {
+      await page.goto(path, { waitUntil: 'domcontentloaded' });
+      const hrefs = await page.$$eval('a[href^="/"]', (els) =>
+        els.map((el) => el.getAttribute('href') ?? ''),
+      );
+      for (const href of hrefs) seen.add(href.split('#')[0]);
+    }
+
+    // A crawl that found nothing passes for the wrong reason. The site links
+    // to eighteen distinct internal paths today; the floor is well under that
+    // so adding or retiring a page does not fail this on arithmetic.
+    expect(seen.size, 'the crawl collected no links').toBeGreaterThan(12);
+
+    const broken: string[] = [];
+    for (const href of seen) {
+      if (!href || href.startsWith('/app')) continue; // the app is behind the gate
+      const res = await request.get(href, { maxRedirects: 0 });
+      if (res.status() >= 400) broken.push(`${href} → ${res.status()}`);
+    }
+    expect(broken, `dead links: ${broken.join(', ')}`).toEqual([]);
+  });
 
   test('the app is still behind the login gate', async ({ page }) => {
     await page.goto('/app/dashboard');

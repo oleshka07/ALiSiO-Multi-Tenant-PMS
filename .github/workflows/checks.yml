@@ -1,0 +1,113 @@
+# The checks this repository already had, run by a machine instead of by
+# whoever remembered.
+#
+# Every step here was previously a command someone typed. That worked until two
+# people were working at once: `provisionOrganization` lost its `await` when
+# core moved to the async seam, and the operator tool printed `undefined` for
+# the organization id for two days, because nobody happened to run it.
+#
+# Only gates that pass deterministically today are here. `npm run lint` is not
+# one of them — it reports ~5000 pre-existing findings, and a red build nobody
+# can fix is a red build everybody learns to ignore.
+name: checks
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  # A second push supersedes the first: no point finishing a run for a commit
+  # that is already history.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: types, self-checks, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: types
+        run: npx tsc --noEmit
+
+      - name: self-checks
+        # money rounding, invoice numbering, the async seam against a real
+        # Postgres, language resolution, promises used as values, SQL Postgres
+        # would refuse
+        run: npm run check
+
+      - name: translations
+        # fails on dead entries — a translation whose Ukrainian key no longer
+        # exists in the source, which inflates coverage and translates nothing
+        run: npm run check:i18n
+
+      - name: build
+        run: npm run build
+
+  live:
+    name: onboarding and tenant isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: a customer can be created
+        # The static checks cannot see this one: the missing await was a plain
+        # assignment whose result is read three lines later, and the import is
+        # dynamic. Running the tool is what catches it.
+        env:
+          ALISIO_DATA_DIR: ${{ runner.temp }}/data
+        run: |
+          node scripts/provision-org.mjs \
+            --name "CI Hotel" --slug ci-hotel --email owner@ci.test \
+            --password 'ci-password-1234' --language de | tee /tmp/provision.txt
+          grep -qE 'organization_id +org_' /tmp/provision.txt \
+            || { echo '::error::provisioning printed no organization id'; exit 1; }
+          grep -qE 'базова мова +de' /tmp/provision.txt \
+            || { echo '::error::the base language did not reach the organization'; exit 1; }
+
+      - name: start
+        env:
+          ALISIO_DATA_DIR: ${{ runner.temp }}/data
+          APP_SECRET_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+          PORT: 3000
+        run: |
+          npm start > /tmp/server.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://127.0.0.1:3000/app/login && exit 0
+            sleep 1
+          done
+          echo '::error::the server never came up'; cat /tmp/server.log; exit 1
+
+      - name: tenant isolation
+        # Two real organizations over the real API. Static analysis says a query
+        # is constrained; this says the second hotel cannot see the first.
+        env:
+          BASE_URL: http://127.0.0.1:3000
+          DB_PATH: ${{ runner.temp }}/data/alisio.db
+        run: node scripts/check-isolation.mjs
+
+      - name: public site
+        env:
+          APP_URL: http://127.0.0.1:3000
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test -c playwright.ci.config.ts --reporter=list
+
+      - name: server log on failure
+        if: failure()
+        run: cat /tmp/server.log || true
