@@ -1,3 +1,6 @@
+'use client';
+
+import { useT } from '@core/i18n/client';
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Search } from 'lucide-react';
 
@@ -36,6 +39,7 @@ export default function AdvancedFilterModal({
   initialCategoryIds, initialCounterpartyIds, initialProjectIds, initialTagIds, initialAccountIds, initialOpTypes,
   onApply
 }: Props) {
+  const t = useT();
   const [catIds, setCatIds] = useState(new Set(initialCategoryIds));
   const [cpIds, setCpIds] = useState(new Set(initialCounterpartyIds));
   const [projIds, setProjIds] = useState(new Set(initialProjectIds));
@@ -75,7 +79,7 @@ export default function AdvancedFilterModal({
         display: 'flex', flexDirection: 'column', gap: 20, maxHeight: '90vh'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: 20 }}>Фільтри</h2>
+          <h2 style={{ margin: 0, fontSize: 20 }}>{t('Фільтри')}</h2>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
             <X size={20} />
           </button>
@@ -86,15 +90,15 @@ export default function AdvancedFilterModal({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             {/* Types and Categories */}
             <Dropdown 
-              title="Типи платежів та категорії" 
-              placeholder="Всі типи платежів і категорій"
+              title={t('Типи платежів та категорії')} 
+              placeholder={t('Всі типи платежів і категорій')}
               selectedCount={opTypes.size + catIds.size}
             >
-              <div style={{ fontWeight: 600, margin: '8px 0 4px', fontSize: 13, color: 'var(--text-secondary)' }}>Типи</div>
-              <CheckboxItem label="Доходи" checked={opTypes.has('income')} onChange={(c) => toggleSet(setOpTypes, 'income', c)} />
-              <CheckboxItem label="Витрати" checked={opTypes.has('expense')} onChange={(c) => toggleSet(setOpTypes, 'expense', c)} />
-              <CheckboxItem label="Перекази" checked={opTypes.has('transfer')} onChange={(c) => toggleSet(setOpTypes, 'transfer', c)} />
-              <div style={{ fontWeight: 600, margin: '12px 0 4px', fontSize: 13, color: 'var(--text-secondary)' }}>Категорії</div>
+              <div style={{ fontWeight: 600, margin: '8px 0 4px', fontSize: 13, color: 'var(--text-secondary)' }}>{t('Типи')}</div>
+              <CheckboxItem label={t('Доходи')} checked={opTypes.has('income')} onChange={(c) => toggleSet(setOpTypes, 'income', c)} />
+              <CheckboxItem label={t('Витрати')} checked={opTypes.has('expense')} onChange={(c) => toggleSet(setOpTypes, 'expense', c)} />
+              <CheckboxItem label={t('Перекази')} checked={opTypes.has('transfer')} onChange={(c) => toggleSet(setOpTypes, 'transfer', c)} />
+              <div style={{ fontWeight: 600, margin: '12px 0 4px', fontSize: 13, color: 'var(--text-secondary)' }}>{t('Категорії')}</div>
               {categories.map(c => (
                 <CheckboxItem key={c.id} label={`${c.icon || ''} ${c.name}`} checked={catIds.has(c.id)} onChange={(chk) => toggleSet(setCatIds, c.id, chk)} searchVal={`${c.icon||''} ${c.name}`} />
               ))}
@@ -102,8 +106,8 @@ export default function AdvancedFilterModal({
 
             {/* Counterparties */}
             <Dropdown 
-              title="Контрагенти" 
-              placeholder="Всі контрагенти"
+              title={t('Контрагенти')} 
+              placeholder={t('Всі контрагенти')}
               selectedCount={cpIds.size}
             >
               {counterparties.map(c => (
@@ -113,8 +117,8 @@ export default function AdvancedFilterModal({
 
             {/* Projects */}
             <Dropdown 
-              title="Проєкт" 
-              placeholder="Всі проєкти"
+              title={t('Проєкт')} 
+              placeholder={t('Всі проєкти')}
               selectedCount={projIds.size}
             >
               {projects.map(c => (
@@ -124,8 +128,8 @@ export default function AdvancedFilterModal({
 
             {/* Accounts */}
             <Dropdown 
-              title="Рахунки" 
-              placeholder="Всі рахунки"
+              title={t('Рахунки')} 
+              placeholder={t('Всі рахунки')}
               selectedCount={accIds.size}
             >
               {accounts.map(c => (
@@ -135,8 +139,8 @@ export default function AdvancedFilterModal({
 
             {/* Tags */}
             <Dropdown 
-              title="Теги" 
-              placeholder="Всі теги"
+              title={t('Теги')} 
+              placeholder={t('Всі теги')}
               selectedCount={tagIds.size}
             >
               {tags.map(c => (
@@ -154,7 +158,7 @@ export default function AdvancedFilterModal({
             }}
             style={{ padding: '8px 16px', background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 600 }}
           >
-            Скинути всі
+            {t('Скинути всі')}
           </button>
           
           <button 
@@ -164,7 +168,7 @@ export default function AdvancedFilterModal({
             }}
             style={{ padding: '10px 24px', background: '#34d399', color: '#064e3b', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 15 }}
           >
-            Зберегти фільтр
+            {t('Зберегти фільтр')}
           </button>
         </div>
       </div>
@@ -181,6 +185,7 @@ function toggleSet(setter: React.Dispatch<React.SetStateAction<Set<string>>>, va
 }
 
 function Dropdown({ title, placeholder, selectedCount, children }: { title: string; placeholder: string; selectedCount: number; children: React.ReactNode }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   
@@ -223,7 +228,7 @@ function Dropdown({ title, placeholder, selectedCount, children }: { title: stri
             <input 
               autoFocus
               value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Пошук..." 
+              placeholder={t('Пошук...')} 
               style={{ border: 'none', background: 'transparent', outline: 'none', padding: '4px 8px', fontSize: 13, width: '100%' }}
             />
           </div>

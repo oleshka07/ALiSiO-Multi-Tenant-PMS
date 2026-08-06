@@ -116,7 +116,7 @@ export default function SettingsPage() {
         <div className="page-header">
           <div>
             <h2 className="page-title">{t('Налаштування системи')}</h2>
-            <div className="page-subtitle">Керування об&apos;єктами, юнітами, користувачами та інтеграціями</div>
+            <div className="page-subtitle">{t('Керування об\'єктами, юнітами, користувачами та інтеграціями')}</div>
           </div>
         </div>
 

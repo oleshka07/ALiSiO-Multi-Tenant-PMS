@@ -39,7 +39,7 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!name.trim()) { setError('Введіть назву'); return; }
+    if (!name.trim()) { setError(t('Введіть назву')); return; }
     setSaving(true);
     try {
       const values: ProjectFormValues = {
@@ -55,7 +55,7 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
       }
       await onSave(values);
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
       setSaving(false);
     }
   }

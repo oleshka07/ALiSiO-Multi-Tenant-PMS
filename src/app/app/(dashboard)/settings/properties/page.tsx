@@ -222,7 +222,7 @@ export default function SettingsPropertiesPage() {
   };
 
   const saveProperty = async () => {
-    if (!propForm.name) { alert("Назва обов'язкова"); return; }
+    if (!propForm.name) { alert(tUi('Назва обов\'язкова')); return; }
     setSaving(true);
     try {
       const slug = propForm.slug || propForm.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
@@ -231,7 +231,7 @@ export default function SettingsPropertiesPage() {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...propForm, slug }),
         });
-        showToast('Об\'єкт оновлено!');
+        showToast(tUi('Об\'єкт оновлено!'));
       } else {
         const res = await fetch('/api/properties', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -240,7 +240,7 @@ export default function SettingsPropertiesPage() {
         const data = await res.json();
         if (res.ok) {
           setSelectedProperty(data.id);
-          showToast('Об\'єкт створено!');
+          showToast(tUi('Об\'єкт створено!'));
         } else {
           alert(data.error || 'Помилка створення');
           setSaving(false);
@@ -250,7 +250,7 @@ export default function SettingsPropertiesPage() {
       setModal('none');
       fetchProperties();
       fetchDetails();
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(tUi('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -267,7 +267,7 @@ export default function SettingsPropertiesPage() {
   };
 
   const saveCategory = async () => {
-    if (!catForm.name) { alert("Назва обов'язкова"); return; }
+    if (!catForm.name) { alert(tUi('Назва обов\'язкова')); return; }
     setSaving(true);
     try {
       if (editId) {
@@ -275,18 +275,18 @@ export default function SettingsPropertiesPage() {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(catForm),
         });
-        showToast('Категорію оновлено!');
+        showToast(tUi('Категорію оновлено!'));
       } else {
         const res = await fetch('/api/categories', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...catForm, property_id: selectedProperty }),
         });
-        if (!res.ok) { const d = await res.json(); alert(d.error); setSaving(false); return; }
-        showToast('Категорію створено!');
+        if (!res.ok) { const d = await res.json(); alert(tUi(d.error)); setSaving(false); return; }
+        showToast(tUi('Категорію створено!'));
       }
       setModal('none');
       fetchDetails();
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(tUi('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -303,7 +303,7 @@ export default function SettingsPropertiesPage() {
   };
 
   const saveBuilding = async () => {
-    if (!bldForm.name || !bldForm.code) { alert("Назва і код обов'язкові"); return; }
+    if (!bldForm.name || !bldForm.code) { alert(tUi('Назва і код обов\'язкові')); return; }
     setSaving(true);
     try {
       if (editId) {
@@ -311,18 +311,18 @@ export default function SettingsPropertiesPage() {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(bldForm),
         });
-        showToast('Корпус оновлено!');
+        showToast(tUi('Корпус оновлено!'));
       } else {
         const res = await fetch('/api/buildings', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...bldForm, property_id: selectedProperty }),
         });
-        if (!res.ok) { const d = await res.json(); alert(d.error); setSaving(false); return; }
-        showToast('Корпус створено!');
+        if (!res.ok) { const d = await res.json(); alert(tUi(d.error)); setSaving(false); return; }
+        showToast(tUi('Корпус створено!'));
       }
       setModal('none');
       fetchDetails();
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(tUi('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -349,7 +349,7 @@ export default function SettingsPropertiesPage() {
   };
 
   const saveUnitType = async () => {
-    if (!utForm.name || !utForm.code) { alert("Назва і код обов'язкові"); return; }
+    if (!utForm.name || !utForm.code) { alert(tUi('Назва і код обов\'язкові')); return; }
     setSaving(true);
     try {
       if (editId) {
@@ -358,18 +358,18 @@ export default function SettingsPropertiesPage() {
           body: JSON.stringify(utForm),
         });
         if (!res.ok) { const d = await res.json(); alert(d.error || 'Помилка оновлення'); setSaving(false); return; }
-        showToast('Тип юніта оновлено!');
+        showToast(tUi('Тип юніта оновлено!'));
       } else {
         const res = await fetch('/api/unit-types', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...utForm, property_id: selectedProperty }),
         });
-        if (!res.ok) { const d = await res.json(); alert(d.error); setSaving(false); return; }
-        showToast('Тип юніта створено!');
+        if (!res.ok) { const d = await res.json(); alert(tUi(d.error)); setSaving(false); return; }
+        showToast(tUi('Тип юніта створено!'));
       }
       setModal('none');
       fetchDetails();
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(tUi('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -393,7 +393,7 @@ export default function SettingsPropertiesPage() {
   };
 
   const saveUnit = async () => {
-    if (!unitForm.name || !unitForm.code) { alert("Назва і код обов'язкові"); return; }
+    if (!unitForm.name || !unitForm.code) { alert(tUi('Назва і код обов\'язкові')); return; }
     setSaving(true);
     try {
       if (editId) {
@@ -402,18 +402,18 @@ export default function SettingsPropertiesPage() {
           body: JSON.stringify(unitForm),
         });
         if (!res.ok) { const d = await res.json(); alert(d.error || 'Помилка оновлення'); setSaving(false); return; }
-        showToast('Юніт оновлено!');
+        showToast(tUi('Юніт оновлено!'));
       } else {
         const res = await fetch('/api/units', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...unitForm, property_id: selectedProperty }),
         });
-        if (!res.ok) { const d = await res.json(); alert(d.error); setSaving(false); return; }
-        showToast('Юніт створено!');
+        if (!res.ok) { const d = await res.json(); alert(tUi(d.error)); setSaving(false); return; }
+        showToast(tUi('Юніт створено!'));
       }
       setModal('none');
       fetchDetails();
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(tUi('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -424,8 +424,8 @@ export default function SettingsPropertiesPage() {
   };
 
   const saveBulk = async () => {
-    if (!bulkForm.prefix) { alert("Префікс обов'язковий"); return; }
-    if (bulkForm.from > bulkForm.to) { alert('Від має бути менше За'); return; }
+    if (!bulkForm.prefix) { alert(tUi('Префікс обов\'язковий')); return; }
+    if (bulkForm.from > bulkForm.to) { alert(tUi('Від має бути менше За')); return; }
     setSaving(true);
     try {
       const res = await fetch('/api/units', {
@@ -440,7 +440,7 @@ export default function SettingsPropertiesPage() {
       } else {
         alert(data.error || 'Помилка');
       }
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(tUi('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -475,7 +475,7 @@ export default function SettingsPropertiesPage() {
         const d = await res.json();
         alert(d.error || 'Помилка видалення');
       }
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(tUi('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -502,9 +502,9 @@ export default function SettingsPropertiesPage() {
         {/* Page Header */}
         <div className="page-header">
           <div>
-            <h2 className="page-title">Об&apos;єкти розміщення</h2>
+            <h2 className="page-title">{tUi('Об\'єкти розміщення')}</h2>
             <div className="page-subtitle">
-              {properties.length} об&apos;єктів · Керування структурою
+              {properties.length} {tUi('об\'єктів · Керування структурою')}
             </div>
           </div>
           <div className="flex gap-2">
@@ -512,7 +512,7 @@ export default function SettingsPropertiesPage() {
               <RefreshCw size={16} />
             </button>
             <button className="btn btn-primary" onClick={() => openPropertyModal()}>
-              <Plus size={16} /> Додати об&apos;єкт
+              <Plus size={16} /> {tUi('Додати об\'єкт')}
             </button>
           </div>
         </div>
@@ -521,7 +521,7 @@ export default function SettingsPropertiesPage() {
         {properties.length > 1 && (
           <div className="card" style={{ marginBottom: 16 }}>
             <div className="flex gap-3 items-center">
-              <label className="form-label" style={{ margin: 0, whiteSpace: 'nowrap' }}>Об&apos;єкт:</label>
+              <label className="form-label" style={{ margin: 0, whiteSpace: 'nowrap' }}>{tUi('Об\'єкт:')}</label>
               <select className="form-select" style={{ width: 300 }} value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)}>
                 {properties.map(p => (
                   <option key={p.id} value={p.id}>{p.name}</option>
@@ -725,7 +725,7 @@ export default function SettingsPropertiesPage() {
 
             {tree.length === 0 && !loading && (
               <div style={{ textAlign: 'center', padding: 48, color: 'var(--text-tertiary)' }}>
-                Немає категорій. Натисніть &quot;+ Категорія&quot; щоб почати.
+                {tUi('Немає категорій. Натисніть "+ Категорія" щоб почати.')}
               </div>
             )}
           </div>
@@ -815,7 +815,7 @@ export default function SettingsPropertiesPage() {
                 <option value="glamping">Glamping</option>
                 <option value="resort">Resort</option>
                 <option value="camping">Camping</option>
-                <option value="facility">Об&apos;єкт інфраструктури</option>
+                <option value="facility">{tUi('Об\'єкт інфраструктури')}</option>
                 <option value="area">{tUi('Зона / Територія')}</option>
                 <option value="zone">{tUi('Ділянка')}</option>
               </select>
@@ -1044,7 +1044,7 @@ export default function SettingsPropertiesPage() {
             {tUi('Ви впевнені, що хочете видалити')} <strong style={{ color: 'var(--text-primary)' }}>{deleteTarget?.name}</strong>?
           </p>
           <p style={{ color: 'var(--accent-danger)', fontSize: 13, marginTop: 8 }}>
-            ⚠️ Ця дія може бути незворотною. Всі пов&apos;язані дані можуть бути видалені.
+            {tUi('⚠️ Ця дія може бути незворотною. Всі пов\'язані дані можуть бути видалені.')}
           </p>
         </Modal>
       </div>

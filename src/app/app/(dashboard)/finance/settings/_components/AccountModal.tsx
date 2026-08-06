@@ -54,11 +54,11 @@ export default function AccountModal({ initial, onClose, onSave }: Props) {
     e.preventDefault();
     setError(null);
     if (!name.trim()) {
-      setError('Введіть назву');
+      setError(t('Введіть назву'));
       return;
     }
     if (type === 'card' && (creditLimit === '' || Number(creditLimit) < 0)) {
-      setError('Для кредитної картки вкажіть ліміт ≥ 0');
+      setError(t('Для кредитної картки вкажіть ліміт ≥ 0'));
       return;
     }
     setSaving(true);
@@ -74,7 +74,7 @@ export default function AccountModal({ initial, onClose, onSave }: Props) {
         sort_order: Number(sortOrder) || 0,
       });
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
       setSaving(false);
     }
   }

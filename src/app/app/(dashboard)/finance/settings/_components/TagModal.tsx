@@ -44,13 +44,13 @@ export default function TagModal({ initial, onClose, onSave }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!name.trim()) { setError('Введіть назву'); return; }
+    if (!name.trim()) { setError(t('Введіть назву')); return; }
 
     setSaving(true);
     try {
       await onSave({ name: name.trim(), color, sort_order: Number(sortOrder) || 0 });
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
       setSaving(false);
     }
   }

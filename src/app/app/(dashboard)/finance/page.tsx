@@ -358,7 +358,7 @@ export default function FinanceOverviewPage() {
           <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600 }}>{t('📋 Останні транзакції')}</h3>
           {data.recentTransactions.length === 0 ? (
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', textAlign: 'center', padding: '2rem' }}>
-              Ще немає транзакцій. Додайте першу витрату через розділ &quot;Витрати&quot;.
+              {t('Ще немає транзакцій. Додайте першу витрату через розділ "Витрати".')}
             </p>
           ) : (
             <table className="data-table" style={{ fontSize: '0.875rem' }}>

@@ -78,7 +78,7 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
   };
 
   const handleCreate = async () => {
-    if (!form.code.trim() || !form.offer_amount) { alert('Введіть код та знижку'); return; }
+    if (!form.code.trim() || !form.offer_amount) { alert(t('Введіть код та знижку')); return; }
     setCreating(true);
     try {
       const isEdit = !!editId;
@@ -111,12 +111,12 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
       setForm(emptyForm());
       setEditId(null);
       fetchCodes();
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(t('Помилка мережі')); }
     setCreating(false);
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Видалити промокод?')) return;
+    if (!confirm(t('Видалити промокод?'))) return;
     await fetch(`/api/coupons/${id}`, { method: 'DELETE' });
     fetchCodes();
   };

@@ -285,7 +285,7 @@ export default function SettingsUnitsPage() {
 
   const handleSaveUnit = async () => {
     if (!unitForm.name || !unitForm.code) {
-      setError('Назва і код обов\'язкові');
+      setError(tUi('Назва і код обов\'язкові'));
       return;
     }
     setSaving(true);
@@ -395,7 +395,7 @@ export default function SettingsUnitsPage() {
 
   const handleSaveType = async () => {
     if (!typeForm.name || !typeForm.code) {
-      setError('Назва і код обов\'язкові');
+      setError(tUi('Назва і код обов\'язкові'));
       return;
     }
     setSaving(true);

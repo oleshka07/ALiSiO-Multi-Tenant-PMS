@@ -32,7 +32,7 @@ export default function LoginPage() {
         setError(data.error || 'Помилка входу');
       }
     } catch {
-      setError('Помилка мережі');
+      setError(t('Помилка мережі'));
     } finally {
       setLoading(false);
     }

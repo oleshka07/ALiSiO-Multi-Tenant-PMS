@@ -154,7 +154,7 @@ function BulkEditModal({ onSave, onClose }: {
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
-    if (!dateFrom || !dateTo) { alert('Вкажіть діапазон дат'); return; }
+    if (!dateFrom || !dateTo) { alert(t('Вкажіть діапазон дат')); return; }
     setSaving(true);
     await onSave({
       dateFrom, dateTo, applyTo,
@@ -429,7 +429,7 @@ export default function PricingPage() {
         }),
       });
       if (res.ok) {
-        showToast('Ціну збережено');
+        showToast(t('Ціну збережено'));
         setEditDay(null);
         fetchPrices();
       }
@@ -708,7 +708,7 @@ function WidgetPriceListSection() {
       if (res.ok) {
         setItems(prev => prev.map(i => i.id === id ? { ...i, ...editValues } as PriceListItem : i));
         setEditing(null);
-        setToast('Ціну збережено'); setTimeout(() => setToast(''), 2000);
+        setToast(t('Ціну збережено')); setTimeout(() => setToast(''), 2000);
       }
     } catch { /* */ }
     setSaving(false);

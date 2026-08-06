@@ -225,13 +225,13 @@ export default function OperationsPage() {
   async function handleDelete(op: Operation) {
     if (!confirm(`Видалити операцію на ${formatMoney(op.amount, op.currency)}?`)) return;
     const res = await fetch(`/api/finance/operations/${op.id}`, { method: 'DELETE' });
-    if (!res.ok) { alert('Не вдалося видалити'); return; }
+    if (!res.ok) { alert(tUi('Не вдалося видалити')); return; }
     fetchOps(); fetchAccounts();
   }
 
   async function handleDuplicate(op: Operation) {
     const res = await fetch(`/api/finance/operations/${op.id}/duplicate`, { method: 'POST' });
-    if (!res.ok) { alert('Не вдалося дублювати'); return; }
+    if (!res.ok) { alert(tUi('Не вдалося дублювати')); return; }
     fetchOps(); fetchAccounts();
   }
 

@@ -63,7 +63,7 @@ export default function PlanFactPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    if (!res.ok) { alert('Не вдалося зберегти'); return; }
+    if (!res.ok) { alert(tUi('Не вдалося зберегти')); return; }
     setEditing(null);
     fetchData();
   }

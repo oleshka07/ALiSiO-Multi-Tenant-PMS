@@ -237,7 +237,7 @@ export default function UsersPage() {
       setModal(null);
       fetchUsers();
     } catch {
-      setError('Помилка мережі');
+      setError(t('Помилка мережі'));
     } finally {
       setSaving(false);
     }
@@ -247,7 +247,7 @@ export default function UsersPage() {
   async function handleResetPassword(user: UserData) {
     const pwd = window.prompt(`Новий пароль для «${user.full_name}» (мінімум 6 символів):`);
     if (pwd === null) return; // cancelled
-    if (pwd.length < 6) { alert('Пароль замалий — мінімум 6 символів.'); return; }
+    if (pwd.length < 6) { alert(t('Пароль замалий — мінімум 6 символів.')); return; }
     try {
       const res = await fetch(`/api/users/${user.id}`, {
         method: 'PUT',
@@ -258,7 +258,7 @@ export default function UsersPage() {
       if (!res.ok) { alert(data.error || 'Не вдалося скинути пароль'); return; }
       alert(`✅ Пароль для «${user.full_name}» оновлено.`);
     } catch {
-      alert('Помилка мережі');
+      alert(t('Помилка мережі'));
     }
   }
 
@@ -456,7 +456,7 @@ export default function UsersPage() {
               )}
               <div className="form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label className="form-label">Повне ім&apos;я *</label>
+                  <label className="form-label">{t('Повне ім\'я *')}</label>
                   <input className="form-input" value={form.full_name} onChange={e => setForm(prev => ({ ...prev, full_name: e.target.value }))} placeholder={t('Ім\'я Прізвище')} />
                 </div>
                 <div className="form-group">

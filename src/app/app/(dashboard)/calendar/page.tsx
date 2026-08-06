@@ -544,7 +544,7 @@ function CalendarDesktop() {
         if (viewBooking && viewBooking.id === id) {
           setViewBooking({ ...viewBooking, status: newStatus });
         }
-        showToast('Статус оновлено');
+        showToast(tUi('Статус оновлено'));
       }
     } catch (e) { console.error(e); }
   };
@@ -647,7 +647,7 @@ function CalendarDesktop() {
                     }
                     if (data.error) msg = `❌ ${data.error}`;
                     showToast(msg);
-                  } catch { showToast('❌ Помилка синхронізації'); }
+                  } catch { showToast(tUi('❌ Помилка синхронізації')); }
                   setSyncing(false);
                 }}
                 disabled={syncing}
@@ -1107,7 +1107,7 @@ function CalendarDesktop() {
                 bookingSources={bookingSources}
                 onSaved={() => {
                   setEditBooking(null);
-                  showToast('Бронювання оновлено!');
+                  showToast(tUi('Бронювання оновлено!'));
                   fetchData();
                 }}
                 onCancel={() => setEditBooking(null)}
@@ -1136,7 +1136,7 @@ function CalendarDesktop() {
                   setShowNewBooking(false);
                   setNewBookingPrefill(null);
                   setRangeStart(null);
-                  showToast('Бронювання створено!');
+                  showToast(tUi('Бронювання створено!'));
                   fetchData();
                 }}
                 onCancel={() => { setShowNewBooking(false); setRangeStart(null); setNewBookingPrefill(null); }}
@@ -1150,7 +1150,7 @@ function CalendarDesktop() {
       <GroupBookingModal
         open={showGroupModal}
         onClose={() => setShowGroupModal(false)}
-        onCreated={() => { fetchData(); showToast('Групове бронювання створено!'); }}
+        onCreated={() => { fetchData(); showToast(tUi('Групове бронювання створено!')); }}
         bookingSources={bookingSources}
       />
 
@@ -1277,7 +1277,7 @@ function ExportReportModal({ onClose, timelineStart, timelineEnd }: {
       URL.revokeObjectURL(a.href);
       onClose();
     } catch (err) {
-      alert('Помилка при скачуванні звіту');
+      alert(tUi('Помилка при скачуванні звіту'));
       console.error(err);
     }
     setDownloading(false);
@@ -1383,7 +1383,7 @@ function ExportReportModal({ onClose, timelineStart, timelineEnd }: {
           borderRadius: 8, padding: '10px 12px', marginBottom: 16, fontSize: 11,
           color: 'var(--text-secondary)', lineHeight: 1.5,
         }}>
-          📊 Звіт містить: ім&apos;я гостя, юніт, дати заїзду/виїзду, кількість ночей, канал бронювання, вартість, спосіб оплати, комісію, депозит, харчування, контакти та примітки.
+          {tUi('📊 Звіт містить: ім\'я гостя, юніт, дати заїзду/виїзду, кількість ночей, канал бронювання, вартість, спосіб оплати, комісію, депозит, харчування, контакти та примітки.')}
         </div>
 
         {/* Actions */}

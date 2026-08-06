@@ -360,7 +360,7 @@ function TaskDrawer({
           alert(err.error || "Помилка завантаження файлу");
         }
       } catch {
-        alert("Помилка з'єднання при завантаженні");
+        alert(tUi('Помилка з\'єднання при завантаженні'));
       }
     }
     setUploading(false);
@@ -377,10 +377,10 @@ function TaskDrawer({
       if (res.ok) {
         setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
       } else {
-        alert("Не вдалося видалити файл");
+        alert(tUi('Не вдалося видалити файл'));
       }
     } catch {
-      alert("Помилка з'єднання");
+      alert(tUi('Помилка з\'єднання'));
     }
   };
 
@@ -413,13 +413,13 @@ function TaskDrawer({
       }
     } catch (e) {
       console.error("Save error:", e);
-      alert("Помилка з'єднання при збереженні");
+      alert(tUi('Помилка з\'єднання при збереженні'));
     }
     setSaving(false);
   };
 
   const handleDelete = async () => {
-    if (!confirm("Видалити задачу?")) return;
+    if (!confirm(tUi('Видалити задачу?'))) return;
     setDeleting(true);
     try {
       await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
@@ -630,14 +630,14 @@ function TaskDrawer({
 
             <div className="task-drawer-field">
               <div className="task-drawer-field-label">
-                <Building2 size={14} /> Об&apos;єкт
+                <Building2 size={14} /> {tUi('Об\'єкт')}
               </div>
               <div className="task-drawer-field-value">
                 <select
                   value={form.property_id}
                   onChange={(e) => autoSave({ property_id: e.target.value })}
                 >
-                  <option value="">Не прив&apos;язано</option>
+                  <option value="">{tUi('Не прив\'язано')}</option>
                   {properties.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
@@ -2377,7 +2377,7 @@ function TasksDesktop() {
                           style={{ width: 140 }}
                           onClick={() => toggleSort("property")}
                         >
-                          Об&apos;єкт <SortIcon col="property" />
+                          {tUi('Об\'єкт')} <SortIcon col="property" />
                         </th>
                         <th
                           className="tasks-table-th-sort"

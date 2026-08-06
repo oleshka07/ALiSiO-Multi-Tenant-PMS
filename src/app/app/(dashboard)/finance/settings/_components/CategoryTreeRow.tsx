@@ -92,7 +92,7 @@ export default function CategoryTreeRow({
     try { data = JSON.parse(payload); } catch { setDragOver(null); return; }
     if (data.id === category.id) { setDragOver(null); return; }
     if (data.op_type !== category.op_type) {
-      alert('Не можна переміщувати між різними типами (Дохід/Витрата/Переказ).');
+      alert(t('Не можна переміщувати між різними типами (Дохід/Витрата/Переказ).'));
       setDragOver(null);
       return;
     }

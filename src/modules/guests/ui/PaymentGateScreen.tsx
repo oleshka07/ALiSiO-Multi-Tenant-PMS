@@ -1,5 +1,6 @@
 'use client';
-import { useState } from 'react';
+
+import { useT } from '@core/i18n/client';import { useState } from 'react';
 import type { Translations, Lang } from '@/app/guest/[token]/translations';
 
 const ALL_LANGS: Lang[] = ['en', 'de', 'cs', 'uk', 'pl', 'nl', 'fr'];
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export function PaymentGateScreen({ data, t, lang, setLang, token }: Props) {
+  const tUi = useT();
   const r = data.reservation;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +50,7 @@ export function PaymentGateScreen({ data, t, lang, setLang, token }: Props) {
         window.location.href = result.session_url;
       }
     } catch (e: any) {
-      setError(e.message);
+      setError(tUi(e.message));
       setLoading(false);
     }
   };

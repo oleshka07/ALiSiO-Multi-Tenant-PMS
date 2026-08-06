@@ -81,7 +81,7 @@ export default function CategoryModal({ initial, parent, defaultOpType, onClose,
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!name.trim()) { setError('Введіть назву'); return; }
+    if (!name.trim()) { setError(t('Введіть назву')); return; }
 
     setSaving(true);
     try {
@@ -105,7 +105,7 @@ export default function CategoryModal({ initial, parent, defaultOpType, onClose,
       }
       await onSave(values);
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
       setSaving(false);
     }
   }

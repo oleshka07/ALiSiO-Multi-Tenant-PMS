@@ -69,13 +69,13 @@ export default function GeneralSettingsPage() {
     try {
       const res = await fetch('/api/settings/general');
       const data = await res.json();
-      if (!res.ok) { showToast(`❌ ${data.error}`); return; }
+      if (!res.ok) { showToast(`❌ ${t(data.error)}`); return; }
       setOrg(data.organization);
       setProperty(data.property);
       setCurrencies(data.currencies ?? []);
       setLanguages(data.languages ?? []);
     } catch (e: any) {
-      showToast(`❌ ${e.message}`);
+      showToast(`❌ ${t(e.message)}`);
     } finally {
       setLoading(false);
     }
@@ -93,12 +93,12 @@ export default function GeneralSettingsPage() {
         body: JSON.stringify({ organization: org, property }),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(`❌ ${data.error}`); return; }
+      if (!res.ok) { showToast(`❌ ${t(data.error)}`); return; }
       setOrg(data.organization);
       setProperty(data.property);
-      showToast('✅ Збережено');
+      showToast(t('✅ Збережено'));
     } catch (e: any) {
-      showToast(`❌ ${e.message}`);
+      showToast(`❌ ${t(e.message)}`);
     } finally {
       setSaving(false);
     }

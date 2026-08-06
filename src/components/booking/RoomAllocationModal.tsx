@@ -336,7 +336,7 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
     // Safety: only allow deleting draft/pool bookings
     const bk = bookings.find(b => b.id === bookingId);
     if (bk && bk.status !== 'draft' && bk.unit_id !== poolUnitId) {
-      showToast('Можна видалити тільки чорновикові бронювання', 'err');
+      showToast(tUi('Можна видалити тільки чорновикові бронювання'), 'err');
       return;
     }
     try {
@@ -345,7 +345,7 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
         const d = await resp.json().catch(() => ({}));
         throw new Error(d.error || 'Не вдалося видалити');
       }
-      showToast('Бронювання видалено');
+      showToast(tUi('Бронювання видалено'));
       setDetailBooking(null);
       await fetchData();
       onChanged?.();

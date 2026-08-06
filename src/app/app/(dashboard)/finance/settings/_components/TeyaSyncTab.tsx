@@ -107,7 +107,7 @@ export default function TeyaSyncTab() {
         fetchStatus();
       }
     } catch (e: any) {
-      setError(e.message);
+      setError(t(e.message));
     }
     setRunning(false);
   }

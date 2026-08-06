@@ -110,7 +110,7 @@ export function PackageOffersTab({ siteId, siteCurrency = 'CZK', onCountChange }
   };
 
   const handleCreate = async () => {
-    if (!form.name || !form.price || !form.coupon_code) { alert('Вкажіть назву, ціну та промокод'); return; }
+    if (!form.name || !form.price || !form.coupon_code) { alert(t('Вкажіть назву, ціну та промокод')); return; }
     setCreating(true);
     try {
       const isEdit = !!editId;
@@ -130,14 +130,14 @@ export function PackageOffersTab({ siteId, siteCurrency = 'CZK', onCountChange }
       });
       const d = await res.json();
       if (res.ok) { showToast(isEdit ? 'Оновлено ✓' : 'Пакет створено ✓'); setShowCreate(false); setForm({ ...emptyBundle(), currency: siteCurrency }); setEditId(null); load(); }
-      else alert(d.error);
+      else alert(t(d.error));
     } finally { setCreating(false); }
   };
 
   const handleDelete = async (b: Bundle) => {
     if (!confirm(`Архівувати пакет «${b.name}»?`)) return;
     await fetch(`/api/package-offers/${b.id}`, { method: 'DELETE' });
-    showToast('Архівовано'); load();
+    showToast(t('Архівовано')); load();
   };
 
   const getServiceName = (id: string) => services.find(s => s.id === id)?.name || id;
@@ -208,7 +208,7 @@ export function PackageOffersTab({ siteId, siteCurrency = 'CZK', onCountChange }
                               onClick={(e) => {
                                 e.stopPropagation();
                                 navigator.clipboard.writeText(b.coupon_code || '');
-                                showToast('Код скопійовано!');
+                                showToast(t('Код скопійовано!'));
                               }}
                               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 2px', display: 'inline-flex', alignItems: 'center' }}
                               title={t('Скопіювати код')}
@@ -531,7 +531,7 @@ export function PackageOffersTab({ siteId, siteCurrency = 'CZK', onCountChange }
               const widgetUrl = `${window.location.origin}/w/${siteId}?bundle=${showCodeModal.coupon_code}${specificUnitId}${langParam}`;
               const iframeCode = `<iframe src="${widgetUrl}" width="100%" height="700px" frameborder="0" style="border: none; border-radius: 12px; overflow: hidden; min-height: 700px;"></iframe>`;
               if (navigator.clipboard) {
-                navigator.clipboard.writeText(iframeCode).then(() => { setShowCodeModal(null); showToast('Код віджета скопійовано!'); }).catch(() => alert('Не вдалося скопіювати.'));
+                navigator.clipboard.writeText(iframeCode).then(() => { setShowCodeModal(null); showToast(t('Код віджета скопійовано!')); }).catch(() => alert(t('Не вдалося скопіювати.')));
               } else {
                 const ta = document.createElement('textarea');
                 ta.value = iframeCode;
@@ -540,7 +540,7 @@ export function PackageOffersTab({ siteId, siteCurrency = 'CZK', onCountChange }
                 document.execCommand('copy');
                 document.body.removeChild(ta);
                 setShowCodeModal(null);
-                showToast('Код віджета скопійовано!');
+                showToast(t('Код віджета скопійовано!'));
               }
             }}>
               {t('Копіювати код')}

@@ -78,7 +78,11 @@ assert.strictEqual(await organizationLanguage('hotel_de', sql), 'de');
 assert.strictEqual(await organizationLanguage('no_such_hotel', sql), DEFAULT_LANGUAGE);
 console.log('  ok  a hotel has a base language, and a missing one does not throw');
 
-assert.strictEqual(await userLanguage('anna', sql), 'de', 'no personal choice means the hotel decides');
+assert.strictEqual(
+  await userLanguage('anna', sql),
+  'de',
+  'no personal choice means the hotel decides',
+);
 assert.strictEqual(await userLanguage('petro', sql), 'uk', 'a personal choice wins over the hotel');
 console.log('  ok  the person outranks the hotel, and silence means the hotel');
 

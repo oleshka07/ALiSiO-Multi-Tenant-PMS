@@ -283,7 +283,7 @@ export default function ChannelManagerPage() {
       const method = editChannel ? 'PUT' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(icalForm) });
       const data = await res.json();
-      if (!res.ok) { showToast(`❌ ${data.error}`); }
+      if (!res.ok) { showToast(`❌ ${tUi(data.error)}`); }
       else { showToast(editChannel ? '✅ Канал оновлено' : '✅ Канал створено'); setShowICalModal(false); fetchData(); }
     } catch (e) { console.error(e); }
     setSaving(false);
@@ -293,7 +293,7 @@ export default function ChannelManagerPage() {
     if (!confirm(`Видалити канал "${ch.target_name}"?`)) return;
     try {
       const res = await fetch(`/api/ical-sync/channels/${ch.id}`, { method: 'DELETE' });
-      if (res.ok) { showToast('✅ Канал видалено'); fetchData(); }
+      if (res.ok) { showToast(tUi('✅ Канал видалено')); fetchData(); }
     } catch (e) { console.error(e); }
   };
 
@@ -340,8 +340,8 @@ export default function ChannelManagerPage() {
         body: JSON.stringify(connForm),
       });
       const data = await res.json();
-      if (res.ok) { showToast('✅ З\'єднання створено'); setShowConnModal(false); fetchData(); }
-      else { showToast(`❌ ${data.error}`); }
+      if (res.ok) { showToast(tUi('✅ З\'єднання створено')); setShowConnModal(false); fetchData(); }
+      else { showToast(`❌ ${tUi(data.error)}`); }
     } catch (e) { console.error(e); }
     setSaving(false);
   };
@@ -355,8 +355,8 @@ export default function ChannelManagerPage() {
         body: JSON.stringify(credForm),
       });
       const data = await res.json();
-      if (res.ok) { showToast('✅ Credentials збережено'); setShowCredModal(false); fetchData(); }
-      else { showToast(`❌ ${data.error}`); }
+      if (res.ok) { showToast(tUi('✅ Credentials збережено')); setShowCredModal(false); fetchData(); }
+      else { showToast(`❌ ${tUi(data.error)}`); }
     } catch (e) { console.error(e); }
     setSaving(false);
   };
@@ -376,7 +376,7 @@ export default function ChannelManagerPage() {
     if (!confirm(`Видалити з'єднання ${CHANNEL_INFO[conn.channel]?.name || conn.channel}?`)) return;
     try {
       const res = await fetch(`/api/channels/connections/${conn.id}`, { method: 'DELETE' });
-      if (res.ok) { showToast('✅ З\'єднання видалено'); fetchData(); }
+      if (res.ok) { showToast(tUi('✅ З\'єднання видалено')); fetchData(); }
     } catch (e) { console.error(e); }
   };
 
@@ -390,9 +390,9 @@ export default function ChannelManagerPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        showToast('✅ Mapping збережено');
+        showToast(tUi('✅ Mapping збережено'));
         fetchMappings(mappingForm.connection_id);
-      } else { showToast(`❌ ${data.error}`); }
+      } else { showToast(`❌ ${tUi(data.error)}`); }
     } catch (e) { console.error(e); }
     setSaving(false);
   };
@@ -401,7 +401,7 @@ export default function ChannelManagerPage() {
     try {
       const res = await fetch(`/api/channels/mapping?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
-        showToast('✅ Mapping видалено');
+        showToast(tUi('✅ Mapping видалено'));
         if (selectedConn) fetchMappings(selectedConn.id);
       }
     } catch (e) { console.error(e); }
@@ -492,7 +492,7 @@ export default function ChannelManagerPage() {
             {/* Action buttons */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
               <button className="btn btn-primary" onClick={() => { setConnForm({ channel: 'booking_com', external_property_id: '', connection_types: ['RESERVATIONS', 'AVAILABILITY'] }); setShowConnModal(true); }}>
-                <Plus size={16} /> Нове з&apos;єднання
+                <Plus size={16} /> {tUi('Нове з\'єднання')}
               </button>
               <button className="btn btn-secondary" onClick={() => { setCredForm({ channel: 'booking_com', environment: 'test', client_id: '', client_secret: '' }); setShowCredModal(true); }}>
                 <Shield size={16} /> Credentials
@@ -522,10 +522,10 @@ export default function ChannelManagerPage() {
               <div className="card" style={{ textAlign: 'center', padding: '48px 24px' }}>
                 <div style={{ fontSize: 48, marginBottom: 16 }}>🔌</div>
                 <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: 'var(--text-primary)' }}>
-                  Немає API з&apos;єднань
+                  {tUi('Немає API з\'єднань')}
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginBottom: 20, maxWidth: 400, margin: '0 auto 20px' }}>
-                  Додайте з&apos;єднання з Booking.com для real-time синхронізації бронювань та цін через їх Connectivity API
+                  {tUi('Додайте з\'єднання з Booking.com для real-time синхронізації бронювань та цін через їх Connectivity API')}
                 </div>
                 <button className="btn btn-primary" onClick={() => { setConnForm({ channel: 'booking_com', external_property_id: '', connection_types: ['RESERVATIONS', 'AVAILABILITY'] }); setShowConnModal(true); }}>
                   <Plus size={16} /> {tUi('Додати Booking.com')}
@@ -790,11 +790,11 @@ export default function ChannelManagerPage() {
             <label className="form-label">External Property ID</label>
             <input className="form-input" placeholder={tUi('Наприклад: 12345678')} value={connForm.external_property_id} onChange={e => setConnForm(p => ({ ...p, external_property_id: e.target.value }))} />
             <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
-              ID вашого об&apos;єкту на платформі OTA (можна додати пізніше)
+              {tUi('ID вашого об\'єкту на платформі OTA (можна додати пізніше)')}
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Типи з&apos;єднання</label>
+            <label className="form-label">{tUi('Типи з\'єднання')}</label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {['RESERVATIONS', 'AVAILABILITY', 'CONTENT', 'PHOTOS', 'PROMOTIONS'].map(t => (
                 <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>

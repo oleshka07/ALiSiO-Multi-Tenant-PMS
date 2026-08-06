@@ -37,19 +37,19 @@ export default function ExchangeRateModal({ initial, onClose, onSave }: Props) {
     e.preventDefault();
     setError(null);
     if (fromCur === toCur) {
-      setError('Валюти «з» і «на» мають відрізнятися');
+      setError(t('Валюти «з» і «на» мають відрізнятися'));
       return;
     }
     const r = Number(rate);
     if (!isFinite(r) || r <= 0) {
-      setError('Курс має бути додатнім числом');
+      setError(t('Курс має бути додатнім числом'));
       return;
     }
     setSaving(true);
     try {
       await onSave({ from_currency: fromCur, to_currency: toCur, rate: r, effective_from: effectiveFrom });
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
       setSaving(false);
     }
   }

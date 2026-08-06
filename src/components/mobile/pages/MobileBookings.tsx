@@ -431,7 +431,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
                       e.stopPropagation();
                       const link = `${window.location.origin}/guest/${b.guest_page_token}`;
                       navigator.clipboard.writeText(link);
-                      alert('🔗 Посилання на сторінку гостя скопійовано!');
+                      alert(t('🔗 Посилання на сторінку гостя скопійовано!'));
                     }}
                     title={t('Скопіювати посилання')}
                     aria-label={t('Скопіювати посилання')}

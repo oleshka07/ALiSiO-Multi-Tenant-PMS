@@ -189,7 +189,7 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleSave = async () => {
-    if (!form.name.trim()) return alert('Введіть назву');
+    if (!form.name.trim()) return alert(t('Введіть назву'));
     setSaving(true);
     try {
       const url = `/api/booking-sites/${siteId}/rate-plans${isNew ? '' : `/${plan.id}`}`;
@@ -201,13 +201,13 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
       onSaved();
     } catch (e) {
       console.error(e);
-      alert('Помилка збереження');
+      alert(t('Помилка збереження'));
     }
     setSaving(false);
   };
 
   const handleDelete = async () => {
-    if (!confirm('Видалити цей тариф?')) return;
+    if (!confirm(t('Видалити цей тариф?'))) return;
     try {
       await fetch(`/api/booking-sites/${siteId}/rate-plans/${plan?.id}`, { method: 'DELETE' });
       onDeleted();
@@ -397,7 +397,7 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
       {/* Name */}
       <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 24 }}>
         <h4 style={{ margin: '0 0 12px 0', fontSize: 16 }}>{t('Назва тарифного плану')}</h4>
-        <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12, display: 'block' }}>Це ім&apos;я буде показано гостям, постарайтесь обрати привабливе.</span>
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12, display: 'block' }}>{t('Це ім\'я буде показано гостям, постарайтесь обрати привабливе.')}</span>
         <div className="form-group" style={{ marginBottom: 0 }}>
           <input className="form-input" style={{ fontSize: 16, padding: '12px 16px' }} placeholder="Standart price" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
         </div>

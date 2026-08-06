@@ -107,9 +107,9 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
         onUpdated();
       } else {
         const data = await res.json();
-        alert(data.error);
+        alert(t(data.error));
       }
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(t('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -124,12 +124,12 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
       });
       fetchGroup();
       onUpdated();
-    } catch { alert('Помилка'); }
+    } catch { alert(t('Помилка')); }
     setStatusSaving(false);
   };
 
   const handleDelete = async () => {
-    if (!groupId || !confirm('Видалити групове бронювання і всі кімнати?')) return;
+    if (!groupId || !confirm(t('Видалити групове бронювання і всі кімнати?'))) return;
     await fetch(`/api/group-bookings/${groupId}`, { method: 'DELETE' });
     onClose();
     onUpdated();
@@ -164,9 +164,9 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
         onUpdated();
       } else {
         const data = await res.json();
-        alert(data.error);
+        alert(t(data.error));
       }
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(t('Помилка мережі')); }
     setPaySaving(false);
   };
 
@@ -217,7 +217,7 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
         const d = await res.json();
         alert(d.error || 'Помилка');
       }
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(t('Помилка мережі')); }
     setEditSaving(false);
   };
 
@@ -541,7 +541,7 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                   </h4>
                   <div className="form-row">
                     <div className="form-group">
-                      <label className="form-label">Ім&apos;я *</label>
+                      <label className="form-label">{t('Ім\'я *')}</label>
                       <input className="form-input" value={guestForm.firstName}
                         onChange={e => setGuestForm(p => ({ ...p, firstName: e.target.value }))} />
                     </div>

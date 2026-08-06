@@ -85,7 +85,7 @@ export default function CounterpartyModal({ initial, parent, onClose, onSave }: 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!name.trim()) { setError('Введіть назву'); return; }
+    if (!name.trim()) { setError(t('Введіть назву')); return; }
 
     // Ensure any pending alias input is captured
     const pendingAlias = aliasInput.trim().toUpperCase();
@@ -111,7 +111,7 @@ export default function CounterpartyModal({ initial, parent, onClose, onSave }: 
       }
       await onSave(values);
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
       setSaving(false);
     }
   }

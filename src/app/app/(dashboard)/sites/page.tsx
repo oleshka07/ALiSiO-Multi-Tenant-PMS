@@ -101,7 +101,7 @@ export default function SitesPage() {
 
   /* ── create ── */
   const handleCreate = async () => {
-    if (!newName.trim()) { alert('Введіть назву сайту'); return; }
+    if (!newName.trim()) { alert(t('Введіть назву сайту')); return; }
     setCreating(true);
     try {
       const res = await fetch('/api/booking-sites', {
@@ -111,7 +111,7 @@ export default function SitesPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        showToast('Сайт створено!');
+        showToast(t('Сайт створено!'));
         setShowCreate(false);
         setNewName('');
         fetchSites();
@@ -119,13 +119,13 @@ export default function SitesPage() {
       } else {
         alert(data.error || 'Помилка создання');
       }
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(t('Помилка мережі')); }
     finally { setCreating(false); }
   };
 
   /* ── edit ── */
   const handleEdit = async () => {
-    if (!editName.trim()) { alert('Введіть назву сайту'); return; }
+    if (!editName.trim()) { alert(t('Введіть назву сайту')); return; }
     setSavingEdit(true);
     try {
       const res = await fetch(`/api/booking-sites/${editSiteId}`, {
@@ -135,13 +135,13 @@ export default function SitesPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        showToast('Сайт оновлено!');
+        showToast(t('Сайт оновлено!'));
         setShowEdit(false);
         fetchSites();
       } else {
         alert(data.error || 'Помилка оновлення');
       }
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(t('Помилка мережі')); }
     finally { setSavingEdit(false); }
   };
 
@@ -156,14 +156,14 @@ export default function SitesPage() {
       });
       showToast(nextStatus === 'active' ? 'Сайт активовано' : 'Сайт призупинено');
       fetchSites();
-    } catch { alert('Помилка'); }
+    } catch { alert(t('Помилка')); }
   };
 
   /* ── delete ── */
   const handleDelete = async (site: BookingSite) => {
     if (!confirm(`Видалити сайт «${site.name}»? Це незворотно.`)) return;
     await fetch(`/api/booking-sites/${site.id}`, { method: 'DELETE' });
-    showToast('Сайт видалено');
+    showToast(t('Сайт видалено'));
     fetchSites();
   };
 
@@ -518,7 +518,7 @@ export default function SitesPage() {
                     className="btn btn-ghost"
                     onClick={() => {
                       navigator.clipboard.writeText(`${typeof window !== 'undefined' ? window.location.origin : ''}/w/${editSiteId}`);
-                      showToast('Посилання скопійовано');
+                      showToast(t('Посилання скопійовано'));
                     }}
                   >
                     {t('Копіювати')}

@@ -276,7 +276,7 @@ export default function BookingForm({
       if (mode === 'create') {
         const unitId = resolveUnitId();
         if (!unitId) {
-          setError('Немає доступних юнітів для цього типу');
+          setError(t('Немає доступних юнітів для цього типу'));
           setSaving(false);
           return;
         }
@@ -319,7 +319,7 @@ export default function BookingForm({
         onSaved(data.id);
       } else {
         if (!bookingId) {
-          setError('Відсутній ID бронювання для редагування');
+          setError(t('Відсутній ID бронювання для редагування'));
           setSaving(false);
           return;
         }
@@ -357,7 +357,7 @@ export default function BookingForm({
         onSaved(bookingId);
       }
     } catch {
-      setError('Помилка мережі');
+      setError(t('Помилка мережі'));
       setSaving(false);
     }
   };
@@ -481,7 +481,7 @@ export default function BookingForm({
         <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{t('Дані гостя')}</h4>
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Ім&apos;я *</label>
+            <label className="form-label">{t('Ім\'я *')}</label>
             <input className="form-input" value={form.firstName} onChange={e => setForm(p => ({ ...p, firstName: e.target.value }))} placeholder={t('Іван')} />
           </div>
           <div className="form-group">

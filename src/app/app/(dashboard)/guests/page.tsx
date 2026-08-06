@@ -231,7 +231,7 @@ function DesktopGuests() {
   /* ── create guest ────────────────────────────────── */
   const handleCreate = async () => {
     if (!form.firstName || !form.lastName) {
-      showToast("Будь ласка, заповніть обов'язкові поля: Ім'я та Прізвище", 'error');
+      showToast(t('Будь ласка, заповніть обов\'язкові поля: Ім\'я та Прізвище'), 'error');
       return;
     }
     setSaving(true);
@@ -243,14 +243,14 @@ function DesktopGuests() {
       });
       if (res.ok) {
         setShowAddModal(false);
-        showToast('Гостя успішно створено!');
+        showToast(t('Гостя успішно створено!'));
         fetchGuests();
       } else {
         const data = await res.json();
         showToast(data.error || 'Помилка створення', 'error');
       }
     } catch {
-      showToast('Помилка мережі', 'error');
+      showToast(t('Помилка мережі'), 'error');
     } finally {
       setSaving(false);
     }
@@ -260,7 +260,7 @@ function DesktopGuests() {
   const handleSaveEdit = async () => {
     if (!editGuest) return;
     if (!form.firstName || !form.lastName) {
-      showToast("Ім'я та Прізвище обов'язкові", 'error');
+      showToast(t('Ім\'я та Прізвище обов\'язкові'), 'error');
       return;
     }
     setSaving(true);
@@ -272,7 +272,7 @@ function DesktopGuests() {
       });
       if (res.ok) {
         setEditGuest(null);
-        showToast('Дані гостя оновлено!');
+        showToast(t('Дані гостя оновлено!'));
         fetchGuests();
         // Also refresh detail view if open
         if (viewGuest && viewGuest.id === editGuest.id) {
@@ -283,7 +283,7 @@ function DesktopGuests() {
         showToast(data.error || 'Помилка збереження', 'error');
       }
     } catch {
-      showToast('Помилка мережі', 'error');
+      showToast(t('Помилка мережі'), 'error');
     } finally {
       setSaving(false);
     }
@@ -303,7 +303,7 @@ function DesktopGuests() {
         showToast(data.error || 'Помилка видалення', 'error');
       }
     } catch {
-      showToast('Помилка мережі', 'error');
+      showToast(t('Помилка мережі'), 'error');
     }
   };
 
@@ -326,7 +326,7 @@ function DesktopGuests() {
         </h4>
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Ім&apos;я *</label>
+            <label className="form-label">{t('Ім\'я *')}</label>
             <input className="form-input" placeholder={t('Ім\'я')} value={form.firstName} onChange={(e) => setForm(p => ({ ...p, firstName: e.target.value }))} />
           </div>
           <div className="form-group">
@@ -489,7 +489,7 @@ function DesktopGuests() {
           <table className="table">
             <thead>
               <tr>
-                <th>Ім&apos;я</th>
+                <th>{t('Ім\'я')}</th>
                 <th>Email</th>
                 <th>{t('Телефон')}</th>
                 <th>{t('Країна')}</th>

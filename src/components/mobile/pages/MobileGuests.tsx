@@ -77,7 +77,7 @@ function GuestFormSheet({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.firstName.trim() || !form.lastName.trim()) {
-      setError("Ім'я та прізвище є обов'язковими");
+      setError(t('Ім\'я та прізвище є обов\'язковими'));
       return;
     }
 

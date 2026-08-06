@@ -150,7 +150,7 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
   useEffect(() => { load(); }, [load]);
 
   const handleCreate = async () => {
-    if (!form.offer_amount) { alert('Вкажіть знижку'); return; }
+    if (!form.offer_amount) { alert(tUi('Вкажіть знижку')); return; }
     setCreating(true);
     try {
       const body = {
@@ -173,21 +173,21 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
         body: JSON.stringify(body),
       });
       const d = await res.json();
-      if (!res.ok) { alert(d.error); return; }
+      if (!res.ok) { alert(tUi(d.error)); return; }
       setLastCodes(d.codes || []);
       setShowLastCodes(true);
       setShowCreate(false);
       setForm(emptyForm());
       showToast(`✓ Згенеровано ${d.generated} промокодів`);
       load();
-    } catch { alert('Помилка'); }
+    } catch { alert(tUi('Помилка')); }
     finally { setCreating(false); }
   };
 
   const handleDelete = async (ruleId: string, name: string) => {
     if (!confirm(`Деактивувати правило «${name}» та невикористані промокоди?`)) return;
     const res = await fetch(`/api/gift-cards/workflow?rule_id=${ruleId}`, { method: 'DELETE' });
-    if (res.ok) { showToast('Правило видалено'); load(); }
+    if (res.ok) { showToast(tUi('Правило видалено')); load(); }
   };
 
   const toggleDay = (d: number) => setForm(f => ({
@@ -312,7 +312,7 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
 
           {/* Template picker */}
           <div className="form-group">
-            <label className="form-label">Прив&apos;язати до існуючої пропозиції (необов&apos;язково)</label>
+            <label className="form-label">{tUi('Прив\'язати до існуючої пропозиції (необов\'язково)')}</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <button type="button" onClick={() => setForm(f => ({ ...f, template_id: '' }))}
                 style={{ padding: '8px 10px', borderRadius: 8, fontSize: 12, cursor: 'pointer', textAlign: 'left', border: `2px solid ${!form.template_id ? 'var(--accent-primary)' : 'var(--border-primary)'}`, background: !form.template_id ? 'var(--accent-primary-dim)' : 'var(--surface-secondary)' }}>
@@ -444,7 +444,7 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
         </div>
         <button className="btn btn-ghost" style={{ marginTop: 12, fontSize: 12 }} onClick={() => {
           navigator.clipboard.writeText(lastCodes.join('\n'));
-          showToast('Скопійовано!');
+          showToast(tUi('Скопійовано!'));
         }}>
           <Copy size={13} /> {tUi('Копіювати всі')}
         </button>

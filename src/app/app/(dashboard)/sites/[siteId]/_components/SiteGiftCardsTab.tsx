@@ -99,9 +99,9 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (res.ok) { showToast('Ваучер створено!'); setShowCreate(false); load(); }
-      else { const d = await res.json(); alert(d.error); }
-    } catch { alert('Помилка'); } finally { setCreating(false); }
+      if (res.ok) { showToast(tUi('Ваучер створено!')); setShowCreate(false); load(); }
+      else { const d = await res.json(); alert(tUi(d.error)); }
+    } catch { alert(tUi('Помилка')); } finally { setCreating(false); }
   };
 
   const handlePatch = async (v: GiftCard, status: string) => {
@@ -110,13 +110,13 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     });
-    showToast('Оновлено'); load();
+    showToast(tUi('Оновлено')); load();
   };
 
   const handleDelete = async (v: GiftCard) => {
     if (!confirm(`Скасувати ${v.code}?`)) return;
     await fetch(`/api/gift-cards/${v.id}`, { method: 'DELETE' });
-    showToast('Скасовано'); load();
+    showToast(tUi('Скасовано')); load();
   };
 
   const handleActivation = async () => {
@@ -128,9 +128,9 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reservation_id: activationId.trim() }),
       });
-      if (res.ok) { showToast('Погашено ✓'); setActiveCard(null); setActivationId(''); load(); }
-      else { const d = await res.json(); alert(d.error); }
-    } catch { alert('Помилка'); } finally { setActivating(false); }
+      if (res.ok) { showToast(tUi('Погашено ✓')); setActiveCard(null); setActivationId(''); load(); }
+      else { const d = await res.json(); alert(tUi(d.error)); }
+    } catch { alert(tUi('Помилка')); } finally { setActivating(false); }
   };
 
   return (
@@ -145,7 +145,7 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, padding: '10px 14px', background: 'rgba(139,92,246,0.06)', borderRadius: 10, border: '1px solid rgba(139,92,246,0.15)', display: 'flex', gap: 8, maxWidth: 400 }}>
         <Gift size={16} style={{ color: '#8b5cf6', flexShrink: 0, marginTop: 1 }} />
         <span>
-          <strong>{tUi('Подарунковий ваучер (Грошовий сертифікат)')}</strong> — це унікальний код на певну суму (напр., 2000 CZK), який ви видаєте конкретному гостю. Він працює як засіб платежу. Якщо ви хочете створити загальну акційну пропозицію для всіх (наприклад, пакет &quot;Осінній релакс&quot; або єдиний код знижки), використовуйте вкладки <strong>{tUi('Пакети')}</strong> {tUi('або')} <strong>{tUi('Промокоди')}</strong>.
+          <strong>{tUi('Подарунковий ваучер (Грошовий сертифікат)')}</strong> {tUi('— це унікальний код на певну суму (напр., 2000 CZK), який ви видаєте конкретному гостю. Він працює як засіб платежу. Якщо ви хочете створити загальну акційну пропозицію для всіх (наприклад, пакет "Осінній релакс" або єдиний код знижки), використовуйте вкладки')} <strong>{tUi('Пакети')}</strong> {tUi('або')} <strong>{tUi('Промокоди')}</strong>.
         </span>
       </div>
 
@@ -303,7 +303,7 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
               )
             }
             <div className="form-row">
-              <div className="form-group"><label className="form-label">Ім&apos;я отримувача</label><input className="form-input" value={form.recipient_name} onChange={e => setForm(f => ({ ...f, recipient_name: e.target.value }))} /></div>
+              <div className="form-group"><label className="form-label">{tUi('Ім\'я отримувача')}</label><input className="form-input" value={form.recipient_name} onChange={e => setForm(f => ({ ...f, recipient_name: e.target.value }))} /></div>
               <div className="form-group"><label className="form-label">{tUi('Email отримувача')}</label><input className="form-input" type="email" value={form.recipient_email} onChange={e => setForm(f => ({ ...f, recipient_email: e.target.value }))} /></div>
             </div>
             <div className="form-row">

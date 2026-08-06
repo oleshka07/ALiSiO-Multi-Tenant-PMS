@@ -46,6 +46,48 @@ const CYRILLIC = /[А-Яа-яЇїІіЄєҐґ]/;
  */
 const renderedText = (text) => text.replace(/\s+/g, ' ').trim();
 
+/**
+ * The named entities this markup actually uses.
+ *
+ * An entity is markup: '&amp;' inside a string literal renders as those five
+ * characters, so text containing one was skipped. Decoding it first makes the
+ * literal render identically — and '&' is by far the most common, in every
+ * "Гості &amp; послуги" heading in the product.
+ */
+const ENTITIES = {
+  '&amp;': '&',
+  '&nbsp;': '\u00a0',
+  '&quot;': '"',
+  '&apos;': "'",
+  '&lt;': '<',
+  '&gt;': '>',
+  '&mdash;': '—',
+  '&ndash;': '–',
+};
+const decodeEntities = (text) =>
+  text.replace(/&(?:amp|nbsp|quot|apos|lt|gt|mdash|ndash);/g, (m) => ENTITIES[m]);
+
+/**
+ * Functions whose first argument is read by a person.
+ *
+ * Toasts and validation messages are the half of the interface that is NOT in
+ * the JSX: a screen can be fully German and still answer «Збережено» when you
+ * press the button. They live in event handlers, which are inside the
+ * component, so the hook is in scope.
+ */
+const MESSAGE_FUNCTIONS = new Set(['showToast', 'setError', 'setToast', 'alert', 'confirm']);
+
+/**
+ * Server messages, translated on the client.
+ *
+ * The API answers in Ukrainian — `{ error: 'Не авторизовано' }` — from
+ * hundreds of handlers. Because the dictionary is keyed by the Ukrainian
+ * string itself, the client can translate what it receives without a single
+ * handler changing: `showToast(data.error)` becomes `showToast(t(data.error))`
+ * and an entry for 'Не авторизовано' covers every route that returns it.
+ */
+const SERVER_MESSAGE = /\.(error|message)$/;
+
 /** Attributes whose value is shown to a person. */
 const TEXT_ATTRIBUTES = new Set([
   'placeholder',
@@ -143,7 +185,11 @@ function processFile(file, catalogue, report) {
   const original = fs.readFileSync(file, 'utf8');
   if (!CYRILLIC.test(original)) return null;
 
-  if (!/^\s*['"]use client['"]/.test(original)) {
+  // 'use client' has to precede the statements, not the comments — three
+  // screens carry an eslint-disable above it and were skipped as server
+  // components for it.
+  const beforeCode = original.replace(/^\s*(?:\/\*[\s\S]*?\*\/|\/\/[^\n]*)\s*/g, '');
+  if (!/^['"]use client['"]/.test(beforeCode)) {
     report.serverComponents.push(file);
     return null;
   }
@@ -156,8 +202,14 @@ function processFile(file, catalogue, report) {
     ts.ScriptKind.TSX,
   );
 
-  // `t` unless the file already has one of its own.
-  const fn = nameIsTaken(source, 't') ? 'tUi' : 't';
+  // Which name the hook goes in under.
+  //
+  // Re-runnable: a second pass over a file this already touched must reuse the
+  // declaration it made, not add another one beside it. Checking only whether
+  // the name is taken sees its own `const t = useT()` from the first run and
+  // steps aside into `tUi` — which is how a rerun produced 36 redeclarations.
+  const ours = /const (t|tUi) = useT\(\);/.exec(original);
+  const fn = ours ? ours[1] : nameIsTaken(source, 't') ? 'tUi' : 't';
 
   const edits = [];
   const components = new Map(); // body node → insertion offset
@@ -183,12 +235,73 @@ function processFile(file, catalogue, report) {
       if (key && CYRILLIC.test(key)) {
         // An entity is markup, not text: '&apos;' inside a string literal
         // renders as those six characters.
-        if (key.includes('&')) {
+        const decoded = decodeEntities(key);
+        // A '&' that is not one of the entities above stays unknown, and
+        // guessing at it is how text quietly changes.
+        if (decoded.includes('&') && /&[a-z#][a-z0-9]*;/i.test(decoded)) {
           skippedEntities++;
         } else if (useIn(node)) {
           const start = node.getStart(source) + raw.indexOf(trimmed);
-          edits.push({ start, end: start + trimmed.length, text: `{${fn}(${literal(key)})}` });
-          catalogue.add(key);
+          edits.push({ start, end: start + trimmed.length, text: `{${fn}(${literal(decoded)})}` });
+          catalogue.add(decoded);
+        }
+      }
+    } else if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      const name = ts.isIdentifier(callee)
+        ? callee.text
+        : ts.isPropertyAccessExpression(callee)
+          ? callee.name.text
+          : null;
+
+      if (name && MESSAGE_FUNCTIONS.has(name) && node.arguments.length) {
+        const arg = node.arguments[0];
+        const already =
+          ts.isCallExpression(arg) &&
+          ts.isIdentifier(arg.expression) &&
+          (arg.expression.text === 't' || arg.expression.text === 'tUi');
+
+        if (!already) {
+          const wrap = (target, key) => {
+            if (!useIn(node)) return;
+            edits.push({
+              start: target.getStart(source),
+              end: target.getEnd(),
+              text: `${fn}(${target.getText(source)})`,
+            });
+            if (key) catalogue.add(key);
+          };
+
+          if (
+            (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) &&
+            CYRILLIC.test(arg.text)
+          ) {
+            // The literal keeps its quotes: `t('Збережено')`.
+            if (useIn(node)) {
+              edits.push({
+                start: arg.getStart(source),
+                end: arg.getEnd(),
+                text: `${fn}(${literal(renderedText(arg.text))})`,
+              });
+              catalogue.add(renderedText(arg.text));
+            }
+          } else if (
+            ts.isPropertyAccessExpression(arg) &&
+            SERVER_MESSAGE.test(arg.getText(source))
+          ) {
+            wrap(arg, null);
+          } else if (ts.isTemplateExpression(arg)) {
+            // `❌ ${data.error}` — the decoration is ours, the sentence is the
+            // server's, so only the substitution is translated.
+            for (const span of arg.templateSpans) {
+              if (
+                ts.isPropertyAccessExpression(span.expression) &&
+                SERVER_MESSAGE.test(span.expression.getText(source))
+              ) {
+                wrap(span.expression, null);
+              }
+            }
+          }
         }
       }
     } else if (ts.isJsxAttribute(node) && node.initializer) {
@@ -213,9 +326,14 @@ function processFile(file, catalogue, report) {
   if (skippedHelpers) report.helpers.push(`${file} (${skippedHelpers})`);
   if (!edits.length) return null;
 
-  // Declare the hook once per component that needs it.
-  for (const offset of components.values()) {
-    edits.push({ start: offset, end: offset, text: `\n  const ${fn} = useT();` });
+  // Declare the hook once per component that needs it — and not again in a
+  // component that already has it.
+  const declaration = `const ${fn} = useT();`;
+  let declared = 0;
+  for (const [body, offset] of components) {
+    if (body.getText(source).includes(declaration)) continue;
+    edits.push({ start: offset, end: offset, text: `\n  ${declaration}` });
+    declared++;
   }
 
   // Back to front, so earlier offsets stay valid.
@@ -236,12 +354,18 @@ function processFile(file, catalogue, report) {
       );
     }
   } else {
-    const useClient = output.match(/^\s*['"]use client['"];?\r?\n/);
+    // After the directive, and the directive may sit below a comment. Getting
+    // this wrong puts the import ABOVE 'use client', which stops it being a
+    // directive at all — the file silently becomes a server component and its
+    // hooks stop working.
+    const useClient = output.match(
+      /^(?:\s*(?:\/\*[\s\S]*?\*\/|\/\/[^\n]*)\s*)*['"]use client['"];?\r?\n/,
+    );
     const at = useClient ? useClient[0].length : 0;
     output = `${output.slice(0, at)}\nimport { useT } from '@core/i18n/client';${output.slice(at)}`;
   }
 
-  return { output, count: edits.length - components.size };
+  return { output, count: edits.length - declared };
 }
 
 // ─── run ─────────────────────────────────────────────────────────────────────

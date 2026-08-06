@@ -67,7 +67,7 @@ export default function AutoRulesTab() {
   async function handleDelete(r: AutoRule) {
     if (!confirm(`Видалити правило «${r.name}»? Історія спрацьовувань також буде видалена.`)) return;
     const res = await fetch(`/api/finance/auto-rules/${r.id}`, { method: 'DELETE' });
-    if (!res.ok) { alert('Не вдалося'); return; }
+    if (!res.ok) { alert(t('Не вдалося')); return; }
     fetchRules();
   }
 
@@ -77,12 +77,12 @@ export default function AutoRulesTab() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_active: !r.is_active }),
     });
-    if (!res.ok) { alert('Не вдалося'); return; }
+    if (!res.ok) { alert(t('Не вдалося')); return; }
     fetchRules();
   }
 
   async function handleApplyAll() {
-    if (!confirm('Застосувати всі активні правила до існуючих операцій? Це перезапише категорію/проєкт/контрагента для тих операцій, що відповідають умовам.')) return;
+    if (!confirm(t('Застосувати всі активні правила до існуючих операцій? Це перезапише категорію/проєкт/контрагента для тих операцій, що відповідають умовам.'))) return;
     setApplyBusy(true);
     try {
       const res = await fetch('/api/finance/auto-rules/apply', {
@@ -93,12 +93,12 @@ export default function AutoRulesTab() {
       const json = await res.json();
       alert(`Оброблено ${json.processed} операцій.\nЗмінено: ${json.changed}.\nПравил задіяно: ${json.rulesCount}.`);
       fetchRules();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { alert(t(e.message)); }
     setApplyBusy(false);
   }
 
   async function handleAutoMatchCounterparties() {
-    if (!confirm('Автоматчинг контрагентів по aliases — пройде по всіх операціях без контрагента і встановить, якщо знайде збіг у коментарі?')) return;
+    if (!confirm(t('Автоматчинг контрагентів по aliases — пройде по всіх операціях без контрагента і встановить, якщо знайде збіг у коментарі?'))) return;
     setMatchBusy(true);
     try {
       const res = await fetch('/api/finance/auto-rules/auto-match', {
@@ -108,7 +108,7 @@ export default function AutoRulesTab() {
       });
       const json = await res.json();
       alert(`Оброблено ${json.processed} операцій.\nЗнайдено контрагентів: ${json.matched}.`);
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { alert(t(e.message)); }
     setMatchBusy(false);
   }
 

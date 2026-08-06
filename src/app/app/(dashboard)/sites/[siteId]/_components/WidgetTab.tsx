@@ -170,7 +170,7 @@ export function WidgetTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Widg
 
       <Step n={5} title={t('Перевірте встановлення')}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          Відкрийте ваш сайт і переконайтесь що кнопка/форма бронювання відображається. Бронювання буде прив&apos;язане до сайту <strong>{site.name}</strong>.
+          {t('Відкрийте ваш сайт і переконайтесь що кнопка/форма бронювання відображається. Бронювання буде прив\'язане до сайту')} <strong>{site.name}</strong>.
         </div>
       </Step>
 
@@ -191,7 +191,7 @@ export function WidgetTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Widg
 
       <Step n={7} title={t('Контактне повідомлення після бронювання')}>
         <div style={{ marginBottom: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
-          Текст, який побачить гість на екрані підтвердження бронювання. Вкажіть email та телефон для зв&apos;язку.
+          {t('Текст, який побачить гість на екрані підтвердження бронювання. Вкажіть email та телефон для зв\'язку.')}
         </div>
         <input className="form-input" placeholder={t('Якщо щось — пиши на hello@yoursite.com або +420 000 000 000')}
           value={cfg.supportContact || ''}

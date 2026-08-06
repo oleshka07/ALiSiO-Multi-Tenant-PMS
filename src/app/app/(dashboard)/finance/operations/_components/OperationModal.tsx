@@ -96,7 +96,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
     e.preventDefault();
     setError(null);
     const amt = parseFloat(amount);
-    if (!isFinite(amt) || amt <= 0) { setError('Вкажіть додатну суму'); return; }
+    if (!isFinite(amt) || amt <= 0) { setError(t('Вкажіть додатну суму')); return; }
 
     const body: any = {
       op_type: currentOpType,
@@ -122,7 +122,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
       body.account_to_id = null;
     }
     if (currentOpType === 'transfer') {
-      if (accountFromId === accountToId) { setError('Рахунки мають відрізнятися'); return; }
+      if (accountFromId === accountToId) { setError(t('Рахунки мають відрізнятися')); return; }
       body.account_from_id = accountFromId;
       body.account_to_id = accountToId;
     }
@@ -148,7 +148,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
       }
       onSaved();
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
       setSaving(false);
     }
   }
@@ -284,7 +284,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
             <div style={{ marginTop: 6 }}>
               <input type="date" value={accruedAt} onChange={(e) => setAccruedAt(e.target.value)} style={input} />
               <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
-                Використовується у P&L-звіті: коли гроші «зароблені» чи «витрачені» економічно (не коли фактично пройшли).
+                {t('Використовується у P&L-звіті: коли гроші «зароблені» чи «витрачені» економічно (не коли фактично пройшли).')}
               </div>
             </div>
           )}
@@ -354,7 +354,7 @@ function RecurringSuggestionBanner({ operationId, templateName, onApplied }: {
       } else {
         onApplied();
       }
-    } catch (e: any) { alert(`Помилка: ${e.message}`); }
+    } catch (e: any) { alert(`Помилка: ${t(e.message)}`); }
     setBusy(false);
   }
 

@@ -79,7 +79,7 @@ export default function RecurringTemplatesTab() {
   async function handleDelete(t: RecurringTemplate) {
     if (!confirm(`Видалити шаблон «${t.name}»? Створені операції залишаться.`)) return;
     const res = await fetch(`/api/finance/recurring/${t.id}`, { method: 'DELETE' });
-    if (!res.ok) { alert('Не вдалося'); return; }
+    if (!res.ok) { alert(tUi('Не вдалося')); return; }
     fetchItems();
   }
 

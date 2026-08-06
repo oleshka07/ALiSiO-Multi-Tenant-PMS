@@ -286,7 +286,7 @@ export default function DocumentsPage() {
       
       if (!res.ok) {
         if (data.requiresForce) {
-          if (window.confirm(`${data.error}\n\nБажаєте видалити заблоковані фактури примусово (force)?`)) {
+          if (window.confirm(`${tUi(data.error)}\n\nБажаєте видалити заблоковані фактури примусово (force)?`)) {
             query.set('force', 'true');
             res = await fetch(`/api/accounting/invoice-batch?${query.toString()}`, { method: 'DELETE' });
             data = await res.json();
@@ -974,7 +974,7 @@ export default function DocumentsPage() {
                   {tUi('Потребують уточнення імені покупця (')}{stmtResult.filter(r => r.needs_guest_name).length} {tUi('рядк. ≥ 10 000 CZK)')}
                 </div>
                 <div style={{ fontSize: 12, color: '#92400e', marginBottom: 12 }}>
-                  Фактури створені з плейсхолдером «DOPLNIT JMÉNO». Вкажіть ім&apos;я гостя / назву компанії:
+                  {tUi('Фактури створені з плейсхолдером «DOPLNIT JMÉNO». Вкажіть ім\'я гостя / назву компанії:')}
                 </div>
                 {stmtResult.filter(r => r.needs_guest_name).map(inv => (
                   <div key={inv.source_ref} style={{
@@ -1230,7 +1230,7 @@ export default function DocumentsPage() {
                 </div>
 
                 <div style={{ minWidth: 160, flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Період / Місяць (необов&apos;язково)</label>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>{tUi('Період / Місяць (необов\'язково)')}</label>
                   <input
                     type="month"
                     className="form-input"
@@ -1525,7 +1525,7 @@ export default function DocumentsPage() {
                     {/* Odběratel sub-box — mirrors Dodavatel structure */}
                     <div style={{ border: '0.5px solid #aaa', padding: '6px 8px' }}>
                       <div style={{ fontSize: 9, color: '#888', marginBottom: 4 }}>
-                        Odběratel: <span style={{ color: '#4f6ef7' }}>(необов&apos;язково)</span>
+                        Odběratel: <span style={{ color: '#4f6ef7' }}>{tUi('(необов\'язково)')}</span>
                       </div>
 
                       {/* Company name — bold 12pt, on the left */}

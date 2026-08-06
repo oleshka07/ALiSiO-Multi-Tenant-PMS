@@ -190,11 +190,11 @@ export default function MobileBookingDetail({
   };
 
   const handleDeletePayment = async (pId: string) => {
-    if (!confirm('Видалити платіж?')) return;
+    if (!confirm(tUi('Видалити платіж?'))) return;
     await fetch(`/api/payments/${pId}`, { method: 'DELETE' });
     onFetchPayments(b.id);
     onFetchBookings();
-    showToast('Видалено');
+    showToast(tUi('Видалено'));
   };
 
   const handleTogglePaymentRequest = async () => {
@@ -211,7 +211,7 @@ export default function MobileBookingDetail({
 
   const handleSaveRegistration = async () => {
     if (!regForm.firstName || !regForm.lastName) {
-      showToast('Імʼя та прізвище обовʼязкові');
+      showToast(tUi('Імʼя та прізвище обовʼязкові'));
       return;
     }
     setSavingReg(true);
@@ -230,17 +230,17 @@ export default function MobileBookingDetail({
       setShowRegForm(false);
       onFetchRegistrations(b.id);
       onFetchBookings();
-      showToast('Гостя зареєстровано');
-    } catch { showToast('Помилка'); }
+      showToast(tUi('Гостя зареєстровано'));
+    } catch { showToast(tUi('Помилка')); }
     finally { setSavingReg(false); }
   };
 
   const handleDeleteRegistration = async (regId: string) => {
-    if (!confirm('Видалити реєстрацію?')) return;
+    if (!confirm(tUi('Видалити реєстрацію?'))) return;
     await fetch(`/api/bookings/${b.id}/registrations?reg_id=${regId}`, { method: 'DELETE' });
     onFetchRegistrations(b.id);
     onFetchBookings();
-    showToast('Видалено');
+    showToast(tUi('Видалено'));
   };
 
   const handleCopyGuestLink = async () => {
@@ -257,9 +257,9 @@ export default function MobileBookingDetail({
         if (token) setBooking({ ...b, guest_page_token: token });
       } catch { /* ignore */ }
     }
-    if (!token) { showToast('Не вдалося створити посилання'); return; }
+    if (!token) { showToast(tUi('Не вдалося створити посилання')); return; }
     navigator.clipboard.writeText(`${window.location.origin}/guest/${token}`)
-      .then(() => showToast('Посилання скопійовано'));
+      .then(() => showToast(tUi('Посилання скопійовано')));
   };
 
   const handleOpenGuestPage = async () => {
@@ -275,7 +275,7 @@ export default function MobileBookingDetail({
         if (token) setBooking({ ...b, guest_page_token: token });
       } catch { /* ignore */ }
     }
-    if (!token) { showToast('Не вдалося створити посилання'); return; }
+    if (!token) { showToast(tUi('Не вдалося створити посилання')); return; }
     window.open(`/guest/${token}`, '_blank');
   };
 
@@ -939,7 +939,7 @@ export default function MobileBookingDetail({
           <button onClick={onEdit} style={bottomActionStyle('edit')}>
             <Edit3 size={12} /> {tUi('Змінити')}
           </button>
-          <button onClick={() => { if (confirm('Скасувати бронювання?')) onChangeStatus(b.id, 'cancelled'); }} style={bottomActionStyle('danger')}>
+          <button onClick={() => { if (confirm(tUi('Скасувати бронювання?'))) onChangeStatus(b.id, 'cancelled'); }} style={bottomActionStyle('danger')}>
             <X size={12} /> {tUi('Скасувати')}
           </button>
         </div>

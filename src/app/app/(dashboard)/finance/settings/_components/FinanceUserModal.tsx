@@ -89,7 +89,7 @@ export default function FinanceUserModal({ user, accounts, onClose, onSaved }: P
       }
       onSaved();
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
       setSaving(false);
     }
   }

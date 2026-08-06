@@ -44,7 +44,7 @@ export default function FinanceAuditPage() {
       if (json.error) throw new Error(json.error);
       setData(json);
     } catch (e: any) {
-      setError(e.message);
+      setError(t(e.message));
     } finally {
       setLoading(false);
     }

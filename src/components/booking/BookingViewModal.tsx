@@ -90,9 +90,9 @@ export default function BookingViewModal({
       if (!res.ok) { alert(j.error || 'Не вдалося створити лінк'); }
       else {
         setPayLink(j.url);
-        try { await navigator.clipboard.writeText(j.url); showToast('Лінк скопійовано'); } catch { showToast('Лінк створено'); }
+        try { await navigator.clipboard.writeText(j.url); showToast(tUi('Лінк скопійовано')); } catch { showToast(tUi('Лінк створено')); }
       }
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { alert(tUi(e.message)); }
     setPayLinkBusy(false);
   }
   const [reissuing, setReissuing] = useState(false);
@@ -171,8 +171,8 @@ export default function BookingViewModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) showToast('❌ Не вдалося зберегти');
-    } catch { showToast('❌ Помилка'); }
+      if (!res.ok) showToast(tUi('❌ Не вдалося зберегти'));
+    } catch { showToast(tUi('❌ Помилка')); }
     finally { setSavingCompany(false); }
   };
 
@@ -222,7 +222,7 @@ export default function BookingViewModal({
       } else {
         showToast(isFresh ? '❌ Помилка створення' : '❌ Помилка перевиставлення');
       }
-    } catch { showToast('❌ Помилка'); }
+    } catch { showToast(tUi('❌ Помилка')); }
     finally { setReissuing(false); }
   };
 
@@ -250,24 +250,24 @@ export default function BookingViewModal({
       setRegForm({ firstName: '', lastName: '', dateOfBirth: '', documentType: 'ID_CARD', documentNumber: '', nationality: '', country: '', address: '' });
       onFetchRegistrations(b.id);
       onFetchBookings();
-      showToast('Гостя зареєстровано!');
-    } catch { showToast('Помилка реєстрації'); }
+      showToast(tUi('Гостя зареєстровано!'));
+    } catch { showToast(tUi('Помилка реєстрації')); }
     finally { setSavingReg(false); }
   };
 
   const deleteRegistration = async (regId: string) => {
-    if (!confirm('Видалити реєстрацію гостя?')) return;
+    if (!confirm(tUi('Видалити реєстрацію гостя?'))) return;
     await fetch(`/api/bookings/${b.id}/registrations?reg_id=${regId}`, { method: 'DELETE' });
     onFetchRegistrations(b.id);
     onFetchBookings();
-    showToast('Реєстрацію видалено');
+    showToast(tUi('Реєстрацію видалено'));
   };
 
   return (
     <Modal open={true} onClose={onClose} title={tUi('Бронювання')} size="lg" hideTitle={true}
       footer={<>
         <button className="btn btn-secondary" style={{ color: '#ef4444' }}
-          onClick={() => { if (confirm('Точно скасувати бронь? Гість буде повідомлений.')) onChangeStatus(b.id, 'cancelled'); }}>
+          onClick={() => { if (confirm(tUi('Точно скасувати бронь? Гість буде повідомлений.'))) onChangeStatus(b.id, 'cancelled'); }}>
           <X size={13} /> {tUi('Скасувати бронь')}
         </button>
         <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
@@ -275,7 +275,7 @@ export default function BookingViewModal({
           {b.guest_page_token && (
             <>
               <button className="btn btn-secondary" title={tUi('Скопіювати')} onClick={() => {
-                navigator.clipboard.writeText(`${window.location.origin}/guest/${b.guest_page_token}`).then(() => showToast('Скопійовано!'));
+                navigator.clipboard.writeText(`${window.location.origin}/guest/${b.guest_page_token}`).then(() => showToast(tUi('Скопійовано!')));
               }}><Copy size={14} /> {tUi('Копіювати')}</button>
               <button className="btn btn-secondary" style={{ color: 'var(--accent-primary)' }}
                 onClick={() => window.open(`/guest/${b.guest_page_token}`, '_blank')}>
@@ -329,7 +329,7 @@ export default function BookingViewModal({
                                 setBooking({ ...b, unit_id: u.id, unit_code: u.code, unit_name: u.name });
                                 onFetchBookings();
                                 showToast(`\u2705 Будинок змінено на ${u.code}`);
-                              } else { showToast('Помилка зміни будинку'); }
+                              } else { showToast(tUi('Помилка зміни будинку')); }
                             } finally { setSavingInline(false); setUnitPopupOpen(false); }
                           }}
                           style={{ padding: '8px 10px', borderRadius: 7, display: 'flex', alignItems: 'center', gap: 10, cursor: isCurrent ? 'default' : 'pointer', transition: 'background .15s', opacity: savingInline ? 0.5 : 1 }}
@@ -388,7 +388,7 @@ export default function BookingViewModal({
                           setBooking({ ...b, check_in: datesEditCI, check_out: datesEditCO, nights: newNights, ...(newTotal !== total ? { total_price: newTotal } : {}) });
                           onFetchBookings();
                           showToast(`\u2705 Дати змінено: ${datesEditCI} → ${datesEditCO}`);
-                        } else { showToast('Помилка зміни дат'); }
+                        } else { showToast(tUi('Помилка зміни дат')); }
                       } finally { setSavingInline(false); setDatesEditOpen(false); }
                     }}
                     style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 5, background: '#22c55e', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>✓</button>
@@ -578,9 +578,9 @@ export default function BookingViewModal({
               : 'Минув';
             const handleClick = () => {
               if (b.status === 'confirmed' && canCheckIn) {
-                if (confirm('Заселити гостя?')) onChangeStatus(b.id, 'checked_in');
+                if (confirm(tUi('Заселити гостя?'))) onChangeStatus(b.id, 'checked_in');
               } else if (b.status === 'checked_in') {
-                if (confirm('Виселити гостя?')) onChangeStatus(b.id, 'checked_out');
+                if (confirm(tUi('Виселити гостя?'))) onChangeStatus(b.id, 'checked_out');
               }
             };
             return (
@@ -705,7 +705,7 @@ export default function BookingViewModal({
               {payLink && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '8px 10px', background: 'var(--bg-tertiary)', borderRadius: 7 }}>
                   <a href={payLink} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)', wordBreak: 'break-all', flex: 1 }}>{payLink}</a>
-                  <button onClick={() => { navigator.clipboard.writeText(payLink).then(() => showToast('Скопійовано')); }}
+                  <button onClick={() => { navigator.clipboard.writeText(payLink).then(() => showToast(tUi('Скопійовано'))); }}
                     style={{ background: 'none', border: '1px solid var(--border-primary)', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>{tUi('Копіювати')}</button>
                 </div>
               )}
@@ -720,7 +720,7 @@ export default function BookingViewModal({
                       <span style={{ color: 'var(--text-tertiary)' }}>{TYPE_LABELS[p.type] || p.type}</span>
                       {p.notes && <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.notes}</span>}
                       <button style={{ background: 'none', border: 'none', color: 'var(--accent-danger)', cursor: 'pointer', padding: 2, marginLeft: 'auto', flexShrink: 0 }} title={tUi('Видалити')}
-                        onClick={async () => { if (!confirm('Видалити?')) return; await fetch(`/api/payments/${p.id}`, { method: 'DELETE' }); onFetchPayments(b.id); onFetchBookings(); showToast('Видалено'); }}>
+                        onClick={async () => { if (!confirm(tUi('Видалити?'))) return; await fetch(`/api/payments/${p.id}`, { method: 'DELETE' }); onFetchPayments(b.id); onFetchBookings(); showToast(tUi('Видалено')); }}>
                         <X size={12} />
                       </button>
                     </div>
@@ -740,14 +740,14 @@ export default function BookingViewModal({
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button className="btn btn-sm btn-primary"
                       onClick={async () => {
-                        if (!confirm('Підтвердити безоплатне бронювання? Гість зможе заселитись без оплати.')) return;
+                        if (!confirm(tUi('Підтвердити безоплатне бронювання? Гість зможе заселитись без оплати.'))) return;
                         await fetch(`/api/bookings/${b.id}`, {
                           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ payment_status: 'paid' }),
                         });
                         setBooking({ ...b, payment_status: 'paid' });
                         onFetchBookings();
-                        showToast('✅ Безоплатне бронювання підтверджено');
+                        showToast(tUi('✅ Безоплатне бронювання підтверджено'));
                       }}>
                       {tUi('✅ Підтвердити — це свідоме рішення')}
                     </button>
@@ -818,7 +818,7 @@ export default function BookingViewModal({
                         setCompanyMode(next);
                         await persistCompany(next, company);
                         if (invoice) {
-                          showToast('ℹ️ Натисни "Перевиставити" щоб оновити фактуру');
+                          showToast(tUi('ℹ️ Натисни "Перевиставити" щоб оновити фактуру'));
                         }
                       }}
                     />
@@ -998,7 +998,7 @@ export default function BookingViewModal({
                                 }));
                                 showToast(`✅ Розпізнано: ${ocr.firstName} ${ocr.lastName} (точність: ${ocr.confidence || '?'}%)`);
                               } else {
-                                showToast('⚠️ Не вдалося розпізнати документ');
+                                showToast(tUi('⚠️ Не вдалося розпізнати документ'));
                               }
                             } else {
                               showToast(`❌ ${data.error || 'Помилка OCR'}`);
@@ -1023,7 +1023,7 @@ export default function BookingViewModal({
                       <input className="form-input" placeholder="ROTARU" value={regForm.lastName} onChange={e => setRegForm(p => ({ ...p, lastName: e.target.value }))} style={{ textTransform: 'uppercase' }} />
                     </div>
                     <div>
-                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Ім&apos;я *</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Ім\'я *')}</label>
                       <input className="form-input" placeholder="MARIN" value={regForm.firstName} onChange={e => setRegForm(p => ({ ...p, firstName: e.target.value }))} />
                     </div>
                     <div>
@@ -1191,7 +1191,7 @@ export default function BookingViewModal({
                           await fetch(`/api/bookings/${b.id}/sub-bookings/${sb.id}`, { method: 'DELETE' });
                           fetchSubBookings();
                           if (onFetchBookings) onFetchBookings();
-                          showToast('Групу видалено');
+                          showToast(tUi('Групу видалено'));
                         }}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: 4 }}
                         title={tUi('Видалити групу')}
@@ -1290,7 +1290,7 @@ export default function BookingViewModal({
                               onClick={() => {
                                 const url = `${window.location.origin}/guest/${sb.child_guest_page_token}`;
                                 navigator.clipboard.writeText(url);
-                                showToast('🔗 Посилання скопійовано');
+                                showToast(tUi('🔗 Посилання скопійовано'));
                               }}
                               style={{ padding: '3px 8px', fontSize: 10, background: 'var(--accent-primary)', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 3 }}
                             >
@@ -1512,7 +1512,7 @@ export default function BookingViewModal({
         <div style={{ marginTop: 12, background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 10, padding: '12px 14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: editingNotes ? 8 : (b.internal_notes ? 6 : 0) }}>
             <span style={{ fontSize: 10, color: '#f59e0b', letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>{tUi('📝 Примітка')}</span>
-            <button onClick={() => { if (editingNotes) { /* save */ fetch(`/api/bookings/${b.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ internal_notes: notesDraft }) }).then(() => { setBooking({ ...b, internal_notes: notesDraft }); showToast('Примітку збережено'); }); setEditingNotes(false); } else { setNotesDraft(b.internal_notes || ''); setEditingNotes(true); } }}
+            <button onClick={() => { if (editingNotes) { /* save */ fetch(`/api/bookings/${b.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ internal_notes: notesDraft }) }).then(() => { setBooking({ ...b, internal_notes: notesDraft }); showToast(tUi('Примітку збережено')); }); setEditingNotes(false); } else { setNotesDraft(b.internal_notes || ''); setEditingNotes(true); } }}
               style={{ fontSize: 11, color: editingNotes ? '#22c55e' : 'var(--text-tertiary)', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer' }}>
               {editingNotes ? '✓ Зберегти' : 'Редагувати'}
             </button>

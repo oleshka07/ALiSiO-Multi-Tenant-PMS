@@ -63,7 +63,7 @@ export default function OrphanPaymentsPage() {
       } else {
         alert(`Не вдалось: ${json.message || json.reason}`);
       }
-    } catch (e: any) { alert(`Помилка: ${e.message}`); }
+    } catch (e: any) { alert(`Помилка: ${t(e.message)}`); }
     setRestoring(null);
   }
 

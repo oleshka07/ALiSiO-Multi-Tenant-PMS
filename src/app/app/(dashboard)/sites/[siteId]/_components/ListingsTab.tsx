@@ -151,7 +151,7 @@ function ListingEditModal({ listing, siteId, siteSlug, open, onClose, onRefresh,
         </>
       }>
       <div className="form-group">
-        <label className="form-label">URL сторінки об&apos;єкта</label>
+        <label className="form-label">{t('URL сторінки об\'єкта')}</label>
         <input className="form-input" placeholder="https://yoursite.com/cabin-b3"
           value={form.external_url} onChange={e => setForm(f => ({ ...f, external_url: e.target.value }))} />
       </div>
@@ -171,7 +171,7 @@ function ListingEditModal({ listing, siteId, siteSlug, open, onClose, onRefresh,
 
       <div className="form-group" style={{ marginTop: 24 }}>
         <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <ImageIcon size={16} /> Фотографії об&apos;єкта
+          <ImageIcon size={16} /> {t('Фотографії об\'єкта')}
         </label>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 12, marginTop: 12 }}>
           {photoUrls.map((url, idx) => (
@@ -196,7 +196,7 @@ function ListingEditModal({ listing, siteId, siteSlug, open, onClose, onRefresh,
           <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{t('Код для вставки (Embed)')}</h4>
         </div>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
-          Використовуйте цей код, щоб додати віджет бронювання саме для цього об&apos;єкта на ваш сайт.
+          {t('Використовуйте цей код, щоб додати віджет бронювання саме для цього об\'єкта на ваш сайт.')}
         </div>
         <div style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -284,7 +284,7 @@ export function ListingsTab({ siteId, siteSlug, siteCurrency = 'CZK' }: { siteId
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Видалити оголошення?')) return;
+    if (!confirm(t('Видалити оголошення?'))) return;
     await fetch(`/api/booking-sites/${siteId}/listings/${id}`, { method: 'DELETE' });
     fetchListings();
   };

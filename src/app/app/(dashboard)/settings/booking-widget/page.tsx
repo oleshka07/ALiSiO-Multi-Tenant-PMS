@@ -263,7 +263,7 @@ export default function BookingWidgetSettingsPage() {
                     <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>{t('⏳ Завантаження моделей...')}</div>
                   )}
                   {!loadingListings && listings.length === 0 && selectedSite && (
-                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>ℹ️ До цього сайту не прив&apos;язано жодної моделі</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>{t('ℹ️ До цього сайту не прив\'язано жодної моделі')}</div>
                   )}
                 </div>
               </>

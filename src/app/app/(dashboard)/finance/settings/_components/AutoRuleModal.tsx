@@ -106,8 +106,8 @@ export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!name.trim()) { setError('Введіть назву'); return; }
-    if (conditions.length === 0) { setError('Додайте хоча б одну умову'); return; }
+    if (!name.trim()) { setError(tUi('Введіть назву')); return; }
+    if (conditions.length === 0) { setError(tUi('Додайте хоча б одну умову')); return; }
 
     // Clean actions: remove empty keys
     const cleanActions: AutoRuleFormValues['actions'] = {};
@@ -121,7 +121,7 @@ export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
     if (actions.add_tag_ids && actions.add_tag_ids.length > 0) cleanActions.add_tag_ids = actions.add_tag_ids;
     if (actions.set_comment) cleanActions.set_comment = actions.set_comment;
 
-    if (Object.keys(cleanActions).length === 0) { setError('Додайте хоча б одну дію'); return; }
+    if (Object.keys(cleanActions).length === 0) { setError(tUi('Додайте хоча б одну дію')); return; }
 
     setSaving(true);
     try {
@@ -133,7 +133,7 @@ export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
         is_active: isActive,
         stop_on_match: stopOnMatch,
       });
-    } catch (err: any) { setError(err.message); setSaving(false); }
+    } catch (err: any) { setError(tUi(err.message)); setSaving(false); }
   }
 
   return (

@@ -464,7 +464,7 @@ function BookingsDesktop() {
       }
     } catch (e) {
       console.error('Status change error:', e);
-      alert('Помилка мережі');
+      alert(t('Помилка мережі'));
     }
   };
 
@@ -954,7 +954,7 @@ function BookingsDesktop() {
               widgetSources={widgetSources}
               onSaved={() => {
                 setShowNewBooking(false);
-                showToast('Бронювання створено!');
+                showToast(t('Бронювання створено!'));
                 fetchBookings();
               }}
               onCancel={() => setShowNewBooking(false)}
@@ -989,7 +989,7 @@ function BookingsDesktop() {
         <GroupBookingModal
           open={showGroupModal}
           onClose={() => setShowGroupModal(false)}
-          onCreated={() => { fetchBookings(); fetchGroupBookings(); showToast('Групове бронювання створено!'); }}
+          onCreated={() => { fetchBookings(); fetchGroupBookings(); showToast(t('Групове бронювання створено!')); }}
           bookingSources={bookingSources}
         />
 

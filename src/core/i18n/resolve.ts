@@ -17,12 +17,7 @@
  */
 
 import { type Sql, getSql } from '../db/async.ts';
-import {
-  DEFAULT_LANGUAGE,
-  type Language,
-  fromAcceptLanguage,
-  parseLanguage,
-} from './languages.ts';
+import { DEFAULT_LANGUAGE, type Language, fromAcceptLanguage, parseLanguage } from './languages.ts';
 
 /** The hotel's base language — the interface default and the content source. */
 export async function organizationLanguage(

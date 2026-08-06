@@ -54,11 +54,11 @@ export default function NotificationsSettingsPage() {
     try {
       const res = await fetch('/api/settings/notifications');
       const data = await res.json();
-      if (!res.ok) { showToast(`❌ ${data.error}`); return; }
+      if (!res.ok) { showToast(`❌ ${t(data.error)}`); return; }
       setS(data);
       setAdminIds((data.adminChatIds ?? []).join(', '));
     } catch (e: any) {
-      showToast(`❌ ${e.message}`);
+      showToast(`❌ ${t(e.message)}`);
     } finally {
       setLoading(false);
     }
@@ -76,13 +76,13 @@ export default function NotificationsSettingsPage() {
         body: JSON.stringify({ botToken: token, chatId: s.chatId, adminChatIds: adminIds, events: s.events }),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(`❌ ${data.error}`); return; }
+      if (!res.ok) { showToast(`❌ ${t(data.error)}`); return; }
       setS(data);
       setAdminIds((data.adminChatIds ?? []).join(', '));
       setToken('');
-      showToast('✅ Збережено');
+      showToast(t('✅ Збережено'));
     } catch (e: any) {
-      showToast(`❌ ${e.message}`);
+      showToast(`❌ ${t(e.message)}`);
     } finally {
       setSaving(false);
     }
@@ -93,26 +93,26 @@ export default function NotificationsSettingsPage() {
     try {
       const res = await fetch('/api/settings/notifications/test', { method: 'POST' });
       const data = await res.json();
-      if (!res.ok || !data.ok) { showToast(`❌ ${data.error}`); return; }
+      if (!res.ok || !data.ok) { showToast(`❌ ${t(data.error)}`); return; }
       showToast(data.warning ? `⚠️ @${data.bot}: ${data.warning}` : `✅ @${data.bot} — тестове повідомлення надіслано`);
     } catch (e: any) {
-      showToast(`❌ ${e.message}`);
+      showToast(`❌ ${t(e.message)}`);
     } finally {
       setTesting(false);
     }
   };
 
   const disconnect = async () => {
-    if (!confirm('Відключити Telegram? Збережений токен буде видалено.')) return;
+    if (!confirm(t('Відключити Telegram? Збережений токен буде видалено.'))) return;
     try {
       const res = await fetch('/api/settings/notifications', { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) { showToast(`❌ ${data.error}`); return; }
+      if (!res.ok) { showToast(`❌ ${t(data.error)}`); return; }
       setS(data);
       setAdminIds('');
-      showToast('✅ Відключено');
+      showToast(t('✅ Відключено'));
     } catch (e: any) {
-      showToast(`❌ ${e.message}`);
+      showToast(`❌ ${t(e.message)}`);
     }
   };
 
@@ -218,7 +218,7 @@ export default function NotificationsSettingsPage() {
                     />
                     <div className="form-hint">
                       {t('Основний чат або група. Додайте бота в групу, напишіть повідомлення і відкрийте')}
-                      <code> api.telegram.org/bot&lt;токен&gt;/getUpdates</code> {t('— id буде в полі')} <code>chat.id</code>.
+                      <code> {t('api.telegram.org/bot<токен>/getUpdates')}</code> {t('— id буде в полі')} <code>chat.id</code>.
                     </div>
                   </div>
                   <div className="form-group">

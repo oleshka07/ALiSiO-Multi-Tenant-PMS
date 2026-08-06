@@ -53,7 +53,7 @@ export default function FeaturesSettingsPage() {
       })
       .then((d) => { setCatalog(d.catalog); setFeatures(d.features); })
       .then(loadCredentials)
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(t(e.message)))
       .finally(() => setLoading(false));
   }, [loadCredentials]);
 
@@ -145,7 +145,7 @@ export default function FeaturesSettingsPage() {
                       )}
                       {st?.configured && !st.perOrganization && (
                         <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 10 }}>
-                          Зараз використовується ключ сервера. Збережіть свій, щоб від нього від&apos;єднатись.
+                          {t('Зараз використовується ключ сервера. Збережіть свій, щоб від нього від\'єднатись.')}
                         </div>
                       )}
 

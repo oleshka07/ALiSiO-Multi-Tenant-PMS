@@ -53,7 +53,7 @@ export default function AttachmentsSection({ operationId }: Props) {
 
   async function handleUpload(file: File) {
     if (!operationId) {
-      alert('Спершу збережи операцію — потім зможеш прикріпити файл');
+      alert(t('Спершу збережи операцію — потім зможеш прикріпити файл'));
       return;
     }
     setUploading(true);
@@ -68,7 +68,7 @@ export default function AttachmentsSection({ operationId }: Props) {
         fetchItems();
       }
     } catch (e: any) {
-      alert(`Помилка: ${e.message}`);
+      alert(`Помилка: ${t(e.message)}`);
     }
     setUploading(false);
     if (inputRef.current) inputRef.current.value = '';
@@ -85,7 +85,7 @@ export default function AttachmentsSection({ operationId }: Props) {
       }
       fetchItems();
     } catch (e: any) {
-      alert(`Помилка: ${e.message}`);
+      alert(`Помилка: ${t(e.message)}`);
     }
   }
 

@@ -71,7 +71,7 @@ export default function CounterpartyTreeRow({
     try { data = JSON.parse(payload); } catch { setDragOver(null); return; }
     if (data.id === counterparty.id) { setDragOver(null); return; }
     if (data.kind !== counterparty.kind) {
-      alert('Не можна переміщувати між різними типами контрагентів.');
+      alert(t('Не можна переміщувати між різними типами контрагентів.'));
       setDragOver(null);
       return;
     }

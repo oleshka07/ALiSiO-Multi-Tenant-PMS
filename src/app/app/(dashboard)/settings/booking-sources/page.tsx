@@ -98,7 +98,7 @@ export default function BookingSourcesPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        showToast(`❌ ${data.error}`);
+        showToast(`❌ ${t(data.error)}`);
       } else {
         showToast(editSource ? '✅ Джерело оновлено' : '✅ Джерело створено');
         setShowModal(false);
@@ -114,9 +114,9 @@ export default function BookingSourcesPage() {
       const res = await fetch(`/api/booking-sources/${s.id}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) {
-        showToast(`❌ ${data.error}`);
+        showToast(`❌ ${t(data.error)}`);
       } else {
-        showToast('✅ Видалено');
+        showToast(t('✅ Видалено'));
         fetchSources();
       }
     } catch (e) { console.error(e); }

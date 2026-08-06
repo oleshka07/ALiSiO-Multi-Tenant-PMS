@@ -81,12 +81,12 @@ export default function GroupBookingModal({ open, onClose, onCreated, bookingSou
 
   const handleCreate = async () => {
     if (!form.firstName || !form.lastName || !form.checkIn || !form.checkOut) {
-      alert("Заповніть обов'язкові поля");
+      alert(t('Заповніть обов\'язкові поля'));
       return;
     }
     const unitIds = mode === 'building' ? buildingUnits.map((u: any) => u.id) : selectedUnitIds;
     if (unitIds.length === 0) {
-      alert('Оберіть кімнати');
+      alert(t('Оберіть кімнати'));
       return;
     }
 
@@ -110,7 +110,7 @@ export default function GroupBookingModal({ open, onClose, onCreated, bookingSou
       } else {
         alert(data.error || 'Помилка створення');
       }
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(t('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -258,7 +258,7 @@ export default function GroupBookingModal({ open, onClose, onCreated, bookingSou
             <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{t('Замовник групи')}</h4>
             <div className="form-row">
               <div className="form-group">
-                <label className="form-label">Ім&apos;я *</label>
+                <label className="form-label">{t('Ім\'я *')}</label>
                 <input className="form-input" placeholder={t('Ім\'я')} value={form.firstName}
                   onChange={e => setForm(p => ({ ...p, firstName: e.target.value }))} />
               </div>

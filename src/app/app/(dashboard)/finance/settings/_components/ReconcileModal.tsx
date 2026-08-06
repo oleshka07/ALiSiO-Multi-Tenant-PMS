@@ -26,7 +26,7 @@ export default function ReconcileModal({ account, onClose, onDone }: Props) {
     e.preventDefault();
     setError(null);
     if (actual === '' || !isFinite(actualNum)) {
-      setError('Вкажіть фактичний залишок');
+      setError(t('Вкажіть фактичний залишок'));
       return;
     }
     setSubmitting(true);
@@ -42,11 +42,11 @@ export default function ReconcileModal({ account, onClose, onDone }: Props) {
       if (data.adjustment_operation_id) {
         alert(`Коригування створено.\nДельта: ${data.delta.toFixed(2)} ${account.currency}`);
       } else {
-        alert('Залишки вже збігаються — коригування не потрібне.');
+        alert(t('Залишки вже збігаються — коригування не потрібне.'));
       }
       onDone();
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
     } finally {
       setSubmitting(false);
     }

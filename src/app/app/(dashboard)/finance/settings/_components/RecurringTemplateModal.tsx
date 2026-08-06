@@ -72,12 +72,12 @@ export default function RecurringTemplateModal({ initial, onClose, onSave }: Pro
     e.preventDefault();
     setError(null);
     const amt = parseFloat(amount);
-    if (!name.trim()) { setError('Введіть назву'); return; }
-    if (!isFinite(amt) || amt <= 0) { setError('Сума має бути додатною'); return; }
-    if (opType === 'income' && !accountToId) { setError('Оберіть рахунок-отримувач'); return; }
-    if (opType === 'expense' && !accountFromId) { setError('Оберіть рахунок-джерело'); return; }
+    if (!name.trim()) { setError(t('Введіть назву')); return; }
+    if (!isFinite(amt) || amt <= 0) { setError(t('Сума має бути додатною')); return; }
+    if (opType === 'income' && !accountToId) { setError(t('Оберіть рахунок-отримувач')); return; }
+    if (opType === 'expense' && !accountFromId) { setError(t('Оберіть рахунок-джерело')); return; }
     if (opType === 'transfer' && (!accountFromId || !accountToId || accountFromId === accountToId)) {
-      setError('Оберіть два різні рахунки для переказу');
+      setError(t('Оберіть два різні рахунки для переказу'));
       return;
     }
 
@@ -98,7 +98,7 @@ export default function RecurringTemplateModal({ initial, onClose, onSave }: Pro
         is_active: isActive,
       });
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
       setSaving(false);
     }
   }

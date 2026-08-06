@@ -691,7 +691,7 @@ export default function MobileCalendar() {
                   setRangeStart(null);
                   fetchData();
                 } else {
-                  alert('Не вдалося заблокувати доступ');
+                  alert(tUi('Не вдалося заблокувати доступ'));
                 }
               }}
               style={{ padding: '4px 10px', borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
@@ -1146,7 +1146,7 @@ export default function MobileCalendar() {
               </div>
               <button
                 onClick={async () => {
-                  if (confirm('Видалити блокування номера на вказані дати?')) {
+                  if (confirm(tUi('Видалити блокування номера на вказані дати?'))) {
                     await fetch(`/api/availability-blocks?id=${viewBlock.id}`, { method: 'DELETE' });
                     setViewBlock(null);
                     fetchData();

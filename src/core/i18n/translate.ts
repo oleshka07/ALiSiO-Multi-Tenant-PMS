@@ -13,8 +13,8 @@
  * Trigger: called on admin save (config routes) and via /api/admin/retranslate.
  */
 import crypto from 'node:crypto';
-import { getSql } from '../db/async.ts';
 import { requireOrganizationId } from '../auth/tenant-context.ts';
+import { getSql } from '../db/async.ts';
 import { LANGUAGES, type Language, targetLanguages } from './languages.ts';
 import { organizationLanguage } from './resolve.ts';
 
@@ -121,7 +121,9 @@ export async function translateAndStore(
   // throw if there is no context and more than one hotel, because the callers
   // are all fire-and-forget: the save still succeeds, and the failure is
   // logged instead of translating from the wrong language.
-  const source: Language = await organizationLanguage(organizationId ?? (await requireOrganizationId()));
+  const source: Language = await organizationLanguage(
+    organizationId ?? (await requireOrganizationId()),
+  );
   const targets = targetLanguages(source);
   const sourceName = LANGUAGES[source].english;
   let translated = 0;
@@ -143,8 +145,14 @@ export async function translateAndStore(
     const toTranslate: string[] = [];
     for (const text of texts) {
       if (!force) {
-        const existing = await sql.row<any>('SELECT id FROM content_translations WHERE text_hash = ? AND lang = ?', [textHash(text), lang]) as any;
-        if (existing) { skipped++; continue; }
+        const existing = (await sql.row<any>(
+          'SELECT id FROM content_translations WHERE text_hash = ? AND lang = ?',
+          [textHash(text), lang],
+        )) as any;
+        if (existing) {
+          skipped++;
+          continue;
+        }
       }
       toTranslate.push(text);
     }
@@ -211,13 +219,18 @@ Return ONLY the translations, one per line, prefixed with index like [0] transla
  * Look up stored translations for an array of source texts.
  * Returns: { "source text": { en: "...", de: "...", cs: "...", ... } }
  */
-export async function getStoredTranslations(texts: string[]): Promise<Record<string, Record<string, string>>> {
+export async function getStoredTranslations(
+  texts: string[],
+): Promise<Record<string, Record<string, string>>> {
   if (texts.length === 0) return {};
   const sql = getSql();
   const result: Record<string, Record<string, string>> = {};
 
   for (const text of texts) {
-    const rows = await sql.rows<any>('SELECT lang, translated_text FROM content_translations WHERE text_hash = ?', [textHash(text)]) as any[];
+    const rows = (await sql.rows<any>(
+      'SELECT lang, translated_text FROM content_translations WHERE text_hash = ?',
+      [textHash(text)],
+    )) as any[];
 
     if (rows.length > 0) {
       result[text] = {};

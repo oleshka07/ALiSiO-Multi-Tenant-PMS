@@ -73,7 +73,7 @@ export default function CapexPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Видалити цей CAPEX?')) return;
+    if (!confirm(t('Видалити цей CAPEX?'))) return;
     await fetch(`/api/finance/capex/${id}`, { method: 'DELETE' });
     fetchData();
   };
