@@ -173,7 +173,10 @@ try {
     const { rows: seqs } = await pg.query(`
       SELECT c.relname AS seq, t.relname AS tbl, a.attname AS col
       FROM pg_class c
-      JOIN pg_depend d ON d.objid = c.oid AND d.deptype = 'a'
+      -- 'a' is a serial's sequence, 'i' an identity column's. Only 'a' was
+      -- listed here, so every identity column's counter would have been left
+      -- at 1 and the next insert would have collided with the first imported row.
+      JOIN pg_depend d ON d.objid = c.oid AND d.deptype IN ('a', 'i')
       JOIN pg_class t ON t.oid = d.refobjid
       JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = d.refobjsubid
       WHERE c.relkind = 'S'

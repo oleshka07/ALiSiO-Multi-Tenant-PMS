@@ -552,9 +552,11 @@ async function ensureHostexColumns() {
   const sql = getSql();
   // The Hostex columns on `reservations` are part of the schema itself — the
   // boot migration in core/db adds them whether or not this integration ever
-  // runs, and payments.auto_created ships in that table's own CREATE. What is
-  // left here is what only Hostex needs.
-  await sql.run('CREATE INDEX IF NOT EXISTS idx_reservations_hostex_code ON reservations(hostex_reservation_code)');
+  // runs, and payments.auto_created ships in that table's own CREATE. So is the
+  // index on hostex_reservation_code, which used to be created here on every
+  // sync: harmless on SQLite, impossible on Postgres, where CREATE INDEX
+  // requires owning the table and the application's role owns nothing. It took
+  // the sync down on the first run against Postgres.
 
   // hostex_sync_log, hostex_property_map and availability_blocks used to be
   // created here as well. The boot migration in core/db creates all three

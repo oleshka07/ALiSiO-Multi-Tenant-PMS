@@ -192,7 +192,12 @@ PORT="$(grep -E '^APP_PORT=' "$ENV_FILE" | cut -d= -f2)"
 echo "==> waiting for the app to answer on 127.0.0.1:${PORT}"
 UP=""
 for i in $(seq 1 45); do
-  [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/login" || true)" = 200 ] && { UP=1; break; }
+  # Any non-5xx answer means the server is up. /login answers 308 here (Next
+  # redirects it), so testing for 200 waited the full 90s and then blamed the
+  # app for not starting.
+  case "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/login" || true)" in
+    2??|3??) UP=1; break ;;
+  esac
   sleep 2
 done
 [ -n "$UP" ] || { echo "!! $ENV_NAME did not answer in 90s" >&2; $COMPOSE logs --tail 60 app >&2; rollback_hint; exit 1; }

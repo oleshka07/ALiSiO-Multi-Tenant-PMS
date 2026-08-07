@@ -4823,6 +4823,12 @@ function runMigrations(database: any) {
     for (const [name, type] of hostexCols) {
       if (!resCols2.includes(name)) database.exec(`ALTER TABLE reservations ADD COLUMN ${name} ${type}`);
     }
+    // The index belongs with the columns. It used to be created by the sync
+    // itself, on every run — which works on SQLite and cannot work on Postgres,
+    // where CREATE INDEX requires owning the table and the application's role
+    // deliberately owns nothing. It only ever existed in databases where a sync
+    // had run, so a fresh install had the columns and not the index.
+    database.exec('CREATE INDEX IF NOT EXISTS idx_reservations_hostex_code ON reservations(hostex_reservation_code)');
   } catch (e: any) {
     console.error('[DB] hostex columns migration:', e.message);
   }
