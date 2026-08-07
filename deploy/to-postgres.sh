@@ -96,7 +96,9 @@ SQL
 # Before the data, not after: if the policies do not hold there is nothing to
 # discuss, and finding that out with an empty database costs nothing.
 echo "==> proving row-level security"
-if ! psql_super < db/postgres/rls-check.sql | tee /tmp/rls-$ENV_NAME.log | grep -q 'all checks passed'; then
+# 2>&1 matters: psql reports errors on stderr, and a log that captured only
+# stdout said nothing but "BEGIN" when this check first failed.
+if ! psql_super < db/postgres/rls-check.sql 2>&1 | tee "/tmp/rls-$ENV_NAME.log" | grep -q 'all checks passed'; then
   echo "!! rls-check did not pass — stopping before any data is moved" >&2
   tail -20 /tmp/rls-$ENV_NAME.log >&2
   exit 1
@@ -105,26 +107,42 @@ fi
 # ── 5. Data ──────────────────────────────────────────────────────────────────
 # The application is stopped first. The import is one-time and does not chase
 # rows written while it runs, so a booking taken mid-import would be lost.
-APP_URL_LOCAL="postgres://${PG_APP_USER}:${PG_APP_PASSWORD}@127.0.0.1:${PG_PORT}/${PG_DATABASE}"
-SUPER_URL="postgres://${PG_SUPERUSER}:${PG_SUPERUSER_PASSWORD}@127.0.0.1:${PG_PORT}/${PG_DATABASE}"
+# The application reaches Postgres through the published loopback port; the
+# import runs inside the compose network and reaches it by service name.
+# By service name on the compose network, NOT the published 127.0.0.1:PG_PORT.
+# That port is on the HOST's loopback; inside the application container
+# 127.0.0.1 is the container, where nothing listens. The published port stays,
+# so psql from the host keeps working.
+APP_URL_CONTAINER="postgres://${PG_APP_USER}:${PG_APP_PASSWORD}@postgres:5432/${PG_DATABASE}"
+SUPER_URL="postgres://${PG_SUPERUSER}:${PG_SUPERUSER_PASSWORD}@postgres:5432/${PG_DATABASE}"
 
-SQLITE_HOST_COPY="/tmp/alisio-${ENV_NAME}-import.db"
-echo "==> stopping the app and copying its database out"
+echo "==> stopping the app"
 $COMPOSE stop app
-docker run --rm -v "${PROJECT}_app-data:/d:ro" -v /tmp:/out alpine \
-  sh -c "cp /d/alisio.db /out/$(basename "$SQLITE_HOST_COPY")"
+
+# In a container built from the application's own image: the server has no
+# node_modules of its own — everything is built inside Docker — and that image
+# already carries better-sqlite3, pg and scripts/. The SQLite volume is mounted
+# READ-ONLY, so the import cannot write to the database it is reading, which is
+# also the database the rollback depends on.
+run_import() {
+  docker run --rm \
+    --network "${PROJECT}_default" \
+    -v "${PROJECT}_app-data:/app/data:ro" \
+    -e ALISIO_DB_PATH=/app/data/alisio.db \
+    --entrypoint node \
+    "alisio-pms:${ENV_NAME}" scripts/pg-import.mjs "$SUPER_URL" "$@"
+}
 
 echo "==> importing"
-# The import writes past row-level security, so it runs as the superuser; the
-# application never does.
+# The import writes past row-level security, so it connects as the superuser.
+# The application never does.
 if [ -n "$DRY_RUN" ]; then
-  ALISIO_DB_PATH="$SQLITE_HOST_COPY" node scripts/pg-import.mjs "$SUPER_URL" --dry-run
+  run_import --dry-run
   echo "==> dry run: starting the app back up on SQLite, nothing was switched"
   $COMPOSE up -d app
   exit 0
 fi
-ALISIO_DB_PATH="$SQLITE_HOST_COPY" node scripts/pg-import.mjs "$SUPER_URL"
-rm -f "$SQLITE_HOST_COPY"
+run_import
 
 # ── 6. The switch ────────────────────────────────────────────────────────────
 echo "==> switching $ENV_NAME to postgres"
@@ -134,33 +152,66 @@ else
   printf '\n# Set by deploy/to-postgres.sh. Remove this line to go back to SQLite.\nDB_DRIVER=postgres\n' >> "$ENV_FILE"
 fi
 if grep -q '^DATABASE_URL=' "$ENV_FILE"; then
-  sed -i "s|^DATABASE_URL=.*|DATABASE_URL=${APP_URL_LOCAL}|" "$ENV_FILE"
+  sed -i "s|^DATABASE_URL=.*|DATABASE_URL=${APP_URL_CONTAINER}|" "$ENV_FILE"
 else
-  printf 'DATABASE_URL=%s\n' "$APP_URL_LOCAL" >> "$ENV_FILE"
+  printf 'DATABASE_URL=%s\n' "$APP_URL_CONTAINER" >> "$ENV_FILE"
 fi
+
+# Compose reads the SHELL first and --env-file only as a fallback, and line 37
+# sourced this file back when both variables were still the scaffold's empty
+# strings. Without re-exporting them, compose substitutes those empties and
+# starts the app on SQLite while every step above reports success. That is not
+# hypothetical: it is what happened to beta, and the health check below could
+# not tell.
+export DB_DRIVER=postgres
+export DATABASE_URL="$APP_URL_CONTAINER"
 
 $COMPOSE up -d app
 
-# ── 7. Health, which means the database answered ─────────────────────────────
+# ── 7. Proof, not health ─────────────────────────────────────────────────────
+# What stood here POSTed a bad login and accepted 401. A working application
+# answers 401 to a wrong password — and so does one that cannot read app_users
+# at all, which is exactly what a failed switch looks like. The check could not
+# fail, and it did not: it passed beta while beta was still on SQLite.
+rollback_hint() {
+  echo "!! to go back: remove the DB_DRIVER line from $ENV_FILE and run ./deploy/deploy.sh $ENV_NAME" >&2
+  echo "!! the SQLite file is untouched — nothing in this script writes to it" >&2
+}
+
 PORT="$(grep -E '^APP_PORT=' "$ENV_FILE" | cut -d= -f2)"
-echo "==> waiting for health on 127.0.0.1:${PORT}"
+echo "==> waiting for the app to answer on 127.0.0.1:${PORT}"
+UP=""
 for i in $(seq 1 45); do
-  CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:${PORT}/api/auth/login" \
-    -H 'Content-Type: application/json' \
-    -d '{"email":"pg-health@example.invalid","password":"x"}' || true)"
-  case "$CODE" in
-    401|400) echo "==> $ENV_NAME is on postgres and answering (health $CODE)"; exit 0 ;;
-    500|502|503)
-      echo "!! $ENV_NAME answers $CODE on a database-backed route" >&2
-      $COMPOSE logs --tail 40 app >&2
-      echo "!! to go back: remove DB_DRIVER from $ENV_FILE and run ./deploy/deploy.sh $ENV_NAME" >&2
-      exit 1
-      ;;
-  esac
+  [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/login" || true)" = 200 ] && { UP=1; break; }
   sleep 2
 done
+[ -n "$UP" ] || { echo "!! $ENV_NAME did not answer in 90s" >&2; $COMPOSE logs --tail 60 app >&2; rollback_hint; exit 1; }
 
-echo "!! $ENV_NAME did not become healthy in 90s" >&2
-$COMPOSE logs --tail 60 app >&2
-echo "!! to go back: remove DB_DRIVER from $ENV_FILE and run ./deploy/deploy.sh $ENV_NAME" >&2
+# First question: is it on Postgres at all? This is the one the old check dodged.
+IN_CONTAINER="$(docker inspect "alisio-${ENV_NAME}-app" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^DB_DRIVER=' | cut -d= -f2)"
+if [ "$IN_CONTAINER" != "postgres" ]; then
+  echo "!! the container has DB_DRIVER='${IN_CONTAINER}', not postgres — the switch did not take" >&2
+  rollback_hint
+  exit 1
+fi
+
+# Second question: does it work? Real logins, two real organizations, and every
+# cross-tenant assertion the project has. As the superuser, because it seeds
+# from outside any request and row-level security refuses that to the
+# application's role — correctly, which is the point.
+echo "==> proving tenant isolation against postgres"
+if docker run --rm \
+  --network "${PROJECT}_default" \
+  -v "$(pwd)/scripts:/app/scripts:ro" -v "$(pwd)/src:/app/src:ro" -w /app \
+  -e DB_DRIVER=postgres \
+  -e DATABASE_URL="$SUPER_URL" \
+  -e BASE_URL="http://alisio-${ENV_NAME}-app:3000" \
+  --entrypoint node "alisio-pms:${ENV_NAME}" scripts/check-isolation.mjs; then
+  echo "==> $ENV_NAME is on postgres, and isolation holds"
+  exit 0
+fi
+
+echo "!! $ENV_NAME is on postgres but the isolation check failed" >&2
+$COMPOSE logs --tail 40 app >&2
+rollback_hint
 exit 1

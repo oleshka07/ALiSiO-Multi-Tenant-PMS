@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { getSql } from './db/async.ts';
+import { getSql, type Sql } from './db/async.ts';
 
 /**
  * The feature registry: which integrations this organization actually bought.
@@ -36,8 +36,9 @@ export async function listFeatures(organizationId: string): Promise<Record<Featu
   return out;
 }
 
-export async function setFeature(organizationId: string, feature: FeatureKey, enabled: boolean): Promise<void> {
-  const sql = getSql();
+/** `handle` is for a caller already inside a transaction — see provisioning. */
+export async function setFeature(organizationId: string, feature: FeatureKey, enabled: boolean, handle?: Sql): Promise<void> {
+  const sql = handle ?? getSql();
   await sql.run(`
     INSERT INTO organization_features (organization_id, feature, enabled, updated_at)
     VALUES (?, ?, ?, CURRENT_TIMESTAMP)

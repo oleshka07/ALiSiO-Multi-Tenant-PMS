@@ -208,10 +208,35 @@ function uniquesOf(table) {
 // ── Tenancy: how each table reaches an organization ──────────────────────────
 
 const ORG_COL = 'organization_id';
-const GLOBAL = new Set([
-  'organizations', 'sessions', 'rate_limits', 'settings', 'content_translations',
+// Identity. These are read BEFORE the tenant is known — login looks a user up
+// by email, and every authenticated request joins app_users through a session
+// id — so a tenant policy cannot restrict them, it can only break them:
+// current_setting('app.organization_id') RAISES on a connection that has not
+// set it, and no caller can set it before it knows which organization the
+// person belongs to. Scoped by the application instead: every query that lists
+// or edits users carries WHERE organization_id = ?, and check-isolation.mjs
+// proves it against a live database.
+const IDENTITY = new Set(['organizations', 'sessions']);
+
+// Reference data, the same rows for every customer.
+// Readable before the tenant is known. Login looks a user up by email and
+// every authenticated request joins app_users through a session id — neither
+// caller can name an organization, because finding the row is HOW the
+// organization is discovered. postgres.ts sets app.organization_id to '' when
+// there is no context, so the strict predicate matched nothing and every login
+// returned 401: not a refusal, a table the application could not read.
+//
+// Only the read side opens, and only while no tenant is set. WITH CHECK stays
+// strict, so no row can ever be written into another organization, and a
+// request that HAS a tenant still sees only its own users.
+const READ_BEFORE_TENANT = new Set(['app_users']);
+
+const REFERENCE = new Set([
+  'rate_limits', 'settings', 'content_translations',
   'email_processed', 'fin_system_state', 'hostex_sync_log', 'hostex_property_map',
 ]);
+
+const GLOBAL = new Set([...IDENTITY, ...REFERENCE]);
 
 const columnsOf = (t) => new Set((info.get(t) || []).map((c) => c.name));
 
@@ -392,25 +417,33 @@ w('-- tenants by accident.');
 w();
 
 const rlsCovered = [];
-const rlsGlobal = [];
+const rlsIdentity = [];
+const rlsReference = [];
 const rlsNone = [];
 
 for (const t of tables) {
   const s = scopeOf(t.name);
-  if (s.kind === 'global') { rlsGlobal.push(t.name); continue; }
+  if (s.kind === 'global') { (IDENTITY.has(t.name) ? rlsIdentity : rlsReference).push(t.name); continue; }
   const pred = rlsPredicate(t.name);
   if (!pred) { rlsNone.push(t.name); continue; }
   rlsCovered.push(t.name);
+  const readPred = READ_BEFORE_TENANT.has(t.name)
+    ? `${pred} OR current_setting('app.organization_id') = ''`
+    : pred;
   w(`ALTER TABLE ${q(t.name)} ENABLE ROW LEVEL SECURITY;`);
   w(`ALTER TABLE ${q(t.name)} FORCE ROW LEVEL SECURITY;`);
   w(`CREATE POLICY ${q(`${t.name}_tenant`)} ON ${q(t.name)}`);
-  w(`  USING (${pred})`);
+  w(`  USING (${readPred})`);
   w(`  WITH CHECK (${pred});`);
   w();
 }
 
+w('-- Identity: read before the tenant is known, so a policy here would not');
+w('-- restrict these queries, it would break them. Scoped by the application.');
+for (const t of rlsIdentity) w(`--   ${t}`);
+w();
 w('-- Reference data, identical for every customer: no policy by design.');
-for (const t of rlsGlobal) w(`--   ${t}`);
+for (const t of rlsReference) w(`--   ${t}`);
 w();
 if (rlsNone.length) {
   w('-- !! No path to an organization — these would be shared between customers.');
@@ -428,7 +461,7 @@ if (process.argv.includes('--print')) {
   console.log(`wrote ${path.relative(ROOT, OUT)}`);
 }
 
-console.log(`tables ${tables.length}  rls ${rlsCovered.length}  global ${rlsGlobal.length}  unscoped ${rlsNone.length}`);
+console.log(`tables ${tables.length}  rls ${rlsCovered.length}  identity ${rlsIdentity.length}  reference ${rlsReference.length}  unscoped ${rlsNone.length}`);
 if (rlsNone.length) console.error('UNSCOPED TABLES:', rlsNone.join(', '));
 if (typeCorrections.length) {
   console.error(`

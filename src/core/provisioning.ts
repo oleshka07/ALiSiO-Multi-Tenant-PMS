@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { getDb } from './db/index.ts';
 import { FEATURES, setFeature, type FeatureKey } from './features.ts';
 import { getSql } from './db/async.ts';
+import { runWithOrganization } from './auth/tenant-context.ts';
 import { DEFAULT_LANGUAGE, LANGUAGE_CODES, isLanguage } from './i18n/languages.ts';
 
 /**
@@ -115,7 +115,12 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
   const ownerId = `user_${crypto.randomBytes(8).toString('hex')}`;
   const categoryId = `cat_${crypto.randomBytes(8).toString('hex')}`;
 
-  await sql.tx(async (t) => {
+  // As the organization being created. Postgres applies WITH CHECK to every
+  // insert — a row whose organization_id does not match the connection's tenant
+  // is rejected — and this is the one caller that has no tenant to inherit,
+  // because it is making one. The id exists already, so the transaction can run
+  // as it: postgres.ts reads this context once, at BEGIN.
+  await runWithOrganization(organizationId, async () => await sql.tx(async (t) => {
     await t.run(`
       INSERT INTO organizations (id, name, slug, timezone, default_currency, language)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -147,11 +152,15 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     `, [ownerId, organizationId, email, input.ownerName || name, bcrypt.hashSync(input.ownerPassword, 10)]);
 
     // Every feature gets a row, so the state is explicit rather than absent.
+    // Through `t`, not the pool: these rows reference an organization this
+    // transaction has not committed yet, so on Postgres a second connection
+    // would fail the foreign key. On SQLite there is only ever one connection,
+    // which is why writing them outside the transaction worked by accident.
     const wanted = new Set(input.enable || []);
     for (const key of Object.keys(FEATURES) as FeatureKey[]) {
-      await setFeature(organizationId, key, wanted.has(key));
+      await setFeature(organizationId, key, wanted.has(key), t);
     }
-  });
+  }));
 
   return { organizationId, propertyId, ownerId, language };
 }

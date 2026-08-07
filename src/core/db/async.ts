@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createRequire } from 'node:module';
-import { getDb } from './index.ts';
 
 /**
  * The database, asked asynchronously.
@@ -91,7 +90,15 @@ const SQLITE_DIALECT: Dialect = {
 };
 
 export function sqliteSql(db: any = null): Sql {
-  const handle = () => db || getDb();
+  // Loaded on first use, not at import: `./index.ts` is the SQLite bootstrap —
+  // the schema, every migration, better-sqlite3 and bcryptjs for the demo seed
+  // — and a Postgres deployment must not drag any of it in. The Postgres
+  // driver is loaded lazily for the mirror-image reason.
+  const handle = () => {
+    if (db) return db;
+    const require = createRequire(import.meta.url);
+    return require('./index.ts').getDb();
+  };
 
   const impl: Sql = {
     dialect: SQLITE_DIALECT,

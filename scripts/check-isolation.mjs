@@ -11,61 +11,75 @@
  * Creates its own throwaway organizations and users, exercises the API as each
  * of them, and removes what it created.
  */
-import Database from 'better-sqlite3';
-import bcrypt from 'bcryptjs';
 import assert from 'node:assert';
+import { getSql } from '../src/core/db/async.ts';
 
 const BASE = process.env.BASE_URL || 'http://localhost:3000';
-const DB = process.env.DB_PATH || 'data/alisio.db';
 const TAG = '__isolation_check__';
 
-const db = new Database(DB);
+// The probe password and its bcrypt hash, both constants.
+//
+// Not hashed here: Next's standalone build inlines bcryptjs into the compiled
+// server rather than leaving it as a package, so a container built from the
+// application's image cannot import it — and that container is the only place
+// that can reach a Postgres bound to loopback inside the compose network.
+//
+// Regenerate with:
+//   node -e "console.log(require('bcryptjs').hashSync('probe-password-1234', 10))"
+const PROBE_PASSWORD = 'probe-password-1234';
+const PROBE_HASH = '$2b$10$oiYMXccjTWuK20axUyyF/..DMBr3rKnNGabo8F8H/kw/1CjncKOr6';
 
-function makeTenant(suffix) {
+// Through the seam, not through better-sqlite3: this file used to open
+// data/alisio.db directly, so the day an environment moved to Postgres the
+// strongest check in the repository quietly stopped covering it. DB_DRIVER
+// now decides here exactly as it does in the application.
+//
+// Against Postgres, DATABASE_URL must be the SUPERUSER connection. The script
+// seeds two organizations from outside any request, and row-level security
+// refuses that to the application's role — correctly, which is the point.
+const sql = getSql();
+
+async function makeTenant(suffix) {
   const orgId = `${TAG}org_${suffix}`;
   const userId = `${TAG}user_${suffix}`;
   const email = `${suffix}@isolation.test`;
-  const password = 'probe-password-1234';
-  db.prepare('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)')
-    .run(orgId, `Probe ${suffix}`, `${TAG}${suffix}`);
-  db.prepare(
-    'INSERT INTO app_users (id, organization_id, email, full_name, role, password_hash) VALUES (?, ?, ?, ?, ?, ?)',
-  ).run(userId, orgId, email, `Probe ${suffix}`, 'owner', bcrypt.hashSync(password, 10));
-  return { orgId, userId, email, password };
+  await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [orgId, `Probe ${suffix}`, `${TAG}${suffix}`]);
+  await sql.run('INSERT INTO app_users (id, organization_id, email, full_name, role, password_hash) VALUES (?, ?, ?, ?, ?, ?)', [userId, orgId, email, `Probe ${suffix}`, 'owner', PROBE_HASH]);
+  return { orgId, userId, email, password: PROBE_PASSWORD };
 }
 
-function cleanup() {
+async function cleanup() {
   // Children first: foreign keys are ON. Channel rows go before unit_types,
   // because a room mapping points at one.
-  const conns = db.prepare('SELECT id FROM channel_connections WHERE organization_id LIKE ?').all(`${TAG}%`).map((r) => r.id);
-  for (const cid of conns) db.prepare('DELETE FROM channel_room_mapping WHERE connection_id = ?').run(cid);
-  db.prepare('DELETE FROM channel_connections WHERE organization_id LIKE ?').run(`${TAG}%`);
-  db.prepare('DELETE FROM channel_credentials WHERE organization_id LIKE ?').run(`${TAG}%`);
+  const conns = (await sql.rows('SELECT id FROM channel_connections WHERE organization_id LIKE ?', [`${TAG}%`])).map((r) => r.id);
+  for (const cid of conns) await sql.run('DELETE FROM channel_room_mapping WHERE connection_id = ?', [cid]);
+  await sql.run('DELETE FROM channel_connections WHERE organization_id LIKE ?', [`${TAG}%`]);
+  await sql.run('DELETE FROM channel_credentials WHERE organization_id LIKE ?', [`${TAG}%`]);
 
-  const props = db.prepare('SELECT id FROM properties WHERE organization_id LIKE ?').all(`${TAG}%`).map((r) => r.id);
+  const props = (await sql.rows('SELECT id FROM properties WHERE organization_id LIKE ?', [`${TAG}%`])).map((r) => r.id);
   for (const pid of props) {
-    const resIds = db.prepare('SELECT id FROM reservations WHERE property_id = ?').all(pid).map((r) => r.id);
+    const resIds = (await sql.rows('SELECT id FROM reservations WHERE property_id = ?', [pid])).map((r) => r.id);
     for (const rid of resIds) {
-      db.prepare('DELETE FROM guest_registrations WHERE reservation_id = ?').run(rid);
-      db.prepare('DELETE FROM booking_activity_log WHERE reservation_id = ?').run(rid);
+      await sql.run('DELETE FROM guest_registrations WHERE reservation_id = ?', [rid]);
+      await sql.run('DELETE FROM booking_activity_log WHERE reservation_id = ?', [rid]);
     }
-    db.prepare('DELETE FROM reservations WHERE property_id = ?').run(pid);
-    db.prepare('DELETE FROM units WHERE property_id = ?').run(pid);
-    db.prepare('DELETE FROM unit_types WHERE property_id = ?').run(pid);
-    db.prepare('DELETE FROM buildings WHERE property_id = ?').run(pid);
-    db.prepare('DELETE FROM categories WHERE property_id = ?').run(pid);
+    await sql.run('DELETE FROM reservations WHERE property_id = ?', [pid]);
+    await sql.run('DELETE FROM units WHERE property_id = ?', [pid]);
+    await sql.run('DELETE FROM unit_types WHERE property_id = ?', [pid]);
+    await sql.run('DELETE FROM buildings WHERE property_id = ?', [pid]);
+    await sql.run('DELETE FROM categories WHERE property_id = ?', [pid]);
   }
-  db.prepare('DELETE FROM properties WHERE organization_id LIKE ?').run(`${TAG}%`);
-  try { db.prepare('DELETE FROM waitlist WHERE site_id IN (SELECT id FROM booking_sites WHERE slug LIKE ?)').run(`${TAG}%`); } catch { /* table may not exist */ }
-  try { db.prepare('DELETE FROM booking_sites WHERE slug LIKE ?').run(`${TAG}%`); } catch { /* table may not exist */ }
-  db.prepare('DELETE FROM finance_tags WHERE organization_id LIKE ?').run(`${TAG}%`);
+  await sql.run('DELETE FROM properties WHERE organization_id LIKE ?', [`${TAG}%`]);
+  try { await sql.run('DELETE FROM waitlist WHERE site_id IN (SELECT id FROM booking_sites WHERE slug LIKE ?)', [`${TAG}%`]); } catch { /* table may not exist */ }
+  try { await sql.run('DELETE FROM booking_sites WHERE slug LIKE ?', [`${TAG}%`]); } catch { /* table may not exist */ }
+  await sql.run('DELETE FROM finance_tags WHERE organization_id LIKE ?', [`${TAG}%`]);
   // The app creates this table on first boot; cleanup may run against a
   // database the new code has not touched yet.
-  try { db.prepare('DELETE FROM organization_features WHERE organization_id LIKE ?').run(`${TAG}%`); } catch { /* not yet migrated */ }
-  db.prepare('DELETE FROM guests WHERE organization_id LIKE ?').run(`${TAG}%`);
-  db.prepare('DELETE FROM app_users WHERE organization_id LIKE ?').run(`${TAG}%`);
-  db.prepare('DELETE FROM sessions WHERE user_id LIKE ?').run(`${TAG}%`);
-  db.prepare('DELETE FROM organizations WHERE id LIKE ?').run(`${TAG}%`);
+  try { await sql.run('DELETE FROM organization_features WHERE organization_id LIKE ?', [`${TAG}%`]); } catch { /* not yet migrated */ }
+  await sql.run('DELETE FROM guests WHERE organization_id LIKE ?', [`${TAG}%`]);
+  await sql.run('DELETE FROM app_users WHERE organization_id LIKE ?', [`${TAG}%`]);
+  await sql.run('DELETE FROM sessions WHERE user_id LIKE ?', [`${TAG}%`]);
+  await sql.run('DELETE FROM organizations WHERE id LIKE ?', [`${TAG}%`]);
 }
 
 async function login({ email, password }) {
@@ -85,9 +99,9 @@ const call = (cookie, path, init = {}) =>
   fetch(`${BASE}${path}`, { ...init, headers: { Cookie: cookie, 'Content-Type': 'application/json', ...(init.headers || {}) } });
 
 async function main() {
-  cleanup();
-  const a = makeTenant('a');
-  const b = makeTenant('b');
+  await cleanup();
+  const a = await makeTenant('a');
+  const b = await makeTenant('b');
 
   try {
     const cookieA = await login(a);
@@ -104,7 +118,7 @@ async function main() {
     console.log('  ok  tenant A created a property');
 
     // It must land in A's organization, not in whichever row is first.
-    const row = db.prepare('SELECT organization_id FROM properties WHERE id = ?').get(propA.id);
+    const row = await sql.row('SELECT organization_id FROM properties WHERE id = ?', [propA.id]);
     assert.strictEqual(row.organization_id, a.orgId, `property landed in ${row.organization_id}`);
     console.log('  ok  it belongs to A, not to the first organization in the table');
 
@@ -124,14 +138,14 @@ async function main() {
       body: JSON.stringify({ name: 'Hijacked' }),
     });
     assert.strictEqual(patchB.status, 404, `B patched A's property: ${patchB.status}`);
-    const afterPatch = db.prepare('SELECT name FROM properties WHERE id = ?').get(propA.id);
+    const afterPatch = await sql.row('SELECT name FROM properties WHERE id = ?', [propA.id]);
     assert.strictEqual(afterPatch.name, 'Probe A Hotel', 'name was changed by B');
     console.log("  ok  B cannot rename A's property");
 
     // B must not delete it — the failure this whole exercise exists for.
     const delB = await call(cookieB, `/api/properties/${propA.id}`, { method: 'DELETE' });
     assert.strictEqual(delB.status, 404, `B deleted A's property: ${delB.status}`);
-    const stillThere = db.prepare('SELECT 1 FROM properties WHERE id = ?').get(propA.id);
+    const stillThere = await sql.row('SELECT 1 FROM properties WHERE id = ?', [propA.id]);
     assert.ok(stillThere, "A's property was deleted by B");
     console.log("  ok  B cannot delete A's property");
 
@@ -184,9 +198,7 @@ async function main() {
       }),
     });
     assert.strictEqual(bulkB.status, 404, `B bulk-created units in A's property: ${bulkB.status}`);
-    const leaked = db
-      .prepare('SELECT COUNT(*) c FROM units WHERE property_id = ?')
-      .get(propA.id);
+    const leaked = await sql.row('SELECT COUNT(*) c FROM units WHERE property_id = ?', [propA.id]);
     assert.strictEqual(leaked.c, 0, `${leaked.c} units were written into A's property by B`);
     console.log("  ok  B cannot bulk-create 50 units inside A's property");
 
@@ -217,7 +229,7 @@ async function main() {
       }),
     });
     assert.ok(credResB.ok, `B could not save credentials: ${credResB.status}`);
-    const storedA = db.prepare('SELECT client_id FROM channel_credentials WHERE id = ?').get(credA.id);
+    const storedA = await sql.row('SELECT client_id FROM channel_credentials WHERE id = ?', [credA.id]);
     assert.strictEqual(storedA?.client_id, 'probe-client-a', "B's save overwrote A's credentials");
     console.log("  ok  B saving credentials does not overwrite A's");
 
@@ -248,9 +260,7 @@ async function main() {
       body: JSON.stringify({ connection_id: connA.id, unit_type_id: utA.id, external_room_type_id: 'hijack' }),
     });
     assert.strictEqual(mapB.status, 404, `B mapped A's unit type onto A's connection: ${mapB.status}`);
-    const mapped = db
-      .prepare('SELECT COUNT(*) c FROM channel_room_mapping WHERE connection_id = ?')
-      .get(connA.id);
+    const mapped = await sql.row('SELECT COUNT(*) c FROM channel_room_mapping WHERE connection_id = ?', [connA.id]);
     assert.strictEqual(mapped.c, 0, `${mapped.c} room mappings were written into A's connection by B`);
     console.log("  ok  B cannot map rooms onto A's connection");
 
@@ -263,9 +273,7 @@ async function main() {
       body: JSON.stringify({ name: `probe-tag-${TAG}`, color: '#123456' }),
     });
     assert.ok(tagRes.ok, `B could not create a finance tag: ${tagRes.status}`);
-    const tagRow = db
-      .prepare('SELECT organization_id FROM finance_tags WHERE name = ?')
-      .get(`probe-tag-${TAG}`);
+    const tagRow = await sql.row('SELECT organization_id FROM finance_tags WHERE name = ?', [`probe-tag-${TAG}`]);
     assert.ok(tagRow, 'the finance tag was not written');
     assert.strictEqual(tagRow.organization_id, b.orgId, `B's tag was filed under ${tagRow.organization_id}`);
     console.log("  ok  a finance write from B lands under B, not the first organization");
@@ -282,7 +290,7 @@ async function main() {
     assert.strictEqual(userPutB.status, 404, `B edited A's user: ${userPutB.status}`);
     const userDelB = await call(cookieB, `/api/users/${a.userId}`, { method: 'DELETE' });
     assert.strictEqual(userDelB.status, 404, `B deleted A's user: ${userDelB.status}`);
-    const userA = db.prepare('SELECT full_name, is_active FROM app_users WHERE id = ?').get(a.userId);
+    const userA = await sql.row('SELECT full_name, is_active FROM app_users WHERE id = ?', [a.userId]);
     assert.ok(userA && userA.full_name === 'Probe a' && userA.is_active === 1, "A's user was changed by B");
     console.log("  ok  B cannot read, change or delete A's staff");
 
@@ -294,7 +302,7 @@ async function main() {
       body: JSON.stringify({ payment_pin: '4721' }),
     });
     assert.ok(pinSet.ok, `A could not set a payment PIN: ${pinSet.status}`);
-    const pinRow = db.prepare('SELECT payment_pin_hash FROM app_users WHERE id = ?').get(a.userId);
+    const pinRow = await sql.row('SELECT payment_pin_hash FROM app_users WHERE id = ?', [a.userId]);
     assert.ok(pinRow.payment_pin_hash && pinRow.payment_pin_hash !== '4721', 'the PIN was stored in the clear');
     console.log('  ok  a staff PIN is stored hashed, per organization');
 
@@ -338,10 +346,10 @@ async function main() {
     // tenant on the server until the calendar audit — so it gets the full
     // cross-tenant treatment: list, read, edit, delete, and the guest
     // documents attached to a booking.
-    db.prepare(`
+    await sql.run(`
       INSERT INTO units (id, property_id, category_id, unit_type_id, name, code)
       VALUES (?, ?, ?, ?, 'Probe unit', 'PRB-1')
-    `).run(`${TAG}unit_a`, propA.id, catA.id, utA.id);
+    `, [`${TAG}unit_a`, propA.id, catA.id, utA.id]);
 
     const bookRes = await call(cookieA, '/api/bookings', {
       method: 'POST',
@@ -508,11 +516,11 @@ async function main() {
       method: 'PATCH',
       body: JSON.stringify({ title: 'Hijacked' }),
     });
-    const taskRow = db.prepare('SELECT title FROM tasks WHERE id = ?').get(tA.id);
+    const taskRow = await sql.row('SELECT title FROM tasks WHERE id = ?', [tA.id]);
     assert.strictEqual(taskRow.title, 'Probe A: fix the boiler', "B renamed A's task");
 
     await call(cookieB, `/api/tasks/${tA.id}`, { method: 'DELETE' });
-    assert.ok(db.prepare('SELECT 1 FROM tasks WHERE id = ?').get(tA.id), "B deleted A's task");
+    assert.ok(await sql.row('SELECT 1 FROM tasks WHERE id = ?', [tA.id]), "B deleted A's task");
     console.log("  ok  B cannot read, rename or delete A's task");
 
     // Projects and tags are the same repositories with the same hole.
@@ -594,8 +602,7 @@ async function main() {
 
     console.log('isolation: all checks passed');
   } finally {
-    cleanup();
-    db.close();
+    await cleanup();
   }
 }
 

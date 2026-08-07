@@ -20,10 +20,15 @@ BEGIN;
 -- The application must never connect as the table owner: RLS is not applied to
 -- the owner unless FORCE is set, and relying on FORCE alone means one missed
 -- table is a silent full-table read.
-DROP ROLE IF EXISTS alisio_app;
-CREATE ROLE alisio_app NOLOGIN;
-GRANT USAGE ON SCHEMA public TO alisio_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO alisio_app;
+--
+-- `rlsprobe_app`, not `alisio_app`: this file used to create and DROP a role by
+-- the name a real deployment gives the application, so running the proof
+-- against a live database would have dropped the role the application connects
+-- as. Same prefix as the throwaway rows below, and dropped with them.
+DROP ROLE IF EXISTS rlsprobe_app;
+CREATE ROLE rlsprobe_app NOLOGIN;
+GRANT USAGE ON SCHEMA public TO rlsprobe_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO rlsprobe_app;
 
 -- Two tenants, seeded as the owner so the policies are not in the way yet.
 INSERT INTO organizations (id, name, slug) VALUES
@@ -44,7 +49,7 @@ COMMIT;
 
 -- ── As tenant B ─────────────────────────────────────────────────────────────
 BEGIN;
-SET LOCAL ROLE alisio_app;
+SET LOCAL ROLE rlsprobe_app;
 SET LOCAL app.organization_id = 'rlsprobe_b';
 
 DO $$
@@ -90,7 +95,7 @@ COMMIT;
 -- the failure mode that matters: a forgotten scope has to be an error or an
 -- empty result, never a full-table read.
 BEGIN;
-SET LOCAL ROLE alisio_app;
+SET LOCAL ROLE rlsprobe_app;
 
 DO $$
 DECLARE n integer;
@@ -108,7 +113,7 @@ COMMIT;
 
 -- ── As tenant A, to prove the policy is not simply blocking everything ──────
 BEGIN;
-SET LOCAL ROLE alisio_app;
+SET LOCAL ROLE rlsprobe_app;
 SET LOCAL app.organization_id = 'rlsprobe_a';
 
 DO $$
@@ -155,5 +160,10 @@ DELETE FROM categories WHERE id LIKE 'rlsprobe_%';
 DELETE FROM properties WHERE id LIKE 'rlsprobe_%';
 DELETE FROM organizations WHERE id LIKE 'rlsprobe_%';
 COMMIT;
+
+-- The role too, so a second run does not trip over grants left by the first.
+REASSIGN OWNED BY rlsprobe_app TO CURRENT_USER;
+DROP OWNED BY rlsprobe_app;
+DROP ROLE IF EXISTS rlsprobe_app;
 
 \echo 'rls: all checks passed'
