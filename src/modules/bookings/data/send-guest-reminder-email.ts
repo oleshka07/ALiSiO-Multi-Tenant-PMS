@@ -1,7 +1,7 @@
 import { getSql } from '@core/db/async';
 import { appBaseUrl } from '@core/app-url';
 import { sendEmail } from '@core/mail/email';
-import { detectLanguage } from '@/app/guest/[token]/translations';
+import { reservationLanguage } from '@core/i18n/resolve';
 
 export async function sendGuestReminderEmail(reservationId: string, origin?: string): Promise<boolean> {
   const sql = getSql();
@@ -22,7 +22,10 @@ export async function sendGuestReminderEmail(reservationId: string, origin?: str
     return false;
   }
 
-  const lang = detectLanguage(row.phone, null) as 'en' | 'uk' | 'de' | 'cs' | 'pl' | 'nl' | 'fr';
+  // What the guest told us, not what their phone's dialling code suggests.
+  // Only four of these letters have a written template, so the rest land on
+  // English rather than on a half-translated message.
+  const lang = await reservationLanguage(reservationId);
   const tLang = ['uk', 'de', 'cs'].includes(lang) ? lang : 'en';
 
   const guestName = row.first_name ? row.first_name.trim() : (tLang === 'uk' ? 'Гість' : tLang === 'de' ? 'Gast' : tLang === 'cs' ? 'Host' : 'Guest');

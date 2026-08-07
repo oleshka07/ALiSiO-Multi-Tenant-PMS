@@ -97,5 +97,69 @@ await setUserLanguage('petro', null, sql);
 assert.strictEqual(await userLanguage('petro', sql), 'cs', 'clearing a choice rejoins the hotel');
 console.log('  ok  clearing a personal language rejoins the hotel');
 
+// ─── the three audiences do not answer the same question ─────────────────────
+// This is the invariant the whole file exists for: a receptionist switching to
+// German changes what SHE reads. It must not reach a guest or a document.
+db.exec(`
+  CREATE TABLE properties (id TEXT PRIMARY KEY, organization_id TEXT, country TEXT);
+  CREATE TABLE reservations (id TEXT PRIMARY KEY, organization_id TEXT, guest_id TEXT, booking_lang TEXT);
+  CREATE TABLE guests (id TEXT PRIMARY KEY, language TEXT, country TEXT);
+
+  -- A Czech-registered hotel whose staff are Ukrainian. This is ALiSiO.
+  INSERT INTO properties (id, organization_id, country) VALUES ('prop_cz', 'hotel_ua', 'CZ');
+  INSERT INTO properties (id, organization_id, country) VALUES ('prop_none', 'hotel_ua', NULL);
+
+  INSERT INTO guests (id, language, country) VALUES
+    ('said_so', 'fr', 'DE'),
+    ('silent_de', NULL, 'DE'),
+    ('silent_nowhere', NULL, NULL);
+
+  INSERT INTO reservations (id, organization_id, guest_id, booking_lang) VALUES
+    ('r_said', 'hotel_ua', 'said_so', 'en'),
+    ('r_booked', 'hotel_ua', 'silent_de', 'cs'),
+    ('r_country', 'hotel_ua', 'silent_de', NULL),
+    ('r_nothing', 'hotel_ua', 'silent_nowhere', NULL);
+`);
+
+const { documentLanguage, reservationLanguage } = await import('./resolve.ts');
+
+// The document follows the jurisdiction, not the people.
+assert.strictEqual(
+  await documentLanguage('prop_cz', sql),
+  'cs',
+  'a Czech invoice stays Czech however the staff read the screen',
+);
+assert.strictEqual(
+  await documentLanguage('prop_none', sql),
+  'uk',
+  'no country is a data gap, not a jurisdiction, so it falls back to the hotel',
+);
+console.log('  ok  a document is issued in the jurisdiction, not in anyone\'s language');
+
+// The guest is asked in the order of how much they actually told us.
+assert.strictEqual(await reservationLanguage('r_said', sql), 'fr', 'an explicit choice wins');
+assert.strictEqual(
+  await reservationLanguage('r_booked', sql),
+  'cs',
+  'else the language they booked in',
+);
+assert.strictEqual(
+  await reservationLanguage('r_country', sql),
+  'de',
+  'else where they are — a guess, but a recorded one',
+);
+assert.strictEqual(
+  await reservationLanguage('r_nothing', sql),
+  'uk',
+  'else the hotel, which is at least a decision somebody made',
+);
+console.log('  ok  a guest is written to in the language they gave, in that order');
+
+// And none of the three moves when an operator changes theirs.
+await setUserLanguage('anna', 'de', sql);
+assert.strictEqual(await documentLanguage('prop_cz', sql), 'cs');
+assert.strictEqual(await reservationLanguage('r_booked', sql), 'cs');
+console.log('  ok  an operator switching language moves neither guest nor document');
+
 db.close();
-console.log('languages: base language, personal override and content source');
+console.log('languages: base language, personal override, guest, document');
