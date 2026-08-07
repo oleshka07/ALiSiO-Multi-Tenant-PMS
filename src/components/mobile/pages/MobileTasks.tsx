@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Search, RefreshCw, Plus, X, Check, Calendar, Flag, Tag,
@@ -112,6 +113,7 @@ function TaskSheet({
   onDeleted: () => void;
   onSaved: () => void;
 }) {
+  const tUi = useT();
   const [form, setForm] = useState({
     title: task.title,
     description: task.description || '',
@@ -161,12 +163,12 @@ function TaskSheet({
       setSaved(true);
       onSaved();
       setTimeout(() => setSaved(false), 1500);
-    } catch { alert('Помилка збереження'); }
+    } catch { alert(tUi('Помилка збереження')); }
     setSaving(false);
   };
 
   const handleDelete = async () => {
-    if (!confirm('Видалити задачу?')) return;
+    if (!confirm(tUi('Видалити задачу?'))) return;
     setDeleting(true);
     try {
       await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
@@ -214,7 +216,7 @@ function TaskSheet({
         const res = await fetch(`/api/tasks/${task.id}/attachments`, { method: 'POST', body: fd });
         if (res.ok) { const att = await res.json(); setAttachments(prev => [att, ...prev]); }
         else { const err = await res.json().catch(() => ({ error: 'Помилка' })); alert(err.error || 'Помилка завантаження'); }
-      } catch { alert('Помилка з\'єднання'); }
+      } catch { alert(tUi('Помилка з\'єднання')); }
     }
     setUploading(false);
     if (fileRef.current) fileRef.current.value = '';
@@ -228,8 +230,8 @@ function TaskSheet({
         body: JSON.stringify({ attachment_id: attId }),
       });
       if (res.ok) { setAttachments(prev => prev.filter(a => a.id !== attId)); }
-      else { alert('Не вдалося видалити файл'); }
-    } catch { alert('Помилка з\'єднання'); }
+      else { alert(tUi('Не вдалося видалити файл')); }
+    } catch { alert(tUi('Помилка з\'єднання')); }
   };
 
   const toggleTag = (tagId: string) => {
@@ -278,7 +280,7 @@ function TaskSheet({
       <div className="m-sheet" style={{ maxHeight: '94dvh', display: 'flex', flexDirection: 'column' }}>
         <div className="m-sheet-handle" />
         <div className="m-sheet-header">
-          <h2 style={{ fontSize: 17 }}>Задача</h2>
+          <h2 style={{ fontSize: 17 }}>{tUi('Задача')}</h2>
           <button className="m-header-btn" onClick={onClose}><X size={20} /></button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px', WebkitOverflowScrolling: 'touch' }}>
@@ -286,7 +288,7 @@ function TaskSheet({
           <textarea
             value={form.title}
             onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-            placeholder="Назва задачі..."
+            placeholder={tUi('Назва задачі...')}
             rows={1}
             style={{
               width: '100%', fontSize: 18, fontWeight: 700, border: 'none', background: 'transparent',
@@ -308,7 +310,7 @@ function TaskSheet({
                   transition: 'all 0.2s ease',
                 }}
               >
-                {cfg.label}
+                {tUi(cfg.label)}
               </button>
             ))}
           </div>
@@ -322,7 +324,7 @@ function TaskSheet({
               style={{ fontSize: 13, padding: '6px 8px' }}
             >
               {Object.entries(PRIORITY_CFG).map(([k, c]) => (
-                <option key={k} value={k}>{c.label}</option>
+                <option key={k} value={k}>{tUi(c.label)}</option>
               ))}
             </select>
           )}
@@ -343,7 +345,7 @@ function TaskSheet({
               onChange={e => setForm(f => ({ ...f, assignee_id: e.target.value }))}
               style={{ fontSize: 13, padding: '6px 8px' }}
             >
-              <option value="">Не призначено</option>
+              <option value="">{tUi('Не призначено')}</option>
               {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
             </select>
           )}
@@ -365,7 +367,7 @@ function TaskSheet({
               onChange={e => setForm(f => ({ ...f, property_id: e.target.value }))}
               style={{ fontSize: 13, padding: '6px 8px' }}
             >
-              <option value="">Не вибрано</option>
+              <option value="">{tUi('Не вибрано')}</option>
               {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           )}
@@ -373,7 +375,7 @@ function TaskSheet({
           {/* Tags */}
           <div style={{ padding: '12px 0', borderBottom: '1px solid var(--border-primary)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: 8 }}>
-              <Tag size={14} /> Теги
+              <Tag size={14} /> {tUi('Теги')}
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {taskTags.map(tid => {
@@ -398,7 +400,7 @@ function TaskSheet({
                   cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3,
                 }}
               >
-                <Plus size={10} /> Тег
+                <Plus size={10} /> {tUi('Тег')}
               </button>
             </div>
             {showTagPicker && (
@@ -418,7 +420,7 @@ function TaskSheet({
                   </button>
                 ))}
                 {tags.filter(t => !taskTags.includes(t.id)).length === 0 && !newTagName.trim() && (
-                  <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Введіть назву нового тегу ↓</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Введіть назву нового тегу ↓')}</span>
                 )}
               </div>
               {/* Inline tag creation */}
@@ -428,7 +430,7 @@ function TaskSheet({
                   value={newTagName}
                   onChange={e => setNewTagName(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleCreateTag(); }}
-                  placeholder="Новий тег..."
+                  placeholder={tUi('Новий тег...')}
                   style={{ flex: 1, fontSize: 12, padding: '6px 10px', borderRadius: 8 }}
                 />
                 {newTagName.trim() && (
@@ -443,7 +445,7 @@ function TaskSheet({
                     }}
                   >
                     {creatingTag ? <Loader2 size={12} className="animate-pulse" /> : <Plus size={12} />}
-                    Створити
+                    {tUi('Створити')}
                   </button>
                 )}
               </div>
@@ -453,12 +455,12 @@ function TaskSheet({
 
           {/* Description */}
           <div style={{ padding: '12px 0', borderBottom: '1px solid var(--border-primary)' }}>
-            <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: 6 }}>Опис</div>
+            <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: 6 }}>{tUi('Опис')}</div>
             <textarea
               className="form-input"
               value={form.description}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              placeholder="Додати опис..."
+              placeholder={tUi('Додати опис...')}
               rows={3}
               style={{ fontSize: 13, resize: 'vertical' }}
             />
@@ -467,7 +469,7 @@ function TaskSheet({
           {/* Attachments */}
           <div style={{ padding: '12px 0', borderBottom: '1px solid var(--border-primary)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: 8 }}>
-              <Paperclip size={14} /> Фото та файли
+              <Paperclip size={14} /> {tUi('Фото та файли')}
               {attachments.length > 0 && <span style={{ marginLeft: 'auto' }}>{attachments.length}</span>}
             </div>
             <input ref={fileRef} type="file" accept="image/*,.pdf" multiple style={{ display: 'none' }} onChange={handleUpload} />
@@ -510,14 +512,14 @@ function TaskSheet({
               }}
             >
               {uploading ? <Loader2 size={14} className="animate-pulse" /> : <Image size={14} />}
-              {uploading ? 'Завантаження...' : 'Додати фото / файл'}
+              {uploading ? tUi('Завантаження...') : tUi('Додати фото / файл')}
             </button>
           </div>
 
           {/* Subtasks */}
           <div style={{ padding: '12px 0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: 8 }}>
-              <CheckSquare size={14} /> Підзадачі
+              <CheckSquare size={14} /> {tUi('Підзадачі')}
               {subtasks.length > 0 && (
                 <span style={{ marginLeft: 'auto' }}>
                   {subtasks.filter(s => s.status === 'done').length}/{subtasks.length}
@@ -566,7 +568,7 @@ function TaskSheet({
                 value={newSubtask}
                 onChange={e => setNewSubtask(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleAddSubtask(); }}
-                placeholder="Додати підзадачу..."
+                placeholder={tUi('Додати підзадачу...')}
                 style={{ flex: 1, fontSize: 13, padding: '6px 8px', border: 'none', background: 'transparent' }}
               />
             </div>
@@ -574,16 +576,16 @@ function TaskSheet({
 
           {/* Footer info */}
           <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-tertiary)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span>Створено: {task.created_at?.split('T')[0] || task.created_at?.split(' ')[0]}</span>
-            {task.completed_at && <span>Завершено: {task.completed_at?.split('T')[0] || task.completed_at?.split(' ')[0]}</span>}
-            {task.creator_name && <span>Автор: {task.creator_name}</span>}
+            <span>{tUi('Створено:')} {task.created_at?.split('T')[0] || task.created_at?.split(' ')[0]}</span>
+            {task.completed_at && <span>{tUi('Завершено:')} {task.completed_at?.split('T')[0] || task.completed_at?.split(' ')[0]}</span>}
+            {task.creator_name && <span>{tUi('Автор:')} {task.creator_name}</span>}
           </div>
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: 8, marginTop: 16, paddingBottom: 16 }}>
             <button className="btn btn-primary" style={{ flex: 1, borderRadius: 12, padding: '12px 0', background: saved ? '#22c55e' : undefined, borderColor: saved ? '#22c55e' : undefined, transition: 'all 0.3s ease' }} onClick={handleSave} disabled={saving}>
               {saving ? <Loader2 size={14} className="animate-pulse" /> : saved ? <Check size={14} /> : <Check size={14} />}
-              {' '}{saving ? 'Зберігаємо...' : saved ? 'Збережено ✓' : 'Зберегти'}
+              {' '}{saving ? tUi('Зберігаємо...') : saved ? tUi('Збережено ✓') : tUi('Зберегти')}
             </button>
             <button className="btn btn-danger" style={{ borderRadius: 12, padding: '12px 16px' }} onClick={handleDelete} disabled={deleting}>
               {deleting ? <Loader2 size={14} className="animate-pulse" /> : <Trash2 size={14} />}
@@ -624,6 +626,7 @@ function TaskSheet({
    Main Component
    ================================================================ */
 export default function MobileTasks() {
+  const tUi = useT();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<TaskProject[]>([]);
   const [tags, setTags] = useState<TaskTag[]>([]);
@@ -741,7 +744,7 @@ export default function MobileTasks() {
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
           <input
             className="form-input"
-            placeholder="Назва задачі..."
+            placeholder={tUi('Назва задачі...')}
             value={search}
             onChange={e => setSearch(e.target.value)}
             autoFocus
@@ -762,7 +765,7 @@ export default function MobileTasks() {
           value={quickTitle}
           onChange={e => setQuickTitle(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') handleQuickAdd(); }}
-          placeholder="Додати задачу..."
+          placeholder={tUi('Додати задачу...')}
           disabled={quickSaving}
           style={{
             flex: 1, border: 'none', background: 'transparent', outline: 'none',
@@ -795,7 +798,7 @@ export default function MobileTasks() {
             color: projectFilter === null ? '#fff' : 'var(--text-secondary)',
           }}
         >
-          Всі проєкти
+          {tUi('Всі проєкти')}
         </button>
         {projects.map(p => (
           <button
@@ -821,7 +824,7 @@ export default function MobileTasks() {
             className={`m-chip ${dateFilter === chip.key ? 'm-chip-active' : ''}`}
             onClick={() => setDateFilter(chip.key)}
           >
-            {chip.label}
+            {tUi(chip.label)}
             {chip.key === 'overdue' && overdue > 0 && (
               <span style={{
                 marginLeft: 4, padding: '1px 6px', borderRadius: 8, fontSize: 9, fontWeight: 700,
@@ -842,7 +845,7 @@ export default function MobileTasks() {
             className={`m-chip ${statusFilter === chip.key ? 'm-chip-active' : ''}`}
             onClick={() => setStatusFilter(chip.key)}
           >
-            {chip.label}
+            {tUi(chip.label)}
           </button>
         ))}
       </div>
@@ -850,7 +853,7 @@ export default function MobileTasks() {
       {/* Toolbar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, marginTop: 4 }}>
         <span style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 600 }}>
-          {filtered.length} задач
+          {filtered.length} {tUi('задач')}
         </span>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => setShowSearch(p => !p)} style={{ background: 'transparent', border: 'none', color: showSearch ? 'var(--accent-primary)' : 'var(--text-tertiary)', cursor: 'pointer', padding: 4 }}>
@@ -870,7 +873,7 @@ export default function MobileTasks() {
       ) : filtered.length === 0 ? (
         <div className="m-empty">
           <div className="m-empty-icon">📋</div>
-          <div>Задач немає</div>
+          <div>{tUi('Задач немає')}</div>
         </div>
       ) : (
         filtered.map(task => {

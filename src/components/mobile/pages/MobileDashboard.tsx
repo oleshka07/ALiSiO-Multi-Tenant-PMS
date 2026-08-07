@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
@@ -54,6 +55,7 @@ const QUICK_ACTIONS = [
 type Tab = 'today' | 'tomorrow' | 'arrivals' | 'departures';
 
 export default function MobileDashboard() {
+  const tUi = useT();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('today');
@@ -96,12 +98,12 @@ export default function MobileDashboard() {
       {/* Occupancy banner */}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 16, padding: '14px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 16 }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: 4 }}>ЗАВАНТАЖЕНІСТЬ</div>
+          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: 4 }}>{tUi('ЗАВАНТАЖЕНІСТЬ')}</div>
           <div style={{ fontSize: 32, fontWeight: 800, color: occupancyColor, lineHeight: 1 }}>
             {data.occupancyRate}%
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
-            {data.totalUnits - data.freeUnits} з {data.totalUnits} юнітів
+            {data.totalUnits - data.freeUnits} {tUi('з')} {data.totalUnits} {tUi('юнітів')}
           </div>
         </div>
         {/* Mini arc */}
@@ -134,24 +136,24 @@ export default function MobileDashboard() {
             ⚡
           </div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text-primary)' }}>ДЕННА ЗМІНА</div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text-primary)' }}>{tUi('ДЕННА ЗМІНА')}</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-              🛬 {data.arrivalsToday} заїздів · 🛫 {data.departuresToday} виїздів
+              🛬 {data.arrivalsToday} {tUi('заїздів · 🛫')} {data.departuresToday} {tUi('виїздів')}
             </div>
           </div>
         </div>
         <div style={{ fontSize: 12, fontWeight: 700, color: '#3b82f6', background: 'var(--bg-card)', padding: '6px 12px', borderRadius: 10, border: '1px solid rgba(59,130,246,0.25)' }}>
-          Відкрити →
+          {tUi('Відкрити →')}
         </div>
       </Link>
 
       {/* Tabs */}
       <div className="m-chips" style={{ marginBottom: 10 }}>
         {([
-          { key: 'today',      label: 'Сьогодні' },
-          { key: 'tomorrow',   label: 'Завтра' },
-          { key: 'arrivals',   label: `Заїзди (${data.upcomingArrivals.length})` },
-          { key: 'departures', label: `Виїзди (${data.todayDepartures.length})` },
+          { key: 'today',      label: tUi('Сьогодні') },
+          { key: 'tomorrow',   label: tUi('Завтра') },
+          { key: 'arrivals',   label: `${tUi('Заїзди (')}${data.upcomingArrivals.length})` },
+          { key: 'departures', label: `${tUi('Виїзди (')}${data.todayDepartures.length})` },
         ] as { key: Tab; label: string }[]).map(t => (
           <button
             key={t.key}
@@ -167,10 +169,10 @@ export default function MobileDashboard() {
       {(tab === 'today' || tab === 'tomorrow') && (
         <div className="m-kpi-grid" style={{ marginBottom: 14 }}>
           {[
-            { value: data.arrivalsToday,   label: 'Заїздів',  icon: ArrowDownRight, color: '#34d399', bg: 'rgba(52,211,153,0.15)', href: '/app/calendar?view=shift' },
-            { value: data.departuresToday, label: 'Виїздів',  icon: ArrowUpRight,   color: '#60a5fa', bg: 'rgba(96,165,250,0.15)', href: '/app/calendar?view=shift'  },
-            { value: data.freeUnits,       label: 'Вільних',  icon: BedDouble,      color: '#a78bfa', bg: 'rgba(167,139,250,0.15)', href: '/app/bookings' },
-            { value: `${data.occupancyRate}%`, label: 'Зайн.', icon: Home,          color: '#fbbf24', bg: 'rgba(251,191,36,0.15)', href: '/app/calendar'  },
+            { value: data.arrivalsToday,   label: tUi('Заїздів'),  icon: ArrowDownRight, color: '#34d399', bg: 'rgba(52,211,153,0.15)', href: '/app/calendar?view=shift' },
+            { value: data.departuresToday, label: tUi('Виїздів'),  icon: ArrowUpRight,   color: '#60a5fa', bg: 'rgba(96,165,250,0.15)', href: '/app/calendar?view=shift'  },
+            { value: data.freeUnits,       label: tUi('Вільних'),  icon: BedDouble,      color: '#a78bfa', bg: 'rgba(167,139,250,0.15)', href: '/app/bookings' },
+            { value: `${data.occupancyRate}%`, label: tUi('Зайн.'), icon: Home,          color: '#fbbf24', bg: 'rgba(251,191,36,0.15)', href: '/app/calendar'  },
           ].map((kpi, i) => {
             const Icon = kpi.icon;
             return (
@@ -189,14 +191,14 @@ export default function MobileDashboard() {
       {/* Arrivals list */}
       {tab === 'arrivals' && (
         data.upcomingArrivals.length === 0 ? (
-          <div className="m-empty" style={{ padding: 24 }}>Немає найближчих заїздів</div>
+          <div className="m-empty" style={{ padding: 24 }}>{tUi('Немає найближчих заїздів')}</div>
         ) : (
           data.upcomingArrivals.slice(0, 10).map(a => (
             <div key={a.id} className="m-card" style={{ padding: '12px 14px' }}>
               <div className="m-card-row">
                 <div>
                   <div className="m-card-title">{a.first_name} {a.last_name}</div>
-                  <div className="m-card-subtitle">{a.unit_code} · {a.nights} ноч.</div>
+                  <div className="m-card-subtitle">{a.unit_code} · {a.nights} {tUi('ноч.')}</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 13, fontWeight: 700 }}>{a.check_in}</div>
@@ -213,7 +215,7 @@ export default function MobileDashboard() {
       {/* Departures list */}
       {tab === 'departures' && (
         data.todayDepartures.length === 0 ? (
-          <div className="m-empty" style={{ padding: 24 }}>Немає виїздів сьогодні</div>
+          <div className="m-empty" style={{ padding: 24 }}>{tUi('Немає виїздів сьогодні')}</div>
         ) : (
           data.todayDepartures.map(d => {
             const cl = CLEAN_COLORS[d.cleaning_status] || { label: '—', color: 'var(--text-tertiary)' };
@@ -225,7 +227,7 @@ export default function MobileDashboard() {
                     <div className="m-card-subtitle">{d.unit_code}</div>
                   </div>
                   <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 10, background: `${cl.color}18`, color: cl.color }}>
-                    {cl.label}
+                    {tUi(cl.label)}
                   </span>
                 </div>
               </div>
@@ -236,7 +238,7 @@ export default function MobileDashboard() {
 
       {/* Quick actions grid */}
       <div className="m-section-title" style={{ marginTop: tab === 'today' || tab === 'tomorrow' ? 4 : 16 }}>
-        Швидкий доступ
+        {tUi('Швидкий доступ')}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 8 }}>
         {QUICK_ACTIONS.map(action => {
@@ -248,7 +250,7 @@ export default function MobileDashboard() {
                   <Icon size={18} color={action.color} />
                 </div>
                 <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'center', lineHeight: 1.2 }}>
-                  {action.label}
+                  {tUi(action.label)}
                 </span>
               </div>
             </Link>
@@ -260,7 +262,7 @@ export default function MobileDashboard() {
       {tab === 'today' && data.upcomingArrivals.length > 0 && (
         <>
           <div className="m-section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            🛬 Найближчі заїзди
+            {tUi('🛬 Найближчі заїзди')}
             <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '1px 7px', background: 'rgba(52,211,153,0.15)', color: '#34d399' }}>
               {data.upcomingArrivals.length}
             </span>
@@ -270,7 +272,7 @@ export default function MobileDashboard() {
               <div className="m-card-row" style={{ alignItems: 'center' }}>
                 <div>
                   <div className="m-card-title">{a.first_name} {a.last_name}</div>
-                  <div className="m-card-subtitle">{a.unit_code} · {a.nights} ноч. · {a.check_in}</div>
+                  <div className="m-card-subtitle">{a.unit_code} · {a.nights} {tUi('ноч. ·')} {a.check_in}</div>
                 </div>
                 {a.status === 'confirmed' ? (
                   <button
@@ -284,11 +286,11 @@ export default function MobileDashboard() {
                     }}
                     style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: 'var(--accent-primary)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
                   >
-                    Заселити
+                    {tUi('Заселити')}
                   </button>
                 ) : (
                   <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: 'rgba(20,184,166,0.15)', color: '#14b8a6' }}>
-                    Заселено
+                    {tUi('Заселено')}
                   </span>
                 )}
               </div>

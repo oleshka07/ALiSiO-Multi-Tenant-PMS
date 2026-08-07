@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -34,6 +35,7 @@ const moreItems = [
 ];
 
 export default function MobileMoreSheet({ open, onClose }: MobileMoreSheetProps) {
+  const t = useT();
   const pathname = usePathname();
   const { user, logout } = useCurrentUser();
 
@@ -47,7 +49,7 @@ export default function MobileMoreSheet({ open, onClose }: MobileMoreSheetProps)
       <div className="m-sheet">
         <div className="m-sheet-handle" />
         <div className="m-sheet-header">
-          <h2>Більше</h2>
+          <h2>{t('Більше')}</h2>
           <button className="m-header-btn" onClick={onClose}><X size={20} /></button>
         </div>
 
@@ -65,7 +67,7 @@ export default function MobileMoreSheet({ open, onClose }: MobileMoreSheetProps)
         <div className="m-sheet-sections">
           {moreItems.map(section => (
             <div key={section.section} className="m-sheet-section">
-              <div className="m-sheet-section-title">{section.section}</div>
+              <div className="m-sheet-section-title">{t(section.section)}</div>
               {section.items.map(item => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
@@ -77,7 +79,7 @@ export default function MobileMoreSheet({ open, onClose }: MobileMoreSheetProps)
                     onClick={onClose}
                   >
                     <Icon size={20} />
-                    <span>{item.label}</span>
+                    <span>{t(item.label)}</span>
                   </Link>
                 );
               })}
@@ -87,7 +89,7 @@ export default function MobileMoreSheet({ open, onClose }: MobileMoreSheetProps)
 
         <button className="m-sheet-logout" onClick={logout}>
           <LogOut size={18} />
-          <span>Вийти</span>
+          <span>{t('Вийти')}</span>
         </button>
       </div>
     </>

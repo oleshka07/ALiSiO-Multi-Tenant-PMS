@@ -34,6 +34,20 @@ const ROUTES = {
   demo: '/demo',
 };
 
+/**
+ * Design pages whose product no longer exists.
+ *
+ * The CRM module was cut (`refactor: remove the CRM`), and its marketing page
+ * went with it — but the export still links to it from the header dropdown,
+ * the footer and the product grid, so /modules/crm answered 404 from three
+ * places on the live site. Regenerating would have put them straight back.
+ *
+ * A link to a page we deliberately removed is worse than no link: it advertises
+ * a feature the product does not have, and then 404s. The element that carries
+ * it is dropped, not redirected.
+ */
+const RETIRED = new Set(['m-crm']);
+
 // file name for each generated section component
 const FILES = {
   home: 'home',
@@ -272,6 +286,9 @@ function escapeText(text) {
 function serialize(node, indent, usedLink) {
   const pad = '  '.repeat(indent);
 
+  // Whatever links to a retired page goes with it — including its label.
+  if (node.tag === 'a' && RETIRED.has(node.attrs?.['data-route'])) return null;
+
   if (node.tag === '#text') {
     const t = escapeText(node.text);
     return t.trim() ? `${pad}${t.trim()}` : null;
@@ -405,6 +422,10 @@ const manifest = [];
 
 for (const section of sections) {
   const id = section.attrs['data-page'];
+  if (RETIRED.has(id)) {
+    console.log(`  ${id.padEnd(14)} — знято з продукту, сторінку не генерую`);
+    continue;
+  }
   const file = FILES[id];
   if (!file) {
     console.warn(`! no file mapping for page "${id}"`);

@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Scale } from 'lucide-react';
@@ -33,6 +34,7 @@ function formatMoney(n: number, currency: string): string {
 }
 
 export default function BalancePage() {
+  const t = useT();
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [asOf, setAsOf] = useState(() => new Date().toISOString().substring(0, 10));
@@ -53,27 +55,27 @@ export default function BalancePage() {
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Link href="/app/finance/reports" style={backLink}><ArrowLeft size={14} /></Link>
         <h1 style={{ margin: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Scale size={24} /> Баланс
+          <Scale size={24} /> {t('Баланс')}
         </h1>
-        <label style={{ fontSize: 13, color: 'var(--text-secondary)', marginRight: 8 }}>На дату:</label>
+        <label style={{ fontSize: 13, color: 'var(--text-secondary)', marginRight: 8 }}>{t('На дату:')}</label>
         <input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} style={input} />
       </div>
 
       {loading || !data ? (
-        <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Завантаження…')}</div>
       ) : (
         <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <Section title="Активи" color="#22c55e" total={Object.values(data.byCurrency).reduce((s, v) => s + v.assets, 0)}>
+          <Section title={t('Активи')} color="#22c55e" total={Object.values(data.byCurrency).reduce((s, v) => s + v.assets, 0)}>
             {data.assets.length === 0 ? (
-              <div style={emptyStyle}>Немає активів</div>
+              <div style={emptyStyle}>{t('Немає активів')}</div>
             ) : data.assets.map((a) => (
               <AccountRow key={a.id} account={a} amount={Math.max(0, a.balance)} />
             ))}
           </Section>
 
-          <Section title="Пасиви (кредитки)" color="#ef4444" total={Object.values(data.byCurrency).reduce((s, v) => s + v.liabilities, 0)}>
+          <Section title={t('Пасиви (кредитки)')} color="#ef4444" total={Object.values(data.byCurrency).reduce((s, v) => s + v.liabilities, 0)}>
             {data.liabilities.length === 0 ? (
-              <div style={emptyStyle}>Немає кредитних карток з боргом</div>
+              <div style={emptyStyle}>{t('Немає кредитних карток з боргом')}</div>
             ) : data.liabilities.map((a) => (
               <div key={a.id} style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-primary)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -82,7 +84,7 @@ export default function BalancePage() {
                   <span style={{ fontWeight: 700, color: '#ef4444' }}>{formatMoney(a.debt || 0, a.currency)}</span>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 18, marginTop: 2 }}>
-                  Доступно: {formatMoney(a.available || 0, a.currency)} / Ліміт: {formatMoney(a.credit_limit || 0, a.currency)}
+                  {t('Доступно:')} {formatMoney(a.available || 0, a.currency)} {t('/ Ліміт:')} {formatMoney(a.credit_limit || 0, a.currency)}
                 </div>
               </div>
             ))}
@@ -90,7 +92,7 @@ export default function BalancePage() {
 
           <div style={{ gridColumn: '1 / -1', padding: 16, background: 'var(--bg-secondary)', borderRadius: 10 }}>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8 }}>
-              Чисті активи (Активи − Пасиви)
+              {t('Чисті активи (Активи − Пасиви)')}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24 }}>
               {Object.entries(data.byCurrency).map(([cur, v]) => (
@@ -121,12 +123,13 @@ function Section({ title, color, total, children }: { title: string; color: stri
 }
 
 function AccountRow({ account, amount }: { account: Account; amount: number }) {
+  const t = useT();
   return (
     <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
       <span style={{ width: 10, height: 10, borderRadius: 3, background: account.color, display: 'inline-block' }} />
       <span style={{ flex: 1 }}>
         {account.name}
-        <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 6 }}>{TYPE_LABELS[account.type]}</span>
+        <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 6 }}>{t(TYPE_LABELS[account.type])}</span>
       </span>
       <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{formatMoney(amount, account.currency)}</span>
     </div>

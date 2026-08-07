@@ -1,10 +1,12 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { Loader2, Check, Save, Mail, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Site, WidgetConfig } from '../_types';
 
 export function NotificationsTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: WidgetConfig) => void }) {
+  const t = useT();
   const [cfg, setCfg] = useState<WidgetConfig>(site.widget_config || {});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -48,9 +50,9 @@ export function NotificationsTab({ site, onUpdate }: { site: Site; onUpdate: (cf
           <Mail size={22} />
         </div>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>Налаштування email-сповіщень</div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{t('Налаштування email-сповіщень')}</div>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>
-            Кастомізація шаблонів листів, що надсилаються гостям на кожному етапі бронювання
+            {t('Кастомізація шаблонів листів, що надсилаються гостям на кожному етапі бронювання')}
           </div>
         </div>
       </div>
@@ -66,7 +68,7 @@ export function NotificationsTab({ site, onUpdate }: { site: Site; onUpdate: (cf
           style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', cursor: 'pointer', userSelect: 'none' }}
         >
           <Info size={16} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
-          <span style={{ fontWeight: 600, flex: 1, color: 'var(--text-primary)' }}>Доступні змінні для шаблонів</span>
+          <span style={{ fontWeight: 600, flex: 1, color: 'var(--text-primary)' }}>{t('Доступні змінні для шаблонів')}</span>
           <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }}>
             {showSplash ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </span>
@@ -75,7 +77,7 @@ export function NotificationsTab({ site, onUpdate }: { site: Site; onUpdate: (cf
         {showSplash && (
           <>
             <div style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Ви можете використовувати ці змінні в темі або тексті листа. Вони будуть автоматично замінені на реальні дані гостя:
+              {t('Ви можете використовувати ці змінні в темі або тексті листа. Вони будуть автоматично замінені на реальні дані гостя:')}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8, marginTop: 4 }}>
               {placeholders.map(p => (
@@ -92,14 +94,14 @@ export function NotificationsTab({ site, onUpdate }: { site: Site; onUpdate: (cf
       {/* SECTION 1: Booking Received */}
       <div style={{ border: '1px solid var(--border-primary)', borderRadius: 12, padding: 20, marginBottom: 24, background: 'var(--bg-primary)' }}>
         <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', marginBottom: 4 }}>
-          1. Лист про отримання запиту (Нове бронювання)
+          {t('1. Лист про отримання запиту (Нове бронювання)')}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16 }}>
-          Надсилається клієнту одразу після заповнення контактних даних у віджеті (очікує оплати або підтвердження).
+          {t('Надсилається клієнту одразу після заповнення контактних даних у віджеті (очікує оплати або підтвердження).')}
         </div>
 
         <div className="form-group" style={{ marginBottom: 16 }}>
-          <label className="form-label" style={{ fontSize: 13, fontWeight: 500 }}>Тема листа</label>
+          <label className="form-label" style={{ fontSize: 13, fontWeight: 500 }}>{t('Тема листа')}</label>
           <input
             className="form-input"
             style={{ width: '100%', marginTop: 6 }}
@@ -110,7 +112,7 @@ export function NotificationsTab({ site, onUpdate }: { site: Site; onUpdate: (cf
         </div>
 
         <div className="form-group">
-          <label className="form-label" style={{ fontSize: 13, fontWeight: 500 }}>Текст повідомлення</label>
+          <label className="form-label" style={{ fontSize: 13, fontWeight: 500 }}>{t('Текст повідомлення')}</label>
           <textarea
             className="form-input"
             style={{ width: '100%', minHeight: 80, marginTop: 6, padding: '8px 12px', fontSize: 13, resize: 'vertical' }}
@@ -124,14 +126,14 @@ export function NotificationsTab({ site, onUpdate }: { site: Site; onUpdate: (cf
       {/* SECTION 2: Booking Confirmed (Paid) */}
       <div style={{ border: '1px solid var(--border-primary)', borderRadius: 12, padding: 20, marginBottom: 24, background: 'var(--bg-primary)' }}>
         <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', marginBottom: 4 }}>
-          2. Лист про успішну оплату та підтвердження
+          {t('2. Лист про успішну оплату та підтвердження')}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16 }}>
-          Надсилається після успішної оплати через платіжний шлюз Teya або коли адміністратор вручну позначає замовлення сплаченим.
+          {t('Надсилається після успішної оплати через платіжний шлюз Teya або коли адміністратор вручну позначає замовлення сплаченим.')}
         </div>
 
         <div className="form-group" style={{ marginBottom: 16 }}>
-          <label className="form-label" style={{ fontSize: 13, fontWeight: 500 }}>Тема листа</label>
+          <label className="form-label" style={{ fontSize: 13, fontWeight: 500 }}>{t('Тема листа')}</label>
           <input
             className="form-input"
             style={{ width: '100%', marginTop: 6 }}
@@ -142,7 +144,7 @@ export function NotificationsTab({ site, onUpdate }: { site: Site; onUpdate: (cf
         </div>
 
         <div className="form-group">
-          <label className="form-label" style={{ fontSize: 13, fontWeight: 500 }}>Текст повідомлення</label>
+          <label className="form-label" style={{ fontSize: 13, fontWeight: 500 }}>{t('Текст повідомлення')}</label>
           <textarea
             className="form-input"
             style={{ width: '100%', minHeight: 80, marginTop: 6, padding: '8px 12px', fontSize: 13, resize: 'vertical' }}
@@ -156,14 +158,14 @@ export function NotificationsTab({ site, onUpdate }: { site: Site; onUpdate: (cf
       {/* SECTION 3: Booking Confirmed (Unpaid) */}
       <div style={{ border: '1px solid var(--border-primary)', borderRadius: 12, padding: 20, marginBottom: 28, background: 'var(--bg-primary)' }}>
         <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', marginBottom: 4 }}>
-          3. Лист про підтвердження без оплати (Для несплачених бронювань)
+          {t('3. Лист про підтвердження без оплати (Для несплачених бронювань)')}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16 }}>
-          Надсилається, коли бронювання переведено в статус підтвердженого, але повна оплата ще не була зафіксована.
+          {t('Надсилається, коли бронювання переведено в статус підтвердженого, але повна оплата ще не була зафіксована.')}
         </div>
 
         <div className="form-group" style={{ marginBottom: 16 }}>
-          <label className="form-label" style={{ fontSize: 13, fontWeight: 500 }}>Тема листа</label>
+          <label className="form-label" style={{ fontSize: 13, fontWeight: 500 }}>{t('Тема листа')}</label>
           <input
             className="form-input"
             style={{ width: '100%', marginTop: 6 }}
@@ -174,7 +176,7 @@ export function NotificationsTab({ site, onUpdate }: { site: Site; onUpdate: (cf
         </div>
 
         <div className="form-group">
-          <label className="form-label" style={{ fontSize: 13, fontWeight: 500 }}>Текст повідомлення</label>
+          <label className="form-label" style={{ fontSize: 13, fontWeight: 500 }}>{t('Текст повідомлення')}</label>
           <textarea
             className="form-input"
             style={{ width: '100%', minHeight: 80, marginTop: 6, padding: '8px 12px', fontSize: 13, resize: 'vertical' }}
@@ -187,7 +189,7 @@ export function NotificationsTab({ site, onUpdate }: { site: Site; onUpdate: (cf
 
       <button className="btn btn-primary" onClick={save} disabled={saving}>
         {saving ? <Loader2 size={16} className="spin" /> : saved ? <Check size={16} /> : <Save size={16} />}
-        {saved ? 'Збережено!' : 'Зберегти зміни'}
+        {saved ? t('Збережено!') : t('Зберегти зміни')}
       </button>
     </div>
   );

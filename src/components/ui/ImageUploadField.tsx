@@ -1,5 +1,6 @@
 'use client';
-import { useState } from 'react';
+
+import { useT } from '@core/i18n/client';import { useState } from 'react';
 import { Upload, Loader2, X } from 'lucide-react';
 
 async function uploadImage(file: File, folder: string): Promise<string | null> {
@@ -24,6 +25,7 @@ interface ImageUploadFieldProps {
 }
 
 export function ImageUploadField({ label, value, onChange, folder, aspectRatio = '16/9', placeholder }: ImageUploadFieldProps) {
+  const t = useT();
   const [uploading, setUploading] = useState(false);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -58,7 +60,7 @@ export function ImageUploadField({ label, value, onChange, folder, aspectRatio =
           display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', flexShrink: 0,
         }}>
           {uploading ? <Loader2 size={14} className="animate-pulse" /> : <Upload size={14} />}
-          {uploading ? '...' : 'Завантажити'}
+          {uploading ? '...' : t('Завантажити')}
           <input type="file" accept="image/*" onChange={handleUpload} style={{ display: 'none' }} />
         </label>
       </div>

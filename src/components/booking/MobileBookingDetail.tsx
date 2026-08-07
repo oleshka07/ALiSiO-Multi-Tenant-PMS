@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
@@ -86,6 +87,7 @@ export default function MobileBookingDetail({
   onFetchPayments, onFetchBookings, onFetchRegistrations,
   showToast, setBooking,
 }: MobileBookingDetailProps) {
+  const tUi = useT();
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
   useBodyScrollLock(Boolean(b));
@@ -188,11 +190,11 @@ export default function MobileBookingDetail({
   };
 
   const handleDeletePayment = async (pId: string) => {
-    if (!confirm('Видалити платіж?')) return;
+    if (!confirm(tUi('Видалити платіж?'))) return;
     await fetch(`/api/payments/${pId}`, { method: 'DELETE' });
     onFetchPayments(b.id);
     onFetchBookings();
-    showToast('Видалено');
+    showToast(tUi('Видалено'));
   };
 
   const handleTogglePaymentRequest = async () => {
@@ -209,7 +211,7 @@ export default function MobileBookingDetail({
 
   const handleSaveRegistration = async () => {
     if (!regForm.firstName || !regForm.lastName) {
-      showToast('Імʼя та прізвище обовʼязкові');
+      showToast(tUi('Імʼя та прізвище обовʼязкові'));
       return;
     }
     setSavingReg(true);
@@ -228,17 +230,17 @@ export default function MobileBookingDetail({
       setShowRegForm(false);
       onFetchRegistrations(b.id);
       onFetchBookings();
-      showToast('Гостя зареєстровано');
-    } catch { showToast('Помилка'); }
+      showToast(tUi('Гостя зареєстровано'));
+    } catch { showToast(tUi('Помилка')); }
     finally { setSavingReg(false); }
   };
 
   const handleDeleteRegistration = async (regId: string) => {
-    if (!confirm('Видалити реєстрацію?')) return;
+    if (!confirm(tUi('Видалити реєстрацію?'))) return;
     await fetch(`/api/bookings/${b.id}/registrations?reg_id=${regId}`, { method: 'DELETE' });
     onFetchRegistrations(b.id);
     onFetchBookings();
-    showToast('Видалено');
+    showToast(tUi('Видалено'));
   };
 
   const handleCopyGuestLink = async () => {
@@ -255,9 +257,9 @@ export default function MobileBookingDetail({
         if (token) setBooking({ ...b, guest_page_token: token });
       } catch { /* ignore */ }
     }
-    if (!token) { showToast('Не вдалося створити посилання'); return; }
+    if (!token) { showToast(tUi('Не вдалося створити посилання')); return; }
     navigator.clipboard.writeText(`${window.location.origin}/guest/${token}`)
-      .then(() => showToast('Посилання скопійовано'));
+      .then(() => showToast(tUi('Посилання скопійовано')));
   };
 
   const handleOpenGuestPage = async () => {
@@ -273,7 +275,7 @@ export default function MobileBookingDetail({
         if (token) setBooking({ ...b, guest_page_token: token });
       } catch { /* ignore */ }
     }
-    if (!token) { showToast('Не вдалося створити посилання'); return; }
+    if (!token) { showToast(tUi('Не вдалося створити посилання')); return; }
     window.open(`/guest/${token}`, '_blank');
   };
 
@@ -406,7 +408,7 @@ export default function MobileBookingDetail({
               background: 'rgba(245,158,11,0.12)', color: '#f59e0b',
               border: '1px solid rgba(245,158,11,0.3)', fontSize: 11, lineHeight: 1.4,
             }}>
-              <strong>⚠️ Multi-room</strong> — Hostex колапсує групове бронювання Booking.com в один запис. Перевір у Hostex (маркер {b.multi_room_marker || '?'}).
+              <strong>⚠️ Multi-room</strong> {tUi('— Hostex колапсує групове бронювання Booking.com в один запис. Перевір у Hostex (маркер')} {b.multi_room_marker || '?'}).
             </div>
           )}
 
@@ -418,7 +420,7 @@ export default function MobileBookingDetail({
             </div>
             {/* Name row with close button */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button onClick={onClose} style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: '1px solid var(--border-primary)', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', cursor: 'pointer', flexShrink: 0 }} aria-label="Закрити">
+              <button onClick={onClose} style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: '1px solid var(--border-primary)', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', cursor: 'pointer', flexShrink: 0 }} aria-label={tUi('Закрити')}>
                 <X size={16} />
               </button>
               <div style={{ flex: 1, fontSize: 19, fontWeight: 700, letterSpacing: '-0.3px' }}>
@@ -438,9 +440,9 @@ export default function MobileBookingDetail({
                   {sourceInfo.label}
                 </span>
                 <span style={{ width: 3, height: 3, background: 'var(--text-tertiary)', borderRadius: '50%' }} />
-                <span>{b.nights} {nightsLabel(b.nights)}</span>
+                <span>{b.nights} {tUi(nightsLabel(b.nights))}</span>
                 <span style={{ width: 3, height: 3, background: 'var(--text-tertiary)', borderRadius: '50%' }} />
-                <span>{b.adults} {adultsLabel(b.adults)}{b.children > 0 ? ` + ${b.children} діт.` : ''}</span>
+                <span>{b.adults} {tUi(adultsLabel(b.adults))}{b.children > 0 ? ` + ${b.children} ${tUi('діт.')}` : ''}</span>
               </div>
               {b.currency !== 'EUR' && (
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
@@ -452,8 +454,8 @@ export default function MobileBookingDetail({
             {/* Dates */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
               {[
-                { lbl: 'Заїзд', val: checkIn },
-                { lbl: 'Виїзд', val: checkOut },
+                { lbl: tUi('Заїзд'), val: checkIn },
+                { lbl: tUi('Виїзд'), val: checkOut },
               ].map(d => (
                 <div key={d.lbl} style={{
                   display: 'flex', flexDirection: 'column', gap: 2,
@@ -479,7 +481,7 @@ export default function MobileBookingDetail({
                       {b.guest_phone}
                     </span>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <a href={`tel:${guestPhoneClean}`} style={contactBtnStyle('#4ADE80')} aria-label="Подзвонити">
+                      <a href={`tel:${guestPhoneClean}`} style={contactBtnStyle('#4ADE80')} aria-label={tUi('Подзвонити')}>
                         <Phone size={14} />
                       </a>
                       <a href={`https://wa.me/${guestPhoneClean.replace(/^\+/, '')}`} target="_blank" rel="noopener" style={contactBtnStyle('#4ADE80')} aria-label="WhatsApp">
@@ -511,27 +513,27 @@ export default function MobileBookingDetail({
           }}>
             <PipelineStep
               stepNum={1}
-              label="Бронь"
+              label={tUi('Бронь')}
               status={['confirmed','checked_in','checked_out'].includes(b.status) ? 'ok' : 'default'}
               onClick={onEdit}
             />
             <PipelineStep
               stepNum={2}
-              label="Оплата"
+              label={tUi('Оплата')}
               sub={isPaid ? '100%' : `${pct}%`}
               status={isPaid ? 'ok' : (b.payment_status === 'payment_requested' ? 'wait' : 'fail')}
               onClick={() => setTab('payment')}
             />
             <PipelineStep
               stepNum={3}
-              label="Реєстрація"
+              label={tUi('Реєстрація')}
               sub={regBadge}
               status={isRegistered ? 'ok' : 'fail'}
               onClick={() => setTab('registration')}
             />
             <PipelineStep
               stepNum={4}
-              label="Заселено"
+              label={tUi('Заселено')}
               status={['checked_in','checked_out'].includes(b.status) ? 'ok' : 'default'}
               onClick={() => {
                 if (b.status === 'confirmed') onChangeStatus(b.id, 'checked_in');
@@ -544,10 +546,10 @@ export default function MobileBookingDetail({
           {/* Tabs */}
           <div style={{ display: 'flex', padding: '0 14px', borderBottom: '1px solid var(--border-primary)' }}>
             {([
-              { k: 'payment' as const, l: 'Оплата', Icon: CreditCard, badge: !isPaid && total > 0 ? `${pct}%` : undefined },
-              { k: 'registration' as const, l: 'Реєстрація', Icon: FileText, badge: !isRegistered ? regBadge : undefined },
-              { k: 'groups' as const, l: 'Групи', Icon: Users, badge: subBookings.length > 0 ? String(subBookings.length) : undefined },
-              ...(isOwner ? [{ k: 'audit' as const, l: '🕐 Історія', Icon: Clock, badge: undefined as string | undefined }] : []),
+              { k: 'payment' as const, l: tUi('Оплата'), Icon: CreditCard, badge: !isPaid && total > 0 ? `${pct}%` : undefined },
+              { k: 'registration' as const, l: tUi('Реєстрація'), Icon: FileText, badge: !isRegistered ? regBadge : undefined },
+              { k: 'groups' as const, l: tUi('Групи'), Icon: Users, badge: subBookings.length > 0 ? String(subBookings.length) : undefined },
+              ...(isOwner ? [{ k: 'audit' as const, l: tUi('🕐 Історія'), Icon: Clock, badge: undefined as string | undefined }] : []),
             ]).map(t => (
               <button key={t.k} onClick={() => setTab(t.k)}
                 style={{
@@ -573,15 +575,15 @@ export default function MobileBookingDetail({
             <div style={{ padding: '12px 14px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
                 <div>
-                  <div style={amountLblStyle}>Всього</div>
+                  <div style={amountLblStyle}>{tUi('Всього')}</div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{total.toLocaleString()}</div>
                 </div>
                 <div>
-                  <div style={amountLblStyle}>Оплачено</div>
+                  <div style={amountLblStyle}>{tUi('Оплачено')}</div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: '#4ADE80', fontVariantNumeric: 'tabular-nums' }}>{paid.toLocaleString()}</div>
                 </div>
                 <div>
-                  <div style={amountLblStyle}>Залишок</div>
+                  <div style={amountLblStyle}>{tUi('Залишок')}</div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: remaining > 0 ? '#F5B847' : '#4ADE80', fontVariantNumeric: 'tabular-nums' }}>{remaining.toLocaleString()}</div>
                 </div>
               </div>
@@ -590,25 +592,25 @@ export default function MobileBookingDetail({
                 <div style={{ height: '100%', width: `${pct}%`, background: pct >= 100 ? '#4ADE80' : '#5B7CFF', borderRadius: 3, transition: 'width 0.4s' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'ui-monospace, monospace' }}>
-                <span>{pct}% оплачено</span>
-                <span>в {b.currency || 'CZK'}</span>
+                <span>{pct}{tUi('% оплачено')}</span>
+                <span>{tUi('в')} {b.currency || 'CZK'}</span>
               </div>
 
               {/* Action buttons */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginTop: 10 }}>
                 <button onClick={() => setShowPayForm(true)} style={payBtnStyle('primary')}>
-                  <Plus size={13} strokeWidth={2.3} /> Платіж
+                  <Plus size={13} strokeWidth={2.3} /> {tUi('Платіж')}
                 </button>
                 <button onClick={handleTogglePaymentRequest} style={payBtnStyle(b.payment_status === 'payment_requested' ? 'active' : 'default')}>
-                  <Mail size={13} /> Запит
+                  <Mail size={13} /> {tUi('Запит')}
                 </button>
                 {invoice ? (
                   <button onClick={() => window.open(`/api/invoices/${invoice.id}`, '_blank')} style={payBtnStyle('default')}>
-                    <Receipt size={13} /> Інвойс
+                    <Receipt size={13} /> {tUi('Інвойс')}
                   </button>
                 ) : (
                   <button disabled style={payBtnStyle('disabled')}>
-                    <Receipt size={13} /> Інвойс
+                    <Receipt size={13} /> {tUi('Інвойс')}
                   </button>
                 )}
               </div>
@@ -617,45 +619,45 @@ export default function MobileBookingDetail({
               {showPayForm && (
                 <div style={{ marginTop: 12, padding: 12, background: 'var(--bg-secondary)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <input className="form-input" type="number" placeholder={`Сума ${b.currency || 'CZK'}`} value={payForm.amount}
+                    <input className="form-input" type="number" placeholder={`${tUi('Сума')} ${b.currency || 'CZK'}`} value={payForm.amount}
                       onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))}
                       style={{ fontSize: 13 }} />
                     <select className="form-select" value={payForm.method}
                       onChange={e => setPayForm(p => ({ ...p, method: e.target.value }))}
                       style={{ fontSize: 13 }}>
-                      <option value="cash">💵 Готівка</option>
-                      <option value="card">💳 Картою</option>
-                      <option value="bank_transfer">🏦 Рахунок</option>
-                      <option value="invoice">📄 Фактура</option>
-                      <option value="booking_platform">🏨 Платформа</option>
+                      <option value="cash">{tUi('💵 Готівка')}</option>
+                      <option value="card">{tUi('💳 Картою')}</option>
+                      <option value="bank_transfer">{tUi('🏦 Рахунок')}</option>
+                      <option value="invoice">{tUi('📄 Фактура')}</option>
+                      <option value="booking_platform">{tUi('🏨 Платформа')}</option>
                     </select>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8 }}>
                     <select className="form-select" value={payForm.type}
                       onChange={e => setPayForm(p => ({ ...p, type: e.target.value }))}
                       style={{ fontSize: 13 }}>
-                      <option value="deposit">Передплата</option>
-                      <option value="partial">Часткова</option>
-                      <option value="full">Повна</option>
-                      <option value="refund">Повернення</option>
+                      <option value="deposit">{tUi('Передплата')}</option>
+                      <option value="partial">{tUi('Часткова')}</option>
+                      <option value="full">{tUi('Повна')}</option>
+                      <option value="refund">{tUi('Повернення')}</option>
                     </select>
-                    <input className="form-input" placeholder="Примітка" value={payForm.notes}
+                    <input className="form-input" placeholder={tUi('Примітка')} value={payForm.notes}
                       onChange={e => setPayForm(p => ({ ...p, notes: e.target.value }))}
                       style={{ fontSize: 13 }} />
                   </div>
                   {remaining > 0 && (
                     <button onClick={() => setPayForm(p => ({ ...p, amount: String(remaining), type: remaining === total ? 'full' : 'partial' }))}
                       style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: 11, fontWeight: 600, padding: 0, textAlign: 'left', cursor: 'pointer' }}>
-                      Залишок: {remaining.toLocaleString()} {b.currency || 'CZK'}
+                      {tUi('Залишок:')} {remaining.toLocaleString()} {b.currency || 'CZK'}
                     </button>
                   )}
                   <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                     <button onClick={() => setShowPayForm(false)} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border-primary)', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                      Скасувати
+                      {tUi('Скасувати')}
                     </button>
                     <button onClick={handleAddPayment} disabled={!payForm.amount || Number(payForm.amount) <= 0}
                       style={{ padding: '7px 12px', borderRadius: 8, border: 'none', background: 'var(--accent-primary)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, opacity: (!payForm.amount || Number(payForm.amount) <= 0) ? 0.5 : 1 }}>
-                      <Save size={12} /> Зберегти
+                      <Save size={12} /> {tUi('Зберегти')}
                     </button>
                   </div>
                 </div>
@@ -664,7 +666,7 @@ export default function MobileBookingDetail({
               {/* Payments list */}
               {payments.length > 0 && (
                 <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, marginBottom: 6 }}>Транзакції</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, marginBottom: 6 }}>{tUi('Транзакції')}</div>
                   {payments.map((p: any) => (
                     <div key={p.id} style={{
                       display: 'flex', alignItems: 'center', gap: 6,
@@ -674,8 +676,8 @@ export default function MobileBookingDetail({
                       <span style={{ fontWeight: 700, color: p.type === 'refund' ? '#F26B6B' : '#4ADE80', fontVariantNumeric: 'tabular-nums' }}>
                         {p.type === 'refund' ? '-' : '+'}{p.amount.toLocaleString()}
                       </span>
-                      <span style={{ color: 'var(--text-secondary)', fontSize: 11 }}>{METHOD_LABELS[p.method] || p.method}</span>
-                      <span style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{TYPE_LABELS[p.type] || p.type}</span>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: 11 }}>{tUi(METHOD_LABELS[p.method] || p.method)}</span>
+                      <span style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{tUi(TYPE_LABELS[p.type] || p.type)}</span>
                       <button onClick={() => handleDeletePayment(p.id)}
                         style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 4 }}>
                         <Trash2 size={12} />
@@ -697,9 +699,9 @@ export default function MobileBookingDetail({
                 <span style={{ fontSize: 18 }}>{isRegistered ? '✅' : '❌'}</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: isRegistered ? '#4ADE80' : '#F26B6B' }}>
-                    {isRegistered ? 'Реєстрація завершена' : `Зареєструйте ${regNeeded - registrations.length} гостей`}
+                    {isRegistered ? tUi('Реєстрація завершена') : `${tUi('Зареєструйте')} ${regNeeded - registrations.length} ${tUi('гостей')}`}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{registrations.length} з {regNeeded}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{registrations.length} {tUi('з')} {regNeeded}</div>
                 </div>
               </div>
 
@@ -736,7 +738,7 @@ export default function MobileBookingDetail({
                       border: '1px solid rgba(91,124,255,0.3)', fontSize: 13, fontWeight: 600,
                       cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                     }}>
-                    <Plus size={14} strokeWidth={2.3} /> Додати гостя
+                    <Plus size={14} strokeWidth={2.3} /> {tUi('Додати гостя')}
                   </button>
                   <input type="file" accept="image/*" ref={ocrFileRef} style={{ display: 'none' }}
                     onChange={async (e) => {
@@ -789,7 +791,7 @@ export default function MobileBookingDetail({
                       whiteSpace: 'nowrap',
                     }}>
                     {ocrScanning ? <Loader2 size={14} className="animate-spin" /> : '\ud83d\udcf7'}
-                    {ocrScanning ? '...' : 'Фото'}
+                    {ocrScanning ? '...' : tUi('Фото')}
                   </button>
                 </div>
               )}
@@ -797,12 +799,12 @@ export default function MobileBookingDetail({
               {showRegForm && (
                 <div style={{ marginTop: 12, padding: 12, background: 'var(--bg-secondary)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <input className="form-input" placeholder="Імʼя *" value={regForm.firstName}
+                    <input className="form-input" placeholder={tUi('Імʼя *')} value={regForm.firstName}
                       onChange={e => setRegForm(p => ({ ...p, firstName: e.target.value }))} style={{ fontSize: 13 }} />
-                    <input className="form-input" placeholder="Прізвище *" value={regForm.lastName}
+                    <input className="form-input" placeholder={tUi('Прізвище *')} value={regForm.lastName}
                       onChange={e => setRegForm(p => ({ ...p, lastName: e.target.value }))} style={{ fontSize: 13 }} />
                   </div>
-                  <input className="form-input" type="date" placeholder="Дата народження" value={regForm.dateOfBirth}
+                  <input className="form-input" type="date" placeholder={tUi('Дата народження')} value={regForm.dateOfBirth}
                     onChange={e => setRegForm(p => ({ ...p, dateOfBirth: e.target.value }))} style={{ fontSize: 13 }} />
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8 }}>
                     <select className="form-select" value={regForm.documentType}
@@ -810,25 +812,25 @@ export default function MobileBookingDetail({
                       <option value="ID_CARD">ID Card</option>
                       <option value="PASSPORT">Passport</option>
                     </select>
-                    <input className="form-input" placeholder="Номер документа" value={regForm.documentNumber}
+                    <input className="form-input" placeholder={tUi('Номер документа')} value={regForm.documentNumber}
                       onChange={e => setRegForm(p => ({ ...p, documentNumber: e.target.value }))} style={{ fontSize: 13 }} />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <input className="form-input" placeholder="Громадянство" value={regForm.nationality}
+                    <input className="form-input" placeholder={tUi('Громадянство')} value={regForm.nationality}
                       onChange={e => setRegForm(p => ({ ...p, nationality: e.target.value }))} style={{ fontSize: 13 }} />
-                    <input className="form-input" placeholder="Країна" value={regForm.country}
+                    <input className="form-input" placeholder={tUi('Країна')} value={regForm.country}
                       onChange={e => setRegForm(p => ({ ...p, country: e.target.value }))} style={{ fontSize: 13 }} />
                   </div>
-                  <input className="form-input" placeholder="Адреса" value={regForm.address}
+                  <input className="form-input" placeholder={tUi('Адреса')} value={regForm.address}
                     onChange={e => setRegForm(p => ({ ...p, address: e.target.value }))} style={{ fontSize: 13 }} />
                   <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                     <button onClick={() => setShowRegForm(false)}
                       style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border-primary)', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                      Скасувати
+                      {tUi('Скасувати')}
                     </button>
                     <button onClick={handleSaveRegistration} disabled={savingReg}
                       style={{ padding: '7px 12px', borderRadius: 8, border: 'none', background: 'var(--accent-primary)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      {savingReg ? <Loader2 size={12} className="animate-pulse" /> : <Save size={12} />} Зберегти
+                      {savingReg ? <Loader2 size={12} className="animate-pulse" /> : <Save size={12} />} {tUi('Зберегти')}
                     </button>
                   </div>
                 </div>
@@ -840,9 +842,9 @@ export default function MobileBookingDetail({
             <div style={{ padding: '12px 14px' }}>
               {subBookings.length === 0 ? (
                 <div style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>
-                  Немає підбронювань
+                  {tUi('Немає підбронювань')}
                   <div style={{ fontSize: 11, marginTop: 6 }}>
-                    Створення груп доступне у desktop-версії
+                    {tUi('Створення груп доступне у desktop-версії')}
                   </div>
                 </div>
               ) : (
@@ -858,7 +860,7 @@ export default function MobileBookingDetail({
                       </div>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
-                      {sb.child_unit_code || sb.child_unit_name || sb.unit_id} · {sb.adults || 0} дор.{sb.children > 0 ? ` + ${sb.children} діт.` : ''}
+                      {sb.child_unit_code || sb.child_unit_name || sb.unit_id} · {sb.adults || 0} {tUi('дор.')}{sb.children > 0 ? ` + ${sb.children} ${tUi('діт.')}` : ''}
                     </div>
                   </div>
                 ))
@@ -870,7 +872,7 @@ export default function MobileBookingDetail({
             <div style={{ padding: '12px 14px' }}>
               {auditLogs.length === 0 ? (
                 <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>
-                  Немає записів
+                  {tUi('Немає записів')}
                 </div>
               ) : (
                 auditLogs.map((log: any) => {
@@ -929,16 +931,16 @@ export default function MobileBookingDetail({
           flexShrink: 0, background: 'var(--bg-card)',
         }}>
           <button onClick={handleCopyGuestLink} style={bottomActionStyle('default')}>
-            <Copy size={12} /> Копія
+            <Copy size={12} /> {tUi('Копія')}
           </button>
           <button onClick={handleOpenGuestPage} style={bottomActionStyle('default')}>
-            <ExternalLink size={12} /> Гостьова
+            <ExternalLink size={12} /> {tUi('Гостьова')}
           </button>
           <button onClick={onEdit} style={bottomActionStyle('edit')}>
-            <Edit3 size={12} /> Змінити
+            <Edit3 size={12} /> {tUi('Змінити')}
           </button>
-          <button onClick={() => { if (confirm('Скасувати бронювання?')) onChangeStatus(b.id, 'cancelled'); }} style={bottomActionStyle('danger')}>
-            <X size={12} /> Скасувати
+          <button onClick={() => { if (confirm(tUi('Скасувати бронювання?'))) onChangeStatus(b.id, 'cancelled'); }} style={bottomActionStyle('danger')}>
+            <X size={12} /> {tUi('Скасувати')}
           </button>
         </div>
       </div>

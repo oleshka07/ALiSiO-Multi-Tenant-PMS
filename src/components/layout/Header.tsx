@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { Bell, Search, User, Menu, ArrowLeft } from 'lucide-react';
 
 interface HeaderProps {
@@ -9,6 +10,7 @@ interface HeaderProps {
 }
 
 export default function Header({ title, onMenuClick, onBack }: HeaderProps) {
+  const t = useT();
   return (
     <header className="header">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
@@ -24,7 +26,7 @@ export default function Header({ title, onMenuClick, onBack }: HeaderProps) {
         {onBack && (
           <button
             onClick={onBack}
-            aria-label="Назад"
+            aria-label={t('Назад')}
             style={{
               background: 'none', border: 'none', cursor: 'pointer',
               color: 'var(--text-secondary)', display: 'flex', alignItems: 'center',

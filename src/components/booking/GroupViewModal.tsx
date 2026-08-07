@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { X, UserPlus, Loader2, Check, Users, Building2, BedDouble, CreditCard, Plus, Edit3, Save } from 'lucide-react';
 
@@ -38,6 +39,7 @@ interface GroupViewModalProps {
 }
 
 export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupViewModalProps) {
+  const t = useT();
   const [group, setGroup] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [assignRoom, setAssignRoom] = useState<string | null>(null);
@@ -105,9 +107,9 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
         onUpdated();
       } else {
         const data = await res.json();
-        alert(data.error);
+        alert(t(data.error));
       }
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(t('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -122,12 +124,12 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
       });
       fetchGroup();
       onUpdated();
-    } catch { alert('Помилка'); }
+    } catch { alert(t('Помилка')); }
     setStatusSaving(false);
   };
 
   const handleDelete = async () => {
-    if (!groupId || !confirm('Видалити групове бронювання і всі кімнати?')) return;
+    if (!groupId || !confirm(t('Видалити групове бронювання і всі кімнати?'))) return;
     await fetch(`/api/group-bookings/${groupId}`, { method: 'DELETE' });
     onClose();
     onUpdated();
@@ -162,9 +164,9 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
         onUpdated();
       } else {
         const data = await res.json();
-        alert(data.error);
+        alert(t(data.error));
       }
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(t('Помилка мережі')); }
     setPaySaving(false);
   };
 
@@ -215,7 +217,7 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
         const d = await res.json();
         alert(d.error || 'Помилка');
       }
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(t('Помилка мережі')); }
     setEditSaving(false);
   };
 
@@ -225,19 +227,19 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal-lg" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
         <div className="modal-header">
-          <h3 className="modal-title">🏨 Групове бронювання</h3>
+          <h3 className="modal-title">{t('🏨 Групове бронювання')}</h3>
           <button className="modal-close" onClick={onClose}><X size={18} /></button>
         </div>
 
         <div className="modal-body" style={{ overflow: 'auto', flex: 1 }}>
           {loading || !group ? (
-            <div style={{ textAlign: 'center', padding: 32 }}><Loader2 size={24} /> Завантаження...</div>
+            <div style={{ textAlign: 'center', padding: 32 }}><Loader2 size={24} /> {t('Завантаження...')}</div>
           ) : (
             <>
               {/* Group info cards */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginBottom: 16 }}>
                 <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Замовник</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Замовник')}</div>
                   <div style={{ fontWeight: 700, fontSize: 15, marginTop: 2 }}>
                     <Users size={14} style={{ verticalAlign: -2, marginRight: 4 }} />
                     {group.first_name} {group.last_name}
@@ -245,22 +247,22 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                   {group.guest_phone && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{group.guest_phone}</div>}
                 </div>
                 <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Тип</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Тип')}</div>
                   <div style={{ fontWeight: 600, fontSize: 14, marginTop: 2 }}>
                     {group.group_type === 'building' ? (
-                      <><Building2 size={14} style={{ verticalAlign: -2, marginRight: 4 }} />Будівля: {group.building_name}</>
+                      <><Building2 size={14} style={{ verticalAlign: -2, marginRight: 4 }} />{t('Будівля:')} {group.building_name}</>
                     ) : (
-                      <><BedDouble size={14} style={{ verticalAlign: -2, marginRight: 4 }} />{group.rooms?.length} кімнат</>
+                      <><BedDouble size={14} style={{ verticalAlign: -2, marginRight: 4 }} />{group.rooms?.length} {t('кімнат')}</>
                     )}
                   </div>
                 </div>
                 <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Дати</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Дати')}</div>
                   <div style={{ fontWeight: 600, fontSize: 14, marginTop: 2 }}>{group.check_in} — {group.check_out}</div>
-                  <div style={{ fontSize: 12, color: 'var(--accent-primary)' }}>{group.nights} ночей</div>
+                  <div style={{ fontSize: 12, color: 'var(--accent-primary)' }}>{group.nights} {t('ночей')}</div>
                 </div>
                 <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Оплата</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Оплата')}</div>
                   <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--accent-primary)', marginTop: 2 }}>
                     {(group.total_price || 0).toLocaleString()} {group.currency || 'CZK'}
                   </div>
@@ -277,7 +279,7 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                   onChange={e => handleStatusChange('status', e.target.value)}
                   disabled={statusSaving} style={{ width: 'auto', fontSize: 13 }}>
                   {Object.entries(STATUS_MAP).map(([k, v]) => (
-                    <option key={k} value={k}>{v.label}</option>
+                    <option key={k} value={k}>{t(v.label)}</option>
                   ))}
                 </select>
                 <span style={{
@@ -286,14 +288,14 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                   color: PAYMENT_MAP[group.payment_status]?.color || '#888',
                   background: (PAYMENT_MAP[group.payment_status]?.color || '#888') + '22',
                 }}>
-                  {PAYMENT_MAP[group.payment_status]?.label || group.payment_status}
+                  {t(PAYMENT_MAP[group.payment_status]?.label || group.payment_status)}
                 </span>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                   <button className="btn btn-sm btn-primary" onClick={openEdit} style={{ fontSize: 12 }}>
-                    <Edit3 size={13} style={{ marginRight: 4 }} /> Редагувати
+                    <Edit3 size={13} style={{ marginRight: 4 }} /> {t('Редагувати')}
                   </button>
                   <button className="btn btn-sm" style={{ color: 'var(--accent-danger)' }} onClick={handleDelete}>
-                    Видалити
+                    {t('Видалити')}
                   </button>
                 </div>
               </div>
@@ -301,59 +303,59 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
               {/* ═══ EDIT FORM ═══ */}
               {isEditing && (
                 <div style={{ padding: 16, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', marginBottom: 16, border: '1px solid var(--accent-primary)' }}>
-                  <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, margin: 0 }}>✏️ Редагування групового бронювання</h4>
+                  <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, margin: 0 }}>{t('✏️ Редагування групового бронювання')}</h4>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div className="form-group">
-                      <label className="form-label">Замовник (ім'я)</label>
+                      <label className="form-label">{t('Замовник (ім\'я)')}</label>
                       <input className="form-input" value={editForm.firstName}
                         onChange={e => setEditForm(p => ({ ...p, firstName: e.target.value }))} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Прізвище</label>
+                      <label className="form-label">{t('Прізвище')}</label>
                       <input className="form-input" value={editForm.lastName}
                         onChange={e => setEditForm(p => ({ ...p, lastName: e.target.value }))} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Телефон</label>
+                      <label className="form-label">{t('Телефон')}</label>
                       <input className="form-input" value={editForm.phone}
                         onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Джерело</label>
+                      <label className="form-label">{t('Джерело')}</label>
                       <select className="form-select" value={editForm.source}
                         onChange={e => setEditForm(p => ({ ...p, source: e.target.value }))}>
-                        <option value="">— не вказано —</option>
+                        <option value="">{t('— не вказано —')}</option>
                         {bookingSources.map(s => (
                           <option key={s.id} value={s.code}>{s.name}</option>
                         ))}
                       </select>
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Дата заїзду</label>
+                      <label className="form-label">{t('Дата заїзду')}</label>
                       <input className="form-input" type="date" value={editForm.checkIn}
                         onChange={e => setEditForm(p => ({ ...p, checkIn: e.target.value }))} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Дата виїзду</label>
+                      <label className="form-label">{t('Дата виїзду')}</label>
                       <input className="form-input" type="date" value={editForm.checkOut}
                         onChange={e => setEditForm(p => ({ ...p, checkOut: e.target.value }))} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Загальна вартість ({group.currency || 'CZK'})</label>
+                      <label className="form-label">{t('Загальна вартість (')}{group.currency || 'CZK'})</label>
                       <input className="form-input" type="number" value={editForm.totalPrice}
                         onChange={e => setEditForm(p => ({ ...p, totalPrice: e.target.value }))} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Примітка</label>
+                      <label className="form-label">{t('Примітка')}</label>
                       <input className="form-input" value={editForm.notes}
                         onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))} />
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     <button className="btn btn-primary" onClick={handleSaveEdit} disabled={editSaving}>
-                      {editSaving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />} Зберегти
+                      {editSaving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />} {t('Зберегти')}
                     </button>
-                    <button className="btn btn-secondary" onClick={() => setIsEditing(false)}>Скасувати</button>
+                    <button className="btn btn-secondary" onClick={() => setIsEditing(false)}>{t('Скасувати')}</button>
                   </div>
                 </div>
               )}
@@ -362,11 +364,11 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
               <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 16, marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                   <h4 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-                    <CreditCard size={16} /> Оплати
+                    <CreditCard size={16} /> {t('Оплати')}
                     {payments.length > 0 && <span className="badge badge-info" style={{ fontSize: 10 }}>{payments.length}</span>}
                   </h4>
                   <button className="btn btn-sm btn-primary" onClick={() => setShowPayForm(!showPayForm)}>
-                    <Plus size={14} /> Внести оплату
+                    <Plus size={14} /> {t('Внести оплату')}
                   </button>
                 </div>
 
@@ -379,28 +381,28 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                         className={`btn btn-sm ${payMode === 'shared' ? 'btn-primary' : 'btn-secondary'}`}
                         onClick={() => setPayMode('shared')}
                         style={{ flex: 1 }}>
-                        🏨 Спільна оплата
+                        {t('🏨 Спільна оплата')}
                       </button>
                       <button
                         className={`btn btn-sm ${payMode === 'room' ? 'btn-primary' : 'btn-secondary'}`}
                         onClick={() => setPayMode('room')}
                         style={{ flex: 1 }}>
-                        🛏️ По кімнаті
+                        {t('🛏️ По кімнаті')}
                       </button>
                     </div>
 
                     {payMode === 'shared' && (
                       <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8, background: 'var(--bg-tertiary)', padding: '6px 10px', borderRadius: 6 }}>
-                        💡 Сума буде рівномірно розподілена між {group.rooms?.length} кімнатами
+                        {t('💡 Сума буде рівномірно розподілена між')} {group.rooms?.length} {t('кімнатами')}
                       </div>
                     )}
 
                     {payMode === 'room' && (
                       <div className="form-group" style={{ marginBottom: 8 }}>
-                        <label className="form-label" style={{ fontSize: 12 }}>Кімната</label>
+                        <label className="form-label" style={{ fontSize: 12 }}>{t('Кімната')}</label>
                         <select className="form-select" value={payRoomId}
                           onChange={e => setPayRoomId(e.target.value)}>
-                          <option value="">— Оберіть кімнату —</option>
+                          <option value="">{t('— Оберіть кімнату —')}</option>
                           {group.rooms?.map((r: any) => (
                             <option key={r.id} value={r.id}>{r.unit_code} — {r.first_name} {r.last_name}</option>
                           ))}
@@ -410,42 +412,42 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
 
                     <div className="form-row">
                       <div className="form-group">
-                        <label className="form-label" style={{ fontSize: 12 }}>Сума ({group.currency || 'CZK'}) *</label>
+                        <label className="form-label" style={{ fontSize: 12 }}>{t('Сума (')}{group.currency || 'CZK'}) *</label>
                         <input className="form-input" type="number" placeholder={remaining > 0 ? String(remaining) : '0'}
                           value={payForm.amount} onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))} />
                       </div>
                       <div className="form-group">
-                        <label className="form-label" style={{ fontSize: 12 }}>Метод</label>
+                        <label className="form-label" style={{ fontSize: 12 }}>{t('Метод')}</label>
                         <select className="form-select" value={payForm.method}
                           onChange={e => setPayForm(p => ({ ...p, method: e.target.value }))}>
                           {Object.entries(METHOD_LABELS).map(([k, v]) => (
-                            <option key={k} value={k}>{v}</option>
+                            <option key={k} value={k}>{t(v)}</option>
                           ))}
                         </select>
                       </div>
                     </div>
                     <div className="form-row">
                       <div className="form-group">
-                        <label className="form-label" style={{ fontSize: 12 }}>Тип</label>
+                        <label className="form-label" style={{ fontSize: 12 }}>{t('Тип')}</label>
                         <select className="form-select" value={payForm.type}
                           onChange={e => setPayForm(p => ({ ...p, type: e.target.value }))}>
                           {Object.entries(TYPE_LABELS).map(([k, v]) => (
-                            <option key={k} value={k}>{v}</option>
+                            <option key={k} value={k}>{t(v)}</option>
                           ))}
                         </select>
                       </div>
                       <div className="form-group">
-                        <label className="form-label" style={{ fontSize: 12 }}>Примітка</label>
+                        <label className="form-label" style={{ fontSize: 12 }}>{t('Примітка')}</label>
                         <input className="form-input" value={payForm.notes}
                           onChange={e => setPayForm(p => ({ ...p, notes: e.target.value }))} />
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => setShowPayForm(false)}>Скасувати</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setShowPayForm(false)}>{t('Скасувати')}</button>
                       <button className="btn btn-primary btn-sm" onClick={handleAddPayment}
                         disabled={paySaving || !payForm.amount || (payMode === 'room' && !payRoomId)}>
                         {paySaving ? <Loader2 size={14} /> : <Check size={14} />}
-                        {payMode === 'shared' ? 'Внести (ділити на всіх)' : 'Внести'}
+                        {payMode === 'shared' ? t('Внести (ділити на всіх)') : t('Внести')}
                       </button>
                     </div>
                   </div>
@@ -463,8 +465,8 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                         <span style={{ fontWeight: 700, color: p.type === 'refund' ? '#ef4444' : '#22c55e', minWidth: 80 }}>
                           {p.type === 'refund' ? '-' : '+'}{p.amount?.toLocaleString()} {p.currency || group.currency || 'CZK'}
                         </span>
-                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{METHOD_LABELS[p.method] || p.method}</span>
-                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{TYPE_LABELS[p.type] || p.type}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t(METHOD_LABELS[p.method] || p.method)}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t(TYPE_LABELS[p.type] || p.type)}</span>
                         {p.unit_code && (
                           <span className="badge badge-info" style={{ fontSize: 10, padding: '1px 6px' }}>{p.unit_code}</span>
                         )}
@@ -473,7 +475,7 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                       </div>
                     ))}
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', fontWeight: 700, fontSize: 13, borderTop: '1px solid var(--border-primary)', marginTop: 4 }}>
-                      <span>Разом оплачено</span>
+                      <span>{t('Разом оплачено')}</span>
                       <span style={{ color: 'var(--accent-primary)' }}>{totalPaid.toLocaleString()} / {(group.total_price || 0).toLocaleString()} {group.currency || 'CZK'}</span>
                     </div>
                   </div>
@@ -482,7 +484,7 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
 
               {/* ═══ ROOMS LIST ═══ */}
               <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <BedDouble size={16} /> Кімнати ({group.rooms?.length || 0})
+                <BedDouble size={16} /> {t('Кімнати (')}{group.rooms?.length || 0})
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {group.rooms?.map((r: any) => {
@@ -504,7 +506,7 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                       <div style={{ flex: 1, minWidth: 120 }}>
                         <div style={{ fontWeight: 600, fontSize: 14 }}>
                           {r.first_name} {r.last_name}
-                          {isGroupOwner && <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 6 }}>(замовник)</span>}
+                          {isGroupOwner && <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 6 }}>{t('(замовник)')}</span>}
                         </div>
                         {r.guest_email && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{r.guest_email}</div>}
                         {r.guest_phone && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{r.guest_phone}</div>}
@@ -516,14 +518,14 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                           color: STATUS_MAP[r.status]?.color || '#888',
                           background: (STATUS_MAP[r.status]?.color || '#888') + '22',
                         }}>
-                          {STATUS_MAP[r.status]?.label || r.status}
+                          {t(STATUS_MAP[r.status]?.label || r.status)}
                         </span>
                       </div>
                       <button className="btn btn-sm btn-secondary" onClick={() => {
                         setAssignRoom(r.id);
                         setGuestForm({ firstName: '', lastName: '', email: '', phone: '' });
                       }}>
-                        <UserPlus size={14} /> Гість
+                        <UserPlus size={14} /> {t('Гість')}
                       </button>
                     </div>
                   );
@@ -535,16 +537,16 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                 <div className="card" style={{ marginTop: 12, padding: 16, border: '2px solid var(--accent-primary)' }}>
                   <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>
                     <UserPlus size={16} style={{ verticalAlign: -3, marginRight: 4 }} />
-                    Призначити гостя — {group.rooms?.find((r: any) => r.id === assignRoom)?.unit_code}
+                    {t('Призначити гостя —')} {group.rooms?.find((r: any) => r.id === assignRoom)?.unit_code}
                   </h4>
                   <div className="form-row">
                     <div className="form-group">
-                      <label className="form-label">Ім&apos;я *</label>
+                      <label className="form-label">{t('Ім\'я *')}</label>
                       <input className="form-input" value={guestForm.firstName}
                         onChange={e => setGuestForm(p => ({ ...p, firstName: e.target.value }))} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Прізвище *</label>
+                      <label className="form-label">{t('Прізвище *')}</label>
                       <input className="form-input" value={guestForm.lastName}
                         onChange={e => setGuestForm(p => ({ ...p, lastName: e.target.value }))} />
                     </div>
@@ -556,15 +558,15 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                         onChange={e => setGuestForm(p => ({ ...p, email: e.target.value }))} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Телефон</label>
+                      <label className="form-label">{t('Телефон')}</label>
                       <input className="form-input" type="tel" value={guestForm.phone}
                         onChange={e => setGuestForm(p => ({ ...p, phone: e.target.value }))} />
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <button className="btn btn-secondary" onClick={() => setAssignRoom(null)}>Скасувати</button>
+                    <button className="btn btn-secondary" onClick={() => setAssignRoom(null)}>{t('Скасувати')}</button>
                     <button className="btn btn-primary" onClick={handleAssignGuest} disabled={saving || !guestForm.firstName || !guestForm.lastName}>
-                      {saving ? <Loader2 size={16} /> : <Check size={16} />} Призначити
+                      {saving ? <Loader2 size={16} /> : <Check size={16} />} {t('Призначити')}
                     </button>
                   </div>
                 </div>

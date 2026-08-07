@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -76,6 +77,7 @@ function SectionHeader({ id, title, icon, openSections, toggle }: { id: string; 
 // MAIN COMPONENT
 // ═════════════════════════════════════════════════
 export default function GuestPageSettingsPage() {
+  const t = useT();
   const [activeTab, setActiveTab] = useState<'property' | 'unit-types'>('property');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -215,8 +217,8 @@ export default function GuestPageSettingsPage() {
           emergency_phone: pEmergency || null, video_guide_url: pVideoGuide || null,
         }),
       });
-      if (res.ok) { showToast('Збережено!'); fetchAll(); } else showToast('Помилка збереження');
-    } catch { showToast('Помилка мережі'); }
+      if (res.ok) { showToast(t('Збережено!')); fetchAll(); } else showToast(t('Помилка збереження'));
+    } catch { showToast(t('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -236,8 +238,8 @@ export default function GuestPageSettingsPage() {
           entry_photo_url: entryPhotoUrl || null,
         }),
       });
-      if (res.ok) { showToast('Збережено!'); fetchAll(); } else showToast('Помилка збереження');
-    } catch { showToast('Помилка мережі'); }
+      if (res.ok) { showToast(t('Збережено!')); fetchAll(); } else showToast(t('Помилка збереження'));
+    } catch { showToast(t('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -253,7 +255,7 @@ export default function GuestPageSettingsPage() {
   // ═════════════════════════════════════════════════
   return (
     <>
-      <Header title="Гостьова сторінка" onMenuClick={onMenuClick} />
+      <Header title={t('Гостьова сторінка')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {/* Toast */}
         {toast && (
@@ -272,20 +274,20 @@ export default function GuestPageSettingsPage() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
               <Link href="/app/settings" style={{ color: 'var(--text-tertiary)', display: 'flex' }}><ArrowLeft size={18} /></Link>
-              <h2 className="page-title">Налаштування гостьової сторінки</h2>
+              <h2 className="page-title">{t('Налаштування гостьової сторінки')}</h2>
             </div>
-            <div className="page-subtitle">Спільні налаштування та контент для кожного типу проживання</div>
+            <div className="page-subtitle">{t('Спільні налаштування та контент для кожного типу проживання')}</div>
           </div>
           <button className="btn btn-primary" onClick={activeTab === 'property' ? savePropertyConfig : saveUnitTypeConfig} disabled={saving}>
-            {saving ? <Loader2 size={16} className="animate-pulse" /> : <Save size={16} />} Зберегти
+            {saving ? <Loader2 size={16} className="animate-pulse" /> : <Save size={16} />} {t('Зберегти')}
           </button>
         </div>
 
         {/* ═══ TAB SWITCHER ═══ */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', padding: 4 }}>
           {[
-            { id: 'property' as const, label: '🏨 Property (спільне)', desc: 'WiFi, ресторан, правила, Explore' },
-            { id: 'unit-types' as const, label: '🏠 Unit Types', desc: 'Amenities, код замка, інструкції' },
+            { id: 'property' as const, label: t('🏨 Property (спільне)'), desc: t('WiFi, ресторан, правила, Explore') },
+            { id: 'unit-types' as const, label: '🏠 Unit Types', desc: t('Amenities, код замка, інструкції') },
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
               flex: 1, padding: '10px 16px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer',
@@ -302,7 +304,7 @@ export default function GuestPageSettingsPage() {
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 48, color: 'var(--text-tertiary)' }}>
-            <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> Завантаження…
+            <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> {t('Завантаження…')}
           </div>
         ) : (
           <>
@@ -314,8 +316,8 @@ export default function GuestPageSettingsPage() {
                 <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
                   <span style={{ fontSize: 24 }}>🏨</span>
                   <div>
-                    <div style={{ fontSize: 16, fontWeight: 700 }}>Спільні налаштування</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Ці дані відображаються для ВСІХ типів проживання</div>
+                    <div style={{ fontSize: 16, fontWeight: 700 }}>{t('Спільні налаштування')}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('Ці дані відображаються для ВСІХ типів проживання')}</div>
                   </div>
                 </div>
 
@@ -325,11 +327,11 @@ export default function GuestPageSettingsPage() {
                   <div style={{ padding: '16px 0' }}>
                     <div className="form-row">
                       <div className="form-group">
-                        <label className="form-label">Мережа</label>
+                        <label className="form-label">{t('Мережа')}</label>
                         <input className="form-input" value={pWifi} onChange={e => setPWifi(e.target.value)} />
                       </div>
                       <div className="form-group">
-                        <label className="form-label">Пароль</label>
+                        <label className="form-label">{t('Пароль')}</label>
                         <input className="form-input" value={pWifiPass} onChange={e => setPWifiPass(e.target.value)} />
                       </div>
                     </div>
@@ -337,40 +339,40 @@ export default function GuestPageSettingsPage() {
                 )}
 
                 {/* Restaurant */}
-                <SH id="restaurant" title="Ресторан" icon="🍽️" />
+                <SH id="restaurant" title={t('Ресторан')} icon="🍽️" />
                 {openSections.has('restaurant') && (
                   <div style={{ padding: '16px 0' }}>
                     <div className="form-group">
-                      <label className="form-label">Назва</label>
+                      <label className="form-label">{t('Назва')}</label>
                       <input className="form-input" value={pRestName} onChange={e => setPRestName(e.target.value)} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Години роботи</label>
+                      <label className="form-label">{t('Години роботи')}</label>
                       <textarea className="form-input" rows={3} value={pRestHours} onChange={e => setPRestHours(e.target.value)} style={{ resize: 'vertical' }} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Посилання на меню (URL)</label>
+                      <label className="form-label">{t('Посилання на меню (URL)')}</label>
                       <input className="form-input" type="url" value={pRestMenu} placeholder="https://..." onChange={e => setPRestMenu(e.target.value)} />
                     </div>
                   </div>
                 )}
 
                 {/* Rules */}
-                <SH id="rules" title="Правила перебування" icon="📜" />
+                <SH id="rules" title={t('Правила перебування')} icon="📜" />
                 {openSections.has('rules') && (
                   <div style={{ padding: '16px 0' }}>
                     {pRules.map((r, i) => (
                       <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
                         <input className="form-input" style={{ width: 50, textAlign: 'center', fontSize: 18, padding: '6px 4px' }}
                           value={r.icon} onChange={e => setPRules(prev => prev.map((p, idx) => idx === i ? { ...p, icon: e.target.value } : p))} />
-                        <input className="form-input" style={{ flex: 1 }} value={r.text} placeholder="Правило"
+                        <input className="form-input" style={{ flex: 1 }} value={r.text} placeholder={t('Правило')}
                           onChange={e => setPRules(prev => prev.map((p, idx) => idx === i ? { ...p, text: e.target.value } : p))} />
                         <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-danger)' }}
                           onClick={() => setPRules(prev => prev.filter((_, idx) => idx !== i))}><Trash2 size={14} /></button>
                       </div>
                     ))}
                     <button className="btn btn-sm btn-ghost" onClick={() => setPRules(prev => [...prev, { icon: '📌', text: '' }])}>
-                      <Plus size={14} /> Додати правило
+                      <Plus size={14} /> {t('Додати правило')}
                     </button>
                   </div>
                 )}
@@ -382,52 +384,52 @@ export default function GuestPageSettingsPage() {
                     {pFaq.map((f, i) => (
                       <div key={i} style={{ marginBottom: 12, padding: 12, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-primary)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)' }}>Питання {i + 1}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)' }}>{t('Питання')} {i + 1}</span>
                           <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-danger)' }}
                             onClick={() => setPFaq(prev => prev.filter((_, idx) => idx !== i))}><Trash2 size={12} /></button>
                         </div>
-                        <input className="form-input" value={f.q} placeholder="Питання" style={{ marginBottom: 8, fontWeight: 600 }}
+                        <input className="form-input" value={f.q} placeholder={t('Питання')} style={{ marginBottom: 8, fontWeight: 600 }}
                           onChange={e => setPFaq(prev => prev.map((p, idx) => idx === i ? { ...p, q: e.target.value } : p))} />
-                        <textarea className="form-input" rows={2} value={f.a} placeholder="Відповідь" style={{ resize: 'vertical' }}
+                        <textarea className="form-input" rows={2} value={f.a} placeholder={t('Відповідь')} style={{ resize: 'vertical' }}
                           onChange={e => setPFaq(prev => prev.map((p, idx) => idx === i ? { ...p, a: e.target.value } : p))} />
                       </div>
                     ))}
                     <button className="btn btn-sm btn-ghost" onClick={() => setPFaq(prev => [...prev, { q: '', a: '' }])}>
-                      <Plus size={14} /> Додати питання
+                      <Plus size={14} /> {t('Додати питання')}
                     </button>
                   </div>
                 )}
 
                 {/* Useful Info / Explore */}
-                <SH id="useful" title="Explore — Корисна інформація" icon="💡" />
+                <SH id="useful" title={t('Explore — Корисна інформація')} icon="💡" />
                 {openSections.has('useful') && (
                   <div style={{ padding: '16px 0' }}>
                     <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 12 }}>
-                      Магазини, аптеки, маршрути — спільне для всіх гостей
+                      {t('Магазини, аптеки, маршрути — спільне для всіх гостей')}
                     </div>
                     {pUseful.map((u, i) => (
                       <div key={i} style={{ marginBottom: 12, padding: 12, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-primary)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)' }}>Блок {i + 1}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)' }}>{t('Блок')} {i + 1}</span>
                           <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-danger)' }}
                             onClick={() => setPUseful(prev => prev.filter((_, idx) => idx !== i))}><Trash2 size={12} /></button>
                         </div>
                         <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                           <input className="form-input" style={{ width: 50, textAlign: 'center', fontSize: 18, padding: '6px 4px' }}
                             value={u.icon} onChange={e => setPUseful(prev => prev.map((p, idx) => idx === i ? { ...p, icon: e.target.value } : p))} />
-                          <input className="form-input" style={{ flex: 1 }} value={u.title} placeholder="Заголовок"
+                          <input className="form-input" style={{ flex: 1 }} value={u.title} placeholder={t('Заголовок')}
                             onChange={e => setPUseful(prev => prev.map((p, idx) => idx === i ? { ...p, title: e.target.value } : p))} />
                         </div>
-                        <textarea className="form-input" rows={2} value={u.desc} placeholder="Опис" style={{ resize: 'vertical', marginBottom: 8 }}
+                        <textarea className="form-input" rows={2} value={u.desc} placeholder={t('Опис')} style={{ resize: 'vertical', marginBottom: 8 }}
                           onChange={e => setPUseful(prev => prev.map((p, idx) => idx === i ? { ...p, desc: e.target.value } : p))} />
                         <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label className="form-label" style={{ fontSize: 11 }}>🔗 Посилання (URL) — з'явиться кнопка &quot;Navigate&quot; на сторінці</label>
+                          <label className="form-label" style={{ fontSize: 11 }}>{t('🔗 Посилання (URL) — з\'явиться кнопка "Navigate" на сторінці')}</label>
                           <input className="form-input" type="url" value={u.url || ''} placeholder="https://maps.google.com/..."
                             onChange={e => setPUseful(prev => prev.map((p, idx) => idx === i ? { ...p, url: e.target.value } : p))} />
                         </div>
                         <div style={{ marginTop: 8 }}>
                           <ImageUploadField
-                            label="📸 Фото місця (показується в каруселі)"
+                            label={t('📸 Фото місця (показується в каруселі)')}
                             value={(u as any).photo_url || ''}
                             onChange={url => setPUseful(prev => prev.map((p, idx) => idx === i ? { ...p, photo_url: url } : p))}
                             folder="explore"
@@ -437,69 +439,69 @@ export default function GuestPageSettingsPage() {
                       </div>
                     ))}
                     <button className="btn btn-sm btn-ghost" onClick={() => setPUseful(prev => [...prev, { icon: '📌', title: '', desc: '', url: '', photo_url: '' }])}>
-                      <Plus size={14} /> Додати блок
+                      <Plus size={14} /> {t('Додати блок')}
                     </button>
                   </div>
                 )}
 
                 {/* Navigation */}
-                <SH id="navigation" title="Навігація та карти" icon="🗺" />
+                <SH id="navigation" title={t('Навігація та карти')} icon="🗺" />
                 {openSections.has('navigation') && (
                   <div style={{ padding: '16px 0' }}>
                     <div className="form-group">
-                      <label className="form-label">Google Maps URL (спільний)</label>
+                      <label className="form-label">{t('Google Maps URL (спільний)')}</label>
                       <input className="form-input" type="url" value={pMaps} placeholder="https://maps.app.goo.gl/..." onChange={e => setPMaps(e.target.value)} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Карта території (URL зображення)</label>
+                      <label className="form-label">{t('Карта території (URL зображення)')}</label>
                       <input className="form-input" type="url" value={pTerritoryMap} placeholder="https://..." onChange={e => setPTerritoryMap(e.target.value)} />
                     </div>
                   </div>
                 )}
 
                 {/* Pets & Parking */}
-                <SH id="pets-parking" title="Тварини та паркінг" icon="🐕" />
+                <SH id="pets-parking" title={t('Тварини та паркінг')} icon="🐕" />
                 {openSections.has('pets-parking') && (
                   <div style={{ padding: '16px 0' }}>
                     <div className="form-group">
-                      <label className="form-label">Політика щодо тварин</label>
+                      <label className="form-label">{t('Політика щодо тварин')}</label>
                       <select className="form-input" value={pPets} onChange={e => setPPets(e.target.value)}>
-                        <option value="welcome">🐕 Можна з тваринами</option>
-                        <option value="with_fee">💰 З доплатою</option>
-                        <option value="not_allowed">🚫 Не допускаються</option>
+                        <option value="welcome">{t('🐕 Можна з тваринами')}</option>
+                        <option value="with_fee">{t('💰 З доплатою')}</option>
+                        <option value="not_allowed">{t('🚫 Не допускаються')}</option>
                       </select>
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Інформація про паркінг</label>
+                      <label className="form-label">{t('Інформація про паркінг')}</label>
                       <textarea className="form-input" rows={2} value={pParking} placeholder="Free parking at the entrance..." onChange={e => setPParking(e.target.value)} style={{ resize: 'vertical' }} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Фото паркінгу (URL)</label>
+                      <label className="form-label">{t('Фото паркінгу (URL)')}</label>
                       <input className="form-input" value={pParkingPhoto} placeholder="https://example.com/parking.jpg" onChange={e => setPParkingPhoto(e.target.value)} />
                     </div>
                   </div>
                 )}
 
                 {/* Weather */}
-                <SH id="weather" title="Погода та контакти" icon="🌤" />
+                <SH id="weather" title={t('Погода та контакти')} icon="🌤" />
                 {openSections.has('weather') && (
                   <div style={{ padding: '16px 0' }}>
                     <div className="form-row">
                       <div className="form-group">
-                        <label className="form-label">Широта (lat)</label>
+                        <label className="form-label">{t('Широта (lat)')}</label>
                         <input className="form-input" type="number" step="0.0001" value={pWeatherLat} placeholder="50.2311" onChange={e => setPWeatherLat(e.target.value)} />
                       </div>
                       <div className="form-group">
-                        <label className="form-label">Довгота (lon)</label>
+                        <label className="form-label">{t('Довгота (lon)')}</label>
                         <input className="form-input" type="number" step="0.0001" value={pWeatherLon} placeholder="12.8730" onChange={e => setPWeatherLon(e.target.value)} />
                       </div>
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Телефон підтримки / екстренний</label>
+                      <label className="form-label">{t('Телефон підтримки / екстренний')}</label>
                       <input className="form-input" value={pEmergency} placeholder="+420 773 708 849" onChange={e => setPEmergency(e.target.value)} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Відео-гайд (URL)</label>
+                      <label className="form-label">{t('Відео-гайд (URL)')}</label>
                       <input className="form-input" type="url" value={pVideoGuide} placeholder="https://youtube.com/..." onChange={e => setPVideoGuide(e.target.value)} />
                     </div>
                   </div>
@@ -515,7 +517,7 @@ export default function GuestPageSettingsPage() {
                 {/* Left — Unit type selector */}
                 <div className="card" style={{ padding: 0, position: 'sticky', top: 80 }}>
                   <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-primary)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
-                    Тип проживання
+                    {t('Тип проживання')}
                   </div>
                   {configs.map(cfg => {
                     const active = cfg.unit_type_id === selected;
@@ -551,67 +553,67 @@ export default function GuestPageSettingsPage() {
                   )}
 
                   <div style={{ padding: '8px 12px', marginBottom: 16, background: 'rgba(79,110,247,0.06)', borderRadius: 'var(--radius-md)', fontSize: 12, color: 'var(--text-tertiary)', border: '1px solid rgba(79,110,247,0.12)' }}>
-                    💡 Wi-Fi, ресторан, правила, FAQ та Explore редагуються на вкладці <strong>&quot;Property&quot;</strong> (спільні для всіх)
+                    {t('💡 Wi-Fi, ресторан, правила, FAQ та Explore редагуються на вкладці')} <strong>&quot;Property&quot;</strong> {t('(спільні для всіх)')}
                   </div>
 
                   {/* Amenities */}
-                  <SH id="amenities" title="Зручності" icon="✨" />
+                  <SH id="amenities" title={t('Зручності')} icon="✨" />
                   {openSections.has('amenities') && (
                     <div style={{ padding: '16px 0' }}>
                       {amenities.map((a, i) => (
                         <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
                           <input className="form-input" style={{ width: 50, textAlign: 'center', fontSize: 18, padding: '6px 4px' }}
                             value={a.icon} onChange={e => setAmenities(prev => prev.map((p, idx) => idx === i ? { ...p, icon: e.target.value } : p))} />
-                          <input className="form-input" style={{ flex: 1 }} value={a.name} placeholder="Назва"
+                          <input className="form-input" style={{ flex: 1 }} value={a.name} placeholder={t('Назва')}
                             onChange={e => setAmenities(prev => prev.map((p, idx) => idx === i ? { ...p, name: e.target.value } : p))} />
                           <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-danger)' }}
                             onClick={() => setAmenities(prev => prev.filter((_, idx) => idx !== i))}><Trash2 size={14} /></button>
                         </div>
                       ))}
                       <button className="btn btn-sm btn-ghost" onClick={() => setAmenities(prev => [...prev, { icon: '✅', name: '' }])}>
-                        <Plus size={14} /> Додати зручність
+                        <Plus size={14} /> {t('Додати зручність')}
                       </button>
                     </div>
                   )}
 
                   {/* Check-in Instructions */}
-                  <SH id="instructions" title="Інструкція по заїзду" icon="🚪" />
+                  <SH id="instructions" title={t('Інструкція по заїзду')} icon="🚪" />
                   {openSections.has('instructions') && (
                     <div style={{ padding: '16px 0' }}>
-                      <textarea className="form-input" rows={4} value={instructions} placeholder="Інструкція для гостя при заїзді..."
+                      <textarea className="form-input" rows={4} value={instructions} placeholder={t('Інструкція для гостя при заїзді...')}
                         onChange={e => setInstructions(e.target.value)} style={{ resize: 'vertical' }} />
                     </div>
                   )}
 
                   {/* Lock code */}
-                  <SH id="lock" title="Код замка" icon="🔑" />
+                  <SH id="lock" title={t('Код замка')} icon="🔑" />
                   {openSections.has('lock') && (
                     <div style={{ padding: '16px 0' }}>
                       <div className="form-group">
-                        <label className="form-label">Код замка / лок-бокса</label>
+                        <label className="form-label">{t('Код замка / лок-бокса')}</label>
                         <input className="form-input" value={lockCode} placeholder="4971#" onChange={e => setLockCode(e.target.value)} />
                       </div>
                     </div>
                   )}
 
                   {/* Pets & Entry Photo (override) */}
-                  <SH id="pets-override" title="Тварини та фото входу" icon="🐕" />
+                  <SH id="pets-override" title={t('Тварини та фото входу')} icon="🐕" />
                   {openSections.has('pets-override') && (
                     <div style={{ padding: '16px 0' }}>
                       <div style={{ padding: '8px 12px', marginBottom: 12, background: 'rgba(79,110,247,0.06)', borderRadius: 'var(--radius-md)', fontSize: 12, color: 'var(--text-tertiary)' }}>
-                        Якщо залишити порожнім — буде використано значення з Property
+                        {t('Якщо залишити порожнім — буде використано значення з Property')}
                       </div>
                       <div className="form-group">
-                        <label className="form-label">Політика щодо тварин (override)</label>
+                        <label className="form-label">{t('Політика щодо тварин (override)')}</label>
                         <select className="form-input" value={petsPolicy} onChange={e => setPetsPolicy(e.target.value)}>
-                          <option value="">— Використати з Property —</option>
-                          <option value="welcome">🐕 Можна з тваринами</option>
-                          <option value="with_fee">💰 З доплатою</option>
-                          <option value="not_allowed">🚫 Не допускаються</option>
+                          <option value="">{t('— Використати з Property —')}</option>
+                          <option value="welcome">{t('🐕 Можна з тваринами')}</option>
+                          <option value="with_fee">{t('💰 З доплатою')}</option>
+                          <option value="not_allowed">{t('🚫 Не допускаються')}</option>
                         </select>
                       </div>
                       <ImageUploadField
-                        label="Фото входу / лок-бокса"
+                        label={t('Фото входу / лок-бокса')}
                         value={entryPhotoUrl}
                         onChange={setEntryPhotoUrl}
                         folder="entry-photos"

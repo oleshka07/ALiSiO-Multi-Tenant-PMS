@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, ChevronRight, ChevronDown } from 'lucide-react';
@@ -52,6 +53,7 @@ function defaultRange(): { from: string; to: string } {
 }
 
 export default function CashflowMatrixPage() {
+  const tUi = useT();
   const [data, setData] = useState<CashflowData | null>(null);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState(defaultRange());
@@ -87,8 +89,8 @@ export default function CashflowMatrixPage() {
         <Link href="/app/finance/reports" style={backLink}><ArrowLeft size={14} /></Link>
         <h1 style={{ margin: 0, flex: 1 }}>💰 Cash Flow</h1>
         <div style={{ display: 'flex', gap: 4, background: 'var(--bg-secondary)', borderRadius: 8, padding: 3, border: '1px solid var(--border-primary)' }}>
-          <button onClick={() => setBasis('paid')} style={{ ...tabBtn, ...(basis === 'paid' ? tabActive : {}) }}>По факту</button>
-          <button onClick={() => setBasis('accrued')} style={{ ...tabBtn, ...(basis === 'accrued' ? tabActive : {}) }}>По нарахуванню</button>
+          <button onClick={() => setBasis('paid')} style={{ ...tabBtn, ...(basis === 'paid' ? tabActive : {}) }}>{tUi('По факту')}</button>
+          <button onClick={() => setBasis('accrued')} style={{ ...tabBtn, ...(basis === 'accrued' ? tabActive : {}) }}>{tUi('По нарахуванню')}</button>
         </div>
         <input type="month" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} style={input} />
         <span style={{ color: 'var(--text-secondary)' }}>—</span>
@@ -101,22 +103,22 @@ export default function CashflowMatrixPage() {
       </div>
 
       {loading || !data ? (
-        <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Завантаження…')}</div>
       ) : (
         <div style={{ marginTop: 20, overflowX: 'auto', border: '1px solid var(--border-primary)', borderRadius: 10 }}>
           <table style={tableStyle}>
             <thead>
               <tr style={{ background: 'var(--bg-secondary)' }}>
-                <th style={{ ...th, textAlign: 'left', position: 'sticky', left: 0, background: 'var(--bg-secondary)', zIndex: 2, minWidth: 260 }}>Категорія</th>
-                {data.months.map((m) => <th key={m} style={th}>{monthLabel(m)}</th>)}
+                <th style={{ ...th, textAlign: 'left', position: 'sticky', left: 0, background: 'var(--bg-secondary)', zIndex: 2, minWidth: 260 }}>{tUi('Категорія')}</th>
+                {data.months.map((m) => <th key={m} style={th}>{tUi(monthLabel(m))}</th>)}
                 <th style={{ ...th, background: 'var(--bg-secondary)' }}>Σ</th>
-                <th style={th}>Середнє</th>
-                <th style={{ ...th, textAlign: 'center', minWidth: 120 }}>Тренд</th>
+                <th style={th}>{tUi('Середнє')}</th>
+                <th style={{ ...th, textAlign: 'center', minWidth: 120 }}>{tUi('Тренд')}</th>
               </tr>
             </thead>
             <tbody>
               {/* Income section */}
-              <SectionRow label="+ Надходження" color="#22c55e" months={data.months} byMonth={data.income.byMonth} total={data.income.total} />
+              <SectionRow label={tUi('+ Надходження')} color="#22c55e" months={data.months} byMonth={data.income.byMonth} total={data.income.total} />
               {data.income.roots.map((r) => (
                 <CategoryRows key={r.category_id || `un_${r.category_name}`} row={r} months={data.months} expanded={expanded} onToggle={toggleExpand} onDrillDown={(m) => setDrillDown({ month: m, categoryId: r.category_id, categoryName: r.category_name, opType: 'income' })} />
               ))}
@@ -124,7 +126,7 @@ export default function CashflowMatrixPage() {
               <tr><td colSpan={data.months.length + 4} style={{ height: 8, background: 'var(--bg-secondary)' }}></td></tr>
 
               {/* Expense section */}
-              <SectionRow label="− Видатки" color="#ef4444" months={data.months} byMonth={data.expense.byMonth} total={data.expense.total} />
+              <SectionRow label={tUi('− Видатки')} color="#ef4444" months={data.months} byMonth={data.expense.byMonth} total={data.expense.total} />
               {data.expense.roots.map((r) => (
                 <CategoryRows key={r.category_id || `un_${r.category_name}`} row={r} months={data.months} expanded={expanded} onToggle={toggleExpand} onDrillDown={(m) => setDrillDown({ month: m, categoryId: r.category_id, categoryName: r.category_name, opType: 'expense' })} />
               ))}
@@ -133,7 +135,7 @@ export default function CashflowMatrixPage() {
 
               {/* Net flow */}
               <tr style={netRowStyle}>
-                <td style={{ ...tdLeft, fontWeight: 700 }}>= Чистий потік</td>
+                <td style={{ ...tdLeft, fontWeight: 700 }}>{tUi('= Чистий потік')}</td>
                 {data.months.map((m) => (
                   <td key={m} style={{ ...td, fontWeight: 700, color: data.netByMonth[m] >= 0 ? '#22c55e' : '#ef4444' }}>
                     {formatK(data.netByMonth[m])}
@@ -150,7 +152,7 @@ export default function CashflowMatrixPage() {
 
               {/* Balances */}
               <tr style={balanceRowStyle}>
-                <td style={{ ...tdLeft, color: 'var(--text-secondary)' }}>Залишок на початок</td>
+                <td style={{ ...tdLeft, color: 'var(--text-secondary)' }}>{tUi('Залишок на початок')}</td>
                 {data.months.map((m) => (
                   <td key={m} style={{ ...td, color: 'var(--text-secondary)' }}>{formatK(data.monthBalances[m].opening)}</td>
                 ))}
@@ -159,7 +161,7 @@ export default function CashflowMatrixPage() {
                 <td style={td}></td>
               </tr>
               <tr style={balanceRowStyle}>
-                <td style={{ ...tdLeft, fontWeight: 600 }}>Залишок на кінець</td>
+                <td style={{ ...tdLeft, fontWeight: 600 }}>{tUi('Залишок на кінець')}</td>
                 {data.months.map((m) => (
                   <td key={m} style={{ ...td, fontWeight: 600, color: data.monthBalances[m].ending < 0 ? '#ef4444' : 'var(--text-primary)' }}>
                     {formatK(data.monthBalances[m].ending)}

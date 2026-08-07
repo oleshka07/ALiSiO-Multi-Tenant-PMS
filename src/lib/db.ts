@@ -118,6 +118,10 @@ function buildSchema(database: any) {
       slug TEXT UNIQUE NOT NULL,
       timezone TEXT NOT NULL DEFAULT 'Europe/Prague',
       default_currency TEXT NOT NULL DEFAULT 'CZK',
+      -- The hotel's base language: what its staff see, and the language its
+      -- people type content in — so also the source for translating that
+      -- content to guests. See core/i18n/languages.ts.
+      language TEXT NOT NULL DEFAULT 'uk',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -322,6 +326,10 @@ function buildSchema(database: any) {
       role TEXT NOT NULL DEFAULT 'receptionist' CHECK (role IN ('owner', 'director', 'manager', 'receptionist', 'housekeeper', 'maintenance', 'accountant')),
       is_active INTEGER NOT NULL DEFAULT 1,
       last_login TEXT,
+      -- One person's override. NULL means "whatever the hotel uses", which is
+      -- what almost everyone wants — and it keeps following the hotel if the
+      -- hotel later changes its mind.
+      language TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -4342,6 +4350,30 @@ function runMigrations(database: any) {
     if (orgCols.length < 18) console.log('[DB] organizations: legal & banking columns ready');
   } catch (e: any) {
     console.log('[DB] organization legal columns migration note:', e.message);
+  }
+
+  // --- Migration: language belongs to the customer, not to the source code ---
+  // Ukrainian used to be written into the JSX, into the guest portal's default
+  // and into the translation prompt ("Translate the following Ukrainian texts
+  // to …"). A German hotel typing German names would have had them translated
+  // *from Ukrainian*. The base language is now the organization's, and one
+  // person may override it for themselves.
+  try {
+    const orgCols = (database.prepare('PRAGMA table_info(organizations)').all() as any[]).map((c: any) => c.name);
+    if (!orgCols.includes('language')) {
+      // Existing installations are Ukrainian — that is what their data is in.
+      database.exec("ALTER TABLE organizations ADD COLUMN language TEXT NOT NULL DEFAULT 'uk'");
+      console.log('[DB] organizations: base language column added');
+    }
+    const userCols = (database.prepare('PRAGMA table_info(app_users)').all() as any[]).map((c: any) => c.name);
+    if (!userCols.includes('language')) {
+      // Nullable: NULL means "follow the hotel", which is the sane default and
+      // keeps following it when the hotel changes.
+      database.exec('ALTER TABLE app_users ADD COLUMN language TEXT');
+      console.log('[DB] app_users: personal language column added');
+    }
+  } catch (e: any) {
+    console.log('[DB] language columns migration note:', e.message);
   }
 
   // --- Migration: the finance wrapper is gone ---

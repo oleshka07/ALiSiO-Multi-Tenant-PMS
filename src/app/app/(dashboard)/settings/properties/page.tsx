@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -110,6 +111,7 @@ function Modal({ open, onClose, title, children, footer, size }: {
    Main Component
    ================================================================ */
 export default function SettingsPropertiesPage() {
+  const tUi = useT();
   // ── Data ──
   const onMenuClick = useMobileMenu();
   const [properties, setProperties] = useState<PropertyRow[]>([]);
@@ -220,7 +222,7 @@ export default function SettingsPropertiesPage() {
   };
 
   const saveProperty = async () => {
-    if (!propForm.name) { alert("Назва обов'язкова"); return; }
+    if (!propForm.name) { alert(tUi('Назва обов\'язкова')); return; }
     setSaving(true);
     try {
       const slug = propForm.slug || propForm.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
@@ -229,7 +231,7 @@ export default function SettingsPropertiesPage() {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...propForm, slug }),
         });
-        showToast('Об\'єкт оновлено!');
+        showToast(tUi('Об\'єкт оновлено!'));
       } else {
         const res = await fetch('/api/properties', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -238,7 +240,7 @@ export default function SettingsPropertiesPage() {
         const data = await res.json();
         if (res.ok) {
           setSelectedProperty(data.id);
-          showToast('Об\'єкт створено!');
+          showToast(tUi('Об\'єкт створено!'));
         } else {
           alert(data.error || 'Помилка створення');
           setSaving(false);
@@ -248,7 +250,7 @@ export default function SettingsPropertiesPage() {
       setModal('none');
       fetchProperties();
       fetchDetails();
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(tUi('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -265,7 +267,7 @@ export default function SettingsPropertiesPage() {
   };
 
   const saveCategory = async () => {
-    if (!catForm.name) { alert("Назва обов'язкова"); return; }
+    if (!catForm.name) { alert(tUi('Назва обов\'язкова')); return; }
     setSaving(true);
     try {
       if (editId) {
@@ -273,18 +275,18 @@ export default function SettingsPropertiesPage() {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(catForm),
         });
-        showToast('Категорію оновлено!');
+        showToast(tUi('Категорію оновлено!'));
       } else {
         const res = await fetch('/api/categories', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...catForm, property_id: selectedProperty }),
         });
-        if (!res.ok) { const d = await res.json(); alert(d.error); setSaving(false); return; }
-        showToast('Категорію створено!');
+        if (!res.ok) { const d = await res.json(); alert(tUi(d.error)); setSaving(false); return; }
+        showToast(tUi('Категорію створено!'));
       }
       setModal('none');
       fetchDetails();
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(tUi('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -301,7 +303,7 @@ export default function SettingsPropertiesPage() {
   };
 
   const saveBuilding = async () => {
-    if (!bldForm.name || !bldForm.code) { alert("Назва і код обов'язкові"); return; }
+    if (!bldForm.name || !bldForm.code) { alert(tUi('Назва і код обов\'язкові')); return; }
     setSaving(true);
     try {
       if (editId) {
@@ -309,18 +311,18 @@ export default function SettingsPropertiesPage() {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(bldForm),
         });
-        showToast('Корпус оновлено!');
+        showToast(tUi('Корпус оновлено!'));
       } else {
         const res = await fetch('/api/buildings', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...bldForm, property_id: selectedProperty }),
         });
-        if (!res.ok) { const d = await res.json(); alert(d.error); setSaving(false); return; }
-        showToast('Корпус створено!');
+        if (!res.ok) { const d = await res.json(); alert(tUi(d.error)); setSaving(false); return; }
+        showToast(tUi('Корпус створено!'));
       }
       setModal('none');
       fetchDetails();
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(tUi('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -347,7 +349,7 @@ export default function SettingsPropertiesPage() {
   };
 
   const saveUnitType = async () => {
-    if (!utForm.name || !utForm.code) { alert("Назва і код обов'язкові"); return; }
+    if (!utForm.name || !utForm.code) { alert(tUi('Назва і код обов\'язкові')); return; }
     setSaving(true);
     try {
       if (editId) {
@@ -356,18 +358,18 @@ export default function SettingsPropertiesPage() {
           body: JSON.stringify(utForm),
         });
         if (!res.ok) { const d = await res.json(); alert(d.error || 'Помилка оновлення'); setSaving(false); return; }
-        showToast('Тип юніта оновлено!');
+        showToast(tUi('Тип юніта оновлено!'));
       } else {
         const res = await fetch('/api/unit-types', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...utForm, property_id: selectedProperty }),
         });
-        if (!res.ok) { const d = await res.json(); alert(d.error); setSaving(false); return; }
-        showToast('Тип юніта створено!');
+        if (!res.ok) { const d = await res.json(); alert(tUi(d.error)); setSaving(false); return; }
+        showToast(tUi('Тип юніта створено!'));
       }
       setModal('none');
       fetchDetails();
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(tUi('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -391,7 +393,7 @@ export default function SettingsPropertiesPage() {
   };
 
   const saveUnit = async () => {
-    if (!unitForm.name || !unitForm.code) { alert("Назва і код обов'язкові"); return; }
+    if (!unitForm.name || !unitForm.code) { alert(tUi('Назва і код обов\'язкові')); return; }
     setSaving(true);
     try {
       if (editId) {
@@ -400,18 +402,18 @@ export default function SettingsPropertiesPage() {
           body: JSON.stringify(unitForm),
         });
         if (!res.ok) { const d = await res.json(); alert(d.error || 'Помилка оновлення'); setSaving(false); return; }
-        showToast('Юніт оновлено!');
+        showToast(tUi('Юніт оновлено!'));
       } else {
         const res = await fetch('/api/units', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...unitForm, property_id: selectedProperty }),
         });
-        if (!res.ok) { const d = await res.json(); alert(d.error); setSaving(false); return; }
-        showToast('Юніт створено!');
+        if (!res.ok) { const d = await res.json(); alert(tUi(d.error)); setSaving(false); return; }
+        showToast(tUi('Юніт створено!'));
       }
       setModal('none');
       fetchDetails();
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(tUi('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -422,8 +424,8 @@ export default function SettingsPropertiesPage() {
   };
 
   const saveBulk = async () => {
-    if (!bulkForm.prefix) { alert("Префікс обов'язковий"); return; }
-    if (bulkForm.from > bulkForm.to) { alert('Від має бути менше За'); return; }
+    if (!bulkForm.prefix) { alert(tUi('Префікс обов\'язковий')); return; }
+    if (bulkForm.from > bulkForm.to) { alert(tUi('Від має бути менше За')); return; }
     setSaving(true);
     try {
       const res = await fetch('/api/units', {
@@ -438,7 +440,7 @@ export default function SettingsPropertiesPage() {
       } else {
         alert(data.error || 'Помилка');
       }
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(tUi('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -473,7 +475,7 @@ export default function SettingsPropertiesPage() {
         const d = await res.json();
         alert(d.error || 'Помилка видалення');
       }
-    } catch { alert('Помилка мережі'); }
+    } catch { alert(tUi('Помилка мережі')); }
     setSaving(false);
   };
 
@@ -482,7 +484,7 @@ export default function SettingsPropertiesPage() {
      ════════════════════════════════════════════════════════════ */
   return (
     <>
-      <Header title="Об'єкти" onMenuClick={onMenuClick} />
+      <Header title={tUi('Об\'єкти')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {/* Toast */}
         {toast && (
@@ -500,17 +502,17 @@ export default function SettingsPropertiesPage() {
         {/* Page Header */}
         <div className="page-header">
           <div>
-            <h2 className="page-title">Об&apos;єкти розміщення</h2>
+            <h2 className="page-title">{tUi('Об\'єкти розміщення')}</h2>
             <div className="page-subtitle">
-              {properties.length} об&apos;єктів · Керування структурою
+              {properties.length} {tUi('об\'єктів · Керування структурою')}
             </div>
           </div>
           <div className="flex gap-2">
-            <button className="btn btn-secondary" onClick={() => { fetchProperties(); fetchDetails(); }} title="Оновити">
+            <button className="btn btn-secondary" onClick={() => { fetchProperties(); fetchDetails(); }} title={tUi('Оновити')}>
               <RefreshCw size={16} />
             </button>
             <button className="btn btn-primary" onClick={() => openPropertyModal()}>
-              <Plus size={16} /> Додати об&apos;єкт
+              <Plus size={16} /> {tUi('Додати об\'єкт')}
             </button>
           </div>
         </div>
@@ -519,7 +521,7 @@ export default function SettingsPropertiesPage() {
         {properties.length > 1 && (
           <div className="card" style={{ marginBottom: 16 }}>
             <div className="flex gap-3 items-center">
-              <label className="form-label" style={{ margin: 0, whiteSpace: 'nowrap' }}>Об&apos;єкт:</label>
+              <label className="form-label" style={{ margin: 0, whiteSpace: 'nowrap' }}>{tUi('Об\'єкт:')}</label>
               <select className="form-select" style={{ width: 300 }} value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)}>
                 {properties.map(p => (
                   <option key={p.id} value={p.id}>{p.name}</option>
@@ -555,7 +557,7 @@ export default function SettingsPropertiesPage() {
                 </div>
                 <div className="flex gap-2">
                   <button className="btn btn-secondary btn-sm" onClick={() => openPropertyModal(currentProperty)}>
-                    <Edit3 size={14} /> Редагувати
+                    <Edit3 size={14} /> {tUi('Редагувати')}
                   </button>
                   {properties.length > 1 && (
                     <button className="btn btn-sm btn-ghost" style={{ color: 'var(--accent-danger)' }}
@@ -574,15 +576,15 @@ export default function SettingsPropertiesPage() {
                       <span>{CATEGORY_EMOJI[cat.type] || '📊'}</span> {cat.name}
                     </div>
                     <div style={{ fontSize: 20, fontWeight: 700 }}>{cat.unit_count}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>юнітів</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('юнітів')}</div>
                   </div>
                 ))}
                 <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
                   <div className="flex items-center gap-2" style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 4 }}>
-                    <span>📊</span> Всього
+                    <span>📊</span> {tUi('Всього')}
                   </div>
                   <div style={{ fontSize: 20, fontWeight: 700 }}>{units.length}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>юнітів</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('юнітів')}</div>
                 </div>
               </div>
             </div>
@@ -594,19 +596,19 @@ export default function SettingsPropertiesPage() {
           <div className="flex gap-3 items-center" style={{ flexWrap: 'wrap' }}>
             <div className="search-box" style={{ minWidth: 250 }}>
               <Search size={14} className="search-icon" />
-              <input className="form-input" placeholder="Пошук юнітів..." style={{ paddingLeft: 34 }}
+              <input className="form-input" placeholder={tUi('Пошук юнітів...')} style={{ paddingLeft: 34 }}
                 value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
             <button className="btn btn-secondary btn-sm" onClick={() => openCategoryModal()}>
-              <Plus size={14} /> Категорія
+              <Plus size={14} /> {tUi('Категорія')}
             </button>
             {search && (
               <button className="btn btn-ghost btn-sm" onClick={() => setSearch('')}>
-                <X size={14} /> Скинути
+                <X size={14} /> {tUi('Скинути')}
               </button>
             )}
             <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-tertiary)' }}>
-              {search ? `${filteredUnits.length} з ${units.length} юнітів` : `${units.length} юнітів`}
+              {search ? `${filteredUnits.length} ${tUi('з')} ${units.length} ${tUi('юнітів')}` : `${units.length} ${tUi('юнітів')}`}
             </div>
           </div>
         </div>
@@ -614,7 +616,7 @@ export default function SettingsPropertiesPage() {
         {/* Loading */}
         {loading && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
-            <Loader2 size={20} className="animate-pulse" /> <span style={{ marginLeft: 8, color: 'var(--text-secondary)' }}>Завантаження...</span>
+            <Loader2 size={20} className="animate-pulse" /> <span style={{ marginLeft: 8, color: 'var(--text-secondary)' }}>{tUi('Завантаження...')}</span>
           </div>
         )}
 
@@ -645,23 +647,23 @@ export default function SettingsPropertiesPage() {
                           background: `${flag.color}18`, color: flag.color,
                           fontWeight: 600, letterSpacing: '0.3px',
                         }}>
-                          {flag.label}
+                          {tUi(flag.label)}
                         </span>
                       ) : null;
                     })}
                   </div>
                   <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                    <button className="btn btn-sm btn-ghost" title="Додати корпус" onClick={() => openBuildingModal(cat.id)}>
+                    <button className="btn btn-sm btn-ghost" title={tUi('Додати корпус')} onClick={() => openBuildingModal(cat.id)}>
                       <Home size={14} />
                     </button>
-                    <button className="btn btn-sm btn-ghost" title="Додати тип юніта" onClick={() => openUnitTypeModal(cat.id)}>
+                    <button className="btn btn-sm btn-ghost" title={tUi('Додати тип юніта')} onClick={() => openUnitTypeModal(cat.id)}>
                       <BedDouble size={14} />
                     </button>
-                    <button className="btn btn-sm btn-ghost" title="Редагувати" onClick={() => openCategoryModal(cat)}>
+                    <button className="btn btn-sm btn-ghost" title={tUi('Редагувати')} onClick={() => openCategoryModal(cat)}>
                       <Edit3 size={14} />
                     </button>
                     <button className="btn btn-sm btn-ghost" style={{ color: 'var(--accent-danger)' }}
-                      title="Видалити" onClick={() => openDelete('category', cat.id, cat.name)}>
+                      title={tUi('Видалити')} onClick={() => openDelete('category', cat.id, cat.name)}>
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -688,7 +690,7 @@ export default function SettingsPropertiesPage() {
                               <span className="badge badge-primary" style={{ fontSize: 10 }}>{bldUnits.length}</span>
                             </div>
                             <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                              <button className="btn btn-sm btn-ghost" title="Додати тип юніта"
+                              <button className="btn btn-sm btn-ghost" title={tUi('Додати тип юніта')}
                                 onClick={() => openUnitTypeModal(cat.id, bld.id)}>
                                 <Plus size={14} />
                               </button>
@@ -723,7 +725,7 @@ export default function SettingsPropertiesPage() {
 
             {tree.length === 0 && !loading && (
               <div style={{ textAlign: 'center', padding: 48, color: 'var(--text-tertiary)' }}>
-                Немає категорій. Натисніть &quot;+ Категорія&quot; щоб почати.
+                {tUi('Немає категорій. Натисніть "+ Категорія" щоб почати.')}
               </div>
             )}
           </div>
@@ -733,36 +735,36 @@ export default function SettingsPropertiesPage() {
 
         {/* Property Modal */}
         <Modal open={modal === 'property'} onClose={() => setModal('none')}
-          title={editId ? 'Редагувати об\'єкт' : 'Новий об\'єкт'}
+          title={editId ? tUi('Редагувати об\'єкт') : tUi('Новий об\'єкт')}
           footer={<>
-            <button className="btn btn-secondary" onClick={() => setModal('none')}>Скасувати</button>
+            <button className="btn btn-secondary" onClick={() => setModal('none')}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={saveProperty} disabled={saving}>
               {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />}
-              {editId ? ' Зберегти' : ' Створити'}
+              {editId ? tUi('Зберегти') : tUi('Створити')}
             </button>
           </>}>
           <div className="form-group">
-            <label className="form-label">Назва *</label>
+            <label className="form-label">{tUi('Назва *')}</label>
             <input className="form-input" value={propForm.name} onChange={e => setPropForm(p => ({ ...p, name: e.target.value }))}
-              placeholder="Назва об'єкта" />
+              placeholder={tUi('Назва об\'єкта')} />
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Адреса</label>
+              <label className="form-label">{tUi('Адреса')}</label>
               <input className="form-input" value={propForm.address} onChange={e => setPropForm(p => ({ ...p, address: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Місто</label>
+              <label className="form-label">{tUi('Місто')}</label>
               <input className="form-input" value={propForm.city} onChange={e => setPropForm(p => ({ ...p, city: e.target.value }))} />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Країна</label>
+              <label className="form-label">{tUi('Країна')}</label>
               <input className="form-input" value={propForm.country} onChange={e => setPropForm(p => ({ ...p, country: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Телефон</label>
+              <label className="form-label">{tUi('Телефон')}</label>
               <input className="form-input" value={propForm.phone} onChange={e => setPropForm(p => ({ ...p, phone: e.target.value }))} />
             </div>
           </div>
@@ -782,7 +784,7 @@ export default function SettingsPropertiesPage() {
               <input className="form-input" type="time" value={propForm.check_out_time} onChange={e => setPropForm(p => ({ ...p, check_out_time: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Міський податок / ніч</label>
+              <label className="form-label">{tUi('Міський податок / ніч')}</label>
               <input className="form-input" type="number" min="0" step="0.01" value={propForm.city_tax_per_night}
                 onChange={e => setPropForm(p => ({ ...p, city_tax_per_night: Number(e.target.value) }))} />
             </div>
@@ -791,21 +793,21 @@ export default function SettingsPropertiesPage() {
 
         {/* Category Modal */}
         <Modal open={modal === 'category'} onClose={() => setModal('none')}
-          title={editId ? 'Редагувати категорію' : 'Нова категорія'}
+          title={editId ? tUi('Редагувати категорію') : tUi('Нова категорія')}
           footer={<>
-            <button className="btn btn-secondary" onClick={() => setModal('none')}>Скасувати</button>
+            <button className="btn btn-secondary" onClick={() => setModal('none')}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={saveCategory} disabled={saving}>
               {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />}
-              {editId ? ' Зберегти' : ' Створити'}
+              {editId ? tUi('Зберегти') : tUi('Створити')}
             </button>
           </>}>
           <div className="form-group">
-            <label className="form-label">Назва *</label>
-            <input className="form-input" value={catForm.name} onChange={e => setCatForm(p => ({ ...p, name: e.target.value }))} placeholder="Назва категорії" />
+            <label className="form-label">{tUi('Назва *')}</label>
+            <input className="form-input" value={catForm.name} onChange={e => setCatForm(p => ({ ...p, name: e.target.value }))} placeholder={tUi('Назва категорії')} />
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Тип *</label>
+              <label className="form-label">{tUi('Тип *')}</label>
               <select className="form-select" value={catForm.type} onChange={e => {
                 const t = e.target.value;
                 setCatForm(p => ({ ...p, type: t, icon: CATEGORY_EMOJI[t] || '🏕️', color: CATEGORY_COLORS[t] || '#a78bfa' }));
@@ -813,32 +815,32 @@ export default function SettingsPropertiesPage() {
                 <option value="glamping">Glamping</option>
                 <option value="resort">Resort</option>
                 <option value="camping">Camping</option>
-                <option value="facility">Об&apos;єкт інфраструктури</option>
-                <option value="area">Зона / Територія</option>
-                <option value="zone">Ділянка</option>
+                <option value="facility">{tUi('Об\'єкт інфраструктури')}</option>
+                <option value="area">{tUi('Зона / Територія')}</option>
+                <option value="zone">{tUi('Ділянка')}</option>
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Іконка</label>
+              <label className="form-label">{tUi('Іконка')}</label>
               <input className="form-input" value={catForm.icon} onChange={e => setCatForm(p => ({ ...p, icon: e.target.value }))} />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Колір</label>
+              <label className="form-label">{tUi('Колір')}</label>
               <input className="form-input" type="color" value={catForm.color} onChange={e => setCatForm(p => ({ ...p, color: e.target.value }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Порядок</label>
+              <label className="form-label">{tUi('Порядок')}</label>
               <input className="form-input" type="number" value={catForm.sort_order} onChange={e => setCatForm(p => ({ ...p, sort_order: Number(e.target.value) }))} />
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Опис</label>
+            <label className="form-label">{tUi('Опис')}</label>
             <input className="form-input" value={catForm.description} onChange={e => setCatForm(p => ({ ...p, description: e.target.value }))} />
           </div>
           <div className="form-group">
-            <label className="form-label">Відображати в модулях</label>
+            <label className="form-label">{tUi('Відображати в модулях')}</label>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>
               {VISIBILITY_FLAGS.map(flag => (
                 <label key={flag.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
@@ -847,7 +849,7 @@ export default function SettingsPropertiesPage() {
                     checked={!!(catForm as any)[flag.key]}
                     onChange={e => setCatForm(f => ({ ...f, [flag.key]: e.target.checked ? 1 : 0 }))}
                   />
-                  <span style={{ color: flag.color }}>{flag.label}</span>
+                  <span style={{ color: flag.color }}>{tUi(flag.label)}</span>
                 </label>
               ))}
             </div>
@@ -856,67 +858,67 @@ export default function SettingsPropertiesPage() {
 
         {/* Building Modal */}
         <Modal open={modal === 'building'} onClose={() => setModal('none')}
-          title={editId ? 'Редагувати корпус' : 'Новий корпус'}
+          title={editId ? tUi('Редагувати корпус') : tUi('Новий корпус')}
           footer={<>
-            <button className="btn btn-secondary" onClick={() => setModal('none')}>Скасувати</button>
+            <button className="btn btn-secondary" onClick={() => setModal('none')}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={saveBuilding} disabled={saving}>
               {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />}
-              {editId ? ' Зберегти' : ' Створити'}
+              {editId ? tUi('Зберегти') : tUi('Створити')}
             </button>
           </>}>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Назва *</label>
-              <input className="form-input" value={bldForm.name} onChange={e => setBldForm(p => ({ ...p, name: e.target.value }))} placeholder="Будова F (Standart)" />
+              <label className="form-label">{tUi('Назва *')}</label>
+              <input className="form-input" value={bldForm.name} onChange={e => setBldForm(p => ({ ...p, name: e.target.value }))} placeholder={tUi('Будова F (Standart)')} />
             </div>
             <div className="form-group">
-              <label className="form-label">Код *</label>
+              <label className="form-label">{tUi('Код *')}</label>
               <input className="form-input" value={bldForm.code} onChange={e => setBldForm(p => ({ ...p, code: e.target.value }))} placeholder="F" />
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Категорія</label>
+            <label className="form-label">{tUi('Категорія')}</label>
             <select className="form-select" value={bldForm.category_id} onChange={e => setBldForm(p => ({ ...p, category_id: e.target.value }))}>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div className="form-group">
-            <label className="form-label">Опис</label>
+            <label className="form-label">{tUi('Опис')}</label>
             <input className="form-input" value={bldForm.description} onChange={e => setBldForm(p => ({ ...p, description: e.target.value }))} />
           </div>
         </Modal>
 
         {/* Unit Type Modal */}
         <Modal open={modal === 'unitType'} onClose={() => setModal('none')}
-          title={editId ? 'Редагувати тип юніта' : 'Новий тип юніта'}
+          title={editId ? tUi('Редагувати тип юніта') : tUi('Новий тип юніта')}
           footer={<>
-            <button className="btn btn-secondary" onClick={() => setModal('none')}>Скасувати</button>
+            <button className="btn btn-secondary" onClick={() => setModal('none')}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={saveUnitType} disabled={saving}>
               {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />}
-              {editId ? ' Зберегти' : ' Створити'}
+              {editId ? tUi('Зберегти') : tUi('Створити')}
             </button>
           </>}>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Назва *</label>
-              <input className="form-input" value={utForm.name} onChange={e => setUtForm(p => ({ ...p, name: e.target.value }))} placeholder="F — 3-місний" />
+              <label className="form-label">{tUi('Назва *')}</label>
+              <input className="form-input" value={utForm.name} onChange={e => setUtForm(p => ({ ...p, name: e.target.value }))} placeholder={tUi('F — 3-місний')} />
             </div>
             <div className="form-group">
-              <label className="form-label">Код *</label>
+              <label className="form-label">{tUi('Код *')}</label>
               <input className="form-input" value={utForm.code} onChange={e => setUtForm(p => ({ ...p, code: e.target.value }))} placeholder="F-3BED" />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Категорія</label>
+              <label className="form-label">{tUi('Категорія')}</label>
               <select className="form-select" value={utForm.category_id} onChange={e => setUtForm(p => ({ ...p, category_id: e.target.value }))}>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Корпус</label>
+              <label className="form-label">{tUi('Корпус')}</label>
               <select className="form-select" value={utForm.building_id} onChange={e => setUtForm(p => ({ ...p, building_id: e.target.value }))}>
-                <option value="">— Без корпуса —</option>
+                <option value="">{tUi('— Без корпуса —')}</option>
                 {buildings.filter(b => b.category_id === utForm.category_id).map(b => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
@@ -925,21 +927,21 @@ export default function SettingsPropertiesPage() {
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Макс. дорослих</label>
+              <label className="form-label">{tUi('Макс. дорослих')}</label>
               <input className="form-input" type="number" value={utForm.max_adults} min={1} onChange={e => setUtForm(p => ({ ...p, max_adults: Number(e.target.value) }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Базова місткість</label>
+              <label className="form-label">{tUi('Базова місткість')}</label>
               <input className="form-input" type="number" value={utForm.base_occupancy} min={1} onChange={e => setUtForm(p => ({ ...p, base_occupancy: Number(e.target.value) }))} />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Ліжка single</label>
+              <label className="form-label">{tUi('Ліжка single')}</label>
               <input className="form-input" type="number" value={utForm.beds_single} min={0} onChange={e => setUtForm(p => ({ ...p, beds_single: Number(e.target.value) }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Ліжка double</label>
+              <label className="form-label">{tUi('Ліжка double')}</label>
               <input className="form-input" type="number" value={utForm.beds_double} min={0} onChange={e => setUtForm(p => ({ ...p, beds_double: Number(e.target.value) }))} />
             </div>
           </div>
@@ -947,36 +949,36 @@ export default function SettingsPropertiesPage() {
 
         {/* Unit Modal */}
         <Modal open={modal === 'unit'} onClose={() => setModal('none')}
-          title={editId ? 'Редагувати юніт' : 'Новий юніт'}
+          title={editId ? tUi('Редагувати юніт') : tUi('Новий юніт')}
           footer={<>
-            <button className="btn btn-secondary" onClick={() => setModal('none')}>Скасувати</button>
+            <button className="btn btn-secondary" onClick={() => setModal('none')}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={saveUnit} disabled={saving}>
               {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />}
-              {editId ? ' Зберегти' : ' Створити'}
+              {editId ? tUi('Зберегти') : tUi('Створити')}
             </button>
           </>}>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Назва *</label>
+              <label className="form-label">{tUi('Назва *')}</label>
               <input className="form-input" value={unitForm.name} onChange={e => setUnitForm(p => ({ ...p, name: e.target.value }))} placeholder="F12" />
             </div>
             <div className="form-group">
-              <label className="form-label">Код *</label>
+              <label className="form-label">{tUi('Код *')}</label>
               <input className="form-input" value={unitForm.code} onChange={e => setUnitForm(p => ({ ...p, code: e.target.value }))} placeholder="F12" />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Ліжок</label>
+              <label className="form-label">{tUi('Ліжок')}</label>
               <input className="form-input" type="number" value={unitForm.beds} min={0} onChange={e => setUnitForm(p => ({ ...p, beds: Number(e.target.value) }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Зона</label>
+              <label className="form-label">{tUi('Зона')}</label>
               <input className="form-input" value={unitForm.zone} onChange={e => setUnitForm(p => ({ ...p, zone: e.target.value }))} placeholder="FB" />
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Тип юніта</label>
+            <label className="form-label">{tUi('Тип юніта')}</label>
             <select className="form-select" value={unitForm.unit_type_id} onChange={e => setUnitForm(p => ({ ...p, unit_type_id: e.target.value }))}>
               {unitTypes.filter(ut => ut.category_id === unitForm.category_id).map(ut => (
                 <option key={ut.id} value={ut.id}>{ut.name} ({ut.code})</option>
@@ -984,65 +986,65 @@ export default function SettingsPropertiesPage() {
             </select>
           </div>
           <div className="form-group">
-            <label className="form-label">Нотатки</label>
+            <label className="form-label">{tUi('Нотатки')}</label>
             <input className="form-input" value={unitForm.notes} onChange={e => setUnitForm(p => ({ ...p, notes: e.target.value }))} />
           </div>
         </Modal>
 
         {/* Bulk Unit Modal */}
         <Modal open={modal === 'bulkUnit'} onClose={() => setModal('none')}
-          title="Масове створення юнітів" size="lg"
+          title={tUi('Масове створення юнітів')} size="lg"
           footer={<>
-            <button className="btn btn-secondary" onClick={() => setModal('none')}>Скасувати</button>
+            <button className="btn btn-secondary" onClick={() => setModal('none')}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={saveBulk} disabled={saving}>
               {saving ? <Loader2 size={14} className="animate-pulse" /> : <Copy size={14} />}
-              Створити {bulkForm.to - bulkForm.from + 1} юнітів
+              {tUi('Створити')} {bulkForm.to - bulkForm.from + 1} {tUi('юнітів')}
             </button>
           </>}>
           <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', marginBottom: 16, fontSize: 13, color: 'var(--text-secondary)' }}>
-            💡 Юніти будуть створені з іменами: <strong>{bulkForm.prefix || '...'}{bulkForm.from}</strong> → <strong>{bulkForm.prefix || '...'}{bulkForm.to}</strong>
+            {tUi('💡 Юніти будуть створені з іменами:')} <strong>{bulkForm.prefix || '...'}{bulkForm.from}</strong> → <strong>{bulkForm.prefix || '...'}{bulkForm.to}</strong>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Префікс *</label>
+              <label className="form-label">{tUi('Префікс *')}</label>
               <input className="form-input" value={bulkForm.prefix} onChange={e => setBulkForm(p => ({ ...p, prefix: e.target.value }))} placeholder="FB" />
             </div>
             <div className="form-group">
-              <label className="form-label">Від *</label>
+              <label className="form-label">{tUi('Від *')}</label>
               <input className="form-input" type="number" value={bulkForm.from} min={0} onChange={e => setBulkForm(p => ({ ...p, from: Number(e.target.value) }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">До *</label>
+              <label className="form-label">{tUi('До *')}</label>
               <input className="form-input" type="number" value={bulkForm.to} min={0} onChange={e => setBulkForm(p => ({ ...p, to: Number(e.target.value) }))} />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Ліжок на юніт</label>
+              <label className="form-label">{tUi('Ліжок на юніт')}</label>
               <input className="form-input" type="number" value={bulkForm.beds} min={0} onChange={e => setBulkForm(p => ({ ...p, beds: Number(e.target.value) }))} />
             </div>
             <div className="form-group">
-              <label className="form-label">Зона</label>
-              <input className="form-input" value={bulkForm.zone} onChange={e => setBulkForm(p => ({ ...p, zone: e.target.value }))} placeholder="Зона (опціонально)" />
+              <label className="form-label">{tUi('Зона')}</label>
+              <input className="form-input" value={bulkForm.zone} onChange={e => setBulkForm(p => ({ ...p, zone: e.target.value }))} placeholder={tUi('Зона (опціонально)')} />
             </div>
           </div>
         </Modal>
 
         {/* Delete Confirmation */}
         <Modal open={modal === 'delete'} onClose={() => setModal('none')}
-          title="Підтвердження видалення"
+          title={tUi('Підтвердження видалення')}
           footer={<>
-            <button className="btn btn-secondary" onClick={() => setModal('none')}>Скасувати</button>
+            <button className="btn btn-secondary" onClick={() => setModal('none')}>{tUi('Скасувати')}</button>
             <button className="btn btn-danger" onClick={confirmDelete} disabled={saving}>
               {saving ? <Loader2 size={14} className="animate-pulse" /> : <Trash2 size={14} />}
-              Видалити
+              {tUi('Видалити')}
             </button>
           </>}>
           <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
-            Ви впевнені, що хочете видалити <strong style={{ color: 'var(--text-primary)' }}>{deleteTarget?.name}</strong>?
+            {tUi('Ви впевнені, що хочете видалити')} <strong style={{ color: 'var(--text-primary)' }}>{deleteTarget?.name}</strong>?
           </p>
           <p style={{ color: 'var(--accent-danger)', fontSize: 13, marginTop: 8 }}>
-            ⚠️ Ця дія може бути незворотною. Всі пов&apos;язані дані можуть бути видалені.
+            {tUi('⚠️ Ця дія може бути незворотною. Всі пов\'язані дані можуть бути видалені.')}
           </p>
         </Modal>
       </div>
@@ -1066,22 +1068,22 @@ export default function SettingsPropertiesPage() {
             <span style={{ fontWeight: 500, fontSize: 13 }}>
               {ut.name}
               <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginLeft: 6 }}>
-                [{ut.code}] · {ut.max_adults} місць
+                [{ut.code}] · {ut.max_adults} {tUi('місць')}
               </span>
             </span>
             <span className="badge badge-primary" style={{ fontSize: 10 }}>{utUnits.length}</span>
           </div>
           <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-            <button className="btn btn-sm btn-ghost" title="Додати юніт" onClick={() => openUnitModal(catId, ut.id, bldId)}>
+            <button className="btn btn-sm btn-ghost" title={tUi('Додати юніт')} onClick={() => openUnitModal(catId, ut.id, bldId)}>
               <Plus size={14} />
             </button>
-            <button className="btn btn-sm btn-ghost" title="Масове створення" onClick={() => openBulkModal(catId, ut.id, bldId)}>
+            <button className="btn btn-sm btn-ghost" title={tUi('Масове створення')} onClick={() => openBulkModal(catId, ut.id, bldId)}>
               <Copy size={14} />
             </button>
-            <button className="btn btn-sm btn-ghost btn-icon" title="Редагувати" onClick={() => openUnitTypeModal(catId, bldId, ut)}>
+            <button className="btn btn-sm btn-ghost btn-icon" title={tUi('Редагувати')} onClick={() => openUnitTypeModal(catId, bldId, ut)}>
               <Edit3 size={14} />
             </button>
-            <button className="btn btn-sm btn-ghost btn-icon" title="Видалити" style={{ color: 'var(--accent-danger)' }}
+            <button className="btn btn-sm btn-ghost btn-icon" title={tUi('Видалити')} style={{ color: 'var(--accent-danger)' }}
               onClick={() => openDelete('unitType', ut.id, ut.name)}>
               <Trash2 size={14} />
             </button>
@@ -1103,11 +1105,11 @@ export default function SettingsPropertiesPage() {
                 <div style={{ fontWeight: 500, fontSize: 13 }}>{unit.name}</div>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
                   {unit.code}
-                  {unit.beds > 0 && ` · ${unit.beds} місць`}
+                  {unit.beds > 0 && ` · ${unit.beds} ${tUi('місць')}`}
                   {unit.zone && ` · ${unit.zone}`}
                   {unit.room_status && unit.room_status !== 'available' && (
                     <span style={{ marginLeft: 4, color: STATUS_COLORS[unit.room_status]?.color }}>
-                      · {STATUS_COLORS[unit.room_status]?.label}
+                      · {tUi(STATUS_COLORS[unit.room_status]?.label)}
                     </span>
                   )}
                 </div>

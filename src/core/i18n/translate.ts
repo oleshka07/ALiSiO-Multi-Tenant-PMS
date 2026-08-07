@@ -1,21 +1,24 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * Server-side translation helper — translates Ukrainian content to all guest languages.
+ * Server-side translation helper — translates a hotel's content into every
+ * other language its guests might read.
+ *
+ * The source language used to be Ukrainian, written into the prompt itself
+ * ("Translate the following Ukrainian texts to …"). That was true of exactly
+ * one customer. A German hotel types German unit names, and asking a model to
+ * translate them *from Ukrainian* produces drift at best. The source is now
+ * the organization's base language, and the targets are every other one.
+ *
  * Storage: content_translations table (text_hash + lang → translated_text).
  * Trigger: called on admin save (config routes) and via /api/admin/retranslate.
  */
-import { getDb } from '@/lib/db';
-import crypto from 'crypto';
+import crypto from 'node:crypto';
+import { requireOrganizationId } from '../auth/tenant-context.ts';
 import { getSql } from '../db/async.ts';
+import { LANGUAGES, type Language, targetLanguages } from './languages.ts';
+import { organizationLanguage } from './resolve.ts';
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
-export const GUEST_LANGS = ['en', 'de', 'cs', 'pl', 'nl', 'fr'] as const;
-export type GuestLang = typeof GUEST_LANGS[number];
-
-const LANG_NAMES: Record<string, string> = {
-  en: 'English', de: 'German', cs: 'Czech',
-  pl: 'Polish',  nl: 'Dutch', fr: 'French',
-};
 
 /** Stable MD5 hash for a text string */
 export function textHash(text: string): string {
@@ -27,31 +30,52 @@ export function textHash(text: string): string {
  */
 export function extractTexts(config: any): string[] {
   const texts = new Set<string>();
-  const add = (t: any) => { if (t && typeof t === 'string' && t.trim().length > 1) texts.add(t.trim()); };
+  const add = (t: any) => {
+    if (t && typeof t === 'string' && t.trim().length > 1) texts.add(t.trim());
+  };
 
   // Rules [{icon, text}]
   try {
     const rules = typeof config.rules === 'string' ? JSON.parse(config.rules) : config.rules;
     if (Array.isArray(rules)) rules.forEach((r: any) => add(r.text));
-  } catch { /* skip */ }
+  } catch {
+    /* skip */
+  }
 
   // FAQ [{q, a}]
   try {
-    const faq = typeof config.faq_items === 'string' ? JSON.parse(config.faq_items) : config.faq_items;
-    if (Array.isArray(faq)) faq.forEach((f: any) => { add(f.q); add(f.a); });
-  } catch { /* skip */ }
+    const faq =
+      typeof config.faq_items === 'string' ? JSON.parse(config.faq_items) : config.faq_items;
+    if (Array.isArray(faq))
+      faq.forEach((f: any) => {
+        add(f.q);
+        add(f.a);
+      });
+  } catch {
+    /* skip */
+  }
 
   // Useful info [{icon, title, desc}]
   try {
-    const info = typeof config.useful_info === 'string' ? JSON.parse(config.useful_info) : config.useful_info;
-    if (Array.isArray(info)) info.forEach((u: any) => { add(u.title); add(u.desc); });
-  } catch { /* skip */ }
+    const info =
+      typeof config.useful_info === 'string' ? JSON.parse(config.useful_info) : config.useful_info;
+    if (Array.isArray(info))
+      info.forEach((u: any) => {
+        add(u.title);
+        add(u.desc);
+      });
+  } catch {
+    /* skip */
+  }
 
   // Amenities [{icon, name}]
   try {
-    const amenities = typeof config.amenities === 'string' ? JSON.parse(config.amenities) : config.amenities;
+    const amenities =
+      typeof config.amenities === 'string' ? JSON.parse(config.amenities) : config.amenities;
     if (Array.isArray(amenities)) amenities.forEach((a: any) => add(a.name));
-  } catch { /* skip */ }
+  } catch {
+    /* skip */
+  }
 
   // Simple text fields
   add(config.restaurant_name);
@@ -67,9 +91,11 @@ export function extractTexts(config: any): string[] {
  */
 export function extractServiceTexts(services: any[]): string[] {
   const texts = new Set<string>();
-  const add = (t: any) => { if (t && typeof t === 'string' && t.trim().length > 1) texts.add(t.trim()); };
+  const add = (t: any) => {
+    if (t && typeof t === 'string' && t.trim().length > 1) texts.add(t.trim());
+  };
   for (const s of services) {
-    add(s.name);          // Ukrainian name → translated via content_translations
+    add(s.name); // Ukrainian name → translated via content_translations
     add(s.description);
     add(s.unit_label);
   }
@@ -81,10 +107,25 @@ export function extractServiceTexts(services: any[]): string[] {
  * Stores/updates results in content_translations table.
  * Skips texts already translated (unless force=true).
  */
-export async function translateAndStore(texts: string[], force = false): Promise<{ translated: number; skipped: number }> {
+export async function translateAndStore(
+  texts: string[],
+  force = false,
+  organizationId?: string,
+): Promise<{ translated: number; skipped: number }> {
   if (!OPENAI_KEY || texts.length === 0) return { translated: 0, skipped: texts.length };
 
   const sql = getSql();
+  // The source language decides what the model is told it is reading, so
+  // guessing it wrong corrupts every translation quietly. Resolved from the
+  // ambient tenant context when the caller did not pass one — and allowed to
+  // throw if there is no context and more than one hotel, because the callers
+  // are all fire-and-forget: the save still succeeds, and the failure is
+  // logged instead of translating from the wrong language.
+  const source: Language = await organizationLanguage(
+    organizationId ?? (await requireOrganizationId()),
+  );
+  const targets = targetLanguages(source);
+  const sourceName = LANGUAGES[source].english;
   let translated = 0;
   let skipped = 0;
 
@@ -97,15 +138,21 @@ export async function translateAndStore(texts: string[], force = false): Promise
       created_at = CURRENT_TIMESTAMP
   `;
 
-  for (const lang of GUEST_LANGS) {
-    const langName = LANG_NAMES[lang];
+  for (const lang of targets) {
+    const langName = LANGUAGES[lang].english;
 
     // Find which texts need translation for this language
     const toTranslate: string[] = [];
     for (const text of texts) {
       if (!force) {
-        const existing = await sql.row<any>('SELECT id FROM content_translations WHERE text_hash = ? AND lang = ?', [textHash(text), lang]) as any;
-        if (existing) { skipped++; continue; }
+        const existing = (await sql.row<any>(
+          'SELECT id FROM content_translations WHERE text_hash = ? AND lang = ?',
+          [textHash(text), lang],
+        )) as any;
+        if (existing) {
+          skipped++;
+          continue;
+        }
       }
       toTranslate.push(text);
     }
@@ -122,7 +169,7 @@ export async function translateAndStore(texts: string[], force = false): Promise
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${OPENAI_KEY}`,
+            Authorization: `Bearer ${OPENAI_KEY}`,
           },
           body: JSON.stringify({
             model: 'gpt-4o-mini',
@@ -130,7 +177,7 @@ export async function translateAndStore(texts: string[], force = false): Promise
             messages: [
               {
                 role: 'system',
-                content: `You are a professional hospitality translator. Translate the following Ukrainian texts to ${langName}. 
+                content: `You are a professional hospitality translator. Translate the following ${sourceName} texts to ${langName}. 
 Rules: Keep all emoji. Preserve \\n line breaks. Keep prices, codes, times as-is. 
 Return ONLY the translations, one per line, prefixed with index like [0] translation. No explanations.`,
               },
@@ -150,7 +197,7 @@ Return ONLY the translations, one per line, prefixed with index like [0] transla
         for (const line of reply.split('\n')) {
           const match = line.match(/^\[(\d+)\]\s*(.*)/);
           if (match) {
-            const idx = parseInt(match[1]);
+            const idx = Number.parseInt(match[1]);
             const translatedText = match[2].trim();
             if (idx >= 0 && idx < batch.length && translatedText) {
               await sql.run(UPSERT, [textHash(batch[idx]), batch[idx], lang, translatedText]);
@@ -172,13 +219,18 @@ Return ONLY the translations, one per line, prefixed with index like [0] transla
  * Look up stored translations for an array of source texts.
  * Returns: { "source text": { en: "...", de: "...", cs: "...", ... } }
  */
-export async function getStoredTranslations(texts: string[]): Promise<Record<string, Record<string, string>>> {
+export async function getStoredTranslations(
+  texts: string[],
+): Promise<Record<string, Record<string, string>>> {
   if (texts.length === 0) return {};
   const sql = getSql();
   const result: Record<string, Record<string, string>> = {};
 
   for (const text of texts) {
-    const rows = await sql.rows<any>('SELECT lang, translated_text FROM content_translations WHERE text_hash = ?', [textHash(text)]) as any[];
+    const rows = (await sql.rows<any>(
+      'SELECT lang, translated_text FROM content_translations WHERE text_hash = ?',
+      [textHash(text)],
+    )) as any[];
 
     if (rows.length > 0) {
       result[text] = {};

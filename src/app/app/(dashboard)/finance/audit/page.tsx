@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 
 interface Section {
@@ -27,6 +28,7 @@ const SEVERITY_STYLES: Record<string, { bg: string; border: string; badge: strin
 };
 
 export default function FinanceAuditPage() {
+  const t = useT();
   const [data, setData] = useState<AuditData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,7 +44,7 @@ export default function FinanceAuditPage() {
       if (json.error) throw new Error(json.error);
       setData(json);
     } catch (e: any) {
-      setError(e.message);
+      setError(t(e.message));
     } finally {
       setLoading(false);
     }
@@ -68,44 +70,44 @@ export default function FinanceAuditPage() {
       <header className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-xl md:text-2xl font-bold text-slate-900">
-            🩺 Аудит фінансової архітектури
+            {t('🩺 Аудит фінансової архітектури')}
           </h1>
           <button
             onClick={load}
             disabled={loading}
             className="px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
           >
-            {loading ? '...' : '↻ Оновити'}
+            {loading ? '...' : t('↻ Оновити')}
           </button>
         </div>
         <p className="text-sm text-slate-600">
-          Read-only діагностика. Тільки читає БД, нічого не міняє. Безпечно тримати на проді.
+          {t('Read-only діагностика. Тільки читає БД, нічого не міняє. Безпечно тримати на проді.')}
         </p>
       </header>
 
       {error && (
         <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-red-900">
-          <div className="font-semibold mb-1">Помилка завантаження</div>
+          <div className="font-semibold mb-1">{t('Помилка завантаження')}</div>
           <code className="text-xs">{error}</code>
         </div>
       )}
 
       {loading && !data && (
-        <div className="text-slate-500 text-sm">Завантажую...</div>
+        <div className="text-slate-500 text-sm">{t('Завантажую...')}</div>
       )}
 
       {data && counts && (
         <div className="rounded-lg border border-slate-200 bg-white p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Summary label="🔴 Критично"   value={counts.red    || 0} />
-          <Summary label="🟡 Увага"       value={counts.yellow || 0} />
-          <Summary label="✅ ОК"          value={counts.green  || 0} />
-          <Summary label="ℹ️ Інфо"        value={counts.info   || 0} />
+          <Summary label={t('🔴 Критично')}   value={counts.red    || 0} />
+          <Summary label={t('🟡 Увага')}       value={counts.yellow || 0} />
+          <Summary label={t('✅ ОК')}          value={counts.green  || 0} />
+          <Summary label={t('ℹ️ Інфо')}        value={counts.info   || 0} />
         </div>
       )}
 
       {data && (
         <div className="rounded-lg border border-slate-200 bg-white p-4 text-xs text-slate-600">
-          <div className="font-semibold text-slate-700 mb-2">Загальна статистика БД</div>
+          <div className="font-semibold text-slate-700 mb-2">{t('Загальна статистика БД')}</div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             {Object.entries(data.totals).map(([k, v]) => (
               <div key={k} className="flex justify-between">
@@ -117,7 +119,7 @@ export default function FinanceAuditPage() {
             ))}
           </div>
           <div className="mt-2 text-[10px] text-slate-400">
-            Згенеровано: {new Date(data.generated_at).toLocaleString('uk-UA')}
+            {t('Згенеровано:')} {new Date(data.generated_at).toLocaleString('uk-UA')}
           </div>
         </div>
       )}
@@ -160,8 +162,8 @@ export default function FinanceAuditPage() {
                   className="text-xs font-medium text-slate-700 underline"
                 >
                   {isOpen
-                    ? `▲ Сховати ${s.details!.length} рядків`
-                    : `▼ Показати ${s.details!.length} рядків`}
+                    ? `${t('▲ Сховати')} ${s.details!.length} ${t('рядків')}`
+                    : `${t('▼ Показати')} ${s.details!.length} ${t('рядків')}`}
                 </button>
 
                 {isOpen && (
@@ -203,7 +205,7 @@ export default function FinanceAuditPage() {
       })}
 
       <footer className="text-xs text-slate-400 text-center pt-4">
-        Сторінка тільки для діагностики. Не змінює даних. Не для постійного перегляду гостями.
+        {t('Сторінка тільки для діагностики. Не змінює даних. Не для постійного перегляду гостями.')}
       </footer>
     </div>
   );

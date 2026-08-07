@@ -1,3 +1,6 @@
+'use client';
+
+import { useT } from '@core/i18n/client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
 import { X, Loader2, Download } from 'lucide-react';
@@ -13,6 +16,7 @@ interface GlampingReportModalProps {
 }
 
 export default function GlampingReportModal({ isOpen, onClose, from, to }: GlampingReportModalProps) {
+  const t = useT();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
 
@@ -43,28 +47,28 @@ export default function GlampingReportModal({ isOpen, onClose, from, to }: Glamp
     <div className="modal-overlay">
       <div className="modal-content" style={{ maxWidth: 800 }}>
         <div className="modal-header">
-          <h2 className="modal-title">Звіт по будинках Глемпінгу</h2>
+          <h2 className="modal-title">{t('Звіт по будинках Глемпінгу')}</h2>
           <button className="btn btn-ghost" style={{ padding: 4 }} onClick={onClose}><X size={20} /></button>
         </div>
         <div className="modal-body">
           <div style={{ marginBottom: 16, color: 'var(--text-secondary)' }}>
-            Період: <strong>{from}</strong> — <strong>{to}</strong>
+            {t('Період:')} <strong>{from}</strong> — <strong>{to}</strong>
           </div>
           
           {loading ? (
             <div style={{ textAlign: 'center', padding: 64 }}>
               <Loader2 size={28} className="animate-pulse" style={{ display: 'inline-block' }} />
-              <div style={{ marginTop: 8, color: 'var(--text-tertiary)' }}>Формування звіту...</div>
+              <div style={{ marginTop: 8, color: 'var(--text-tertiary)' }}>{t('Формування звіту...')}</div>
             </div>
           ) : data?.houses ? (
             <div className="table-container">
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Будинок</th>
-                    <th style={{ textAlign: 'center' }}>Завантаження</th>
-                    <th style={{ textAlign: 'center' }}>Бронювання</th>
-                    <th style={{ textAlign: 'right' }}>Дохідність</th>
+                    <th>{t('Будинок')}</th>
+                    <th style={{ textAlign: 'center' }}>{t('Завантаження')}</th>
+                    <th style={{ textAlign: 'center' }}>{t('Бронювання')}</th>
+                    <th style={{ textAlign: 'right' }}>{t('Дохідність')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -72,7 +76,7 @@ export default function GlampingReportModal({ isOpen, onClose, from, to }: Glamp
                     <tr key={h.unitId}>
                       <td style={{ fontWeight: 500 }}>{h.name}</td>
                       <td style={{ textAlign: 'center' }}>
-                        {h.occPct}% <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>({h.occupiedDays} днів)</span>
+                        {h.occPct}% <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>({h.occupiedDays} {t('днів)')}</span>
                       </td>
                       <td style={{ textAlign: 'center' }}>{h.bookings}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>
@@ -84,7 +88,7 @@ export default function GlampingReportModal({ isOpen, onClose, from, to }: Glamp
                     </tr>
                   ))}
                   <tr style={{ background: 'var(--bg-secondary)', fontWeight: 600 }}>
-                    <td>РАЗОМ</td>
+                    <td>{t('РАЗОМ')}</td>
                     <td style={{ textAlign: 'center' }}>
                       {Math.round((data.houses.reduce((s: number, h: any) => s + h.occupiedDays, 0) / (data.period.days * data.houses.length)) * 100)}%
                     </td>
@@ -99,7 +103,7 @@ export default function GlampingReportModal({ isOpen, onClose, from, to }: Glamp
               </table>
             </div>
           ) : (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Немає даних</div>
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>{t('Немає даних')}</div>
           )}
         </div>
       </div>

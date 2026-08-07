@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, FolderKanban } from 'lucide-react';
@@ -46,6 +47,7 @@ function defaultRange(): { from: string; to: string } {
 }
 
 export default function ProjectProfitabilityPage() {
+  const tUi = useT();
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState(defaultRange());
@@ -68,11 +70,11 @@ export default function ProjectProfitabilityPage() {
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Link href="/app/finance/reports" style={backLink}><ArrowLeft size={14} /></Link>
         <h1 style={{ margin: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <FolderKanban size={24} /> Прибутковість проєктів
+          <FolderKanban size={24} /> {tUi('Прибутковість проєктів')}
         </h1>
         <div style={{ display: 'flex', gap: 4, background: 'var(--bg-secondary)', borderRadius: 8, padding: 3, border: '1px solid var(--border-primary)' }}>
-          <button onClick={() => setBasis('paid')} style={{ ...tabBtn, ...(basis === 'paid' ? tabActive : {}) }}>По факту</button>
-          <button onClick={() => setBasis('accrued')} style={{ ...tabBtn, ...(basis === 'accrued' ? tabActive : {}) }}>По нарахуванню</button>
+          <button onClick={() => setBasis('paid')} style={{ ...tabBtn, ...(basis === 'paid' ? tabActive : {}) }}>{tUi('По факту')}</button>
+          <button onClick={() => setBasis('accrued')} style={{ ...tabBtn, ...(basis === 'accrued' ? tabActive : {}) }}>{tUi('По нарахуванню')}</button>
         </div>
         <input type="month" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} style={input} />
         <span style={{ color: 'var(--text-secondary)' }}>—</span>
@@ -80,25 +82,25 @@ export default function ProjectProfitabilityPage() {
       </div>
 
       {loading || !data ? (
-        <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Завантаження…')}</div>
       ) : (
         <>
           <div style={{ display: 'flex', gap: 16, marginTop: 16, padding: 16, background: 'var(--bg-secondary)', borderRadius: 10 }}>
-            <div><div style={lbl}>Дохід усього</div><div style={{ ...val, color: '#22c55e' }}>{formatK(data.totals.income)} CZK</div></div>
-            <div><div style={lbl}>Витрати усього</div><div style={{ ...val, color: '#ef4444' }}>{formatK(data.totals.expense)} CZK</div></div>
-            <div><div style={lbl}>Прибуток</div><div style={{ ...val, color: data.totals.profit >= 0 ? '#22c55e' : '#ef4444' }}>{formatK(data.totals.profit)} CZK</div></div>
+            <div><div style={lbl}>{tUi('Дохід усього')}</div><div style={{ ...val, color: '#22c55e' }}>{formatK(data.totals.income)} CZK</div></div>
+            <div><div style={lbl}>{tUi('Витрати усього')}</div><div style={{ ...val, color: '#ef4444' }}>{formatK(data.totals.expense)} CZK</div></div>
+            <div><div style={lbl}>{tUi('Прибуток')}</div><div style={{ ...val, color: data.totals.profit >= 0 ? '#22c55e' : '#ef4444' }}>{formatK(data.totals.profit)} CZK</div></div>
           </div>
 
           <div style={{ marginTop: 16, overflowX: 'auto', border: '1px solid var(--border-primary)', borderRadius: 10 }}>
             <table style={tableStyle}>
               <thead>
                 <tr style={{ background: 'var(--bg-secondary)' }}>
-                  <th style={{ ...th, textAlign: 'left', position: 'sticky', left: 0, background: 'var(--bg-secondary)', zIndex: 2, minWidth: 200 }}>Проєкт</th>
-                  {data.months.map((m) => <th key={m} style={th}>{monthLabel(m)}</th>)}
-                  <th style={th}>Дохід</th>
-                  <th style={th}>Витрата</th>
-                  <th style={th}>Прибуток</th>
-                  <th style={th}>Маржа %</th>
+                  <th style={{ ...th, textAlign: 'left', position: 'sticky', left: 0, background: 'var(--bg-secondary)', zIndex: 2, minWidth: 200 }}>{tUi('Проєкт')}</th>
+                  {data.months.map((m) => <th key={m} style={th}>{tUi(monthLabel(m))}</th>)}
+                  <th style={th}>{tUi('Дохід')}</th>
+                  <th style={th}>{tUi('Витрата')}</th>
+                  <th style={th}>{tUi('Прибуток')}</th>
+                  <th style={th}>{tUi('Маржа %')}</th>
                 </tr>
               </thead>
               <tbody>

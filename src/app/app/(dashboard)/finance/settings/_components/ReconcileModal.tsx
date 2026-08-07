@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { X, Scale } from 'lucide-react';
 import type { Account } from './AccountsTab';
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function ReconcileModal({ account, onClose, onDone }: Props) {
+  const t = useT();
   const [actual, setActual] = useState<number | ''>('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -24,7 +26,7 @@ export default function ReconcileModal({ account, onClose, onDone }: Props) {
     e.preventDefault();
     setError(null);
     if (actual === '' || !isFinite(actualNum)) {
-      setError('Вкажіть фактичний залишок');
+      setError(t('Вкажіть фактичний залишок'));
       return;
     }
     setSubmitting(true);
@@ -40,11 +42,11 @@ export default function ReconcileModal({ account, onClose, onDone }: Props) {
       if (data.adjustment_operation_id) {
         alert(`Коригування створено.\nДельта: ${data.delta.toFixed(2)} ${account.currency}`);
       } else {
-        alert('Залишки вже збігаються — коригування не потрібне.');
+        alert(t('Залишки вже збігаються — коригування не потрібне.'));
       }
       onDone();
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
     } finally {
       setSubmitting(false);
     }
@@ -55,7 +57,7 @@ export default function ReconcileModal({ account, onClose, onDone }: Props) {
       <form onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()} style={modalStyle}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16, gap: 8 }}>
           <Scale size={20} />
-          <h3 style={{ margin: 0, flex: 1 }}>Звірка залишку</h3>
+          <h3 style={{ margin: 0, flex: 1 }}>{t('Звірка залишку')}</h3>
           <button type="button" onClick={onClose} style={closeBtnStyle}><X size={18} /></button>
         </div>
 
@@ -68,15 +70,15 @@ export default function ReconcileModal({ account, onClose, onDone }: Props) {
             fontSize: 14,
           }}
         >
-          <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Рахунок</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{t('Рахунок')}</div>
           <div style={{ fontWeight: 600, marginBottom: 8 }}>{account.name}</div>
-          <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Обчислений залишок</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{t('Обчислений залишок')}</div>
           <div style={{ fontWeight: 600, fontSize: 16 }}>
             {computed.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {account.currency}
           </div>
         </div>
 
-        <Field label="Фактичний залишок (скільки реально на рахунку)">
+        <Field label={t('Фактичний залишок (скільки реально на рахунку)')}>
           <input
             type="number"
             step="0.01"
@@ -98,17 +100,17 @@ export default function ReconcileModal({ account, onClose, onDone }: Props) {
               marginBottom: 12,
             }}
           >
-            Буде створено коригуючу операцію на {delta > 0 ? '+' : ''}{delta.toFixed(2)} {account.currency}
-            {' '}({delta > 0 ? 'додаткове надходження' : 'додаткові витрати'})
+            {t('Буде створено коригуючу операцію на')} {delta > 0 ? '+' : ''}{delta.toFixed(2)} {account.currency}
+            {' '}({delta > 0 ? t('додаткове надходження') : t('додаткові витрати')})
           </div>
         )}
 
-        <Field label="Коментар (опц.)">
+        <Field label={t('Коментар (опц.)')}>
           <input
             type="text"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder={`Звірка залишків (${account.name})`}
+            placeholder={`${t('Звірка залишків (')}${account.name})`}
             style={inputStyle}
           />
         </Field>
@@ -116,9 +118,9 @@ export default function ReconcileModal({ account, onClose, onDone }: Props) {
         {error && <div style={{ color: '#dc2626', fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} style={btnSecondaryStyle}>Відміна</button>
+          <button type="button" onClick={onClose} style={btnSecondaryStyle}>{t('Відміна')}</button>
           <button type="submit" disabled={submitting} style={btnPrimaryStyle}>
-            {submitting ? 'Створення…' : 'Створити коригування'}
+            {submitting ? t('Створення…') : t('Створити коригування')}
           </button>
         </div>
       </form>

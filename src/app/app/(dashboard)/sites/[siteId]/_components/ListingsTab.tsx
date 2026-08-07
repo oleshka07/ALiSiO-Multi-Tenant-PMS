@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { Loader2, Plus, Trash2, X, Check, Code2, Image as ImageIcon, Upload } from 'lucide-react';
 import { Modal, CopyBtn, Chk } from './SiteHelpers';
@@ -13,6 +14,7 @@ function ListingRow({ listing, siteId, siteSlug, onDelete, onEdit, siteCurrency 
   onEdit: (l: Listing) => void;
   siteCurrency: string;
 }) {
+  const t = useT();
   const unitName = listing.unit_name || listing.unit_type_name || listing.id;
   return (
     <tr style={{ cursor: 'pointer' }} onClick={() => onEdit(listing)}>
@@ -36,8 +38,8 @@ function ListingRow({ listing, siteId, siteSlug, onDelete, onEdit, siteCurrency 
           <div style={{ fontWeight: 600 }}>{unitName}</div>
         </div>
       </td>
-      <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{listing.unit_id ? 'Юніт' : 'Тип юніту'}</td>
-      <td style={{ fontSize: 13 }}>{listing.price_override ? `${listing.price_override} ${siteCurrency}` : 'За прайсом'}</td>
+      <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{listing.unit_id ? t('Юніт') : t('Тип юніту')}</td>
+      <td style={{ fontSize: 13 }}>{listing.price_override ? `${listing.price_override} ${siteCurrency}` : t('За прайсом')}</td>
       <td style={{ textAlign: 'center' }}><Chk val={listing.external_url} /></td>
       <td style={{ textAlign: 'center' }}><Chk val={listing.thank_you_url} /></td>
       <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
@@ -61,6 +63,7 @@ function ListingEditModal({ listing, siteId, siteSlug, open, onClose, onRefresh,
   onRefresh: () => void;
   siteCurrency: string;
 }) {
+  const t = useT();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ external_url: '', default_lang: '', price_override: '', thank_you_url: '' });
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
@@ -142,26 +145,26 @@ function ListingEditModal({ listing, siteId, siteSlug, open, onClose, onRefresh,
     <Modal open={open} onClose={onClose} title={unitName} size="lg"
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose}>Скасувати</button>
+          <button className="btn btn-ghost" onClick={onClose}>{t('Скасувати')}</button>
           <button className="btn btn-primary" onClick={save} disabled={saving}>
-            {saving ? <Loader2 size={14} className="spin" /> : <Check size={14} />} Зберегти
+            {saving ? <Loader2 size={14} className="spin" /> : <Check size={14} />} {t('Зберегти')}
           </button>
         </>
       }>
       <div className="form-group">
-        <label className="form-label">URL сторінки об&apos;єкта</label>
+        <label className="form-label">{t('URL сторінки об\'єкта')}</label>
         <input className="form-input" placeholder="https://yoursite.com/cabin-b3"
           value={form.external_url} onChange={e => setForm(f => ({ ...f, external_url: e.target.value }))} />
       </div>
 
       <div className="form-row" style={{ marginTop: 16 }}>
         <div className="form-group">
-          <label className="form-label">Кастомна ціна ({siteCurrency})</label>
-          <input className="form-input" type="number" min="0" placeholder="Залишити пустим для ціни за прайсом"
+          <label className="form-label">{t('Кастомна ціна (')}{siteCurrency})</label>
+          <input className="form-input" type="number" min="0" placeholder={t('Залишити пустим для ціни за прайсом')}
             value={form.price_override} onChange={e => setForm(f => ({ ...f, price_override: e.target.value }))} />
         </div>
         <div className="form-group">
-          <label className="form-label">URL сторінки подяки (Thank You)</label>
+          <label className="form-label">{t('URL сторінки подяки (Thank You)')}</label>
           <input className="form-input" placeholder="https://yoursite.com/thanks-b3"
             value={form.thank_you_url} onChange={e => setForm(f => ({ ...f, thank_you_url: e.target.value }))} />
         </div>
@@ -169,7 +172,7 @@ function ListingEditModal({ listing, siteId, siteSlug, open, onClose, onRefresh,
 
       <div className="form-group" style={{ marginTop: 24 }}>
         <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <ImageIcon size={16} /> Фотографії об&apos;єкта
+          <ImageIcon size={16} /> {t('Фотографії об\'єкта')}
         </label>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 12, marginTop: 12 }}>
           {photoUrls.map((url, idx) => (
@@ -182,7 +185,7 @@ function ListingEditModal({ listing, siteId, siteSlug, open, onClose, onRefresh,
           ))}
           <label style={{ aspectRatio: '4/3', border: '2px dashed var(--border-primary)', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 4, color: 'var(--text-secondary)' }}>
             {uploading ? <Loader2 size={16} className="spin" /> : <Upload size={16} />}
-            <span style={{ fontSize: 11 }}>{uploading ? '...' : 'Завантажити'}</span>
+            <span style={{ fontSize: 11 }}>{uploading ? '...' : t('Завантажити')}</span>
             <input type="file" accept="image/*" hidden onChange={handleUpload} disabled={uploading} />
           </label>
         </div>
@@ -191,10 +194,10 @@ function ListingEditModal({ listing, siteId, siteSlug, open, onClose, onRefresh,
       <div style={{ marginTop: 32, borderTop: '1px solid var(--border-primary)', paddingTop: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <Code2 size={18} style={{ color: 'var(--accent-primary)' }} />
-          <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Код для вставки (Embed)</h4>
+          <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{t('Код для вставки (Embed)')}</h4>
         </div>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
-          Використовуйте цей код, щоб додати віджет бронювання саме для цього об&apos;єкта на ваш сайт.
+          {t('Використовуйте цей код, щоб додати віджет бронювання саме для цього об\'єкта на ваш сайт.')}
         </div>
         <div style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -229,6 +232,7 @@ function ListingEditModal({ listing, siteId, siteSlug, open, onClose, onRefresh,
 }
 
 export function ListingsTab({ siteId, siteSlug, siteCurrency = 'CZK' }: { siteId: string; siteSlug: string; siteCurrency?: string }) {
+  const t = useT();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -281,7 +285,7 @@ export function ListingsTab({ siteId, siteSlug, siteCurrency = 'CZK' }: { siteId
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Видалити оголошення?')) return;
+    if (!confirm(t('Видалити оголошення?'))) return;
     await fetch(`/api/booking-sites/${siteId}/listings/${id}`, { method: 'DELETE' });
     fetchListings();
   };
@@ -291,22 +295,22 @@ export function ListingsTab({ siteId, siteSlug, siteCurrency = 'CZK' }: { siteId
   return (
     <div>
       <div className="table-toolbar" style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{listings.length} оголошень</div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}><Plus size={16} /> Додати оголошення</button>
+        <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{listings.length} {t('оголошень')}</div>
+        <button className="btn btn-primary" onClick={() => setShowAdd(true)}><Plus size={16} /> {t('Додати оголошення')}</button>
       </div>
 
       {listings.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-secondary)' }}>
-          <div>Додайте юніти або типи, які будуть доступні на цьому сайті</div>
+          <div>{t('Додайте юніти або типи, які будуть доступні на цьому сайті')}</div>
         </div>
       ) : (
         <table className="data-table">
           <thead><tr>
-            <th>Назва</th>
-            <th>Тип</th>
-            <th>Ціна</th>
-            <th style={{ textAlign: 'center' }}>URL сторінки</th>
-            <th style={{ textAlign: 'center' }}>URL подяки</th>
+            <th>{t('Назва')}</th>
+            <th>{t('Тип')}</th>
+            <th>{t('Ціна')}</th>
+            <th style={{ textAlign: 'center' }}>{t('URL сторінки')}</th>
+            <th style={{ textAlign: 'center' }}>{t('URL подяки')}</th>
             <th></th>
           </tr></thead>
           <tbody>
@@ -324,13 +328,13 @@ export function ListingsTab({ siteId, siteSlug, siteCurrency = 'CZK' }: { siteId
         open={!!editingListing} onClose={() => setEditingListing(null)} onRefresh={fetchListings}
       />
 
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Додати оголошення" size="lg"
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={t('Додати оголошення')} size="lg"
         footer={
           <>
-            <button className="btn btn-ghost" onClick={() => setShowAdd(false)}>Скасувати</button>
+            <button className="btn btn-ghost" onClick={() => setShowAdd(false)}>{t('Скасувати')}</button>
             <button className="btn btn-primary" onClick={handleAdd} disabled={adding || !selected.size}>
               {adding ? <Loader2 size={14} className="spin" /> : <Plus size={14} />}
-              Додати вибране ({selected.size})
+              {t('Додати вибране (')}{selected.size})
             </button>
           </>
         }
@@ -338,7 +342,7 @@ export function ListingsTab({ siteId, siteSlug, siteCurrency = 'CZK' }: { siteId
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           {(['unit', 'unit_type'] as const).map(m => (
             <button key={m} className={`btn ${addMode === m ? 'btn-primary' : 'btn-ghost'}`} onClick={() => { setAddMode(m); setSelected(new Set()); }}>
-              {m === 'unit' ? '🏠 Конкретні юніти' : '📦 Типи юнітів'}
+              {m === 'unit' ? t('🏠 Конкретні юніти') : t('📦 Типи юнітів')}
             </button>
           ))}
         </div>
@@ -346,7 +350,7 @@ export function ListingsTab({ siteId, siteSlug, siteCurrency = 'CZK' }: { siteId
         {addMode === 'unit' && (
           <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 16, minHeight: 300 }}>
             <div style={{ borderRight: '1px solid var(--border-primary)', paddingRight: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: 8 }}>ТИП ЮНІТУ</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: 8 }}>{t('ТИП ЮНІТУ')}</div>
               {unitTypes.map(ut => (
                 <div key={ut.id} onClick={() => setActiveUt(ut.id)}
                   style={{
@@ -359,8 +363,8 @@ export function ListingsTab({ siteId, siteSlug, siteCurrency = 'CZK' }: { siteId
               ))}
             </div>
             <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: 8 }}>ЮНІТИ</div>
-              {unitsByType.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Немає юнітів</div>}
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: 8 }}>{t('ЮНІТИ')}</div>
+              {unitsByType.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{t('Немає юнітів')}</div>}
               {unitsByType.map(u => {
                 const chk = selected.has(u.id);
                 const alreadyAdded = listings.some(l => l.unit_id === u.id);
@@ -369,7 +373,7 @@ export function ListingsTab({ siteId, siteSlug, siteCurrency = 'CZK' }: { siteId
                     <input type="checkbox" checked={chk} disabled={alreadyAdded}
                       onChange={() => { const s = new Set(selected); chk ? s.delete(u.id) : s.add(u.id); setSelected(s); }} />
                     <span style={{ fontSize: 13 }}>{u.name} <span style={{ color: 'var(--text-tertiary)' }}>({u.code})</span></span>
-                    {alreadyAdded && <span style={{ fontSize: 11, color: 'var(--accent-primary)' }}>вже додано</span>}
+                    {alreadyAdded && <span style={{ fontSize: 11, color: 'var(--accent-primary)' }}>{t('вже додано')}</span>}
                   </label>
                 );
               })}
@@ -379,7 +383,7 @@ export function ListingsTab({ siteId, siteSlug, siteCurrency = 'CZK' }: { siteId
 
         {addMode === 'unit_type' && (
           <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: 8 }}>ТИПИ ЮНІТІВ</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: 8 }}>{t('ТИПИ ЮНІТІВ')}</div>
             {unitTypes.map(ut => {
               const chk = selected.has(ut.id);
               const alreadyAdded = listings.some(l => l.unit_type_id === ut.id);
@@ -388,7 +392,7 @@ export function ListingsTab({ siteId, siteSlug, siteCurrency = 'CZK' }: { siteId
                   <input type="checkbox" checked={chk} disabled={alreadyAdded}
                     onChange={() => { const s = new Set(selected); chk ? s.delete(ut.id) : s.add(ut.id); setSelected(s); }} />
                   <span style={{ fontSize: 13, fontWeight: 500 }}>{ut.name}</span>
-                  {alreadyAdded && <span style={{ fontSize: 11, color: 'var(--accent-primary)' }}>вже додано</span>}
+                  {alreadyAdded && <span style={{ fontSize: 11, color: 'var(--accent-primary)' }}>{t('вже додано')}</span>}
                 </label>
               );
             })}

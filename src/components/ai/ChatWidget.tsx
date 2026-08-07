@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useRef, useEffect, useCallback } from 'react';
 
 type Message = {
@@ -17,6 +18,7 @@ const SUGGESTIONS = [
 ];
 
 export default function ChatWidget() {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -215,7 +217,7 @@ export default function ChatWidget() {
       <button
         className="ai-chat-btn"
         onClick={() => setOpen(o => !o)}
-        title="AI Асистент (Ctrl+K)"
+        title={t('AI Асистент (Ctrl+K)')}
         style={{
           position: 'fixed',
           bottom: 100,
@@ -276,13 +278,13 @@ export default function ChatWidget() {
                 ALiSiO AI
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                Запитуй про бронювання, гостей, фінанси
+                {t('Запитуй про бронювання, гостей, фінанси')}
               </div>
             </div>
             {messages.length > 0 && (
               <button
                 onClick={clearChat}
-                title="Очистити чат"
+                title={t('Очистити чат')}
                 style={{
                   background: 'none',
                   border: 'none',
@@ -295,7 +297,7 @@ export default function ChatWidget() {
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-secondary)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'none')}
               >
-                Очистити
+                {t('Очистити')}
               </button>
             )}
           </div>
@@ -312,7 +314,7 @@ export default function ChatWidget() {
             {messages.length === 0 && (
               <div style={{ marginTop: 8 }}>
                 <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
-                  Привіт! Я можу відповідати на питання про твої дані у реальному часі.
+                  {t('Привіт! Я можу відповідати на питання про твої дані у реальному часі.')}
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {SUGGESTIONS.map(s => (
@@ -333,7 +335,7 @@ export default function ChatWidget() {
                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover, #f3f4f6)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'var(--bg-secondary)')}
                     >
-                      {s}
+                      {t(s)}
                     </button>
                   ))}
                 </div>
@@ -364,7 +366,7 @@ export default function ChatWidget() {
                   flexShrink: 0,
                   color: msg.role === 'user' ? '#fff' : 'var(--text-secondary)',
                 }}>
-                  {msg.role === 'user' ? 'Я' : '✦'}
+                  {msg.role === 'user' ? t('Я') : '✦'}
                 </div>
 
                 {/* Bubble */}
@@ -411,7 +413,7 @@ export default function ChatWidget() {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Запитай про дані... (Enter — надіслати)"
+                placeholder={t('Запитай про дані... (Enter — надіслати)')}
                 rows={1}
                 disabled={loading}
                 style={{
@@ -450,7 +452,7 @@ export default function ChatWidget() {
               </button>
             </form>
             <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 5, textAlign: 'center' }}>
-              Ctrl+K — відкрити/закрити · Shift+Enter — новий рядок
+              {t('Ctrl+K — відкрити/закрити · Shift+Enter — новий рядок')}
             </div>
           </div>
         </div>

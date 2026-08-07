@@ -33,9 +33,7 @@ export default function SiteFooterMarkup() {
           <li>
             <Link href="/modules/guest-portal" data-route="m-guest" style={{ color: "#B6BCC3" }}>Guest Portal</Link>
           </li>
-          <li>
-            <Link href="/modules/crm" data-route="m-crm" style={{ color: "#B6BCC3" }}>CRM &amp; AI</Link>
-          </li>
+          <li />
           <li>
             <Link href="/modules/compliance" data-route="m-compliance" style={{ color: "#B6BCC3" }}>Compliance</Link>
           </li>

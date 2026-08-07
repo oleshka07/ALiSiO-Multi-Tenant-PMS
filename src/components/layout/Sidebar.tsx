@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -102,6 +103,7 @@ const navigation: NavSection[] = [
 ];
 
 export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
+  const t = useT();
   const [collapsed, setCollapsed] = useState(false);
   const [draftCount, setDraftCount] = useState(0);
   const pathname = usePathname();
@@ -208,7 +210,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         <nav className="sidebar-nav">
           {filteredNavigation.map((section) => (
             <div key={section.title}>
-              <div className="sidebar-section-title">{section.title}</div>
+              <div className="sidebar-section-title">{t(section.title)}</div>
               {section.items.map((item) => {
                 const isActive =
                   pathname === item.href ||
@@ -220,9 +222,9 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                     className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
                   >
                     <span className="sidebar-nav-icon">{item.icon}</span>
-                    <span className="sidebar-nav-label">{item.label}</span>
+                    <span className="sidebar-nav-label">{t(item.label)}</span>
                     {item.href === '/app/calendar' && draftCount > 0 && (
-                      <span className="sidebar-draft-badge" title={`${draftCount} бронювань у чорновику`}>
+                      <span className="sidebar-draft-badge" title={`${draftCount} ${t('бронювань у чорновику')}`}>
                         {draftCount}
                       </span>
                     )}
@@ -245,13 +247,13 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               </div>
               <div className="sidebar-user-details">
                 <div className="sidebar-user-name">{user.full_name}</div>
-                <div className="sidebar-user-role">{ROLE_LABELS[user.role]}</div>
+                <div className="sidebar-user-role">{t(ROLE_LABELS[user.role])}</div>
               </div>
             </div>
             <button
               className="sidebar-logout-btn"
               onClick={logout}
-              title="Вийти"
+              title={t('Вийти')}
             >
               <LogOut size={16} />
             </button>

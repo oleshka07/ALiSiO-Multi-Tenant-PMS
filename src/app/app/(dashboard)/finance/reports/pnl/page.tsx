@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, ChevronRight, ChevronDown } from 'lucide-react';
@@ -58,6 +59,7 @@ function defaultRange(): { from: string; to: string } {
 }
 
 export default function PnlMatrixPage() {
+  const tUi = useT();
   const [data, setData] = useState<PnlData | null>(null);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState(defaultRange());
@@ -93,8 +95,8 @@ export default function PnlMatrixPage() {
         <Link href="/app/finance/reports" style={backLink}><ArrowLeft size={14} /></Link>
         <h1 style={{ margin: 0, flex: 1 }}>📊 P&amp;L</h1>
         <div style={{ display: 'flex', gap: 4, background: 'var(--bg-secondary)', borderRadius: 8, padding: 3, border: '1px solid var(--border-primary)' }}>
-          <button onClick={() => setBasis('accrued')} style={{ ...tabBtn, ...(basis === 'accrued' ? tabActive : {}) }}>По нарахуванню</button>
-          <button onClick={() => setBasis('paid')} style={{ ...tabBtn, ...(basis === 'paid' ? tabActive : {}) }}>По факту</button>
+          <button onClick={() => setBasis('accrued')} style={{ ...tabBtn, ...(basis === 'accrued' ? tabActive : {}) }}>{tUi('По нарахуванню')}</button>
+          <button onClick={() => setBasis('paid')} style={{ ...tabBtn, ...(basis === 'paid' ? tabActive : {}) }}>{tUi('По факту')}</button>
         </div>
         <input type="month" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} style={input} />
         <span style={{ color: 'var(--text-secondary)' }}>—</span>
@@ -107,17 +109,17 @@ export default function PnlMatrixPage() {
       </div>
 
       {loading || !data ? (
-        <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Завантаження…')}</div>
       ) : (
         <div style={{ marginTop: 20, overflowX: 'auto', border: '1px solid var(--border-primary)', borderRadius: 10 }}>
           <table style={tableStyle}>
             <thead>
               <tr style={{ background: 'var(--bg-secondary)' }}>
-                <th style={{ ...th, textAlign: 'left', position: 'sticky', left: 0, background: 'var(--bg-secondary)', zIndex: 2, minWidth: 280 }}>Категорія</th>
-                {data.months.map((m) => <th key={m} style={th}>{monthLabel(m)}</th>)}
+                <th style={{ ...th, textAlign: 'left', position: 'sticky', left: 0, background: 'var(--bg-secondary)', zIndex: 2, minWidth: 280 }}>{tUi('Категорія')}</th>
+                {data.months.map((m) => <th key={m} style={th}>{tUi(monthLabel(m))}</th>)}
                 <th style={{ ...th, background: 'var(--bg-secondary)' }}>Σ</th>
                 <th style={th}>%</th>
-                <th style={{ ...th, textAlign: 'center', minWidth: 120 }}>Тренд</th>
+                <th style={{ ...th, textAlign: 'center', minWidth: 120 }}>{tUi('Тренд')}</th>
               </tr>
             </thead>
             <tbody>

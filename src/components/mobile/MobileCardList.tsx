@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { Loader2 } from 'lucide-react';
 
 /**
@@ -34,6 +35,7 @@ export default function MobileCardList<T>({
   renderCard,
   desktopContent,
 }: MobileCardListProps<T>) {
+  const t = useT();
   return (
     <>
       {/* Desktop view */}
@@ -45,7 +47,7 @@ export default function MobileCardList<T>({
       <div className="mobile-only">
         {loading && (
           <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>
-            <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> Завантаження...
+            <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> {t('Завантаження...')}
           </div>
         )}
         {!loading && items.length === 0 && (

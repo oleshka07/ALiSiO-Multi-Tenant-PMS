@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
@@ -190,6 +191,7 @@ const getSourceIconEmoji = (code: string) => {
 };
 
 function BookingsDesktop() {
+  const t = useT();
   /* ── data ──────────────────────────────────────────── */
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [unitTypes, setUnitTypes] = useState<UnitTypeRow[]>([]);
@@ -462,7 +464,7 @@ function BookingsDesktop() {
       }
     } catch (e) {
       console.error('Status change error:', e);
-      alert('Помилка мережі');
+      alert(t('Помилка мережі'));
     }
   };
 
@@ -474,7 +476,7 @@ function BookingsDesktop() {
 
   return (
     <>
-      <Header title="Бронювання" onMenuClick={onMenuClick} />
+      <Header title={t('Бронювання')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {/* Toast */}
         {toast && (
@@ -515,7 +517,7 @@ function BookingsDesktop() {
                   <span style={{ color: 'var(--text-secondary)' }}>{a.message}</span>
                 </div>
                 <button
-                  title={a.type === 'overdue_arrival' ? 'Позначити no-show та прибрати' : 'Приховати'}
+                  title={a.type === 'overdue_arrival' ? t('Позначити no-show та прибрати') : t('Приховати')}
                   onClick={async (e) => {
                     e.stopPropagation();
                     if (a.type === 'overdue_arrival') {
@@ -540,7 +542,7 @@ function BookingsDesktop() {
             ))}
             {alerts.length > 8 && (
               <div style={{ fontSize: 12, color: 'var(--text-tertiary)', textAlign: 'center' }}>
-                + ще {alerts.length - 8} сповіщень
+                {t('+ ще')} {alerts.length - 8} {t('сповіщень')}
               </div>
             )}
           </div>
@@ -548,18 +550,18 @@ function BookingsDesktop() {
 
         <div className="page-header">
           <div>
-            <h2 className="page-title">Бронювання</h2>
-            <div className="page-subtitle">{bookings.length} записів</div>
+            <h2 className="page-title">{t('Бронювання')}</h2>
+            <div className="page-subtitle">{bookings.length} {t('записів')}</div>
           </div>
           <div className="flex gap-2">
-            <button className="btn btn-secondary" onClick={() => { fetchBookings(); fetchGroupBookings(); }} title="Оновити">
+            <button className="btn btn-secondary" onClick={() => { fetchBookings(); fetchGroupBookings(); }} title={t('Оновити')}>
               <RefreshCw size={16} />
             </button>
             <button className="btn btn-secondary" onClick={() => setShowGroupModal(true)}>
-              <Building2 size={16} /> Групове
+              <Building2 size={16} /> {t('Групове')}
             </button>
             <button className="btn btn-primary" onClick={openNewBooking}>
-              <Plus size={16} /> Нове бронювання
+              <Plus size={16} /> {t('Нове бронювання')}
             </button>
           </div>
         </div>
@@ -571,59 +573,59 @@ function BookingsDesktop() {
               <Search size={14} className="search-icon" />
               <input
                 className="form-input"
-                placeholder="Пошук по гостю, юніту або ID..."
+                placeholder={t('Пошук по гостю, юніту або ID...')}
                 style={{ paddingLeft: 34 }}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
             <select className="form-select" style={{ width: 180 }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="active">🚫 Без скасованих</option>
-              <option value="">Всі статуси</option>
-              <option value="draft">Чернетка</option>
-              <option value="tentative">Очікується</option>
-              <option value="confirmed">Підтверджено</option>
-              <option value="checked_in">Заселено</option>
-              <option value="checked_out">Виселено</option>
-              <option value="cancelled">Тільки скасовані</option>
+              <option value="active">{t('🚫 Без скасованих')}</option>
+              <option value="">{t('Всі статуси')}</option>
+              <option value="draft">{t('Чернетка')}</option>
+              <option value="tentative">{t('Очікується')}</option>
+              <option value="confirmed">{t('Підтверджено')}</option>
+              <option value="checked_in">{t('Заселено')}</option>
+              <option value="checked_out">{t('Виселено')}</option>
+              <option value="cancelled">{t('Тільки скасовані')}</option>
             </select>
             <select className="form-select" style={{ width: 150 }} value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-              <option value="">🏕️ Всі типи</option>
+              <option value="">{t('🏕️ Всі типи')}</option>
               <option value="glamping">⛺ Glamping</option>
               <option value="resort">🏨 Resort</option>
               <option value="camping">🌲 Camping</option>
             </select>
             <select className="form-select" style={{ width: 170 }} value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
-              <option value="">Всі оплати</option>
+              <option value="">{t('Всі оплати')}</option>
               {Object.entries(PAYMENT_STATUS_MAP).map(([k, v]) => (
-                <option key={k} value={k}>{v.label}</option>
+                <option key={k} value={k}>{t(v.label)}</option>
               ))}
             </select>
             {(search || statusFilter || categoryFilter || paymentFilter || dateFrom || dateTo || sourceFilter) && (
               <button className="btn btn-ghost btn-sm" onClick={() => { setSearch(''); setStatusFilter(''); setCategoryFilter(''); setPaymentFilter(''); setDateFrom(''); setDateTo(''); setSourceFilter(''); }}>
-                <X size={14} /> Скинути
+                <X size={14} /> {t('Скинути')}
               </button>
             )}
           </div>
           {/* Row 2: date + source */}
           <div className="flex gap-3 items-center" style={{ flexWrap: 'wrap', marginTop: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-              <span style={{ color: 'var(--text-tertiary)' }}>Заїзд:</span>
+              <span style={{ color: 'var(--text-tertiary)' }}>{t('Заїзд:')}</span>
               <input className="form-input" type="date" style={{ width: 140 }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
               <span style={{ color: 'var(--text-tertiary)' }}>—</span>
               <input className="form-input" type="date" style={{ width: 140 }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
             </div>
             <select className="form-select" style={{ width: 175 }} value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
-              <option value="">Всі канали</option>
+              <option value="">{t('Всі канали')}</option>
               {bookingSources.length > 0 && (
-                <optgroup label="Канали">
+                <optgroup label={t('Канали')}>
                   {bookingSources.map((s: any) => (
                     <option key={s.code} value={s.code}>{getSourceIconEmoji(s.code)}{s.name}</option>
                   ))}
                 </optgroup>
               )}
-              <optgroup label="🌐 Віджети">
-                <option value="widget">🌐 Всі віджети (загальні)</option>
+              <optgroup label={t('🌐 Віджети')}>
+                <option value="widget">{t('🌐 Всі віджети (загальні)')}</option>
                 {widgetSources.map((s) => (
                   <option key={s.code} value={s.code}>🌐 {s.name}</option>
                 ))}
@@ -652,7 +654,7 @@ function BookingsDesktop() {
             <Search size={14} className="search-icon" />
             <input
               className="form-input"
-              placeholder="Пошук..."
+              placeholder={t('Пошук...')}
               style={{ paddingLeft: 34, fontSize: 13 }}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -667,16 +669,16 @@ function BookingsDesktop() {
             <thead>
               <tr>
                 {[
-                  { key: 'last_name', label: 'Гість' },
-                  { key: 'unit_name', label: 'Юніт' },
-                  { key: 'check_in', label: 'Заїзд' },
-                  { key: 'check_out', label: 'Виїзд' },
-                  { key: 'nights', label: 'Ночей' },
-                  { key: 'adults', label: 'Гостей' },
-                  { key: 'status', label: 'Статус' },
-                  { key: 'payment_status', label: 'Оплата' },
-                  { key: 'source', label: 'Джерело' },
-                  { key: 'total_price', label: 'Сума' },
+                  { key: 'last_name', label: t('Гість') },
+                  { key: 'unit_name', label: t('Юніт') },
+                  { key: 'check_in', label: t('Заїзд') },
+                  { key: 'check_out', label: t('Виїзд') },
+                  { key: 'nights', label: t('Ночей') },
+                  { key: 'adults', label: t('Гостей') },
+                  { key: 'status', label: t('Статус') },
+                  { key: 'payment_status', label: t('Оплата') },
+                  { key: 'source', label: t('Джерело') },
+                  { key: 'total_price', label: t('Сума') },
                   { key: '', label: '' },
                 ].map(col => (
                   <th key={col.key || 'actions'} style={col.key ? { cursor: 'pointer', userSelect: 'none' } : {}}
@@ -689,12 +691,12 @@ function BookingsDesktop() {
             <tbody>
               {loading && (
                 <tr><td colSpan={11} style={{ textAlign: 'center', padding: 32 }}>
-                  <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> Завантаження...
+                  <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> {t('Завантаження...')}
                 </td></tr>
               )}
               {!loading && mergedBookingRows.length === 0 && (
                 <tr><td colSpan={11} style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>
-                  Нічого не знайдено
+                  {t('Нічого не знайдено')}
                 </td></tr>
               )}
               {mergedBookingRows.map((row, idx) => {
@@ -716,17 +718,17 @@ function BookingsDesktop() {
                           <div style={{ flex: 1, minWidth: 120, cursor: 'pointer' }} onClick={() => setViewGroupId(g.id)}>
                             <span style={{ fontWeight: 700, fontSize: 14 }}>{g.first_name} {g.last_name}</span>
                             <span style={{ fontSize: 12, color: 'var(--text-tertiary)', marginLeft: 8 }}>
-                              {g.group_type === 'building' ? `🏨 ${g.building_name}` : `🛏️ ${childCount} кім.`}
-                              {' · '}{g.check_in} → {g.check_out} · {g.nights} н.
+                              {g.group_type === 'building' ? `🏨 ${g.building_name}` : `🛏️ ${childCount} ${t('кім.')}`}
+                              {' · '}{g.check_in} → {g.check_out} · {g.nights} {t('н.')}
                             </span>
                           </div>
                           <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: STATUS_MAP[g.status]?.badge ? undefined : '#6c7086' }} className={`badge ${STATUS_MAP[g.status]?.badge || 'badge-info'}`}>
-                            {STATUS_MAP[g.status]?.label || g.status}
+                            {t(STATUS_MAP[g.status]?.label || g.status)}
                           </span>
                           <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--accent-primary)' }}>
                             {(g.total_price || 0).toLocaleString()} {g.currency || 'CZK'}
                           </span>
-                          <button className="btn btn-sm btn-ghost btn-icon" title="Переглянути групу"
+                          <button className="btn btn-sm btn-ghost btn-icon" title={t('Переглянути групу')}
                             onClick={(e) => { e.stopPropagation(); setViewGroupId(g.id); }}>
                             <Eye size={14} />
                           </button>
@@ -745,15 +747,15 @@ function BookingsDesktop() {
                       <td><span className="badge badge-primary">{b.unit_name}</span></td>
                       <td>{b.check_in}</td><td>{b.check_out}</td><td>{b.nights}</td>
                       <td><span className="flex items-center gap-2" style={{ fontSize: 12 }}><Users size={12} /> {b.adults}{b.children > 0 && <span style={{ color: 'var(--text-tertiary)' }}>+{b.children}</span>}</span></td>
-                      <td><span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{STATUS_MAP[b.status]?.label || b.status}</span></td>
-                      <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>{PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status}</span></td>
+                      <td><span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{t(STATUS_MAP[b.status]?.label || b.status)}</span></td>
+                      <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>{t(PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status)}</span></td>
                       <td>
                         <span className="badge" style={{ background: (sourceMap[b.source]?.color || '#6c7086') + '22', color: sourceMap[b.source]?.color || '#6c7086' }}>{sourceMap[b.source]?.label || b.source}</span>
                         {b.hostex_channel_type && <span style={{ marginLeft: 4 }} title={`Hostex: ${b.hostex_channel_type}`}>🌐</span>}
                       </td>
-                      <td><div style={{ fontWeight: 700 }}>{(b.total_price || 0).toLocaleString()} {b.currency || 'CZK'}</div>{(b.commission_amount || 0) > 0 && <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 2 }}>Комісія {(b.commission_amount || 0).toLocaleString()}</div>}</td>
+                      <td><div style={{ fontWeight: 700 }}>{(b.total_price || 0).toLocaleString()} {b.currency || 'CZK'}</div>{(b.commission_amount || 0) > 0 && <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 2 }}>{t('Комісія')} {(b.commission_amount || 0).toLocaleString()}</div>}</td>
                       <td><div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                        <button className="btn btn-sm btn-ghost btn-icon" title="Переглянути" onClick={() => openViewBooking(b)}><Eye size={14} /></button>
+                        <button className="btn btn-sm btn-ghost btn-icon" title={t('Переглянути')} onClick={() => openViewBooking(b)}><Eye size={14} /></button>
                       </div></td>
                     </tr>
                   );
@@ -766,20 +768,20 @@ function BookingsDesktop() {
                     <td><span className="badge badge-primary">{b.unit_name}</span></td>
                     <td>{b.check_in}</td><td>{b.check_out}</td><td>{b.nights}</td>
                     <td><span className="flex items-center gap-2" style={{ fontSize: 12 }}><Users size={12} /> {b.adults}{b.children > 0 && <span style={{ color: 'var(--text-tertiary)' }}>+{b.children}</span>}</span></td>
-                    <td><span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{STATUS_MAP[b.status]?.label || b.status}</span></td>
-                    <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>{PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status}</span></td>
+                    <td><span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{t(STATUS_MAP[b.status]?.label || b.status)}</span></td>
+                    <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>{t(PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status)}</span></td>
                     <td>
                       <span className="badge" style={{ background: (sourceMap[b.source]?.color || '#6c7086') + '22', color: sourceMap[b.source]?.color || '#6c7086' }}>{sourceMap[b.source]?.label || b.source}</span>
                       {b.hostex_channel_type && <span style={{ marginLeft: 4 }} title={`Hostex: ${b.hostex_channel_type}`}>🌐</span>}
                     </td>
-                    <td><div style={{ fontWeight: 700 }}>{(b.total_price || 0).toLocaleString()} {b.currency || 'CZK'}</div>{(b.commission_amount || 0) > 0 && <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 2 }}>Комісія {(b.commission_amount || 0).toLocaleString()}</div>}</td>
+                    <td><div style={{ fontWeight: 700 }}>{(b.total_price || 0).toLocaleString()} {b.currency || 'CZK'}</div>{(b.commission_amount || 0) > 0 && <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 2 }}>{t('Комісія')} {(b.commission_amount || 0).toLocaleString()}</div>}</td>
                     <td><div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                      <button className="btn btn-sm btn-ghost btn-icon" title="Переглянути" onClick={() => openViewBooking(b)}><Eye size={14} /></button>
-                      <button className="btn btn-sm btn-ghost btn-icon" title="Редагувати" onClick={() => openEditBooking(b)}><Edit3 size={14} /></button>
+                      <button className="btn btn-sm btn-ghost btn-icon" title={t('Переглянути')} onClick={() => openViewBooking(b)}><Eye size={14} /></button>
+                      <button className="btn btn-sm btn-ghost btn-icon" title={t('Редагувати')} onClick={() => openEditBooking(b)}><Edit3 size={14} /></button>
                       {b.guest_page_token && (
-                        <button className="btn btn-sm btn-ghost btn-icon" title="Гостьова сторінка" style={{ color: 'var(--accent-primary)' }} onClick={() => window.open(`/guest/${b.guest_page_token}`, '_blank')}><ExternalLink size={14} /></button>
+                        <button className="btn btn-sm btn-ghost btn-icon" title={t('Гостьова сторінка')} style={{ color: 'var(--accent-primary)' }} onClick={() => window.open(`/guest/${b.guest_page_token}`, '_blank')}><ExternalLink size={14} /></button>
                       )}
-                      <button className="btn btn-sm btn-ghost btn-icon" title="Видалити" style={{ color: 'var(--accent-danger)' }} onClick={() => handleDelete(b.id)}><Trash2 size={14} /></button>
+                      <button className="btn btn-sm btn-ghost btn-icon" title={t('Видалити')} style={{ color: 'var(--accent-danger)' }} onClick={() => handleDelete(b.id)}><Trash2 size={14} /></button>
                     </div></td>
                   </tr>
                 );
@@ -792,12 +794,12 @@ function BookingsDesktop() {
         <div className="mobile-only">
           {loading && (
             <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>
-              <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> Завантаження...
+              <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> {t('Завантаження...')}
             </div>
           )}
           {!loading && mergedBookingRows.length === 0 && (
             <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>
-              Нічого не знайдено
+              {t('Нічого не знайдено')}
             </div>
           )}
           <div className="card-list">
@@ -823,11 +825,11 @@ function BookingsDesktop() {
                       <div style={{ flex: 1, minWidth: 0 }} onClick={() => setViewGroupId(g.id)}>
                         <div style={{ fontWeight: 700, fontSize: 14 }}>{g.first_name} {g.last_name}</div>
                         <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                          {g.check_in} → {g.check_out} · {g.nights} н. · {(g.total_price || 0).toLocaleString()} {g.currency || 'CZK'}
+                          {g.check_in} → {g.check_out} · {g.nights} {t('н. ·')} {(g.total_price || 0).toLocaleString()} {g.currency || 'CZK'}
                         </div>
                       </div>
                       <span className={`badge ${STATUS_MAP[g.status]?.badge || 'badge-info'}`} style={{ fontSize: 10, flexShrink: 0 }}>
-                        {STATUS_MAP[g.status]?.label || g.status}
+                        {t(STATUS_MAP[g.status]?.label || g.status)}
                       </span>
                     </div>
                   </div>
@@ -857,7 +859,7 @@ function BookingsDesktop() {
                         <div className="booking-card-unit">{b.unit_name}</div>
                         <div className="booking-card-price">{(b.total_price || 0).toLocaleString()} {b.currency || 'CZK'}</div>
                       </div>
-                      <span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{STATUS_MAP[b.status]?.label || b.status}</span>
+                      <span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{t(STATUS_MAP[b.status]?.label || b.status)}</span>
                     </div>
                   </div>
                 );
@@ -890,11 +892,11 @@ function BookingsDesktop() {
                       <div className="booking-card-price">
                         {(b.total_price || 0).toLocaleString()} {b.currency || 'CZK'}
                         <span style={{ marginLeft: 6, display: 'inline-block', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>
-                          {PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status}
+                          {t(PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status)}
                         </span>
                       </div>
                       {(b.commission_amount || 0) > 0 && (
-                        <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 2 }}>Комісія {(b.commission_amount || 0).toLocaleString()}</div>
+                        <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 2 }}>{t('Комісія')} {(b.commission_amount || 0).toLocaleString()}</div>
                       )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
@@ -904,13 +906,13 @@ function BookingsDesktop() {
                         <div>{b.check_out}</div>
                       </div>
                       {(b.status === 'confirmed' || b.status === 'tentative') && (
-                        <button className="mobile-action-btn" onClick={(e) => { e.stopPropagation(); changeStatus(b.id, 'checked_in'); }}>Реєстрація</button>
+                        <button className="mobile-action-btn" onClick={(e) => { e.stopPropagation(); changeStatus(b.id, 'checked_in'); }}>{t('Реєстрація')}</button>
                       )}
                       {b.status !== 'confirmed' && b.status !== 'tentative' && (
-                        <span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{STATUS_MAP[b.status]?.label || b.status}</span>
+                        <span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{t(STATUS_MAP[b.status]?.label || b.status)}</span>
                       )}
                       {b.guest_page_token && (
-                        <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-primary)' }} title="Гостьова сторінка" onClick={(e) => { e.stopPropagation(); window.open(`/guest/${b.guest_page_token}`, '_blank'); }}>
+                        <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-primary)' }} title={t('Гостьова сторінка')} onClick={(e) => { e.stopPropagation(); window.open(`/guest/${b.guest_page_token}`, '_blank'); }}>
                           <ExternalLink size={14} />
                         </button>
                       )}
@@ -942,7 +944,7 @@ function BookingsDesktop() {
         )}
 
         {/* New Booking Modal */}
-        <Modal open={showNewBooking} onClose={() => setShowNewBooking(false)} title="Нове бронювання" size="lg">
+        <Modal open={showNewBooking} onClose={() => setShowNewBooking(false)} title={t('Нове бронювання')} size="lg">
           {showNewBooking && (
             <BookingForm
               mode="create"
@@ -952,7 +954,7 @@ function BookingsDesktop() {
               widgetSources={widgetSources}
               onSaved={() => {
                 setShowNewBooking(false);
-                showToast('Бронювання створено!');
+                showToast(t('Бронювання створено!'));
                 fetchBookings();
               }}
               onCancel={() => setShowNewBooking(false)}
@@ -961,7 +963,7 @@ function BookingsDesktop() {
         </Modal>
 
         {/* Edit Booking Modal */}
-        <Modal open={!!editBooking} onClose={() => setEditBooking(null)} title="Редагувати бронювання" size="lg">
+        <Modal open={!!editBooking} onClose={() => setEditBooking(null)} title={t('Редагувати бронювання')} size="lg">
           {editBooking && (
             <BookingForm
               mode="edit"
@@ -987,7 +989,7 @@ function BookingsDesktop() {
         <GroupBookingModal
           open={showGroupModal}
           onClose={() => setShowGroupModal(false)}
-          onCreated={() => { fetchBookings(); fetchGroupBookings(); showToast('Групове бронювання створено!'); }}
+          onCreated={() => { fetchBookings(); fetchGroupBookings(); showToast(t('Групове бронювання створено!')); }}
           bookingSources={bookingSources}
         />
 

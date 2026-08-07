@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -23,6 +24,7 @@ const tabs = [
 ];
 
 export default function MobileBottomTabs({ onMoreClick }: MobileBottomTabsProps) {
+  const t = useT();
   const pathname = usePathname();
 
   return (
@@ -36,7 +38,7 @@ export default function MobileBottomTabs({ onMoreClick }: MobileBottomTabsProps)
               onClick={onMoreClick}
             >
               <tab.icon size={22} />
-              <span>{tab.label}</span>
+              <span>{t(tab.label)}</span>
             </button>
           );
         }
@@ -49,7 +51,7 @@ export default function MobileBottomTabs({ onMoreClick }: MobileBottomTabsProps)
             className={`m-tab-item ${isActive ? 'm-tab-active' : ''}`}
           >
             <tab.icon size={22} />
-            <span>{tab.label}</span>
+            <span>{t(tab.label)}</span>
             {isActive && <div className="m-tab-pill" />}
           </Link>
         );

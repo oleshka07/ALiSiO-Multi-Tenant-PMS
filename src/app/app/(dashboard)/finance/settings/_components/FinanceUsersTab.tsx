@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import { Settings, ShieldCheck, ShieldOff } from 'lucide-react';
 import FinanceUserModal from './FinanceUserModal';
@@ -38,6 +39,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function FinanceUsersTab() {
+  const t = useT();
   const [users, setUsers] = useState<FinanceUser[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,31 +86,30 @@ export default function FinanceUsersTab() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 20 }}>Доступ користувачів</h2>
+        <h2 style={{ margin: 0, fontSize: 20 }}>{t('Доступ користувачів')}</h2>
         <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-          {enabledCount} з доступом / {users.length} всього
+          {enabledCount} {t('з доступом /')} {users.length} {t('всього')}
         </span>
       </div>
 
       <div style={infoBox}>
-        🔐 Керуйте доступом співробітників до фінансового модуля. Увімкніть доступ тоглом, а натисніть ⚙️ щоб
-        обрати доступні вкладки, рахунки та режим перегляду.
+        {t('🔐 Керуйте доступом співробітників до фінансового модуля. Увімкніть доступ тоглом, а натисніть ⚙️ щоб обрати доступні вкладки, рахунки та режим перегляду.')}
       </div>
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Завантаження…')}</div>
       ) : users.length === 0 ? (
-        <div style={emptyStyle}>Немає користувачів для налаштування доступу.</div>
+        <div style={emptyStyle}>{t('Немає користувачів для налаштування доступу.')}</div>
       ) : (
         <div style={{ border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
           <table style={tableStyle}>
             <thead>
               <tr>
-                <th style={thStyle}>Користувач</th>
+                <th style={thStyle}>{t('Користувач')}</th>
                 <th style={thStyle}>Email</th>
-                <th style={thStyle}>Роль</th>
-                <th style={{ ...thStyle, textAlign: 'center' }}>Доступ</th>
-                <th style={{ ...thStyle, textAlign: 'center', width: 60 }}>Дії</th>
+                <th style={thStyle}>{t('Роль')}</th>
+                <th style={{ ...thStyle, textAlign: 'center' }}>{t('Доступ')}</th>
+                <th style={{ ...thStyle, textAlign: 'center', width: 60 }}>{t('Дії')}</th>
               </tr>
             </thead>
             <tbody>
@@ -134,7 +135,7 @@ export default function FinanceUsersTab() {
                     </td>
                     <td style={{ ...tdStyle, color: 'var(--text-secondary)', fontSize: 13 }}>{user.email}</td>
                     <td style={tdStyle}>
-                      <span style={roleBadge}>{ROLE_LABELS[user.role] || user.role}</span>
+                      <span style={roleBadge}>{t(ROLE_LABELS[user.role] || user.role)}</span>
                     </td>
                     <td style={{ ...tdStyle, textAlign: 'center' }}>
                       <button
@@ -146,7 +147,7 @@ export default function FinanceUsersTab() {
                           border: enabled ? '1px solid #22c55e' : '1px solid var(--border-primary)',
                           opacity: togglingId === user.id ? 0.6 : 1,
                         }}
-                        title={enabled ? 'Вимкнути доступ' : 'Увімкнути доступ'}
+                        title={enabled ? t('Вимкнути доступ') : t('Увімкнути доступ')}
                       >
                         <span
                           style={{
@@ -160,7 +161,7 @@ export default function FinanceUsersTab() {
                       <button
                         onClick={() => setEditingUser(user)}
                         style={iconBtn}
-                        title="Налаштувати доступ"
+                        title={t('Налаштувати доступ')}
                       >
                         <Settings size={16} />
                       </button>
@@ -177,10 +178,10 @@ export default function FinanceUsersTab() {
       {!loading && users.length > 0 && (
         <div style={{ display: 'flex', gap: 20, marginTop: 12, fontSize: 12, color: 'var(--text-secondary)' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <ShieldCheck size={13} color="#16a34a" /> Доступ увімкнено
+            <ShieldCheck size={13} color="#16a34a" /> {t('Доступ увімкнено')}
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <ShieldOff size={13} /> Без доступу
+            <ShieldOff size={13} /> {t('Без доступу')}
           </span>
         </div>
       )}

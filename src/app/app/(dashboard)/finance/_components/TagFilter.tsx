@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useEffect, useRef, useState } from 'react';
 import { Tag as TagIcon, X } from 'lucide-react';
 
@@ -12,6 +13,7 @@ export default function TagFilter({
   selected: string[];
   onChange: (ids: string[]) => void;
 }) {
+  const tUi = useT();
   const [tags, setTags] = useState<Tag[]>([]);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -48,7 +50,7 @@ export default function TagFilter({
         }}
       >
         <TagIcon size={14} />
-        {selected.length > 0 ? `Теги: ${selected.length}` : 'Теги'}
+        {selected.length > 0 ? `${tUi('Теги:')} ${selected.length}` : tUi('Теги')}
         {selected.length > 0 && (
           <X size={13} onClick={(e) => { e.stopPropagation(); onChange([]); }} />
         )}

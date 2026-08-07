@@ -8,15 +8,21 @@ import MobileLayout from '@/components/mobile/MobileLayout';
 import { MobileMenuContext } from '@/ui/MobileMenuContext';
 import ChatWidget from '@/components/ai/ChatWidget';
 import { useDevice } from '@/ui/hooks/useDevice';
+import { I18nProvider, useT } from '@core/i18n/client';
+import { DEFAULT_LANGUAGE, type Language, parseLanguage } from '@core/i18n/languages';
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const t = useT();
   const [authorized, setAuthorized] = useState(false);
   const [checking, setChecking] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // Comes back on the same /api/auth/me the auth check already makes — one
+  // request decides both whether this person may be here and what they read.
+  const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE);
   const router = useRouter();
   const { isMobile } = useDevice();
 
@@ -25,6 +31,8 @@ export default function DashboardLayout({
       try {
         const res = await fetch('/api/auth/me');
         if (res.ok) {
+          const me = await res.json().catch(() => null);
+          if (me?.language) setLanguage(parseLanguage(me.language));
           setAuthorized(true);
         } else {
           router.replace('/app/login');
@@ -59,7 +67,7 @@ export default function DashboardLayout({
         color: 'var(--text-tertiary)',
         fontSize: 14,
       }}>
-        Завантаження...
+        {t('Завантаження...')}
       </div>
     );
   }
@@ -69,16 +77,19 @@ export default function DashboardLayout({
   // ─── Mobile Layout ──────────────────────────────
   if (isMobile) {
     return (
-      <MobileMenuContext.Provider value={() => setMobileMenuOpen(true)}>
-        <MobileLayout>
-          {children}
-        </MobileLayout>
-      </MobileMenuContext.Provider>
+      <I18nProvider language={language}>
+        <MobileMenuContext.Provider value={() => setMobileMenuOpen(true)}>
+          <MobileLayout>
+            {children}
+          </MobileLayout>
+        </MobileMenuContext.Provider>
+      </I18nProvider>
     );
   }
 
   // ─── Desktop Layout ─────────────────────────────
   return (
+    <I18nProvider language={language}>
     <div className="app-layout">
       <Sidebar
         mobileOpen={mobileMenuOpen}
@@ -92,5 +103,6 @@ export default function DashboardLayout({
       <BottomNav onMoreClick={() => setMobileMenuOpen(true)} />
       <ChatWidget />
     </div>
+    </I18nProvider>
   );
 }

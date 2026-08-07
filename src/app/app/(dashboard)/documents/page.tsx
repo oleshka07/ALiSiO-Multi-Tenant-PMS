@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
@@ -118,6 +119,7 @@ interface Supplier {
 }
 
 export default function DocumentsPage() {
+  const tUi = useT();
   const onMenuClick = useMobileMenu();
   const searchParams = useSearchParams();
 
@@ -284,7 +286,7 @@ export default function DocumentsPage() {
       
       if (!res.ok) {
         if (data.requiresForce) {
-          if (window.confirm(`${data.error}\n\nБажаєте видалити заблоковані фактури примусово (force)?`)) {
+          if (window.confirm(`${tUi(data.error)}\n\nБажаєте видалити заблоковані фактури примусово (force)?`)) {
             query.set('force', 'true');
             res = await fetch(`/api/accounting/invoice-batch?${query.toString()}`, { method: 'DELETE' });
             data = await res.json();
@@ -588,14 +590,14 @@ export default function DocumentsPage() {
 
   return (
     <>
-      <Header title="Документи" onMenuClick={onMenuClick} />
+      <Header title={tUi('Документи')} onMenuClick={onMenuClick} />
       <div className="app-content">
 
         {/* ─── Page Header ──────────────────────────────────────── */}
         <div className="page-header">
           <div>
-            <h2 className="page-title">Документи</h2>
-            <div className="page-subtitle">Інвойси та бухгалтерська звірка транзакцій</div>
+            <h2 className="page-title">{tUi('Документи')}</h2>
+            <div className="page-subtitle">{tUi('Інвойси та бухгалтерська звірка транзакцій')}</div>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <button
@@ -603,7 +605,7 @@ export default function DocumentsPage() {
               onClick={() => setShowCustomModal(true)}
               style={{ display: 'flex', alignItems: 'center', gap: 6 }}
             >
-              <Sparkles size={14} /> Вільна фактура
+              <Sparkles size={14} /> {tUi('Вільна фактура')}
             </button>
             <button
               className="btn btn-ghost btn-sm"
@@ -611,7 +613,7 @@ export default function DocumentsPage() {
               disabled={invLoading}
             >
               <RefreshCw size={14} className={invLoading ? 'spin' : ''} />
-              Оновити
+              {tUi('Оновити')}
             </button>
           </div>
         </div>
@@ -619,8 +621,8 @@ export default function DocumentsPage() {
         {/* ─── Tab Bar ──────────────────────────────────────────── */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid var(--border-primary)' }}>
           {([
-            { key: 'invoices',   label: '📄 Фактури',  count: invoices.filter(i => i.status === 'issued').length },
-            { key: 'statements', label: '📊 Виписки',  count: stmtResult ? stmtResult.length : undefined },
+            { key: 'invoices',   label: tUi('📄 Фактури'),  count: invoices.filter(i => i.status === 'issued').length },
+            { key: 'statements', label: tUi('📊 Виписки'),  count: stmtResult ? stmtResult.length : undefined },
           ] as const).map(tab => (
             <button
               key={tab.key}
@@ -657,14 +659,14 @@ export default function DocumentsPage() {
             airbnb:  { label: 'Airbnb',  color: '#e61e4d', bg: 'rgba(230,30,77,0.1)'   },
             booking: { label: 'Booking', color: '#003580', bg: 'rgba(0,53,128,0.1)'     },
             teya:    { label: 'Teya',    color: '#00a699', bg: 'rgba(0,166,153,0.1)'    },
-            manual:  { label: 'Вручну',  color: '#7c3aed', bg: 'rgba(124,58,237,0.1)'  },
+            manual:  { label: tUi('Вручну'),  color: '#7c3aed', bg: 'rgba(124,58,237,0.1)'  },
             pms:     { label: 'PMS',     color: '#6b7280', bg: 'rgba(107,114,128,0.1)' },
           };
           const sourceCheckboxes = [
             { id: 'airbnb',  label: 'Airbnb'  },
             { id: 'booking', label: 'Booking' },
             { id: 'teya',    label: 'Teya'    },
-            { id: 'manual',  label: 'Вручну'  },
+            { id: 'manual',  label: tUi('Вручну')  },
             { id: 'pms',     label: 'PMS'     },
           ] as const;
           // Client-side filter by the checked sources — drives the table + ZIP export.
@@ -673,20 +675,20 @@ export default function DocumentsPage() {
             <>
               {/* Period lock — freeze a month's numbering per series before the accountant's ISDOC export */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 16, padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-primary)' }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>🔒 Блокування місяця</span>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{tUi('🔒 Блокування місяця')}</span>
                 <input type="month" value={lockMonth} onChange={e => setLockMonth(e.target.value)} style={{ padding: '4px 8px', borderRadius: 6 }} />
                 <select value={lockSeries} onChange={e => setLockSeries(e.target.value)} style={{ padding: '4px 8px', borderRadius: 6 }}>
-                  <option value="HOUSE">Готівка/прямі (2026-…)</option>
+                  <option value="HOUSE">{tUi('Готівка/прямі (2026-…)')}</option>
                   <option value="BKG">Booking (BKG-)</option>
                   <option value="AIR">Airbnb (AIR-)</option>
                   <option value="TEYA">Teya (TEYA-)</option>
                 </select>
                 <button disabled={lockBusy} onClick={() => { if (confirm(`Заблокувати ${lockSeries} ${lockMonth}? Після цього нумерацію не можна змінювати — лише storno.`)) lockPeriodAction('lock'); }}
-                  style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: lockBusy ? 'wait' : 'pointer' }}>Заблокувати</button>
+                  style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: lockBusy ? 'wait' : 'pointer' }}>{tUi('Заблокувати')}</button>
                 <button disabled={lockBusy} onClick={() => lockPeriodAction('unlock')}
-                  style={{ background: 'none', color: 'var(--text-secondary)', border: '1px solid var(--border-primary)', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>Відкрити</button>
+                  style={{ background: 'none', color: 'var(--text-secondary)', border: '1px solid var(--border-primary)', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>{tUi('Відкрити')}</button>
                 {lockMsg && <span style={{ fontSize: 12 }}>{lockMsg}</span>}
-                <span style={{ fontSize: 11, color: 'var(--text-tertiary)', flexBasis: '100%' }}>Бухгалтер вивантажує ISDOC раз на місяць — після блокування нумерація застигає.</span>
+                <span style={{ fontSize: 11, color: 'var(--text-tertiary)', flexBasis: '100%' }}>{tUi('Бухгалтер вивантажує ISDOC раз на місяць — після блокування нумерація застигає.')}</span>
               </div>
 
               {/* Stats row */}
@@ -696,7 +698,7 @@ export default function DocumentsPage() {
                     <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(79,110,247,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Receipt size={18} color="var(--accent-primary)" />
                     </div>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Всього фактур</span>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{tUi('Всього фактур')}</span>
                   </div>
                   <div style={{ fontSize: 28, fontWeight: 700 }}>{allInvoices.length}</div>
                 </div>
@@ -730,7 +732,7 @@ export default function DocumentsPage() {
                   <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)', pointerEvents: 'none' }} />
                   <input
                     type="text"
-                    placeholder="Пошук: ім'я, номер фактури, сума…"
+                    placeholder={tUi('Пошук: ім\'я, номер фактури, сума…')}
                     value={invSearch}
                     onChange={e => setInvSearch(e.target.value)}
                     style={{
@@ -752,7 +754,7 @@ export default function DocumentsPage() {
                 {/* Quick month picker → sets the from/to range */}
                 <input
                   type="month"
-                  title="Обрати місяць"
+                  title={tUi('Обрати місяць')}
                   value={currentMonthValue}
                   onChange={e => applyMonth(e.target.value)}
                   style={{ padding: '6px 10px', borderRadius: 8, border: '1.5px solid var(--accent-primary)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13, outline: 'none', fontWeight: 600 }}
@@ -760,7 +762,7 @@ export default function DocumentsPage() {
                 {/* Date Filters */}
                 <input
                   type="date"
-                  title="Від дати"
+                  title={tUi('Від дати')}
                   value={invDateFrom}
                   onChange={e => setInvDateFrom(e.target.value)}
                   style={{ padding: '6px 10px', borderRadius: 8, border: '1.5px solid var(--border-primary)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13, outline: 'none' }}
@@ -768,7 +770,7 @@ export default function DocumentsPage() {
                 <span style={{ color: 'var(--text-tertiary)' }}>—</span>
                 <input
                   type="date"
-                  title="До дати"
+                  title={tUi('До дати')}
                   value={invDateTo}
                   onChange={e => setInvDateTo(e.target.value)}
                   style={{ padding: '6px 10px', borderRadius: 8, border: '1.5px solid var(--border-primary)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13, outline: 'none' }}
@@ -779,7 +781,7 @@ export default function DocumentsPage() {
                   download
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: '1.5px solid var(--border-primary)', background: 'var(--surface)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, textDecoration: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
                 >
-                  <Download size={13} /> Скачати CSV
+                  <Download size={13} /> {tUi('Скачати CSV')}
                 </a>
                 {/* ZIP ISDOC button — exports the checked sources for the selected range */}
                 <button
@@ -788,7 +790,7 @@ export default function DocumentsPage() {
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: '1.5px solid var(--accent-primary)', background: 'rgba(79,110,247,0.1)', color: 'var(--accent-primary)', fontSize: 12, fontWeight: 700, cursor: visibleInvoices.length === 0 ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', opacity: visibleInvoices.length === 0 ? 0.5 : 1 }}
                 >
                   {zipLoading === 'isdoc'
-                    ? <><RefreshCw size={13} className="spin" /> Генеруємо ZIP…</>
+                    ? <><RefreshCw size={13} className="spin" /> {tUi('Генеруємо ZIP…')}</>
                     : <><Package size={13} /> ZIP ISDOC ({visibleInvoices.length})</>
                   }
                 </button>
@@ -796,7 +798,7 @@ export default function DocumentsPage() {
 
               {/* Source checkboxes — multi-select for combined view + ZIP export */}
               <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Джерела:</span>
+                <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{tUi('Джерела:')}</span>
                 {sourceCheckboxes.map(src => {
                   const checked = selectedSources.has(src.id);
                   const cfg = sourceConfig[src.id as keyof typeof sourceConfig];
@@ -807,7 +809,7 @@ export default function DocumentsPage() {
                     </button>
                   );
                 })}
-                <button onClick={() => setSelectedSources(new Set(ALL_SOURCE_KEYS))} style={{ padding: '4px 10px', borderRadius: 20, border: '1px dashed var(--border-primary)', background: 'transparent', color: 'var(--text-tertiary)', fontSize: 11, cursor: 'pointer' }}>Усі</button>
+                <button onClick={() => setSelectedSources(new Set(ALL_SOURCE_KEYS))} style={{ padding: '4px 10px', borderRadius: 20, border: '1px dashed var(--border-primary)', background: 'transparent', color: 'var(--text-tertiary)', fontSize: 11, cursor: 'pointer' }}>{tUi('Усі')}</button>
                 {allInvLoading && <RefreshCw size={14} className="spin" style={{ color: 'var(--text-tertiary)' }} />}
               </div>
 
@@ -820,10 +822,10 @@ export default function DocumentsPage() {
                 <div className="card" style={{ padding: 56, textAlign: 'center' }}>
                   <Receipt size={40} style={{ color: 'var(--text-tertiary)', marginBottom: 12 }} />
                   <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
-                    {invSearch || selectedSources.size < ALL_SOURCE_KEYS.length ? 'Нічого не знайдено' : 'Фактур ще немає'}
+                    {invSearch || selectedSources.size < ALL_SOURCE_KEYS.length ? tUi('Нічого не знайдено') : tUi('Фактур ще немає')}
                   </div>
                   <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>
-                    {invSearch ? `За запитом «${invSearch}»` : 'Завантажте виписки у вкладці «Виписки»'}
+                    {invSearch ? `${tUi('За запитом «')}${invSearch}»` : tUi('Завантажте виписки у вкладці «Виписки»')}
                   </div>
                 </div>
               ) : (
@@ -831,11 +833,11 @@ export default function DocumentsPage() {
                   <table className="table">
                     <thead>
                       <tr>
-                        <th>Фактура №</th>
-                        <th>Джерело</th>
-                        <th>Покупець / Призначення</th>
-                        <th>Сума</th>
-                        <th>Дата</th>
+                        <th>{tUi('Фактура №')}</th>
+                        <th>{tUi('Джерело')}</th>
+                        <th>{tUi('Покупець / Призначення')}</th>
+                        <th>{tUi('Сума')}</th>
+                        <th>{tUi('Дата')}</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -854,7 +856,7 @@ export default function DocumentsPage() {
                              <td
                               style={{ cursor: 'pointer' }}
                               onClick={() => setDeleteConfirm({ id: inv.id, number: inv.invoice_number })}
-                              title="Видалити фактуру (прихована опція)"
+                              title={tUi('Видалити фактуру (прихована опція)')}
                             >
                               <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700, background: srcCfg.bg, color: srcCfg.color }}>
                                 {srcCfg.label}
@@ -876,7 +878,7 @@ export default function DocumentsPage() {
                             <td
                               style={{ fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer' }}
                               onClick={() => setDeleteConfirm({ id: inv.id, number: inv.invoice_number })}
-                              title="Видалити фактуру (прихована опція)"
+                              title={tUi('Видалити фактуру (прихована опція)')}
                             >
                               <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                 <Calendar size={11} />{formatDate(inv.issued_at)}
@@ -912,15 +914,14 @@ export default function DocumentsPage() {
             <div style={{ background: 'rgba(79,110,247,0.08)', border: '1px solid rgba(79,110,247,0.2)', borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, fontSize: 13, color: 'var(--text-secondary)' }}>
               <AlertCircle size={16} color="var(--accent-primary)" style={{ flexShrink: 0 }} />
               <span>
-                Завантажте CSV-виписку з <strong>Airbnb</strong>, <strong>Booking.com</strong> або <strong>Teya</strong>.
-                Для кожної транзакції буде автоматично створено фактуру (<strong>PDF + ISDOC</strong>) — без запису в журнал операцій.
+                {tUi('Завантажте CSV-виписку з')} <strong>Airbnb</strong>, <strong>Booking.com</strong> {tUi('або')} <strong>Teya</strong>{tUi('. Для кожної транзакції буде автоматично створено фактуру (')}<strong>PDF + ISDOC</strong>{tUi(') — без запису в журнал операцій.')}
               </span>
             </div>
 
             {/* Upload cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 28 }}>
               {([
-                { channel: 'airbnb',  label: 'Airbnb',       color: '#FF5A5F', emoji: '🏠', hint: 'Airbnb → Фінанси → Виписка виплат (CSV)' },
+                { channel: 'airbnb',  label: 'Airbnb',       color: '#FF5A5F', emoji: '🏠', hint: tUi('Airbnb → Фінанси → Виписка виплат (CSV)') },
                 { channel: 'booking', label: 'Booking.com',  color: '#003580', emoji: '🏨', hint: 'Booking → Finance → Payments report (CSV)' },
                 { channel: 'teya',    label: 'Teya',         color: '#7c3aed', emoji: '💳', hint: 'Teya dashboard → Transaction report (CSV)' },
               ] as const).map(({ channel, label, color, emoji, hint }) => (
@@ -943,8 +944,8 @@ export default function DocumentsPage() {
                       padding: '7px 16px', fontSize: 12, fontWeight: 600,
                     }}>
                       {stmtLoading && stmtChannel === channel
-                        ? <><RefreshCw size={12} className="spin" /> Обробляємо...</>
-                        : <><Download size={12} /> Завантажити CSV</>
+                        ? <><RefreshCw size={12} className="spin" /> {tUi('Обробляємо...')}</>
+                        : <><Download size={12} /> {tUi('Завантажити CSV')}</>
                       }
                     </div>
                   </div>
@@ -970,10 +971,10 @@ export default function DocumentsPage() {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontWeight: 700, fontSize: 14, color: '#b45309' }}>
                   <AlertTriangle size={15} />
-                  Потребують уточнення імені покупця ({stmtResult.filter(r => r.needs_guest_name).length} рядк. ≥ 10 000 CZK)
+                  {tUi('Потребують уточнення імені покупця (')}{stmtResult.filter(r => r.needs_guest_name).length} {tUi('рядк. ≥ 10 000 CZK)')}
                 </div>
                 <div style={{ fontSize: 12, color: '#92400e', marginBottom: 12 }}>
-                  Фактури створені з плейсхолдером «DOPLNIT JMÉNO». Вкажіть ім&apos;я гостя / назву компанії:
+                  {tUi('Фактури створені з плейсхолдером «DOPLNIT JMÉNO». Вкажіть ім\'я гостя / назву компанії:')}
                 </div>
                 {stmtResult.filter(r => r.needs_guest_name).map(inv => (
                   <div key={inv.source_ref} style={{
@@ -990,7 +991,7 @@ export default function DocumentsPage() {
                     </div>
                     <input
                       type="text"
-                      placeholder="Ім'я гостя / компанія..."
+                      placeholder={tUi('Ім\'я гостя / компанія...')}
                       value={stmtNames[inv.invoice_id] ?? ''}
                       onChange={e => setStmtNames(n => ({ ...n, [inv.invoice_id]: e.target.value }))}
                       onKeyDown={e => { if (e.key === 'Enter') saveBuyerName(inv.invoice_id, stmtNames[inv.invoice_id] ?? ''); }}
@@ -1006,7 +1007,7 @@ export default function DocumentsPage() {
                       disabled={!stmtNames[inv.invoice_id]?.trim() || !!stmtSaving[inv.invoice_id]}
                       style={{ fontSize: 11, padding: '5px 10px' }}
                     >
-                      {stmtSaving[inv.invoice_id] ? <RefreshCw size={11} className="spin" /> : 'Зберегти'}
+                      {stmtSaving[inv.invoice_id] ? <RefreshCw size={11} className="spin" /> : tUi('Зберегти')}
                     </button>
                   </div>
                 ))}
@@ -1019,9 +1020,9 @@ export default function DocumentsPage() {
                 {/* Toolbar: counts + ZIP buttons */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 10 }}>
                   <div style={{ fontWeight: 700, fontSize: 16 }}>
-                    Фактури: {stmtResult.length}
+                    {tUi('Фактури:')} {stmtResult.length}
                     <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text-tertiary)', marginLeft: 10 }}>
-                      ({stmtCountNew} нових·{stmtCountExisting} існуючих{stmtCountStorno > 0 ? `·${stmtCountStorno} storno` : ''})
+                      ({stmtCountNew} {tUi('нових·')}{stmtCountExisting} {tUi('існуючих')}{stmtCountStorno > 0 ? `·${stmtCountStorno} storno` : ''})
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -1032,7 +1033,7 @@ export default function DocumentsPage() {
                       onClick={() => downloadZip(filteredResult.map(r => r.invoice_id), 'isdoc', stmtChannel || 'batch')}
                     >
                       {zipLoading === 'isdoc'
-                        ? <><RefreshCw size={13} className="spin" /> Генеруємо…</>
+                        ? <><RefreshCw size={13} className="spin" /> {tUi('Генеруємо…')}</>
                         : <><Package size={13} /> ZIP ISDOC{stmtFilter !== 'all' ? ` (${filteredResult.length})` : ''}</>
                       }
                     </button>
@@ -1043,7 +1044,7 @@ export default function DocumentsPage() {
                       onClick={() => downloadZip(filteredResult.map(r => r.invoice_id), 'pdf', stmtChannel || 'batch')}
                     >
                       {zipLoading === 'pdf'
-                        ? <><RefreshCw size={13} className="spin" /> Генеруємо…</>
+                        ? <><RefreshCw size={13} className="spin" /> {tUi('Генеруємо…')}</>
                         : <><FileDown size={13} /> ZIP PDF{stmtFilter !== 'all' ? ` (${filteredResult.length})` : ''}</>
                       }
                     </button>
@@ -1055,7 +1056,7 @@ export default function DocumentsPage() {
                   {(['all', 'new', 'existing', 'storno'] as const)
                     .filter(f => f !== 'storno' || stmtCountStorno > 0)
                     .map(f => {
-                      const labels: Record<string, string> = { all: 'Усі', new: '✓ Нові', existing: 'Існуючі', storno: '↩ Storno' };
+                      const labels: Record<string, string> = { all: tUi('Усі'), new: tUi('✓ Нові'), existing: tUi('Існуючі'), storno: '↩ Storno' };
                       const colors: Record<string, string> = { all: 'var(--accent-primary)', new: '#16a34a', existing: '#6b7280', storno: '#dc2626' };
                       const counts: Record<string, number> = { all: stmtResult.length, new: stmtCountNew, existing: stmtCountExisting, storno: stmtCountStorno };
                       const active = stmtFilter === f;
@@ -1091,18 +1092,18 @@ export default function DocumentsPage() {
                 {filteredResult.length === 0
                   ? (
                     <div style={{ textAlign: 'center', padding: '28px 0', color: 'var(--text-tertiary)', fontSize: 14 }}>
-                      Немає фактур з обраним фільтром
+                      {tUi('Немає фактур з обраним фільтром')}
                     </div>
                   ) : (
                 <div className="table-wrapper">
                   <table className="table">
                     <thead>
                       <tr>
-                        <th>Фактура №</th>
-                        <th>Покупець / Призначення</th>
-                        <th>Дата</th>
-                        <th>Сума</th>
-                        <th>Статус</th>
+                        <th>{tUi('Фактура №')}</th>
+                        <th>{tUi('Покупець / Призначення')}</th>
+                        <th>{tUi('Дата')}</th>
+                        <th>{tUi('Сума')}</th>
+                        <th>{tUi('Статус')}</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -1133,7 +1134,7 @@ export default function DocumentsPage() {
                           <td
                             style={{ fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer' }}
                             onClick={() => setDeleteConfirm({ id: inv.invoice_id, number: inv.invoice_number })}
-                            title="Видалити фактуру (прихована опція)"
+                            title={tUi('Видалити фактуру (прихована опція)')}
                           >
                             {formatDate(inv.date)}
                           </td>
@@ -1144,8 +1145,8 @@ export default function DocumentsPage() {
                               : inv.needs_guest_name
                                 ? <span className="badge" style={{ background: 'rgba(245,158,11,0.15)', color: '#b45309', fontSize: 10 }}>⚠ Im&apos;ya</span>
                                 : inv.created
-                                  ? <span className="badge badge-success">✓ Нова</span>
-                                  : <span className="badge" style={{ background: 'rgba(156,163,175,0.15)', color: '#9ca3af' }}>Існуюча</span>
+                                  ? <span className="badge badge-success">{tUi('✓ Нова')}</span>
+                                  : <span className="badge" style={{ background: 'rgba(156,163,175,0.15)', color: '#9ca3af' }}>{tUi('Існуюча')}</span>
                             }
                           </td>
                           <td>
@@ -1171,7 +1172,7 @@ export default function DocumentsPage() {
             {stmtResult && stmtResult.length === 0 && (
               <div className="card" style={{ padding: 48, textAlign: 'center', color: 'var(--text-tertiary)' }}>
                 <AlertCircle size={32} style={{ marginBottom: 12 }} />
-                <div>Жодної транзакції не знайдено у файлі</div>
+                <div>{tUi('Жодної транзакції не знайдено у файлі')}</div>
               </div>
             )}
 
@@ -1187,9 +1188,9 @@ export default function DocumentsPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
                 <Trash2 size={20} color="#ef4444" />
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Небезпечна зона: Видалення імпортованих фактур</h3>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{tUi('Небезпечна зона: Видалення імпортованих фактур')}</h3>
                   <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)' }}>
-                    Тут ви можете масово видалити раніше імпортовані фактури з виписок Airbnb, Booking.com або Teya, щоб завантажити нові файли без подвоєння сум.
+                    {tUi('Тут ви можете масово видалити раніше імпортовані фактури з виписок Airbnb, Booking.com або Teya, щоб завантажити нові файли без подвоєння сум.')}
                   </p>
                 </div>
               </div>
@@ -1210,7 +1211,7 @@ export default function DocumentsPage() {
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-end' }}>
                 <div style={{ minWidth: 160, flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Джерело виписки</label>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>{tUi('Джерело виписки')}</label>
                   <select
                     className="form-input"
                     value={batchDeleteChannel}
@@ -1224,12 +1225,12 @@ export default function DocumentsPage() {
                     <option value="airbnb">Airbnb (AIR)</option>
                     <option value="booking">Booking.com (BKG)</option>
                     <option value="teya">Teya (TEYA)</option>
-                    <option value="all">Усі імпортовані канали</option>
+                    <option value="all">{tUi('Усі імпортовані канали')}</option>
                   </select>
                 </div>
 
                 <div style={{ minWidth: 160, flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Період / Місяць (необов&apos;язково)</label>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>{tUi('Період / Місяць (необов\'язково)')}</label>
                   <input
                     type="month"
                     className="form-input"
@@ -1266,9 +1267,9 @@ export default function DocumentsPage() {
                     onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
                   >
                     {batchDeleteLoading ? (
-                      <><RefreshCw size={14} className="spin" /> Видалення...</>
+                      <><RefreshCw size={14} className="spin" /> {tUi('Видалення...')}</>
                     ) : (
-                      <><Trash2 size={14} /> Видалити фактури</>
+                      <><Trash2 size={14} /> {tUi('Видалити фактури')}</>
                     )}
                   </button>
                 </div>
@@ -1299,12 +1300,12 @@ export default function DocumentsPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
               <Mail size={20} style={{ color: '#4f6ef7' }} />
               <div>
-                <div style={{ fontWeight: 700, fontSize: 16 }}>Надіслати фактуру</div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>{tUi('Надіслати фактуру')}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{emailPopover.invoiceNumber}</div>
               </div>
             </div>
 
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Email отримувача</label>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{tUi('Email отримувача')}</label>
             <input
               type="email"
               className="form-input"
@@ -1318,7 +1319,7 @@ export default function DocumentsPage() {
 
             {emailPopover.defaultEmail && emailTo !== emailPopover.defaultEmail && (
               <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--text-tertiary)' }}>
-                Стандартний email гостя:{' '}
+                {tUi('Стандартний email гостя:')}{' '}
                 <button onClick={() => setEmailTo(emailPopover.defaultEmail)}
                   style={{ background: 'none', border: 'none', color: '#4f6ef7', cursor: 'pointer', fontSize: 12, textDecoration: 'underline', padding: 0 }}>
                   {emailPopover.defaultEmail}
@@ -1327,7 +1328,7 @@ export default function DocumentsPage() {
             )}
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button className="btn btn-ghost" onClick={() => setEmailPopover(null)}>Скасувати</button>
+              <button className="btn btn-ghost" onClick={() => setEmailPopover(null)}>{tUi('Скасувати')}</button>
               <button
                 className="btn btn-primary"
                 disabled={!emailTo.trim() || emailSending}
@@ -1335,7 +1336,7 @@ export default function DocumentsPage() {
                 style={{ display: 'flex', alignItems: 'center', gap: 6 }}
               >
                 {emailSending ? <RefreshCw size={14} className="spin" /> : <Mail size={14} />}
-                {emailSending ? 'Надсилаємо…' : 'Надіслати'}
+                {emailSending ? tUi('Надсилаємо…') : tUi('Надіслати')}
               </button>
             </div>
           </div>
@@ -1374,14 +1375,14 @@ export default function DocumentsPage() {
                   <Trash2 size={20} style={{ color: '#ef4444' }} />
                 </div>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 2 }}>Видалити фактуру?</div>
-                  <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Цю дію неможливо скасувати.</div>
+                  <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 2 }}>{tUi('Видалити фактуру?')}</div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{tUi('Цю дію неможливо скасувати.')}</div>
                 </div>
               </div>
               <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 20, fontSize: 14 }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Фактура </span>
+                <span style={{ color: 'var(--text-secondary)' }}>{tUi('Фактура')} </span>
                 <strong style={{ color: '#ef4444' }}>{deleteConfirm.number}</strong>
-                <span style={{ color: 'var(--text-secondary)' }}> буде назавжди видалена з бази даних.</span>
+                <span style={{ color: 'var(--text-secondary)' }}> {tUi('буде назавжди видалена з бази даних.')}</span>
               </div>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
                 <button
@@ -1390,7 +1391,7 @@ export default function DocumentsPage() {
                   onClick={() => setDeleteConfirm(null)}
                   style={{ minWidth: 90 }}
                 >
-                  Скасувати
+                  {tUi('Скасувати')}
                 </button>
                 <button
                   className="btn"
@@ -1399,8 +1400,8 @@ export default function DocumentsPage() {
                   style={{ minWidth: 120, background: '#ef4444', border: 'none', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}
                 >
                   {deleteLoading
-                    ? <><RefreshCw size={14} className="spin" /> Видаляє...</>
-                    : <><Trash2 size={14} /> Видалити</>
+                    ? <><RefreshCw size={14} className="spin" /> {tUi('Видаляє...')}</>
+                    : <><Trash2 size={14} /> {tUi('Видалити')}</>
                   }
                 </button>
               </div>
@@ -1426,14 +1427,14 @@ export default function DocumentsPage() {
                   <Trash2 size={20} style={{ color: '#ef4444' }} />
                 </div>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 2 }}>Видалити фактуру?</div>
-                  <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Цю дію неможливо скасувати.</div>
+                  <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 2 }}>{tUi('Видалити фактуру?')}</div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{tUi('Цю дію неможливо скасувати.')}</div>
                 </div>
               </div>
               <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 20, fontSize: 14 }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Фактура </span>
+                <span style={{ color: 'var(--text-secondary)' }}>{tUi('Фактура')} </span>
                 <strong style={{ color: '#ef4444' }}>{deleteConfirm.number}</strong>
-                <span style={{ color: 'var(--text-secondary)' }}> буде назавжди видалена з бази даних.</span>
+                <span style={{ color: 'var(--text-secondary)' }}> {tUi('буде назавжди видалена з бази даних.')}</span>
               </div>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
                 <button
@@ -1442,7 +1443,7 @@ export default function DocumentsPage() {
                   onClick={() => setDeleteConfirm(null)}
                   style={{ minWidth: 90 }}
                 >
-                  Скасувати
+                  {tUi('Скасувати')}
                 </button>
                 <button
                   className="btn"
@@ -1451,8 +1452,8 @@ export default function DocumentsPage() {
                   style={{ minWidth: 120, background: '#ef4444', border: 'none', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}
                 >
                   {deleteLoading
-                    ? <><RefreshCw size={14} className="spin" /> Видаляє...</>
-                    : <><Trash2 size={14} /> Видалити</>
+                    ? <><RefreshCw size={14} className="spin" /> {tUi('Видаляє...')}</>
+                    : <><Trash2 size={14} /> {tUi('Видалити')}</>
                   }
                 </button>
               </div>
@@ -1486,7 +1487,7 @@ export default function DocumentsPage() {
                     {sup(supplier?.legal_name || supplier?.name, 'юридична назва')}
                   </div>
                   <div style={{ fontWeight: 700, fontSize: 15, color: '#1565c0' }}>
-                    FAKTURA č. <span style={{ fontStyle: 'italic', color: '#999', fontSize: 11 }}>автоматично</span>
+                    FAKTURA č. <span style={{ fontStyle: 'italic', color: '#999', fontSize: 11 }}>{tUi('автоматично')}</span>
                   </div>
                 </div>
                 <div style={{ borderTop: '0.5px solid #aaa', marginBottom: 0 }} />
@@ -1524,27 +1525,27 @@ export default function DocumentsPage() {
                     {/* Odběratel sub-box — mirrors Dodavatel structure */}
                     <div style={{ border: '0.5px solid #aaa', padding: '6px 8px' }}>
                       <div style={{ fontSize: 9, color: '#888', marginBottom: 4 }}>
-                        Odběratel: <span style={{ color: '#4f6ef7' }}>(необов&apos;язково)</span>
+                        Odběratel: <span style={{ color: '#4f6ef7' }}>{tUi('(необов\'язково)')}</span>
                       </div>
 
                       {/* Company name — bold 12pt, on the left */}
                       <input type="text" value={customForm.buyerName}
                         onChange={e => setCustomForm(f => ({ ...f, buyerName: e.target.value, showBuyer: !!e.target.value }))}
-                        placeholder="Назва компанії або ПІБ..."
+                        placeholder={tUi('Назва компанії або ПІБ...')}
                         style={{ width: '100%', boxSizing: 'border-box', border: 'none', borderBottom: '1px dashed #4f6ef7', background: 'transparent', fontSize: 12, fontWeight: 700, padding: '1px 0', marginBottom: 5, outline: 'none', color: '#1a1a1a', fontFamily: 'inherit' }}
                       />
 
                       {/* Address */}
                       <input type="text" value={customForm.buyerAddress}
                         onChange={e => setCustomForm(f => ({ ...f, buyerAddress: e.target.value }))}
-                        placeholder="Вулиця, будинок"
+                        placeholder={tUi('Вулиця, будинок')}
                         style={{ width: '100%', boxSizing: 'border-box', border: 'none', borderBottom: '1px dashed #ccc', background: 'transparent', fontSize: 11, padding: '1px 0', marginBottom: 4, outline: 'none', color: '#1a1a1a', fontFamily: 'inherit', display: 'block' }}
                       />
 
                       {/* PSČ / City */}
                       <input type="text" value={customForm.buyerCity}
                         onChange={e => setCustomForm(f => ({ ...f, buyerCity: e.target.value }))}
-                        placeholder="PSČ Місто"
+                        placeholder={tUi('PSČ Місто')}
                         style={{ width: '100%', boxSizing: 'border-box', border: 'none', borderBottom: '1px dashed #ccc', background: 'transparent', fontSize: 11, padding: '1px 0', marginBottom: 6, outline: 'none', color: '#1a1a1a', fontFamily: 'inherit', display: 'block' }}
                       />
 
@@ -1663,7 +1664,7 @@ export default function DocumentsPage() {
                       <button
                         onClick={() => setCustomItems(arr => arr.length > 1 ? arr.filter((_, i) => i !== idx) : arr)}
                         disabled={customItems.length <= 1}
-                        title="Видалити рядок"
+                        title={tUi('Видалити рядок')}
                         style={{ background: 'none', border: 'none', cursor: customItems.length > 1 ? 'pointer' : 'default', color: customItems.length > 1 ? '#ef4444' : '#ddd', fontSize: 14, padding: '2px 0', lineHeight: 1 }}
                       >x</button>
                     </div>
@@ -1714,7 +1715,7 @@ export default function DocumentsPage() {
                 <div style={{ marginBottom: 12 }}>
                   <label style={{ fontSize: 12, color: '#555', fontWeight: 600, display: 'block', marginBottom: 5 }}>
                     <Mail size={12} style={{ marginRight: 5, verticalAlign: 'middle' }} />
-                    Надіслати PDF на email (необов'язково)
+                    {tUi('Надіслати PDF на email (необов\'язково)')}
                   </label>
                   <input type="email" className="form-input" placeholder="guest@example.com"
                     value={customForm.emailTo}
@@ -1730,17 +1731,17 @@ export default function DocumentsPage() {
                   }}>{customToast}</div>
                 )}
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                  <button className="btn btn-ghost" onClick={() => setShowCustomModal(false)} disabled={customGenerating}>Скасувати</button>
+                  <button className="btn btn-ghost" onClick={() => setShowCustomModal(false)} disabled={customGenerating}>{tUi('Скасувати')}</button>
                   <button className="btn btn-secondary" onClick={() => handleGenerateCustom(false)} disabled={customGenerating}
                     style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     {customGenerating ? <Loader2 size={14} className="spin" /> : <FileDown size={14} />}
-                    Згенерувати PDF
+                    {tUi('Згенерувати PDF')}
                   </button>
                   <button className="btn btn-primary" onClick={() => handleGenerateCustom(true)}
                     disabled={customGenerating || !customForm.emailTo.trim()}
                     style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     {customGenerating ? <Loader2 size={14} className="spin" /> : <Send size={14} />}
-                    PDF + Надіслати
+                    {tUi('PDF + Надіслати')}
                   </button>
                 </div>
               </div>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import type { Category, CategoryNode, Classifier, OpType } from './CategoriesTab';
@@ -55,6 +56,7 @@ const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 const ICONS = ['📋', '🏠', '🍽️', '🧖', '🍳', '💰', '🥘', '🛒', '📦', '🏢', '🔌', '👥', '📢', '💼', '🧹', '🏛️', '🏗️', '🏦', '↔️', '⚖️', '💳', '🎯', '📊', '✨'];
 
 export default function CategoryModal({ initial, parent, defaultOpType, onClose, onSave }: Props) {
+  const t = useT();
   const isSubcategory = !!parent;
   const inheritedOpType = parent?.op_type;
   const inheritedClassifier = parent?.classifier;
@@ -79,7 +81,7 @@ export default function CategoryModal({ initial, parent, defaultOpType, onClose,
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!name.trim()) { setError('Введіть назву'); return; }
+    if (!name.trim()) { setError(t('Введіть назву')); return; }
 
     setSaving(true);
     try {
@@ -103,7 +105,7 @@ export default function CategoryModal({ initial, parent, defaultOpType, onClose,
       }
       await onSave(values);
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
       setSaving(false);
     }
   }
@@ -114,13 +116,13 @@ export default function CategoryModal({ initial, parent, defaultOpType, onClose,
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ margin: 0, flex: 1 }}>
             {initial
-              ? (isEditingSubcategory ? 'Редагувати підкатегорію' : 'Редагувати категорію')
-              : (parent ? `Нова підкатегорія в «${parent.name}»` : 'Нова категорія')}
+              ? (isEditingSubcategory ? t('Редагувати підкатегорію') : t('Редагувати категорію'))
+              : (parent ? `${t('Нова підкатегорія в «')}${parent.name}»` : t('Нова категорія'))}
           </h3>
           <button type="button" onClick={onClose} style={closeBtnStyle}><X size={18} /></button>
         </div>
 
-        <Field label="Назва">
+        <Field label={t('Назва')}>
           <input
             type="text"
             value={name}
@@ -130,7 +132,7 @@ export default function CategoryModal({ initial, parent, defaultOpType, onClose,
           />
         </Field>
 
-        <Field label="Іконка">
+        <Field label={t('Іконка')}>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {ICONS.map((i) => (
               <button
@@ -151,14 +153,14 @@ export default function CategoryModal({ initial, parent, defaultOpType, onClose,
               type="text"
               value={icon}
               onChange={(e) => setIcon(e.target.value)}
-              placeholder="або emoji"
+              placeholder={t('або emoji')}
               style={{ ...inputStyle, width: 100, fontSize: 16 }}
               maxLength={4}
             />
           </div>
         </Field>
 
-        <Field label="Колір">
+        <Field label={t('Колір')}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {COLORS.map((c) => (
               <button
@@ -177,7 +179,7 @@ export default function CategoryModal({ initial, parent, defaultOpType, onClose,
         </Field>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Field label="Тип операції">
+          <Field label={t('Тип операції')}>
             <select
               value={opType}
               onChange={(e) => {
@@ -190,13 +192,13 @@ export default function CategoryModal({ initial, parent, defaultOpType, onClose,
               style={inputStyle}
               disabled={isSubcategory || isEditingSubcategory}
             >
-              {OP_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {OP_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
             </select>
             {(isSubcategory || isEditingSubcategory) && (
-              <div style={hintStyle}>Успадковано від батька</div>
+              <div style={hintStyle}>{t('Успадковано від батька')}</div>
             )}
           </Field>
-          <Field label="Класифікатор">
+          <Field label={t('Класифікатор')}>
             <select
               value={classifier}
               onChange={(e) => setClassifier(e.target.value as Classifier)}
@@ -204,19 +206,19 @@ export default function CategoryModal({ initial, parent, defaultOpType, onClose,
               disabled={isSubcategory || isEditingSubcategory}
             >
               {currentClassifiers.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>{t(o.label)}</option>
               ))}
             </select>
             {!(isSubcategory || isEditingSubcategory) && (
               <div style={hintStyle}>{currentClassifiers.find((o) => o.value === classifier)?.hint}</div>
             )}
             {(isSubcategory || isEditingSubcategory) && (
-              <div style={hintStyle}>Успадковано від батька</div>
+              <div style={hintStyle}>{t('Успадковано від батька')}</div>
             )}
           </Field>
         </div>
 
-        <Field label="Порядок сортування">
+        <Field label={t('Порядок сортування')}>
           <input
             type="number"
             value={sortOrder}
@@ -228,9 +230,9 @@ export default function CategoryModal({ initial, parent, defaultOpType, onClose,
         {error && <div style={{ color: '#dc2626', fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-          <button type="button" onClick={onClose} style={btnSecondaryStyle}>Відміна</button>
+          <button type="button" onClick={onClose} style={btnSecondaryStyle}>{t('Відміна')}</button>
           <button type="submit" disabled={saving} style={btnPrimaryStyle}>
-            {saving ? 'Збереження…' : (initial ? 'Зберегти' : 'Створити')}
+            {saving ? t('Збереження…') : (initial ? t('Зберегти') : t('Створити'))}
           </button>
         </div>
       </form>

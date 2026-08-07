@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import type { Tag } from './TagsTab';
@@ -33,6 +34,7 @@ function readableText(bg: string): string {
 }
 
 export default function TagModal({ initial, onClose, onSave }: Props) {
+  const t = useT();
   const [name, setName] = useState(initial?.name || '');
   const [color, setColor] = useState(initial?.color || '#6b7280');
   const [sortOrder, setSortOrder] = useState(initial?.sort_order ?? 0);
@@ -42,13 +44,13 @@ export default function TagModal({ initial, onClose, onSave }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!name.trim()) { setError('Введіть назву'); return; }
+    if (!name.trim()) { setError(t('Введіть назву')); return; }
 
     setSaving(true);
     try {
       await onSave({ name: name.trim(), color, sort_order: Number(sortOrder) || 0 });
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
       setSaving(false);
     }
   }
@@ -57,11 +59,11 @@ export default function TagModal({ initial, onClose, onSave }: Props) {
     <div style={overlayStyle} onClick={onClose}>
       <form onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()} style={modalStyle}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, flex: 1 }}>{initial ? 'Редагувати тег' : 'Новий тег'}</h3>
+          <h3 style={{ margin: 0, flex: 1 }}>{initial ? t('Редагувати тег') : t('Новий тег')}</h3>
           <button type="button" onClick={onClose} style={closeBtnStyle}><X size={18} /></button>
         </div>
 
-        <Field label="Назва">
+        <Field label={t('Назва')}>
           <input
             type="text"
             value={name}
@@ -69,11 +71,11 @@ export default function TagModal({ initial, onClose, onSave }: Props) {
             style={inputStyle}
             autoFocus
             maxLength={50}
-            placeholder="Напр. «Терміново», «Одноразове»"
+            placeholder={t('Напр. «Терміново», «Одноразове»')}
           />
         </Field>
 
-        <Field label="Колір">
+        <Field label={t('Колір')}>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {COLORS.map((c) => (
               <button
@@ -90,7 +92,7 @@ export default function TagModal({ initial, onClose, onSave }: Props) {
             ))}
           </div>
           <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-secondary)' }}>
-            Попередній вигляд:
+            {t('Попередній вигляд:')}
             <span
               style={{
                 display: 'inline-block',
@@ -108,7 +110,7 @@ export default function TagModal({ initial, onClose, onSave }: Props) {
           </div>
         </Field>
 
-        <Field label="Порядок сортування">
+        <Field label={t('Порядок сортування')}>
           <input
             type="number"
             value={sortOrder}
@@ -120,9 +122,9 @@ export default function TagModal({ initial, onClose, onSave }: Props) {
         {error && <div style={{ color: '#dc2626', fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-          <button type="button" onClick={onClose} style={btnSecondaryStyle}>Відміна</button>
+          <button type="button" onClick={onClose} style={btnSecondaryStyle}>{t('Відміна')}</button>
           <button type="submit" disabled={saving} style={btnPrimaryStyle}>
-            {saving ? 'Збереження…' : (initial ? 'Зберегти' : 'Створити')}
+            {saving ? t('Збереження…') : (initial ? t('Зберегти') : t('Створити'))}
           </button>
         </div>
       </form>

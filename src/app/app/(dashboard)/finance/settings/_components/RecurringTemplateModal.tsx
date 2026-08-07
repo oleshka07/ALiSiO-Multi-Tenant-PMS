@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import type { RecurringTemplate } from './RecurringTemplatesTab';
@@ -29,6 +30,7 @@ interface Props {
 }
 
 export default function RecurringTemplateModal({ initial, onClose, onSave }: Props) {
+  const t = useT();
   const [name, setName] = useState(initial?.name || '');
   const [opType, setOpType] = useState<TemplateFormValues['op_type']>(initial?.op_type || 'expense');
   const [amount, setAmount] = useState(initial?.amount?.toString() || '');
@@ -70,12 +72,12 @@ export default function RecurringTemplateModal({ initial, onClose, onSave }: Pro
     e.preventDefault();
     setError(null);
     const amt = parseFloat(amount);
-    if (!name.trim()) { setError('Введіть назву'); return; }
-    if (!isFinite(amt) || amt <= 0) { setError('Сума має бути додатною'); return; }
-    if (opType === 'income' && !accountToId) { setError('Оберіть рахунок-отримувач'); return; }
-    if (opType === 'expense' && !accountFromId) { setError('Оберіть рахунок-джерело'); return; }
+    if (!name.trim()) { setError(t('Введіть назву')); return; }
+    if (!isFinite(amt) || amt <= 0) { setError(t('Сума має бути додатною')); return; }
+    if (opType === 'income' && !accountToId) { setError(t('Оберіть рахунок-отримувач')); return; }
+    if (opType === 'expense' && !accountFromId) { setError(t('Оберіть рахунок-джерело')); return; }
     if (opType === 'transfer' && (!accountFromId || !accountToId || accountFromId === accountToId)) {
-      setError('Оберіть два різні рахунки для переказу');
+      setError(t('Оберіть два різні рахунки для переказу'));
       return;
     }
 
@@ -96,7 +98,7 @@ export default function RecurringTemplateModal({ initial, onClose, onSave }: Pro
         is_active: isActive,
       });
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
       setSaving(false);
     }
   }
@@ -105,26 +107,26 @@ export default function RecurringTemplateModal({ initial, onClose, onSave }: Pro
     <div style={overlayStyle} onClick={onClose}>
       <form onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()} style={modalStyle}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, flex: 1 }}>{initial ? 'Редагувати шаблон' : 'Новий регулярний шаблон'}</h3>
+          <h3 style={{ margin: 0, flex: 1 }}>{initial ? t('Редагувати шаблон') : t('Новий регулярний шаблон')}</h3>
           <button type="button" onClick={onClose} style={closeBtn}><X size={18} /></button>
         </div>
 
-        <Field label="Назва">
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)} style={input} autoFocus placeholder="Напр. Оренда кемпінгу" />
+        <Field label={t('Назва')}>
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} style={input} autoFocus placeholder={t('Напр. Оренда кемпінгу')} />
         </Field>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: 8 }}>
-          <Field label="Тип">
+          <Field label={t('Тип')}>
             <select value={opType} onChange={(e) => setOpType(e.target.value as any)} style={input}>
-              <option value="income">Дохід</option>
-              <option value="expense">Витрата</option>
-              <option value="transfer">Переказ</option>
+              <option value="income">{t('Дохід')}</option>
+              <option value="expense">{t('Витрата')}</option>
+              <option value="transfer">{t('Переказ')}</option>
             </select>
           </Field>
-          <Field label="Сума">
+          <Field label={t('Сума')}>
             <input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} style={input} />
           </Field>
-          <Field label="Валюта">
+          <Field label={t('Валюта')}>
             <select value={currency} onChange={(e) => setCurrency(e.target.value)} style={input}>
               <option value="CZK">CZK</option><option value="EUR">EUR</option><option value="USD">USD</option>
             </select>
@@ -132,7 +134,7 @@ export default function RecurringTemplateModal({ initial, onClose, onSave }: Pro
         </div>
 
         {(opType === 'expense' || opType === 'transfer') && (
-          <Field label={opType === 'transfer' ? 'З рахунку' : 'З рахунку (витрата)'}>
+          <Field label={opType === 'transfer' ? t('З рахунку') : t('З рахунку (витрата)')}>
             <select value={accountFromId} onChange={(e) => setAccountFromId(e.target.value)} style={input}>
               <option value="">—</option>
               {accounts.map((a: any) => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}
@@ -140,7 +142,7 @@ export default function RecurringTemplateModal({ initial, onClose, onSave }: Pro
           </Field>
         )}
         {(opType === 'income' || opType === 'transfer') && (
-          <Field label={opType === 'transfer' ? 'На рахунок' : 'На рахунок (дохід)'}>
+          <Field label={opType === 'transfer' ? t('На рахунок') : t('На рахунок (дохід)')}>
             <select value={accountToId} onChange={(e) => setAccountToId(e.target.value)} style={input}>
               <option value="">—</option>
               {accounts.map((a: any) => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}
@@ -149,7 +151,7 @@ export default function RecurringTemplateModal({ initial, onClose, onSave }: Pro
         )}
 
         {opType !== 'transfer' && (
-          <Field label="Категорія (опц.)">
+          <Field label={t('Категорія (опц.)')}>
             <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} style={input}>
               <option value="">—</option>
               {categories.map((c: any) => <option key={c.id} value={c.id}>{c.icon || ''} {c.name}</option>)}
@@ -158,7 +160,7 @@ export default function RecurringTemplateModal({ initial, onClose, onSave }: Pro
         )}
 
         {opType !== 'transfer' && (
-          <Field label="Контрагент (опц.)">
+          <Field label={t('Контрагент (опц.)')}>
             <select value={counterpartyId} onChange={(e) => setCounterpartyId(e.target.value)} style={input}>
               <option value="">—</option>
               {counterparties.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -166,7 +168,7 @@ export default function RecurringTemplateModal({ initial, onClose, onSave }: Pro
           </Field>
         )}
 
-        <Field label="Проєкт (опц.)">
+        <Field label={t('Проєкт (опц.)')}>
           <select value={projectId} onChange={(e) => setProjectId(e.target.value)} style={input}>
             <option value="">—</option>
             {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -174,16 +176,16 @@ export default function RecurringTemplateModal({ initial, onClose, onSave }: Pro
         </Field>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <Field label="Розклад">
+          <Field label={t('Розклад')}>
             <select value={schedule} onChange={(e) => setSchedule(e.target.value as any)} style={input}>
-              <option value="daily">Щодня</option>
-              <option value="weekly">Щотижня</option>
-              <option value="monthly">Щомісяця</option>
-              <option value="yearly">Щороку</option>
+              <option value="daily">{t('Щодня')}</option>
+              <option value="weekly">{t('Щотижня')}</option>
+              <option value="monthly">{t('Щомісяця')}</option>
+              <option value="yearly">{t('Щороку')}</option>
             </select>
           </Field>
           {(schedule === 'monthly' || schedule === 'weekly') && (
-            <Field label={schedule === 'monthly' ? 'День місяця' : 'День тижня (0=Пн, 6=Нд)'}>
+            <Field label={schedule === 'monthly' ? t('День місяця') : t('День тижня (0=Пн, 6=Нд)')}>
               <input type="number" min={schedule === 'monthly' ? 1 : 0} max={schedule === 'monthly' ? 31 : 6}
                 value={scheduleDay} onChange={(e) => setScheduleDay(e.target.value === '' ? '' : Number(e.target.value))} style={input} />
             </Field>
@@ -191,28 +193,28 @@ export default function RecurringTemplateModal({ initial, onClose, onSave }: Pro
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <Field label="Наступний запуск">
+          <Field label={t('Наступний запуск')}>
             <input type="date" value={nextRunAt} onChange={(e) => setNextRunAt(e.target.value)} style={input} />
           </Field>
-          <Field label="Закінчити (опц.)">
+          <Field label={t('Закінчити (опц.)')}>
             <input type="date" value={endAt} onChange={(e) => setEndAt(e.target.value)} style={input} />
           </Field>
         </div>
 
-        <Field label="Коментар (опц.)">
+        <Field label={t('Коментар (опц.)')}>
           <input type="text" value={comment} onChange={(e) => setComment(e.target.value)} style={input} />
         </Field>
 
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: 12 }}>
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-          Активний
+          {t('Активний')}
         </label>
 
         {error && <div style={{ color: '#dc2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} style={btnSec}>Відміна</button>
-          <button type="submit" disabled={saving} style={btnPrim}>{saving ? 'Збереження…' : initial ? 'Зберегти' : 'Створити'}</button>
+          <button type="button" onClick={onClose} style={btnSec}>{t('Відміна')}</button>
+          <button type="submit" disabled={saving} style={btnPrim}>{saving ? t('Збереження…') : initial ? t('Зберегти') : t('Створити')}</button>
         </div>
       </form>
     </div>

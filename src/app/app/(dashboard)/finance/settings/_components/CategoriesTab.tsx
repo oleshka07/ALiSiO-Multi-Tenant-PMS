@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, ChevronDown, ChevronRight } from 'lucide-react';
 import CategoryModal, { CategoryFormValues } from './CategoryModal';
@@ -39,6 +40,7 @@ const OP_TYPE_TABS: { id: OpType; label: string; emoji: string }[] = [
 ];
 
 export default function CategoriesTab() {
+  const tUi = useT();
   const [data, setData] = useState<TreeResponse>({ tree: [], byOpType: { income: [], expense: [], transfer: [], other: [] } });
   const [loading, setLoading] = useState(true);
   const [opTypeTab, setOpTypeTab] = useState<OpType>('expense');
@@ -147,16 +149,16 @@ export default function CategoriesTab() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 20 }}>Категорії</h2>
+        <h2 style={{ margin: 0, fontSize: 20 }}>{tUi('Категорії')}</h2>
         <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-          {nodes.length} кореневих у «{OP_TYPE_TABS.find((t) => t.id === opTypeTab)?.label}»
+          {nodes.length} {tUi('кореневих у «')}{OP_TYPE_TABS.find((t) => t.id === opTypeTab)?.label}»
         </span>
         <div style={{ flex: 1 }} />
         <button
           onClick={() => setEditing({ parent: null, op_type: opTypeTab })}
           style={addBtnStyle}
         >
-          <Plus size={16} /> Додати категорію
+          <Plus size={16} /> {tUi('Додати категорію')}
         </button>
       </div>
 
@@ -175,8 +177,8 @@ export default function CategoriesTab() {
                 boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
               }}
             >
-              <span>{t.emoji}</span>
-              <span>{t.label}</span>
+              <span>{tUi(t.emoji)}</span>
+              <span>{tUi(t.label)}</span>
               <span
                 style={{
                   marginLeft: 6, fontSize: 11, padding: '1px 6px', borderRadius: 4,
@@ -192,17 +194,17 @@ export default function CategoriesTab() {
 
       <input
         type="text"
-        placeholder="Пошук категорії..."
+        placeholder={tUi('Пошук категорії...')}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         style={searchStyle}
       />
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Завантаження…')}</div>
       ) : filteredNodes.length === 0 ? (
         <div style={emptyStyle}>
-          {search ? 'Нічого не знайдено.' : 'Категорій ще немає. Натисніть «Додати категорію».'}
+          {search ? tUi('Нічого не знайдено.') : tUi('Категорій ще немає. Натисніть «Додати категорію».')}
         </div>
       ) : (
         <div style={{ border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
@@ -219,7 +221,7 @@ export default function CategoriesTab() {
                       <button
                         onClick={() => toggleCollapse(root.id)}
                         style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-secondary)' }}
-                        aria-label={isCollapsed ? 'Розгорнути' : 'Згорнути'}
+                        aria-label={isCollapsed ? tUi('Розгорнути') : tUi('Згорнути')}
                       >
                         {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
                       </button>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, FileText, ChevronRight } from 'lucide-react';
@@ -11,6 +12,7 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export default function StatementListPage() {
+  const t = useT();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -31,18 +33,18 @@ export default function StatementListPage() {
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Link href="/app/finance/reports" style={backLink}><ArrowLeft size={14} /></Link>
         <h1 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <FileText size={24} /> Виписка за рахунком
+          <FileText size={24} /> {t('Виписка за рахунком')}
         </h1>
       </div>
 
       <p style={{ color: 'var(--text-secondary)', marginTop: 8, fontSize: 14 }}>
-        Оберіть рахунок, щоб переглянути його виписку з running balance:
+        {t('Оберіть рахунок, щоб переглянути його виписку з running balance:')}
       </p>
 
       {loading ? (
-        <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Завантаження…')}</div>
       ) : accounts.length === 0 ? (
-        <div style={emptyStyle}>Немає рахунків</div>
+        <div style={emptyStyle}>{t('Немає рахунків')}</div>
       ) : (
         <div style={{ marginTop: 16, border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
           {accounts.map((a) => (
@@ -50,7 +52,7 @@ export default function StatementListPage() {
               <span style={{ width: 10, height: 10, borderRadius: 3, background: a.color, marginRight: 10 }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 500 }}>{a.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{TYPE_LABELS[a.type]} · {a.currency}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t(TYPE_LABELS[a.type])} · {a.currency}</div>
               </div>
               <div style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', marginRight: 12 }}>
                 {a.balance.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {a.currency}

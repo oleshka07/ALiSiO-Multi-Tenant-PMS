@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
@@ -129,6 +130,7 @@ function emptyForm() {
    Main
    ================================================================ */
 function DesktopGuests() {
+  const t = useT();
   /* ── data state ──────────────────────────────────── */
   const [guests, setGuests] = useState<GuestRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -229,7 +231,7 @@ function DesktopGuests() {
   /* ── create guest ────────────────────────────────── */
   const handleCreate = async () => {
     if (!form.firstName || !form.lastName) {
-      showToast("Будь ласка, заповніть обов'язкові поля: Ім'я та Прізвище", 'error');
+      showToast(t('Будь ласка, заповніть обов\'язкові поля: Ім\'я та Прізвище'), 'error');
       return;
     }
     setSaving(true);
@@ -241,14 +243,14 @@ function DesktopGuests() {
       });
       if (res.ok) {
         setShowAddModal(false);
-        showToast('Гостя успішно створено!');
+        showToast(t('Гостя успішно створено!'));
         fetchGuests();
       } else {
         const data = await res.json();
         showToast(data.error || 'Помилка створення', 'error');
       }
     } catch {
-      showToast('Помилка мережі', 'error');
+      showToast(t('Помилка мережі'), 'error');
     } finally {
       setSaving(false);
     }
@@ -258,7 +260,7 @@ function DesktopGuests() {
   const handleSaveEdit = async () => {
     if (!editGuest) return;
     if (!form.firstName || !form.lastName) {
-      showToast("Ім'я та Прізвище обов'язкові", 'error');
+      showToast(t('Ім\'я та Прізвище обов\'язкові'), 'error');
       return;
     }
     setSaving(true);
@@ -270,7 +272,7 @@ function DesktopGuests() {
       });
       if (res.ok) {
         setEditGuest(null);
-        showToast('Дані гостя оновлено!');
+        showToast(t('Дані гостя оновлено!'));
         fetchGuests();
         // Also refresh detail view if open
         if (viewGuest && viewGuest.id === editGuest.id) {
@@ -281,7 +283,7 @@ function DesktopGuests() {
         showToast(data.error || 'Помилка збереження', 'error');
       }
     } catch {
-      showToast('Помилка мережі', 'error');
+      showToast(t('Помилка мережі'), 'error');
     } finally {
       setSaving(false);
     }
@@ -301,7 +303,7 @@ function DesktopGuests() {
         showToast(data.error || 'Помилка видалення', 'error');
       }
     } catch {
-      showToast('Помилка мережі', 'error');
+      showToast(t('Помилка мережі'), 'error');
     }
   };
 
@@ -320,16 +322,16 @@ function DesktopGuests() {
     <>
       <div style={{ borderBottom: '1px solid var(--border-primary)', paddingBottom: 16, marginBottom: 16 }}>
         <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <User size={14} /> Основна інформація
+          <User size={14} /> {t('Основна інформація')}
         </h4>
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Ім&apos;я *</label>
-            <input className="form-input" placeholder="Ім'я" value={form.firstName} onChange={(e) => setForm(p => ({ ...p, firstName: e.target.value }))} />
+            <label className="form-label">{t('Ім\'я *')}</label>
+            <input className="form-input" placeholder={t('Ім\'я')} value={form.firstName} onChange={(e) => setForm(p => ({ ...p, firstName: e.target.value }))} />
           </div>
           <div className="form-group">
-            <label className="form-label">Прізвище *</label>
-            <input className="form-input" placeholder="Прізвище" value={form.lastName} onChange={(e) => setForm(p => ({ ...p, lastName: e.target.value }))} />
+            <label className="form-label">{t('Прізвище *')}</label>
+            <input className="form-input" placeholder={t('Прізвище')} value={form.lastName} onChange={(e) => setForm(p => ({ ...p, lastName: e.target.value }))} />
           </div>
         </div>
         <div className="form-row">
@@ -338,7 +340,7 @@ function DesktopGuests() {
             <input className="form-input" type="email" placeholder="email@example.com" value={form.email} onChange={(e) => setForm(p => ({ ...p, email: e.target.value }))} />
           </div>
           <div className="form-group">
-            <label className="form-label">Телефон</label>
+            <label className="form-label">{t('Телефон')}</label>
             <input className="form-input" type="tel" placeholder="+420..." value={form.phone} onChange={(e) => setForm(p => ({ ...p, phone: e.target.value }))} />
           </div>
         </div>
@@ -346,59 +348,59 @@ function DesktopGuests() {
 
       <div style={{ borderBottom: '1px solid var(--border-primary)', paddingBottom: 16, marginBottom: 16 }}>
         <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <MapPin size={14} /> Адреса
+          <MapPin size={14} /> {t('Адреса')}
         </h4>
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Країна</label>
+            <label className="form-label">{t('Країна')}</label>
             <select className="form-select" value={form.country} onChange={(e) => setForm(p => ({ ...p, country: e.target.value }))}>
-              <option value="">Не вказано</option>
+              <option value="">{t('Не вказано')}</option>
               {Object.entries(COUNTRIES).map(([code, name]) => (
-                <option key={code} value={code}>{name}</option>
+                <option key={code} value={code}>{t(name)}</option>
               ))}
             </select>
           </div>
           <div className="form-group">
-            <label className="form-label">Місто</label>
-            <input className="form-input" placeholder="Місто" value={form.city} onChange={(e) => setForm(p => ({ ...p, city: e.target.value }))} />
+            <label className="form-label">{t('Місто')}</label>
+            <input className="form-input" placeholder={t('Місто')} value={form.city} onChange={(e) => setForm(p => ({ ...p, city: e.target.value }))} />
           </div>
         </div>
         <div className="form-group">
-          <label className="form-label">Адреса</label>
-          <input className="form-input" placeholder="Вулиця, будинок, квартира" value={form.address} onChange={(e) => setForm(p => ({ ...p, address: e.target.value }))} />
+          <label className="form-label">{t('Адреса')}</label>
+          <input className="form-input" placeholder={t('Вулиця, будинок, квартира')} value={form.address} onChange={(e) => setForm(p => ({ ...p, address: e.target.value }))} />
         </div>
       </div>
 
       <div style={{ borderBottom: '1px solid var(--border-primary)', paddingBottom: 16, marginBottom: 16 }}>
         <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <FileText size={14} /> Документи
+          <FileText size={14} /> {t('Документи')}
         </h4>
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Тип документа</label>
+            <label className="form-label">{t('Тип документа')}</label>
             <select className="form-select" value={form.documentType} onChange={(e) => setForm(p => ({ ...p, documentType: e.target.value }))}>
-              <option value="">Не вказано</option>
+              <option value="">{t('Не вказано')}</option>
               {Object.entries(DOC_TYPES).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
+                <option key={key} value={key}>{t(label)}</option>
               ))}
             </select>
           </div>
           <div className="form-group">
-            <label className="form-label">Номер документа</label>
+            <label className="form-label">{t('Номер документа')}</label>
             <input className="form-input" placeholder="AB123456" value={form.documentNumber} onChange={(e) => setForm(p => ({ ...p, documentNumber: e.target.value }))} />
           </div>
         </div>
         <div className="form-group">
-          <label className="form-label">Дата народження</label>
+          <label className="form-label">{t('Дата народження')}</label>
           <input className="form-input" type="date" value={form.dateOfBirth} onChange={(e) => setForm(p => ({ ...p, dateOfBirth: e.target.value }))} />
         </div>
       </div>
 
       <div>
-        <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Нотатки</h4>
+        <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{t('Нотатки')}</h4>
         <textarea
           className="form-input"
-          placeholder="Додаткова інформація..."
+          placeholder={t('Додаткова інформація...')}
           rows={3}
           style={{ resize: 'vertical' }}
           value={form.notes}
@@ -410,7 +412,7 @@ function DesktopGuests() {
 
   return (
     <>
-      <Header title="Гості" onMenuClick={onMenuClick} />
+      <Header title={t('Гості')} onMenuClick={onMenuClick} />
       <div className="app-content">
         {/* Toast */}
         {toast && (
@@ -428,15 +430,15 @@ function DesktopGuests() {
 
         <div className="page-header">
           <div>
-            <h2 className="page-title">База гостей</h2>
-            <div className="page-subtitle">{total > 0 ? `${total} записів` : `${guests.length} записів`}</div>
+            <h2 className="page-title">{t('База гостей')}</h2>
+            <div className="page-subtitle">{total > 0 ? `${total} ${t('записів')}` : `${guests.length} ${t('записів')}`}</div>
           </div>
           <div className="flex gap-2">
-            <button className="btn btn-secondary" onClick={fetchGuests} title="Оновити">
+            <button className="btn btn-secondary" onClick={fetchGuests} title={t('Оновити')}>
               <RefreshCw size={16} />
             </button>
             <button className="btn btn-primary" onClick={openAddGuest}>
-              <Plus size={16} /> Додати гостя
+              <Plus size={16} /> {t('Додати гостя')}
             </button>
           </div>
         </div>
@@ -448,21 +450,21 @@ function DesktopGuests() {
               <Search size={14} className="search-icon" />
               <input
                 className="form-input"
-                placeholder="Пошук по імені, email або телефону..."
+                placeholder={t('Пошук по імені, email або телефону...')}
                 style={{ paddingLeft: 34 }}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
             <select className="form-select" style={{ width: 170 }} value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)}>
-              <option value="">Всі країни</option>
+              <option value="">{t('Всі країни')}</option>
               {uniqueCountries.map(c => (
-                <option key={c} value={c}>{COUNTRIES[c] || c}</option>
+                <option key={c} value={c}>{t(COUNTRIES[c] || c)}</option>
               ))}
             </select>
             {(search || countryFilter) && (
               <button className="btn btn-ghost btn-sm" onClick={() => { setSearch(''); setCountryFilter(''); }}>
-                <X size={14} /> Скинути
+                <X size={14} /> {t('Скинути')}
               </button>
             )}
           </div>
@@ -474,7 +476,7 @@ function DesktopGuests() {
             <Search size={14} className="search-icon" />
             <input
               className="form-input"
-              placeholder="Пошук гостя..."
+              placeholder={t('Пошук гостя...')}
               style={{ paddingLeft: 34, fontSize: 13 }}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -487,25 +489,25 @@ function DesktopGuests() {
           <table className="table">
             <thead>
               <tr>
-                <th>Ім&apos;я</th>
+                <th>{t('Ім\'я')}</th>
                 <th>Email</th>
-                <th>Телефон</th>
-                <th>Країна</th>
-                <th>Візитів</th>
-                <th>Останній візит</th>
-                <th>Дохід</th>
+                <th>{t('Телефон')}</th>
+                <th>{t('Країна')}</th>
+                <th>{t('Візитів')}</th>
+                <th>{t('Останній візит')}</th>
+                <th>{t('Дохід')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {loading && (
                 <tr><td colSpan={8} style={{ textAlign: 'center', padding: 32 }}>
-                  <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> Завантаження...
+                  <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> {t('Завантаження...')}
                 </td></tr>
               )}
               {!loading && guests.length === 0 && (
                 <tr><td colSpan={8} style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>
-                  Гостей не знайдено
+                  {t('Гостей не знайдено')}
                 </td></tr>
               )}
               {guests.map((g) => (
@@ -524,7 +526,7 @@ function DesktopGuests() {
                         <div>{g.first_name} {g.last_name}</div>
                         {g.document_type && (
                           <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                            {DOC_TYPES[g.document_type] || g.document_type}
+                            {t(DOC_TYPES[g.document_type] || g.document_type)}
                           </div>
                         )}
                       </div>
@@ -546,7 +548,7 @@ function DesktopGuests() {
                   </td>
                   <td>
                     {g.country ? (
-                      <span className="badge badge-info">{COUNTRIES[g.country] || g.country}</span>
+                      <span className="badge badge-info">{t(COUNTRIES[g.country] || g.country)}</span>
                     ) : <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>—</span>}
                   </td>
                   <td>
@@ -569,9 +571,9 @@ function DesktopGuests() {
                   </td>
                   <td>
                     <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                      <button className="btn btn-sm btn-ghost btn-icon" title="Переглянути" onClick={() => openGuestDetail(g.id)}><Eye size={14} /></button>
-                      <button className="btn btn-sm btn-ghost btn-icon" title="Редагувати" onClick={() => openEditGuest(g)}><Edit3 size={14} /></button>
-                      <button className="btn btn-sm btn-ghost btn-icon" title="Видалити" style={{ color: 'var(--accent-danger)' }} onClick={() => handleDelete(g)}><Trash2 size={14} /></button>
+                      <button className="btn btn-sm btn-ghost btn-icon" title={t('Переглянути')} onClick={() => openGuestDetail(g.id)}><Eye size={14} /></button>
+                      <button className="btn btn-sm btn-ghost btn-icon" title={t('Редагувати')} onClick={() => openEditGuest(g)}><Edit3 size={14} /></button>
+                      <button className="btn btn-sm btn-ghost btn-icon" title={t('Видалити')} style={{ color: 'var(--accent-danger)' }} onClick={() => handleDelete(g)}><Trash2 size={14} /></button>
                     </div>
                   </td>
                 </tr>
@@ -583,9 +585,9 @@ function DesktopGuests() {
         {/* Desktop Pagination */}
         {!loading && totalPages > 1 && (
           <div className="desktop-only" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 16, marginBottom: 32 }}>
-            <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Назад</button>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Сторінка {page} з {totalPages}</span>
-            <button className="btn btn-secondary btn-sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Вперед</button>
+            <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>{t('Назад')}</button>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>{t('Сторінка')} {page} {t('з')} {totalPages}</span>
+            <button className="btn btn-secondary btn-sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>{t('Вперед')}</button>
           </div>
         )}
 
@@ -593,12 +595,12 @@ function DesktopGuests() {
         <div className="mobile-only">
           {loading && (
             <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>
-              <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> Завантаження...
+              <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> {t('Завантаження...')}
             </div>
           )}
           {!loading && guests.length === 0 && (
             <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>
-              Гостей не знайдено
+              {t('Гостей не знайдено')}
             </div>
           )}
           <div className="card-list">
@@ -612,11 +614,11 @@ function DesktopGuests() {
                   <div className="guest-card-detail">
                     {g.phone && <><Phone size={11} /> {g.phone}</>}
                     {!g.phone && g.email && <><Mail size={11} /> {g.email}</>}
-                    {!g.phone && !g.email && <span>Немає контактів</span>}
+                    {!g.phone && !g.email && <span>{t('Немає контактів')}</span>}
                   </div>
                   {g.country && (
                     <div className="guest-card-detail" style={{ marginTop: 1 }}>
-                      <MapPin size={11} /> {COUNTRIES[g.country] || g.country}
+                      <MapPin size={11} /> {t(COUNTRIES[g.country] || g.country)}
                     </div>
                   )}
                 </div>
@@ -631,7 +633,7 @@ function DesktopGuests() {
                   }}>
                     {g.total_stays}
                   </span>
-                  <div className="guest-card-stays">візитів</div>
+                  <div className="guest-card-stays">{t('візитів')}</div>
                 </div>
               </div>
             ))}
@@ -640,9 +642,9 @@ function DesktopGuests() {
           {/* Mobile Pagination */}
           {!loading && totalPages > 1 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, marginBottom: 24 }}>
-              <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Назад</button>
+              <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>{t('Назад')}</button>
               <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{page} / {totalPages}</span>
-              <button className="btn btn-secondary btn-sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Вперед</button>
+              <button className="btn btn-secondary btn-sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>{t('Вперед')}</button>
             </div>
           )}
         </div>
@@ -650,24 +652,24 @@ function DesktopGuests() {
         {/* ═══════════════════════════════════════════════════
            View Guest Detail Modal
            ═══════════════════════════════════════════════════ */}
-        <Modal open={!!viewGuest || viewLoading} onClose={() => { setViewGuest(null); setViewLoading(false); }} title="Картка гостя" size="lg"
+        <Modal open={!!viewGuest || viewLoading} onClose={() => { setViewGuest(null); setViewLoading(false); }} title={t('Картка гостя')} size="lg"
           footer={viewGuest ? <>
-            <button className="btn btn-secondary" onClick={() => setViewGuest(null)}>Закрити</button>
+            <button className="btn btn-secondary" onClick={() => setViewGuest(null)}>{t('Закрити')}</button>
             <div className="flex gap-2">
               <button className="btn btn-secondary" style={{ color: 'var(--accent-danger)', borderColor: 'var(--accent-danger)' }}
                 onClick={() => { if (viewGuest) { handleDelete(viewGuest as GuestRow); } }}>
-                <Trash2 size={14} /> Видалити
+                <Trash2 size={14} /> {t('Видалити')}
               </button>
               <button className="btn btn-primary"
                 onClick={() => { if (viewGuest) { openEditGuest(viewGuest as GuestRow); } }}>
-                <Edit3 size={14} /> Редагувати
+                <Edit3 size={14} /> {t('Редагувати')}
               </button>
             </div>
           </> : undefined}>
           {viewLoading && (
             <div style={{ textAlign: 'center', padding: 40 }}>
               <Loader2 size={24} className="animate-pulse" style={{ display: 'inline-block' }} />
-              <div style={{ marginTop: 8, color: 'var(--text-tertiary)' }}>Завантаження...</div>
+              <div style={{ marginTop: 8, color: 'var(--text-tertiary)' }}>{t('Завантаження...')}</div>
             </div>
           )}
           {viewGuest && (
@@ -702,15 +704,15 @@ function DesktopGuests() {
               {/* Stats row */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                 <div style={{ padding: 14, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Візити</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Візити')}</div>
                   <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: 'var(--accent-primary)' }}>{viewGuest.total_stays}</div>
                 </div>
                 <div style={{ padding: 14, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Загальний дохід</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Загальний дохід')}</div>
                   <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: 'var(--accent-success)' }}>{(viewGuest.total_revenue || 0).toLocaleString()} CZK</div>
                 </div>
                 <div style={{ padding: 14, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Дата створення</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Дата створення')}</div>
                   <div style={{ fontSize: 14, fontWeight: 600, marginTop: 6 }}>{viewGuest.created_at?.split('T')[0] || viewGuest.created_at?.split(' ')[0]}</div>
                 </div>
               </div>
@@ -720,14 +722,14 @@ function DesktopGuests() {
                 {/* Address block */}
                 <div style={{ padding: 14, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <MapPin size={12} /> Адреса
+                    <MapPin size={12} /> {t('Адреса')}
                   </div>
                   <div style={{ fontSize: 13, lineHeight: 1.8 }}>
-                    {viewGuest.country && <div>{COUNTRIES[viewGuest.country] || viewGuest.country}</div>}
+                    {viewGuest.country && <div>{t(COUNTRIES[viewGuest.country] || viewGuest.country)}</div>}
                     {viewGuest.city && <div>{viewGuest.city}</div>}
                     {viewGuest.address && <div>{viewGuest.address}</div>}
                     {!viewGuest.country && !viewGuest.city && !viewGuest.address && (
-                      <span style={{ color: 'var(--text-tertiary)' }}>Не вказано</span>
+                      <span style={{ color: 'var(--text-tertiary)' }}>{t('Не вказано')}</span>
                     )}
                   </div>
                 </div>
@@ -735,19 +737,19 @@ function DesktopGuests() {
                 {/* Document block */}
                 <div style={{ padding: 14, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <FileText size={12} /> Документ
+                    <FileText size={12} /> {t('Документ')}
                   </div>
                   <div style={{ fontSize: 13, lineHeight: 1.8 }}>
-                    {viewGuest.document_type && <div>{DOC_TYPES[viewGuest.document_type] || viewGuest.document_type}</div>}
+                    {viewGuest.document_type && <div>{t(DOC_TYPES[viewGuest.document_type] || viewGuest.document_type)}</div>}
                     {viewGuest.document_number && <div style={{ fontWeight: 600, fontFamily: 'monospace', letterSpacing: 1 }}>{viewGuest.document_number}</div>}
                     {viewGuest.date_of_birth && (
                       <div className="flex items-center gap-2" style={{ marginTop: 4 }}>
                         <Calendar size={12} style={{ color: 'var(--text-tertiary)' }} />
-                        <span>Дата народження: {viewGuest.date_of_birth}</span>
+                        <span>{t('Дата народження:')} {viewGuest.date_of_birth}</span>
                       </div>
                     )}
                     {!viewGuest.document_type && !viewGuest.document_number && !viewGuest.date_of_birth && (
-                      <span style={{ color: 'var(--text-tertiary)' }}>Не вказано</span>
+                      <span style={{ color: 'var(--text-tertiary)' }}>{t('Не вказано')}</span>
                     )}
                   </div>
                 </div>
@@ -756,7 +758,7 @@ function DesktopGuests() {
               {/* Notes */}
               {viewGuest.notes && (
                 <div style={{ padding: 14, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 8 }}>Нотатки</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 8 }}>{t('Нотатки')}</div>
                   <div style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{viewGuest.notes}</div>
                 </div>
               )}
@@ -764,7 +766,7 @@ function DesktopGuests() {
               {/* Reservations */}
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Calendar size={16} /> Історія бронювань
+                  <Calendar size={16} /> {t('Історія бронювань')}
                   <span style={{
                     fontSize: 11, fontWeight: 700, background: 'rgba(99,102,241,0.15)', color: 'var(--accent-primary)',
                     padding: '2px 8px', borderRadius: 10,
@@ -774,20 +776,20 @@ function DesktopGuests() {
                 </div>
                 {(!viewGuest.reservations || viewGuest.reservations.length === 0) ? (
                   <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-tertiary)', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                    Бронювань немає
+                    {t('Бронювань немає')}
                   </div>
                 ) : (
                   <div style={{ borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--border-primary)' }}>
                     <table className="table" style={{ margin: 0 }}>
                       <thead>
                         <tr>
-                          <th>Заїзд</th>
-                          <th>Виїзд</th>
-                          <th>Юніт</th>
-                          <th>Гостей</th>
-                          <th>Статус</th>
-                          <th>Оплата</th>
-                          <th>Сума</th>
+                          <th>{t('Заїзд')}</th>
+                          <th>{t('Виїзд')}</th>
+                          <th>{t('Юніт')}</th>
+                          <th>{t('Гостей')}</th>
+                          <th>{t('Статус')}</th>
+                          <th>{t('Оплата')}</th>
+                          <th>{t('Сума')}</th>
                           <th></th>
                         </tr>
                       </thead>
@@ -802,7 +804,7 @@ function DesktopGuests() {
                             </td>
                             <td>
                               <span className={`badge ${STATUS_MAP[r.status]?.badge || 'badge-info'}`}>
-                                {STATUS_MAP[r.status]?.label || r.status}
+                                {t(STATUS_MAP[r.status]?.label || r.status)}
                               </span>
                             </td>
                             <td>
@@ -811,12 +813,12 @@ function DesktopGuests() {
                                 color: PAYMENT_STATUS_MAP[r.payment_status]?.color || '#888',
                                 background: PAYMENT_STATUS_MAP[r.payment_status]?.bg || 'rgba(128,128,128,0.1)',
                               }}>
-                                {PAYMENT_STATUS_MAP[r.payment_status]?.label || r.payment_status}
+                                {t(PAYMENT_STATUS_MAP[r.payment_status]?.label || r.payment_status)}
                               </span>
                             </td>
                             <td style={{ fontWeight: 700 }}>{(r.total_price || 0).toLocaleString()} {r.currency}</td>
                             <td>
-                              <a href="/app/bookings" style={{ color: 'var(--accent-primary)' }} title="Перейти до бронювань">
+                              <a href="/app/bookings" style={{ color: 'var(--accent-primary)' }} title={t('Перейти до бронювань')}>
                                 <ExternalLink size={14} />
                               </a>
                             </td>
@@ -834,11 +836,11 @@ function DesktopGuests() {
         {/* ═══════════════════════════════════════════════════
            Add Guest Modal
            ═══════════════════════════════════════════════════ */}
-        <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="Додати гостя" size="lg"
+        <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title={t('Додати гостя')} size="lg"
           footer={<>
-            <button className="btn btn-secondary" onClick={() => setShowAddModal(false)}>Скасувати</button>
+            <button className="btn btn-secondary" onClick={() => setShowAddModal(false)}>{t('Скасувати')}</button>
             <button className="btn btn-primary" onClick={handleCreate} disabled={saving}>
-              {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />} Додати гостя
+              {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />} {t('Додати гостя')}
             </button>
           </>}>
           {renderForm()}
@@ -847,11 +849,11 @@ function DesktopGuests() {
         {/* ═══════════════════════════════════════════════════
            Edit Guest Modal
            ═══════════════════════════════════════════════════ */}
-        <Modal open={!!editGuest} onClose={() => setEditGuest(null)} title="Редагувати гостя" size="lg"
+        <Modal open={!!editGuest} onClose={() => setEditGuest(null)} title={t('Редагувати гостя')} size="lg"
           footer={<>
-            <button className="btn btn-secondary" onClick={() => setEditGuest(null)}>Скасувати</button>
+            <button className="btn btn-secondary" onClick={() => setEditGuest(null)}>{t('Скасувати')}</button>
             <button className="btn btn-primary" onClick={handleSaveEdit} disabled={saving}>
-              {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />} Зберегти зміни
+              {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />} {t('Зберегти зміни')}
             </button>
           </>}>
           {renderForm()}

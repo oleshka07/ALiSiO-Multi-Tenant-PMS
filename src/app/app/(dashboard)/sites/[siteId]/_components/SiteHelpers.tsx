@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { X, Copy, Check } from 'lucide-react';
 import {
@@ -78,6 +79,7 @@ export function Modal({ open, onClose, title, children, footer, size }: {
 }
 
 export function CopyBtn({ text }: { text: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const copy = () => {
     navigator.clipboard.writeText(text);
@@ -87,7 +89,7 @@ export function CopyBtn({ text }: { text: string }) {
   return (
     <button className="btn btn-ghost" onClick={copy} style={{ padding: '4px 10px', fontSize: 12 }}>
       {copied ? <Check size={14} style={{ color: '#22c55e' }} /> : <Copy size={14} />}
-      {copied ? 'Скопійовано' : 'Копіювати'}
+      {copied ? t('Скопійовано') : t('Копіювати')}
     </button>
   );
 }

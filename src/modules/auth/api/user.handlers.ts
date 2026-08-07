@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getSql } from '@core/db/async';
 import { hashPassword } from '@core/auth';
+import { LANGUAGE_CODES, isLanguage } from '@core/i18n/languages';
 import { withPermission, notFound, type Actor } from '@core/auth/session';
 
 /**
@@ -64,6 +65,22 @@ export const updateUser = withPermission('manage_users', async (
     if (body.password) {
       const passwordHash = hashPassword(body.password);
       await sql.run("UPDATE app_users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [passwordHash, id]);
+    }
+
+    // Interface language for this person. Null or empty clears the override
+    // and puts them back on the hotel's base language — which is not the same
+    // as setting the same code today, because the hotel may change its later.
+    if (body.language !== undefined) {
+      if (body.language === null || body.language === '') {
+        await sql.run('UPDATE app_users SET language = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
+      } else if (isLanguage(body.language)) {
+        await sql.run('UPDATE app_users SET language = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [body.language, id]);
+      } else {
+        return NextResponse.json(
+          { error: `Мова не підтримується. Доступні: ${LANGUAGE_CODES.join(', ')}` },
+          { status: 400 },
+        );
+      }
     }
 
     // The PIN a receptionist types to confirm a cash payment from the booking

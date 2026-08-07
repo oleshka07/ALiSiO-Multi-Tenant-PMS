@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useRef, useEffect } from 'react';
 
 export interface InlinePickerOption {
@@ -41,6 +42,7 @@ export default function InlinePicker({
   onClear,
   placeholder = 'Вказати',
 }: Props) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -103,7 +105,7 @@ export default function InlinePicker({
         >
           <input
             autoFocus
-            placeholder="Пошук..."
+            placeholder={t('Пошук...')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{
@@ -114,7 +116,7 @@ export default function InlinePicker({
           />
           {filtered.length === 0 ? (
             <div style={{ padding: 12, fontSize: 12, color: 'var(--text-secondary)', textAlign: 'center' }}>
-              Нічого не знайдено
+              {t('Нічого не знайдено')}
             </div>
           ) : (
             filtered.map((opt) => (
@@ -151,7 +153,7 @@ export default function InlinePicker({
               onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-secondary)')}
               onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
-              × Очистити
+              {t('× Очистити')}
             </div>
           )}
         </div>

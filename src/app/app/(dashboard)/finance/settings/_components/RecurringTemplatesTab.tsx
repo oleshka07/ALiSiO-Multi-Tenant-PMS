@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, Play, RotateCcw, Clock } from 'lucide-react';
 import RecurringTemplateModal, { TemplateFormValues } from './RecurringTemplateModal';
@@ -42,6 +43,7 @@ function formatAmount(amt: number, currency: string): string {
 }
 
 export default function RecurringTemplatesTab() {
+  const tUi = useT();
   const [items, setItems] = useState<RecurringTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<RecurringTemplate | 'new' | null>(null);
@@ -77,7 +79,7 @@ export default function RecurringTemplatesTab() {
   async function handleDelete(t: RecurringTemplate) {
     if (!confirm(`Видалити шаблон «${t.name}»? Створені операції залишаться.`)) return;
     const res = await fetch(`/api/finance/recurring/${t.id}`, { method: 'DELETE' });
-    if (!res.ok) { alert('Не вдалося'); return; }
+    if (!res.ok) { alert(tUi('Не вдалося')); return; }
     fetchItems();
   }
 
@@ -96,37 +98,37 @@ export default function RecurringTemplatesTab() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 20 }}>Регулярки</h2>
+        <h2 style={{ margin: 0, fontSize: 20 }}>{tUi('Регулярки')}</h2>
         <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-          {items.filter((t) => t.is_active).length} активних
+          {items.filter((t) => t.is_active).length} {tUi('активних')}
         </span>
         <div style={{ flex: 1 }} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-secondary)' }}>
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
-          Показати вимкнені
+          {tUi('Показати вимкнені')}
         </label>
         <button onClick={() => setEditing('new')} style={btnAdd}>
-          <Plus size={16} /> Додати шаблон
+          <Plus size={16} /> {tUi('Додати шаблон')}
         </button>
       </div>
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Завантаження…')}</div>
       ) : items.length === 0 ? (
         <div style={emptyStyle}>
-          Шаблонів немає. Створіть перший, щоб автоматично генерувати операції кожного періоду (оренда, зарплата, підписки).
+          {tUi('Шаблонів немає. Створіть перший, щоб автоматично генерувати операції кожного періоду (оренда, зарплата, підписки).')}
         </div>
       ) : (
         <div style={{ border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: 'var(--bg-secondary)' }}>
-                <th style={th}>Назва</th>
-                <th style={th}>Тип</th>
-                <th style={{ ...th, textAlign: 'right' }}>Сума</th>
-                <th style={th}>Розклад</th>
-                <th style={th}>Наступний запуск</th>
-                <th style={{ ...th, textAlign: 'right' }}>Створено</th>
+                <th style={th}>{tUi('Назва')}</th>
+                <th style={th}>{tUi('Тип')}</th>
+                <th style={{ ...th, textAlign: 'right' }}>{tUi('Сума')}</th>
+                <th style={th}>{tUi('Розклад')}</th>
+                <th style={th}>{tUi('Наступний запуск')}</th>
+                <th style={{ ...th, textAlign: 'right' }}>{tUi('Створено')}</th>
                 <th style={{ ...th, width: 200 }}></th>
               </tr>
             </thead>
@@ -138,24 +140,24 @@ export default function RecurringTemplatesTab() {
                     {t.name}
                     {t.comment && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{t.comment}</div>}
                   </td>
-                  <td style={td}>{OP_TYPE_LABEL[t.op_type]}</td>
+                  <td style={td}>{tUi(OP_TYPE_LABEL[t.op_type])}</td>
                   <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
                     {formatAmount(t.amount, t.currency)}
                   </td>
                   <td style={td}>
-                    {SCHEDULE_LABELS[t.schedule]}{t.schedule === 'monthly' && t.schedule_day ? ` (${t.schedule_day}-го)` : ''}
+                    {tUi(SCHEDULE_LABELS[t.schedule])}{t.schedule === 'monthly' && t.schedule_day ? ` (${t.schedule_day}${tUi('-го)')}` : ''}
                   </td>
                   <td style={td}>{t.next_run_at}</td>
                   <td style={{ ...td, textAlign: 'right', color: 'var(--text-secondary)' }}>{t.runs_created}×</td>
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                    <button onClick={() => handleRunNow(t)} style={{ ...iconBtn, color: '#22c55e' }} title="Виконати зараз" disabled={!t.is_active}>
+                    <button onClick={() => handleRunNow(t)} style={{ ...iconBtn, color: '#22c55e' }} title={tUi('Виконати зараз')} disabled={!t.is_active}>
                       <Play size={14} />
                     </button>
-                    <button onClick={() => setEditing(t)} style={iconBtn} title="Редагувати"><Pencil size={14} /></button>
-                    <button onClick={() => handleToggle(t)} style={iconBtn} title={t.is_active ? 'Вимкнути' : 'Увімкнути'}>
+                    <button onClick={() => setEditing(t)} style={iconBtn} title={tUi('Редагувати')}><Pencil size={14} /></button>
+                    <button onClick={() => handleToggle(t)} style={iconBtn} title={t.is_active ? tUi('Вимкнути') : tUi('Увімкнути')}>
                       <RotateCcw size={14} />
                     </button>
-                    <button onClick={() => handleDelete(t)} style={{ ...iconBtn, color: '#dc2626' }} title="Видалити"><Trash2 size={14} /></button>
+                    <button onClick={() => handleDelete(t)} style={{ ...iconBtn, color: '#dc2626' }} title={tUi('Видалити')}><Trash2 size={14} /></button>
                   </td>
                 </tr>
               ))}

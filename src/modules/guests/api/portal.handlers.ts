@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { parseLanguage } from '@core/i18n/languages';
 import * as portalRepo from '../data/guest-portal.repo';
 // TODO: replace with @shared/translate when shared module exists
 import { extractTexts, extractServiceTexts, getStoredTranslations } from '@core/i18n/translate';
@@ -74,6 +75,9 @@ export async function getGuestPortal(
       expired: false,
       phase,
       propertyName,
+      // The hotel's base language: what the portal opens in before the guest
+      // touches the switch. Guessing English served exactly one customer.
+      language: parseLanguage(reservation.organization_language),
       reservation,
       registeredGuests,
       payments: {

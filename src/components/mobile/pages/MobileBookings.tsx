@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Search, RefreshCw, Phone, Plus, X, LogIn, LogOut, Building2, Pencil, Info, Link, MessageCircle } from 'lucide-react';
 import MobileBookingDetail from '@/components/booking/MobileBookingDetail';
@@ -107,6 +108,7 @@ interface MobileBookingsProps {
 }
 
 export default function MobileBookings({ openNew }: MobileBookingsProps) {
+  const t = useT();
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [units, setUnits] = useState<UnitRow[]>([]);
   const [unitTypes, setUnitTypes] = useState<BFUnitTypeRow[]>([]);
@@ -232,7 +234,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
           <input
             className="form-input"
-            placeholder="Ім'я, телефон, юніт..."
+            placeholder={t('Ім\'я, телефон, юніт...')}
             value={search}
             onChange={e => setSearch(e.target.value)}
             autoFocus
@@ -265,17 +267,17 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
       {/* Date Filter chips */}
       <div className="m-chips" style={{ marginBottom: 4 }}>
         {[
-          { key: 'all', label: 'Всі' },
-          { key: 'today_in', label: '🛬 Заїзди сьогодні' },
-          { key: 'today_out', label: '🛫 Виїзди сьогодні' },
-          { key: 'staying', label: '🏠 Проживають' },
+          { key: 'all', label: t('Всі') },
+          { key: 'today_in', label: t('🛬 Заїзди сьогодні') },
+          { key: 'today_out', label: t('🛫 Виїзди сьогодні') },
+          { key: 'staying', label: t('🏠 Проживають') },
         ].map(chip => (
           <button
             key={chip.key}
             className={`m-chip ${dateFilter === chip.key ? 'm-chip-active' : ''}`}
             onClick={() => setDateFilter(chip.key as any)}
           >
-            {chip.label}
+            {t(chip.label)}
           </button>
         ))}
       </div>
@@ -288,7 +290,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
             className={`m-chip ${statusFilter === chip.key ? 'm-chip-active' : ''}`}
             onClick={() => setStatusFilter(chip.key)}
           >
-            {chip.label}
+            {t(chip.label)}
           </button>
         ))}
       </div>
@@ -297,7 +299,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 600 }}>
-            {filtered.length} {showArchive ? 'всього' : 'актуальних'}
+            {filtered.length} {showArchive ? t('всього') : t('актуальних')}
           </span>
           <button
             onClick={() => setShowArchive(p => !p)}
@@ -307,9 +309,9 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
               background: showArchive ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
               color: showArchive ? '#fff' : 'var(--text-tertiary)',
             }}
-            title={showArchive ? 'Показано всі бронювання' : 'Показано лише актуальні'}
+            title={showArchive ? t('Показано всі бронювання') : t('Показано лише актуальні')}
           >
-            {showArchive ? 'Архів' : 'Актуальні'}
+            {showArchive ? t('Архів') : t('Актуальні')}
           </button>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -317,16 +319,16 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
             <button
               onClick={() => setShowRoomAllocation(true)}
               style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 10, background: 'rgba(91,124,255,0.12)', border: '1px solid rgba(91,124,255,0.3)', color: 'var(--accent-primary)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-              title="Розселення гостей по кімнатах Будови F"
+              title={t('Розселення гостей по кімнатах Будови F')}
             >
-              <Building2 size={13} /> Розселення
+              <Building2 size={13} /> {t('Розселення')}
             </button>
           )}
           <button
             onClick={() => setShowNewBooking(true)}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 10, background: 'var(--accent-primary)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
           >
-            <Plus size={14} /> Нове
+            <Plus size={14} /> {t('Нове')}
           </button>
           <button onClick={() => setShowSearch(p => !p)} style={{ background: 'transparent', border: 'none', color: showSearch ? 'var(--accent-primary)' : 'var(--text-tertiary)', cursor: 'pointer', padding: 4 }}>
             <Search size={16} />
@@ -345,13 +347,13 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
       ) : filtered.length === 0 ? (
         <div className="m-empty">
           <div className="m-empty-icon">📋</div>
-          <div>Нічого не знайдено</div>
+          <div>{t('Нічого не знайдено')}</div>
         </div>
       ) : (
         filtered.map(b => {
           const st = STATUS_MAP[b.status] || STATUS_MAP.draft;
           const pay = PAY_MAP[b.payment_status] || PAY_MAP.unpaid;
-          const cleanLabel = b.cleaning_status === 'clean' ? 'Чисто' : b.cleaning_status === 'dirty' ? 'Брудно' : b.cleaning_status === 'in_progress' ? 'В процесі' : null;
+          const cleanLabel = b.cleaning_status === 'clean' ? t('Чисто') : b.cleaning_status === 'dirty' ? t('Брудно') : b.cleaning_status === 'in_progress' ? t('В процесі') : null;
           const cleanColor = b.cleaning_status === 'clean' ? '#22c55e' : b.cleaning_status === 'dirty' ? '#ef4444' : '#f59e0b';
           return (
             <div key={b.id} className="m-card" style={{ padding: '12px 14px' }}>
@@ -359,12 +361,12 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
                 <div style={{ flex: 1 }}>
                   <div className="m-card-title">{b.first_name} {b.last_name}</div>
                   <div className="m-card-subtitle">
-                    {b.unit_code} · {b.nights} ноч. · {b.check_in} → {b.check_out}
+                    {b.unit_code} · {b.nights} {t('ноч. ·')} {b.check_in} → {b.check_out}
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: st.bg, color: st.color }}>
-                    {st.label}
+                    {t(st.label)}
                   </span>
                   <span style={{ fontSize: 11, fontWeight: 600, color: pay.color }}>
                     {b.total_price > 0 ? `${b.total_price.toLocaleString()} Kč` : pay.label}
@@ -391,7 +393,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
                     onClick={e => { e.stopPropagation(); handleChangeStatus(b.id, 'checked_in'); }}
                     style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 8, border: 'none', background: 'rgba(96,165,250,0.15)', color: '#60a5fa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                   >
-                    <LogIn size={12} /> Заселити
+                    <LogIn size={12} /> {t('Заселити')}
                   </button>
                 )}
                 {b.status === 'checked_in' && (
@@ -399,7 +401,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
                     onClick={e => { e.stopPropagation(); handleChangeStatus(b.id, 'checked_out'); }}
                     style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 8, border: 'none', background: 'rgba(167,139,250,0.15)', color: '#a78bfa', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                   >
-                    <LogOut size={12} /> Виселити
+                    <LogOut size={12} /> {t('Виселити')}
                   </button>
                 )}
               </div>
@@ -409,16 +411,16 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
                 <button
                   className="m-action-btn"
                   onClick={e => { e.stopPropagation(); setEditBooking(b); }}
-                  title="Змінити"
-                  aria-label="Змінити"
+                  title={t('Змінити')}
+                  aria-label={t('Змінити')}
                 >
                   <Pencil size={18} />
                 </button>
                 <button
                   className="m-action-btn"
                   onClick={e => { e.stopPropagation(); openBooking(b); }}
-                  title="Деталі"
-                  aria-label="Деталі"
+                  title={t('Деталі')}
+                  aria-label={t('Деталі')}
                 >
                   <Info size={18} />
                 </button>
@@ -429,10 +431,10 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
                       e.stopPropagation();
                       const link = `${window.location.origin}/guest/${b.guest_page_token}`;
                       navigator.clipboard.writeText(link);
-                      alert('🔗 Посилання на сторінку гостя скопійовано!');
+                      alert(t('🔗 Посилання на сторінку гостя скопійовано!'));
                     }}
-                    title="Скопіювати посилання"
-                    aria-label="Скопіювати посилання"
+                    title={t('Скопіювати посилання')}
+                    aria-label={t('Скопіювати посилання')}
                   >
                     <Link size={18} />
                   </button>
@@ -459,8 +461,8 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
                       await handleChangeStatus(b.id, 'cancelled');
                     }
                   }}
-                  title="Скасувати"
-                  aria-label="Скасувати"
+                  title={t('Скасувати')}
+                  aria-label={t('Скасувати')}
                 >
                   <X size={18} />
                 </button>
@@ -473,7 +475,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
       {/* New booking sheet */}
       {showNewBooking && (
         <BookingFormSheet
-          title="Нове бронювання"
+          title={t('Нове бронювання')}
           mode="create"
           unitTypes={unitTypes}
           allUnits={units as unknown as BFUnitRow[]}
@@ -486,7 +488,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
       {/* Edit booking sheet */}
       {editBooking && (
         <BookingFormSheet
-          title="Редагувати бронювання"
+          title={t('Редагувати бронювання')}
           mode="edit"
           bookingId={editBooking.id}
           initial={editInitial}

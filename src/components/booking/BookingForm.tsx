@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Loader2, Save, Plus } from 'lucide-react';
 
@@ -145,6 +146,7 @@ export default function BookingForm({
   onSaved,
   onCancel,
 }: BookingFormProps) {
+  const t = useT();
   const [form, setForm] = useState<BookingFormValues>(() => {
     const base = emptyValues();
     if (!initial) return base;
@@ -274,7 +276,7 @@ export default function BookingForm({
       if (mode === 'create') {
         const unitId = resolveUnitId();
         if (!unitId) {
-          setError('Немає доступних юнітів для цього типу');
+          setError(t('Немає доступних юнітів для цього типу'));
           setSaving(false);
           return;
         }
@@ -317,7 +319,7 @@ export default function BookingForm({
         onSaved(data.id);
       } else {
         if (!bookingId) {
-          setError('Відсутній ID бронювання для редагування');
+          setError(t('Відсутній ID бронювання для редагування'));
           setSaving(false);
           return;
         }
@@ -355,7 +357,7 @@ export default function BookingForm({
         onSaved(bookingId);
       }
     } catch {
-      setError('Помилка мережі');
+      setError(t('Помилка мережі'));
       setSaving(false);
     }
   };
@@ -369,7 +371,7 @@ export default function BookingForm({
     <form onSubmit={handleSubmit} className="booking-form">
       <div className="form-row">
         <div className="form-group">
-          <label className="form-label">Категорія *</label>
+          <label className="form-label">{t('Категорія *')}</label>
           <select className="form-select" value={form.category} onChange={e => onCategoryChange(e.target.value)}>
             <option value="glamping">Glamping</option>
             <option value="resort">Resort</option>
@@ -377,7 +379,7 @@ export default function BookingForm({
           </select>
         </div>
         <div className="form-group">
-          <label className="form-label">Тип розміщення *</label>
+          <label className="form-label">{t('Тип розміщення *')}</label>
           <select className="form-select" value={form.unitTypeId} onChange={e => onUnitTypeChange(e.target.value)}>
             {unitTypesForCategory.length === 0 && <option value="">—</option>}
             {unitTypesForCategory.map(ut => (
@@ -389,33 +391,33 @@ export default function BookingForm({
 
       <div className="form-row">
         <div className="form-group">
-          <label className="form-label">Юніт {mode === 'edit' && '*'}</label>
+          <label className="form-label">{t('Юніт')} {mode === 'edit' && '*'}</label>
           <select className="form-select" value={form.unitId} onChange={e => setForm(p => ({ ...p, unitId: e.target.value }))}>
-            {mode === 'create' && <option value="">Автоматично (перший вільний)</option>}
+            {mode === 'create' && <option value="">{t('Автоматично (перший вільний)')}</option>}
             {unitsForType.map(u => (
               <option key={u.id} value={u.id}>{u.code ? `${u.code} — ${u.name}` : u.name}</option>
             ))}
           </select>
         </div>
         <div className="form-group">
-          <label className="form-label">Джерело</label>
+          <label className="form-label">{t('Джерело')}</label>
           <select className="form-select" value={form.source} onChange={e => onSourceChange(e.target.value)}>
             {bookingSources.length === 0 && widgetSources.length === 0 && (
               <option value="direct">Direct</option>
             )}
             {/* ── Standard channels ── */}
             {bookingSources.length > 0 && (
-              <optgroup label="Канали">
+              <optgroup label={t('Канали')}>
                 {bookingSources.map(s => (
-                  <option key={s.code} value={s.code}>{s.name}</option>
+                  <option key={s.code} value={s.code}>{t(s.name)}</option>
                 ))}
               </optgroup>
             )}
             {/* ── Booking widget sites ── */}
             {widgetSources.length > 0 && (
-              <optgroup label="🌐 Віджети бронювань">
+              <optgroup label={t('🌐 Віджети бронювань')}>
                 {widgetSources.map(s => (
-                  <option key={s.code} value={s.code}>🌐 {s.name}</option>
+                  <option key={s.code} value={s.code}>🌐 {t(s.name)}</option>
                 ))}
               </optgroup>
             )}
@@ -425,7 +427,7 @@ export default function BookingForm({
 
       <div className="form-row">
         <div className="form-group">
-          <label className="form-label">Заїзд *</label>
+          <label className="form-label">{t('Заїзд *')}</label>
           <input
             className="form-input"
             type="date"
@@ -434,7 +436,7 @@ export default function BookingForm({
           />
         </div>
         <div className="form-group">
-          <label className="form-label">Виїзд *</label>
+          <label className="form-label">{t('Виїзд *')}</label>
           <input
             className="form-input"
             type="date"
@@ -446,13 +448,13 @@ export default function BookingForm({
 
       {nights > 0 && (
         <div style={{ fontSize: 13, color: 'var(--accent-primary)', fontWeight: 600, marginBottom: 12 }}>
-          📅 {nights} {nightsLabel(nights)}
+          📅 {nights} {t(nightsLabel(nights))}
         </div>
       )}
 
       <div className="form-row">
         <div className="form-group">
-          <label className="form-label">Дорослих</label>
+          <label className="form-label">{t('Дорослих')}</label>
           <input
             className="form-input"
             type="number"
@@ -463,7 +465,7 @@ export default function BookingForm({
           />
         </div>
         <div className="form-group">
-          <label className="form-label">Дітей</label>
+          <label className="form-label">{t('Дітей')}</label>
           <input
             className="form-input"
             type="number"
@@ -476,15 +478,15 @@ export default function BookingForm({
       </div>
 
       <div style={{ borderTop: '1px solid var(--border-primary)', marginTop: 16, paddingTop: 16 }}>
-        <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Дані гостя</h4>
+        <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{t('Дані гостя')}</h4>
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Ім&apos;я *</label>
-            <input className="form-input" value={form.firstName} onChange={e => setForm(p => ({ ...p, firstName: e.target.value }))} placeholder="Іван" />
+            <label className="form-label">{t('Ім\'я *')}</label>
+            <input className="form-input" value={form.firstName} onChange={e => setForm(p => ({ ...p, firstName: e.target.value }))} placeholder={t('Іван')} />
           </div>
           <div className="form-group">
-            <label className="form-label">Прізвище *</label>
-            <input className="form-input" value={form.lastName} onChange={e => setForm(p => ({ ...p, lastName: e.target.value }))} placeholder="Іваненко" />
+            <label className="form-label">{t('Прізвище *')}</label>
+            <input className="form-input" value={form.lastName} onChange={e => setForm(p => ({ ...p, lastName: e.target.value }))} placeholder={t('Іваненко')} />
           </div>
         </div>
         <div className="form-row">
@@ -493,31 +495,31 @@ export default function BookingForm({
             <input className="form-input" type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} placeholder="email@example.com" />
           </div>
           <div className="form-group">
-            <label className="form-label">Телефон</label>
+            <label className="form-label">{t('Телефон')}</label>
             <input className="form-input" type="tel" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="+420..." />
           </div>
         </div>
       </div>
 
       <div style={{ borderTop: '1px solid var(--border-primary)', marginTop: 16, paddingTop: 16 }}>
-        <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>💰 Фінанси</h4>
+        <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{t('💰 Фінанси')}</h4>
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Вартість ({currency})</label>
+            <label className="form-label">{t('Вартість (')}{currency})</label>
             <input
               className="form-input"
               type="number"
               min={0}
-              placeholder={mode === 'create' ? 'авто з прайсингу' : '0'}
+              placeholder={mode === 'create' ? t('авто з прайсингу') : '0'}
               value={form.totalPrice}
               onChange={e => onPriceChange(e.target.value)}
             />
           </div>
           <div className="form-group">
             <label className="form-label">
-              Комісія ({currency})
+              {t('Комісія (')}{currency})
               {commissionPct > 0 && (
-                <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginLeft: 4 }}>авто: {commissionPct}%</span>
+                <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginLeft: 4 }}>{t('авто:')} {commissionPct}%</span>
               )}
             </label>
             <input
@@ -532,34 +534,34 @@ export default function BookingForm({
         </div>
         {netRate > 0 && (
           <div style={{ fontSize: 12, color: '#22c55e', marginBottom: 8 }}>
-            Чиста ставка: {netRate.toLocaleString()} {currency}
+            {t('Чиста ставка:')} {netRate.toLocaleString()} {currency}
           </div>
         )}
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Статус</label>
+            <label className="form-label">{t('Статус')}</label>
             <select className="form-select" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
-              {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{t(s.label)}</option>)}
             </select>
           </div>
           <div className="form-group">
-            <label className="form-label">Статус оплати</label>
+            <label className="form-label">{t('Статус оплати')}</label>
             <select className="form-select" value={form.paymentStatus} onChange={e => setForm(p => ({ ...p, paymentStatus: e.target.value }))}>
-              {PAYMENT_STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              {PAYMENT_STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{t(s.label)}</option>)}
             </select>
           </div>
         </div>
       </div>
 
       <div style={{ borderTop: '1px solid var(--border-primary)', marginTop: 16, paddingTop: 16 }}>
-        <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>🏛️ Туристичний збір</h4>
+        <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{t('🏛️ Туристичний збір')}</h4>
         <div className="form-row">
           <div className="form-group">
             <label className="form-label">
-              Сума збору ({currency})
+              {t('Сума збору (')}{currency})
               {form.checkIn && form.checkOut && form.adults > 0 && (
                 <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginLeft: 4 }}>
-                  авто: {form.adults}×{nights}×{CITY_TAX_PER_ADULT_PER_NIGHT}
+                  {t('авто:')} {form.adults}×{nights}×{CITY_TAX_PER_ADULT_PER_NIGHT}
                 </span>
               )}
             </label>
@@ -573,9 +575,9 @@ export default function BookingForm({
             />
           </div>
           <div className="form-group">
-            <label className="form-label">Статус збору</label>
+            <label className="form-label">{t('Статус збору')}</label>
             <select className="form-select" value={form.cityTaxPaid} onChange={e => setForm(p => ({ ...p, cityTaxPaid: e.target.value }))}>
-              {CITY_TAX_PAID_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              {CITY_TAX_PAID_OPTIONS.map(s => <option key={s.value} value={s.value}>{t(s.label)}</option>)}
             </select>
           </div>
         </div>
@@ -587,16 +589,16 @@ export default function BookingForm({
             onChange={e => setForm(p => ({ ...p, cityTaxIncluded: e.target.checked }))}
           />
           <label htmlFor="bf-cityTaxIncluded" style={{ fontSize: 13, cursor: 'pointer' }}>
-            Збір включено у вартість бронювання
+            {t('Збір включено у вартість бронювання')}
           </label>
         </div>
       </div>
 
       <div style={{ borderTop: '1px solid var(--border-primary)', marginTop: 16, paddingTop: 16 }}>
-        <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>📝 Примітки</h4>
+        <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{t('📝 Примітки')}</h4>
         <textarea
           className="form-input"
-          placeholder="Внутрішні примітки (бачить лише персонал)..."
+          placeholder={t('Внутрішні примітки (бачить лише персонал)...')}
           value={form.internalNotes}
           onChange={e => setForm(p => ({ ...p, internalNotes: e.target.value }))}
           style={{ minHeight: 60, resize: 'vertical', width: '100%' }}
@@ -611,14 +613,14 @@ export default function BookingForm({
 
       <div className="booking-form-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-primary)' }}>
         <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={saving}>
-          Скасувати
+          {t('Скасувати')}
         </button>
         <button type="submit" className="btn btn-primary" disabled={saving}>
           {saving
-            ? <><Loader2 size={14} className="animate-pulse" /> Збереження...</>
+            ? <><Loader2 size={14} className="animate-pulse" /> {t('Збереження...')}</>
             : mode === 'create'
-              ? <><Plus size={14} /> Створити бронювання</>
-              : <><Save size={14} /> Зберегти зміни</>
+              ? <><Plus size={14} /> {t('Створити бронювання')}</>
+              : <><Save size={14} /> {t('Зберегти зміни')}</>
           }
         </button>
       </div>

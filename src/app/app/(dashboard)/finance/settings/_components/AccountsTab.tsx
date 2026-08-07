@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Pencil, Archive, Trash2, Scale, RotateCcw } from 'lucide-react';
 import AccountModal, { AccountFormValues } from './AccountModal';
@@ -34,6 +35,7 @@ function formatMoney(n: number, currency: string): string {
 }
 
 export default function AccountsTab() {
+  const t = useT();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
@@ -107,9 +109,9 @@ export default function AccountsTab() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 20 }}>Рахунки</h2>
+        <h2 style={{ margin: 0, fontSize: 20 }}>{t('Рахунки')}</h2>
         <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-          {activeCount} активних
+          {activeCount} {t('активних')}
         </span>
         <div style={{ flex: 1 }} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-secondary)' }}>
@@ -118,7 +120,7 @@ export default function AccountsTab() {
             checked={showArchived}
             onChange={(e) => setShowArchived(e.target.checked)}
           />
-          Показати архівовані
+          {t('Показати архівовані')}
         </label>
         <button
           onClick={() => setEditing('new')}
@@ -136,12 +138,12 @@ export default function AccountsTab() {
             fontSize: 13,
           }}
         >
-          <Plus size={16} /> Додати рахунок
+          <Plus size={16} /> {t('Додати рахунок')}
         </button>
       </div>
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Завантаження…')}</div>
       ) : accounts.length === 0 ? (
         <div
           style={{
@@ -152,26 +154,26 @@ export default function AccountsTab() {
             borderRadius: 10,
           }}
         >
-          Рахунків ще немає. Натисніть «Додати рахунок», щоб створити перший.
+          {t('Рахунків ще немає. Натисніть «Додати рахунок», щоб створити перший.')}
         </div>
       ) : (
         <div style={{ border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: 'var(--bg-secondary)' }}>
-                <th style={thStyle}>Назва</th>
-                <th style={thStyle}>Тип</th>
-                <th style={thStyle}>Валюта</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>Стартовий</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>Поточний</th>
-                <th style={{ ...thStyle, width: 180 }}>Дії</th>
+                <th style={thStyle}>{t('Назва')}</th>
+                <th style={thStyle}>{t('Тип')}</th>
+                <th style={thStyle}>{t('Валюта')}</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>{t('Стартовий')}</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>{t('Поточний')}</th>
+                <th style={{ ...thStyle, width: 180 }}>{t('Дії')}</th>
               </tr>
             </thead>
             <tbody>
               {accounts.map((a) => {
                 const isCard = a.type === 'card';
                 const displayBalance = isCard && a.credit_limit !== null
-                  ? `${formatMoney((a.credit_limit || 0) + a.balance, a.currency)} доступно`
+                  ? `${formatMoney((a.credit_limit || 0) + a.balance, a.currency)} ${t('доступно')}`
                   : formatMoney(a.balance, a.currency);
                 return (
                   <tr
@@ -194,29 +196,29 @@ export default function AccountsTab() {
                         }}
                       />
                       {a.name}
-                      {!a.is_active && <span style={{ color: 'var(--text-secondary)', fontSize: 12, marginLeft: 6 }}>(архів)</span>}
+                      {!a.is_active && <span style={{ color: 'var(--text-secondary)', fontSize: 12, marginLeft: 6 }}>{t('(архів)')}</span>}
                     </td>
-                    <td style={tdStyle}>{TYPE_LABELS[a.type]}</td>
+                    <td style={tdStyle}>{t(TYPE_LABELS[a.type])}</td>
                     <td style={tdStyle}>{a.currency}</td>
                     <td style={{ ...tdStyle, textAlign: 'right' }}>{formatMoney(a.initial_balance, a.currency)}</td>
                     <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{displayBalance}</td>
                     <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                      <button style={iconBtnStyle} title="Редагувати" onClick={() => setEditing(a)}>
+                      <button style={iconBtnStyle} title={t('Редагувати')} onClick={() => setEditing(a)}>
                         <Pencil size={15} />
                       </button>
-                      <button style={iconBtnStyle} title="Звірка" onClick={() => setReconciling(a)}>
+                      <button style={iconBtnStyle} title={t('Звірка')} onClick={() => setReconciling(a)}>
                         <Scale size={15} />
                       </button>
                       <button
                         style={iconBtnStyle}
-                        title={a.is_active ? 'Архівувати' : 'Відновити'}
+                        title={a.is_active ? t('Архівувати') : t('Відновити')}
                         onClick={() => handleArchiveToggle(a)}
                       >
                         {a.is_active ? <Archive size={15} /> : <RotateCcw size={15} />}
                       </button>
                       <button
                         style={{ ...iconBtnStyle, color: '#dc2626' }}
-                        title="Видалити"
+                        title={t('Видалити')}
                         onClick={() => handleDelete(a)}
                       >
                         <Trash2 size={15} />

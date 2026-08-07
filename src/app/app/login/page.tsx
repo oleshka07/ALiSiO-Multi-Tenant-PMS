@@ -1,9 +1,11 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
+  const t = useT();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -30,7 +32,7 @@ export default function LoginPage() {
         setError(data.error || 'Помилка входу');
       }
     } catch {
-      setError('Помилка мережі');
+      setError(t('Помилка мережі'));
     } finally {
       setLoading(false);
     }
@@ -74,7 +76,7 @@ export default function LoginPage() {
           </div>
 
           <div className="login-field">
-            <label htmlFor="password">Пароль</label>
+            <label htmlFor="password">{t('Пароль')}</label>
             <input
               id="password"
               type="password"

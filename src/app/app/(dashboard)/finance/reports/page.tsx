@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import Link from 'next/link';
 import { Wallet, TrendingUp, FileText, FolderKanban, Scale, Target, BarChart3, History, ArrowLeft } from 'lucide-react';
@@ -16,6 +17,7 @@ interface ReportCard {
 }
 
 export default function ReportsLandingPage() {
+  const t = useT();
   const [showIndicators, setShowIndicators] = useState(false);
 
   const cards: ReportCard[] = [
@@ -36,7 +38,7 @@ export default function ReportsLandingPage() {
         <Link href="/app/finance/operations" style={backLink}>
           <ArrowLeft size={14} />
         </Link>
-        <h1 style={{ margin: 0 }}>📊 Звіти</h1>
+        <h1 style={{ margin: 0 }}>{t('📊 Звіти')}</h1>
       </div>
 
       <div style={{
@@ -67,7 +69,7 @@ export default function ReportsLandingPage() {
               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.desc}</div>
               {c.disabled && (
                 <span style={{ position: 'absolute', top: 10, right: 10, fontSize: 10, padding: '2px 8px', background: 'var(--bg-secondary)', borderRadius: 4, color: 'var(--text-secondary)' }}>
-                  незабаром
+                  {t('незабаром')}
                 </span>
               )}
             </div>

@@ -1,11 +1,13 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { Loader2, ToggleRight, ToggleLeft, Upload, Code2 } from 'lucide-react';
 import { Modal, CopyBtn } from './SiteHelpers';
 import type { SiteService } from '../_types';
 
 export function ServicesTab({ siteId, siteCurrency }: { siteId: string, siteCurrency: string }) {
+  const t = useT();
   const [services, setServices] = useState<SiteService[]>([]);
   const [loading, setLoading] = useState(true);
   const [embedSvc, setEmbedSvc] = useState<SiteService | null>(null);
@@ -74,10 +76,10 @@ export function ServicesTab({ siteId, siteCurrency }: { siteId: string, siteCurr
   return (
     <div>
       <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text-secondary)' }}>
-        Оберіть сервіси, що доступні для замовлення на цьому сайті.
+        {t('Оберіть сервіси, що доступні для замовлення на цьому сайті.')}
       </div>
       <table className="data-table">
-        <thead><tr><th>Сервіс</th><th>Фото</th><th>Ціна</th><th>Активний</th><th>Embed-код</th></tr></thead>
+        <thead><tr><th>{t('Сервіс')}</th><th>{t('Фото')}</th><th>{t('Ціна')}</th><th>{t('Активний')}</th><th>{t('Embed-код')}</th></tr></thead>
         <tbody>
           {services.map(svc => (
             <tr key={svc.id}>
@@ -90,13 +92,13 @@ export function ServicesTab({ siteId, siteCurrency }: { siteId: string, siteCurr
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <img src={svc.photo_override} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6 }} />
                     <label style={{ cursor: 'pointer', fontSize: 12, color: 'var(--brand-blue)' }}>
-                      Змінити
+                      {t('Змінити')}
                       <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => uploadPhoto(svc, e)} />
                     </label>
                   </div>
                 ) : (
                   <label className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 8px', display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                    <Upload size={13} /> Додати фото
+                    <Upload size={13} /> {t('Додати фото')}
                     <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => uploadPhoto(svc, e)} />
                   </label>
                 )}
@@ -132,18 +134,18 @@ export function ServicesTab({ siteId, siteCurrency }: { siteId: string, siteCurr
               </td>
               <td>
                 <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 8px' }} onClick={() => setEmbedSvc(svc)}>
-                  <Code2 size={13} /> Код
+                  <Code2 size={13} /> {t('Код')}
                 </button>
               </td>
             </tr>
           ))}
-          {services.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Немає сервісів. Додайте їх у Налаштування → Послуги.</td></tr>}
+          {services.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Немає сервісів. Додайте їх у Налаштування → Послуги.')}</td></tr>}
         </tbody>
       </table>
 
-      <Modal open={!!embedSvc} onClose={() => setEmbedSvc(null)} title={`Embed-код: ${embedSvc?.name}`} size="lg">
+      <Modal open={!!embedSvc} onClose={() => setEmbedSvc(null)} title={`${t('Embed-код:')} ${embedSvc?.name}`} size="lg">
         <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
-          Вставте цей код на ваш сайт для відображення кнопки замовлення сервісу.
+          {t('Вставте цей код на ваш сайт для відображення кнопки замовлення сервісу.')}
         </div>
         <div style={{ position: 'relative' }}>
           <pre style={{ background: 'var(--surface-secondary)', borderRadius: 8, padding: 16, fontSize: 12, overflowX: 'auto', margin: 0 }}>

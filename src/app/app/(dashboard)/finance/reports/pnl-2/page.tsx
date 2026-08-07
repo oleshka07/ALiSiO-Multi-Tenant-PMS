@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, ChevronRight, ChevronDown } from 'lucide-react';
@@ -39,6 +40,7 @@ function defaultMonth(): string {
 }
 
 export default function Pnl2Page() {
+  const tUi = useT();
   const [data, setData] = useState<Pnl2Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState(defaultMonth());
@@ -74,15 +76,15 @@ export default function Pnl2Page() {
       </div>
 
       {loading || !data ? (
-        <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Завантаження…')}</div>
       ) : (
         <div style={{ marginTop: 20, overflowX: 'auto', border: '1px solid var(--border-primary)', borderRadius: 10 }}>
           <table style={tableStyle}>
             <thead>
               <tr style={{ background: 'var(--bg-secondary)' }}>
-                <th style={{ ...th, textAlign: 'left', position: 'sticky', left: 0, background: 'var(--bg-secondary)', zIndex: 2, minWidth: 280 }}>Статті / Business Unit</th>
+                <th style={{ ...th, textAlign: 'left', position: 'sticky', left: 0, background: 'var(--bg-secondary)', zIndex: 2, minWidth: 280 }}>{tUi('Статті / Business Unit')}</th>
                 {data.businessUnits.map((bu) => <th key={bu.id} style={th}>{bu.name}</th>)}
-                <th style={{ ...th, background: 'var(--bg-secondary)' }}>Итого</th>
+                <th style={{ ...th, background: 'var(--bg-secondary)' }}>{tUi('Итого')}</th>
               </tr>
             </thead>
             <tbody>

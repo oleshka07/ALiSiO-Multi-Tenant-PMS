@@ -720,7 +720,19 @@ export function getTranslations(lang: Lang): Translations {
   return translations[lang] || translations.en;
 }
 
-export function detectLanguage(phone?: string | null, country?: string | null): Lang {
+/**
+ * Which language to open a guest's page in.
+ *
+ * The guest's own signals lead — a +49 number wants German whichever hotel
+ * they booked. When nothing identifies them, the hotel's own language is a far
+ * better guess than English: a Czech pension's walk-in guest is more likely to
+ * read Czech than English, and the switch is one tap away either way.
+ */
+export function detectLanguage(
+  phone?: string | null,
+  country?: string | null,
+  fallback: Lang = 'en',
+): Lang {
   if (phone) {
     if (phone.startsWith('+49')) return 'de';
     if (phone.startsWith('+420')) return 'cs';
@@ -738,7 +750,7 @@ export function detectLanguage(phone?: string | null, country?: string | null): 
     if (c.includes('neder') || c.includes('dutch') || c.includes('belgi')) return 'nl';
     if (c.includes('franc') || c.includes('french') || c.includes('belge')) return 'fr';
   }
-  return 'en';
+  return fallback;
 }
 
 /**

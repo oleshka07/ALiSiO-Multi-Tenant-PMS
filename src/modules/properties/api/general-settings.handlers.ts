@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getSql } from '@core/db/async';
 import { getSessionUser } from '@core/auth';
+import { LANGUAGES, LANGUAGE_CODES, isLanguage } from '@core/i18n/languages';
 
 async function currentUser() {
   const store = await cookies();
@@ -27,12 +28,17 @@ export async function getGeneralSettings(): Promise<NextResponse> {
   if (!user) return unauthorized();
   try {
     const sql = getSql();
-    const org = await sql.row<any>(`SELECT id, name, slug, timezone, default_currency,
+    const org = await sql.row<any>(`SELECT id, name, slug, timezone, default_currency, language,
                 legal_name, registration_no, vat_no, is_vat_payer, legal_address,
                 bank_name, bank_account, iban, swift, invoice_email, website, ocr_cloud_fallback
          FROM organizations WHERE id = ?`, [user.organization_id]);
     const property = await sql.row<any>('SELECT id, name, slug, address, city, country, phone, email, check_in_time, check_out_time FROM properties WHERE organization_id = ? ORDER BY created_at LIMIT 1', [user.organization_id]);
-    return NextResponse.json({ organization: org ?? null, property: property ?? null, currencies: SUPPORTED_CURRENCIES });
+    return NextResponse.json({
+      organization: org ?? null,
+      property: property ?? null,
+      currencies: SUPPORTED_CURRENCIES,
+      languages: LANGUAGE_CODES.map((code) => ({ code, native: LANGUAGES[code].native })),
+    });
   } catch (e: any) {
     console.error('GET /api/settings/general error:', e);
     return NextResponse.json({ error: 'Не вдалося прочитати налаштування' }, { status: 500 });
@@ -56,6 +62,17 @@ export async function saveGeneralSettings(request: NextRequest): Promise<NextRes
     const currency = String(org.default_currency ?? 'CZK').toUpperCase();
     if (!SUPPORTED_CURRENCIES.includes(currency as (typeof SUPPORTED_CURRENCIES)[number])) {
       return NextResponse.json({ error: `Валюта не підтримується: ${currency}` }, { status: 400 });
+    }
+
+    // The base language is not merely a display preference: it decides which
+    // language the hotel's content is treated as being written in, and so what
+    // gets translated for guests. A silent fallback would mistranslate quietly.
+    const language = String(org.language ?? '').trim().toLowerCase();
+    if (!isLanguage(language)) {
+      return NextResponse.json(
+        { error: `Мова не підтримується: ${language || '—'}. Доступні: ${LANGUAGE_CODES.join(', ')}` },
+        { status: 400 },
+      );
     }
 
     const timezone = String(org.timezone ?? 'Europe/Prague').trim();
@@ -86,13 +103,14 @@ export async function saveGeneralSettings(request: NextRequest): Promise<NextRes
     }
 
     const sql = getSql();
-    await sql.run(`UPDATE organizations SET name = ?, timezone = ?, default_currency = ?,
+    await sql.run(`UPDATE organizations SET name = ?, timezone = ?, default_currency = ?, language = ?,
          legal_name = ?, registration_no = ?, vat_no = ?, is_vat_payer = ?, legal_address = ?,
          bank_name = ?, bank_account = ?, iban = ?, swift = ?, invoice_email = ?, website = ?, ocr_cloud_fallback = ?,
          updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`, [name,
       timezone,
       currency,
+      language,
       str(org.legal_name),
       str(org.registration_no),
       str(org.vat_no),

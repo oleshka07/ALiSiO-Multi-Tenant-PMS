@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, ArrowRight } from 'lucide-react';
 import ExchangeRateModal, { ExchangeRateFormValues } from './ExchangeRateModal';
@@ -19,6 +20,7 @@ interface RatesResponse {
 }
 
 export default function ExchangeRatesTab() {
+  const t = useT();
   const [data, setData] = useState<RatesResponse>({ rates: [], latest: [] });
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<ExchangeRate | 'new' | null>(null);
@@ -68,9 +70,9 @@ export default function ExchangeRatesTab() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 20 }}>Курси валют</h2>
+        <h2 style={{ margin: 0, fontSize: 20 }}>{t('Курси валют')}</h2>
         <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-          {data.rates.length} запис{data.rates.length === 1 ? '' : 'ів'}
+          {data.rates.length} {t('запис')}{data.rates.length === 1 ? '' : t('ів')}
         </span>
         <div style={{ flex: 1 }} />
         <button
@@ -81,7 +83,7 @@ export default function ExchangeRatesTab() {
             borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13,
           }}
         >
-          <Plus size={16} /> Додати курс
+          <Plus size={16} /> {t('Додати курс')}
         </button>
       </div>
 
@@ -96,7 +98,7 @@ export default function ExchangeRatesTab() {
           }}
         >
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
-            Поточні курси (на сьогодні)
+            {t('Поточні курси (на сьогодні)')}
           </div>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             {data.latest.map((r) => (
@@ -119,7 +121,7 @@ export default function ExchangeRatesTab() {
       )}
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Завантаження…')}</div>
       ) : data.rates.length === 0 ? (
         <div
           style={{
@@ -130,18 +132,18 @@ export default function ExchangeRatesTab() {
             borderRadius: 10,
           }}
         >
-          Курсів ще немає. Додайте перший (напр. EUR → CZK = 25.20).
+          {t('Курсів ще немає. Додайте перший (напр. EUR → CZK = 25.20).')}
         </div>
       ) : (
         <div style={{ border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: 'var(--bg-secondary)' }}>
-                <th style={thStyle}>З</th>
-                <th style={thStyle}>На</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>Курс</th>
-                <th style={thStyle}>Діє з</th>
-                <th style={{ ...thStyle, width: 100 }}>Дії</th>
+                <th style={thStyle}>{t('З')}</th>
+                <th style={thStyle}>{t('На')}</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>{t('Курс')}</th>
+                <th style={thStyle}>{t('Діє з')}</th>
+                <th style={{ ...thStyle, width: 100 }}>{t('Дії')}</th>
               </tr>
             </thead>
             <tbody>
@@ -154,12 +156,12 @@ export default function ExchangeRatesTab() {
                   </td>
                   <td style={tdStyle}>{r.effective_from}</td>
                   <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                    <button style={iconBtnStyle} title="Редагувати" onClick={() => setEditing(r)}>
+                    <button style={iconBtnStyle} title={t('Редагувати')} onClick={() => setEditing(r)}>
                       <Pencil size={15} />
                     </button>
                     <button
                       style={{ ...iconBtnStyle, color: '#dc2626' }}
-                      title="Видалити"
+                      title={t('Видалити')}
                       onClick={() => handleDelete(r)}
                     >
                       <Trash2 size={15} />

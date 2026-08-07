@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 import { X, Repeat, Check, ArrowLeftRight } from 'lucide-react';
 import AttachmentsSection from './AttachmentsSection';
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function OperationModal({ opType, initial, accounts, onClose, onSaved }: Props) {
+  const t = useT();
   // currentOpType is local state so the «Перетворити в переказ» button
   // can flip it inside the modal without reopening. Initial value comes
   // from the prop; the operation row in DB still has the original
@@ -94,7 +96,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
     e.preventDefault();
     setError(null);
     const amt = parseFloat(amount);
-    if (!isFinite(amt) || amt <= 0) { setError('Вкажіть додатну суму'); return; }
+    if (!isFinite(amt) || amt <= 0) { setError(t('Вкажіть додатну суму')); return; }
 
     const body: any = {
       op_type: currentOpType,
@@ -120,7 +122,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
       body.account_to_id = null;
     }
     if (currentOpType === 'transfer') {
-      if (accountFromId === accountToId) { setError('Рахунки мають відрізнятися'); return; }
+      if (accountFromId === accountToId) { setError(t('Рахунки мають відрізнятися')); return; }
       body.account_from_id = accountFromId;
       body.account_to_id = accountToId;
     }
@@ -146,7 +148,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
       }
       onSaved();
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
       setSaving(false);
     }
   }
@@ -170,12 +172,12 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
     <div style={overlayStyle} onClick={onClose}>
       <form onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()} style={modalStyle}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, flex: 1, color: accentColor }}>{initial ? `Редагувати: ${title}` : title}</h3>
+          <h3 style={{ margin: 0, flex: 1, color: accentColor }}>{initial ? `${t('Редагувати:')} ${title}` : title}</h3>
           <button type="button" onClick={onClose} style={closeBtn}><X size={18} /></button>
         </div>
 
         {(currentOpType === 'expense' || currentOpType === 'transfer') && (
-          <Field label={currentOpType === 'transfer' ? 'З рахунку' : 'З рахунку (витрата)'}>
+          <Field label={currentOpType === 'transfer' ? t('З рахунку') : t('З рахунку (витрата)')}>
             <select value={accountFromId} onChange={(e) => setAccountFromId(e.target.value)} style={input} required>
               <option value="">—</option>
               {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}
@@ -183,7 +185,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
           </Field>
         )}
         {(currentOpType === 'income' || currentOpType === 'transfer') && (
-          <Field label={currentOpType === 'transfer' ? 'На рахунок' : 'На рахунок (дохід)'}>
+          <Field label={currentOpType === 'transfer' ? t('На рахунок') : t('На рахунок (дохід)')}>
             <select value={accountToId} onChange={(e) => setAccountToId(e.target.value)} style={input} required>
               <option value="">—</option>
               {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}
@@ -192,10 +194,10 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
         )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
-          <Field label="Сума">
+          <Field label={t('Сума')}>
             <input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} style={input} autoFocus />
           </Field>
-          <Field label="Валюта">
+          <Field label={t('Валюта')}>
             <select value={currency} onChange={(e) => { setCurrency(e.target.value); setFxRateEdited(false); }} style={input}>
               <option value="CZK">CZK</option><option value="EUR">EUR</option><option value="USD">USD</option>
             </select>
@@ -208,19 +210,19 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
             background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.25)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontSize: 13, fontWeight: 600, color: '#6366f1' }}>
-              💱 Конвертація {currency} → CZK
+              {t('💱 Конвертація')} {currency} → CZK
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <Field label="Курс">
+              <Field label={t('Курс')}>
                 <input
                   type="number" step="0.01" min="0"
                   value={fxRate ?? ''}
                   onChange={(e) => { setFxRate(parseFloat(e.target.value) || null); setFxRateEdited(true); }}
                   style={{ ...input, fontWeight: 600 }}
-                  placeholder={fxLoading ? 'Завантаження...' : 'Немає курсу'}
+                  placeholder={fxLoading ? t('Завантаження...') : t('Немає курсу')}
                 />
               </Field>
-              <Field label="Сума в CZK">
+              <Field label={t('Сума в CZK')}>
                 <div style={{
                   padding: '8px 12px', border: '1px solid var(--border-primary)',
                   borderRadius: 8, fontSize: 14, fontWeight: 700,
@@ -233,20 +235,19 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
             </div>
             {fxEffectiveFrom && (
               <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
-                {fxIsFallback ? '⚠️ Використано останній відомий курс' : 'Курс'} від {fxEffectiveFrom}.
-                Можна змінити вручну для цієї операції.
+                {fxIsFallback ? t('⚠️ Використано останній відомий курс') : t('Курс')} {t('від')} {fxEffectiveFrom}{t('. Можна змінити вручну для цієї операції.')}
               </div>
             )}
             {!fxRate && !fxLoading && (
               <div style={{ fontSize: 12, color: '#dc2626', marginTop: 6 }}>
-                ⚠️ Курс {currency}→CZK не знайдено. Додайте в Налаштування → Курси валют або вкажіть курс вручну.
+                {t('⚠️ Курс')} {currency}{t('→CZK не знайдено. Додайте в Налаштування → Курси валют або вкажіть курс вручну.')}
               </div>
             )}
           </div>
         )}
 
         {currentOpType !== 'transfer' && (
-          <Field label="Категорія">
+          <Field label={t('Категорія')}>
             <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} style={input}>
               <option value="">—</option>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.icon || ''} {c.name}</option>)}
@@ -255,7 +256,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
         )}
 
         {currentOpType !== 'transfer' && (
-          <Field label="Контрагент (опц.)">
+          <Field label={t('Контрагент (опц.)')}>
             <select value={counterpartyId} onChange={(e) => setCounterpartyId(e.target.value)} style={input}>
               <option value="">—</option>
               {counterparties.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -263,33 +264,33 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
           </Field>
         )}
 
-        <Field label="Проєкт (опц.)">
+        <Field label={t('Проєкт (опц.)')}>
           <select value={projectId} onChange={(e) => setProjectId(e.target.value)} style={input}>
             <option value="">—</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </Field>
 
-        <Field label="Дата платежу">
+        <Field label={t('Дата платежу')}>
           <input type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} style={input} />
         </Field>
 
         <div style={{ marginBottom: 10 }}>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
             <input type="checkbox" checked={accrualDiffers} onChange={(e) => setAccrualDiffers(e.target.checked)} />
-            Дата угоди (нарахування) відрізняється
+            {t('Дата угоди (нарахування) відрізняється')}
           </label>
           {accrualDiffers && (
             <div style={{ marginTop: 6 }}>
               <input type="date" value={accruedAt} onChange={(e) => setAccruedAt(e.target.value)} style={input} />
               <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
-                Використовується у P&L-звіті: коли гроші «зароблені» чи «витрачені» економічно (не коли фактично пройшли).
+                {t('Використовується у P&L-звіті: коли гроші «зароблені» чи «витрачені» економічно (не коли фактично пройшли).')}
               </div>
             </div>
           )}
         </div>
 
-        <Field label="Коментар (опц.)">
+        <Field label={t('Коментар (опц.)')}>
           <textarea value={comment} onChange={(e) => setComment(e.target.value)} style={{ ...input, minHeight: 50, resize: 'vertical' }} />
         </Field>
 
@@ -310,8 +311,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
             padding: 10, marginBottom: 10, borderRadius: 8, fontSize: 12,
             background: 'rgba(99,102,241,0.10)', border: '1px solid rgba(99,102,241,0.35)', color: '#4338ca',
           }}>
-            Конвертовано на <b>Переказ</b>. Збереження запише операцію з типом «transfer» — категорія буде очищена,
-            обидва рахунки обовʼязкові. Не зберігати — натисни «Відміна».
+            {t('Конвертовано на')} <b>{t('Переказ')}</b>{t('. Збереження запише операцію з типом «transfer» — категорія буде очищена, обидва рахунки обовʼязкові. Не зберігати — натисни «Відміна».')}
           </div>
         )}
 
@@ -319,14 +319,14 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
           {initial && currentOpType !== 'transfer' && (
             <button type="button" onClick={convertToTransfer}
                     style={{ ...btnSec, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                    title="Замінити тип операції на «Переказ» між рахунками. Категорія буде очищена.">
-              <ArrowLeftRight size={14} /> Перетворити в переказ
+                    title={t('Замінити тип операції на «Переказ» між рахунками. Категорія буде очищена.')}>
+              <ArrowLeftRight size={14} /> {t('Перетворити в переказ')}
             </button>
           )}
           <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} style={btnSec}>Відміна</button>
+          <button type="button" onClick={onClose} style={btnSec}>{t('Відміна')}</button>
           <button type="submit" disabled={saving} style={{ ...btnPrim, background: accentColor }}>
-            {saving ? 'Збереження…' : initial ? 'Зберегти' : 'Додати'}
+            {saving ? t('Збереження…') : initial ? t('Зберегти') : t('Додати')}
           </button>
         </div>
       </form>
@@ -337,6 +337,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
 function RecurringSuggestionBanner({ operationId, templateName, onApplied }: {
   operationId: string; templateName: string; onApplied: () => void;
 }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
 
   async function act(confirm: boolean) {
@@ -353,7 +354,7 @@ function RecurringSuggestionBanner({ operationId, templateName, onApplied }: {
       } else {
         onApplied();
       }
-    } catch (e: any) { alert(`Помилка: ${e.message}`); }
+    } catch (e: any) { alert(`Помилка: ${t(e.message)}`); }
     setBusy(false);
   }
 
@@ -365,7 +366,7 @@ function RecurringSuggestionBanner({ operationId, templateName, onApplied }: {
     }}>
       <Repeat size={16} color="#16a34a" />
       <div style={{ flex: 1, fontSize: 13 }}>
-        Виглядає як <b>{templateName}</b>. Підтвердити автозаповнення категорії/проєкту/контрагента з шаблону?
+        {t('Виглядає як')} <b>{templateName}</b>{t('. Підтвердити автозаповнення категорії/проєкту/контрагента з шаблону?')}
       </div>
       <button
         type="button"
@@ -377,7 +378,7 @@ function RecurringSuggestionBanner({ operationId, templateName, onApplied }: {
           borderRadius: 6, color: 'var(--text-secondary)', cursor: 'pointer',
         }}
       >
-        Не моє
+        {t('Не моє')}
       </button>
       <button
         type="button"
@@ -390,7 +391,7 @@ function RecurringSuggestionBanner({ operationId, templateName, onApplied }: {
           color: '#fff', cursor: 'pointer',
         }}
       >
-        <Check size={12} /> Підтвердити
+        <Check size={12} /> {t('Підтвердити')}
       </button>
     </div>
   );

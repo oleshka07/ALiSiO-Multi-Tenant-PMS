@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import './booking-v2.css';
 import { tName } from './locales';
@@ -9,6 +10,7 @@ import type { BookingLang } from './translations';
 import { useBookingWidget } from './hooks/useBookingWidget';
 
 export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPreview, lang: initialLang }: { siteId?: string; siteSlug?: string; thankYouUrl?: string; design?: DesignConfig; isPreview?: boolean; lang?: BookingLang }) {
+  const tUi = useT();
   const { lang, t, v3t, step, setStep, checkIn, setCheckIn, checkOut, setCheckOut, nights, selectingCheckOut, setSelectingCheckOut, adults, setAdults, kids, setKids, calMonthOffset, setCalMonthOffset, calOpen, setCalOpen, busyDates, partialDates, socialProof, waitlistStatus, joinWaitlist, nextAvailable, availability, loadingAvail, selectedUnitId, setSelectedUnitId, currentImgIndex, setCurrentImgIndex, firstName, setFirstName, lastName, setLastName, email, setEmail, phone, setPhone, submitting, error, reservation, couponCode, setCouponCode, showOffer, setShowOffer, offerApplied, offerError, applyingOffer, handleApplyOffer, extraCouponCode, setExtraCouponCode, showExtraOffer, setShowExtraOffer, extraCouponApplied, extraCouponError, applyingExtraCoupon, handleApplyExtraOffer, siteConfig, siteCurrency, services, loadingServices, selectedServiceIds, setSelectedServiceIds, setAvailability, displayUnits, availableCategories, selectedCategoryId, setSelectedCategoryId, categoryStepEnabled, selectedUnit, totalWithDiscount, totalWithoutDiscount, fetchAvailability, handleDayClick, goToStep, submitBooking, toggleService, startPayment, activeDesign, dynamicStyles, invalidNightsMsg, today, getOccupancyString, activeRatePlan } = useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPreview, initialLang });
   return (
     <div className={`v3-body ${activeDesign?.theme?.toLowerCase() || ''}`} style={dynamicStyles} id="alisio-widget-v3">
@@ -119,7 +121,7 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
           <div className={`v3-cal-wrap ${calOpen ? 'open' : ''}`}>
             <div className="v3-cal-head">
               <div className="v3-cal-title">{t.selectDates || 'Оберіть дати'}</div>
-              <button className="v3-cal-close" onClick={() => setCalOpen(false)} title="Закрити">
+              <button className="v3-cal-close" onClick={() => setCalOpen(false)} title={tUi('Закрити')}>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                   <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
@@ -600,9 +602,9 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
                   </div>
                 )) : (
                   <>
-                    <div className="v3-amenity"><span className="v3-amenity-icon">🛁</span>Джакузі на терасі</div>
-                    <div className="v3-amenity"><span className="v3-amenity-icon">🔥</span>Камін дров'яний</div>
-                    <div className="v3-amenity"><span className="v3-amenity-icon">☕</span>Кухня повна</div>
+                    <div className="v3-amenity"><span className="v3-amenity-icon">🛁</span>{tUi('Джакузі на терасі')}</div>
+                    <div className="v3-amenity"><span className="v3-amenity-icon">🔥</span>{tUi('Камін дров\'яний')}</div>
+                    <div className="v3-amenity"><span className="v3-amenity-icon">☕</span>{tUi('Кухня повна')}</div>
                     <div className="v3-amenity"><span className="v3-amenity-icon">📶</span>Wi-Fi 100 Mbps</div>
                   </>
                 )}
@@ -813,7 +815,7 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
               </div>
               {checkIn && checkOut && (
                 <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 4, width: '100%' }}>
-                  {formatDisplayDate(checkIn, lang)} з 15:00 – {formatDisplayDate(checkOut, lang)} до 11:00
+                  {formatDisplayDate(checkIn, lang)} {tUi('з 15:00 –')} {formatDisplayDate(checkOut, lang)} {tUi('до 11:00')}
                 </div>
               )}
             </div>

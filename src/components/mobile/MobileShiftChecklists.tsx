@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { CheckSquare, Square, Flame, Sparkles, UserCheck, ShieldAlert, Check, RefreshCw } from 'lucide-react';
 
@@ -34,6 +35,7 @@ const CLEANER_ITEMS = [
 ];
 
 export default function MobileShiftChecklists() {
+  const t = useT();
   const [role, setRole] = useState<'admin' | 'cleaner'>('admin');
   const [data, setData] = useState<{
     checklists: Checklist[];
@@ -109,7 +111,7 @@ export default function MobileShiftChecklists() {
       {/* Role Switcher Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-          📋 Чек-листи Зміни
+          {t('📋 Чек-листи Зміни')}
         </div>
         <div style={{ display: 'flex', background: 'var(--bg-card)', padding: 3, borderRadius: 10, border: '1px solid var(--border-primary)' }}>
           <button
@@ -125,7 +127,7 @@ export default function MobileShiftChecklists() {
               cursor: 'pointer',
             }}
           >
-            Адміністратор
+            {t('Адміністратор')}
           </button>
           <button
             onClick={() => setRole('cleaner')}
@@ -140,7 +142,7 @@ export default function MobileShiftChecklists() {
               cursor: 'pointer',
             }}
           >
-            Прибиральниця
+            {t('Прибиральниця')}
           </button>
         </div>
       </div>
@@ -171,7 +173,7 @@ export default function MobileShiftChecklists() {
                   </div>
                   {isSauna && (
                     <span style={{ fontSize: 10, fontWeight: 800, background: '#ef4444', color: '#fff', padding: '2px 6px', borderRadius: 6 }}>
-                      УВАГА
+                      {t('УВАГА')}
                     </span>
                   )}
                 </div>
@@ -217,7 +219,7 @@ export default function MobileShiftChecklists() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {(!data?.dirtyUnits || data.dirtyUnits.length === 0) ? (
             <div style={{ fontSize: 13, color: 'var(--text-tertiary)', background: 'var(--bg-card)', padding: '14px', borderRadius: 12, border: '1px solid var(--border-primary)', textAlign: 'center' }}>
-              ✨ Усі номери прибрано! Немає активних задач.
+              {t('✨ Усі номери прибрано! Немає активних задач.')}
             </div>
           ) : (
             data.dirtyUnits.map(unit => {
@@ -238,10 +240,10 @@ export default function MobileShiftChecklists() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <div>
                       <div style={{ fontWeight: 800, fontSize: 15 }}>
-                        Номер {unit.code} ({unit.name})
+                        {t('Номер')} {unit.code} ({unit.name})
                       </div>
                       <div style={{ fontSize: 11, color: '#f59e0b', fontWeight: 600 }}>
-                        Чек-лист прибирання ({completedCount}/{CLEANER_ITEMS.length})
+                        {t('Чек-лист прибирання (')}{completedCount}/{CLEANER_ITEMS.length})
                       </div>
                     </div>
                     {allDone ? (
@@ -261,11 +263,11 @@ export default function MobileShiftChecklists() {
                           gap: 4,
                         }}
                       >
-                        <Check size={14} /> Прибрано!
+                        <Check size={14} /> {t('Прибрано!')}
                       </button>
                     ) : (
                       <span style={{ fontSize: 11, color: 'var(--text-tertiary)', background: 'var(--bg-tertiary)', padding: '4px 8px', borderRadius: 6 }}>
-                        В процесі
+                        {t('В процесі')}
                       </span>
                     )}
                   </div>
@@ -293,7 +295,7 @@ export default function MobileShiftChecklists() {
                             <Square size={16} style={{ color: 'var(--text-tertiary)' }} />
                           )}
                           <span style={{ fontSize: 13, color: isDone ? 'var(--text-tertiary)' : 'var(--text-primary)', textDecoration: isDone ? 'line-through' : 'none' }}>
-                            {itemText}
+                            {t(itemText)}
                           </span>
                         </div>
                       );

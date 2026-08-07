@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, ChevronDown, ChevronRight } from 'lucide-react';
 import CounterpartyModal, { CounterpartyFormValues } from './CounterpartyModal';
@@ -39,6 +40,7 @@ const KIND_FILTER_TABS: { id: Kind | 'all' | 'unspecified'; label: string; emoji
 ];
 
 export default function CounterpartiesTab() {
+  const tUi = useT();
   const [data, setData] = useState<TreeResponse>({ tree: [], byKind: {} });
   const [loading, setLoading] = useState(true);
   const [kindFilter, setKindFilter] = useState<Kind | 'all' | 'unspecified'>('all');
@@ -152,13 +154,13 @@ export default function CounterpartiesTab() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 20 }}>Контрагенти</h2>
+        <h2 style={{ margin: 0, fontSize: 20 }}>{tUi('Контрагенти')}</h2>
         <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-          {totalActive} кореневих
+          {totalActive} {tUi('кореневих')}
         </span>
         <div style={{ flex: 1 }} />
         <button onClick={() => setEditing({ parent: null })} style={addBtnStyle}>
-          <Plus size={16} /> Додати контрагента
+          <Plus size={16} /> {tUi('Додати контрагента')}
         </button>
       </div>
 
@@ -178,8 +180,8 @@ export default function CounterpartiesTab() {
                 boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
               }}
             >
-              <span>{t.emoji}</span>
-              <span>{t.label}</span>
+              <span>{tUi(t.emoji)}</span>
+              <span>{tUi(t.label)}</span>
               <span style={badgeStyle}>{count}</span>
             </button>
           );
@@ -188,17 +190,17 @@ export default function CounterpartiesTab() {
 
       <input
         type="text"
-        placeholder="Пошук контрагента або синоніма..."
+        placeholder={tUi('Пошук контрагента або синоніма...')}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         style={searchStyle}
       />
 
       {loading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Завантаження…')}</div>
       ) : visibleNodes.length === 0 ? (
         <div style={emptyStyle}>
-          {search ? 'Нічого не знайдено.' : 'Контрагентів ще немає. Натисніть «Додати контрагента».'}
+          {search ? tUi('Нічого не знайдено.') : tUi('Контрагентів ще немає. Натисніть «Додати контрагента».')}
         </div>
       ) : (
         <div style={{ border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
@@ -215,7 +217,7 @@ export default function CounterpartiesTab() {
                       <button
                         onClick={() => toggleCollapse(root.id)}
                         style={chevBtn}
-                        aria-label={isCollapsed ? 'Розгорнути' : 'Згорнути'}
+                        aria-label={isCollapsed ? tUi('Розгорнути') : tUi('Згорнути')}
                       >
                         {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
                       </button>

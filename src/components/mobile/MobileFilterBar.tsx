@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 /**
  * MobileFilterBar — horizontal scrollable status tabs + filter chips.
  *
@@ -50,6 +51,7 @@ export default function MobileFilterBar({
   activeChips = [],
   onChipToggle,
 }: MobileFilterBarProps) {
+  const t = useT();
   return (
     <div className="mobile-only mobile-filter-bar">
       {/* Status tabs — underlined horizontal scroll */}
@@ -61,7 +63,7 @@ export default function MobileFilterBar({
               className={`mobile-tab ${activeTab === tab.key ? 'active' : ''}`}
               onClick={() => onTabChange?.(tab.key)}
             >
-              {tab.label}
+              {t(tab.label)}
             </button>
           ))}
         </div>

@@ -28,7 +28,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const ROOTS = ['src'];
+// scripts/ as well as src/: provision-org.mjs called provisionOrganization
+// without awaiting it once core moved to the async seam, and printed
+// `undefined` for the organization id for two days. The operator tools are
+// the code a customer is created with — they are not less important than the
+// application, they are just shorter.
+const ROOTS = ['src', 'scripts'];
 const files = [];
 
 function walk(dir) {
@@ -36,7 +41,7 @@ function walk(dir) {
     if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(full);
-    else if (/\.tsx?$/.test(entry.name)) files.push(full);
+    else if (/\.(tsx?|mjs)$/.test(entry.name)) files.push(full);
   }
 }
 for (const r of ROOTS) walk(r);
@@ -61,7 +66,9 @@ for (const f of files) {
 /** Where a relative specifier lands, with the extension TypeScript would add. */
 function resolve(fromFile, spec) {
   const base = path.resolve(path.dirname(fromFile), spec);
-  for (const cand of [`${base}.ts`, `${base}.tsx`, path.join(base, 'index.ts')]) {
+  // A specifier may already carry its extension — scripts/ import core with
+  // an explicit '.ts' so they load under plain node.
+  for (const cand of [base, `${base}.ts`, `${base}.tsx`, path.join(base, 'index.ts')]) {
     if (fs.existsSync(cand)) return path.relative(process.cwd(), cand);
   }
   return null;
@@ -88,6 +95,23 @@ function namesInScope(file, src) {
       if (known) { if (known.has(name)) scope.add(name); }
       // A non-relative specifier goes through a module facade; fall back to
       // the repository-wide answer, but only when it is unambiguous.
+      else if (asyncAnywhere.has(name) && !declaredSyncSomewhere.has(name)) scope.add(name);
+    }
+  }
+
+  // `const { fn } = await import('./x')` — how the operator scripts reach into
+  // core, and the shape that hid the missing await on provisionOrganization:
+  // a static-only scan sees no import at all and assumes the name is unknown.
+  for (const m of src.matchAll(
+    /(?:const|let|var)\s*\{([^}]*)\}\s*=\s*await\s+import\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+  )) {
+    const [, names, spec] = m;
+    const target = spec.startsWith('.') ? resolve(file, spec) : null;
+    const known = target ? declaredAsync.get(target) : null;
+    for (const raw of names.split(',')) {
+      const name = raw.trim().split(/[:\s]+as[:\s]+|:/).pop().trim();
+      if (!name) continue;
+      if (known) { if (known.has(name)) scope.add(name); }
       else if (asyncAnywhere.has(name) && !declaredSyncSomewhere.has(name)) scope.add(name);
     }
   }

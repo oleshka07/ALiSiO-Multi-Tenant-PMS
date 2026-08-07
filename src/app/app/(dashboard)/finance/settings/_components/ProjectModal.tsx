@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import type { Project, ProjectNode } from './ProjectsTab';
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function ProjectModal({ initial, parent, onClose, onSave }: Props) {
+  const t = useT();
   const isSubproject = !!parent;
   const inheritedShared = parent?.is_shared === 1;
   const isEditingSubproject = initial && initial.parent_id !== null;
@@ -37,7 +39,7 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!name.trim()) { setError('Введіть назву'); return; }
+    if (!name.trim()) { setError(t('Введіть назву')); return; }
     setSaving(true);
     try {
       const values: ProjectFormValues = {
@@ -53,7 +55,7 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
       }
       await onSave(values);
     } catch (err: any) {
-      setError(err.message);
+      setError(t(err.message));
       setSaving(false);
     }
   }
@@ -64,13 +66,13 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ margin: 0, flex: 1 }}>
             {initial
-              ? (isEditingSubproject ? 'Редагувати підпроєкт' : 'Редагувати проєкт')
-              : (parent ? `Новий підпроєкт у «${parent.name}»` : 'Новий проєкт')}
+              ? (isEditingSubproject ? t('Редагувати підпроєкт') : t('Редагувати проєкт'))
+              : (parent ? `${t('Новий підпроєкт у «')}${parent.name}»` : t('Новий проєкт'))}
           </h3>
           <button type="button" onClick={onClose} style={closeBtnStyle}><X size={18} /></button>
         </div>
 
-        <Field label="Назва">
+        <Field label={t('Назва')}>
           <input
             type="text"
             value={name}
@@ -80,12 +82,12 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
           />
         </Field>
 
-        <Field label="Опис (опц.)">
+        <Field label={t('Опис (опц.)')}>
           <input
             type="text"
             value={unitType}
             onChange={(e) => setUnitType(e.target.value)}
-            placeholder="Напр. «Міні-готель / 16 номерів»"
+            placeholder={t('Напр. «Міні-готель / 16 номерів»')}
             style={inputStyle}
           />
         </Field>
@@ -98,16 +100,16 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
               onChange={(e) => setIsShared(e.target.checked)}
               disabled={sharedDisabled}
             />
-            <span style={{ fontSize: 14 }}>Це спільний проєкт (розподіляється на усі)</span>
+            <span style={{ fontSize: 14 }}>{t('Це спільний проєкт (розподіляється на усі)')}</span>
           </label>
           <div style={hintStyle}>
             {sharedDisabled
-              ? 'Успадковано від батьківського проєкту'
-              : 'Наприклад, HQ/Загальне — витрати розподіляються через cost_allocations'}
+              ? t('Успадковано від батьківського проєкту')
+              : t('Наприклад, HQ/Загальне — витрати розподіляються через cost_allocations')}
           </div>
         </div>
 
-        <Field label="Порядок сортування">
+        <Field label={t('Порядок сортування')}>
           <input
             type="number"
             value={sortOrder}
@@ -119,9 +121,9 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
         {error && <div style={{ color: '#dc2626', fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-          <button type="button" onClick={onClose} style={btnSecondaryStyle}>Відміна</button>
+          <button type="button" onClick={onClose} style={btnSecondaryStyle}>{t('Відміна')}</button>
           <button type="submit" disabled={saving} style={btnPrimaryStyle}>
-            {saving ? 'Збереження…' : (initial ? 'Зберегти' : 'Створити')}
+            {saving ? t('Збереження…') : (initial ? t('Зберегти') : t('Створити'))}
           </button>
         </div>
       </form>

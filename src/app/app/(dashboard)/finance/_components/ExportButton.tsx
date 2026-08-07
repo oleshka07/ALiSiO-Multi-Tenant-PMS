@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useEffect, useRef, useState } from 'react';
 import { Download, FileSpreadsheet, FileText } from 'lucide-react';
 
@@ -20,6 +21,7 @@ function buildUrl(endpoint: string, params: Props['params'], format: 'xlsx' | 'p
 }
 
 export default function ExportButton({ endpoint, params, label = 'Експорт' }: Props) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -42,7 +44,7 @@ export default function ExportButton({ endpoint, params, label = 'Експорт
           background: 'var(--bg-secondary)', color: 'var(--text-primary)',
           borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: 'pointer',
         }}
-        title="Експортувати дані"
+        title={t('Експортувати дані')}
       >
         <Download size={14} /> {label}
       </button>

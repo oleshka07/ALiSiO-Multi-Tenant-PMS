@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Minus, ArrowLeftRight, Settings, Search, Trash2, Copy, Calendar, BarChart3, Wallet, Paperclip, Repeat, Pencil, ArrowUp, ArrowDown, X, History, Filter } from 'lucide-react';
@@ -52,6 +53,7 @@ function formatMoney(n: number, currency: string): string {
 }
 
 export default function OperationsPage() {
+  const tUi = useT();
   const [ops, setOps] = useState<Operation[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
@@ -223,13 +225,13 @@ export default function OperationsPage() {
   async function handleDelete(op: Operation) {
     if (!confirm(`Видалити операцію на ${formatMoney(op.amount, op.currency)}?`)) return;
     const res = await fetch(`/api/finance/operations/${op.id}`, { method: 'DELETE' });
-    if (!res.ok) { alert('Не вдалося видалити'); return; }
+    if (!res.ok) { alert(tUi('Не вдалося видалити')); return; }
     fetchOps(); fetchAccounts();
   }
 
   async function handleDuplicate(op: Operation) {
     const res = await fetch(`/api/finance/operations/${op.id}/duplicate`, { method: 'POST' });
-    if (!res.ok) { alert('Не вдалося дублювати'); return; }
+    if (!res.ok) { alert(tUi('Не вдалося дублювати')); return; }
     fetchOps(); fetchAccounts();
   }
 
@@ -283,16 +285,16 @@ export default function OperationsPage() {
   return (
     <div className="page-container" style={{ maxWidth: 1400, margin: '0 auto' }}>
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <h1 style={{ margin: 0, flex: 1 }}>💰 Операції</h1>
+        <h1 style={{ margin: 0, flex: 1 }}>{tUi('💰 Операції')}</h1>
 
         <button onClick={() => { setEditOp(null); setModalType('income'); }} style={{ ...btn, background: '#22c55e' }}>
-          <Plus size={16} /> Дохід
+          <Plus size={16} /> {tUi('Дохід')}
         </button>
         <button onClick={() => { setEditOp(null); setModalType('expense'); }} style={{ ...btn, background: '#ef4444' }}>
-          <Minus size={16} /> Витрата
+          <Minus size={16} /> {tUi('Витрата')}
         </button>
         <button onClick={() => { setEditOp(null); setModalType('transfer'); }} style={{ ...btn, background: '#6366f1' }}>
-          <ArrowLeftRight size={16} /> Переказ
+          <ArrowLeftRight size={16} /> {tUi('Переказ')}
         </button>
 
         <ExportButton
@@ -304,29 +306,29 @@ export default function OperationsPage() {
           <Wallet size={16} /> Clearing
         </Link>
         <Link href="/app/finance/reports" style={{ ...btn, background: 'var(--bg-secondary)', color: 'var(--text-primary)', textDecoration: 'none' }}>
-          <BarChart3 size={16} /> Звіти
+          <BarChart3 size={16} /> {tUi('Звіти')}
         </Link>
         <Link href="/app/finance/calendar" style={{ ...btn, background: 'var(--bg-secondary)', color: 'var(--text-primary)', textDecoration: 'none' }}>
-          <Calendar size={16} /> Календар
+          <Calendar size={16} /> {tUi('Календар')}
         </Link>
         <Link href="/app/finance/settings" style={{ ...btn, background: 'var(--bg-secondary)', color: 'var(--text-primary)', textDecoration: 'none' }}>
-          <Settings size={16} /> Налаштування
+          <Settings size={16} /> {tUi('Налаштування')}
         </Link>
       </div>
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', marginTop: 16 }}>
         {/* Accounts sidebar */}
         <aside style={{ minWidth: 240, background: 'var(--bg-secondary)', padding: 16, borderRadius: 10, border: '1px solid var(--border-primary)' }}>
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Всього на рахунках</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>{tUi('Всього на рахунках')}</div>
           <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{formatMoney(totalBalance, 'CZK')}</div>
           <hr style={{ border: 'none', borderTop: '1px solid var(--border-primary)', margin: '16px 0' }} />
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Мої рахунки</div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>{tUi('Мої рахунки')}</div>
             {selectedAccountIds.size > 0 && (
               <button onClick={() => setSelectedAccountIds(new Set())}
                       style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 3, background: 'transparent', border: 'none', color: 'var(--text-secondary)', fontSize: 10, cursor: 'pointer', padding: 0 }}
-                      title="Скинути фільтр по рахунках">
-                <X size={11} /> Скинути ({selectedAccountIds.size})
+                      title={tUi('Скинути фільтр по рахунках')}>
+                <X size={11} /> {tUi('Скинути (')}{selectedAccountIds.size})
               </button>
             )}
           </div>
@@ -342,7 +344,7 @@ export default function OperationsPage() {
                         borderRadius: 6, cursor: 'pointer', color: 'var(--text-primary)',
                         marginBottom: 2, textAlign: 'left',
                       }}
-                      title={active ? 'Зняти фільтр' : 'Фільтрувати по цьому рахунку (можна обрати кілька)'}>
+                      title={active ? tUi('Зняти фільтр') : tUi('Фільтрувати по цьому рахунку (можна обрати кілька)')}>
                 <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: a.color, marginRight: 6, verticalAlign: 'middle' }} />{a.name}</span>
                 <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{formatMoney(a.balance, a.currency)}</span>
               </button>
@@ -366,7 +368,7 @@ export default function OperationsPage() {
               }}
               style={{ ...btn, background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
             >
-              <Filter size={14} /> Фільтр
+              <Filter size={14} /> {tUi('Фільтр')}
               {(filterCategoryIds.size + filterCounterpartyIds.size + filterProjectIds.size + filterTagIds.size + filterOpTypes.size + selectedAccountIds.size) > 0 && (
                 <span style={{ background: '#34d399', color: '#064e3b', padding: '0 6px', borderRadius: 10, fontSize: 11, marginLeft: 4 }}>
                   {filterCategoryIds.size + filterCounterpartyIds.size + filterProjectIds.size + filterTagIds.size + filterOpTypes.size + selectedAccountIds.size}
@@ -378,7 +380,7 @@ export default function OperationsPage() {
               <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: 'var(--text-secondary)' }} />
               <input
                 type="text"
-                placeholder="Пошук по сумі, коментарях, рахунках, проєктах..."
+                placeholder={tUi('Пошук по сумі, коментарях, рахунках, проєктах...')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 style={{ ...input, paddingLeft: 30, width: '100%' }}
@@ -387,33 +389,33 @@ export default function OperationsPage() {
           </div>
 
           <div style={{ display: 'flex', gap: 16, marginBottom: 12, padding: 12, background: 'var(--bg-secondary)', borderRadius: 8 }}>
-            <span style={{ color: '#22c55e' }}>Доходи: <b>{formatMoney(totalIncome, 'CZK')}</b></span>
-            <span style={{ color: '#ef4444' }}>Витрати: <b>{formatMoney(totalExpense, 'CZK')}</b></span>
+            <span style={{ color: '#22c55e' }}>{tUi('Доходи:')} <b>{formatMoney(totalIncome, 'CZK')}</b></span>
+            <span style={{ color: '#ef4444' }}>{tUi('Витрати:')} <b>{formatMoney(totalExpense, 'CZK')}</b></span>
             <span style={{ fontWeight: 600, marginLeft: 'auto' }}>
-              Чистий потік: <b style={{ color: netTotal >= 0 ? '#22c55e' : '#ef4444' }}>{formatMoney(netTotal, 'CZK')}</b>
+              {tUi('Чистий потік:')} <b style={{ color: netTotal >= 0 ? '#22c55e' : '#ef4444' }}>{formatMoney(netTotal, 'CZK')}</b>
             </span>
             <span style={{ color: 'var(--text-secondary)' }}>
-              Операцій: {ops.length}{total > ops.length && <b style={{ color: '#f59e0b' }}> з {total}</b>}
+              {tUi('Операцій:')} {ops.length}{total > ops.length && <b style={{ color: '#f59e0b' }}> {tUi('з')} {total}</b>}
             </span>
           </div>
 
           {loading ? (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Завантаження…')}</div>
           ) : ops.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)', border: '1px dashed var(--border-primary)', borderRadius: 10 }}>
-              Операцій не знайдено.
+              {tUi('Операцій не знайдено.')}
             </div>
           ) : (
             <div style={{ border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
               {selectedOpsForMerge.size === 2 && (
                 <div style={{ padding: 12, background: 'rgba(99,102,241,0.1)', borderBottom: '1px solid var(--border-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 500, color: '#4f46e5' }}>Вибрано 2 операції для об'єднання.</span>
+                  <span style={{ fontWeight: 500, color: '#4f46e5' }}>{tUi('Вибрано 2 операції для об\'єднання.')}</span>
                   <button 
                     onClick={handleMerge}
                     disabled={isMerging}
                     style={{ background: '#4f46e5', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, fontWeight: 500, cursor: isMerging ? 'not-allowed' : 'pointer', opacity: isMerging ? 0.7 : 1 }}
                   >
-                    {isMerging ? "Об'єднання..." : "З'єднати в переміщення"}
+                    {isMerging ? tUi('Об\'єднання...') : tUi('З\'єднати в переміщення')}
                   </button>
                 </div>
               )}
@@ -421,13 +423,13 @@ export default function OperationsPage() {
                 <thead>
                   <tr style={{ background: 'var(--bg-secondary)' }}>
                     <th style={{ ...th, width: 30, textAlign: 'center' }}></th>
-                    <SortableTh label="Дата" sortKey="paid_at" currentKey={sortKey} dir={sortDir} onClick={clickSort} />
-                    <SortableTh label="Сума" sortKey="amount" currentKey={sortKey} dir={sortDir} onClick={clickSort} align="right" />
-                    <SortableTh label="Рахунок / залишок" sortKey="account" currentKey={sortKey} dir={sortDir} onClick={clickSort} />
-                    <SortableTh label="Контрагент" sortKey="counterparty" currentKey={sortKey} dir={sortDir} onClick={clickSort} />
-                    <SortableTh label="Категорія" sortKey="category" currentKey={sortKey} dir={sortDir} onClick={clickSort} />
-                    <SortableTh label="Проєкт" sortKey="project" currentKey={sortKey} dir={sortDir} onClick={clickSort} />
-                    <th style={th}>Коментар</th>
+                    <SortableTh label={tUi('Дата')} sortKey="paid_at" currentKey={sortKey} dir={sortDir} onClick={clickSort} />
+                    <SortableTh label={tUi('Сума')} sortKey="amount" currentKey={sortKey} dir={sortDir} onClick={clickSort} align="right" />
+                    <SortableTh label={tUi('Рахунок / залишок')} sortKey="account" currentKey={sortKey} dir={sortDir} onClick={clickSort} />
+                    <SortableTh label={tUi('Контрагент')} sortKey="counterparty" currentKey={sortKey} dir={sortDir} onClick={clickSort} />
+                    <SortableTh label={tUi('Категорія')} sortKey="category" currentKey={sortKey} dir={sortDir} onClick={clickSort} />
+                    <SortableTh label={tUi('Проєкт')} sortKey="project" currentKey={sortKey} dir={sortDir} onClick={clickSort} />
+                    <th style={th}>{tUi('Коментар')}</th>
                     <th style={{ ...th, width: 90 }}></th>
                   </tr>
                 </thead>
@@ -544,7 +546,7 @@ export default function OperationsPage() {
                                 background: 'rgba(34,197,94,0.12)', color: '#16a34a',
                                 fontSize: 10, fontWeight: 600, cursor: 'pointer',
                               }}
-                              title={`Виглядає як ${o.suggested_recurring_name}. Клік щоб підтвердити.`}
+                              title={`${tUi('Виглядає як')} ${o.suggested_recurring_name}${tUi('. Клік щоб підтвердити.')}`}
                             >
                               <Repeat size={10} /> {o.suggested_recurring_name}
                             </span>
@@ -558,15 +560,15 @@ export default function OperationsPage() {
                                 background: 'rgba(99,102,241,0.12)', color: '#6366f1',
                                 fontSize: 10, fontWeight: 600, cursor: 'pointer',
                               }}
-                              title={`${attachCounts[o.id]} прикріплених документ(ів)`}
+                              title={`${attachCounts[o.id]} ${tUi('прикріплених документ(ів)')}`}
                             >
                               <Paperclip size={10} /> {attachCounts[o.id]}
                             </span>
                           )}
-                          <button onClick={() => setHistoryOpId(o.id)} style={iconBtn} title="Історія змін (хто створив / редагував)"><History size={14} /></button>
-                          <button onClick={openModal} style={iconBtn} title="Редагувати"><Pencil size={14} /></button>
-                          <button onClick={() => handleDuplicate(o)} style={iconBtn} title="Дублювати"><Copy size={14} /></button>
-                          <button onClick={() => handleDelete(o)} style={{ ...iconBtn, color: '#dc2626' }} title="Видалити"><Trash2 size={14} /></button>
+                          <button onClick={() => setHistoryOpId(o.id)} style={iconBtn} title={tUi('Історія змін (хто створив / редагував)')}><History size={14} /></button>
+                          <button onClick={openModal} style={iconBtn} title={tUi('Редагувати')}><Pencil size={14} /></button>
+                          <button onClick={() => handleDuplicate(o)} style={iconBtn} title={tUi('Дублювати')}><Copy size={14} /></button>
+                          <button onClick={() => handleDelete(o)} style={{ ...iconBtn, color: '#dc2626' }} title={tUi('Видалити')}><Trash2 size={14} /></button>
                         </td>
                       </tr>
                     );
@@ -629,11 +631,12 @@ function SortableTh({ label, sortKey, currentKey, dir, onClick, align }: {
   onClick: (k: SortKey) => void;
   align?: 'left' | 'right';
 }) {
+  const tUi = useT();
   const active = currentKey === sortKey;
   return (
     <th style={{ ...th, textAlign: align || 'left', cursor: 'pointer', userSelect: 'none' }}
         onClick={() => onClick(sortKey)}
-        title={active ? `Сортовано ${dir === 'asc' ? '↑' : '↓'} — клік щоб ${dir === 'asc' ? 'обернути' : 'скинути'}` : 'Клік щоб сортувати'}>
+        title={active ? `${tUi('Сортовано')} ${dir === 'asc' ? '↑' : '↓'} ${tUi('— клік щоб')} ${dir === 'asc' ? tUi('обернути') : tUi('скинути')}` : tUi('Клік щоб сортувати')}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: active ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
         {label}
         {active && (dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
@@ -664,6 +667,7 @@ const AUDIT_TRACK_FIELDS = [
 ] as const;
 
 function AuditHistoryModal({ operationId, onClose }: { operationId: string; onClose: () => void }) {
+  const tUi = useT();
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -707,7 +711,7 @@ function AuditHistoryModal({ operationId, onClose }: { operationId: string; onCl
            style={{ background: 'var(--bg-primary)', borderRadius: 12, padding: 24, minWidth: 540, maxWidth: 720, maxHeight: '85vh', overflow: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
           <h3 style={{ margin: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <History size={18} /> Історія змін
+            <History size={18} /> {tUi('Історія змін')}
           </h3>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
             <X size={18} />
@@ -716,10 +720,10 @@ function AuditHistoryModal({ operationId, onClose }: { operationId: string; onCl
         <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 16, fontFamily: 'monospace' }}>op: {operationId}</div>
 
         {loading ? (
-          <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+          <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Завантаження…')}</div>
         ) : entries.length === 0 ? (
           <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)', border: '1px dashed var(--border-primary)', borderRadius: 8 }}>
-            Історії немає. Цю операцію створили до того як ввімкнули аудит (W4a).
+            {tUi('Історії немає. Цю операцію створили до того як ввімкнули аудит (W4a).')}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -742,7 +746,7 @@ function AuditHistoryModal({ operationId, onClose }: { operationId: string; onCl
                   </div>
                   {(e.action === 'update' || e.action === 'convert') && (
                     changes.length === 0 ? (
-                      <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>(зміни поза tracked fields)</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{tUi('(зміни поза tracked fields)')}</div>
                     ) : (
                       <ul style={{ fontSize: 11, color: 'var(--text-secondary)', margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
                         {changes.map((c, i) => <li key={i} style={{ fontFamily: 'monospace' }}>{c}</li>)}
@@ -751,7 +755,7 @@ function AuditHistoryModal({ operationId, onClose }: { operationId: string; onCl
                   )}
                   {(e.action === 'create' || e.action === 'delete') && (
                     <details style={{ fontSize: 11, marginTop: 4 }}>
-                      <summary style={{ cursor: 'pointer', color: 'var(--text-secondary)' }}>Повний snapshot</summary>
+                      <summary style={{ cursor: 'pointer', color: 'var(--text-secondary)' }}>{tUi('Повний snapshot')}</summary>
                       <pre style={{ fontFamily: 'monospace', fontSize: 10, background: 'var(--bg-secondary)', padding: 8, borderRadius: 4, marginTop: 6, overflow: 'auto', maxHeight: 260 }}>
                         {(() => {
                           const raw = e.action === 'create' ? e.after_json : e.before_json;

@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -43,6 +44,7 @@ function defaultRange(): { from: string; to: string } {
 }
 
 export default function StatementDetailPage() {
+  const tUi = useT();
   const params = useParams<{ accountId: string }>();
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,7 +68,7 @@ export default function StatementDetailPage() {
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Link href="/app/finance/reports/statement" style={backLink}><ArrowLeft size={14} /></Link>
         <h1 style={{ margin: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <FileText size={22} /> Виписка: {data?.account?.name || '...'}
+          <FileText size={22} /> {tUi('Виписка:')} {data?.account?.name || '...'}
         </h1>
         <input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} style={input} />
         <span style={{ color: 'var(--text-secondary)' }}>—</span>
@@ -78,30 +80,30 @@ export default function StatementDetailPage() {
       </div>
 
       {loading || !data ? (
-        <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>Завантаження…</div>
+        <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Завантаження…')}</div>
       ) : (
         <>
           <div style={{ display: 'flex', gap: 16, marginTop: 16, padding: 16, background: 'var(--bg-secondary)', borderRadius: 10 }}>
-            <div><div style={lbl}>Залишок на початок</div><div style={val}>{formatMoney(data.opening, data.account.currency)}</div></div>
-            <div><div style={lbl}>Надходження</div><div style={{ ...val, color: '#22c55e' }}>+ {formatMoney(data.totalIn, data.account.currency)}</div></div>
-            <div><div style={lbl}>Витрати</div><div style={{ ...val, color: '#ef4444' }}>− {formatMoney(data.totalOut, data.account.currency)}</div></div>
-            <div><div style={lbl}>Залишок на кінець</div><div style={{ ...val, color: data.closing < 0 ? '#ef4444' : 'var(--text-primary)' }}>{formatMoney(data.closing, data.account.currency)}</div></div>
+            <div><div style={lbl}>{tUi('Залишок на початок')}</div><div style={val}>{formatMoney(data.opening, data.account.currency)}</div></div>
+            <div><div style={lbl}>{tUi('Надходження')}</div><div style={{ ...val, color: '#22c55e' }}>+ {formatMoney(data.totalIn, data.account.currency)}</div></div>
+            <div><div style={lbl}>{tUi('Витрати')}</div><div style={{ ...val, color: '#ef4444' }}>− {formatMoney(data.totalOut, data.account.currency)}</div></div>
+            <div><div style={lbl}>{tUi('Залишок на кінець')}</div><div style={{ ...val, color: data.closing < 0 ? '#ef4444' : 'var(--text-primary)' }}>{formatMoney(data.closing, data.account.currency)}</div></div>
           </div>
 
           <div style={{ marginTop: 16, border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
             <table style={tableStyle}>
               <thead>
                 <tr style={{ background: 'var(--bg-secondary)' }}>
-                  <th style={th}>Дата</th>
-                  <th style={{ ...th, textAlign: 'left' }}>Опис</th>
-                  <th style={th}>Приход</th>
-                  <th style={th}>Розхід</th>
-                  <th style={th}>Залишок</th>
+                  <th style={th}>{tUi('Дата')}</th>
+                  <th style={{ ...th, textAlign: 'left' }}>{tUi('Опис')}</th>
+                  <th style={th}>{tUi('Приход')}</th>
+                  <th style={th}>{tUi('Розхід')}</th>
+                  <th style={th}>{tUi('Залишок')}</th>
                 </tr>
               </thead>
               <tbody>
                 {data.items.length === 0 ? (
-                  <tr><td colSpan={5} style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Операцій за цей період немає</td></tr>
+                  <tr><td colSpan={5} style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Операцій за цей період немає')}</td></tr>
                 ) : data.items.map((item) => (
                   <tr key={item.id}>
                     <td style={td}>{item.paid_at.substring(0, 10)}</td>

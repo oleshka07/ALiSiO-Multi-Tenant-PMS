@@ -1,10 +1,12 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { Loader2, Check, Save, BarChart2, ExternalLink, Info } from 'lucide-react';
 import type { Site, WidgetConfig } from '../_types';
 
 export function ThankYouTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: WidgetConfig) => void }) {
+  const t = useT();
   const [cfg, setCfg] = useState<WidgetConfig>(site.widget_config || {});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -46,9 +48,9 @@ export function ThankYouTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Wi
           <BarChart2 size={22} />
         </div>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>Конверсії та аналітика</div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{t('Конверсії та аналітика')}</div>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>
-            Pixel і редирект після успішної оплати
+            {t('Pixel і редирект після успішної оплати')}
           </div>
         </div>
       </div>
@@ -61,20 +63,20 @@ export function ThankYouTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Wi
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Info size={15} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
-          <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>Як це працює</span>
+          <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>{t('Як це працює')}</span>
         </div>
         <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9, color: 'var(--text-secondary)' }}>
-          <li>Гість відкриває <code>/w/{site.slug}</code> і Pixel ініціалізується</li>
-          <li>Оплачує через Teya → система підтверджує і надсилає email</li>
-          <li>Pixel стріляє <code>Purchase</code> і гість переходить на ваш сайт</li>
-          <li>На вашій сторінці підтвердження Pixel стріляє ще раз — Meta дедуплікує</li>
+          <li>{t('Гість відкриває')} <code>/w/{site.slug}</code> {t('і Pixel ініціалізується')}</li>
+          <li>{t('Оплачує через Teya → система підтверджує і надсилає email')}</li>
+          <li>{t('Pixel стріляє')} <code>Purchase</code> {t('і гість переходить на ваш сайт')}</li>
+          <li>{t('На вашій сторінці підтвердження Pixel стріляє ще раз — Meta дедуплікує')}</li>
         </ol>
       </div>
 
       {/* ─── Return URL ─────────────────────────── */}
       <div className="form-group" style={{ marginBottom: 20 }}>
         <label className="form-label" style={{ fontSize: 14, fontWeight: 600 }}>
-          Сторінка підтвердження (Return URL)
+          {t('Сторінка підтвердження (Return URL)')}
         </label>
         <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
           <input
@@ -90,14 +92,14 @@ export function ThankYouTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Wi
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-ghost btn-icon"
-              title="Відкрити в новій вкладці"
+              title={t('Відкрити в новій вкладці')}
             >
               <ExternalLink size={16} />
             </a>
           )}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 6 }}>
-          Повний URL з https:// — гість потрапить сюди після оплати. На цій сторінці спрацює ваш Pixel з правильного домену.
+          {t('Повний URL з https:// — гість потрапить сюди після оплати. На цій сторінці спрацює ваш Pixel з правильного домену.')}
         </div>
       </div>
 
@@ -113,7 +115,7 @@ export function ThankYouTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Wi
           onChange={e => setCfg(c => ({ ...c, fb_pixel_id: e.target.value.trim() || undefined }))}
         />
         <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 6 }}>
-          Meta Business Manager → Events Manager → Pixel → Налаштування
+          {t('Meta Business Manager → Events Manager → Pixel → Налаштування')}
         </div>
       </div>
 
@@ -157,21 +159,21 @@ export function ThankYouTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Wi
           borderRadius: 10, padding: '12px 14px', marginBottom: 24, fontSize: 12,
           color: 'var(--text-secondary)', lineHeight: 1.8,
         }}>
-          ✅ <strong>URL кнопки для вашого сайту:</strong>
+          ✅ <strong>{t('URL кнопки для вашого сайту:')}</strong>
           <br />
           <code style={{ wordBreak: 'break-all', color: 'var(--accent-primary)', fontSize: 12 }}>
             {bookingUrl}
           </code>
           <br />
           <span style={{ marginTop: 4, display: 'block' }}>
-            Після оплати → <strong style={{ color: '#22c55e' }}>{returnUrl}</strong>
+            {t('Після оплати →')} <strong style={{ color: '#22c55e' }}>{returnUrl}</strong>
           </span>
         </div>
       )}
 
       <button className="btn btn-primary" onClick={save} disabled={saving}>
         {saving ? <Loader2 size={16} className="spin" /> : saved ? <Check size={16} /> : <Save size={16} />}
-        {saved ? 'Збережено!' : 'Зберегти'}
+        {saved ? t('Збережено!') : t('Зберегти')}
       </button>
     </div>
   );

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
+import { useT } from '@core/i18n/client';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Save, Trash2, GripVertical, ToggleLeft, ToggleRight } from 'lucide-react';
 import { ImageUploadField } from '@/components/ui/ImageUploadField';
@@ -23,6 +24,7 @@ const CATEGORIES = [
 const EMOJI_OPTS = ['🍳', '🧖', '🏊', '🛁', '🚲', '⚡', '🏄', '🔥', '🕐', '🕛', '🎣', '🧘', '🍕', '🧹', '✨', '🌿', '🎯'];
 
 export default function ServicesSettingsPage() {
+  const tUi = useT();
   const [services, setServices] = useState<any[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -55,7 +57,7 @@ export default function ServicesSettingsPage() {
         body: JSON.stringify(newForm),
       });
       if (res.ok) {
-        showToast('Послугу створено!');
+        showToast(tUi('Послугу створено!'));
         setNewForm({ name: '', name_en: '', description: '', price: 0, currency: 'CZK', unit_label: '', icon: '✨', category: 'other', service_type: 'simple', duration_minutes: 0, sort_order: 99, name_cs: '', name_de: '', photo_url: '' });
         setShowNew(false);
         fetchServices();
@@ -73,7 +75,7 @@ export default function ServicesSettingsPage() {
         body: JSON.stringify({ id, ...editForm }),
       });
       if (res.ok) {
-        showToast('Збережено ✅');
+        showToast(tUi('Збережено ✅'));
         setEditing(null);
         setEditForm({});
         fetchServices();
@@ -92,9 +94,9 @@ export default function ServicesSettingsPage() {
   };
 
   const deleteService = async (id: string) => {
-    if (!confirm('Видалити послугу?')) return;
+    if (!confirm(tUi('Видалити послугу?'))) return;
     await fetch(`/api/additional-services?id=${id}`, { method: 'DELETE' });
-    showToast('Видалено');
+    showToast(tUi('Видалено'));
     fetchServices();
   };
 
@@ -113,25 +115,25 @@ export default function ServicesSettingsPage() {
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 20 }}>🎯 Послуги для гостей</h2>
+          <h2 style={{ margin: 0, fontSize: 20 }}>{tUi('🎯 Послуги для гостей')}</h2>
           <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: 13 }}>
-            Управління додатковими послугами, які показуються на гостьовій сторінці
+            {tUi('Управління додатковими послугами, які показуються на гостьовій сторінці')}
           </p>
         </div>
         <button className="btn btn-primary" onClick={() => setShowNew(!showNew)}>
-          <Plus size={14} /> Додати
+          <Plus size={14} /> {tUi('Додати')}
         </button>
       </div>
 
       {/* New service form */}
       {showNew && (
         <div className="card" style={{ marginBottom: 16, padding: 20 }}>
-          <h4 style={{ margin: '0 0 16px', fontSize: 15 }}>➕ Нова послуга</h4>
+          <h4 style={{ margin: '0 0 16px', fontSize: 15 }}>{tUi('➕ Нова послуга')}</h4>
           <ServiceForm form={newForm} setForm={setNewForm} />
           <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
-            <button className="btn btn-secondary" onClick={() => setShowNew(false)}>Скасувати</button>
+            <button className="btn btn-secondary" onClick={() => setShowNew(false)}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={createService} disabled={saving === 'new' || !newForm.name}>
-              <Save size={14} /> Створити
+              <Save size={14} /> {tUi('Створити')}
             </button>
           </div>
         </div>
@@ -145,9 +147,9 @@ export default function ServicesSettingsPage() {
               <>
                 <ServiceForm form={editForm} setForm={setEditForm} />
                 <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
-                  <button className="btn btn-secondary" onClick={() => setEditing(null)}>Скасувати</button>
+                  <button className="btn btn-secondary" onClick={() => setEditing(null)}>{tUi('Скасувати')}</button>
                   <button className="btn btn-primary" onClick={() => updateService(svc.id)} disabled={saving === svc.id}>
-                    <Save size={14} /> Зберегти
+                    <Save size={14} /> {tUi('Зберегти')}
                   </button>
                 </div>
               </>
@@ -170,7 +172,7 @@ export default function ServicesSettingsPage() {
                   <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <span className="badge badge-primary">{CATEGORIES.find(c => c.value === svc.category)?.label || svc.category}</span>
                     <span className="badge badge-info">{SERVICE_TYPES.find(t => t.value === svc.service_type)?.label || svc.service_type}</span>
-                    {svc.duration_minutes > 0 && <span>⏱ {svc.duration_minutes} хв</span>}
+                    {svc.duration_minutes > 0 && <span>⏱ {svc.duration_minutes} {tUi('хв')}</span>}
                     <span>#{svc.sort_order}</span>
                   </div>
                 </div>
@@ -180,12 +182,12 @@ export default function ServicesSettingsPage() {
                 </div>
                 <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                   <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: svc.is_active ? '#22c55e' : '#ef4444' }}
-                    onClick={() => toggleActive(svc)} title={svc.is_active ? 'Вимкнути' : 'Увімкнути'}>
+                    onClick={() => toggleActive(svc)} title={svc.is_active ? tUi('Вимкнути') : tUi('Увімкнути')}>
                     {svc.is_active ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
                   </button>
-                  <button className="btn btn-sm btn-secondary" onClick={() => startEdit(svc)}>Редагувати</button>
+                  <button className="btn btn-sm btn-secondary" onClick={() => startEdit(svc)}>{tUi('Редагувати')}</button>
                   <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#ef4444' }}
-                    onClick={() => deleteService(svc.id)} title="Видалити">
+                    onClick={() => deleteService(svc.id)} title={tUi('Видалити')}>
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -198,7 +200,7 @@ export default function ServicesSettingsPage() {
       {services.length === 0 && (
         <div style={{ textAlign: 'center', padding: 48, color: 'var(--text-tertiary)' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
-          <div>Ще немає послуг. Натисніть «Додати» щоб створити першу.</div>
+          <div>{tUi('Ще немає послуг. Натисніть «Додати» щоб створити першу.')}</div>
         </div>
       )}
 
@@ -215,37 +217,38 @@ export default function ServicesSettingsPage() {
 }
 
 function ServiceForm({ form, setForm }: { form: any; setForm: (f: any) => void }) {
+  const tUi = useT();
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
       <div>
-        <label className="form-label">Назва (укр) *</label>
-        <input className="form-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Сніданок" />
+        <label className="form-label">{tUi('Назва (укр) *')}</label>
+        <input className="form-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder={tUi('Сніданок')} />
       </div>
       <div>
-        <label className="form-label">Назва (eng)</label>
+        <label className="form-label">{tUi('Назва (eng)')}</label>
         <input className="form-input" value={form.name_en} onChange={e => setForm({ ...form, name_en: e.target.value })} placeholder="Breakfast" />
       </div>
       <div style={{ gridColumn: '1 / -1' }}>
-        <label className="form-label">Опис</label>
-        <input className="form-input" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Повноцінний сніданок у ресторані" />
+        <label className="form-label">{tUi('Опис')}</label>
+        <input className="form-input" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder={tUi('Повноцінний сніданок у ресторані')} />
       </div>
       <div>
-        <label className="form-label">Ціна</label>
+        <label className="form-label">{tUi('Ціна')}</label>
         <input className="form-input" type="number" value={form.price} onChange={e => setForm({ ...form, price: Number(e.target.value) })} />
       </div>
       <div>
-        <label className="form-label">Валюта</label>
+        <label className="form-label">{tUi('Валюта')}</label>
         <select className="form-select" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value })}>
           <option value="CZK">CZK</option>
           <option value="EUR">EUR</option>
         </select>
       </div>
       <div>
-        <label className="form-label">Одиниця</label>
-        <input className="form-input" value={form.unit_label} onChange={e => setForm({ ...form, unit_label: e.target.value })} placeholder="за годину / за день" />
+        <label className="form-label">{tUi('Одиниця')}</label>
+        <input className="form-input" value={form.unit_label} onChange={e => setForm({ ...form, unit_label: e.target.value })} placeholder={tUi('за годину / за день')} />
       </div>
       <div>
-        <label className="form-label">Іконка</label>
+        <label className="form-label">{tUi('Іконка')}</label>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {EMOJI_OPTS.map(e => (
             <button key={e} type="button" onClick={() => setForm({ ...form, icon: e })}
@@ -257,41 +260,41 @@ function ServiceForm({ form, setForm }: { form: any; setForm: (f: any) => void }
         </div>
       </div>
       <div>
-        <label className="form-label">Категорія</label>
+        <label className="form-label">{tUi('Категорія')}</label>
         <select className="form-select" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
-          {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          {CATEGORIES.map(c => <option key={c.value} value={c.value}>{tUi(c.label)}</option>)}
         </select>
       </div>
       <div>
-        <label className="form-label">Тип</label>
+        <label className="form-label">{tUi('Тип')}</label>
         <select className="form-select" value={form.service_type} onChange={e => setForm({ ...form, service_type: e.target.value })}>
-          {SERVICE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          {SERVICE_TYPES.map(t => <option key={t.value} value={t.value}>{tUi(t.label)}</option>)}
         </select>
       </div>
       <div>
-        <label className="form-label">Тривалість (хв)</label>
+        <label className="form-label">{tUi('Тривалість (хв)')}</label>
         <input className="form-input" type="number" value={form.duration_minutes || ''} onChange={e => setForm({ ...form, duration_minutes: Number(e.target.value) || null })} placeholder="60" />
       </div>
       <div>
-        <label className="form-label">Порядок</label>
+        <label className="form-label">{tUi('Порядок')}</label>
         <input className="form-input" type="number" value={form.sort_order} onChange={e => setForm({ ...form, sort_order: Number(e.target.value) })} />
       </div>
       <div style={{ gridColumn: '1 / -1' }}>
         <ImageUploadField
-          label="📸 Фото послуги"
+          label={tUi('📸 Фото послуги')}
           value={form.photo_url || ''}
           onChange={url => setForm({ ...form, photo_url: url })}
           folder="services"
           aspectRatio="16/9"
-          placeholder="https://... або завантажте фото"
+          placeholder={tUi('https://... або завантажте фото')}
         />
       </div>
       <div>
-        <label className="form-label">Назва (чеськ)</label>
+        <label className="form-label">{tUi('Назва (чеськ)')}</label>
         <input className="form-input" value={form.name_cs || ''} onChange={e => setForm({ ...form, name_cs: e.target.value })} placeholder="Snídaně" />
       </div>
       <div>
-        <label className="form-label">Назва (нім)</label>
+        <label className="form-label">{tUi('Назва (нім)')}</label>
         <input className="form-input" value={form.name_de || ''} onChange={e => setForm({ ...form, name_de: e.target.value })} placeholder="Frühstück" />
       </div>
     </div>
