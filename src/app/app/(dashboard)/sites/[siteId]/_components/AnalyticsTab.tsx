@@ -820,7 +820,7 @@ export function AnalyticsTab({ siteId, siteCurrency = 'CZK' }: AnalyticsTabProps
                           ) : (
                             data.countries.map((item: any, idx: number) => (
                               <tr key={idx}>
-                                <td style={{ fontWeight: 600 }}>{item.country_code || 'Невідомо'}</td>
+                                <td style={{ fontWeight: 600 }}>{item.country_code || t('Невідомо')}</td>
                                 <td style={{ textAlign: 'right' }}>{item.sessions}</td>
                                 <td style={{ textAlign: 'right' }}>{item.bookings}</td>
                                 <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatValue(item.revenue)}</td>

@@ -248,7 +248,7 @@ export default function AuditPage() {
                           fontSize: 11, color: log.user_name ? 'var(--text-accent)' : 'var(--text-tertiary)',
                           whiteSpace: 'nowrap',
                         }}>
-                          {log.user_name || 'Система'}
+                          {log.user_name || t('Система')}
                         </div>
                       </div>
 

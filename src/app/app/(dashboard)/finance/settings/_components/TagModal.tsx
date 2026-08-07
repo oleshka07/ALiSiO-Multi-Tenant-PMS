@@ -105,7 +105,7 @@ export default function TagModal({ initial, onClose, onSave }: Props) {
                 fontWeight: 500,
               }}
             >
-              {name || 'Назва тега'}
+              {name || t('Назва тега')}
             </span>
           </div>
         </Field>

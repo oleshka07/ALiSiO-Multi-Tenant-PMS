@@ -49,6 +49,13 @@ jobs:
         # exists in the source, which inflates coverage and translates nothing
         run: npm run check:i18n
 
+      - name: untranslatable text
+        # fails when Ukrainian text sits in a rendered position without t().
+        # This is what stops a new module quietly shipping a screen nobody can
+        # translate — and it is why the codemod does not have to understand
+        # every way text can be written.
+        run: npm run check:unwrapped
+
       - name: build
         run: npm run build
 

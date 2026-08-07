@@ -854,7 +854,7 @@ export default function MobileBookingDetail({
                     borderRadius: 8, marginBottom: 6,
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{sb.label || 'Без назви'}</div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{sb.label || tUi('Без назви')}</div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-primary)', fontVariantNumeric: 'tabular-nums' }}>
                         {(sb.subtotal || 0).toLocaleString()} {b.currency || 'CZK'}
                       </div>
@@ -913,7 +913,7 @@ export default function MobileBookingDetail({
                           </div>
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                          {log.user_name || 'Система'}
+                          {log.user_name || tUi('Система')}
                         </div>
                       </div>
                     </div>

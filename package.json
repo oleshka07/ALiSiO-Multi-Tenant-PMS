@@ -18,6 +18,7 @@
     "audit:routes": "node scripts/audit-routes.mjs",
     "check:isolation": "node scripts/check-isolation.mjs",
     "check:i18n": "node scripts/check-translations.mjs",
+    "check:unwrapped": "node scripts/check-unwrapped.mjs",
     "i18n:extract": "node scripts/extract-strings.mjs"
   },
   "dependencies": {

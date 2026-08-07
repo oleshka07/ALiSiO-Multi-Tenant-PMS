@@ -96,7 +96,7 @@ export default function LoginPage() {
             {loading ? (
               <span className="login-spinner" />
             ) : (
-              'Увійти'
+              t('Увійти')
             )}
           </button>
         </form>

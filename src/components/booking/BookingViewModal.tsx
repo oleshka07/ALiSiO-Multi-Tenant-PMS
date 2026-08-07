@@ -1149,7 +1149,7 @@ export default function BookingViewModal({
                     >
                       <span style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 700, minWidth: 20 }}>#{idx + 1}</span>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>{sb.label || 'Без назви'}</div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{sb.label || tUi('Без назви')}</div>
                         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                           <span>👥 {sb.adults} {tUi('дор.')}{sb.children > 0 ? `, ${sb.children} ${tUi('діт.')}` : ''}</span>
                           {sb.child_unit_name ? (
@@ -1497,7 +1497,7 @@ export default function BookingViewModal({
                           </div>
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                          {log.user_name || 'Система'}
+                          {log.user_name || tUi('Система')}
                         </div>
                       </div>
                     </div>

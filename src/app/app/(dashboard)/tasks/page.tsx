@@ -2018,7 +2018,7 @@ function TasksDesktop() {
                       const sectionTitle =
                         projectId === "__inbox__"
                           ? "Inbox"
-                          : project?.name || "Без проєкту";
+                          : project?.name || tUi('Без проєкту');
                       const sectionColor =
                         projectId === "__inbox__"
                           ? "#6c7086"

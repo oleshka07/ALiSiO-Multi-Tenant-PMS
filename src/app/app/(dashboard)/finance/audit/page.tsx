@@ -145,7 +145,7 @@ export default function FinanceAuditPage() {
 
               {s.metric_value && (
                 <div className={`shrink-0 px-3 py-2 rounded-md ${style.badge} text-right`}>
-                  <div className="text-[10px] uppercase opacity-90">{s.metric_label || 'Метрика'}</div>
+                  <div className="text-[10px] uppercase opacity-90">{s.metric_label || t('Метрика')}</div>
                   <div className="text-base font-bold font-mono">{s.metric_value}</div>
                 </div>
               )}
