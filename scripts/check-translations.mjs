@@ -13,9 +13,16 @@
  *   untranslated — the honest number. The runtime falls back to Ukrainian, so
  *   a missing entry is invisible from the inside; the only way to know the
  *   interface is half German is to count.
+ *
+ *   missing plural forms — a key used with `plural(n, …)` whose entry does not
+ *   cover every form the language needs. German gets away with two; Czech and
+ *   Polish need three, and the missing one shows up only on the counts that hit
+ *   it. Which forms a language requires comes from Intl.PluralRules, so adding
+ *   a language does not mean editing a table here.
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { pluralKeys } from './lib/plural-keys.mjs';
 
 const MESSAGES = 'src/core/i18n/messages';
 const catalogue = JSON.parse(fs.readFileSync(path.join(MESSAGES, 'catalogue.json'), 'utf8'));
@@ -30,6 +37,7 @@ const languages = fs
   .map((f) => f.replace('.json', ''));
 
 let failed = false;
+const plurals = pluralKeys();
 
 for (const lang of languages) {
   const dict = JSON.parse(fs.readFileSync(path.join(MESSAGES, `${lang}.json`), 'utf8'));
@@ -47,6 +55,27 @@ for (const lang of languages) {
     if (dead.length > 10) console.log(`    …ще ${dead.length - 10}`);
   }
 
+  // A plural key whose entry is a bare string can only ever render one form.
+  // Which forms are required is the language's business, not ours.
+  const required = new Intl.PluralRules(lang).resolvedOptions().pluralCategories;
+  const wrong = [];
+  for (const key of plurals) {
+    const entry = dict[key];
+    if (entry === undefined) continue; // already counted as untranslated
+    if (typeof entry === 'string') {
+      wrong.push([key, `один рядок замість форм: ${required.join(', ')}`]);
+      continue;
+    }
+    const absent = required.filter((c) => !entry[c]);
+    if (absent.length) wrong.push([key, `нема форм: ${absent.join(', ')}`]);
+  }
+  if (wrong.length) {
+    failed = true;
+    console.log(`  без форм множини: ${wrong.length}`);
+    for (const [k, why] of wrong.slice(0, 10)) console.log(`    ${JSON.stringify(k)} — ${why}`);
+    if (wrong.length > 10) console.log(`    …ще ${wrong.length - 10}`);
+  }
+
   if (missingFor === lang) {
     const missing = catalogue.filter((k) => !(k in dict));
     console.log(`\n  неперекладених: ${missing.length}`);
@@ -59,6 +88,9 @@ for (const lang of languages) {
 }
 
 if (failed) {
-  console.log('\nМертві записи не ламають збірку, але вони — брехня про покриття.');
+  console.log(
+    '\nМертві записи й неповні форми множини не ламають збірку, але вони — брехня про\n' +
+      'покриття: перше рахує неіснуюче, друге показує «1 Einträge».',
+  );
   process.exit(1);
 }

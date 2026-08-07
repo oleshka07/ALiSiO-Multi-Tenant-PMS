@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import { useState } from 'react';
 import { GripVertical, Pencil, Archive, RotateCcw, Trash2, Plus } from 'lucide-react';
 import type { Counterparty, Kind } from './CounterpartiesTab';
@@ -38,6 +38,7 @@ export default function CounterpartyTreeRow({
   onMove,
 }: Props) {
   const t = useT();
+  const plural = usePlural();
   const [dragOver, setDragOver] = useState<'above' | 'below' | 'onto' | null>(null);
 
   function handleDragStart(e: React.DragEvent) {
@@ -131,7 +132,7 @@ export default function CounterpartyTreeRow({
       {isRoot && counterparty.kind && <Badge>{t(KIND_LABELS[counterparty.kind])}</Badge>}
       {aliasCount > 0 && (
         <Badge title={counterparty.aliases.join(', ')}>
-          {aliasCount} {t('синонім')}{aliasCount === 1 ? '' : aliasCount < 5 ? t('и') : t('ів')}
+          {aliasCount} {plural(aliasCount, 'синонім')}
         </Badge>
       )}
 

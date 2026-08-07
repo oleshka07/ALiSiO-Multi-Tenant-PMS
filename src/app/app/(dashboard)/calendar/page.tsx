@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -157,6 +157,7 @@ export default function CalendarPage() {
 }
 
 function CalendarDesktop() {
+  const pluralUi = usePlural();
   const tUi = useT();
   // ─── State ──────
   const onMenuClick = useMobileMenu();
@@ -663,7 +664,7 @@ function CalendarDesktop() {
                 <button
                   className="draft-pool-badge"
                   onClick={() => setShowRoomAllocation(true)}
-                  title={`${draftCount} ${tUi('бронювань у чорновику — натисніть для розподілу')}`}
+                  title={`${draftCount} ${pluralUi(draftCount, 'бронювань у чорновику — натисніть для розподілу')}`}
                 >
                   📋 {draftCount} {tUi('в чорновику')}
                 </button>
@@ -1045,7 +1046,7 @@ function CalendarDesktop() {
               <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Заїзд:')}</span> {b.check_in}</div>
               <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Виїзд:')}</span> {b.check_out}</div>
               <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Ночей:')}</span> {b.nights}</div>
-              <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Гостей:')}</span> {b.adults} {tUi('дор.')}{b.children > 0 ? ` + ${b.children} ${tUi('діт.')}` : ''}</div>
+              <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Гостей:')}</span> {b.adults} {tUi('дор.')}{b.children > 0 ? ` + ${b.children} ${pluralUi(b.children, 'діт.')}` : ''}</div>
               <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Сума:')}</span> <strong>{(b.total_price || 0).toLocaleString()} CZK</strong></div>
               <div><span style={{ color: pm.color }}>{pm.icon} {tUi(pm.label)}</span></div>
             </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, AlertTriangle, CheckCircle, Calendar, Users } from 'lucide-react';
 
@@ -34,6 +34,7 @@ const URGENCY_STYLES: Record<string, { bg: string; color: string; label: string;
 };
 
 export default function ExpectedPaymentsPage() {
+  const pluralUi = usePlural();
   const tUi = useT();
   const [items, setItems] = useState<ExpectedItem[]>([]);
   const [summary, setSummary] = useState<Summary>({ total_expected: 0, total_bookings: 0, overdue: 0, overdue_count: 0, urgent: 0, urgent_count: 0, soon: 0, soon_count: 0, upcoming: 0, upcoming_count: 0 });
@@ -175,7 +176,7 @@ export default function ExpectedPaymentsPage() {
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: u.color }}>{formatCZK(item.outstanding)}</td>
                     <td style={{ textAlign: 'center', color: u.color, fontWeight: 600 }}>
-                      {item.days_until < 0 ? `${Math.abs(item.days_until)}${tUi('д тому')}` : item.days_until === 0 ? tUi('Сьогодні') : `${item.days_until}${tUi('д')}`}
+                      {item.days_until < 0 ? `${Math.abs(item.days_until)}${tUi('д тому')}` : item.days_until === 0 ? tUi('Сьогодні') : `${item.days_until}${pluralUi(item.days_until, 'д')}`}
                     </td>
                   </tr>
                 );

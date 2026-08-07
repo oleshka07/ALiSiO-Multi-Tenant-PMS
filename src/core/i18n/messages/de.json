@@ -413,8 +413,14 @@
   "бронювань": "Buchungen",
   "Бронювань": "Buchungen",
   "Бронювань немає": "Keine Buchungen",
-  "бронювань у чорновику": "Buchungsentwürfe",
-  "бронювань у чорновику — натисніть для розподілу": "Buchungsentwürfe — zum Zuordnen anklicken",
+  "бронювань у чорновику": {
+    "one": "Buchungsentwurf",
+    "other": "Buchungsentwürfe"
+  },
+  "бронювань у чорновику — натисніть для розподілу": {
+    "one": "Buchungsentwurf — zum Zuordnen anklicken",
+    "other": "Buchungsentwürfe — zum Zuordnen anklicken"
+  },
   "Бронюй будиночок у місяць свого ДН — отримуй сесію сауни безкоштовно + 50% знижку на решту сесій.": "Buchen Sie ein Häuschen im Monat Ihres Geburtstags — ein Saunagang gratis + 50 % Rabatt auf alle weiteren.",
   "Брудний": "Unsauber",
   "брудних)": "unsauber)",
@@ -482,7 +488,10 @@
   "Вибір з меню": "Auswahl aus der Karte",
   "Вибрано 2 операції для об'єднання.": "2 Operationen zum Zusammenführen ausgewählt.",
   "Вибрано:": "Ausgewählt:",
-  "вибрано)": "ausgewählt)",
+  "вибрано)": {
+    "one": "ausgewählt)",
+    "other": "ausgewählt)"
+  },
   "Вибрати контрагента вручну": "Kontrahent manuell wählen",
   "Виглядає як": "Sieht aus wie",
   "Видалення": "Löschung",
@@ -679,7 +688,10 @@
   "Гнучке (Flexible)": "Flexibel (Flexible)",
   "Години роботи": "Öffnungszeiten",
   "Головна": "Start",
-  "гостей": "Gäste",
+  "гостей": {
+    "one": "Gast",
+    "other": "Gäste"
+  },
   "Гостей": "Gäste",
   "Гостей (дорослих)": "Gäste (Erwachsene)",
   "Гостей не знайдено": "Keine Gäste gefunden",
@@ -708,7 +720,10 @@
   "Групове": "Gruppe",
   "Групове бронювання створено!": "Gruppenbuchung erstellt!",
   "Групу видалено": "Gruppe gelöscht",
-  "д": "T",
+  "д": {
+    "one": "T",
+    "other": "T"
+  },
   "д тому": "T her",
   "Дані гостя": "Gastdaten",
   "Дані гостя оновлено!": "Gastdaten aktualisiert!",
@@ -764,7 +779,10 @@
   "Дії": "Aktionen",
   "Дійсний (міс.)": "Gültig (Mon.)",
   "Ділянка": "Parzelle",
-  "діт.": "Ki.",
+  "діт.": {
+    "one": "Ki.",
+    "other": "Ki."
+  },
   "Дітей": "Kinder",
   "Діти": "Kinder",
   "Дія": "Aktion",
@@ -773,7 +791,10 @@
   "Для сповіщень про задачі. Дізнатися: @userinfobot": "Für Aufgabenbenachrichtigungen. Herausfinden: @userinfobot",
   "Для Clarity, Pixels, GTM": "Für Clarity, Pixels, GTM",
   "Для:": "Für:",
-  "дн.": "Tg.",
+  "дн.": {
+    "one": "Tg.",
+    "other": "Tg."
+  },
   "дн. не задано ціни — показано 0": "Tage ohne festgelegten Preis — 0 angezeigt",
   "дн. тому": "Tg. her",
   "Дні тижня": "Wochentage",
@@ -782,7 +803,10 @@
   "Днів до": "Tage bis",
   "Днів з ціною": "Tage mit Preis",
   "днів у price_calendar (": "Tage im price_calendar (",
-  "днів)": "Tage)",
+  "днів)": {
+    "one": "Tag)",
+    "other": "Tage)"
+  },
   "До": "Bis",
   "До *": "Bis *",
   "до 11:00": "bis 11:00",
@@ -984,10 +1008,16 @@
   "Замовник (ім'я)": "Auftraggeber (Name)",
   "Замовник групи": "Auftraggeber der Gruppe",
   "зап. ·": "Eintr. ·",
-  "запис": "Einträge",
+  "запис": {
+    "one": "Eintrag",
+    "other": "Einträge"
+  },
   "Записано": "Erfasst",
   "Записати дохід або витрату": "Einnahme oder Ausgabe erfassen",
-  "записів": "Einträge",
+  "записів": {
+    "one": "Eintrag",
+    "other": "Einträge"
+  },
   "Записів не знайдено за обраний період.": "Für den gewählten Zeitraum wurden keine Einträge gefunden.",
   "Записів:": "Einträge:",
   "записів)": "Einträge)",
@@ -1182,7 +1212,10 @@
   "Кількість днів до дати заїзду, за які гості можуть забронювати.": "Anzahl der Tage vor dem Anreisedatum, in denen Gäste buchen können.",
   "Кількість кодів (1–500)": "Anzahl der Codes (1–500)",
   "Кількість унікальних сесій користувачів, які відвідали сайт та взаємодіяли з віджетом бронювання.": "Anzahl der eindeutigen Nutzersitzungen, die die Website besucht und mit dem Buchungs-Widget interagiert haben.",
-  "кім.": "Zi.",
+  "кім.": {
+    "one": "Zi.",
+    "other": "Zi."
+  },
   "кімнат": "Zimmer",
   "кімнат =": "Zimmer =",
   "кімнат)": "Zimmer)",
@@ -1313,7 +1346,10 @@
   "міс.": "Mon.",
   "міс.)": "Mon.)",
   "Місто": "Stadt",
-  "місць": "Plätze",
+  "місць": {
+    "one": "Platz",
+    "other": "Plätze"
+  },
   "Міський податок / ніч": "Kurtaxe / Nacht",
   "місяців =": "Monate =",
   "Місяць": "Monat",
@@ -1544,7 +1580,10 @@
   "Нотатки": "Notizen",
   "ноч.": "Nä.",
   "ноч. ·": "Nä. ·",
-  "ноч.)": "Nä.)",
+  "ноч.)": {
+    "one": "Nacht)",
+    "other": "Nächte)"
+  },
   "ночей": "Nächte",
   "Ночей": "Nächte",
   "ночей ×": "Nächte ×",
@@ -1607,7 +1646,10 @@
   "Операцій:": "Operationen:",
   "Операційні": "Betrieblich",
   "Операція": "Buchungssatz",
-  "операціях": "Operationen",
+  "операціях": {
+    "one": "Operation",
+    "other": "Operationen"
+  },
   "Опис": "Beschreibung",
   "Опис (опц.)": "Beschreibung (opt.)",
   "Оплата": "Zahlung",
@@ -1838,7 +1880,10 @@
   "Прийом платежів": "Zahlungsannahme",
   "Прикріпити": "Anhängen",
   "Прикріпити файл": "Datei anhängen",
-  "прикріплених документ(ів)": "angehängte Dokument(e)",
+  "прикріплених документ(ів)": {
+    "one": "angehängtes Dokument",
+    "other": "angehängte Dokumente"
+  },
   "Примітка": "Notiz",
   "Примітка:": "Anmerkung:",
   "Примітки": "Notizen",
@@ -1941,7 +1986,10 @@
   "Роль:": "Rolle:",
   "Романтичний вікенд": "Romantisches Wochenende",
   "рядк. ≥ 10 000 CZK)": "Zeilen ≥ 10 000 CZK)",
-  "рядків": "Zeilen",
+  "рядків": {
+    "one": "Zeile",
+    "other": "Zeilen"
+  },
   "Сайт": "Website",
   "Сайт бронювання": "Buchungswebsite",
   "Сайт видалено": "Website gelöscht",
@@ -1968,7 +2016,10 @@
   "Серпень": "August",
   "Сесії": "Sitzungen",
   "сесій": "Sitzungen",
-  "синонім": "Synonyme",
+  "синонім": {
+    "one": "Synonym",
+    "other": "Synonyme"
+  },
   "Синоніми (для автоматчингу з банк-коментарів)": "Synonyme (für den automatischen Abgleich mit Bankkommentaren)",
   "Синоніми автоматично переводяться у ВЕРХНІЙ регістр. Пошук case-insensitive підрядком.": "Synonyme werden automatisch in GROSSBUCHSTABEN umgewandelt. Die Suche erfolgt als Teilzeichenfolge ohne Berücksichtigung der Groß-/Kleinschreibung.",
   "Синх...": "Sync…",
@@ -2289,7 +2340,10 @@
   "Юніт...": "Einheit …",
   "ЮНІТИ": "EINHEITEN",
   "Юніти (": "Einheiten (",
-  "юнітів": "Einheiten",
+  "юнітів": {
+    "one": "Einheit",
+    "other": "Einheiten"
+  },
   "юнітів ·": "Einheiten ·",
   "юридична адреса": "Sitz laut Register",
   "Юридична адреса": "Firmenanschrift",

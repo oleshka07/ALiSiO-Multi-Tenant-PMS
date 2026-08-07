@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -913,6 +913,7 @@ function StagingDetailPanel({ booking, onClose, onDelete, fmt }: {
   onDelete: (id: string) => void;
   fmt: (d: string) => string;
 }) {
+  const pluralUi = usePlural();
   const tUi = useT();
   const [confirming, setConfirming] = useState(false);
   const party = partyOf(booking);
@@ -928,11 +929,11 @@ function StagingDetailPanel({ booking, onClose, onDelete, fmt }: {
         <div className="ram-detail-grid">
           <div className="ram-detail-row">
             <span className="ram-detail-k">{tUi('Дати')}</span>
-            <span className="ram-detail-v">{fmt(booking.check_in)} — {fmt(booking.check_out)}{booking.nights ? ` (${booking.nights} ${tUi('ноч.)')}` : ''}</span>
+            <span className="ram-detail-v">{fmt(booking.check_in)} — {fmt(booking.check_out)}{booking.nights ? ` (${booking.nights} ${pluralUi(booking.nights, 'ноч.)')}` : ''}</span>
           </div>
           <div className="ram-detail-row">
             <span className="ram-detail-k">{tUi('Гості')}</span>
-            <span className="ram-detail-v">{booking.adults || 0} {tUi('дор.')}{booking.children ? ` + ${booking.children} ${tUi('діт.')}` : ''} ({party} {tUi('ос.)')}</span>
+            <span className="ram-detail-v">{booking.adults || 0} {tUi('дор.')}{booking.children ? ` + ${booking.children} ${pluralUi(booking.children, 'діт.')}` : ''} ({party} {tUi('ос.)')}</span>
           </div>
           {booking.unit_type_name && (
             <div className="ram-detail-row">

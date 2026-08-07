@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -85,6 +85,7 @@ const PRESETS: { key: string; label: string }[] = [
 ];
 
 export default function ReportsPage() {
+  const pluralUi = usePlural();
   const tUi = useT();
   const initRange = getPresetRange('thisMonth');
   const [from, setFrom] = useState(initRange[0]);
@@ -128,7 +129,7 @@ export default function ReportsPage() {
             <h2 className="page-title">{tUi('Аналітика продажів')}</h2>
             <div className="page-subtitle">
               {from === to ? from : `${from} — ${to}`}
-              {data?.period?.days && ` (${data.period.days} ${tUi('днів)')}`}
+              {data?.period?.days && ` (${data.period.days} ${pluralUi(data.period.days, 'днів)')}`}
             </div>
           </div>
           <div className="flex gap-2">

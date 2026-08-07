@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -144,6 +144,7 @@ function Modal({ open, onClose, title, children, footer }: ModalProps) {
 
 // ─── Main Component ───────────────────────────────────────
 export default function SettingsUnitsPage() {
+  const pluralUi = usePlural();
   const tUi = useT();
   const onMenuClick = useMobileMenu();
 
@@ -564,7 +565,7 @@ export default function SettingsUnitsPage() {
                                 <div style={{ fontWeight: 500, fontSize: 13 }}>{unit.name}</div>
                                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
                                   {unit.code}
-                                  {unit.beds > 0 && ` · ${unit.beds} ${tUi('місць')}`}
+                                  {unit.beds > 0 && ` · ${unit.beds} ${pluralUi(unit.beds, 'місць')}`}
                                   {unit.zone && ` · ${unit.zone}`}
                                   {unit.unit_type_name && ` · ${unit.unit_type_name}`}
                                 </div>

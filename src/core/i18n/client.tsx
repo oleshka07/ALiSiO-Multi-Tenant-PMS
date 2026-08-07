@@ -15,7 +15,7 @@
  */
 
 import { createContext, useContext, useMemo } from 'react';
-import { translate } from './dictionary';
+import { translate, translatePlural } from './dictionary';
 import { type Language, UI_SOURCE_LANGUAGE } from './languages';
 
 const LanguageContext = createContext<Language>(UI_SOURCE_LANGUAGE);
@@ -45,4 +45,23 @@ export function useLanguage(): Language {
 export function useT(): (text: string) => string {
   const language = useContext(LanguageContext);
   return useMemo(() => (text: string) => translate(text, language), [language]);
+}
+
+/**
+ * `const plural = usePlural()` then `` `${n} ${plural(n, 'записів')}` ``.
+ *
+ * Use it wherever a word follows a number. `t()` cannot: it is handed the word
+ * alone, so it can only ever return one form, and «1 Einträge» is what that
+ * looks like. Czech and Polish make the same mistake three times louder.
+ *
+ * The count stays at the call site rather than being formatted in here, because
+ * the surrounding text is often more than a number — `(${n} ${plural(…)})`,
+ * `${n.toLocaleString()} …` — and swallowing it would take that away.
+ */
+export function usePlural(): (count: number, text: string) => string {
+  const language = useContext(LanguageContext);
+  return useMemo(
+    () => (count: number, text: string) => translatePlural(text, count, language),
+    [language],
+  );
 }

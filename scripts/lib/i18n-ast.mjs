@@ -133,12 +133,12 @@ export function isClientComponent(text) {
   return /^['"]use client['"]/.test(beforeCode);
 }
 
-/** Is this a call to our own t() / tUi()? */
+/** Is this a call to one of our own translators — t(), tUi(), plural(), pluralUi()? */
 export function isTranslateCall(node) {
   return (
     ts.isCallExpression(node) &&
     ts.isIdentifier(node.expression) &&
-    (node.expression.text === 't' || node.expression.text === 'tUi')
+    /^(t|tUi|plural|pluralUi)$/.test(node.expression.text)
   );
 }
 
