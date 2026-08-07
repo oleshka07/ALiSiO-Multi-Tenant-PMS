@@ -128,7 +128,7 @@ export default function ReportsPage() {
             <h2 className="page-title">{tUi('Аналітика продажів')}</h2>
             <div className="page-subtitle">
               {from === to ? from : `${from} — ${to}`}
-              {data?.period?.days && ` (${data.period.days} днів)`}
+              {data?.period?.days && ` (${data.period.days} ${tUi('днів)')}`}
             </div>
           </div>
           <div className="flex gap-2">
@@ -149,7 +149,7 @@ export default function ReportsPage() {
                 className={`btn btn-sm ${activePreset === p.key ? 'btn-primary' : 'btn-ghost'}`}
                 onClick={() => applyPreset(p.key)}
               >
-                {p.label}
+                {tUi(p.label)}
               </button>
             ))}
           </div>
@@ -211,7 +211,7 @@ export default function ReportsPage() {
                       return (
                         <div key={cat}>
                           <div className="flex justify-between mb-2" style={{ fontSize: 13 }}>
-                            <span style={{ fontWeight: 600 }}>{cfg.label}</span>
+                            <span style={{ fontWeight: 600 }}>{tUi(cfg.label)}</span>
                             <span style={{ fontWeight: 700 }}>
                               {info.revenue.toLocaleString()} CZK
                               <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, marginLeft: 6, fontSize: 11 }}>
@@ -252,7 +252,7 @@ export default function ReportsPage() {
                         <div key={method}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, fontSize: 13 }}>
                             <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
-                              <span style={{ fontSize: 16 }}>{cfg.icon}</span> {cfg.label}
+                              <span style={{ fontSize: 16 }}>{cfg.icon}</span> {tUi(cfg.label)}
                             </span>
                             <span>
                               <span style={{ fontWeight: 700 }}>{(amount as number).toLocaleString()} CZK</span>
@@ -296,7 +296,7 @@ export default function ReportsPage() {
                         const avgCheck = info.bookings > 0 ? Math.round(info.revenue / info.bookings) : 0;
                         return (
                           <tr key={cat}>
-                            <td><span className="badge" style={{ background: cfg.color + '22', color: cfg.color }}>{cfg.label}</span></td>
+                            <td><span className="badge" style={{ background: cfg.color + '22', color: cfg.color }}>{tUi(cfg.label)}</span></td>
                             <td>{info.bookings}</td>
                             <td>{info.nights}</td>
                             <td style={{ fontWeight: 700 }}>{info.revenue.toLocaleString()}</td>
@@ -332,7 +332,7 @@ export default function ReportsPage() {
                       return (
                         <div key={cat} className="report-category-card">
                           <div className="report-category-card-header">
-                            <span className="badge" style={{ background: cfg.color + '22', color: cfg.color }}>{cfg.label}</span>
+                            <span className="badge" style={{ background: cfg.color + '22', color: cfg.color }}>{tUi(cfg.label)}</span>
                             <span className="report-category-card-value">{info.revenue.toLocaleString()} CZK</span>
                           </div>
                           <div className="report-category-card-stats">

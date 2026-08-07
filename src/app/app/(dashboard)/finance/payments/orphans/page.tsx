@@ -140,7 +140,7 @@ export default function OrphanPaymentsPage() {
                             disabled={restoring === r.order_id || !r.reservation_id}
                             style={{ ...btn, background: '#16a34a', color: 'white', borderColor: '#16a34a' }}
                           >
-                            {restoring === r.order_id ? 'Створення…' : 'Створити fin_operation'}
+                            {restoring === r.order_id ? t('Створення…') : t('Створити fin_operation')}
                           </button>
                         )}
                       </td>

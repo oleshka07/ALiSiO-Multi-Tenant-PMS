@@ -177,7 +177,7 @@ function FiltersSheet({
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 8, textTransform: 'uppercase' }}>{tUi('Статус')}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {[{ k: '', l: 'Всі' }, ...Object.keys(STATUS_LABELS).map(k => ({ k, l: STATUS_LABELS[k] }))].map(opt => (
+              {[{ k: '', l: tUi('Всі') }, ...Object.keys(STATUS_LABELS).map(k => ({ k, l: STATUS_LABELS[k] }))].map(opt => (
                 <button
                   key={opt.k || 'all'}
                   onClick={() => setStatusFilter(opt.k)}
@@ -194,7 +194,7 @@ function FiltersSheet({
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 8, textTransform: 'uppercase' }}>{tUi('Оплата')}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {[{ k: '', l: 'Всі' }, ...Object.keys(PAYMENT_LABELS).map(k => ({ k, l: `${PAYMENT_ICONS[k]} ${PAYMENT_LABELS[k]}` }))].map(opt => (
+              {[{ k: '', l: tUi('Всі') }, ...Object.keys(PAYMENT_LABELS).map(k => ({ k, l: `${PAYMENT_ICONS[k]} ${PAYMENT_LABELS[k]}` }))].map(opt => (
                 <button
                   key={opt.k || 'all'}
                   onClick={() => setPaymentFilter(opt.k)}
@@ -211,7 +211,7 @@ function FiltersSheet({
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 8, textTransform: 'uppercase' }}>{tUi('Прибирання')}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {[{ k: '', l: 'Всі' }, ...Object.keys(CLEAN_LABELS).map(k => ({ k, l: CLEAN_LABELS[k] }))].map(opt => (
+              {[{ k: '', l: tUi('Всі') }, ...Object.keys(CLEAN_LABELS).map(k => ({ k, l: CLEAN_LABELS[k] }))].map(opt => (
                 <button
                   key={opt.k || 'all'}
                   onClick={() => setCleaningFilter(opt.k)}
@@ -557,7 +557,7 @@ export default function MobileCalendar() {
       {/* Top Header: Category toggle & View Mode switcher */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }}>
         <div style={{ display: 'flex', gap: 4 }}>
-          {[{ key: '', label: 'Всі' },
+          {[{ key: '', label: tUi('Всі') },
             ...[...new Set(units.map(u => u.category_type))].sort().map(t => ({ key: t, label: t })),
           ].map(c => (
             <button key={c.key} onClick={() => setCategory(c.key)} style={{
@@ -813,7 +813,7 @@ export default function MobileCalendar() {
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 15 }}>{u.code} ({u.name})</div>
                       <div style={{ fontSize: 12, color: '#ef4444', fontWeight: 600, marginTop: 2 }}>
-                        {u.cleaning_status === 'in_progress' ? '⏳ В процесі прибирання' : '❌ Потребує прибирання'}
+                        {u.cleaning_status === 'in_progress' ? tUi('⏳ В процесі прибирання') : tUi('❌ Потребує прибирання')}
                       </div>
                     </div>
                     <button
@@ -896,7 +896,7 @@ export default function MobileCalendar() {
                   background: isTd ? 'rgba(20,184,166,0.15)' : undefined,
                 }}>
                   <span style={{ fontSize: 9, color: isTd ? 'var(--accent-primary)' : 'var(--text-tertiary)', fontWeight: 600 }}>
-                    {DAY_ABBR[d.getDay()]}
+                    {tUi(DAY_ABBR[d.getDay()])}
                   </span>
                   <span style={{ fontSize: 14, fontWeight: isTd ? 800 : 600, color: isTd ? 'var(--accent-primary)' : 'var(--text-primary)', lineHeight: 1 }}>
                     {d.getDate()}
@@ -973,7 +973,7 @@ export default function MobileCalendar() {
                             return (
                               <div
                                 key={s.block.id}
-                                title={`🔒 Закрито: ${s.block.notes || ''}`}
+                                title={`${tUi('🔒 Закрито:')} ${s.block.notes || ''}`}
                                 onClick={(e) => { e.stopPropagation(); setViewBlock(s.block); }}
                                 style={{
                                   position: 'absolute',
@@ -1053,7 +1053,7 @@ export default function MobileCalendar() {
           <div key={status} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
             <div style={{ width: 7, height: 7, borderRadius: 3, background: color }} />
             <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>
-              {STATUS_LABELS[status] || status}
+              {tUi(STATUS_LABELS[status] || status)}
             </span>
           </div>
         ))}

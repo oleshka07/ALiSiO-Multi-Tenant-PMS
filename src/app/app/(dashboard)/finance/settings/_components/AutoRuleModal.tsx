@@ -140,7 +140,7 @@ export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
     <div style={overlayStyle} onClick={onClose}>
       <form onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()} style={modalStyle}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, flex: 1 }}>{initial ? 'Редагувати правило' : 'Нове правило'}</h3>
+          <h3 style={{ margin: 0, flex: 1 }}>{initial ? tUi('Редагувати правило') : tUi('Нове правило')}</h3>
           <button type="button" onClick={onClose} style={closeBtn}><X size={18} /></button>
         </div>
 
@@ -165,10 +165,10 @@ export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
           return (
             <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr 30px', gap: 6, marginBottom: 6 }}>
               <select value={c.field} onChange={(e) => updateCondition(idx, { field: e.target.value })} style={input}>
-                {FIELD_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                {FIELD_OPTIONS.map((f) => <option key={f.value} value={f.value}>{tUi(f.label)}</option>)}
               </select>
               <select value={c.op} onChange={(e) => updateCondition(idx, { op: e.target.value })} style={input}>
-                {opList.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                {opList.map((o) => <option key={o.value} value={o.value}>{tUi(o.label)}</option>)}
               </select>
               {fieldDef?.isId && c.field === 'account_from_id' || c.field === 'account_to_id' ? (
                 <select value={c.value || ''} onChange={(e) => updateCondition(idx, { value: e.target.value })} style={input}>
@@ -311,7 +311,7 @@ export default function AutoRuleModal({ initial, onClose, onSave }: Props) {
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button type="button" onClick={onClose} style={btnSecondary}>{tUi('Відміна')}</button>
           <button type="submit" disabled={saving} style={btnPrimary}>
-            {saving ? 'Збереження…' : initial ? 'Зберегти' : 'Створити'}
+            {saving ? tUi('Збереження…') : initial ? tUi('Зберегти') : tUi('Створити')}
           </button>
         </div>
       </form>

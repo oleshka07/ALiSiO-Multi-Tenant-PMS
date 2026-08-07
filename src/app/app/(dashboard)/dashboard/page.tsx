@@ -212,7 +212,7 @@ function DashboardDesktop() {
                   <button key={p} onClick={() => handlePeriodChange(p)}
                     style={{ padding: '3px 10px', fontSize: 11, borderRadius: 6, border: 'none', cursor: 'pointer',
                       background: soPeriod === p ? 'var(--accent)' : 'var(--surface-2)', color: soPeriod === p ? '#fff' : 'var(--text-secondary)' }}>
-                    {p === 'day' ? 'День' : p === 'week' ? 'Тиждень' : 'Все'}
+                    {p === 'day' ? t('День') : p === 'week' ? t('Тиждень') : t('Все')}
                   </button>
                 ))}
                 {/* Date nav */}
@@ -251,7 +251,7 @@ function DashboardDesktop() {
                       <td style={{ fontWeight: 600 }}>{o.totalPrice} Kč</td>
                       <td>
                         <span className={`badge ${STATUS_ORDER_MAP[o.status]?.badge || 'badge-info'}`}>
-                          {STATUS_ORDER_MAP[o.status]?.label || o.status}
+                          {t(STATUS_ORDER_MAP[o.status]?.label || o.status)}
                         </span>
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
@@ -300,7 +300,7 @@ function DashboardDesktop() {
                     <div className="dashboard-event-card-right">
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{o.totalPrice} Kč</div>
                       <span className={`badge ${STATUS_ORDER_MAP[o.status]?.badge || 'badge-info'}`} style={{ fontSize: 10, padding: '1px 6px' }}>
-                        {STATUS_ORDER_MAP[o.status]?.label || o.status}
+                        {t(STATUS_ORDER_MAP[o.status]?.label || o.status)}
                       </span>
                       {(o.status === 'paid' || o.status === 'confirmed') && (
                         <button onClick={() => handleOrderAction(o.id, 'complete')}
@@ -344,7 +344,7 @@ function DashboardDesktop() {
                           <td><span className="badge badge-primary">{a.unit_code}</span></td>
                           <td>{fmtDate(a.check_in)}</td>
                           <td>{a.nights}</td>
-                          <td><span className={`badge ${STATUS_MAP[a.status]?.badge || 'badge-info'}`}>{STATUS_MAP[a.status]?.label || a.status}</span></td>
+                          <td><span className={`badge ${STATUS_MAP[a.status]?.badge || 'badge-info'}`}>{t(STATUS_MAP[a.status]?.label || a.status)}</span></td>
                         </tr>
                       ))}
                     </tbody>
@@ -368,7 +368,7 @@ function DashboardDesktop() {
                         <div className="dashboard-event-card-right">
                           <div style={{ fontSize: 13, fontWeight: 600 }}>{fmtDate(a.check_in)}</div>
                           <span className={`badge ${STATUS_MAP[a.status]?.badge || 'badge-info'}`} style={{ fontSize: 10, padding: '1px 6px' }}>
-                            {STATUS_MAP[a.status]?.label || a.status}
+                            {t(STATUS_MAP[a.status]?.label || a.status)}
                           </span>
                         </div>
                       </div>
@@ -403,7 +403,7 @@ function DashboardDesktop() {
                           <td style={{ fontWeight: 500 }}>{d.first_name} {d.last_name}</td>
                           <td><span className="badge badge-primary">{d.unit_code}</span></td>
                           <td>{fmtDate(d.check_out)}</td>
-                          <td><span className={`badge ${CLEAN_MAP[d.cleaning_status]?.badge || 'badge-info'}`}>{CLEAN_MAP[d.cleaning_status]?.label || d.cleaning_status}</span></td>
+                          <td><span className={`badge ${CLEAN_MAP[d.cleaning_status]?.badge || 'badge-info'}`}>{t(CLEAN_MAP[d.cleaning_status]?.label || d.cleaning_status)}</span></td>
                         </tr>
                       ))}
                     </tbody>
@@ -426,7 +426,7 @@ function DashboardDesktop() {
                         <div className="dashboard-event-card-right">
                           <div style={{ fontSize: 13, fontWeight: 600 }}>{fmtDate(d.check_out)}</div>
                           <span className={`badge ${CLEAN_MAP[d.cleaning_status]?.badge || 'badge-info'}`} style={{ fontSize: 10, padding: '1px 6px' }}>
-                            {CLEAN_MAP[d.cleaning_status]?.label || d.cleaning_status}
+                            {t(CLEAN_MAP[d.cleaning_status]?.label || d.cleaning_status)}
                           </span>
                         </div>
                       </div>

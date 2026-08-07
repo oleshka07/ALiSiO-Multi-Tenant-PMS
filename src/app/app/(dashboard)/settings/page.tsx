@@ -126,8 +126,8 @@ export default function SettingsPage() {
               <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer' }}>
                 <div className={`stat-icon ${item.color}`}>{item.icon}</div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{item.title}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>{item.desc}</div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{t(item.title)}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>{t(item.desc)}</div>
                 </div>
                 <ChevronRight size={18} style={{ color: 'var(--text-tertiary)' }} />
               </div>

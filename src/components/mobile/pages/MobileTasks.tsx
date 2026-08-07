@@ -310,7 +310,7 @@ function TaskSheet({
                   transition: 'all 0.2s ease',
                 }}
               >
-                {cfg.label}
+                {tUi(cfg.label)}
               </button>
             ))}
           </div>
@@ -324,7 +324,7 @@ function TaskSheet({
               style={{ fontSize: 13, padding: '6px 8px' }}
             >
               {Object.entries(PRIORITY_CFG).map(([k, c]) => (
-                <option key={k} value={k}>{c.label}</option>
+                <option key={k} value={k}>{tUi(c.label)}</option>
               ))}
             </select>
           )}
@@ -512,7 +512,7 @@ function TaskSheet({
               }}
             >
               {uploading ? <Loader2 size={14} className="animate-pulse" /> : <Image size={14} />}
-              {uploading ? 'Завантаження...' : 'Додати фото / файл'}
+              {uploading ? tUi('Завантаження...') : tUi('Додати фото / файл')}
             </button>
           </div>
 
@@ -585,7 +585,7 @@ function TaskSheet({
           <div style={{ display: 'flex', gap: 8, marginTop: 16, paddingBottom: 16 }}>
             <button className="btn btn-primary" style={{ flex: 1, borderRadius: 12, padding: '12px 0', background: saved ? '#22c55e' : undefined, borderColor: saved ? '#22c55e' : undefined, transition: 'all 0.3s ease' }} onClick={handleSave} disabled={saving}>
               {saving ? <Loader2 size={14} className="animate-pulse" /> : saved ? <Check size={14} /> : <Check size={14} />}
-              {' '}{saving ? 'Зберігаємо...' : saved ? 'Збережено ✓' : 'Зберегти'}
+              {' '}{saving ? tUi('Зберігаємо...') : saved ? tUi('Збережено ✓') : tUi('Зберегти')}
             </button>
             <button className="btn btn-danger" style={{ borderRadius: 12, padding: '12px 16px' }} onClick={handleDelete} disabled={deleting}>
               {deleting ? <Loader2 size={14} className="animate-pulse" /> : <Trash2 size={14} />}
@@ -824,7 +824,7 @@ export default function MobileTasks() {
             className={`m-chip ${dateFilter === chip.key ? 'm-chip-active' : ''}`}
             onClick={() => setDateFilter(chip.key)}
           >
-            {chip.label}
+            {tUi(chip.label)}
             {chip.key === 'overdue' && overdue > 0 && (
               <span style={{
                 marginLeft: 4, padding: '1px 6px', borderRadius: 8, fontSize: 9, fontWeight: 700,
@@ -845,7 +845,7 @@ export default function MobileTasks() {
             className={`m-chip ${statusFilter === chip.key ? 'm-chip-active' : ''}`}
             onClick={() => setStatusFilter(chip.key)}
           >
-            {chip.label}
+            {tUi(chip.label)}
           </button>
         ))}
       </div>

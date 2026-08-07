@@ -126,7 +126,7 @@ export default function PriceLabsPreviewPage() {
         )}
         <button onClick={fetchPreview} disabled={loading}
                 style={{ padding: '6px 14px', fontSize: 13, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
-          {loading ? 'Завантаження…' : 'Оновити'}
+          {loading ? t('Завантаження…') : t('Оновити')}
         </button>
         <button
           onClick={async () => {
@@ -144,7 +144,7 @@ export default function PriceLabsPreviewPage() {
           disabled={syncing}
           style={{ padding: '6px 14px', fontSize: 13, background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
         >
-          {syncing ? 'Sync…' : '⤓ Записати в price_calendar'}
+          {syncing ? 'Sync…' : t('⤓ Записати в price_calendar')}
         </button>
         {data && (
           <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-tertiary)' }}>
@@ -162,7 +162,7 @@ export default function PriceLabsPreviewPage() {
       {syncResult && (
         <div style={{ padding: 16, background: syncResult.ok ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${syncResult.ok ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, borderRadius: 8, marginBottom: 20 }}>
           <div style={{ fontWeight: 700, marginBottom: 8 }}>
-            {syncResult.ok ? '✅ Sync завершено' : '⚠️ Sync завершено з помилками'}
+            {syncResult.ok ? t('✅ Sync завершено') : t('⚠️ Sync завершено з помилками')}
           </div>
           <div style={{ fontSize: 13, marginBottom: 6 }}>
             {t('Записано')} <b>{syncResult.daysWrittenTotal}</b> {t('днів у price_calendar (')}{syncResult.dateFrom} → {syncResult.dateTo}{t('). Будинків:')} <b>{syncResult.listingsResolved}</b>

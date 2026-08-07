@@ -88,7 +88,7 @@ function EditDayModal({ day, onSave, onClose }: {
       <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
         <div className="modal-header">
           <h3 className="modal-title">
-            {day.day} {MONTH_NAMES[new Date(day.date).getMonth()]} ({DAY_NAMES[day.dayOfWeek]})
+            {day.day} {t(MONTH_NAMES[new Date(day.date).getMonth()])} ({t(DAY_NAMES[day.dayOfWeek])})
           </h3>
           <button className="modal-close" onClick={onClose}><X size={18} /></button>
         </div>
@@ -489,7 +489,7 @@ export default function PricingPage() {
           <div>
             <h2 className="page-title">{t('Ціноутворення')}</h2>
             <div className="page-subtitle">
-              {selectedUT ? `${selectedUT.name}` : 'Виберіть тип розміщення'} · {MONTH_NAMES[month - 1]} {year}
+              {selectedUT ? `${selectedUT.name}` : t('Виберіть тип розміщення')} · {t(MONTH_NAMES[month - 1])} {year}
             </div>
           </div>
           <div className="flex gap-2">
@@ -550,7 +550,7 @@ export default function PricingPage() {
         {/* Month Navigation */}
         <div className="flex items-center justify-between mb-4">
           <button className="btn btn-ghost btn-icon" onClick={prevMonth}><ChevronLeft size={20} /></button>
-          <h3 style={{ fontSize: 18, fontWeight: 700 }}>{MONTH_NAMES[month - 1]} {year}</h3>
+          <h3 style={{ fontSize: 18, fontWeight: 700 }}>{t(MONTH_NAMES[month - 1])} {year}</h3>
           <button className="btn btn-ghost btn-icon" onClick={nextMonth}><ChevronRight size={20} /></button>
         </div>
 
@@ -564,7 +564,7 @@ export default function PricingPage() {
             <div className="pricing-grid" style={{ marginBottom: 2 }}>
               {DAY_NAMES.map(d => (
                 <div key={d} style={{ padding: '8px 0', textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>
-                  {d}
+                  {t(d)}
                 </div>
               ))}
             </div>
@@ -579,7 +579,7 @@ export default function PricingPage() {
                         style={{ cursor: 'pointer' }}
                       >
                         <div className="pricing-cell-date">
-                          {day.day} {DAY_NAMES[day.dayOfWeek]}
+                          {day.day} {t(DAY_NAMES[day.dayOfWeek])}
                         </div>
                         <div className="pricing-cell-price" style={{
                           color: !day.hasData ? 'var(--text-tertiary)' : day.isWeekend ? '#f59e0b' : undefined,
@@ -632,7 +632,7 @@ export default function PricingPage() {
                     <td>{day.date}</td>
                     <td>
                       <span style={day.isWeekend ? { color: '#f59e0b', fontWeight: 600 } : {}}>
-                        {DAY_NAMES[day.dayOfWeek]}
+                        {t(DAY_NAMES[day.dayOfWeek])}
                       </span>
                     </td>
                     <td style={{ fontWeight: 600 }}>{day.hasData ? day.base_price.toLocaleString() : '—'}</td>

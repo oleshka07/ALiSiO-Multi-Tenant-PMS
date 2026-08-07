@@ -182,7 +182,7 @@ export default function ServicesSettingsPage() {
                 </div>
                 <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                   <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: svc.is_active ? '#22c55e' : '#ef4444' }}
-                    onClick={() => toggleActive(svc)} title={svc.is_active ? 'Вимкнути' : 'Увімкнути'}>
+                    onClick={() => toggleActive(svc)} title={svc.is_active ? tUi('Вимкнути') : tUi('Увімкнути')}>
                     {svc.is_active ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
                   </button>
                   <button className="btn btn-sm btn-secondary" onClick={() => startEdit(svc)}>{tUi('Редагувати')}</button>
@@ -262,13 +262,13 @@ function ServiceForm({ form, setForm }: { form: any; setForm: (f: any) => void }
       <div>
         <label className="form-label">{tUi('Категорія')}</label>
         <select className="form-select" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
-          {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          {CATEGORIES.map(c => <option key={c.value} value={c.value}>{tUi(c.label)}</option>)}
         </select>
       </div>
       <div>
         <label className="form-label">{tUi('Тип')}</label>
         <select className="form-select" value={form.service_type} onChange={e => setForm({ ...form, service_type: e.target.value })}>
-          {SERVICE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          {SERVICE_TYPES.map(t => <option key={t.value} value={t.value}>{tUi(t.label)}</option>)}
         </select>
       </div>
       <div>

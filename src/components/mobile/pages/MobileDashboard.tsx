@@ -150,10 +150,10 @@ export default function MobileDashboard() {
       {/* Tabs */}
       <div className="m-chips" style={{ marginBottom: 10 }}>
         {([
-          { key: 'today',      label: 'Сьогодні' },
-          { key: 'tomorrow',   label: 'Завтра' },
-          { key: 'arrivals',   label: `Заїзди (${data.upcomingArrivals.length})` },
-          { key: 'departures', label: `Виїзди (${data.todayDepartures.length})` },
+          { key: 'today',      label: tUi('Сьогодні') },
+          { key: 'tomorrow',   label: tUi('Завтра') },
+          { key: 'arrivals',   label: `${tUi('Заїзди (')}${data.upcomingArrivals.length})` },
+          { key: 'departures', label: `${tUi('Виїзди (')}${data.todayDepartures.length})` },
         ] as { key: Tab; label: string }[]).map(t => (
           <button
             key={t.key}
@@ -169,10 +169,10 @@ export default function MobileDashboard() {
       {(tab === 'today' || tab === 'tomorrow') && (
         <div className="m-kpi-grid" style={{ marginBottom: 14 }}>
           {[
-            { value: data.arrivalsToday,   label: 'Заїздів',  icon: ArrowDownRight, color: '#34d399', bg: 'rgba(52,211,153,0.15)', href: '/app/calendar?view=shift' },
-            { value: data.departuresToday, label: 'Виїздів',  icon: ArrowUpRight,   color: '#60a5fa', bg: 'rgba(96,165,250,0.15)', href: '/app/calendar?view=shift'  },
-            { value: data.freeUnits,       label: 'Вільних',  icon: BedDouble,      color: '#a78bfa', bg: 'rgba(167,139,250,0.15)', href: '/app/bookings' },
-            { value: `${data.occupancyRate}%`, label: 'Зайн.', icon: Home,          color: '#fbbf24', bg: 'rgba(251,191,36,0.15)', href: '/app/calendar'  },
+            { value: data.arrivalsToday,   label: tUi('Заїздів'),  icon: ArrowDownRight, color: '#34d399', bg: 'rgba(52,211,153,0.15)', href: '/app/calendar?view=shift' },
+            { value: data.departuresToday, label: tUi('Виїздів'),  icon: ArrowUpRight,   color: '#60a5fa', bg: 'rgba(96,165,250,0.15)', href: '/app/calendar?view=shift'  },
+            { value: data.freeUnits,       label: tUi('Вільних'),  icon: BedDouble,      color: '#a78bfa', bg: 'rgba(167,139,250,0.15)', href: '/app/bookings' },
+            { value: `${data.occupancyRate}%`, label: tUi('Зайн.'), icon: Home,          color: '#fbbf24', bg: 'rgba(251,191,36,0.15)', href: '/app/calendar'  },
           ].map((kpi, i) => {
             const Icon = kpi.icon;
             return (
@@ -227,7 +227,7 @@ export default function MobileDashboard() {
                     <div className="m-card-subtitle">{d.unit_code}</div>
                   </div>
                   <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 10, background: `${cl.color}18`, color: cl.color }}>
-                    {cl.label}
+                    {tUi(cl.label)}
                   </span>
                 </div>
               </div>
@@ -250,7 +250,7 @@ export default function MobileDashboard() {
                   <Icon size={18} color={action.color} />
                 </div>
                 <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'center', lineHeight: 1.2 }}>
-                  {action.label}
+                  {tUi(action.label)}
                 </span>
               </div>
             </Link>

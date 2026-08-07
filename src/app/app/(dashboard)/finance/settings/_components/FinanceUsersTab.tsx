@@ -147,7 +147,7 @@ export default function FinanceUsersTab() {
                           border: enabled ? '1px solid #22c55e' : '1px solid var(--border-primary)',
                           opacity: togglingId === user.id ? 0.6 : 1,
                         }}
-                        title={enabled ? 'Вимкнути доступ' : 'Увімкнути доступ'}
+                        title={enabled ? t('Вимкнути доступ') : t('Увімкнути доступ')}
                       >
                         <span
                           style={{

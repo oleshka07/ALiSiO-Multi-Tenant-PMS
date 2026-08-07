@@ -279,7 +279,7 @@ export default function FinanceOverviewPage() {
                       borderRadius: '4px 4px 0 0',
                       minHeight: '2px',
                     }}
-                    title={`Дохід: ${formatCZK(d.revenue)}`}
+                    title={`${t('Дохід:')} ${formatCZK(d.revenue)}`}
                   />
                   <div
                     style={{
@@ -289,10 +289,10 @@ export default function FinanceOverviewPage() {
                       borderRadius: '4px 4px 0 0',
                       minHeight: '2px',
                     }}
-                    title={`Витрати: ${formatCZK(d.expenses)}`}
+                    title={`${t('Витрати:')} ${formatCZK(d.expenses)}`}
                   />
                 </div>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{getMonthLabel(d.month)}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{t(getMonthLabel(d.month))}</span>
               </div>
             ))}
           </div>

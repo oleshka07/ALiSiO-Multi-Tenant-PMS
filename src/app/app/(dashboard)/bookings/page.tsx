@@ -517,7 +517,7 @@ function BookingsDesktop() {
                   <span style={{ color: 'var(--text-secondary)' }}>{a.message}</span>
                 </div>
                 <button
-                  title={a.type === 'overdue_arrival' ? 'Позначити no-show та прибрати' : 'Приховати'}
+                  title={a.type === 'overdue_arrival' ? t('Позначити no-show та прибрати') : t('Приховати')}
                   onClick={async (e) => {
                     e.stopPropagation();
                     if (a.type === 'overdue_arrival') {
@@ -598,7 +598,7 @@ function BookingsDesktop() {
             <select className="form-select" style={{ width: 170 }} value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
               <option value="">{t('Всі оплати')}</option>
               {Object.entries(PAYMENT_STATUS_MAP).map(([k, v]) => (
-                <option key={k} value={k}>{v.label}</option>
+                <option key={k} value={k}>{t(v.label)}</option>
               ))}
             </select>
             {(search || statusFilter || categoryFilter || paymentFilter || dateFrom || dateTo || sourceFilter) && (
@@ -669,16 +669,16 @@ function BookingsDesktop() {
             <thead>
               <tr>
                 {[
-                  { key: 'last_name', label: 'Гість' },
-                  { key: 'unit_name', label: 'Юніт' },
-                  { key: 'check_in', label: 'Заїзд' },
-                  { key: 'check_out', label: 'Виїзд' },
-                  { key: 'nights', label: 'Ночей' },
-                  { key: 'adults', label: 'Гостей' },
-                  { key: 'status', label: 'Статус' },
-                  { key: 'payment_status', label: 'Оплата' },
-                  { key: 'source', label: 'Джерело' },
-                  { key: 'total_price', label: 'Сума' },
+                  { key: 'last_name', label: t('Гість') },
+                  { key: 'unit_name', label: t('Юніт') },
+                  { key: 'check_in', label: t('Заїзд') },
+                  { key: 'check_out', label: t('Виїзд') },
+                  { key: 'nights', label: t('Ночей') },
+                  { key: 'adults', label: t('Гостей') },
+                  { key: 'status', label: t('Статус') },
+                  { key: 'payment_status', label: t('Оплата') },
+                  { key: 'source', label: t('Джерело') },
+                  { key: 'total_price', label: t('Сума') },
                   { key: '', label: '' },
                 ].map(col => (
                   <th key={col.key || 'actions'} style={col.key ? { cursor: 'pointer', userSelect: 'none' } : {}}
@@ -718,12 +718,12 @@ function BookingsDesktop() {
                           <div style={{ flex: 1, minWidth: 120, cursor: 'pointer' }} onClick={() => setViewGroupId(g.id)}>
                             <span style={{ fontWeight: 700, fontSize: 14 }}>{g.first_name} {g.last_name}</span>
                             <span style={{ fontSize: 12, color: 'var(--text-tertiary)', marginLeft: 8 }}>
-                              {g.group_type === 'building' ? `🏨 ${g.building_name}` : `🛏️ ${childCount} кім.`}
+                              {g.group_type === 'building' ? `🏨 ${g.building_name}` : `🛏️ ${childCount} ${t('кім.')}`}
                               {' · '}{g.check_in} → {g.check_out} · {g.nights} {t('н.')}
                             </span>
                           </div>
                           <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: STATUS_MAP[g.status]?.badge ? undefined : '#6c7086' }} className={`badge ${STATUS_MAP[g.status]?.badge || 'badge-info'}`}>
-                            {STATUS_MAP[g.status]?.label || g.status}
+                            {t(STATUS_MAP[g.status]?.label || g.status)}
                           </span>
                           <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--accent-primary)' }}>
                             {(g.total_price || 0).toLocaleString()} {g.currency || 'CZK'}
@@ -747,8 +747,8 @@ function BookingsDesktop() {
                       <td><span className="badge badge-primary">{b.unit_name}</span></td>
                       <td>{b.check_in}</td><td>{b.check_out}</td><td>{b.nights}</td>
                       <td><span className="flex items-center gap-2" style={{ fontSize: 12 }}><Users size={12} /> {b.adults}{b.children > 0 && <span style={{ color: 'var(--text-tertiary)' }}>+{b.children}</span>}</span></td>
-                      <td><span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{STATUS_MAP[b.status]?.label || b.status}</span></td>
-                      <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>{PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status}</span></td>
+                      <td><span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{t(STATUS_MAP[b.status]?.label || b.status)}</span></td>
+                      <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>{t(PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status)}</span></td>
                       <td>
                         <span className="badge" style={{ background: (sourceMap[b.source]?.color || '#6c7086') + '22', color: sourceMap[b.source]?.color || '#6c7086' }}>{sourceMap[b.source]?.label || b.source}</span>
                         {b.hostex_channel_type && <span style={{ marginLeft: 4 }} title={`Hostex: ${b.hostex_channel_type}`}>🌐</span>}
@@ -768,8 +768,8 @@ function BookingsDesktop() {
                     <td><span className="badge badge-primary">{b.unit_name}</span></td>
                     <td>{b.check_in}</td><td>{b.check_out}</td><td>{b.nights}</td>
                     <td><span className="flex items-center gap-2" style={{ fontSize: 12 }}><Users size={12} /> {b.adults}{b.children > 0 && <span style={{ color: 'var(--text-tertiary)' }}>+{b.children}</span>}</span></td>
-                    <td><span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{STATUS_MAP[b.status]?.label || b.status}</span></td>
-                    <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>{PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status}</span></td>
+                    <td><span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{t(STATUS_MAP[b.status]?.label || b.status)}</span></td>
+                    <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>{t(PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status)}</span></td>
                     <td>
                       <span className="badge" style={{ background: (sourceMap[b.source]?.color || '#6c7086') + '22', color: sourceMap[b.source]?.color || '#6c7086' }}>{sourceMap[b.source]?.label || b.source}</span>
                       {b.hostex_channel_type && <span style={{ marginLeft: 4 }} title={`Hostex: ${b.hostex_channel_type}`}>🌐</span>}
@@ -829,7 +829,7 @@ function BookingsDesktop() {
                         </div>
                       </div>
                       <span className={`badge ${STATUS_MAP[g.status]?.badge || 'badge-info'}`} style={{ fontSize: 10, flexShrink: 0 }}>
-                        {STATUS_MAP[g.status]?.label || g.status}
+                        {t(STATUS_MAP[g.status]?.label || g.status)}
                       </span>
                     </div>
                   </div>
@@ -859,7 +859,7 @@ function BookingsDesktop() {
                         <div className="booking-card-unit">{b.unit_name}</div>
                         <div className="booking-card-price">{(b.total_price || 0).toLocaleString()} {b.currency || 'CZK'}</div>
                       </div>
-                      <span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{STATUS_MAP[b.status]?.label || b.status}</span>
+                      <span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{t(STATUS_MAP[b.status]?.label || b.status)}</span>
                     </div>
                   </div>
                 );
@@ -892,7 +892,7 @@ function BookingsDesktop() {
                       <div className="booking-card-price">
                         {(b.total_price || 0).toLocaleString()} {b.currency || 'CZK'}
                         <span style={{ marginLeft: 6, display: 'inline-block', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>
-                          {PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status}
+                          {t(PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status)}
                         </span>
                       </div>
                       {(b.commission_amount || 0) > 0 && (
@@ -909,7 +909,7 @@ function BookingsDesktop() {
                         <button className="mobile-action-btn" onClick={(e) => { e.stopPropagation(); changeStatus(b.id, 'checked_in'); }}>{t('Реєстрація')}</button>
                       )}
                       {b.status !== 'confirmed' && b.status !== 'tentative' && (
-                        <span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{STATUS_MAP[b.status]?.label || b.status}</span>
+                        <span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{t(STATUS_MAP[b.status]?.label || b.status)}</span>
                       )}
                       {b.guest_page_token && (
                         <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-primary)' }} title={t('Гостьова сторінка')} onClick={(e) => { e.stopPropagation(); window.open(`/guest/${b.guest_page_token}`, '_blank'); }}>

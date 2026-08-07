@@ -87,7 +87,7 @@ export default function AccountModal({ initial, onClose, onSave }: Props) {
         style={modalStyle}
       >
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, flex: 1 }}>{initial ? 'Редагувати рахунок' : 'Новий рахунок'}</h3>
+          <h3 style={{ margin: 0, flex: 1 }}>{initial ? t('Редагувати рахунок') : t('Новий рахунок')}</h3>
           <button type="button" onClick={onClose} style={closeBtnStyle}><X size={18} /></button>
         </div>
 
@@ -98,7 +98,7 @@ export default function AccountModal({ initial, onClose, onSave }: Props) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <Field label={t('Тип')}>
             <select value={type} onChange={(e) => setType(e.target.value as Account['type'])} style={inputStyle}>
-              {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
             </select>
           </Field>
           <Field label={t('Валюта')}>
@@ -184,7 +184,7 @@ export default function AccountModal({ initial, onClose, onSave }: Props) {
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
           <button type="button" onClick={onClose} style={btnSecondaryStyle}>{t('Відміна')}</button>
           <button type="submit" disabled={saving} style={btnPrimaryStyle}>
-            {saving ? 'Збереження…' : (initial ? 'Зберегти' : 'Створити')}
+            {saving ? t('Збереження…') : (initial ? t('Зберегти') : t('Створити'))}
           </button>
         </div>
       </form>

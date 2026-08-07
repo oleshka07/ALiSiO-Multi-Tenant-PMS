@@ -174,10 +174,10 @@ export default function CityTaxReportPage() {
                           <td>{b.adults}</td>
                           <td>{sourceLabel(b.source)}</td>
                           <td style={{ textAlign: 'right', fontWeight: 700 }}>{(b.city_tax_amount || 0).toLocaleString()} CZK</td>
-                          <td>{b.city_tax_included ? '✅ Так' : '—'}</td>
+                          <td>{b.city_tax_included ? t('✅ Так') : '—'}</td>
                           <td>
                             <span className="badge" style={{ background: ts.color + '22', color: ts.color, fontSize: 11 }}>
-                              {ts.icon} {ts.label}
+                              {ts.icon} {t(ts.label)}
                             </span>
                           </td>
                         </tr>

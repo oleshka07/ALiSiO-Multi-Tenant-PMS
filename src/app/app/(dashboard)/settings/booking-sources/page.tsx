@@ -252,12 +252,12 @@ export default function BookingSourcesPage() {
         <Modal
           open={showModal}
           onClose={() => setShowModal(false)}
-          title={editSource ? 'Редагувати джерело' : 'Нове джерело'}
+          title={editSource ? t('Редагувати джерело') : t('Нове джерело')}
           footer={
             <>
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>{t('Скасувати')}</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={saving || !form.name || !form.code}>
-                <Save size={16} /> {saving ? 'Збереження...' : 'Зберегти'}
+                <Save size={16} /> {saving ? t('Збереження...') : t('Зберегти')}
               </button>
             </>
           }

@@ -100,7 +100,7 @@ export default function FinanceSettingsPage() {
                 }}
               >
                 {tab.icon}
-                <span style={{ flex: 1 }}>{tab.label}</span>
+                <span style={{ flex: 1 }}>{tUi(tab.label)}</span>
                 {!tab.enabled && (
                   <span
                     style={{

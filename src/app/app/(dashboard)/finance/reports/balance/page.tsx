@@ -123,12 +123,13 @@ function Section({ title, color, total, children }: { title: string; color: stri
 }
 
 function AccountRow({ account, amount }: { account: Account; amount: number }) {
+  const t = useT();
   return (
     <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
       <span style={{ width: 10, height: 10, borderRadius: 3, background: account.color, display: 'inline-block' }} />
       <span style={{ flex: 1 }}>
         {account.name}
-        <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 6 }}>{TYPE_LABELS[account.type]}</span>
+        <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 6 }}>{t(TYPE_LABELS[account.type])}</span>
       </span>
       <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{formatMoney(amount, account.currency)}</span>
     </div>

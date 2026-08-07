@@ -524,7 +524,7 @@ function TaskDrawer({
                     autoSave(updates as Partial<typeof form>);
                   }}
                 >
-                  {cfg.icon} {cfg.label}
+                  {cfg.icon} {tUi(cfg.label)}
                 </button>
               ))}
             </div>
@@ -560,7 +560,7 @@ function TaskDrawer({
                 >
                   {Object.entries(PRIORITY_CONFIG).map(([key, cfg]) => (
                     <option key={key} value={key}>
-                      {cfg.icon} {cfg.label}
+                      {cfg.icon} {tUi(cfg.label)}
                     </option>
                   ))}
                 </select>
@@ -923,7 +923,7 @@ function TaskDrawer({
               ) : (
                 <Image size={14} />
               )}
-              {uploading ? "Завантаження..." : "Додати фото / файл"}
+              {uploading ? tUi('Завантаження...') : tUi('Додати фото / файл')}
             </button>
           </div>
 
@@ -2096,7 +2096,7 @@ function TasksDesktop() {
                             <span className="tasks-kanban-title-icon">
                               {cfg.icon}
                             </span>
-                            {cfg.label}
+                            {tUi(cfg.label)}
                           </div>
                           <span
                             className="tasks-kanban-count"
@@ -2119,7 +2119,7 @@ function TasksDesktop() {
                                 fontSize: 12,
                               }}
                             >
-                              {isOver ? "Відпустити тут" : "Немає задач"}
+                              {isOver ? tUi('Відпустити тут') : tUi('Немає задач')}
                             </div>
                           )}
                           {columnTasks.map((task) => (
@@ -2164,7 +2164,7 @@ function TasksDesktop() {
                                     }}
                                   >
                                     <Flag size={10} />{" "}
-                                    {PRIORITY_CONFIG[task.priority]?.label}
+                                    {tUi(PRIORITY_CONFIG[task.priority]?.label)}
                                   </span>
                                 )}
                               </div>
@@ -2287,7 +2287,7 @@ function TasksDesktop() {
                       <option value="all">{tUi('Всі')}</option>
                       {Object.entries(STATUS_CONFIG).map(([k, v]) => (
                         <option key={k} value={k}>
-                          {v.icon} {v.label}
+                          {v.icon} {tUi(v.label)}
                         </option>
                       ))}
                     </select>
@@ -2304,7 +2304,7 @@ function TasksDesktop() {
                       <option value="all">{tUi('Всі')}</option>
                       {Object.entries(PRIORITY_CONFIG).map(([k, v]) => (
                         <option key={k} value={k}>
-                          {v.icon} {v.label}
+                          {v.icon} {tUi(v.label)}
                         </option>
                       ))}
                     </select>
@@ -2466,7 +2466,7 @@ function TasksDesktop() {
                                 {Object.entries(STATUS_CONFIG).map(
                                   ([key, cfg]) => (
                                     <option key={key} value={key}>
-                                      {cfg.icon} {cfg.label}
+                                      {cfg.icon} {tUi(cfg.label)}
                                     </option>
                                   ),
                                 )}
@@ -2491,7 +2491,7 @@ function TasksDesktop() {
                                 {Object.entries(PRIORITY_CONFIG).map(
                                   ([key, cfg]) => (
                                     <option key={key} value={key}>
-                                      {cfg.icon} {cfg.label}
+                                      {cfg.icon} {tUi(cfg.label)}
                                     </option>
                                   ),
                                 )}
@@ -2644,6 +2644,7 @@ function TaskItem({
   onToggle: () => void;
   onClick: () => void;
 }) {
+  const tUi = useT();
   const due = getDueLabel(task.due_date);
   const isDone = task.status === "done";
 
@@ -2714,7 +2715,7 @@ function TaskItem({
         {task.priority !== "normal" && (
           <span
             className={`priority-indicator ${task.priority}`}
-            title={PRIORITY_CONFIG[task.priority]?.label}
+            title={tUi(PRIORITY_CONFIG[task.priority]?.label)}
           />
         )}
       </div>

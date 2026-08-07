@@ -140,12 +140,12 @@ export default function RecurringTemplatesTab() {
                     {t.name}
                     {t.comment && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{t.comment}</div>}
                   </td>
-                  <td style={td}>{OP_TYPE_LABEL[t.op_type]}</td>
+                  <td style={td}>{tUi(OP_TYPE_LABEL[t.op_type])}</td>
                   <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
                     {formatAmount(t.amount, t.currency)}
                   </td>
                   <td style={td}>
-                    {SCHEDULE_LABELS[t.schedule]}{t.schedule === 'monthly' && t.schedule_day ? ` (${t.schedule_day}-го)` : ''}
+                    {tUi(SCHEDULE_LABELS[t.schedule])}{t.schedule === 'monthly' && t.schedule_day ? ` (${t.schedule_day}${tUi('-го)')}` : ''}
                   </td>
                   <td style={td}>{t.next_run_at}</td>
                   <td style={{ ...td, textAlign: 'right', color: 'var(--text-secondary)' }}>{t.runs_created}×</td>
@@ -154,7 +154,7 @@ export default function RecurringTemplatesTab() {
                       <Play size={14} />
                     </button>
                     <button onClick={() => setEditing(t)} style={iconBtn} title={tUi('Редагувати')}><Pencil size={14} /></button>
-                    <button onClick={() => handleToggle(t)} style={iconBtn} title={t.is_active ? 'Вимкнути' : 'Увімкнути'}>
+                    <button onClick={() => handleToggle(t)} style={iconBtn} title={t.is_active ? tUi('Вимкнути') : tUi('Увімкнути')}>
                       <RotateCcw size={14} />
                     </button>
                     <button onClick={() => handleDelete(t)} style={{ ...iconBtn, color: '#dc2626' }} title={tUi('Видалити')}><Trash2 size={14} /></button>

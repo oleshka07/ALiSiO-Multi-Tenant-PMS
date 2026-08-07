@@ -198,7 +198,7 @@ export default function NotificationsSettingsPage() {
                     className="form-input"
                     type="password"
                     autoComplete="off"
-                    placeholder={s.hasToken ? '•••••••• — збережено, введіть новий щоб замінити' : '123456789:AAExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'}
+                    placeholder={s.hasToken ? t('•••••••• — збережено, введіть новий щоб замінити') : '123456789:AAExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'}
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
                   />
@@ -260,8 +260,8 @@ export default function NotificationsSettingsPage() {
                       style={{ marginTop: 3 }}
                     />
                     <div>
-                      <div style={{ fontSize: 14, fontWeight: 500 }}>{label}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{hint}</div>
+                      <div style={{ fontSize: 14, fontWeight: 500 }}>{t(label)}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t(hint)}</div>
                     </div>
                   </label>
                 ))}

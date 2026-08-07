@@ -126,8 +126,8 @@ export default function CounterpartyModal({ initial, parent, onClose, onSave }: 
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ margin: 0, flex: 1 }}>
             {initial
-              ? (isEditingSub ? 'Редагувати підконтрагента' : 'Редагувати контрагента')
-              : (parent ? `Новий підконтрагент у «${parent.name}»` : 'Новий контрагент')}
+              ? (isEditingSub ? t('Редагувати підконтрагента') : t('Редагувати контрагента'))
+              : (parent ? `${t('Новий підконтрагент у «')}${parent.name}»` : t('Новий контрагент'))}
           </h3>
           <button type="button" onClick={onClose} style={closeBtnStyle}><X size={18} /></button>
         </div>
@@ -143,7 +143,7 @@ export default function CounterpartyModal({ initial, parent, onClose, onSave }: 
             style={inputStyle}
             disabled={kindDisabled}
           >
-            {KIND_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            {KIND_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
           </select>
           {kindDisabled && <div style={hintStyle}>{t('Успадковано від батька')}</div>}
         </Field>
@@ -167,7 +167,7 @@ export default function CounterpartyModal({ initial, parent, onClose, onSave }: 
               onChange={(e) => setAliasInput(e.target.value)}
               onKeyDown={handleAliasKeyDown}
               onBlur={() => aliasInput.trim() && addAlias(aliasInput)}
-              placeholder={aliases.length === 0 ? 'Напр. FACEBK, META, FACEBOOK (Enter щоб додати)' : 'Додати ще...'}
+              placeholder={aliases.length === 0 ? t('Напр. FACEBK, META, FACEBOOK (Enter щоб додати)') : t('Додати ще...')}
               style={chipInputStyle}
             />
           </div>
@@ -187,7 +187,7 @@ export default function CounterpartyModal({ initial, parent, onClose, onSave }: 
                     type="button"
                     onClick={() => addAlias(s.text)}
                     style={suggestionChipStyle}
-                    title={`Використовується в ${s.count} операціях`}
+                    title={`${t('Використовується в')} ${s.count} ${t('операціях')}`}
                   >
                     <PlusIcon size={11} /> {s.text}
                     <span style={{ opacity: 0.6, fontSize: 10 }}>×{s.count}</span>
@@ -213,7 +213,7 @@ export default function CounterpartyModal({ initial, parent, onClose, onSave }: 
                     cursor: 'pointer', fontSize: 18,
                     color: i ? undefined : 'var(--text-secondary)',
                   }}
-                  title={i ? i : 'Без іконки'}
+                  title={i ? i : t('Без іконки')}
                 >
                   {i || '∅'}
                 </button>
@@ -257,7 +257,7 @@ export default function CounterpartyModal({ initial, parent, onClose, onSave }: 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
           <button type="button" onClick={onClose} style={btnSecondaryStyle}>{t('Відміна')}</button>
           <button type="submit" disabled={saving} style={btnPrimaryStyle}>
-            {saving ? 'Збереження…' : (initial ? 'Зберегти' : 'Створити')}
+            {saving ? t('Збереження…') : (initial ? t('Зберегти') : t('Створити'))}
           </button>
         </div>
       </form>

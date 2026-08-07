@@ -109,7 +109,7 @@ export default function PlanFactPage() {
             <table style={tableStyle}>
               <thead>
                 <tr style={{ background: 'var(--bg-secondary)' }}>
-                  <th style={{ ...th, textAlign: 'left' }}>{by === 'project' ? 'Проєкт' : 'Категорія'}</th>
+                  <th style={{ ...th, textAlign: 'left' }}>{by === 'project' ? tUi('Проєкт') : tUi('Категорія')}</th>
                   <th style={th}>{tUi('План')}</th>
                   <th style={th}>{tUi('Факт')}</th>
                   <th style={th}>{tUi('Відхилення')}</th>
@@ -133,7 +133,7 @@ export default function PlanFactPage() {
                       <td style={{ ...tdLeft }}>
                         {r.icon ? <span style={{ marginRight: 6 }}>{r.icon}</span> : null}
                         {r.name}
-                        {r.op_type && <span style={{ fontSize: 10, padding: '1px 6px', marginLeft: 6, background: 'var(--bg-secondary)', borderRadius: 3, color: 'var(--text-secondary)' }}>{r.op_type === 'income' ? 'дохід' : r.op_type === 'expense' ? 'витрата' : r.op_type}</span>}
+                        {r.op_type && <span style={{ fontSize: 10, padding: '1px 6px', marginLeft: 6, background: 'var(--bg-secondary)', borderRadius: 3, color: 'var(--text-secondary)' }}>{r.op_type === 'income' ? tUi('дохід') : r.op_type === 'expense' ? tUi('витрата') : r.op_type}</span>}
                       </td>
                       <td style={{ ...td, cursor: 'pointer' }}
                           onClick={() => { if (!isEditing) { setEditing(r.id); setEditValue(String(r.planned || '')); } }}>

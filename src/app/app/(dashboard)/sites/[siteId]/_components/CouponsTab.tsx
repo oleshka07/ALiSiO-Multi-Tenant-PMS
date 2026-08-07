@@ -179,9 +179,9 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
                 </td>
                 <td>{c.offer_amount as number}{(c.discount_type as string) === 'percentage' ? '%' : ` ${siteCurrency}`}</td>
                 <td style={{ fontSize: 12 }}>
-                  {(c.applies_to as string) === 'listings' ? '🏠 Оголошення'
-                    : (c.applies_to as string) === 'both' ? '🏠+🛎 Обидва'
-                      : '🛎 Сервіси'}
+                  {(c.applies_to as string) === 'listings' ? t('🏠 Оголошення')
+                    : (c.applies_to as string) === 'both' ? t('🏠+🛎 Обидва')
+                      : t('🛎 Сервіси')}
                 </td>
                 <td style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{(c.valid_until as string) || '—'}</td>
                 <td style={{ fontSize: 13 }}>
@@ -244,18 +244,18 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
         </table>
       )}
 
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title={editId ? "Редагувати промокод" : "Новий промокод"}
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title={editId ? t('Редагувати промокод') : t('Новий промокод')}
         footer={<>
           <button className="btn btn-ghost" onClick={() => setShowCreate(false)}>{t('Скасувати')}</button>
           <button className="btn btn-primary" onClick={handleCreate} disabled={creating}>
-            {creating ? <Loader2 size={14} className="spin" /> : (editId ? <Check size={14} /> : <Plus size={14} />)} {editId ? "Зберегти" : "Створити"}
+            {creating ? <Loader2 size={14} className="spin" /> : (editId ? <Check size={14} /> : <Plus size={14} />)} {editId ? t('Зберегти') : t('Створити')}
           </button>
         </>}>
 
         <div className="form-group">
           <label className="form-label">{t('Застосовується до')}</label>
           <div style={{ display: 'flex', gap: 8 }}>
-            {([['services', '🛎 Сервіси'], ['listings', '🏠 Оголошення'], ['both', '🏠+🛎 Обидва']] as const).map(([val, label]) => (
+            {([['services', t('🛎 Сервіси')], ['listings', t('🏠 Оголошення')], ['both', t('🏠+🛎 Обидва')]] as const).map(([val, label]) => (
               <button key={val} type="button" onClick={() => setForm(f => ({ ...f, applies_to: val }))}
                 style={{
                   flex: 1, padding: '8px 4px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
@@ -326,7 +326,7 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
           <label className="form-label">
             {t('Діє лише в ці дні тижня')}
             <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 400, marginLeft: 6 }}>
-              {form.allowed_days.length === 0 ? '(всі дні)' : ''}
+              {form.allowed_days.length === 0 ? t('(всі дні)') : ''}
             </span>
           </label>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -340,7 +340,7 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
                     background: on ? 'var(--accent-primary)' : 'var(--surface-secondary)',
                     color: on ? '#fff' : 'var(--text-secondary)', transition: 'all .15s',
                   }}>
-                  {d.label}
+                  {t(d.label)}
                 </button>
               );
             })}
@@ -363,7 +363,7 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
             <label className="form-label">
               {t('Застосовується до будиночків')} 
               <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11, marginLeft: 6 }}>
-                {form.applied_listings.length === 0 ? '(всі будиночки)' : `(${form.applied_listings.length} вибрано)`}
+                {form.applied_listings.length === 0 ? t('(всі будиночки)') : `(${form.applied_listings.length} ${t('вибрано)')}`}
               </span>
             </label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 150, overflowY: 'auto', border: '1px solid var(--border-primary)', borderRadius: 8, padding: 8, background: 'var(--surface-primary)' }}>
@@ -402,7 +402,7 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
             <label className="form-label">
               {t('Застосовується до сервісів')} 
               <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11, marginLeft: 6 }}>
-                {form.applicable_services.length === 0 ? '(всі сервіси)' : `(${form.applicable_services.length} вибрано)`}
+                {form.applicable_services.length === 0 ? t('(всі сервіси)') : `(${form.applicable_services.length} ${t('вибрано)')}`}
               </span>
             </label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 150, overflowY: 'auto', border: '1px solid var(--border-primary)', borderRadius: 8, padding: 8, background: 'var(--surface-primary)' }}>

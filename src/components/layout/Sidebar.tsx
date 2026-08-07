@@ -224,7 +224,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                     <span className="sidebar-nav-icon">{item.icon}</span>
                     <span className="sidebar-nav-label">{t(item.label)}</span>
                     {item.href === '/app/calendar' && draftCount > 0 && (
-                      <span className="sidebar-draft-badge" title={`${draftCount} бронювань у чорновику`}>
+                      <span className="sidebar-draft-badge" title={`${draftCount} ${t('бронювань у чорновику')}`}>
                         {draftCount}
                       </span>
                     )}

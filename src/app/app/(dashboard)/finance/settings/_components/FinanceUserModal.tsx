@@ -158,7 +158,7 @@ export default function FinanceUserModal({ user, accounts, onClose, onSaved }: P
                   onChange={() => toggleTab(tab.value)}
                   style={checkboxInput}
                 />
-                <span>{tab.label}</span>
+                <span>{t(tab.label)}</span>
               </label>
             ))}
           </div>
@@ -220,7 +220,7 @@ export default function FinanceUserModal({ user, accounts, onClose, onSaved }: P
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>
           <button type="button" onClick={onClose} style={btnSec}>{t('Скасувати')}</button>
           <button type="button" onClick={handleSave} disabled={saving} style={btnPrim}>
-            {saving ? 'Збереження…' : '💾 Зберегти'}
+            {saving ? t('Збереження…') : t('💾 Зберегти')}
           </button>
         </div>
       </div>

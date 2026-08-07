@@ -58,7 +58,7 @@ export default function ExchangeRateModal({ initial, onClose, onSave }: Props) {
     <div style={overlayStyle} onClick={onClose}>
       <form onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()} style={modalStyle}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, flex: 1 }}>{initial ? 'Редагувати курс' : 'Новий курс валют'}</h3>
+          <h3 style={{ margin: 0, flex: 1 }}>{initial ? t('Редагувати курс') : t('Новий курс валют')}</h3>
           <button type="button" onClick={onClose} style={closeBtnStyle}><X size={18} /></button>
         </div>
 
@@ -78,7 +78,7 @@ export default function ExchangeRateModal({ initial, onClose, onSave }: Props) {
           </Field>
         </div>
 
-        <Field label={`Курс (1 ${fromCur} = ? ${toCur})`}>
+        <Field label={`${t('Курс (1')} ${fromCur} = ? ${toCur})`}>
           <input
             type="number"
             step="0.0001"
@@ -104,7 +104,7 @@ export default function ExchangeRateModal({ initial, onClose, onSave }: Props) {
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
           <button type="button" onClick={onClose} style={btnSecondaryStyle}>{t('Відміна')}</button>
           <button type="submit" disabled={saving} style={btnPrimaryStyle}>
-            {saving ? 'Збереження…' : (initial ? 'Зберегти' : 'Додати')}
+            {saving ? t('Збереження…') : (initial ? t('Зберегти') : t('Додати'))}
           </button>
         </div>
       </form>

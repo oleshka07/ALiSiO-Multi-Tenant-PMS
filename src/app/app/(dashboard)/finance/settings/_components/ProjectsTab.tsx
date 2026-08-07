@@ -156,7 +156,7 @@ export default function ProjectsTab() {
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Завантаження…')}</div>
       ) : filtered.length === 0 ? (
         <div style={emptyStyle}>
-          {search ? 'Нічого не знайдено.' : 'Проєктів ще немає. Натисніть «Додати проєкт».'}
+          {search ? t('Нічого не знайдено.') : t('Проєктів ще немає. Натисніть «Додати проєкт».')}
         </div>
       ) : (
         <div style={{ border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
@@ -173,7 +173,7 @@ export default function ProjectsTab() {
                       <button
                         onClick={() => toggleCollapse(root.id)}
                         style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-secondary)' }}
-                        aria-label={isCollapsed ? 'Розгорнути' : 'Згорнути'}
+                        aria-label={isCollapsed ? t('Розгорнути') : t('Згорнути')}
                       >
                         {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
                       </button>

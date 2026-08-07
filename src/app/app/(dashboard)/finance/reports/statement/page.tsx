@@ -52,7 +52,7 @@ export default function StatementListPage() {
               <span style={{ width: 10, height: 10, borderRadius: 3, background: a.color, marginRight: 10 }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 500 }}>{a.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{TYPE_LABELS[a.type]} · {a.currency}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t(TYPE_LABELS[a.type])} · {a.currency}</div>
               </div>
               <div style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', marginRight: 12 }}>
                 {a.balance.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {a.currency}

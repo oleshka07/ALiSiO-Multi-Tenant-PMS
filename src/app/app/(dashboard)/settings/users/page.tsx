@@ -326,7 +326,7 @@ export default function UsersPage() {
             >
               <option value="all">{t('Всі ролі')}</option>
               {ALL_ROLES.map(r => (
-                <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                <option key={r} value={r}>{t(ROLE_LABELS[r])}</option>
               ))}
             </select>
             <ChevronDown size={14} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-tertiary)' }} />
@@ -371,12 +371,12 @@ export default function UsersPage() {
                     </td>
                     <td>
                       <span className="badge" style={{ background: ROLE_COLORS[user.role] + '20', color: ROLE_COLORS[user.role], border: `1px solid ${ROLE_COLORS[user.role]}30`, fontWeight: 600 }}>
-                        {ROLE_LABELS[user.role]}
+                        {t(ROLE_LABELS[user.role])}
                       </span>
                     </td>
                     <td>
                       <span className={`badge ${user.is_active ? 'badge-green' : 'badge-red'}`}>
-                        {user.is_active ? 'Активний' : 'Неактивний'}
+                        {user.is_active ? t('Активний') : t('Неактивний')}
                       </span>
                     </td>
                     <td style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
@@ -433,7 +433,7 @@ export default function UsersPage() {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {ALL_ROLES.map(r => (
               <span key={r} className="badge" style={{ background: ROLE_COLORS[r] + '20', color: ROLE_COLORS[r], border: `1px solid ${ROLE_COLORS[r]}30`, fontWeight: 500 }}>
-                {ROLE_LABELS[r]}
+                {t(ROLE_LABELS[r])}
               </span>
             ))}
           </div>
@@ -445,7 +445,7 @@ export default function UsersPage() {
         <div className="modal-backdrop" onClick={() => setModal(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
             <div className="modal-header">
-              <h3>{modal === 'create' ? 'Новий користувач' : 'Редагувати користувача'}</h3>
+              <h3>{modal === 'create' ? t('Новий користувач') : t('Редагувати користувача')}</h3>
               <button className="btn btn-ghost btn-icon" onClick={() => setModal(null)}><X size={18} /></button>
             </div>
             <div className="modal-body">
@@ -510,21 +510,21 @@ export default function UsersPage() {
                   <div style={{ position: 'relative' }}>
                     <select className="form-input" value={form.role} onChange={e => setForm(prev => ({ ...prev, role: e.target.value as UserRole, overrides: [] }))}>
                       {ALL_ROLES.map(r => (
-                        <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                        <option key={r} value={r}>{t(ROLE_LABELS[r])}</option>
                       ))}
                     </select>
                     <ChevronDown size={14} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-tertiary)' }} />
                   </div>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">{modal === 'create' ? 'Пароль *' : 'Новий пароль'}</label>
+                  <label className="form-label">{modal === 'create' ? t('Пароль *') : t('Новий пароль')}</label>
                   <div style={{ position: 'relative' }}>
                     <input
                       className="form-input"
                       type={showPassword ? 'text' : 'password'}
                       value={form.password}
                       onChange={e => setForm(prev => ({ ...prev, password: e.target.value }))}
-                      placeholder={modal === 'edit' ? 'Залишити порожнім' : '••••••••'}
+                      placeholder={modal === 'edit' ? t('Залишити порожнім') : '••••••••'}
                     />
                     <button
                       type="button"
@@ -558,7 +558,7 @@ export default function UsersPage() {
                 </div>
                 {PERMISSION_GROUPS.map(group => (
                   <div key={group.title} style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>{group.title}</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>{t(group.title)}</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 4 }}>
                       {group.permissions.map(p => {
                         const active = isPermissionActive(p.key);
@@ -581,7 +581,7 @@ export default function UsersPage() {
                               style={{ accentColor: overridden ? '#8b5cf6' : undefined }}
                             />
                             <span style={{ color: active ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
-                              {p.label}
+                              {t(p.label)}
                             </span>
                             {overridden && (
                               <span style={{ fontSize: 9, color: '#8b5cf6', fontWeight: 600 }}>{t('змінено')}</span>
@@ -597,7 +597,7 @@ export default function UsersPage() {
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setModal(null)}>{t('Скасувати')}</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-                {saving ? 'Збереження...' : 'Зберегти'}
+                {saving ? t('Збереження...') : t('Зберегти')}
               </button>
             </div>
           </div>
@@ -614,14 +614,14 @@ export default function UsersPage() {
             </div>
             <div className="modal-body">
               <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--text-secondary)' }}>
-                {t('Роль:')} <span className="badge" style={{ background: ROLE_COLORS[form.role] + '20', color: ROLE_COLORS[form.role], fontWeight: 600 }}>{ROLE_LABELS[form.role]}</span>
+                {t('Роль:')} <span className="badge" style={{ background: ROLE_COLORS[form.role] + '20', color: ROLE_COLORS[form.role], fontWeight: 600 }}>{t(ROLE_LABELS[form.role])}</span>
                 <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-tertiary)' }}>
                   {t('Прапорець «змінено» = відхилення від базових дозволів ролі')}
                 </span>
               </div>
               {PERMISSION_GROUPS.map(group => (
                 <div key={group.title} style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>{group.title}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>{t(group.title)}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 4 }}>
                     {group.permissions.map(p => {
                       const active = isPermissionActive(p.key);
@@ -643,7 +643,7 @@ export default function UsersPage() {
                             style={{ accentColor: overridden ? '#8b5cf6' : undefined }}
                           />
                           <span style={{ color: active ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
-                            {p.label}
+                            {t(p.label)}
                           </span>
                           {overridden && (
                             <span style={{ fontSize: 9, color: '#8b5cf6', fontWeight: 600 }}>{t('змінено')}</span>
@@ -658,7 +658,7 @@ export default function UsersPage() {
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setModal(null)}>{t('Скасувати')}</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-                {saving ? 'Збереження...' : 'Зберегти дозволи'}
+                {saving ? t('Збереження...') : t('Зберегти дозволи')}
               </button>
             </div>
           </div>

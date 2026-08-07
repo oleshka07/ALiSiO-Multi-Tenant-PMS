@@ -77,7 +77,7 @@ export default function FinanceAuditPage() {
             disabled={loading}
             className="px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
           >
-            {loading ? '...' : '↻ Оновити'}
+            {loading ? '...' : t('↻ Оновити')}
           </button>
         </div>
         <p className="text-sm text-slate-600">
@@ -162,8 +162,8 @@ export default function FinanceAuditPage() {
                   className="text-xs font-medium text-slate-700 underline"
                 >
                   {isOpen
-                    ? `▲ Сховати ${s.details!.length} рядків`
-                    : `▼ Показати ${s.details!.length} рядків`}
+                    ? `${t('▲ Сховати')} ${s.details!.length} ${t('рядків')}`
+                    : `${t('▼ Показати')} ${s.details!.length} ${t('рядків')}`}
                 </button>
 
                 {isOpen && (

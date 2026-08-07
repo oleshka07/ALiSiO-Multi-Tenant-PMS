@@ -172,12 +172,12 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
     <div style={overlayStyle} onClick={onClose}>
       <form onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()} style={modalStyle}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, flex: 1, color: accentColor }}>{initial ? `Редагувати: ${title}` : title}</h3>
+          <h3 style={{ margin: 0, flex: 1, color: accentColor }}>{initial ? `${t('Редагувати:')} ${title}` : title}</h3>
           <button type="button" onClick={onClose} style={closeBtn}><X size={18} /></button>
         </div>
 
         {(currentOpType === 'expense' || currentOpType === 'transfer') && (
-          <Field label={currentOpType === 'transfer' ? 'З рахунку' : 'З рахунку (витрата)'}>
+          <Field label={currentOpType === 'transfer' ? t('З рахунку') : t('З рахунку (витрата)')}>
             <select value={accountFromId} onChange={(e) => setAccountFromId(e.target.value)} style={input} required>
               <option value="">—</option>
               {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}
@@ -185,7 +185,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
           </Field>
         )}
         {(currentOpType === 'income' || currentOpType === 'transfer') && (
-          <Field label={currentOpType === 'transfer' ? 'На рахунок' : 'На рахунок (дохід)'}>
+          <Field label={currentOpType === 'transfer' ? t('На рахунок') : t('На рахунок (дохід)')}>
             <select value={accountToId} onChange={(e) => setAccountToId(e.target.value)} style={input} required>
               <option value="">—</option>
               {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}
@@ -219,7 +219,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
                   value={fxRate ?? ''}
                   onChange={(e) => { setFxRate(parseFloat(e.target.value) || null); setFxRateEdited(true); }}
                   style={{ ...input, fontWeight: 600 }}
-                  placeholder={fxLoading ? 'Завантаження...' : 'Немає курсу'}
+                  placeholder={fxLoading ? t('Завантаження...') : t('Немає курсу')}
                 />
               </Field>
               <Field label={t('Сума в CZK')}>
@@ -235,7 +235,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
             </div>
             {fxEffectiveFrom && (
               <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
-                {fxIsFallback ? '⚠️ Використано останній відомий курс' : 'Курс'} {t('від')} {fxEffectiveFrom}{t('. Можна змінити вручну для цієї операції.')}
+                {fxIsFallback ? t('⚠️ Використано останній відомий курс') : t('Курс')} {t('від')} {fxEffectiveFrom}{t('. Можна змінити вручну для цієї операції.')}
               </div>
             )}
             {!fxRate && !fxLoading && (
@@ -326,7 +326,7 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
           <div style={{ flex: 1 }} />
           <button type="button" onClick={onClose} style={btnSec}>{t('Відміна')}</button>
           <button type="submit" disabled={saving} style={{ ...btnPrim, background: accentColor }}>
-            {saving ? 'Збереження…' : initial ? 'Зберегти' : 'Додати'}
+            {saving ? t('Збереження…') : initial ? t('Зберегти') : t('Додати')}
           </button>
         </div>
       </form>

@@ -440,9 +440,9 @@ export default function MobileBookingDetail({
                   {sourceInfo.label}
                 </span>
                 <span style={{ width: 3, height: 3, background: 'var(--text-tertiary)', borderRadius: '50%' }} />
-                <span>{b.nights} {nightsLabel(b.nights)}</span>
+                <span>{b.nights} {tUi(nightsLabel(b.nights))}</span>
                 <span style={{ width: 3, height: 3, background: 'var(--text-tertiary)', borderRadius: '50%' }} />
-                <span>{b.adults} {adultsLabel(b.adults)}{b.children > 0 ? ` + ${b.children} діт.` : ''}</span>
+                <span>{b.adults} {tUi(adultsLabel(b.adults))}{b.children > 0 ? ` + ${b.children} ${tUi('діт.')}` : ''}</span>
               </div>
               {b.currency !== 'EUR' && (
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
@@ -454,8 +454,8 @@ export default function MobileBookingDetail({
             {/* Dates */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
               {[
-                { lbl: 'Заїзд', val: checkIn },
-                { lbl: 'Виїзд', val: checkOut },
+                { lbl: tUi('Заїзд'), val: checkIn },
+                { lbl: tUi('Виїзд'), val: checkOut },
               ].map(d => (
                 <div key={d.lbl} style={{
                   display: 'flex', flexDirection: 'column', gap: 2,
@@ -546,10 +546,10 @@ export default function MobileBookingDetail({
           {/* Tabs */}
           <div style={{ display: 'flex', padding: '0 14px', borderBottom: '1px solid var(--border-primary)' }}>
             {([
-              { k: 'payment' as const, l: 'Оплата', Icon: CreditCard, badge: !isPaid && total > 0 ? `${pct}%` : undefined },
-              { k: 'registration' as const, l: 'Реєстрація', Icon: FileText, badge: !isRegistered ? regBadge : undefined },
-              { k: 'groups' as const, l: 'Групи', Icon: Users, badge: subBookings.length > 0 ? String(subBookings.length) : undefined },
-              ...(isOwner ? [{ k: 'audit' as const, l: '🕐 Історія', Icon: Clock, badge: undefined as string | undefined }] : []),
+              { k: 'payment' as const, l: tUi('Оплата'), Icon: CreditCard, badge: !isPaid && total > 0 ? `${pct}%` : undefined },
+              { k: 'registration' as const, l: tUi('Реєстрація'), Icon: FileText, badge: !isRegistered ? regBadge : undefined },
+              { k: 'groups' as const, l: tUi('Групи'), Icon: Users, badge: subBookings.length > 0 ? String(subBookings.length) : undefined },
+              ...(isOwner ? [{ k: 'audit' as const, l: tUi('🕐 Історія'), Icon: Clock, badge: undefined as string | undefined }] : []),
             ]).map(t => (
               <button key={t.k} onClick={() => setTab(t.k)}
                 style={{
@@ -619,7 +619,7 @@ export default function MobileBookingDetail({
               {showPayForm && (
                 <div style={{ marginTop: 12, padding: 12, background: 'var(--bg-secondary)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <input className="form-input" type="number" placeholder={`Сума ${b.currency || 'CZK'}`} value={payForm.amount}
+                    <input className="form-input" type="number" placeholder={`${tUi('Сума')} ${b.currency || 'CZK'}`} value={payForm.amount}
                       onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))}
                       style={{ fontSize: 13 }} />
                     <select className="form-select" value={payForm.method}
@@ -676,8 +676,8 @@ export default function MobileBookingDetail({
                       <span style={{ fontWeight: 700, color: p.type === 'refund' ? '#F26B6B' : '#4ADE80', fontVariantNumeric: 'tabular-nums' }}>
                         {p.type === 'refund' ? '-' : '+'}{p.amount.toLocaleString()}
                       </span>
-                      <span style={{ color: 'var(--text-secondary)', fontSize: 11 }}>{METHOD_LABELS[p.method] || p.method}</span>
-                      <span style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{TYPE_LABELS[p.type] || p.type}</span>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: 11 }}>{tUi(METHOD_LABELS[p.method] || p.method)}</span>
+                      <span style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{tUi(TYPE_LABELS[p.type] || p.type)}</span>
                       <button onClick={() => handleDeletePayment(p.id)}
                         style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 4 }}>
                         <Trash2 size={12} />
@@ -699,7 +699,7 @@ export default function MobileBookingDetail({
                 <span style={{ fontSize: 18 }}>{isRegistered ? '✅' : '❌'}</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: isRegistered ? '#4ADE80' : '#F26B6B' }}>
-                    {isRegistered ? 'Реєстрація завершена' : `Зареєструйте ${regNeeded - registrations.length} гостей`}
+                    {isRegistered ? tUi('Реєстрація завершена') : `${tUi('Зареєструйте')} ${regNeeded - registrations.length} ${tUi('гостей')}`}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{registrations.length} {tUi('з')} {regNeeded}</div>
                 </div>
@@ -791,7 +791,7 @@ export default function MobileBookingDetail({
                       whiteSpace: 'nowrap',
                     }}>
                     {ocrScanning ? <Loader2 size={14} className="animate-spin" /> : '\ud83d\udcf7'}
-                    {ocrScanning ? '...' : 'Фото'}
+                    {ocrScanning ? '...' : tUi('Фото')}
                   </button>
                 </div>
               )}
@@ -860,7 +860,7 @@ export default function MobileBookingDetail({
                       </div>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
-                      {sb.child_unit_code || sb.child_unit_name || sb.unit_id} · {sb.adults || 0} {tUi('дор.')}{sb.children > 0 ? ` + ${sb.children} діт.` : ''}
+                      {sb.child_unit_code || sb.child_unit_name || sb.unit_id} · {sb.adults || 0} {tUi('дор.')}{sb.children > 0 ? ` + ${sb.children} ${tUi('діт.')}` : ''}
                     </div>
                   </div>
                 ))

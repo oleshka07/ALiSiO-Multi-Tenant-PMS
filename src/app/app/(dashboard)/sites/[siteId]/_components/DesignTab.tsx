@@ -118,7 +118,7 @@ export function DesignTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Desi
 
         <button className="btn btn-primary" onClick={save} disabled={saving}>
           {saving ? <Loader2 size={16} className="spin" /> : saved ? <Check size={16} /> : <Save size={16} />}
-          {saved ? 'Збережено!' : 'Зберегти дизайн'}
+          {saved ? tUi('Збережено!') : tUi('Зберегти дизайн')}
         </button>
       </div>
 

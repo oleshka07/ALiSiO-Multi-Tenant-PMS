@@ -564,7 +564,7 @@ export default function SettingsUnitsPage() {
                                 <div style={{ fontWeight: 500, fontSize: 13 }}>{unit.name}</div>
                                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
                                   {unit.code}
-                                  {unit.beds > 0 && ` · ${unit.beds} місць`}
+                                  {unit.beds > 0 && ` · ${unit.beds} ${tUi('місць')}`}
                                   {unit.zone && ` · ${unit.zone}`}
                                   {unit.unit_type_name && ` · ${unit.unit_type_name}`}
                                 </div>
@@ -598,13 +598,13 @@ export default function SettingsUnitsPage() {
         <Modal
           open={editUnitModal}
           onClose={() => setEditUnitModal(false)}
-          title={editingUnit ? `Редагувати: ${editingUnit.name}` : 'Додати новий юніт'}
+          title={editingUnit ? `${tUi('Редагувати:')} ${editingUnit.name}` : tUi('Додати новий юніт')}
           footer={
             <>
               <button className="btn btn-secondary" onClick={() => setEditUnitModal(false)}>{tUi('Скасувати')}</button>
               <button className="btn btn-primary" onClick={handleSaveUnit} disabled={saving}>
                 {saving ? <Loader2 size={14} className="spin" /> : <Save size={14} />}
-                {editingUnit ? 'Зберегти' : 'Створити'}
+                {editingUnit ? tUi('Зберегти') : tUi('Створити')}
               </button>
             </>
           }
@@ -701,13 +701,13 @@ export default function SettingsUnitsPage() {
         <Modal
           open={editTypeModal}
           onClose={() => setEditTypeModal(false)}
-          title={editingType ? `Редагувати тип: ${editingType.name}` : 'Додати тип кімнати'}
+          title={editingType ? `${tUi('Редагувати тип:')} ${editingType.name}` : tUi('Додати тип кімнати')}
           footer={
             <>
               <button className="btn btn-secondary" onClick={() => setEditTypeModal(false)}>{tUi('Скасувати')}</button>
               <button className="btn btn-primary" onClick={handleSaveType} disabled={saving}>
                 {saving ? <Loader2 size={14} className="spin" /> : <Save size={14} />}
-                {editingType ? 'Зберегти' : 'Створити'}
+                {editingType ? tUi('Зберегти') : tUi('Створити')}
               </button>
             </>
           }

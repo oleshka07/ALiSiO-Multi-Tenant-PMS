@@ -177,8 +177,8 @@ export default function CategoriesTab() {
                 boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
               }}
             >
-              <span>{t.emoji}</span>
-              <span>{t.label}</span>
+              <span>{tUi(t.emoji)}</span>
+              <span>{tUi(t.label)}</span>
               <span
                 style={{
                   marginLeft: 6, fontSize: 11, padding: '1px 6px', borderRadius: 4,
@@ -204,7 +204,7 @@ export default function CategoriesTab() {
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Завантаження…')}</div>
       ) : filteredNodes.length === 0 ? (
         <div style={emptyStyle}>
-          {search ? 'Нічого не знайдено.' : 'Категорій ще немає. Натисніть «Додати категорію».'}
+          {search ? tUi('Нічого не знайдено.') : tUi('Категорій ще немає. Натисніть «Додати категорію».')}
         </div>
       ) : (
         <div style={{ border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
@@ -221,7 +221,7 @@ export default function CategoriesTab() {
                       <button
                         onClick={() => toggleCollapse(root.id)}
                         style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-secondary)' }}
-                        aria-label={isCollapsed ? 'Розгорнути' : 'Згорнути'}
+                        aria-label={isCollapsed ? tUi('Розгорнути') : tUi('Згорнути')}
                       >
                         {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
                       </button>

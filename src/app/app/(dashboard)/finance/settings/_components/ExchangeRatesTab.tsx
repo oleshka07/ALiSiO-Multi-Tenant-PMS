@@ -72,7 +72,7 @@ export default function ExchangeRatesTab() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
         <h2 style={{ margin: 0, fontSize: 20 }}>{t('Курси валют')}</h2>
         <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-          {data.rates.length} {t('запис')}{data.rates.length === 1 ? '' : 'ів'}
+          {data.rates.length} {t('запис')}{data.rates.length === 1 ? '' : t('ів')}
         </span>
         <div style={{ flex: 1 }} />
         <button

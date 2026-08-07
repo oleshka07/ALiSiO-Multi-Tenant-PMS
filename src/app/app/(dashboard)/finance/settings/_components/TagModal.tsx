@@ -59,7 +59,7 @@ export default function TagModal({ initial, onClose, onSave }: Props) {
     <div style={overlayStyle} onClick={onClose}>
       <form onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()} style={modalStyle}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, flex: 1 }}>{initial ? 'Редагувати тег' : 'Новий тег'}</h3>
+          <h3 style={{ margin: 0, flex: 1 }}>{initial ? t('Редагувати тег') : t('Новий тег')}</h3>
           <button type="button" onClick={onClose} style={closeBtnStyle}><X size={18} /></button>
         </div>
 
@@ -124,7 +124,7 @@ export default function TagModal({ initial, onClose, onSave }: Props) {
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
           <button type="button" onClick={onClose} style={btnSecondaryStyle}>{t('Відміна')}</button>
           <button type="submit" disabled={saving} style={btnPrimaryStyle}>
-            {saving ? 'Збереження…' : (initial ? 'Зберегти' : 'Створити')}
+            {saving ? t('Збереження…') : (initial ? t('Зберегти') : t('Створити'))}
           </button>
         </div>
       </form>

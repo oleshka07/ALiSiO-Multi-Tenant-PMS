@@ -129,7 +129,7 @@ export default function FeaturesSettingsPage() {
                     <button
                       onClick={() => toggle(key)}
                       disabled={busy === key}
-                      aria-label={`${features[key] ? 'Вимкнути' : 'Увімкнути'} ${label}`}
+                      aria-label={`${features[key] ? t('Вимкнути') : t('Увімкнути')} ${label}`}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: features[key] ? 'var(--success, #30a46c)' : 'var(--text-tertiary)' }}
                     >
                       {features[key] ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
@@ -165,7 +165,7 @@ export default function FeaturesSettingsPage() {
                             autoComplete="off"
                             value={drafts[key]?.[f.field] ?? ''}
                             onChange={(e) => setDrafts((s) => ({ ...s, [key]: { ...(s[key] || {}), [f.field]: e.target.value } }))}
-                            placeholder={st?.values[f.field] ? 'Замінити' : 'Вставте ключ'}
+                            placeholder={st?.values[f.field] ? t('Замінити') : t('Вставте ключ')}
                             style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: line, background: 'var(--bg-secondary, transparent)', color: 'var(--text-primary)' }}
                           />
                         </label>
@@ -178,7 +178,7 @@ export default function FeaturesSettingsPage() {
                           className="btn btn-secondary"
                           style={{ fontSize: 13 }}
                         >
-                          {busy === key ? 'Зберігаю…' : 'Зберегти ключі'}
+                          {busy === key ? t('Зберігаю…') : t('Зберегти ключі')}
                         </button>
                         {saved === key && (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--success, #30a46c)' }}>

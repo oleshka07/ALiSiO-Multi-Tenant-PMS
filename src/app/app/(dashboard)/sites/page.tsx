@@ -245,10 +245,10 @@ export default function SitesPage() {
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 20px' }}>
                   {[
-                    '💳 Stripe та PayPal з коробки',
-                    '🎨 Налаштування стилю та дизайну',
-                    '📦 Підтримка оголошень та тарифних планів',
-                    '🔗 Вбудований і self-hosted режими',
+                    t('💳 Stripe та PayPal з коробки'),
+                    t('🎨 Налаштування стилю та дизайну'),
+                    t('📦 Підтримка оголошень та тарифних планів'),
+                    t('🔗 Вбудований і self-hosted режими'),
                   ].map(f => (
                     <span key={f} style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{f}</span>
                   ))}
@@ -329,7 +329,7 @@ export default function SitesPage() {
                           </td>
                           <td>
                             <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                              {TYPE_LABELS[site.type] || site.type}
+                              {t(TYPE_LABELS[site.type] || site.type)}
                             </span>
                           </td>
                           <td>
@@ -341,7 +341,7 @@ export default function SitesPage() {
                               fontSize: 12, fontWeight: 600, padding: '3px 10px',
                               borderRadius: 99, background: st.bg, color: st.color,
                             }}>
-                              {st.label}
+                              {t(st.label)}
                             </span>
                           </td>
                           <td style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{fmt(site.created_at)}</td>
@@ -349,7 +349,7 @@ export default function SitesPage() {
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }} onClick={e => e.stopPropagation()}>
                               <button
                                 className="btn btn-ghost"
-                                title={site.status === 'active' ? 'Призупинити' : 'Активувати'}
+                                title={site.status === 'active' ? t('Призупинити') : t('Активувати')}
                                 onClick={() => toggleStatus(site)}
                                 style={{ padding: '4px 8px' }}
                               >

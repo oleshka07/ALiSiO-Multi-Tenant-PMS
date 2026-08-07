@@ -144,7 +144,7 @@ export default function AuditPage() {
         >
           <option value="">{t('Всі дії')}</option>
           {uniqueActions.map(a => (
-            <option key={a} value={a}>{ACTION_LABELS[a] || a}</option>
+            <option key={a} value={a}>{t(ACTION_LABELS[a] || a)}</option>
           ))}
         </select>
         <select

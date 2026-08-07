@@ -91,10 +91,10 @@ export default function CapexPage() {
       {/* Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
         {[
-          { label: 'Всього CAPEX', value: formatCZK(summary.total_amount), color: '#0ea5e9' },
-          { label: 'Активних', value: String(summary.active_items), color: '#22c55e' },
-          { label: 'Всього записів', value: String(summary.total_items), color: '#8b5cf6' },
-          { label: 'Амортизація / міс', value: formatCZK(summary.monthly_depreciation), color: '#f59e0b' },
+          { label: t('Всього CAPEX'), value: formatCZK(summary.total_amount), color: '#0ea5e9' },
+          { label: t('Активних'), value: String(summary.active_items), color: '#22c55e' },
+          { label: t('Всього записів'), value: String(summary.total_items), color: '#8b5cf6' },
+          { label: t('Амортизація / міс'), value: formatCZK(summary.monthly_depreciation), color: '#f59e0b' },
         ].map((card, i) => (
           <div key={i} className="card" style={{ padding: '1.25rem' }}>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{card.label}</div>
@@ -126,7 +126,7 @@ export default function CapexPage() {
               {items.map(item => (
                 <tr key={item.id}>
                   <td style={{ fontWeight: 500 }}>{item.name}</td>
-                  <td>{ASSET_TYPES[item.asset_type] || item.asset_type}</td>
+                  <td>{t(ASSET_TYPES[item.asset_type] || item.asset_type)}</td>
                   <td>{item.bu_name || '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{item.purchase_date}</td>
                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCZK(item.amount)}</td>
@@ -136,7 +136,7 @@ export default function CapexPage() {
                     <span style={{ padding: '0.15rem 0.5rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600,
                       background: item.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(107,114,128,0.15)',
                       color: item.status === 'active' ? '#22c55e' : '#6b7280'
-                    }}>{item.status === 'active' ? '✅ Активний' : item.status}</span>
+                    }}>{item.status === 'active' ? t('✅ Активний') : item.status}</span>
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: '0.25rem' }}>
@@ -156,7 +156,7 @@ export default function CapexPage() {
         <div className="modal-backdrop" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
             <div className="modal-header">
-              <h2>{editingId ? 'Редагувати CAPEX' : 'Новий CAPEX'}</h2>
+              <h2>{editingId ? t('Редагувати CAPEX') : t('Новий CAPEX')}</h2>
               <button className="btn-icon" onClick={() => setShowModal(false)}><X size={20} /></button>
             </div>
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -170,7 +170,7 @@ export default function CapexPage() {
                   <label>{t('Тип активу')}</label>
                   <select value={form.asset_type} onChange={e => setForm({ ...form, asset_type: e.target.value })}
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }}>
-                    {Object.entries(ASSET_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    {Object.entries(ASSET_TYPES).map(([k, v]) => <option key={k} value={k}>{t(v)}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
@@ -220,7 +220,7 @@ export default function CapexPage() {
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={() => setShowModal(false)}>{t('Скасувати')}</button>
-              <button className="btn btn-primary" onClick={handleSubmit} disabled={!form.name || !form.amount}>{editingId ? 'Зберегти' : 'Додати'}</button>
+              <button className="btn btn-primary" onClick={handleSubmit} disabled={!form.name || !form.amount}>{editingId ? t('Зберегти') : t('Додати')}</button>
             </div>
           </div>
         </div>

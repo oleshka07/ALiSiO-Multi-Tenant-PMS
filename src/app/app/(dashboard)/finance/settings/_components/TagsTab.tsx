@@ -115,7 +115,7 @@ export default function TagsTab() {
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>{tUi('Завантаження…')}</div>
       ) : filtered.length === 0 ? (
         <div style={emptyStyle}>
-          {search ? 'Нічого не знайдено.' : 'Тегів ще немає. Теги — це крос-тематичні мітки для операцій (напр. «Терміново», «Одноразове», «На перегляд»).'}
+          {search ? tUi('Нічого не знайдено.') : tUi('Тегів ще немає. Теги — це крос-тематичні мітки для операцій (напр. «Терміново», «Одноразове», «На перегляд»).')}
         </div>
       ) : (
         <>
@@ -172,7 +172,7 @@ export default function TagsTab() {
                       <button
                         onClick={() => handleArchiveToggle(t)}
                         style={iconBtnStyle}
-                        title={t.is_active ? 'Архівувати' : 'Відновити'}
+                        title={t.is_active ? tUi('Архівувати') : tUi('Відновити')}
                       >
                         {t.is_active ? <Archive size={14} /> : <RotateCcw size={14} />}
                       </button>

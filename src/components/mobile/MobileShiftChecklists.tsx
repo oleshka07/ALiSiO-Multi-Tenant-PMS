@@ -295,7 +295,7 @@ export default function MobileShiftChecklists() {
                             <Square size={16} style={{ color: 'var(--text-tertiary)' }} />
                           )}
                           <span style={{ fontSize: 13, color: isDone ? 'var(--text-tertiary)' : 'var(--text-primary)', textDecoration: isDone ? 'line-through' : 'none' }}>
-                            {itemText}
+                            {t(itemText)}
                           </span>
                         </div>
                       );

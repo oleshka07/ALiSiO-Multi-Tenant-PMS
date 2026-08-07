@@ -59,7 +59,7 @@ export default function FinanceGate({ children }: { children: React.ReactNode })
           ? <ShieldCheck size={16} color="#16a34a" />
           : <ShieldPlus size={16} color="#64748b" />}
         <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>
-          {status?.hasPassphrase ? 'Пароль увімкнено' : 'Увімкнути пароль'}
+          {status?.hasPassphrase ? t('Пароль увімкнено') : t('Увімкнути пароль')}
         </span>
       </button>
 
@@ -111,7 +111,7 @@ function UnlockScreen({ onUnlocked }: { onUnlocked: () => void }) {
         />
         {err && <div style={errBox}>{err}</div>}
         <button type="submit" disabled={busy || !pass} style={primaryBtn}>
-          {busy ? 'Перевірка…' : 'Розблокувати'}
+          {busy ? t('Перевірка…') : t('Розблокувати')}
         </button>
       </form>
     </div>
@@ -152,7 +152,7 @@ function SetupModal({ onClose, onDone }: { onClose: () => void; onDone: () => vo
         <input type="password" autoFocus value={p1} onChange={(e) => setP1(e.target.value)} placeholder={t('Новий пароль фінансів')} style={input} />
         <input type="password" value={p2} onChange={(e) => setP2(e.target.value)} placeholder={t('Повторіть пароль')} style={input} />
         {err && <div style={errBox}>{err}</div>}
-        <button type="submit" disabled={busy} style={primaryBtn}>{busy ? 'Збереження…' : 'Увімкнути'}</button>
+        <button type="submit" disabled={busy} style={primaryBtn}>{busy ? t('Збереження…') : t('Увімкнути')}</button>
       </form>
     </Modal>
   );
@@ -175,7 +175,7 @@ function ManageModal({ onClose, onLocked }: { onClose: () => void; onLocked: () 
         {t('Пароль фінансів увімкнено. Розділ автоматично блокується після періоду неактивності. Можете заблокувати зараз вручну.')}
       </p>
       <button onClick={lockNow} disabled={busy} style={primaryBtn}>
-        {busy ? '…' : 'Заблокувати зараз'}
+        {busy ? '…' : t('Заблокувати зараз')}
       </button>
     </Modal>
   );

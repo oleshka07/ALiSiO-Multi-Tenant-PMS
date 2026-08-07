@@ -317,11 +317,11 @@ export function PackageOffersTab({ siteId, siteCurrency = 'CZK', onCountChange }
         )}
 
       {/* Create modal */}
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title={editId ? "Редагувати пакет" : "Новий пакет"} size="lg"
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title={editId ? t('Редагувати пакет') : t('Новий пакет')} size="lg"
         footer={<>
           <button className="btn btn-ghost" onClick={() => setShowCreate(false)}>{t('Скасувати')}</button>
           <button className="btn btn-primary" onClick={handleCreate} disabled={creating}>
-            {creating ? <Loader2 size={14} className="spin" /> : (editId ? <Check size={14} /> : <Package size={14} />)} {editId ? "Зберегти" : "Створити"}
+            {creating ? <Loader2 size={14} className="spin" /> : (editId ? <Check size={14} /> : <Package size={14} />)} {editId ? t('Зберегти') : t('Створити')}
           </button>
         </>}
       >
@@ -385,14 +385,14 @@ export function PackageOffersTab({ siteId, siteCurrency = 'CZK', onCountChange }
           </div>
 
           <div className="form-group">
-            <label className="form-label">{t('Дозволені дні тижня')} <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11 }}>{form.allowed_days.length === 0 ? '(всі дні)' : ''}</span></label>
+            <label className="form-label">{t('Дозволені дні тижня')} <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11 }}>{form.allowed_days.length === 0 ? t('(всі дні)') : ''}</span></label>
             <div style={{ display: 'flex', gap: 6 }}>
               {DAYS.map(d => {
                 const on = form.allowed_days.includes(d);
                 return (
                   <button key={d} type="button" onClick={() => setForm(f => ({ ...f, allowed_days: f.allowed_days.includes(d) ? f.allowed_days.filter(x => x !== d) : [...f.allowed_days, d].sort() }))}
                     style={{ width: 38, height: 38, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: `2px solid ${on ? 'var(--accent-primary)' : 'var(--border-primary)'}`, background: on ? 'var(--accent-primary)' : 'var(--surface-secondary)', color: on ? '#fff' : 'var(--text-secondary)' }}>
-                    {DAY_LABELS[d]}
+                    {t(DAY_LABELS[d])}
                   </button>
                 );
               })}
@@ -400,7 +400,7 @@ export function PackageOffersTab({ siteId, siteCurrency = 'CZK', onCountChange }
           </div>
 
           <div className="form-group">
-            <label className="form-label">{t('Застосовується до будиночків')} <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11 }}>{form.applied_listings.length === 0 ? '(всі будиночки)' : ''}</span></label>
+            <label className="form-label">{t('Застосовується до будиночків')} <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11 }}>{form.applied_listings.length === 0 ? t('(всі будиночки)') : ''}</span></label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 150, overflowY: 'auto' }}>
               {listings.map(l => {
                 const targetId = l.unit_id || l.unit_type_id;
@@ -432,7 +432,7 @@ export function PackageOffersTab({ siteId, siteCurrency = 'CZK', onCountChange }
           </div>
 
           <div className="form-group">
-            <label className="form-label">{t('Додаткові промокоди до пакету')} <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11 }}>{form.allowed_promo_codes.length === 0 ? '(жодного)' : ''}</span></label>
+            <label className="form-label">{t('Додаткові промокоди до пакету')} <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11 }}>{form.allowed_promo_codes.length === 0 ? t('(жодного)') : ''}</span></label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 150, overflowY: 'auto' }}>
               {siteCoupons.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>{t('Немає промокодів для цього сайту')}</div>}
               {siteCoupons.map(c => {

@@ -286,8 +286,8 @@ export default function GuestPageSettingsPage() {
         {/* ═══ TAB SWITCHER ═══ */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', padding: 4 }}>
           {[
-            { id: 'property' as const, label: '🏨 Property (спільне)', desc: 'WiFi, ресторан, правила, Explore' },
-            { id: 'unit-types' as const, label: '🏠 Unit Types', desc: 'Amenities, код замка, інструкції' },
+            { id: 'property' as const, label: t('🏨 Property (спільне)'), desc: t('WiFi, ресторан, правила, Explore') },
+            { id: 'unit-types' as const, label: '🏠 Unit Types', desc: t('Amenities, код замка, інструкції') },
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
               flex: 1, padding: '10px 16px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer',

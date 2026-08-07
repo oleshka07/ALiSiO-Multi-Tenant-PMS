@@ -586,7 +586,7 @@ export default function ChannelManagerPage() {
                           <button
                             className={`btn btn-sm ${isConnected ? 'btn-secondary' : 'btn-primary'}`}
                             onClick={() => handleActivateConnection(conn)}
-                            title={isConnected ? 'Деактивувати' : 'Активувати'}
+                            title={isConnected ? tUi('Деактивувати') : tUi('Активувати')}
                           >
                             {isConnected ? <WifiOff size={14} /> : <Wifi size={14} />}
                           </button>
@@ -665,7 +665,7 @@ export default function ChannelManagerPage() {
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
               <button className="btn btn-secondary" onClick={handleSyncAllICal} disabled={syncingAll || channels.length === 0}>
                 <RefreshCw size={16} className={syncingAll ? 'animate-pulse' : ''} />
-                {syncingAll ? 'Синхронізація...' : 'Синхронізувати все'}
+                {syncingAll ? tUi('Синхронізація...') : tUi('Синхронізувати все')}
               </button>
               <button className="btn btn-primary" onClick={openNewICal}>
                 <Plus size={16} /> {tUi('Додати канал')}
@@ -773,7 +773,7 @@ export default function ChannelManagerPage() {
           footer={<>
             <button className="btn btn-secondary" onClick={() => setShowConnModal(false)}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={handleCreateConnection} disabled={saving}>
-              <Save size={16} /> {saving ? 'Створення...' : 'Створити'}
+              <Save size={16} /> {saving ? tUi('Створення...') : tUi('Створити')}
             </button>
           </>}
         >
@@ -825,7 +825,7 @@ export default function ChannelManagerPage() {
           footer={<>
             <button className="btn btn-secondary" onClick={() => setShowCredModal(false)}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={handleSaveCredentials} disabled={saving}>
-              <Shield size={16} /> {saving ? 'Збереження...' : 'Зберегти'}
+              <Shield size={16} /> {saving ? tUi('Збереження...') : tUi('Зберегти')}
             </button>
           </>}
         >
@@ -922,11 +922,11 @@ export default function ChannelManagerPage() {
         <Modal
           open={showICalModal}
           onClose={() => setShowICalModal(false)}
-          title={editChannel ? 'Редагувати канал' : 'Новий iCal канал'}
+          title={editChannel ? tUi('Редагувати канал') : tUi('Новий iCal канал')}
           footer={<>
             <button className="btn btn-secondary" onClick={() => setShowICalModal(false)}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={handleSaveICal} disabled={saving}>
-              <Save size={16} /> {saving ? 'Збереження...' : 'Зберегти'}
+              <Save size={16} /> {saving ? tUi('Збереження...') : tUi('Зберегти')}
             </button>
           </>}
         >

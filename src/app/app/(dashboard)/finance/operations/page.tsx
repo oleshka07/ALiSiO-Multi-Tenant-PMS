@@ -344,7 +344,7 @@ export default function OperationsPage() {
                         borderRadius: 6, cursor: 'pointer', color: 'var(--text-primary)',
                         marginBottom: 2, textAlign: 'left',
                       }}
-                      title={active ? 'Зняти фільтр' : 'Фільтрувати по цьому рахунку (можна обрати кілька)'}>
+                      title={active ? tUi('Зняти фільтр') : tUi('Фільтрувати по цьому рахунку (можна обрати кілька)')}>
                 <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: a.color, marginRight: 6, verticalAlign: 'middle' }} />{a.name}</span>
                 <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{formatMoney(a.balance, a.currency)}</span>
               </button>
@@ -415,7 +415,7 @@ export default function OperationsPage() {
                     disabled={isMerging}
                     style={{ background: '#4f46e5', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, fontWeight: 500, cursor: isMerging ? 'not-allowed' : 'pointer', opacity: isMerging ? 0.7 : 1 }}
                   >
-                    {isMerging ? "Об'єднання..." : "З'єднати в переміщення"}
+                    {isMerging ? tUi('Об\'єднання...') : tUi('З\'єднати в переміщення')}
                   </button>
                 </div>
               )}
@@ -546,7 +546,7 @@ export default function OperationsPage() {
                                 background: 'rgba(34,197,94,0.12)', color: '#16a34a',
                                 fontSize: 10, fontWeight: 600, cursor: 'pointer',
                               }}
-                              title={`Виглядає як ${o.suggested_recurring_name}. Клік щоб підтвердити.`}
+                              title={`${tUi('Виглядає як')} ${o.suggested_recurring_name}${tUi('. Клік щоб підтвердити.')}`}
                             >
                               <Repeat size={10} /> {o.suggested_recurring_name}
                             </span>
@@ -560,7 +560,7 @@ export default function OperationsPage() {
                                 background: 'rgba(99,102,241,0.12)', color: '#6366f1',
                                 fontSize: 10, fontWeight: 600, cursor: 'pointer',
                               }}
-                              title={`${attachCounts[o.id]} прикріплених документ(ів)`}
+                              title={`${attachCounts[o.id]} ${tUi('прикріплених документ(ів)')}`}
                             >
                               <Paperclip size={10} /> {attachCounts[o.id]}
                             </span>
@@ -631,11 +631,12 @@ function SortableTh({ label, sortKey, currentKey, dir, onClick, align }: {
   onClick: (k: SortKey) => void;
   align?: 'left' | 'right';
 }) {
+  const tUi = useT();
   const active = currentKey === sortKey;
   return (
     <th style={{ ...th, textAlign: align || 'left', cursor: 'pointer', userSelect: 'none' }}
         onClick={() => onClick(sortKey)}
-        title={active ? `Сортовано ${dir === 'asc' ? '↑' : '↓'} — клік щоб ${dir === 'asc' ? 'обернути' : 'скинути'}` : 'Клік щоб сортувати'}>
+        title={active ? `${tUi('Сортовано')} ${dir === 'asc' ? '↑' : '↓'} ${tUi('— клік щоб')} ${dir === 'asc' ? tUi('обернути') : tUi('скинути')}` : tUi('Клік щоб сортувати')}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: active ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
         {label}
         {active && (dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}

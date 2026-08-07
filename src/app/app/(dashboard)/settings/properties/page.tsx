@@ -608,7 +608,7 @@ export default function SettingsPropertiesPage() {
               </button>
             )}
             <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-tertiary)' }}>
-              {search ? `${filteredUnits.length} з ${units.length} юнітів` : `${units.length} юнітів`}
+              {search ? `${filteredUnits.length} ${tUi('з')} ${units.length} ${tUi('юнітів')}` : `${units.length} ${tUi('юнітів')}`}
             </div>
           </div>
         </div>
@@ -647,7 +647,7 @@ export default function SettingsPropertiesPage() {
                           background: `${flag.color}18`, color: flag.color,
                           fontWeight: 600, letterSpacing: '0.3px',
                         }}>
-                          {flag.label}
+                          {tUi(flag.label)}
                         </span>
                       ) : null;
                     })}
@@ -735,12 +735,12 @@ export default function SettingsPropertiesPage() {
 
         {/* Property Modal */}
         <Modal open={modal === 'property'} onClose={() => setModal('none')}
-          title={editId ? 'Редагувати об\'єкт' : 'Новий об\'єкт'}
+          title={editId ? tUi('Редагувати об\'єкт') : tUi('Новий об\'єкт')}
           footer={<>
             <button className="btn btn-secondary" onClick={() => setModal('none')}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={saveProperty} disabled={saving}>
               {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />}
-              {editId ? ' Зберегти' : ' Створити'}
+              {editId ? tUi('Зберегти') : tUi('Створити')}
             </button>
           </>}>
           <div className="form-group">
@@ -793,12 +793,12 @@ export default function SettingsPropertiesPage() {
 
         {/* Category Modal */}
         <Modal open={modal === 'category'} onClose={() => setModal('none')}
-          title={editId ? 'Редагувати категорію' : 'Нова категорія'}
+          title={editId ? tUi('Редагувати категорію') : tUi('Нова категорія')}
           footer={<>
             <button className="btn btn-secondary" onClick={() => setModal('none')}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={saveCategory} disabled={saving}>
               {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />}
-              {editId ? ' Зберегти' : ' Створити'}
+              {editId ? tUi('Зберегти') : tUi('Створити')}
             </button>
           </>}>
           <div className="form-group">
@@ -849,7 +849,7 @@ export default function SettingsPropertiesPage() {
                     checked={!!(catForm as any)[flag.key]}
                     onChange={e => setCatForm(f => ({ ...f, [flag.key]: e.target.checked ? 1 : 0 }))}
                   />
-                  <span style={{ color: flag.color }}>{flag.label}</span>
+                  <span style={{ color: flag.color }}>{tUi(flag.label)}</span>
                 </label>
               ))}
             </div>
@@ -858,12 +858,12 @@ export default function SettingsPropertiesPage() {
 
         {/* Building Modal */}
         <Modal open={modal === 'building'} onClose={() => setModal('none')}
-          title={editId ? 'Редагувати корпус' : 'Новий корпус'}
+          title={editId ? tUi('Редагувати корпус') : tUi('Новий корпус')}
           footer={<>
             <button className="btn btn-secondary" onClick={() => setModal('none')}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={saveBuilding} disabled={saving}>
               {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />}
-              {editId ? ' Зберегти' : ' Створити'}
+              {editId ? tUi('Зберегти') : tUi('Створити')}
             </button>
           </>}>
           <div className="form-row">
@@ -890,12 +890,12 @@ export default function SettingsPropertiesPage() {
 
         {/* Unit Type Modal */}
         <Modal open={modal === 'unitType'} onClose={() => setModal('none')}
-          title={editId ? 'Редагувати тип юніта' : 'Новий тип юніта'}
+          title={editId ? tUi('Редагувати тип юніта') : tUi('Новий тип юніта')}
           footer={<>
             <button className="btn btn-secondary" onClick={() => setModal('none')}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={saveUnitType} disabled={saving}>
               {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />}
-              {editId ? ' Зберегти' : ' Створити'}
+              {editId ? tUi('Зберегти') : tUi('Створити')}
             </button>
           </>}>
           <div className="form-row">
@@ -949,12 +949,12 @@ export default function SettingsPropertiesPage() {
 
         {/* Unit Modal */}
         <Modal open={modal === 'unit'} onClose={() => setModal('none')}
-          title={editId ? 'Редагувати юніт' : 'Новий юніт'}
+          title={editId ? tUi('Редагувати юніт') : tUi('Новий юніт')}
           footer={<>
             <button className="btn btn-secondary" onClick={() => setModal('none')}>{tUi('Скасувати')}</button>
             <button className="btn btn-primary" onClick={saveUnit} disabled={saving}>
               {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />}
-              {editId ? ' Зберегти' : ' Створити'}
+              {editId ? tUi('Зберегти') : tUi('Створити')}
             </button>
           </>}>
           <div className="form-row">
@@ -1105,11 +1105,11 @@ export default function SettingsPropertiesPage() {
                 <div style={{ fontWeight: 500, fontSize: 13 }}>{unit.name}</div>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
                   {unit.code}
-                  {unit.beds > 0 && ` · ${unit.beds} місць`}
+                  {unit.beds > 0 && ` · ${unit.beds} ${tUi('місць')}`}
                   {unit.zone && ` · ${unit.zone}`}
                   {unit.room_status && unit.room_status !== 'available' && (
                     <span style={{ marginLeft: 4, color: STATUS_COLORS[unit.room_status]?.color }}>
-                      · {STATUS_COLORS[unit.room_status]?.label}
+                      · {tUi(STATUS_COLORS[unit.room_status]?.label)}
                     </span>
                   )}
                 </div>

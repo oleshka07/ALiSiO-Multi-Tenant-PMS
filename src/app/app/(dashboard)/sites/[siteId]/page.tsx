@@ -133,7 +133,7 @@ export default function SiteDetailPage() {
             <Globe size={18} style={{ color: 'var(--accent-primary)' }} />
             <span style={{ fontWeight: 700, fontSize: 18 }}>{site.name}</span>
             <span style={{ fontSize: 12, padding: '2px 10px', borderRadius: 99, background: `${STATUS_COLOR[site.status]}22`, color: STATUS_COLOR[site.status], fontWeight: 600 }}>
-              {STATUS_LABEL[site.status] ?? site.status}
+              {tUi(STATUS_LABEL[site.status] ?? site.status)}
             </span>
             <span style={{ fontSize: 12, color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>{site.currency}</span>
           </div>

@@ -156,8 +156,8 @@ export default function BookingWidgetSettingsPage() {
                     }}
                   >
                     <div style={{ fontSize: 20, marginBottom: 4 }}>{opt.icon}</div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{opt.label}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{opt.desc}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{t(opt.label)}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{t(opt.desc)}</div>
                   </button>
                 ))}
               </div>
@@ -342,7 +342,7 @@ export default function BookingWidgetSettingsPage() {
                   transition: 'background .2s',
                 }}
               >
-                {copied ? '✓ Скопійовано!' : '📋 Копіювати'}
+                {copied ? t('✓ Скопійовано!') : t('📋 Копіювати')}
               </button>
             </div>
 

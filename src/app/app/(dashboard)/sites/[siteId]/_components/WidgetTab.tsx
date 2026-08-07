@@ -201,7 +201,7 @@ export function WidgetTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Widg
 
       <button className="btn btn-primary" onClick={save} disabled={saving}>
         {saving ? <Loader2 size={16} className="spin" /> : saved ? <Check size={16} /> : <Save size={16} />}
-        {saved ? 'Збережено!' : 'Зберегти налаштування'}
+        {saved ? t('Збережено!') : t('Зберегти налаштування')}
       </button>
     </div>
   );

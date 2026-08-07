@@ -81,7 +81,7 @@ export default function ExpectedPaymentsPage() {
           return (
             <div key={key} className="card" style={{ padding: '1.25rem', cursor: 'pointer', border: filterUrgency === key ? `2px solid ${s.color}` : undefined }}
               onClick={() => setFilterUrgency(filterUrgency === key ? '' : key)}>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{s.icon} {s.label}</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{s.icon} {tUi(s.label)}</div>
               <div style={{ fontSize: '1.25rem', fontWeight: 700, color: s.color, marginTop: '0.25rem' }}>{formatCZK(summary[key])}</div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{summary[`${key}_count`]} {tUi('бронювань')}</div>
             </div>
@@ -175,7 +175,7 @@ export default function ExpectedPaymentsPage() {
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: u.color }}>{formatCZK(item.outstanding)}</td>
                     <td style={{ textAlign: 'center', color: u.color, fontWeight: 600 }}>
-                      {item.days_until < 0 ? `${Math.abs(item.days_until)}д тому` : item.days_until === 0 ? 'Сьогодні' : `${item.days_until}д`}
+                      {item.days_until < 0 ? `${Math.abs(item.days_until)}${tUi('д тому')}` : item.days_until === 0 ? tUi('Сьогодні') : `${item.days_until}${tUi('д')}`}
                     </td>
                   </tr>
                 );

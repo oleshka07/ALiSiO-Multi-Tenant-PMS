@@ -296,8 +296,8 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
         <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, display: 'block' }}>{t('Якщо юзер обере інші дні, цей тариф не буде застосовано.')}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {[
-            { id: 'mon', label: 'Пн' }, { id: 'tue', label: 'Вт' }, { id: 'wed', label: 'Ср' },
-            { id: 'thu', label: 'Чт' }, { id: 'fri', label: 'Пт' }, { id: 'sat', label: 'Сб' }, { id: 'sun', label: 'Нд' }
+            { id: 'mon', label: t('Пн') }, { id: 'tue', label: t('Вт') }, { id: 'wed', label: t('Ср') },
+            { id: 'thu', label: t('Чт') }, { id: 'fri', label: t('Пт') }, { id: 'sat', label: t('Сб') }, { id: 'sun', label: t('Нд') }
           ].map(day => (
             <button
               key={day.id}
@@ -363,7 +363,7 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
                       .sort((a, b) => (b.is_default ?? 0) - (a.is_default ?? 0))
                       .map(p => (
                         <option key={p.id} value={p.id}>
-                          {p.name}{p.is_default ? ' (стандарт)' : ''}
+                          {p.name}{p.is_default ? t('(стандарт)') : ''}
                         </option>
                       ))}
                   </select>
@@ -414,7 +414,7 @@ function RatePlanForm({ siteId, plan, listings, allPlans, onSaved, onDeleted }: 
       {/* Actions */}
       <div style={{ display: 'flex', gap: 12, marginTop: 16, paddingTop: 24, borderTop: '1px solid var(--border-primary)' }}>
         <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ padding: '10px 24px', fontSize: 14 }}>
-          {saving ? <Loader2 size={16} className="spin" /> : 'Зберегти'}
+          {saving ? <Loader2 size={16} className="spin" /> : t('Зберегти')}
         </button>
         {!isNew && (
           <button className="btn btn-ghost" style={{ color: '#ef4444', padding: '10px 24px', fontSize: 14 }} onClick={handleDelete}>

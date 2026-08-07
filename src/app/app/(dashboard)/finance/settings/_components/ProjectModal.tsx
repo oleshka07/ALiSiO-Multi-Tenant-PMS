@@ -66,8 +66,8 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ margin: 0, flex: 1 }}>
             {initial
-              ? (isEditingSubproject ? 'Редагувати підпроєкт' : 'Редагувати проєкт')
-              : (parent ? `Новий підпроєкт у «${parent.name}»` : 'Новий проєкт')}
+              ? (isEditingSubproject ? t('Редагувати підпроєкт') : t('Редагувати проєкт'))
+              : (parent ? `${t('Новий підпроєкт у «')}${parent.name}»` : t('Новий проєкт'))}
           </h3>
           <button type="button" onClick={onClose} style={closeBtnStyle}><X size={18} /></button>
         </div>
@@ -104,8 +104,8 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
           </label>
           <div style={hintStyle}>
             {sharedDisabled
-              ? 'Успадковано від батьківського проєкту'
-              : 'Наприклад, HQ/Загальне — витрати розподіляються через cost_allocations'}
+              ? t('Успадковано від батьківського проєкту')
+              : t('Наприклад, HQ/Загальне — витрати розподіляються через cost_allocations')}
           </div>
         </div>
 
@@ -123,7 +123,7 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
           <button type="button" onClick={onClose} style={btnSecondaryStyle}>{t('Відміна')}</button>
           <button type="submit" disabled={saving} style={btnPrimaryStyle}>
-            {saving ? 'Збереження…' : (initial ? 'Зберегти' : 'Створити')}
+            {saving ? t('Збереження…') : (initial ? t('Зберегти') : t('Створити'))}
           </button>
         </div>
       </form>

@@ -110,7 +110,7 @@ export default function CashflowMatrixPage() {
             <thead>
               <tr style={{ background: 'var(--bg-secondary)' }}>
                 <th style={{ ...th, textAlign: 'left', position: 'sticky', left: 0, background: 'var(--bg-secondary)', zIndex: 2, minWidth: 260 }}>{tUi('Категорія')}</th>
-                {data.months.map((m) => <th key={m} style={th}>{monthLabel(m)}</th>)}
+                {data.months.map((m) => <th key={m} style={th}>{tUi(monthLabel(m))}</th>)}
                 <th style={{ ...th, background: 'var(--bg-secondary)' }}>Σ</th>
                 <th style={th}>{tUi('Середнє')}</th>
                 <th style={{ ...th, textAlign: 'center', minWidth: 120 }}>{tUi('Тренд')}</th>

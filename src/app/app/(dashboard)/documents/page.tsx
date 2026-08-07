@@ -621,8 +621,8 @@ export default function DocumentsPage() {
         {/* ─── Tab Bar ──────────────────────────────────────────── */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid var(--border-primary)' }}>
           {([
-            { key: 'invoices',   label: '📄 Фактури',  count: invoices.filter(i => i.status === 'issued').length },
-            { key: 'statements', label: '📊 Виписки',  count: stmtResult ? stmtResult.length : undefined },
+            { key: 'invoices',   label: tUi('📄 Фактури'),  count: invoices.filter(i => i.status === 'issued').length },
+            { key: 'statements', label: tUi('📊 Виписки'),  count: stmtResult ? stmtResult.length : undefined },
           ] as const).map(tab => (
             <button
               key={tab.key}
@@ -659,14 +659,14 @@ export default function DocumentsPage() {
             airbnb:  { label: 'Airbnb',  color: '#e61e4d', bg: 'rgba(230,30,77,0.1)'   },
             booking: { label: 'Booking', color: '#003580', bg: 'rgba(0,53,128,0.1)'     },
             teya:    { label: 'Teya',    color: '#00a699', bg: 'rgba(0,166,153,0.1)'    },
-            manual:  { label: 'Вручну',  color: '#7c3aed', bg: 'rgba(124,58,237,0.1)'  },
+            manual:  { label: tUi('Вручну'),  color: '#7c3aed', bg: 'rgba(124,58,237,0.1)'  },
             pms:     { label: 'PMS',     color: '#6b7280', bg: 'rgba(107,114,128,0.1)' },
           };
           const sourceCheckboxes = [
             { id: 'airbnb',  label: 'Airbnb'  },
             { id: 'booking', label: 'Booking' },
             { id: 'teya',    label: 'Teya'    },
-            { id: 'manual',  label: 'Вручну'  },
+            { id: 'manual',  label: tUi('Вручну')  },
             { id: 'pms',     label: 'PMS'     },
           ] as const;
           // Client-side filter by the checked sources — drives the table + ZIP export.
@@ -822,10 +822,10 @@ export default function DocumentsPage() {
                 <div className="card" style={{ padding: 56, textAlign: 'center' }}>
                   <Receipt size={40} style={{ color: 'var(--text-tertiary)', marginBottom: 12 }} />
                   <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
-                    {invSearch || selectedSources.size < ALL_SOURCE_KEYS.length ? 'Нічого не знайдено' : 'Фактур ще немає'}
+                    {invSearch || selectedSources.size < ALL_SOURCE_KEYS.length ? tUi('Нічого не знайдено') : tUi('Фактур ще немає')}
                   </div>
                   <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>
-                    {invSearch ? `За запитом «${invSearch}»` : 'Завантажте виписки у вкладці «Виписки»'}
+                    {invSearch ? `${tUi('За запитом «')}${invSearch}»` : tUi('Завантажте виписки у вкладці «Виписки»')}
                   </div>
                 </div>
               ) : (
@@ -921,7 +921,7 @@ export default function DocumentsPage() {
             {/* Upload cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 28 }}>
               {([
-                { channel: 'airbnb',  label: 'Airbnb',       color: '#FF5A5F', emoji: '🏠', hint: 'Airbnb → Фінанси → Виписка виплат (CSV)' },
+                { channel: 'airbnb',  label: 'Airbnb',       color: '#FF5A5F', emoji: '🏠', hint: tUi('Airbnb → Фінанси → Виписка виплат (CSV)') },
                 { channel: 'booking', label: 'Booking.com',  color: '#003580', emoji: '🏨', hint: 'Booking → Finance → Payments report (CSV)' },
                 { channel: 'teya',    label: 'Teya',         color: '#7c3aed', emoji: '💳', hint: 'Teya dashboard → Transaction report (CSV)' },
               ] as const).map(({ channel, label, color, emoji, hint }) => (
@@ -1007,7 +1007,7 @@ export default function DocumentsPage() {
                       disabled={!stmtNames[inv.invoice_id]?.trim() || !!stmtSaving[inv.invoice_id]}
                       style={{ fontSize: 11, padding: '5px 10px' }}
                     >
-                      {stmtSaving[inv.invoice_id] ? <RefreshCw size={11} className="spin" /> : 'Зберегти'}
+                      {stmtSaving[inv.invoice_id] ? <RefreshCw size={11} className="spin" /> : tUi('Зберегти')}
                     </button>
                   </div>
                 ))}
@@ -1056,7 +1056,7 @@ export default function DocumentsPage() {
                   {(['all', 'new', 'existing', 'storno'] as const)
                     .filter(f => f !== 'storno' || stmtCountStorno > 0)
                     .map(f => {
-                      const labels: Record<string, string> = { all: 'Усі', new: '✓ Нові', existing: 'Існуючі', storno: '↩ Storno' };
+                      const labels: Record<string, string> = { all: tUi('Усі'), new: tUi('✓ Нові'), existing: tUi('Існуючі'), storno: '↩ Storno' };
                       const colors: Record<string, string> = { all: 'var(--accent-primary)', new: '#16a34a', existing: '#6b7280', storno: '#dc2626' };
                       const counts: Record<string, number> = { all: stmtResult.length, new: stmtCountNew, existing: stmtCountExisting, storno: stmtCountStorno };
                       const active = stmtFilter === f;
@@ -1336,7 +1336,7 @@ export default function DocumentsPage() {
                 style={{ display: 'flex', alignItems: 'center', gap: 6 }}
               >
                 {emailSending ? <RefreshCw size={14} className="spin" /> : <Mail size={14} />}
-                {emailSending ? 'Надсилаємо…' : 'Надіслати'}
+                {emailSending ? tUi('Надсилаємо…') : tUi('Надіслати')}
               </button>
             </div>
           </div>

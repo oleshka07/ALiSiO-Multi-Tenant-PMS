@@ -717,7 +717,7 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
             <div className="ram-staging-head">
               <span className="ram-staging-lbl">{tUi('Чорновик')}</span>
               <span className="ram-staging-cnt">{stagingBookings.length}</span>
-              <span className="ram-staging-tip">{stagingBookings.length > 0 ? 'тягни в кімнату ↓' : 'тягни сюди гостя без кімнати'}</span>
+              <span className="ram-staging-tip">{stagingBookings.length > 0 ? tUi('тягни в кімнату ↓') : tUi('тягни сюди гостя без кімнати')}</span>
             </div>
             {stagingBookings.length > 0 ? (
               <div className="ram-staging-scroll" onPointerDown={onPointerDown}>
@@ -928,11 +928,11 @@ function StagingDetailPanel({ booking, onClose, onDelete, fmt }: {
         <div className="ram-detail-grid">
           <div className="ram-detail-row">
             <span className="ram-detail-k">{tUi('Дати')}</span>
-            <span className="ram-detail-v">{fmt(booking.check_in)} — {fmt(booking.check_out)}{booking.nights ? ` (${booking.nights} ноч.)` : ''}</span>
+            <span className="ram-detail-v">{fmt(booking.check_in)} — {fmt(booking.check_out)}{booking.nights ? ` (${booking.nights} ${tUi('ноч.)')}` : ''}</span>
           </div>
           <div className="ram-detail-row">
             <span className="ram-detail-k">{tUi('Гості')}</span>
-            <span className="ram-detail-v">{booking.adults || 0} {tUi('дор.')}{booking.children ? ` + ${booking.children} діт.` : ''} ({party} {tUi('ос.)')}</span>
+            <span className="ram-detail-v">{booking.adults || 0} {tUi('дор.')}{booking.children ? ` + ${booking.children} ${tUi('діт.')}` : ''} ({party} {tUi('ос.)')}</span>
           </div>
           {booking.unit_type_name && (
             <div className="ram-detail-row">

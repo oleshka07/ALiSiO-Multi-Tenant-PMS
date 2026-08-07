@@ -113,7 +113,7 @@ export function PaymentsTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Pa
 
           <button className="btn btn-primary" onClick={save} disabled={saving} style={{ marginTop: 8 }}>
             {saving ? <Loader2 size={16} className="spin" /> : saved ? <Check size={16} /> : <Save size={16} />}
-            {saved ? 'Збережено!' : 'Зберегти налаштування платежів'}
+            {saved ? t('Збережено!') : t('Зберегти налаштування платежів')}
           </button>
         </div>
       )}

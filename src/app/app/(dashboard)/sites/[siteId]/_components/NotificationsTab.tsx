@@ -189,7 +189,7 @@ export function NotificationsTab({ site, onUpdate }: { site: Site; onUpdate: (cf
 
       <button className="btn btn-primary" onClick={save} disabled={saving}>
         {saving ? <Loader2 size={16} className="spin" /> : saved ? <Check size={16} /> : <Save size={16} />}
-        {saved ? 'Збережено!' : 'Зберегти зміни'}
+        {saved ? t('Збережено!') : t('Зберегти зміни')}
       </button>
     </div>
   );

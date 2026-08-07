@@ -173,7 +173,7 @@ export function ThankYouTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Wi
 
       <button className="btn btn-primary" onClick={save} disabled={saving}>
         {saving ? <Loader2 size={16} className="spin" /> : saved ? <Check size={16} /> : <Save size={16} />}
-        {saved ? 'Збережено!' : 'Зберегти'}
+        {saved ? t('Збережено!') : t('Зберегти')}
       </button>
     </div>
   );

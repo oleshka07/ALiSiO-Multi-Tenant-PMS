@@ -130,7 +130,7 @@ export default function ProjectTreeRow({
           </button>
         )}
         <button onClick={onEdit} style={iconBtnStyle} title={t('Редагувати')}><Pencil size={14} /></button>
-        <button onClick={onArchiveToggle} style={iconBtnStyle} title={project.is_active ? 'Архівувати' : 'Відновити'}>
+        <button onClick={onArchiveToggle} style={iconBtnStyle} title={project.is_active ? t('Архівувати') : t('Відновити')}>
           {project.is_active ? <Archive size={14} /> : <RotateCcw size={14} />}
         </button>
         <button onClick={onDelete} style={{ ...iconBtnStyle, color: '#dc2626' }} title={t('Видалити')}><Trash2 size={14} /></button>

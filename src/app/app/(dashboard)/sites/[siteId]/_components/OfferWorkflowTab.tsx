@@ -226,7 +226,7 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
             const tpl = GIFT_CARD_TEMPLATES.find(t => t.id === rule.template_id);
             const daysLabel = rule.allowed_days
               ? (JSON.parse(rule.allowed_days) as number[]).map(d => DAY_LABELS[d]).join(', ')
-              : 'Будь-який день';
+              : tUi('Будь-який день');
             const usedPct = rule.total_codes > 0 ? Math.round(rule.used_codes / rule.total_codes * 100) : 0;
 
             return (
@@ -234,7 +234,7 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
                 <div style={{ padding: '14px 16px', background: 'var(--surface-secondary)', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                      {tpl && <span style={{ fontSize: 18 }}>{tpl.emoji}</span>}
+                      {tpl && <span style={{ fontSize: 18 }}>{tUi(tpl.emoji)}</span>}
                       <span style={{ fontWeight: 700, fontSize: 14 }}>{rule.name}</span>
                       <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', fontWeight: 600 }}>
                         {rule.offer_amount}{rule.discount_type === 'percentage' ? '%' : ` ${rule.applies_to === 'listings' ? 'CZK' : 'CZK'}`} {tUi('знижка')}
@@ -242,7 +242,7 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '4px 16px', fontSize: 12, color: 'var(--text-secondary)' }}>
-                      {tpl && <span>{tUi('📦 Шаблон:')} {tpl.name}</span>}
+                      {tpl && <span>{tUi('📦 Шаблон:')} {tUi(tpl.name)}</span>}
                       <span>{tUi('🎟 Кодів:')} {rule.total_codes} ({rule.used_codes} {tUi('використано)')}</span>
                       {rule.valid_until && <span>{tUi('⏳ До:')} {rule.valid_until}</span>}
                       <span>📅 {daysLabel}</span>
@@ -322,7 +322,7 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
               {GIFT_CARD_TEMPLATES.map(t => (
                 <button key={t.id} type="button" onClick={() => setForm(f => ({ ...f, template_id: t.id, rule_name: f.rule_name || t.name }))}
                   style={{ padding: '8px 10px', borderRadius: 8, fontSize: 12, cursor: 'pointer', textAlign: 'left', border: `2px solid ${form.template_id === t.id ? 'var(--accent-primary)' : 'var(--border-primary)'}`, background: form.template_id === t.id ? 'var(--accent-primary-dim)' : 'var(--surface-secondary)' }}>
-                  <div style={{ fontWeight: 600 }}>{t.emoji} {t.name}</div>
+                  <div style={{ fontWeight: 600 }}>{tUi(t.emoji)} {tUi(t.name)}</div>
                   <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t.badge}</div>
                 </button>
               ))}
@@ -393,7 +393,7 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
           <div className="form-group">
             <label className="form-label">{tUi('Застосовується до')}</label>
             <div style={{ display: 'flex', gap: 8 }}>
-              {([['listings', '🏠 Оголошення'], ['services', '🛎 Сервіси'], ['both', '🏠+🛎 Обидва']] as const).map(([val, label]) => (
+              {([['listings', tUi('🏠 Оголошення')], ['services', tUi('🛎 Сервіси')], ['both', tUi('🏠+🛎 Обидва')]] as const).map(([val, label]) => (
                 <button key={val} type="button" onClick={() => setForm(f => ({ ...f, applies_to: val }))}
                   style={{ flex: 1, padding: '8px 4px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: `2px solid ${form.applies_to === val ? 'var(--accent-primary)' : 'var(--border-primary)'}`, background: form.applies_to === val ? 'var(--accent-primary)' : 'var(--surface-secondary)', color: form.applies_to === val ? '#fff' : 'var(--text-secondary)' }}>
                   {label}
@@ -404,14 +404,14 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
 
           {/* Days */}
           <div className="form-group">
-            <label className="form-label">{tUi('Дні тижня')} <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11 }}>{form.allowed_days.length === 0 ? '(всі дні)' : ''}</span></label>
+            <label className="form-label">{tUi('Дні тижня')} <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11 }}>{form.allowed_days.length === 0 ? tUi('(всі дні)') : ''}</span></label>
             <div style={{ display: 'flex', gap: 6 }}>
               {DAYS.map(d => {
                 const on = form.allowed_days.includes(d);
                 return (
                   <button key={d} type="button" onClick={() => toggleDay(d)}
                     style={{ width: 38, height: 38, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: `2px solid ${on ? 'var(--accent-primary)' : 'var(--border-primary)'}`, background: on ? 'var(--accent-primary)' : 'var(--surface-secondary)', color: on ? '#fff' : 'var(--text-secondary)' }}>
-                    {DAY_LABELS[d]}
+                    {tUi(DAY_LABELS[d])}
                   </button>
                 );
               })}

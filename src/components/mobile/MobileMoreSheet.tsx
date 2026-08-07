@@ -67,7 +67,7 @@ export default function MobileMoreSheet({ open, onClose }: MobileMoreSheetProps)
         <div className="m-sheet-sections">
           {moreItems.map(section => (
             <div key={section.section} className="m-sheet-section">
-              <div className="m-sheet-section-title">{section.section}</div>
+              <div className="m-sheet-section-title">{t(section.section)}</div>
               {section.items.map(item => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href || pathname.startsWith(item.href + '/');

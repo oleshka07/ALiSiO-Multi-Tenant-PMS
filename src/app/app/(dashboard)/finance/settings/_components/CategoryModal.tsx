@@ -116,8 +116,8 @@ export default function CategoryModal({ initial, parent, defaultOpType, onClose,
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ margin: 0, flex: 1 }}>
             {initial
-              ? (isEditingSubcategory ? 'Редагувати підкатегорію' : 'Редагувати категорію')
-              : (parent ? `Нова підкатегорія в «${parent.name}»` : 'Нова категорія')}
+              ? (isEditingSubcategory ? t('Редагувати підкатегорію') : t('Редагувати категорію'))
+              : (parent ? `${t('Нова підкатегорія в «')}${parent.name}»` : t('Нова категорія'))}
           </h3>
           <button type="button" onClick={onClose} style={closeBtnStyle}><X size={18} /></button>
         </div>
@@ -192,7 +192,7 @@ export default function CategoryModal({ initial, parent, defaultOpType, onClose,
               style={inputStyle}
               disabled={isSubcategory || isEditingSubcategory}
             >
-              {OP_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {OP_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
             </select>
             {(isSubcategory || isEditingSubcategory) && (
               <div style={hintStyle}>{t('Успадковано від батька')}</div>
@@ -206,7 +206,7 @@ export default function CategoryModal({ initial, parent, defaultOpType, onClose,
               disabled={isSubcategory || isEditingSubcategory}
             >
               {currentClassifiers.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>{t(o.label)}</option>
               ))}
             </select>
             {!(isSubcategory || isEditingSubcategory) && (
@@ -232,7 +232,7 @@ export default function CategoryModal({ initial, parent, defaultOpType, onClose,
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
           <button type="button" onClick={onClose} style={btnSecondaryStyle}>{t('Відміна')}</button>
           <button type="submit" disabled={saving} style={btnPrimaryStyle}>
-            {saving ? 'Збереження…' : (initial ? 'Зберегти' : 'Створити')}
+            {saving ? t('Збереження…') : (initial ? t('Зберегти') : t('Створити'))}
           </button>
         </div>
       </form>

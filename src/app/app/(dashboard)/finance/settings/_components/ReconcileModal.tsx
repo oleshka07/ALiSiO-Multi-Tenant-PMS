@@ -101,7 +101,7 @@ export default function ReconcileModal({ account, onClose, onDone }: Props) {
             }}
           >
             {t('Буде створено коригуючу операцію на')} {delta > 0 ? '+' : ''}{delta.toFixed(2)} {account.currency}
-            {' '}({delta > 0 ? 'додаткове надходження' : 'додаткові витрати'})
+            {' '}({delta > 0 ? t('додаткове надходження') : t('додаткові витрати')})
           </div>
         )}
 
@@ -110,7 +110,7 @@ export default function ReconcileModal({ account, onClose, onDone }: Props) {
             type="text"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder={`Звірка залишків (${account.name})`}
+            placeholder={`${t('Звірка залишків (')}${account.name})`}
             style={inputStyle}
           />
         </Field>
@@ -120,7 +120,7 @@ export default function ReconcileModal({ account, onClose, onDone }: Props) {
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button type="button" onClick={onClose} style={btnSecondaryStyle}>{t('Відміна')}</button>
           <button type="submit" disabled={submitting} style={btnPrimaryStyle}>
-            {submitting ? 'Створення…' : 'Створити коригування'}
+            {submitting ? t('Створення…') : t('Створити коригування')}
           </button>
         </div>
       </form>

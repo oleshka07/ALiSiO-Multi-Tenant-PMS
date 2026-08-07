@@ -173,7 +173,7 @@ export default function AccountsTab() {
               {accounts.map((a) => {
                 const isCard = a.type === 'card';
                 const displayBalance = isCard && a.credit_limit !== null
-                  ? `${formatMoney((a.credit_limit || 0) + a.balance, a.currency)} доступно`
+                  ? `${formatMoney((a.credit_limit || 0) + a.balance, a.currency)} ${t('доступно')}`
                   : formatMoney(a.balance, a.currency);
                 return (
                   <tr
@@ -198,7 +198,7 @@ export default function AccountsTab() {
                       {a.name}
                       {!a.is_active && <span style={{ color: 'var(--text-secondary)', fontSize: 12, marginLeft: 6 }}>{t('(архів)')}</span>}
                     </td>
-                    <td style={tdStyle}>{TYPE_LABELS[a.type]}</td>
+                    <td style={tdStyle}>{t(TYPE_LABELS[a.type])}</td>
                     <td style={tdStyle}>{a.currency}</td>
                     <td style={{ ...tdStyle, textAlign: 'right' }}>{formatMoney(a.initial_balance, a.currency)}</td>
                     <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{displayBalance}</td>
@@ -211,7 +211,7 @@ export default function AccountsTab() {
                       </button>
                       <button
                         style={iconBtnStyle}
-                        title={a.is_active ? 'Архівувати' : 'Відновити'}
+                        title={a.is_active ? t('Архівувати') : t('Відновити')}
                         onClick={() => handleArchiveToggle(a)}
                       >
                         {a.is_active ? <Archive size={15} /> : <RotateCcw size={15} />}

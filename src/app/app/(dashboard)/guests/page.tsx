@@ -356,7 +356,7 @@ function DesktopGuests() {
             <select className="form-select" value={form.country} onChange={(e) => setForm(p => ({ ...p, country: e.target.value }))}>
               <option value="">{t('Не вказано')}</option>
               {Object.entries(COUNTRIES).map(([code, name]) => (
-                <option key={code} value={code}>{name}</option>
+                <option key={code} value={code}>{t(name)}</option>
               ))}
             </select>
           </div>
@@ -381,7 +381,7 @@ function DesktopGuests() {
             <select className="form-select" value={form.documentType} onChange={(e) => setForm(p => ({ ...p, documentType: e.target.value }))}>
               <option value="">{t('Не вказано')}</option>
               {Object.entries(DOC_TYPES).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
+                <option key={key} value={key}>{t(label)}</option>
               ))}
             </select>
           </div>
@@ -431,7 +431,7 @@ function DesktopGuests() {
         <div className="page-header">
           <div>
             <h2 className="page-title">{t('База гостей')}</h2>
-            <div className="page-subtitle">{total > 0 ? `${total} записів` : `${guests.length} записів`}</div>
+            <div className="page-subtitle">{total > 0 ? `${total} ${t('записів')}` : `${guests.length} ${t('записів')}`}</div>
           </div>
           <div className="flex gap-2">
             <button className="btn btn-secondary" onClick={fetchGuests} title={t('Оновити')}>
@@ -459,7 +459,7 @@ function DesktopGuests() {
             <select className="form-select" style={{ width: 170 }} value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)}>
               <option value="">{t('Всі країни')}</option>
               {uniqueCountries.map(c => (
-                <option key={c} value={c}>{COUNTRIES[c] || c}</option>
+                <option key={c} value={c}>{t(COUNTRIES[c] || c)}</option>
               ))}
             </select>
             {(search || countryFilter) && (
@@ -526,7 +526,7 @@ function DesktopGuests() {
                         <div>{g.first_name} {g.last_name}</div>
                         {g.document_type && (
                           <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                            {DOC_TYPES[g.document_type] || g.document_type}
+                            {t(DOC_TYPES[g.document_type] || g.document_type)}
                           </div>
                         )}
                       </div>
@@ -548,7 +548,7 @@ function DesktopGuests() {
                   </td>
                   <td>
                     {g.country ? (
-                      <span className="badge badge-info">{COUNTRIES[g.country] || g.country}</span>
+                      <span className="badge badge-info">{t(COUNTRIES[g.country] || g.country)}</span>
                     ) : <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>—</span>}
                   </td>
                   <td>
@@ -618,7 +618,7 @@ function DesktopGuests() {
                   </div>
                   {g.country && (
                     <div className="guest-card-detail" style={{ marginTop: 1 }}>
-                      <MapPin size={11} /> {COUNTRIES[g.country] || g.country}
+                      <MapPin size={11} /> {t(COUNTRIES[g.country] || g.country)}
                     </div>
                   )}
                 </div>
@@ -725,7 +725,7 @@ function DesktopGuests() {
                     <MapPin size={12} /> {t('Адреса')}
                   </div>
                   <div style={{ fontSize: 13, lineHeight: 1.8 }}>
-                    {viewGuest.country && <div>{COUNTRIES[viewGuest.country] || viewGuest.country}</div>}
+                    {viewGuest.country && <div>{t(COUNTRIES[viewGuest.country] || viewGuest.country)}</div>}
                     {viewGuest.city && <div>{viewGuest.city}</div>}
                     {viewGuest.address && <div>{viewGuest.address}</div>}
                     {!viewGuest.country && !viewGuest.city && !viewGuest.address && (
@@ -740,7 +740,7 @@ function DesktopGuests() {
                     <FileText size={12} /> {t('Документ')}
                   </div>
                   <div style={{ fontSize: 13, lineHeight: 1.8 }}>
-                    {viewGuest.document_type && <div>{DOC_TYPES[viewGuest.document_type] || viewGuest.document_type}</div>}
+                    {viewGuest.document_type && <div>{t(DOC_TYPES[viewGuest.document_type] || viewGuest.document_type)}</div>}
                     {viewGuest.document_number && <div style={{ fontWeight: 600, fontFamily: 'monospace', letterSpacing: 1 }}>{viewGuest.document_number}</div>}
                     {viewGuest.date_of_birth && (
                       <div className="flex items-center gap-2" style={{ marginTop: 4 }}>
@@ -804,7 +804,7 @@ function DesktopGuests() {
                             </td>
                             <td>
                               <span className={`badge ${STATUS_MAP[r.status]?.badge || 'badge-info'}`}>
-                                {STATUS_MAP[r.status]?.label || r.status}
+                                {t(STATUS_MAP[r.status]?.label || r.status)}
                               </span>
                             </td>
                             <td>
@@ -813,7 +813,7 @@ function DesktopGuests() {
                                 color: PAYMENT_STATUS_MAP[r.payment_status]?.color || '#888',
                                 background: PAYMENT_STATUS_MAP[r.payment_status]?.bg || 'rgba(128,128,128,0.1)',
                               }}>
-                                {PAYMENT_STATUS_MAP[r.payment_status]?.label || r.payment_status}
+                                {t(PAYMENT_STATUS_MAP[r.payment_status]?.label || r.payment_status)}
                               </span>
                             </td>
                             <td style={{ fontWeight: 700 }}>{(r.total_price || 0).toLocaleString()} {r.currency}</td>

@@ -618,7 +618,7 @@ function CalendarDesktop() {
               <button className="btn btn-secondary btn-sm" onClick={() => setNavOffset(p => p + 1)} title={tUi('+1 тиждень')} style={{ padding: '4px 6px' }}><ChevronRight size={14} /></button>
               <button className="btn btn-secondary btn-sm" onClick={() => setNavOffset(p => p + 2)} title={tUi('+2 тижні')} style={{ padding: '4px 6px' }}><ChevronRight size={14} /><ChevronRight size={14} style={{ marginLeft: -8 }} /></button>
               <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', marginLeft: 8, whiteSpace: 'nowrap' }}>
-                {MONTH_NAMES[timelineStart.getMonth()]} – {MONTH_NAMES[days[days.length - 1]?.getMonth()]} {days[days.length - 1]?.getFullYear()}
+                {tUi(MONTH_NAMES[timelineStart.getMonth()])} – {tUi(MONTH_NAMES[days[days.length - 1]?.getMonth()])} {days[days.length - 1]?.getFullYear()}
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -629,7 +629,7 @@ function CalendarDesktop() {
                     padding: '3px 8px', fontSize: 11, fontWeight: zoom === z ? 700 : 400, border: 'none', cursor: 'pointer',
                     background: zoom === z ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
                     color: zoom === z ? '#fff' : 'var(--text-secondary)',
-                  }}>{ZOOM_LEVELS[z].label}</button>
+                  }}>{tUi(ZOOM_LEVELS[z].label)}</button>
                 ))}
               </div>
               <button className="btn btn-secondary btn-sm" onClick={() => fetchData()} title={tUi('Оновити дані')} style={{ padding: '4px 6px' }}><RefreshCw size={14} /></button>
@@ -655,7 +655,7 @@ function CalendarDesktop() {
                 style={{ padding: '4px 8px', fontSize: 11, gap: 4, opacity: syncing ? 0.6 : 1 }}
               >
                 {syncing ? <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <span>🔄</span>}
-                {syncing ? ' Синх...' : ' Hostex'}
+                {syncing ? tUi('Синх...') : ' Hostex'}
               </button>
               <button className="btn btn-secondary btn-sm" onClick={() => setShowGroupModal(true)} style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Users size={14} /> {tUi('Групове')}</button>
               <button className="btn btn-secondary btn-sm" onClick={() => setShowRoomAllocation(true)} title={tUi('Розселення по кімнатах (Building View)')} style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Building2 size={14} /> {tUi('Будова')}</button>
@@ -663,7 +663,7 @@ function CalendarDesktop() {
                 <button
                   className="draft-pool-badge"
                   onClick={() => setShowRoomAllocation(true)}
-                  title={`${draftCount} бронювань у чорновику — натисніть для розподілу`}
+                  title={`${draftCount} ${tUi('бронювань у чорновику — натисніть для розподілу')}`}
                 >
                   📋 {draftCount} {tUi('в чорновику')}
                 </button>
@@ -688,7 +688,7 @@ function CalendarDesktop() {
             </div>
             <select className="form-select" style={{ width: 110, fontSize: 11, padding: '4px 6px' }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
               <option value="">{tUi('Статуси')}</option>
-              {Object.entries(STATUS_MAP).map(([k, v]) => (<option key={k} value={k}>{v.label}</option>))}
+              {Object.entries(STATUS_MAP).map(([k, v]) => (<option key={k} value={k}>{tUi(v.label)}</option>))}
             </select>
             <select className="form-select" style={{ width: 110, fontSize: 11, padding: '4px 6px' }} value={cleaningFilter} onChange={e => setCleaningFilter(e.target.value)}>
               <option value="">{tUi('🧹 Все')}</option>
@@ -698,7 +698,7 @@ function CalendarDesktop() {
             </select>
             <select className="form-select" style={{ width: 110, fontSize: 11, padding: '4px 6px' }} value={paymentFilter} onChange={e => setPaymentFilter(e.target.value)}>
               <option value="">{tUi('💰 Все')}</option>
-              {Object.entries(PAYMENT_STATUS_MAP).map(([k, v]) => (<option key={k} value={k}>{v.icon} {v.label}</option>))}
+              {Object.entries(PAYMENT_STATUS_MAP).map(([k, v]) => (<option key={k} value={k}>{v.icon} {tUi(v.label)}</option>))}
             </select>
             {rangeStart && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', fontSize: 11, color: 'var(--accent-primary)', fontWeight: 600 }}>
@@ -760,9 +760,9 @@ function CalendarDesktop() {
                         background: isTd ? 'rgba(96, 165, 250, 0.08)' : isWknd ? 'rgba(255,255,255,0.02)' : 'transparent',
                         position: 'relative',
                       }}>
-                        {showMonth && <div style={{ fontSize: 9, color: 'var(--accent-primary)', fontWeight: 700, position: 'absolute', top: 1, left: 2, background: 'var(--bg-secondary)', padding: '0 3px', borderRadius: 2, zIndex: 2, whiteSpace: 'nowrap' }}>{MONTH_NAMES[day.getMonth()].substring(0, 3)}</div>}
+                        {showMonth && <div style={{ fontSize: 9, color: 'var(--accent-primary)', fontWeight: 700, position: 'absolute', top: 1, left: 2, background: 'var(--bg-secondary)', padding: '0 3px', borderRadius: 2, zIndex: 2, whiteSpace: 'nowrap' }}>{tUi(MONTH_NAMES[day.getMonth()]).substring(0, 3)}</div>}
                         <div style={{ fontWeight: isTd ? 800 : 600, color: isTd ? 'var(--accent-primary)' : 'var(--text-primary)', marginTop: showMonth ? 8 : 0, fontSize: zoom === 'quarter' ? 9 : 11 }}>{day.getDate()}</div>
-                        {zoom !== 'quarter' && <div style={{ fontSize: 9, color: isWknd ? 'var(--accent-danger)' : 'var(--text-tertiary)' }}>{DAY_NAMES[day.getDay()]}</div>}
+                        {zoom !== 'quarter' && <div style={{ fontSize: 9, color: isWknd ? 'var(--accent-danger)' : 'var(--text-tertiary)' }}>{tUi(DAY_NAMES[day.getDay()])}</div>}
                       </div>
                     );
                   })}
@@ -835,7 +835,7 @@ function CalendarDesktop() {
                         {unit.beds > 0 && <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{unit.beds} {tUi('місць')}</div>}
                       </div>
                       {/* Cleaning status indicator */}
-                      <div title={`Прибирання: ${unit.cleaning_status}`} style={{
+                      <div title={`${tUi('Прибирання:')} ${unit.cleaning_status}`} style={{
                         fontSize: 12, fontWeight: 700, width: 18, textAlign: 'center',
                         color: CLEAN_MAP[unit.cleaning_status]?.color || 'var(--text-tertiary)',
                       }}>
@@ -986,7 +986,7 @@ function CalendarDesktop() {
                               return (
                                 <div
                                   key={blk.id}
-                                  title={`🔒 Закрито: ${blk.notes || 'Hostex block'}\n${blk.date_from} → ${blk.date_to}`}
+                                  title={`${tUi('🔒 Закрито:')} ${blk.notes || 'Hostex block'}\n${blk.date_from} → ${blk.date_to}`}
                                   style={{
                                     position: 'absolute', top: 4, height: ROW_H - 8,
                                     left: bar.left, width: bar.width,
@@ -1045,9 +1045,9 @@ function CalendarDesktop() {
               <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Заїзд:')}</span> {b.check_in}</div>
               <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Виїзд:')}</span> {b.check_out}</div>
               <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Ночей:')}</span> {b.nights}</div>
-              <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Гостей:')}</span> {b.adults} {tUi('дор.')}{b.children > 0 ? ` + ${b.children} діт.` : ''}</div>
+              <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Гостей:')}</span> {b.adults} {tUi('дор.')}{b.children > 0 ? ` + ${b.children} ${tUi('діт.')}` : ''}</div>
               <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Сума:')}</span> <strong>{(b.total_price || 0).toLocaleString()} CZK</strong></div>
-              <div><span style={{ color: pm.color }}>{pm.icon} {pm.label}</span></div>
+              <div><span style={{ color: pm.color }}>{pm.icon} {tUi(pm.label)}</span></div>
             </div>
             <div style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
               <span className="badge" style={{
@@ -1055,9 +1055,9 @@ function CalendarDesktop() {
                 color: sourceMap[b.source]?.color || (b.source === 'widget' || b.source?.startsWith('widget:') ? '#6366f1' : '#6c7086'),
                 fontSize: 11
               }}>
-                {sourceMap[b.source]?.label || (b.source === 'widget' || b.source?.startsWith('widget:') ? '🌐 Віджет' : b.source)}
+                {sourceMap[b.source]?.label || (b.source === 'widget' || b.source?.startsWith('widget:') ? tUi('🌐 Віджет') : b.source)}
               </span>
-              <span className={`badge ${STATUS_MAP[b.status]?.badge}`} style={{ fontSize: 11 }}>{STATUS_MAP[b.status]?.label || b.status}</span>
+              <span className={`badge ${STATUS_MAP[b.status]?.badge}`} style={{ fontSize: 11 }}>{tUi(STATUS_MAP[b.status]?.label || b.status)}</span>
             </div>
             {b.guest_phone && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>📞 {b.guest_phone}</div>}
             {(b as any).internal_notes && <div style={{ fontSize: 11, color: '#facc15', marginTop: 4 }}>📝 {(b as any).internal_notes.substring(0, 60)}{(b as any).internal_notes.length > 60 ? '...' : ''}</div>}
@@ -1396,7 +1396,7 @@ function ExportReportModal({ onClose, timelineStart, timelineEnd }: {
               opacity: downloading ? 0.7 : 1,
             }}>
             {downloading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Download size={14} />}
-            {downloading ? 'Завантаження...' : `Скачати ${format.toUpperCase()}`}
+            {downloading ? tUi('Завантаження...') : `${tUi('Скачати')} ${format.toUpperCase()}`}
           </button>
         </div>
       </div>

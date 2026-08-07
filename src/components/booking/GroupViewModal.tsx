@@ -279,7 +279,7 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                   onChange={e => handleStatusChange('status', e.target.value)}
                   disabled={statusSaving} style={{ width: 'auto', fontSize: 13 }}>
                   {Object.entries(STATUS_MAP).map(([k, v]) => (
-                    <option key={k} value={k}>{v.label}</option>
+                    <option key={k} value={k}>{t(v.label)}</option>
                   ))}
                 </select>
                 <span style={{
@@ -288,7 +288,7 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                   color: PAYMENT_MAP[group.payment_status]?.color || '#888',
                   background: (PAYMENT_MAP[group.payment_status]?.color || '#888') + '22',
                 }}>
-                  {PAYMENT_MAP[group.payment_status]?.label || group.payment_status}
+                  {t(PAYMENT_MAP[group.payment_status]?.label || group.payment_status)}
                 </span>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                   <button className="btn btn-sm btn-primary" onClick={openEdit} style={{ fontSize: 12 }}>
@@ -421,7 +421,7 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                         <select className="form-select" value={payForm.method}
                           onChange={e => setPayForm(p => ({ ...p, method: e.target.value }))}>
                           {Object.entries(METHOD_LABELS).map(([k, v]) => (
-                            <option key={k} value={k}>{v}</option>
+                            <option key={k} value={k}>{t(v)}</option>
                           ))}
                         </select>
                       </div>
@@ -432,7 +432,7 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                         <select className="form-select" value={payForm.type}
                           onChange={e => setPayForm(p => ({ ...p, type: e.target.value }))}>
                           {Object.entries(TYPE_LABELS).map(([k, v]) => (
-                            <option key={k} value={k}>{v}</option>
+                            <option key={k} value={k}>{t(v)}</option>
                           ))}
                         </select>
                       </div>
@@ -447,7 +447,7 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                       <button className="btn btn-primary btn-sm" onClick={handleAddPayment}
                         disabled={paySaving || !payForm.amount || (payMode === 'room' && !payRoomId)}>
                         {paySaving ? <Loader2 size={14} /> : <Check size={14} />}
-                        {payMode === 'shared' ? 'Внести (ділити на всіх)' : 'Внести'}
+                        {payMode === 'shared' ? t('Внести (ділити на всіх)') : t('Внести')}
                       </button>
                     </div>
                   </div>
@@ -465,8 +465,8 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                         <span style={{ fontWeight: 700, color: p.type === 'refund' ? '#ef4444' : '#22c55e', minWidth: 80 }}>
                           {p.type === 'refund' ? '-' : '+'}{p.amount?.toLocaleString()} {p.currency || group.currency || 'CZK'}
                         </span>
-                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{METHOD_LABELS[p.method] || p.method}</span>
-                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{TYPE_LABELS[p.type] || p.type}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t(METHOD_LABELS[p.method] || p.method)}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t(TYPE_LABELS[p.type] || p.type)}</span>
                         {p.unit_code && (
                           <span className="badge badge-info" style={{ fontSize: 10, padding: '1px 6px' }}>{p.unit_code}</span>
                         )}
@@ -518,7 +518,7 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
                           color: STATUS_MAP[r.status]?.color || '#888',
                           background: (STATUS_MAP[r.status]?.color || '#888') + '22',
                         }}>
-                          {STATUS_MAP[r.status]?.label || r.status}
+                          {t(STATUS_MAP[r.status]?.label || r.status)}
                         </span>
                       </div>
                       <button className="btn btn-sm btn-secondary" onClick={() => {

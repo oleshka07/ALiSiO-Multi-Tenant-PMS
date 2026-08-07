@@ -154,7 +154,7 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
         {FILTERS.map(([k, l]) => (
           <button key={k} onClick={() => setFilterStatus(k)}
             className={filterStatus === k ? 'btn btn-primary' : 'btn btn-ghost'}
-            style={{ padding: '4px 14px', fontSize: 13 }}>{l}</button>
+            style={{ padding: '4px 14px', fontSize: 13 }}>{tUi(l)}</button>
         ))}
       </div>
 
@@ -189,7 +189,7 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
                       </button>
                     </div>
                   </div>
-                  <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: st.bg, color: st.color, flexShrink: 0 }}>{st.label}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: st.bg, color: st.color, flexShrink: 0 }}>{tUi(st.label)}</span>
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {v.recipient_name && <span>🎁 {v.recipient_name}</span>}

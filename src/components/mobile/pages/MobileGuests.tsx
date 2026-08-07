@@ -129,7 +129,7 @@ function GuestFormSheet({
         <div className="m-sheet-handle" />
         <div className="m-sheet-header">
           <h2 style={{ fontSize: 17 }}>
-            {mode === 'create' ? 'Створити гостя' : 'Редагувати картку гостя'}
+            {mode === 'create' ? t('Створити гостя') : t('Редагувати картку гостя')}
           </h2>
           <button className="m-header-btn" onClick={onClose}><X size={20} /></button>
         </div>
@@ -265,7 +265,7 @@ function GuestFormSheet({
               disabled={saving}
               style={{ flex: 2, padding: 12, borderRadius: 10, border: 'none', background: 'var(--accent-primary)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
             >
-              <Save size={16} /> {saving ? 'Збереження...' : 'Зберегти'}
+              <Save size={16} /> {saving ? t('Збереження...') : t('Зберегти')}
             </button>
           </div>
         </form>
@@ -410,7 +410,7 @@ function GuestDetailSheet({
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                     <span style={{ fontWeight: 600, fontSize: 14 }}>{s.unit_code}</span>
                     <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: st.bg, color: st.color }}>
-                      {st.label}
+                      {t(st.label)}
                     </span>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>

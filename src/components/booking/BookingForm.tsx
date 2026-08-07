@@ -409,7 +409,7 @@ export default function BookingForm({
             {bookingSources.length > 0 && (
               <optgroup label={t('Канали')}>
                 {bookingSources.map(s => (
-                  <option key={s.code} value={s.code}>{s.name}</option>
+                  <option key={s.code} value={s.code}>{t(s.name)}</option>
                 ))}
               </optgroup>
             )}
@@ -417,7 +417,7 @@ export default function BookingForm({
             {widgetSources.length > 0 && (
               <optgroup label={t('🌐 Віджети бронювань')}>
                 {widgetSources.map(s => (
-                  <option key={s.code} value={s.code}>🌐 {s.name}</option>
+                  <option key={s.code} value={s.code}>🌐 {t(s.name)}</option>
                 ))}
               </optgroup>
             )}
@@ -448,7 +448,7 @@ export default function BookingForm({
 
       {nights > 0 && (
         <div style={{ fontSize: 13, color: 'var(--accent-primary)', fontWeight: 600, marginBottom: 12 }}>
-          📅 {nights} {nightsLabel(nights)}
+          📅 {nights} {t(nightsLabel(nights))}
         </div>
       )}
 
@@ -510,7 +510,7 @@ export default function BookingForm({
               className="form-input"
               type="number"
               min={0}
-              placeholder={mode === 'create' ? 'авто з прайсингу' : '0'}
+              placeholder={mode === 'create' ? t('авто з прайсингу') : '0'}
               value={form.totalPrice}
               onChange={e => onPriceChange(e.target.value)}
             />
@@ -541,13 +541,13 @@ export default function BookingForm({
           <div className="form-group">
             <label className="form-label">{t('Статус')}</label>
             <select className="form-select" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
-              {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{t(s.label)}</option>)}
             </select>
           </div>
           <div className="form-group">
             <label className="form-label">{t('Статус оплати')}</label>
             <select className="form-select" value={form.paymentStatus} onChange={e => setForm(p => ({ ...p, paymentStatus: e.target.value }))}>
-              {PAYMENT_STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              {PAYMENT_STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{t(s.label)}</option>)}
             </select>
           </div>
         </div>
@@ -577,7 +577,7 @@ export default function BookingForm({
           <div className="form-group">
             <label className="form-label">{t('Статус збору')}</label>
             <select className="form-select" value={form.cityTaxPaid} onChange={e => setForm(p => ({ ...p, cityTaxPaid: e.target.value }))}>
-              {CITY_TAX_PAID_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              {CITY_TAX_PAID_OPTIONS.map(s => <option key={s.value} value={s.value}>{t(s.label)}</option>)}
             </select>
           </div>
         </div>

@@ -14,6 +14,7 @@ function ListingRow({ listing, siteId, siteSlug, onDelete, onEdit, siteCurrency 
   onEdit: (l: Listing) => void;
   siteCurrency: string;
 }) {
+  const t = useT();
   const unitName = listing.unit_name || listing.unit_type_name || listing.id;
   return (
     <tr style={{ cursor: 'pointer' }} onClick={() => onEdit(listing)}>
@@ -37,8 +38,8 @@ function ListingRow({ listing, siteId, siteSlug, onDelete, onEdit, siteCurrency 
           <div style={{ fontWeight: 600 }}>{unitName}</div>
         </div>
       </td>
-      <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{listing.unit_id ? 'Юніт' : 'Тип юніту'}</td>
-      <td style={{ fontSize: 13 }}>{listing.price_override ? `${listing.price_override} ${siteCurrency}` : 'За прайсом'}</td>
+      <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{listing.unit_id ? t('Юніт') : t('Тип юніту')}</td>
+      <td style={{ fontSize: 13 }}>{listing.price_override ? `${listing.price_override} ${siteCurrency}` : t('За прайсом')}</td>
       <td style={{ textAlign: 'center' }}><Chk val={listing.external_url} /></td>
       <td style={{ textAlign: 'center' }}><Chk val={listing.thank_you_url} /></td>
       <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
@@ -184,7 +185,7 @@ function ListingEditModal({ listing, siteId, siteSlug, open, onClose, onRefresh,
           ))}
           <label style={{ aspectRatio: '4/3', border: '2px dashed var(--border-primary)', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 4, color: 'var(--text-secondary)' }}>
             {uploading ? <Loader2 size={16} className="spin" /> : <Upload size={16} />}
-            <span style={{ fontSize: 11 }}>{uploading ? '...' : 'Завантажити'}</span>
+            <span style={{ fontSize: 11 }}>{uploading ? '...' : t('Завантажити')}</span>
             <input type="file" accept="image/*" hidden onChange={handleUpload} disabled={uploading} />
           </label>
         </div>
@@ -341,7 +342,7 @@ export function ListingsTab({ siteId, siteSlug, siteCurrency = 'CZK' }: { siteId
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           {(['unit', 'unit_type'] as const).map(m => (
             <button key={m} className={`btn ${addMode === m ? 'btn-primary' : 'btn-ghost'}`} onClick={() => { setAddMode(m); setSelected(new Set()); }}>
-              {m === 'unit' ? '🏠 Конкретні юніти' : '📦 Типи юнітів'}
+              {m === 'unit' ? t('🏠 Конкретні юніти') : t('📦 Типи юнітів')}
             </button>
           ))}
         </div>

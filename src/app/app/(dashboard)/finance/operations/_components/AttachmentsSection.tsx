@@ -110,9 +110,9 @@ export default function AttachmentsSection({ operationId }: Props) {
             onClick={() => inputRef.current?.click()}
             disabled={uploading || !operationId}
             style={uploadBtn}
-            title={!operationId ? 'Спершу збережи операцію' : 'Прикріпити файл'}
+            title={!operationId ? t('Спершу збережи операцію') : t('Прикріпити файл')}
           >
-            <Upload size={12} /> {uploading ? 'Завантаження…' : 'Прикріпити'}
+            <Upload size={12} /> {uploading ? t('Завантаження…') : t('Прикріпити')}
           </button>
         </div>
       </div>

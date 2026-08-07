@@ -267,17 +267,17 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
       {/* Date Filter chips */}
       <div className="m-chips" style={{ marginBottom: 4 }}>
         {[
-          { key: 'all', label: 'Всі' },
-          { key: 'today_in', label: '🛬 Заїзди сьогодні' },
-          { key: 'today_out', label: '🛫 Виїзди сьогодні' },
-          { key: 'staying', label: '🏠 Проживають' },
+          { key: 'all', label: t('Всі') },
+          { key: 'today_in', label: t('🛬 Заїзди сьогодні') },
+          { key: 'today_out', label: t('🛫 Виїзди сьогодні') },
+          { key: 'staying', label: t('🏠 Проживають') },
         ].map(chip => (
           <button
             key={chip.key}
             className={`m-chip ${dateFilter === chip.key ? 'm-chip-active' : ''}`}
             onClick={() => setDateFilter(chip.key as any)}
           >
-            {chip.label}
+            {t(chip.label)}
           </button>
         ))}
       </div>
@@ -290,7 +290,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
             className={`m-chip ${statusFilter === chip.key ? 'm-chip-active' : ''}`}
             onClick={() => setStatusFilter(chip.key)}
           >
-            {chip.label}
+            {t(chip.label)}
           </button>
         ))}
       </div>
@@ -299,7 +299,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 600 }}>
-            {filtered.length} {showArchive ? 'всього' : 'актуальних'}
+            {filtered.length} {showArchive ? t('всього') : t('актуальних')}
           </span>
           <button
             onClick={() => setShowArchive(p => !p)}
@@ -309,9 +309,9 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
               background: showArchive ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
               color: showArchive ? '#fff' : 'var(--text-tertiary)',
             }}
-            title={showArchive ? 'Показано всі бронювання' : 'Показано лише актуальні'}
+            title={showArchive ? t('Показано всі бронювання') : t('Показано лише актуальні')}
           >
-            {showArchive ? 'Архів' : 'Актуальні'}
+            {showArchive ? t('Архів') : t('Актуальні')}
           </button>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -353,7 +353,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
         filtered.map(b => {
           const st = STATUS_MAP[b.status] || STATUS_MAP.draft;
           const pay = PAY_MAP[b.payment_status] || PAY_MAP.unpaid;
-          const cleanLabel = b.cleaning_status === 'clean' ? 'Чисто' : b.cleaning_status === 'dirty' ? 'Брудно' : b.cleaning_status === 'in_progress' ? 'В процесі' : null;
+          const cleanLabel = b.cleaning_status === 'clean' ? t('Чисто') : b.cleaning_status === 'dirty' ? t('Брудно') : b.cleaning_status === 'in_progress' ? t('В процесі') : null;
           const cleanColor = b.cleaning_status === 'clean' ? '#22c55e' : b.cleaning_status === 'dirty' ? '#ef4444' : '#f59e0b';
           return (
             <div key={b.id} className="m-card" style={{ padding: '12px 14px' }}>
@@ -366,7 +366,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: st.bg, color: st.color }}>
-                    {st.label}
+                    {t(st.label)}
                   </span>
                   <span style={{ fontSize: 11, fontWeight: 600, color: pay.color }}>
                     {b.total_price > 0 ? `${b.total_price.toLocaleString()} Kč` : pay.label}

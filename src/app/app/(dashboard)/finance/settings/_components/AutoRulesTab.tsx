@@ -121,10 +121,10 @@ export default function AutoRulesTab() {
         </span>
         <div style={{ flex: 1 }} />
         <button onClick={handleAutoMatchCounterparties} disabled={matchBusy} style={{ ...btnSec, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Wand2 size={14} /> {matchBusy ? 'Пошук…' : 'Автоматчинг контрагентів'}
+          <Wand2 size={14} /> {matchBusy ? t('Пошук…') : t('Автоматчинг контрагентів')}
         </button>
         <button onClick={handleApplyAll} disabled={applyBusy} style={{ ...btnSec, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Play size={14} /> {applyBusy ? 'Застосування…' : 'Застосувати до існуючих'}
+          <Play size={14} /> {applyBusy ? t('Застосування…') : t('Застосувати до існуючих')}
         </button>
         <button onClick={() => setEditing('new')} style={btnAdd}>
           <Plus size={16} /> {t('Додати правило')}
@@ -159,7 +159,7 @@ export default function AutoRulesTab() {
                     {r.name}
                     {r.stop_on_match ? <span style={badgeSmall} title={t('Зупиняє подальші правила')}>stop</span> : null}
                   </td>
-                  <td style={td}>{OP_TYPE_LABEL[r.op_type]}</td>
+                  <td style={td}>{t(OP_TYPE_LABEL[r.op_type])}</td>
                   <td style={{ ...td, textAlign: 'right' }}>{r.conditions.length}</td>
                   <td style={{ ...td, textAlign: 'right', color: 'var(--text-secondary)' }}>{r.match_count}×</td>
                   <td style={td}>

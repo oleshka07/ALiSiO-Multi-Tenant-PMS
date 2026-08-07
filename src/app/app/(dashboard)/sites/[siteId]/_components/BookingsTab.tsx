@@ -220,7 +220,7 @@ export function BookingsTab({ siteId }: BookingsTabProps) {
                     <td>
                       <div style={{ fontWeight: 700 }}>{b.total_price?.toLocaleString()} {b.currency || 'CZK'}</div>
                       <div style={{ fontSize: 11, color: b.payment_status === 'paid' ? '#22c55e' : '#f59e0b' }}>
-                        {b.payment_status === 'paid' ? 'Оплачено' : 'Очікує'}
+                        {b.payment_status === 'paid' ? t('Оплачено') : t('Очікує')}
                       </div>
                     </td>
                     <td>

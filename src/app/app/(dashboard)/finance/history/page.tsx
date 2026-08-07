@@ -255,7 +255,7 @@ export default function FinanceHistoryPage() {
                           fontSize: 10, fontWeight: 700, color: meta.color, background: meta.bg,
                           textTransform: 'uppercase',
                         }}>
-                          {meta.label}
+                          {t(meta.label)}
                         </span>
                       </td>
 
@@ -319,7 +319,7 @@ export default function FinanceHistoryPage() {
                               color: meta.color, fontSize: 11, padding: 0, textDecoration: 'underline',
                             }}
                           >
-                            {isExpanded ? 'Сховати snapshot' : 'Показати snapshot'}
+                            {isExpanded ? t('Сховати snapshot') : t('Показати snapshot')}
                           </button>
                         )}
                         {isExpandable && isExpanded && (

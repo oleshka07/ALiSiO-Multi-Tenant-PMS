@@ -190,7 +190,7 @@ export default function GroupBookingModal({ open, onClose, onCreated, bookingSou
                 <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
                   <span>{t('Обрано:')} {selectedUnitIds.length} {t('кімнат')}</span>
                   <button className="btn btn-sm btn-ghost" onClick={() => selectAll(filteredUnits)}>
-                    {filteredUnits.every(u => selectedUnitIds.includes(u.id)) ? 'Зняти все' : 'Обрати все'}
+                    {filteredUnits.every(u => selectedUnitIds.includes(u.id)) ? t('Зняти все') : t('Обрати все')}
                   </button>
                 </div>
 

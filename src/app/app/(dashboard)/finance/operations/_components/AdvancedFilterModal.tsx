@@ -212,7 +212,7 @@ function Dropdown({ title, placeholder, selectedCount, children }: { title: stri
         onClick={() => setOpen(!open)}
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 14 }}
       >
-        <span>{selectedCount > 0 ? `Вибрано: ${selectedCount}` : placeholder}</span>
+        <span>{selectedCount > 0 ? `${t('Вибрано:')} ${selectedCount}` : placeholder}</span>
         <span style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
       </div>
       

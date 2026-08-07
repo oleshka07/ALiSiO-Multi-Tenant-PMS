@@ -158,7 +158,7 @@ export default function TeyaSyncTab() {
           }}
         >
           <RefreshCw size={14} style={running ? { animation: 'spin 1s linear infinite' } : undefined} />
-          {running ? 'Синхронізація…' : 'Запустити sync'}
+          {running ? t('Синхронізація…') : t('Запустити sync')}
         </button>
       </div>
 

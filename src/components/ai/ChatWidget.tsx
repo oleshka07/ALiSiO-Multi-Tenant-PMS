@@ -335,7 +335,7 @@ export default function ChatWidget() {
                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover, #f3f4f6)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'var(--bg-secondary)')}
                     >
-                      {s}
+                      {t(s)}
                     </button>
                   ))}
                 </div>
@@ -366,7 +366,7 @@ export default function ChatWidget() {
                   flexShrink: 0,
                   color: msg.role === 'user' ? '#fff' : 'var(--text-secondary)',
                 }}>
-                  {msg.role === 'user' ? 'Я' : '✦'}
+                  {msg.role === 'user' ? t('Я') : '✦'}
                 </div>
 
                 {/* Bubble */}

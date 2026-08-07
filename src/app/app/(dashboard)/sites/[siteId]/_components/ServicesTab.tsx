@@ -143,7 +143,7 @@ export function ServicesTab({ siteId, siteCurrency }: { siteId: string, siteCurr
         </tbody>
       </table>
 
-      <Modal open={!!embedSvc} onClose={() => setEmbedSvc(null)} title={`Embed-код: ${embedSvc?.name}`} size="lg">
+      <Modal open={!!embedSvc} onClose={() => setEmbedSvc(null)} title={`${t('Embed-код:')} ${embedSvc?.name}`} size="lg">
         <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
           {t('Вставте цей код на ваш сайт для відображення кнопки замовлення сервісу.')}
         </div>
