@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { verifyPassword, createSession } from '@core/auth';
+import { runWithOrganization } from '@core/auth/tenant-context';
 
 // ─── Login rate limiter (in-memory) ────────────────────────────────
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -46,7 +47,9 @@ export async function login(request: Request) {
 
     const sql = getSql();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const user: any = await sql.row<any>('SELECT id, email, full_name, role, password_hash, is_active FROM app_users WHERE email = ?', [email]);
+    // organization_id is selected because the write below needs it: this query
+    // is the only thing that knows which tenant the person belongs to.
+    const user: any = await sql.row<any>('SELECT id, organization_id, email, full_name, role, password_hash, is_active FROM app_users WHERE email = ?', [email]);
 
     if (!user) {
       return NextResponse.json({ error: 'Невірний email або пароль' }, { status: 401 });
@@ -65,7 +68,12 @@ export async function login(request: Request) {
       return NextResponse.json({ error: 'Невірний email або пароль' }, { status: 401 });
     }
 
-    await sql.run("UPDATE app_users SET last_login = CURRENT_TIMESTAMP WHERE id = ?", [user.id]);
+    // As the organization, now that the lookup has revealed it. app_users opens
+    // its READ side while no tenant is set — login could not find the row
+    // otherwise — but the write side never opens, so this UPDATE was rejected
+    // by the policy and login answered 500.
+    await runWithOrganization(user.organization_id, () =>
+      sql.run("UPDATE app_users SET last_login = CURRENT_TIMESTAMP WHERE id = ?", [user.id]));
 
     const sessionId = await createSession(user.id);
 

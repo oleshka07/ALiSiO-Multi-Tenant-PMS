@@ -117,6 +117,31 @@ if (missingInLite.length) {
   console.log(`\nin Postgres but not in SQLite, left empty: ${missingInLite.join(', ')}`);
 }
 
+// ── A column SQLite has and Postgres does not is a stale schema ──────────────
+// This used to be printed AFTER the copy committed, as a note saying the
+// columns "are dropped, fix the schema and re-import" — a data loss reported
+// once the data was already lost. It is never a legitimate state: the Postgres
+// schema is GENERATED from this same SQLite database, so a column missing from
+// it means the file was generated before the column existed. On beta that was
+// app_users.language and organizations.language, the two columns the whole
+// Czech translation hangs on.
+const staleColumns = [];
+for (const table of liteTables) {
+  const pgCols = columns.get(table);
+  if (!pgCols) continue;
+  const missing = lite.prepare(`PRAGMA table_info("${table}")`).all()
+    .map((c) => c.name).filter((c) => !pgCols.has(c));
+  if (missing.length) staleColumns.push(`  ${table}: ${missing.join(', ')}`);
+}
+if (staleColumns.length) {
+  console.error(`\nThe Postgres schema is missing ${staleColumns.length} table(s)' worth of columns:`);
+  console.error(staleColumns.join('\n'));
+  console.error('\nImporting would silently drop what they hold. Regenerate with');
+  console.error('`node scripts/pg-schema.mjs`, apply the difference to the database, and re-run.');
+  await pg.end();
+  process.exit(1);
+}
+
 // ── Copy ────────────────────────────────────────────────────────────────────
 let totalRows = 0;
 const counts = [];
@@ -140,11 +165,10 @@ try {
 
     const liteCols = lite.prepare(`PRAGMA table_info("${table}")`).all().map((c) => c.name);
     const shared = liteCols.filter((c) => pgCols.has(c));
-    const dropped = liteCols.filter((c) => !pgCols.has(c));
     if (!shared.length) continue;
 
     const rows = lite.prepare(`SELECT * FROM "${table}"`).all();
-    counts.push({ table, rows: rows.length, dropped });
+    counts.push({ table, rows: rows.length });
     totalRows += rows.length;
     if (!rows.length || dryRun) continue;
 
@@ -217,13 +241,7 @@ if (!dryRun) {
 const withRows = counts.filter((c) => c.rows > 0);
 console.log(`\n${dryRun ? 'would copy' : 'copied'} ${totalRows} rows across ${withRows.length} non-empty table(s)`);
 for (const c of withRows.sort((a, b) => b.rows - a.rows).slice(0, 10)) {
-  console.log(`  ${String(c.rows).padStart(7)}  ${c.table}${c.dropped.length ? `   (dropped: ${c.dropped.join(', ')})` : ''}`);
-}
-const withDropped = counts.filter((c) => c.dropped.length);
-if (withDropped.length) {
-  console.log(`\ncolumns in SQLite that the Postgres schema does not have — ${withDropped.length} table(s):`);
-  for (const c of withDropped) console.log(`  ${c.table}: ${c.dropped.join(', ')}`);
-  console.log('  (these are dropped. If any hold data you need, fix the schema and re-import.)');
+  console.log(`  ${String(c.rows).padStart(7)}  ${c.table}`);
 }
 
 lite.close();
