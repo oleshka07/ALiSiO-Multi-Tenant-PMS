@@ -251,12 +251,39 @@ function scopeOf(table, seen = new Set()) {
   if (columnsOf(table).has(ORG_COL)) return { kind: 'direct' };
   if (seen.has(table)) return { kind: 'none' };
   seen.add(table);
-  for (const fk of fks.get(table) || []) {
-    if (fk.table === table) continue;
-    const up = scopeOf(fk.table, seen);
-    if (up.kind === 'direct' || up.kind === 'derived') {
-      return { kind: 'derived', col: fk.from, parent: fk.table };
+
+  // Which foreign key to hang the policy on, when there is more than one.
+  //
+  // Taking the first that reaches an organization is what this did, and it
+  // chose building_id for unit_types — a column a unit type does not need.
+  // A policy keyed on a NULLable column is not a policy: `NULL IN (SELECT …)`
+  // is NULL, never true, so a row without a building could not be inserted
+  // (WITH CHECK) and, had one existed, could not be read (USING). Every unit
+  // type created on Postgres was rejected. The same table has property_id,
+  // NOT NULL, one hop from the organization.
+  //
+  // So: a mandatory key beats an optional one, and among equals the shorter
+  // path wins — fewer subqueries per row, and one less table whose own policy
+  // has to be right for this one to hold.
+  const notnull = new Map((info.get(table) || []).map((c) => [c.name, !!c.notnull]));
+  const ranked = (fks.get(table) || [])
+    .filter((fk) => fk.table !== table)
+    // A copy per candidate: `seen` guards one PATH against cycles, and sharing
+    // it let the first foreign key evaluated mark a parent visited, so a better
+    // key pointing at the same parent was thrown away as a cycle. That is how
+    // reservation_guests ended up scoped through the optional guest_id while
+    // reservation_id, NOT NULL, sat right there.
+    .map((fk) => ({ fk, up: scopeOf(fk.table, new Set(seen)) }))
+    .filter((c) => c.up.kind === 'direct' || c.up.kind === 'derived')
+    .map((c) => ({ ...c, rank: (notnull.get(c.fk.from) ? 0 : 2) + (c.up.kind === 'direct' ? 0 : 1) }))
+    .sort((a, b) => a.rank - b.rank);
+
+  if (ranked.length) {
+    const best = ranked[0];
+    if (!notnull.get(best.fk.from)) {
+      notes.push(`${table}: scoped through ${best.fk.from}, which is NULLable — a row with NULL there is invisible to every tenant`);
     }
+    return { kind: 'derived', col: best.fk.from, parent: best.fk.table };
   }
   return { kind: 'none' };
 }
@@ -476,8 +503,11 @@ if (typeCorrections.length) {
 ${typeCorrections.length} type(s) corrected from the column default:`);
   for (const c of typeCorrections) console.error('  -', c);
 }
-if (notes.length) {
-  console.error(`\n${notes.length} thing(s) needing a human:`);
-  for (const n of notes) console.error('  -', n);
+// Deduplicated: scopeOf runs once per table that references this one, so a
+// single finding was printed eight times and the list read like a disaster.
+const uniqueNotes = [...new Set(notes)];
+if (uniqueNotes.length) {
+  console.error(`\n${uniqueNotes.length} thing(s) needing a human:`);
+  for (const n of uniqueNotes) console.error('  -', n);
 }
 db.close();

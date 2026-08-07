@@ -2190,14 +2190,14 @@ CREATE POLICY "booking_drafts_tenant" ON "booking_drafts"
 ALTER TABLE "booking_service_orders" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "booking_service_orders" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "booking_service_orders_tenant" ON "booking_service_orders"
-  USING ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id'))))
-  WITH CHECK ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id'))));
+  USING ("service_id" IN (SELECT "id" FROM "additional_services" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("service_id" IN (SELECT "id" FROM "additional_services" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "booking_sites" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "booking_sites" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "booking_sites_tenant" ON "booking_sites"
-  USING ("created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id')))
-  WITH CHECK ("created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id')));
+  USING ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))
+  WITH CHECK ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "booking_sources" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "booking_sources" FORCE ROW LEVEL SECURITY;
@@ -2226,8 +2226,8 @@ CREATE POLICY "capex_items_tenant" ON "capex_items"
 ALTER TABLE "cart_events" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "cart_events" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "cart_events_tenant" ON "cart_events"
-  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))))
-  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))));
+  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "categories" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "categories" FORCE ROW LEVEL SECURITY;
@@ -2250,8 +2250,8 @@ CREATE POLICY "channel_credentials_tenant" ON "channel_credentials"
 ALTER TABLE "channel_room_mapping" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "channel_room_mapping" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "channel_room_mapping_tenant" ON "channel_room_mapping"
-  USING ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))
-  WITH CHECK ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))));
+  USING ("connection_id" IN (SELECT "id" FROM "channel_connections" WHERE "organization_id" = current_setting('app.organization_id')))
+  WITH CHECK ("connection_id" IN (SELECT "id" FROM "channel_connections" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "cost_allocations" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "cost_allocations" FORCE ROW LEVEL SECURITY;
@@ -2388,14 +2388,14 @@ CREATE POLICY "gift_cards_tenant" ON "gift_cards"
 ALTER TABLE "guest_chat_messages" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "guest_chat_messages" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "guest_chat_messages_tenant" ON "guest_chat_messages"
-  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))))
-  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))));
+  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "guest_page_config" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "guest_page_config" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "guest_page_config_tenant" ON "guest_page_config"
-  USING ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))
-  WITH CHECK ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))));
+  USING ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "guest_registrations" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "guest_registrations" FORCE ROW LEVEL SECURITY;
@@ -2412,14 +2412,14 @@ CREATE POLICY "guests_tenant" ON "guests"
 ALTER TABLE "ical_channels" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "ical_channels" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "ical_channels_tenant" ON "ical_channels"
-  USING ("unit_id" IN (SELECT "id" FROM "units" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))
-  WITH CHECK ("unit_id" IN (SELECT "id" FROM "units" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))));
+  USING ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))
+  WITH CHECK ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "ical_sync_log" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "ical_sync_log" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "ical_sync_log_tenant" ON "ical_sync_log"
-  USING ("channel_id" IN (SELECT "id" FROM "ical_channels" WHERE "unit_id" IN (SELECT "id" FROM "units" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))))
-  WITH CHECK ("channel_id" IN (SELECT "id" FROM "ical_channels" WHERE "unit_id" IN (SELECT "id" FROM "units" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))));
+  USING ("channel_id" IN (SELECT "id" FROM "ical_channels" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("channel_id" IN (SELECT "id" FROM "ical_channels" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "invoice_counters" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "invoice_counters" FORCE ROW LEVEL SECURITY;
@@ -2460,8 +2460,8 @@ CREATE POLICY "payment_webhook_log_tenant" ON "payment_webhook_log"
 ALTER TABLE "price_calendar" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "price_calendar" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "price_calendar_tenant" ON "price_calendar"
-  USING ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))
-  WITH CHECK ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))));
+  USING ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "properties" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "properties" FORCE ROW LEVEL SECURITY;
@@ -2490,32 +2490,32 @@ CREATE POLICY "rate_plans_tenant" ON "rate_plans"
 ALTER TABLE "reservation_groups" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reservation_groups" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "reservation_groups_tenant" ON "reservation_groups"
-  USING ("building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
-  WITH CHECK ("building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
+  USING ("guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id')))
+  WITH CHECK ("guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "reservation_guests" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reservation_guests" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "reservation_guests_tenant" ON "reservation_guests"
-  USING ("sub_booking_id" IN (SELECT "id" FROM "reservation_sub_bookings" WHERE "child_reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))))
-  WITH CHECK ("sub_booking_id" IN (SELECT "id" FROM "reservation_sub_bookings" WHERE "child_reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))));
+  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "reservation_line_items" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reservation_line_items" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "reservation_line_items_tenant" ON "reservation_line_items"
-  USING ("sub_booking_id" IN (SELECT "id" FROM "reservation_sub_bookings" WHERE "child_reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))))
-  WITH CHECK ("sub_booking_id" IN (SELECT "id" FROM "reservation_sub_bookings" WHERE "child_reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))));
+  USING ("sub_booking_id" IN (SELECT "id" FROM "reservation_sub_bookings" WHERE "reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id')))))
+  WITH CHECK ("sub_booking_id" IN (SELECT "id" FROM "reservation_sub_bookings" WHERE "reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id')))));
 
 ALTER TABLE "reservation_sub_bookings" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reservation_sub_bookings" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "reservation_sub_bookings_tenant" ON "reservation_sub_bookings"
-  USING ("child_reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))))
-  WITH CHECK ("child_reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))));
+  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "reservations" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reservations" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "reservations_tenant" ON "reservations"
-  USING ("group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))
-  WITH CHECK ("group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))));
+  USING ("guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id')))
+  WITH CHECK ("guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "service_addons" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "service_addons" FORCE ROW LEVEL SECURITY;
@@ -2532,26 +2532,26 @@ CREATE POLICY "service_orders_tenant" ON "service_orders"
 ALTER TABLE "service_time_slots" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "service_time_slots" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "service_time_slots_tenant" ON "service_time_slots"
-  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))))
-  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "group_id" IN (SELECT "id" FROM "reservation_groups" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))));
+  USING ("service_id" IN (SELECT "id" FROM "additional_services" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("service_id" IN (SELECT "id" FROM "additional_services" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "site_incoming_leads" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "site_incoming_leads" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "site_incoming_leads_tenant" ON "site_incoming_leads"
-  USING ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id'))))
-  WITH CHECK ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id'))));
+  USING ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "site_listings" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "site_listings" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "site_listings_tenant" ON "site_listings"
-  USING ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))
-  WITH CHECK ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))));
+  USING ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "site_rate_plans" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "site_rate_plans" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "site_rate_plans_tenant" ON "site_rate_plans"
-  USING ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id'))))
-  WITH CHECK ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id'))));
+  USING ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "site_services" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "site_services" FORCE ROW LEVEL SECURITY;
@@ -2598,20 +2598,20 @@ CREATE POLICY "tg_booking_messages_tenant" ON "tg_booking_messages"
 ALTER TABLE "unit_type_photos" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "unit_type_photos" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "unit_type_photos_tenant" ON "unit_type_photos"
-  USING ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))
-  WITH CHECK ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))));
+  USING ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "unit_types" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "unit_types" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "unit_types_tenant" ON "unit_types"
-  USING ("building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
-  WITH CHECK ("building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
+  USING ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))
+  WITH CHECK ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "units" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "units" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "units_tenant" ON "units"
-  USING ("building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
-  WITH CHECK ("building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
+  USING ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))
+  WITH CHECK ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "user_permissions" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "user_permissions" FORCE ROW LEVEL SECURITY;
@@ -2622,14 +2622,14 @@ CREATE POLICY "user_permissions_tenant" ON "user_permissions"
 ALTER TABLE "waitlist" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "waitlist" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "waitlist_tenant" ON "waitlist"
-  USING ("unit_id" IN (SELECT "id" FROM "units" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))))
-  WITH CHECK ("unit_id" IN (SELECT "id" FROM "units" WHERE "building_id" IN (SELECT "id" FROM "buildings" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))));
+  USING ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "widget_events" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "widget_events" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "widget_events_tenant" ON "widget_events"
-  USING ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id'))))
-  WITH CHECK ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "created_by" IN (SELECT "id" FROM "app_users" WHERE "organization_id" = current_setting('app.organization_id'))));
+  USING ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("site_id" IN (SELECT "id" FROM "booking_sites" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "widget_handshakes" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "widget_handshakes" FORCE ROW LEVEL SECURITY;
