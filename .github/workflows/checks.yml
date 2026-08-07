@@ -56,6 +56,12 @@ jobs:
         # every way text can be written.
         run: npm run check:unwrapped
 
+      - name: interface language stays in the interface
+        # fails when a document, an email or an integration reads the operator's
+        # language. A receptionist switching to German changes what she reads,
+        # not what a Czech accountant files or what a guest opens.
+        run: npm run check:i18n-leak
+
       - name: build
         run: npm run build
 
