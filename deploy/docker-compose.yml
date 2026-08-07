@@ -27,6 +27,13 @@ services:
       APP_URL: ${APP_URL}
       NEXT_PUBLIC_APP_URL: ${APP_URL}
       APP_SECRET_KEY: ${APP_SECRET_KEY}
+      # Which engine. Empty means SQLite, which is what both environments ran
+      # on for their whole life; `postgres` switches, and only then does
+      # DATABASE_URL mean anything. Two variables on purpose — DATABASE_URL was
+      # left in these env files by a scaffold, pointing at a server that did not
+      # exist, so keying the engine on it alone would have switched a live
+      # install the moment the Postgres driver shipped.
+      DB_DRIVER: ${DB_DRIVER:-}
       DATABASE_URL: ${DATABASE_URL:-}
     volumes:
       - app-data:/app/data
@@ -41,6 +48,41 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
 
+  # Started only when asked for:
+  #   docker compose ... --profile postgres up -d
+  # An environment still on SQLite does not run it at all, so adding this
+  # service to the file changes nothing until someone opts in. The application
+  # does NOT depend_on it, for the same reason — a compose file that starts a
+  # database nobody reads is how a "we are still on SQLite" environment quietly
+  # grows a second one.
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:16-alpine
+    container_name: alisio-${ENV_NAME}-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_SUPERUSER:-alisio_admin}
+      POSTGRES_PASSWORD: ${PG_SUPERUSER_PASSWORD}
+      POSTGRES_DB: ${PG_DATABASE:-alisio}
+    # Loopback, and a per-environment port so beta and prod never share one.
+    ports:
+      - "127.0.0.1:${PG_PORT}:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_SUPERUSER:-alisio_admin} -d ${PG_DATABASE:-alisio}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
 volumes:
   app-data:
   app-uploads:
+  # Separate from app-data on purpose: the SQLite file stays where it is after
+  # the move, untouched, which is what makes removing DB_DRIVER a real rollback
+  # rather than a hope.
+  pg-data:
