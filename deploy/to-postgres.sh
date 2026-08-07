@@ -20,11 +20,21 @@ set -euo pipefail
 
 ENV_NAME="${1:-}"
 DRY_RUN=""
-[ "${2:-}" = "--dry-run" ] && DRY_RUN=1
+REPLACE=""
+for opt in "${@:2}"; do
+  case "$opt" in
+    --dry-run) DRY_RUN=1 ;;
+    # A second attempt at the same migration: the first found the schema wrong,
+    # or the switch did not take, and the copy has to be made again. Empties
+    # Postgres before importing. Never touches the SQLite file.
+    --replace) REPLACE=--replace ;;
+    *) echo "unknown option: $opt" >&2; exit 2 ;;
+  esac
+done
 
 case "$ENV_NAME" in
   prod|beta) ;;
-  *) echo "usage: $0 {prod|beta} [--dry-run]" >&2; exit 2 ;;
+  *) echo "usage: $0 {prod|beta} [--dry-run] [--replace]" >&2; exit 2 ;;
 esac
 
 cd "$(dirname "$0")/.."
@@ -137,12 +147,12 @@ echo "==> importing"
 # The import writes past row-level security, so it connects as the superuser.
 # The application never does.
 if [ -n "$DRY_RUN" ]; then
-  run_import --dry-run
+  run_import --dry-run $REPLACE
   echo "==> dry run: starting the app back up on SQLite, nothing was switched"
   $COMPOSE up -d app
   exit 0
 fi
-run_import
+run_import $REPLACE
 
 # ── 6. The switch ────────────────────────────────────────────────────────────
 echo "==> switching $ENV_NAME to postgres"

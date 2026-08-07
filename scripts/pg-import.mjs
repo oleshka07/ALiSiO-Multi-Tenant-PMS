@@ -42,8 +42,10 @@ const { Client } = require('pg');
 
 const url = process.argv[2];
 const dryRun = process.argv.includes('--dry-run');
+/** Empty the destination first. For a second attempt at the same migration. */
+const replace = process.argv.includes('--replace');
 if (!url || url.startsWith('--')) {
-  console.error('usage: node scripts/pg-import.mjs "postgres://user:pass@host/db" [--dry-run]');
+  console.error('usage: node scripts/pg-import.mjs "postgres://user:pass@host/db" [--dry-run] [--replace]');
   process.exit(2);
 }
 
@@ -88,13 +90,20 @@ for (const t of liteTables) {
   const { rows } = await pg.query(`SELECT 1 FROM "${t}" LIMIT 1`);
   if (rows.length) populated.push(t);
 }
-if (populated.length && !dryRun) {
+if (populated.length && !dryRun && !replace) {
   console.error(`\nPostgres is not empty — ${populated.length} table(s) already have rows:`);
   console.error(`  ${populated.slice(0, 8).join(', ')}${populated.length > 8 ? ' …' : ''}`);
   console.error('\nImporting on top would duplicate every row without a unique key.');
-  console.error('Drop and recreate the schema first, or import into a fresh database.');
+  console.error('Pass --replace to empty these tables first, or import into a fresh database.');
   await pg.end();
   process.exit(1);
+}
+if (populated.length && replace) {
+  // A migration is rehearsed more than once — the first attempt finds the
+  // schema wrong, or the switch fails, and the copy has to be made again. The
+  // alternative is dropping the database by hand, which is a worse thing to do
+  // twice. Only the Postgres COPY is emptied; SQLite is opened read-only.
+  console.log(`--replace: emptying ${populated.length} table(s) already holding rows`);
 }
 
 // ── Tables SQLite has and the schema does not, and the reverse ──────────────
@@ -117,6 +126,13 @@ try {
   // Foreign keys off for the duration: 92 tables in dependency order is a list
   // that rots, and the row counts at the end prove more than the order would.
   if (!dryRun) await pg.query("SET session_replication_role = 'replica'");
+
+  // Inside the same transaction as the copy, so a failure leaves the previous
+  // contents intact rather than an empty database. CASCADE only reaches tables
+  // in this same list — every table the schema has.
+  if (!dryRun && replace && populated.length) {
+    await pg.query(`TRUNCATE ${populated.map((t) => `"${t}"`).join(', ')} CASCADE`);
+  }
 
   for (const table of liteTables) {
     const pgCols = columns.get(table);
