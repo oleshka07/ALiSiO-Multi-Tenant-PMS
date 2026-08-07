@@ -10,7 +10,15 @@
  * a test does.
  */
 import assert from 'node:assert';
-import { translate, translatePlural } from './dictionary.ts';
+import { isLoaded, loadDictionary, translate, translatePlural } from './dictionary.ts';
+
+// The dictionary is fetched, not bundled — so this is also the check that the
+// fetch works at all, and that before it lands everything is the source text.
+assert.ok(!isLoaded('de'), 'nothing is loaded until it is asked for');
+assert.strictEqual(translatePlural('записів', 1, 'de'), 'записів', 'before load: source text');
+await loadDictionary('de');
+assert.ok(isLoaded('de'));
+console.log('  ok  a dictionary arrives on demand, and is the source text until it does');
 
 // ─── the shape falls back the way the product does ───────────────────────────
 // An unknown key is the source string, in every form. That is the property the
