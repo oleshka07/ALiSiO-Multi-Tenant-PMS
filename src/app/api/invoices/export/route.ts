@@ -28,11 +28,11 @@ async function _GET(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Next
     // Source filter
     if (source !== 'all') {
       if (source === 'manual') {
-        conditions.push('(i.is_custom = 1 AND i.is_credit_note = 0)');
+        conditions.push('(i.is_custom = TRUE AND i.is_credit_note = FALSE)');
       } else if (source === 'pms') {
-        conditions.push('(i.is_custom = 0 AND i.is_credit_note = 0 AND i.reservation_id IS NOT NULL)');
+        conditions.push('(i.is_custom = FALSE AND i.is_credit_note = FALSE AND i.reservation_id IS NOT NULL)');
       } else if (source === 'refund') {
-        conditions.push('i.is_credit_note = 1');
+        conditions.push('i.is_credit_note = TRUE');
       } else {
         // airbnb, booking, teya
         conditions.push(`lower(coalesce(r.source,'')) = ?`);
@@ -51,8 +51,8 @@ async function _GET(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Next
         i.issued_at,
         i.due_date,
         CASE
-          WHEN i.is_credit_note = 1 THEN 'Storno'
-          WHEN i.is_custom = 1       THEN 'Vručnu'
+          WHEN i.is_credit_note = TRUE THEN 'Storno'
+          WHEN i.is_custom = TRUE       THEN 'Vručnu'
           WHEN r.source IS NOT NULL  THEN r.source
           ELSE 'PMS'
         END AS source,

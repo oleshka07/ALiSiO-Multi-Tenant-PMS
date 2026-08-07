@@ -419,7 +419,7 @@ async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promi
     const force = url.searchParams.get('force') === 'true';
     if (!force) {
       // Find if any matched invoices are locked
-      let checkQuery = `SELECT COUNT(*) as count FROM invoices WHERE organization_id = ? AND locked = 1`;
+      let checkQuery = `SELECT COUNT(*) as count FROM invoices WHERE organization_id = ? AND locked = TRUE`;
       const checkParams: any[] = [actor.organizationId];
       if (channel !== 'all') {
         checkQuery += ` AND (notes LIKE ? OR series = ?)`;

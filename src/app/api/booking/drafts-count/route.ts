@@ -20,7 +20,7 @@ export const GET = withActor(async (_req, _ctx, actor: Actor) => {
     JOIN guests g ON g.id = r.guest_id
     JOIN properties p ON p.id = r.property_id
     WHERE p.organization_id = ?
-      AND u.is_pool = 1
+      AND u.is_pool = TRUE
       AND r.status IN ('draft', 'confirmed', 'tentative')
       AND LOWER(g.first_name || ' ' || g.last_name) NOT LIKE '%ota%block%'
       AND LOWER(g.first_name || ' ' || g.last_name) NOT LIKE '%channel%block%'

@@ -29,9 +29,9 @@ export const getDashboard = withActor(async (_request, _ctx, actor: Actor) => {
 
     const departures = await sql.row<any>(`SELECT COUNT(*) as cnt FROM reservations WHERE ${OWN()} AND check_out = ? AND status IN ('checked_in')`, [org, today]);
 
-    const totalUnits = await sql.row<any>(`SELECT COUNT(*) as cnt FROM units WHERE ${OWN()} AND is_active = 1 AND is_pool = 0`, [org]);
+    const totalUnits = await sql.row<any>(`SELECT COUNT(*) as cnt FROM units WHERE ${OWN()} AND is_active = TRUE AND is_pool = FALSE`, [org]);
 
-    const occupied = await sql.row<any>(`SELECT COUNT(DISTINCT r.unit_id) as cnt FROM reservations r JOIN units u ON u.id = r.unit_id WHERE ${OWN('r.')} AND r.check_in <= ? AND r.check_out > ? AND r.status IN ('checked_in', 'confirmed') AND u.is_pool = 0`, [org, today, today]);
+    const occupied = await sql.row<any>(`SELECT COUNT(DISTINCT r.unit_id) as cnt FROM reservations r JOIN units u ON u.id = r.unit_id WHERE ${OWN('r.')} AND r.check_in <= ? AND r.check_out > ? AND r.status IN ('checked_in', 'confirmed') AND u.is_pool = FALSE`, [org, today, today]);
 
     const totalCount = totalUnits?.cnt || 0;
     const occupiedCount = occupied?.cnt || 0;

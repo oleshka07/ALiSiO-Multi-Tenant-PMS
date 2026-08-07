@@ -19,8 +19,8 @@ export function listUnitTypes(organizationId: string, filters: { category?: stri
     FROM unit_types ut
     JOIN categories c ON ut.category_id = c.id
     LEFT JOIN buildings b ON ut.building_id = b.id
-    LEFT JOIN units u ON u.unit_type_id = ut.id AND u.is_active = 1
-    WHERE ut.is_active = 1
+    LEFT JOIN units u ON u.unit_type_id = ut.id AND u.is_active = TRUE
+    WHERE ut.is_active = TRUE
   `;
 
   const params: string[] = [];

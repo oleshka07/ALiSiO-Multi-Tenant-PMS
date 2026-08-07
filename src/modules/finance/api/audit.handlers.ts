@@ -78,7 +78,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
         FROM reservations r
         LEFT JOIN guests g ON g.id = r.guest_id
         WHERE r.payment_status = 'paid'
-          AND r.is_prepaid = 0
+          AND r.is_prepaid = FALSE
           AND r.status IN ('confirmed','checked_in','checked_out')
           AND NOT EXISTS (
             SELECT 1 FROM fin_operations
@@ -99,7 +99,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
           : `${rows.length} резервацій помічені paid, але fin_operation немає`,
         metric_label: 'Сумарно зниклих грошей (CZK)',
         metric_value: Math.round(totalMissing).toLocaleString('cs-CZ'),
-        description: 'Резервація має payment_status=paid, is_prepaid=0, але в fin_operations немає жодної completed-операції. Можливо: marker без bank-confirmation, або очищене Teya-webhook-ом але fin_operation видалилась через cascade.',
+        description: 'Резервація має payment_status=paid, is_prepaid=FALSE, але в fin_operations немає жодної completed-операції. Можливо: marker без bank-confirmation, або очищене Teya-webhook-ом але fin_operation видалилась через cascade.',
         details: rows.slice(0, 20),
       });
     }
@@ -257,7 +257,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
       const row = await safeRun(async () => await sql.row<any>(`
         SELECT COUNT(*) AS n, COALESCE(SUM(amount_company), 0) AS sum_czk
         FROM fin_operations
-        WHERE needs_review = 1 AND organization_id = ?
+        WHERE needs_review = TRUE AND organization_id = ?
       `, [org]) as any, { n: 0, sum_czk: 0 });
 
       sections.push({
@@ -298,7 +298,7 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
       SELECT
         (SELECT COUNT(*) FROM fin_operations WHERE organization_id = ?) AS total_ops,
         (SELECT COUNT(*) FROM fin_operations WHERE status='completed' AND organization_id = ?) AS completed_ops,
-        (SELECT COUNT(*) FROM finance_accounts WHERE organization_id = ? AND is_active=1) AS active_accounts,
+        (SELECT COUNT(*) FROM finance_accounts WHERE organization_id = ? AND is_active=TRUE) AS active_accounts,
         (SELECT COUNT(*) FROM fin_channel_receivables WHERE organization_id = ?) AS receivables,
         (SELECT COUNT(*) FROM reservations) AS reservations
     `, [org, org, org, org]) as any, {});

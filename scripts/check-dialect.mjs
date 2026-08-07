@@ -56,9 +56,38 @@ const RULES = [
   // Quiet ones: both engines run these, and disagree.
   { id: 'concat-plus', re: /\|\|\s*['"]/g, quiet: true,
     fix: "both concatenate, but SQLite turns NULL||'x' into NULL and so does Postgres — same here, listed only to be checked once" },
-  { id: 'boolean-int', re: /=\s*1\s*(?:AND|OR|\)|$)/gm, quiet: true,
-    fix: 'a BOOLEAN column compared to 1 is a type error on Postgres; the generated schema keeps these INTEGER, so this is informational' },
 ];
+
+/**
+ * A boolean column compared to 0 or 1.
+ *
+ * SQLite has no boolean type — a flag is the integer 1 — so `WHERE is_active =
+ * 1` is the ordinary spelling and appears in this codebase 100-odd times.
+ * Postgres refuses it outright: `operator does not exist: boolean = integer`.
+ *
+ * There was a rule here before, matching any `= 1`, marked quiet, explaining
+ * that "the generated schema keeps these INTEGER, so this is informational".
+ * That stopped being true when the generator started emitting BOOLEAN — 27
+ * columns now — and nothing revisited the note. So the check reported zero
+ * loud problems while the very first tenant to create a property on Postgres
+ * got a 500.
+ *
+ * Which columns are boolean is not guessed: it is read from the generated
+ * schema, the same file the database is created from. That makes the rule
+ * precise enough to be loud, and it cannot drift from the schema.
+ */
+const BOOLEAN_COLUMNS = [...new Set(
+  [...fs.readFileSync('db/postgres/schema.sql', 'utf8')
+    .matchAll(/^\s+"([a-z0-9_]+)"\s+BOOLEAN\b/gm)].map((m) => m[1]),
+)];
+if (BOOLEAN_COLUMNS.length) {
+  RULES.push({
+    id: 'boolean-int',
+    re: new RegExp(`\\b(?:${BOOLEAN_COLUMNS.join('|')})\\s*(?:=|!=|<>)\\s*[01]\\b`, 'g'),
+    quiet: false,
+    fix: 'compare a BOOLEAN to TRUE/FALSE, not to 1/0 — both engines accept that spelling',
+  });
+}
 
 const files = [];
 function walk(dir) {
@@ -75,17 +104,57 @@ function walk(dir) {
 }
 for (const r of ROOTS) walk(r);
 
+/**
+ * Everything that is not inside a string literal, blanked out.
+ *
+ * SQL lives in string literals; TypeScript does not. Scanning raw lines meant
+ * `const { is_default = 0 } = body` — a destructuring default — counted as a
+ * boolean compared to an integer, and a rule that fires on code is a rule
+ * people learn to ignore. Skipping lines that START with // caught some of it
+ * and nothing else: not a trailing comment, not an identifier, not a JSDoc
+ * line without a leading star.
+ *
+ * Positions are preserved rather than removed, so line numbers stay honest.
+ * Most SQL here is a multi-line template, which is why this cannot be done a
+ * line at a time.
+ */
+function sqlOnly(src) {
+  const out = new Array(src.length).fill(' ');
+  let i = 0, quote = null;
+  while (i < src.length) {
+    const c = src[i];
+    if (src[i] === '\n') { out[i] = '\n'; i++; continue; }
+    if (quote === null) {
+      if (src.startsWith('//', i)) { while (i < src.length && src[i] !== '\n') i++; continue; }
+      if (src.startsWith('/*', i)) {
+        const end = src.indexOf('*/', i);
+        const stop = end < 0 ? src.length : end + 2;
+        for (; i < stop; i++) if (src[i] === '\n') out[i] = '\n';
+        continue;
+      }
+      if (c === "'" || c === '"' || c === '`') quote = c;
+      i++;
+      continue;
+    }
+    if (c === '\\') { i += 2; continue; }
+    if (c === quote) { quote = null; i++; continue; }
+    out[i] = c;
+    i++;
+  }
+  return out.join('');
+}
+
 const found = new Map(RULES.map((r) => [r.id, []]));
 
 for (const f of files) {
   const src = fs.readFileSync(f, 'utf8');
-  const lines = src.split('\n');
-  lines.forEach((line, i) => {
-    const t = line.trim();
-    if (t.startsWith('//') || t.startsWith('*')) return;
+  const real = src.split('\n');
+  sqlOnly(src).split('\n').forEach((line, i) => {
     for (const rule of RULES) {
       rule.re.lastIndex = 0;
-      if (rule.re.test(line)) found.get(rule.id).push({ file: f, line: i + 1, text: t.slice(0, 90) });
+      if (rule.re.test(line)) {
+        found.get(rule.id).push({ file: f, line: i + 1, text: real[i].trim().slice(0, 90) });
+      }
     }
   });
 }
@@ -103,6 +172,11 @@ for (const rule of loud) {
   for (const h of hits) byFile.set(h.file, (byFile.get(h.file) || 0) + 1);
   const top = [...byFile.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
   console.log(`  ${' '.repeat(20)}      ${top.map(([f, n]) => `${f.replace(/\\/g, '/')} (${n})`).join(', ')}`);
+  // A count and a filename are enough to know there is work; they are not
+  // enough to do it. --list prints where.
+  if (process.argv.includes('--list')) {
+    for (const h of hits) console.log(`      ${h.file.replace(/\\/g, '/')}:${h.line}  ${h.text}`);
+  }
   console.log();
 }
 

@@ -134,7 +134,7 @@ export async function saveTelegramConfig(organizationId: string, input: SaveTele
   });
 
   if (row) {
-    await sql.run('UPDATE crm_channels SET config_json = ?, is_active = 1 WHERE id = ?', [config, row.id]);
+    await sql.run('UPDATE crm_channels SET config_json = ?, is_active = TRUE WHERE id = ?', [config, row.id]);
   } else {
     await sql.run('INSERT INTO crm_channels (id, organization_id, channel_type, name, config_json, is_active) VALUES (?, ?, ?, ?, ?, 1)', [`ch_telegram_${organizationId}`, organizationId, CHANNEL_TYPE, 'Telegram Bot', config]);
   }
@@ -143,5 +143,5 @@ export async function saveTelegramConfig(organizationId: string, input: SaveTele
 /** Forget the stored credentials for this organization. */
 export async function disconnectTelegram(organizationId: string): Promise<void> {
   const sql = getSql();
-  await sql.run('UPDATE crm_channels SET config_json = NULL, is_active = 0 WHERE organization_id = ? AND channel_type = ?', [organizationId, CHANNEL_TYPE]);
+  await sql.run('UPDATE crm_channels SET config_json = NULL, is_active = FALSE WHERE organization_id = ? AND channel_type = ?', [organizationId, CHANNEL_TYPE]);
 }

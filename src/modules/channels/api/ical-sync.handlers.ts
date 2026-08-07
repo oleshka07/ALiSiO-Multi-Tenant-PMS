@@ -14,11 +14,11 @@ export async function syncIcal(request: NextRequest) {
 
     let channels: any[];
     if (channel_id) {
-      const ch = await sql.row<any>('SELECT * FROM ical_channels WHERE id = ? AND is_active = 1', [channel_id]) as any;
+      const ch = await sql.row<any>('SELECT * FROM ical_channels WHERE id = ? AND is_active = TRUE', [channel_id]) as any;
       if (!ch) return NextResponse.json({ error: 'Channel not found or inactive' }, { status: 404 });
       channels = [ch];
     } else {
-      channels = await sql.rows<any>('SELECT * FROM ical_channels WHERE is_active = 1 AND ical_url IS NOT NULL') as any[];
+      channels = await sql.rows<any>('SELECT * FROM ical_channels WHERE is_active = TRUE AND ical_url IS NOT NULL') as any[];
     }
 
     const results: any[] = [];

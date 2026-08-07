@@ -85,7 +85,7 @@ export async function findFreeResortUnit(
     LEFT JOIN buildings b ON b.id = u.building_id
     WHERE c.type = 'resort'
       AND u.unit_type_id = ?
-      AND u.is_active = 1
+      AND u.is_active = TRUE
       AND u.id NOT IN (
         SELECT unit_id FROM reservations
         WHERE status NOT IN ('cancelled', 'no_show')
@@ -138,7 +138,7 @@ export async function findFreeResortUnitByCapacity(
     JOIN unit_types ut ON ut.id = u.unit_type_id
     LEFT JOIN buildings b ON b.id = u.building_id
     WHERE c.type = 'resort'
-      AND u.is_active = 1
+      AND u.is_active = TRUE
       AND ${occExpr} = ?
       AND u.id NOT IN (
         SELECT unit_id FROM reservations
@@ -159,7 +159,7 @@ export async function findFreeResortUnitByCapacity(
     JOIN unit_types ut ON ut.id = u.unit_type_id
     LEFT JOIN buildings b ON b.id = u.building_id
     WHERE c.type = 'resort'
-      AND u.is_active = 1
+      AND u.is_active = TRUE
       AND ${occExpr} >= ?
       AND u.id NOT IN (
         SELECT unit_id FROM reservations
@@ -180,7 +180,7 @@ export async function findPoolUnit(): Promise<FreeUnit | null> {
     SELECT u.id, u.name, u.code, u.unit_type_id, b.code AS building_code
     FROM units u
     LEFT JOIN buildings b ON b.id = u.building_id
-    WHERE u.is_pool = 1
+    WHERE u.is_pool = TRUE
     ORDER BY u.name ASC
     LIMIT 1
   `) as any;

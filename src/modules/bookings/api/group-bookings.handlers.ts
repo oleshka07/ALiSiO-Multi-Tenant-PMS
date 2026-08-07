@@ -42,7 +42,7 @@ export async function createGroupBooking(request: NextRequest) {
     let finalUnitIds: string[] = unitIds || [];
 
     if (groupType === 'building' && buildingId) {
-      const buildingUnits = await sql.rows<any>('SELECT id FROM units WHERE building_id = ? AND is_active = 1 ORDER BY sort_order', [buildingId]) as { id: string }[];
+      const buildingUnits = await sql.rows<any>('SELECT id FROM units WHERE building_id = ? AND is_active = TRUE ORDER BY sort_order', [buildingId]) as { id: string }[];
       finalUnitIds = buildingUnits.map(u => u.id);
     }
 

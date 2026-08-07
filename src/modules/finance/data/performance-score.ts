@@ -52,7 +52,7 @@ export async function getAssetPerformanceScore(
   const invRows = await sql.rows<any>(`
     SELECT amount, target_apy, equity_pct
     FROM investor_investments
-    WHERE project_id = ? AND is_active = 1
+    WHERE project_id = ? AND is_active = TRUE
   `, [businessUnitId]) as Array<{ amount: number; target_apy: number | null; equity_pct: number | null }>;
 
   if (invRows.length === 0) {
@@ -117,7 +117,7 @@ export async function getPerformanceScoresForInvestor(
   const sql = getSql();
   const buIds = (await sql.rows<any>(`
     SELECT DISTINCT project_id FROM investor_investments
-    WHERE investor_id = ? AND is_active = 1 AND project_id IS NOT NULL
+    WHERE investor_id = ? AND is_active = TRUE AND project_id IS NOT NULL
   `, [investorId]) as Array<{ project_id: string }>).map((r) => r.project_id);
 
   const out = new Map<string, PerformanceScoreResult>();

@@ -13,7 +13,7 @@ export async function listRecurringTemplates(request: NextRequest): Promise<Next
     const sql = getSql();
     const orgId = await requireOrganizationId();
     const includeInactive = request.nextUrl.searchParams.get('archived') === '1';
-    const where = includeInactive ? 't.organization_id = ?' : 't.organization_id = ? AND t.is_active = 1';
+    const where = includeInactive ? 't.organization_id = ?' : 't.organization_id = ? AND t.is_active = TRUE';
     const rows = await sql.rows<any>(`
       SELECT t.*,
              afr.name AS account_from_name,

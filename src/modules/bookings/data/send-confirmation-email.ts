@@ -60,7 +60,7 @@ export async function sendBookingConfirmationEmail(reservationId: string, origin
       const siteRow = await sql.row<any>(`
         SELECT bs.widget_config FROM site_listings sl
         JOIN booking_sites bs ON sl.site_id = bs.id
-        WHERE sl.unit_id = ? AND sl.is_active = 1
+        WHERE sl.unit_id = ? AND sl.is_active = TRUE
         LIMIT 1
       `, [row.unit_id]) as any;
       if (siteRow?.widget_config) {

@@ -33,7 +33,7 @@ export async function getWidgetServices(request: NextRequest) {
     }
 
     if (serviceId && checkIn && checkOut) {
-      const service = await sql.row<any>('SELECT * FROM additional_services WHERE id = ? AND is_active = 1', [serviceId]) as any;
+      const service = await sql.row<any>('SELECT * FROM additional_services WHERE id = ? AND is_active = TRUE', [serviceId]) as any;
       if (!service) {
         return NextResponse.json({ error: 'Service not found' }, { status: 404, headers: CORS_HEADERS });
       }
@@ -58,7 +58,7 @@ export async function getWidgetServices(request: NextRequest) {
       }
 
       if (service.service_type === 'menu_selection' && existingTables.has('menu_items')) {
-        const items = await sql.rows<any>('SELECT * FROM menu_items WHERE service_id = ? AND is_available = 1 ORDER BY sort_order', [serviceId]) as any[];
+        const items = await sql.rows<any>('SELECT * FROM menu_items WHERE service_id = ? AND is_available = TRUE ORDER BY sort_order', [serviceId]) as any[];
         result.menuItems = items.map(item => ({
           id: item.id,
           name: item.name,
@@ -106,7 +106,7 @@ export async function getWidgetServices(request: NextRequest) {
                COALESCE(ss.is_enabled, 1) as is_enabled
         FROM additional_services s
         LEFT JOIN site_services ss ON ss.service_id = s.id AND ss.site_id = ?
-        WHERE s.is_active = 1 AND COALESCE(ss.is_enabled, 1) = 1
+        WHERE s.is_active = TRUE AND COALESCE(ss.is_enabled, 1) = 1
         ORDER BY COALESCE(ss.sort_order, s.sort_order), s.sort_order
       `, [siteId]) as any[];
 
@@ -120,7 +120,7 @@ export async function getWidgetServices(request: NextRequest) {
       // through available_for = 'glamping', one hotel's category name.
       services = await sql.rows<any>(`
         SELECT * FROM additional_services
-        WHERE is_active = 1 AND available_for = 'all'
+        WHERE is_active = TRUE AND available_for = 'all'
         ORDER BY sort_order
       `) as any[];
     }
@@ -182,7 +182,7 @@ export async function bookWidgetService(request: NextRequest) {
 
       let appliedPromo: string | null = null;
       if (couponCode) {
-        const offer = await sql.row<any>('SELECT * FROM coupons WHERE code = ? AND is_active = 1', [String(couponCode).toUpperCase().trim()]) as any;
+        const offer = await sql.row<any>('SELECT * FROM coupons WHERE code = ? AND is_active = TRUE', [String(couponCode).toUpperCase().trim()]) as any;
         if (offer) {
           let applicable = true;
           if (offer.applicable_services) {
@@ -343,7 +343,7 @@ export async function bookWidgetService(request: NextRequest) {
       const orderDetails: any[] = [];
 
       for (const item of items) {
-        const menuItem = await sql.row<any>('SELECT * FROM menu_items WHERE id = ? AND is_available = 1', [item.menuItemId]) as any;
+        const menuItem = await sql.row<any>('SELECT * FROM menu_items WHERE id = ? AND is_available = TRUE', [item.menuItemId]) as any;
         if (!menuItem) continue;
 
         const qty = item.quantity || 1;

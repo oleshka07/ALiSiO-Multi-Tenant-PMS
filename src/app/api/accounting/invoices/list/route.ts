@@ -51,7 +51,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
           WHEN i.notes LIKE 'airbnb:%'  THEN 'airbnb'
           WHEN i.notes LIKE 'booking:%' THEN 'booking'
           WHEN i.notes LIKE 'teya:%'    THEN 'teya'
-          WHEN i.is_custom = 1          THEN 'manual'
+          WHEN i.is_custom = TRUE          THEN 'manual'
           WHEN i.reservation_id IS NOT NULL THEN 'pms'
           ELSE 'manual'
         END as source,

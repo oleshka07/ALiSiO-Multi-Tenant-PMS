@@ -36,7 +36,7 @@ export async function processSyncQueue(): Promise<NextResponse> {
 
         const unitTypeId = job.unit_type_id;
         if (!unitTypeId) {
-          const mappings = await sql.rows<any>('SELECT DISTINCT unit_type_id FROM channel_room_mapping WHERE connection_id = ? AND is_active = 1', [job.connection_id]) as any[];
+          const mappings = await sql.rows<any>('SELECT DISTINCT unit_type_id FROM channel_room_mapping WHERE connection_id = ? AND is_active = TRUE', [job.connection_id]) as any[];
 
           let allSuccess = true;
           for (const m of mappings) {

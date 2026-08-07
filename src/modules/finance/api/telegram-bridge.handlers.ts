@@ -63,7 +63,7 @@ async function defaultCashAccountId(orgId: string, currency: string, recordedBy?
     const cleanName = recordedBy.trim();
     const userRow = await sql.row<any>(`
       SELECT id, name, default_cash_account_id FROM app_users
-      WHERE is_active = 1 AND (name LIKE ? OR first_name LIKE ? OR username LIKE ?)
+      WHERE is_active = TRUE AND (name LIKE ? OR first_name LIKE ? OR username LIKE ?)
       LIMIT 1
     `, [`%${cleanName}%`, `%${cleanName}%`, `%${cleanName}%`]) as { id: string; name: string; default_cash_account_id: string | null } | undefined;
 
@@ -71,7 +71,7 @@ async function defaultCashAccountId(orgId: string, currency: string, recordedBy?
       actorUser = { id: userRow.id, name: userRow.name };
       if (userRow.default_cash_account_id) {
         const acct = await sql.row<any>(`
-          SELECT id FROM finance_accounts WHERE id = ? AND is_active = 1
+          SELECT id FROM finance_accounts WHERE id = ? AND is_active = TRUE
         `, [userRow.default_cash_account_id]) as { id: string } | undefined;
         if (acct) return { accountId: acct.id, actorUser };
       }
@@ -80,7 +80,7 @@ async function defaultCashAccountId(orgId: string, currency: string, recordedBy?
 
   const row = await sql.row<any>(`
     SELECT id FROM finance_accounts
-    WHERE organization_id = ? AND currency = ? AND is_active = 1
+    WHERE organization_id = ? AND currency = ? AND is_active = TRUE
       AND type IN ('cash', 'bank')
     ORDER BY (type = 'cash') DESC, sort_order ASC, created_at ASC
     LIMIT 1
@@ -270,7 +270,7 @@ export async function listTelegramCategories(request: NextRequest): Promise<Next
     const sp = request.nextUrl.searchParams;
     const opType = sp.get('op_type'); // 'income' | 'expense'
 
-    const where = ['organization_id = ?', 'is_active = 1'];
+    const where = ['organization_id = ?', 'is_active = TRUE'];
     const params: any[] = [orgId];
     if (opType && ['income', 'expense'].includes(opType)) {
       where.push('(op_type = ? OR op_type IS NULL)');
@@ -286,13 +286,13 @@ export async function listTelegramCategories(request: NextRequest): Promise<Next
 
     const projects = await sql.rows<any>(`
       SELECT id, name FROM business_units
-      WHERE organization_id = ? AND is_active = 1
+      WHERE organization_id = ? AND is_active = TRUE
       ORDER BY sort_order, name
     `, [orgId]);
 
     const accounts = await sql.rows<any>(`
       SELECT id, name, type, currency FROM finance_accounts
-      WHERE organization_id = ? AND is_active = 1
+      WHERE organization_id = ? AND is_active = TRUE
       ORDER BY sort_order, name
     `, [orgId]);
 
@@ -319,7 +319,7 @@ export async function listTelegramAccounts(request: NextRequest): Promise<NextRe
     const accounts = await sql.rows<any>(`
       SELECT id, name, type, currency, initial_balance
       FROM finance_accounts
-      WHERE organization_id = ? AND is_active = 1
+      WHERE organization_id = ? AND is_active = TRUE
       ORDER BY sort_order, name
     `, [orgId]);
 
@@ -345,7 +345,7 @@ export async function listTelegramServices(request: NextRequest): Promise<NextRe
     const services = await sql.rows<any>(`
       SELECT id, name, name_en, icon, price, currency, service_type
       FROM additional_services
-      WHERE is_active = 1
+      WHERE is_active = TRUE
       ORDER BY sort_order
     `);
 

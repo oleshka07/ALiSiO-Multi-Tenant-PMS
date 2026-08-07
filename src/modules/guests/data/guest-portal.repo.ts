@@ -95,7 +95,7 @@ export async function getPropertyPhotos(propertyId: string) {
 
 export async function getAvailableServices(propertyId: string, categoryType: string) {
   const sql = getSql();
-  return await sql.rows<any>("SELECT * FROM additional_services WHERE property_id = ? AND is_active = 1 AND (available_for = 'all' OR available_for = ?) ORDER BY sort_order", [propertyId, categoryType]);
+  return await sql.rows<any>("SELECT * FROM additional_services WHERE property_id = ? AND is_active = TRUE AND (available_for = 'all' OR available_for = ?) ORDER BY sort_order", [propertyId, categoryType]);
 }
 
 export async function getOrderedServices(reservationId: string) {

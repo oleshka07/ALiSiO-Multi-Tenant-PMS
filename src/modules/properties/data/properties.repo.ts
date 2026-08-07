@@ -21,8 +21,8 @@ export async function listProperties(organizationId: string) {
       p.*,
       (SELECT COUNT(*) FROM categories c WHERE c.property_id = p.id) as category_count,
       (SELECT COUNT(*) FROM buildings b WHERE b.property_id = p.id) as building_count,
-      (SELECT COUNT(*) FROM units u WHERE u.property_id = p.id AND u.is_active = 1) as unit_count,
-      (SELECT COUNT(*) FROM unit_types ut WHERE ut.property_id = p.id AND ut.is_active = 1) as unit_type_count
+      (SELECT COUNT(*) FROM units u WHERE u.property_id = p.id AND u.is_active = TRUE) as unit_count,
+      (SELECT COUNT(*) FROM unit_types ut WHERE ut.property_id = p.id AND ut.is_active = TRUE) as unit_type_count
     FROM properties p
     WHERE p.organization_id = ?
     ORDER BY p.created_at
@@ -46,7 +46,7 @@ export async function getPropertyById(organizationId: string, id: string) {
   const categories = await sql.rows<any>(`
     SELECT c.*, COUNT(u.id) as unit_count
     FROM categories c
-    LEFT JOIN units u ON u.category_id = c.id AND u.is_active = 1
+    LEFT JOIN units u ON u.category_id = c.id AND u.is_active = TRUE
     WHERE c.property_id = ?
     GROUP BY c.id
     ORDER BY c.sort_order
@@ -55,7 +55,7 @@ export async function getPropertyById(organizationId: string, id: string) {
   const buildings = await sql.rows<any>(`
     SELECT b.*, COUNT(u.id) as unit_count
     FROM buildings b
-    LEFT JOIN units u ON u.building_id = b.id AND u.is_active = 1
+    LEFT JOIN units u ON u.building_id = b.id AND u.is_active = TRUE
     WHERE b.property_id = ?
     GROUP BY b.id
     ORDER BY b.sort_order
@@ -64,8 +64,8 @@ export async function getPropertyById(organizationId: string, id: string) {
   const unitTypes = await sql.rows<any>(`
     SELECT ut.*, COUNT(u.id) as unit_count
     FROM unit_types ut
-    LEFT JOIN units u ON u.unit_type_id = ut.id AND u.is_active = 1
-    WHERE ut.property_id = ? AND ut.is_active = 1
+    LEFT JOIN units u ON u.unit_type_id = ut.id AND u.is_active = TRUE
+    WHERE ut.property_id = ? AND ut.is_active = TRUE
     GROUP BY ut.id
     ORDER BY ut.sort_order
   `, [id]);

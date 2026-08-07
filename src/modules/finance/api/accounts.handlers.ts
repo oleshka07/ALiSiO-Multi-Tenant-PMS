@@ -8,7 +8,7 @@ const ALLOWED_TYPES = ['cash', 'bank', 'card', 'investment', 'clearing', 'other'
 
 async function selectAccountsWithBalance(orgId: string, opts: { includeArchived?: boolean } = {}): Promise<any[]> {
   const sql = getSql();
-  const where = opts.includeArchived ? 'WHERE fa.organization_id = ?' : 'WHERE fa.organization_id = ? AND fa.is_active = 1';
+  const where = opts.includeArchived ? 'WHERE fa.organization_id = ?' : 'WHERE fa.organization_id = ? AND fa.is_active = TRUE';
   return await sql.rows<any>(`
     SELECT
       fa.*,

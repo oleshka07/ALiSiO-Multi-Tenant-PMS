@@ -20,7 +20,7 @@ export function listUnits(organizationId: string, filters: { category?: string; 
     JOIN categories c ON u.category_id = c.id
     JOIN unit_types ut ON u.unit_type_id = ut.id
     LEFT JOIN buildings b ON u.building_id = b.id
-    WHERE u.is_active = 1 AND ${propertyScopeSql('u')}
+    WHERE u.is_active = TRUE AND ${propertyScopeSql('u')}
   `;
 
   const params: string[] = [organizationId];
@@ -28,7 +28,7 @@ export function listUnits(organizationId: string, filters: { category?: string; 
   // Pool/staging units never show up as bookable rooms. The room-allocation
   // modal opts in via includePool=true.
   if (!filters.includePool) {
-    query += ' AND (u.is_pool IS NULL OR u.is_pool = 0)';
+    query += ' AND (u.is_pool IS NULL OR u.is_pool = FALSE)';
   }
 
   if (filters.category) {

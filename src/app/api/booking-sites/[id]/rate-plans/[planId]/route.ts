@@ -20,7 +20,7 @@ export async function PATCH(
     if (!plan) return NextResponse.json({ error: 'Rate plan not found' }, { status: 404 });
 
     if (body.is_default) {
-      await sql.run('UPDATE site_rate_plans SET is_default = 0 WHERE site_id = ?', [id]);
+      await sql.run('UPDATE site_rate_plans SET is_default = FALSE WHERE site_id = ?', [id]);
     }
 
     const jsonFields = ['payment_schedule', 'meals_included', 'applied_listings', 'valid_weekdays'];
@@ -82,7 +82,7 @@ export async function DELETE(
     const plan = await sql.row<any>('SELECT id FROM site_rate_plans WHERE id = ? AND site_id = ?', [planId, id]);
     if (!plan) return NextResponse.json({ error: 'Rate plan not found' }, { status: 404 });
 
-    await sql.run("UPDATE site_rate_plans SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [planId]);
+    await sql.run("UPDATE site_rate_plans SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [planId]);
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('DELETE rate-plan error:', error?.message);

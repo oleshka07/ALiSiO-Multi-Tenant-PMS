@@ -82,7 +82,7 @@ export async function lockPeriod(sql: Sql, organizationId: string, series: strin
       "ON CONFLICT(organization_id, series, month) DO UPDATE SET status = 'locked', locked_at = CURRENT_TIMESTAMP",
       [organizationId, series, month],
     );
-    await t.run("UPDATE invoices SET locked = 1 WHERE organization_id = ? AND series = ? AND substr(COALESCE(period, issued_at), 1, 7) = ?", [organizationId, series, month]);
+    await t.run("UPDATE invoices SET locked = TRUE WHERE organization_id = ? AND series = ? AND substr(COALESCE(period, issued_at), 1, 7) = ?", [organizationId, series, month]);
   });
 }
 
@@ -94,7 +94,7 @@ export async function unlockPeriod(sql: Sql, organizationId: string, series: str
       "ON CONFLICT(organization_id, series, month) DO UPDATE SET status = 'open', locked_at = NULL",
       [organizationId, series, month],
     );
-    await t.run("UPDATE invoices SET locked = 0 WHERE organization_id = ? AND series = ? AND substr(COALESCE(period, issued_at), 1, 7) = ?", [organizationId, series, month]);
+    await t.run("UPDATE invoices SET locked = FALSE WHERE organization_id = ? AND series = ? AND substr(COALESCE(period, issued_at), 1, 7) = ?", [organizationId, series, month]);
   });
 }
 

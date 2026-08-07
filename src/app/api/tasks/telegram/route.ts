@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
     const sql = getSql();
     const user = await sql.row<{ id: string }>(
-      "SELECT id FROM app_users WHERE telegram_chat_id = ? AND is_active = 1",
+      "SELECT id FROM app_users WHERE telegram_chat_id = ? AND is_active = TRUE",
       [chatId]
     );
 

@@ -53,7 +53,7 @@ export async function getWidgetSiteConfig(req: NextRequest) {
         SELECT MAX(ut.max_adults) as maxA, MAX(ut.max_children) as maxC
         FROM site_listings sl
         JOIN unit_types ut ON sl.unit_type_id = ut.id
-        WHERE sl.site_id = ? AND sl.is_active = 1
+        WHERE sl.site_id = ? AND sl.is_active = TRUE
       `, [site.id]) as any;
       if (maxCap && maxCap.maxA) maxAdults = maxCap.maxA;
       if (maxCap && maxCap.maxC) maxChildren = maxCap.maxC;

@@ -67,7 +67,7 @@ export async function getPnl2(request: NextRequest): Promise<NextResponse> {
 
     const originalBus = await sql.rows<any>(`
       SELECT id, name FROM business_units
-      WHERE is_active = 1 AND is_shared = 0 AND name != 'На перегляд' AND organization_id = ?
+      WHERE is_active = TRUE AND is_shared = FALSE AND name != 'На перегляд' AND organization_id = ?
       ORDER BY sort_order
     `, [org]) as any[];
 

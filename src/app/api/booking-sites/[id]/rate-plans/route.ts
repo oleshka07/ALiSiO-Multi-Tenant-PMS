@@ -17,7 +17,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const plans = await sql.rows<any>(`
       SELECT * FROM site_rate_plans
-      WHERE site_id = ? AND is_active = 1
+      WHERE site_id = ? AND is_active = TRUE
       ORDER BY is_default DESC, created_at ASC
     `, [id]);
 
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     if (is_default) {
-      await sql.run('UPDATE site_rate_plans SET is_default = 0 WHERE site_id = ?', [id]);
+      await sql.run('UPDATE site_rate_plans SET is_default = FALSE WHERE site_id = ?', [id]);
     }
 
     // Normalise legacy 'derived' value → 'dependent' (DB CHECK constraint)

@@ -204,7 +204,7 @@ export async function upsertMapping(
     await sql.run(`
       UPDATE channel_room_mapping
       SET external_room_type_id = ?, external_rate_plan_id = ?,
-        is_active = 1, updated_at = CURRENT_TIMESTAMP
+        is_active = TRUE, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [input.external_room_type_id || '', input.external_rate_plan_id || '', existing.id]);
     return { id: existing.id, created: false };

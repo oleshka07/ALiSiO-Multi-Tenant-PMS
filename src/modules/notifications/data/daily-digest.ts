@@ -198,10 +198,10 @@ async function getBookingsDigest(organizationId: string): Promise<BookingsDigest
     JOIN units u ON u.id = r.unit_id
     WHERE r.check_in <= ? AND r.check_out > ?
       AND r.status NOT IN ('cancelled', 'no_show', 'draft')
-      AND u.is_pool = 0
+      AND u.is_pool = FALSE
   `, [today, today]) as any).cnt;
 
-  const totalUnits = (await sql.row<any>(`SELECT COUNT(*) as cnt FROM units WHERE ${OWN()} AND is_active = 1 AND is_pool = 0`, [organizationId]) as any)?.cnt || (await sql.row<any>(`SELECT COUNT(*) as cnt FROM units WHERE ${OWN()} AND is_pool = 0`, [organizationId]) as any).cnt;
+  const totalUnits = (await sql.row<any>(`SELECT COUNT(*) as cnt FROM units WHERE ${OWN()} AND is_active = TRUE AND is_pool = FALSE`, [organizationId]) as any)?.cnt || (await sql.row<any>(`SELECT COUNT(*) as cnt FROM units WHERE ${OWN()} AND is_pool = FALSE`, [organizationId]) as any).cnt;
 
   // Group check-ins by category
   const catGroupToday: Record<string, number> = {};
@@ -265,7 +265,7 @@ async function getDetailedBreakdown(organizationId: string): Promise<BuBreakdown
   // Get active business units
   const bus = await sql.rows<any>(`
     SELECT id, name FROM business_units
-    WHERE organization_id = ? AND is_active = 1 AND is_shared = 0
+    WHERE organization_id = ? AND is_active = TRUE AND is_shared = FALSE
     ORDER BY sort_order
   `, [organizationId]) as any[];
 

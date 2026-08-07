@@ -56,7 +56,7 @@ export async function getWidgetCalendar(request: NextRequest) {
       if (ratePlanId) {
         activeRatePlan = await sql.row<any>('SELECT * FROM site_rate_plans WHERE id = ? AND site_id = ?', [ratePlanId, siteIdObj]);
       } else {
-        activeRatePlan = await sql.row<any>('SELECT * FROM site_rate_plans WHERE is_default = 1 AND site_id = ? LIMIT 1', [siteIdObj]);
+        activeRatePlan = await sql.row<any>('SELECT * FROM site_rate_plans WHERE is_default = TRUE AND site_id = ? LIMIT 1', [siteIdObj]);
       }
     }
 
@@ -81,7 +81,7 @@ export async function getWidgetCalendar(request: NextRequest) {
     }
 
     if (!property && propertyId) {
-      property = await sql.row<any>('SELECT id FROM properties WHERE id = ? AND is_active = 1', [propertyId]);
+      property = await sql.row<any>('SELECT id FROM properties WHERE id = ? AND is_active = TRUE', [propertyId]);
     }
 
     if (!property) {
@@ -114,11 +114,11 @@ export async function getWidgetCalendar(request: NextRequest) {
     // ── 5. Total unit count ─────────────────────────────────────────────────
     let totalCount = 0;
     if (targetUnitId) {
-      const row = await sql.row<any>('SELECT COUNT(*) as cnt FROM units WHERE id = ? AND is_active = 1', [targetUnitId]) as any;
+      const row = await sql.row<any>('SELECT COUNT(*) as cnt FROM units WHERE id = ? AND is_active = TRUE', [targetUnitId]) as any;
       totalCount = row?.cnt || 0;
     } else if (siteUnitIds && siteUnitIds.length > 0) {
       const ph  = siteUnitIds.map(() => '?').join(',');
-      const row = await sql.row<any>(`SELECT COUNT(*) as cnt FROM units WHERE id IN (${ph}) AND is_active = 1`, [...siteUnitIds]) as any;
+      const row = await sql.row<any>(`SELECT COUNT(*) as cnt FROM units WHERE id IN (${ph}) AND is_active = TRUE`, [...siteUnitIds]) as any;
       totalCount = row?.cnt || 0;
     } else {
       // Fallback: every bookable unit in the property. Filtering to one
@@ -127,7 +127,7 @@ export async function getWidgetCalendar(request: NextRequest) {
       const row = await sql.row<any>(`
         SELECT COUNT(*) as cnt FROM units u
         JOIN unit_types ut ON u.unit_type_id = ut.id
-        WHERE u.is_active = 1 AND u.room_status = 'available' AND ut.property_id = ?
+        WHERE u.is_active = TRUE AND u.room_status = 'available' AND ut.property_id = ?
       `, [property.id]) as any;
       totalCount = row?.cnt || 0;
     }
@@ -188,7 +188,7 @@ export async function getWidgetCalendar(request: NextRequest) {
     // ── 8. Price map (optional) ─────────────────────────────────────────────
     const unitTypes = await sql.rows<any>(`
       SELECT ut.id FROM unit_types ut
-      WHERE ut.is_active = 1 AND ut.property_id = ?
+      WHERE ut.is_active = TRUE AND ut.property_id = ?
     `, [property.id]) as any[];
 
     const priceMap = new Map<string, any>();

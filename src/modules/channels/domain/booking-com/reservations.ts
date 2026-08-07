@@ -359,7 +359,7 @@ async function findMatchingUnit(connectionId: string, res: OTAReservation): Prom
   // Find unit type via room mapping
   const mapping = await sql.row<any>(`
     SELECT unit_type_id FROM channel_room_mapping
-    WHERE connection_id = ? AND external_room_type_id = ? AND is_active = 1
+    WHERE connection_id = ? AND external_room_type_id = ? AND is_active = TRUE
   `, [connectionId, res.roomTypeCode]) as any;
 
   if (!mapping) return null;

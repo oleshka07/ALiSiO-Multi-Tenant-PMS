@@ -52,7 +52,7 @@ function safeJsonParse(s: string | null, fallback: any): any {
  */
 export async function isFinanceUserEnabled(userId: string): Promise<boolean> {
   const sql = getSql();
-  const row = await sql.row<any>('SELECT 1 FROM finance_user_access WHERE user_id = ? AND is_enabled = 1', [userId]);
+  const row = await sql.row<any>('SELECT 1 FROM finance_user_access WHERE user_id = ? AND is_enabled = TRUE', [userId]);
   return !!row;
 }
 

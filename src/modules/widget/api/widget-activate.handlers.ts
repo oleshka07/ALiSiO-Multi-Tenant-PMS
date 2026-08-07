@@ -25,11 +25,11 @@ export async function validatePromo(request: NextRequest) {
     }
 
     const sql = getSql();
-    let offer = await sql.row<any>('SELECT * FROM coupons WHERE code = ? AND is_active = 1', [code]) as any;
+    let offer = await sql.row<any>('SELECT * FROM coupons WHERE code = ? AND is_active = TRUE', [code]) as any;
     let isBundle = false;
 
     if (!offer) {
-      offer = await sql.row<any>('SELECT * FROM gift_card_bundles WHERE coupon_code = ? AND is_active = 1', [code]) as any;
+      offer = await sql.row<any>('SELECT * FROM gift_card_bundles WHERE coupon_code = ? AND is_active = TRUE', [code]) as any;
       if (offer) isBundle = true;
     }
 

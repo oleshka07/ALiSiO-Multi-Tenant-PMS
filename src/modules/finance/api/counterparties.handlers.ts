@@ -78,7 +78,7 @@ export async function listCounterparties(request: NextRequest): Promise<NextResp
 
     const where: string[] = ['organization_id = ?'];
     const params: any[] = [orgId];
-    if (!includeArchived) where.push('is_active = 1');
+    if (!includeArchived) where.push('is_active = TRUE');
     if (kind && KINDS.includes(kind as Kind)) { where.push('kind = ?'); params.push(kind); }
     if (search) { where.push('name LIKE ?'); params.push(`%${search}%`); }
 
@@ -98,7 +98,7 @@ export async function getCounterpartyTree(request: NextRequest): Promise<NextRes
     const sql = getSql();
     const orgId = await getOrgId();
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
-    const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = 1';
+    const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = TRUE';
 
     const rows = await sql.rows<any>(`
       SELECT * FROM finance_counterparties
@@ -256,7 +256,7 @@ export async function archiveCounterparty(
 
     await sql.run("UPDATE finance_counterparties SET is_active = ? WHERE id = ?", [archived ? 0 : 1, id]);
     if (archived) {
-      await sql.run("UPDATE finance_counterparties SET is_active = 0 WHERE parent_id = ?", [id]);
+      await sql.run("UPDATE finance_counterparties SET is_active = FALSE WHERE parent_id = ?", [id]);
     }
 
     const updated = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow;
@@ -357,7 +357,7 @@ export async function getAliasSuggestions(_request: NextRequest): Promise<NextRe
     }
 
     const usedAliases = new Set<string>();
-    const cpRows = await sql.rows<any>("SELECT aliases_json FROM finance_counterparties WHERE organization_id = ? AND is_active = 1", [orgId]) as { aliases_json: string }[];
+    const cpRows = await sql.rows<any>("SELECT aliases_json FROM finance_counterparties WHERE organization_id = ? AND is_active = TRUE", [orgId]) as { aliases_json: string }[];
     for (const cp of cpRows) {
       for (const a of parseAliases(cp.aliases_json)) usedAliases.add(a);
     }

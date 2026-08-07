@@ -19,7 +19,7 @@ export async function listCategories(organizationId: string) {
       c.show_in_tasks, c.show_in_finance, c.show_in_booking,
       COUNT(u.id) as unit_count
     FROM categories c
-    LEFT JOIN units u ON u.category_id = c.id AND u.is_active = 1
+    LEFT JOIN units u ON u.category_id = c.id AND u.is_active = TRUE
     WHERE ${propertyScopeSql('c')}
     GROUP BY c.id
     ORDER BY c.sort_order

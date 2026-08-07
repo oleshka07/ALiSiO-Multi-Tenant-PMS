@@ -46,7 +46,7 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { id } = await ctx.params;
     const sql = getSql();
-    await sql.run(`UPDATE gift_card_bundles SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
+    await sql.run(`UPDATE gift_card_bundles SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 });

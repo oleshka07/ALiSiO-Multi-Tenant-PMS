@@ -14,7 +14,7 @@ export function listBuildings(organizationId: string, filters: { property_id?: s
       COUNT(u.id) as unit_count
     FROM buildings b
     JOIN categories c ON b.category_id = c.id
-    LEFT JOIN units u ON u.building_id = b.id AND u.is_active = 1
+    LEFT JOIN units u ON u.building_id = b.id AND u.is_active = TRUE
     WHERE ${propertyScopeSql('b')}
   `;
 

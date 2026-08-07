@@ -73,7 +73,7 @@ export async function getReservationForPay(token: string) {
 
 export async function getServiceForProperty(serviceId: string, propertyId: string) {
   const sql = getSql();
-  return await sql.row<any>('SELECT * FROM additional_services WHERE id = ? AND property_id = ? AND is_active = 1', [serviceId, propertyId]) as any;
+  return await sql.row<any>('SELECT * FROM additional_services WHERE id = ? AND property_id = ? AND is_active = TRUE', [serviceId, propertyId]) as any;
 }
 
 export async function createPendingServiceOrder(
@@ -198,5 +198,5 @@ export async function getServicesForCart(serviceIds: string[], propertyId: strin
   if (!serviceIds.length) return [];
   const placeholders = serviceIds.map(() => '?').join(',');
   return await sql.rows<any>(`SELECT id, name, name_en, price, currency, icon FROM additional_services
-     WHERE id IN (${placeholders}) AND property_id = ? AND is_active = 1`, [...serviceIds, propertyId]) as any[];
+     WHERE id IN (${placeholders}) AND property_id = ? AND is_active = TRUE`, [...serviceIds, propertyId]) as any[];
 }

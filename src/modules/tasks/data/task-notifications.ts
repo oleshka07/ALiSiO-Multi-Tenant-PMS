@@ -221,7 +221,7 @@ export async function sendDailyTaskDigest(userId: string): Promise<boolean> {
  */
 export async function sendDailyTaskDigestAll(): Promise<{ sent: number; skipped: number }> {
   const sql = getSql();
-  const users = await sql.rows<any>("SELECT id FROM app_users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != '' AND is_active = 1") as { id: string }[];
+  const users = await sql.rows<any>("SELECT id FROM app_users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != '' AND is_active = TRUE") as { id: string }[];
 
   let sent = 0, skipped = 0;
   for (const u of users) {

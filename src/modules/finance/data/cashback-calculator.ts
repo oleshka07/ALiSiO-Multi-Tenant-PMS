@@ -193,7 +193,7 @@ export async function computeAggregatePortfolioCashback(
   asOfDate?: string,
 ): Promise<CashbackStatus> {
   const sql = getSql();
-  const investmentIds = (await sql.rows<any>("SELECT id FROM investor_investments WHERE investor_id = ? AND is_active = 1", [investorId]) as Array<{ id: string }>).map((r) => r.id);
+  const investmentIds = (await sql.rows<any>("SELECT id FROM investor_investments WHERE investor_id = ? AND is_active = TRUE", [investorId]) as Array<{ id: string }>).map((r) => r.id);
 
   if (investmentIds.length === 0) {
     return {

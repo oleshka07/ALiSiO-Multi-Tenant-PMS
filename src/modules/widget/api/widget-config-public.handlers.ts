@@ -29,7 +29,7 @@ export async function getWidgetConfig(request: NextRequest) {
         { status: 400, headers: CORS_HEADERS },
       );
     }
-    const property = await sql.row<any>('SELECT * FROM properties WHERE id = ? AND is_active = 1', [propertyId]) as any;
+    const property = await sql.row<any>('SELECT * FROM properties WHERE id = ? AND is_active = TRUE', [propertyId]) as any;
 
     if (!property) {
       return NextResponse.json({ error: 'Property not found' }, { status: 404, headers: CORS_HEADERS });
@@ -44,7 +44,7 @@ export async function getWidgetConfig(request: NextRequest) {
              ut.max_adults, ut.max_children, ut.max_occupancy, ut.base_occupancy,
              ut.beds_single, ut.beds_double, ut.beds_sofa
       FROM unit_types ut
-      WHERE ut.is_active = 1 AND ut.property_id = ?
+      WHERE ut.is_active = TRUE AND ut.property_id = ?
       ORDER BY ut.sort_order
     `, [property.id]) as any[];
 
@@ -73,7 +73,7 @@ export async function getWidgetConfig(request: NextRequest) {
       for (const ut of unitTypes) {
         const allUnits = await sql.rows<any>(`
           SELECT u.id FROM units u
-          WHERE u.unit_type_id = ? AND u.is_active = 1 AND u.room_status = 'available'
+          WHERE u.unit_type_id = ? AND u.is_active = TRUE AND u.room_status = 'available'
         `, [ut.id]) as any[];
 
         const bookedUnitIds = await sql.rows<any>(`
@@ -148,7 +148,7 @@ export async function getWidgetConfig(request: NextRequest) {
       widgetServices = await sql.rows<any>(`
         SELECT id, name, name_en, description, price, currency, unit_label, icon, category, available_for
         FROM additional_services
-        WHERE property_id = ? AND is_active = 1 AND available_in_widget = 1
+        WHERE property_id = ? AND is_active = TRUE AND available_in_widget = 1
         ORDER BY sort_order
       `, [property.id]);
     } catch { /* table may not exist yet */ }

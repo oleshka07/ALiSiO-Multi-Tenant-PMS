@@ -7,7 +7,7 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 export async function listExpenseCategories(): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const categories = await sql.rows<any>(`SELECT * FROM expense_categories WHERE is_active = 1 ORDER BY sort_order ASC`);
+    const categories = await sql.rows<any>(`SELECT * FROM expense_categories WHERE is_active = TRUE ORDER BY sort_order ASC`);
     return NextResponse.json(categories);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

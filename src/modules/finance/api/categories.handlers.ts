@@ -55,7 +55,7 @@ export async function listCategories(request: NextRequest): Promise<NextResponse
 
     const where: string[] = ['organization_id = ?'];
     const params: any[] = [orgId];
-    if (!includeArchived) where.push('is_active = 1');
+    if (!includeArchived) where.push('is_active = TRUE');
     if (opType) { where.push('op_type = ?'); params.push(opType); }
 
     const rows = await sql.rows<any>(`
@@ -75,7 +75,7 @@ export async function getCategoryTree(request: NextRequest): Promise<NextRespons
     const orgId = await requireOrganizationId();
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
 
-    const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = 1';
+    const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = TRUE';
     const rows = await sql.rows<any>(`
       SELECT * FROM expense_categories
       WHERE ${where}
@@ -250,7 +250,7 @@ export async function archiveCategory(
     await sql.run("UPDATE expense_categories SET is_active = ? WHERE id = ?", [archived ? 0 : 1, id]);
     if (archived) {
       // Cascade archive children when archiving a root
-      await sql.run("UPDATE expense_categories SET is_active = 0 WHERE parent_id = ?", [id]);
+      await sql.run("UPDATE expense_categories SET is_active = FALSE WHERE parent_id = ?", [id]);
     }
 
     const updated = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [id]);

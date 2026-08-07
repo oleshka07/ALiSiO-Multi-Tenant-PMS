@@ -149,10 +149,10 @@ export async function getRegistrySummary(organizationId: string, filters: { mont
     SELECT
       COUNT(*) as totalGuests,
       SUM(CASE WHEN rg.nationality IS NOT NULL AND rg.nationality != 'CZ' THEN 1 ELSE 0 END) as foreigners,
-      SUM(CASE WHEN rg.police_reported = 1 THEN 1 ELSE 0 END) as registeredPolice,
+      SUM(CASE WHEN rg.police_reported = TRUE THEN 1 ELSE 0 END) as registeredPolice,
       SUM(CASE WHEN COALESCE(rg.police_reported, 0) = 0 AND rg.nationality IS NOT NULL AND rg.nationality != 'CZ' THEN 1 ELSE 0 END) as unregisteredPolice,
       SUM(CASE WHEN COALESCE(rg.fee_exempt, 0) = 1 THEN 0 ELSE r.nights * p.city_tax_per_night END) as totalFees,
-      SUM(CASE WHEN rg.fee_exempt = 1 THEN 1 ELSE 0 END) as exemptGuests
+      SUM(CASE WHEN rg.fee_exempt = TRUE THEN 1 ELSE 0 END) as exemptGuests
     FROM reservation_guests rg
     JOIN reservations r ON rg.reservation_id = r.id
     JOIN properties p ON r.property_id = p.id
@@ -196,7 +196,7 @@ export async function markPoliceReported(organizationId: string, id: string, ref
   if (!await owns(organizationId, id)) return false;
   await sql.run(`
     UPDATE reservation_guests
-    SET police_reported = 1,
+    SET police_reported = TRUE,
         police_reported_at = CURRENT_TIMESTAMP,
         police_report_ref = ?
     WHERE id = ?
@@ -209,7 +209,7 @@ export async function unmarkPoliceReported(organizationId: string, id: string): 
   if (!await owns(organizationId, id)) return false;
   await sql.run(`
     UPDATE reservation_guests
-    SET police_reported = 0,
+    SET police_reported = FALSE,
         police_reported_at = NULL,
         police_report_ref = NULL
     WHERE id = ?
@@ -259,13 +259,13 @@ export async function calculateFees(organizationId: string, month: string, feePe
 export async function hideRegistryEntry(organizationId: string, id: string): Promise<boolean> {
   const sql = getSql();
   if (!await owns(organizationId, id)) return false;
-  await sql.run('UPDATE reservation_guests SET is_hidden = 1 WHERE id = ?', [id]);
+  await sql.run('UPDATE reservation_guests SET is_hidden = TRUE WHERE id = ?', [id]);
   return true;
 }
 
 export async function unhideRegistryEntry(organizationId: string, id: string): Promise<boolean> {
   const sql = getSql();
   if (!await owns(organizationId, id)) return false;
-  await sql.run('UPDATE reservation_guests SET is_hidden = 0 WHERE id = ?', [id]);
+  await sql.run('UPDATE reservation_guests SET is_hidden = FALSE WHERE id = ?', [id]);
   return true;
 }

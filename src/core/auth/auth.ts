@@ -69,7 +69,7 @@ export async function getSessionUser(sessionId: string | undefined): Promise<Ses
     FROM sessions s
     JOIN app_users u ON u.id = s.user_id
     LEFT JOIN organizations o ON o.id = u.organization_id
-    WHERE s.id = ? AND s.expires_at > CURRENT_TIMESTAMP AND u.is_active = 1
+    WHERE s.id = ? AND s.expires_at > CURRENT_TIMESTAMP AND u.is_active = TRUE
   `, [sessionId]);
 
   if (!row) return null;

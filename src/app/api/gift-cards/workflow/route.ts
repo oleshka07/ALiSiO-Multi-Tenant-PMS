@@ -173,7 +173,7 @@ export async function DELETE(req: NextRequest) {
     if (!ruleId) return NextResponse.json({ error: 'rule_id required' }, { status: 400 });
 
     // Не видаляти вже використані коди — лише деактивувати
-    await sql.run(`UPDATE coupons SET is_active = 0 WHERE gift_card_rule_id = ? AND current_uses = 0`, [ruleId]);
+    await sql.run(`UPDATE coupons SET is_active = FALSE WHERE gift_card_rule_id = ? AND current_uses = 0`, [ruleId]);
     await sql.run(`DELETE FROM gift_card_automation_rules WHERE id = ?`, [ruleId]);
 
     return NextResponse.json({ ok: true });

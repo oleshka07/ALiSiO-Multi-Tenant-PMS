@@ -133,7 +133,7 @@ async function findCounterpartyByText(orgId: string, text: string): Promise<stri
   const haystack = text.toUpperCase();
   const rows = await sql.rows<any>(`
     SELECT id, aliases_json, sort_order FROM finance_counterparties
-    WHERE organization_id = ? AND is_active = 1
+    WHERE organization_id = ? AND is_active = TRUE
   `, [orgId]) as { id: string; aliases_json: string; sort_order: number }[];
   let best: { id: string; len: number; sort: number } | null = null;
   for (const r of rows) {
@@ -216,7 +216,7 @@ export async function loadActiveRules(orgId: string): Promise<ParsedRule[]> {
   const sql = getSql();
   const rows = await sql.rows<any>(`
     SELECT * FROM fin_auto_rules
-    WHERE organization_id = ? AND is_active = 1
+    WHERE organization_id = ? AND is_active = TRUE
     ORDER BY sort_order ASC, created_at ASC
   `, [orgId]) as AutoRuleRow[];
   return rows.map(parseRule);

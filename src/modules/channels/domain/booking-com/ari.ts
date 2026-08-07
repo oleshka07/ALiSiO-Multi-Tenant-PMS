@@ -159,7 +159,7 @@ export async function buildARIFromPriceCalendar(
   const mapping = await sql.row<any>(`
     SELECT external_room_type_id, external_rate_plan_id
     FROM channel_room_mapping
-    WHERE connection_id = ? AND unit_type_id = ? AND is_active = 1
+    WHERE connection_id = ? AND unit_type_id = ? AND is_active = TRUE
   `, [connectionId, unitTypeId]) as any;
 
   if (!mapping || !mapping.external_room_type_id) {

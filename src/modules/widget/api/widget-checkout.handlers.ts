@@ -112,7 +112,7 @@ export async function createWidgetCheckoutSession(req: Request) {
       // Apply Coupon code discount if provided
       if (body.couponCode) {
         try {
-          const offer = await sql.row<any>("SELECT discount_type, offer_amount FROM coupons WHERE code = ? AND is_active = 1", [body.couponCode]) as any;
+          const offer = await sql.row<any>("SELECT discount_type, offer_amount FROM coupons WHERE code = ? AND is_active = TRUE", [body.couponCode]) as any;
           if (offer) {
             if (offer.discount_type === 'fixed_price') {
               basePrice = offer.offer_amount;

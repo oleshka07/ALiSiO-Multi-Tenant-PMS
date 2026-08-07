@@ -10,7 +10,7 @@ export const GET = withActor(async (_req, _ctx, actor: Actor) => {
     const units = await sql.rows(`
       SELECT id, name, unit_type, is_active, sort_order, parent_id
       FROM business_units
-      WHERE organization_id = ? AND is_active = 1
+      WHERE organization_id = ? AND is_active = TRUE
       ORDER BY sort_order, name
     `, [actor.organizationId]);
     return NextResponse.json(units);

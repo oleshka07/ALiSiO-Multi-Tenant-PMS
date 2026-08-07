@@ -16,7 +16,7 @@ import type { Actor } from '@core/auth/session';
 async function organizationForSite(site: string | null, propertyId: string | null): Promise<string | null> {
   const sql = getSql();
   if (propertyId) {
-    const row = await sql.row<any>('SELECT organization_id FROM properties WHERE id = ? AND is_active = 1', [propertyId]) as any;
+    const row = await sql.row<any>('SELECT organization_id FROM properties WHERE id = ? AND is_active = TRUE', [propertyId]) as any;
     return row?.organization_id ?? null;
   }
   if (!site) return null;

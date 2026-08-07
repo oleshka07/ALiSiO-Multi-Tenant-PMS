@@ -52,7 +52,7 @@ export async function listProjects(request: NextRequest): Promise<NextResponse> 
     const sql = getSql();
     const orgId = await requireOrganizationId();
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
-    const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = 1';
+    const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = TRUE';
     const rows = await sql.rows<any>(`
       SELECT * FROM business_units
       WHERE ${where}
@@ -69,7 +69,7 @@ export async function getProjectTree(request: NextRequest): Promise<NextResponse
     const sql = getSql();
     const orgId = await requireOrganizationId();
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
-    const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = 1';
+    const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = TRUE';
     const rows = await sql.rows<any>(`
       SELECT * FROM business_units
       WHERE ${where}
@@ -198,7 +198,7 @@ export async function archiveProject(
 
     await sql.run("UPDATE business_units SET is_active = ? WHERE id = ?", [archived ? 0 : 1, id]);
     if (archived) {
-      await sql.run("UPDATE business_units SET is_active = 0 WHERE parent_id = ?", [id]);
+      await sql.run("UPDATE business_units SET is_active = FALSE WHERE parent_id = ?", [id]);
     }
 
     const updated = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]);

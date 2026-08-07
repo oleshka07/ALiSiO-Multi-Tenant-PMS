@@ -61,7 +61,7 @@ export async function generateInvoiceForReservation(
 
     if (existing) {
       if (confirmed && !existing.confirmed) {
-        await sql.run("UPDATE invoices SET confirmed = 1, confirmation_source = ? WHERE id = ?", [confirmationSource, existing.id]);
+        await sql.run("UPDATE invoices SET confirmed = TRUE, confirmation_source = ? WHERE id = ?", [confirmationSource, existing.id]);
       }
       return existing.id;
     }

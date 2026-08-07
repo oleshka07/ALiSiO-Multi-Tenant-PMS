@@ -80,11 +80,11 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
                                 AND COALESCE(ec.is_capex, 0) = 0
                                 AND COALESCE(ec.classifier, ec.std_group, 'x') NOT IN ('financing', 'Financing', 'capex', 'CAPEX')
                                THEN o.amount_company ELSE 0 END), 0) as expenses,
-             COALESCE(SUM(CASE WHEN o.op_type = 'expense' AND ec.is_capex = 1 THEN o.amount_company ELSE 0 END), 0) as capex
+             COALESCE(SUM(CASE WHEN o.op_type = 'expense' AND ec.is_capex = TRUE THEN o.amount_company ELSE 0 END), 0) as capex
       FROM business_units bu
       LEFT JOIN fin_operations o ON o.project_id = bu.id AND ${sql.dialect.month('o.paid_at')} = ? AND o.status = 'completed'
       LEFT JOIN expense_categories ec ON ec.id = o.category_id
-      WHERE bu.organization_id = ? AND bu.is_active = 1 AND bu.is_shared = 0
+      WHERE bu.organization_id = ? AND bu.is_active = TRUE AND bu.is_shared = FALSE
       GROUP BY bu.id ORDER BY bu.sort_order
     `, [month, org]) as any[];
 
@@ -319,7 +319,7 @@ export async function getCashflowMatrix(request: NextRequest): Promise<NextRespo
 
     // Opening/ending balances (sum across all accounts) per month
     const accountsRows = await sql.rows<any>(`
-      SELECT id, initial_balance FROM finance_accounts WHERE organization_id = ? AND is_active = 1
+      SELECT id, initial_balance FROM finance_accounts WHERE organization_id = ? AND is_active = TRUE
     `, [org]) as { id: string; initial_balance: number }[];
     const accountIds = accountsRows.map((a) => a.id);
     const initialBalSum = accountsRows.reduce((s, a) => s + (a.initial_balance || 0), 0);
@@ -599,7 +599,7 @@ export async function getBalanceSheet(request: NextRequest): Promise<NextRespons
             WHERE o.account_from_id = fa.id AND o.status = 'completed' AND o.paid_at <= ?), 0)
         ) AS balance
       FROM finance_accounts fa
-      WHERE fa.organization_id = ? AND fa.is_active = 1
+      WHERE fa.organization_id = ? AND fa.is_active = TRUE
       ORDER BY fa.type, fa.sort_order, fa.name
     `, [asOf, asOf, org]) as any[];
 
@@ -863,8 +863,8 @@ export async function getPlanFactReport(request: NextRequest): Promise<NextRespo
     }
 
     const entities = by === 'project'
-      ? await sql.rows<any>("SELECT id, name, unit_type AS description FROM business_units WHERE organization_id = ? AND is_active = 1 ORDER BY sort_order", [org]) as any[]
-      : await sql.rows<any>("SELECT id, name, icon, op_type FROM expense_categories WHERE organization_id = ? AND is_active = 1 AND parent_id IS NULL ORDER BY sort_order", [org]) as any[];
+      ? await sql.rows<any>("SELECT id, name, unit_type AS description FROM business_units WHERE organization_id = ? AND is_active = TRUE ORDER BY sort_order", [org]) as any[]
+      : await sql.rows<any>("SELECT id, name, icon, op_type FROM expense_categories WHERE organization_id = ? AND is_active = TRUE AND parent_id IS NULL ORDER BY sort_order", [org]) as any[];
 
     const budgetMap = new Map<string, { id: string; amount: number }>();
     for (const b of budgets) {

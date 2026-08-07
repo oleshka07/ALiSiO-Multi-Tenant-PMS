@@ -10,7 +10,7 @@ export async function listTags(request: NextRequest): Promise<NextResponse> {
     const sql = getSql();
     const orgId = await getOrgId();
     const includeArchived = request.nextUrl.searchParams.get('archived') === '1';
-    const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = 1';
+    const where = includeArchived ? 'organization_id = ?' : 'organization_id = ? AND is_active = TRUE';
     const rows = await sql.rows<any>(`
       SELECT * FROM finance_tags
       WHERE ${where}

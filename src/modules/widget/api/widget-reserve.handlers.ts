@@ -169,7 +169,7 @@ export async function createWidgetReservation(request: NextRequest) {
       SELECT u.id, u.name, u.code, u.property_id, u.unit_type_id
       FROM units u
       JOIN categories c ON u.category_id = c.id
-      WHERE u.id = ? AND u.is_active = 1 AND u.room_status = 'available'
+      WHERE u.id = ? AND u.is_active = TRUE AND u.room_status = 'available'
     `, [unitId]) as any;
 
     if (unit && siteId && existingTables.has('site_listings')) {
@@ -293,7 +293,7 @@ export async function createWidgetReservation(request: NextRequest) {
         const code = String(couponCode).toUpperCase().trim();
         offer = await sql.row<any>(`
           SELECT * FROM coupons
-          WHERE code = ? AND is_active = 1
+          WHERE code = ? AND is_active = TRUE
             AND (valid_from IS NULL OR valid_from <= ?)
             AND (valid_until IS NULL OR valid_until >= ?)
             AND (max_uses IS NULL OR current_uses < max_uses)
@@ -302,7 +302,7 @@ export async function createWidgetReservation(request: NextRequest) {
         if (!offer) {
           offer = await sql.row<any>(`
             SELECT * FROM gift_card_bundles 
-            WHERE coupon_code = ? AND is_active = 1 
+            WHERE coupon_code = ? AND is_active = TRUE 
               AND (redemption_limit IS NULL OR current_uses < redemption_limit)
           `, [code]) as any;
           if (offer) isBundle = true;
@@ -358,7 +358,7 @@ export async function createWidgetReservation(request: NextRequest) {
         const extraCode = String(extraCouponCode).toUpperCase().trim();
         const extraOffer = await sql.row<any>(`
           SELECT * FROM coupons
-          WHERE code = ? AND is_active = 1
+          WHERE code = ? AND is_active = TRUE
             AND (valid_from IS NULL OR valid_from <= ?)
             AND (valid_until IS NULL OR valid_until >= ?)
             AND (max_uses IS NULL OR current_uses < max_uses)

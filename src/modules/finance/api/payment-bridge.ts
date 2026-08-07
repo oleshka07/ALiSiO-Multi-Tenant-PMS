@@ -56,7 +56,7 @@ async function findClearingAccount(orgId: string, channelType: string | undefine
     : null;
   if (!display) return null;
   const wanted = `${display} (${currency.toUpperCase()})`;
-  const row = await sql.row<any>("SELECT id FROM finance_accounts WHERE organization_id = ? AND name = ? AND type = 'clearing' AND is_active = 1 LIMIT 1", [orgId, wanted]) as { id: string } | undefined;
+  const row = await sql.row<any>("SELECT id FROM finance_accounts WHERE organization_id = ? AND name = ? AND type = 'clearing' AND is_active = TRUE LIMIT 1", [orgId, wanted]) as { id: string } | undefined;
   return row?.id || null;
 }
 
@@ -135,7 +135,7 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
     const fallback = await sql.row<any>(`
       SELECT id FROM finance_accounts
       WHERE organization_id = ? AND currency = ?
-        AND type IN ('cash', 'bank') AND is_active = 1
+        AND type IN ('cash', 'bank') AND is_active = TRUE
       ORDER BY sort_order ASC, created_at ASC LIMIT 1
     `, [row.org_id, currency]) as { id: string } | undefined;
     resolvedAccountId = fallback?.id || undefined;

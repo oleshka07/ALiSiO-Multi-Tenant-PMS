@@ -162,7 +162,7 @@ export async function listOperations(request: NextRequest): Promise<NextResponse
     const where = [`(o.organization_id = ? OR afr.organization_id = ? OR ato.organization_id = ?)`];
     const params: any[] = [orgId, orgId, orgId];
 
-    if (needsReviewOnly) where.push('o.needs_review = 1');
+    if (needsReviewOnly) where.push('o.needs_review = TRUE');
     if (opTypes.length > 0) {
       const validOps = opTypes.filter(o => (OP_TYPES as readonly string[]).includes(o));
       if (validOps.length > 0) {

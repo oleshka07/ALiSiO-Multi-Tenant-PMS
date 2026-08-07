@@ -15,7 +15,7 @@ export async function runIcalCron(request: Request) {
     const sql = getSql();
     const channels = await sql.rows<any>(`
       SELECT * FROM ical_channels
-      WHERE is_active = 1
+      WHERE is_active = TRUE
         AND ical_url IS NOT NULL
         AND (
           last_synced_at IS NULL

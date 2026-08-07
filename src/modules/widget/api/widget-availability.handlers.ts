@@ -82,7 +82,7 @@ export async function getAvailability(request: NextRequest) {
       if (ratePlanId) {
         activeRatePlan = await sql.row<any>('SELECT * FROM site_rate_plans WHERE id = ? AND site_id = ?', [ratePlanId, siteIdObj]);
       } else {
-        activeRatePlan = await sql.row<any>('SELECT * FROM site_rate_plans WHERE is_default = 1 AND site_id = ? LIMIT 1', [siteIdObj]);
+        activeRatePlan = await sql.row<any>('SELECT * FROM site_rate_plans WHERE is_default = TRUE AND site_id = ? LIMIT 1', [siteIdObj]);
       }
     }
 
@@ -176,7 +176,7 @@ export async function getAvailability(request: NextRequest) {
       LEFT JOIN guest_page_config gpc ON gpc.unit_type_id = ut.id
       LEFT JOIN site_listings sl ON (sl.unit_id = u.id OR (sl.unit_type_id = ut.id AND sl.unit_id IS NULL))
         ${siteIdObj ? 'AND sl.site_id = ?' : ''}
-      WHERE u.is_active = 1
+      WHERE u.is_active = TRUE
         AND u.room_status = 'available'
         ${categoryType ? 'AND c.type = ?' : ''}
       GROUP BY u.id
@@ -351,7 +351,7 @@ export async function getAvailability(request: NextRequest) {
     if (couponCode && hasPromotions) {
       const offer = await sql.row<any>(`
         SELECT * FROM promotions
-        WHERE coupon_code = ? AND is_active = 1
+        WHERE coupon_code = ? AND is_active = TRUE
           AND (date_from IS NULL OR date_from <= ?)
           AND (date_to IS NULL OR date_to >= ?)
           AND (usage_limit IS NULL OR usage_count < usage_limit)

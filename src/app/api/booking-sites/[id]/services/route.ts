@@ -27,7 +27,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         ss.id AS site_service_id
       FROM additional_services s
       LEFT JOIN site_services ss ON ss.service_id = s.id AND ss.site_id = ?
-      WHERE s.is_active = 1
+      WHERE s.is_active = TRUE
       ORDER BY COALESCE(ss.sort_order, s.sort_order), s.sort_order
     `, [id]);
 
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const site = await sql.row<any>("SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'", [id]);
     if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
 
-    const service = await sql.row<any>('SELECT id FROM additional_services WHERE id = ? AND is_active = 1', [service_id]);
+    const service = await sql.row<any>('SELECT id FROM additional_services WHERE id = ? AND is_active = TRUE', [service_id]);
     if (!service) return NextResponse.json({ error: 'Service not found' }, { status: 404 });
 
     await sql.run(`

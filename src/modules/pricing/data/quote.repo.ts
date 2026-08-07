@@ -50,7 +50,7 @@ export async function calculateQuote(unitTypeId: string, checkIn: string, checkO
     // another hotel's city tax and cleaning fee.
     const prop = await sql.row<any>('SELECT property_id AS id FROM unit_types WHERE id = ?', [unitTypeId]) as any;
     if (prop?.id) {
-      fees = await sql.rows<any>('SELECT * FROM fees_taxes WHERE property_id = ? AND is_active = 1', [prop.id]) as any[];
+      fees = await sql.rows<any>('SELECT * FROM fees_taxes WHERE property_id = ? AND is_active = TRUE', [prop.id]) as any[];
     }
   } catch { /* fees_taxes may not exist */ }
 

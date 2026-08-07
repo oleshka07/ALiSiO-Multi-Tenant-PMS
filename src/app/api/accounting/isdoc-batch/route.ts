@@ -49,7 +49,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
     // Monthly accountant export includes only confirmed invoices (Teya/cash/OTA
     // statement). Pass ?include_unconfirmed=1 to also export un-reconciled ones.
     const includeUnconfirmed = searchParams.get('include_unconfirmed') === '1';
-    const confirmedFilter = includeUnconfirmed ? '' : 'AND i.confirmed = 1';
+    const confirmedFilter = includeUnconfirmed ? '' : 'AND i.confirmed = TRUE';
 
     if (!/^\d{4}-\d{2}$/.test(month)) {
       return NextResponse.json({ error: 'Invalid month format. Use YYYY-MM.' }, { status: 400 });

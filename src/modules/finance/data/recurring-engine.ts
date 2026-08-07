@@ -133,7 +133,7 @@ export async function runRecurringTick(lookaheadDays = 30): Promise<{ created: n
   for (let i = 0; i < 1000; i++) {
     const due = await sql.rows<any>(`
       SELECT * FROM fin_recurring_templates
-      WHERE is_active = 1 AND next_run_at <= ?
+      WHERE is_active = TRUE AND next_run_at <= ?
         AND (end_at IS NULL OR next_run_at <= end_at)
       ORDER BY next_run_at ASC
       LIMIT 50
@@ -148,7 +148,7 @@ export async function runRecurringTick(lookaheadDays = 30): Promise<{ created: n
       } catch (e: any) {
         errors.push(`${t.id} (${t.name}): ${e.message}`);
         // Deactivate failing template to avoid infinite loop
-        await sql.run("UPDATE fin_recurring_templates SET is_active = 0 WHERE id = ?", [t.id]);
+        await sql.run("UPDATE fin_recurring_templates SET is_active = FALSE WHERE id = ?", [t.id]);
       }
     }
     templatesTouched += due.length;
@@ -235,7 +235,7 @@ export async function findRecurringSuggestion(
   const candidates = await sql.rows<any>(`
     SELECT id, name, amount, category_id, project_id, counterparty_id, comment, schedule_day
     FROM fin_recurring_templates
-    WHERE organization_id = ? AND is_active = 1
+    WHERE organization_id = ? AND is_active = TRUE
       AND op_type = ? AND currency = ?
       AND amount BETWEEN ? AND ?
   `, [orgId, op.op_type, op.currency, minAmt, maxAmt]) as any[];
@@ -308,7 +308,7 @@ export async function forecastUpcoming(orgId: string, fromDate: string, toDate: 
   const sql = getSql();
   const templates = await sql.rows<any>(`
     SELECT * FROM fin_recurring_templates
-    WHERE organization_id = ? AND is_active = 1
+    WHERE organization_id = ? AND is_active = TRUE
   `, [orgId]) as Template[];
 
   const result: ForecastOp[] = [];
