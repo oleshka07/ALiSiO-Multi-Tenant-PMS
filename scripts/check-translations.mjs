@@ -14,6 +14,11 @@
  *   a missing entry is invisible from the inside; the only way to know the
  *   interface is half German is to count.
  *
+ *   incomplete but offered — a language the product actually shows in the
+ *   settings screen, with gaps in it. A language file that exists but is not
+ *   registered in dictionary.ts is work in progress and only reported; one
+ *   that IS registered has to be complete, because someone can pick it.
+ *
  *   missing plural forms — a key used with `plural(n, …)` whose entry does not
  *   cover every form the language needs. German gets away with two; Czech and
  *   Polish need three, and the missing one shows up only on the counts that hit
@@ -22,6 +27,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import ts from 'typescript';
 import { pluralKeys } from './lib/plural-keys.mjs';
 
 const MESSAGES = 'src/core/i18n/messages';
@@ -35,6 +41,45 @@ const languages = fs
   .readdirSync(MESSAGES)
   .filter((f) => f.endsWith('.json') && f !== 'catalogue.json')
   .map((f) => f.replace('.json', ''));
+
+/**
+ * Which languages the product actually offers.
+ *
+ * Read out of dictionary.ts rather than kept beside it, because a second list
+ * is a list that goes stale — and the failure would be "Czech is offered and
+ * half empty", which is exactly what this is here to prevent.
+ */
+function offeredLanguages() {
+  const file = 'src/core/i18n/dictionary.ts';
+  const source = ts.createSourceFile(
+    file,
+    fs.readFileSync(file, 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const offered = new Set();
+  const visit = (node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === 'DICTIONARIES' &&
+      node.initializer &&
+      ts.isObjectLiteralExpression(node.initializer)
+    ) {
+      for (const p of node.initializer.properties) {
+        if (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) {
+          offered.add(p.name.getText(source).replace(/['"]/g, ''));
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return offered;
+}
+
+const offered = offeredLanguages();
 
 let failed = false;
 const plurals = pluralKeys();
@@ -76,8 +121,16 @@ for (const lang of languages) {
     if (wrong.length > 10) console.log(`    …ще ${wrong.length - 10}`);
   }
 
+  const missing = catalogue.filter((k) => !(k in dict));
+  if (missing.length && offered.has(lang)) {
+    failed = true;
+    console.log(`  неперекладених: ${missing.length} — мова вже пропонується користувачам`);
+    console.log(`  заповнити: npm run i18n:translate -- ${lang}`);
+  } else if (missing.length) {
+    console.log(`  неперекладених: ${missing.length} (мова ще не підключена в dictionary.ts)`);
+  }
+
   if (missingFor === lang) {
-    const missing = catalogue.filter((k) => !(k in dict));
     console.log(`\n  неперекладених: ${missing.length}`);
     // Short strings first: they are the buttons and labels that repeat on
     // every screen, so they buy the most visible coverage per entry.
