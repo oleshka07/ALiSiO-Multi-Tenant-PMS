@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -111,6 +111,7 @@ function Modal({ open, onClose, title, children, footer, size }: {
    Main Component
    ================================================================ */
 export default function SettingsPropertiesPage() {
+  const pluralUi = usePlural();
   const tUi = useT();
   // ── Data ──
   const onMenuClick = useMobileMenu();
@@ -608,7 +609,7 @@ export default function SettingsPropertiesPage() {
               </button>
             )}
             <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-tertiary)' }}>
-              {search ? `${filteredUnits.length} ${tUi('з')} ${units.length} ${tUi('юнітів')}` : `${units.length} ${tUi('юнітів')}`}
+              {search ? `${filteredUnits.length} ${tUi('з')} ${units.length} ${pluralUi(units.length, 'юнітів')}` : `${units.length} ${pluralUi(units.length, 'юнітів')}`}
             </div>
           </div>
         </div>
@@ -1105,7 +1106,7 @@ export default function SettingsPropertiesPage() {
                 <div style={{ fontWeight: 500, fontSize: 13 }}>{unit.name}</div>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
                   {unit.code}
-                  {unit.beds > 0 && ` · ${unit.beds} ${tUi('місць')}`}
+                  {unit.beds > 0 && ` · ${unit.beds} ${pluralUi(unit.beds, 'місць')}`}
                   {unit.zone && ` · ${unit.zone}`}
                   {unit.room_status && unit.room_status !== 'available' && (
                     <span style={{ marginLeft: 4, color: STATUS_COLORS[unit.room_status]?.color }}>

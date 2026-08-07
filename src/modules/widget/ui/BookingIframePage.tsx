@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@core/i18n/client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import './booking-iframe.css';
@@ -103,6 +104,7 @@ const STEPS = [1, 2, 3, 4, 5] as const;
 
 // ─── Main Component ──────────────────────────────────
 export default function BookingPage() {
+  const tUi = useT();
   // ─── State ──────
   const [lang, setLang] = useState<BookingLang>('uk');
   const t = useMemo(() => getBookingTranslations(lang), [lang]);
@@ -1655,7 +1657,7 @@ export default function BookingPage() {
                               <div className="breakfast-card-body">
                                 <div className="breakfast-card-name">{localizedName || item.name}</div>
                                 <div className="breakfast-card-row">
-                                  <span className="breakfast-card-weight">{item.weight || '350 г'}</span>
+                                  <span className="breakfast-card-weight">{item.weight || tUi('350 г')}</span>
                                   <span className="breakfast-card-price">
                                     {formatPrice(item.price)}
                                     <span className="breakfast-card-price-currency"> Kč</span>
@@ -1907,10 +1909,10 @@ export default function BookingPage() {
             <div className="booking-fade-in">
               <div className="booking-content-card">
                 <h2 style={{ fontFamily: 'var(--bk-font-heading, Fraunces, serif)', marginBottom: 4 }}>
-                  {t.paymentTitle || 'Оплата'}
+                  {t.paymentTitle || tUi('Оплата')}
                 </h2>
                 <p style={{ color: 'var(--bk-ink-2, #5A5A5A)', fontSize: 13, marginBottom: 20 }}>
-                  {t.paymentSubtitle || 'Перевірте суму і перейдіть до оплати'}
+                  {t.paymentSubtitle || tUi('Перевірте суму і перейдіть до оплати')}
                 </p>
 
                 {/* Breakdown */}
@@ -1982,7 +1984,7 @@ export default function BookingPage() {
                 >
                   {redirectingToPayment
                     ? t.redirectingToPayment
-                    : `💳 ${t.payNow || 'Оплатити'}`}
+                    : `💳 ${t.payNow || tUi('Оплатити')}`}
                 </button>
               </div>
             </div>

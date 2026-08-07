@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Minus, ArrowLeftRight, Settings, Search, Trash2, Copy, Calendar, BarChart3, Wallet, Paperclip, Repeat, Pencil, ArrowUp, ArrowDown, X, History, Filter } from 'lucide-react';
@@ -53,6 +53,7 @@ function formatMoney(n: number, currency: string): string {
 }
 
 export default function OperationsPage() {
+  const pluralUi = usePlural();
   const tUi = useT();
   const [ops, setOps] = useState<Operation[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -560,7 +561,7 @@ export default function OperationsPage() {
                                 background: 'rgba(99,102,241,0.12)', color: '#6366f1',
                                 fontSize: 10, fontWeight: 600, cursor: 'pointer',
                               }}
-                              title={`${attachCounts[o.id]} ${tUi('прикріплених документ(ів)')}`}
+                              title={`${attachCounts[o.id]} ${pluralUi(attachCounts[o.id], 'прикріплених документ(ів)')}`}
                             >
                               <Paperclip size={10} /> {attachCounts[o.id]}
                             </span>

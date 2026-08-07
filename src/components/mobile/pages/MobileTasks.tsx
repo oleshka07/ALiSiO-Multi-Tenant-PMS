@@ -316,7 +316,7 @@ function TaskSheet({
           </div>
 
           {/* Fields */}
-          {fieldRow(<Flag size={14} />, 'Пріоритет',
+          {fieldRow(<Flag size={14} />, tUi('Пріоритет'),
             <select
               className="form-select"
               value={form.priority}
@@ -328,7 +328,7 @@ function TaskSheet({
               ))}
             </select>
           )}
-          {fieldRow(<Calendar size={14} />, 'Дедлайн',
+          {fieldRow(<Calendar size={14} />, tUi('Дедлайн'),
             <div style={{ display: 'flex', gap: 8 }}>
               <input type="date" className="form-input" value={form.due_date}
                 onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
@@ -338,7 +338,7 @@ function TaskSheet({
                 style={{ width: 100, fontSize: 13, padding: '6px 8px' }} />
             </div>
           )}
-          {fieldRow(<User size={14} />, 'Відповідальний',
+          {fieldRow(<User size={14} />, tUi('Відповідальний'),
             <select
               className="form-select"
               value={form.assignee_id}
@@ -349,7 +349,7 @@ function TaskSheet({
               {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
             </select>
           )}
-          {fieldRow(<FolderOpen size={14} />, 'Проєкт',
+          {fieldRow(<FolderOpen size={14} />, tUi('Проєкт'),
             <select
               className="form-select"
               value={form.project_id}
@@ -360,7 +360,7 @@ function TaskSheet({
               {projects.map(p => <option key={p.id} value={p.id}>{p.icon} {p.name}</option>)}
             </select>
           )}
-          {fieldRow(<Building2 size={14} />, "Об'єкт",
+          {fieldRow(<Building2 size={14} />, tUi("Об'єкт"),
             <select
               className="form-select"
               value={form.property_id}

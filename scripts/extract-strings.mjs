@@ -38,49 +38,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
-
-const CYRILLIC = /[А-Яа-яЇїІіЄєҐґ]/;
-
-/**
- * The key is the text as it renders, not as it is indented.
- *
- * JSX collapses runs of whitespace, so a paragraph wrapped across four source
- * lines renders as one line — but its source text carries the file's
- * indentation. Left alone, the dictionary key would contain twenty spaces and
- * a newline, and re-indenting the file would silently orphan the translation.
- */
-const renderedText = (text) => text.replace(/\s+/g, ' ').trim();
-
-/**
- * The named entities this markup actually uses.
- *
- * An entity is markup: '&amp;' inside a string literal renders as those five
- * characters, so text containing one was skipped. Decoding it first makes the
- * literal render identically — and '&' is by far the most common, in every
- * "Гості &amp; послуги" heading in the product.
- */
-const ENTITIES = {
-  '&amp;': '&',
-  '&nbsp;': '\u00a0',
-  '&quot;': '"',
-  '&apos;': "'",
-  '&lt;': '<',
-  '&gt;': '>',
-  '&mdash;': '—',
-  '&ndash;': '–',
-};
-const decodeEntities = (text) =>
-  text.replace(/&(?:amp|nbsp|quot|apos|lt|gt|mdash|ndash);/g, (m) => ENTITIES[m]);
-
-/**
- * Functions whose first argument is read by a person.
- *
- * Toasts and validation messages are the half of the interface that is NOT in
- * the JSX: a screen can be fully German and still answer «Збережено» when you
- * press the button. They live in event handlers, which are inside the
- * component, so the hook is in scope.
- */
-const MESSAGE_FUNCTIONS = new Set(['showToast', 'setError', 'setToast', 'alert', 'confirm']);
+import {
+  CYRILLIC,
+  MESSAGE_FUNCTIONS,
+  NON_TEXT_PROPERTIES,
+  ROOTS,
+  TEXT_ATTRIBUTES,
+  decodeEntities,
+  hasUnknownEntity,
+  insideLanguageSwitch,
+  isClientComponent,
+  isLanguageMap,
+  isRenderedPosition,
+  isTranslateCall,
+  parse,
+  renderedText,
+  rendersHere,
+  walk,
+} from './lib/i18n-ast.mjs';
 
 /**
  * Server messages, translated on the client.
@@ -103,19 +78,6 @@ const SERVER_MESSAGE = /\.(error|message)$/;
  */
 const TEXT_METHODS = /^(substring|slice|toUpperCase|toLowerCase|trim|padStart|padEnd)$/;
 
-/** Attributes whose value is shown to a person. */
-const TEXT_ATTRIBUTES = new Set([
-  'placeholder',
-  'title',
-  'alt',
-  'aria-label',
-  'aria-placeholder',
-  'label',
-]);
-
-const ROOTS = ['src/app/app', 'src/components', 'src/modules'];
-const SKIP_DIRS = new Set(['node_modules', '.next', '_design']);
-
 /**
  * Labels that live in a constant, not in the JSX.
  *
@@ -135,31 +97,6 @@ const SKIP_DIRS = new Set(['node_modules', '.next', '_design']);
  * «Zimmer».
  */
 const DERIVING_METHODS = /^(map|flatMap|filter|find|forEach|sort|some|every|slice)$/;
-
-/**
- * Fields of those constants that are not text.
- *
- * `{item.icon}` roots at the same tracked constant as `{item.title}` and is a
- * `<Home />` element or an emoji; `CLEANER_ITEMS.length` is a number. Passing
- * either to `t()` is a type error — which is how these were found — and an
- * emoji round-trips through the dictionary for nothing.
- */
-const NON_TEXT_PROPERTIES = new Set([
-  'icon',
-  'color',
-  'badge',
-  'className',
-  'href',
-  'url',
-  'path',
-  'id',
-  'key',
-  'length',
-  'size',
-  'count',
-  'width',
-  'height',
-]);
 
 /**
  * Where an import specifier lives on disk.
@@ -213,13 +150,7 @@ function importedConstants(file) {
 
   const result = new Map();
   importedConstantsCache.set(file, result);
-  const source = ts.createSourceFile(
-    file,
-    fs.readFileSync(file, 'utf8'),
-    ts.ScriptTarget.Latest,
-    true,
-    file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-  );
+  const source = parse(file, fs.readFileSync(file, 'utf8'));
 
   for (const statement of source.statements) {
     if (!ts.isVariableStatement(statement)) continue;
@@ -250,17 +181,6 @@ function importedConstants(file) {
     }
   }
   return result;
-}
-
-// ─── file discovery ──────────────────────────────────────────────────────────
-function* walk(dir) {
-  if (!fs.existsSync(dir)) return;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (SKIP_DIRS.has(entry.name)) continue;
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) yield* walk(full);
-    else if (entry.name.endsWith('.tsx') && !entry.name.endsWith('.check.tsx')) yield full;
-  }
 }
 
 // ─── emit a JS string literal for arbitrary text ─────────────────────────────
@@ -547,12 +467,6 @@ function trackConstants(source, file) {
 }
 
 /**
- * Is this expression container somewhere a person reads?
- *
- * Only children and the text attributes. `style={STYLES.card}` roots at the
- * same constant and is an object; `t()` takes a string.
- */
-/**
  * A literal written straight into the markup, in a place that renders.
  *
  * `{p === 'day' ? 'День' : 'Все'}` and the column table written inline in the
@@ -564,109 +478,33 @@ function trackConstants(source, file) {
  * `status === 'Оплачено'`, `setFilter('Оплачено')`. Translating one of those
  * does not change what a person reads — it changes what the code compares, and
  * the filter quietly stops matching. So: a branch of a ternary, an element of
- * an array, or a field of an object literal, and nothing else. Handlers
- * (`onClick={…}`) are excluded by the enclosing container having to render.
+ * an array, or a field of an object literal, and nothing else.
  */
-/**
- * Text that has already chosen its own language.
- *
- * `lang === 'uk' ? «Доброго дня…» : «Dobrý den…»` is the WhatsApp message sent
- * to a **guest**, in the guest's language. Translating the Ukrainian branch
- * into the operator's language does not translate anything — it splices German
- * into a Ukrainian message. Whoever wrote a language switch has already said
- * this string is content, not interface.
- */
-const LANGUAGE_CODE = /^(uk|ua|en|de|cs|cz|pl|nl|fr|sk|es|it|ru)$/i;
-
-/** `{ uk: …, en: …, de: … }` — a phrase written once per language. */
-function isLanguageMap(node) {
-  if (!ts.isObjectLiteralExpression(node)) return false;
-  const names = node.properties
-    .filter((p) => ts.isPropertyAssignment(p) && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)))
-    .map((p) => p.name.text);
-  return names.length >= 2 && names.every((n) => LANGUAGE_CODE.test(n));
-}
-
-function insideLanguageSwitch(node) {
-  for (let n = node.parent; n; n = n.parent) {
-    if (isLanguageMap(n)) return true;
-    // `{ uk: …, en: … }[lang] || «українською»` — the fallback is the last
-    // branch of that same switch, not interface text that happens to sit
-    // beside it.
-    if (
-      ts.isBinaryExpression(n) &&
-      (n.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
-        n.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
-    ) {
-      let map = false;
-      const look = (c) => {
-        if (isLanguageMap(c)) map = true;
-        else ts.forEachChild(c, look);
-      };
-      look(n.left);
-      if (map) return true;
-    }
-    if (!ts.isConditionalExpression(n)) continue;
-    let found = false;
-    const scan = (c) => {
-      if (
-        ts.isBinaryExpression(c) &&
-        (c.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken ||
-          c.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken) &&
-        ts.isStringLiteral(c.right) &&
-        LANGUAGE_CODE.test(c.right.text)
-      ) {
-        found = true;
-      }
-      ts.forEachChild(c, scan);
-    };
-    scan(n.condition);
-    if (found) return true;
-  }
-  return false;
-}
-
-/** Is this node inside a JSX expression that renders, and not already in t()? */
-function rendersHere(node, source) {
-  if (insideLanguageSwitch(node)) return false;
-  for (let n = node.parent; n; n = n.parent) {
-    if (
-      ts.isCallExpression(n) &&
-      ts.isIdentifier(n.expression) &&
-      (n.expression.text === 't' || n.expression.text === 'tUi')
-    ) {
-      return false;
-    }
-    if (ts.isJsxExpression(n)) return isRenderedPosition(n, source);
-    if (ts.isJsxAttribute(n)) return false;
-  }
-  return false;
-}
-
 function inlineLabel(node, source) {
-  const parent = node.parent;
+  // `loading ? (<Spinner />) : ('Увійти')` — the parentheses are formatting,
+  // and reading them as the parent hid the login button's only word.
+  let inner = node;
+  while (inner.parent && ts.isParenthesizedExpression(inner.parent)) inner = inner.parent;
+  const parent = inner.parent;
   if (!parent) return false;
 
   const allowed =
     (ts.isConditionalExpression(parent) &&
-      (parent.whenTrue === node || parent.whenFalse === node)) ||
+      (parent.whenTrue === inner || parent.whenFalse === inner)) ||
+    // `{log.user_name || 'Система'}` — a display fallback is a label written in
+    // another shape, and the right operand is the only place it can be.
+    (ts.isBinaryExpression(parent) &&
+      parent.right === inner &&
+      (parent.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+        parent.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+        parent.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken)) ||
     ts.isArrayLiteralExpression(parent) ||
     (ts.isPropertyAssignment(parent) &&
-      parent.initializer === node &&
+      parent.initializer === inner &&
       !NON_TEXT_PROPERTIES.has(parent.name.getText(source)));
   if (!allowed) return false;
 
-  // The nearest expression container has to be one that renders, and the
-  // literal must not already be an argument to t().
   return rendersHere(node, source);
-}
-
-function isRenderedPosition(node, source) {
-  const parent = node.parent;
-  if (!parent) return false;
-  if (ts.isJsxElement(parent) || ts.isJsxFragment(parent)) return true;
-  if (ts.isJsxAttribute(parent)) return TEXT_ATTRIBUTES.has(parent.name.getText(source));
-  return false;
 }
 
 // ─── one file ────────────────────────────────────────────────────────────────
@@ -677,19 +515,12 @@ function processFile(file, catalogue, report) {
   // 'use client' has to precede the statements, not the comments — three
   // screens carry an eslint-disable above it and were skipped as server
   // components for it.
-  const beforeCode = original.replace(/^\s*(?:\/\*[\s\S]*?\*\/|\/\/[^\n]*)\s*/g, '');
-  if (!/^['"]use client['"]/.test(beforeCode)) {
+  if (!isClientComponent(original)) {
     report.serverComponents.push(file);
     return null;
   }
 
-  const source = ts.createSourceFile(
-    file,
-    original,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
+  const source = parse(file, original);
 
   // Which name the hook goes in under.
   //
@@ -734,7 +565,7 @@ function processFile(file, catalogue, report) {
         const decoded = decodeEntities(key);
         // A '&' that is not one of the entities above stays unknown, and
         // guessing at it is how text quietly changes.
-        if (decoded.includes('&') && /&[a-z#][a-z0-9]*;/i.test(decoded)) {
+        if (hasUnknownEntity(decoded)) {
           skippedEntities++;
         } else if (useIn(node)) {
           const start = node.getStart(source) + raw.indexOf(trimmed);

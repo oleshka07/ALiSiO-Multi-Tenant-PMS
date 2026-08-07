@@ -14,11 +14,22 @@
  * alternative is holding the whole dashboard blank on a dictionary.
  */
 
-import { createContext, useContext, useMemo } from 'react';
-import { translate } from './dictionary';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { isLoaded, loadDictionary, translate, translatePlural } from './dictionary';
 import { type Language, UI_SOURCE_LANGUAGE } from './languages';
 
-const LanguageContext = createContext<Language>(UI_SOURCE_LANGUAGE);
+/**
+ * The language, plus a counter that changes when its dictionary arrives.
+ *
+ * The dictionary is fetched rather than bundled, so the first render happens
+ * without it. React has no reason to re-render on that — nothing it can see
+ * changed — and the screen would sit in Ukrainian forever with a full
+ * dictionary in memory. The counter is what it can see.
+ */
+const LanguageContext = createContext<{ language: Language; revision: number }>({
+  language: UI_SOURCE_LANGUAGE,
+  revision: 0,
+});
 
 export function I18nProvider({
   language,
@@ -27,12 +38,28 @@ export function I18nProvider({
   language: Language;
   children: React.ReactNode;
 }) {
-  return <LanguageContext.Provider value={language}>{children}</LanguageContext.Provider>;
+  const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    if (isLoaded(language)) return;
+    let alive = true;
+    loadDictionary(language).then(() => {
+      // A language switched away from before its dictionary landed must not
+      // bump the counter for the language now on screen.
+      if (alive) setRevision((n) => n + 1);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [language]);
+
+  const value = useMemo(() => ({ language, revision }), [language, revision]);
+  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 
 /** The language this screen is rendering in. */
 export function useLanguage(): Language {
-  return useContext(LanguageContext);
+  return useContext(LanguageContext).language;
 }
 
 /**
@@ -43,6 +70,30 @@ export function useLanguage(): Language {
  * text that has not been translated yet.
  */
 export function useT(): (text: string) => string {
-  const language = useContext(LanguageContext);
-  return useMemo(() => (text: string) => translate(text, language), [language]);
+  const { language, revision } = useContext(LanguageContext);
+  // `revision` is not read inside the closure on purpose: it is here so the
+  // memo is thrown away when the dictionary lands, and every screen holding
+  // this function asks again.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above
+  return useMemo(() => (text: string) => translate(text, language), [language, revision]);
+}
+
+/**
+ * `const plural = usePlural()` then `` `${n} ${plural(n, 'записів')}` ``.
+ *
+ * Use it wherever a word follows a number. `t()` cannot: it is handed the word
+ * alone, so it can only ever return one form, and «1 Einträge» is what that
+ * looks like. Czech and Polish make the same mistake three times louder.
+ *
+ * The count stays at the call site rather than being formatted in here, because
+ * the surrounding text is often more than a number — `(${n} ${plural(…)})`,
+ * `${n.toLocaleString()} …` — and swallowing it would take that away.
+ */
+export function usePlural(): (count: number, text: string) => string {
+  const { language, revision } = useContext(LanguageContext);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: as in useT
+  return useMemo(
+    () => (count: number, text: string) => translatePlural(text, count, language),
+    [language, revision],
+  );
 }

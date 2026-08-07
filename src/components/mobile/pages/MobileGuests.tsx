@@ -381,7 +381,7 @@ function GuestDetailSheet({
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
                 <span style={{ fontSize: 14 }}>🆔</span>
                 <span style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 600 }}>
-                  {guest.document_type || 'Документ'}: {guest.document_number} {guest.nationality ? `(${guest.nationality})` : ''}
+                  {guest.document_type || t('Документ')}: {guest.document_number} {guest.nationality ? `(${guest.nationality})` : ''}
                 </span>
               </div>
             )}

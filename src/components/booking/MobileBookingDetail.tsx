@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
@@ -87,6 +87,7 @@ export default function MobileBookingDetail({
   onFetchPayments, onFetchBookings, onFetchRegistrations,
   showToast, setBooking,
 }: MobileBookingDetailProps) {
+  const pluralUi = usePlural();
   const tUi = useT();
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
@@ -442,7 +443,7 @@ export default function MobileBookingDetail({
                 <span style={{ width: 3, height: 3, background: 'var(--text-tertiary)', borderRadius: '50%' }} />
                 <span>{b.nights} {tUi(nightsLabel(b.nights))}</span>
                 <span style={{ width: 3, height: 3, background: 'var(--text-tertiary)', borderRadius: '50%' }} />
-                <span>{b.adults} {tUi(adultsLabel(b.adults))}{b.children > 0 ? ` + ${b.children} ${tUi('діт.')}` : ''}</span>
+                <span>{b.adults} {tUi(adultsLabel(b.adults))}{b.children > 0 ? ` + ${b.children} ${pluralUi(b.children, 'діт.')}` : ''}</span>
               </div>
               {b.currency !== 'EUR' && (
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
@@ -699,7 +700,7 @@ export default function MobileBookingDetail({
                 <span style={{ fontSize: 18 }}>{isRegistered ? '✅' : '❌'}</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: isRegistered ? '#4ADE80' : '#F26B6B' }}>
-                    {isRegistered ? tUi('Реєстрація завершена') : `${tUi('Зареєструйте')} ${regNeeded - registrations.length} ${tUi('гостей')}`}
+                    {isRegistered ? tUi('Реєстрація завершена') : `${tUi('Зареєструйте')} ${regNeeded - registrations.length} ${pluralUi(regNeeded - registrations.length, 'гостей')}`}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{registrations.length} {tUi('з')} {regNeeded}</div>
                 </div>
@@ -854,13 +855,13 @@ export default function MobileBookingDetail({
                     borderRadius: 8, marginBottom: 6,
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{sb.label || 'Без назви'}</div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{sb.label || tUi('Без назви')}</div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-primary)', fontVariantNumeric: 'tabular-nums' }}>
                         {(sb.subtotal || 0).toLocaleString()} {b.currency || 'CZK'}
                       </div>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
-                      {sb.child_unit_code || sb.child_unit_name || sb.unit_id} · {sb.adults || 0} {tUi('дор.')}{sb.children > 0 ? ` + ${sb.children} ${tUi('діт.')}` : ''}
+                      {sb.child_unit_code || sb.child_unit_name || sb.unit_id} · {sb.adults || 0} {tUi('дор.')}{sb.children > 0 ? ` + ${sb.children} ${pluralUi(sb.children, 'діт.')}` : ''}
                     </div>
                   </div>
                 ))
@@ -913,7 +914,7 @@ export default function MobileBookingDetail({
                           </div>
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                          {log.user_name || 'Система'}
+                          {log.user_name || tUi('Система')}
                         </div>
                       </div>
                     </div>

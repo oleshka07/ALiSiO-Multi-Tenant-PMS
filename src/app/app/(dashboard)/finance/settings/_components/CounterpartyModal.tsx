@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 import { X, Plus as PlusIcon } from 'lucide-react';
 import type { Counterparty, CounterpartyNode, Kind } from './CounterpartiesTab';
@@ -37,6 +37,7 @@ const ICONS = ['', '🤝', '🏪', '👷', '📋', '💼', '🏢', '✈️', '�
 interface Suggestion { text: string; count: number }
 
 export default function CounterpartyModal({ initial, parent, onClose, onSave }: Props) {
+  const plural = usePlural();
   const t = useT();
   const isSubcounterparty = !!parent;
   const isEditingSub = initial && initial.parent_id !== null;
@@ -187,7 +188,7 @@ export default function CounterpartyModal({ initial, parent, onClose, onSave }: 
                     type="button"
                     onClick={() => addAlias(s.text)}
                     style={suggestionChipStyle}
-                    title={`${t('Використовується в')} ${s.count} ${t('операціях')}`}
+                    title={`${t('Використовується в')} ${s.count} ${plural(s.count, 'операціях')}`}
                   >
                     <PlusIcon size={11} /> {s.text}
                     <span style={{ opacity: 0.6, fontSize: 10 }}>×{s.count}</span>

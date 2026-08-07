@@ -85,7 +85,9 @@
 ```bash
 npx tsc --noEmit                        # 0 помилок
 npm run check                           # доменні self-check'и
-npm run check:i18n                      # покриття перекладу і мертві записи
+npm run check:i18n                      # покриття, мертві записи, форми множини
+npm run check:unwrapped                 # кирилиця без t() — новий текст, який не перекласти
+npm run check:i18n-leak                 # мова оператора в документах, листах, інтеграціях
 node scripts/check-no-tenant-names.mjs  # жодного бізнесу клієнта в коді
 node scripts/audit-dead-data.mjs        # таблиці й колонки, яких ніхто не читає
 ```

@@ -1484,7 +1484,7 @@ export default function DocumentsPage() {
                 {/* ── HEADER ── */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>
-                    {sup(supplier?.legal_name || supplier?.name, 'юридична назва')}
+                    {sup(supplier?.legal_name || supplier?.name, tUi('юридична назва'))}
                   </div>
                   <div style={{ fontWeight: 700, fontSize: 15, color: '#1565c0' }}>
                     FAKTURA č. <span style={{ fontStyle: 'italic', color: '#999', fontSize: 11 }}>{tUi('автоматично')}</span>
@@ -1498,12 +1498,12 @@ export default function DocumentsPage() {
                   <div style={{ borderRight: '0.5px solid #aaa', padding: '8px 10px', fontSize: 11 }}>
                     <div style={{ fontSize: 9, color: '#888', marginBottom: 3 }}>Dodavatel:</div>
                     <div style={{ fontWeight: 700, fontSize: 12 }}>
-                      {sup(supplier?.legal_name || supplier?.name, 'юридична назва')}
+                      {sup(supplier?.legal_name || supplier?.name, tUi('юридична назва'))}
                     </div>
-                    <div style={{ marginBottom: 8 }}>{sup(supplier?.legal_address, 'юридична адреса')}</div>
+                    <div style={{ marginBottom: 8 }}>{sup(supplier?.legal_address, tUi('юридична адреса'))}</div>
                     <div style={{ color: '#1565c0' }}>IČ: {sup(supplier?.registration_no, 'IČO')}</div>
                     <div style={{ color: '#1565c0' }}>DIČ: {sup(supplier?.vat_no, 'DIČ')}</div>
-                    <div>Mobil: {sup(supplierPhone, 'телефон')}</div>
+                    <div>Mobil: {sup(supplierPhone, tUi('телефон'))}</div>
                     <div>E-mail: {sup(supplier?.invoice_email, 'email')}</div>
                   </div>
                   {/* Right — Variabilní + Odběratel box */}
@@ -1576,10 +1576,10 @@ export default function DocumentsPage() {
                 <div style={{ border: '0.5px solid #aaa', borderTop: 'none', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                   <div style={{ borderRight: '0.5px solid #aaa', padding: '7px 10px', fontSize: 11 }}>
                     {[
-                      ['Banka:', sup(supplier?.bank_name, 'банк'), true],
+                      ['Banka:', sup(supplier?.bank_name, tUi('банк')), true],
                       ['SWIFT:', sup(supplier?.swift, 'SWIFT'), false],
                       ['IBAN:', sup(supplier?.iban, 'IBAN'), false],
-                      ['Číslo účtu:', sup(supplier?.bank_account, 'номер рахунку'), false],
+                      ['Číslo účtu:', sup(supplier?.bank_account, tUi('номер рахунку')), false],
                     ].map(([label, val, bold]) => (
                       <div key={String(label)} style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
                         <span style={{ color: '#888', minWidth: 70 }}>{label}</span>

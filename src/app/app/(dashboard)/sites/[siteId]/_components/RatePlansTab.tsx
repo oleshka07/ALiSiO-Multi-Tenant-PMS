@@ -73,7 +73,7 @@ export function RatePlansTab({ siteId, onCountChange }: { siteId: string; onCoun
                 borderLeft: selectedPlanId === plan.id ? '3px solid var(--accent-primary)' : '3px solid transparent'
               }}
             >
-              <div style={{ fontWeight: 500, fontSize: 14 }}>{plan.name || 'Без назви'}</div>
+              <div style={{ fontWeight: 500, fontSize: 14 }}>{plan.name || t('Без назви')}</div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
                 {plan.applied_listings ? plan.applied_listings.length : 0} {t('оголошень')}
               </div>

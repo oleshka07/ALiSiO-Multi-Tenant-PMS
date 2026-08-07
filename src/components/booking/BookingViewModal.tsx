@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import React, { useState, useEffect } from 'react';
 import {
   Edit3, X, Save, Plus, Check, ArrowRight, Copy, ExternalLink,
@@ -71,6 +71,7 @@ export default function BookingViewModal({
   onClose, onEdit, onChangeStatus, onFetchPayments, onFetchBookings, onFetchRegistrations,
   showToast, setBooking,
 }: Props) {
+  const pluralUi = usePlural();
   const tUi = useT();
   const [viewTab, setViewTab] = useState<'payment' | 'registration' | 'groups' | 'tax' | 'notes' | 'history' | 'audit'>('payment');
   const [showPayForm, setShowPayForm] = useState(false);
@@ -397,7 +398,7 @@ export default function BookingViewModal({
                 </div>
               )}
               <span style={{ width: 3, height: 3, background: 'var(--text-tertiary)', borderRadius: '50%' }} />
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{b.nights} {tUi('н. ·')} {b.adults} {tUi('дор.')}{b.children > 0 ? ` + ${b.children} ${tUi('діт.')}` : ''}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{b.nights} {tUi('н. ·')} {b.adults} {tUi('дор.')}{b.children > 0 ? ` + ${b.children} ${pluralUi(b.children, 'діт.')}` : ''}</span>
               {b.hostex_channel_type && (
                 <span className="badge" style={{ background: '#ff6b3522', color: '#ff6b35' }}>Hostex: {b.hostex_channel_type}</span>
               )}
@@ -574,7 +575,7 @@ export default function BookingViewModal({
               : b.status === 'checked_in' ? tUi('Заселено')
               : daysUntil === 0 ? tUi('Сьогодні')
               : daysUntil === 1 ? tUi('Завтра')
-              : daysUntil > 1 ? `${tUi('Через')} ${daysUntil} ${tUi('дн.')}`
+              : daysUntil > 1 ? `${tUi('Через')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`
               : tUi('Минув');
             const handleClick = () => {
               if (b.status === 'confirmed' && canCheckIn) {
@@ -609,7 +610,7 @@ export default function BookingViewModal({
 
           if (b.status === 'cancelled') { /* no action */ }
           else if (!isPaid && daysUntil <= 2 && daysUntil >= 0) {
-            action = { priority: 'URGENT', label: `${tUi('Прийняти оплату')} ${remaining.toLocaleString()} ${b.currency || 'CZK'}`, context: daysUntil === 0 ? tUi('гість прибуває сьогодні') : `${tUi('гість прибуває через')} ${daysUntil} ${tUi('дн.')}`, cta: tUi('Прийняти'), onClick: () => { setViewTab('payment'); setShowPayForm(true); } };
+            action = { priority: 'URGENT', label: `${tUi('Прийняти оплату')} ${remaining.toLocaleString()} ${b.currency || 'CZK'}`, context: daysUntil === 0 ? tUi('гість прибуває сьогодні') : `${tUi('гість прибуває через')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Прийняти'), onClick: () => { setViewTab('payment'); setShowPayForm(true); } };
           } else if (!isRegistered && daysUntil <= 1 && daysUntil >= 0) {
             action = { priority: 'HIGH', label: `${tUi('Зареєструвати гостей (')}${registrations.length}/${regNeeded})`, context: tUi('до заїзду залишилось менше дня'), cta: tUi('Реєстрація'), onClick: () => setViewTab('registration') };
           } else if (b.status === 'confirmed' && daysUntil === 0) {
@@ -617,9 +618,9 @@ export default function BookingViewModal({
           } else if (b.status === 'checked_in' && daysSince >= 0) {
             action = { priority: 'HIGH', label: tUi('Гість має виїхати — виселити'), context: tUi('після 11:00'), cta: tUi('Виселити'), onClick: () => onChangeStatus(b.id, 'checked_out') };
           } else if (!isPaid && daysUntil > 2) {
-            action = { priority: 'MEDIUM', label: `${tUi('Оплата не прийнята (')}${remaining.toLocaleString()} ${b.currency || 'CZK'})`, context: `${tUi('до заїзду')} ${daysUntil} ${tUi('дн.')}`, cta: tUi('Оплата'), onClick: () => { setViewTab('payment'); setShowPayForm(true); } };
+            action = { priority: 'MEDIUM', label: `${tUi('Оплата не прийнята (')}${remaining.toLocaleString()} ${b.currency || 'CZK'})`, context: `${tUi('до заїзду')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Оплата'), onClick: () => { setViewTab('payment'); setShowPayForm(true); } };
           } else if (!isRegistered && daysUntil > 1) {
-            action = { priority: 'MEDIUM', label: `${tUi('Документи не заповнені (')}${registrations.length}/${regNeeded})`, context: `${tUi('до заїзду')} ${daysUntil} ${tUi('дн.')}`, cta: tUi('Реєстрація'), onClick: () => setViewTab('registration') };
+            action = { priority: 'MEDIUM', label: `${tUi('Документи не заповнені (')}${registrations.length}/${regNeeded})`, context: `${tUi('до заїзду')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Реєстрація'), onClick: () => setViewTab('registration') };
           } else if (b.status === 'checked_out' && daysSince >= 1 && daysSince <= 7) {
             action = { priority: 'LOW', label: tUi('Запросити відгук'), context: `${tUi('гість виїхав')} ${daysSince} ${tUi('дн. тому')}`, cta: tUi('Відгук'), onClick: () => {} };
           }
@@ -930,7 +931,7 @@ export default function BookingViewModal({
                 <span style={{ fontSize: 18 }}>{isRegistered ? '✅' : '❌'}</span>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 14, color: isRegistered ? '#22c55e' : '#ef4444' }}>
-                    {isRegistered ? tUi('Реєстрація завершена') : `${tUi('Зареєструйте ще')} ${regNeeded - registrations.length} ${tUi('гостей')}`}
+                    {isRegistered ? tUi('Реєстрація завершена') : `${tUi('Зареєструйте ще')} ${regNeeded - registrations.length} ${pluralUi(regNeeded - registrations.length, 'гостей')}`}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{registrations.length} {tUi('з')} {regNeeded}</div>
                 </div>
@@ -1149,9 +1150,9 @@ export default function BookingViewModal({
                     >
                       <span style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 700, minWidth: 20 }}>#{idx + 1}</span>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>{sb.label || 'Без назви'}</div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{sb.label || tUi('Без назви')}</div>
                         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                          <span>👥 {sb.adults} {tUi('дор.')}{sb.children > 0 ? `, ${sb.children} ${tUi('діт.')}` : ''}</span>
+                          <span>👥 {sb.adults} {tUi('дор.')}{sb.children > 0 ? `, ${sb.children} ${pluralUi(sb.children, 'діт.')}` : ''}</span>
                           {sb.child_unit_name ? (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 6, background: 'rgba(99,102,241,0.12)', color: '#6366f1', fontSize: 11, fontWeight: 600 }}>
                               📅 {sb.child_unit_name} <span style={{ fontSize: 9, opacity: 0.7 }}>{tUi('(в календарі)')}</span>
@@ -1497,7 +1498,7 @@ export default function BookingViewModal({
                           </div>
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                          {log.user_name || 'Система'}
+                          {log.user_name || tUi('Система')}
                         </div>
                       </div>
                     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, Plus, Trash2, Percent, Copy, Check, Edit3, CopyPlus, Info } from 'lucide-react';
 import { Modal } from './SiteHelpers';
@@ -24,6 +24,7 @@ const emptyForm = () => ({
 });
 
 export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { siteId: string; siteCurrency?: string; onCountChange?: (n: number) => void }) {
+  const plural = usePlural();
   const t = useT();
   const [codes, setCodes] = useState<Record<string, unknown>[]>([]);
   const [listings, setListings] = useState<any[]>([]);
@@ -363,13 +364,13 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
             <label className="form-label">
               {t('Застосовується до будиночків')} 
               <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11, marginLeft: 6 }}>
-                {form.applied_listings.length === 0 ? t('(всі будиночки)') : `(${form.applied_listings.length} ${t('вибрано)')}`}
+                {form.applied_listings.length === 0 ? t('(всі будиночки)') : `(${form.applied_listings.length} ${plural(form.applied_listings.length, 'вибрано)')}`}
               </span>
             </label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 150, overflowY: 'auto', border: '1px solid var(--border-primary)', borderRadius: 8, padding: 8, background: 'var(--surface-primary)' }}>
               {listings.map(l => {
                 const targetId = l.unit_id || l.unit_type_id;
-                const targetName = l.unit_name || l.unit_type_name || 'Без назви';
+                const targetName = l.unit_name || l.unit_type_name || t('Без назви');
                 if (!targetId) return null;
                 const on = form.applied_listings.includes(targetId);
                 
@@ -402,7 +403,7 @@ export function CouponsTab({ siteId, siteCurrency = 'CZK', onCountChange }: { si
             <label className="form-label">
               {t('Застосовується до сервісів')} 
               <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 11, marginLeft: 6 }}>
-                {form.applicable_services.length === 0 ? t('(всі сервіси)') : `(${form.applicable_services.length} ${t('вибрано)')}`}
+                {form.applicable_services.length === 0 ? t('(всі сервіси)') : `(${form.applicable_services.length} ${plural(form.applicable_services.length, 'вибрано)')}`}
               </span>
             </label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 150, overflowY: 'auto', border: '1px solid var(--border-primary)', borderRadius: 8, padding: 8, background: 'var(--surface-primary)' }}>

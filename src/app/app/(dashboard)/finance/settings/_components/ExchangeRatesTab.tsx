@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, ArrowRight } from 'lucide-react';
 import ExchangeRateModal, { ExchangeRateFormValues } from './ExchangeRateModal';
@@ -21,6 +21,7 @@ interface RatesResponse {
 
 export default function ExchangeRatesTab() {
   const t = useT();
+  const plural = usePlural();
   const [data, setData] = useState<RatesResponse>({ rates: [], latest: [] });
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<ExchangeRate | 'new' | null>(null);
@@ -72,7 +73,7 @@ export default function ExchangeRatesTab() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
         <h2 style={{ margin: 0, fontSize: 20 }}>{t('Курси валют')}</h2>
         <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-          {data.rates.length} {t('запис')}{data.rates.length === 1 ? '' : t('ів')}
+          {data.rates.length} {plural(data.rates.length, 'запис')}
         </span>
         <div style={{ flex: 1 }} />
         <button

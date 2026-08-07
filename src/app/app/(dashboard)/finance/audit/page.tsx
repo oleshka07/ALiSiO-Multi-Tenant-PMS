@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 
 interface Section {
@@ -28,6 +28,7 @@ const SEVERITY_STYLES: Record<string, { bg: string; border: string; badge: strin
 };
 
 export default function FinanceAuditPage() {
+  const plural = usePlural();
   const t = useT();
   const [data, setData] = useState<AuditData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -145,7 +146,7 @@ export default function FinanceAuditPage() {
 
               {s.metric_value && (
                 <div className={`shrink-0 px-3 py-2 rounded-md ${style.badge} text-right`}>
-                  <div className="text-[10px] uppercase opacity-90">{s.metric_label || 'Метрика'}</div>
+                  <div className="text-[10px] uppercase opacity-90">{s.metric_label || t('Метрика')}</div>
                   <div className="text-base font-bold font-mono">{s.metric_value}</div>
                 </div>
               )}
@@ -162,8 +163,8 @@ export default function FinanceAuditPage() {
                   className="text-xs font-medium text-slate-700 underline"
                 >
                   {isOpen
-                    ? `${t('▲ Сховати')} ${s.details!.length} ${t('рядків')}`
-                    : `${t('▼ Показати')} ${s.details!.length} ${t('рядків')}`}
+                    ? `${t('▲ Сховати')} ${s.details!.length} ${plural(s.details!.length, 'рядків')}`
+                    : `${t('▼ Показати')} ${s.details!.length} ${plural(s.details!.length, 'рядків')}`}
                 </button>
 
                 {isOpen && (

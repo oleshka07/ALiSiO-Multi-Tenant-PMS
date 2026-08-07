@@ -404,7 +404,7 @@ export function PackageOffersTab({ siteId, siteCurrency = 'CZK', onCountChange }
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 150, overflowY: 'auto' }}>
               {listings.map(l => {
                 const targetId = l.unit_id || l.unit_type_id;
-                const targetName = l.unit_name || l.unit_type_name || 'Без назви';
+                const targetName = l.unit_name || l.unit_type_name || t('Без назви');
                 if (!targetId) return null;
                 const on = form.applied_listings.includes(targetId);
                 

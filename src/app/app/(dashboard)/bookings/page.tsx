@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
@@ -191,6 +191,7 @@ const getSourceIconEmoji = (code: string) => {
 };
 
 function BookingsDesktop() {
+  const plural = usePlural();
   const t = useT();
   /* ── data ──────────────────────────────────────────── */
   const [bookings, setBookings] = useState<BookingRow[]>([]);
@@ -718,7 +719,7 @@ function BookingsDesktop() {
                           <div style={{ flex: 1, minWidth: 120, cursor: 'pointer' }} onClick={() => setViewGroupId(g.id)}>
                             <span style={{ fontWeight: 700, fontSize: 14 }}>{g.first_name} {g.last_name}</span>
                             <span style={{ fontSize: 12, color: 'var(--text-tertiary)', marginLeft: 8 }}>
-                              {g.group_type === 'building' ? `🏨 ${g.building_name}` : `🛏️ ${childCount} ${t('кім.')}`}
+                              {g.group_type === 'building' ? `🏨 ${g.building_name}` : `🛏️ ${childCount} ${plural(childCount, 'кім.')}`}
                               {' · '}{g.check_in} → {g.check_out} · {g.nights} {t('н.')}
                             </span>
                           </div>

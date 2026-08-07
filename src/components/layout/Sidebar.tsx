@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -103,6 +103,7 @@ const navigation: NavSection[] = [
 ];
 
 export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
+  const plural = usePlural();
   const t = useT();
   const [collapsed, setCollapsed] = useState(false);
   const [draftCount, setDraftCount] = useState(0);
@@ -224,7 +225,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                     <span className="sidebar-nav-icon">{item.icon}</span>
                     <span className="sidebar-nav-label">{t(item.label)}</span>
                     {item.href === '/app/calendar' && draftCount > 0 && (
-                      <span className="sidebar-draft-badge" title={`${draftCount} ${t('бронювань у чорновику')}`}>
+                      <span className="sidebar-draft-badge" title={`${draftCount} ${plural(draftCount, 'бронювань у чорновику')}`}>
                         {draftCount}
                       </span>
                     )}

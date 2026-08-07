@@ -75,9 +75,9 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
                   {getOccupancyString(selectedUnit)} · {selectedUnit.typeName}
                 </div>
                 <div className="v3-house-times">
-                  <span>{t.checkInShort || 'Заїзд'} {v3t.fromTime} 15:00</span>
+                  <span>{t.checkInShort || tUi('Заїзд')} {v3t.fromTime} 15:00</span>
                   <span className="v3-house-times-sep">·</span>
-                  <span>{t.checkOutShort || 'Виїзд'} {v3t.toTime} 11:00</span>
+                  <span>{t.checkOutShort || tUi('Виїзд')} {v3t.toTime} 11:00</span>
                 </div>
               </div>
             </div>
@@ -120,7 +120,7 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
 
           <div className={`v3-cal-wrap ${calOpen ? 'open' : ''}`}>
             <div className="v3-cal-head">
-              <div className="v3-cal-title">{t.selectDates || 'Оберіть дати'}</div>
+              <div className="v3-cal-title">{t.selectDates || tUi('Оберіть дати')}</div>
               <button className="v3-cal-close" onClick={() => setCalOpen(false)} title={tUi('Закрити')}>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                   <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -385,7 +385,7 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
 
         {/* STEP 2: HOUSE LIST / DETAILS */}
         <div className={`v3-step ${step === 2 ? 'visible' : ''}`}>
-          <h1 className="v3-step-title">{selectedUnitId ? (t.yourSelection || 'Ваш вибір') : t.selectAccommodation}</h1>
+          <h1 className="v3-step-title">{selectedUnitId ? (t.yourSelection || tUi('Ваш вибір')) : t.selectAccommodation}</h1>
           <p className="v3-step-sub">{selectedUnitId ? v3t.checkDetails : t.availableForDates}</p>
 
           {/* Loading skeleton — only when no unit info available yet */}
@@ -422,8 +422,8 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
                   <div className="v3-house-lock-info">
                     <div className="v3-category-name">{c.name}</div>
                     <div className="v3-category-meta">
-                      {c.count} {v3t.optionsAvailable || 'варіантів'}
-                      {c.fromPrice > 0 && <> · {v3t.fromPrice || 'від'} {formatPrice(c.fromPrice, siteCurrency)}</>}
+                      {c.count} {v3t.optionsAvailable || tUi('варіантів')}
+                      {c.fromPrice > 0 && <> · {v3t.fromPrice || tUi('від')} {formatPrice(c.fromPrice, siteCurrency)}</>}
                     </div>
                   </div>
                 </button>
@@ -662,8 +662,8 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
 
         {/* STEP 4: SERVICES */}
         <div className={`v3-step ${step === 4 ? 'visible' : ''}`}>
-          <h1 className="v3-step-title">{t.addToStayTitle || 'Додати до відпочинку?'}</h1>
-          <p className="v3-step-sub">{t.everythingOptional || 'Все опційне. Можна пропустити і додати пізніше.'}</p>
+          <h1 className="v3-step-title">{t.addToStayTitle || tUi('Додати до відпочинку?')}</h1>
+          <p className="v3-step-sub">{t.everythingOptional || tUi('Все опційне. Можна пропустити і додати пізніше.')}</p>
 
           {offerApplied?.offerType === 'package' && offerApplied.bundle?.included_services?.some((inc: any) => services.some(s => s.id === inc.service_id)) && (() => {
              const guestsCount = adults + kids || 1;
@@ -681,7 +681,7 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
                <div className="v3-occupancy-notice" style={{ background: 'rgba(47, 79, 43, 0.05)', borderColor: 'rgba(47, 79, 43, 0.2)', color: 'var(--moss)' }}>
                  <span className="v3-occupancy-notice-icon">🎁</span>
                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                   <span>{t.packageServicesNotice || 'Деякі послуги вже включені у ваш пакет. Ви можете обрати додаткові за бажанням.'}</span>
+                   <span>{t.packageServicesNotice || tUi('Деякі послуги вже включені у ваш пакет. Ви можете обрати додаткові за бажанням.')}</span>
                    {extraGuestsCount > 0 && (
                      <span style={{ fontSize: 13, opacity: 0.85, lineHeight: 1.4 }}>
                        {extraGuestsText}
@@ -747,7 +747,7 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
                               if (extraGuestsCount > 0) {
                                 return <span className="v3-service-price" style={{ color: 'var(--moss)', fontWeight: 600 }}>{includedForBaseText}{formatPrice(s.price * extraGuestsCount, siteCurrency)}</span>;
                               }
-                              return <span className="v3-service-price" style={{ color: 'var(--moss)', fontWeight: 600 }}>{t.includedInPackage || 'Включено в пакет'}</span>;
+                              return <span className="v3-service-price" style={{ color: 'var(--moss)', fontWeight: 600 }}>{t.includedInPackage || tUi('Включено в пакет')}</span>;
                             }
                             return <span className="v3-service-price">+ {formatPrice(s.price, siteCurrency)}</span>;
                           })()}
@@ -792,7 +792,7 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
               </svg>
             </button>
             <button className="v3-skip-link" onClick={() => { setSelectedServiceIds(new Set()); goToStep(5); }}>
-              {t.skipLink || 'Пропустити — не треба нічого'}
+              {t.skipLink || tUi('Пропустити — не треба нічого')}
             </button>
           </div>
         </div>
@@ -808,7 +808,7 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
                 <span>{selectedUnit?.name} · {nights} {t.nightsShort}</span>
                 <span className="v3-breakdown-val">
                   {offerApplied?.offerType === 'package' 
-                    ? <span style={{ color: 'var(--moss)', fontWeight: 600 }}>{t.includedInPackage || 'Включено в пакет'}</span>
+                    ? <span style={{ color: 'var(--moss)', fontWeight: 600 }}>{t.includedInPackage || tUi('Включено в пакет')}</span>
                     : formatPrice(selectedUnit?.totalPrice || 0, siteCurrency)
                   }
                 </span>
@@ -822,7 +822,7 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
 
             {offerApplied?.offerType === 'package' && offerApplied.bundle && (
               <div className="v3-breakdown-row" style={{ color: 'var(--moss)' }}>
-                <span>🏷️ {offerApplied.description || t.packagePrefix || 'Пакет'} "{offerApplied.code}"</span>
+                <span>🏷️ {offerApplied.description || t.packagePrefix || tUi('Пакет')} "{offerApplied.code}"</span>
                 <span className="v3-breakdown-val" style={{ fontWeight: 600 }}>{formatPrice(offerApplied.bundle.price, siteCurrency)}</span>
               </div>
             )}
@@ -841,7 +841,7 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
             )}
             {offerApplied && offerApplied.offerType !== 'package' && (
               <div className="v3-breakdown-row" style={{ color: 'var(--moss)' }}>
-                <span>🏷️ {t.couponCode || 'Промокод'} ({offerApplied.code})</span>
+                <span>🏷️ {t.couponCode || tUi('Промокод')} ({offerApplied.code})</span>
                 <span className="v3-breakdown-val" style={{ fontWeight: 600 }}>
                   -{offerApplied.offerType === 'percentage' ? `${offerApplied.offerAmount}%` : formatPrice(offerApplied.offerAmount, siteCurrency)}
                 </span>
@@ -866,7 +866,7 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
                     {isFree 
                       ? (extraGuestsCount > 0 
                           ? formatPrice(s.price * extraGuestsCount, siteCurrency)
-                          : <span style={{ color: 'var(--moss)' }}>{t.includedInPackage || 'Включено в пакет'}</span>)
+                          : <span style={{ color: 'var(--moss)' }}>{t.includedInPackage || tUi('Включено в пакет')}</span>)
                       : formatPrice(s.price * guestsCount, siteCurrency)
                     }
                   </span>
@@ -997,7 +997,7 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
               >
                 <span>
                   {step === 5
-                    ? (totalWithDiscount === 0 ? (t.finishBooking || 'Підтвердити') : (siteConfig?.hasPayment ? t.payNow : (t.finishBooking || 'Завершити')))
+                    ? (totalWithDiscount === 0 ? (t.finishBooking || tUi('Підтвердити')) : (siteConfig?.hasPayment ? t.payNow : (t.finishBooking || tUi('Завершити'))))
                     : (step === 1 ? t.selectDates
                       : (step === 3 ? (submitting ? t.processing : t.next) : t.next))}
                 </span>

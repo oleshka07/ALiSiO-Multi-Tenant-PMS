@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { useT, usePlural } from '@core/i18n/client';
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
@@ -130,6 +130,7 @@ function emptyForm() {
    Main
    ================================================================ */
 function DesktopGuests() {
+  const plural = usePlural();
   const t = useT();
   /* ── data state ──────────────────────────────────── */
   const [guests, setGuests] = useState<GuestRow[]>([]);
@@ -431,7 +432,7 @@ function DesktopGuests() {
         <div className="page-header">
           <div>
             <h2 className="page-title">{t('База гостей')}</h2>
-            <div className="page-subtitle">{total > 0 ? `${total} ${t('записів')}` : `${guests.length} ${t('записів')}`}</div>
+            <div className="page-subtitle">{total > 0 ? `${total} ${plural(total, 'записів')}` : `${guests.length} ${plural(guests.length, 'записів')}`}</div>
           </div>
           <div className="flex gap-2">
             <button className="btn btn-secondary" onClick={fetchGuests} title={t('Оновити')}>

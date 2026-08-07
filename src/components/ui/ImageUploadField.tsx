@@ -51,7 +51,7 @@ export function ImageUploadField({ label, value, onChange, folder, aspectRatio =
           className="form-input"
           style={{ flex: 1 }}
           value={value}
-          placeholder={placeholder || 'https://... або завантажте файл'}
+          placeholder={placeholder || t('https://... або завантажте файл')}
           onChange={e => onChange(e.target.value)}
         />
         <label style={{

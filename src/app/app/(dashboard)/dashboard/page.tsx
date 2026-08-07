@@ -293,7 +293,7 @@ function DashboardDesktop() {
                         {o.menuItemName && <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-tertiary)', marginLeft: 6 }}>🍽 {o.menuItemName}</span>}
                       </div>
                       <div className="dashboard-event-card-detail">
-                        {o.guestName || 'Клієнт'}
+                        {o.guestName || t('Клієнт')}
                         {o.startHour != null && ` · ${o.startHour}:00–${o.endHour}:00`}
                       </div>
                     </div>
