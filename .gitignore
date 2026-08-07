@@ -48,3 +48,7 @@ yarn-error.log*
 
 # build artefacts
 tsconfig.tsbuildinfo
+
+# Playwright artefacts
+test-results/
+playwright-report/
