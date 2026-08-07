@@ -167,8 +167,11 @@ export function getSql(): Sql {
     // pulls the driver in at all. createRequire, not a bare require(): this
     // file is an ES module, and node refuses a module that mixes the two.
     const require = createRequire(import.meta.url);
-    const { Pool } = require('pg');
-    const { postgresSql } = require('./postgres.ts');
+    const { Pool, types } = require('pg');
+    const { postgresSql, installShapes } = require('./postgres.ts');
+    // Before the pool: a connection opened first would parse its rows with the
+    // defaults, and a count would come back as the string '0'.
+    installShapes(types);
     pgSql = postgresSql(new Pool({ connectionString: url })) as Sql;
   }
   return pgSql;

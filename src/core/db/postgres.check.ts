@@ -15,7 +15,7 @@
  */
 import assert from 'node:assert';
 import { PGlite } from '@electric-sql/pglite';
-import { postgresSql, toDollarParams, type PgConnection, type PgPool } from './postgres.ts';
+import { postgresSql, toDollarParams, SHAPES, type PgConnection, type PgPool } from './postgres.ts';
 import { sqliteSql } from './async.ts';
 import { runWithOrganization } from '../auth/tenant-context.ts';
 
@@ -165,6 +165,31 @@ console.log('  ok  the ambient organization reaches every connection, transactio
 
   lite.close();
   console.log('  ok  month and weekday mean the same thing on both engines');
+}
+
+// ── A row comes back in the shape SQLite gave ────────────────────────────────
+// These are what `pg` hands over before the seam converts them. Getting one
+// wrong is not an error anyone sees: a count becomes the string '0', `=== 0`
+// stops being true, and a total built with + becomes '0500' instead of 500.
+{
+  assert.strictEqual(SHAPES.int8('0'), 0, 'a count must be a number, not the string zero');
+  assert.strictEqual(SHAPES.int8('42'), 42);
+  assert.strictEqual(SHAPES.numeric('1250.50'), 1250.5, 'money must arrive as a number');
+  assert.strictEqual(SHAPES.bool('t'), 1, 'a flag is 1, the way SQLite stored it');
+  assert.strictEqual(SHAPES.bool('f'), 0);
+  assert.strictEqual(SHAPES.date('2026-03-09'), '2026-03-09', 'a calendar day stays text');
+
+  // Written by CURRENT_TIMESTAMP under SQLite, so UTC, so this is UTC.
+  assert.strictEqual(SHAPES.timestamp('2026-03-09 14:25:00+00'), '2026-03-09 14:25:00');
+  assert.strictEqual(SHAPES.timestamp('2026-03-09 14:25:00'), '2026-03-09 14:25:00',
+    'a value with no zone is UTC, not the server locale');
+  assert.strictEqual(SHAPES.timestamp('2026-03-09 16:25:00+02'), '2026-03-09 14:25:00',
+    'an offset is applied, not ignored');
+  assert.strictEqual(SHAPES.timestamp('not a date'), 'not a date', 'garbage passes through unchanged');
+
+  // The failure this was written for: 44 places slice these as strings.
+  assert.strictEqual(SHAPES.timestamp('2026-03-09 14:25:00+00').slice(0, 10), '2026-03-09');
+  console.log('  ok  counts, money, flags and timestamps arrive as they did from SQLite');
 }
 
 await pg.close();

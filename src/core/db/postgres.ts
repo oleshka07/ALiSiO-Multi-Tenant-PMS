@@ -31,6 +31,75 @@ import { currentOrganizationId } from '../auth/tenant-context.ts';
  *      still cannot read another organization's rows.
  */
 
+/**
+ * The shape a value comes back in.
+ *
+ * The seam promises a module cannot tell which engine answered. Placeholders
+ * and method names were the easy half; the types are the half that bites
+ * silently. `pg` is careful where `better-sqlite3` was blunt, and every one of
+ * these differences is a working screen that quietly stops working:
+ *
+ *   COUNT(*)   pg returns int8 as a STRING, because a bigint does not fit in a
+ *              JavaScript number. SQLite returned a number. `count === 0` is
+ *              false against '0', and `total + count` concatenates.
+ *   money      NUMERIC likewise, for the same reason and with worse
+ *              consequences — every sum in the finance module.
+ *   timestamps pg builds a Date object. SQLite returned text, and 44 places in
+ *              this codebase slice these as strings.
+ *   flags      pg returns true/false where SQLite returned 1/0.
+ *
+ * So each is converted back to what SQLite gave. The ceiling is stated rather
+ * than hidden: an id or a count past 2^53 would lose precision as a number, and
+ * NUMERIC is read as a float — which is exactly what SQLite did, money being
+ * REAL there, so this changes nothing and fixes nothing about that.
+ */
+export const SHAPES = {
+  /** int8 — counts, sums over integers, and the identity keys. */
+  int8: (v: string) => Number(v),
+  /** NUMERIC — money. A float, as it was under SQLite. */
+  numeric: (v: string) => Number(v),
+  /** A flag, as the integer SQLite stored. */
+  bool: (v: string) => (v === 't' ? 1 : 0),
+  /** A calendar day stays 'YYYY-MM-DD'; the default parser makes a Date. */
+  date: (v: string) => v,
+  /**
+   * 'YYYY-MM-DD HH:MM:SS', UTC — the shape SQLite's CURRENT_TIMESTAMP wrote.
+   *
+   * Everything in these columns was written as UTC (see scripts/pg-convert.mjs,
+   * which stated the zone on the way in for the same reason), so a value that
+   * arrives without one is read as UTC rather than as the server's locale —
+   * which would shift every timestamp by the server's offset.
+   */
+  timestamp: (v: string) => {
+    let s = v.replace(' ', 'T');
+    // Postgres writes the offset as '+00'. JavaScript's date format wants
+    // '+00:00' and only some engines accept the short form, so it is completed
+    // here rather than left to the runtime.
+    if (!/([Zz]|[+-]\d{2}(:?\d{2})?)$/.test(s)) s += 'Z';
+    else if (/[+-]\d{2}$/.test(s)) s += ':00';
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? v : d.toISOString().replace('T', ' ').slice(0, 19);
+  },
+};
+
+/**
+ * Teach `pg` those shapes. Called once, before the pool is built.
+ *
+ * The OIDs are from pg_type and are fixed by Postgres itself, not by a version
+ * or an extension: 16 bool, 20 int8, 1082 date, 1114 timestamp, 1184
+ * timestamptz, 1700 numeric.
+ */
+export function installShapes(
+  types: { setTypeParser(oid: number, fn: (v: string) => unknown): void },
+): void {
+  types.setTypeParser(16, SHAPES.bool);
+  types.setTypeParser(20, SHAPES.int8);
+  types.setTypeParser(1082, SHAPES.date);
+  types.setTypeParser(1114, SHAPES.timestamp);
+  types.setTypeParser(1184, SHAPES.timestamp);
+  types.setTypeParser(1700, SHAPES.numeric);
+}
+
 /** The little of `pg` this file needs — so a test can pass something else. */
 export interface PgClient {
   query(text: string, params?: unknown[]): Promise<{ rows: any[]; rowCount: number | null }>;
