@@ -48,6 +48,11 @@ const languages = fs
  * Read out of dictionary.ts rather than kept beside it, because a second list
  * is a list that goes stale — and the failure would be "Czech is offered and
  * half empty", which is exactly what this is here to prevent.
+ *
+ * The name matters and has already bitten once: the registry was renamed from
+ * DICTIONARIES to SOURCES when dictionaries became lazy, this kept reading the
+ * old name, and for four commits it quietly required nothing of anybody. A
+ * check that reads a name has to fail loudly when the name is gone.
  */
 function offeredLanguages() {
   const file = 'src/core/i18n/dictionary.ts';
@@ -63,7 +68,7 @@ function offeredLanguages() {
     if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
-      node.name.text === 'DICTIONARIES' &&
+      node.name.text === 'SOURCES' &&
       node.initializer &&
       ts.isObjectLiteralExpression(node.initializer)
     ) {
@@ -76,6 +81,13 @@ function offeredLanguages() {
     ts.forEachChild(node, visit);
   };
   visit(source);
+  if (!offered.size) {
+    console.error(
+      'check-translations: у dictionary.ts не знайдено реєстру SOURCES.\n' +
+        'Перевірка не знає, які мови пропонуються, тому нічого не вимагає — це не «все добре».',
+    );
+    process.exit(2);
+  }
   return offered;
 }
 
@@ -125,7 +137,7 @@ for (const lang of languages) {
   if (missing.length && offered.has(lang)) {
     failed = true;
     console.log(`  неперекладених: ${missing.length} — мова вже пропонується користувачам`);
-    console.log(`  заповнити: npm run i18n:translate -- ${lang}`);
+    console.log(`  заповнити: npm run i18n:export -- ${lang}`);
   } else if (missing.length) {
     console.log(`  неперекладених: ${missing.length} (мова ще не підключена в dictionary.ts)`);
   }

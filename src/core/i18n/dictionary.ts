@@ -51,7 +51,10 @@ export type Entry = string | Partial<Record<Intl.LDMLPluralRule, string>>;
  *
  * The keys of this object are what `check-translations.mjs` reads to decide
  * which languages must be complete, so adding a line here is the act of
- * offering a language, not merely of having a file.
+ * offering a language, not merely of having a file. Czech has a dictionary and
+ * is deliberately not listed: it is half done, and half a language is worse
+ * than none — the screen would be Czech in places and Ukrainian in others with
+ * no way for the person reading it to know why.
  */
 const SOURCES: Partial<Record<Language, () => Promise<{ default: Record<string, Entry> }>>> = {
   de: () => import('./messages/de.json', { with: { type: 'json' } }),
