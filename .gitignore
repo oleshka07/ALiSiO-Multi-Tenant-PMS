@@ -52,3 +52,6 @@ tsconfig.tsbuildinfo
 # Playwright artefacts
 test-results/
 playwright-report/
+
+# i18n hand-off files — the dictionary is the artefact, not this
+.i18n-work/

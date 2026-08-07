@@ -21,7 +21,8 @@
     "check:unwrapped": "node scripts/check-unwrapped.mjs",
     "check:i18n-leak": "node scripts/check-i18n-leak.mjs",
     "i18n:extract": "node scripts/extract-strings.mjs",
-    "i18n:translate": "node scripts/translate-catalogue.mjs"
+    "i18n:export": "node scripts/i18n-work.mjs export",
+    "i18n:apply": "node scripts/i18n-work.mjs apply"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",
