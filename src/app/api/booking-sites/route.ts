@@ -1,9 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@core/db';
 import { getSql } from '@core/db/async';
 import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
-import { requireOrganizationId, requirePropertyId } from '@core/auth/tenant-context';
+import { requirePropertyId, runWithOrganization } from '@core/auth/tenant-context';
 
 // GET /api/booking-sites — list all sites for property
 export async function GET(_req: NextRequest) {
@@ -12,14 +11,17 @@ export async function GET(_req: NextRequest) {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const sql = getSql();
-    const sites = await sql.rows<any>(`
+    // Scoped, and as the organization. This listed every booking site on the
+    // server: the WHERE clause named only the status, so one hotel's operator
+    // saw every other hotel's sites by name and slug.
+    const sites = await runWithOrganization(session.organization_id, () => sql.rows<any>(`
       SELECT
         bs.*,
         (SELECT COUNT(*) FROM site_listings sl WHERE sl.site_id = bs.id) as listings_count
       FROM booking_sites bs
-      WHERE bs.status != 'deleted'
+      WHERE bs.organization_id = ? AND bs.status != 'deleted'
       ORDER BY bs.created_at DESC
-    `);
+    `, [session.organization_id]));
 
     return NextResponse.json({ sites });
   } catch (error: any) {
@@ -33,6 +35,12 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // This route reads the session itself rather than going through a guard,
+    // so nothing had established the tenant: requirePropertyId could still be
+    // told which property explicitly, but every write below ran unscoped, and
+    // on Postgres each one was refused by its policy.
+    return runWithOrganization(session.organization_id, async () => {
 
     const sql = getSql();
     const body = await request.json();
@@ -76,7 +84,7 @@ export async function POST(request: NextRequest) {
     // organization_id is stored rather than reached through the property: the
     // widget resolves this row before any tenant is known, so it has to name
     // its own organization. See the migration in core/db.
-    const organizationId = await requireOrganizationId();
+    const organizationId = session.organization_id;
 
     // RETURNING rather than a read back by rowid: Postgres has no rowid.
     const site = await sql.row<any>(`
@@ -86,6 +94,7 @@ export async function POST(request: NextRequest) {
     `, [organizationId, propId, name.trim(), slug, type, currency, defaultDesignConfig, defaultWidgetConfig, session.id]);
 
     return NextResponse.json({ site }, { status: 201 });
+    });
   } catch (error: any) {
     console.error('POST /api/booking-sites error:', error);
     return NextResponse.json({ error: error?.message || 'Failed to create site' }, { status: 500 });

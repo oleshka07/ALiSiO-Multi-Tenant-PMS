@@ -394,29 +394,32 @@ async function main() {
       method: 'POST',
       body: JSON.stringify({ property_id: propA.id, name: 'Probe site', slug: `${TAG}site_a` }),
     });
-    if (siteRes.ok) {
-      const siteA = await siteRes.json();
-      const siteId = siteA.id || siteA.site?.id;
-      if (siteId) {
-        for (const view of ['overview', 'traffic', 'geo', 'listings', 'campaigns', 'funnel']) {
-          const leak = await call(cookieB, `/api/booking-sites/${siteId}/analytics/${view}`);
-          assert.strictEqual(leak.status, 404, `B read A's analytics/${view}: ${leak.status}`);
-        }
-        const own = await call(cookieA, `/api/booking-sites/${siteId}/analytics/overview`);
-        assert.ok(own.ok, `A cannot read its own analytics: ${own.status}`);
-        console.log("  ok  B cannot read A's site analytics, A still can");
-      }
+    // Asserted, not skipped. `if (siteRes.ok)` meant a refused site creation
+    // read exactly like six passing isolation checks — and it did: against
+    // Postgres this route quietly stopped working, six assertions never ran,
+    // and the failure surfaced eighty lines later as a widget answering 404.
+    // A check that skips itself when the setup fails is not a check.
+    assert.ok(siteRes.ok, `A could not create a booking site: ${siteRes.status} ${await siteRes.clone().text()}`);
+    const siteA = await siteRes.json();
+    const siteId = siteA.id || siteA.site?.id;
+    assert.ok(siteId, `no site id came back: ${JSON.stringify(siteA)}`);
+
+    for (const view of ['overview', 'traffic', 'geo', 'listings', 'campaigns', 'funnel']) {
+      const leak = await call(cookieB, `/api/booking-sites/${siteId}/analytics/${view}`);
+      assert.strictEqual(leak.status, 404, `B read A's analytics/${view}: ${leak.status}`);
     }
+    const own = await call(cookieA, `/api/booking-sites/${siteId}/analytics/overview`);
+    assert.ok(own.ok, `A cannot read its own analytics: ${own.status}`);
+    console.log("  ok  B cannot read A's site analytics, A still can");
 
     // 'all' must mean "all of MINE". It expanded to `1=1` — every reservation
     // on the server — which read correctly only while there was one hotel.
     const allB = await call(cookieB, '/api/booking-sites/all/analytics/overview');
-    if (allB.ok) {
-      const body = await allB.json();
-      assert.strictEqual(body?.current?.revenue ?? 0, 0,
-        "B's 'all sites' revenue is not zero — it is counting somebody else's");
-      console.log("  ok  'all sites' counts only the caller's own");
-    }
+    assert.ok(allB.ok, `'all sites' refused B: ${allB.status} ${await allB.clone().text()}`);
+    const allBody = await allB.json();
+    assert.strictEqual(allBody?.current?.revenue ?? 0, 0,
+      "B's 'all sites' revenue is not zero — it is counting somebody else's");
+    console.log("  ok  'all sites' counts only the caller's own");
 
     // ── The public waitlist ──────────────────────────────────────────────
     // Open by design (a guest joins from the widget), so the guard is that a
@@ -445,6 +448,11 @@ async function main() {
     // list of upcoming guests by name. B has no property with units, so its
     // dashboard must be empty rather than a copy of A's.
     const dashB = await call(cookieB, '/api/dashboard');
+    // Asserted first, then read. Six blocks here used to be `if (x.ok)`
+    // alone: a route that started refusing printed nothing — no failure,
+    // no "ok" line — and the run ended green having checked less than it
+    // claimed. The `if` stays only so the bodies need no reindenting.
+    assert.ok(dashB.ok, `B's dashboard was refused: ${dashB.status}`);
     if (dashB.ok) {
       const d = await dashB.json();
       assert.strictEqual(d.totalUnits, 0, `B's dashboard counts ${d.totalUnits} units it does not own`);
@@ -460,6 +468,7 @@ async function main() {
     const digest = await fetch(`${BASE}/api/cron/daily-digest`, {
       headers: { 'x-cron-secret': process.env.CRON_SECRET || 'local-cron' },
     });
+    assert.ok(digest.ok, `the digest cron was refused: ${digest.status}`);
     if (digest.ok) {
       const d = await digest.json();
       assert.ok(Array.isArray(d.results), 'the digest cron did not report per-organization results');
@@ -539,6 +548,7 @@ async function main() {
     // reservation on the server. The city-tax report is the worse of the two:
     // it is filed with the municipality and it carries guest names.
     const repB = await call(cookieB, '/api/reports?from=2020-01-01&to=2030-01-01');
+    assert.ok(repB.ok, `B's report was refused: ${repB.status}`);
     if (repB.ok) {
       const r = await repB.json();
       assert.strictEqual(r.summary.totalBookings, 0, `B's report counts ${r.summary.totalBookings} bookings it does not own`);
@@ -547,6 +557,7 @@ async function main() {
     }
 
     const taxB = await call(cookieB, '/api/reports/city-tax?month=2025-01');
+    assert.ok(taxB.ok, `B's city-tax return was refused: ${taxB.status}`);
     if (taxB.ok) {
       const t = await taxB.json();
       assert.strictEqual(t.totalBookings, 0, `B's city-tax return lists ${t.totalBookings} stays it does not own`);
@@ -559,6 +570,7 @@ async function main() {
     // organization's stale confirmed bookings as no_show, so opening A's
     // dashboard rewrote B's reservation statuses.
     const alertsB = await call(cookieB, '/api/alerts');
+    assert.ok(alertsB.ok, `B's alerts was refused: ${alertsB.status}`);
     if (alertsB.ok) {
       const list = await alertsB.json();
       assert.ok(Array.isArray(list), 'alerts did not return a list');
@@ -578,6 +590,7 @@ async function main() {
     const savedKey = await call(cookieB, '/api/settings/integration-credentials', {
       method: 'PUT', body: JSON.stringify({ channel: 'hostex', values: { accessToken: KEY } }),
     });
+    assert.ok(savedKey.ok, `saving an integration key was refused: ${savedKey.status}`);
     if (savedKey.ok) {
       const back = await savedKey.text();
       assert.ok(!back.includes(KEY), 'the save response echoed the raw token back');
