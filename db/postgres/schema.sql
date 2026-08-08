@@ -1282,6 +1282,7 @@ CREATE TABLE "reservations" (
   "is_prepaid" BOOLEAN DEFAULT false,
   "is_multi_room" BOOLEAN DEFAULT false,
   "multi_room_marker" TEXT,
+  "organization_id" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("guest_page_token"),
   CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
@@ -1866,17 +1867,19 @@ ALTER TABLE "reservation_sub_bookings" ADD CONSTRAINT "fk_reservation_sub_bookin
   FOREIGN KEY ("child_reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
 ALTER TABLE "reservation_sub_bookings" ADD CONSTRAINT "fk_reservation_sub_bookings_reservation_id_2"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_parent_id_1"
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id");
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_parent_id_2"
   FOREIGN KEY ("parent_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_group_id_2"
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_group_id_3"
   FOREIGN KEY ("group_id") REFERENCES "reservation_groups" ("id") ON DELETE SET NULL;
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_rate_plan_id_3"
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_rate_plan_id_4"
   FOREIGN KEY ("rate_plan_id") REFERENCES "rate_plans" ("id");
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_guest_id_4"
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_guest_id_5"
   FOREIGN KEY ("guest_id") REFERENCES "guests" ("id");
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_unit_id_5"
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_unit_id_6"
   FOREIGN KEY ("unit_id") REFERENCES "units" ("id");
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_property_id_6"
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_property_id_7"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "service_addons" ADD CONSTRAINT "fk_service_addons_service_id_1"
   FOREIGN KEY ("service_id") REFERENCES "additional_services" ("id") ON DELETE CASCADE;
@@ -2067,6 +2070,7 @@ CREATE INDEX "idx_reservations_external_uid" ON "reservations" ("external_uid");
 CREATE INDEX "idx_reservations_guest" ON "reservations" ("guest_id");
 CREATE UNIQUE INDEX "idx_reservations_guest_token" ON "reservations" ("guest_page_token");
 CREATE INDEX "idx_reservations_hostex_code" ON "reservations" ("hostex_reservation_code");
+CREATE INDEX "idx_reservations_org" ON "reservations" ("organization_id");
 CREATE INDEX "idx_reservations_parent" ON "reservations" ("parent_id");
 CREATE INDEX "idx_reservations_property" ON "reservations" ("property_id");
 CREATE INDEX "idx_reservations_status" ON "reservations" ("status");
@@ -2129,6 +2133,7 @@ CREATE INDEX IF NOT EXISTS "idx_invoices_org" ON "invoices" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_organization_features_org" ON "organization_features" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_payment_webhook_log_org" ON "payment_webhook_log" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_properties_org" ON "properties" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_reservations_org" ON "reservations" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_task_attachments_org" ON "task_attachments" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_task_projects_org" ON "task_projects" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_task_tags_org" ON "task_tags" ("organization_id");
@@ -2210,6 +2215,8 @@ ALTER TABLE "organization_features" ALTER COLUMN "organization_id"
 ALTER TABLE "payment_webhook_log" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "properties" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "reservations" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "task_attachments" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2320,8 +2327,8 @@ CREATE POLICY "capex_items_tenant" ON "capex_items"
 ALTER TABLE "cart_events" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "cart_events" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "cart_events_tenant" ON "cart_events"
-  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))))
-  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))));
+  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "organization_id" = current_setting('app.organization_id')))
+  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "categories" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "categories" FORCE ROW LEVEL SECURITY;
@@ -2482,8 +2489,8 @@ CREATE POLICY "gift_cards_tenant" ON "gift_cards"
 ALTER TABLE "guest_chat_messages" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "guest_chat_messages" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "guest_chat_messages_tenant" ON "guest_chat_messages"
-  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))))
-  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))));
+  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "organization_id" = current_setting('app.organization_id')))
+  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "guest_page_config" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "guest_page_config" FORCE ROW LEVEL SECURITY;
@@ -2590,26 +2597,26 @@ CREATE POLICY "reservation_groups_tenant" ON "reservation_groups"
 ALTER TABLE "reservation_guests" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reservation_guests" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "reservation_guests_tenant" ON "reservation_guests"
-  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))))
-  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))));
+  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "organization_id" = current_setting('app.organization_id')))
+  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "reservation_line_items" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reservation_line_items" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "reservation_line_items_tenant" ON "reservation_line_items"
-  USING ("sub_booking_id" IN (SELECT "id" FROM "reservation_sub_bookings" WHERE "reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id')))))
-  WITH CHECK ("sub_booking_id" IN (SELECT "id" FROM "reservation_sub_bookings" WHERE "reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id')))));
+  USING ("sub_booking_id" IN (SELECT "id" FROM "reservation_sub_bookings" WHERE "reservation_id" IN (SELECT "id" FROM "reservations" WHERE "organization_id" = current_setting('app.organization_id'))))
+  WITH CHECK ("sub_booking_id" IN (SELECT "id" FROM "reservation_sub_bookings" WHERE "reservation_id" IN (SELECT "id" FROM "reservations" WHERE "organization_id" = current_setting('app.organization_id'))));
 
 ALTER TABLE "reservation_sub_bookings" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reservation_sub_bookings" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "reservation_sub_bookings_tenant" ON "reservation_sub_bookings"
-  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))))
-  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id'))));
+  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "organization_id" = current_setting('app.organization_id')))
+  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "reservations" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reservations" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "reservations_tenant" ON "reservations"
-  USING ("guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id')))
-  WITH CHECK ("guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id')));
+  USING ("organization_id" = current_setting('app.organization_id') OR "guest_page_token" = NULLIF(current_setting('app.guest_token', true), ''))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "service_addons" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "service_addons" FORCE ROW LEVEL SECURITY;
@@ -2620,8 +2627,8 @@ CREATE POLICY "service_addons_tenant" ON "service_addons"
 ALTER TABLE "service_orders" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "service_orders" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "service_orders_tenant" ON "service_orders"
-  USING ("service_id" IN (SELECT "id" FROM "additional_services" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
-  WITH CHECK ("service_id" IN (SELECT "id" FROM "additional_services" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
+  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "organization_id" = current_setting('app.organization_id')))
+  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "service_time_slots" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "service_time_slots" FORCE ROW LEVEL SECURITY;

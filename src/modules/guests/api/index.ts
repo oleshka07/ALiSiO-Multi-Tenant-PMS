@@ -1,13 +1,46 @@
 // Guests module public API
+import { NextResponse } from 'next/server';
+import { withGuestReservation } from '../data/guest-scope';
+import { getGuestPortal as _getGuestPortal } from './portal.handlers';
+import { registerGuests as _registerGuests } from './register.handlers';
+import { submitFeedback as _submitFeedback } from './feedback.handlers';
+import { orderServices as _orderServices } from './services.handlers';
+import { payForService as _payForService } from './pay.handlers';
+import { payForBooking as _payForBooking } from './pay-booking.handlers';
+import { handleCartEvent as _handleCartEvent } from './cart.handlers';
+
 export { listGuests, createGuest } from './guests.handlers';
 export { getGuest, updateGuest, deleteGuest } from './guest.handlers';
-export { getGuestPortal } from './portal.handlers';
-export { registerGuests } from './register.handlers';
-export { submitFeedback } from './feedback.handlers';
-export { orderServices } from './services.handlers';
-export { payForService } from './pay.handlers';
-export { payForBooking } from './pay-booking.handlers';
-export { handleCartEvent } from './cart.handlers';
+
+/**
+ * The guest portal's guard: resolve the link's token, then run as that hotel.
+ *
+ * Every handler below already looks the reservation up by token itself. That
+ * lookup is scoped like everything else, so with no organization set it matched
+ * nothing and the entire portal answered 404 — its own booking, invisible to
+ * the guest holding the link. This resolves the tenant first, from the one row
+ * the token names, and the handlers then work unchanged.
+ *
+ * A token that names nothing gives 404, and so does a token whose reservation
+ * has no organization. Same answer either way: a different one would tell a
+ * stranger which tokens exist.
+ */
+type GuestCtx = { params: Promise<{ token: string }> };
+function withGuest<R>(handler: (request: any, context: GuestCtx) => Promise<R>) {
+  return async (request: any, context: GuestCtx) => {
+    const { token } = await context.params;
+    const answer = await withGuestReservation(token, () => handler(request, context));
+    return answer ?? NextResponse.json({ error: 'Not found' }, { status: 404 });
+  };
+}
+
+export const getGuestPortal   = withGuest(_getGuestPortal);
+export const registerGuests   = withGuest(_registerGuests);
+export const submitFeedback   = withGuest(_submitFeedback);
+export const orderServices    = withGuest(_orderServices);
+export const payForService    = withGuest(_payForService);
+export const payForBooking    = withGuest(_payForBooking);
+export const handleCartEvent  = withGuest(_handleCartEvent);
 export { getRegistry, updateRegistryEntry, exportRegistry } from './registry.handlers';
 
 

@@ -33,6 +33,33 @@ export function currentOrganizationId(): string | null {
 }
 
 /**
+ * The guest's own token, for the one lookup that happens before any tenant.
+ *
+ * A guest follows a link and holds nothing else — no session, no site key, no
+ * organization. `reservations` cannot be opened to tenant-less reads (that is
+ * every booking on the server), so the token travels the same way the
+ * organization does: onto the connection, where the policy can compare it
+ * against `guest_page_token` and match exactly the row it names.
+ *
+ * Deliberately separate from the organization rather than folded into it: this
+ * one grants a single row on read, and nothing else, ever. Once that row is
+ * read the route knows its organization and continues under
+ * runWithOrganization like everything else — so the window where the token
+ * matters is one statement wide.
+ */
+const guestToken = new AsyncLocalStorage<string>();
+
+/** Run fn with this guest token available to the row-level policy. */
+export function runWithGuestToken<T>(token: string, fn: () => T): T {
+  return guestToken.run(token, fn);
+}
+
+/** The ambient guest token, or null outside a guest-portal request. */
+export function currentGuestToken(): string | null {
+  return guestToken.getStore() ?? null;
+}
+
+/**
  * The organization to write to or filter by. Throws rather than guess.
  * `db` is the better-sqlite3 handle; passed in to avoid importing the database
  * module from the auth layer.

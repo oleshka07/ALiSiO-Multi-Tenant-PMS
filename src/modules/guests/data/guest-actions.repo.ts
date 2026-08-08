@@ -16,9 +16,14 @@ export async function getReservationIdByToken(token: string): Promise<string | n
 
 export async function saveFeedback(reservationId: string, feedback: string) {
   const sql = getSql();
+  // `booking_activity_log`, which is the table that exists. `reservation_activity`
+  // never did — not in the SQLite schema and not in db/postgres/schema.sql — so
+  // every guest who left feedback got an error and the text was lost. SQL is a
+  // string, so nothing but running it says otherwise; the sibling handler in
+  // bookings/api/reservation-activity.handlers.ts has always used the real name.
   await sql.run(`
-    INSERT INTO reservation_activity (id, reservation_id, type, description, created_by, created_at)
-    VALUES (?, ?, 'guest_feedback', ?, 'guest', CURRENT_TIMESTAMP)
+    INSERT INTO booking_activity_log (id, reservation_id, action, details)
+    VALUES (?, ?, 'guest_feedback', ?)
   `, [newId(), reservationId, feedback.trim()]);
 }
 

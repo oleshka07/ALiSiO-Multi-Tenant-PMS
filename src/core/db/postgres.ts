@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Sql, Dialect } from './async.ts';
-import { currentOrganizationId } from '../auth/tenant-context.ts';
+import { currentOrganizationId, currentGuestToken } from '../auth/tenant-context.ts';
 
 /**
  * The `Sql` seam over Postgres.
@@ -150,12 +150,23 @@ export function toDollarParams(sql: string): string {
   return out;
 }
 
-/** Set the tenant for this connection, so RLS has something to match on. */
+/**
+ * Set the tenant for this connection, so RLS has something to match on.
+ *
+ * Both settings go on every checkout, including when they are empty — a
+ * connection returns to the pool carrying whatever it was last told, so writing
+ * '' is what clears the previous request's values. Leaving them out instead of
+ * clearing them would let one request read under another's tenant, which is the
+ * exact bug pool-tenant.check.ts exists to prevent.
+ */
 async function scopeToTenant(client: PgClient): Promise<void> {
   const org = currentOrganizationId();
   // set_config with a parameter, not string interpolation: the organization id
   // comes from a session and must never be pasted into SQL.
   await client.query('SELECT set_config($1, $2, false)', ['app.organization_id', org ?? '']);
+  // The guest portal's one pre-tenant lookup; '' matches nothing, by NULLIF in
+  // the policy.
+  await client.query('SELECT set_config($1, $2, false)', ['app.guest_token', currentGuestToken() ?? '']);
 }
 
 /**

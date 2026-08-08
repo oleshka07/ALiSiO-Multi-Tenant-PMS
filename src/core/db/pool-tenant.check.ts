@@ -43,7 +43,11 @@ function makeConnection(id: number) {
     give() { busy = false; },
     async query(text: string, params?: unknown[]) {
       if (/set_config/.test(text)) {
-        tenant = String((params as unknown[])[1]);
+        // By name: the seam sets more than one variable per checkout
+        // (app.organization_id and app.guest_token), and a fake that treats
+        // them all as the tenant reports a failure the real code does not have.
+        const [name, value] = params as [string, string];
+        if (name === 'app.organization_id') tenant = String(value);
         return { rows: [], rowCount: 0 };
       }
       // Yield, so a concurrent chain gets a chance to interleave here — this is

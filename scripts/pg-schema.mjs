@@ -241,6 +241,27 @@ const IDENTITY = new Set(['organizations', 'sessions']);
 // request that HAS a tenant still sees only its own users.
 const READ_BEFORE_TENANT = new Set(['app_users', 'booking_sites']);
 
+// The guest portal: one row, to whoever holds its secret.
+//
+// A guest arrives with a `guest_page_token` in a link and nothing else — no
+// session, no site key, no organization. `reservations` cannot join the two
+// tables above (opening every booking on the server is not a trade anyone would
+// make), so the token itself is the credential, and the policy is taught to
+// recognise it: the route puts the token on the connection, exactly as it puts
+// the organization, and the policy matches that one row.
+//
+// What this opens is bounded by design:
+//
+//   - one row, the one whose token was presented, and only on READ;
+//   - NULLIF, so an unset or empty setting matches nothing — a reservation
+//     whose own token is '' must never become world-readable;
+//   - WITH CHECK is untouched, so a guest can never write a row anywhere.
+//
+// Having read it, the route learns the organization from that row and runs
+// everything else under the ordinary tenant context. That is why reservations
+// carries its own organization_id: the guest cannot reach `guests` to derive it.
+const GUEST_TOKEN_READ = new Set(['reservations']);
+
 const REFERENCE = new Set([
   'rate_limits', 'settings', 'content_translations',
   'email_processed', 'fin_system_state', 'hostex_sync_log', 'hostex_property_map',
@@ -512,9 +533,12 @@ for (const t of tables) {
   const pred = rlsPredicate(t.name);
   if (!pred) { rlsNone.push(t.name); continue; }
   rlsCovered.push(t.name);
-  const readPred = READ_BEFORE_TENANT.has(t.name)
-    ? `${pred} OR current_setting('app.organization_id') = ''`
-    : pred;
+  let readPred = pred;
+  if (READ_BEFORE_TENANT.has(t.name)) {
+    readPred = `${pred} OR current_setting('app.organization_id') = ''`;
+  } else if (GUEST_TOKEN_READ.has(t.name)) {
+    readPred = `${pred} OR "guest_page_token" = NULLIF(current_setting('app.guest_token', true), '')`;
+  }
   w(`ALTER TABLE ${q(t.name)} ENABLE ROW LEVEL SECURITY;`);
   w(`ALTER TABLE ${q(t.name)} FORCE ROW LEVEL SECURITY;`);
   w(`CREATE POLICY ${q(`${t.name}_tenant`)} ON ${q(t.name)}`);

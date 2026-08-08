@@ -266,6 +266,7 @@ function buildSchema(database: any) {
     -- Reservations
     CREATE TABLE reservations (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT REFERENCES organizations(id),
       property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
       unit_id TEXT NOT NULL REFERENCES units(id),
       guest_id TEXT NOT NULL REFERENCES guests(id),
@@ -1139,6 +1140,27 @@ function runMigrations(database: any) {
       synced_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+
+  // --- Migration: reservations name their own organization ---
+  //
+  // The guest portal is reached with a token and nothing else, and `reservations`
+  // was scoped only through `guests.organization_id`. On Postgres that meant a
+  // guest link could not find its own booking: the policy needs an organization,
+  // and the token lookup is what discovers it. Same fix booking_sites got — one
+  // column, so the public entry point can name its own hotel.
+  try {
+    const resColsOrg = database.prepare("PRAGMA table_info(reservations)").all() as { name: string }[];
+    if (!resColsOrg.some((c: any) => c.name === 'organization_id')) {
+      database.exec("ALTER TABLE reservations ADD COLUMN organization_id TEXT REFERENCES organizations(id)");
+      database.exec(`UPDATE reservations SET organization_id = (
+        SELECT g.organization_id FROM guests g WHERE g.id = reservations.guest_id
+      ) WHERE organization_id IS NULL`);
+      database.exec("CREATE INDEX IF NOT EXISTS idx_reservations_org ON reservations(organization_id)");
+      console.log('[DB] Added organization_id column to reservations');
+    }
+  } catch (e: any) {
+    console.log('[DB] reservations.organization_id migration note:', e.message);
+  }
 
   // --- Migration: add external_uid to reservations ---
   try {

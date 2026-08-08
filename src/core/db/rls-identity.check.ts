@@ -117,5 +117,64 @@ assert.strictEqual(
 );
 console.log('  ok  and one hotel cannot read the other\'s overrides');
 
+// ─── the guest portal: one row, to whoever holds its token ───────────────────
+// A guest has no session and no site key — only a link. `reservations` cannot
+// be opened to tenant-less reads, so the token itself is what the policy
+// matches. What matters is that it opens exactly one row and nothing else.
+await db.exec(`
+  CREATE TABLE reservations (
+    id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, guest_page_token TEXT
+  );
+  INSERT INTO reservations VALUES
+    ('r_anna', 'org_a', 'tok_anna'),
+    ('r_bob',  'org_b', 'tok_bob'),
+    ('r_old',  'org_a', '');          -- a row whose token is empty
+
+  ALTER TABLE reservations ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY reservations_tenant ON reservations
+    USING ("organization_id" = current_setting('app.organization_id')
+           OR "guest_page_token" = NULLIF(current_setting('app.guest_token', true), ''))
+    WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+  GRANT SELECT, INSERT, UPDATE, DELETE ON reservations TO app_role;
+`);
+
+/** As the application role, with a tenant AND a guest token. */
+async function asGuest<T = Record<string, unknown>>(token: string, sql: string): Promise<T[]> {
+  await db.exec('SET ROLE app_role');
+  await db.query('SELECT set_config($1, $2, false)', ['app.organization_id', '']);
+  await db.query('SELECT set_config($1, $2, false)', ['app.guest_token', token]);
+  try {
+    return (await db.query<T>(sql)).rows;
+  } finally {
+    await db.exec('RESET ROLE');
+    await db.query('SELECT set_config($1, $2, false)', ['app.guest_token', '']);
+  }
+}
+
+const ALL = 'SELECT id FROM reservations';
+assert.deepStrictEqual(
+  (await asGuest('tok_anna', ALL)).map((r: any) => r.id), ['r_anna'],
+  'the token opens the row it names, and only that row',
+);
+assert.strictEqual((await asGuest('tok_wrong', ALL)).length, 0, 'a token that names nothing sees nothing');
+assert.strictEqual((await asGuest('', ALL)).length, 0, 'no token, no rows — not every row');
+console.log('  ok  a guest token opens exactly the reservation it names');
+
+// The reason for NULLIF: a reservation whose own token is '' must not become
+// readable to a caller who simply set nothing.
+assert.ok(
+  !(await asGuest('', ALL)).some((r: any) => r.id === 'r_old'),
+  "an empty token must not match a row whose own token is empty",
+);
+console.log('  ok  an empty token matches nothing, including the empty-token row');
+
+// And the token grants no write, ever.
+await assert.rejects(
+  () => asGuest('tok_anna', "UPDATE reservations SET organization_id = 'org_b' WHERE id = 'r_anna'"),
+  /row-level security/,
+  'a guest token must never permit a write',
+);
+console.log('  ok  and it never permits a write');
+
 await db.close();
 console.log('rls-identity: the tenant is set before anything scoped is read');
