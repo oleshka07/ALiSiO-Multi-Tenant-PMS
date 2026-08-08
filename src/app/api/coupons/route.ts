@@ -1,14 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
+import { withActor, withPermission } from '@core/auth/session';
 
 /* ─── GET /api/coupons?site_id=xxx ─── */
-export async function GET(req: NextRequest) {
+//
+// Through the guard rather than a session lookup of its own. The check that was
+// here proved WHO was calling and stopped there, so the query below ran with no
+// organization — and it has none of its own either: `WHERE 1=1` filters by site
+// and by rule, never by tenant. On SQLite that returned every hotel's promo
+// codes to whoever asked. On Postgres the policy returned nobody's, including
+// the caller's. The guard sets the tenant and the policy does the filtering.
+export const GET = withActor(async (req: NextRequest) => {
   try {
-    const user = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const sql = getSql();
     const url = new URL(req.url);
     const siteId = url.searchParams.get('site_id');
@@ -28,14 +32,11 @@ export async function GET(req: NextRequest) {
     console.error('GET /api/coupons error:', e?.message || e);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
-}
+});
 
 /* ─── POST /api/coupons ─── */
-export async function POST(req: NextRequest) {
+export const POST = withPermission('manage_sites', async (req: NextRequest) => {
   try {
-    const user = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const body = await req.json();
     const {
       code, discount_type, offer_amount,
@@ -92,4 +93,4 @@ export async function POST(req: NextRequest) {
     console.error('POST /api/coupons error:', e?.message || e);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
-}
+});

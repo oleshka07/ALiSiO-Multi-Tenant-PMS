@@ -172,11 +172,54 @@ const POSTGRES_DIALECT: Dialect = {
   plusMinutes: (column, minutes) => `${column} + (${minutes}) * INTERVAL '1 minute'`,
 };
 
+/**
+ * Run one statement with the tenant set on the connection that runs it.
+ *
+ * This used to be two calls through the pool:
+ *
+ *   await scopeToTenant(pool);                  // checkout A, set, release A
+ *   return pool.query(text, params);            // checkout B, run
+ *
+ * which are two independent checkouts. The setting landed on A and the query
+ * ran on whichever connection the pool handed out next. With one connection
+ * they are always the same and everything works, which is why this survived
+ * every test and every quiet moment on production.
+ *
+ * Under concurrency they are not the same, and it fails in both directions: the
+ * query runs on a connection nobody set (rows silently missing) or on one that
+ * ANOTHER REQUEST left set to ITS organization — and then the policies do
+ * exactly what they are told and hand over that hotel's rows. Measured against
+ * a real Postgres with a pool of two and eight tenants asking at once: 260 of
+ * 320 statements ran under the wrong organization.
+ *
+ * So the connection is checked out once, here, and the setting and the
+ * statement both go to it. That is also one checkout instead of two.
+ *
+ * `scoped` means the caller already owns a connection and already set the
+ * tenant on it — inside `tx`, where every statement must stay on the one
+ * connection the transaction began on.
+ */
 function methods(client: PgClient, scoped: boolean): Sql {
-  const run = async (text: string, params: unknown[] = []) => {
-    if (!scoped) await scopeToTenant(client);
-    return client.query(toDollarParams(text), params);
+  const withTenant = async <T>(fn: (c: PgClient) => Promise<T>): Promise<T> => {
+    if (scoped) return fn(client);
+    const pool = client as PgPool;
+    // A driver with no pool (PGlite in the checks) is a single connection, so
+    // setting the tenant on it IS setting it on the one that runs the query.
+    if (typeof pool.connect !== 'function') {
+      await scopeToTenant(client);
+      return fn(client);
+    }
+    const conn = await pool.connect();
+    try {
+      await scopeToTenant(conn);
+      return await fn(conn);
+    } finally {
+      conn.release();
+    }
   };
+
+  const run = async (text: string, params: unknown[] = []) =>
+    withTenant((c) => c.query(toDollarParams(text), params));
 
   return {
     dialect: POSTGRES_DIALECT,
@@ -202,9 +245,10 @@ function methods(client: PgClient, scoped: boolean): Sql {
     },
 
     async exec(text: string) {
-      if (!scoped) await scopeToTenant(client);
-      if (client.exec) await client.exec(text);
-      else await client.query(text);
+      await withTenant(async (c) => {
+        if (c.exec) await c.exec(text);
+        else await c.query(text);
+      });
     },
 
     async tx<T>(): Promise<T> {
