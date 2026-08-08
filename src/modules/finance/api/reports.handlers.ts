@@ -77,7 +77,7 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
                               WHEN o.op_type = 'expense' AND COALESCE(o.payment_subtype,'') = 'refund' THEN -o.amount_company
                               ELSE 0 END), 0) as revenue,
              COALESCE(SUM(CASE WHEN o.op_type = 'expense' AND COALESCE(o.payment_subtype,'') != 'refund'
-                                AND COALESCE(ec.is_capex, 0) = 0
+                                AND COALESCE(ec.is_capex, FALSE) = FALSE
                                 AND COALESCE(ec.classifier, ec.std_group, 'x') NOT IN ('financing', 'Financing', 'capex', 'CAPEX')
                                THEN o.amount_company ELSE 0 END), 0) as expenses,
              COALESCE(SUM(CASE WHEN o.op_type = 'expense' AND ec.is_capex = TRUE THEN o.amount_company ELSE 0 END), 0) as capex
@@ -269,7 +269,8 @@ export async function getCashflowMatrix(request: NextRequest): Promise<NextRespo
       LEFT JOIN expense_categories ec ON ec.id = o.category_id
       WHERE ${where.join(' AND ')}
         AND o.op_type != 'transfer'
-      GROUP BY COALESCE(ec.id, ''), o.op_type, month
+      GROUP BY ec.id, ec.name, ec.icon, ec.classifier, ec.op_type, ec.parent_id,
+               o.op_type, month
     `, [...params]) as any[];
 
     // Build category tree + month data
@@ -407,7 +408,8 @@ export async function getPnlMatrix(request: NextRequest): Promise<NextResponse> 
         AND o.organization_id = ?
         AND o.op_type != 'transfer'
         ${tagFilter}
-      GROUP BY COALESCE(ec.id, ''), o.op_type, month
+      GROUP BY ec.id, ec.name, ec.icon, ec.classifier, ec.op_type, ec.parent_id,
+               o.op_type, month
     `, [from, to, org, ...tagIds]) as any[];
 
     // Classify
@@ -702,7 +704,7 @@ export async function getProjectProfitability(request: NextRequest): Promise<Nex
                WHEN o.op_type = 'income' AND COALESCE(ec.classifier, '') = 'financing' THEN 'financing_in'
                WHEN o.op_type = 'income' THEN 'income'
                WHEN COALESCE(o.payment_subtype, '') = 'refund' THEN 'refund'
-               WHEN COALESCE(ec.classifier, '') IN ('capex', 'financing') OR COALESCE(ec.is_capex, 0) = 1 THEN 'capex_fin'
+               WHEN COALESCE(ec.classifier, '') IN ('capex', 'financing') OR COALESCE(ec.is_capex, FALSE) = TRUE THEN 'capex_fin'
                ELSE 'expense'
              END AS bucket,
              ${monthOf} AS month, SUM(o.amount_company) AS total

@@ -109,10 +109,10 @@ async function servicesFor(searchParams: URLSearchParams) {
       services = await sql.rows<any>(`
         SELECT s.*, ss.price_override, ss.photo_override,
                COALESCE(ss.sort_order, s.sort_order) as site_sort_order, 
-               COALESCE(ss.is_enabled, 1) as is_enabled
+               COALESCE(ss.is_enabled, TRUE) as is_enabled
         FROM additional_services s
         LEFT JOIN site_services ss ON ss.service_id = s.id AND ss.site_id = ?
-        WHERE s.is_active = TRUE AND COALESCE(ss.is_enabled, 1) = 1
+        WHERE s.is_active = TRUE AND COALESCE(ss.is_enabled, TRUE) = TRUE
         ORDER BY COALESCE(ss.sort_order, s.sort_order), s.sort_order
       `, [siteId]) as any[];
 

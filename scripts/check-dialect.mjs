@@ -88,7 +88,15 @@ const BOOLEAN_COLUMNS = [...new Set(
 if (BOOLEAN_COLUMNS.length) {
   RULES.push({
     id: 'boolean-int',
-    re: new RegExp(`\\b(?:${BOOLEAN_COLUMNS.join('|')})\\s*(?:=|!=|<>)\\s*[01]\\b`, 'g'),
+    // Two shapes, and the second was missed for a month because what sits
+    // before the `=` is a closing parenthesis rather than a column name:
+    //   is_active = 1
+    //   COALESCE(is_capex, 0)      — Postgres refuses to mix the two types
+    re: new RegExp(
+      `\\b(?:${BOOLEAN_COLUMNS.join('|')})\\s*(?:=|!=|<>)\\s*[01]\\b`
+      + `|COALESCE\\(\\s*(?:[a-z_]+\\.)?(?:${BOOLEAN_COLUMNS.join('|')})\\s*,\\s*[01]\\s*\\)`,
+      'gi',
+    ),
     quiet: false,
     fix: 'compare a BOOLEAN to TRUE/FALSE, not to 1/0 — both engines accept that spelling',
   });

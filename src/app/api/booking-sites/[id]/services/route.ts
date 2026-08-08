@@ -20,7 +20,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         s.id, s.name, s.name_en, s.name_cs, s.icon,
         s.service_type, s.price, s.currency, s.unit_label,
         s.sort_order AS global_sort_order,
-        COALESCE(ss.is_enabled, 1)    AS is_enabled,
+        COALESCE(ss.is_enabled, TRUE)    AS is_enabled,
         ss.price_override,
         ss.photo_override,
         COALESCE(ss.sort_order, s.sort_order) AS sort_order,
