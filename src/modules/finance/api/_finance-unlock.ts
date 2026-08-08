@@ -61,7 +61,7 @@ export async function lockFinance(sessionId: string): Promise<void> {
 export async function isFinanceUnlocked(sessionId: string | undefined): Promise<boolean> {
   if (!sessionId) return false;
   const sql = getSql();
-  const row = await sql.row<any>("SELECT 1 FROM sessions WHERE id = ? AND finance_unlocked_until IS NOT NULL AND finance_unlocked_until > CURRENT_TIMESTAMP", [sessionId]);
+  const row = await sql.row<any>("SELECT 1 FROM sessions WHERE id = ? AND finance_unlocked_until IS NOT NULL AND CAST(finance_unlocked_until AS TEXT) > CAST(CURRENT_TIMESTAMP AS TEXT)", [sessionId]);
   return !!row;
 }
 

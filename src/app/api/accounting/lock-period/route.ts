@@ -21,7 +21,7 @@ export const GET = requireOwner(async (_request, _ctx, actor: Actor): Promise<Ne
   );
   // Also surface open (series, month) combos that have invoices but no explicit row yet.
   const derived = await sql.rows(`
-    SELECT series, substr(COALESCE(period, issued_at),1,7) AS month, COUNT(*) AS invoices
+    SELECT series, substr(COALESCE(period, CAST(issued_at AS TEXT)),1,7) AS month, COUNT(*) AS invoices
     FROM invoices WHERE organization_id = ? AND status = 'issued'
     GROUP BY series, month ORDER BY month DESC, series
   `, [actor.organizationId]);
