@@ -5,6 +5,7 @@
  */
 
 import { getSql } from '@core/db/async';
+import { runWithOrganization } from '@core/auth/tenant-context';
 import { appBaseUrl } from '@core/app-url';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -104,6 +105,21 @@ export async function notifyTaskStatusChanged(opts: {
 
 /**
  * Get daily task summary for a user (used by daily digest).
+ *
+ * Scoped to the person's own hotel, from the person's own row.
+ *
+ * Both callers arrive without a session: the digest cron sweeps every hotel,
+ * and the Telegram bridge is authenticated by a shared secret and a chat id.
+ * `tasks` is tenant-scoped with no read escape, so with no organization set the
+ * four queries below matched nothing — `total === 0`, and the digest decided
+ * there was nothing to report. Every report, for everyone, silently empty from
+ * the day prod moved to Postgres, and the Telegram task list along with it.
+ *
+ * The organization comes from `app_users`, which IS readable before a tenant is
+ * known — that is what makes the lookup possible. It cannot widen anything: with
+ * an organization already set, the policy restricts this read to that
+ * organization, so a foreign user id resolves to nothing rather than to its own
+ * hotel.
  */
 export async function getUserTaskSummary(userId: string): Promise<{
   overdue: any[];
@@ -111,6 +127,18 @@ export async function getUserTaskSummary(userId: string): Promise<{
   upcoming: any[];
   inProgress: any[];
 }> {
+  const sql = getSql();
+  const empty = { overdue: [], today: [], upcoming: [], inProgress: [] };
+
+  const owner = await sql.row<{ organization_id: string }>(
+    'SELECT organization_id FROM app_users WHERE id = ?', [userId],
+  );
+  if (!owner?.organization_id) return empty;
+
+  return runWithOrganization(owner.organization_id, () => summaryOf(userId));
+}
+
+async function summaryOf(userId: string) {
   const sql = getSql();
   const now = new Date().toISOString().slice(0, 10);
   const weekEnd = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
@@ -218,6 +246,11 @@ export async function sendDailyTaskDigest(userId: string): Promise<boolean> {
 
 /**
  * Send daily digest to ALL users with telegram_chat_id.
+ *
+ * Deliberately across every hotel — it is a nightly sweep of the whole server,
+ * which is why it reads `app_users` with no organization set. The digest for
+ * each person is then built inside that person's own organization
+ * (getUserTaskSummary), so the sweep crosses tenants and the work does not.
  */
 export async function sendDailyTaskDigestAll(): Promise<{ sent: number; skipped: number }> {
   const sql = getSql();

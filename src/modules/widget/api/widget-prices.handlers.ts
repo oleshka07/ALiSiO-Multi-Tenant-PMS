@@ -13,20 +13,40 @@ import type { Actor } from '@core/auth/session';
  * it was handed.
  */
 
-/** The organization behind a public request, from the site the widget names. */
+/**
+ * The organization behind a public request, from the site the widget names.
+ *
+ * Read off `booking_sites` alone, never through `properties`.
+ *
+ * `booking_sites` is one of the two tables readable before a tenant is known
+ * (READ_BEFORE_TENANT in scripts/pg-schema.mjs) — it has to be, because a guest
+ * is not a tenant and the widget arrives with a public site key and nothing
+ * else. `properties` is not, and must not be: it is the name, city and address
+ * of every hotel on the server.
+ *
+ * So both lookups used to go through a table the caller cannot read. The join
+ * matched nothing, this returned null, and the public price list answered
+ * "siteId or propertyId is required" to a request that named its site
+ * perfectly well — for every hotel, from the day prod moved to Postgres.
+ * `booking_sites` carries its own organization_id for exactly this reason.
+ *
+ * A property is addressable publicly only if some booking site points at it,
+ * which is the right rule: a property with no site has no widget.
+ */
 async function organizationForSite(site: string | null, propertyId: string | null): Promise<string | null> {
   const sql = getSql();
   if (propertyId) {
-    const row = await sql.row<any>('SELECT organization_id FROM properties WHERE id = ? AND is_active = TRUE', [propertyId]) as any;
+    const row = await sql.row<any>(
+      "SELECT organization_id FROM booking_sites WHERE property_id = ? AND status != 'deleted' LIMIT 1",
+      [propertyId],
+    ) as any;
     return row?.organization_id ?? null;
   }
   if (!site) return null;
-  const row = await sql.row<any>(`
-    SELECT p.organization_id
-    FROM booking_sites s
-    JOIN properties p ON p.id = s.property_id
-    WHERE (s.id = ? OR s.slug = ?) AND s.status != 'deleted'
-  `, [site, site]) as any;
+  const row = await sql.row<any>(
+    "SELECT organization_id FROM booking_sites WHERE (id = ? OR slug = ?) AND status != 'deleted'",
+    [site, site],
+  ) as any;
   return row?.organization_id ?? null;
 }
 

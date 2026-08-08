@@ -451,6 +451,46 @@ for (const t of tables) {
 }
 w();
 
+// ── The tenant an inserted row belongs to ────────────────────────────────────
+//
+// A read does not have to name its organization: the policy adds it. A write
+// did, and that asymmetry broke fourteen INSERT statements on Postgres, every
+// time, silently up to the 500 they eventually caused — the booking handshake
+// among them, so no guest could start a reservation.
+//
+//   INSERT INTO widget_handshakes (token, site_id, expires_at) VALUES (…)
+//
+// organization_id is not in the column list, so it is NULL, and the policy asks
+// `NULL = 'org_…'`, which is NULL rather than true. Refused. Setting the tenant
+// context correctly does not help: the context is what the policy compares
+// against, not what fills the column. Nothing about the error says which column
+// was missing, and every one of these looked like a correct statement.
+//
+// So the column defaults to the tenant the statement is already running as, and
+// a write is symmetric with a read: neither has to restate what the connection
+// already knows.
+//
+// NULLIF matters. With no tenant set the setting is '' — an empty organization
+// id would satisfy `'' = ''` and the row would be written into no hotel at all,
+// visible to nobody and belonging to nothing. NULL fails the check instead, so
+// "I forgot to establish a tenant" stays an error, which is what it is.
+//
+// `true` is the missing_ok argument: current_setting RAISES on a connection that
+// never set the variable, and a psql session doing maintenance has not. Without
+// it, adding this default would make the schema unusable by hand.
+w('-- ── The tenant an inserted row belongs to ───────────────────────────────');
+w('--');
+w('-- A read gets its organization from the policy; a write had to restate it in');
+w('-- every column list, and fourteen INSERTs that did not were refused outright.');
+w('-- The default is the tenant the connection is already running as. NULLIF so');
+w('-- that no tenant stays an error rather than becoming an empty organization.');
+for (const t of tables) {
+  if (scopeOf(t.name).kind !== 'direct') continue;
+  w(`ALTER TABLE ${q(t.name)} ALTER COLUMN ${q(ORG_COL)}`);
+  w(`  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');`);
+}
+w();
+
 // ── Row-level security ───────────────────────────────────────────────────────
 
 w('-- ── Row-level security ──────────────────────────────────────────────────');
@@ -497,6 +537,65 @@ if (rlsNone.length) {
 }
 
 const sql = out.join('\n');
+
+/**
+ * Every "table"."column" a generated schema declares.
+ *
+ * Both sides of the comparison below come out of this same generator, so the
+ * formatting is identical and a line-shaped parse is enough — this is not a SQL
+ * parser and does not need to be.
+ */
+function declaredColumns(text) {
+  const found = new Set();
+  let table = null;
+  for (const line of text.split('\n')) {
+    const open = line.match(/^CREATE TABLE "([^"]+)" \($/);
+    if (open) { table = open[1]; continue; }
+    if (!table) continue;
+    if (line.startsWith(')')) { table = null; continue; }
+    const col = line.match(/^\s+"([^"]+)"\s/);
+    if (col) found.add(`${table}.${col[1]}`);
+  }
+  return found;
+}
+
+/**
+ * This generator reads the LOCAL SQLite database, so the schema it writes is
+ * only as current as whoever ran it. A copy older than the committed schema
+ * regenerates one with the newer columns simply absent — and absent is silent,
+ * because a column that was never created looks exactly like a column removed.
+ * The result loads into Postgres cleanly and builds a database the application
+ * cannot use, with nothing in any migration to put the column back.
+ *
+ * Not hypothetical enough to skip: a regeneration during this change moved seven
+ * columns to different positions in their CREATE TABLE, which in a diff looks
+ * identical to deleting them. That one was harmless — the columns were all still
+ * there, and this comparison is what established it. A stale database would look
+ * the same and not be harmless, and reading a 2700-line diff carefully enough to
+ * tell the difference is not a plan.
+ *
+ * Compared as a set of columns rather than as text, so reordering passes and loss
+ * does not. A column genuinely meant to go is dropped in SQLite and regenerated
+ * with --allow-removals, which puts the intent on the record.
+ */
+if (fs.existsSync(OUT) && !process.argv.includes('--print')) {
+  const before = declaredColumns(fs.readFileSync(OUT, 'utf8'));
+  const after = declaredColumns(sql);
+  const lost = [...before].filter((c) => !after.has(c));
+  if (lost.length && !process.argv.includes('--allow-removals')) {
+    console.error(`\nrefusing to write: ${lost.length} column(s) present in ${path.relative(ROOT, OUT)} would disappear\n`);
+    for (const c of lost) console.error(`  - ${c}`);
+    console.error(`
+Almost certainly the local SQLite database is older than the committed schema:
+this generator reads db/pms.db, not the other way round. Bring it up to date
+(boot the app once, or copy a current one) and regenerate.
+
+If a column is genuinely meant to go, drop it in SQLite and pass
+--allow-removals so the intent is on the record.`);
+    process.exit(1);
+  }
+  if (lost.length) console.error(`--allow-removals: dropping ${lost.join(', ')}`);
+}
 
 if (process.argv.includes('--print')) {
   process.stdout.write(sql);
