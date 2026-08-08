@@ -2,10 +2,24 @@
 import { NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
 import { getSql } from '@core/db/async';
+import { withSite } from '../data/site.repo';
 import { sendTelegramMessage } from '@notifications'; // TODO: replace with eventBus
 import { sendBookingConfirmationEmail } from '@bookings';
 
 export async function handlePaymentReturn(req: Request) {
+  // The gateway sends the guest back here, and everything below reads and
+  // writes one hotel's reservation. The site key rides along when the checkout
+  // put it in the return URL; without one this falls back to the sole
+  // organization, and on a server with more than one it stops rather than
+  // guessing whose payment this was.
+  const answer = await withSite(
+    new URL(req.url).searchParams.get('siteId') || new URL(req.url).searchParams.get('siteSlug'),
+    () => paymentReturn(req),
+  );
+  return answer ?? NextResponse.redirect(`${appBaseUrl()}/?payment=unknown`);
+}
+
+async function paymentReturn(req: Request) {
   const url = new URL(req.url);
   const sessionId = url.searchParams.get('session_id') || '';
   const status = url.searchParams.get('status') || 'unknown';

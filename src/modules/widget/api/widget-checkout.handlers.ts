@@ -6,6 +6,7 @@ import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { hasFeature, featureDisabled } from '@core/features';
 import { resolveSiteByKey, siteAllowsHost } from '../data/site.repo';
+import { runWithOrganization } from '@core/auth/tenant-context';
 import { sendTelegramMessage } from '@notifications'; // TODO: replace with eventBus
 
 const CORS_HEADERS = {
@@ -20,6 +21,36 @@ export async function createCheckoutSessionOptions() {
 
 export async function createWidgetCheckoutSession(req: Request) {
   try {
+    // Which hotel, before anything reads a row. Everything below — the
+    // reservation, the services, the payment session — belongs to one, and a
+    // guest carries no tenant of its own, so under row-level security the
+    // handler would see nothing at all.
+    //
+    // The body is read twice: once from a clone here, once by the handler
+    // itself. That is what Request.clone() is for, and it costs one parse.
+    // The alternative was AsyncLocalStorage.enterWith, one line, which
+    // persists into whatever runs next in the same async context — in a
+    // payment handler that is one tenant's checkout reading another's
+    // reservation.
+    let peek: any = {};
+    try { peek = await req.clone().json(); } catch { /* the handler reports it */ }
+    const key = peek?.site_slug || peek?.site_id;
+    const owner = key ? await resolveSiteByKey(key, 'organization_id') : undefined;
+
+    const run = () => checkoutSession(req);
+    // No site is not an error here: a single-property widget that was never
+    // registered still takes payment on the environment's credentials.
+    return owner?.organization_id
+      ? await runWithOrganization(String(owner.organization_id), run)
+      : await run();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500, headers: CORS_HEADERS });
+  }
+}
+
+async function checkoutSession(req: Request) {
+  {
     const body = await req.json();
     const {
       reservation_id,
@@ -465,8 +496,5 @@ export async function createWidgetCheckoutSession(req: Request) {
       );
       return NextResponse.json({ error: 'Payment gateway error' }, { status: 502, headers: CORS_HEADERS });
     }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500, headers: CORS_HEADERS });
   }
 }

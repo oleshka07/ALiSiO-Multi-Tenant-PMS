@@ -18,6 +18,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { getSql } from '../src/core/db/async.ts';
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:3000';
 const OUT = process.argv[2] || null;
@@ -38,13 +39,48 @@ const routes = [];
 })('src/app/api');
 routes.sort();
 
+// Its own throwaway organization, rather than a demo account.
+//
+// This used to log in as admin@demo.local/demo1234 — a seed that exists on a
+// developer's machine and on no deployed environment, so against beta it
+// printed "login failed" and checked nothing at all. Same probe tenant as
+// check-isolation.mjs, and the same constant bcrypt hash, because a container
+// built from the application's image cannot import bcryptjs.
+const sql = getSql();
+const TAG = '__smoke_routes__';
+const PROBE = {
+  orgId: `${TAG}org`,
+  userId: `${TAG}user`,
+  email: 'smoke@routes.test',
+  password: 'probe-password-1234',
+  hash: '$2b$10$oiYMXccjTWuK20axUyyF/..DMBr3rKnNGabo8F8H/kw/1CjncKOr6',
+};
+
+async function removeProbe() {
+  await sql.run('DELETE FROM sessions WHERE user_id = ?', [PROBE.userId]);
+  await sql.run('DELETE FROM app_users WHERE id = ?', [PROBE.userId]);
+  try { await sql.run('DELETE FROM organization_features WHERE organization_id = ?', [PROBE.orgId]); } catch { /* not yet migrated */ }
+  await sql.run('DELETE FROM organizations WHERE id = ?', [PROBE.orgId]);
+}
+
+await removeProbe();
+await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [PROBE.orgId, 'Smoke probe', TAG]);
+await sql.run(
+  'INSERT INTO app_users (id, organization_id, email, full_name, role, password_hash) VALUES (?, ?, ?, ?, ?, ?)',
+  [PROBE.userId, PROBE.orgId, PROBE.email, 'Smoke probe', 'owner', PROBE.hash],
+);
+
 const login = await fetch(`${BASE}/api/auth/login`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ email: 'admin@demo.local', password: 'demo1234' }),
+  body: JSON.stringify({ email: PROBE.email, password: PROBE.password }),
 });
 const cookie = (login.headers.get('set-cookie') || '').match(/session_id=([^;]+)/)?.[1];
-if (!cookie) { console.error('login failed'); process.exit(1); }
+if (!cookie) {
+  console.error(`login failed: ${login.status} ${await login.text()}`);
+  await removeProbe();
+  process.exit(1);
+}
 
 const results = [];
 const QUEUE = [...routes];
@@ -72,6 +108,8 @@ const bad = results.filter((r) => r.status >= 500 || r.status === 0);
 if (OUT) fs.writeFileSync(OUT, JSON.stringify({ total: results.length, bad }, null, 2));
 console.log(`checked ${results.length} routes, ${bad.length} failing`);
 for (const r of bad) console.log(`${String(r.status).padEnd(4)} ${r.url}  ${r.detail}`);
+
+await removeProbe();
 
 // Only a 5xx or a dead connection is a failure; 503 means "not configured".
 const broken = bad.filter((r) => r.status === 0 || (r.status >= 500 && r.status !== 503));

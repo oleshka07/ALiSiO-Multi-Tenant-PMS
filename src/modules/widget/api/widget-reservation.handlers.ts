@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { withSite } from '../data/site.repo';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -18,6 +19,14 @@ export async function getWidgetReservation(req: NextRequest) {
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400, headers: CORS_HEADERS });
     }
+
+    // As the hotel the site names. Without a site key this falls back to the
+    // sole organization; on a server with more than one it answers 404 rather
+    // than guessing, which is the safe direction for a route that returns a
+    // guest's name, email and phone.
+    return (await withSite(
+      req.nextUrl.searchParams.get('siteId') || req.nextUrl.searchParams.get('siteSlug'),
+      async () => {
 
     const sql = getSql();
     const r = await sql.row<any>(`
@@ -71,6 +80,7 @@ export async function getWidgetReservation(req: NextRequest) {
       },
       services,
     }, { headers: CORS_HEADERS });
+    })) ?? NextResponse.json({ error: 'Reservation not found' }, { status: 404, headers: CORS_HEADERS });
   } catch (error: any) {
     console.error('GET /api/booking/reservation error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to fetch reservation' }, { status: 500, headers: CORS_HEADERS });

@@ -108,9 +108,20 @@ export async function withSite<T>(
   // one. Nothing here guesses which hotel a guest meant.
   if (key && !site) return null;
 
-  const organizationId = site?.organization_id
-    ? String(site.organization_id)
-    : await requireOrganizationId();
+  let organizationId: string;
+  if (site?.organization_id) {
+    organizationId = String(site.organization_id);
+  } else {
+    // requireOrganizationId throws once there is more than one hotel, which is
+    // correct for a handler that forgot to scope itself and wrong here: this
+    // is a public route being asked "which hotel?" and answering "none named".
+    // Thrown, it reached the catch as a 500; returned, the caller says 404.
+    try {
+      organizationId = await requireOrganizationId();
+    } catch {
+      return null;
+    }
+  }
 
   return runWithOrganization(organizationId, () => fn(site));
 }
