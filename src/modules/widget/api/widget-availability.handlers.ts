@@ -176,9 +176,9 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
              ut.extra_person_charge, ut.pet_allowed, ut.pet_charge,
              c.id as category_id, c.name as category_name, c.type as category_type,
              c.icon as category_icon, c.color as category_color, c.sort_order as category_sort,
-             gpc.amenities as gpc_amenities,
-             sl.photos as listing_photos,
-             sl.price_override
+             MAX(gpc.amenities) as gpc_amenities,
+             MAX(sl.photos) as listing_photos,
+             MAX(sl.price_override) as price_override
       FROM units u
       JOIN unit_types ut ON u.unit_type_id = ut.id
       JOIN categories c ON u.category_id = c.id
@@ -188,7 +188,12 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
       WHERE u.is_active = TRUE
         AND u.room_status = 'available'
         ${categoryType ? 'AND c.type = ?' : ''}
-      GROUP BY u.id
+      GROUP BY u.id, u.name, u.code, u.beds, u.room_status, u.is_active,
+               ut.id, ut.name, ut.code, ut.photos, ut.description,
+               ut.max_adults, ut.max_children, ut.max_occupancy,
+               ut.base_occupancy, ut.beds_single, ut.beds_double, ut.beds_sofa,
+               ut.extra_person_charge, ut.pet_allowed, ut.pet_charge,
+               c.id, c.name, c.type, c.icon, c.color, c.sort_order
       ORDER BY u.sort_order, u.name
     `, [...[
       ...(siteIdObj ? [siteIdObj] : []),
