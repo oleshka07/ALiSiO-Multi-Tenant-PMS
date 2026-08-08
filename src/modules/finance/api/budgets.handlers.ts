@@ -43,11 +43,22 @@ export async function upsertBudget(request: NextRequest): Promise<NextResponse> 
     }
 
     const orgId = await requireOrganizationId();
+    // IS NOT DISTINCT FROM, not `IS ?`.
+    //
+    // A budget line may have no category and no project — those are NULL, and
+    // `= ?` never matches NULL, so the lookup needed a null-safe comparison.
+    // SQLite spells that `col IS ?`; Postgres does not accept a parameter after
+    // IS at all (only NULL / TRUE / FALSE / UNKNOWN / DISTINCT FROM), and the
+    // statement failed to parse: "syntax error at or near $4". Every budget
+    // save, on every hotel.
+    //
+    // IS NOT DISTINCT FROM is the standard spelling and both engines take it.
     const existing = await sql.row<any>(`
       SELECT id FROM fin_budgets
       WHERE organization_id = ? AND year = ? AND month = ?
-        AND (category_id IS ? OR category_id = ?) AND (project_id IS ? OR project_id = ?)
-    `, [orgId, year, month, category_id, category_id, project_id, project_id]) as { id: string } | undefined;
+        AND category_id IS NOT DISTINCT FROM ?
+        AND project_id  IS NOT DISTINCT FROM ?
+    `, [orgId, year, month, category_id, project_id]) as { id: string } | undefined;
 
     if (existing) {
       await sql.run("UPDATE fin_budgets SET planned_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [planned_amount, existing.id]);

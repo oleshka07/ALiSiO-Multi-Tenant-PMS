@@ -43,6 +43,18 @@ const RULES = [
     fix: 'INSERT ... ON CONFLICT DO NOTHING — SQLite has supported it since 3.24, so a safe swap' },
   { id: 'insert-or-replace', re: /INSERT\s+OR\s+REPLACE/gi, quiet: false,
     fix: 'INSERT ... ON CONFLICT (key) DO UPDATE SET ... — the columns have to be named' },
+  // `col IS ?` is SQLite's null-safe comparison. Postgres accepts only NULL,
+  // TRUE, FALSE, UNKNOWN or DISTINCT FROM after IS, so a parameter there does
+  // not even parse: "syntax error at or near $4". Four places had it, and each
+  // was the lookup that decides insert-or-update — so saving a budget, a
+  // category, a project or a counterparty failed outright.
+  { id: 'is-placeholder', re: /\bIS\s+\?/gi, quiet: false,
+    fix: 'col IS NOT DISTINCT FROM ? — standard, null-safe, and both engines accept it' },
+  // Inside DO UPDATE SET, a bare column on the right-hand side is ambiguous in
+  // Postgres between the target row and `excluded`. SQLite picks the target and
+  // says nothing. This one numbered every invoice.
+  { id: 'conflict-bare-column', re: /DO\s+UPDATE\s+SET\s+(\w+)\s*=\s*\1\b/gi, quiet: false,
+    fix: 'qualify it: DO UPDATE SET n = <table>.n + 1' },
   // Case-sensitive on purpose: `rowId` is a perfectly ordinary variable name,
   // and 34 of them live in one P&L mapping function.
   { id: 'rowid', re: /\browid\b/g, quiet: false,

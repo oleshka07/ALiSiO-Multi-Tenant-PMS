@@ -51,9 +51,17 @@ export async function allocateInvoiceNumber(
   // Increment and read in one transaction: two requests must never come away
   // with the same number.
   const seqNo = await sql.tx(async (t) => {
+    // `invoice_counters.last_no`, qualified, not a bare `last_no`.
+    //
+    // Inside DO UPDATE SET, Postgres sees two rows: the existing one and the
+    // rejected `excluded` one. A bare column on the right-hand side could mean
+    // either, so it refuses — "column reference last_no is ambiguous" — and the
+    // whole statement fails. SQLite resolves it to the target row and never
+    // complains, so this read as correct SQL for as long as SQLite was the only
+    // engine. It is the numbering of every invoice: nothing could be issued.
     await t.run(
       'INSERT INTO invoice_counters (organization_id, series, year, last_no) VALUES (?, ?, ?, 1) ' +
-      'ON CONFLICT(organization_id, series, year) DO UPDATE SET last_no = last_no + 1',
+      'ON CONFLICT(organization_id, series, year) DO UPDATE SET last_no = invoice_counters.last_no + 1',
       [organizationId, series, year],
     );
     const row = await t.row<{ last_no: number }>(
@@ -76,13 +84,23 @@ export async function isPeriodLocked(sql: Sql, organizationId: string, series: s
 
 /** Lock a (series, month): freeze numbers and mark member invoices immutable. */
 export async function lockPeriod(sql: Sql, organizationId: string, series: string, month: string): Promise<void> {
+  // CAST(issued_at AS TEXT) in every COALESCE below.
+  //
+  // `period` is TEXT ('YYYY-MM') and `issued_at` is TIMESTAMPTZ, so Postgres
+  // refuses to pick a common type — "COALESCE types text and timestamp with
+  // time zone cannot be matched" — and the same applies to substr() over the
+  // timestamp itself. On SQLite both columns were text and neither said
+  // anything. Locking an accounting period, unlocking it, and asking whether
+  // one invoice is locked all went through this; the month could not be closed
+  // at all. The GET on /api/accounting/lock-period already had the cast, which
+  // is why the list of periods kept working while nothing could be locked.
   await sql.tx(async (t) => {
     await t.run(
       "INSERT INTO invoice_periods (organization_id, series, month, status, locked_at) VALUES (?, ?, ?, 'locked', CURRENT_TIMESTAMP) " +
       "ON CONFLICT(organization_id, series, month) DO UPDATE SET status = 'locked', locked_at = CURRENT_TIMESTAMP",
       [organizationId, series, month],
     );
-    await t.run("UPDATE invoices SET locked = TRUE WHERE organization_id = ? AND series = ? AND substr(COALESCE(period, issued_at), 1, 7) = ?", [organizationId, series, month]);
+    await t.run("UPDATE invoices SET locked = TRUE WHERE organization_id = ? AND series = ? AND substr(COALESCE(period, CAST(issued_at AS TEXT)), 1, 7) = ?", [organizationId, series, month]);
   });
 }
 
@@ -94,7 +112,7 @@ export async function unlockPeriod(sql: Sql, organizationId: string, series: str
       "ON CONFLICT(organization_id, series, month) DO UPDATE SET status = 'open', locked_at = NULL",
       [organizationId, series, month],
     );
-    await t.run("UPDATE invoices SET locked = FALSE WHERE organization_id = ? AND series = ? AND substr(COALESCE(period, issued_at), 1, 7) = ?", [organizationId, series, month]);
+    await t.run("UPDATE invoices SET locked = FALSE WHERE organization_id = ? AND series = ? AND substr(COALESCE(period, CAST(issued_at AS TEXT)), 1, 7) = ?", [organizationId, series, month]);
   });
 }
 
@@ -105,7 +123,7 @@ export async function unlockPeriod(sql: Sql, organizationId: string, series: str
  */
 export async function isInvoiceLocked(sql: Sql, organizationId: string, invoiceId: string): Promise<boolean> {
   const row = await sql.row<{ series: string; month: string; locked: number }>(
-    'SELECT series, COALESCE(period, substr(issued_at,1,7)) AS month, locked FROM invoices WHERE id = ? AND organization_id = ?',
+    'SELECT series, COALESCE(period, substr(CAST(issued_at AS TEXT),1,7)) AS month, locked FROM invoices WHERE id = ? AND organization_id = ?',
     [invoiceId, organizationId],
   );
   if (!row) return true;

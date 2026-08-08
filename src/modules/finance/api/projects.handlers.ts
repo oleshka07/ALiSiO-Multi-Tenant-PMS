@@ -111,7 +111,13 @@ export async function createProject(request: NextRequest): Promise<NextResponse>
 
     const orgId = await requireOrganizationId();
     const id = `bu_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const maxOrder = await sql.row<any>("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM business_units WHERE organization_id = ? AND (parent_id IS ? OR parent_id = ?)", [orgId, parent_id, parent_id]) as { mx: number };
+    // `IS NOT DISTINCT FROM`: a root-level row has parent_id NULL, and `= ?`
+    // never matches NULL. SQLite spells the null-safe form `IS ?`; Postgres
+    // rejects a parameter after IS outright — "syntax error at or near $2".
+    const maxOrder = await sql.row<any>(
+      "SELECT COALESCE(MAX(sort_order), 0) AS mx FROM business_units WHERE organization_id = ? AND parent_id IS NOT DISTINCT FROM ?",
+      [orgId, parent_id],
+    ) as { mx: number };
 
     // A subproject cannot be "is_shared" on its own — inherit from parent.
     let finalIsShared = is_shared ? 1 : 0;
