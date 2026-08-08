@@ -506,7 +506,7 @@ export async function createWidgetReservation(request: NextRequest) {
           await sql.run(`
             INSERT INTO guest_registrations
               (id, reservation_id, guest_id, is_primary, reg_status, purpose_of_stay, group_id)
-            VALUES (?, ?, ?, 1, 'pending', 'Tourism', ?)
+            VALUES (?, ?, ?, TRUE, 'pending', 'Tourism', ?)
             ON CONFLICT DO NOTHING
           `, [grId, resId, guestId, groupId]);
 

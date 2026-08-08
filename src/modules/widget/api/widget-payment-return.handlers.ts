@@ -16,7 +16,15 @@ export async function handlePaymentReturn(req: Request) {
     new URL(req.url).searchParams.get('siteId') || new URL(req.url).searchParams.get('siteSlug'),
     () => paymentReturn(req),
   );
-  return answer ?? NextResponse.redirect(`${appBaseUrl()}/?payment=unknown`);
+  // Against this request's own origin, not appBaseUrl(). appBaseUrl() returns
+  // '' when APP_URL is unconfigured — deliberately, so that an unconfigured
+  // deployment produces a relative link rather than sending someone to another
+  // operator's domain. But NextResponse.redirect requires an absolute URL, so
+  // '' + '/?payment=unknown' threw `TypeError: Invalid URL` and the guest got a
+  // 500 immediately after paying. The origin the browser already reached is
+  // both always present and the right place to send it back to; line 286 below
+  // resolves its redirect the same way.
+  return answer ?? NextResponse.redirect(new URL('/?payment=unknown', req.url));
 }
 
 async function paymentReturn(req: Request) {

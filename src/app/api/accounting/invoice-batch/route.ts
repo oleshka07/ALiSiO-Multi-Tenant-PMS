@@ -527,7 +527,7 @@ async function _POST(request: NextRequest, _ctx: unknown, actor: Actor): Promise
         INSERT INTO invoices
           (id, organization_id, invoice_number, issued_at, due_date, amount, currency, status, notes, is_custom,
            custom_buyer_name, custom_description, is_credit_note, series, period, confirmed, confirmation_source)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'issued', ?, 1, ?, ?, ?, ?, ?, 1, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'issued', ?, TRUE, ?, ?, ?, ?, ?, TRUE, ?)
       `, [
         invId, actor.organizationId, invNum, issued, due,
         row.amount, row.currency,

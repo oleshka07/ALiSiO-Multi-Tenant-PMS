@@ -123,7 +123,7 @@ export async function createProject(request: NextRequest): Promise<NextResponse>
     await sql.run(`
       INSERT INTO business_units
         (id, organization_id, name, unit_type, is_shared, is_active, sort_order, parent_id)
-      VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+      VALUES (?, ?, ?, ?, ?, TRUE, ?, ?)
     `, [id, orgId, name.trim(),
       unit_type || name.trim(),
       finalIsShared,

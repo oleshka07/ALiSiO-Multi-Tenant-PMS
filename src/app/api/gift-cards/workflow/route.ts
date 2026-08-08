@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
          valid_from, valid_until, min_nights, max_nights,
          max_uses, redemption_limit, site_id, allowed_days,
          applies_to, is_active, gift_card_rule_id, created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,CURRENT_TIMESTAMP)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,TRUE,?,CURRENT_TIMESTAMP)
     `;
 
     const generated: string[] = [];

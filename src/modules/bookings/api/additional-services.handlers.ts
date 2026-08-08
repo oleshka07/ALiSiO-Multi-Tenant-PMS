@@ -20,7 +20,7 @@ export async function createAdditionalService(request: NextRequest) {
     const id = 'svc_' + Date.now().toString(36);
     await sql.run(`
       INSERT INTO additional_services (id, property_id, name, name_en, description, price, currency, unit_label, icon, category, available_for, is_active, sort_order, service_type, duration_minutes, name_cs, name_de)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?, ?, ?)
     `, [id,
       body.property_id || 'prop_main_001',
       body.name || '', body.name_en || '', body.description || '',

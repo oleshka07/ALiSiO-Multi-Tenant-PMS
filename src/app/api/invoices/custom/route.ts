@@ -94,7 +94,7 @@ async function _POST(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Nex
          custom_buyer_address, custom_buyer_city, custom_buyer_country,
          custom_description, custom_email)
       VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 'issued',
-              1, ?, ?, ?, ?, ?, ?, ?, ?)
+              TRUE, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       invoiceId, actor.organizationId, invoiceNumber, today, due, totalAmount, currency,
       buyerName    || null,

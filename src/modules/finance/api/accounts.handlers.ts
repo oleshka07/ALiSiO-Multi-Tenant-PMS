@@ -182,7 +182,7 @@ async function ensureReconcileCategory(orgId: string): Promise<string> {
   await sql.run(`
     INSERT INTO expense_categories
       (id, organization_id, name, std_group, pnl_line, include_in_pnl, include_in_cash, alloc_method, is_capex, icon, color, sort_order, is_active)
-    VALUES (?, ?, 'Звірка залишків', 'Other', 'Звірка залишків', 0, 1, 'NONE', 0, '⚖️', '#94a3b8', 999, 1)
+    VALUES (?, ?, 'Звірка залишків', 'Other', 'Звірка залишків', 0, 1, 'NONE', FALSE, '⚖️', '#94a3b8', 999, TRUE)
   `, [id, orgId]);
   return id;
 }

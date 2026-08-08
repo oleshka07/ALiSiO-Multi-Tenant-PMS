@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
          min_nights, max_nights,
          max_uses, redemption_limit,
          site_id, allowed_days, applies_to, applied_listings, applicable_services, is_active)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,TRUE)
     `, [
       id,
       String(code).toUpperCase().trim(),
