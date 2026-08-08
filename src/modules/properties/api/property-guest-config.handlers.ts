@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 // TODO: move to @core/translate or emit event for translation
 import { extractTexts, translateAndStore } from '@core/i18n/translate';
+import { withActor, withPermission } from '@core/auth/session';
 
-export async function listPropertyGuestConfigs() {
+export const listPropertyGuestConfigs = withActor(async () => {
   try {
     const sql = getSql();
     const configs = await sql.rows<any>(`
@@ -18,9 +19,9 @@ export async function listPropertyGuestConfigs() {
     console.error('GET /api/property-guest-config error:', error?.message);
     return NextResponse.json({ error: 'Failed to fetch configs' }, { status: 500 });
   }
-}
+});
 
-export async function updatePropertyGuestConfig(request: NextRequest) {
+export const updatePropertyGuestConfig = withPermission('manage_properties', async (request: NextRequest) => {
   try {
     const sql = getSql();
     const body = await request.json();
@@ -77,4 +78,4 @@ export async function updatePropertyGuestConfig(request: NextRequest) {
     console.error('PUT /api/property-guest-config error:', error?.message);
     return NextResponse.json({ error: 'Failed to update config' }, { status: 500 });
   }
-}
+});

@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { withPermission } from '@core/auth/session';
 import { recalcReservationPaymentStatus } from '@/modules/finance/api/operations.handlers';
 
 // Legacy DELETE /api/payments/:id — deletes the fin_operations row.
-export async function DELETE(
+// Deleting a payment is money leaving the books, so it needs the permission
+// that recording one needs — and, like every guard here, a tenant, without
+// which the fin_operations lookup below matches nothing on Postgres.
+export const DELETE = withPermission('manage_payments', async (
   _request: NextRequest,
-  context: { params: Promise<{ id: string }> }
-): Promise<NextResponse> {
+  context: { params: Promise<{ id: string }> },
+): Promise<NextResponse> => {
   try {
     const sql = getSql();
     const { id } = await context.params;
@@ -19,4 +23,4 @@ export async function DELETE(
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});

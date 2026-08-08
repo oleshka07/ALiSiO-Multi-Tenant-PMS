@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { withActor, type Actor } from '@core/auth/session';
+import { withActor, type Actor, withPermission } from '@core/auth/session';
 import { getBulkPrices, bulkUpdatePrices } from '../data/price-calendar.repo';
 
 export const getBulkPricing = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
@@ -18,7 +18,7 @@ export const getBulkPricing = withActor(async (request: NextRequest, _ctx, actor
   }
 })
 
-export async function updateBulkPricing(request: NextRequest): Promise<NextResponse> {
+export const updateBulkPricing = withPermission('manage_pricing', async (request: NextRequest): Promise<NextResponse> => {
   try {
     const body = await request.json();
     const { unitTypeId, dateFrom, dateTo, applyTo = 'all' } = body;
@@ -33,4 +33,4 @@ export async function updateBulkPricing(request: NextRequest): Promise<NextRespo
     console.error('PUT /api/pricing/bulk error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to bulk update pricing' }, { status: 500 });
   }
-}
+});

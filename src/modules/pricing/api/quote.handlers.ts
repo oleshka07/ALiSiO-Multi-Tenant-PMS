@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { calculateQuote } from '../data/quote.repo';
+import { withActor } from '@core/auth/session';
 
-export async function getQuote(request: NextRequest): Promise<NextResponse> {
+export const getQuote = withActor(async (request: NextRequest): Promise<NextResponse> => {
   try {
     const body = await request.json();
     const { unitTypeId, checkIn, checkOut, adults = 2, children = 0 } = body;
@@ -20,4 +21,4 @@ export async function getQuote(request: NextRequest): Promise<NextResponse> {
     console.error('POST /api/pricing/quote error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to calculate quote' }, { status: 500 });
   }
-}
+});

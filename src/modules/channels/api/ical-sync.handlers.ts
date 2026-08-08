@@ -5,8 +5,9 @@ import { parseICal, extractGuestName } from '@/modules/channels/domain/ical'; //
 import { notifyReservationCreated } from '@bookings';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { getSql } from '@core/db/async';
+import { withPermission } from '@core/auth/session';
 
-export async function syncIcal(request: NextRequest) {
+export const syncIcal = withPermission('manage_properties', async (request: NextRequest) => {
   try {
     const sql = getSql();
     const body = await request.json().catch(() => ({}));
@@ -32,7 +33,7 @@ export async function syncIcal(request: NextRequest) {
     console.error('[iCal Sync] Error:', e);
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
 
 async function syncChannel(channel: any) {
   const sql = getSql();

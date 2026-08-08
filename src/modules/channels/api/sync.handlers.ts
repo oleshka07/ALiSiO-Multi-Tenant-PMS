@@ -3,10 +3,11 @@ import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getQueueStats, getFailedJobs, getAllSyncLogs, dequeueJob, markCompleted, markFailed } from '@/modules/channels/domain';
 import { pushInventory, pushRates, pushRestrictions, buildARIFromPriceCalendar } from '@/modules/channels/domain/booking-com/ari';
+import { withActor } from '@core/auth/session';
 
 const MAX_JOBS_PER_RUN = 10;
 
-export async function getSyncStatus(): Promise<NextResponse> {
+export const getSyncStatus = withActor(async (): Promise<NextResponse> => {
   try {
     const stats = await getQueueStats();
     const failedJobs = await getFailedJobs(10);
@@ -15,7 +16,7 @@ export async function getSyncStatus(): Promise<NextResponse> {
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
 
 export async function processSyncQueue(): Promise<NextResponse> {
   const results: Array<{ jobId: string; syncType: string; success: boolean; error?: string }> = [];

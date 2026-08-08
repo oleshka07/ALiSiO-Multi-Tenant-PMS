@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { withPermission } from '@core/auth/session';
 
-export async function updateIcalChannel(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const updateIcalChannel = withPermission('manage_properties', async (request: Request,
+  { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params;
     const sql = getSql();
@@ -37,12 +36,10 @@ export async function updateIcalChannel(
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
 
-export async function deleteIcalChannel(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const deleteIcalChannel = withPermission('manage_properties', async (_request: Request,
+  { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params;
     const sql = getSql();
@@ -59,4 +56,4 @@ export async function deleteIcalChannel(
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});

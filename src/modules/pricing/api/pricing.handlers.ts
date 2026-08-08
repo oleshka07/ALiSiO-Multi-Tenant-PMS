@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getPriceMonth, upsertPrices } from '../data/price-calendar.repo';
+import { withActor, withPermission } from '@core/auth/session';
 
-export async function getPricing(request: NextRequest): Promise<NextResponse> {
+export const getPricing = withActor(async (request: NextRequest): Promise<NextResponse> => {
   try {
     const { searchParams } = new URL(request.url);
     const unitTypeId = searchParams.get('unitTypeId');
@@ -16,9 +17,9 @@ export async function getPricing(request: NextRequest): Promise<NextResponse> {
     console.error('GET /api/pricing error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to fetch pricing' }, { status: 500 });
   }
-}
+});
 
-export async function updatePricing(request: NextRequest): Promise<NextResponse> {
+export const updatePricing = withPermission('manage_pricing', async (request: NextRequest): Promise<NextResponse> => {
   try {
     const body = await request.json();
     const { unitTypeId, prices } = body;
@@ -46,4 +47,4 @@ export async function updatePricing(request: NextRequest): Promise<NextResponse>
     console.error('PUT /api/pricing error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to update pricing' }, { status: 500 });
   }
-}
+});

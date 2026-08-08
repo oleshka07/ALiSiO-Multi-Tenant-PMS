@@ -10,6 +10,7 @@ import { cookies } from 'next/headers';
 import { getSql } from '@core/db/async';
 import { getSessionUser } from '@core/auth';
 import { LANGUAGES, LANGUAGE_CODES, isLanguage } from '@core/i18n/languages';
+import { withActor, withPermission } from '@core/auth/session';
 
 async function currentUser() {
   const store = await cookies();
@@ -23,7 +24,15 @@ const canManage = (role: string) => role === 'owner' || role === 'director';
 // Kept deliberately short: adding a currency here also requires rate handling.
 export const SUPPORTED_CURRENCIES = ['CZK', 'EUR', 'USD', 'PLN', 'GBP', 'UAH'] as const;
 
-export async function getGeneralSettings(): Promise<NextResponse> {
+/**
+ * The read itself, unguarded, so the save below can reuse it.
+ *
+ * The exported handler is the guarded wrapper. Calling the wrapper from inside
+ * another handler would re-authenticate a request that is already
+ * authenticated, and does not typecheck either: a guard takes
+ * (request, context) and this needs neither.
+ */
+async function readGeneralSettings(): Promise<NextResponse> {
   const user = await currentUser();
   if (!user) return unauthorized();
   try {
@@ -45,9 +54,11 @@ export async function getGeneralSettings(): Promise<NextResponse> {
   }
 }
 
+export const getGeneralSettings = withActor(readGeneralSettings);
+
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-export async function saveGeneralSettings(request: NextRequest): Promise<NextResponse> {
+export const saveGeneralSettings = withPermission('manage_properties', async (request: NextRequest): Promise<NextResponse> => {
   const user = await currentUser();
   if (!user) return unauthorized();
   if (!canManage(user.role)) return forbidden();
@@ -141,9 +152,9 @@ export async function saveGeneralSettings(request: NextRequest): Promise<NextRes
         user.organization_id]);
     }
 
-    return getGeneralSettings();
+    return readGeneralSettings();
   } catch (e: any) {
     console.error('PUT /api/settings/general error:', e);
     return NextResponse.json({ error: e?.message || 'Не вдалося зберегти' }, { status: 500 });
   }
-}
+});

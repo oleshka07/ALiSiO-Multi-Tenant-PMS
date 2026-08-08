@@ -17,6 +17,7 @@ import { hasPermission } from '@core/auth';
 import { getSql } from '@core/db/async';
 import { hasFeature, featureDisabled } from '@core/features';
 import { getDb } from '@core/db';
+import { withActor } from '@core/auth/session';
 
 async function requirePricingPerm(): Promise<NextResponse | null> {
   const store = await cookies();
@@ -37,7 +38,7 @@ function isoDate(d: Date): string {
   return d.toISOString().substring(0, 10);
 }
 
-export async function previewPricelabs(request: NextRequest): Promise<NextResponse> {
+export const previewPricelabs = withActor(async (request: NextRequest): Promise<NextResponse> => {
   const guard = await requirePricingPerm();
   if (guard) return guard;
 
@@ -108,4 +109,4 @@ export async function previewPricelabs(request: NextRequest): Promise<NextRespon
       { status },
     );
   }
-}
+});

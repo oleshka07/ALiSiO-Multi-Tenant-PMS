@@ -35,8 +35,25 @@ import path from 'node:path';
 /**
  * A guard establishes both things at once: who is calling, and — through
  * runWithOrganization — which hotel every query underneath belongs to.
+ *
+ * There are three families and they were written at different times, which is
+ * exactly why this list has to be complete rather than remembered:
+ *
+ *   core/auth/session.ts        withActor, withPermission, withOwner
+ *   core/security/route-guard.ts  requireOwner, requirePermission
+ *   modules/finance/api/_guard.ts withFinanceRead, withPermission,
+ *                                 withAnyPermission
+ *
+ * Every one of them ends in `runWithOrganization(actor.organizationId, …)`;
+ * that call, not the name, is what makes it a guard. A name missing from this
+ * list is reported as unguarded, and a false accusation here costs more than a
+ * miss — it sends someone to wrap a route that is already wrapped.
  */
-const GUARDS = /\bwith(Actor|Permission|Owner|FinanceRead|FinanceWrite|Site)\b|\bcurrentActor\b|\brunWithOrganization\b/;
+const GUARDS = new RegExp([
+  '\\bwith(Actor|Permission|AnyPermission|Owner|FinanceRead|FinanceWrite|Site)\\b',
+  '\\brequire(Owner|Permission)\\b',
+  '\\bcurrentActor\\b', '\\brunWithOrganization\\b',
+].join('|'));
 
 /**
  * Authentication done by hand, inside the handler.
@@ -55,6 +72,18 @@ const GUARDS = /\bwith(Actor|Permission|Owner|FinanceRead|FinanceWrite|Site)\b|\
  * Reported apart from the open ones: not a hole, but the same broken read.
  */
 const HAND_ROLLED = /\bgetSessionUser\b|\bresolveFinanceOwner\b/;
+
+/**
+ * A shared secret instead of a session.
+ *
+ * Cron entry points and the Telegram bridges authenticate with an environment
+ * secret, and there is no session to wrap them in — finance/api/_guard.ts says
+ * so explicitly. Recognised by what the route file actually reads rather than
+ * by where it sits: /api/channels/sync/process and /api/hostex/bulk-sync are
+ * cron endpoints with no `cron` anywhere in their path, and a list of paths
+ * would keep missing them.
+ */
+const SHARED_SECRET = /\b(CRON_SECRET|TELEGRAM_BRIDGE_TOKEN|INVESTOR_[A-Z_]*TOKEN)\b/;
 
 /**
  * No session by definition, and each carries its own credential instead.
@@ -171,6 +200,7 @@ let checked = 0;
 for (const file of routes) {
   if (PUBLIC.test('/' + file.replace(/^src\/app/, '').replace(/^\//, ''))) continue;
   const src = fs.readFileSync(file, 'utf8');
+  if (SHARED_SECRET.test(src)) continue;
   for (const m of src.matchAll(/export\s+(?:async\s+function|const)\s+(GET|POST|PUT|PATCH|DELETE)\b/g)) {
     checked++;
     const verdict = classifyExport(file, m[1]);

@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@core/auth';
+import { withActor, withPermission } from '@core/auth/session';
 import {
   DEFAULT_EVENTS,
   disconnectTelegram,
@@ -30,7 +31,7 @@ function canManage(role: string): boolean {
   return role === 'owner' || role === 'director';
 }
 
-export async function getNotificationSettings(): Promise<NextResponse> {
+export const getNotificationSettings = withActor(async (): Promise<NextResponse> => {
   const user = await currentUser();
   if (!user) return unauthorized();
   if (!canManage(user.role)) return forbidden();
@@ -40,7 +41,7 @@ export async function getNotificationSettings(): Promise<NextResponse> {
     console.error('GET /api/settings/notifications error:', e);
     return NextResponse.json({ error: 'Не вдалося прочитати налаштування' }, { status: 500 });
   }
-}
+});
 
 function coerceEvents(raw: unknown): TelegramEvents {
   const src = (raw ?? {}) as Record<string, unknown>;
@@ -51,7 +52,7 @@ function coerceEvents(raw: unknown): TelegramEvents {
   return out;
 }
 
-export async function saveNotificationSettings(request: NextRequest): Promise<NextResponse> {
+export const saveNotificationSettings = withPermission('manage_properties', async (request: NextRequest): Promise<NextResponse> => {
   const user = await currentUser();
   if (!user) return unauthorized();
   if (!canManage(user.role)) return forbidden();
@@ -90,9 +91,9 @@ export async function saveNotificationSettings(request: NextRequest): Promise<Ne
     console.error('PUT /api/settings/notifications error:', e);
     return NextResponse.json({ error: e?.message || 'Не вдалося зберегти' }, { status: 500 });
   }
-}
+});
 
-export async function deleteNotificationSettings(): Promise<NextResponse> {
+export const deleteNotificationSettings = withPermission('manage_properties', async (): Promise<NextResponse> => {
   const user = await currentUser();
   if (!user) return unauthorized();
   if (!canManage(user.role)) return forbidden();
@@ -103,14 +104,14 @@ export async function deleteNotificationSettings(): Promise<NextResponse> {
     console.error('DELETE /api/settings/notifications error:', e);
     return NextResponse.json({ error: 'Не вдалося відключити' }, { status: 500 });
   }
-}
+});
 
 /**
  * Verify the stored credentials against Telegram and, when a chat is set, send
  * a real message — getMe alone proves the token works but not that the bot can
  * actually reach the chat, which is the failure people actually hit.
  */
-export async function testNotificationSettings(): Promise<NextResponse> {
+export const testNotificationSettings = withPermission('manage_properties', async (): Promise<NextResponse> => {
   const user = await currentUser();
   if (!user) return unauthorized();
   if (!canManage(user.role)) return forbidden();
@@ -154,4 +155,4 @@ export async function testNotificationSettings(): Promise<NextResponse> {
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: `Не вдалося звʼязатися з Telegram: ${e.message}` }, { status: 502 });
   }
-}
+});

@@ -3,12 +3,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import fs from 'fs';
 import path from 'path';
+import { withPermission } from '@core/auth/session';
 
 const DATA_DIR = path.join(process.cwd(), 'data', 'uploads', 'photos');
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
 
-export async function uploadPhoto(request: NextRequest) {
+export const uploadPhoto = withPermission('manage_properties', async (request: NextRequest) => {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -66,9 +67,9 @@ export async function uploadPhoto(request: NextRequest) {
     console.error('Photo upload error:', error?.message || error);
     return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
   }
-}
+});
 
-export async function deletePhoto(request: NextRequest) {
+export const deletePhoto = withPermission('manage_properties', async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -95,4 +96,4 @@ export async function deletePhoto(request: NextRequest) {
     console.error('Photo delete error:', error?.message || error);
     return NextResponse.json({ error: 'Delete failed' }, { status: 500 });
   }
-}
+});

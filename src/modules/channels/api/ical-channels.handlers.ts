@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { requirePropertyId } from '@core/auth/tenant-context';
 import { getSql } from '@core/db/async';
+import { withActor, withPermission } from '@core/auth/session';
 
-export async function listIcalChannels() {
+export const listIcalChannels = withActor(async () => {
   try {
     const sql = getSql();
     const channels = await sql.rows<any>(`
@@ -39,9 +40,9 @@ export async function listIcalChannels() {
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
 
-export async function createIcalChannel(request: NextRequest) {
+export const createIcalChannel = withPermission('manage_properties', async (request: NextRequest) => {
   try {
     const sql = getSql();
     const body = await request.json();
@@ -91,4 +92,4 @@ export async function createIcalChannel(request: NextRequest) {
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
