@@ -398,7 +398,7 @@ export async function createWidgetReservation(request: NextRequest) {
 
       if (existing) {
         guestId = existing.id;
-        await sql.run('UPDATE guests SET first_name = ?, last_name = ?, phone = COALESCE(?, phone), updated_at = datetime(\'now\') WHERE id = ?', [firstName, lastName, phone || null, guestId]);
+        await sql.run('UPDATE guests SET first_name = ?, last_name = ?, phone = COALESCE(?, phone), updated_at = CURRENT_TIMESTAMP WHERE id = ?', [firstName, lastName, phone || null, guestId]);
       } else {
         guestId = `g_${Date.now()}`;
         await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name, email, phone) VALUES (?, ?, ?, ?, ?, ?)', [guestId, org.id, firstName, lastName, email, phone || null]);

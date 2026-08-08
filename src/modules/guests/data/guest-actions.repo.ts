@@ -180,7 +180,7 @@ export async function getPendingAbandonNotifications(guestToken: string, minMinu
     WHERE ce.guest_token = ?
       AND ce.event_type = 'abandon'
       AND ce.abandon_notified_at IS NULL
-      AND ce.created_at <= datetime('now', '-' || ? || ' minutes')
+      AND ce.created_at <= ${sql.dialect.plusMinutes('CURRENT_TIMESTAMP', '-1 * ?')}
       AND (r.id IS NULL OR r.status NOT IN ('cancelled','no_show'))
     ORDER BY ce.created_at DESC
     LIMIT 1

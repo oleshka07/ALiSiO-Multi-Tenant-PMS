@@ -52,7 +52,7 @@ async function servicesFor(searchParams: URLSearchParams) {
           SET booked_count = MAX(0, booked_count - 1), booking_session_id = NULL
           WHERE booking_session_id IS NOT NULL
             AND notes IS NULL
-            AND created_at < datetime('now', '-' || ? || ' minutes')
+            AND created_at < ${sql.dialect.plusMinutes('CURRENT_TIMESTAMP', '-1 * ?')}
         `, [15]);
 
         const bookedSlots = await sql.rows<any>(`

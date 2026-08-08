@@ -132,7 +132,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       else if (type === 'partial')      nextStatus = 'partial';
       if (nextStatus !== res.payment_status) {
         await sql.run(
-          'UPDATE reservations SET payment_status = ?, updated_at = datetime(\'now\') WHERE id = ?',
+          'UPDATE reservations SET payment_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
           [nextStatus, reservation_id],
         );
         statusChanged = true;

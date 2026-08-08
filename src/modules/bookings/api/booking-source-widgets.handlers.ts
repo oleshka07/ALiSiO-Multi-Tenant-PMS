@@ -16,8 +16,11 @@ export async function listWidgetSiteSources() {
   try {
     const sql = getSql();
 
-    // Guard: table may not exist in older DBs
-    const tableExists = await sql.row<any>(`${sql.dialect.tables()} AND name = 'booking_sites'`);
+    // Guard: table may not exist in older DBs. Filtered here rather than in
+    // SQL — the catalogue column is called `tablename` on Postgres and `name`
+    // on SQLite, and only the output alias is shared.
+    const tableExists = (await sql.rows<any>(sql.dialect.tables()) as { name: string }[])
+      .some((t) => t.name === 'booking_sites');
 
     if (!tableExists) {
       return NextResponse.json([]);

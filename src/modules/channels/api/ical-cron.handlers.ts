@@ -19,7 +19,7 @@ export async function runIcalCron(request: Request) {
         AND ical_url IS NOT NULL
         AND (
           last_synced_at IS NULL
-          OR datetime(last_synced_at, '+' || sync_interval_minutes || ' minutes') <= CURRENT_TIMESTAMP
+          OR ${sql.dialect.plusMinutes('last_synced_at', 'sync_interval_minutes')} <= CURRENT_TIMESTAMP
         )
     `) as any[];
 

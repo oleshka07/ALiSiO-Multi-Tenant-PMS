@@ -28,7 +28,7 @@ export async function assignGuest(request: NextRequest, { params }: { params: Pr
       const existing = await sql.row<any>('SELECT id FROM guests WHERE email = ? AND organization_id = ?', [email, org.id]) as any;
       if (existing) {
         guestId = existing.id;
-        await sql.run('UPDATE guests SET first_name = ?, last_name = ?, phone = COALESCE(?, phone), updated_at = datetime(\'now\') WHERE id = ?', [firstName, lastName, phone || null, guestId]);
+        await sql.run('UPDATE guests SET first_name = ?, last_name = ?, phone = COALESCE(?, phone), updated_at = CURRENT_TIMESTAMP WHERE id = ?', [firstName, lastName, phone || null, guestId]);
       } else {
         guestId = `g_${Date.now()}`;
         await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name, email, phone) VALUES (?, ?, ?, ?, ?, ?)', [guestId, org.id, firstName, lastName, email, phone || null]);
@@ -38,7 +38,7 @@ export async function assignGuest(request: NextRequest, { params }: { params: Pr
       await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name, phone) VALUES (?, ?, ?, ?, ?)', [guestId, org.id, firstName, lastName, phone || null]);
     }
 
-    await sql.run('UPDATE reservations SET guest_id = ?, updated_at = datetime(\'now\') WHERE id = ?', [guestId, reservationId]);
+    await sql.run('UPDATE reservations SET guest_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [guestId, reservationId]);
 
     return NextResponse.json({ success: true, guestId });
   } catch (e: any) {

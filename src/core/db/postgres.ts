@@ -169,6 +169,7 @@ const POSTGRES_DIALECT: Dialect = {
   month: (column) => `to_char(${column}, 'YYYY-MM')`,
   dayOfWeek: (column) => `EXTRACT(DOW FROM ${column})::int`,
   tables: () => "SELECT tablename AS name FROM pg_tables WHERE schemaname = 'public'",
+  plusMinutes: (column, minutes) => `${column} + (${minutes}) * INTERVAL '1 minute'`,
 };
 
 function methods(client: PgClient, scoped: boolean): Sql {

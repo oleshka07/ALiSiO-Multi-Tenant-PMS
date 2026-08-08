@@ -14,9 +14,9 @@ export async function GET(request: Request) {
       FROM reservations 
       WHERE status = 'tentative' 
         AND payment_status = 'unpaid' 
-        AND created_at < datetime('now', '-30 minute') 
-        AND created_at > datetime('now', '-120 minute')
-        AND ifnull(internal_notes, '') NOT LIKE '%[ABANDONED_CART_SENT]%'
+        AND created_at < ${sql.dialect.plusMinutes('CURRENT_TIMESTAMP', '-30')}
+        AND created_at > ${sql.dialect.plusMinutes('CURRENT_TIMESTAMP', '-120')}
+        AND COALESCE(internal_notes, '') NOT LIKE '%[ABANDONED_CART_SENT]%'
     `);
 
     if (!abandonedReservations.length) {
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
         // Mark as sent
         await sql.run(`
           UPDATE reservations 
-          SET internal_notes = ifnull(internal_notes, '') || '\n[ABANDONED_CART_SENT]'
+          SET internal_notes = COALESCE(internal_notes, '') || '\n[ABANDONED_CART_SENT]'
           WHERE id = ?
         `, [res.id]);
         processed++;

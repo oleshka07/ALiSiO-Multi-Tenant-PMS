@@ -57,7 +57,7 @@ export interface Sql {
    *
    * Almost all SQL in this codebase is portable once the placeholders are, and
    * where a SQLite spelling had a standard equivalent it was simply replaced —
-   * `datetime('now')` became `CURRENT_TIMESTAMP`, `WHERE rowid = ?` became
+   * `CURRENT_TIMESTAMP` became `CURRENT_TIMESTAMP`, `WHERE rowid = ?` became
    * `RETURNING`. These are what is left after that: cases with no shared
    * spelling at all, because the column types differ. `paid_at` is TEXT in
    * SQLite and TIMESTAMPTZ in Postgres, so `substr(paid_at, 1, 7)` works on one
@@ -85,6 +85,16 @@ export interface Dialect {
    * has.
    */
   tables(): string;
+  /**
+   * A timestamp shifted by a signed number of minutes.
+   *
+   * `minutes` is an SQL expression carrying its own sign — a parameter, a
+   * column, or a literal. SQLite spells this datetime(col, '5 minutes') and
+   * Postgres col + 5 * INTERVAL '1 minute'; there is no shared spelling, and
+   * the SQLite one is not a syntax error on Postgres but a missing function,
+   * which took two cron routes down.
+   */
+  plusMinutes(column: string, minutes: string): string;
 }
 
 /**
@@ -99,6 +109,7 @@ const SQLITE_DIALECT: Dialect = {
   month: (column) => `strftime('%Y-%m', ${column})`,
   dayOfWeek: (column) => `CAST(strftime('%w', ${column}) AS INTEGER)`,
   tables: () => "SELECT name FROM sqlite_master WHERE type = 'table'",
+  plusMinutes: (column, minutes) => `datetime(${column}, (${minutes}) || ' minutes')`,
 };
 
 export function sqliteSql(db: any = null): Sql {
