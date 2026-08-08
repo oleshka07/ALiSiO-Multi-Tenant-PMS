@@ -25,7 +25,7 @@ export function listBuildings(organizationId: string, filters: { property_id?: s
     params.push(filters.property_id);
   }
 
-  query += ' GROUP BY b.id ORDER BY b.sort_order';
+  query += ' GROUP BY b.id, c.name, c.type ORDER BY b.sort_order';
 
   return sql.rows<any>(query, params);
 }

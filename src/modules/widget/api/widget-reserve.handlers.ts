@@ -48,15 +48,10 @@ export async function createWidgetReservation(request: NextRequest) {
     const siteId = body.siteId;
     const siteSlug = body.siteSlug;
 
-    // Failsafe table creation for handshakes
-    await sql.run(`
-      CREATE TABLE IF NOT EXISTS widget_handshakes (
-        token TEXT PRIMARY KEY,
-        site_id TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        expires_at DATETIME
-      )
-    `);
+    // The handshake table is created by the boot migration, and is in
+    // db/postgres/schema.sql. The "failsafe" that stood here ran on every
+    // booking: free on SQLite, refused on Postgres, where the application's
+    // role owns nothing and may not create anything.
 
     // Which hosts this site trusts — its own domain plus allowed_domains.
     let originSite: SiteRow | undefined;

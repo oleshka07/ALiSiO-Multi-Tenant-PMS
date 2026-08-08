@@ -54,6 +54,13 @@ const RULES = [
   // with it. `sql.dialect.tables()` names the catalogue per engine.
   { id: 'sqlite-catalogue', re: /sqlite_master|sqlite_version\(/gi, quiet: false,
     fix: 'use sql.dialect.tables() — pg_tables on Postgres, sqlite_master on SQLite' },
+  // Schema changes from a request handler. Every one of these was written
+  // against SQLite, where a process that opens the file may alter it; the
+  // application's Postgres role owns nothing and may not. Three of them —
+  // an index on every Hostex sync, a table on every handshake, a column on
+  // every service order — each took a route down on the first real run.
+  { id: 'runtime-ddl', re: /(CREATE\s+(TABLE|INDEX)|ALTER\s+TABLE|DROP\s+(TABLE|INDEX))/gi, quiet: false,
+    fix: 'schema belongs in the boot migration and in db/postgres/schema.sql, not in a handler' },
   { id: 'pragma', re: /PRAGMA\s+\w+/gi, quiet: false,
     fix: 'information_schema on Postgres — these are schema introspection, mostly in migrations' },
   { id: 'autoincrement', re: /AUTOINCREMENT/gi, quiet: false,

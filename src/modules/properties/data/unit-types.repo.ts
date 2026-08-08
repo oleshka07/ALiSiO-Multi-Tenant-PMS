@@ -30,7 +30,7 @@ export function listUnitTypes(organizationId: string, filters: { category?: stri
     params.push(filters.category);
   }
 
-  query += ' GROUP BY ut.id ORDER BY c.sort_order, ut.sort_order';
+  query += ' GROUP BY ut.id, c.id, c.name, c.type, c.sort_order, b.id, b.name, b.code ORDER BY c.sort_order, ut.sort_order';
 
   return sql.rows<any>(query, params);
 }

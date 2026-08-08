@@ -19,15 +19,10 @@ export async function GET(request: NextRequest) {
     const siteSlug = searchParams.get('siteSlug') || '';
     const siteId = searchParams.get('siteId') || '';
 
-    // Create table if it doesn't exist
-    await sql.run(`
-      CREATE TABLE IF NOT EXISTS widget_handshakes (
-        token TEXT PRIMARY KEY,
-        site_id TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        expires_at DATETIME
-      )
-    `);
+    // The table is created by the boot migration and is in
+    // db/postgres/schema.sql. Creating it per request was free on SQLite
+    // and impossible on Postgres, where the application's role owns nothing:
+    // "permission denied for schema public".
 
     // Clean up expired handshakes
     await sql.run(`

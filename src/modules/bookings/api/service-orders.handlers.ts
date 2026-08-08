@@ -9,7 +9,9 @@ export async function listServiceOrders(req: NextRequest) {
     const dateParam = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
     const period = url.searchParams.get('period') || 'day';
 
-    try { await sql.run("ALTER TABLE booking_service_orders ADD COLUMN completed_at TEXT DEFAULT NULL"); } catch { /* exists */ }
+    // The column is in the boot migration and in db/postgres/schema.sql. This
+    // ALTER ran on every request, swallowing its own error — free on SQLite,
+    // refused on Postgres, where the application's role owns no table.
 
     let dateFilter = '';
     if (period === 'day') {
