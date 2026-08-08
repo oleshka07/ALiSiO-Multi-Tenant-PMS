@@ -157,6 +157,42 @@ const SEAM_CALL = /(?<!await\s)(?<!\.)\b(?:sql|t)\.(rows?|run|exec|tx)\s*(?:<[^>
 // `return sql.rows(…)` is fine — the promise goes to a caller that awaits it.
 const SEAM_OK = /(?:await|return|=>)\s*(?:\(await\s*)?(?:sql|t)\.(?:rows?|run|exec|tx)\s*(?:<[^>]*>)?\s*\(|\.then\(|Promise\.(?:all|allSettled)/;
 
+/**
+ * The same promise, handed on from the line above.
+ *
+ * Scoping a query to a tenant is now written the same way everywhere, because
+ * Postgres row-level security needs the organization set before the statement
+ * runs:
+ *
+ *   const rows = await runWithOrganization(org, () =>
+ *     sql.rows('SELECT …'));
+ *
+ * That is awaited — the `await` is on the outer call, and the arrow hands the
+ * promise straight to it. But this check reads one line at a time, so it saw a
+ * bare `sql.rows(` and reported the shape that is now the correct one. Three
+ * call sites, all fine, and a check that reports correct code gets switched off.
+ *
+ * Two continuations count as handing it on. An arrow body opened on the
+ * previous line, and a ternary branch — `? sql.rows(…) : sql.rows(…)` split
+ * across lines — where the head of the ternary is itself a passing-on position.
+ * Anything else still reports: a promise pushed into an array or dropped into
+ * an argument list has no arrow above it.
+ */
+function handedOnFromAbove(lines, i) {
+  const prev = (lines[i - 1] || '').trim();
+  if (/=>\s*\(?$/.test(prev)) return true;
+
+  if (/^[?:]/.test(lines[i].trim())) {
+    // Walk up past sibling branches to the expression the ternary belongs to.
+    for (let j = i - 1; j >= 0 && j >= i - 4; j--) {
+      const line = lines[j].trim();
+      if (/^[?:]/.test(line)) continue;
+      return /=>|\bawait\b|\breturn\b/.test(line);
+    }
+  }
+  return false;
+}
+
 const findings = [];
 for (const f of files) {
   const src = fs.readFileSync(f, 'utf8');
@@ -165,7 +201,10 @@ for (const f of files) {
 
   lines.forEach((line, i) => {
     const t = line.trim();
-    if (!t.startsWith('//') && !t.startsWith('*') && SEAM_CALL.test(line) && !SEAM_OK.test(line)) {
+    if (
+      !t.startsWith('//') && !t.startsWith('*') &&
+      SEAM_CALL.test(line) && !SEAM_OK.test(line) && !handedOnFromAbove(lines, i)
+    ) {
       findings.push({
         file: f, line: i + 1, name: 'sql',
         kind: 'виклик шва без await', text: t.slice(0, 110),

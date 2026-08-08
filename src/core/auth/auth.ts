@@ -3,6 +3,7 @@
 // ============================================================
 
 import { getSql } from '../db/async.ts';
+import { runWithOrganization } from './tenant-context.ts';
 import { DEFAULT_LANGUAGE, type Language, isLanguage, parseLanguage } from '../i18n/languages.ts';
 import { getUserPermissions, type Permission, type PermissionOverride } from './permissions';
 import type { UserRole } from '@/types/database';
@@ -74,9 +75,28 @@ export async function getSessionUser(sessionId: string | undefined): Promise<Ses
 
   if (!row) return null;
 
-  // Load permission overrides
+  // Permission overrides, read AS the organization the row just revealed.
+  //
+  // This is not tidiness. `user_permissions` is scoped through `app_users`:
+  //
+  //   USING (user_id IN (SELECT id FROM app_users WHERE organization_id = current_setting('app.organization_id')))
+  //
+  // and the query above runs with no tenant set, because the tenant is what it
+  // is there to discover. On SQLite that costs nothing — there is no RLS. On
+  // Postgres the subquery matched nothing, this returned **zero overrides**,
+  // and `getUserPermissions` uses an override to *revoke*:
+  //
+  //   if (override.granted) defaults.add(...) else defaults.delete(...)
+  //
+  // So a permission taken away from one person came back the moment prod moved
+  // to Postgres. Failing open, silently, on the authorisation path. Proved
+  // against real Postgres in core/db/rls-identity.check.ts.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const overrides: PermissionOverride[] = (await sql.rows<any>('SELECT permission, granted FROM user_permissions WHERE user_id = ?', [row.id])).map((o: any) => ({
+  const overrideRows = await runWithOrganization(row.organization_id, () => sql.rows<any>(
+    'SELECT permission, granted FROM user_permissions WHERE user_id = ?',
+    [row.id],
+  ));
+  const overrides: PermissionOverride[] = overrideRows.map((o: any) => ({
     permission: o.permission as Permission,
     granted: o.granted === 1,
   }));
