@@ -49,6 +49,11 @@ const RULES = [
     fix: 'RETURNING id, read from the row — Postgres has no rowid' },
   { id: 'randomblob', re: /randomblob\(/g, quiet: false,
     fix: 'gen_random_uuid() on Postgres, or generate the id in JavaScript for both' },
+  // Eight handlers asked this before using a table, and Postgres has no such
+  // relation — the query did not answer "no", it threw and took the request
+  // with it. `sql.dialect.tables()` names the catalogue per engine.
+  { id: 'sqlite-catalogue', re: /sqlite_master|sqlite_version\(/gi, quiet: false,
+    fix: 'use sql.dialect.tables() — pg_tables on Postgres, sqlite_master on SQLite' },
   { id: 'pragma', re: /PRAGMA\s+\w+/gi, quiet: false,
     fix: 'information_schema on Postgres — these are schema introspection, mostly in migrations' },
   { id: 'autoincrement', re: /AUTOINCREMENT/gi, quiet: false,

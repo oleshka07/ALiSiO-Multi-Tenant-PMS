@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from '@core/db/async';
+import { requireOrganizationId, runWithOrganization } from '@core/auth/tenant-context';
 
 /**
  * Finding a booking site, and deciding which hosts it trusts.
@@ -73,6 +74,47 @@ export function siteAllowsHost(site: SiteRow | null | undefined, host: string | 
  * standing in for — a widget on kv.example.com finds the site whose site_url
  * or allowed_domains names that host, without anyone editing this file.
  */
+/**
+ * The public entry point: find the hotel, then act as it.
+ *
+ * A guest is not a tenant. The widget arrives with a site key — a slug, an id,
+ * or the hostname it is embedded on — and nothing else, and every authenticated
+ * route in this codebase gets its organization from a guard before the handler
+ * runs (see core/auth/session.ts). The public routes had no such guard: they
+ * filtered by ids the caller supplied and never established a tenant, which
+ * works on SQLite, where nothing checks, and returns an empty page on Postgres,
+ * where every policy does.
+ *
+ * So this is that guard. The lookup itself runs before any organization is set
+ * — booking_sites is readable then, and only then, and only for reading — and
+ * everything the handler does afterwards runs as the site's organization.
+ *
+ * Returns null when the key names no site, so the caller picks the status code
+ * rather than being handed one.
+ */
+export async function withSite<T>(
+  key: string | null | undefined,
+  fn: (site: SiteRow | undefined) => Promise<T>,
+): Promise<T | null> {
+  // Every column, deliberately: a caller that narrowed the list and forgot
+  // organization_id would get null back and answer 404, which looks exactly
+  // like an unknown site.
+  const site = key ? await resolveSiteByKey(key) : undefined;
+
+  // A key that names nothing is a real 404. No key at all is the widget the
+  // first customer embedded before sites existed — useBookingWidget still sends
+  // siteId only `if (siteId)` — so it falls back the way the rest of the
+  // codebase does: the sole organization, or a refusal once there is more than
+  // one. Nothing here guesses which hotel a guest meant.
+  if (key && !site) return null;
+
+  const organizationId = site?.organization_id
+    ? String(site.organization_id)
+    : await requireOrganizationId();
+
+  return runWithOrganization(organizationId, () => fn(site));
+}
+
 export async function resolveSiteByKey(key: string | null | undefined, columns = '*'): Promise<SiteRow | undefined> {
   const sql = getSql();
   if (!key) return undefined;

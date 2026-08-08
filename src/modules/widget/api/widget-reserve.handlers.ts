@@ -7,6 +7,7 @@ import { eventBus } from '@core/event-bus';
 import { notifyReservationCreated } from '@bookings';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { hasFeature, featureDisabled } from '@core/features';
+import { withSite } from '../data/site.repo';
 import { siteAllowsHost, type SiteRow } from '../data/site.repo';
 import { quoteCertificate, claimCertificate } from '../data/certificate.repo';
 
@@ -150,6 +151,12 @@ export async function createWidgetReservation(request: NextRequest) {
       }, { status: 400, headers: dynamicHeaders });
     }
 
+    // As the hotel the site names, from here to the end: the unit, the
+    // availability, the price and the reservation all belong to one, and a
+    // guest carries no tenant of its own. Without this the handler took the
+    // caller's word for which unit it was booking.
+    return (await withSite(siteId, async () => {
+
     const ciDate = new Date(checkIn);
     const coDate = new Date(checkOut);
     if (coDate <= ciDate) {
@@ -158,7 +165,7 @@ export async function createWidgetReservation(request: NextRequest) {
     const nights = Math.round((coDate.getTime() - ciDate.getTime()) / 86400000);
 
     const existingTables = new Set(
-      (await sql.rows<any>("SELECT name FROM sqlite_master WHERE type='table'") as { name: string }[])
+      (await sql.rows<any>(sql.dialect.tables()) as { name: string }[])
         .map(t => t.name)
     );
     const hasAvailBlocks = existingTables.has('availability_blocks');
@@ -790,6 +797,8 @@ export async function createWidgetReservation(request: NextRequest) {
       groupId,
       reservations: createdReservations,
     }, { status: 201, headers: dynamicHeaders });
+
+    })) ?? NextResponse.json({ error: 'Unknown site' }, { status: 404, headers: CORS_HEADERS });
   } catch (error: any) {
     const msg = error?.message || String(error);
     console.error('POST /api/booking/reserve error:', msg);

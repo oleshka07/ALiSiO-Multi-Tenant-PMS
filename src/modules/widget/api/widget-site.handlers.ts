@@ -1,9 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { getDb } from '@core/db';
 import { hasFeature, featureDisabled } from '@core/features';
-import { resolveSiteByKey } from '../data/site.repo';
+import { withSite } from '../data/site.repo';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -27,14 +26,10 @@ export async function getWidgetSiteConfig(req: NextRequest) {
     const sql = getSql();
     // Accepts an id, a slug, or the hostname the widget is embedded on — the
     // last of which used to be one hardcoded alias for the first customer.
-    const site = await resolveSiteByKey(slug,
-      'id, organization_id, name, slug, design_config, widget_config, payment_config, currency, site_url, allowed_domains',
-    ) as any;
-
-    if (!site) {
-      return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: CORS_HEADERS });
-    }
-
+    // withSite both finds it and makes everything below run as its hotel: the
+    // rest of this handler reads that hotel's rooms, prices and payment
+    // settings, and under row-level security a guest has no tenant of its own.
+    return (await withSite(slug, async (site: any) => {
     if (!await hasFeature(site.organization_id, 'widget')) {
       return featureDisabled('widget', CORS_HEADERS);
     }
@@ -87,6 +82,7 @@ export async function getWidgetSiteConfig(req: NextRequest) {
         } catch { return { fbPixelId: null, ga4Id: null, tiktokPixelId: null, returnUrl: null }; }
       })(),
     }, { headers: CORS_HEADERS });
+    })) ?? NextResponse.json({ error: 'Site not found' }, { status: 404, headers: CORS_HEADERS });
   } catch (error: any) {
     console.error('GET /api/booking/site-config error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to fetch site config' }, { status: 500, headers: CORS_HEADERS });

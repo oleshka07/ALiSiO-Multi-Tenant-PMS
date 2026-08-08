@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { runWithOrganization } from '@core/auth/tenant-context';
 
 export async function trackWidgetEventOptions(request: NextRequest) {
   const origin = request.headers.get('origin');
@@ -45,11 +46,14 @@ export async function trackWidgetEvent(request: NextRequest) {
       return NextResponse.json({ error: 'Missing site_id' }, { status: 400, headers });
     }
 
-    // Check if site exists by ID or slug
-    const site = await sql.row<any>("SELECT id, site_url FROM booking_sites WHERE (id = ? OR slug = ?) AND status != 'deleted'", [site_id, site_id]) as any;
+    // Check if site exists by ID or slug. organization_id comes with it, and
+    // the write below runs as that hotel: an analytics row belongs to one, and
+    // row-level security will not take it on a guest's word.
+    const site = await sql.row<any>("SELECT id, site_url, organization_id FROM booking_sites WHERE (id = ? OR slug = ?) AND status != 'deleted'", [site_id, site_id]) as any;
     if (!site) {
       return NextResponse.json({ error: 'Site not found or deleted' }, { status: 404, headers });
     }
+    return runWithOrganization(String(site.organization_id), async () => {
 
     const allowedTypes = [
       'page_view',
@@ -86,6 +90,7 @@ export async function trackWidgetEvent(request: NextRequest) {
       country]);
 
     return NextResponse.json({ success: true }, { status: 200, headers });
+    });
   } catch (error: any) {
     console.error('Error tracking widget event:', error?.message || error);
     return NextResponse.json({ error: 'Failed to track event' }, { status: 500, headers });

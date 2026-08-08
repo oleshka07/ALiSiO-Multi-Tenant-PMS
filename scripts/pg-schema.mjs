@@ -219,17 +219,27 @@ const ORG_COL = 'organization_id';
 const IDENTITY = new Set(['organizations', 'sessions']);
 
 // Reference data, the same rows for every customer.
-// Readable before the tenant is known. Login looks a user up by email and
-// every authenticated request joins app_users through a session id — neither
-// caller can name an organization, because finding the row is HOW the
-// organization is discovered. postgres.ts sets app.organization_id to '' when
-// there is no context, so the strict predicate matched nothing and every login
-// returned 401: not a refusal, a table the application could not read.
+// Readable before the tenant is known. Two entry points have this shape, and
+// in both the lookup is HOW the organization is discovered:
+//
+//   app_users      login looks a person up by email, and every authenticated
+//                  request joins this table through a session id.
+//   booking_sites  a guest is not a tenant. The widget arrives with a public
+//                  site key and nothing else.
+//
+// postgres.ts sets app.organization_id to '' when there is no context, so the
+// strict predicate matched nothing and every login returned 401 and every
+// widget 404: not a refusal, a table the application could not read.
+//
+// booking_sites carries its own organization_id (see the migration in
+// core/db) so this stays one table. Reaching an organization through
+// property_id would have meant opening `properties` to anonymous reads too —
+// the name, city and address of every hotel on the server.
 //
 // Only the read side opens, and only while no tenant is set. WITH CHECK stays
 // strict, so no row can ever be written into another organization, and a
 // request that HAS a tenant still sees only its own users.
-const READ_BEFORE_TENANT = new Set(['app_users']);
+const READ_BEFORE_TENANT = new Set(['app_users', 'booking_sites']);
 
 const REFERENCE = new Set([
   'rate_limits', 'settings', 'content_translations',

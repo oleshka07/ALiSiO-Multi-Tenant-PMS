@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { withSite } from '../data/site.repo';
 
 export const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -12,10 +13,25 @@ export async function getWidgetCalendarOptions() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
+/**
+ * Public: no session, so the hotel comes from the site key the widget carries.
+ *
+ * Without that, every query below runs with no tenant — which on SQLite meant
+ * "whatever the ids in the query string point at" and on Postgres means an
+ * empty calendar, because row-level security has nothing to match on.
+ */
 export async function getWidgetCalendar(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const answer = await withSite(
+    searchParams.get('siteSlug') || searchParams.get('siteId'),
+    () => calendarFor(searchParams),
+  );
+  return answer ?? NextResponse.json({ error: 'Unknown site' }, { status: 404, headers: CORS_HEADERS });
+}
+
+async function calendarFor(searchParams: URLSearchParams) {
   try {
     const sql = getSql();
-    const { searchParams } = new URL(request.url);
     const propertyId  = searchParams.get('propertyId');
     const unitId      = searchParams.get('unitId');
     const siteSlug    = searchParams.get('siteSlug');
@@ -24,7 +40,7 @@ export async function getWidgetCalendar(request: NextRequest) {
     const ratePlanId  = searchParams.get('ratePlanId') || searchParams.get('ratePlan');
 
     const existingTables = new Set(
-      (await sql.rows<any>("SELECT name FROM sqlite_master WHERE type='table'") as { name: string }[])
+      (await sql.rows<any>(sql.dialect.tables()) as { name: string }[])
         .map(t => t.name)
     );
     const hasAvailBlocks   = existingTables.has('availability_blocks');

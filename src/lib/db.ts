@@ -2769,6 +2769,25 @@ function runMigrations(database: any) {
       database.exec("ALTER TABLE booking_sites ADD COLUMN site_url TEXT");
       console.log('[DB] Added site_url to booking_sites');
     }
+    // The public entry point names its own organization.
+    //
+    // A guest is not a tenant: the widget arrives with a site key and nothing
+    // else, and finding the row is HOW the hotel is discovered — the same
+    // chicken-and-egg as login. Under row-level security that lookup has to be
+    // readable before any organization is set, and reaching one through
+    // property_id meant opening `properties` to anonymous reads as well: the
+    // name, city and address of every hotel on the server. One self-describing
+    // column keeps the exception to a single table.
+    if (!bsCols.includes('organization_id')) {
+      database.exec("ALTER TABLE booking_sites ADD COLUMN organization_id TEXT REFERENCES organizations(id)");
+      database.exec(`
+        UPDATE booking_sites SET organization_id = (
+          SELECT p.organization_id FROM properties p WHERE p.id = booking_sites.property_id
+        )
+      `);
+      database.exec('CREATE INDEX IF NOT EXISTS idx_booking_sites_org ON booking_sites(organization_id)');
+      console.log('[DB] booking_sites names its own organization');
+    }
     if (!bsCols.includes('payment_config')) {
       database.exec("ALTER TABLE booking_sites ADD COLUMN payment_config TEXT");
       console.log('[DB] Added payment_config to booking_sites');

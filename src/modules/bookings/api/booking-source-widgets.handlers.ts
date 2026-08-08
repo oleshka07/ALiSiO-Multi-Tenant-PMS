@@ -17,7 +17,7 @@ export async function listWidgetSiteSources() {
     const sql = getSql();
 
     // Guard: table may not exist in older DBs
-    const tableExists = await sql.row<any>("SELECT name FROM sqlite_master WHERE type='table' AND name='booking_sites'");
+    const tableExists = await sql.row<any>(`${sql.dialect.tables()} AND name = 'booking_sites'`);
 
     if (!tableExists) {
       return NextResponse.json([]);

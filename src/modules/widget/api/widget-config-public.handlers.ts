@@ -56,7 +56,7 @@ export async function getWidgetConfig(request: NextRequest) {
     let defaultUnitTypeId: string | null = null;
 
     const existingTables = new Set(
-      (await sql.rows<any>("SELECT name FROM sqlite_master WHERE type='table'") as { name: string }[])
+      (await sql.rows<any>(sql.dialect.tables()) as { name: string }[])
         .map(t => t.name)
     );
     const hasAvailBlocks = existingTables.has('availability_blocks');

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { runWithOrganization } from '@core/auth/tenant-context';
 import type { Actor } from '@core/auth/session';
 
 /**
@@ -43,9 +44,12 @@ export async function getWidgetPriceList(req: Request) {
       return NextResponse.json({ error: 'siteId or propertyId is required' }, { status: 400 });
     }
 
-    const rows = category
-      ? await sql.rows<any>('SELECT * FROM widget_price_list WHERE organization_id = ? AND category = ? ORDER BY sort_order', [organizationId, category])
-      : await sql.rows<any>('SELECT * FROM widget_price_list WHERE organization_id = ? ORDER BY category, sort_order', [organizationId]);
+    // As the hotel the site names. The WHERE clause below already says which
+    // organization, and on SQLite that was the whole story; on Postgres the
+    // row-level policy also has to be told, or the answer is an empty list.
+    const rows = await runWithOrganization(organizationId, () => (category
+      ? sql.rows<any>('SELECT * FROM widget_price_list WHERE organization_id = ? AND category = ? ORDER BY sort_order', [organizationId, category])
+      : sql.rows<any>('SELECT * FROM widget_price_list WHERE organization_id = ? ORDER BY category, sort_order', [organizationId])));
 
     return NextResponse.json(rows);
   } catch (err: any) {

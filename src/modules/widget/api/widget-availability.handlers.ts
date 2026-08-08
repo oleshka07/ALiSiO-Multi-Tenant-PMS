@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { withSite } from '../data/site.repo';
 import { quoteCertificate } from '../data/certificate.repo';
 
 const CORS_HEADERS = {
@@ -14,9 +15,17 @@ export async function getAvailabilityOptions() {
 }
 
 export async function getAvailability(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const answer = await withSite(
+    searchParams.get('siteSlug') || searchParams.get('siteId'),
+    () => availabilityFor(request, searchParams),
+  );
+  return answer ?? NextResponse.json({ error: 'Unknown site' }, { status: 404, headers: CORS_HEADERS });
+}
+
+async function availabilityFor(request: NextRequest, searchParams: URLSearchParams) {
   try {
     const sql = getSql();
-    const { searchParams } = new URL(request.url);
     const checkIn = searchParams.get('checkIn');
     const checkOut = searchParams.get('checkOut');
     const couponCode = searchParams.get('couponCode') || '';
@@ -150,7 +159,7 @@ export async function getAvailability(request: NextRequest) {
     }
 
     const existingTables = new Set(
-      (await sql.rows<any>("SELECT name FROM sqlite_master WHERE type='table'") as { name: string }[])
+      (await sql.rows<any>(sql.dialect.tables()) as { name: string }[])
         .map(t => t.name)
     );
     const hasAvailBlocks = existingTables.has('availability_blocks');

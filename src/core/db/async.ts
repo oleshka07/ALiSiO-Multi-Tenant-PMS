@@ -74,6 +74,17 @@ export interface Dialect {
   month(column: string): string;
   /** Day of the week as a number, 0 = Sunday — the SQLite convention. */
   dayOfWeek(column: string): string;
+  /**
+   * Every table in this database, as a column called `name`.
+   *
+   * Eight handlers ask "does this table exist?" before using it — leftovers
+   * from when tables were created on first use rather than at boot. They asked
+   * sqlite_master, which Postgres does not have, so the query did not return
+   * an empty answer: it threw, and took the whole request with it. The
+   * catalogue is the one thing every engine names differently and every engine
+   * has.
+   */
+  tables(): string;
 }
 
 /**
@@ -87,6 +98,7 @@ export interface Dialect {
 const SQLITE_DIALECT: Dialect = {
   month: (column) => `strftime('%Y-%m', ${column})`,
   dayOfWeek: (column) => `CAST(strftime('%w', ${column}) AS INTEGER)`,
+  tables: () => "SELECT name FROM sqlite_master WHERE type = 'table'",
 };
 
 export function sqliteSql(db: any = null): Sql {

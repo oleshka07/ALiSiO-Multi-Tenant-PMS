@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { withSite } from '../data/site.repo';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -24,6 +25,9 @@ export async function validatePromo(request: NextRequest) {
       return NextResponse.json({ valid: false, error: 'Code is required' }, { status: 400, headers: CORS_HEADERS });
     }
 
+    // As the hotel the site names: a coupon belongs to one, and under
+    // row-level security a guest carries no tenant of its own.
+    return (await withSite(siteId, async () => {
     const sql = getSql();
     let offer = await sql.row<any>('SELECT * FROM coupons WHERE code = ? AND is_active = TRUE', [code]) as any;
     let isBundle = false;
@@ -121,6 +125,7 @@ export async function validatePromo(request: NextRequest) {
       offer_amount: offer.offer_amount,
       description: offer.description,
     }, { headers: CORS_HEADERS });
+    })) ?? NextResponse.json({ valid: false, error: 'Unknown site' }, { status: 404, headers: CORS_HEADERS });
 
   } catch (error: any) {
     console.error('GET /api/booking/Coupon error:', error?.message || error);

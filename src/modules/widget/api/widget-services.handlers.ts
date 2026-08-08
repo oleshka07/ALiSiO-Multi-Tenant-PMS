@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { withSite } from '../data/site.repo';
 import { money } from '@core/money';
 import { sendTelegramMessage } from '@notifications'; // TODO: replace with eventBus
 
@@ -15,16 +16,21 @@ export async function getWidgetServicesOptions() {
 }
 
 export async function getWidgetServices(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const answer = await withSite(searchParams.get('siteId'), () => servicesFor(searchParams));
+  return answer ?? NextResponse.json({ error: 'Unknown site' }, { status: 404, headers: CORS_HEADERS });
+}
+
+async function servicesFor(searchParams: URLSearchParams) {
   try {
     const sql = getSql();
-    const { searchParams } = new URL(request.url);
     const checkIn = searchParams.get('checkIn');
     const checkOut = searchParams.get('checkOut');
     const serviceId = searchParams.get('serviceId');
     const siteId = searchParams.get('siteId') || '';
 
     const existingTables = new Set(
-      (await sql.rows<any>("SELECT name FROM sqlite_master WHERE type='table'") as { name: string }[])
+      (await sql.rows<any>(sql.dialect.tables()) as { name: string }[])
         .map(t => t.name)
     );
 
@@ -212,7 +218,7 @@ export async function bookWidgetService(request: NextRequest) {
       let totalPrice = money(pricePerHour * hours);
 
       const existingTables = new Set(
-        (await sql.rows<any>("SELECT name FROM sqlite_master WHERE type='table'") as { name: string }[])
+        (await sql.rows<any>(sql.dialect.tables()) as { name: string }[])
           .map(t => t.name)
       );
 
@@ -383,7 +389,7 @@ export async function bookWidgetService(request: NextRequest) {
 
       const qty = reqQuantity || 1;
       const existingTables = new Set(
-        (await sql.rows<any>("SELECT name FROM sqlite_master WHERE type='table'") as { name: string }[])
+        (await sql.rows<any>(sql.dialect.tables()) as { name: string }[])
           .map(t => t.name)
       );
 

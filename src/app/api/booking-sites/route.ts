@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { getSql } from '@core/db/async';
 import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
-import { requirePropertyId } from '@core/auth/tenant-context';
+import { requireOrganizationId, requirePropertyId } from '@core/auth/tenant-context';
 
 // GET /api/booking-sites — list all sites for property
 export async function GET(_req: NextRequest) {
@@ -73,12 +73,17 @@ export async function POST(request: NextRequest) {
       slug = `${slug}-${Math.random().toString(36).substring(2, 5)}`;
     }
 
+    // organization_id is stored rather than reached through the property: the
+    // widget resolves this row before any tenant is known, so it has to name
+    // its own organization. See the migration in core/db.
+    const organizationId = await requireOrganizationId();
+
     // RETURNING rather than a read back by rowid: Postgres has no rowid.
     const site = await sql.row<any>(`
-      INSERT INTO booking_sites (property_id, name, slug, type, currency, design_config, widget_config, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO booking_sites (organization_id, property_id, name, slug, type, currency, design_config, widget_config, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *
-    `, [propId, name.trim(), slug, type, currency, defaultDesignConfig, defaultWidgetConfig, session.id]);
+    `, [organizationId, propId, name.trim(), slug, type, currency, defaultDesignConfig, defaultWidgetConfig, session.id]);
 
     return NextResponse.json({ site }, { status: 201 });
   } catch (error: any) {

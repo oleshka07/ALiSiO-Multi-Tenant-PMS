@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { runWithOrganization } from '@core/auth/tenant-context';
 import { getDb } from '@core/db';
 import { hasFeature, featureDisabled } from '@core/features';
 import { checkRateLimit } from '@core/security/rate-limit';
@@ -52,16 +53,18 @@ export async function joinWaitlist(request: NextRequest) {
 
     const sql = getSql();
 
-    // The site decides which hotel this is — an invented id gets a 404, not a row.
-    const site = await sql.row<any>(`
-      SELECT bs.id, p.organization_id
-      FROM booking_sites bs
-      JOIN properties p ON bs.property_id = p.id
-      WHERE bs.id = ? AND bs.status != 'deleted'
-    `, [siteId]) as { id: string; organization_id: string } | undefined;
+    // The site decides which hotel this is — an invented id gets a 404, not a
+    // row — and everything after it runs as that hotel. Read straight off
+    // booking_sites: the join to properties this replaces is why `properties`
+    // would have had to be readable by anyone, logged in or not.
+    const site = await sql.row<any>(
+      "SELECT id, organization_id FROM booking_sites WHERE id = ? AND status != 'deleted'",
+      [siteId],
+    ) as { id: string; organization_id: string } | undefined;
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: CORS_HEADERS });
     }
+    return runWithOrganization(site.organization_id, async () => {
     if (!await hasFeature(site.organization_id, 'widget')) {
       return featureDisabled('widget', CORS_HEADERS);
     }
@@ -80,6 +83,7 @@ export async function joinWaitlist(request: NextRequest) {
     `, [site.id, cap(unitId, 64), checkIn, checkOut, cleanEmail, cap(phone, 32), cap(name, 120)]);
 
     return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
+    });
   } catch (error: any) {
     console.error('[Waitlist] error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to join waitlist' }, { status: 500, headers: CORS_HEADERS });
