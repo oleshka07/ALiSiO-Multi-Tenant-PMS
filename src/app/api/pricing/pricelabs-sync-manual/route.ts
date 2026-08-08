@@ -6,18 +6,10 @@
 //
 
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { getSessionUser } from '@core/auth';
-import { hasPermission } from '@core/auth';
+import { withPermission } from '@core/auth/session';
 import { syncPriceLabsToCalendar } from '@/modules/pricing/data/pricelabs-sync';
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
-  const store = await cookies();
-  const user = await getSessionUser(store.get('session_id')?.value);
-  if (!user) return NextResponse.json({ error: 'Не авторизовано' }, { status: 401 });
-  if (!hasPermission(user.permissions, 'manage_pricing')) {
-    return NextResponse.json({ error: 'Потрібен дозвіл manage_pricing' }, { status: 403 });
-  }
+export const POST = withPermission('manage_pricing', async (request: NextRequest): Promise<NextResponse> => {
 
   const { searchParams } = new URL(request.url);
   const days = Math.min(365, Math.max(1, parseInt(searchParams.get('days') || '90', 10)));
@@ -28,4 +20,4 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || 'sync failed' }, { status: 500 });
   }
-}
+});

@@ -5,15 +5,13 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
+import { withPermission } from '@core/auth/session';
 import { buildGiftCode, calcExpiresAt } from '@/modules/widget/domain/gift-card-builder';
 
 type Ctx = { params: Promise<{ id: string }> };
 
-export async function PATCH(req: NextRequest, ctx: Ctx) {
+export const PATCH = withPermission('manage_sites', async (req: NextRequest, ctx: Ctx) => {
   try {
-    const user = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { id } = await ctx.params;
     const sql = getSql();
     const body = await req.json();
@@ -38,12 +36,10 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 });
   }
-}
+});
 
-export async function DELETE(req: NextRequest, ctx: Ctx) {
+export const DELETE = withPermission('manage_sites', async (req: NextRequest, ctx: Ctx) => {
   try {
-    const user = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { id } = await ctx.params;
     const sql = getSql();
     await sql.run(`UPDATE gift_card_bundles SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
@@ -51,12 +47,10 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 });
   }
-}
+});
 
-export async function POST(req: NextRequest, ctx: Ctx) {
+export const POST = withPermission('manage_sites', async (req: NextRequest, ctx: Ctx) => {
   try {
-    const user = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { id } = await ctx.params;
     const sql = getSql();
 
@@ -106,4 +100,4 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 });
   }
-}
+});

@@ -4,13 +4,10 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
+import { withActor, withPermission } from '@core/auth/session';
 
-export async function GET(req: NextRequest) {
+export const GET = withActor(async (req: NextRequest) => {
   try {
-    const user = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const sql = getSql();
     const siteId = new URL(req.url).searchParams.get('site_id');
     if (!siteId) return NextResponse.json({ error: 'site_id required' }, { status: 400 });
@@ -30,13 +27,10 @@ export async function GET(req: NextRequest) {
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 });
   }
-}
+});
 
-export async function POST(req: NextRequest) {
+export const POST = withPermission('manage_sites', async (req: NextRequest) => {
   try {
-    const user = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const sql = getSql();
     const body = await req.json();
     const {
@@ -73,4 +67,4 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 });
   }
-}
+});

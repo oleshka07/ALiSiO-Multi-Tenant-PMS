@@ -1,20 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { getSessionUser, hashPassword } from '@core/auth';
+import { hashPassword } from '@core/auth';
+import { withPermission, type Actor } from '@core/auth/session';
 import { getUserPermissions, type PermissionOverride, type Permission } from '@core/auth';
 import { LANGUAGES, LANGUAGE_CODES, isLanguage } from '@core/i18n/languages';
 
-export async function listUsers() {
+// Through the guard rather than a session lookup of its own. The check here
+// was correct as far as it went — it proved the person and the permission — but
+// it left the tenant unset, so every query below ran with no organization. This
+// one survived that because `app_users` is deliberately readable before a
+// tenant is known; createUser below did not, because `user_permissions` is not.
+export const listUsers = withPermission('manage_users', async (_request: NextRequest, _ctx, actor: Actor) => {
+  const currentUser = actor.user;
   try {
-    const cookieStore = await cookies();
-    const sessionId = cookieStore.get('session_id')?.value;
-    const currentUser = await getSessionUser(sessionId);
-
-    if (!currentUser || !currentUser.permissions.includes('manage_users')) {
-      return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });
-    }
 
     const sql = getSql();
     const users = await sql.rows<any>(`
@@ -56,17 +55,11 @@ export async function listUsers() {
     console.error('Users GET error:', error);
     return NextResponse.json({ error: 'Помилка сервера' }, { status: 500 });
   }
-}
+});
 
-export async function createUser(request: Request) {
+export const createUser = withPermission('manage_users', async (request: NextRequest, _ctx, actor: Actor) => {
+  const currentUser = actor.user;
   try {
-    const cookieStore = await cookies();
-    const sessionId = cookieStore.get('session_id')?.value;
-    const currentUser = await getSessionUser(sessionId);
-
-    if (!currentUser || !currentUser.permissions.includes('manage_users')) {
-      return NextResponse.json({ error: 'Доступ заборонено' }, { status: 403 });
-    }
 
     const body = await request.json();
     const { email, full_name, phone, telegram_chat_id, role, password, language, permissions_overrides } = body;
@@ -119,4 +112,4 @@ export async function createUser(request: Request) {
     console.error('Users POST error:', error);
     return NextResponse.json({ error: 'Помилка сервера' }, { status: 500 });
   }
-}
+});

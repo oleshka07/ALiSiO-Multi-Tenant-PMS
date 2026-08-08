@@ -156,18 +156,38 @@ async function requireFinanceUser(
   if (!await isFinanceAuthorized(user)) {
     return forbidden('Доступ до фінансів лише для власника');
   }
-  // Opt-in step-up: once a finance passphrase is set, every session must unlock.
-  if (await hasFinancePassphrase(user.id) && !await isFinanceUnlocked(sessionId)) {
-    return forbidden('Фінансовий розділ заблоковано. Введіть пароль фінансів.', {
-      code: 'FINANCE_LOCKED',
-    });
-  }
-  // Per-user ACL: tab allow-list / read-only / export (owner is unrestricted).
-  if (request) {
-    const aclError = await financeAclError(user, request.nextUrl.pathname, isWrite);
-    if (aclError) return aclError;
-  }
-  return { user, organizationId: user.organization_id };
+
+  // The rest runs AS the organization, and that is not tidiness.
+  //
+  // Both checks below read tables scoped through app_users — finance_security
+  // and finance_user_access — and both used to run out here, before the guard
+  // established a tenant. On Postgres the policies then matched nothing, so:
+  //
+  //   hasFinancePassphrase()      always false → the step-up lock silently
+  //                               never applied, for anybody, even with a
+  //                               passphrase set;
+  //   getFinanceAccessForUser()   always null → "be permissive on missing row"
+  //                               → a restricted user's tab allow-list,
+  //                               read-only flag and export flag all ignored.
+  //
+  // Two access controls failing open at once, and invisibly: nothing errors,
+  // the screens just work for people they should not fully work for. Verified
+  // against a real Postgres — a passphrase in the database, finance opening
+  // with no unlock.
+  return runWithOrganization(user.organization_id, async () => {
+    // Opt-in step-up: once a finance passphrase is set, every session must unlock.
+    if (await hasFinancePassphrase(user.id) && !await isFinanceUnlocked(sessionId)) {
+      return forbidden('Фінансовий розділ заблоковано. Введіть пароль фінансів.', {
+        code: 'FINANCE_LOCKED',
+      });
+    }
+    // Per-user ACL: tab allow-list / read-only / export (owner is unrestricted).
+    if (request) {
+      const aclError = await financeAclError(user, request.nextUrl.pathname, isWrite);
+      if (aclError) return aclError;
+    }
+    return { user, organizationId: user.organization_id };
+  });
 }
 
 /**
@@ -184,6 +204,27 @@ export async function resolveFinanceOwner(): Promise<
     return forbidden('Доступ до фінансів лише для власника');
   }
   return { user, sessionId };
+}
+
+/**
+ * The security endpoints: owner-only, no unlock required, tenant established.
+ *
+ * They cannot use withFinanceRead — that one enforces the unlock, and these are
+ * how a person unlocks. But they were the only guarded thing left running with
+ * no organization, and everything they touch is `finance_security`, which is
+ * scoped through app_users. So on Postgres the passphrase could not be set (the
+ * INSERT failed the policy) and, once set, read back as absent.
+ *
+ * Same authorization as resolveFinanceOwner, plus the organization, and
+ * deliberately without the step-up check.
+ */
+export async function asFinanceOwner(
+  handler: (owner: { user: SessionUser; sessionId: string }) => Promise<Response>,
+): Promise<Response> {
+  const r = await resolveFinanceOwner();
+  if (r instanceof NextResponse) return r;
+  if (!r.user.organization_id) return unauthenticated();
+  return runWithOrganization(r.user.organization_id, () => handler(r));
 }
 
 /**

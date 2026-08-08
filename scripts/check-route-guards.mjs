@@ -42,7 +42,7 @@ import path from 'node:path';
  *   core/auth/session.ts        withActor, withPermission, withOwner
  *   core/security/route-guard.ts  requireOwner, requirePermission
  *   modules/finance/api/_guard.ts withFinanceRead, withPermission,
- *                                 withAnyPermission
+ *                                 withAnyPermission, asFinanceOwner
  *
  * Every one of them ends in `runWithOrganization(actor.organizationId, …)`;
  * that call, not the name, is what makes it a guard. A name missing from this
@@ -51,7 +51,7 @@ import path from 'node:path';
  */
 const GUARDS = new RegExp([
   '\\bwith(Actor|Permission|AnyPermission|Owner|FinanceRead|FinanceWrite|Site)\\b',
-  '\\brequire(Owner|Permission)\\b',
+  '\\brequire(Owner|Permission)\\b', '\\basFinanceOwner\\b',
   '\\bcurrentActor\\b', '\\brunWithOrganization\\b',
 ].join('|'));
 

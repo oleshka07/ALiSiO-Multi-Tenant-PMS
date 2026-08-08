@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getSql } from '@core/db/async';
 import { getSessionUser } from '@core/auth';
+import { withActor } from '@core/auth/session';
 
 /** Actor helper — same pattern as finance module's getOptionalActor */
 export async function getBookingActor(): Promise<{ id: string; name: string } | null> {
@@ -61,7 +62,7 @@ export async function writeBookingAudit(
 }
 
 /** GET /api/audit/bookings — owner-only audit trail */
-export async function listBookingAudit(request: NextRequest): Promise<NextResponse> {
+export const listBookingAudit = withActor(async (request: NextRequest): Promise<NextResponse> => {
   try {
     // Auth check: owner only
     const store = await cookies();
@@ -98,4 +99,4 @@ export async function listBookingAudit(request: NextRequest): Promise<NextRespon
     console.error('GET /api/audit/bookings error:', error?.message || error);
     return NextResponse.json({ error: error?.message || 'Failed' }, { status: 500 });
   }
-}
+});

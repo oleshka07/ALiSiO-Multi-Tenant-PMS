@@ -25,7 +25,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
+import { withActor, withPermission } from '@core/auth/session';
 import { getGiftCardTemplate } from '@/modules/widget/domain/gift-card-builder';
 
 import { randomBytes } from 'crypto';
@@ -37,11 +37,8 @@ function generateCampaignToken(prefix: string): string {
 }
 
 /* ─── GET: список правил автоматизації ─── */
-export async function GET(req: NextRequest) {
+export const GET = withActor(async (req: NextRequest) => {
   try {
-    const user = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const sql = getSql();
     const siteId = new URL(req.url).searchParams.get('site_id');
     if (!siteId) return NextResponse.json({ error: 'site_id required' }, { status: 400 });
@@ -62,14 +59,11 @@ export async function GET(req: NextRequest) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
-}
+});
 
 /* ─── POST: створити правило + згенерувати промокоди ─── */
-export async function POST(req: NextRequest) {
+export const POST = withPermission('manage_sites', async (req: NextRequest) => {
   try {
-    const user = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const sql = getSql();
     const body = await req.json();
     const {
@@ -160,14 +154,11 @@ export async function POST(req: NextRequest) {
     console.error('POST /api/gift-cards/workflow error:', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
-}
+});
 
 /* ─── DELETE: видалити правило + його промокоди ─── */
-export async function DELETE(req: NextRequest) {
+export const DELETE = withPermission('manage_sites', async (req: NextRequest) => {
   try {
-    const user = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const sql = getSql();
     const ruleId = new URL(req.url).searchParams.get('rule_id');
     if (!ruleId) return NextResponse.json({ error: 'rule_id required' }, { status: 400 });
@@ -181,4 +172,4 @@ export async function DELETE(req: NextRequest) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
-}
+});
