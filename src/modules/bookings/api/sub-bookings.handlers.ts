@@ -3,12 +3,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { money } from '@core/money';
 import { getSql } from '@core/db/async';
+import { withActor, withPermission } from '@core/auth/session';
 
 /**
  * GET /api/bookings/[id]/sub-bookings
  * List sub-bookings + line items for a reservation
  */
-export async function listSubBookings(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const listSubBookings = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params;
     const sql = getSql();
@@ -46,14 +47,14 @@ export async function listSubBookings(_request: NextRequest, { params }: { param
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
 
 /**
  * POST /api/bookings/[id]/sub-bookings
  * Create a sub-booking. If unitId is provided and differs from the master's
  * unit, a child reservation is auto-created to block that unit on the calendar.
  */
-export async function createSubBooking(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const createSubBooking = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params;
     const sql = getSql();
@@ -148,13 +149,13 @@ export async function createSubBooking(request: NextRequest, { params }: { param
     console.error('POST sub-booking error:', e);
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
 
 /**
  * PATCH /api/bookings/[id]/sub-bookings/[subId]
  * Update sub-booking metadata (label, adults, children, subtotal, notes)
  */
-export async function updateSubBooking(request: NextRequest, { params }: { params: Promise<{ id: string; subId: string }> }) {
+export const updateSubBooking = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string; subId: string }> }) => {
   try {
     const { id, subId } = await params;
     const sql = getSql();
@@ -219,13 +220,13 @@ export async function updateSubBooking(request: NextRequest, { params }: { param
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
 
 /**
  * DELETE /api/bookings/[id]/sub-bookings/[subId]
  * Delete sub-booking + its child reservation (if any) + cascade line items
  */
-export async function deleteSubBooking(_request: NextRequest, { params }: { params: Promise<{ id: string; subId: string }> }) {
+export const deleteSubBooking = withPermission('manage_bookings', async (_request: NextRequest, { params }: { params: Promise<{ id: string; subId: string }> }) => {
   try {
     const { id, subId } = await params;
     const sql = getSql();
@@ -247,4 +248,4 @@ export async function deleteSubBooking(_request: NextRequest, { params }: { para
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});

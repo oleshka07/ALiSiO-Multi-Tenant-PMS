@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { withActor, withPermission } from '@core/auth/session';
 
-export async function listAdditionalServices() {
+export const listAdditionalServices = withActor(async () => {
   try {
     const sql = getSql();
     const services = await sql.rows<any>('SELECT * FROM additional_services ORDER BY sort_order, name');
@@ -11,9 +12,9 @@ export async function listAdditionalServices() {
     console.error('GET /api/additional-services error:', error?.message);
     return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 });
   }
-}
+});
 
-export async function createAdditionalService(request: NextRequest) {
+export const createAdditionalService = withPermission('manage_properties', async (request: NextRequest) => {
   try {
     const sql = getSql();
     const body = await request.json();
@@ -34,9 +35,9 @@ export async function createAdditionalService(request: NextRequest) {
     console.error('POST /api/additional-services error:', error?.message);
     return NextResponse.json({ error: 'Failed to create' }, { status: 500 });
   }
-}
+});
 
-export async function updateAdditionalService(request: NextRequest) {
+export const updateAdditionalService = withPermission('manage_properties', async (request: NextRequest) => {
   try {
     const sql = getSql();
     const body = await request.json();
@@ -65,9 +66,9 @@ export async function updateAdditionalService(request: NextRequest) {
     console.error('PUT /api/additional-services error:', error?.message);
     return NextResponse.json({ error: 'Failed to update' }, { status: 500 });
   }
-}
+});
 
-export async function deleteAdditionalService(request: NextRequest) {
+export const deleteAdditionalService = withPermission('manage_properties', async (request: NextRequest) => {
   try {
     const sql = getSql();
     const id = request.nextUrl.searchParams.get('id');
@@ -78,4 +79,4 @@ export async function deleteAdditionalService(request: NextRequest) {
     console.error('DELETE /api/additional-services error:', error?.message);
     return NextResponse.json({ error: 'Failed to delete' }, { status: 500 });
   }
-}
+});

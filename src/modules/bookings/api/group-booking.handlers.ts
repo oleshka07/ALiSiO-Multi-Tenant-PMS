@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { withActor, withPermission } from '@core/auth/session';
 
-export async function getGroupBooking(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const getGroupBooking = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params;
     const sql = getSql();
@@ -37,9 +38,9 @@ export async function getGroupBooking(_request: NextRequest, { params }: { param
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
 
-export async function updateGroupBooking(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const updateGroupBooking = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params;
     const sql = getSql();
@@ -102,9 +103,9 @@ export async function updateGroupBooking(request: NextRequest, { params }: { par
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
 
-export async function deleteGroupBooking(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const deleteGroupBooking = withPermission('manage_bookings', async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params;
     const sql = getSql();
@@ -116,4 +117,4 @@ export async function deleteGroupBooking(_request: NextRequest, { params }: { pa
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});

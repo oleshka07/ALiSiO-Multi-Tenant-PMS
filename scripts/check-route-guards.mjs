@@ -32,10 +32,52 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+/**
+ * A guard establishes both things at once: who is calling, and — through
+ * runWithOrganization — which hotel every query underneath belongs to.
+ */
 const GUARDS = /\bwith(Actor|Permission|Owner|FinanceRead|FinanceWrite|Site)\b|\bcurrentActor\b|\brunWithOrganization\b/;
 
-/** A guest, a widget, a gateway or a cron has no session — by design. */
-const PUBLIC = /\/api\/(widget|booking|guest|public|webhooks?|cron|auth|health)\b|\/api\/tasks\/telegram|\/api\/payments\/webhook/;
+/**
+ * Authentication done by hand, inside the handler.
+ *
+ *   const currentUser = await getSessionUser(cookieStore.get('session_id')?.value);
+ *   if (!currentUser?.permissions.includes('manage_users')) return forbidden;
+ *   … WHERE organization_id = ?
+ *
+ * core/auth/session.ts asks handlers not to do this, and the reason is now
+ * concrete rather than stylistic: it establishes the person but not the tenant
+ * context, so the row-level policies still see no organization. `app_users`
+ * survives it because that table is deliberately readable before a tenant is
+ * known; every other scoped table returns nothing at all. The route looks
+ * authenticated, is authenticated, and shows an empty screen.
+ *
+ * Reported apart from the open ones: not a hole, but the same broken read.
+ */
+const HAND_ROLLED = /\bgetSessionUser\b|\bresolveFinanceOwner\b/;
+
+/**
+ * No session by definition, and each carries its own credential instead.
+ *
+ *   widget, booking, guest    a guest is not a user; a site key or a
+ *                             reservation token says which hotel
+ *   webhooks, payments        the gateway signs its callback
+ *   cron, *-cron              CRON_SECRET
+ *   telegram-bridge           TELEGRAM_BRIDGE_TOKEN — finance/api/_guard.ts
+ *                             says these must NOT be wrapped in a session
+ *                             guard, because there is no session to find
+ *   ical-export/[token]       the calendar feed URL is the credential
+ *
+ * Exempt from THIS check, not from scrutiny: each still has to establish its
+ * tenant from whatever it does carry, which is what broke the widget price
+ * list and the task digest.
+ */
+const PUBLIC = new RegExp([
+  '/api/(widget|booking|guest|public|webhooks?|auth|health)\\b',
+  '/api/cron/', '/api/[^/]+/cron\\b', '/api/[^/]+/[^/]+/cron\\b', '-cron/',
+  '/telegram-bridge/', '/api/tasks/telegram', '/api/payments/webhook',
+  '/api/ical-export/',
+].join('|'));
 
 // Read the alias table with a regex rather than JSON.parse: tsconfig.json is
 // JSONC, and stripping its comments generically eats the `*` in `"@*.ts"`.
@@ -64,23 +106,32 @@ function resolveSpec(fromFile, spec) {
   return null;
 }
 
-/** Is `name`, as exported by `file`, guarded — following one hop through a barrel? */
-function guardedExport(file, name, depth = 0) {
-  if (depth > 2 || !fs.existsSync(file)) return false;
+/**
+ * How `name`, as exported by `file`, establishes identity — following the
+ * export through a barrel. 'guard' | 'hand' | 'open', strongest wins.
+ */
+function classifyExport(file, name, depth = 0) {
+  if (depth > 3 || !fs.existsSync(file)) return 'open';
   const src = fs.readFileSync(file, 'utf8');
 
   // export const NAME = withX(...)  /  export const NAME = await withX(...)
   const assigned = src.match(new RegExp(`export\\s+const\\s+${name}\\s*(?::[^=]+)?=\\s*([^\\n;]+)`));
-  if (assigned && GUARDS.test(assigned[1])) return true;
+  if (assigned && GUARDS.test(assigned[1])) return 'guard';
 
-  // export async function NAME — the guard would be inside the body
-  const declared = src.match(new RegExp(`export\\s+async\\s+function\\s+${name}\\b[\\s\\S]{0,2500}`));
-  if (declared && GUARDS.test(declared[0].split(/\nexport /)[0])) return true;
+  // export async function NAME — the guard, or the hand-rolled check, is in the body
+  const declared = src.match(new RegExp(`export\\s+async\\s+function\\s+${name}\\b[\\s\\S]{0,3000}`));
+  const body = declared?.[0].split(/\nexport /)[0];
+  if (body && GUARDS.test(body)) return 'guard';
+  if (body && HAND_ROLLED.test(body)) return 'hand';
 
   // Re-exported from somewhere else: follow it.
   if (assigned) {
     const rhs = assigned[1].trim().replace(/;$/, '');
-    if (/^\w+$/.test(rhs)) return guardedExport(file, rhs, depth + 1) || followImport(file, src, rhs, depth);
+    if (/^\w+$/.test(rhs)) {
+      const via = classifyExport(file, rhs, depth + 1);
+      if (via !== 'open') return via;
+      return followImport(file, src, rhs, depth);
+    }
   }
   return followImport(file, src, name, depth);
 }
@@ -92,7 +143,7 @@ function followImport(file, src, name, depth) {
     if (!entry) continue;
     const original = entry.split(/\s+as\s+/)[0].trim();
     const target = resolveSpec(file, m[2]);
-    if (target) return guardedExport(target, original, depth + 1);
+    if (target) return classifyExport(target, original, depth + 1);
   }
   // export { a, b } from './x'
   for (const m of src.matchAll(/export\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g)) {
@@ -100,9 +151,9 @@ function followImport(file, src, name, depth) {
       .find((n) => n.split(/\s+as\s+/).pop().trim() === name);
     if (!entry) continue;
     const target = resolveSpec(file, m[2]);
-    if (target) return guardedExport(target, entry.split(/\s+as\s+/)[0].trim(), depth + 1);
+    if (target) return classifyExport(target, entry.split(/\s+as\s+/)[0].trim(), depth + 1);
   }
-  return false;
+  return 'open';
 }
 
 const routes = [];
@@ -115,25 +166,45 @@ const routes = [];
 })('src/app/api');
 
 const open = [];
+const hand = [];
 let checked = 0;
 for (const file of routes) {
   if (PUBLIC.test('/' + file.replace(/^src\/app/, '').replace(/^\//, ''))) continue;
   const src = fs.readFileSync(file, 'utf8');
   for (const m of src.matchAll(/export\s+(?:async\s+function|const)\s+(GET|POST|PUT|PATCH|DELETE)\b/g)) {
     checked++;
-    if (!guardedExport(file, m[1])) {
-      open.push(`${file.replace(/^src\/app/, '')}  ${m[1]}`);
-    }
+    const verdict = classifyExport(file, m[1]);
+    const label = `${file.replace(/^src\/app/, '')}  ${m[1]}`;
+    if (verdict === 'open') open.push(label);
+    else if (verdict === 'hand') hand.push(label);
   }
 }
 
-console.log(`\nroute-guards: ${checked} операторських обробників, ${open.length} без варти\n`);
-for (const o of open) console.log('  ' + o);
+console.log(`\nroute-guards: ${checked} операторських обробників`);
+console.log(`  під вартою        ${checked - open.length - hand.length}`);
+console.log(`  автентифікує сам  ${hand.length}\tособа є, орендаря немає`);
+console.log(`  нічого            ${open.length}\tні особи, ні орендаря\n`);
+
 if (open.length) {
+  console.log('  ── ні особи, ні орендаря ────────────────────────────────────');
+  for (const o of open) console.log('  ' + o);
   console.log(`
-  Без варти немає ні перевірки прав, ні орендаря. На Postgres це означає, що
-  запис відхиляється політикою, а читання тихо повертає порожнє — тобто роут
-  зламаний рівно настільки ж, наскільки відкритий.\n`);
+  Middleware вимагає, щоб cookie сесії БУВ, але не перевіряє його і не виводить
+  організацію. Тож будь-який залогінений користувач будь-якого готелю сюди
+  доходить — а на Postgres не доходить нічого: запис відхиляє політика,
+  читання тихо повертає порожнє. Роут зламаний рівно настільки, наскільки
+  відкритий.\n`);
 }
 
-if (process.argv.includes('--strict') && open.length) process.exit(1);
+if (hand.length) {
+  console.log('  ── автентифікує сам, орендаря не встановлює ─────────────────');
+  for (const h of hand) console.log('  ' + h);
+  console.log(`
+  Тут особа перевірена і права перевірені, дірки немає. Але контекст орендаря
+  не виставлений, тож політики бачать порожню організацію: працює лише те, що
+  читає app_users або booking_sites (їм читання до орендаря відкрите навмисно).
+  Будь-яка інша scoped-таблиця поверне нуль рядків при цілком коректному
+  запиті.\n`);
+}
+
+if (process.argv.includes('--strict') && (open.length || hand.length)) process.exit(1);

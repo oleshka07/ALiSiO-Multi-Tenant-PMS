@@ -5,8 +5,9 @@ import { getDb } from '@core/db';
 import { findOrCreateGuest } from '@guests';
 import { notifyGroupBookingCreated } from '../domain/reservation-tg-notify';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { withActor, withPermission } from '@core/auth/session';
 
-export async function listGroupBookings() {
+export const listGroupBookings = withActor(async () => {
   try {
     const sql = getSql();
     const groups = await sql.rows<any>(`
@@ -23,9 +24,9 @@ export async function listGroupBookings() {
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
 
-export async function createGroupBooking(request: NextRequest) {
+export const createGroupBooking = withPermission('manage_bookings', async (request: NextRequest) => {
   try {
     const sql = getSql();
     const body = await request.json();
@@ -136,4 +137,4 @@ export async function createGroupBooking(request: NextRequest) {
     console.error('POST /api/group-bookings error:', e);
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});

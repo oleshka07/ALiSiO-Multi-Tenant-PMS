@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { withActor, withPermission } from '@core/auth/session';
 
-export async function listServiceOrders(req: NextRequest) {
+export const listServiceOrders = withActor(async (req: NextRequest) => {
   try {
     const sql = getSql();
     const url = new URL(req.url);
@@ -157,9 +158,9 @@ export async function listServiceOrders(req: NextRequest) {
     console.error('GET /api/service-orders error:', error?.message);
     return NextResponse.json({ error: 'Failed to load service orders' }, { status: 500 });
   }
-}
+});
 
-export async function updateServiceOrder(req: NextRequest) {
+export const updateServiceOrder = withPermission('manage_bookings', async (req: NextRequest) => {
   try {
     const sql = getSql();
     const body = await req.json();
@@ -216,7 +217,7 @@ export async function updateServiceOrder(req: NextRequest) {
     console.error('PATCH /api/service-orders error:', error?.message);
     return NextResponse.json({ error: 'Failed to update' }, { status: 500 });
   }
-}
+});
 
 function computeStatus(order: any): string {
   if (order.completed_at || order.status === 'completed') return 'completed';

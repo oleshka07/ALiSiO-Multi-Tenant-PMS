@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { createPaymentOperation } from '@/modules/finance/api/payment-bridge';
 import { getOptionalActor } from '@/modules/finance/api/operations.handlers';
-import { withActor, type Actor } from '@core/auth/session';
+import { withActor, withPermission, type Actor } from '@core/auth/session';
 
 // Legacy /api/payments endpoint — reads/writes via fin_operations.
 //
@@ -66,7 +66,15 @@ export const GET = withActor(async (request: NextRequest, _ctx, actor: Actor) =>
 // here would double-count the same money once the real source lands.
 const CASH_METHODS = new Set(['cash']);
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+// Guarded, like the GET above it — this one records money and was not.
+//
+// `manage_payments` rather than a bare session: taking a cash payment writes a
+// fin_operation against a real account. Without a guard there was no permission
+// check and, on Postgres, no tenant either — so the reservation lookup below
+// matched nothing and the payment failed after the guest had handed over cash.
+export const POST = withPermission('manage_payments', async (
+  request: NextRequest,
+): Promise<NextResponse> => {
   try {
     const sql = getSql();
     const body = await request.json();
@@ -158,4 +166,4 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});

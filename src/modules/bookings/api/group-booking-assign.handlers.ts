@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { withPermission } from '@core/auth/session';
 
-export async function assignGuest(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export const assignGuest = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id: groupId } = await params;
     const sql = getSql();
@@ -45,4 +46,4 @@ export async function assignGuest(request: NextRequest, { params }: { params: Pr
     console.error('POST /api/group-bookings/[id]/assign-guest error:', e);
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+});
