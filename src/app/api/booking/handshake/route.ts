@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import crypto from 'crypto';
+import { withSite } from '@/modules/widget/data/site.repo';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -14,8 +15,11 @@ export async function OPTIONS() {
 
 export async function GET(request: NextRequest) {
   try {
-    const sql = getSql();
     const { searchParams } = new URL(request.url);
+    // As the hotel the site names: a handshake token belongs to one, and the
+    // insert was refused by its policy — the caller is a guest with no tenant.
+    return (await withSite(searchParams.get('siteSlug') || searchParams.get('siteId'), async () => {
+    const sql = getSql();
     const siteSlug = searchParams.get('siteSlug') || '';
     const siteId = searchParams.get('siteId') || '';
 
@@ -81,6 +85,7 @@ export async function GET(request: NextRequest) {
     `, [token, resolvedSiteId, expiresAt]);
 
     return NextResponse.json({ token }, { headers: responseHeaders });
+    })) ?? NextResponse.json({ error: 'Unknown site' }, { status: 404, headers: CORS_HEADERS });
   } catch (error: any) {
     console.error('Handshake error:', error?.message || error);
     return NextResponse.json({ error: 'Handshake failed' }, { status: 500, headers: CORS_HEADERS });
