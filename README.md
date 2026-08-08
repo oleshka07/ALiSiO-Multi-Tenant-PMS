@@ -16,11 +16,17 @@
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | шари, модулі, модель тенантності, guard-и, поточний стан і план |
 | [docs/SECURITY-FINDINGS.md](docs/SECURITY-FINDINGS.md) | усі знайдені вразливості й помилки, з інструкцією як шукати те саме деінде |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | два середовища, спільний VPS, відкат |
-| [db/postgres/README.md](db/postgres/README.md) | цільова схема Postgres, типи даних, row-level security |
+| [db/postgres/README.md](db/postgres/README.md) | схема Postgres, типи даних, row-level security, міграції |
 | [product_capabilities_and_value.md](product_capabilities_and_value.md) | що продукт уміє з точки зору готелю |
 
 Порядок не випадковий: `AGENTS.md` перший, бо система мультитенантна і запит
 без обмеження за організацією не падає — він тихо віддає дані іншого клієнта.
+
+Прод і бета працюють на **Postgres** (з 2026-08-07/08), розробка — на SQLite;
+двигун обирає `DB_DRIVER`. Що це змінює на практиці — розділ 12
+в SECURITY-FINDINGS.md: там запит без контексту орендаря не падає і не
+віддає чуже, а **тихо повертає порожнє**, тож поломка виглядає як «функція
+зникла».
 
 ## Запустити локально
 

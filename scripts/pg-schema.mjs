@@ -605,7 +605,9 @@ if (process.argv.includes('--print')) {
   console.log(`wrote ${path.relative(ROOT, OUT)}`);
 }
 
-console.log(`tables ${tables.length}  rls ${rlsCovered.length}  identity ${rlsIdentity.length}  reference ${rlsReference.length}  unscoped ${rlsNone.length}`);
+// To stderr, not stdout: `pg-schema.mjs --print > schema.sql` writes the SQL to
+// stdout, and a summary line mixed into it makes the file unloadable.
+console.error(`tables ${tables.length}  rls ${rlsCovered.length}  identity ${rlsIdentity.length}  reference ${rlsReference.length}  unscoped ${rlsNone.length}`);
 if (rlsNone.length) console.error('UNSCOPED TABLES:', rlsNone.join(', '));
 if (typeCorrections.length) {
   console.error(`

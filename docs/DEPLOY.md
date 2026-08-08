@@ -150,13 +150,19 @@ does not roll back on its own — see Rollback below.
 ### The database engine is not chosen by the deploy
 
 `DATABASE_URL` is present in both env files and is **inert on its own**. The
-engine is chosen by `DB_DRIVER=postgres`, which is set nowhere. That is two
-variables on purpose: `DATABASE_URL` was left in the env files by a scaffold
-and points at a Postgres that does not exist, so keying the engine on it would
-have taken both environments down at the first deploy after the Postgres
-driver shipped.
+engine is chosen by `DB_DRIVER=postgres`. That is two variables on purpose:
+`DATABASE_URL` was left in the env files by a scaffold and pointed at a
+Postgres that did not exist, so keying the engine on it would have taken both
+environments down at the first deploy after the Postgres driver shipped.
 
-Moving to Postgres is a separate, deliberate change — see
+Both beta and prod now run on Postgres — moved 2026-08-07/08 with
+`deploy/to-postgres.sh <env>`, which creates the role, loads
+`db/postgres/schema.sql`, proves isolation with `rls-check.sql` BEFORE any
+data is copied, migrates, and only then writes `DB_DRIVER` into the env file.
+
+Migrations for a database that already exists live in
+`db/postgres/migrations/`, numbered, re-runnable, applied with `psql -f`. The
+schema file is for a fresh database; it is not a migration. See
 [db/postgres/README.md](../db/postgres/README.md).
 
 ## Rollback
@@ -184,8 +190,11 @@ same login.
 
 ## Known limits
 
-- The database is still SQLite in a volume; the Postgres migration is Phase 1.
-  Until then the two environments are two files, not two database servers.
+- Each environment has its own Postgres database on the same server, on its
+  own loopback port (`PG_PORT`), with its own role. The application connects
+  as a role that owns nothing, so the row-level policies actually apply to it
+  — `FORCE ROW LEVEL SECURITY` covers the owner too, but relying on that alone
+  means one table added later without FORCE is a silent read across tenants.
 - Backups are local to the server. Copy `deploy/backups/` off-host — a disk
   failure currently takes the backups with it.
 
