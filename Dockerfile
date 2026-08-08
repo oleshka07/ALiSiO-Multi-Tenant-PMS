@@ -32,6 +32,16 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# bcryptjs, for the operator's tools rather than for the server.
+#
+# The standalone build inlines it into the compiled server and leaves nothing
+# in node_modules, which is right for the application and wrong for
+# scripts/provision-org.mjs and scripts/check-isolation.mjs — both import it
+# through src/, both run from this image, and both are the only way to reach a
+# database bound to loopback inside the compose network. Creating the first
+# customer failed with "Cannot find package 'bcryptjs'".
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/bcryptjs ./node_modules/bcryptjs
+
 # The SQLite database and guest uploads live here, mounted as volumes by
 # deploy/docker-compose.yml. Created up front and owned by the runtime user so a
 # first start does not fail writing into a root-owned directory.
