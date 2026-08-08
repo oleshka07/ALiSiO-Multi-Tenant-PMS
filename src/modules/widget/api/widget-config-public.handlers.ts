@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { hasFeature, featureDisabled } from '@core/features';
+import { runWithOrganization } from '@core/auth/tenant-context';
 
 export const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -29,6 +30,21 @@ export async function getWidgetConfig(request: NextRequest) {
         { status: 400, headers: CORS_HEADERS },
       );
     }
+    // Which hotel, before anything is read. `properties` is not readable
+    // without a tenant — it is the list of every customer on the server — so
+    // the organization comes from the booking site that points at this
+    // property. A property with no booking site is not publicly addressable,
+    // which is correct: it has no widget.
+    const owner = await sql.row<any>(
+      "SELECT organization_id FROM booking_sites WHERE property_id = ? AND status != 'deleted' LIMIT 1",
+      [propertyId],
+    ) as { organization_id: string } | undefined;
+    if (!owner?.organization_id) {
+      return NextResponse.json({ error: 'Property not found' }, { status: 404, headers: CORS_HEADERS });
+    }
+
+    return runWithOrganization(String(owner.organization_id), async () => {
+
     const property = await sql.row<any>('SELECT * FROM properties WHERE id = ? AND is_active = TRUE', [propertyId]) as any;
 
     if (!property) {
@@ -181,6 +197,7 @@ export async function getWidgetConfig(request: NextRequest) {
       },
       services: widgetServices,
     }, { headers: CORS_HEADERS });
+    });
   } catch (error: any) {
     console.error('GET /api/widget/config error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to load widget config' }, { status: 500, headers: CORS_HEADERS });
