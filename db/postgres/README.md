@@ -133,11 +133,39 @@ SET LOCAL app.organization_id = '<org id>';
 `email_processed`, `fin_system_state`, `hostex_sync_log`,
 `hostex_property_map`.
 
+## Міграції
+
+`schema.sql` — для **порожньої** бази. База, яка вже існує, оновлюється
+файлами з `migrations/`, по порядку, кожен повторюваний:
+
+| | |
+|---|---|
+| `0001-app-users-readable-before-login.sql` | логін має знайти людину до того, як відома організація |
+| `0002-auto-assigned-integer-keys.sql` | послідовності для цілочисельних ключів |
+| `0003-language-columns.sql` | `organizations.language`, `app_users.language` |
+| `0004-booking-sites-organization.sql` | віджет: сайт називає свій готель сам |
+| `0005-inserted-rows-know-their-tenant.sql` | `organization_id` дефолтиться від контексту — без цього 14 `INSERT` відхиляються політикою, серед них handshake віджета |
+| `0006-organization-language-not-null.sql` | базова мова готелю більше не NULL |
+| `0007-guest-portal-finds-its-hotel.sql` | гостьовий портал знаходить бронювання за токеном — без цього він відповідає 404 на всі свої маршрути |
+
+```bash
+for f in db/postgres/migrations/*.sql; do
+  docker exec -i alisio-prod-postgres psql -v ON_ERROR_STOP=1 -U alisio_admin -d alisio -f - < "$f"
+done
+```
+
+Порядок має значення лише перший раз; повторний запуск будь-якого з них
+нічого не змінює. Після 0007 варто переконатися, що політика на місці:
+
+```sql
+SELECT pg_get_expr(polqual, polrelid) FROM pg_policy
+ WHERE polrelid = 'reservations'::regclass;
+-- має містити current_setting('app.guest_token', true)
+```
+
 ## Чого тут ще немає
 
-- **Перенесення даних.** SQLite → Postgres не написано.
-- **Асинхронний шар доступу.** `better-sqlite3` синхронна, драйвер Postgres —
-  ні. Кожен репозиторій доведеться зробити асинхронним; це Фаза 2/3, і без неї
-  ця схема нікуди не підключиться.
+- **Асинхронний шар доступу.** Зроблено: `core/db/async.ts` — інтерфейс `Sql`
+  із двома реалізаціями; жоден модуль не знає, яка база відповіла.
 - `booking_service_orders.completed_at` — єдиний дефолт, який генератор не
   переносить (`NULL`, що те саме, що його відсутність).

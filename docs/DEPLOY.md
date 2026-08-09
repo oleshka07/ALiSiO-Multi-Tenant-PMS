@@ -172,13 +172,25 @@ git checkout main && git reset --hard <previous-sha> && git push --force-with-le
 ./deploy/deploy.sh prod
 ```
 
-To restore the database as well:
+To restore the database as well — a Postgres dump, `.sql.gz`:
 
 ```bash
-docker compose --env-file deploy/env.prod -p alisio-prod -f deploy/docker-compose.yml down
+gunzip -c deploy/backups/alisio-prod-<stamp>.sql.gz \
+  | docker exec -i alisio-prod-postgres psql -U alisio_admin -d alisio
+```
+
+Restore into an empty database. `pg_dump` carries the schema, the data, the
+row-level policies and the grants, so nothing has to be replayed afterwards —
+verified by restoring a dump into a fresh database and checking that the
+policies came back with it.
+
+The `.tar.gz` archives are older, and they are the SQLite volume: a rollback
+point for `DB_DRIVER=`, not a copy of today's data.
+
+```bash
+# only when rolling the engine back to SQLite
 docker run --rm -v alisio-prod_app-data:/data -v "$PWD/deploy/backups:/b" \
   alpine sh -c 'rm -rf /data/* && tar xzf /b/alisio-prod-<stamp>.tar.gz -C /data'
-./deploy/deploy.sh prod
 ```
 
 ## Beta data
@@ -196,8 +208,52 @@ same login.
   — `FORCE ROW LEVEL SECURITY` covers the owner too, but relying on that alone
   means one table added later without FORCE is a silent read across tenants.
 - Backups are local to the server. Copy `deploy/backups/` off-host — a disk
-  failure currently takes the backups with it.
+  failure currently takes the backups with it. This is the one limit on this
+  list that costs a customer their data, and it is not covered by anything in
+  this repository.
+- `deploy.sh` dumps Postgres before every deploy and refuses to continue if the
+  dump comes out empty. It did not always: it archived the `app-data` volume,
+  and kept doing so after the move to Postgres — when that volume held a SQLite
+  file that had stopped changing. Every deploy produced a backup, so nothing
+  looked wrong, and the live database had none. If a backup is ever the thing
+  standing between you and a lost hotel, check what it actually contains first.
 
+
+---
+
+## Перед першим справжнім клієнтом
+
+Три речі, і кожна тиха: жодна не падає на деплої, кожна проявляється як
+«функція не працює» вже на клієнті.
+
+```bash
+# 1. Чи накотили міграції — питаємо саму базу, а не памʼять
+DATABASE_URL="postgres://alisio_app:…@127.0.0.1:54330/alisio" \
+  node scripts/check-deployed-db.mjs
+```
+
+Очікується `база готова приймати клієнта`. Якщо ні — скрипт назве, якої
+міграції бракує і чим це обертається. Найдорожча — `0007`: без неї **весь**
+гостьовий портал відповідає 404, тобто гість переходить за вашим посиланням
+і бачить порожнечу.
+
+```bash
+# 2. Чи є свіжий дамп — і чи він не порожній
+ls -lh deploy/backups/alisio-prod-*.sql.gz | tail -3
+```
+
+`.tar.gz` — це стара SQLite, а не сьогоднішні дані. Дамп знімається на
+кожному деплої, і деплой зупиняється, якщо дамп вийшов порожній. **Копію
+треба тримати поза цим сервером** — це єдине з відомих обмежень, яке коштує
+клієнту його даних.
+
+```bash
+# 3. Ключ OpenAI, якщо готель має користуватись OCR і перекладом
+grep -c '^OPENAI_API_KEY=.\+' deploy/env.prod
+```
+
+Порожній ключ — підтримуваний стан, але тоді OCR паспортів кидає помилку в
+очі рецепції, а переклад контенту для гостей мовчки не відбувається.
 
 ---
 

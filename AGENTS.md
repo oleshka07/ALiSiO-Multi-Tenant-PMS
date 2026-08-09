@@ -110,6 +110,16 @@ node scripts/check-no-tenant-names.mjs  # жодного бізнесу кліє
 node scripts/audit-dead-data.mjs        # таблиці й колонки, яких ніхто не читає
 ```
 
+Перед підключенням клієнта — ще й перевірка **живої** бази:
+
+```bash
+DATABASE_URL=… node scripts/check-deployed-db.mjs
+```
+
+Вона питає базу про відбитки кожної міграції. Пропущена міграція не падає на
+деплої: вона проявляється як мовчазна відсутність функції (0007 — увесь
+гостьовий портал у 404).
+
 `npm run check` містить і постгресові гейти: `check-route-guards --strict`
 (маршрут без варти), `check-boolean-flags --strict` (`0`/`1` у `BOOLEAN`),
 `pool-tenant.check.ts`, `rls-identity.check.ts`, `rls-write-tenant.check.ts`.

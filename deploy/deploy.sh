@@ -37,20 +37,56 @@ git reset --hard --quiet "origin/$BRANCH"
 echo "    $(git rev-parse --short HEAD) $(git log -1 --pretty=%s)"
 
 # ── Backup ───────────────────────────────────────────────────────────────────
-VOLUME="${PROJECT}_app-data"
-if docker volume inspect "$VOLUME" >/dev/null 2>&1; then
-  mkdir -p deploy/backups
-  STAMP="$(date +%Y%m%d-%H%M%S)"
-  ARCHIVE="alisio-${ENV_NAME}-${STAMP}.tar.gz"
-  echo "==> backing up $VOLUME -> deploy/backups/$ARCHIVE"
-  docker run --rm \
-    -v "${VOLUME}:/data:ro" \
-    -v "$(pwd)/deploy/backups:/backup" \
-    alpine tar czf "/backup/${ARCHIVE}" -C /data .
-  # Keep a month of daily deploys; older copies belong in off-site storage.
-  ls -1t deploy/backups/alisio-${ENV_NAME}-*.tar.gz 2>/dev/null | tail -n +31 | xargs -r rm --
+#
+# Back up whatever currently HOLDS the data, which is not the same thing it was.
+#
+# This step archived the `app-data` volume — the SQLite file — and kept doing so
+# after the move to Postgres, when that file stopped changing. Every deploy
+# produced a backup, so nothing looked wrong; what it backed up was a frozen
+# copy from the day of the migration, and the live database had no backup at
+# all. A backup nobody reads is indistinguishable from a good one until the day
+# it is needed.
+#
+# So: dump Postgres when Postgres is the engine, and archive the volume when it
+# is not. The volume is still archived once here for the record on a Postgres
+# environment — it is the rollback point — but the dump is the thing that
+# carries today's guests.
+mkdir -p deploy/backups
+STAMP="$(date +%Y%m%d-%H%M%S)"
+DB_DRIVER_NOW="$(grep -E '^DB_DRIVER=' "$ENV_FILE" | cut -d= -f2 | tr -d '\r')"
+
+if [ "$DB_DRIVER_NOW" = "postgres" ]; then
+  PG_CONTAINER="alisio-${ENV_NAME}-postgres"
+  PG_SUPERUSER="$(grep -E '^PG_SUPERUSER=' "$ENV_FILE" | cut -d= -f2 | tr -d '\r')"
+  PG_DATABASE="$(grep -E '^PG_DATABASE=' "$ENV_FILE" | cut -d= -f2 | tr -d '\r')"
+  DUMP="deploy/backups/alisio-${ENV_NAME}-${STAMP}.sql.gz"
+  if docker inspect "$PG_CONTAINER" >/dev/null 2>&1; then
+    echo "==> dumping ${PG_DATABASE:-alisio} -> $DUMP"
+    # A failed dump must stop the deploy: shipping new code over a database
+    # with no fresh copy of it is the one thing this step exists to prevent.
+    docker exec -i "$PG_CONTAINER" pg_dump \
+      -U "${PG_SUPERUSER:-alisio_admin}" -d "${PG_DATABASE:-alisio}" \
+      | gzip > "$DUMP"
+    [ -s "$DUMP" ] || { echo "backup is empty — refusing to deploy" >&2; exit 1; }
+    echo "    $(du -h "$DUMP" | cut -f1)"
+  else
+    echo "==> no postgres container ($PG_CONTAINER) — first deploy on this engine"
+  fi
+  ls -1t deploy/backups/alisio-${ENV_NAME}-*.sql.gz 2>/dev/null | tail -n +31 | xargs -r rm --
 else
-  echo "==> no existing data volume ($VOLUME) — first deploy"
+  VOLUME="${PROJECT}_app-data"
+  if docker volume inspect "$VOLUME" >/dev/null 2>&1; then
+    ARCHIVE="alisio-${ENV_NAME}-${STAMP}.tar.gz"
+    echo "==> backing up $VOLUME -> deploy/backups/$ARCHIVE"
+    docker run --rm \
+      -v "${VOLUME}:/data:ro" \
+      -v "$(pwd)/deploy/backups:/backup" \
+      alpine tar czf "/backup/${ARCHIVE}" -C /data .
+    # Keep a month of daily deploys; older copies belong in off-site storage.
+    ls -1t deploy/backups/alisio-${ENV_NAME}-*.tar.gz 2>/dev/null | tail -n +31 | xargs -r rm --
+  else
+    echo "==> no existing data volume ($VOLUME) — first deploy"
+  fi
 fi
 
 echo "==> building and starting"
