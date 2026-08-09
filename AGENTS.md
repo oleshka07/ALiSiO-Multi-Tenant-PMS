@@ -174,8 +174,20 @@ build **і прогін по маршрутах**:
 npm run build:win
 node scripts/check-fresh-schema.mjs   # схема нового клієнта = цій базі
 npm run start &
-node scripts/smoke-routes.mjs
+node scripts/smoke-routes.mjs                       # усі GET
+SMOKE_SESSION=<cookie> node scripts/smoke-writes.mjs POST   # і записи
+SMOKE_SESSION=<cookie> node scripts/smoke-writes.mjs PUT
+SMOKE_SESSION=<cookie> node scripts/smoke-writes.mjs PATCH
 ```
+
+`smoke-writes` будує тіло з того, що хендлер сам деструктурує, а значення
+бере за змістом назви поля — id з бази, дати, суми, а для enum-полів
+значення, яке дозволяє CHECK. Він **пише**: ганяти лише на тестовій базі.
+
+Читати його вивід треба обережно: «відмовили» — це не результат, це роути,
+до яких він не дістався (валідація, права, 404). Серед 5xx більшість — його
+власне синтетичне значення, яке база правильно відкинула; справжнє видно за
+текстом помилки в логу сервера, а не за статусом.
 
 Прогін обовʼязковий, якщо ви чіпали SQL. `tsc` не бачить помилок у запитах —
 SQL це рядок, — тож запит із неіснуючою колонкою компілюється, збирається,
