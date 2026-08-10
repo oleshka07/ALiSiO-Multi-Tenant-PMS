@@ -52,8 +52,31 @@ const file = positional[0];
 const die = (msg) => { console.error(msg); process.exit(1); };
 
 // ── The database, whichever one this is ─────────────────────────────────────
-const url = process.env.DATABASE_URL;
-const usePostgres = !!url || process.env.DB_DRIVER === 'postgres';
+//
+// On the server, the answer is already written down: deploy/env.prod holds
+// DATABASE_URL and APP_URL, and that file is what the running application is
+// configured from. Reading it means publishing a report is one command with no
+// shell incantation in front of it — and, more importantly, that it cannot be
+// pointed at the wrong database by a typo in a variable someone pasted.
+//
+// An explicit DATABASE_URL in the environment still wins, for a developer
+// machine or a one-off.
+function fromEnvFile() {
+  const name = process.env.ENV_NAME || 'prod';
+  const path = `deploy/env.${name}`;
+  if (!fs.existsSync(path)) return {};
+  const out = {};
+  for (const line of fs.readFileSync(path, 'utf8').split('\n')) {
+    const m = line.match(/^([A-Z_]+)=(.*)$/);
+    if (m) out[m[1]] = m[2].trim().replace(/\r$/, '');
+  }
+  return out;
+}
+const envFile = fromEnvFile();
+const url = process.env.DATABASE_URL || envFile.DATABASE_URL || '';
+const usePostgres = !!url
+  || process.env.DB_DRIVER === 'postgres'
+  || envFile.DB_DRIVER === 'postgres';
 
 /**
  * One shape over two engines: `query(sql, params)` with `?` placeholders.
@@ -90,7 +113,13 @@ async function connect() {
   };
 }
 
-const db = await connect();
+// A stack trace is not an error message. Whoever runs this on the server is
+// publishing a report, not debugging a driver — say what failed and where the
+// setting came from.
+const db = await connect().catch((e) => {
+  const where = process.env.DATABASE_URL ? 'змінної DATABASE_URL' : `файла deploy/env.${process.env.ENV_NAME || 'prod'}`;
+  die(`не вдалося підключитися до бази (адреса з ${where}):\n  ${e.message}`);
+});
 
 /** The hotel to publish as. One organization needs no argument; several do. */
 async function resolveOrganization() {
@@ -185,8 +214,11 @@ if (existing) {
 
 await db.close();
 
-const base = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+// The domain comes from the same env file the application is served with
+// (APP_URL), so the printed link is the one that will actually work — not one
+// assembled from whatever the person typed.
+const base = (process.env.PUBLIC_BASE_URL || envFile.APP_URL || '').replace(/\/$/, '');
 console.log(`\n${existing ? 'оновлено' : 'опубліковано'}: ${title}`);
 console.log(`${(html.length / 1024 / 1024).toFixed(2)} МБ · ${org.name}\n`);
 console.log(`  ${base}/report/${token}\n`);
-if (!base) console.log('(PUBLIC_BASE_URL не задано — додайте домен спереду)\n');
+if (!base) console.log('(домен невідомий — додайте його спереду вручну)\n');
