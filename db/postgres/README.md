@@ -147,6 +147,7 @@ SET LOCAL app.organization_id = '<org id>';
 | `0005-inserted-rows-know-their-tenant.sql` | `organization_id` дефолтиться від контексту — без цього 14 `INSERT` відхиляються політикою, серед них handshake віджета |
 | `0006-organization-language-not-null.sql` | базова мова готелю більше не NULL |
 | `0007-guest-portal-finds-its-hotel.sql` | гостьовий портал знаходить бронювання за токеном — без цього він відповідає 404 на всі свої маршрути |
+| `0008-a-link-is-the-whole-credential.sql` | `partner_reports` (звіт за посиланням) + `app.guest_token` → `app.public_token`: одне налаштування на обидві таблиці, які відкриваються токеном |
 
 ```bash
 for f in db/postgres/migrations/*.sql; do
@@ -155,12 +156,17 @@ done
 ```
 
 Порядок має значення лише перший раз; повторний запуск будь-якого з них
-нічого не змінює. Після 0007 варто переконатися, що політика на місці:
+нічого не змінює.
 
-```sql
-SELECT pg_get_expr(polqual, polrelid) FROM pg_policy
- WHERE polrelid = 'reservations'::regclass;
--- має містити current_setting('app.guest_token', true)
+**0008 треба накотити разом із деплоєм, який його вводить.** Код починає
+ставити `app.public_token`; база, що досі перевіряє `app.guest_token`, тоді
+знову віддає 404 на весь гостьовий портал — тихо, без жодної помилки.
+
+Не перевіряйте це руками — є команда, яка питає саму базу про всі відбитки
+одразу:
+
+```bash
+DATABASE_URL=postgres://… node scripts/check-deployed-db.mjs
 ```
 
 ## Чого тут ще немає

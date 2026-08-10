@@ -117,10 +117,12 @@ assert.strictEqual(
 );
 console.log('  ok  and one hotel cannot read the other\'s overrides');
 
-// ─── the guest portal: one row, to whoever holds its token ───────────────────
-// A guest has no session and no site key — only a link. `reservations` cannot
-// be opened to tenant-less reads, so the token itself is what the policy
-// matches. What matters is that it opens exactly one row and nothing else.
+// ─── a link is the whole credential: one row, to whoever holds its token ─────
+// A guest has no session and no site key — only a link; a partner opening the
+// month's report has no account at all. Neither table can be opened to
+// tenant-less reads, so the token itself is what the policy matches, under one
+// setting for both (`app.public_token`). What matters is that it opens exactly
+// one row and nothing else, and that it never writes.
 await db.exec(`
   CREATE TABLE reservations (
     id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, guest_page_token TEXT
@@ -133,7 +135,7 @@ await db.exec(`
   ALTER TABLE reservations ENABLE ROW LEVEL SECURITY;
   CREATE POLICY reservations_tenant ON reservations
     USING ("organization_id" = current_setting('app.organization_id')
-           OR "guest_page_token" = NULLIF(current_setting('app.guest_token', true), ''))
+           OR "guest_page_token" = NULLIF(current_setting('app.public_token', true), ''))
     WITH CHECK ("organization_id" = current_setting('app.organization_id'));
   GRANT SELECT, INSERT, UPDATE, DELETE ON reservations TO app_role;
 `);
@@ -142,12 +144,12 @@ await db.exec(`
 async function asGuest<T = Record<string, unknown>>(token: string, sql: string): Promise<T[]> {
   await db.exec('SET ROLE app_role');
   await db.query('SELECT set_config($1, $2, false)', ['app.organization_id', '']);
-  await db.query('SELECT set_config($1, $2, false)', ['app.guest_token', token]);
+  await db.query('SELECT set_config($1, $2, false)', ['app.public_token', token]);
   try {
     return (await db.query<T>(sql)).rows;
   } finally {
     await db.exec('RESET ROLE');
-    await db.query('SELECT set_config($1, $2, false)', ['app.guest_token', '']);
+    await db.query('SELECT set_config($1, $2, false)', ['app.public_token', '']);
   }
 }
 
@@ -175,6 +177,44 @@ await assert.rejects(
   'a guest token must never permit a write',
 );
 console.log('  ok  and it never permits a write');
+
+// The same setting, a second table, a different column. This is the part that
+// would break if someone added `app.report_token` beside `app.public_token`:
+// one of the two policies would go on matching a setting nobody sets any more,
+// and the failure is a silent 404 rather than an error.
+await db.exec(`
+  CREATE TABLE partner_reports (
+    id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, token TEXT
+  );
+  INSERT INTO partner_reports VALUES
+    ('rep_a', 'org_a', 'rtok_a'),
+    ('rep_b', 'org_b', 'rtok_b');
+
+  ALTER TABLE partner_reports ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY partner_reports_tenant ON partner_reports
+    USING ("organization_id" = current_setting('app.organization_id')
+           OR "token" = NULLIF(current_setting('app.public_token', true), ''))
+    WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+  GRANT SELECT, INSERT, UPDATE, DELETE ON partner_reports TO app_role;
+`);
+
+const REPORTS = 'SELECT id FROM partner_reports';
+assert.deepStrictEqual(
+  (await asGuest('rtok_a', REPORTS)).map((r: any) => r.id), ['rep_a'],
+  'a report token opens the report it names, and only that one',
+);
+assert.strictEqual((await asGuest('rtok_wrong', REPORTS)).length, 0, 'a wrong report token sees nothing');
+assert.strictEqual((await asGuest('', REPORTS)).length, 0, 'no token, no reports');
+console.log('  ok  the same setting opens a partner report, and only the one named');
+
+// A report token must not reach across into the reservations it shares the
+// setting with — the policies key on different columns, and a value that is
+// not a token in that table matches nothing.
+assert.strictEqual(
+  (await asGuest('rtok_a', ALL)).length, 0,
+  'a report token must not open a reservation',
+);
+console.log('  ok  and one table\'s token opens nothing in the other');
 
 await db.close();
 console.log('rls-identity: the tenant is set before anything scoped is read');

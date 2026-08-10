@@ -33,13 +33,21 @@ export function currentOrganizationId(): string | null {
 }
 
 /**
- * The guest's own token, for the one lookup that happens before any tenant.
+ * A secret from a link, for the one lookup that happens before any tenant.
  *
- * A guest follows a link and holds nothing else — no session, no site key, no
- * organization. `reservations` cannot be opened to tenant-less reads (that is
- * every booking on the server), so the token travels the same way the
- * organization does: onto the connection, where the policy can compare it
- * against `guest_page_token` and match exactly the row it names.
+ * Someone holding a link holds nothing else — no session, no site key, no
+ * organization. The tables those links point at cannot be opened to
+ * tenant-less reads (that would be every booking, every report on the server),
+ * so the token travels the same way the organization does: onto the
+ * connection, where the policy compares it against the row's own token column
+ * and matches exactly the row it names.
+ *
+ * One setting, not one per feature. The guest portal came first and the
+ * partner report needs the same thing; `app.guest_token` and
+ * `app.report_token` side by side would be two names for one idea, and the
+ * second reader of the code would have to check both. What varies between
+ * them is the column, and that lives in the policy — see PUBLIC_TOKEN_READ in
+ * scripts/pg-schema.mjs for the full list of what this opens.
  *
  * Deliberately separate from the organization rather than folded into it: this
  * one grants a single row on read, and nothing else, ever. Once that row is
@@ -47,16 +55,16 @@ export function currentOrganizationId(): string | null {
  * runWithOrganization like everything else — so the window where the token
  * matters is one statement wide.
  */
-const guestToken = new AsyncLocalStorage<string>();
+const publicToken = new AsyncLocalStorage<string>();
 
-/** Run fn with this guest token available to the row-level policy. */
-export function runWithGuestToken<T>(token: string, fn: () => T): T {
-  return guestToken.run(token, fn);
+/** Run fn with this link token available to the row-level policy. */
+export function runWithPublicToken<T>(token: string, fn: () => T): T {
+  return publicToken.run(token, fn);
 }
 
-/** The ambient guest token, or null outside a guest-portal request. */
-export function currentGuestToken(): string | null {
-  return guestToken.getStore() ?? null;
+/** The ambient link token, or null outside a token-addressed request. */
+export function currentPublicToken(): string | null {
+  return publicToken.getStore() ?? null;
 }
 
 /**

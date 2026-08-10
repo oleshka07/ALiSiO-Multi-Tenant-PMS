@@ -86,11 +86,29 @@ await check(
   (r) => r.length === 1,
   'без цього гостьовий портал не має звідки взяти готель — 0007',
 );
+// ── 0008: one setting for every link-addressed row, and the report table ────
+//
+// Written against `app.public_token`, not `app.guest_token`: 0008 renames the
+// setting, and a database still carrying the old name with code that sets the
+// new one is exactly the silent 404 this file exists to catch.
 await check(
-  'політика reservations впізнає токен гостя (0007)',
+  'політика reservations впізнає токен із посилання (0007+0008)',
   `SELECT pg_get_expr(polqual, polrelid) AS q FROM pg_policy WHERE polrelid = 'reservations'::regclass`,
-  (r) => r.some((x) => /app\.guest_token/.test(x.q)),
-  'без цього ВЕСЬ гостьовий портал відповідає 404 — 0007',
+  (r) => r.some((x) => /app\.public_token/.test(x.q)),
+  'без цього ВЕСЬ гостьовий портал відповідає 404 — 0007 і 0008',
+);
+await check(
+  'partner_reports існує (0008)',
+  `SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'partner_reports'`,
+  (r) => r.length === 1,
+  'без цього публікація звіту падає, а /report/<токен> віддає 404 — 0008',
+);
+await check(
+  'політика partner_reports впізнає токен звіту (0008)',
+  `SELECT pg_get_expr(polqual, polrelid) AS q FROM pg_policy WHERE polrelid = 'partner_reports'::regclass`,
+  (r) => r.some((x) => /app\.public_token/.test(x.q)),
+  'без цього посилання на звіт відкриє лише той, хто вже залогінений — 0008',
 );
 
 // ── the standing invariants, not tied to one migration ──────────────────────

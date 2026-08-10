@@ -5012,6 +5012,45 @@ function runMigrations(database: any) {
     console.error('[DB] organization_features migration:', e.message);
   }
 
+  // --- Migration: create partner_reports table ---
+  //
+  // A finished report, addressed by a link and nothing else.
+  //
+  // The document lives in this column, not on disk: the server is rebuilt from
+  // the image on every deploy, and a file written beside the app disappears
+  // with it. It is also why `pg_dump` is now the backup — a report is data.
+  //
+  // `token` is the credential, so it is UNIQUE and 64 hex characters (see
+  // generateReportToken); the row-level policy matches on it and nothing else,
+  // which is what lets a partner with no account read exactly this one row.
+  // `revoked_at` exists so a leaked link can be killed without deleting the
+  // report — the URL stops working, the numbers stay.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS partner_reports (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id     TEXT REFERENCES properties(id) ON DELETE SET NULL,
+        token           TEXT NOT NULL UNIQUE,
+        slug            TEXT,
+        title           TEXT NOT NULL,
+        period          TEXT,
+        html            TEXT NOT NULL,
+        published_at    TEXT NOT NULL DEFAULT (datetime('now')),
+        revoked_at      TEXT,
+        views           INTEGER NOT NULL DEFAULT 0,
+        last_viewed_at  TEXT
+      )
+    `);
+    // No separate index on `token`: the column is UNIQUE, which is an index.
+    // The name here is not `idx_partner_reports_org` on purpose — the Postgres
+    // generator emits one under that name for every scoped table, and two
+    // different definitions sharing a name is how one of them silently loses.
+    database.exec('CREATE INDEX IF NOT EXISTS idx_partner_reports_period ON partner_reports(organization_id, period)');
+  } catch (e: any) {
+    console.error('[DB] partner_reports migration:', e.message);
+  }
+
   // The last line of runMigrations, and the only reliable signal that the
   // schema has settled. scripts/check-fresh-schema.mjs waits for it: polling
   // the table count said "done" while ALTER TABLE ADD COLUMN was still going,
@@ -5023,6 +5062,19 @@ function runMigrations(database: any) {
 // Generate a cryptographically secure random token for guest pages
 export function generateGuestToken(): string {
   return crypto.randomBytes(16).toString('hex');
+}
+
+/**
+ * The address of a published report.
+ *
+ * Twice the length of a guest token, because the two are not guarded the same
+ * way. A guest link is handed to one person for one stay; a report link goes
+ * to partners and investors, is forwarded, and stays live for years. 32 bytes
+ * makes guessing not merely impractical but pointless, and costs 32 characters
+ * of URL.
+ */
+export function generateReportToken(): string {
+  return crypto.randomBytes(32).toString('hex');
 }
 
 function seedData(database: any) {

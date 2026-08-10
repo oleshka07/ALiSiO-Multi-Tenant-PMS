@@ -1015,6 +1015,23 @@ CREATE TABLE "organizations" (
   UNIQUE ("slug")
 );
 
+CREATE TABLE "partner_reports" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT,
+  "property_id" TEXT,
+  "token" TEXT NOT NULL,
+  "slug" TEXT,
+  "title" TEXT NOT NULL,
+  "period" TEXT,
+  "html" TEXT NOT NULL,
+  "published_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "revoked_at" TIMESTAMPTZ,
+  "views" BIGINT DEFAULT 0 NOT NULL,
+  "last_viewed_at" TIMESTAMPTZ,
+  PRIMARY KEY ("id"),
+  UNIQUE ("token")
+);
+
 CREATE TABLE "payment_webhook_log" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "provider" TEXT NOT NULL,
@@ -1837,6 +1854,10 @@ ALTER TABLE "menu_items" ADD CONSTRAINT "fk_menu_items_service_id_1"
   FOREIGN KEY ("service_id") REFERENCES "additional_services" ("id") ON DELETE CASCADE;
 ALTER TABLE "organization_features" ADD CONSTRAINT "fk_organization_features_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "partner_reports" ADD CONSTRAINT "fk_partner_reports_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE SET NULL;
+ALTER TABLE "partner_reports" ADD CONSTRAINT "fk_partner_reports_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "payment_webhook_log" ADD CONSTRAINT "fk_payment_webhook_log_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "price_calendar" ADD CONSTRAINT "fk_price_calendar_unit_type_id_1"
@@ -2056,6 +2077,7 @@ CREATE INDEX "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX "idx_invoices_issued" ON "invoices" ("issued_at");
 CREATE INDEX "idx_invoices_number" ON "invoices" ("organization_id", "invoice_number");
 CREATE INDEX "idx_invoices_reservation" ON "invoices" ("reservation_id");
+CREATE INDEX "idx_partner_reports_period" ON "partner_reports" ("organization_id", "period");
 CREATE INDEX "idx_payment_webhook_log_org" ON "payment_webhook_log" ("organization_id");
 CREATE INDEX "idx_pwl_created" ON "payment_webhook_log" ("created_at");
 CREATE INDEX "idx_pwl_payment_ref" ON "payment_webhook_log" ("payment_ref");
@@ -2131,6 +2153,7 @@ CREATE INDEX IF NOT EXISTS "idx_invoice_counters_org" ON "invoice_counters" ("or
 CREATE INDEX IF NOT EXISTS "idx_invoice_periods_org" ON "invoice_periods" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoices_org" ON "invoices" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_organization_features_org" ON "organization_features" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_partner_reports_org" ON "partner_reports" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_payment_webhook_log_org" ON "payment_webhook_log" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_properties_org" ON "properties" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_reservations_org" ON "reservations" ("organization_id");
@@ -2211,6 +2234,8 @@ ALTER TABLE "invoice_periods" ALTER COLUMN "organization_id"
 ALTER TABLE "invoices" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "organization_features" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "partner_reports" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "payment_webhook_log" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2552,6 +2577,12 @@ CREATE POLICY "organization_features_tenant" ON "organization_features"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
+ALTER TABLE "partner_reports" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "partner_reports" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "partner_reports_tenant" ON "partner_reports"
+  USING ("organization_id" = current_setting('app.organization_id') OR "token" = NULLIF(current_setting('app.public_token', true), ''))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
 ALTER TABLE "payment_webhook_log" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "payment_webhook_log" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "payment_webhook_log_tenant" ON "payment_webhook_log"
@@ -2615,7 +2646,7 @@ CREATE POLICY "reservation_sub_bookings_tenant" ON "reservation_sub_bookings"
 ALTER TABLE "reservations" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reservations" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "reservations_tenant" ON "reservations"
-  USING ("organization_id" = current_setting('app.organization_id') OR "guest_page_token" = NULLIF(current_setting('app.guest_token', true), ''))
+  USING ("organization_id" = current_setting('app.organization_id') OR "guest_page_token" = NULLIF(current_setting('app.public_token', true), ''))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "service_addons" ENABLE ROW LEVEL SECURITY;

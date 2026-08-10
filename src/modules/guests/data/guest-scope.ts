@@ -12,8 +12,8 @@
  * site key and `booking_sites` is readable before a tenant is known, because a
  * list of booking sites is public information. A list of reservations is not,
  * so `reservations` stays closed and the token itself becomes the credential:
- * it goes onto the connection (`app.guest_token`), and the policy matches the
- * one row whose `guest_page_token` equals it. See GUEST_TOKEN_READ in
+ * it goes onto the connection (`app.public_token`), and the policy matches the
+ * one row whose `guest_page_token` equals it. See PUBLIC_TOKEN_READ in
  * scripts/pg-schema.mjs for what that opens and what it does not.
  *
  * The window is one statement wide. Having read that row the caller knows the
@@ -21,7 +21,7 @@
  * so a bug inside the portal can reach that hotel's data and no further.
  */
 import { getSql } from '@core/db/async';
-import { runWithGuestToken, runWithOrganization } from '@core/auth/tenant-context';
+import { runWithPublicToken, runWithOrganization } from '@core/auth/tenant-context';
 
 export interface GuestReservation {
   id: string;
@@ -42,7 +42,7 @@ export async function withGuestReservation<T>(
 ): Promise<T | null> {
   if (!token) return null;
 
-  const reservation = await runWithGuestToken(token, () =>
+  const reservation = await runWithPublicToken(token, () =>
     getSql().row<GuestReservation>(
       'SELECT id, organization_id, property_id FROM reservations WHERE guest_page_token = ?',
       [token],

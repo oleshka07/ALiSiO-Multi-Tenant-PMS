@@ -24,6 +24,7 @@ const PUBLIC_PREFIXES = [
   '/app/login', // login page — the only public path under /app
   '/login', // legacy /login, redirects to /app/login
   '/guest/', // guest portal page
+  '/report/', // published partner report — the 64-hex token in the URL is the credential
   '/privacy', // the privacy policy — a legal page guests must reach without a login
   '/w/', // booking widget
   '/modules/', // marketing site: one page per product module

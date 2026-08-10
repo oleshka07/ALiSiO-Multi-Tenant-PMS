@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Sql, Dialect } from './async.ts';
-import { currentOrganizationId, currentGuestToken } from '../auth/tenant-context.ts';
+import { currentOrganizationId, currentPublicToken } from '../auth/tenant-context.ts';
 
 /**
  * The `Sql` seam over Postgres.
@@ -164,9 +164,9 @@ async function scopeToTenant(client: PgClient): Promise<void> {
   // set_config with a parameter, not string interpolation: the organization id
   // comes from a session and must never be pasted into SQL.
   await client.query('SELECT set_config($1, $2, false)', ['app.organization_id', org ?? '']);
-  // The guest portal's one pre-tenant lookup; '' matches nothing, by NULLIF in
-  // the policy.
-  await client.query('SELECT set_config($1, $2, false)', ['app.guest_token', currentGuestToken() ?? '']);
+  // The one pre-tenant lookup a link is allowed to make — the guest portal's
+  // booking, a partner report. '' matches nothing, by NULLIF in the policy.
+  await client.query('SELECT set_config($1, $2, false)', ['app.public_token', currentPublicToken() ?? '']);
 }
 
 /**

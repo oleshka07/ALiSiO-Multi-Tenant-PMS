@@ -44,7 +44,7 @@ function makeConnection(id: number) {
     async query(text: string, params?: unknown[]) {
       if (/set_config/.test(text)) {
         // By name: the seam sets more than one variable per checkout
-        // (app.organization_id and app.guest_token), and a fake that treats
+        // (app.organization_id and app.public_token), and a fake that treats
         // them all as the tenant reports a failure the real code does not have.
         const [name, value] = params as [string, string];
         if (name === 'app.organization_id') tenant = String(value);
