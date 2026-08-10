@@ -111,7 +111,18 @@ jobs:
         # is constrained; this says the second hotel cannot see the first.
         env:
           BASE_URL: http://127.0.0.1:3000
-          DB_PATH: ${{ runner.temp }}/data/alisio.db
+          # ALISIO_DATA_DIR, not DB_PATH. This said DB_PATH, which nothing in
+          # the application reads — src/lib/db.ts locates the file from
+          # ALISIO_DATA_DIR alone. So the check seeded its probe organization
+          # into ./data/alisio.db in the checkout while the server was serving
+          # the database under $RUNNER_TEMP, login answered 401, and the
+          # strongest check in the repository had been failing on main since
+          # the day it started going through the Sql seam.
+          #
+          # It must be the SAME value as the `start` step above: this check
+          # writes rows directly and then asks the server about them, so the
+          # two have to be looking at one database.
+          ALISIO_DATA_DIR: ${{ runner.temp }}/data
         run: node scripts/check-isolation.mjs
 
       - name: public site
