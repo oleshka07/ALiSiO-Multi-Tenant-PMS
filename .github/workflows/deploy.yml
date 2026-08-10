@@ -1,0 +1,138 @@
+# Deploy what passed.
+#
+# Until now the last step of every change was a human typing
+# `./deploy/deploy.sh prod` on the VPS. That is the step that decides whether
+# a merged commit is actually running, and it was the one step nothing
+# enforced — so "it is in main" and "it is live" could differ for days, and
+# nothing said which.
+#
+# This closes it: when the `checks` workflow goes green on main, this connects
+# to the server and runs the same deploy script. Not a second deploy path — the
+# same one, invoked by a machine instead of by whoever remembered.
+#
+# It runs AFTER checks rather than on push, on purpose. `on: push` would deploy
+# a commit whose types have not compiled yet; by the time CI reported, the
+# broken build would already be serving.
+#
+# ── What it needs from you, once ────────────────────────────────────────────
+#
+# Four repository secrets (Settings → Secrets and variables → Actions):
+#
+#   DEPLOY_HOST     the server, e.g. 203.0.113.10 or vps.example.com
+#   DEPLOY_USER     the ssh user that owns the checkout
+#   DEPLOY_SSH_KEY  a PRIVATE key whose public half is in that user's
+#                   ~/.ssh/authorized_keys. Make a fresh one for this
+#                   (`ssh-keygen -t ed25519 -C github-actions -N ""`) rather
+#                   than reusing a personal key — this one can be revoked
+#                   without locking you out.
+#   DEPLOY_PATH     absolute path of the checkout on the server,
+#                   e.g. /opt/alisio
+#
+# Without them the job does not fail — it says what is missing and stops. A red
+# badge nobody can clear is a badge everybody learns to ignore.
+name: deploy
+
+on:
+  workflow_run:
+    workflows: ['checks']
+    types: [completed]
+    branches: [main]
+  # Deploy the current main by hand — after adding the secrets for the first
+  # time, or to re-run a deploy that failed on the server rather than in CI.
+  workflow_dispatch:
+
+concurrency:
+  # Two deploys at once would race on the same working copy and the same
+  # database backup. The later one wins; the earlier is not worth finishing.
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  prod:
+    name: prod
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # A manual run has no workflow_run to inspect; a triggered one must have
+    # passed. Deploying a commit whose checks failed is the thing this guards.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: are the deploy secrets set
+        id: gate
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DPATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          missing=()
+          [ -n "$HOST" ]  || missing+=(DEPLOY_HOST)
+          [ -n "$USER" ]  || missing+=(DEPLOY_USER)
+          [ -n "$KEY" ]   || missing+=(DEPLOY_SSH_KEY)
+          [ -n "$DPATH" ] || missing+=(DEPLOY_PATH)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Деплой не налаштований"
+              echo
+              echo "Немає секретів: \`${missing[*]}\`."
+              echo
+              echo "Settings → Secrets and variables → Actions → New repository secret."
+              echo "Що саме в кожен — у шапці \`.github/workflows/deploy.yml\`."
+              echo
+              echo "Поки їх немає, деплой лишається ручним:"
+              echo '```'
+              echo 'cd <шлях> && ./deploy/deploy.sh prod'
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::deploy secrets are not set — skipping, see the job summary"
+          else
+            echo "ready=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: authorise against the server
+        if: steps.gate.outputs.ready == 'yes'
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          # Pin the host key on first contact and keep it. Without this, ssh
+          # either refuses (no known_hosts) or accepts anything — and "accepts
+          # anything" is how a deploy lands on a machine that answered instead
+          # of the one you meant.
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: deploy
+        if: steps.gate.outputs.ready == 'yes'
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          DPATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          # deploy.sh does its own fetch/reset to origin/main, backs the
+          # database up, builds, applies pending migrations and restarts. It
+          # exits non-zero if the backup is empty, if a migration fails, or if
+          # the new container does not answer on a database-backed route — so
+          # its exit code is the honest answer to "is it live".
+          ssh -i ~/.ssh/id_deploy -o BatchMode=yes \
+              "$USER@$HOST" \
+              "cd '$DPATH' && ./deploy/deploy.sh prod"
+
+      - name: say what happened
+        if: always() && steps.gate.outputs.ready == 'yes'
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "### prod оновлено до \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### Деплой не пройшов"
+              echo
+              echo "Стара версія лишилась працювати: deploy.sh піднімає нову"
+              echo "тільки після успішної збірки й міграцій. Лог кроку \`deploy\`"
+              echo "вище каже, на чому саме зупинилось."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
