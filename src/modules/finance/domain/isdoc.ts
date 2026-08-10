@@ -1,5 +1,5 @@
 /**
- * ALiSiO PMS — ISDOC v6.0.2 Generator
+ * ALiSiO ERP — ISDOC v6.0.2 Generator
  *
  * Generates Czech electronic invoice (ISDOC) XML.
  * For a non-VAT-paying issuer (neplátce DPH):
@@ -248,7 +248,7 @@ export async function generateIsdocXml(input: IsdocInput): Promise<string> {
   <DocumentType>${documentType}</DocumentType>
   <ID>${esc(isdocId)}</ID>
   <UUID>${uuid()}</UUID>
-  <IssuingSystem>ALiSiO PMS</IssuingSystem>
+  <IssuingSystem>ALiSiO ERP</IssuingSystem>
   <IssueDate>${issueDate}</IssueDate>
   <TaxPointDate>${taxPointDate}</TaxPointDate>
   <VATApplicable>false</VATApplicable>

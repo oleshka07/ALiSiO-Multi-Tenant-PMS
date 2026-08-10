@@ -133,7 +133,7 @@ export function generateICal(
   const lines: string[] = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    `PRODID:-//ALiSiO PMS//Channel Manager//EN`,
+    `PRODID:-//ALiSiO ERP//Channel Manager//EN`,
     `X-WR-CALNAME:${calendarName}`,
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',

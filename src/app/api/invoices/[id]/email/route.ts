@@ -114,7 +114,7 @@ async function _POST(
       ${html}
     </div>
     <div style="padding:16px 28px;background:#f9f9f9;font-size:12px;color:#888;border-top:1px solid #eee;">
-      Tato zpráva byla vygenerována automaticky systémem ALiSiO PMS.${orgEmail ? `<br/>
+      Tato zpráva byla vygenerována automaticky systémem ALiSiO ERP.${orgEmail ? `<br/>
       V případě dotazů nás kontaktujte na ${orgEmail}` : ''}
     </div>
   </div>

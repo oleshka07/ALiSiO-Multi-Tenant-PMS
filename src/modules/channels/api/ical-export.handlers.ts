@@ -70,7 +70,7 @@ export async function exportIcal(
     });
   } catch (e: any) {
     console.error('[iCal Export] Error:', e);
-    const fallback = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//ALiSiO PMS//Channel Manager//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nEND:VCALENDAR\r\n';
+    const fallback = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//ALiSiO ERP//Channel Manager//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\nEND:VCALENDAR\r\n';
     return new Response(fallback, {
       status: 200,
       headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'no-cache, no-store, must-revalidate' },

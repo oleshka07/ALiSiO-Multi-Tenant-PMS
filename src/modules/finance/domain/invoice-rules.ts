@@ -1,5 +1,5 @@
 /**
- * ALiSiO PMS — shared invoice presentation rules.
+ * ALiSiO ERP — shared invoice presentation rules.
  */
 
 /**

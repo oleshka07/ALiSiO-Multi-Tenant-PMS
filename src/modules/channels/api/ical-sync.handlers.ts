@@ -43,7 +43,7 @@ async function syncChannel(channel: any) {
     if (!channel.ical_url) throw new Error('No iCal URL configured');
 
     const response = await fetch(channel.ical_url, {
-      headers: { 'User-Agent': 'ALiSiO-PMS/1.0 iCal-Sync' },
+      headers: { 'User-Agent': 'ALiSiO-ERP/1.0 iCal-Sync' },
       signal: AbortSignal.timeout(15000),
     });
 

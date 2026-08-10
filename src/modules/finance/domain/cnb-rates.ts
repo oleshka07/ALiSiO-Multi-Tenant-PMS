@@ -1,7 +1,7 @@
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 /**
- * ALiSiO PMS — ČNB (Czech National Bank) daily FX rates.
+ * ALiSiO ERP — ČNB (Czech National Bank) daily FX rates.
  *
  * Pulls the official ČNB daily fixing feed and upserts <CUR>→CZK rates into
  * finance_exchange_rates, so invoices can convert EUR/USD/… to CZK without
@@ -37,7 +37,7 @@ async function fetchText(url: string, timeoutMs = 15000): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'ALiSiO-PMS' } });
+    const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'ALiSiO-ERP' } });
     if (!res.ok) throw new Error(`ČNB feed HTTP ${res.status}`);
     return await res.text();
   } finally {

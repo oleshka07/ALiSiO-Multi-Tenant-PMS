@@ -1,5 +1,5 @@
 /**
- * ALiSiO PMS — currency conversion for accounting documents.
+ * ALiSiO ERP — currency conversion for accounting documents.
  *
  * Converts a foreign amount (e.g. EUR from an OTA payout) into CZK using the
  * finance_exchange_rates entry effective on a given date. Mirrors the

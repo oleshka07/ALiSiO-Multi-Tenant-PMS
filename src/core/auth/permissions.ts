@@ -1,5 +1,5 @@
 // ============================================================
-// ALiSiO PMS — Permissions & Role-based Access Control
+// ALiSiO ERP — Permissions & Role-based Access Control
 // ============================================================
 
 import type { UserRole } from '@/types/database';

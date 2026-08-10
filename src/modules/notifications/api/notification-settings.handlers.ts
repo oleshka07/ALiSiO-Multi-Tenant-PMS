@@ -141,7 +141,7 @@ export const testNotificationSettings = withPermission('manage_properties', asyn
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: cfg.chatId,
-        text: '✅ ALiSiO PMS — тестове повідомлення. Сповіщення налаштовано правильно.',
+        text: '✅ ALiSiO ERP — тестове повідомлення. Сповіщення налаштовано правильно.',
       }),
     });
     const sent = (await sendRes.json()) as { ok: boolean; description?: string };

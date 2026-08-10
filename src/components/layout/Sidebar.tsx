@@ -193,7 +193,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         {/* Logo */}
         <div className="sidebar-logo">
           <div className="sidebar-logo-icon">A</div>
-          <span className="sidebar-logo-text">ALiSiO PMS</span>
+          <span className="sidebar-logo-text">ALiSiO ERP</span>
           {/* Mobile close button */}
           {mobileOpen && (
             <button

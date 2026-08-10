@@ -1,5 +1,5 @@
 /**
- * ALiSiO PMS — per-channel invoice numbering + monthly period locking.
+ * ALiSiO ERP — per-channel invoice numbering + monthly period locking.
  *
  * Series (each its own sequence):
  *   booking → BKG-YYYY-NNN

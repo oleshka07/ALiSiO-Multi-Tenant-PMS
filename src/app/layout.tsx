@@ -2,13 +2,13 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'ALiSiO PMS — Property Management System',
+  title: 'ALiSiO ERP — Hotel Business Management',
   description: 'Modern property management system for glamping, resort, and camping properties',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'ALiSiO PMS',
+    title: 'ALiSiO ERP',
   },
 };
 

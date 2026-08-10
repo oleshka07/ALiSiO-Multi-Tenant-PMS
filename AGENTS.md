@@ -118,6 +118,10 @@ node scripts/check-no-tenant-names.mjs  # жодного бізнесу кліє
 node scripts/audit-dead-data.mjs        # таблиці й колонки, яких ніхто не читає
 ```
 
+Міграції Postgres накочує `deploy/deploy.sh` — між збіркою і рестартом, через
+`deploy/migrate.sh` (журнал у таблиці `schema_migrations`). Руками це більше
+робити не треба; `./deploy/migrate.sh prod --list` показує, що чекає.
+
 Перед підключенням клієнта — ще й перевірка **живої** бази:
 
 ```bash

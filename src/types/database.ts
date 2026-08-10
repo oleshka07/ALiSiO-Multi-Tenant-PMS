@@ -1,5 +1,5 @@
 // ============================================================
-// ALiSiO PMS — Database Types
+// ALiSiO ERP — Database Types
 // ============================================================
 
 export type CategoryType = 'glamping' | 'resort' | 'camping';

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * ALiSiO PMS — Invoice Handlers (Finance Module)
+ * ALiSiO ERP — Invoice Handlers (Finance Module)
  *
  * Generates and serves Faktury (invoices) for paid reservations.
  * For an issuer that is not a VAT payer (neplátce DPH),

@@ -64,7 +64,7 @@ export async function notifyTaskAssigned(opts: {
   if (opts.dueDate) lines.push(`📅 Дедлайн: ${opts.dueDate}`);
   if (opts.assignedByName) lines.push(`👤 Від: ${escapeHtml(opts.assignedByName)}`);
 
-  lines.push(``, `🔗 <a href="${BASE_URL}/tasks">Відкрити в PMS</a>`);
+  lines.push(``, `🔗 <a href="${BASE_URL}/tasks">Відкрити в ALiSiO</a>`);
 
   await sendToChat(task.telegram_chat_id, lines.join('\n'));
 }
@@ -98,7 +98,7 @@ export async function notifyTaskStatusChanged(opts: {
     `📊 Новий статус: <b>${statusLabel}</b>`,
   ];
   if (opts.changedByName) lines.push(`👤 Змінив: ${escapeHtml(opts.changedByName)}`);
-  lines.push(``, `🔗 <a href="${BASE_URL}/tasks">Відкрити в PMS</a>`);
+  lines.push(``, `🔗 <a href="${BASE_URL}/tasks">Відкрити в ALiSiO</a>`);
 
   await sendToChat(task.telegram_chat_id, lines.join('\n'));
 }
@@ -238,7 +238,7 @@ export async function sendDailyTaskDigest(userId: string): Promise<boolean> {
     lines.push(``);
   }
 
-  lines.push(`🔗 <a href="${BASE_URL}/tasks">Всі задачі в PMS</a>`);
+  lines.push(`🔗 <a href="${BASE_URL}/tasks">Всі задачі в ALiSiO</a>`);
 
   await sendToChat(user.telegram_chat_id, lines.join('\n'));
   return true;
@@ -294,7 +294,7 @@ export async function formatUserTasksForTelegram(userId: string): Promise<string
     lines.push(`  ${pri} ${escapeHtml(t.title)}${due}${proj}`);
   }
 
-  lines.push(``, `🔗 <a href="${BASE_URL}/tasks">Відкрити в PMS</a>`);
+  lines.push(``, `🔗 <a href="${BASE_URL}/tasks">Відкрити в ALiSiO</a>`);
   return lines.join('\n');
 }
 

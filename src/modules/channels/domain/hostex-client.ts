@@ -1,6 +1,6 @@
 /**
  * Hostex.io API Client v3
- * Channel manager integration for ALiSiO PMS
+ * Channel manager integration for ALiSiO ERP
  */
 import https from 'https';
 import { integrationCredentials } from '@core/integration-credentials';

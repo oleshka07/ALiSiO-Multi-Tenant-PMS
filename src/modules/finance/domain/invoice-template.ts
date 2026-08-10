@@ -1,5 +1,5 @@
 /**
- * ALiSiO PMS — Invoice HTML Template
+ * ALiSiO ERP — Invoice HTML Template
  *
  * Generates a Czech-law compliant Faktura (invoice).
  * A non-VAT-paying issuer (neplátce DPH) needs no DPH breakdown; whether

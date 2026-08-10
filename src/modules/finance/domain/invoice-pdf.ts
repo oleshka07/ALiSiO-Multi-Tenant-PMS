@@ -1,5 +1,5 @@
 /**
- * ALiSiO PMS — PDF Invoice Generator
+ * ALiSiO ERP — PDF Invoice Generator
  *
  * Layout is pixel-matched to POHODA Faktura_260100002.pdf (reference).
  * Uses a FLOW-BASED approach — sections grow with content, no fixed Y coords
@@ -179,7 +179,7 @@ export async function generateInvoicePdf(data: InvoicePdfInput): Promise<Buffer>
       info: {
         Title:   docTitle,
         Author:  SUPPLIER.name,
-        Creator: 'ALiSiO PMS',
+        Creator: 'ALiSiO ERP',
         Subject: isCreditNote ? 'Storno faktura' : 'Faktura',
       },
     });
@@ -568,7 +568,7 @@ export async function generateInvoicePdf(data: InvoicePdfInput): Promise<Buffer>
 
     // Bottom attribution (reference y=774)
     R(7).fillColor(LGRAY)
-      .text(['ALiSiO PMS', SUPPLIER.name].filter(Boolean).join(' – '), ML, PH - 20, { width: CR - ML, align: 'center', lineBreak: false });
+      .text(['ALiSiO ERP', SUPPLIER.name].filter(Boolean).join(' – '), ML, PH - 20, { width: CR - ML, align: 'center', lineBreak: false });
 
     doc.end();
   });

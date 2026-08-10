@@ -1,5 +1,5 @@
 /**
- * Hostex → ALiSiO PMS Sync Service
+ * Hostex → ALiSiO ERP Sync Service
  * Handles reservation, guest, and payment synchronization
  */
 import { getDb, generateGuestToken } from '@core/db';

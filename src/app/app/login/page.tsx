@@ -44,7 +44,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="login-logo">
           <div className="login-logo-icon">A</div>
-          <h1 className="login-logo-text">ALiSiO PMS</h1>
+          <h1 className="login-logo-text">ALiSiO ERP</h1>
           <p className="login-subtitle">Property Management System</p>
         </div>
 

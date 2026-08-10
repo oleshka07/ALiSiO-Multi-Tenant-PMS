@@ -61,6 +61,7 @@ if [ "$DB_DRIVER_NOW" = "postgres" ]; then
   PG_DATABASE="$(grep -E '^PG_DATABASE=' "$ENV_FILE" | cut -d= -f2 | tr -d '\r')"
   DUMP="deploy/backups/alisio-${ENV_NAME}-${STAMP}.sql.gz"
   if docker inspect "$PG_CONTAINER" >/dev/null 2>&1; then
+    PG_PRESENT=1
     echo "==> dumping ${PG_DATABASE:-alisio} -> $DUMP"
     # A failed dump must stop the deploy: shipping new code over a database
     # with no fresh copy of it is the one thing this step exists to prevent.
@@ -89,8 +90,29 @@ else
   fi
 fi
 
-echo "==> building and starting"
-docker compose --env-file "$ENV_FILE" -p "$PROJECT" -f deploy/docker-compose.yml up -d --build
+echo "==> building"
+docker compose --env-file "$ENV_FILE" -p "$PROJECT" -f deploy/docker-compose.yml build
+
+# ── Migrations ───────────────────────────────────────────────────────────────
+#
+# Between the build and the restart, on purpose. Every migration in
+# db/postgres/migrations/ fails SILENTLY when it is missing — 0005 makes
+# fourteen INSERTs bounce off a policy, 0007 makes the whole guest portal
+# answer 404, 0008 does the same the moment new code sets `app.public_token`
+# against a database still checking `app.guest_token`. Nothing logs an error;
+# the application just behaves as if a feature was never built.
+#
+# That is not a step a person should have to remember, and it used to be one.
+# Here the old container is still serving (the build is done, nothing has
+# restarted yet), so the window in which schema and code disagree is the
+# restart itself rather than however long it takes someone to type the next
+# command.
+if [ -n "${PG_PRESENT:-}" ]; then
+  ./deploy/migrate.sh "$ENV_NAME"
+fi
+
+echo "==> starting"
+docker compose --env-file "$ENV_FILE" -p "$PROJECT" -f deploy/docker-compose.yml up -d
 
 # ── Verify ───────────────────────────────────────────────────────────────────
 PORT="$(grep -E '^APP_PORT=' "$ENV_FILE" | cut -d= -f2)"

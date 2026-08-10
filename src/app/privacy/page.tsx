@@ -50,10 +50,10 @@ export default function PrivacyPolicyPage() {
           <div className="mb-8">
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center gap-2 mb-4">
               <Server className="h-5 w-5 text-indigo-500" />
-              2. Zpracovatel — systém ALiSiO PMS
+              2. Zpracovatel — systém ALiSiO ERP
             </h2>
             <p className="text-slate-600 dark:text-slate-300">
-              Rezervační a ubytovací agendu vede ubytovatel v systému <strong>ALiSiO PMS</strong>. Provozovatel
+              Rezervační a ubytovací agendu vede ubytovatel v systému <strong>ALiSiO ERP</strong>. Provozovatel
               tohoto systému vystupuje v roli <strong>zpracovatele</strong> ve smyslu čl. 28 GDPR: zpracovává
               údaje výhradně podle pokynů ubytovatele, pro účely uvedené níže, a nepředává je třetím stranám
               pro vlastní účely.
@@ -122,7 +122,7 @@ export default function PrivacyPolicyPage() {
 
           <div className="mt-12 pt-6 border-t border-slate-200 dark:border-slate-700 text-sm text-slate-500 text-center">
             Naposledy aktualizováno: srpen 2026. Tyto zásady platí pro hosty všech ubytovacích zařízení
-            provozovaných v systému ALiSiO PMS.
+            provozovaných v systému ALiSiO ERP.
           </div>
 
         </div>

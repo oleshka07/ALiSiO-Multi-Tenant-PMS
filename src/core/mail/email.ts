@@ -48,7 +48,7 @@ export interface SendEmailOptions {
 export async function sendEmail({ to, fromName, subject, html, text, attachments }: SendEmailOptions): Promise<void> {
   const t = getTransporter();
   const sender = process.env.EMAIL_CZ_USER || '';
-  const label = fromName || process.env.EMAIL_FROM_NAME || 'ALiSiO PMS';
+  const label = fromName || process.env.EMAIL_FROM_NAME || 'ALiSiO ERP';
   await t.sendMail({
     from: `"${label.replace(/"/g, "'")}" <${sender}>`,
     to,

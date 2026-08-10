@@ -1,7 +1,8 @@
 # Postgres
 
-SQLite is still the running database. This directory is the target schema —
-generated, verified, and not yet in use.
+Postgres is the running database on beta and prod since 2026-08-07/08. SQLite
+is what a developer machine still uses by default, and what `DB_DRIVER=` (empty)
+falls back to — that is the rollback path, not the current state.
 
 | Файл | Що це |
 |---|---|
@@ -149,18 +150,26 @@ SET LOCAL app.organization_id = '<org id>';
 | `0007-guest-portal-finds-its-hotel.sql` | гостьовий портал знаходить бронювання за токеном — без цього він відповідає 404 на всі свої маршрути |
 | `0008-a-link-is-the-whole-credential.sql` | `partner_reports` (звіт за посиланням) + `app.guest_token` → `app.public_token`: одне налаштування на обидві таблиці, які відкриваються токеном |
 
+**Накочує їх деплой.** `deploy/deploy.sh` викликає `deploy/migrate.sh` між
+збіркою і рестартом: журнал застосованого лежить у таблиці
+`schema_migrations`, тож застосовується лише те, чого база ще не бачила.
+Окремо це теж запускається:
+
 ```bash
-for f in db/postgres/migrations/*.sql; do
-  docker exec -i alisio-prod-postgres psql -v ON_ERROR_STOP=1 -U alisio_admin -d alisio -f - < "$f"
-done
+./deploy/migrate.sh prod --list   # що чекає, нічого не змінюючи
+./deploy/migrate.sh prod          # накотити
 ```
 
-Порядок має значення лише перший раз; повторний запуск будь-якого з них
-нічого не змінює.
+Порядок — за іменем файла, тому вони й нумеровані. Кожен файл — власна
+транзакція і кожен переживає повторний запуск (перевірено: два проходи по
+всіх восьми на чистій схемі). Тому на базі, яка ще не має журналу, перший
+запуск чесно застосовує всі — це нічого не змінює в тому, що вже на місці.
 
-**0008 треба накотити разом із деплоєм, який його вводить.** Код починає
-ставити `app.public_token`; база, що досі перевіряє `app.guest_token`, тоді
-знову віддає 404 на весь гостьовий портал — тихо, без жодної помилки.
+Чому це віддано скрипту, а не пам'яті: **0008 має накотитися разом із
+деплоєм, який його вводить.** Код починає ставити `app.public_token`; база,
+що досі перевіряє `app.guest_token`, тоді знову віддає 404 на весь гостьовий
+портал — тихо, без жодної помилки в логах. Раніше це був крок, який хтось
+мусив пам'ятати.
 
 Не перевіряйте це руками — є команда, яка питає саму базу про всі відбитки
 одразу:

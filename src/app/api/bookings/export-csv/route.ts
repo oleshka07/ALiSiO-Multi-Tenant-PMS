@@ -132,7 +132,7 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
 
     // Build XLSX
     const wb = new ExcelJS.Workbook();
-    wb.creator = 'ALiSiO PMS';
+    wb.creator = 'ALiSiO ERP';
     wb.created = new Date();
     const ws = wb.addWorksheet('Бронювання');
 

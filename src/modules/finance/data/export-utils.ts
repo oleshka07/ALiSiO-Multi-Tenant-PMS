@@ -25,7 +25,7 @@ const POS_COLOR = 'FF16A34A';
 
 export async function buildXlsx(sheets: XlsxSheet[], meta?: { title?: string; subtitle?: string }): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'ALiSiO PMS';
+  wb.creator = 'ALiSiO ERP';
   wb.created = new Date();
 
   for (const def of sheets) {
