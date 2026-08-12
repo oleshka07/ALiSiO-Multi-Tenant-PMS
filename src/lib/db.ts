@@ -918,7 +918,7 @@ function runMigrations(database: any) {
         unit_label TEXT NOT NULL DEFAULT 'за послугу',
         icon TEXT,
         category TEXT NOT NULL DEFAULT 'other' CHECK (category IN ('food', 'wellness', 'sport', 'entertainment', 'other')),
-        available_for TEXT NOT NULL DEFAULT 'all' CHECK (available_for IN ('glamping', 'resort', 'camping', 'all')),
+        available_for TEXT NOT NULL DEFAULT 'all',
         is_active INTEGER NOT NULL DEFAULT 1,
         sort_order INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -5010,6 +5010,45 @@ function runMigrations(database: any) {
     }
   } catch (e: any) {
     console.error('[DB] organization_features migration:', e.message);
+  }
+
+  // --- Migration: additional_services stops naming one customer's categories
+  //
+  // `CHECK (available_for IN ('glamping','resort','camping','all'))` is a
+  // dictionary of one hotel's business words, in the schema — exactly what
+  // NAMING.md §9 forbids, and it bites: a German hotel, a hostel or a pension
+  // cannot point a service at its own category, because the database refuses
+  // any value outside those three. widget-services.handlers.ts already works
+  // around it by reading only 'all'.
+  //
+  // The column stays and keeps its meaning ("this category type, or all"). Only
+  // the closed list goes. SQLite cannot drop a CHECK, so the table is rebuilt
+  // without it; data is copied column for column.
+  try {
+    const row = database.prepare('SELECT sql FROM sqlite_master WHERE type = ? AND name = ?')
+      .get('table', 'additional_services') as { sql: string } | undefined;
+    if (row?.sql && /CHECK\s*\(\s*available_for/i.test(row.sql)) {
+      // Two levels of parentheses: CHECK ( available_for IN ( … ) ). A pattern
+      // that stops at the first ')' cuts the statement in half and leaves the
+      // outer one dangling — which is what the first attempt did.
+      const rebuilt = row.sql.replace(
+        /,?\s*CHECK\s*\(\s*available_for\s+IN\s*\([^)]*\)\s*\)/i,
+        '',
+      );
+      const cols = (database.prepare('PRAGMA table_info(additional_services)').all() as any[])
+        .map((c: any) => `"${c.name}"`).join(', ');
+      database.exec('PRAGMA foreign_keys = OFF');
+      database.exec('BEGIN');
+      database.exec(rebuilt.replace(/CREATE TABLE additional_services\b/i, 'CREATE TABLE additional_services__rebuilt'));
+      database.exec(`INSERT INTO additional_services__rebuilt (${cols}) SELECT ${cols} FROM additional_services`);
+      database.exec('DROP TABLE additional_services');
+      database.exec('ALTER TABLE additional_services__rebuilt RENAME TO additional_services');
+      database.exec('COMMIT');
+      database.exec('PRAGMA foreign_keys = ON');
+      console.log('[DB] additional_services: available_for no longer limited to one hotel\'s categories');
+    }
+  } catch (e: any) {
+    console.error('[DB] additional_services available_for migration:', e.message);
   }
 
   // --- Migration: create partner_reports table ---

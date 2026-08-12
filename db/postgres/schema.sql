@@ -80,8 +80,7 @@ CREATE TABLE "additional_services" (
   "unit_label_fr" TEXT,
   "available_in_widget" BIGINT DEFAULT 0,
   PRIMARY KEY ("id"),
-  CHECK (category IN ('food', 'wellness', 'sport', 'entertainment', 'other')),
-  CHECK (available_for IN ('glamping', 'resort', 'camping', 'all'))
+  CHECK (category IN ('food', 'wellness', 'sport', 'entertainment', 'other'))
 );
 
 CREATE TABLE "app_users" (

@@ -149,6 +149,7 @@ SET LOCAL app.organization_id = '<org id>';
 | `0006-organization-language-not-null.sql` | базова мова готелю більше не NULL |
 | `0007-guest-portal-finds-its-hotel.sql` | гостьовий портал знаходить бронювання за токеном — без цього він відповідає 404 на всі свої маршрути |
 | `0008-a-link-is-the-whole-credential.sql` | `partner_reports` (звіт за посиланням) + `app.guest_token` → `app.public_token`: одне налаштування на обидві таблиці, які відкриваються токеном |
+| `0009-services-stop-naming-one-hotels-categories.sql` | знімає `CHECK (available_for IN ('glamping','resort','camping','all'))` — словник бізнес-слів одного клієнта в схемі, через який німецький готель чи хостел не міг привʼязати послугу до власної категорії |
 
 **Накочує їх деплой.** `deploy/deploy.sh` викликає `deploy/migrate.sh` між
 збіркою і рестартом: журнал застосованого лежить у таблиці
