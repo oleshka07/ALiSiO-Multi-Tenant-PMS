@@ -1,9 +1,8 @@
 /**
  * Put a finished report at a link.
  *
- *   DATABASE_URL=postgres://… node scripts/publish-report.mjs report.html \
- *     --title "Kemp Carlsbad · Партнерський звіт · Липень 2026" \
- *     --period 2026-07
+ *   node scripts/publish-report.mjs report.html \
+ *     --title "Партнерський звіт · Липень 2026" --period 2026-07
  *
  * Prints the URL to send. That is the whole job.
  *

@@ -135,7 +135,15 @@ DATABASE_URL=… node scripts/check-deployed-db.mjs
 
 `npm run check` містить і постгресові гейти: `check-route-guards --strict`
 (маршрут без варти), `check-boolean-flags --strict` (`0`/`1` у `BOOLEAN`),
-`pool-tenant.check.ts`, `rls-identity.check.ts`, `rls-write-tenant.check.ts`.
+`pool-tenant.check.ts`, `rls-identity.check.ts`, `rls-write-tenant.check.ts`,
+`check-no-tenant-names.mjs` (бізнес одного клієнта в коді).
+
+**Чому саме `check-no-tenant-names` тепер блокує.** Це єдина перевірка, яка
+ловить «підправлю трошки під цей готель»: назву, домен, IČO, словник
+категорій. Вона існувала, але запускалась лише тоді, коли хтось згадував — і
+за перший же тиждень пропустила згадку, яка в'їхала з новим скриптом. Різниця
+між гейтом і скриптом, який треба пам'ятати, — це різниця між «неможливо» і
+«поки що не сталося».
 Кожен із них написаний після того, як відповідна річ уже зламала прод.
 
 Те саме бігає в CI на кожен push — `.github/workflows/checks.yml`. Це не
