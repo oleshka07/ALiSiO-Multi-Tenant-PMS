@@ -111,10 +111,15 @@ const CLEAN_MAP: Record<string, { label: string; color: string }> = {
   in_progress: { label: '⟳', color: '#fbbf24' },
 };
 
-const categoryConfig: Record<string, { label: string; icon: any; color: string }> = {
-  glamping: { label: 'Glamping', icon: <Tent size={14} />, color: '#a78bfa' },
-  resort: { label: 'Resort', icon: <Building2 size={14} />, color: '#60a5fa' },
-  camping: { label: 'Camping', icon: <TreePine size={14} />, color: '#34d399' },
+// Decoration only — an icon and a colour per category TYPE, which is a
+// behaviour key, not a name. It used to carry `label` too, and that label is
+// how one customer's vocabulary ended up printed over every other hotel's
+// calendar. Names come from the category row; a type with no entry here simply
+// gets no icon.
+const categoryConfig: Record<string, { icon: any; color: string }> = {
+  glamping: { icon: <Tent size={14} />, color: '#a78bfa' },
+  resort: { icon: <Building2 size={14} />, color: '#60a5fa' },
+  camping: { icon: <TreePine size={14} />, color: '#34d399' },
 };
 
 const statusColors: Record<string, string> = {
@@ -380,9 +385,14 @@ function CalendarDesktop() {
   const groups = useMemo(() => {
     const groupOf = (u: UnitRow) => {
       const sub = u.building_name || u.zone || '';
-      const cat = categoryConfig[u.category_type]?.label || u.category_type || 'Номери';
-      return sub ? { key: `${u.category_type}/${sub}`, label: `${cat} / ${sub}` }
-                 : { key: u.category_type || 'all', label: cat };
+      // The hotel's own word for this category, not ours. `category_type` is a
+      // behaviour key with six possible values; `category_name` is what the
+      // operator typed — "Корпус А", "Будиночки", "Місця під каравани". Reading
+      // the type here printed "Resort" over a Ukrainian hotel's rooms, and, worse,
+      // merged two categories that share a type into one group.
+      const cat = u.category_name || u.category_type || 'Номери';
+      return sub ? { key: `${cat}/${sub}`, label: `${cat} / ${sub}` }
+                 : { key: cat, label: cat };
     };
 
     const byKey = new Map<string, { key: string; label: string; category: string; units: UnitRow[] }>();
@@ -678,9 +688,11 @@ function CalendarDesktop() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <select className="form-select" style={{ width: 100, fontSize: 11, padding: '4px 6px' }} value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
               <option value="">{tUi('Категорії')}</option>
-              {[...new Set(units.map(u => u.category_type))].sort().map(cat => (
-                <option key={cat} value={cat}>{categoryConfig[cat]?.label || cat}</option>
-              ))}
+              {[...new Map(units.map(u => [u.category_type, u.category_name])).entries()]
+                .sort((a, b) => (a[1] || a[0]).localeCompare(b[1] || b[0]))
+                .map(([type, label]) => (
+                  <option key={type} value={type}>{label || type}</option>
+                ))}
             </select>
             <div style={{ position: 'relative' }}>
               <Search size={12} style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />

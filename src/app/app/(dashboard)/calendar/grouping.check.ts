@@ -13,24 +13,30 @@
  * back out in exactly one group. Copy of the logic in page.tsx — a client
  * component cannot be imported here, so the check guards the shape of the
  * rule, and page.tsx carries the same function.
+ *
+ * The second rule, added when the first real hotel was about to be onboarded:
+ * the group is named by the hotel's OWN word for the category, never by the
+ * type. `category_type` is a behaviour key with six possible values, and
+ * labelling from it printed "Resort" over a Ukrainian hotel's rooms and merged
+ * two categories that happen to share a type into one group. A hotel with
+ * "Корпус А" and "Корпус Б" must see two groups with those names.
  */
 import assert from 'node:assert';
 
 type Unit = {
   id: string;
   category_type: string;
+  category_name?: string | null;
   building_name?: string | null;
   zone?: string | null;
 };
 
-const LABELS: Record<string, string> = { glamping: 'Glamping', resort: 'Resort', camping: 'Camping' };
-
 function groupUnits(units: Unit[]) {
   const groupOf = (u: Unit) => {
     const sub = u.building_name || u.zone || '';
-    const cat = LABELS[u.category_type] || u.category_type || 'Номери';
-    return sub ? { key: `${u.category_type}/${sub}`, label: `${cat} / ${sub}` }
-               : { key: u.category_type || 'all', label: cat };
+    const cat = u.category_name || u.category_type || 'Номери';
+    return sub ? { key: `${cat}/${sub}`, label: `${cat} / ${sub}` }
+               : { key: cat, label: cat };
   };
   const byKey = new Map<string, { key: string; label: string; units: Unit[] }>();
   for (const u of units) {
@@ -89,3 +95,29 @@ assertEveryUnitPlaced([
 assert.strictEqual(groupUnits([]).length, 0, 'no units → no groups');
 
 console.log('calendar grouping: every unit lands in exactly one non-empty group');
+
+// ─── The hotel's own vocabulary ─────────────────────────────────────────────
+// Two categories sharing a type must not collapse into one group, and neither
+// may be named after the type.
+const twoCategoriesSameType: Unit[] = [
+  { id: 'a1', category_type: 'resort', category_name: 'Корпус А', building_name: null, zone: null },
+  { id: 'b1', category_type: 'resort', category_name: 'Корпус Б', building_name: null, zone: null },
+];
+assertEveryUnitPlaced(twoCategoriesSameType, 'two categories, one type');
+const twoGroups = groupUnits(twoCategoriesSameType);
+assert.strictEqual(twoGroups.length, 2, 'two categories of one type stay two groups');
+assert.deepStrictEqual(
+  twoGroups.map((g) => g.label).sort(),
+  ['Корпус А', 'Корпус Б'],
+  'the group is named by the category, not by its type',
+);
+assert.ok(
+  !twoGroups.some((g) => /resort|glamping|camping/i.test(g.label)),
+  "no hotel may be shown another's vocabulary",
+);
+
+// A category with no name falls back to the type rather than disappearing.
+const unnamed: Unit[] = [{ id: 'x', category_type: 'camping', category_name: null }];
+assertEveryUnitPlaced(unnamed, 'category without a name');
+
+console.log('  ok  групи звуться словами готелю, а не типом');
