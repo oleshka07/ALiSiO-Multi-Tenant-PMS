@@ -147,7 +147,7 @@ export default function ChannelManagerPage() {
   const [channels, setChannels] = useState<ICalChannel[]>([]);
   const [sources, setSources] = useState<BookingSource[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
-  const [glampingUnits, setGlampingUnits] = useState<Unit[]>([]);
+  const [mappableUnits, setMappableUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showICalModal, setShowICalModal] = useState(false);
   const [editChannel, setEditChannel] = useState<ICalChannel | null>(null);
@@ -218,9 +218,14 @@ export default function ChannelManagerPage() {
       if (Array.isArray(ch)) setChannels(ch);
       if (Array.isArray(src)) setSources(src);
       if (Array.isArray(bld)) setBuildings(bld);
-      if (Array.isArray(units)) {
-        setGlampingUnits(units.filter((u: any) => u.category_type === 'glamping'));
-      }
+      // Every unit, not one category's.
+      //
+      // This filtered on `category_type === 'glamping'`, which is one
+      // customer's word. A hostel, a pension or a city hotel would open this
+      // screen and find the unit list EMPTY — no error, nothing in the log,
+      // just no way to map a room onto a channel. Which units may be mapped is
+      // the operator's decision, not a guess from a category name.
+      if (Array.isArray(units)) setMappableUnits(units);
       if (Array.isArray(conn)) setConnections(conn);
       if (sync && sync.queue) setSyncStats(sync);
     } catch (e) { console.error(e); }
@@ -956,7 +961,7 @@ export default function ChannelManagerPage() {
                 <label className="form-label">{tUi('Будинок (Glamping) *')}</label>
                 <select className="form-select" value={icalForm.unit_id} onChange={e => setICalForm(p => ({ ...p, unit_id: e.target.value }))}>
                   <option value="">{tUi('Оберіть...')}</option>
-                  {glampingUnits.map(u => <option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}
+                  {mappableUnits.map(u => <option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}
                 </select>
               </div>
             )}

@@ -508,8 +508,11 @@ export default function PricingPage() {
             <div className="form-group" style={{ flex: 2 }}>
               <label className="form-label">{t('Тип розміщення')}</label>
               <select className="form-select" value={selectedUnitType} onChange={e => setSelectedUnitType(e.target.value)}>
+                {/* The name alone. The emoji here was picked from one of three
+                    category words, so every hotel outside those three got a
+                    tent drawn beside its rooms. */}
                 {unitTypes.map(ut => (
-                  <option key={ut.id} value={ut.id}>{ut.category_type === 'glamping' ? '🏕️' : ut.category_type === 'resort' ? '🏨' : '⛺'} {ut.name}</option>
+                  <option key={ut.id} value={ut.id}>{ut.name}</option>
                 ))}
               </select>
             </div>

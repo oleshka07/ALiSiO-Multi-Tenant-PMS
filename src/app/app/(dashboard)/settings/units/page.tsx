@@ -94,6 +94,7 @@ interface DisplayGroup {
   categoryType: string;
   categoryName: string;
   categoryId: string;
+  categoryIcon?: string;
   subGroups: DisplaySubGroup[];
 }
 
@@ -208,17 +209,25 @@ export default function SettingsUnitsPage() {
 
   // ─── Build display groups ─────────────────────────────────
   const displayGroups: DisplayGroup[] = [];
-  const catOrder = ['glamping', 'resort', 'camping'];
-  const sortedCats = [...categories].sort((a, b) => catOrder.indexOf(a.type) - catOrder.indexOf(b.type));
+  // The hotel's own order, from the column it already has. This sorted by a
+  // fixed list of three words, so a category typed anything else landed at
+  // index -1 and jumped to the front — and two categories sharing a type were
+  // indistinguishable here for the same reason they merged in the calendar.
+  const sortedCats = [...categories].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
   for (const cat of sortedCats) {
-    const catUnits = units.filter(u => u.category_type === cat.type);
-    const catTypes = unitTypes.filter(ut => ut.category_type === cat.type);
+    const catUnits = units.filter(u => u.category_id === cat.id);
+    const catTypes = unitTypes.filter(ut => ut.category_id === cat.id);
 
-    // Group by building (for resort) or by unit_type
     const subGroups: DisplaySubGroup[] = [];
 
-    if (cat.type === 'resort') {
+    // Group by building when this category HAS buildings, by unit type when it
+    // does not. It used to ask `cat.type === 'resort'`, so a pension with two
+    // wings saw no wings at all, and a glamping site that named its clearings
+    // could not see them either. Whether buildings exist is a fact about this
+    // hotel; the category's type is a guess about it.
+    const hasBuildings = catUnits.some(u => u.building_id);
+    if (hasBuildings) {
       // Group by building
       const bldgMap = new Map<string, UnitFromAPI[]>();
       for (const u of catUnits) {
@@ -258,6 +267,7 @@ export default function SettingsUnitsPage() {
       categoryType: cat.type,
       categoryName: cat.name,
       categoryId: cat.id,
+      categoryIcon: cat.icon,
       subGroups,
     });
   }
@@ -559,7 +569,7 @@ export default function SettingsUnitsPage() {
                                 background: 'var(--bg-tertiary)', display: 'flex',
                                 alignItems: 'center', justifyContent: 'center', fontSize: 14,
                               }}>
-                                {group.categoryType === 'glamping' ? '🏕️' : group.categoryType === 'resort' ? '🏨' : '⛺'}
+                                {group.categoryIcon || '🛏️'}
                               </div>
                               <div>
                                 <div style={{ fontWeight: 500, fontSize: 13 }}>{unit.name}</div>
