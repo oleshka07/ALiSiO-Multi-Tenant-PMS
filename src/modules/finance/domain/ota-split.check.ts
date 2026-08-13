@@ -30,6 +30,11 @@ assert.strictEqual(linesGross(one), 91.05, 'the lines must add up to what the ch
 console.log('  ok  91,05 на одну особу → 76,05 / 12,00 / 3,00');
 
 // ─── Three people, one night: the reference invoice's own breakfast ─────────
+//
+// 188,05 is the CHANNEL amount; 143,05 is the accommodation LINE that comes
+// out of it. Worth stating because the two get confused: 143,05 is the number
+// printed on the reference invoice, so it reads like the input, and a fixture
+// written that way would assert a split of a figure that was already split.
 const three = splitOtaAmount({ totalGross: 188.05, persons: 3, nights: 1, ...DE })!;
 assert.deepStrictEqual(
   three.map((l) => [l.kind, l.quantity, l.totalGross]),
@@ -37,7 +42,28 @@ assert.deepStrictEqual(
   'three breakfasts, and the room is what is left',
 );
 assert.strictEqual(linesGross(three), 188.05, 'still adds up');
-console.log('  ok  троє на ніч → 143,05 / 36,00 / 9,00 — рядки еталонної фактури');
+console.log('  ok  188,05 каналу → 143,05 / 36,00 / 9,00 — рядки еталонної фактури');
+
+// ─── Two people, two nights: a real booking from the pilot's channel ────────
+//
+// The second acceptance case, and the one that catches a breakfast counted per
+// STAY instead of per person per night: four person-nights, not two.
+const stay = splitOtaAmount({ totalGross: 274.50, persons: 2, nights: 2, ...DE })!;
+assert.deepStrictEqual(
+  stay.map((l) => [l.kind, l.quantity, l.totalGross]),
+  [['lodging', 1, 214.50], ['breakfast_food', 4, 48], ['breakfast_drinks', 4, 12]],
+  '274,50 for two people over two nights → 214,50 / 48,00 / 12,00',
+);
+assert.strictEqual(linesGross(stay), 274.50, 'still adds up');
+
+// And what the invoice groups it into: everything at 7% together, drinks alone.
+const stayGroups = taxGroups(stay.map((l) => ({ gross: l.totalGross, vatRate: l.vatRate })));
+assert.deepStrictEqual(
+  stayGroups.map((g) => [g.vatRate, g.gross]),
+  [[19, 12], [7, 262.50]],
+  'the recapitulation the accountant sees — highest rate first, as on the paper',
+);
+console.log('  ok  274,50 на двох за дві ночі → 214,50 / 48,00 / 12,00, групи 262,50 і 12,00');
 
 // ─── Several nights: breakfast is charged per person PER NIGHT ─────────────
 const twoNights = splitOtaAmount({ totalGross: 300, persons: 2, nights: 2, ...DE })!;

@@ -142,6 +142,43 @@ assert.strictEqual(quoteStay({ checkIn: '2026-03-10', nights: 1, persons: 2, uni
   'and everything else falls back to the house price');
 console.log('  ok  ціна для типу перекриває загальнобудинкову, решта падає на неї');
 
+// ─── A category the discount must NOT reach ─────────────────────────────────
+//
+// The pilot has one: its Exklusivsuite is sold at one price and never
+// discounted, while every other category takes −5 or −10 from the third night.
+//
+// There is no "except this one" here on purpose — a rule that lists exceptions
+// grows an exception per hotel. The way to exclude a category is to write the
+// tiers PER CATEGORY and leave that one out. This asserts both halves: the
+// listed ones get it, the unlisted one gets nothing.
+//
+// The trap is the shortcut: one house-wide row instead of six looks equivalent
+// and quietly discounts the suite too. Second assertion is that trap, spelled
+// out, so nobody re-discovers it on an invoice.
+const PER_CATEGORY: LosTier[] = [
+  { unit_type_id: DZ, min_nights: 3, adjustment_gross: -10, persons: 2 },
+  { unit_type_id: V, min_nights: 3, adjustment_gross: -10, persons: 2 },
+];
+const EXCLUSIVE = 'ut_exclusive';
+const WITH_SUITE: PriceRow[] = [...MATRIX, { unit_type_id: EXCLUSIVE, persons: 2, price_gross: 159 }];
+
+assert.strictEqual(
+  quoteStay({ checkIn: '2026-03-10', nights: 3, persons: 2, unitTypeId: EXCLUSIVE, matrix: WITH_SUITE, losTiers: PER_CATEGORY }).total,
+  477, 'the category with no tier of its own keeps its price: 3 × 159',
+);
+assert.strictEqual(
+  quoteStay({ checkIn: '2026-03-10', nights: 3, persons: 2, unitTypeId: DZ, matrix: WITH_SUITE, losTiers: PER_CATEGORY }).total,
+  327, 'and the ones that are listed still get it',
+);
+assert.strictEqual(
+  quoteStay({
+    checkIn: '2026-03-10', nights: 3, persons: 2, unitTypeId: EXCLUSIVE, matrix: WITH_SUITE,
+    losTiers: [{ min_nights: 3, adjustment_gross: -10, persons: 2 }],
+  }).total,
+  447, 'one house-wide row instead of six DOES reach it — that is the trap',
+);
+console.log('  ok  категорія без свого тира знижки не отримує; загальнобудинковий рядок — отримує');
+
 // ─── Dates do not drift across a month, a year or a DST change ─────────────
 assert.strictEqual(addDays('2026-02-28', 1), '2026-03-01', 'February in a non-leap year');
 assert.strictEqual(addDays('2028-02-28', 1), '2028-02-29', 'and a leap year');
