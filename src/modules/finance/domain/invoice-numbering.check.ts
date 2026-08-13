@@ -35,6 +35,13 @@ const YEAR = 2026;
 
 /** The same claims, whichever engine answered. */
 async function claims(sql: Sql, engine: string, insertInvoice: (id: string, org: string, no: string) => Promise<void>) {
+  // ── A hotel that has said nothing keeps the numbers it always had ─────────
+  //
+  // Everything below this line runs with `invoice_series` EMPTY, which is the
+  // state of the live Czech customer. If configuring series ever changed the
+  // default shape, these assertions — written before the feature existed — are
+  // what fails.
+
   // Each organization starts its own sequence at 1.
   const a1 = await allocateInvoiceNumber(sql, A, 'house', YEAR);
   const b1 = await allocateInvoiceNumber(sql, B, 'house', YEAR);
@@ -59,6 +66,31 @@ async function claims(sql: Sql, engine: string, insertInvoice: (id: string, org:
     `${engine}: the counter did not advance`,
   );
 
+  // ── A hotel that HAS said what its numbers look like ──────────────────────
+  //
+  // B configures a plain running series — the German pilot's shape, no prefix
+  // and no year. A, which configured nothing, must be unaffected on the very
+  // next allocation.
+  await sql.run(
+    `INSERT INTO invoice_series (id, organization_id, code, channel, prefix, number_format, is_default)
+     VALUES (?, ?, ?, ?, ?, ?, TRUE)`,
+    ['s_b', B, 'RG', 'house', '', '{seq}'],
+  );
+  const bConfigured = await allocateInvoiceNumber(sql, B, 'house', YEAR);
+  assert.strictEqual(bConfigured.series, 'RG', `${engine}: B's series code was ignored`);
+  // 1, not 4: the counter is keyed on the SERIES, so naming a new one starts a
+  // new run. That is the correct behaviour — a series is a legal sequence and
+  // must not silently inherit another's position — but it is also the thing to
+  // know before a migrating hotel expects its numbering to continue. Continuing
+  // an old system's run means seeding invoice_counters deliberately, and that
+  // is a decision for the customer's accountant.
+  assert.strictEqual(bConfigured.invoiceNumber, '1', `${engine}: B's template was ignored`);
+
+  assert.strictEqual(
+    (await allocateInvoiceNumber(sql, A, 'house', YEAR)).invoiceNumber, '2026-003',
+    `${engine}: configuring B changed A's numbering`,
+  );
+
   // Series are still independent within an organization.
   assert.strictEqual((await allocateInvoiceNumber(sql, A, 'booking', YEAR)).invoiceNumber, 'BKG-2026-001');
 
@@ -79,6 +111,13 @@ async function claims(sql: Sql, engine: string, insertInvoice: (id: string, org:
   const db = new Database(':memory:');
   const sql = sqliteSql(db);
   await sql.exec(`
+    CREATE TABLE invoice_series (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, code TEXT NOT NULL,
+      channel TEXT, prefix TEXT NOT NULL DEFAULT '',
+      number_format TEXT NOT NULL DEFAULT '{prefix}{year}-{seq:3}',
+      reset_yearly BOOLEAN NOT NULL DEFAULT TRUE, is_default BOOLEAN NOT NULL DEFAULT FALSE,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    );
     CREATE TABLE invoice_counters (
       organization_id TEXT NOT NULL, series TEXT NOT NULL, year INTEGER NOT NULL,
       last_no INTEGER NOT NULL DEFAULT 0,
@@ -116,6 +155,13 @@ async function claims(sql: Sql, engine: string, insertInvoice: (id: string, org:
   const sql = postgresSql({ ...conn, connect: async () => conn });
 
   await sql.exec(`
+    CREATE TABLE invoice_series (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, code TEXT NOT NULL,
+      channel TEXT, prefix TEXT NOT NULL DEFAULT '',
+      number_format TEXT NOT NULL DEFAULT '{prefix}{year}-{seq:3}',
+      reset_yearly BOOLEAN NOT NULL DEFAULT TRUE, is_default BOOLEAN NOT NULL DEFAULT FALSE,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    );
     CREATE TABLE invoice_counters (
       organization_id TEXT NOT NULL, series TEXT NOT NULL, year BIGINT NOT NULL,
       last_no BIGINT NOT NULL DEFAULT 0,

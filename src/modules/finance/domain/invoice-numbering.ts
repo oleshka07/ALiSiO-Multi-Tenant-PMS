@@ -18,6 +18,7 @@
  * locked, numbers are frozen — corrections must go through a storno (credit note).
  */
 import type { Sql } from '../../../core/db/async.ts';
+import { formatInvoiceNumber, DEFAULT_TEMPLATE } from './invoice-number-format.ts';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 interface SeriesDef { series: string; prefix: string; }
@@ -34,6 +35,38 @@ export function seriesForChannel(channel?: string | null): SeriesDef {
   return SERIES[(channel || 'house').toLowerCase()] || SERIES.house;
 }
 
+/**
+ * The organization's own series for this channel, if it has configured one.
+ *
+ * The map above is one hotel's arrangement with its accountant. A hotel that
+ * has said what its series are gets those; a hotel that has not keeps the map,
+ * unchanged, down to the character — which is what makes this safe to add
+ * while a customer is issuing invoices through it.
+ *
+ * Returns null rather than a default so the caller can tell "configured" from
+ * "not configured" and fall back deliberately.
+ */
+async function configuredSeries(
+  sql: Sql,
+  organizationId: string,
+  channel?: string | null,
+): Promise<(SeriesDef & { numberFormat: string }) | null> {
+  const ch = (channel || 'house').toLowerCase();
+  const row = await sql.row<any>(
+    `SELECT code, prefix, number_format FROM invoice_series
+      WHERE organization_id = ? AND (channel = ? OR is_default = TRUE)
+      ORDER BY CASE WHEN channel = ? THEN 0 ELSE 1 END, sort_order
+      LIMIT 1`,
+    [organizationId, ch, ch],
+  ).catch(() => undefined); // table absent on a database that has not migrated
+  if (!row) return null;
+  return {
+    series: row.code,
+    prefix: row.prefix ?? '',
+    numberFormat: row.number_format || DEFAULT_TEMPLATE,
+  };
+}
+
 export interface AllocatedNumber { invoiceNumber: string; series: string; seqNo: number; }
 
 /**
@@ -47,7 +80,9 @@ export async function allocateInvoiceNumber(
   channel: string,
   year: number,
 ): Promise<AllocatedNumber> {
-  const { series, prefix } = seriesForChannel(channel);
+  const configured = await configuredSeries(sql, organizationId, channel);
+  const { series, prefix } = configured ?? seriesForChannel(channel);
+  const template = configured?.numberFormat ?? DEFAULT_TEMPLATE;
   // Increment and read in one transaction: two requests must never come away
   // with the same number.
   const seqNo = await sql.tx(async (t) => {
@@ -70,7 +105,7 @@ export async function allocateInvoiceNumber(
     );
     return row!.last_no;
   });
-  return { invoiceNumber: `${prefix}${year}-${String(seqNo).padStart(3, '0')}`, series, seqNo };
+  return { invoiceNumber: formatInvoiceNumber(template, { prefix, year, seq: seqNo }), series, seqNo };
 }
 
 export async function periodStatus(sql: Sql, organizationId: string, series: string, month: string): Promise<'open' | 'locked'> {

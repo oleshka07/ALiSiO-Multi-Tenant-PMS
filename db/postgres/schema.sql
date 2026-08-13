@@ -941,6 +941,21 @@ CREATE TABLE "invoice_periods" (
   CHECK (status IN ('open','locked'))
 );
 
+CREATE TABLE "invoice_series" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT,
+  "code" TEXT NOT NULL,
+  "channel" TEXT,
+  "prefix" TEXT DEFAULT '' NOT NULL,
+  "number_format" TEXT DEFAULT '{prefix}{year}-{seq:3}' NOT NULL,
+  "reset_yearly" BIGINT DEFAULT 1 NOT NULL,
+  "is_default" BOOLEAN DEFAULT false NOT NULL,
+  "sort_order" BIGINT DEFAULT 0 NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("organization_id", "code")
+);
+
 CREATE TABLE "invoices" (
   "id" TEXT NOT NULL,
   "organization_id" TEXT NOT NULL,
@@ -1858,6 +1873,8 @@ ALTER TABLE "invoice_counters" ADD CONSTRAINT "fk_invoice_counters_organization_
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "invoice_periods" ADD CONSTRAINT "fk_invoice_periods_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "invoice_series" ADD CONSTRAINT "fk_invoice_series_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "invoices" ADD CONSTRAINT "fk_invoices_fin_operation_id_1"
   FOREIGN KEY ("fin_operation_id") REFERENCES "fin_operations" ("id") ON DELETE SET NULL;
 ALTER TABLE "invoices" ADD CONSTRAINT "fk_invoices_reservation_id_2"
@@ -2089,6 +2106,8 @@ CREATE INDEX "idx_gift_cards_status" ON "gift_cards" ("status");
 CREATE INDEX "idx_gcm_res" ON "guest_chat_messages" ("reservation_id");
 CREATE INDEX "idx_guests_name" ON "guests" ("last_name", "first_name");
 CREATE INDEX "idx_guests_org" ON "guests" ("organization_id");
+CREATE INDEX "idx_invoice_series_channel" ON "invoice_series" ("organization_id", "channel");
+CREATE UNIQUE INDEX "idx_invoice_series_code" ON "invoice_series" ("organization_id", "code");
 CREATE INDEX "idx_invoices_issued" ON "invoices" ("issued_at");
 CREATE INDEX "idx_invoices_number" ON "invoices" ("organization_id", "invoice_number");
 CREATE INDEX "idx_invoices_reservation" ON "invoices" ("reservation_id");
@@ -2167,6 +2186,7 @@ CREATE INDEX IF NOT EXISTS "idx_gift_cards_org" ON "gift_cards" ("organization_i
 CREATE INDEX IF NOT EXISTS "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoice_counters_org" ON "invoice_counters" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoice_periods_org" ON "invoice_periods" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_invoice_series_org" ON "invoice_series" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoices_org" ON "invoices" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_organization_features_org" ON "organization_features" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_partner_reports_org" ON "partner_reports" ("organization_id");
@@ -2248,6 +2268,8 @@ ALTER TABLE "guests" ALTER COLUMN "organization_id"
 ALTER TABLE "invoice_counters" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "invoice_periods" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "invoice_series" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "invoices" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2580,6 +2602,12 @@ CREATE POLICY "invoice_counters_tenant" ON "invoice_counters"
 ALTER TABLE "invoice_periods" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "invoice_periods" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "invoice_periods_tenant" ON "invoice_periods"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "invoice_series" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "invoice_series" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "invoice_series_tenant" ON "invoice_series"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

@@ -5012,6 +5012,47 @@ function runMigrations(database: any) {
     console.error('[DB] organization_features migration:', e.message);
   }
 
+  // --- Migration: create invoice_series ---
+  //
+  // Which runs of invoice numbers this organization keeps, and what each one
+  // looks like.
+  //
+  // The five series and their prefixes lived in a constant in
+  // finance/domain/invoice-numbering.ts: booking → BKG-, airbnb → AIR-,
+  // teya → TEYA-, cash/house → no prefix. That is one hotel's arrangement with
+  // its accountant, written into the product. The German pilot's numbers look
+  // nothing like it.
+  //
+  // A row here overrides the built-in map for that organization; an
+  // organization with no rows keeps behaving exactly as before, which is what
+  // makes this safe to land while a customer is issuing invoices through it.
+  //
+  // `channel` is what maps a booking's source onto a series ('booking',
+  // 'airbnb', 'house'…). Several channels may share one series — that is a
+  // decision the hotel makes, not us.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS invoice_series (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        code            TEXT NOT NULL,
+        channel         TEXT,
+        prefix          TEXT NOT NULL DEFAULT '',
+        number_format   TEXT NOT NULL DEFAULT '{prefix}{year}-{seq:3}',
+        reset_yearly    INTEGER NOT NULL DEFAULT 1,
+        is_default      INTEGER NOT NULL DEFAULT 0,
+        sort_order      INTEGER NOT NULL DEFAULT 0,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    // One series per code per hotel. Two rows with the same code would mean two
+    // counters answering to one name, i.e. duplicate invoice numbers.
+    database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_invoice_series_code ON invoice_series(organization_id, code)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_invoice_series_channel ON invoice_series(organization_id, channel)');
+  } catch (e: any) {
+    console.error('[DB] invoice_series migration:', e.message);
+  }
+
   // --- Migration: create fin_tax_rates ---
   //
   // What VAT this organization charges, and since when.

@@ -151,6 +151,7 @@ SET LOCAL app.organization_id = '<org id>';
 | `0008-a-link-is-the-whole-credential.sql` | `partner_reports` (звіт за посиланням) + `app.guest_token` → `app.public_token`: одне налаштування на обидві таблиці, які відкриваються токеном |
 | `0009-services-stop-naming-one-hotels-categories.sql` | знімає `CHECK (available_for IN ('glamping','resort','camping','all'))` — словник бізнес-слів одного клієнта в схемі, через який німецький готель чи хостел не міг привʼязати послугу до власної категорії |
 | `0010-vat-rates-with-dates.sql` | `fin_tax_rates` — ставки ПДВ організації з датами дії. Ставка обирається за датою послуги і записується на нарахування числом; таблиця потрібна, щоб обрати, а не щоб перерахувати старий документ |
+| `0011-invoice-series-are-configuration.sql` | `invoice_series` — серії нумерації і форма номера як налаштування організації. Порожня таблиця = поведінка не змінюється ні на символ |
 
 **Накочує їх деплой.** `deploy/deploy.sh` викликає `deploy/migrate.sh` між
 збіркою і рестартом: журнал застосованого лежить у таблиці
