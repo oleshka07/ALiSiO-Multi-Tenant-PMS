@@ -79,17 +79,19 @@ credentials unrecoverable — back it up somewhere other than the server.
 ## The flow
 
 ```
-work → merge into beta → ./deploy/deploy.sh beta → check on beta.<domain>
-                       → merge into main → ./deploy/deploy.sh prod
+work → merge into beta → push → beta deploys itself → check on beta.<domain>
+                              → merge into main → push → prod deploys itself
 ```
 
 ```bash
 git checkout beta && git merge --no-ff feature/x && git push origin beta
-ssh server 'cd /opt/alisio && ./deploy/deploy.sh beta'
-# verify, then:
+# checks go green, beta updates on its own; verify there, then:
 git checkout main && git merge --no-ff beta && git push origin main
-ssh server 'cd /opt/alisio && ./deploy/deploy.sh prod'
 ```
+
+No `ssh` step in either line any more — that is the point of
+`.github/workflows/deploy.yml`. The manual command still exists and is the
+same one; it is the fallback, not the flow.
 
 `deploy.sh` refuses to run without a valid 64-hex `APP_SECRET_KEY`, archives the
 data volume to `deploy/backups/` before touching anything, rebuilds, and waits
@@ -98,8 +100,7 @@ container logs and exits non-zero.
 
 ## How the server gets the code
 
-There is no webhook and no CI. The server holds its own clone at `/opt/alisio`
-and `deploy.sh` pulls into it:
+The server holds its own clone at `/opt/alisio` and `deploy.sh` pulls into it:
 
 ```bash
 git fetch origin "$BRANCH"
@@ -116,9 +117,11 @@ server disappears at the next deploy, silently and without a copy. Edit
 locally, push, deploy. `deploy/env.beta`, `deploy/env.prod` and
 `deploy/backups/` survive because they are not tracked.
 
-**Pushing to GitHub deploys nothing.** The branch moves; the server keeps
-serving the previous build until someone runs the command. So a push is safe
-at any time, and the deploy is a separate, deliberate act:
+**Pushing to GitHub now deploys** — see «Деплой автоматичний» below. A green
+`checks` run on `main` deploys prod; on `beta`, beta. This paragraph used to
+say the opposite, and said it for three days after it stopped being true.
+
+Running it by hand still works and does exactly the same thing:
 
 ```bash
 ssh <server> 'cd /opt/alisio && ./deploy/deploy.sh beta'
@@ -161,9 +164,10 @@ Both beta and prod now run on Postgres — moved 2026-08-07/08 with
 data is copied, migrates, and only then writes `DB_DRIVER` into the env file.
 
 Migrations for a database that already exists live in
-`db/postgres/migrations/`, numbered, re-runnable, applied with `psql -f`. The
-schema file is for a fresh database; it is not a migration. See
-[db/postgres/README.md](../db/postgres/README.md).
+`db/postgres/migrations/`, numbered and re-runnable. `deploy.sh` applies the
+pending ones itself through `deploy/migrate.sh` — see «Міграції накочуються
+самі» below. The schema file is for a fresh database; it is not a migration.
+See [db/postgres/README.md](../db/postgres/README.md).
 
 ## Rollback
 
@@ -195,6 +199,12 @@ docker run --rm -v alisio-prod_app-data:/data -v "$PWD/deploy/backups:/b" \
 
 ## Beta data
 
+Beta follows the `beta` branch and deploys itself the same way prod does, so
+it is only as current as that branch. **Merge into `beta` before `main`** —
+that ordering is the entire value of having beta, and it is easy to skip once
+prod deploys itself: between 5 and 13 August beta sat ninety-six commits
+behind while every change went straight to production.
+
 Beta starts empty and seeds the demo tenant. To reproduce a production problem,
 copy the backup across — and remember it then holds real guest data, which is
 why the beta host is served with `X-Robots-Tag: noindex` and sits behind the
@@ -223,9 +233,29 @@ same login.
 
 ## Деплой автоматичний
 
-`.github/workflows/deploy.yml`: коли `checks` зеленіє на `main`, GitHub
-підключається до сервера і запускає той самий `./deploy/deploy.sh prod`. Не
-другий шлях деплою — той самий, викликаний машиною замість того, хто згадав.
+`.github/workflows/deploy.yml`: коли `checks` зеленіє, GitHub підключається до
+сервера і запускає той самий `./deploy/deploy.sh`. Не другий шлях деплою — той
+самий, викликаний машиною замість того, хто згадав.
+
+**Гілка вирішує середовище**, і це єдине правило:
+
+```
+main  →  prod
+beta  →  beta
+```
+
+Ні вибору, ні поля вводу — отже, і помилитися вибором не можна. Це те саме,
+що `deploy.sh` уже робить сам: `beta` викачує гілку `beta`, `prod` — `main`.
+Дispatch руками працює так само: з якої гілки запустили, те середовище й
+поїде. З гілки, за якою немає середовища, job відмовляється — розкотити
+feature-гілку в одне з двох наявних означало б затерти те, чим хтось
+користується.
+
+Обидва середовища деплояться з одного файлу й на один тригер **навмисно**.
+Бета існує, щоб на ній пробували зміну до того, як її побачить готель. Це
+працює, лише поки бета СВІЖА: бета, що відстала на дев'яносто шість комітів,
+не перевіряє нічого і при цьому тихо стверджує, що перевірила. Саме так вона
+й простояла з 5 по 13 серпня.
 
 Після `checks`, а не на push: `on: push` викотив би комміт, чиї типи ще не
 скомпілювались, і зламана збірка вже роздавалася б, поки CI про це доповість.
@@ -238,10 +268,34 @@ Actions), інакше job чесно скаже, чого бракує, і зу
 | `DEPLOY_HOST` | сервер |
 | `DEPLOY_USER` | ssh-користувач, якому належить робоча копія |
 | `DEPLOY_SSH_KEY` | приватний ключ; публічну половину — в `authorized_keys`. Заведіть окремий (`ssh-keygen -t ed25519 -C github-actions -N ""`), а не особистий: цей можна відкликати, не замкнувши себе |
-| `DEPLOY_PATH` | абсолютний шлях робочої копії на сервері |
+| `DEPLOY_PATH` | абсолютний шлях **теки** робочої копії — не `deploy/deploy.sh`. Помилка виглядає як `cd: ***: Not a directory` |
 
-Руками — `Actions → deploy → Run workflow`, або на самому сервері
-`./deploy/deploy.sh prod`. Обидва роблять те саме.
+Секрети спільні для обох середовищ: один сервер, одна робоча копія, два
+compose-проєкти. Різняться `deploy/env.prod` і `deploy/env.beta`, і вони
+ніколи не залишають сервер.
+
+Руками — `Actions → deploy → Run workflow` з потрібної гілки, або на самому
+сервері `./deploy/deploy.sh prod|beta`. Обидва роблять те саме.
+
+### Міграції накочуються самі
+
+`deploy.sh` між збіркою і перезапуском викликає `deploy/migrate.sh`, який
+дивиться в реєстр `schema_migrations` і застосовує те, чого база ще не бачила,
+по порядку імен. Кожен файл — власна транзакція і написаний перезапускним, тож
+найгірше від зайвого прогону — марна робота, не шкода.
+
+Це не було кроком, який людина мала пам'ятати, бо кожна пропущена міграція
+падає **беззвучно**: 0005 змушує чотирнадцять INSERT-ів відскакувати від
+політики, 0007 віддає весь гостьовий портал у 404, 0008 робить те саме, щойно
+новий код починає ставити `app.public_token` проти бази, яка ще перевіряє
+`app.guest_token`. Ніде не пишеться помилка — застосунок просто поводиться
+так, ніби фічі не існує.
+
+Подивитись, що чекає, нічого не змінюючи:
+
+```bash
+./deploy/migrate.sh prod --list
+```
 
 ---
 
