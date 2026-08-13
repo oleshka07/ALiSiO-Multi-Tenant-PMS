@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { getSql } from '@core/db/async';
 import { withPermission, type Actor } from '@core/auth/session';
-import { requirePropertyId } from '@core/auth/tenant-context';
+import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 import { buildGiftCode, getGiftCardTemplate, calcExpiresAt, GIFT_CARD_TEMPLATES } from '@/modules/widget/domain/gift-card-builder';
 
 /**
@@ -117,7 +117,7 @@ export const POST = await withPermission('manage_bookings', async (req: Request,
     } catch (e: unknown) {
       return NextResponse.json(
         { error: e instanceof Error ? e.message : 'property_id or valid site_id is required' },
-        { status: 400 },
+        { status: propertyErrorStatus(e) },
       );
     }
 

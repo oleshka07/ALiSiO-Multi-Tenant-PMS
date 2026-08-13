@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as unitTypesRepo from '../data/unit-types.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
-import { requirePropertyId } from '@core/auth/tenant-context';
+import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 
 /**
  * The organization comes from the session, never from the request. A null from
@@ -48,7 +48,12 @@ export const createUnitType = withPermission('manage_properties', async (request
     try {
       property_id = await requirePropertyId(body.property_id);
     } catch (e) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : 'Property not found' }, { status: 400 });
+      // 404 when the property is not this tenant's, 400 when the request
+      // itself cannot be answered — see propertyErrorStatus.
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : 'Property not found' },
+        { status: propertyErrorStatus(e) },
+      );
     }
 
     const created = await unitTypesRepo.createUnitType(actor.organizationId, {

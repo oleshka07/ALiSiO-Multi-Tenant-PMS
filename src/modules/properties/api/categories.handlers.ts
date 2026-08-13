@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as categoriesRepo from '../data/categories.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
-import { requirePropertyId } from '@core/auth/tenant-context';
+import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 
 /**
  * The organization comes from the session, never from the request. A null from
@@ -37,11 +37,20 @@ export const createCategory = withPermission('manage_properties', async (request
     try {
       property_id = await requirePropertyId(body.property_id);
     } catch (e) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : 'Property not found' }, { status: 400 });
+      // 404 when the property is not this tenant's, 400 when the request
+      // itself cannot be answered — see propertyErrorStatus.
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : 'Property not found' },
+        { status: propertyErrorStatus(e) },
+      );
     }
 
+    // The hotel's own word, not a list of ours — see validateCategoryType.
     if (!categoriesRepo.validateCategoryType(type)) {
-      return NextResponse.json({ error: 'type must be glamping, resort, or camping' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'type must be a single word of up to 32 characters' },
+        { status: 400 },
+      );
     }
 
     const created = await categoriesRepo.createCategory(actor.organizationId, {

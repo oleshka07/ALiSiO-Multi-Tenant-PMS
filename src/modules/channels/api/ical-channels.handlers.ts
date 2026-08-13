@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
-import { requirePropertyId } from '@core/auth/tenant-context';
+import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 import { getSql } from '@core/db/async';
 import { withActor, withPermission } from '@core/auth/session';
 
@@ -72,7 +72,7 @@ export const createIcalChannel = withPermission('manage_properties', async (requ
     try {
       propertyId = await requirePropertyId(body.property_id);
     } catch (e: any) {
-      return NextResponse.json({ error: e.message }, { status: 400 });
+      return NextResponse.json({ error: e.message }, { status: propertyErrorStatus(e) });
     }
 
     const id = `ich_${Date.now()}`;

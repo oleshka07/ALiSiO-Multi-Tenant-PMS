@@ -86,6 +86,42 @@ export async function requireOrganizationId(): Promise<string> {
 }
 
 /**
+ * The caller named a property that is not this organization's — or does not
+ * exist at all. The two are deliberately the same answer: telling them apart
+ * turns the endpoint into a way to ask whether an id exists somewhere in the
+ * system, which is how a competitor counts your customers.
+ *
+ * A class rather than a message, because the answer differs: this is a 404,
+ * while "you have several properties, say which" is a 400. Handlers used to
+ * tell them apart by comparing the text of the message, and every one of them
+ * answered 400 to both.
+ */
+export class PropertyNotFound extends Error {
+  constructor() {
+    super('Property not found');
+    this.name = 'PropertyNotFound';
+  }
+}
+
+/**
+ * What to answer when requirePropertyId throws.
+ *
+ * 404 for a property that is not this tenant's — the same answer the
+ * repositories already give for a row that is not theirs, so a caller cannot
+ * tell "someone else's" from "no such thing". 400 for the rest, which are
+ * statements about the REQUEST: this organization has no property yet, or has
+ * several and did not say which.
+ *
+ * `instanceof` is not used: this module is loaded more than once in a Next
+ * build (server bundle, route bundles), and two copies of a class are two
+ * different classes — the check would silently fall through to 400 in exactly
+ * the case that matters.
+ */
+export function propertyErrorStatus(e: unknown): 400 | 404 {
+  return e instanceof Error && e.name === 'PropertyNotFound' ? 404 : 400;
+}
+
+/**
  * The property to act on. The same "first row in the table" shortcut existed
  * for properties, which is worse than for organizations: a hotel group with a
  * second property gets its bookings, iCal channels and booking sites attached
@@ -102,7 +138,7 @@ export async function requirePropertyId(explicitId?: string | null): Promise<str
 
   if (explicitId) {
     const owned = await sql.row<any>('SELECT 1 FROM properties WHERE id = ? AND organization_id = ?', [explicitId, organizationId]);
-    if (!owned) throw new Error('Property not found');
+    if (!owned) throw new PropertyNotFound();
     return explicitId;
   }
 

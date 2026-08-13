@@ -2,7 +2,12 @@
 // ALiSiO ERP — Database Types
 // ============================================================
 
-export type CategoryType = 'glamping' | 'resort' | 'camping';
+/**
+ * The hotel's own word for what a category is — 'rooms', 'Ferienwohnung',
+ * 'dorm', 'camping'. Was a union of three, which is one customer's vocabulary
+ * as a type: see validateCategoryType in properties/data/categories.repo.ts.
+ */
+export type CategoryType = string;
 
 export type BookingStatus =
   | 'draft'

@@ -1,8 +1,23 @@
 import { getSql } from '@core/db/async';
 import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope';
 
-const VALID_TYPES = ['glamping', 'resort', 'camping', 'facility', 'area', 'zone'] as const;
-export type CategoryTypeValue = typeof VALID_TYPES[number];
+/**
+ * A category's `type` is the hotel's own word for what kind of thing this is.
+ *
+ * It used to be a closed list — glamping, resort, camping, later facility, area
+ * and zone. That is one customer's business vocabulary, in a validator, and it
+ * bites the moment a hotel says something else: a German pension entering
+ * "Zimmer" or "Ferienwohnung", a hostel entering "dorm", got a 400 telling them
+ * their own words are wrong. NAMING.md §9 forbids exactly this, and the
+ * database dropped its CHECK already (see the categories rebuild in db.ts);
+ * only this list was left, refusing values that provisioning itself writes —
+ * every hotel is created with type 'rooms'.
+ *
+ * So the type is free text now, and the only rules left are the ones that are
+ * about storage rather than about business: it must be there, it must be short,
+ * and it must be a single token, because it is used as a grouping key.
+ */
+export type CategoryTypeValue = string;
 
 /**
  * Categories hang off a property and carry no organization_id of their own, so
@@ -39,8 +54,9 @@ export interface CreateCategoryInput {
   show_in_booking?: number;
 }
 
+/** A grouping key: present, short, one token. Not a list of allowed businesses. */
 export function validateCategoryType(type: string): type is CategoryTypeValue {
-  return VALID_TYPES.includes(type as CategoryTypeValue);
+  return typeof type === 'string' && /^[\p{L}\p{N}_-]{1,32}$/u.test(type);
 }
 
 export async function createCategory(organizationId: string, input: CreateCategoryInput) {

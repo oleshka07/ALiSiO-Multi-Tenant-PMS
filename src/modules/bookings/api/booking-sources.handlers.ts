@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
-import { requireOrganizationId, requirePropertyId } from '@core/auth/tenant-context';
+import { requireOrganizationId, requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 import { withActor } from '@core/auth/session';
 
 export const listBookingSources = withActor(async () => {
@@ -36,7 +36,7 @@ export const createBookingSource = withActor(async (request: Request) => {
     try {
       propertyId = await requirePropertyId(body.property_id);
     } catch (e: any) {
-      return NextResponse.json({ error: e.message }, { status: 400 });
+      return NextResponse.json({ error: e.message }, { status: propertyErrorStatus(e) });
     }
 
     // A source code only has to be unique inside the property that owns it.

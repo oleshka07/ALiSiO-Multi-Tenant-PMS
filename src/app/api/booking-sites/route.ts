@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
-import { requirePropertyId, runWithOrganization } from '@core/auth/tenant-context';
+import { requirePropertyId, propertyErrorStatus, runWithOrganization } from '@core/auth/tenant-context';
 
 // GET /api/booking-sites — list all sites for property
 export async function GET(_req: NextRequest) {
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     try {
       propId = await requirePropertyId(property_id);
     } catch (e: any) {
-      return NextResponse.json({ error: e.message }, { status: 400 });
+      return NextResponse.json({ error: e.message }, { status: propertyErrorStatus(e) });
     }
 
     const defaultDesignConfig = JSON.stringify({
