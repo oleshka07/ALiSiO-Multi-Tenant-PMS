@@ -162,6 +162,15 @@ export default function SettingsUnitsPage() {
 
   // Edit Unit modal
   const [editUnitModal, setEditUnitModal] = useState(false);
+  // Rooms come in ranges, not one by one. A 31-room hotel entered through the
+  // single-room form is 31 modals; the API has taken `prefix/from/to` all along
+  // and no screen ever called it.
+  const [bulkModal, setBulkModal] = useState(false);
+  const [bulkForm, setBulkForm] = useState({
+    category_id: '', unit_type_id: '', building_id: '',
+    prefix: '', from: 1, to: 10, beds: 2, zone: '',
+  });
+  const [bulkResult, setBulkResult] = useState('');
   const [editingUnit, setEditingUnit] = useState<UnitFromAPI | null>(null);
   const [unitForm, setUnitForm] = useState({ name: '', code: '', beds: 0, zone: '', unit_type_id: '', building_id: '', room_status: 'available', cleaning_status: 'clean', lock_code: '', entry_photo_url: '' });
   const [saving, setSaving] = useState(false);
@@ -292,6 +301,59 @@ export default function SettingsUnitsPage() {
     });
     setError('');
     setEditUnitModal(true);
+  };
+
+  const openBulk = () => {
+    setBulkForm({
+      category_id: categories[0]?.id || '',
+      unit_type_id: '', building_id: '',
+      prefix: '', from: 1, to: 10, beds: 2, zone: '',
+    });
+    setBulkResult('');
+    setError('');
+    setBulkModal(true);
+  };
+
+  const handleBulkCreate = async () => {
+    if (!bulkForm.category_id || !bulkForm.unit_type_id) {
+      setError(tUi('Оберіть категорію і тип номера'));
+      return;
+    }
+    if (bulkForm.to < bulkForm.from) {
+      setError(tUi('Кінець діапазону менший за початок'));
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      // No property_id: the server resolves this organization's own.
+      const res = await fetch('/api/units', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bulk: true,
+          category_id: bulkForm.category_id,
+          unit_type_id: bulkForm.unit_type_id,
+          building_id: bulkForm.building_id || null,
+          prefix: bulkForm.prefix,
+          from: Number(bulkForm.from),
+          to: Number(bulkForm.to),
+          beds: Number(bulkForm.beds),
+          zone: bulkForm.zone || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || tUi('Помилка збереження'));
+        return;
+      }
+      setBulkResult(`${tUi('Створено:')} ${data.created}`);
+      fetchData();
+    } catch (e: any) {
+      setError(e.message || tUi('Помилка мережі'));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSaveUnit = async () => {
@@ -487,6 +549,9 @@ export default function SettingsUnitsPage() {
             <h2 className="page-title">{tUi('Управління юнітами')}</h2>
             <div className="page-subtitle">{tUi('Всього:')} {totalUnits} {tUi('юнітів ·')} {unitTypes.length} {tUi('типів ·')} {categories.length} {tUi('категорій')}</div>
           </div>
+          <button className="btn btn-primary" onClick={openBulk} disabled={categories.length === 0 || unitTypes.length === 0}>
+            <Plus size={14} /> {tUi('Додати номери діапазоном')}
+          </button>
         </div>
 
         {/* Unit Types summary */}
@@ -706,6 +771,124 @@ export default function SettingsUnitsPage() {
             />
             <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 6 }}>
               {tUi('💡 Якщо порожньо — буде використано код/фото з налаштувань типу кімнати (Guest Page Settings)')}
+            </div>
+          </div>
+        </Modal>
+
+        {/* Bulk rooms — the shape a hotel is actually entered in */}
+        <Modal
+          open={bulkModal}
+          onClose={() => setBulkModal(false)}
+          title={tUi('Додати номери діапазоном')}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setBulkModal(false)}>{tUi('Закрити')}</button>
+              <button className="btn btn-primary" onClick={handleBulkCreate} disabled={saving}>
+                {saving ? <Loader2 size={14} className="spin" /> : <Save size={14} />} {tUi('Створити')}
+              </button>
+            </>
+          }
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            {error && (
+              <div className="alert alert-danger" style={{ fontSize: 13 }}>
+                <AlertTriangle size={14} /> {error}
+              </div>
+            )}
+            {bulkResult && (
+              <div className="alert alert-success" style={{ fontSize: 13 }}>{bulkResult}</div>
+            )}
+
+            <div className="form-group">
+              <label className="form-label">{tUi('Категорія')}</label>
+              <select
+                className="form-select"
+                value={bulkForm.category_id}
+                onChange={(e) => setBulkForm((p) => ({ ...p, category_id: e.target.value, unit_type_id: '', building_id: '' }))}
+              >
+                <option value="">—</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.icon ? `${c.icon} ` : ''}{c.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{tUi('Тип номера')}</label>
+              <select
+                className="form-select"
+                value={bulkForm.unit_type_id}
+                onChange={(e) => setBulkForm((p) => ({ ...p, unit_type_id: e.target.value }))}
+              >
+                <option value="">—</option>
+                {unitTypes.filter((ut) => !bulkForm.category_id || ut.category_id === bulkForm.category_id)
+                  .map((ut) => <option key={ut.id} value={ut.id}>{ut.name}</option>)}
+              </select>
+            </div>
+
+            {/* Optional: a hotel in one building never opens this. */}
+            {buildings.filter((b) => !bulkForm.category_id || b.category_id === bulkForm.category_id).length > 0 && (
+              <div className="form-group">
+                <label className="form-label">{tUi('Будівля (необовʼязково)')}</label>
+                <select
+                  className="form-select"
+                  value={bulkForm.building_id}
+                  onChange={(e) => setBulkForm((p) => ({ ...p, building_id: e.target.value }))}
+                >
+                  <option value="">{tUi('Без будівлі')}</option>
+                  {buildings.filter((b) => !bulkForm.category_id || b.category_id === bulkForm.category_id)
+                    .map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
+              <div className="form-group">
+                <label className="form-label">{tUi('Префікс')}</label>
+                <input
+                  className="form-input"
+                  value={bulkForm.prefix}
+                  placeholder="2"
+                  onChange={(e) => setBulkForm((p) => ({ ...p, prefix: e.target.value }))}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">{tUi('від')}</label>
+                <input
+                  className="form-input" type="number" value={bulkForm.from}
+                  onChange={(e) => setBulkForm((p) => ({ ...p, from: Number(e.target.value) }))}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">{tUi('до')}</label>
+                <input
+                  className="form-input" type="number" value={bulkForm.to}
+                  onChange={(e) => setBulkForm((p) => ({ ...p, to: Number(e.target.value) }))}
+                />
+              </div>
+            </div>
+
+            <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+              {tUi('Буде створено:')} <b>{Math.max(0, Number(bulkForm.to) - Number(bulkForm.from) + 1)}</b>
+              {' — '}
+              {bulkForm.prefix}{bulkForm.from} … {bulkForm.prefix}{bulkForm.to}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
+              <div className="form-group">
+                <label className="form-label">{tUi('Ліжок')}</label>
+                <input
+                  className="form-input" type="number" value={bulkForm.beds}
+                  onChange={(e) => setBulkForm((p) => ({ ...p, beds: Number(e.target.value) }))}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">{tUi('Поверх / зона (необовʼязково)')}</label>
+                <input
+                  className="form-input" value={bulkForm.zone}
+                  onChange={(e) => setBulkForm((p) => ({ ...p, zone: e.target.value }))}
+                />
+              </div>
             </div>
           </div>
         </Modal>
