@@ -621,6 +621,19 @@ CREATE TABLE "fin_system_state" (
   PRIMARY KEY ("key")
 );
 
+CREATE TABLE "fin_tax_rates" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT,
+  "code" TEXT NOT NULL,
+  "rate" DOUBLE PRECISION NOT NULL,
+  "label" TEXT,
+  "valid_from" DATE NOT NULL,
+  "valid_to" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  CHECK (code IN ('standard','reduced','zero'))
+);
+
 CREATE TABLE "finance_accounts" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
@@ -1795,6 +1808,8 @@ ALTER TABLE "fin_recurring_templates" ADD CONSTRAINT "fk_fin_recurring_templates
   FOREIGN KEY ("account_from_id") REFERENCES "finance_accounts" ("id");
 ALTER TABLE "fin_recurring_templates" ADD CONSTRAINT "fk_fin_recurring_templates_organization_id_6"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "fin_tax_rates" ADD CONSTRAINT "fk_fin_tax_rates_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "finance_accounts" ADD CONSTRAINT "fk_finance_accounts_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "finance_counterparties" ADD CONSTRAINT "fk_finance_counterparties_parent_id_1"
@@ -2053,6 +2068,7 @@ CREATE INDEX "idx_fop_status" ON "fin_operations" ("status");
 CREATE INDEX "idx_fop_type" ON "fin_operations" ("op_type");
 CREATE INDEX "idx_rt_next_run" ON "fin_recurring_templates" ("next_run_at", "is_active");
 CREATE INDEX "idx_rt_org" ON "fin_recurring_templates" ("organization_id");
+CREATE INDEX "idx_fin_tax_rates_lookup" ON "fin_tax_rates" ("organization_id", "code", "valid_from");
 CREATE INDEX "idx_fin_acct_iban" ON "finance_accounts" ("iban");
 CREATE INDEX "idx_fin_acct_org" ON "finance_accounts" ("organization_id");
 CREATE INDEX "idx_cp_org" ON "finance_counterparties" ("organization_id");
@@ -2140,6 +2156,7 @@ CREATE INDEX IF NOT EXISTS "idx_fin_operation_attachments_org" ON "fin_operation
 CREATE INDEX IF NOT EXISTS "idx_fin_operation_audit_org" ON "fin_operation_audit" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_operations_org" ON "fin_operations" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_recurring_templates_org" ON "fin_recurring_templates" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_fin_tax_rates_org" ON "fin_tax_rates" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_finance_accounts_org" ON "finance_accounts" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_finance_counterparties_org" ON "finance_counterparties" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_finance_exchange_rates_org" ON "finance_exchange_rates" ("organization_id");
@@ -2209,6 +2226,8 @@ ALTER TABLE "fin_operation_audit" ALTER COLUMN "organization_id"
 ALTER TABLE "fin_operations" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "fin_recurring_templates" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "fin_tax_rates" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "finance_accounts" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2453,6 +2472,12 @@ CREATE POLICY "fin_operations_tenant" ON "fin_operations"
 ALTER TABLE "fin_recurring_templates" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "fin_recurring_templates" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "fin_recurring_templates_tenant" ON "fin_recurring_templates"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "fin_tax_rates" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "fin_tax_rates" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "fin_tax_rates_tenant" ON "fin_tax_rates"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

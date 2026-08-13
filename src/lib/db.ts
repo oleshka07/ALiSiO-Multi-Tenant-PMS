@@ -5012,6 +5012,42 @@ function runMigrations(database: any) {
     console.error('[DB] organization_features migration:', e.message);
   }
 
+  // --- Migration: create fin_tax_rates ---
+  //
+  // What VAT this organization charges, and since when.
+  //
+  // The date matters as much as the number. German hospitality moved food to
+  // 7% on 2026-01-01, so a breakfast served in December 2025 is 19% and the
+  // same breakfast in January 2026 is 7% — on documents that may be issued in
+  // the same week. So the rate is chosen by the date of SERVICE, and the rate
+  // that was chosen is then written onto the charge as a number. This table is
+  // only ever consulted to pick; it is never read back to re-derive an old
+  // document. That is what makes an invoice from 2026 still print correctly in
+  // 2036 after every rate in the country has changed.
+  //
+  // `code` is the closed part — standard / reduced / zero says what ROLE a rate
+  // plays, and a service points at the role, not at a number. `rate` is the
+  // open part, and it is per organization: Germany 19/7, Czechia 21/12, and
+  // whatever the next country is. Nothing in the code knows those numbers.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS fin_tax_rates (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        code            TEXT NOT NULL CHECK (code IN ('standard','reduced','zero')),
+        rate            REAL NOT NULL,
+        label           TEXT,
+        valid_from      TEXT NOT NULL,
+        valid_to        TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    // Lookups are always "this organization, this role, on this day".
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_tax_rates_lookup ON fin_tax_rates(organization_id, code, valid_from)');
+  } catch (e: any) {
+    console.error('[DB] fin_tax_rates migration:', e.message);
+  }
+
   // --- Migration: additional_services stops naming one customer's categories
   //
   // `CHECK (available_for IN ('glamping','resort','camping','all'))` is a
