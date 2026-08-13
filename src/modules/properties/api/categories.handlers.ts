@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as categoriesRepo from '../data/categories.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
+import { requirePropertyId } from '@core/auth/tenant-context';
 
 /**
  * The organization comes from the session, never from the request. A null from
@@ -22,10 +23,21 @@ export const listCategories = withActor(async (_req, _ctx, actor: Actor) => {
 export const createCategory = withPermission('manage_properties', async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const body = await request.json();
-    const { property_id, name, type, description, sort_order, icon, color } = body;
+    const { name, type, description, sort_order, icon, color } = body;
 
-    if (!property_id || !name || !type) {
-      return NextResponse.json({ error: 'property_id, name, and type are required' }, { status: 400 });
+    if (!name || !type) {
+      return NextResponse.json({ error: 'name and type are required' }, { status: 400 });
+    }
+
+    // The property is the server's to resolve — same reason as in
+    // unit-types.handlers.ts. Requiring it from the caller means the admin
+    // screen has to know an id, and the only way it ever knew one was a
+    // literal from the first customer's seed data.
+    let property_id: string;
+    try {
+      property_id = await requirePropertyId(body.property_id);
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : 'Property not found' }, { status: 400 });
     }
 
     if (!categoriesRepo.validateCategoryType(type)) {

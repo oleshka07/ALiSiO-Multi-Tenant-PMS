@@ -103,7 +103,14 @@ export interface BulkCreateUnitsInput {
 export async function bulkCreateUnits(organizationId: string, input: BulkCreateUnitsInput) {
   // Unchecked, this wrote up to two hundred rooms into another tenant's
   // property in a single call.
-  if (!await ownsAllRefs(organizationId, input)) return [];
+  //
+  // null, not []: the caller has to tell "these ids are not yours" from "every
+  // one of those room numbers already exists". Both used to come back as an
+  // empty array, so a hotel re-entering a range it had already entered was
+  // told "Property, category, unit type or building not found" — an answer
+  // about ownership to a question about duplicates. It cost an hour to read
+  // that message as what it actually was.
+  if (!await ownsAllRefs(organizationId, input)) return null;
 
   const sql = getSql();
   const created: { name: string; code: string }[] = [];

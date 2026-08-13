@@ -42,7 +42,10 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
     if (body.bulk) {
       const { category_id, building_id, unit_type_id, prefix, from, to, beds, zone } = body;
 
-      if (!category_id || !unit_type_id || !prefix || from === undefined || to === undefined) {
+      // `prefix == null`, not `!prefix`. An empty prefix is a normal answer:
+      // a hotel whose rooms are 105, 106, 201 has no prefix at all, and the
+      // falsy test refused exactly that hotel while accepting every other.
+      if (!category_id || !unit_type_id || prefix == null || from === undefined || to === undefined) {
         return NextResponse.json({ error: 'For bulk: category_id, unit_type_id, prefix, from, to required' }, { status: 400 });
       }
 
@@ -53,10 +56,19 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
       const created = await unitsRepo.bulkCreateUnits(actor.organizationId, {
         property_id, category_id, building_id, unit_type_id, prefix, from, to, beds, zone,
       });
-      // An empty result here means the referenced ids are not this tenant's —
-      // unchecked, this call wrote up to 200 rooms into someone else's property.
-      if (created.length === 0) {
+      // null means the referenced ids are not this tenant's — unchecked, this
+      // call wrote up to 200 rooms into someone else's property.
+      if (created === null) {
         return NextResponse.json({ error: 'Property, category, unit type or building not found' }, { status: 404 });
+      }
+      // An empty list is a different answer: every number in the range is
+      // already a room here. Saying "not found" to that sends the operator
+      // looking for a missing category that is sitting right in front of them.
+      if (created.length === 0) {
+        return NextResponse.json(
+          { error: 'Every room number in this range already exists', created: 0, items: [] },
+          { status: 409 },
+        );
       }
       return NextResponse.json({ created: created.length, items: created }, { status: 201 });
     }

@@ -17,6 +17,7 @@ import {
   Code2,
   Sparkles,
   Brain,
+  Receipt,
 } from 'lucide-react';
 
 const settingsItems = [
@@ -40,6 +41,13 @@ const settingsItems = [
     icon: <Users size={22} />,
     href: '/app/settings/users',
     color: 'purple',
+  },
+  {
+    title: 'Фактурування',
+    desc: 'Ставки ПДВ і серії нумерації фактур',
+    icon: <Receipt size={22} />,
+    href: '/app/settings/invoicing',
+    color: 'orange',
   },
   {
     title: 'Джерела бронювань',

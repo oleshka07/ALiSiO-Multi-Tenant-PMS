@@ -313,3 +313,7 @@ export const deleteFinanceAccess  = await withPermission('manage_users', _delete
 export const getMyFinanceAccess   = await withFinanceRead(_getMyFinanceAccess);
 
 // Re-export auth helpers for use in _guard.ts and other modules
+export {
+  listTaxRates, createTaxRate, closeTaxRate, deleteTaxRate,
+  listInvoiceSeries, createInvoiceSeries, updateInvoiceSeries, deleteInvoiceSeries,
+} from './invoicing-config.handlers';
