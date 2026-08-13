@@ -47,14 +47,15 @@ export const POST = withPermission('manage_sites', async (req: NextRequest) => {
     // RETURNING * rather than RETURNING id plus a SELECT: the row it hands back
     // is the row that was just written, defaults and all.
     const bundle = await sql.row(`
+      -- organization_id, from the site the bundle is sold on.
       INSERT INTO gift_card_bundles
-        (site_id, name, description, price, currency, nights_included,
+        (organization_id, site_id, name, description, price, currency, nights_included,
          listing_type, included_services, validity_months, allowed_days,
          coupon_code, redemption_limit, applied_listings, allowed_promo_codes)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      VALUES ((SELECT organization_id FROM booking_sites WHERE id = ?),?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       RETURNING *
     `, [
-      site_id, name, description || null, Number(price), currency,
+      site_id, site_id, name, description || null, Number(price), currency,
       Number(nights_included), listing_type || null,
       JSON.stringify(included_services), Number(validity_months),
       allowed_days ? JSON.stringify(allowed_days) : null,

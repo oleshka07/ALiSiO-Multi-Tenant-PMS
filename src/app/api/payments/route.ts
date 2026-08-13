@@ -150,8 +150,10 @@ export const POST = withPermission('manage_payments', async (
     try {
       const detailsLine = `${method} ${type} ${Math.abs(Number(amount))}${notes ? ' — ' + notes : ''}`;
       await sql.run(
-        "INSERT INTO booking_activity_log (id, reservation_id, action, details) VALUES (?, ?, 'payment_marker', ?)",
-        [`al_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, reservation_id, detailsLine],
+        // organization_id from the reservation the payment is against.
+        `INSERT INTO booking_activity_log (id, organization_id, reservation_id, action, details)
+         VALUES (?, (SELECT organization_id FROM reservations WHERE id = ?), ?, 'payment_marker', ?)`,
+        [`al_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, reservation_id, reservation_id, detailsLine],
       );
     } catch { /* non-critical */ }
 

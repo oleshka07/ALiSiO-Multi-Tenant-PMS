@@ -31,9 +31,10 @@ export async function storeTgBookingMessage(
   try {
     const sql = getSql();
     await sql.run(`
-      INSERT INTO tg_booking_messages (reservation_id, chat_id, message_id, sent_payment_status, sent_text)
-      VALUES (?, ?, ?, ?, ?)
-    `, [reservationId, chatId, messageId, paymentStatus || 'unpaid', text]);
+      -- organization_id, from the reservation the message is about.
+      INSERT INTO tg_booking_messages (organization_id, reservation_id, chat_id, message_id, sent_payment_status, sent_text)
+      VALUES ((SELECT organization_id FROM reservations WHERE id = ?), ?, ?, ?, ?, ?)
+    `, [reservationId, reservationId, chatId, messageId, paymentStatus || 'unpaid', text]);
   } catch (e: any) {
     console.error('[TG updater] store error:', e?.message);
   }

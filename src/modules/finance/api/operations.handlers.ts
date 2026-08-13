@@ -39,10 +39,12 @@ export async function writeOperationAudit(
   const id = `aud_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   try {
     await sql.run(`
+      -- organization_id, from the operation this entry is about. An audit
+      -- entry no tenant can read is an audit entry that does not exist.
       INSERT INTO fin_operation_audit
-        (id, operation_id, action, user_id, user_name, before_json, after_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [id, operationId, action,
+        (id, organization_id, operation_id, action, user_id, user_name, before_json, after_json)
+      VALUES (?, (SELECT organization_id FROM fin_operations WHERE id = ?), ?, ?, ?, ?, ?, ?)
+    `, [id, operationId, operationId, action,
       actor?.id || null, actor?.name || null,
       beforeRow ? JSON.stringify(beforeRow) : null,
       afterRow ? JSON.stringify(afterRow) : null]);

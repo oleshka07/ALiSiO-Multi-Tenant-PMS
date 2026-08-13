@@ -532,14 +532,17 @@ export async function confirmBookingComImport(request: NextRequest): Promise<Nex
                 const childToken = generateGuestToken();
 
                 await sql.run(`
+                  -- organization_id, named rather than left to the column
+                  -- DEFAULT: that DEFAULT is a Postgres mechanism (migration
+                  -- 0005) and on SQLite the row landed with a NULL tenant.
                   INSERT INTO reservations (
-                    id, property_id, unit_id, guest_id, parent_id,
+                    id, organization_id, property_id, unit_id, guest_id, parent_id,
                     check_in, check_out, nights, adults, children,
                     status, payment_status, source, total_price, currency,
                     external_uid, bcom_reservation_id,
                     commission_amount, notes, guest_page_token
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', 'booking_com', 0, ?, ?, ?, 0, ?, ?)
-                `, [childResId, propertyId, unit.unitId, guestId, masterResId,
+                  ) VALUES (?, (SELECT organization_id FROM properties WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', 'booking_com', 0, ?, ?, ?, 0, ?, ?)
+                `, [childResId, propertyId, propertyId, unit.unitId, guestId, masterResId,
                   row.checkIn, row.checkOut, row.duration || 1,
                   unit.capacity, 0,
                   'confirmed',

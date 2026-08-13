@@ -80,15 +80,18 @@ export const POST = withPermission('manage_sites', async (req: NextRequest, ctx:
     // RETURNING * rather than RETURNING id plus a SELECT: the row it hands back
     // is the row that was just written, defaults and all.
     const gift_card = await sql.row(`
+      -- organization_id, from the property. A voucher bought by a guest has
+      -- no session behind it, so the column DEFAULT had nothing to read and the
+      -- card belonged to no hotel — including the one meant to honour it.
       INSERT INTO gift_cards
-        (property_id, code, bundle_id, name, type, value_type,
+        (organization_id, property_id, code, bundle_id, name, type, value_type,
          face_value, currency, status,
          recipient_name, recipient_email, buyer_name, buyer_phone,
          message, expires_at, config_json, notes)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      VALUES ((SELECT organization_id FROM properties WHERE id = ?),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       RETURNING *
     `, [
-      site.property_id, code, id,
+      site.property_id, site.property_id, code, id,
       bundle.name, 'package', 'fixed_czk',
       bundle.price, bundle.currency, 'active',
       recipient_name || null, recipient_email || null,

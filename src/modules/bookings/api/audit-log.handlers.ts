@@ -48,10 +48,13 @@ export async function writeBookingAudit(
   try {
     const label = bookingLabel || await buildBookingLabel(reservationId);
     await sql.run(`
+      -- organization_id, from the reservation this entry is about. Left to
+      -- the column DEFAULT it was NULL on SQLite, and an audit entry no tenant
+      -- can read is an audit entry that does not exist.
       INSERT INTO booking_activity_log
-        (id, reservation_id, action, details, user_id, user_name, before_json, after_json, booking_label)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, reservationId, action, details,
+        (id, organization_id, reservation_id, action, details, user_id, user_name, before_json, after_json, booking_label)
+      VALUES (?, (SELECT organization_id FROM reservations WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, reservationId, reservationId, action, details,
       actor?.id || null, actor?.name || null,
       beforeRow ? JSON.stringify(beforeRow) : null,
       afterRow ? JSON.stringify(afterRow) : null,

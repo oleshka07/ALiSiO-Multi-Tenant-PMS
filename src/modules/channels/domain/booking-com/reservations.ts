@@ -287,16 +287,20 @@ export async function processReservation(
   const prop = { id: await requirePropertyId() } as any;
 
   await sql.run(`
+    -- organization_id, named rather than left to the column DEFAULT: that
+    -- DEFAULT reads app.organization_id and exists only on Postgres (migration
+    -- 0005). On SQLite the row landed with a NULL tenant. Taken from the
+    -- property so it cannot disagree with it.
     INSERT INTO reservations (
-      id, property_id, unit_id, guest_id,
+      id, organization_id, property_id, unit_id, guest_id,
       check_in, check_out, nights, adults, children,
       status, payment_status, source, total_price,
       external_uid, bcom_reservation_id,
       notes, smoking_preference,
       price_per_night_json, promotions_applied,
       rate_rewriting_info, cancellation_policy, meal_plan
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [resId, prop?.id || null, unit?.id || null, guestId,
+    ) VALUES (?, (SELECT organization_id FROM properties WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [resId, prop?.id || null, prop?.id || null, unit?.id || null, guestId,
     reservation.checkIn, reservation.checkOut, nights,
     reservation.adults, reservation.children,
     'confirmed', 'unpaid', 'booking_com', reservation.totalPrice,

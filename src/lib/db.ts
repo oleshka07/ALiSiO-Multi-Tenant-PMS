@@ -5558,8 +5558,11 @@ function seedData(database: any) {
 
   // Reservations are placed relative to today so the calendar is populated
   // whenever the demo is seeded, rather than on a fixed historical date.
+  // organization_id is named here too. The seed runs on a fresh database with
+  // no request context, so the Postgres column DEFAULT has nothing to read —
+  // and on SQLite there is no such DEFAULT at all.
   const insertRes = database.prepare(
-    'INSERT INTO reservations (id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
   const plan: [number, number, number, number, number, string, string, string][] = [
     // [unitIdx, startOffset, nights, adults, children, status, paymentStatus, source]
@@ -5590,6 +5593,7 @@ function seedData(database: any) {
     const rate = RATE[unitId.replace(/\d+$/, '')] ?? 1800;
     insertRes.run(
       `r${String(i + 1).padStart(3, '0')}`,
+      orgId,
       propId,
       unitId,
       `g${String((i % guestSeed.length) + 1).padStart(3, '0')}`,

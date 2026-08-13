@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withActor, withPermission } from '@core/auth/session';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 /* ─── GET /api/coupons?site_id=xxx ─── */
 //
@@ -58,15 +59,19 @@ export const POST = withPermission('manage_sites', async (req: NextRequest) => {
 
     const id = `promo_${Date.now()}`;
     await sql.run(`
+      -- organization_id, named rather than left to the column DEFAULT: that
+      -- DEFAULT is a Postgres mechanism (migration 0005) and on SQLite the
+      -- coupon landed with a NULL tenant — created successfully, then invisible
+      -- to the hotel that created it.
       INSERT INTO coupons
-        (id, code, description, discount_type, offer_amount,
+        (id, organization_id, code, description, discount_type, offer_amount,
          valid_from, valid_until,
          min_nights, max_nights,
          max_uses, redemption_limit,
          site_id, allowed_days, applies_to, applied_listings, applicable_services, is_active)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,TRUE)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,TRUE)
     `, [
-      id,
+      id, await requireOrganizationId(),
       String(code).toUpperCase().trim(),
       description || null,
       discount_type || 'percentage',

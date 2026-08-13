@@ -96,11 +96,16 @@ async function syncChannel(channel: any) {
         const unit = await sql.row<any>('SELECT property_id FROM units WHERE id = ?', [targetUnitId]) as any;
 
         await sql.run(`
-          INSERT INTO reservations (id, property_id, unit_id, guest_id, check_in, check_out, nights,
+          -- organization_id, named rather than left to the column DEFAULT: that
+          -- DEFAULT reads app.organization_id and exists only on Postgres
+          -- (migration 0005). On SQLite the row landed with a NULL tenant and
+          -- every query that scopes by it found nothing. Taken from the
+          -- property so it cannot disagree with it.
+          INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights,
             adults, children, status, payment_status, source, total_price, commission_amount,
             guest_page_token, external_uid, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [resId, unit?.property_id || channel.property_id, targetUnitId, guestId,
+          VALUES (?, (SELECT organization_id FROM properties WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [resId, unit?.property_id || channel.property_id, unit?.property_id || channel.property_id, targetUnitId, guestId,
           event.dtstart, event.dtend, nights,
           1, 0, 'confirmed', 'paid', channel.source_code, 0, 0,
           guestPageToken, externalUid,

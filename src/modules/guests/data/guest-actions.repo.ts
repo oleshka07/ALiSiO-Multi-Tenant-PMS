@@ -22,9 +22,11 @@ export async function saveFeedback(reservationId: string, feedback: string) {
   // string, so nothing but running it says otherwise; the sibling handler in
   // bookings/api/reservation-activity.handlers.ts has always used the real name.
   await sql.run(`
-    INSERT INTO booking_activity_log (id, reservation_id, action, details)
-    VALUES (?, ?, 'guest_feedback', ?)
-  `, [newId(), reservationId, feedback.trim()]);
+    -- organization_id from the reservation: a guest carries no tenant of their
+    -- own, and left to the column DEFAULT this row was NULL-tenanted on SQLite.
+    INSERT INTO booking_activity_log (id, organization_id, reservation_id, action, details)
+    VALUES (?, (SELECT organization_id FROM reservations WHERE id = ?), ?, 'guest_feedback', ?)
+  `, [newId(), reservationId, reservationId, feedback.trim()]);
 }
 
 // ─── Service Orders ───────────────────────────────────────────────────────────

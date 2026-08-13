@@ -469,15 +469,19 @@ export async function createWidgetReservation(request: NextRequest) {
       const finalNotes = notesArr.length > 0 ? notesArr.join(' | ') : null;
 
       await sql.run(`
+        -- organization_id, named rather than left to the column DEFAULT: that
+        -- DEFAULT is a Postgres mechanism (migration 0005) and on SQLite the
+        -- row landed with a NULL tenant. The organization is the one the unit
+        -- belongs to, resolved above.
         INSERT INTO reservations (
-          id, property_id, unit_id, guest_id, check_in, check_out,
+          id, organization_id, property_id, unit_id, guest_id, check_in, check_out,
           nights, adults, children, status, payment_status, source,
           total_price, currency, payment_id, promotions_applied, guest_page_token,
           utm_source, utm_medium, utm_campaign, utm_content, utm_term, ga_client_id,
           booking_lang, country_code, widget_session_id, group_id, notes
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [resId, unit.property_id, unitId, guestId,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [resId, unitOrg.organization_id, unit.property_id, unitId, guestId,
         checkIn, checkOut, nights, adults, children,
         resStatus, payStatus, siteName, finalPrice, resCurrency, null,
         JSON.stringify([couponCode, extraCouponCode].filter(Boolean)),

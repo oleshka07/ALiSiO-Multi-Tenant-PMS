@@ -99,14 +99,18 @@ export const createSubBooking = withPermission('manage_bookings', async (request
       childReservationId = `r_${Date.now()}_child`;
       const childToken = generateGuestToken();
       await sql.run(`
+        -- organization_id, named rather than left to the column DEFAULT: that
+        -- DEFAULT is a Postgres mechanism (migration 0005) and on SQLite the
+        -- row landed with a NULL tenant. From the master booking, so a
+        -- sub-booking can never belong to a different hotel than its parent.
         INSERT INTO reservations (
-          id, property_id, unit_id, guest_id, parent_id,
+          id, organization_id, property_id, unit_id, guest_id, parent_id,
           check_in, check_out, nights, adults, children, infants,
           status, payment_status, source, total_price, currency,
           guest_page_token, notes
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [childReservationId, master.property_id, unitId, master.guest_id, master.id,
+        VALUES (?, (SELECT organization_id FROM properties WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [childReservationId, master.property_id, master.property_id, unitId, master.guest_id, master.id,
         master.check_in, master.check_out, master.nights, adults, children, infants,
         master.status, master.payment_status, master.source, subtotal, master.currency,
         childToken, `Sub-booking: ${label}`]);

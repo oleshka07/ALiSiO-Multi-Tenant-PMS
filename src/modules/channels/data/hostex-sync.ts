@@ -365,8 +365,11 @@ async function processReservation(res: HostexReservation, result: SyncResult) {
     const guestPageToken = (status === 'confirmed' || status === 'checked_in') ? generateGuestToken() : null;
 
     await sql.run(`
+      -- organization_id, named rather than left to the column DEFAULT: that
+      -- DEFAULT reads app.organization_id and exists only on Postgres
+      -- (migration 0005). On SQLite the row landed with a NULL tenant.
       INSERT INTO reservations (
-        id, property_id, unit_id, guest_id, check_in, check_out, nights,
+        id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights,
         adults, children, infants, status, payment_status, source,
         total_price, currency, notes, guest_page_token,
         hostex_reservation_code, hostex_stay_code, hostex_channel_type,
@@ -375,7 +378,7 @@ async function processReservation(res: HostexReservation, result: SyncResult) {
         channel_remarks, is_prepaid,
         is_multi_room, multi_room_marker
       ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?,
         ?, 'CZK', ?, ?,
         ?, ?, ?,
@@ -384,7 +387,7 @@ async function processReservation(res: HostexReservation, result: SyncResult) {
         ?, ?,
         ?, ?
       )
-    `, [newId, mapped.propertyId, unitId, guestId,
+    `, [newId, mapped.organizationId, mapped.propertyId, unitId, guestId,
       checkIn, checkOut, nights,
       res.number_of_adults, res.number_of_children, res.number_of_infants,
       status, paymentStatus, mapChannelToSource(res.channel_type),
@@ -454,9 +457,12 @@ async function processBlockedDate(res: HostexReservation, result: SyncResult) {
     result.updated++;
   } else {
     await sql.run(`
-      INSERT INTO availability_blocks (id, unit_id, date_from, date_to, reason, notes, hostex_code)
-      VALUES (?, ?, ?, ?, 'blocked', ?, ?)
-    `, [blockId, unitId, dateFrom, dateTo, notes, res.reservation_code]);
+      -- organization_id, from the unit being blocked. Left to the column
+      -- DEFAULT it was NULL on SQLite, and a block no tenant can see is a room
+      -- that shows as free while it is closed.
+      INSERT INTO availability_blocks (id, organization_id, unit_id, date_from, date_to, reason, notes, hostex_code)
+      VALUES (?, (SELECT p.organization_id FROM units u JOIN properties p ON p.id = u.property_id WHERE u.id = ?), ?, ?, ?, 'blocked', ?, ?)
+    `, [blockId, unitId, unitId, dateFrom, dateTo, notes, res.reservation_code]);
     result.created++;
   }
 
@@ -599,10 +605,12 @@ async function ensureHostexColumns() {
         // the block that replaces it exists.
         await sql.tx(async (t) => {
           await t.run(`
-            INSERT INTO availability_blocks (id, unit_id, date_from, date_to, reason, notes, hostex_code)
-            VALUES (?, ?, ?, ?, 'blocked', ?, ?)
+            -- organization_id, from the unit — see the note on the other
+            -- availability_blocks insert in this file.
+            INSERT INTO availability_blocks (id, organization_id, unit_id, date_from, date_to, reason, notes, hostex_code)
+            VALUES (?, (SELECT p.organization_id FROM units u JOIN properties p ON p.id = u.property_id WHERE u.id = ?), ?, ?, ?, 'blocked', ?, ?)
             ON CONFLICT DO NOTHING
-          `, [blockId, r.unit_id, r.check_in, r.check_out, r.notes || r.channel_remarks || 'Закрито в Hostex', r.hostex_reservation_code]);
+          `, [blockId, r.unit_id, r.unit_id, r.check_in, r.check_out, r.notes || r.channel_remarks || 'Закрито в Hostex', r.hostex_reservation_code]);
           await t.run('DELETE FROM reservations WHERE id = ?', [r.id]);
         });
       }

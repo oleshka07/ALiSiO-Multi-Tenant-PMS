@@ -260,15 +260,18 @@ export async function insertImportedReservation(args: InsertReservationArgs): Pr
   const guestPageToken = generateGuestToken();
 
   await sql.run(`
+    -- organization_id, named rather than left to the column DEFAULT: that
+    -- DEFAULT is a Postgres mechanism (migration 0005) and on SQLite the row
+    -- landed with a NULL tenant. From the property, so it cannot disagree.
     INSERT INTO reservations (
-      id, property_id, unit_id, guest_id,
+      id, organization_id, property_id, unit_id, guest_id,
       check_in, check_out, nights, adults, children,
       status, payment_status, source, total_price, currency,
       external_uid, bcom_reservation_id,
       commission_amount, notes, guest_page_token,
       total_rate_eur, commission_eur
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', 'booking_com', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [resId, args.propertyId, args.unitId, args.guestId,
+    ) VALUES (?, (SELECT organization_id FROM properties WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', 'booking_com', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [resId, args.propertyId, args.propertyId, args.unitId, args.guestId,
     args.checkIn, args.checkOut, args.nights, args.adults, args.children,
     args.status || 'confirmed',
     args.totalPrice, args.currency,

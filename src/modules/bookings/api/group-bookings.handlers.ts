@@ -115,9 +115,12 @@ export const createGroupBooking = withPermission('manage_bookings', async (reque
       for (let i = 0; i < finalUnitIds.length; i++) {
         const resId = `r_${Date.now()}_${i}`;
         await t.run(`
-          INSERT INTO reservations (id, property_id, unit_id, guest_id, group_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [resId, firstUnit.property_id, finalUnitIds[i], guestId, groupId, checkIn, checkOut, nights, 1, 0, 'confirmed', 'unpaid', source || 'direct', pricePerUnit]);
+          -- organization_id, named rather than left to the column DEFAULT:
+          -- that DEFAULT is a Postgres mechanism (migration 0005) and on
+          -- SQLite the row landed with a NULL tenant.
+          INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, group_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [resId, org.id, firstUnit.property_id, finalUnitIds[i], guestId, groupId, checkIn, checkOut, nights, 1, 0, 'confirmed', 'unpaid', source || 'direct', pricePerUnit]);
         createdResIds.push(resId);
       }
     });

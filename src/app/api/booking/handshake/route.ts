@@ -80,9 +80,12 @@ export async function GET(request: NextRequest) {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T', ' ').replace(/\..+/, ''); // 10 minutes from now
 
     await sql.run(`
-      INSERT INTO widget_handshakes (token, site_id, expires_at)
-      VALUES (?, ?, ?)
-    `, [token, resolvedSiteId, expiresAt]);
+      -- organization_id, from the site the handshake belongs to. Left to the
+      -- column DEFAULT it was NULL on SQLite; the token then belonged to no
+      -- hotel, and the policy that is meant to protect it had nothing to match.
+      INSERT INTO widget_handshakes (token, organization_id, site_id, expires_at)
+      VALUES (?, (SELECT organization_id FROM booking_sites WHERE id = ?), ?, ?)
+    `, [token, resolvedSiteId, resolvedSiteId, expiresAt]);
 
     return NextResponse.json({ token }, { headers: responseHeaders });
     })) ?? NextResponse.json({ error: 'Unknown site' }, { status: 404, headers: CORS_HEADERS });

@@ -38,11 +38,16 @@ async function logWebhook(
   const sql = getSql();
   try {
     await sql.run(`
+      -- organization_id, from the reservation the payment is against. A
+      -- webhook arrives with no session and so no tenant of its own; left to
+      -- the column DEFAULT the log line belonged to nobody and the hotel could
+      -- not see what its own payment provider had sent.
       INSERT INTO payment_webhook_log
-        (provider, event_type, session_id, transaction_id, payment_ref,
+        (provider, organization_id, event_type, session_id, transaction_id, payment_ref,
          amount, currency, result, error_message, reservation_id, operation_id, raw_payload)
-      VALUES ('teya', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [fields.eventType || null, fields.sessionId || null, fields.transactionId || null,
+      VALUES ('teya', (SELECT organization_id FROM reservations WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [fields.reservationId || null,
+      fields.eventType || null, fields.sessionId || null, fields.transactionId || null,
       fields.paymentRef || null, fields.amount ?? null, fields.currency || null,
       result, fields.errorMessage || null,
       fields.reservationId || null, fields.operationId || null,

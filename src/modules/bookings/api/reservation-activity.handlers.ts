@@ -27,7 +27,12 @@ export const createActivity = withActor(async (request: NextRequest, { params }:
     }
     const body = await request.json();
     const logId = `al_${Date.now()}`;
-    await sql.run("INSERT INTO booking_activity_log (id, reservation_id, action, details) VALUES (?, ?, ?, ?)", [logId, id, body.action || 'note', body.details || '']);
+    // organization_id from the session — the reservation was already checked
+    // to belong to it above.
+    await sql.run(
+      'INSERT INTO booking_activity_log (id, organization_id, reservation_id, action, details) VALUES (?, ?, ?, ?, ?)',
+      [logId, actor.organizationId, id, body.action || 'note', body.details || ''],
+    );
     return NextResponse.json({ id: logId }, { status: 201 });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
