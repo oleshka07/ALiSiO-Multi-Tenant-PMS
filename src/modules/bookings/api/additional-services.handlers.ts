@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withActor, withPermission } from '@core/auth/session';
+import { requirePropertyId } from '@core/auth/tenant-context';
 
 export const listAdditionalServices = withActor(async () => {
   try {
@@ -23,7 +24,7 @@ export const createAdditionalService = withPermission('manage_properties', async
       INSERT INTO additional_services (id, property_id, name, name_en, description, price, currency, unit_label, icon, category, available_for, is_active, sort_order, service_type, duration_minutes, name_cs, name_de)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?, ?, ?)
     `, [id,
-      body.property_id || 'prop_main_001',
+      await requirePropertyId(body.property_id),
       body.name || '', body.name_en || '', body.description || '',
       body.price || 0, body.currency || 'CZK', body.unit_label || '',
       body.icon || '✨', body.category || 'other', body.available_for || 'all',

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as unitsRepo from '../data/units.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
+import { requirePropertyId } from '@core/auth/tenant-context';
 
 /**
  * The organization comes from the session, never from the request. A null or an
@@ -29,11 +30,20 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
   try {
     const body = await request.json();
 
-    if (body.bulk) {
-      const { property_id, category_id, building_id, unit_type_id, prefix, from, to, beds, zone } = body;
+    // Which property, decided here rather than by the caller — see the note in
+    // unit-types.handlers.ts. The screen used to send one customer's seed id.
+    let property_id: string;
+    try {
+      property_id = await requirePropertyId(body.property_id);
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : 'Property not found' }, { status: 400 });
+    }
 
-      if (!property_id || !category_id || !unit_type_id || !prefix || from === undefined || to === undefined) {
-        return NextResponse.json({ error: 'For bulk: property_id, category_id, unit_type_id, prefix, from, to required' }, { status: 400 });
+    if (body.bulk) {
+      const { category_id, building_id, unit_type_id, prefix, from, to, beds, zone } = body;
+
+      if (!category_id || !unit_type_id || !prefix || from === undefined || to === undefined) {
+        return NextResponse.json({ error: 'For bulk: category_id, unit_type_id, prefix, from, to required' }, { status: 400 });
       }
 
       if (from > to || to - from > 200) {
@@ -51,10 +61,10 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
       return NextResponse.json({ created: created.length, items: created }, { status: 201 });
     }
 
-    const { unit_type_id, property_id, category_id, building_id, name, code, floor, zone, beds, notes, sort_order } = body;
+    const { unit_type_id, category_id, building_id, name, code, floor, zone, beds, notes, sort_order } = body;
 
-    if (!unit_type_id || !property_id || !category_id || !name || !code) {
-      return NextResponse.json({ error: 'unit_type_id, property_id, category_id, name, and code are required' }, { status: 400 });
+    if (!unit_type_id || !category_id || !name || !code) {
+      return NextResponse.json({ error: 'unit_type_id, category_id, name and code are required' }, { status: 400 });
     }
 
     const unit = await unitsRepo.createUnit(actor.organizationId, {

@@ -54,19 +54,45 @@ for (const extra of ['scripts', 'db']) {
   })(extra);
 }
 
+/**
+ * A row id from the seed, written into application code.
+ *
+ * The same failure as a name, with a quieter face. Two settings screens sent a
+ * literal `prop_main_001` — the id of the FIRST customer's seed property — when
+ * creating a room type or a room. For that hotel it worked. For every other
+ * hotel the row does not exist, so the screen answered "Property not found",
+ * and a new customer could not be set up without somebody editing code.
+ *
+ * Which property, which organization, which category — those are answers the
+ * server derives from the session (`requirePropertyId`, `requireOrganizationId`),
+ * never constants.
+ *
+ * Scoped to the application: db.ts and scripts/ legitimately write seed ids,
+ * and are listed in SEED_OWNERS below.
+ */
+const SEED_ID = /['"`](?:prop|org|cat|ut|bldg|unit)_[a-z0-9]+_?\d{2,}['"`]/i;
+const SEED_OWNERS = [/^src[\/\\]lib[\/\\]db\.ts$/, /^scripts[\/\\]/, /^db[\/\\]/];
+const ownsSeedIds = (f) => SEED_OWNERS.some((re) => re.test(f));
+
 const hits = [];
 for (const f of files) {
   if (ALLOWED.has(f)) continue;
   const lines = fs.readFileSync(f, 'utf8').split('\n');
+  const seedAllowed = ownsSeedIds(f);
   lines.forEach((line, i) => {
+    // A comment explaining a removed hardcode is not the hardcode.
+    const code = line.replace(/\/\/.*$/, '');
     for (const re of FORBIDDEN) {
-      if (re.test(line)) { hits.push({ f, n: i + 1, line: line.trim().slice(0, 100) }); break; }
+      if (re.test(line)) { hits.push({ f, n: i + 1, line: line.trim().slice(0, 100) }); return; }
+    }
+    if (!seedAllowed && SEED_ID.test(code)) {
+      hits.push({ f, n: i + 1, line: line.trim().slice(0, 100) });
     }
   });
 }
 
 console.log('═'.repeat(78));
-console.log("ІМЕНА ОДНОГО КЛІЄНТА В КОДІ — має бути нуль");
+console.log("БІЗНЕС ОДНОГО КЛІЄНТА В КОДІ (імена, домени, seed-id) — має бути нуль");
 console.log('═'.repeat(78));
 console.log();
 

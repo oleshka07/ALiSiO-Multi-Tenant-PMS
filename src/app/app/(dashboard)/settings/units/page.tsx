@@ -319,7 +319,9 @@ export default function SettingsUnitsPage() {
       if (!editingUnit) {
         // For creating, need property_id and category_id
         const ut = unitTypes.find(t => t.id === unitForm.unit_type_id);
-        body.property_id = 'prop_main_001'; // default property
+        // No property_id: the server resolves the caller's own property.
+        // This used to send 'prop_main_001' — the first customer's seed row —
+        // so every other hotel got "Property not found" from this screen.
         body.category_id = ut?.category_id || '';
       }
 
@@ -416,7 +418,7 @@ export default function SettingsUnitsPage() {
       const method = editingType ? 'PATCH' : 'POST';
       const body: any = { ...typeForm, building_id: typeForm.building_id || null };
       if (!editingType) {
-        body.property_id = 'prop_main_001';
+        // See above: the property is the server's to decide, not the form's.
       }
 
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

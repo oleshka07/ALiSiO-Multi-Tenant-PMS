@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as unitTypesRepo from '../data/unit-types.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
+import { requirePropertyId } from '@core/auth/tenant-context';
 
 /**
  * The organization comes from the session, never from the request. A null from
@@ -26,10 +27,28 @@ export const listUnitTypes = withActor(async (request: NextRequest, _ctx, actor:
 export const createUnitType = withPermission('manage_properties', async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const body = await request.json();
-    const { property_id, category_id, building_id, name, code, description, max_adults, max_children, max_occupancy, base_occupancy, beds_single, beds_double, beds_sofa, extra_bed_available, sort_order } = body;
+    const { category_id, building_id, name, code, description, max_adults, max_children, max_occupancy, base_occupancy, beds_single, beds_double, beds_sofa, extra_bed_available, sort_order } = body;
 
-    if (!property_id || !category_id || !name || !code) {
-      return NextResponse.json({ error: 'property_id, category_id, name, and code are required' }, { status: 400 });
+    if (!category_id || !name || !code) {
+      return NextResponse.json({ error: 'category_id, name and code are required' }, { status: 400 });
+    }
+
+    // Which property, decided here rather than by the caller.
+    //
+    // The settings screen used to send a literal `prop_main_001` — the id of
+    // the FIRST customer's seed property. For every other hotel that row does
+    // not exist, so creating a room type through the admin UI answered "not
+    // found". A new hotel could not be set up without someone editing code,
+    // which is the thing this product must never require.
+    //
+    // requirePropertyId takes the caller's choice when it is given (and checks
+    // it belongs to this organization), uses the organization's only property
+    // when there is one, and refuses to guess when there are several.
+    let property_id: string;
+    try {
+      property_id = await requirePropertyId(body.property_id);
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : 'Property not found' }, { status: 400 });
     }
 
     const created = await unitTypesRepo.createUnitType(actor.organizationId, {
