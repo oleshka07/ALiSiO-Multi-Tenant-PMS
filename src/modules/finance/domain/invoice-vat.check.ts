@@ -129,3 +129,25 @@ assert.strictEqual(pickRate(OVERLAP, 'standard', '2027-01-01')!.rate, 20, 'from 
 console.log('  ok  нова ставка додається рядком, стара лишається історією');
 
 console.log('invoice-vat: рекапітуляція рахується від брутто групи — як на справжньому документі');
+
+// ─── A service points at a ROLE, and the role is resolved on its own date ───
+//
+// This is what `additional_services.vat_code` stores (migration 0017), and the
+// reason it stores a role and not a number: the pilot's breakfast is 7 % today
+// and was 19 % before 2026-01-01, and both figures have to keep printing
+// correctly on the documents that carry them.
+const BREAKFAST_RATES: TaxRate[] = [
+  { code: 'reduced', rate: 19, valid_from: '2010-01-01', valid_to: '2025-12-31' },
+  { code: 'reduced', rate: 7, valid_from: '2026-01-01' },
+  { code: 'standard', rate: 19, valid_from: '2007-01-01' },
+];
+
+assert.strictEqual(pickRate(BREAKFAST_RATES, 'reduced', '2025-12-31')?.rate, 19, 'food, the day before');
+assert.strictEqual(pickRate(BREAKFAST_RATES, 'reduced', '2026-01-01')?.rate, 7, 'food, the day of');
+assert.strictEqual(pickRate(BREAKFAST_RATES, 'standard', '2026-01-01')?.rate, 19, 'drinks did not move');
+console.log('  ok  роль послуги перетворюється на ставку за датою: їжа 19 → 7, напої лишились 19');
+
+// A role nobody configured resolves to nothing — which is why a service with
+// no vat_code is refused at the folio instead of invoiced at a guessed rate.
+assert.strictEqual(pickRate(BREAKFAST_RATES, 'zero', '2026-01-01'), null, 'a role with no rate is null');
+console.log('  ok  роль без заданої ставки дає null, а не вигаданий відсоток');

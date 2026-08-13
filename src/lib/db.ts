@@ -5075,8 +5075,9 @@ function runMigrations(database: any) {
         unit_price_gross  REAL NOT NULL DEFAULT 0,
         total_gross       REAL NOT NULL DEFAULT 0,
         vat_rate          REAL NOT NULL DEFAULT 0,
+        service_order_id  TEXT,
         source            TEXT NOT NULL DEFAULT 'manual'
-                          CHECK (source IN ('nightly','ota_split','manual','restaurant','import')),
+                          CHECK (source IN ('nightly','ota_split','manual','restaurant','import','service')),
         voided_by_item_id TEXT,
         invoice_id        TEXT,
         created_at        TEXT NOT NULL DEFAULT (datetime('now'))
@@ -5481,6 +5482,88 @@ function runMigrations(database: any) {
     `);
   } catch (e: any) {
     console.error('[DB] channel_rate_rules migration:', e.message);
+  }
+
+  // --- Migration: a service says what VAT it carries ---
+  //
+  // A hotel sells breakfast, a parking space and an extra bed. On a German
+  // invoice those are three different rates — food reduced, parking standard,
+  // an extra bed reduced — and until now `additional_services` had nowhere to
+  // say which. A service reaching a folio would land there without VAT, and an
+  // invoice with a line at no rate is not a document a tax office accepts.
+  //
+  // The ROLE, not the number: 'standard' / 'reduced' / 'zero' point at
+  // fin_tax_rates, which holds the percentages and the dates they changed.
+  //
+  // Nullable, with no default. A default of 'standard' would silently charge
+  // 19% on a breakfast nobody got round to configuring — a wrong tax return
+  // that looks like a working system. NULL means "not said", and a service
+  // with NULL is refused when it reaches a folio, by name.
+  try {
+    const cols = (database.prepare('PRAGMA table_info(additional_services)').all() as any[])
+      .map((c: any) => c.name);
+    if (!cols.includes('vat_code')) {
+      database.exec('ALTER TABLE additional_services ADD COLUMN vat_code TEXT');
+      console.log('[DB] additional_services: added vat_code');
+    }
+  } catch (e: any) {
+    console.error('[DB] additional_services vat_code migration:', e.message);
+  }
+
+  // --- Migration: a folio charge remembers which service order it came from ---
+  //
+  // Not decoration: it is what makes posting twice add nothing. Without it the
+  // only way to ask "is this order already on the bill" is to match on
+  // description and amount, and two saunas on the same day are indistinguishable
+  // that way.
+  try {
+    const cols = (database.prepare('PRAGMA table_info(fin_folio_items)').all() as any[])
+      .map((c: any) => c.name);
+    if (!cols.includes('service_order_id')) {
+      database.exec('ALTER TABLE fin_folio_items ADD COLUMN service_order_id TEXT');
+      database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_order ON fin_folio_items(service_order_id)');
+      console.log('[DB] fin_folio_items: added service_order_id');
+    }
+  } catch (e: any) {
+    console.error('[DB] fin_folio_items service_order_id migration:', e.message);
+  }
+
+  // --- Migration: a folio charge may come from a service order ---
+  //
+  // `source` said where a charge came from and had five answers, none of them
+  // "the guest ordered this". Reusing 'manual' would work and would make
+  // "which charges came from service orders" unanswerable — the question
+  // reception asks when a bill looks wrong.
+  //
+  // SQLite cannot widen a CHECK, so the table is rebuilt. Same shape as the
+  // fin_invoices.status rebuild above.
+  try {
+    const row = database.prepare('SELECT sql FROM sqlite_master WHERE type = ? AND name = ?')
+      .get('table', 'fin_folio_items') as { sql: string } | undefined;
+    // The SOURCE constraint specifically, not "does the DDL mention 'service'
+    // anywhere". It does: `kind` has allowed 'service' since the table was
+    // created, so a whole-DDL test reports the work already done and skips it —
+    // silently, which is how this nearly shipped.
+    const sourceCheck = row?.sql?.match(/CHECK\s*\(\s*source\s+IN\s*\([^)]*\)\s*\)/i)?.[0];
+    if (sourceCheck && !sourceCheck.includes("'service'")) {
+      const rebuilt = (row as { sql: string }).sql.replace(
+        sourceCheck,
+        "CHECK (source IN ('nightly','ota_split','manual','restaurant','import','service'))",
+      );
+      const cols = (database.prepare('PRAGMA table_info(fin_folio_items)').all() as any[])
+        .map((c: any) => `"${c.name}"`).join(', ');
+      database.exec('PRAGMA foreign_keys = OFF');
+      database.exec('BEGIN');
+      database.exec(rebuilt.replace(/CREATE TABLE fin_folio_items\b/i, 'CREATE TABLE fin_folio_items__rebuilt'));
+      database.exec(`INSERT INTO fin_folio_items__rebuilt (${cols}) SELECT ${cols} FROM fin_folio_items`);
+      database.exec('DROP TABLE fin_folio_items');
+      database.exec('ALTER TABLE fin_folio_items__rebuilt RENAME TO fin_folio_items');
+      database.exec('COMMIT');
+      database.exec('PRAGMA foreign_keys = ON');
+      console.log('[DB] fin_folio_items: source may now be a service order');
+    }
+  } catch (e: any) {
+    console.error('[DB] fin_folio_items source migration:', e.message);
   }
 
   // The last line of runMigrations, and the only reliable signal that the

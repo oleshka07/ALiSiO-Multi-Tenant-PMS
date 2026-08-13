@@ -14,7 +14,7 @@ import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withOwner, withPermission } from '@core/auth/session';
 import { requireOrganizationId, requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
-import { postStayCharges } from '../data/stay-charges.repo';
+import { postStayCharges, postServiceCharges } from '../data/stay-charges.repo';
 
 const CODES = ['standard', 'reduced', 'zero'];
 const isCode = (v: unknown): v is string => typeof v === 'string' && CODES.includes(v);
@@ -136,15 +136,28 @@ export const postStayChargesToFolio = withPermission('manage_documents', async (
     return NextResponse.json({ error: 'reservation_id is required' }, { status: 400 });
   }
 
-  const result = await postStayCharges({ folioId: id, reservationId: body.reservation_id });
+  // The room and the services are posted independently, and that is the point:
+  // the room is known when the booking lands, the sauna is ordered on the
+  // second evening. Pressing this again after a new order must add that order,
+  // not refuse because the room is already there.
+  const room = await postStayCharges({ folioId: id, reservationId: body.reservation_id });
+  const services = await postServiceCharges({ folioId: id, reservationId: body.reservation_id });
 
-  if ('reason' in result) {
-    // Each of these is something the hotel can fix on a screen, so it comes
-    // back named rather than as a 500 with a stack trace in the log.
-    const status = result.reason === 'no_reservation' ? 404 : 409;
-    return NextResponse.json({ error: result.reason, detail: result }, { status });
+  // `already_posted` on the room is not a failure when a service still went on.
+  const roomFailed = 'reason' in room && room.reason !== 'already_posted';
+  if (roomFailed || 'reason' in services) {
+    const failure = ('reason' in services ? services : room) as { reason: string };
+    const status = failure.reason === 'no_reservation' ? 404 : 409;
+    return NextResponse.json({ error: failure.reason, detail: failure }, { status });
   }
-  return NextResponse.json(result, { status: 201 });
+
+  const posted = ('posted' in room ? room.posted : 0) + services.posted;
+  return NextResponse.json({
+    posted,
+    gross: ('gross' in room ? room.gross : 0) + services.gross,
+    room: 'reason' in room ? { skipped: room.reason } : room,
+    services: { posted: services.posted, gross: services.gross },
+  }, { status: posted > 0 ? 201 : 200 });
 });
 
 function message(e: unknown): string {

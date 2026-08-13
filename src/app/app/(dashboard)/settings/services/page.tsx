@@ -13,6 +13,10 @@ const SERVICE_TYPES = [
   { value: 'toggle', label: 'Перемикач (так/ні)' },
 ];
 
+const VAT_LABEL: Record<string, string> = {
+  standard: 'Базова', reduced: 'Знижена', zero: 'Нульова',
+};
+
 const CATEGORIES = [
   { value: 'food', label: '🍳 Їжа' },
   { value: 'wellness', label: '🧖 Велнес' },
@@ -32,7 +36,7 @@ export default function ServicesSettingsPage() {
   const [showNew, setShowNew] = useState(false);
   const [newForm, setNewForm] = useState({
     name: '', name_en: '', description: '', price: 0, currency: 'CZK',
-    unit_label: '', icon: '✨', category: 'other', service_type: 'simple',
+    unit_label: '', icon: '✨', category: 'other', service_type: 'simple', vat_code: '',
     duration_minutes: 0, sort_order: 99, name_cs: '', name_de: '', photo_url: '',
   });
   const [toast, setToast] = useState<string | null>(null);
@@ -58,7 +62,7 @@ export default function ServicesSettingsPage() {
       });
       if (res.ok) {
         showToast(tUi('Послугу створено!'));
-        setNewForm({ name: '', name_en: '', description: '', price: 0, currency: 'CZK', unit_label: '', icon: '✨', category: 'other', service_type: 'simple', duration_minutes: 0, sort_order: 99, name_cs: '', name_de: '', photo_url: '' });
+        setNewForm({ name: '', name_en: '', description: '', price: 0, currency: 'CZK', unit_label: '', icon: '✨', category: 'other', service_type: 'simple', vat_code: '', duration_minutes: 0, sort_order: 99, name_cs: '', name_de: '', photo_url: '' });
         setShowNew(false);
         fetchServices();
       }
@@ -106,6 +110,7 @@ export default function ServicesSettingsPage() {
       name: svc.name, name_en: svc.name_en || '', description: svc.description || '',
       price: svc.price, currency: svc.currency, unit_label: svc.unit_label || '',
       icon: svc.icon, category: svc.category, service_type: svc.service_type,
+      vat_code: svc.vat_code || '',
       duration_minutes: svc.duration_minutes || 0, sort_order: svc.sort_order,
       name_cs: svc.name_cs || '', name_de: svc.name_de || '', photo_url: svc.photo_url || '',
     });
@@ -173,6 +178,12 @@ export default function ServicesSettingsPage() {
                     <span className="badge badge-primary">{CATEGORIES.find(c => c.value === svc.category)?.label || svc.category}</span>
                     <span className="badge badge-info">{SERVICE_TYPES.find(t => t.value === svc.service_type)?.label || svc.service_type}</span>
                     {svc.duration_minutes > 0 && <span>⏱ {svc.duration_minutes} {tUi('хв')}</span>}
+                    {/* Видно тут, а не аж на фактурі: послуга без ставки на
+                        рахунок не потрапить, і дізнатися про це на виїзді
+                        гостя — найгірший момент. */}
+                    {svc.vat_code
+                      ? <span className="badge badge-info">{tUi(VAT_LABEL[svc.vat_code] || svc.vat_code)}</span>
+                      : <span className="badge" style={{ background: 'var(--accent-danger)', color: '#fff' }}>{tUi('без ставки ПДВ')}</span>}
                     <span>#{svc.sort_order}</span>
                   </div>
                 </div>
@@ -242,6 +253,19 @@ function ServiceForm({ form, setForm }: { form: any; setForm: (f: any) => void }
           <option value="CZK">CZK</option>
           <option value="EUR">EUR</option>
         </select>
+      </div>
+      <div>
+        <label className="form-label">{tUi('Ставка ПДВ')}</label>
+        <select className="form-select" value={form.vat_code || ''}
+          onChange={e => setForm({ ...form, vat_code: e.target.value })}>
+          <option value="">{tUi('не задано')}</option>
+          <option value="reduced">{tUi('Знижена')}</option>
+          <option value="standard">{tUi('Базова')}</option>
+          <option value="zero">{tUi('Нульова')}</option>
+        </select>
+        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>
+          {tUi('Обирається роль, а не відсоток — самі відсотки з датами живуть у Фактурування → Ставки ПДВ. Поки не задано, послуга не потрапить на рахунок.')}
+        </div>
       </div>
       <div>
         <label className="form-label">{tUi('Одиниця')}</label>

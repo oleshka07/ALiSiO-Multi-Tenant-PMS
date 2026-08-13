@@ -64,6 +64,8 @@ export async function createFolio(input: {
 export interface NewCharge {
   folioId: string;
   reservationId?: string | null;
+  /** The order this came from, so posting the same one twice adds nothing. */
+  serviceOrderId?: string | null;
   serviceDate: string;
   kind: 'lodging' | 'service' | 'fee' | 'city_tax' | 'manual';
   description: string;
@@ -73,7 +75,7 @@ export interface NewCharge {
   unitPriceGross: number;
   totalGross: number;
   vatRate: number;
-  source?: 'nightly' | 'ota_split' | 'manual' | 'restaurant' | 'import';
+  source?: 'nightly' | 'ota_split' | 'manual' | 'restaurant' | 'import' | 'service';
 }
 
 /** Add charges to a folio. Several at once, because a split produces three. */
@@ -84,10 +86,11 @@ export async function addCharges(charges: readonly NewCharge[], t?: Sql): Promis
   for (const c of charges) {
     await sql.run(
       `INSERT INTO fin_folio_items
-         (id, organization_id, folio_id, reservation_id, service_date, kind, description,
+         (id, organization_id, folio_id, reservation_id, service_order_id, service_date, kind, description,
           guest_name, unit_code, quantity, unit_price_gross, total_gross, vat_rate, source)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [crypto.randomUUID(), organizationId, c.folioId, c.reservationId ?? null, c.serviceDate,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [crypto.randomUUID(), organizationId, c.folioId, c.reservationId ?? null,
+       c.serviceOrderId ?? null, c.serviceDate,
        c.kind, c.description, c.guestName ?? null, c.unitCode ?? null, c.quantity,
        c.unitPriceGross, c.totalGross, c.vatRate, c.source ?? 'manual'],
     );

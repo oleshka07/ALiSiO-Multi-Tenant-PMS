@@ -19,6 +19,7 @@
  * than the breakfast it supposedly includes, stops the posting and says why.
  */
 import { getSql } from '@core/db/async';
+import { money } from '@core/money';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { pickRate, type TaxRate } from '../domain/invoice-vat';
 import { splitOtaAmount, linesGross, type ChargeLine } from '../domain/ota-split';
@@ -39,7 +40,10 @@ export type PostRefusal =
   | { reason: 'already_posted' }
   | { reason: 'no_amount' }
   | { reason: 'breakfast_exceeds_total'; total: number }
-  | { reason: 'no_tax_rate'; code: string; date: string };
+  | { reason: 'no_tax_rate'; code: string; date: string }
+  /** A service has no `vat_code`. Named with the service, because the fix is
+   *  one field on one row in Settings → Guest services. */
+  | { reason: 'service_without_tax_code'; services: string[] };
 
 /**
  * Post the stay's charges onto a folio.
@@ -159,6 +163,102 @@ export async function postStayCharges(input: {
 
   await addCharges(charges);
   return { posted: charges.length, gross: linesGross(lines), lines };
+}
+
+/**
+ * Post the services the guest actually ordered.
+ *
+ * Separate from the room, and posted independently of it, because the two
+ * arrive at different times: the room is known when the booking lands, the
+ * sauna is ordered on the second evening. Reception presses the same button
+ * again and gets the new lines — not a refusal because the room is already
+ * there.
+ *
+ * Only orders that are neither cancelled nor failed, and only those not yet on
+ * this folio. The second test is by `service_order_id`, so pressing twice adds
+ * nothing and pressing after a new order adds exactly that order.
+ */
+export async function postServiceCharges(input: {
+  folioId: string;
+  reservationId: string;
+}): Promise<PostResult | PostRefusal> {
+  const organizationId = await requireOrganizationId();
+  const sql = getSql();
+
+  const res = await sql.row<any>(
+    `SELECT r.id, r.property_id, u.code AS unit_code, u.name AS unit_name,
+            g.first_name, g.last_name
+       FROM reservations r
+       LEFT JOIN units u ON u.id = r.unit_id
+       LEFT JOIN guests g ON g.id = r.guest_id
+      WHERE r.id = ? AND r.organization_id = ?`,
+    [input.reservationId, organizationId],
+  );
+  if (!res) return { reason: 'no_reservation' };
+
+  const orders = await sql.rows<any>(
+    `SELECT o.id, o.quantity, o.unit_price, o.total_price, o.service_date,
+            s.name AS service_name, s.name_de, s.vat_code
+       FROM booking_service_orders o
+       JOIN additional_services s ON s.id = o.service_id
+      WHERE o.reservation_id = ?
+        AND o.status <> 'cancelled'
+        AND (o.payment_status IS NULL OR o.payment_status NOT IN ('failed', 'refunded'))
+        AND NOT EXISTS (
+          SELECT 1 FROM fin_folio_items i
+           WHERE i.organization_id = ? AND i.folio_id = ? AND i.service_order_id = o.id
+        )
+      ORDER BY o.service_date, o.created_at`,
+    [input.reservationId, organizationId, input.folioId],
+  );
+  if (orders.length === 0) return { posted: 0, gross: 0, lines: [] };
+
+  // A service with no tax code stops the whole posting, not just its own line.
+  // Posting the rest would hand reception a bill that looks complete and is
+  // short one item — worse than a refusal that names what to fix.
+  const untaxed = orders.filter((o) => !o.vat_code).map((o) => String(o.service_name));
+  if (untaxed.length > 0) return { reason: 'service_without_tax_code', services: [...new Set(untaxed)] };
+
+  const rates = await sql.rows<TaxRate>(
+    'SELECT code, rate, valid_from, valid_to FROM fin_tax_rates WHERE organization_id = ?',
+    [organizationId],
+  );
+
+  const guestName = [res.first_name, res.last_name].filter(Boolean).join(' ') || null;
+  const unitCode = res.unit_code || res.unit_name || null;
+  const locale = localeForLanguage(await documentLanguage(res.property_id));
+
+  const charges: NewCharge[] = [];
+  for (const o of orders) {
+    const serviceDate = day(o.service_date) || day(new Date());
+    const rate = pickRate(rates, o.vat_code as TaxRate['code'], serviceDate);
+    if (!rate) return { reason: 'no_tax_rate', code: String(o.vat_code), date: serviceDate };
+
+    charges.push({
+      folioId: input.folioId,
+      reservationId: input.reservationId,
+      serviceOrderId: o.id,
+      serviceDate,
+      kind: 'service',
+      // The hotel's own name for the service, in the document language where
+      // it has one. Not chargeName(): these are the hotel's words, not ours.
+      description: (locale === 'de-DE' && o.name_de) ? o.name_de : String(o.service_name),
+      guestName,
+      unitCode,
+      quantity: Number(o.quantity) || 1,
+      unitPriceGross: Number(o.unit_price) || 0,
+      totalGross: Number(o.total_price) || 0,
+      vatRate: rate.rate,
+      source: 'service',
+    });
+  }
+
+  await addCharges(charges);
+  return {
+    posted: charges.length,
+    gross: money(charges.reduce((sum, c) => sum + c.totalGross, 0)),
+    lines: [],
+  };
 }
 
 function toRule(r: any): ChannelRateRule {

@@ -79,6 +79,7 @@ CREATE TABLE "additional_services" (
   "unit_label_nl" TEXT,
   "unit_label_fr" TEXT,
   "available_in_widget" BIGINT DEFAULT 0,
+  "vat_code" TEXT,
   PRIMARY KEY ("id"),
   CHECK (category IN ('food', 'wellness', 'sport', 'entertainment', 'other'))
 );
@@ -550,9 +551,10 @@ CREATE TABLE "fin_folio_items" (
   "voided_by_item_id" TEXT,
   "invoice_id" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "service_order_id" TEXT,
   PRIMARY KEY ("id"),
   CHECK (kind IN ('lodging','service','fee','city_tax','manual')),
-  CHECK (source IN ('nightly','ota_split','manual','restaurant','import'))
+  CHECK (source IN ('nightly','ota_split','manual','restaurant','import','service'))
 );
 
 CREATE TABLE "fin_folios" (
@@ -2217,6 +2219,7 @@ CREATE INDEX "idx_recv_status" ON "fin_channel_receivables" ("status");
 CREATE INDEX "idx_fin_folio_items_date" ON "fin_folio_items" ("organization_id", "service_date");
 CREATE INDEX "idx_fin_folio_items_folio" ON "fin_folio_items" ("folio_id");
 CREATE INDEX "idx_fin_folio_items_invoice" ON "fin_folio_items" ("invoice_id");
+CREATE INDEX "idx_fin_folio_items_order" ON "fin_folio_items" ("service_order_id");
 CREATE INDEX "idx_fin_folios_org" ON "fin_folios" ("organization_id", "status");
 CREATE INDEX "idx_fin_folios_res" ON "fin_folios" ("reservation_id");
 CREATE INDEX "idx_fin_invoice_lines_invoice" ON "fin_invoice_lines" ("invoice_id", "position");
