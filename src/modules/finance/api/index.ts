@@ -321,3 +321,10 @@ export {
   listFolios, createFolio, getFolioCharges, addFolioCharges,
   issueFolioInvoice, stornoInvoice,
 } from './folio.handlers';
+
+// What each channel's price includes, and the split it turns into.
+export {
+  listChannelRules, saveChannelRule, deleteChannelRule, postStayChargesToFolio,
+} from './channel-rules.handlers';
+export { ruleFor, withMarkup } from '../domain/channel-rate-rule';
+export type { ChannelRateRule } from '../domain/channel-rate-rule';

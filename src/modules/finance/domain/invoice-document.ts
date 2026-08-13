@@ -157,6 +157,64 @@ const LABELS: Record<InvoiceLocale, Labels> = {
 };
 
 /**
+ * What the standard charges are CALLED on a document.
+ *
+ * Not in the interface dictionary, and deliberately so. These words are printed
+ * on an invoice, and an invoice is written in the jurisdiction's language, not
+ * the operator's — a Czech accountant filing a German hotel's paperwork must
+ * see "Übernachtung" whatever language their own screen is in. check-i18n-leak
+ * exists to keep the two apart, and this is the finance side of that line.
+ *
+ * The wording is the reference invoice's, because that is what the hotel's
+ * guests, its accountant and its Finanzamt already recognise.
+ */
+const CHARGE_NAMES: Record<InvoiceLocale, Record<string, string>> = {
+  'de-DE': {
+    lodging: 'Übernachtung',
+    breakfast_food: 'Frühstück Speisen',
+    breakfast_drinks: 'Frühstück Getränke',
+  },
+  'cs-CZ': {
+    lodging: 'Ubytování',
+    breakfast_food: 'Snídaně — jídlo',
+    breakfast_drinks: 'Snídaně — nápoje',
+  },
+  'en-GB': {
+    lodging: 'Accommodation',
+    breakfast_food: 'Breakfast, food',
+    breakfast_drinks: 'Breakfast, drinks',
+  },
+};
+
+/**
+ * The name of a charge in a document language.
+ *
+ * Falls back to the key rather than to a guess: a line reading
+ * `breakfast_food` on an invoice is wrong and visibly wrong, which is what
+ * you want from a legal document — unlike a plausible word in the wrong
+ * language, which nobody notices until an audit.
+ */
+export function chargeName(kind: string, locale: InvoiceLocale): string {
+  return CHARGE_NAMES[locale]?.[kind] ?? CHARGE_NAMES['en-GB'][kind] ?? kind;
+}
+
+/**
+ * The document locale for a language code.
+ *
+ * `documentLanguage()` answers in the codes the rest of the product uses — de,
+ * cs, en, uk, pl. A document needs a locale, because how a number is written is
+ * a property of the place and not of the language. Anything without a document
+ * form of its own falls to en-GB: a Ukrainian-language invoice is not something
+ * this product issues, and printing one in a made-up format would be worse than
+ * printing English.
+ */
+export function localeForLanguage(language: string): InvoiceLocale {
+  if (language === 'de') return 'de-DE';
+  if (language === 'cs') return 'cs-CZ';
+  return 'en-GB';
+}
+
+/**
  * Assemble the document.
  *
  * The totals come from the tax groups, not from adding the lines — the two

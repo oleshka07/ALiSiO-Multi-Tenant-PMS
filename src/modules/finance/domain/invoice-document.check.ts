@@ -128,3 +128,26 @@ assert.strictEqual(storno.correctsNumber, '22421', 'and names the document it re
 console.log('  ok  сторно назване Stornorechnung і несе номер оригіналу');
 
 console.log('invoice-document: §14 UStG перевіряється поіменно, локаль — від організації');
+
+// ─── Charge names are the document's, never the interface's ─────────────────
+//
+// These words are printed on an invoice. A Czech accountant filing a German
+// hotel's paperwork must see "Übernachtung" whatever language their own screen
+// is in — the same rule as the labels above, applied to the lines.
+const { chargeName, localeForLanguage } = await import('./invoice-document.ts');
+
+assert.strictEqual(chargeName('lodging', 'de-DE'), 'Übernachtung', 'the reference invoice’s word');
+assert.strictEqual(chargeName('breakfast_food', 'de-DE'), 'Frühstück Speisen', 'food, reduced rate');
+assert.strictEqual(chargeName('breakfast_drinks', 'de-DE'), 'Frühstück Getränke', 'drinks, standard rate');
+assert.strictEqual(chargeName('lodging', 'cs-CZ'), 'Ubytování', 'and Czech is not German');
+console.log('  ok  рядки фактури називаються мовою документа: Übernachtung / Ubytování');
+
+// An unknown kind stays visibly wrong rather than becoming a plausible word in
+// the wrong language — that is what you want on a legal document.
+assert.strictEqual(chargeName('sauna', 'de-DE'), 'sauna', 'nothing is invented');
+console.log('  ok  невідомий рядок лишається собою, а не вигаданим словом');
+
+assert.strictEqual(localeForLanguage('de'), 'de-DE', 'German');
+assert.strictEqual(localeForLanguage('cs'), 'cs-CZ', 'Czech');
+assert.strictEqual(localeForLanguage('uk'), 'en-GB', 'no Ukrainian invoice form — English, not invented');
+console.log('  ok  мова готелю перетворюється на локаль документа, без вигадок');

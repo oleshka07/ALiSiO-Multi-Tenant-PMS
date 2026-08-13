@@ -19,6 +19,7 @@ import {
   Brain,
   Receipt,
   Users2,
+  Coffee,
 } from 'lucide-react';
 
 const settingsItems = [
@@ -49,6 +50,13 @@ const settingsItems = [
     icon: <Users2 size={22} />,
     href: '/app/settings/pricing-matrix',
     color: 'green',
+  },
+  {
+    title: 'Ціни каналів',
+    desc: 'З чого складається сума каналу: сніданок, ПДВ, націнка',
+    icon: <Coffee size={22} />,
+    href: '/app/settings/channel-rules',
+    color: 'orange',
   },
   {
     title: 'Фактурування',

@@ -5426,6 +5426,63 @@ function runMigrations(database: any) {
     console.error('[DB] price_occupancy migration:', e.message);
   }
 
+  // --- Migration: create channel_rate_rules ---
+  //
+  // What a channel's number means, and what we send it.
+  //
+  // Booking.com and its kin send one figure — "91,05 € for this stay". A German
+  // invoice cannot print that: it has to say how much was accommodation, how
+  // much was breakfast food and how much was breakfast drinks, because those
+  // carry different VAT. Reception at the pilot does that arithmetic by hand for
+  // every channel booking; it is the most repeated calculation of their day and
+  // the one most likely to be wrong, because the split depends on how many
+  // people slept there.
+  //
+  // A row here says, for one channel: whether its price includes breakfast,
+  // what breakfast costs per person per night split into food and drink, which
+  // tax ROLE each part carries, and what markup goes on top of the rate card
+  // when prices are pushed to that channel.
+  //
+  // `channel` NULL is the default — the arrangement that applies to any channel
+  // without a row of its own. That is how a hotel with one policy writes one
+  // row instead of six.
+  //
+  // Tax roles, not percentages: 'standard' / 'reduced' / 'zero' point at
+  // fin_tax_rates, which holds the numbers and the dates they changed. A rate
+  // written here as 7 would still say 7 in 2031.
+  //
+  // Nothing here is a number this code knows. A hotel whose rates never include
+  // breakfast has no rows and nothing changes for it.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS channel_rate_rules (
+        id                     TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id        TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id            TEXT REFERENCES properties(id) ON DELETE CASCADE,
+        channel                TEXT,
+        includes_breakfast     INTEGER NOT NULL DEFAULT 0,
+        breakfast_food_price   REAL NOT NULL DEFAULT 0,
+        breakfast_drinks_price REAL NOT NULL DEFAULT 0,
+        lodging_tax_code       TEXT NOT NULL DEFAULT 'reduced',
+        food_tax_code          TEXT NOT NULL DEFAULT 'reduced',
+        drinks_tax_code        TEXT NOT NULL DEFAULT 'standard',
+        markup_percent         REAL NOT NULL DEFAULT 0,
+        created_at             TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at             TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    // One rule per channel per property. Two rules for one channel would mean
+    // the same booking splits differently depending on which row was read
+    // first. COALESCE because the default row — the one with no channel — is
+    // exactly the one a plain UNIQUE would not constrain.
+    database.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_channel_rate_rules_row
+        ON channel_rate_rules(organization_id, property_id, (COALESCE(channel, '')))
+    `);
+  } catch (e: any) {
+    console.error('[DB] channel_rate_rules migration:', e.message);
+  }
+
   // The last line of runMigrations, and the only reliable signal that the
   // schema has settled. scripts/check-fresh-schema.mjs waits for it: polling
   // the table count said "done" while ALTER TABLE ADD COLUMN was still going,

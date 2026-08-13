@@ -361,6 +361,23 @@ CREATE TABLE "channel_credentials" (
   UNIQUE ("organization_id", "channel", "environment")
 );
 
+CREATE TABLE "channel_rate_rules" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT,
+  "property_id" TEXT,
+  "channel" TEXT,
+  "includes_breakfast" BOOLEAN DEFAULT false NOT NULL,
+  "breakfast_food_price" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "breakfast_drinks_price" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "lodging_tax_code" TEXT DEFAULT 'reduced' NOT NULL,
+  "food_tax_code" TEXT DEFAULT 'reduced' NOT NULL,
+  "drinks_tax_code" TEXT DEFAULT 'standard' NOT NULL,
+  "markup_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
+);
+
 CREATE TABLE "channel_room_mapping" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "connection_id" TEXT NOT NULL,
@@ -1548,7 +1565,7 @@ CREATE TABLE "site_rate_plans" (
   "is_active" BOOLEAN DEFAULT true NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "pricing_modifier_percent" DOUBLE PRECISION,
+  "pricing_modifier_percent" NUMERIC(5,2),
   "pricing_modifier_type" TEXT DEFAULT 'less',
   "derived_from_plan_id" TEXT,
   "valid_weekdays" TEXT,
@@ -1850,6 +1867,10 @@ ALTER TABLE "categories" ADD CONSTRAINT "fk_categories_property_id_1"
 ALTER TABLE "channel_connections" ADD CONSTRAINT "fk_channel_connections_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "channel_credentials" ADD CONSTRAINT "fk_channel_credentials_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "channel_rate_rules" ADD CONSTRAINT "fk_channel_rate_rules_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "channel_rate_rules" ADD CONSTRAINT "fk_channel_rate_rules_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "channel_room_mapping" ADD CONSTRAINT "fk_channel_room_mapping_unit_type_id_1"
   FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
@@ -2178,6 +2199,7 @@ CREATE INDEX "idx_cart_events_type" ON "cart_events" ("event_type", "abandon_not
 CREATE INDEX "idx_ch_conn_channel" ON "channel_connections" ("channel");
 CREATE INDEX "idx_ch_conn_org" ON "channel_connections" ("organization_id");
 CREATE INDEX "idx_ch_conn_status" ON "channel_connections" ("status");
+CREATE UNIQUE INDEX "idx_channel_rate_rules_row" ON "channel_rate_rules" (organization_id, property_id, (COALESCE(channel, '')));
 CREATE INDEX "idx_ch_room_conn" ON "channel_room_mapping" ("connection_id");
 CREATE INDEX "idx_ct_hash" ON "content_translations" ("text_hash");
 CREATE INDEX "idx_ct_lang" ON "content_translations" ("text_hash", "lang");
@@ -2308,6 +2330,7 @@ CREATE INDEX IF NOT EXISTS "idx_business_units_org" ON "business_units" ("organi
 CREATE INDEX IF NOT EXISTS "idx_capex_items_org" ON "capex_items" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_channel_connections_org" ON "channel_connections" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_channel_credentials_org" ON "channel_credentials" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_channel_rate_rules_org" ON "channel_rate_rules" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cost_allocations_org" ON "cost_allocations" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_coupons_org" ON "coupons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_expense_categories_org" ON "expense_categories" ("organization_id");
@@ -2375,6 +2398,8 @@ ALTER TABLE "capex_items" ALTER COLUMN "organization_id"
 ALTER TABLE "channel_connections" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "channel_credentials" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "channel_rate_rules" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "cost_allocations" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2571,6 +2596,12 @@ CREATE POLICY "channel_connections_tenant" ON "channel_connections"
 ALTER TABLE "channel_credentials" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "channel_credentials" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "channel_credentials_tenant" ON "channel_credentials"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "channel_rate_rules" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "channel_rate_rules" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "channel_rate_rules_tenant" ON "channel_rate_rules"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

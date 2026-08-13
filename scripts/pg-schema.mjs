@@ -53,6 +53,8 @@ const OVERRIDE = {
   // Counts and ratios that the money pattern would otherwise claim.
   'bank_statements.total_transactions': 'INTEGER',
   'import_runs.rows_total': 'INTEGER',
+  // (percentages are matched by name below — these three predate that rule and
+  //  are kept so the file still says out loud what they are)
   'early_bookings.discount_percent': 'NUMERIC(5,2)',
   'reservations.commission_percent': 'NUMERIC(5,2)',
   'booking_sources.commission_percent': 'NUMERIC(5,2)',
@@ -73,12 +75,21 @@ const OVERRIDE = {
 const MONEY = /(^|_)(amount|price|total|balance|fee|cost|revenue|payout|deposit|commission|discount|subtotal|due|face_value|opening_balance|closing_balance)($|_)/;
 const MONEY_SUFFIX = /_czk$|_eur$|_amount$|_price$|_total$|_fee$|_sum$|_gross$|_net$/;
 
+/**
+ * A percentage. NUMERIC(5,2) — up to 999.99, which is more than any of them.
+ *
+ * A float here is the same mistake as a float for money and worse hidden: 19.9
+ * stored as 19.899999999999999 turns a commission report into a column of
+ * numbers that nearly add up.
+ */
+const PERCENT = /_percent$|^percent$/;
+
 /** An instant. */
 const TIMESTAMP = /_at$|^created$|^updated$|^timestamp$/;
 /** A calendar day, with no time of day and no zone. */
 const DATE_ONLY = /^check_in$|^check_out$|^date$|_date$|^valid_from$|^valid_to$|^valid_until$|^expires_at$|^period_from$|^period_to$/;
 /** A true/false flag stored as 0/1. */
-const BOOL = /^is_|^has_|^can_|_enabled$|^locked$|^confirmed$|^active$|_active$|^read_only$|^needs_|^smoking$|^partial$|_hidden$|_exempt$|_reported$|_included_in_price$|^enabled$|^archived$/;
+const BOOL = /^is_|^has_|^can_|^includes_|_enabled$|^locked$|^confirmed$|^active$|_active$|^read_only$|^needs_|^smoking$|^partial$|_hidden$|_exempt$|_reported$|_included_in_price$|^enabled$|^archived$/;
 /** A JSON document kept in a text column. */
 const JSONISH = /_json$|^old_values$|^new_values$|^parameters$|^config$|^payload$|^raw_payload$|^assumptions$|^metadata$|^allowed_tabs$|^connection_types$|^applicable_services$|^allowed_days$|^included_services$|^applied_listings$|^allowed_promo_codes$|^permissions$/;
 
@@ -122,6 +133,7 @@ function inferType(table, col, sqliteType) {
   if (DATE_ONLY.test(n) && n !== 'expires_at') return 'DATE';
   if (TIMESTAMP.test(n) || n === 'expires_at') return 'TIMESTAMPTZ';
   if (BOOL.test(n) && (t === 'INTEGER' || t === '' || t === 'BOOLEAN')) return 'BOOLEAN';
+  if (PERCENT.test(n)) return 'NUMERIC(5,2)';
   if (MONEY.test(n) || MONEY_SUFFIX.test(n)) return 'NUMERIC(14,2)';
 
   switch (t) {
