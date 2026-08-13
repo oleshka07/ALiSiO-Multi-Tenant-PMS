@@ -5012,6 +5012,83 @@ function runMigrations(database: any) {
     console.error('[DB] organization_features migration:', e.message);
   }
 
+  // --- Migration: create fin_folios and fin_folio_items ---
+  //
+  // A folio is the running bill of a stay; an invoice is a frozen snapshot of
+  // part of it. Keeping them apart is what makes five different things
+  // possible at once, and each one is a real request from the pilot:
+  //
+  //   - charges added during the stay (bar, garage, breakfast) without
+  //     "redoing the bill";
+  //   - an invoice issued mid-stay, because the guest pays on arrival;
+  //   - two payers on one booking — the company takes the nights, the guest
+  //     takes the bar. That is a daily occurrence there, and it is why a
+  //     booking may have SEVERAL folios;
+  //   - one monthly invoice to a company covering folios from many bookings;
+  //   - corrections that do not destroy anything: an invoice is never edited
+  //     or deleted, only reversed.
+  //
+  // The payer is a SNAPSHOT, not a foreign key to a live directory. A company
+  // that changes its address next year must not change the invoice it was sent
+  // last year.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS fin_folios (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        reservation_id  TEXT REFERENCES reservations(id) ON DELETE SET NULL,
+        payer_kind      TEXT NOT NULL DEFAULT 'guest' CHECK (payer_kind IN ('guest','company')),
+        guest_id        TEXT,
+        payer_name      TEXT,
+        payer_address   TEXT,
+        payer_vat_no    TEXT,
+        payer_debtor_no TEXT,
+        status          TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','settled')),
+        label           TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folios_res ON fin_folios(reservation_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folios_org ON fin_folios(organization_id, status)');
+
+    // service_date, not created_at, decides the VAT rate and which day-report a
+    // charge belongs to. It is the Leistungsdatum a German invoice must print.
+    //
+    // Prices are GROSS: that is how a hotel quotes, how a channel sends, and
+    // how the guest reads the bill. Net is derived — see invoice-vat.ts.
+    //
+    // vat_rate is a NUMBER on the row, not a link to the rate table. The rate
+    // in force is chosen once, when the charge is made, and then frozen: a rate
+    // change next year must not restate a document from this one.
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS fin_folio_items (
+        id                TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id   TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        folio_id          TEXT REFERENCES fin_folios(id) ON DELETE CASCADE,
+        reservation_id    TEXT REFERENCES reservations(id) ON DELETE SET NULL,
+        service_date      TEXT NOT NULL,
+        kind              TEXT NOT NULL CHECK (kind IN ('lodging','service','fee','city_tax','manual')),
+        description       TEXT NOT NULL,
+        guest_name        TEXT,
+        unit_code         TEXT,
+        quantity          REAL NOT NULL DEFAULT 1,
+        unit_price_gross  REAL NOT NULL DEFAULT 0,
+        total_gross       REAL NOT NULL DEFAULT 0,
+        vat_rate          REAL NOT NULL DEFAULT 0,
+        source            TEXT NOT NULL DEFAULT 'manual'
+                          CHECK (source IN ('nightly','ota_split','manual','restaurant','import')),
+        voided_by_item_id TEXT,
+        invoice_id        TEXT,
+        created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_folio ON fin_folio_items(folio_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_date ON fin_folio_items(organization_id, service_date)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_invoice ON fin_folio_items(invoice_id)');
+  } catch (e: any) {
+    console.error('[DB] fin_folios migration:', e.message);
+  }
+
   // --- Migration: create invoice_series ---
   //
   // Which runs of invoice numbers this organization keeps, and what each one
