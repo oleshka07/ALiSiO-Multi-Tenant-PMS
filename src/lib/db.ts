@@ -2941,7 +2941,7 @@ function runMigrations(database: any) {
       due_date TEXT,
       amount REAL NOT NULL,
       currency TEXT NOT NULL DEFAULT 'CZK',
-      status TEXT NOT NULL DEFAULT 'issued' CHECK (status IN ('issued', 'cancelled')),
+      status TEXT NOT NULL DEFAULT 'issued' CHECK (status IN ('issued', 'cancelled', 'storno', 'corrected')),
       notes TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
@@ -3063,7 +3063,7 @@ function runMigrations(database: any) {
           due_date TEXT,
           amount REAL NOT NULL,
           currency TEXT NOT NULL DEFAULT 'CZK',
-          status TEXT NOT NULL DEFAULT 'issued' CHECK (status IN ('issued', 'cancelled')),
+          status TEXT NOT NULL DEFAULT 'issued' CHECK (status IN ('issued', 'cancelled', 'storno', 'corrected')),
           notes TEXT,
           created_at TEXT NOT NULL DEFAULT (datetime('now')),
           series TEXT DEFAULT 'HOUSE',
@@ -4616,7 +4616,7 @@ function runMigrations(database: any) {
           due_date TEXT,
           amount REAL NOT NULL,
           currency TEXT NOT NULL DEFAULT 'CZK',
-          status TEXT NOT NULL DEFAULT 'issued' CHECK (status IN ('issued', 'cancelled')),
+          status TEXT NOT NULL DEFAULT 'issued' CHECK (status IN ('issued', 'cancelled', 'storno', 'corrected')),
           notes TEXT,
           created_at TEXT NOT NULL DEFAULT (datetime('now')),
           series TEXT DEFAULT 'HOUSE',
@@ -5087,6 +5087,46 @@ function runMigrations(database: any) {
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_invoice ON fin_folio_items(invoice_id)');
   } catch (e: any) {
     console.error('[DB] fin_folios migration:', e.message);
+  }
+
+  // --- Migration: invoices learn about reversal ---
+  //
+  // `CHECK (status IN ('issued','cancelled'))` and no link from a reversal to
+  // what it reverses. Both come from a time when a wrong invoice was deleted.
+  //
+  // A German invoice is never deleted and never edited: it is reversed by a
+  // second document that mirrors it, and the pair stays in the books forever
+  // (GoBD). That needs two statuses the CHECK refused — `storno` for the
+  // mirror, `corrected` for the original it cancels — and a column saying
+  // which document a reversal belongs to.
+  try {
+    const cols = (database.prepare('PRAGMA table_info(invoices)').all() as any[]).map((c: any) => c.name);
+    if (cols.length > 0 && !cols.includes('corrects_invoice_id')) {
+      database.exec('ALTER TABLE invoices ADD COLUMN corrects_invoice_id TEXT');
+    }
+    // SQLite cannot widen a CHECK, so the table is rebuilt when it still
+    // carries the two-value one. Data is copied column for column.
+    const row = database.prepare('SELECT sql FROM sqlite_master WHERE type = ? AND name = ?')
+      .get('table', 'invoices') as { sql: string } | undefined;
+    if (row?.sql && /CHECK\s*\(\s*status\s+IN\s*\(\s*'issued'\s*,\s*'cancelled'\s*\)\s*\)/i.test(row.sql)) {
+      const rebuilt = row.sql.replace(
+        /CHECK\s*\(\s*status\s+IN\s*\([^)]*\)\s*\)/i,
+        "CHECK (status IN ('issued', 'cancelled', 'storno', 'corrected'))",
+      );
+      const names = (database.prepare('PRAGMA table_info(invoices)').all() as any[])
+        .map((c: any) => `"${c.name}"`).join(', ');
+      database.exec('PRAGMA foreign_keys = OFF');
+      database.exec('BEGIN');
+      database.exec(rebuilt.replace(/CREATE TABLE invoices\b/i, 'CREATE TABLE invoices__rebuilt'));
+      database.exec(`INSERT INTO invoices__rebuilt (${names}) SELECT ${names} FROM invoices`);
+      database.exec('DROP TABLE invoices');
+      database.exec('ALTER TABLE invoices__rebuilt RENAME TO invoices');
+      database.exec('COMMIT');
+      database.exec('PRAGMA foreign_keys = ON');
+      console.log('[DB] invoices: storno and corrected are valid statuses now');
+    }
+  } catch (e: any) {
+    console.error('[DB] invoices storno migration:', e.message);
   }
 
   // --- Migration: create fin_invoice_lines and fin_invoice_tax_totals ---

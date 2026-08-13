@@ -112,7 +112,7 @@ const SQLITE_DIALECT: Dialect = {
   plusMinutes: (column, minutes) => `datetime(${column}, (${minutes}) || ' minutes')`,
 };
 
-export function sqliteSql(db: any = null): Sql {
+export function sqliteSql(db: any = null, insideTransaction = false): Sql {
   // Loaded on first use, not at import: `./index.ts` is the SQLite bootstrap —
   // the schema, every migration, better-sqlite3 and bcryptjs for the demo seed
   // — and a Postgres deployment must not drag any of it in. The Postgres
@@ -144,6 +144,19 @@ export function sqliteSql(db: any = null): Sql {
     },
 
     async tx<T>(fn: (t: Sql) => Promise<T>): Promise<T> {
+      // Already inside one: join it, do not start a second.
+      //
+      // SQLite has no nested transactions, so `BEGIN` inside `BEGIN` is a
+      // driver error — and it surfaces far from its cause. Issuing an invoice
+      // is one transaction that calls allocateInvoiceNumber, which is itself
+      // written to be atomic; both are right, and neither should have to know
+      // whether the other ran first.
+      //
+      // Joining is also the correct semantics: the inner block wanted
+      // all-or-nothing, and inside an outer transaction it already has it. The
+      // outer COMMIT or ROLLBACK decides for both.
+      if (insideTransaction) return await fn(impl);
+
       const d = handle();
       // better-sqlite3's own db.transaction() cannot wrap an async callback —
       // it commits when the function RETURNS, which for an async function is
@@ -151,7 +164,7 @@ export function sqliteSql(db: any = null): Sql {
       // statements: they are what makes an await inside a transaction safe.
       d.prepare('BEGIN').run();
       try {
-        const out = await fn(sqliteSql(d));
+        const out = await fn(sqliteSql(d, true));
         d.prepare('COMMIT').run();
         return out;
       } catch (e) {

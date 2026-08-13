@@ -232,7 +232,7 @@ function methods(client: PgClient, scoped: boolean): Sql {
   const run = async (text: string, params: unknown[] = []) =>
     withTenant((c) => c.query(toDollarParams(text), params));
 
-  return {
+  const impl: Sql = {
     dialect: POSTGRES_DIALECT,
 
     async rows<T = any>(text: string, params: unknown[] = []): Promise<T[]> {
@@ -262,10 +262,19 @@ function methods(client: PgClient, scoped: boolean): Sql {
       });
     },
 
-    async tx<T>(): Promise<T> {
-      throw new Error('nested transaction: use the handle the callback was given');
+    // A nested tx joins the one already open rather than refusing.
+    //
+    // This threw, and the message was addressed to whoever wrote the inner
+    // call — but the inner call is often a function that is atomic on its own
+    // and correct to reuse inside a bigger operation (allocateInvoiceNumber is
+    // exactly that). Joining gives it what it asked for: the outer COMMIT or
+    // ROLLBACK decides for both, on the same connection, with the tenant
+    // already set.
+    async tx<T>(fn: (t: Sql) => Promise<T>): Promise<T> {
+      return await fn(impl);
     },
   };
+  return impl;
 }
 
 export function postgresSql(pool: PgPool): Sql {

@@ -1058,9 +1058,10 @@ CREATE TABLE "invoices" (
   "custom_buyer_country" TEXT,
   "custom_description" TEXT,
   "custom_email" TEXT,
+  "corrects_invoice_id" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "invoice_number"),
-  CHECK (status IN ('issued', 'cancelled'))
+  CHECK (status IN ('issued', 'cancelled', 'storno', 'corrected'))
 );
 
 CREATE TABLE "menu_items" (
@@ -2203,9 +2204,6 @@ CREATE INDEX "idx_guests_name" ON "guests" ("last_name", "first_name");
 CREATE INDEX "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX "idx_invoice_series_channel" ON "invoice_series" ("organization_id", "channel");
 CREATE UNIQUE INDEX "idx_invoice_series_code" ON "invoice_series" ("organization_id", "code");
-CREATE INDEX "idx_invoices_issued" ON "invoices" ("issued_at");
-CREATE INDEX "idx_invoices_number" ON "invoices" ("organization_id", "invoice_number");
-CREATE INDEX "idx_invoices_reservation" ON "invoices" ("reservation_id");
 CREATE INDEX "idx_partner_reports_period" ON "partner_reports" ("organization_id", "period");
 CREATE INDEX "idx_payment_webhook_log_org" ON "payment_webhook_log" ("organization_id");
 CREATE INDEX "idx_pwl_created" ON "payment_webhook_log" ("created_at");

@@ -154,6 +154,7 @@ SET LOCAL app.organization_id = '<org id>';
 | `0011-invoice-series-are-configuration.sql` | `invoice_series` — серії нумерації і форма номера як налаштування організації. Порожня таблиця = поведінка не змінюється ні на символ |
 | `0012-folios-the-running-bill-of-a-stay.sql` | `fin_folios` + `fin_folio_items` — рахунок-накопичувач проживання окремо від фактури: кілька платників на одну броню, рахунок посеред проживання, збірний рахунок фірмі, сторно замість редагування |
 | `0013-an-invoice-is-a-copy-not-a-view.sql` | `fin_invoice_lines` + `fin_invoice_tax_totals` — заморожена половина: усе, що друкує документ, лежить на його власних рядках, без FK на довідники, які мають право змінюватись (GoBD, 10 років) |
+| `0014-an-invoice-is-reversed-never-deleted.sql` | статуси `storno` і `corrected` + `corrects_invoice_id`: фактура не видаляється і не редагується, а дзеркалиться другим документом |
 
 **Накочує їх деплой.** `deploy/deploy.sh` викликає `deploy/migrate.sh` між
 збіркою і рестартом: журнал застосованого лежить у таблиці

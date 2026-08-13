@@ -78,3 +78,43 @@ try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 
 catch { /* Windows holds the file a moment; the OS temp dir cleans itself */ }
 
 console.log('async sql: rows, row, run and a transaction that rolls back across an await');
+
+// ─── A nested transaction joins the one already open ────────────────────────
+//
+// SQLite has no nested transactions, so `BEGIN` inside `BEGIN` is a driver
+// error that surfaces far from its cause. It cost an evening: issuing an
+// invoice is one transaction which calls allocateInvoiceNumber, itself written
+// to be atomic. Both were right; the seam was what refused.
+//
+// Joining is also the correct semantics — the inner block wanted
+// all-or-nothing and already has it. The outer decision covers both, which is
+// what the rollback below proves.
+{
+  await sql.exec('CREATE TABLE IF NOT EXISTS nest (v TEXT)');
+  await sql.run('DELETE FROM nest');
+
+  await sql.tx(async (t) => {
+    await t.run("INSERT INTO nest (v) VALUES ('outer')");
+    await t.tx(async (inner) => {
+      await inner.run("INSERT INTO nest (v) VALUES ('inner')");
+    });
+  });
+  assert.deepStrictEqual(
+    (await sql.rows<{ v: string }>('SELECT v FROM nest ORDER BY v')).map((r) => r.v),
+    ['inner', 'outer'],
+    'both writes committed once',
+  );
+
+  // And the outer rollback takes the inner write with it: the nested block did
+  // NOT quietly commit on its own.
+  await assert.rejects(() => sql.tx(async (t) => {
+    await t.run("INSERT INTO nest (v) VALUES ('doomed')");
+    await t.tx(async (inner) => { await inner.run("INSERT INTO nest (v) VALUES ('doomed-inner')"); });
+    throw new Error('outer fails after the nested block succeeded');
+  }));
+  assert.strictEqual(
+    (await sql.rows('SELECT v FROM nest')).length, 2,
+    'the outer rollback undid the nested write too',
+  );
+  console.log('  ok  вкладена транзакція приєднується, і зовнішній відкат забирає її з собою');
+}

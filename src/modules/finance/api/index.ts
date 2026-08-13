@@ -317,3 +317,7 @@ export {
   listTaxRates, createTaxRate, closeTaxRate, deleteTaxRate,
   listInvoiceSeries, createInvoiceSeries, updateInvoiceSeries, deleteInvoiceSeries,
 } from './invoicing-config.handlers';
+export {
+  listFolios, createFolio, getFolioCharges, addFolioCharges,
+  issueFolioInvoice, stornoInvoice,
+} from './folio.handlers';

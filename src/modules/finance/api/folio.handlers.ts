@@ -1,0 +1,118 @@
+/**
+ * Folios over HTTP: the running bill, and turning it into a document.
+ *
+ * `manage_documents`, not owner-only: adding a bar charge to a folio and
+ * handing a guest their invoice are reception's job, twenty times a day. A
+ * hotel where only the owner may print an invoice is a hotel where the owner
+ * is on reception.
+ *
+ * That permission already exists and already governs invoices; a new one for
+ * folios would mean every customer has to grant it before their staff can do
+ * what they did yesterday.
+ */
+import { NextResponse } from 'next/server';
+import { withPermission } from '@core/auth/session';
+import * as folios from '../data/folio.repo';
+
+/** An error a person should read, and one they should not. */
+function refuse(e: unknown) {
+  const message = e instanceof Error ? e.message : 'Failed';
+  // These are decisions, not faults: the caller asked for something the rules
+  // do not allow, and the sentence explains which rule.
+  const expected = /not found|Nothing to invoice|is closed|already a reversal/i.test(message);
+  if (!expected) console.error('[folio]', e);
+  return NextResponse.json(
+    { error: expected ? message : 'Failed' },
+    { status: expected ? 409 : 500 },
+  );
+}
+
+export const listFolios = withPermission('manage_documents', async (request: Request) => {
+  const reservationId = new URL(request.url).searchParams.get('reservation_id') || undefined;
+  return NextResponse.json({ folios: await folios.listFolios(reservationId) });
+});
+
+export const createFolio = withPermission('manage_documents', async (request: Request) => {
+  const body = await request.json().catch(() => ({})) as any;
+  const id = await folios.createFolio({
+    reservationId: body.reservation_id ?? null,
+    payerKind: body.payer_kind === 'company' ? 'company' : 'guest',
+    payerName: body.payer_name ?? null,
+    payerAddress: body.payer_address ?? null,
+    payerVatNo: body.payer_vat_no ?? null,
+    payerDebtorNo: body.payer_debtor_no ?? null,
+    label: body.label ?? null,
+  });
+  return NextResponse.json({ id }, { status: 201 });
+});
+
+export const getFolioCharges = withPermission('manage_documents', async (
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) => {
+  const { id } = await params;
+  return NextResponse.json({ items: await folios.openCharges(id) });
+});
+
+export const addFolioCharges = withPermission('manage_documents', async (
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) => {
+  const { id } = await params;
+  const body = await request.json().catch(() => ({})) as any;
+  const raw = Array.isArray(body.items) ? body.items : [body];
+
+  const charges = raw.map((c: any) => ({
+    folioId: id,
+    reservationId: c.reservation_id ?? null,
+    serviceDate: String(c.service_date || '').slice(0, 10),
+    kind: c.kind || 'manual',
+    description: String(c.description || '').trim(),
+    guestName: c.guest_name ?? null,
+    unitCode: c.unit_code ?? null,
+    quantity: Number(c.quantity ?? 1),
+    unitPriceGross: Number(c.unit_price_gross ?? 0),
+    totalGross: Number(c.total_gross ?? Number(c.quantity ?? 1) * Number(c.unit_price_gross ?? 0)),
+    vatRate: Number(c.vat_rate ?? 0),
+    source: c.source || 'manual',
+  }));
+
+  // A charge with no date has no VAT rate and no day report; a charge with no
+  // description is a line the guest cannot dispute.
+  for (const c of charges) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(c.serviceDate)) {
+      return NextResponse.json({ error: 'service_date must be YYYY-MM-DD' }, { status: 400 });
+    }
+    if (!c.description) {
+      return NextResponse.json({ error: 'description is required' }, { status: 400 });
+    }
+  }
+
+  return NextResponse.json({ added: await folios.addCharges(charges) }, { status: 201 });
+});
+
+export const issueFolioInvoice = withPermission('manage_documents', async (
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) => {
+  const { id } = await params;
+  const body = await request.json().catch(() => ({})) as any;
+  try {
+    return NextResponse.json(await folios.issueInvoice({
+      folioId: id, channel: body.channel ?? null, issueDate: body.issue_date,
+    }), { status: 201 });
+  } catch (e) { return refuse(e); }
+});
+
+export const stornoInvoice = withPermission('manage_documents', async (
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) => {
+  const { id } = await params;
+  const body = await request.json().catch(() => ({})) as any;
+  try {
+    return NextResponse.json(await folios.stornoInvoice({
+      invoiceId: id, channel: body.channel ?? null, issueDate: body.issue_date,
+    }), { status: 201 });
+  } catch (e) { return refuse(e); }
+});
