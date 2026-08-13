@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { cheapestByDay } from '@pricing';
 import { withSite } from '../data/site.repo';
 
 export const CORS_HEADERS = {
@@ -203,9 +204,17 @@ async function calendarFor(searchParams: URLSearchParams) {
 
     // ── 8. Price map (optional) ─────────────────────────────────────────────
     const unitTypes = await sql.rows<any>(`
-      SELECT ut.id FROM unit_types ut
+      SELECT ut.id, ut.base_occupancy FROM unit_types ut
       WHERE ut.is_active = TRUE AND ut.property_id = ?
     `, [property.id]) as any[];
+
+    // The owner's rate card, priced at each category's base occupancy — the
+    // "from" figure. Empty for a hotel that has not filled the matrix, and
+    // then the day calendar below answers exactly as it did before.
+    const matrixByDay = await cheapestByDay({
+      unitTypes: unitTypes.map((ut: any) => ({ id: ut.id, persons: Number(ut.base_occupancy) || 2 })),
+      from: monthStart, to: monthEnd,
+    });
 
     const priceMap = new Map<string, any>();
     if (hasPriceCalendar && unitTypes.length > 0) {
@@ -243,10 +252,16 @@ async function calendarFor(searchParams: URLSearchParams) {
         availableCount <= 0 ? 'booked' :
         bookedCount > 0 ? 'partial' : 'available';
 
+      // The matrix first, the day calendar second, and nothing third. What
+      // stood here was `: (unitTypes.length > 0 ? 2500 : null)` — one
+      // customer's number in one customer's currency, shown on every square of
+      // every hotel's calendar whenever a day had no price. A day nobody has
+      // priced now shows no price, which is true.
       const pe = priceMap.get(dateStr);
-      let price: number | null = pe
-        ? (isWeekend && pe.min_weekend_price != null ? pe.min_weekend_price : pe.min_price)
-        : (unitTypes.length > 0 ? 2500 : null);
+      let price: number | null = matrixByDay.get(dateStr)
+        ?? (pe
+          ? (isWeekend && pe.min_weekend_price != null ? pe.min_weekend_price : pe.min_price)
+          : null);
 
       if (activeRatePlan) {
         if (status !== 'booked') {

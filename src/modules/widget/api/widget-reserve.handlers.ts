@@ -10,6 +10,7 @@ import { hasFeature, featureDisabled } from '@core/features';
 import { withSite } from '../data/site.repo';
 import { siteAllowsHost, type SiteRow } from '../data/site.repo';
 import { quoteCertificate, claimCertificate } from '../data/certificate.repo';
+import { priceNights } from '@pricing';
 
 // Fallback to guarantee event subscribers are registered in Serverless (Vercel) isolated functions
 const ensureSubscribers = async () => {
@@ -239,41 +240,47 @@ export async function createWidgetReservation(request: NextRequest) {
         return NextResponse.json({ error: 'This unit is blocked for the selected dates' }, { status: 409, headers: CORS_HEADERS });
       }
     }
-    let prices: any[] = [];
-    if (hasPriceCalendar) {
-      prices = await sql.rows<any>(`
-        SELECT pc.date, pc.base_price, pc.weekend_price
-        FROM price_calendar pc
-        WHERE pc.unit_type_id = ? AND pc.date >= ? AND pc.date < ?
-        ORDER BY pc.date ASC
-      `, [unit.unit_type_id, checkIn, checkOut]) as any[];
-    }
-
-    const priceMap = new Map<string, any>();
-    for (const p of prices) priceMap.set(p.date, p);
-
+    // The price of the stay, from the one resolver every caller uses — the
+    // occupancy matrix where the owner has priced this category and this many
+    // guests, the day calendar otherwise. See pricing/data/nightly-price.ts.
+    //
+    // What stood here was its own copy of the weekday arithmetic and this line:
+    //
+    //     let dayPrice = 2500;
+    //
+    // A night no source could price was billed at 2500 — one customer's number
+    // in one customer's currency, charged to whoever booked next. A German
+    // hotel would have taken €2500 for a night, quietly, on a guest's card.
     let totalPrice = 0;
     let resCurrency = clientCurrency || 'CZK';
-    const current = new Date(ciDate);
-    for (let i = 0; i < nights; i++) {
-      const dateStr = current.toISOString().split('T')[0];
-      const dayOfWeek = current.getDay();
-      const isWeekend = dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6;
-      const priceEntry = priceMap.get(dateStr);
-      let dayPrice = 2500;
-      if (priceOverride != null) {
-        dayPrice = priceOverride;
-      } else if (priceEntry) {
-        dayPrice = isWeekend && priceEntry.weekend_price != null
-          ? priceEntry.weekend_price : priceEntry.base_price;
+    let priced: Awaited<ReturnType<typeof priceNights>> | null = null;
+
+    if (priceOverride != null) {
+      // An operator-set price per night: no source is consulted, and that is
+      // the point of an override.
+      totalPrice = priceOverride * nights;
+    } else {
+      priced = hasPriceCalendar
+        ? await priceNights({ unitTypeId: unit.unit_type_id, checkIn, nights, persons: adults + children })
+        : { nights: [], missing: [checkIn], total: 0, occupancyPriced: false };
+      if (priced.missing.length > 0) {
+        // Refusing is the only honest answer: the hotel has not said what this
+        // night costs, and a booking confirmed at an invented number is a
+        // dispute with a guest who did nothing wrong.
+        return NextResponse.json(
+          { error: 'These dates are not priced yet', missing: priced.missing },
+          { status: 409, headers: CORS_HEADERS },
+        );
       }
-      totalPrice += dayPrice;
-      current.setDate(current.getDate() + 1);
+      totalPrice = priced.total;
     }
 
     let extraPersonTotal = 0;
     const unitTypeInfo = await sql.row<any>('SELECT base_occupancy, extra_person_charge, pet_allowed, pet_charge FROM unit_types WHERE id = ?', [unit.unit_type_id]) as any;
-    if (unitTypeInfo) {
+    // Not when the matrix priced the stay: it already charges by how many
+    // people are in the room, and adding the per-extra-guest surcharge on top
+    // would bill the third guest twice.
+    if (unitTypeInfo && !priced?.occupancyPriced) {
       const baseOcc = unitTypeInfo.base_occupancy || 2;
       const extraGuests = Math.max(0, adults - baseOcc);
       extraPersonTotal = extraGuests * (unitTypeInfo.extra_person_charge || 0) * nights;

@@ -11,6 +11,11 @@ export {
   createLosTier, updateLosTier, deleteLosTier, quoteOccupancy,
 } from './occupancy-price.handlers';
 export { quoteStay, addDays } from '../domain/occupancy-price';
+
+// One resolver for what a night costs, used by the operator quote and by the
+// widget alike — the two used to keep separate copies of the arithmetic.
+export { priceNights, cheapestByDay } from '../data/nightly-price';
+export type { NightlyPrice, NightlyPrices } from '../data/nightly-price';
 export type { PriceRow, LosTier, NightPrice, Quote } from '../domain/occupancy-price';
 
 // Not wrapped with withPermission — authenticates via X-Cron-Secret header

@@ -45,7 +45,8 @@ export interface QuoteResult {
   nights: number;
   adults: number;
   children: number;
-  breakdown: { date: string; dayName: string; price: number; isWeekend: boolean }[];
+  /** `source` says which of the two price sources answered — see nightly-price.ts. */
+  breakdown: { date: string; dayName: string; price: number; isWeekend: boolean; source?: 'matrix' | 'calendar' }[];
   accommodationTotal: number;
   feeBreakdown: { name: string; amount: number }[];
   feesTotal: number;

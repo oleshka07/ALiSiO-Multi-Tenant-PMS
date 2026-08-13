@@ -1,46 +1,43 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from '@core/db/async';
 import type { QuoteResult } from '../domain/types';
+import { priceNights } from './nightly-price';
 
 export async function calculateQuote(unitTypeId: string, checkIn: string, checkOut: string, adults = 2, children = 0): Promise<QuoteResult> {
   const sql = getSql();
-
-  const prices = await sql.rows<any>(`
-    SELECT * FROM price_calendar
-    WHERE unit_type_id = ? AND date >= ? AND date < ?
-    ORDER BY date ASC
-  `, [unitTypeId, checkIn, checkOut]) as any[];
-
-  const priceMap = new Map<string, any>();
-  for (const p of prices) priceMap.set(p.date, p);
 
   const start = new Date(checkIn);
   const end = new Date(checkOut);
   const nightsTotal = Math.round((end.getTime() - start.getTime()) / 86400000);
 
+  // One resolver for every caller — see data/nightly-price.ts. The occupancy
+  // matrix answers where it has a row for this category and this many guests,
+  // the day calendar answers where it does not, and a night neither can price
+  // is counted as missing rather than charged at zero.
+  const priced = await priceNights({
+    unitTypeId, checkIn, nights: nightsTotal, persons: adults + children,
+  });
+
   const dayNames = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
   const breakdown: QuoteResult['breakdown'] = [];
-  let accommodationTotal = 0;
-  let missingDays = 0;
+  const byDate = new Map(priced.nights.map((n) => [n.date, n]));
 
   const current = new Date(start);
   for (let i = 0; i < nightsTotal; i++) {
     const dateStr = current.toISOString().split('T')[0];
     const dayOfWeek = current.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6;
-    const entry = priceMap.get(dateStr);
-    let dayPrice = 0;
-
-    if (entry) {
-      dayPrice = isWeekend && entry.weekend_price != null ? entry.weekend_price : entry.base_price;
-    } else {
-      missingDays++;
-    }
-
-    breakdown.push({ date: dateStr, dayName: dayNames[dayOfWeek], price: dayPrice, isWeekend });
-    accommodationTotal += dayPrice;
+    const night = byDate.get(dateStr);
+    breakdown.push({
+      date: dateStr, dayName: dayNames[dayOfWeek],
+      price: night?.price ?? 0, isWeekend,
+      source: night?.source,
+    });
     current.setDate(current.getDate() + 1);
   }
+
+  const accommodationTotal = priced.total;
+  const missingDays = priced.missing.length;
 
   // Fees & taxes
   let fees: any[] = [];

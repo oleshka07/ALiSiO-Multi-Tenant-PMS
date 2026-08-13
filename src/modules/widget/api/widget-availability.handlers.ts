@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withSite } from '../data/site.repo';
 import { quoteCertificate } from '../data/certificate.repo';
+import { priceNights } from '@pricing';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -34,6 +35,15 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
     let siteId = searchParams.get('siteId');
     const siteSlug = searchParams.get('siteSlug');
     const categoryType = searchParams.get('type');
+
+    // How many people will sleep in the room. The occupancy matrix prices by
+    // this, so it has to travel with the search — the widget does not send it
+    // yet, and where it is absent each unit type is priced at its own
+    // base_occupancy, which is what "the price of this room" means when nobody
+    // has said how many guests.
+    const askedAdults = Number(searchParams.get('adults') || 0);
+    const askedChildren = Number(searchParams.get('children') || 0);
+    const askedPersons = askedAdults + askedChildren;
 
     const bundleId = searchParams.get('bundleId') || '';
 
@@ -225,7 +235,6 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
         }
       }
 
-      let prices: any[] = [];
       const dayNames = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
       const breakdown: { date: string; dayName: string; price: number; isWeekend: boolean }[] = [];
       let totalPrice = 0;
@@ -260,33 +269,35 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
             current.setDate(current.getDate() + 1);
           }
         } else {
-          if (hasPriceCalendar) {
-            prices = await sql.rows<any>(`
-              SELECT pc.date, pc.base_price, pc.weekend_price
-              FROM price_calendar pc
-              WHERE pc.unit_type_id = ? AND pc.date >= ? AND pc.date < ?
-              ORDER BY pc.date ASC
-            `, [unit.unit_type_id, checkIn, checkOut]) as any[];
-          }
-
-          const priceMap = new Map<string, any>();
-          for (const p of prices) priceMap.set(p.date, p);
+          // The same resolver the reservation endpoint uses, so what the guest
+          // is shown in the search results is what they will be charged. This
+          // block used to hold its own copy of the weekday arithmetic and the
+          // same `let dayPrice = 2500` — one customer's number, shown to every
+          // guest of every hotel whenever a night had no price.
+          const priced = hasPriceCalendar
+            ? await priceNights({
+              unitTypeId: unit.unit_type_id, checkIn, nights,
+              persons: askedPersons > 0 ? askedPersons : (Number(unit.base_occupancy) || 2),
+            })
+            : null;
+          const byDate = new Map((priced?.nights ?? []).map((n) => [n.date, n]));
 
           const current = new Date(ciDate);
           for (let i = 0; i < nights; i++) {
             const dateStr = current.toISOString().split('T')[0];
             const dayOfWeek = current.getDay();
             const isWeekend = dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6;
-            const priceEntry = priceMap.get(dateStr);
+            const night = byDate.get(dateStr);
 
-            let dayPrice = 2500;
+            // A night nobody has priced stays at zero and leaves hasPricing
+            // false, which is how this unit is shown as not bookable rather
+            // than offered at an invented figure.
+            let dayPrice = 0;
             if (unit.price_override != null) {
               dayPrice = unit.price_override;
               hasPricing = true;
-            } else if (priceEntry) {
-              dayPrice = isWeekend && priceEntry.weekend_price != null
-                ? priceEntry.weekend_price
-                : priceEntry.base_price;
+            } else if (night) {
+              dayPrice = night.price;
               hasPricing = true;
             }
 

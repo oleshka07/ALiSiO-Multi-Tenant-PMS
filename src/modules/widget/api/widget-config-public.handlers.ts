@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { priceNights } from '@pricing';
 import { getDb } from '@core/db';
 import { hasFeature, featureDisabled } from '@core/features';
 import { runWithOrganization } from '@core/auth/tenant-context';
@@ -68,7 +69,7 @@ export async function getWidgetConfig(request: NextRequest) {
     today.setHours(0, 0, 0, 0);
     let defaultCheckIn: string | null = null;
     let defaultCheckOut: string | null = null;
-    let defaultPrice = 0;
+    let defaultPrice: number | null = null;
     let defaultUnitTypeId: string | null = null;
 
     const existingTables = new Set(
@@ -118,38 +119,24 @@ export async function getWidgetConfig(request: NextRequest) {
           defaultCheckOut = coStr;
           defaultUnitTypeId = ut.id;
 
+          // The example price the widget opens with — two nights in the first
+          // free category. Through the one resolver, at that category's base
+          // occupancy, and null when nothing has priced those nights.
+          //
+          // The three branches this replaces all ended at 2500 per night: one
+          // customer's number, in one customer's currency, offered as every
+          // hotel's opening price.
           const hasPriceCalendar = existingTables.has('price_calendar');
-          let total = 0;
+          let total: number | null = null;
 
           if (hasPriceCalendar) {
             try {
-              const prices = await sql.rows<any>(`
-                SELECT pc.date, pc.base_price, pc.weekend_price
-                FROM price_calendar pc
-                WHERE pc.unit_type_id = ? AND pc.date >= ? AND pc.date < ?
-                ORDER BY pc.date ASC
-              `, [ut.id, ciStr, coStr]) as any[];
-
-              const priceMap = new Map<string, any>();
-              for (const p of prices) priceMap.set(p.date, p);
-
-              const current = new Date(ci);
-              for (let i = 0; i < 2; i++) {
-                const dateStr = current.toISOString().split('T')[0];
-                const dayOfWeek = current.getDay();
-                const isWeekend = dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6;
-                const priceEntry = priceMap.get(dateStr);
-                let dayPrice = 2500;
-                if (priceEntry) {
-                  dayPrice = isWeekend && priceEntry.weekend_price != null
-                    ? priceEntry.weekend_price : priceEntry.base_price;
-                }
-                total += dayPrice;
-                current.setDate(current.getDate() + 1);
-              }
-            } catch { total = 2500 * 2; }
-          } else {
-            total = 2500 * 2;
+              const priced = await priceNights({
+                unitTypeId: ut.id, checkIn: ciStr, nights: 2,
+                persons: Number(ut.base_occupancy) || 2,
+              });
+              total = priced.missing.length === 0 ? priced.total : null;
+            } catch { total = null; }
           }
           defaultPrice = total;
           break;
