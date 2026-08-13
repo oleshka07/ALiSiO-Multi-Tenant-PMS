@@ -556,6 +556,39 @@ CREATE TABLE "fin_folios" (
   CHECK (status IN ('open','settled'))
 );
 
+CREATE TABLE "fin_invoice_lines" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT,
+  "invoice_id" TEXT NOT NULL,
+  "position" BIGINT DEFAULT 0 NOT NULL,
+  "service_date" DATE,
+  "description" TEXT NOT NULL,
+  "guest_name" TEXT,
+  "unit_code" TEXT,
+  "quantity" DOUBLE PRECISION DEFAULT 1 NOT NULL,
+  "unit_price_gross" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "total_gross" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "net_amount" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "tax_amount" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "vat_rate" DOUBLE PRECISION DEFAULT 0 NOT NULL,
+  "source_item_id" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE "fin_invoice_tax_totals" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT,
+  "invoice_id" TEXT NOT NULL,
+  "vat_rate" DOUBLE PRECISION NOT NULL,
+  "label" TEXT,
+  "gross_amount" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "net_amount" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "tax_amount" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("invoice_id", "vat_rate")
+);
+
 CREATE TABLE "fin_operation_attachments" (
   "id" TEXT NOT NULL,
   "organization_id" TEXT NOT NULL,
@@ -1836,6 +1869,10 @@ ALTER TABLE "fin_folios" ADD CONSTRAINT "fk_fin_folios_reservation_id_1"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
 ALTER TABLE "fin_folios" ADD CONSTRAINT "fk_fin_folios_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "fin_invoice_lines" ADD CONSTRAINT "fk_fin_invoice_lines_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "fin_invoice_tax_totals" ADD CONSTRAINT "fk_fin_invoice_tax_totals_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_operation_attachments" ADD CONSTRAINT "fk_fin_operation_attachments_operation_id_1"
   FOREIGN KEY ("operation_id") REFERENCES "fin_operations" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_operation_attachments" ADD CONSTRAINT "fk_fin_operation_attachments_organization_id_2"
@@ -2118,6 +2155,8 @@ CREATE INDEX "idx_fin_folio_items_folio" ON "fin_folio_items" ("folio_id");
 CREATE INDEX "idx_fin_folio_items_invoice" ON "fin_folio_items" ("invoice_id");
 CREATE INDEX "idx_fin_folios_org" ON "fin_folios" ("organization_id", "status");
 CREATE INDEX "idx_fin_folios_res" ON "fin_folios" ("reservation_id");
+CREATE INDEX "idx_fin_invoice_lines_invoice" ON "fin_invoice_lines" ("invoice_id", "position");
+CREATE UNIQUE INDEX "idx_fin_invoice_tax_totals_rate" ON "fin_invoice_tax_totals" ("invoice_id", "vat_rate");
 CREATE INDEX "idx_attach_op" ON "fin_operation_attachments" ("operation_id");
 CREATE INDEX "idx_attach_org" ON "fin_operation_attachments" ("organization_id");
 CREATE INDEX "idx_fin_operation_audit_op" ON "fin_operation_audit" ("operation_id", "performed_at");
@@ -2229,6 +2268,8 @@ CREATE INDEX IF NOT EXISTS "idx_fin_budgets_org" ON "fin_budgets" ("organization
 CREATE INDEX IF NOT EXISTS "idx_fin_channel_receivables_org" ON "fin_channel_receivables" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_folio_items_org" ON "fin_folio_items" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_folios_org" ON "fin_folios" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_fin_invoice_lines_org" ON "fin_invoice_lines" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_fin_invoice_tax_totals_org" ON "fin_invoice_tax_totals" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_operation_attachments_org" ON "fin_operation_attachments" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_operation_audit_org" ON "fin_operation_audit" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_operations_org" ON "fin_operations" ("organization_id");
@@ -2300,6 +2341,10 @@ ALTER TABLE "fin_channel_receivables" ALTER COLUMN "organization_id"
 ALTER TABLE "fin_folio_items" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "fin_folios" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "fin_invoice_lines" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "fin_invoice_tax_totals" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "fin_operation_attachments" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2538,6 +2583,18 @@ CREATE POLICY "fin_folio_items_tenant" ON "fin_folio_items"
 ALTER TABLE "fin_folios" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "fin_folios" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "fin_folios_tenant" ON "fin_folios"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "fin_invoice_lines" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "fin_invoice_lines" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "fin_invoice_lines_tenant" ON "fin_invoice_lines"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "fin_invoice_tax_totals" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "fin_invoice_tax_totals" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "fin_invoice_tax_totals_tenant" ON "fin_invoice_tax_totals"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

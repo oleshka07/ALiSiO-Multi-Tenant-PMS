@@ -5089,6 +5089,58 @@ function runMigrations(database: any) {
     console.error('[DB] fin_folios migration:', e.message);
   }
 
+  // --- Migration: create fin_invoice_lines and fin_invoice_tax_totals ---
+  //
+  // The frozen half. A folio item can still change; an invoice line never can.
+  //
+  // Deliberately a COPY, with no foreign key to the service, the rate table or
+  // the price list it came from. A German invoice has to be reproducible for
+  // ten years (GoBD), and by then the service may be renamed, the rate changed
+  // and the room gone. Everything the document prints is on the row.
+  //
+  // fin_invoice_tax_totals is the MwSt-Übersicht block, one row per rate. It
+  // stores the GROUP figures — see invoice-vat.ts for why those differ from the
+  // sum of the lines by a cent, and why that is correct.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS fin_invoice_lines (
+        id               TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id  TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        invoice_id       TEXT NOT NULL,
+        position         INTEGER NOT NULL DEFAULT 0,
+        service_date     TEXT,
+        description      TEXT NOT NULL,
+        guest_name       TEXT,
+        unit_code        TEXT,
+        quantity         REAL NOT NULL DEFAULT 1,
+        unit_price_gross REAL NOT NULL DEFAULT 0,
+        total_gross      REAL NOT NULL DEFAULT 0,
+        net_amount       REAL NOT NULL DEFAULT 0,
+        tax_amount       REAL NOT NULL DEFAULT 0,
+        vat_rate         REAL NOT NULL DEFAULT 0,
+        source_item_id   TEXT,
+        created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_invoice_lines_invoice ON fin_invoice_lines(invoice_id, position)');
+
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS fin_invoice_tax_totals (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        invoice_id      TEXT NOT NULL,
+        vat_rate        REAL NOT NULL,
+        label           TEXT,
+        gross_amount    REAL NOT NULL DEFAULT 0,
+        net_amount      REAL NOT NULL DEFAULT 0,
+        tax_amount      REAL NOT NULL DEFAULT 0
+      )
+    `);
+    database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_fin_invoice_tax_totals_rate ON fin_invoice_tax_totals(invoice_id, vat_rate)');
+  } catch (e: any) {
+    console.error('[DB] fin_invoice_lines migration:', e.message);
+  }
+
   // --- Migration: create invoice_series ---
   //
   // Which runs of invoice numbers this organization keeps, and what each one
