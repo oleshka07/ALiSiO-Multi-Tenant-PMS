@@ -503,7 +503,7 @@ CREATE TABLE "fin_channel_receivables" (
   "channel_source" TEXT NOT NULL,
   "external_reservation_id" TEXT,
   "gross_amount" NUMERIC(14,2) NOT NULL,
-  "expected_net" DOUBLE PRECISION NOT NULL,
+  "expected_net" NUMERIC(14,2) NOT NULL,
   "currency" TEXT NOT NULL,
   "check_in" DATE NOT NULL,
   "check_out" DATE NOT NULL,
@@ -702,7 +702,7 @@ CREATE TABLE "fin_tax_rates" (
   "rate" DOUBLE PRECISION NOT NULL,
   "label" TEXT,
   "valid_from" DATE NOT NULL,
-  "valid_to" TEXT,
+  "valid_to" DATE,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   CHECK (code IN ('standard','reduced','zero'))
@@ -1169,6 +1169,35 @@ CREATE TABLE "price_calendar" (
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("unit_type_id", "date")
+);
+
+CREATE TABLE "price_los_tiers" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT,
+  "property_id" TEXT,
+  "unit_type_id" TEXT,
+  "min_nights" BIGINT NOT NULL,
+  "adjustment_gross" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "persons" BIGINT,
+  "label" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE "price_occupancy" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT,
+  "property_id" TEXT,
+  "unit_type_id" TEXT,
+  "persons" BIGINT NOT NULL,
+  "price_gross" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "valid_from" DATE,
+  "valid_to" DATE,
+  "label" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
 );
 
 CREATE TABLE "properties" (
@@ -1982,6 +2011,18 @@ ALTER TABLE "payment_webhook_log" ADD CONSTRAINT "fk_payment_webhook_log_organiz
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "price_calendar" ADD CONSTRAINT "fk_price_calendar_unit_type_id_1"
   FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
+ALTER TABLE "price_los_tiers" ADD CONSTRAINT "fk_price_los_tiers_unit_type_id_1"
+  FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
+ALTER TABLE "price_los_tiers" ADD CONSTRAINT "fk_price_los_tiers_property_id_2"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "price_los_tiers" ADD CONSTRAINT "fk_price_los_tiers_organization_id_3"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "price_occupancy" ADD CONSTRAINT "fk_price_occupancy_unit_type_id_1"
+  FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
+ALTER TABLE "price_occupancy" ADD CONSTRAINT "fk_price_occupancy_property_id_2"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "price_occupancy" ADD CONSTRAINT "fk_price_occupancy_organization_id_3"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "properties" ADD CONSTRAINT "fk_properties_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "property_guest_config" ADD CONSTRAINT "fk_property_guest_config_property_id_1"
@@ -2204,6 +2245,9 @@ CREATE INDEX "idx_guests_name" ON "guests" ("last_name", "first_name");
 CREATE INDEX "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX "idx_invoice_series_channel" ON "invoice_series" ("organization_id", "channel");
 CREATE UNIQUE INDEX "idx_invoice_series_code" ON "invoice_series" ("organization_id", "code");
+CREATE INDEX "idx_invoices_issued" ON "invoices" ("issued_at");
+CREATE INDEX "idx_invoices_number" ON "invoices" ("invoice_number");
+CREATE INDEX "idx_invoices_reservation" ON "invoices" ("reservation_id");
 CREATE INDEX "idx_partner_reports_period" ON "partner_reports" ("organization_id", "period");
 CREATE INDEX "idx_payment_webhook_log_org" ON "payment_webhook_log" ("organization_id");
 CREATE INDEX "idx_pwl_created" ON "payment_webhook_log" ("created_at");
@@ -2212,6 +2256,12 @@ CREATE INDEX "idx_pwl_result" ON "payment_webhook_log" ("result");
 CREATE INDEX "idx_price_cal_date" ON "price_calendar" ("date");
 CREATE INDEX "idx_price_cal_ut" ON "price_calendar" ("unit_type_id");
 CREATE INDEX "idx_price_cal_ut_date" ON "price_calendar" ("unit_type_id", "date");
+CREATE INDEX "idx_price_los_tiers_lookup" ON "price_los_tiers" ("organization_id", "property_id", "unit_type_id");
+CREATE UNIQUE INDEX "idx_price_los_tiers_row" ON "price_los_tiers" (organization_id, property_id, (COALESCE(unit_type_id, '')),
+                           min_nights, (COALESCE(persons, -1)));
+CREATE INDEX "idx_price_occupancy_lookup" ON "price_occupancy" ("organization_id", "property_id", "unit_type_id", "persons");
+CREATE UNIQUE INDEX "idx_price_occupancy_row" ON "price_occupancy" (organization_id, property_id, (COALESCE(unit_type_id, '')),
+                           persons, (COALESCE(valid_from, '0001-01-01')), (COALESCE(valid_to, '9999-12-31')));
 CREATE INDEX "idx_line_items_sub" ON "reservation_line_items" ("sub_booking_id");
 CREATE INDEX "idx_sub_bookings_res" ON "reservation_sub_bookings" ("reservation_id");
 CREATE INDEX "idx_reservations_dates" ON "reservations" ("check_in", "check_out");
@@ -2288,6 +2338,8 @@ CREATE INDEX IF NOT EXISTS "idx_invoices_org" ON "invoices" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_organization_features_org" ON "organization_features" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_partner_reports_org" ON "partner_reports" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_payment_webhook_log_org" ON "payment_webhook_log" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_price_los_tiers_org" ON "price_los_tiers" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_price_occupancy_org" ON "price_occupancy" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_properties_org" ON "properties" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_reservations_org" ON "reservations" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_task_attachments_org" ON "task_attachments" ("organization_id");
@@ -2383,6 +2435,10 @@ ALTER TABLE "organization_features" ALTER COLUMN "organization_id"
 ALTER TABLE "partner_reports" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "payment_webhook_log" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "price_los_tiers" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "price_occupancy" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "properties" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2775,6 +2831,18 @@ ALTER TABLE "price_calendar" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "price_calendar_tenant" ON "price_calendar"
   USING ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
   WITH CHECK ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
+
+ALTER TABLE "price_los_tiers" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "price_los_tiers" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "price_los_tiers_tenant" ON "price_los_tiers"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "price_occupancy" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "price_occupancy" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "price_occupancy_tenant" ON "price_occupancy"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "properties" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "properties" FORCE ROW LEVEL SECURITY;

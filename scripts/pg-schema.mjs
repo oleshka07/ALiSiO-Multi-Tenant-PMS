@@ -71,12 +71,12 @@ const OVERRIDE = {
 
 /** An amount of money. NUMERIC(14,2) — up to 999 999 999 999.99. */
 const MONEY = /(^|_)(amount|price|total|balance|fee|cost|revenue|payout|deposit|commission|discount|subtotal|due|face_value|opening_balance|closing_balance)($|_)/;
-const MONEY_SUFFIX = /_czk$|_eur$|_amount$|_price$|_total$|_fee$|_sum$/;
+const MONEY_SUFFIX = /_czk$|_eur$|_amount$|_price$|_total$|_fee$|_sum$|_gross$|_net$/;
 
 /** An instant. */
 const TIMESTAMP = /_at$|^created$|^updated$|^timestamp$/;
 /** A calendar day, with no time of day and no zone. */
-const DATE_ONLY = /^check_in$|^check_out$|^date$|_date$|^valid_from$|^valid_until$|^expires_at$|^period_from$|^period_to$/;
+const DATE_ONLY = /^check_in$|^check_out$|^date$|_date$|^valid_from$|^valid_to$|^valid_until$|^expires_at$|^period_from$|^period_to$/;
 /** A true/false flag stored as 0/1. */
 const BOOL = /^is_|^has_|^can_|_enabled$|^locked$|^confirmed$|^active$|_active$|^read_only$|^needs_|^smoking$|^partial$|_hidden$|_exempt$|_reported$|_included_in_price$|^enabled$|^archived$/;
 /** A JSON document kept in a text column. */

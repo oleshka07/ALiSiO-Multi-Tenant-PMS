@@ -18,6 +18,7 @@ import {
   Sparkles,
   Brain,
   Receipt,
+  Users2,
 } from 'lucide-react';
 
 const settingsItems = [
@@ -41,6 +42,13 @@ const settingsItems = [
     icon: <Users size={22} />,
     href: '/app/settings/users',
     color: 'purple',
+  },
+  {
+    title: 'Ціни за заселеністю',
+    desc: 'Скільки коштує ніч на одного, двох, трьох — і знижки за довше проживання',
+    icon: <Users2 size={22} />,
+    href: '/app/settings/pricing-matrix',
+    color: 'green',
   },
   {
     title: 'Фактурування',

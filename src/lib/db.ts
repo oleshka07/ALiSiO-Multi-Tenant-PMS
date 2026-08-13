@@ -5336,6 +5336,96 @@ function runMigrations(database: any) {
     console.error('[DB] partner_reports migration:', e.message);
   }
 
+  // --- Migration: create price_occupancy and price_los_tiers ---
+  //
+  // The price matrix: what a night costs at a given occupancy, and what staying
+  // longer takes off it.
+  //
+  // `price_calendar` has `base_price` and `weekend_price` and nothing else. For
+  // the German market that is not a gap but a blocker: the same double room is
+  // sold to one person at one price and to two at another, and both are the
+  // same category, the same room, the same bed. DIRS21 sends prices per
+  // occupancy. A model where "EZ" is a separate category would make the hotel
+  // keep two room lists for one set of rooms, and availability would be wrong
+  // on the first booking.
+  //
+  //   OCCUPANCY CHANGES THE PRICE, NEVER THE CATEGORY.
+  //
+  // `unit_type_id` NULL means "any type in this property" — a house-wide price
+  // that a type-specific row overrides. `valid_from`/`valid_to` NULL means
+  // open-ended, which is how a season is entered: as a narrower row laid over
+  // the standing price, without editing it. Which row wins is decided in
+  // pricing/domain/occupancy-price.ts, and it is decided the same way here and
+  // in the widget.
+  //
+  // `property_id` is on the row rather than left to be derived through the unit
+  // type, because a house-wide row has no unit type to derive it from — and an
+  // organization with two hotels must not price one of them from the other.
+  //
+  // This table does NOT replace price_calendar. That one carries the per-day
+  // restrictions a channel manager sets (min_stay, closed, CTA/CTD) and the
+  // rates PriceLabs writes; this one carries what the owner types in. Merging
+  // them would mean an automatic sync overwriting the owner's rate card.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS price_occupancy (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id     TEXT REFERENCES properties(id) ON DELETE CASCADE,
+        unit_type_id    TEXT REFERENCES unit_types(id) ON DELETE CASCADE,
+        persons         INTEGER NOT NULL,
+        price_gross     REAL NOT NULL DEFAULT 0,
+        valid_from      TEXT,
+        valid_to        TEXT,
+        label           TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    // Two rows for the same type, occupancy and window are two answers to one
+    // question, and the one that wins would depend on insertion order. COALESCE
+    // rather than the bare columns because three of them are nullable, and a
+    // UNIQUE index does not constrain NULLs — the duplicate this is meant to
+    // stop is precisely the house-wide, open-ended one.
+    //
+    // The two date sentinels say what an open end means, and they are dates
+    // rather than '' because Postgres types these columns DATE: COALESCE of a
+    // date and an empty string does not typecheck there, and the index would
+    // have failed on the server while passing here.
+    database.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_price_occupancy_row
+        ON price_occupancy(organization_id, property_id, (COALESCE(unit_type_id, '')),
+                           persons, (COALESCE(valid_from, '0001-01-01')), (COALESCE(valid_to, '9999-12-31')))
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_price_occupancy_lookup ON price_occupancy(organization_id, property_id, unit_type_id, persons)');
+
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS price_los_tiers (
+        id               TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id  TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id      TEXT REFERENCES properties(id) ON DELETE CASCADE,
+        unit_type_id     TEXT REFERENCES unit_types(id) ON DELETE CASCADE,
+        min_nights       INTEGER NOT NULL,
+        adjustment_gross REAL NOT NULL DEFAULT 0,
+        persons          INTEGER,
+        label            TEXT,
+        created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    // `persons` NULL means the tier applies at any occupancy — the pilot's
+    // "−10 € from three nights on a double, −5 € alone" is two rows, and a
+    // hotel that gives the same discount regardless of occupancy writes one.
+    database.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_price_los_tiers_row
+        ON price_los_tiers(organization_id, property_id, (COALESCE(unit_type_id, '')),
+                           min_nights, (COALESCE(persons, -1)))
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_price_los_tiers_lookup ON price_los_tiers(organization_id, property_id, unit_type_id)');
+  } catch (e: any) {
+    console.error('[DB] price_occupancy migration:', e.message);
+  }
+
   // The last line of runMigrations, and the only reliable signal that the
   // schema has settled. scripts/check-fresh-schema.mjs waits for it: polling
   // the table count said "done" while ALTER TABLE ADD COLUMN was still going,

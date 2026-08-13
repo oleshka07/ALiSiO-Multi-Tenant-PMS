@@ -1,0 +1,168 @@
+/**
+ * What a stay costs: price by occupancy, and a discount for staying longer.
+ *
+ * The rule this is built around, stated by the customer and worth repeating
+ * because everything follows from it:
+ *
+ *   OCCUPANCY CHANGES THE PRICE, NEVER THE CATEGORY.
+ *
+ * There is no single room in the pilot's hotel. Every double is sold to one
+ * person at one price and to two at another, and both are the same category,
+ * the same room, the same bed. A Vierbettzimmer for 1/2/3/4 people is one
+ * category with four prices. So occupancy is a dimension of the PRICE, not of
+ * the room inventory — a model where "EZ" is a category would need the hotel
+ * to double its room list and would break availability on the first booking.
+ *
+ * `price_calendar` had `base_price` and `weekend_price` and nothing else. For
+ * the German market that is not a gap, it is a blocker: EZ-versus-DZ occupancy
+ * is the basic mode of selling, and DIRS21 sends those prices per occupancy.
+ *
+ * Two things vary and both are data:
+ *
+ *   the matrix     (unit type, date range, persons) → price for one night
+ *   the LOS tiers  (unit type, from N nights) → what to add per night
+ *
+ * Nothing here knows a season name, a price or a discount. The pilot's
+ * "−10 € per night from 3 nights on doubles, −5 € on singles" is two rows.
+ */
+import { money } from '../../../core/money.ts';
+
+export interface PriceRow {
+  /** Null means "any unit type" — a house-wide price. */
+  unit_type_id?: string | null;
+  /** Inclusive ISO dates. Null on either side means open-ended. */
+  valid_from?: string | null;
+  valid_to?: string | null;
+  /** How many people this price is for. */
+  persons: number;
+  /** Gross, per night. */
+  price_gross: number;
+}
+
+export interface LosTier {
+  unit_type_id?: string | null;
+  /** Applies from this many nights on. */
+  min_nights: number;
+  /** Added to the nightly price. Negative is a discount. */
+  adjustment_gross: number;
+  /** When set, the tier only applies at this occupancy. */
+  persons?: number | null;
+}
+
+export interface NightPrice {
+  date: string;
+  base: number;
+  adjustment: number;
+  price: number;
+}
+
+export interface Quote {
+  nights: NightPrice[];
+  total: number;
+  /** Nights the matrix had no row for. A quote with these is not sellable. */
+  missing: string[];
+}
+
+/**
+ * Price a stay, night by night.
+ *
+ * Night by night rather than "nights × price" because a stay crosses seasons:
+ * two nights in low season and one in high is three different prices, and a
+ * single multiplication silently charges the wrong one for two of them.
+ *
+ * A night with no matching row is REPORTED, not guessed. An invented price is
+ * a booking taken at a number the hotel never agreed to.
+ */
+export function quoteStay(input: {
+  checkIn: string;
+  nights: number;
+  persons: number;
+  unitTypeId: string;
+  matrix: readonly PriceRow[];
+  losTiers?: readonly LosTier[];
+}): Quote {
+  const nights: NightPrice[] = [];
+  const missing: string[] = [];
+
+  const tier = pickTier(input.losTiers ?? [], input.unitTypeId, input.nights, input.persons);
+  const adjustment = tier ? money(tier.adjustment_gross) : 0;
+
+  for (let i = 0; i < input.nights; i++) {
+    const date = addDays(input.checkIn, i);
+    const row = pickPrice(input.matrix, input.unitTypeId, input.persons, date);
+    if (!row) {
+      missing.push(date);
+      continue;
+    }
+    const base = money(row.price_gross);
+    // A discount may not turn a night into money owed to the guest.
+    const price = money(Math.max(0, base + adjustment));
+    nights.push({ date, base, adjustment: money(price - base), price });
+  }
+
+  return { nights, total: money(nights.reduce((s, n) => s + n.price, 0)), missing };
+}
+
+/**
+ * The price for this type, this occupancy, this day.
+ *
+ * A row for the exact unit type beats a house-wide one, and a narrower date
+ * range beats a wider one: that is how a season is entered — as an exception
+ * laid over the standing price, without editing it.
+ */
+function pickPrice(
+  matrix: readonly PriceRow[],
+  unitTypeId: string,
+  persons: number,
+  date: string,
+): PriceRow | null {
+  const candidates = matrix.filter((r) =>
+    r.persons === persons
+    && (r.unit_type_id == null || r.unit_type_id === unitTypeId)
+    && (!r.valid_from || r.valid_from <= date)
+    && (!r.valid_to || r.valid_to >= date));
+
+  if (candidates.length === 0) return null;
+
+  return candidates.sort((a, b) => {
+    // Specific type first.
+    const byType = Number(b.unit_type_id != null) - Number(a.unit_type_id != null);
+    if (byType) return byType;
+    // Then the shorter window — an open-ended row is the fallback.
+    return span(a) - span(b);
+  })[0];
+}
+
+function span(r: PriceRow): number {
+  if (!r.valid_from || !r.valid_to) return Number.MAX_SAFE_INTEGER;
+  return Date.parse(r.valid_to) - Date.parse(r.valid_from);
+}
+
+/** The best tier the stay qualifies for: the highest threshold it reaches. */
+function pickTier(
+  tiers: readonly LosTier[],
+  unitTypeId: string,
+  nights: number,
+  persons: number,
+): LosTier | null {
+  const eligible = tiers.filter((t) =>
+    nights >= t.min_nights
+    && (t.unit_type_id == null || t.unit_type_id === unitTypeId)
+    && (t.persons == null || t.persons === persons));
+  if (eligible.length === 0) return null;
+
+  return eligible.sort((a, b) => {
+    const byNights = b.min_nights - a.min_nights;
+    if (byNights) return byNights;
+    // A tier written for this type wins over a house-wide one at the same
+    // threshold.
+    return Number(b.unit_type_id != null) - Number(a.unit_type_id != null);
+  })[0];
+}
+
+/** ISO date + n days, without a timezone anywhere near it. */
+export function addDays(iso: string, n: number): string {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  const t = Date.UTC(y, m - 1, d + n);
+  return new Date(t).toISOString().slice(0, 10);
+}
