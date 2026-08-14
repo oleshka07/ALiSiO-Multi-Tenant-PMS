@@ -19,6 +19,7 @@ ERP для готельного бізнесу, з PMS усередині: но�
 | [docs/DEPLOY.md](docs/DEPLOY.md) | два середовища, спільний VPS, відкат |
 | [db/postgres/README.md](db/postgres/README.md) | схема Postgres, типи даних, row-level security, міграції |
 | [product_capabilities_and_value.md](product_capabilities_and_value.md) | що продукт уміє з точки зору готелю |
+| [docs/AI-CREW-PLAN.md](docs/AI-CREW-PLAN.md) | розриви «сайт ↔ продукт», план впровадження AI-агентів з вмиканням per-hotel |
 
 Порядок не випадковий: `AGENTS.md` перший, бо система мультитенантна і запит
 без обмеження за організацією не падає — він тихо віддає дані іншого клієнта.
