@@ -370,12 +370,19 @@ async function applyStructure(organizationId, plan) {
       const from = both(p, 'validFrom') ?? null;
       const to = both(p, 'validTo') ?? null;
       const label = `   ціна ${code} ×${persons} ${from || '—'}…${to || '—'} = ${price}`;
+      // `COALESCE(valid_from, '0001-01-01') = COALESCE(?, '0001-01-01')` тут
+      // читалося б рівніше — і вбивало б прогін на Postgres із
+      // `operator does not exist: date = text`: колонка виводить тип `date`,
+      // а параметру всередині COALESCE його виводити нізвідки. На SQLite,
+      // де типу дати немає взагалі, воно проходить. Параметр, порівняний
+      // прямо з колонкою, тип від неї й отримує.
+      const from_ = from == null ? { sql: 'valid_from IS NULL', p: [] } : { sql: 'valid_from = ?', p: [from] };
+      const to_ = to == null ? { sql: 'valid_to IS NULL', p: [] } : { sql: 'valid_to = ?', p: [to] };
       const has = await sql.row(
         `SELECT id, price_gross FROM price_occupancy
           WHERE organization_id = ? AND property_id = ? AND unit_type_id = ? AND persons = ?
-            AND COALESCE(valid_from, '0001-01-01') = COALESCE(?, '0001-01-01')
-            AND COALESCE(valid_to, '9999-12-31') = COALESCE(?, '9999-12-31')`,
-        [organizationId, property.id, ut.id, persons, from, to]);
+            AND ${from_.sql} AND ${to_.sql}`,
+        [organizationId, property.id, ut.id, persons, ...from_.p, ...to_.p]);
       if (has && Number(has.price_gross) === price) { say.same(label); continue; }
       if (DRY) { say[has ? 'changed' : 'made'](`[суха]${label}`); continue; }
       if (has) {
@@ -395,11 +402,12 @@ async function applyStructure(organizationId, plan) {
       const adj = Number(f(l, 'adjustmentGross', 'adjustment_gross', 'adjustment'));
       const persons = both(l, 'persons') ?? null;
       const label = `   LOS ${code} від ${min} ноч. ×${persons ?? 'будь-скільки'} = ${adj}`;
+      const occ = persons == null ? { sql: 'persons IS NULL', p: [] } : { sql: 'persons = ?', p: [persons] };
       const has = await sql.row(
         `SELECT id, adjustment_gross FROM price_los_tiers
           WHERE organization_id = ? AND property_id = ? AND unit_type_id = ? AND min_nights = ?
-            AND COALESCE(persons, -1) = COALESCE(?, -1)`,
-        [organizationId, property.id, ut.id, min, persons]);
+            AND ${occ.sql}`,
+        [organizationId, property.id, ut.id, min, ...occ.p]);
       if (has && Number(has.adjustment_gross) === adj) { say.same(label); continue; }
       if (DRY) { say[has ? 'changed' : 'made'](`[суха]${label}`); continue; }
       if (has) {

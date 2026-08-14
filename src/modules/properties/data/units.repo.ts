@@ -123,28 +123,47 @@ export async function bulkCreateUnits(organizationId: string, input: BulkCreateU
   if (!await ownsAllRefs(organizationId, input)) return null;
 
   const sql = getSql();
-  const created: { name: string; code: string }[] = [];
+
+  // Which of these numbers are already rooms — asked, not discovered by
+  // failing.
+  //
+  // This used to insert every number in the range and swallow the error when
+  // one already existed, testing `e.message.includes('UNIQUE')`. Two things
+  // about that were true only of SQLite. Postgres words the same error
+  // `duplicate key value violates unique constraint`, which does not contain
+  // "UNIQUE", so the error was rethrown instead of skipped; and a failed
+  // statement inside a Postgres transaction aborts the WHOLE transaction, so
+  // even a matching test would have thrown away the rooms that did insert.
+  //
+  // A hotel re-entering a range that overlaps one it already has is the
+  // ordinary case — it is how you add 207 to a floor that already has 201–206.
+  // On Postgres that answered 500.
+  const wanted: { name: string; code: string; sort: number }[] = [];
+  for (let i = input.from; i <= input.to; i++) {
+    wanted.push({ name: `${input.prefix}${i}`, code: `${input.prefix}${i}`, sort: i });
+  }
+
+  const taken = new Set(
+    (await sql.rows<{ code: string }>(
+      `SELECT code FROM units WHERE property_id = ? AND code IN (${wanted.map(() => '?').join(',')})`,
+      [input.property_id, ...wanted.map((w) => w.code)],
+    )).map((r) => r.code),
+  );
+
+  const fresh = wanted.filter((w) => !taken.has(w.code));
+  if (fresh.length === 0) return [];
 
   await sql.tx(async (t) => {
-    for (let i = input.from; i <= input.to; i++) {
-      const name = `${input.prefix}${i}`;
-      const code = `${input.prefix}${i}`;
-      try {
-        await t.run(`
-          INSERT INTO units (unit_type_id, property_id, category_id, building_id, name, code, floor, beds, zone, sort_order)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [input.unit_type_id, input.property_id, input.category_id, input.building_id ?? null, name, code,
-          input.floor == null ? null : String(input.floor), input.beds ?? 0, input.zone ?? null, i]);
-        created.push({ name, code });
-      } catch (e: unknown) {
-        // A name that already exists is skipped, not fatal: SQLite rolls back
-        // the failed statement, not the transaction, so the rest still lands.
-        if (e instanceof Error && !e.message.includes('UNIQUE')) throw e;
-      }
+    for (const w of fresh) {
+      await t.run(`
+        INSERT INTO units (unit_type_id, property_id, category_id, building_id, name, code, floor, beds, zone, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [input.unit_type_id, input.property_id, input.category_id, input.building_id ?? null, w.name, w.code,
+        input.floor == null ? null : String(input.floor), input.beds ?? 0, input.zone ?? null, w.sort]);
     }
   });
 
-  return created;
+  return fresh.map(({ name, code }) => ({ name, code }));
 }
 
 export async function updateUnit(organizationId: string, id: string, fields: Record<string, unknown>) {

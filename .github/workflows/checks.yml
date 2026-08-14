@@ -65,6 +65,69 @@ jobs:
       - name: build
         run: npm run build
 
+  postgres:
+    name: hotel onboarding on the engine prod actually runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Every other job here runs on SQLite, and SQLite is not what serves
+    # customers. Two bugs reached production in one afternoon because of that
+    # gap, and both were invisible on SQLite by construction:
+    #
+    #   COALESCE(valid_from,'0001-01-01') = COALESCE(?,'0001-01-01')
+    #     → `operator does not exist: date = text`. The column infers `date`,
+    #       the parameter inside COALESCE has nothing to infer from. SQLite has
+    #       no date type, so it cannot have this problem and cannot warn about it.
+    #
+    #   catch (e) { if (!e.message.includes('UNIQUE')) throw e }
+    #     → Postgres words it `duplicate key value violates unique constraint`,
+    #       and a failed statement aborts the whole transaction rather than one
+    #       statement. Re-entering an overlapping room range answered 500.
+    #
+    # Neither is a syntax error, so check-dialect cannot see them either. The
+    # only thing that finds this class is running against a real Postgres.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: alisio
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: alisio
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U alisio" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: schema and migrations
+        env:
+          PGPASSWORD: ci
+        run: |
+          psql -h 127.0.0.1 -U alisio -d alisio -q -v ON_ERROR_STOP=1 -f db/postgres/schema.sql
+          for m in db/postgres/migrations/*.sql; do
+            psql -h 127.0.0.1 -U alisio -d alisio -q -v ON_ERROR_STOP=1 -f "$m"
+          done
+
+      - name: every hotel file applies, twice
+        # Twice on purpose. The first run proves the SQL is one Postgres accepts;
+        # the second proves the applier is idempotent, which is the property the
+        # whole design rests on — the same file is applied by every deploy.
+        env:
+          DB_DRIVER: postgres
+          DATABASE_URL: postgres://alisio:ci@127.0.0.1:5432/alisio
+        run: |
+          node scripts/apply-hotel.mjs --all
+          node scripts/apply-hotel.mjs --all | tee /tmp/second.txt
+          if grep -qE '^  [+~!]' /tmp/second.txt; then
+            echo '::error::a second run of the same files changed rows — not idempotent'
+            exit 1
+          fi
+
   live:
     name: onboarding and tenant isolation
     runs-on: ubuntu-latest

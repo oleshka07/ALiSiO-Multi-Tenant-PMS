@@ -103,15 +103,32 @@ export async function createPrice(propertyId: string | null | undefined, input: 
   // Asked before inserting rather than caught afterwards: the unique index
   // reports a constraint name, and "idx_price_occupancy_row" is not a sentence
   // to show an operator.
+  //
+  // The date halves are built rather than written flat, and that is not style.
+  // `COALESCE(valid_from, '0001-01-01') = COALESCE(?, '0001-01-01')` reads
+  // fine and dies on Postgres with `operator does not exist: date = text`:
+  // the column side infers `date`, the parameter side has nothing to infer
+  // from and stays `text`. SQLite has no date type, so it passed there and
+  // passed in every check — until the first price was written on prod.
+  //
+  // A parameter compared straight against the column (`valid_from = ?`) does
+  // get its type from the column, so the fix is to stop hiding it inside
+  // COALESCE and to say IS NULL when that is what is meant.
+  const window = (column: string, value: string | null | undefined) =>
+    (value == null ? { sql: `${column} IS NULL`, params: [] as unknown[] }
+      : { sql: `${column} = ?`, params: [value] });
+  const from = window('valid_from', input.valid_from);
+  const to = window('valid_to', input.valid_to);
+
   const clash = await sql.row<any>(
     `SELECT id FROM price_occupancy
       WHERE organization_id = ? AND property_id = ?
         AND COALESCE(unit_type_id, '') = COALESCE(?, '')
         AND persons = ?
-        AND COALESCE(valid_from, '0001-01-01') = COALESCE(?, '0001-01-01')
-        AND COALESCE(valid_to, '9999-12-31') = COALESCE(?, '9999-12-31')`,
+        AND ${from.sql}
+        AND ${to.sql}`,
     [organizationId, property, input.unit_type_id ?? null, input.persons,
-     input.valid_from ?? null, input.valid_to ?? null],
+      ...from.params, ...to.params],
   );
   if (clash) return null;
 
@@ -164,13 +181,20 @@ export async function createTier(propertyId: string | null | undefined, input: T
   const property = await requirePropertyId(propertyId);
   const sql = getSql();
 
+  // Same shape, same reason as createPrice above: `COALESCE(persons, -1) =
+  // COALESCE(?, -1)` leaves the parameter untyped, and a tier that applies to
+  // every occupancy passes NULL.
+  const occupancy = input.persons == null
+    ? { sql: 'persons IS NULL', params: [] as unknown[] }
+    : { sql: 'persons = ?', params: [input.persons] };
+
   const clash = await sql.row<any>(
     `SELECT id FROM price_los_tiers
       WHERE organization_id = ? AND property_id = ?
         AND COALESCE(unit_type_id, '') = COALESCE(?, '')
         AND min_nights = ?
-        AND COALESCE(persons, -1) = COALESCE(?, -1)`,
-    [organizationId, property, input.unit_type_id ?? null, input.min_nights, input.persons ?? null],
+        AND ${occupancy.sql}`,
+    [organizationId, property, input.unit_type_id ?? null, input.min_nights, ...occupancy.params],
   );
   if (clash) return null;
 
