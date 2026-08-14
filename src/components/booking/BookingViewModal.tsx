@@ -937,6 +937,17 @@ export default function BookingViewModal({
                 </div>
               </div>
 
+              {/*
+                Meldeschein — окрема сторінка, бо її друкують. Показуємо посилання
+                завжди: сторінка сама відповідає, чи бланк потрібен, і саме ця
+                відповідь («німець з 2025 не реєструється») — те, заради чого
+                рецепція туди й заходить.
+              */}
+              <a className="btn btn-sm btn-secondary" href={`/app/bookings/${b.id}/meldeschein`}
+                 target="_blank" rel="noopener" style={{ alignSelf: 'flex-start' }}>
+                📄 {tUi('Meldeschein')}
+              </a>
+
               {registrations.length > 0 && (
                 <div>
                   <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>{tUi('Зареєстровані')}</div>

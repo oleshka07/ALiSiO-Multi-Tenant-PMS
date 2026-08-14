@@ -42,6 +42,7 @@ export const payForService    = withGuest(_payForService);
 export const payForBooking    = withGuest(_payForBooking);
 export const handleCartEvent  = withGuest(_handleCartEvent);
 export { getRegistry, updateRegistryEntry, exportRegistry } from './registry.handlers';
+export { getMeldeschein } from './meldeschein.handlers';
 
 
 // Domain types
