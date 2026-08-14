@@ -4,6 +4,7 @@
 #
 #   ./deploy/to-postgres.sh beta --dry-run   # everything except the switch
 #   ./deploy/to-postgres.sh beta
+#   ./deploy/to-postgres.sh beta --fresh     # a NEW environment: no data to move
 #
 # Runs on the server, from /opt/alisio. Idempotent up to the import: the schema
 # and the role are created only if absent, and the import refuses a database
@@ -21,6 +22,7 @@ set -euo pipefail
 ENV_NAME="${1:-}"
 DRY_RUN=""
 REPLACE=""
+FRESH=""
 for opt in "${@:2}"; do
   case "$opt" in
     --dry-run) DRY_RUN=1 ;;
@@ -28,13 +30,23 @@ for opt in "${@:2}"; do
     # or the switch did not take, and the copy has to be made again. Empties
     # Postgres before importing. Never touches the SQLite file.
     --replace) REPLACE=--replace ;;
+    # A brand-new environment has nothing to move. Steps 1–4 (server, role,
+    # schema, proof that row-level security isolates) are exactly what it
+    # needs; step 5 is the one that does not apply, because importing an
+    # empty SQLite file into an empty Postgres is a no-op that can only fail.
+    #
+    # This exists because beta is new. Standing it up on SQLite "for now"
+    # would have made it a rehearsal of an engine no customer runs — and
+    # today two bugs reached production precisely because everything was
+    # checked on SQLite.
+    --fresh) FRESH=1 ;;
     *) echo "unknown option: $opt" >&2; exit 2 ;;
   esac
 done
 
 case "$ENV_NAME" in
   prod|beta) ;;
-  *) echo "usage: $0 {prod|beta} [--dry-run] [--replace]" >&2; exit 2 ;;
+  *) echo "usage: $0 {prod|beta} [--dry-run] [--replace] [--fresh]" >&2; exit 2 ;;
 esac
 
 cd "$(dirname "$0")/.."
@@ -126,6 +138,10 @@ fi
 APP_URL_CONTAINER="postgres://${PG_APP_USER}:${PG_APP_PASSWORD}@postgres:5432/${PG_DATABASE}"
 SUPER_URL="postgres://${PG_SUPERUSER}:${PG_SUPERUSER_PASSWORD}@postgres:5432/${PG_DATABASE}"
 
+if [ -n "$FRESH" ]; then
+  echo "==> fresh environment: nothing to import, going straight to the switch"
+else
+
 echo "==> stopping the app"
 $COMPOSE stop app
 
@@ -153,6 +169,8 @@ if [ -n "$DRY_RUN" ]; then
   exit 0
 fi
 run_import $REPLACE
+
+fi
 
 # ── 6. The switch ────────────────────────────────────────────────────────────
 echo "==> switching $ENV_NAME to postgres"
