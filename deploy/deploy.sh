@@ -16,6 +16,7 @@ case "$ENV_NAME" in
   *) echo "usage: $0 {prod|beta}" >&2; exit 2 ;;
 esac
 
+SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")/.."
 ENV_FILE="deploy/env.${ENV_NAME}"
 PROJECT="alisio-${ENV_NAME}"
@@ -30,11 +31,31 @@ if ! grep -qE '^APP_SECRET_KEY=[0-9a-fA-F]{64}$' "$ENV_FILE"; then
   exit 1
 fi
 
-echo "==> $ENV_NAME: fetching $BRANCH"
-git fetch --quiet origin "$BRANCH"
-git checkout --quiet "$BRANCH"
-git reset --hard --quiet "origin/$BRANCH"
-echo "    $(git rev-parse --short HEAD) $(git log -1 --pretty=%s)"
+# ── Update, then start over as the script we just fetched ────────────────────
+#
+# This file updates its own checkout, and bash reads a script from disk as it
+# goes rather than loading it whole. So everything after the reset was being
+# read out of a file that had just been replaced under it, at a byte offset
+# that belonged to the previous version. Usually that means the OLD script
+# finishes the run; when the line lengths shift, it can mean neither.
+#
+# It is not theoretical. The deploy that shipped the hotel applier ran the
+# previous commit's script, so the applier never executed and nothing in the
+# log said why — the step simply went from "prod is up" to finished.
+#
+# So the fetch and the work are separated by an `exec`: the first pass only
+# brings the checkout up to date and then replaces itself with the version it
+# just fetched, which starts from line one and does the actual deploy. The
+# variable is what stops that from recursing.
+if [ -z "${DEPLOY_UPDATED:-}" ]; then
+  echo "==> $ENV_NAME: fetching $BRANCH"
+  git fetch --quiet origin "$BRANCH"
+  git checkout --quiet "$BRANCH"
+  git reset --hard --quiet "origin/$BRANCH"
+  echo "    $(git rev-parse --short HEAD) $(git log -1 --pretty=%s)"
+  DEPLOY_UPDATED=1 exec "$SELF" "$ENV_NAME"
+fi
+echo "==> $ENV_NAME: deploying $(git rev-parse --short HEAD)"
 
 # ── Backup ───────────────────────────────────────────────────────────────────
 #
@@ -130,8 +151,23 @@ fi
 # application itself is already serving, which the message says out loud.
 apply_hotels() {
   local container="alisio-${ENV_NAME}-app"
-  local real
-  real="$(ls hotels/*.json 2>/dev/null | grep -v '/_' | wc -l)"
+
+  # Collected with a loop, not `ls | grep -v`.
+  #
+  # This script runs under `set -euo pipefail`, and `grep` exits 1 when it
+  # matches nothing — which is precisely the state of a repository whose only
+  # hotel file is the `_example.json` template. The pipeline therefore failed,
+  # the assignment carried that status, and `set -e` killed the deploy before
+  # the "nothing to apply" line could even be printed. The empty case is the
+  # normal one; it must not be the failing one.
+  local wanted=()
+  local f
+  for f in hotels/*.json; do
+    [ -e "$f" ] || continue
+    case "$(basename "$f")" in _*|.*) continue ;; esac
+    wanted+=("$f")
+  done
+  local real="${#wanted[@]}"
   [ "$real" -gt 0 ] || { echo "==> no hotel files to apply"; return 0; }
 
   echo "==> applying $real hotel file(s)"

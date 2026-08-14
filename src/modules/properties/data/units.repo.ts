@@ -98,6 +98,16 @@ export interface BulkCreateUnitsInput {
   to: number;
   beds?: number;
   zone?: string;
+  /**
+   * The floor these rooms are on.
+   *
+   * Missing here while `createUnit` had it, so a hotel entering rooms one at a
+   * time got floors and the same hotel entering 202–206 as a range got none.
+   * A range is normally exactly one floor — that is usually WHY it is a range —
+   * so this was the case most likely to lose it. The pilot's first load put 18
+   * of its 29 rooms in with no floor at all.
+   */
+  floor?: string | number | null;
 }
 
 export async function bulkCreateUnits(organizationId: string, input: BulkCreateUnitsInput) {
@@ -121,9 +131,10 @@ export async function bulkCreateUnits(organizationId: string, input: BulkCreateU
       const code = `${input.prefix}${i}`;
       try {
         await t.run(`
-          INSERT INTO units (unit_type_id, property_id, category_id, building_id, name, code, beds, zone, sort_order)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [input.unit_type_id, input.property_id, input.category_id, input.building_id ?? null, name, code, input.beds ?? 0, input.zone ?? null, i]);
+          INSERT INTO units (unit_type_id, property_id, category_id, building_id, name, code, floor, beds, zone, sort_order)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [input.unit_type_id, input.property_id, input.category_id, input.building_id ?? null, name, code,
+          input.floor == null ? null : String(input.floor), input.beds ?? 0, input.zone ?? null, i]);
         created.push({ name, code });
       } catch (e: unknown) {
         // A name that already exists is skipped, not fatal: SQLite rolls back

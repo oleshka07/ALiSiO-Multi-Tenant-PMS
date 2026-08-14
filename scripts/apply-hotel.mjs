@@ -373,6 +373,7 @@ async function applyStructure(organizationId, plan) {
         property_id: property.id, category_id: ut.category_id, unit_type_id: ut.id,
         building_id: building ? buildByName.get(building)?.id : ut.building_id ?? undefined,
         prefix, from: Number(from), to: Number(to),
+        floor: both(u, 'floor') ?? null,
         beds: Number(both(u, 'beds')) || 0, zone: both(u, 'zone'),
       });
       if (made === null) { say.refused(label, 'ідентифікатори не цієї організації'); continue; }

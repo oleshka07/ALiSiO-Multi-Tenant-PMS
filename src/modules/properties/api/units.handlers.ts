@@ -45,7 +45,7 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
     }
 
     if (body.bulk) {
-      const { category_id, building_id, unit_type_id, prefix, from, to, beds, zone } = body;
+      const { category_id, building_id, unit_type_id, prefix, from, to, beds, zone, floor } = body;
 
       // `prefix == null`, not `!prefix`. An empty prefix is a normal answer:
       // a hotel whose rooms are 105, 106, 201 has no prefix at all, and the
@@ -59,7 +59,7 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
       }
 
       const created = await unitsRepo.bulkCreateUnits(actor.organizationId, {
-        property_id, category_id, building_id, unit_type_id, prefix, from, to, beds, zone,
+        property_id, category_id, building_id, unit_type_id, prefix, from, to, beds, zone, floor,
       });
       // null means the referenced ids are not this tenant's — unchecked, this
       // call wrote up to 200 rooms into someone else's property.
