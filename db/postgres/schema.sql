@@ -2271,6 +2271,7 @@ CREATE INDEX "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX "idx_invoice_series_channel" ON "invoice_series" ("organization_id", "channel");
 CREATE UNIQUE INDEX "idx_invoice_series_code" ON "invoice_series" ("organization_id", "code");
 CREATE INDEX "idx_invoices_issued" ON "invoices" ("issued_at");
+CREATE INDEX "idx_invoices_corrects" ON "invoices" ("corrects_invoice_id");
 CREATE INDEX "idx_invoices_number" ON "invoices" ("invoice_number");
 CREATE INDEX "idx_invoices_reservation" ON "invoices" ("reservation_id");
 CREATE INDEX "idx_partner_reports_period" ON "partner_reports" ("organization_id", "period");

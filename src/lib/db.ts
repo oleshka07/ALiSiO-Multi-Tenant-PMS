@@ -5105,6 +5105,13 @@ function runMigrations(database: any) {
     if (cols.length > 0 && !cols.includes('corrects_invoice_id')) {
       database.exec('ALTER TABLE invoices ADD COLUMN corrects_invoice_id TEXT');
     }
+    // The index lived only in the Postgres migration 0014. So every database
+    // that was CREATED rather than migrated — every new customer, and every
+    // developer's — had the column and not the index, and nothing said so.
+    // scripts/check-schema-drift.mjs is what finally asked.
+    if (cols.length > 0) {
+      database.exec('CREATE INDEX IF NOT EXISTS idx_invoices_corrects ON invoices(corrects_invoice_id)');
+    }
     // SQLite cannot widen a CHECK, so the table is rebuilt when it still
     // carries the two-value one. Data is copied column for column.
     const row = database.prepare('SELECT sql FROM sqlite_master WHERE type = ? AND name = ?')

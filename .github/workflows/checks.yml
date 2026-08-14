@@ -113,6 +113,23 @@ jobs:
             psql -h 127.0.0.1 -U alisio -d alisio -q -v ON_ERROR_STOP=1 -f "$m"
           done
 
+      - name: schema.sql and the migrations describe one database
+        # Two databases: one from schema.sql alone (what a new customer gets),
+        # one from schema.sql plus every migration (what an environment that
+        # has been running for a while has). They must match to the line.
+        #
+        # The first run of this found `idx_invoices_corrects`: created by
+        # migration 0014 and absent from schema.sql, so every database that was
+        # CREATED rather than migrated had the column and not the index. Beta
+        # showed the expensive version of the same class — 92 tables against
+        # 102, and nothing said so.
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: alisio
+          PGPASSWORD: ci
+        run: node scripts/check-schema-drift.mjs
+
       - name: every hotel file applies, twice
         # Twice on purpose. The first run proves the SQL is one Postgres accepts;
         # the second proves the applier is idempotent, which is the property the
