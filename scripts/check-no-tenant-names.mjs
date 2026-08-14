@@ -24,6 +24,12 @@ const FORBIDDEN = [
   /qa[\s-]glamping/i,
   /quiet\s+anomaly/i,
   /onrender\.com/i,
+  // A person's name in a letter the product sends. The booking confirmation
+  // was signed "Oleg Stepeniev 🌿" and described "a hot tub under the stars" —
+  // every hotel's guest received it, whoever they had actually booked with.
+  // The hotel's own voice belongs in widget_config.email_confirmed_body.
+  /Stepeniev/i,
+  /Степен[ії]єв/i,
 ];
 
 // Path → why the name is allowed to remain there.
@@ -34,9 +40,20 @@ const ALLOWED = new Map([
 ]);
 
 const files = [];
+/**
+ * `data` used to be in this skip list, to keep the local SQLite folder out.
+ * The walk starts at `src`, where that folder does not exist — so all it
+ * actually excluded was every module's own `data` folder: fifty-one files holding every
+ * repository, every e-mail the product sends and every OTA payload. The
+ * booking confirmation sat there signed with one person's name for months,
+ * and this check reported "чисто" every time.
+ *
+ * A skip list matched on basename skips more than it was written for. The
+ * local database is `/data` at the root and is unreachable from here.
+ */
 (function walk(d) {
   for (const e of fs.readdirSync(d, { withFileTypes: true })) {
-    if (['node_modules', '.next', '.git', 'data'].includes(e.name)) continue;
+    if (['node_modules', '.next', '.git'].includes(e.name)) continue;
     const p = path.join(d, e.name);
     if (e.isDirectory()) { walk(p); continue; }
     if (!/\.(ts|tsx|mjs|json)$/.test(e.name)) continue;

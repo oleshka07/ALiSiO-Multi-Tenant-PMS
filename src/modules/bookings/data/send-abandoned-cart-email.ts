@@ -3,17 +3,36 @@ import { appBaseUrl } from '@core/app-url';
 import { sendEmail } from '@core/mail/email';
 import { reservationLanguage } from '@core/i18n/resolve';
 
-function fmtPrice(n: number, currency: string): string {
-  return `${Math.round(n).toLocaleString('uk-UA')} ${currency}`;
+/**
+ * The amount as the guest reads it, not as Kyiv writes it.
+ *
+ * `toLocaleString('uk-UA')` was fixed here, so a German guest saw a Ukrainian
+ * thousands separator on a euro amount in a German letter.
+ */
+const LOCALE: Record<string, string> = { en: 'en-GB', uk: 'uk-UA', de: 'de-DE', cs: 'cs-CZ' };
+
+function fmtPrice(n: number, currency: string, locale: string): string {
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency', currency: currency || 'EUR', maximumFractionDigits: 0,
+    }).format(n);
+  } catch {
+    return `${Math.round(n)} ${currency}`;
+  }
 }
 
 export async function sendAbandonedCartEmail(reservationId: string, origin?: string): Promise<boolean> {
   const sql = getSql();
 
+  // `u.thank_you_url` used to be in this list. The column is on site_listings,
+  // not on units, so the query threw before anything was sent and the caller
+  // read the failure as "no cart to remind about". It is fetched below, from
+  // the table that actually has it.
   const row = await sql.row<any>(`
-    SELECT r.id, r.check_in, r.check_out, r.nights, r.total_price, r.currency, r.guest_page_token,
+    SELECT r.id, r.unit_id, r.check_in, r.check_out, r.nights, r.total_price, r.currency,
+           r.guest_page_token,
            g.first_name, g.email, g.phone,
-           u.name as unit_name, u.thank_you_url,
+           u.name as unit_name,
            p.name as property_name
     FROM reservations r
     LEFT JOIN guests g ON r.guest_id = g.id
@@ -26,6 +45,21 @@ export async function sendAbandonedCartEmail(reservationId: string, origin?: str
     return false;
   }
 
+  // The hotel's own "thank you" page, when the listing this unit was sold
+  // through names one. Absent — and absent is the normal case — the guest page
+  // is the destination.
+  let thankYouUrl: string | null = null;
+  if (row.unit_id) {
+    const listing = await sql.row<any>(
+      `SELECT sl.thank_you_url FROM site_listings sl
+         JOIN booking_sites bs ON bs.id = sl.site_id
+        WHERE sl.unit_id = ? AND bs.status <> 'deleted' AND sl.thank_you_url IS NOT NULL
+        LIMIT 1`,
+      [row.unit_id],
+    );
+    thankYouUrl = listing?.thank_you_url ?? null;
+  }
+
   // What the guest told us, not what their phone's dialling code suggests.
   // Only four of these letters have a written template, so the rest land on
   // English rather than on a half-translated message.
@@ -33,14 +67,14 @@ export async function sendAbandonedCartEmail(reservationId: string, origin?: str
   const tLang = ['uk', 'de', 'cs'].includes(lang) ? lang : 'en';
 
   const guestName = row.first_name ? row.first_name.trim() : (tLang === 'uk' ? 'Гість' : tLang === 'de' ? 'Gast' : tLang === 'cs' ? 'Host' : 'Guest');
-  const total = fmtPrice(row.total_price || 0, row.currency || 'CZK');
-  const propertyName = row.property_name || 'Glamping';
+  const total = fmtPrice(row.total_price || 0, row.currency || 'CZK', LOCALE[tLang] || 'en-GB');
+  const propertyName = row.property_name || '';
   const appUrl = origin || appBaseUrl();
   let guestPageUrl = null;
   if (row.guest_page_token) {
-    if (row.thank_you_url) {
-      const sep = row.thank_you_url.includes('?') ? '&' : '?';
-      guestPageUrl = `${row.thank_you_url}${sep}guest_token=${row.guest_page_token}`;
+    if (thankYouUrl) {
+      const sep = thankYouUrl.includes('?') ? '&' : '?';
+      guestPageUrl = `${thankYouUrl}${sep}guest_token=${row.guest_page_token}`;
     } else {
       guestPageUrl = `${appUrl}/guest/${row.guest_page_token}`;
     }
