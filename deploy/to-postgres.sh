@@ -80,6 +80,34 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
+# ── 1a. Is this volume the one this env file describes? ──────────────────────
+#
+# `POSTGRES_PASSWORD` initialises the superuser ONCE, when the data directory
+# is created. On a volume left over from an earlier attempt it is ignored
+# entirely, so a freshly generated password in the env file simply does not
+# match what is inside — and every later step fails on authentication.
+#
+# That is what happened on beta: the run reported a role created, a schema
+# "already present", and then `password authentication failed for user
+# alisio_admin` from a step three screens further down. The cause was two
+# screens up, and nothing said so.
+if ! psql_super -tAc 'SELECT 1' >/dev/null 2>&1; then
+  echo "!! cannot connect to $PG_DATABASE as $PG_SUPERUSER" >&2
+  echo "" >&2
+  echo "   The password in $ENV_FILE is not the one inside this volume." >&2
+  echo "   POSTGRES_PASSWORD only takes effect when the data directory is" >&2
+  echo "   first created, so a volume from an earlier attempt keeps its own." >&2
+  echo "" >&2
+  echo "   On an environment with no data worth keeping, start it over:" >&2
+  echo "     docker compose --env-file $ENV_FILE -p $PROJECT -f deploy/docker-compose.yml --profile postgres down" >&2
+  echo "     docker volume rm ${PROJECT}_pg-data" >&2
+  echo "     $0 $ENV_NAME --fresh" >&2
+  echo "" >&2
+  echo "   That volume belongs to $PROJECT only. Every other environment has" >&2
+  echo "   its own, named after its own compose project." >&2
+  exit 1
+fi
+
 # ── 2. The application's role ────────────────────────────────────────────────
 # NOT the table owner. FORCE ROW LEVEL SECURITY in the schema covers the owner
 # too, but relying on that alone means one table that someone adds without
@@ -98,10 +126,36 @@ GRANT USAGE ON SCHEMA public TO $PG_APP_USER;
 SQL
 
 # ── 3. Schema ────────────────────────────────────────────────────────────────
+#
+# "Not zero" used to be the whole test, and "not zero" is not "complete". Beta
+# came up with 92 tables against a schema that defines 102 — a database left
+# behind by an earlier attempt, ten tables short. The script announced "schema
+# already present" and carried on building on top of it.
+#
+# A count that is short means the tables were created by an older schema.sql.
+# Loading the current one over it would leave a half-old database rather than
+# fixing it, so this stops instead and says what to do. Being generous with a
+# database that is nearly right is how an environment ends up different from
+# production in ways nobody can list.
+WANT="$(grep -c '^CREATE TABLE' db/postgres/schema.sql)"
 TABLES="$(psql_super -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")"
 if [ "$TABLES" -eq 0 ]; then
-  echo "==> loading schema"
+  echo "==> loading schema ($WANT tables)"
   psql_super < db/postgres/schema.sql >/dev/null
+elif [ "$TABLES" -lt "$WANT" ]; then
+  echo "!! this database has $TABLES tables; db/postgres/schema.sql defines $WANT" >&2
+  echo "" >&2
+  echo "   It was built by an older schema and is missing $((WANT - TABLES)) of them." >&2
+  echo "   Loading the current schema on top would leave it half-old, so this stops." >&2
+  echo "" >&2
+  echo "   On an environment with no data worth keeping, start it over:" >&2
+  echo "     docker compose --env-file $ENV_FILE -p $PROJECT -f deploy/docker-compose.yml --profile postgres down" >&2
+  echo "     docker volume rm ${PROJECT}_pg-data" >&2
+  echo "     $0 $ENV_NAME --fresh" >&2
+  echo "" >&2
+  echo "   On one that HAS data, this is a migration question, not a setup one:" >&2
+  echo "   run ./deploy/migrate.sh $ENV_NAME and check what it reports." >&2
+  exit 1
 else
   echo "==> schema already present ($TABLES tables)"
 fi
