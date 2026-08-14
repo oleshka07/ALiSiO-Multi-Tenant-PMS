@@ -5,6 +5,19 @@ import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope'
  * Unit types hang off a property. listUnitTypes filtered only by is_active and
  * an optional category, so it returned every tenant's room types; create,
  * update and delete acted on whatever ids the request carried.
+ *
+ * That is what the paragraph above has said since the fix was written. The fix
+ * landed on create, update and delete — and not on the list. `organizationId`
+ * arrived as an argument, `propertyScopeSql` was imported at the top of the
+ * file, and neither was ever used in the query, so `GET /api/unit-types`
+ * answered with every hotel's room types on the server.
+ *
+ * On Postgres the row-level policy caught what the query did not, which is
+ * exactly why it survived: prod behaved correctly and nothing looked wrong. On
+ * SQLite — every developer machine, and any environment that has not yet run
+ * `deploy/to-postgres.sh` — there is no second line of defence, and it leaked.
+ * It surfaced when a second hotel was seeded with the same room-type code as
+ * the first and priced its nights from the first hotel's matrix.
  */
 
 export function listUnitTypes(organizationId: string, filters: { category?: string } = {}) {
@@ -20,10 +33,10 @@ export function listUnitTypes(organizationId: string, filters: { category?: stri
     JOIN categories c ON ut.category_id = c.id
     LEFT JOIN buildings b ON ut.building_id = b.id
     LEFT JOIN units u ON u.unit_type_id = ut.id AND u.is_active = TRUE
-    WHERE ut.is_active = TRUE
+    WHERE ut.is_active = TRUE AND ${propertyScopeSql('ut')}
   `;
 
-  const params: string[] = [];
+  const params: string[] = [organizationId];
 
   if (filters.category) {
     query += ' AND c.type = ?';

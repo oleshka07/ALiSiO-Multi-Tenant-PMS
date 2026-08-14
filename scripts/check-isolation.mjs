@@ -190,6 +190,21 @@ async function main() {
     assert.strictEqual(utRes.status, 201, `A could not create a unit type: ${utRes.status}`);
     const utA = await utRes.json();
 
+    // The LIST, not only the writes.
+    //
+    // This assertion is here because it was not, and its absence hid a real
+    // leak: `listUnitTypes` took `organizationId`, never used it, and returned
+    // every hotel's room types. The category list two blocks up was checked
+    // the same way and was correct — the unit-type list was checked for
+    // creation and deletion only, so nothing ever asked what B could SEE.
+    //
+    // Postgres row-level security covered it in production, which is why it
+    // survived: prod behaved and SQLite did not.
+    const utsB = await (await call(cookieB, '/api/unit-types')).json();
+    const utRows = Array.isArray(utsB) ? utsB : (utsB.unitTypes ?? utsB.unit_types ?? []);
+    assert.ok(!utRows.some((t) => t.id === utA.id), "B's unit-type list contains A's room type");
+    console.log("  ok  B's unit-type list excludes A's room type");
+
     const bulkB = await call(cookieB, '/api/units', {
       method: 'POST',
       body: JSON.stringify({

@@ -1,0 +1,97 @@
+{
+  "_": "Шаблон. Скопіюйте в <slug>.json і замініть значення. Розділи необовʼязкові — того, чого нема, скрипт не чіпає.",
+
+  "organization": {
+    "name": "Example Hotel",
+    "slug": "example",
+    "ownerEmail": "owner@example.test",
+    "ownerName": "Owner",
+    "language": "de",
+    "currency": "EUR",
+    "country": "DE",
+    "city": "Greiz",
+    "timezone": "Europe/Berlin"
+  },
+
+  "property": {
+    "name": "Example Hotel",
+    "address": "Marktplatz 1",
+    "city": "Greiz",
+    "country": "DE",
+    "phone": "+49 000 000000",
+    "email": "info@example.test",
+    "checkInTime": "15:00",
+    "checkOutTime": "11:00"
+  },
+
+  "taxRates": [
+    { "code": "reduced",  "rate": 7,  "label": "Beherbergung", "validFrom": "2020-01-01" },
+    { "code": "standard", "rate": 19, "label": "Speisen und Getränke", "validFrom": "2020-01-01" },
+    { "code": "zero",     "rate": 0,  "label": "steuerfrei", "validFrom": "2020-01-01" }
+  ],
+
+  "invoiceSeries": [
+    { "code": "RE", "prefix": "RE{year}-", "numberFormat": "{prefix}{seq:4}", "isDefault": true }
+  ],
+
+  "categories": [
+    { "name": "Zimmer", "type": "hotel", "sortOrder": 1 }
+  ],
+
+  "buildings": [
+    { "name": "Haupthaus", "code": "HH", "category": "Zimmer" }
+  ],
+
+  "unitTypes": [
+    {
+      "code": "DZD",
+      "name": "Doppelzimmer Standard",
+      "category": "Zimmer",
+      "building": "Haupthaus",
+      "maxAdults": 2,
+      "maxOccupancy": 2,
+      "baseOccupancy": 2,
+      "occupancyPrices": [
+        { "persons": 1, "priceGross": 89,  "validFrom": "2026-01-01", "validTo": "2026-03-31", "label": "Nebensaison" },
+        { "persons": 2, "priceGross": 119, "validFrom": "2026-01-01", "validTo": "2026-03-31", "label": "Nebensaison" }
+      ],
+      "losTiers": [
+        { "minNights": 3, "adjustmentGross": -5,  "label": "ab 3 Nächten" },
+        { "minNights": 7, "adjustmentGross": -10, "label": "ab 7 Nächten" }
+      ]
+    }
+  ],
+
+  "units": [
+    { "unitType": "DZD", "prefix": "", "from": 201, "to": 210, "building": "Haupthaus" },
+    { "unitType": "DZD", "code": "301", "name": "301", "floor": "3" }
+  ],
+
+  "channelRules": [
+    {
+      "channel": null,
+      "includesBreakfast": false,
+      "lodgingTaxCode": "reduced",
+      "foodTaxCode": "reduced",
+      "drinksTaxCode": "standard",
+      "markupPercent": 0
+    },
+    {
+      "channel": "booking.com",
+      "includesBreakfast": true,
+      "breakfastFoodPrice": 12,
+      "breakfastDrinksPrice": 3,
+      "markupPercent": 18
+    }
+  ],
+
+  "services": [
+    { "name": "Frühstück", "price": 15, "vatCode": "reduced", "category": "food" },
+    { "name": "Hund", "price": 12, "vatCode": "standard", "category": "other" }
+  ],
+
+  "acceptance": [
+    { "unitType": "DZD", "persons": 2, "checkIn": "2026-02-10", "checkOut": "2026-02-12", "expectTotal": 238 },
+    { "unitType": "DZD", "persons": 2, "checkIn": "2026-02-10", "checkOut": "2026-02-13", "expectTotal": 342 }
+  ]
+}

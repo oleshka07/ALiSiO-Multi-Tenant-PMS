@@ -111,6 +111,38 @@ if [ -n "${PG_PRESENT:-}" ]; then
   ./deploy/migrate.sh "$ENV_NAME"
 fi
 
+# ── Hotels ───────────────────────────────────────────────────────────────────
+#
+# `hotels/*.json` describe the state each customer's structure should be in —
+# VAT rates, invoice series, room types, the occupancy price matrix, length-of-
+# stay tiers, rooms, channel rules, services. Applying them here rather than by
+# hand is the whole point: adding the second hotel must not require SSH, an
+# admin login, or a network policy for whoever is doing it. A file and a push.
+#
+# Runs INSIDE the container because that is where the database is reachable,
+# and after the health check because until then there may be nothing to talk
+# to. The directory is copied in rather than assumed to be in the image: it is,
+# today, by way of Next's file tracing, and that is not a promise anyone made.
+#
+# The applier creates and updates; it never deletes. Its exit code is the
+# honest answer to "does this hotel now sell what its file says" — a refused
+# row or a failed acceptance quote is a real problem even though the
+# application itself is already serving, which the message says out loud.
+apply_hotels() {
+  local container="alisio-${ENV_NAME}-app"
+  local real
+  real="$(ls hotels/*.json 2>/dev/null | grep -v '/_' | wc -l)"
+  [ "$real" -gt 0 ] || { echo "==> no hotel files to apply"; return 0; }
+
+  echo "==> applying $real hotel file(s)"
+  docker cp hotels "$container:/app/" >/dev/null
+  if docker exec "$container" node scripts/apply-hotel.mjs --all; then
+    return 0
+  fi
+  echo "!! $ENV_NAME serves fine, but a hotel does not match its file (see above)" >&2
+  return 1
+}
+
 echo "==> starting"
 docker compose --env-file "$ENV_FILE" -p "$PROJECT" -f deploy/docker-compose.yml up -d
 
@@ -128,7 +160,8 @@ for i in $(seq 1 45); do
   case "$CODE" in
     401|400)
       echo "==> $ENV_NAME is up: $(git rev-parse --short HEAD) (db reachable, health $CODE)"
-      exit 0
+      apply_hotels
+      exit $?
       ;;
     500|502|503)
       # The server is answering but something behind it is broken — report the

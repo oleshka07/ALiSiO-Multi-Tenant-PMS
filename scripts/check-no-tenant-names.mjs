@@ -12,6 +12,14 @@
  * their invoice or their guest's card statement. So it is a build check, not
  * a code review item. A name that has to stay (a legal document, a historical
  * comment) goes in ALLOWED with the reason.
+ *
+ * `hotels/` is NOT walked, and that is deliberate rather than an oversight.
+ * The rule is about CODE: a hotel's name reaching a second hotel's screen
+ * because someone typed it into a component. `hotels/*.json` is the one place
+ * where a customer's business is allowed to be a file — it is read at runtime
+ * by scripts/apply-hotel.mjs and never imported, so nothing in the product can
+ * depend on what is in it. Adding this directory to the walk would flag the
+ * pilot's own room numbers as a violation and leave nowhere to put them.
  */
 import fs from 'node:fs';
 import path from 'node:path';
