@@ -31,6 +31,68 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { registerHooks } from 'node:module';
+
+/**
+ * `@core/…` і `@/…` для голого node.
+ *
+ * Модулі застосунку імпортують одне одного через аліаси з tsconfig. Це знає
+ * бандлер і не знає node, а на сервері цей скрипт виконує саме node — без
+ * Next, без webpack. Перший же прогін на проді впав на
+ * `Cannot find package '@core/db'`, і впав він тому, що локально я щоразу
+ * запускав скрипт із власним завантажувачем аліасів, якого в контейнері
+ * немає. Тобто перевіряв усе, крім того єдиного, чим воно відрізняється.
+ *
+ * Тому резолвер тепер тут, у самому скрипті: як його запускають, так він і
+ * перевіряється. Заразом добираються розширення — репозиторії імпортують
+ * `./tenant-scope` без `.ts`, що node теж не вміє.
+ *
+ * Альтернатива — переписати всі звернення до БД сирим SQL і не залежати від
+ * модулів. Це прибрало б проблему і разом з нею — єдине місце, де для кожної
+ * таблиці написано INSERT.
+ */
+const ROOT = path.dirname(new URL('.', import.meta.url).pathname.replace(/\/$/, ''));
+const ALIASES = (() => {
+  try {
+    const raw = fs.readFileSync(path.join(ROOT, 'tsconfig.json'), 'utf8').replace(/^\s*\/\/.*$/gm, '');
+    return Object.entries(JSON.parse(raw).compilerOptions?.paths ?? {});
+  } catch { return []; }
+})();
+
+function onDisk(candidate) {
+  for (const p of [candidate, `${candidate}.ts`, `${candidate}.tsx`, `${candidate}.mjs`,
+    `${candidate}.js`, path.join(candidate, 'index.ts')]) {
+    if (fs.existsSync(p) && fs.statSync(p).isFile()) return p;
+  }
+  return null;
+}
+
+function fromAlias(spec) {
+  for (const [pattern, [target]] of ALIASES) {
+    if (pattern.endsWith('/*')) {
+      const head = pattern.slice(0, -1);
+      if (spec.startsWith(head)) return path.join(ROOT, target.slice(0, -1) + spec.slice(head.length));
+    } else if (spec === pattern) {
+      return path.join(ROOT, target);
+    }
+  }
+  return null;
+}
+
+registerHooks({
+  resolve(spec, ctx, next) {
+    const mapped = fromAlias(spec);
+    if (mapped) {
+      const file = onDisk(mapped);
+      if (file) return { url: `file://${file}`, shortCircuit: true };
+    }
+    if (spec.startsWith('.') && ctx.parentURL?.startsWith('file://')) {
+      const file = onDisk(path.resolve(path.dirname(ctx.parentURL.slice(7)), spec));
+      if (file) return { url: `file://${file}`, shortCircuit: true };
+    }
+    return next(spec, ctx);
+  },
+});
 
 const args = process.argv.slice(2);
 const DRY = args.includes('--dry-run');

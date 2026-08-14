@@ -19,7 +19,9 @@
  * готелю, і вигадувати за нього — гірше, ніж не перевіряти.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const DIR = 'hotels';
 const problems = [];
@@ -202,6 +204,42 @@ for (const name of files) {
     if (!Number.isInteger(persons) || persons < 1) note(file, `перевірка ${typeCode}: persons "${f(q, 'persons')}" не ціле від 1`);
   }
 }
+
+/**
+ * І остання перевірка: чи накочувач взагалі запускається так, як його
+ * запускає сервер.
+ *
+ * Усе вище читає файли. Це — виконує скрипт: голий `node`, без прапорців,
+ * проти порожньої бази у тимчасовій теці. Саме цього бракувало, і саме тому
+ * перший прогін на проді впав на `Cannot find package '@core/db'`: локально
+ * скрипт щоразу запускали з окремим завантажувачем аліасів, якого в
+ * контейнері немає, тож перевіряли все, крім єдиної відмінності.
+ *
+ * Суха, тому нічого не пише; але імпорти, аліаси й розбір файла — справжні.
+ */
+function starts() {
+  if (problems.length > 0) return;                       // спершу полагодьте файли
+  if (files.every(TEMPLATE)) return;                     // нема чого накочувати
+
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'hotels-smoke-'));
+  try {
+    const run = spawnSync(process.execPath, ['scripts/apply-hotel.mjs', '--all', '--dry-run'], {
+      encoding: 'utf8',
+      // Порожній DB_DRIVER — SQLite у тимчасовій теці. Ніщо не торкається
+      // ні бази розробника, ні тим паче сервера.
+      env: { ...process.env, ALISIO_DATA_DIR: data, DB_DRIVER: '' },
+    });
+    if (run.status !== 0) {
+      const why = `${run.stderr || ''}${run.stdout || ''}`.trim().split('\n')
+        .filter((l) => !l.startsWith('[DB]') && !l.startsWith('[Seed]') && l.trim())
+        .slice(0, 6).join('\n      ');
+      note('scripts/apply-hotel.mjs', `не запускається під голим node (код ${run.status}):\n      ${why}`);
+    }
+  } finally {
+    fs.rmSync(data, { recursive: true, force: true });
+  }
+}
+starts();
 
 console.log('═'.repeat(78));
 console.log('ФАЙЛИ ГОТЕЛІВ, ЯКІ ЗЛАМАЮТЬСЯ НА СЕРВЕРІ — має бути нуль');
