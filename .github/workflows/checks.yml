@@ -149,6 +149,34 @@ jobs:
     name: onboarding and tenant isolation
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # On Postgres, because that is the engine every customer is served by.
+    #
+    # This job holds check-isolation.mjs — forty-one assertions, the strongest
+    # thing in the repository — and it ran on SQLite. So the one check that
+    # decides whether one hotel can see another's data was answering about a
+    # database no customer has. The two engines do not merely differ in
+    # syntax: on SQLite isolation is whatever the query wrote, on Postgres it
+    # is a row-level policy. Proving the first says little about the second.
+    #
+    # The roles mirror the server exactly: the application connects as
+    # alisio_app, which owns nothing and is subject to every policy; the check
+    # connects as the superuser, because it has to seed two tenants past those
+    # policies before it can ask what one of them can see.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: alisio
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: alisio
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U alisio" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DB_DRIVER: postgres
+      # The application's connection. Not the owner of anything.
+      DATABASE_URL: postgres://alisio_app:ci@127.0.0.1:5432/alisio
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -158,12 +186,30 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+      - name: schema, migrations and the application's role
+        env:
+          PGPASSWORD: ci
+        run: |
+          psql -h 127.0.0.1 -U alisio -d alisio -q -v ON_ERROR_STOP=1 -f db/postgres/schema.sql
+          for m in db/postgres/migrations/*.sql; do
+            psql -h 127.0.0.1 -U alisio -d alisio -q -v ON_ERROR_STOP=1 -f "$m"
+          done
+          psql -h 127.0.0.1 -U alisio -d alisio -q -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'alisio_app') THEN
+              CREATE ROLE alisio_app LOGIN PASSWORD 'ci';
+            END IF;
+          END $$;
+          GRANT CONNECT ON DATABASE alisio TO alisio_app;
+          GRANT USAGE ON SCHEMA public TO alisio_app;
+          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO alisio_app;
+          GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO alisio_app;
+          SQL
+
       - name: a customer can be created
         # The static checks cannot see this one: the missing await was a plain
         # assignment whose result is read three lines later, and the import is
         # dynamic. Running the tool is what catches it.
-        env:
-          ALISIO_DATA_DIR: ${{ runner.temp }}/data
         run: |
           node scripts/provision-org.mjs \
             --name "CI Hotel" --slug ci-hotel --email owner@ci.test \
@@ -175,7 +221,6 @@ jobs:
 
       - name: start
         env:
-          ALISIO_DATA_DIR: ${{ runner.temp }}/data
           APP_SECRET_KEY: 0000000000000000000000000000000000000000000000000000000000000000
           PORT: 3000
         run: |
@@ -191,18 +236,22 @@ jobs:
         # is constrained; this says the second hotel cannot see the first.
         env:
           BASE_URL: http://127.0.0.1:3000
-          # ALISIO_DATA_DIR, not DB_PATH. This said DB_PATH, which nothing in
-          # the application reads — src/lib/db.ts locates the file from
-          # ALISIO_DATA_DIR alone. So the check seeded its probe organization
-          # into ./data/alisio.db in the checkout while the server was serving
-          # the database under $RUNNER_TEMP, login answered 401, and the
-          # strongest check in the repository had been failing on main since
-          # the day it started going through the Sql seam.
+          # The SUPERUSER connection, deliberately different from the one the
+          # server above is using.
           #
-          # It must be the SAME value as the `start` step above: this check
-          # writes rows directly and then asks the server about them, so the
-          # two have to be looking at one database.
-          ALISIO_DATA_DIR: ${{ runner.temp }}/data
+          # This check writes two tenants' probe rows directly and then asks
+          # the server what one of them can see. The writes have to get past
+          # row-level security — as alisio_app they are refused, and the run
+          # dies on `new row violates row-level security policy for
+          # app_users`. The server keeps the application's role, which is the
+          # half that is actually under test. deploy/to-postgres.sh runs it
+          # the same way on the server, for the same reason.
+          #
+          # Its predecessor pointed at a database the server was not serving
+          # (DB_PATH, which nothing reads), and the strongest check in the
+          # repository silently answered about the wrong file for weeks. Two
+          # connections that must differ deserve saying out loud.
+          DATABASE_URL: postgres://alisio:ci@127.0.0.1:5432/alisio
         run: node scripts/check-isolation.mjs
 
       - name: public site
