@@ -95,6 +95,20 @@ export interface Dialect {
    * which took two cron routes down.
    */
   plusMinutes(column: string, minutes: string): string;
+
+  /**
+   * A timestamp reduced to its calendar day, for comparing against
+   * 'YYYY-MM-DD'.
+   *
+   * Needed because the column types differ: `issued_at` is TEXT in SQLite and
+   * TIMESTAMPTZ in Postgres, and `LIKE 'date%'` — the shortcut — silently
+   * matches nothing on the second.
+   *
+   * For COMPARING, not for reading back: selected, it returns a string on
+   * SQLite and a Date on Postgres. If you need the day as a value, take it
+   * from the column and normalise in TypeScript.
+   */
+  day(column: string): string;
 }
 
 /**
@@ -110,6 +124,7 @@ const SQLITE_DIALECT: Dialect = {
   dayOfWeek: (column) => `CAST(strftime('%w', ${column}) AS INTEGER)`,
   tables: () => "SELECT name FROM sqlite_master WHERE type = 'table'",
   plusMinutes: (column, minutes) => `datetime(${column}, (${minutes}) || ' minutes')`,
+  day: (column) => `date(${column})`,
 };
 
 export function sqliteSql(db: any = null, insideTransaction = false): Sql {

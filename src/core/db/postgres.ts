@@ -181,6 +181,9 @@ const POSTGRES_DIALECT: Dialect = {
   dayOfWeek: (column) => `EXTRACT(DOW FROM ${column})::int`,
   tables: () => "SELECT tablename AS name FROM pg_tables WHERE schemaname = 'public'",
   plusMinutes: (column, minutes) => `${column} + (${minutes}) * INTERVAL '1 minute'`,
+  // The session time zone decides which day 23:30 belongs to. For a day close
+  // that matters and is a known limit — see day-sheets.repo.ts.
+  day: (column) => `(${column})::date`,
 };
 
 /**

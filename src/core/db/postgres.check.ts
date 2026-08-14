@@ -163,8 +163,24 @@ console.log('  ok  the ambient organization reaches every connection, transactio
   assert.strictEqual(Number(liteDow), 1, 'SQLite day-of-week fragment');
   assert.strictEqual(Number(pgDow), Number(liteDow), 'the two engines number weekdays differently');
 
+  // The calendar day of a moment. The day close FILTERS by it, so that is what
+  // is asserted — not what it prints. Selecting it gives a string on SQLite and
+  // a Date on Postgres, which is exactly why `day()` is documented as a
+  // comparison and never read back as a value.
+  //
+  // A disagreement here would put an invoice on the wrong day's sheet, and a
+  // sheet wrong by one document is one nobody trusts again.
+  const liteHit = await liteSql.row<any>(`SELECT 1 AS hit FROM d WHERE ${liteSql.dialect.day('ts')} = ?`, ['2026-03-09']);
+  const pgHit = await sql.row<any>(`SELECT 1 AS hit FROM d WHERE ${sql.dialect.day('ts')} = ?`, ['2026-03-09']);
+  assert.ok(liteHit, 'SQLite did not match the moment to its own day');
+  assert.ok(pgHit, 'Postgres did not match the moment to the day SQLite matched');
+
+  const liteMiss = await liteSql.row<any>(`SELECT 1 AS hit FROM d WHERE ${liteSql.dialect.day('ts')} = ?`, ['2026-03-10']);
+  const pgMiss = await sql.row<any>(`SELECT 1 AS hit FROM d WHERE ${sql.dialect.day('ts')} = ?`, ['2026-03-10']);
+  assert.ok(!liteMiss && !pgMiss, 'the neighbouring day must not match on either engine');
+
   lite.close();
-  console.log('  ok  month and weekday mean the same thing on both engines');
+  console.log('  ok  month, weekday and calendar day mean the same thing on both engines');
 }
 
 // ── A row comes back in the shape SQLite gave ────────────────────────────────

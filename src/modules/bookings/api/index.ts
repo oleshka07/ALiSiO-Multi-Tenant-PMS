@@ -23,3 +23,7 @@ export { notifyReservationCreated } from '../domain/reservation-tg-notify';
 // Used by the widget module when a booking is completed.
 export { sendBookingConfirmationEmail } from '../data/send-confirmation-email';
 export { registerBookingsSubscribers } from '../events/subscribers';
+
+// The four sheets reception prints every morning.
+export { getDaySheet } from './day-sheets.handlers';
+export type { StayRow, BreakfastRow, KeyRow, DayCloseRow } from '../data/day-sheets.repo';
