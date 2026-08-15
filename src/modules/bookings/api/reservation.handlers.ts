@@ -93,7 +93,24 @@ export const updateReservation = withActor(async (request: NextRequest, { params
       'invoice_company_name', 'invoice_company_ico', 'invoice_company_dic',
       'invoice_company_address', 'invoice_company_city', 'invoice_company_country',
       'invoice_company_email',
+      // A reduction granted by hand on the accommodation. The percent is
+      // clamped below rather than trusted from the body: this list only says
+      // which columns may be written, not what may be written into them.
+      'lodging_discount_percent', 'lodging_discount_reason',
     ];
+    // 0…100, decided here and not left to the database.
+    //
+    // The CHECK in the schema refuses anything else, but a refusal arrives as
+    // a 500 and a stack trace. A percent typed with a stray minus is an
+    // ordinary slip at a reception desk, and the answer to it is the number
+    // the hotel meant, not an error page. Above 100 would make the hotel owe
+    // money for the stay; below zero would raise the guest's bill from a box
+    // labelled "discount".
+    if (body.lodging_discount_percent !== undefined) {
+      const p = Number(body.lodging_discount_percent);
+      body.lodging_discount_percent = Number.isFinite(p) ? Math.min(100, Math.max(0, p)) : 0;
+    }
+
     const sets: string[] = [];
     const values: (string | number)[] = [];
 

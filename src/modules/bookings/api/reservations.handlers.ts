@@ -27,6 +27,10 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
         r.registration_status, r.hostex_channel_type, r.hostex_reservation_code,
         r.is_multi_room, r.multi_room_marker,
         r.utm_source, r.utm_medium, r.utm_campaign, r.utm_term, r.utm_content,
+        -- Знижка їде списком, а не тільки детальним запитом: модалка бронювання
+        -- відкривається з рядка списку, і без цих двох колонок вона показувала б
+        -- «0 %» на броні, де знижка є, — і перший же blur затер би її.
+        r.lodging_discount_percent, r.lodging_discount_reason,
         (SELECT COUNT(*) FROM reservation_sub_bookings WHERE reservation_id = r.id) as sub_booking_count,
         g.id as guest_id, g.first_name, g.last_name, g.email as guest_email, g.phone as guest_phone, g.nationality,
         u.id as unit_id, u.name as unit_name, u.code as unit_code, u.is_pool as unit_is_pool,

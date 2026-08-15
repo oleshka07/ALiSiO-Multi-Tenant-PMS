@@ -177,6 +177,40 @@ export default function BookingViewModal({
     finally { setSavingCompany(false); }
   };
 
+  // Ручна знижка на проживання (§ ота-split: тільки нічліг, сніданок не чіпає).
+  //
+  // Відсоток, а не сума: сума відповідає «скільки», відсоток — «чому менше».
+  // Причина вільним текстом, бо це слова готелю («Stammkunde», «Firma Müller»),
+  // а не довідник, який комусь доведеться вести.
+  const [discount, setDiscount] = useState({
+    percent: String(Number(bAny.lodging_discount_percent) || 0),
+    reason: bAny.lodging_discount_reason || '',
+  });
+  const [savingDiscount, setSavingDiscount] = useState(false);
+
+  const persistDiscount = async (next: { percent: string; reason: string }) => {
+    // Те саме затискання, що й на сервері. Тут — щоб рецепція одразу побачила,
+    // що саме збережеться; там — бо клієнту не вірять.
+    const p = Math.min(100, Math.max(0, Number(next.percent) || 0));
+    setSavingDiscount(true);
+    try {
+      const res = await fetch(`/api/bookings/${b.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lodging_discount_percent: p,
+          lodging_discount_reason: p > 0 ? (next.reason || null) : null,
+        }),
+      });
+      if (!res.ok) { showToast(tUi('❌ Не вдалося зберегти знижку')); return; }
+      setDiscount({ percent: String(p), reason: p > 0 ? next.reason : '' });
+      onFetchBookings();
+      // Рахунок уже виставлено — цифри в ньому знижка сама не змінить.
+      if (invoice) showToast(tUi('ℹ️ Натисни "Оновити" щоб перерахувати фактуру'));
+    } catch { showToast(tUi('❌ Помилка')); }
+    finally { setSavingDiscount(false); }
+  };
+
   // Load current invoice whenever modal opens or booking changes
   useEffect(() => {
     if (!b?.id) return;
@@ -806,6 +840,53 @@ export default function BookingViewModal({
                   )}
                 </div>
               )}
+
+              {/* ── Ручна знижка на проживання ── */}
+              <div style={{ marginTop: 8, padding: '10px 14px', background: 'var(--surface-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>{tUi('🏷 Знижка на проживання')}</span>
+                  {savingDiscount && <Loader2 size={12} className="animate-spin" />}
+                  {/* Дві кнопки, бо саме ці два відсотки готель дає щодня.
+                      Поле поруч лишається — щоб не довелось міняти код, коли
+                      знадобиться третій. */}
+                  {[10, 20].map((p) => (
+                    <button
+                      key={p}
+                      className={`btn btn-sm ${Number(discount.percent) === p ? 'btn-primary' : 'btn-ghost'}`}
+                      style={{ fontSize: 11, padding: '2px 10px' }}
+                      onClick={() => {
+                        const next = Number(discount.percent) === p
+                          ? { percent: '0', reason: '' }   // повторний клік знімає
+                          : { ...discount, percent: String(p) };
+                        setDiscount(next);
+                        persistDiscount(next);
+                      }}
+                    >
+                      −{p} %
+                    </button>
+                  ))}
+                  <input
+                    type="number" min={0} max={100} step={1}
+                    value={discount.percent}
+                    onChange={(e) => setDiscount({ ...discount, percent: e.target.value })}
+                    onBlur={() => persistDiscount(discount)}
+                    style={{ width: 64, padding: '4px 8px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4 }}
+                  />
+                  <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>%</span>
+                </div>
+                {Number(discount.percent) > 0 && (
+                  <input
+                    placeholder={tUi('Причина (постійний клієнт, назва компанії…)')}
+                    value={discount.reason}
+                    onChange={(e) => setDiscount({ ...discount, reason: e.target.value })}
+                    onBlur={() => persistDiscount(discount)}
+                    style={{ padding: '6px 10px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4 }}
+                  />
+                )}
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                  {tUi('Знижка діє лише на нічліг. Сніданок і послуги — за своєю ціною.')}
+                </div>
+              </div>
 
               {/* ── Invoice + Company row ── */}
               <div style={{ marginTop: 8, padding: '10px 14px', background: 'var(--surface-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: 8 }}>

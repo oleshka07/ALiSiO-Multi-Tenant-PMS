@@ -382,12 +382,70 @@ async function main() {
     assert.ok(!listBookB.some((r) => r.id === booking.id), "B's booking list contains A's booking");
     console.log("  ok  the booking list is per organization");
 
+    // ── The manual discount, from the field reception types into to the row
+    //    the modal reopens with ────────────────────────────────────────────
+    //
+    // Not isolation, and here anyway: this is the only place in the repository
+    // where a real booking exists behind a real session on the engine that
+    // serves customers, and the discount is written by one request and read
+    // back by another.
+    //
+    // What it caught: the booking modal opens from a row of the LIST, and the
+    // list's SELECT names its columns one by one. The discount columns were
+    // added to the table, to the detail query and to PATCH — and not to that
+    // list. The field would then show 0 % on a booking that has 20 %, and the
+    // first time anyone touched it, that zero would be written back over the
+    // discount. Nothing would have failed; the reduction would simply have
+    // stopped existing.
+    const setDiscount = await call(cookieA, `/api/bookings/${booking.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ lodging_discount_percent: 20, lodging_discount_reason: 'Stammkunde' }),
+    });
+    assert.ok(setDiscount.ok, `A could not grant a discount: ${setDiscount.status}`);
+    const withDiscount = (await (await call(cookieA, '/api/bookings')).json())
+      .find((r) => r.id === booking.id);
+    assert.strictEqual(Number(withDiscount.lodging_discount_percent), 20,
+      'the booking list does not carry the discount — the modal would show 0 % and overwrite it');
+    assert.strictEqual(withDiscount.lodging_discount_reason, 'Stammkunde',
+      'the booking list does not carry the reason the discount was granted');
+    console.log('  ok  a granted discount comes back in the list the modal opens from');
+
+    // A percent typed with a stray minus is an ordinary slip at a reception
+    // desk. The answer to it is the number the hotel meant, not a 500 from the
+    // CHECK constraint — and never a negative discount, which raises a guest's
+    // bill from a box labelled "discount".
+    for (const [typed, stored] of [[-5, 0], [150, 100]]) {
+      const r = await call(cookieA, `/api/bookings/${booking.id}`, {
+        method: 'PATCH', body: JSON.stringify({ lodging_discount_percent: typed }),
+      });
+      assert.ok(r.ok, `${typed} % answered ${r.status} instead of being clamped`);
+      const now = await (await call(cookieA, `/api/bookings/${booking.id}`)).json();
+      assert.strictEqual(Number(now.lodging_discount_percent), stored,
+        `${typed} % was stored as ${now.lodging_discount_percent}, not ${stored}`);
+    }
+    console.log('  ok  −5 % becomes 0 and 150 % becomes 100, without an error page');
+
+    // Left at a value B will not use, so that "B's write did not land" is
+    // distinguishable from "B wrote what was already there".
+    await call(cookieA, `/api/bookings/${booking.id}`, {
+      method: 'PATCH', body: JSON.stringify({ lodging_discount_percent: 10 }),
+    });
+
     const readBookB = await call(cookieB, `/api/bookings/${booking.id}`);
     assert.strictEqual(readBookB.status, 404, `B read A's booking: ${readBookB.status}`);
     const patchBookB = await call(cookieB, `/api/bookings/${booking.id}`, {
       method: 'PATCH', body: JSON.stringify({ notes: 'hijack' }),
     });
     assert.strictEqual(patchBookB.status, 404, `B patched A's booking: ${patchBookB.status}`);
+    // Named separately from `notes` because it moves money: a discount granted
+    // by the wrong hotel reduces this hotel's revenue on this hotel's invoice.
+    const discountB = await call(cookieB, `/api/bookings/${booking.id}`, {
+      method: 'PATCH', body: JSON.stringify({ lodging_discount_percent: 100 }),
+    });
+    assert.strictEqual(discountB.status, 404, `B discounted A's booking: ${discountB.status}`);
+    const stillA = await (await call(cookieA, `/api/bookings/${booking.id}`)).json();
+    assert.strictEqual(Number(stillA.lodging_discount_percent), 10,
+      `B's discount reached A's booking: ${stillA.lodging_discount_percent} %`);
     const regsB = await call(cookieB, `/api/bookings/${booking.id}/registrations`);
     assert.strictEqual(regsB.status, 404, `B read A's guest registrations: ${regsB.status}`);
     const delBookB = await call(cookieB, `/api/bookings/${booking.id}`, { method: 'DELETE' });
