@@ -6,7 +6,6 @@ import Sidebar from '@/components/layout/Sidebar';
 import BottomNav from '@/components/layout/BottomNav';
 import MobileLayout from '@/components/mobile/MobileLayout';
 import { MobileMenuContext } from '@/ui/MobileMenuContext';
-import ChatWidget from '@/components/ai/ChatWidget';
 import { useDevice } from '@/ui/hooks/useDevice';
 import { I18nProvider, useT } from '@core/i18n/client';
 import { DEFAULT_LANGUAGE, type Language, parseLanguage } from '@core/i18n/languages';
@@ -101,7 +100,6 @@ export default function DashboardLayout({
         </MobileMenuContext.Provider>
       </main>
       <BottomNav onMoreClick={() => setMobileMenuOpen(true)} />
-      <ChatWidget />
     </div>
     </I18nProvider>
   );
