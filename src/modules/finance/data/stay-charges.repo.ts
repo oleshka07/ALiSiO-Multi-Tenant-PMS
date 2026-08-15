@@ -61,7 +61,7 @@ export async function postStayCharges(input: {
 
   const res = await sql.row<any>(
     `SELECT r.id, r.check_in, r.check_out, r.adults, r.children, r.total_price, r.source,
-            r.property_id,
+            r.property_id, r.lodging_discount_percent, r.lodging_discount_reason,
             u.code AS unit_code, u.name AS unit_name,
             g.first_name, g.last_name
        FROM reservations r
@@ -131,6 +131,9 @@ export async function postStayCharges(input: {
     totalGross: total, persons, nights,
     lodgingVatRate: lodgingRate.rate,
     breakfast,
+    // Granted by a person, on this stay, on the accommodation only. The split
+    // applies it after the breakfast is separated — see ota-split.ts.
+    lodgingDiscountPercent: Number(res.lodging_discount_percent) || 0,
   });
   // The breakfast costs more than the whole booking. That is a wrong setting or
   // a wrong booking, and a negative room line on a guest's invoice is not the
@@ -151,7 +154,13 @@ export async function postStayCharges(input: {
     reservationId: input.reservationId,
     serviceDate: checkIn,
     kind: l.kind === 'lodging' ? 'lodging' : 'service',
-    description: chargeName(l.kind, locale),
+    // The reduction is named on the line itself. An invoice that shows a
+    // smaller number than the price list, with nothing saying why, is the one
+    // a tax audit asks about — and the one reception cannot explain a year
+    // later. The percent and the amount it came off are both on the line.
+    description: l.discount
+      ? `${chargeName(l.kind, locale)} (−${l.discount.percent} %)`
+      : chargeName(l.kind, locale),
     guestName,
     unitCode,
     quantity: l.quantity,

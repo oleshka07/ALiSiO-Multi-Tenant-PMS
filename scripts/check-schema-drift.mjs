@@ -48,6 +48,17 @@ SELECT 'index|'||tablename||'|'||indexname||'|'||regexp_replace(indexdef, '.*USI
   FROM pg_indexes WHERE schemaname='public'
 UNION ALL
 SELECT 'table|'||table_name FROM information_schema.tables WHERE table_schema='public'
+UNION ALL
+-- Обмеження порівнюються теж, і не для повноти.
+--
+-- Перша ж колонка, додана після появи цієї перевірки, дала ДВА однакові CHECK
+-- на новій базі: у schema.sql він був безіменний, тож Postgres назвав його
+-- сам, а міграція не впізнала свого імені й додала другий. Функціонально це
+-- нешкідливо і саме тому лишилось би назавжди — поки хтось не прибрав би
+-- один, вирішивши, що правило зникло.
+SELECT 'constraint|'||conrelid::regclass::text||'|'||conname||'|'||pg_get_constraintdef(oid)
+  FROM pg_constraint
+ WHERE connamespace = 'public'::regnamespace AND contype IN ('c','u','f')
 ORDER BY 1
 `;
 
@@ -87,7 +98,8 @@ console.log();
 if (!missingFromSchema.length && !missingFromMigrations.length) {
   console.log(`  збігаються — ${fresh.filter((l) => l.startsWith('table|')).length} таблиць,`,
     `${fresh.filter((l) => l.startsWith('column|')).length} колонок,`,
-    `${fresh.filter((l) => l.startsWith('index|')).length} індексів`);
+    `${fresh.filter((l) => l.startsWith('index|')).length} індексів,`,
+    `${fresh.filter((l) => l.startsWith('constraint|')).length} обмежень`);
   process.exit(0);
 }
 

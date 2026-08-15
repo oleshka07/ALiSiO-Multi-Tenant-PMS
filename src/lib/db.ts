@@ -5097,6 +5097,20 @@ function runMigrations(database: any) {
   //
   // A German invoice is never deleted and never edited: it is reversed by a
   // second document that mirrors it, and the pair stays in the books forever
+  // ── 0018: знижка на проживання ─────────────────────────────────────────
+  //
+  // Відсоток, а не готова сума: сума каже «скільки», відсоток каже «чому
+  // менше». Тільки на проживання — сніданок гість купує за його ціною.
+  try {
+    const cols = (database.prepare('PRAGMA table_info(reservations)').all() as any[]).map((c: any) => c.name);
+    if (cols.length > 0 && !cols.includes('lodging_discount_percent')) {
+      database.exec('ALTER TABLE reservations ADD COLUMN lodging_discount_percent REAL NOT NULL DEFAULT 0');
+    }
+    if (cols.length > 0 && !cols.includes('lodging_discount_reason')) {
+      database.exec('ALTER TABLE reservations ADD COLUMN lodging_discount_reason TEXT');
+    }
+  } catch { /* таблиці ще немає — створиться зі схемою */ }
+
   // (GoBD). That needs two statuses the CHECK refused — `storno` for the
   // mirror, `corrected` for the original it cancels — and a column saying
   // which document a reversal belongs to.

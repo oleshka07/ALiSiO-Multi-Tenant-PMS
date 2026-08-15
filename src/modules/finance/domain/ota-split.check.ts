@@ -129,3 +129,76 @@ assert.deepStrictEqual(
 console.log('  ok  від суми каналу до надрукованої рекапітуляції — ті самі цифри');
 
 console.log('ota-split: одна сума каналу стає рядками, які сходяться до цента');
+
+// ─── Ручна знижка на проживання (§ Rabattierung auf den ÜN-Preis) ───────────
+//
+// Власник пілота: «Es muss bitte möglich sein, eine 10- bzw. 20%-Rabattierung
+// auf den ÜN-Preis manuell eingeben zu können». На ÜN-Preis — і більше ні на
+// що. Сніданок гість купує за його ціною, хто б він не був.
+
+{
+  const withBreakfast = {
+    totalGross: 188.05, persons: 1, nights: 1, lodgingVatRate: 7,
+    breakfast: { foodPrice: 12, drinksPrice: 3, foodVatRate: 7, drinksVatRate: 19 },
+  };
+
+  const full = splitOtaAmount(withBreakfast)!;
+  const room = full.find((l) => l.kind === 'lodging')!;
+  assert.strictEqual(room.totalGross, 173.05, '188,05 − 12 − 3');
+  assert.strictEqual(room.discount, undefined, 'без знижки рядок про неї мовчить');
+
+  const ten = splitOtaAmount({ ...withBreakfast, lodgingDiscountPercent: 10 })!;
+  const cheaper = ten.find((l) => l.kind === 'lodging')!;
+  assert.strictEqual(cheaper.totalGross, 155.75, '173,05 − 10 % = 155,745 → 155,75');
+  assert.deepStrictEqual(cheaper.discount, { percent: 10, grossBefore: 173.05 },
+    'рядок несе, з чого і скільки зняли');
+
+  // Сніданок незмінний — інакше знижка тихо переносила б гроші між ставками.
+  for (const kind of ['breakfast_food', 'breakfast_drinks'] as const) {
+    assert.strictEqual(
+      ten.find((l) => l.kind === kind)!.totalGross,
+      full.find((l) => l.kind === kind)!.totalGross,
+      `${kind} знижка не чіпає`,
+    );
+  }
+  console.log('  ok  знижка знімається лише з проживання, сніданок недоторканий');
+
+  // Ставки лишаються ті самі: знижка міняє суму, а не природу послуги.
+  assert.strictEqual(cheaper.vatRate, room.vatRate, 'ставка проживання не змінилась');
+  console.log('  ok  знижка не міняє ставку ПДВ');
+}
+
+// Без сніданку — знижка лягає на весь рядок.
+{
+  const plain = splitOtaAmount({
+    totalGross: 200, persons: 2, nights: 1, lodgingVatRate: 7, lodgingDiscountPercent: 20,
+  })!;
+  assert.strictEqual(plain.length, 1);
+  assert.strictEqual(plain[0].totalGross, 160, '200 − 20 %');
+  assert.strictEqual(plain[0].unitPriceGross, 160, 'ціна за одиницю теж зі знижкою');
+  console.log('  ok  тариф без сніданку — знижка на весь рядок');
+}
+
+// Межі: помилка в полі не має ставати грошима.
+{
+  const at = (percent: number) => splitOtaAmount({
+    totalGross: 100, persons: 1, nights: 1, lodgingVatRate: 7, lodgingDiscountPercent: percent,
+  })![0].totalGross;
+
+  assert.strictEqual(at(-10), 100, 'відʼємний відсоток — не націнка, а нуль');
+  assert.strictEqual(at(0), 100, 'нуль лишає ціну');
+  assert.strictEqual(at(100), 0, 'сто відсотків — безкоштовно, але не мінус');
+  assert.strictEqual(at(150), 0, 'понад сто не робить готель боржником гостя');
+  assert.strictEqual(at(NaN), 100, 'порожнє поле — це відсутня знижка');
+  console.log('  ok  −10, 0, 100, 150 і NaN не породжують відʼємного рахунку');
+}
+
+// Копійки: 7 % від 33,33 не мають зникати ні в чий бік.
+{
+  const odd = splitOtaAmount({
+    totalGross: 33.33, persons: 1, nights: 1, lodgingVatRate: 7, lodgingDiscountPercent: 10,
+  })![0];
+  assert.strictEqual(odd.totalGross, 30, '33,33 − 10 % = 29,997 → 30,00');
+  assert.strictEqual(odd.totalGross, odd.unitPriceGross, 'сума і ціна за одиницю однакові');
+  console.log('  ok  округлення до копійки, без розбіжності між ціною і сумою');
+}

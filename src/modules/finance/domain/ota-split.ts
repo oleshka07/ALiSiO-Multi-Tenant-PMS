@@ -44,6 +44,23 @@ export interface SplitInput {
   lodgingVatRate: number;
   /** Absent when the rate does not include breakfast — then there is one line. */
   breakfast?: BreakfastSplit | null;
+  /**
+   * A discount granted by hand, in percent, on the ACCOMMODATION only.
+   *
+   * The pilot's owner asked for it in one sentence: «Es muss bitte möglich
+   * sein, eine 10- bzw. 20%-Rabattierung auf den ÜN-Preis manuell eingeben zu
+   * können» — for regulars, and for guests who book through a company that has
+   * an entitlement but is not the company on the invoice.
+   *
+   * On the ÜN-Preis, and on nothing else. Breakfast is bought at its price
+   * whoever the guest is; discounting it too would quietly move money between
+   * two VAT rates, which on a German invoice is a different kind of mistake
+   * than being generous.
+   *
+   * Applied after the breakfast is separated, so the remainder rule still
+   * holds for the part that is not discounted.
+   */
+  lodgingDiscountPercent?: number | null;
 }
 
 export interface ChargeLine {
@@ -52,6 +69,14 @@ export interface ChargeLine {
   unitPriceGross: number;
   totalGross: number;
   vatRate: number;
+  /**
+   * What the accommodation cost before the discount, and by how much.
+   *
+   * Carried rather than recomputed: an invoice has to be able to say what was
+   * reduced and from what. Absent when nothing was discounted, so a line that
+   * says nothing about a discount is a line that had none.
+   */
+  discount?: { percent: number; grossBefore: number };
 }
 
 /**
@@ -63,17 +88,35 @@ export interface ChargeLine {
  * put a negative number on a guest's invoice. The caller posts the amount as a
  * single lodging line and leaves it for a human.
  */
+/**
+ * The accommodation after a manual reduction, and what it was before.
+ *
+ * Clamped to 0…100 rather than trusted. A negative percent is not a discount
+ * but a surcharge, and a surcharge entered in a discount box is a typo that
+ * would raise a guest's bill; above 100 the hotel would owe the guest money
+ * for staying. Both are refused by clamping, not by throwing — the booking
+ * still has to produce a bill.
+ */
+function discounted(lodging: number, percent: number | null | undefined) {
+  const p = Math.min(100, Math.max(0, Number(percent) || 0));
+  if (p === 0) return { gross: lodging, discount: undefined };
+  const gross = money(lodging * (1 - p / 100));
+  return { gross, discount: { percent: p, grossBefore: lodging } };
+}
+
 export function splitOtaAmount(input: SplitInput): ChargeLine[] | null {
   const total = money(input.totalGross);
   const { breakfast } = input;
 
   if (!breakfast || input.persons <= 0 || input.nights <= 0) {
+    const one = discounted(total, input.lodgingDiscountPercent);
     return [{
       kind: 'lodging',
       quantity: 1,
-      unitPriceGross: total,
-      totalGross: total,
+      unitPriceGross: one.gross,
+      totalGross: one.gross,
       vatRate: input.lodgingVatRate,
+      ...(one.discount ? { discount: one.discount } : {}),
     }];
   }
 
@@ -86,12 +129,18 @@ export function splitOtaAmount(input: SplitInput): ChargeLine[] | null {
   // problem, not something to round away.
   if (lodging < 0) return null;
 
+  // The discount lands on the remainder, after the breakfast is out. The
+  // breakfast lines are untouched, which is the whole point of doing it here
+  // and not on the total.
+  const room = discounted(lodging, input.lodgingDiscountPercent);
+
   const lines: ChargeLine[] = [{
     kind: 'lodging',
     quantity: 1,
-    unitPriceGross: lodging,
-    totalGross: lodging,
+    unitPriceGross: room.gross,
+    totalGross: room.gross,
     vatRate: input.lodgingVatRate,
+    ...(room.discount ? { discount: room.discount } : {}),
   }];
 
   if (food > 0) {
