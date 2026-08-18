@@ -1078,6 +1078,9 @@ CREATE TABLE "invoices" (
   "custom_description" TEXT,
   "custom_email" TEXT,
   "corrects_invoice_id" TEXT,
+  -- Which payer this document is for. A stay can produce several: two guests
+  -- sharing a room, each paying their own half. See migration 0019.
+  "folio_id" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "invoice_number"),
   CHECK (status IN ('issued', 'cancelled', 'storno', 'corrected'))
@@ -2277,6 +2280,7 @@ CREATE INDEX "idx_invoices_issued" ON "invoices" ("issued_at");
 CREATE INDEX "idx_invoices_corrects" ON "invoices" ("corrects_invoice_id");
 CREATE INDEX "idx_invoices_number" ON "invoices" ("invoice_number");
 CREATE INDEX "idx_invoices_reservation" ON "invoices" ("reservation_id");
+CREATE INDEX "idx_invoices_folio" ON "invoices" ("folio_id");
 CREATE INDEX "idx_partner_reports_period" ON "partner_reports" ("organization_id", "period");
 CREATE INDEX "idx_payment_webhook_log_org" ON "payment_webhook_log" ("organization_id");
 CREATE INDEX "idx_pwl_created" ON "payment_webhook_log" ("created_at");

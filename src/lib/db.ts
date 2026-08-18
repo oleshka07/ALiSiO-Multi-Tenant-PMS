@@ -5119,6 +5119,14 @@ function runMigrations(database: any) {
     if (cols.length > 0 && !cols.includes('corrects_invoice_id')) {
       database.exec('ALTER TABLE invoices ADD COLUMN corrects_invoice_id TEXT');
     }
+    // Which payer the document belongs to — a stay can produce several. See
+    // migration 0019.
+    if (cols.length > 0 && !cols.includes('folio_id')) {
+      database.exec('ALTER TABLE invoices ADD COLUMN folio_id TEXT');
+    }
+    if (cols.length > 0) {
+      database.exec('CREATE INDEX IF NOT EXISTS idx_invoices_folio ON invoices(folio_id)');
+    }
     // The index lived only in the Postgres migration 0014. So every database
     // that was CREATED rather than migrated — every new customer, and every
     // developer's — had the column and not the index, and nothing said so.

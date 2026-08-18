@@ -16,116 +16,22 @@ import { renderInvoiceHtml, type InvoiceData } from '@/modules/finance/domain/in
 import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
 import { allocateInvoiceNumber, isInvoiceLocked } from '@/modules/finance/domain/invoice-numbering';
 import type { Actor } from '@core/auth/session';
+import {
+  generateInvoiceForReservation,
+  reissueInvoiceForReservation,
+  resolveDocumentDate,
+} from '@/modules/finance/data/reservation-invoice.repo';
 
-/**
- * The organization of a reservation, through its property. Invoice generation
- * is called from the payment and booking lifecycle, where there is no session
- * to read — the reservation itself is the authority on whose invoice this is.
- */
-async function organizationOfReservation(reservationId: string): Promise<string | null> {
-  const sql = getSql();
-  const row = await sql.row<any>('SELECT p.organization_id AS org FROM reservations r JOIN properties p ON p.id = r.property_id WHERE r.id = ?', [reservationId]) as { org: string } | undefined;
-  return row?.org ?? null;
-}
-
-/**
- * Real accounting date for a document: check-in (stay) → payment date → creation.
- * Never the statement-import date. Returns YYYY-MM-DD.
- */
-export function resolveDocumentDate(row: {
-  check_in?: string | null; payment_date?: string | null; issued_at?: string | null;
-}): string {
-  const pick = row.check_in || row.payment_date || row.issued_at || '';
-  return pick.slice(0, 10);
-}
-
-// ─── Core Business Logic ─────────────────────────────────────────────────────
-
-/**
- * Create an invoice record for a reservation.
- * Idempotent — if invoice already exists for this reservation, returns existing id.
- */
-export async function generateInvoiceForReservation(
-  reservationId: string,
-  opts: { confirmed?: boolean; source?: string } = {},
-): Promise<string | null> {
-  try {
-    const sql = getSql();
-    const confirmed = opts.confirmed ? 1 : 0;
-    const confirmationSource = opts.source || (opts.confirmed ? 'confirmed' : 'manual');
-
-    // Idempotency check — skip if invoice already exists (not cancelled). If it
-    // exists but was unconfirmed and this call carries a confirmation (Teya/cash),
-    // upgrade it to confirmed.
-    const existing = await sql.row<any>("SELECT id, confirmed FROM invoices WHERE reservation_id = ? AND status != 'cancelled'", [reservationId]) as { id: string; confirmed: number } | undefined;
-
-    if (existing) {
-      if (confirmed && !existing.confirmed) {
-        await sql.run("UPDATE invoices SET confirmed = TRUE, confirmation_source = ? WHERE id = ?", [confirmationSource, existing.id]);
-      }
-      return existing.id;
-    }
-
-    // Fetch reservation basic data
-    const res = await sql.row<any>(`
-      SELECT total_price, currency, check_out
-      FROM reservations
-      WHERE id = ?
-    `, [reservationId]) as { total_price: number; currency: string; check_out: string } | undefined;
-
-    if (!res) return null;
-
-    const organizationId = await organizationOfReservation(reservationId);
-    if (!organizationId) {
-      console.error('[Invoices] reservation', reservationId, 'has no organization — refusing to number an invoice');
-      return null;
-    }
-
-    const invoiceId = `inv_${Date.now()}`;
-    const today = new Date().toISOString().split('T')[0];
-    // Direct-booking invoices use the HOUSE series (plain YYYY-NNN), allocated atomically.
-    const { invoiceNumber } = await allocateInvoiceNumber(sql, organizationId, 'house', new Date().getFullYear());
-    // Due date: check-out date (service rendered on departure)
-    const dueDate = res.check_out > today ? res.check_out : today;
-    const period = (res.check_out || today).slice(0, 7);
-
-    await sql.run(`
-      INSERT INTO invoices (id, organization_id, reservation_id, invoice_number, issued_at, due_date, amount, currency, status, series, period, confirmed, confirmation_source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'issued', 'HOUSE', ?, ?, ?)
-    `, [invoiceId, organizationId, reservationId, invoiceNumber, today, dueDate, res.total_price, res.currency || 'CZK', period, confirmed, confirmationSource]);
-
-    console.log(`[Invoices] Created ${invoiceNumber} for reservation ${reservationId}`);
-    return invoiceId;
-  } catch (e: any) {
-    console.error('[Invoices] Error generating invoice:', e.message);
-    return null;
-  }
-}
-
-/**
- * Cancel an existing invoice and generate a fresh one for the same reservation.
- * The old invoice is soft-deleted (status → 'cancelled'), not removed from DB.
- */
-export async function reissueInvoiceForReservation(reservationId: string): Promise<string | null> {
-  try {
-    const sql = getSql();
-    // A locked (filed) invoice cannot be cancelled/renumbered — it must be
-    // corrected with a storno (credit note) instead.
-    const current = await sql.row<any>("SELECT id FROM invoices WHERE reservation_id = ? AND status != 'cancelled'", [reservationId]) as { id: string } | undefined;
-    const organizationId = await organizationOfReservation(reservationId);
-    if (!organizationId) return null;
-    if (current && await isInvoiceLocked(sql, organizationId, current.id)) {
-      throw new Error('Invoice period is locked — use a storno (credit note) to correct it.');
-    }
-    // Cancel all existing non-cancelled invoices for this reservation
-    await sql.run("UPDATE invoices SET status = 'cancelled' WHERE reservation_id = ? AND status != 'cancelled'", [reservationId]);
-    // Force-create a new invoice (existing check now passes since all are cancelled)
-    return await generateInvoiceForReservation(reservationId);
-  } catch (e: any) {
-    console.error('[Invoices] reissue error:', e.message);
-    return null;
-  }
-}
+// Raising and replacing a stay's invoice moved to data/reservation-invoice.repo.ts:
+// none of it needs a request or a response, and behind this module's
+// `next/server` import it could not be reached by a self-check run under bare
+// node. Re-exported so every caller and the module's public surface (@finance)
+// stay exactly as they were.
+export {
+  generateInvoiceForReservation,
+  reissueInvoiceForReservation,
+  resolveDocumentDate,
+};
 
 // ─── API Handlers ─────────────────────────────────────────────────────────────
 
@@ -267,9 +173,17 @@ export async function getInvoiceByReservation(
     const sql = getSql();
     const { id } = await params;
     const row = await sql.row<any>(`
+      -- The STAY's own invoice, not a payer's.
+      --
+      -- What this answers sits next to a "reissue" button, and that button now
+      -- acts on exactly this set (folio_id IS NULL). Showing a payer's invoice
+      -- here would put a document under a control that cannot touch it.
+      -- Invoices raised per payer are listed in the booking's invoice tab,
+      -- where each has its own storno.
       SELECT id, invoice_number, issued_at, amount, currency, status
       FROM invoices
       WHERE reservation_id = ? AND organization_id = ? AND status = 'issued'
+        AND folio_id IS NULL
       ORDER BY issued_at DESC
       LIMIT 1
     `, [id, actor.organizationId]) as { id: string; invoice_number: string; issued_at: string; amount: number; currency: string; status: string } | undefined;

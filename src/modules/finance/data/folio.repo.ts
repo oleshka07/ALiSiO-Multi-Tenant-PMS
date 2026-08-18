@@ -167,10 +167,15 @@ export async function issueInvoice(input: {
     allocatedSeries = allocated.series;
 
     await t.run(
-      `INSERT INTO invoices (id, organization_id, invoice_number, issued_at, amount, currency, status, reservation_id)
-       VALUES (?, ?, ?, ?, ?, ?, 'issued', ?)`,
+      // folio_id, not only reservation_id. The reservation says which room the
+      // charges came from; the folio says whose document this is. When two
+      // guests split one room, that is the only thing telling their invoices
+      // apart — and the only thing stopping a correction to one of them from
+      // cancelling the other.
+      `INSERT INTO invoices (id, organization_id, invoice_number, issued_at, amount, currency, status, reservation_id, folio_id)
+       VALUES (?, ?, ?, ?, ?, ?, 'issued', ?, ?)`,
       [invoiceId, organizationId, number, issueDate, snapshot.gross,
-       folio.currency ?? 'EUR', folio.reservation_id],
+       folio.currency ?? 'EUR', folio.reservation_id, folio.id],
     );
 
     for (const l of snapshot.lines) {
@@ -267,10 +272,12 @@ export async function stornoInvoice(input: {
     series = allocated.series;
 
     await t.run(
-      `INSERT INTO invoices (id, organization_id, invoice_number, issued_at, amount, currency, status, reservation_id, corrects_invoice_id)
-       VALUES (?, ?, ?, ?, ?, ?, 'storno', ?, ?)`,
+      // The reversal inherits the folio of what it reverses: a credit note for
+      // one guest belongs to that guest's document trail, not to the room's.
+      `INSERT INTO invoices (id, organization_id, invoice_number, issued_at, amount, currency, status, reservation_id, folio_id, corrects_invoice_id)
+       VALUES (?, ?, ?, ?, ?, ?, 'storno', ?, ?, ?)`,
       [stornoId, organizationId, number, issueDate, mirrored.gross,
-       original.currency ?? 'EUR', original.reservation_id, input.invoiceId],
+       original.currency ?? 'EUR', original.reservation_id, original.folio_id ?? null, input.invoiceId],
     );
 
     for (const l of mirrored.lines) {
