@@ -64,6 +64,12 @@ export async function getGuestPortal(
     const services = await portalRepo.getAvailableServices(reservation.property_id, reservation.category_type);
     const orderedServices = await portalRepo.getOrderedServices(reservation.id);
     const guestPageConfig = await portalRepo.getGuestPageConfig(reservation.unit_type_id, reservation.property_id, reservation.unit_id);
+    // Which sections this property shows and in what order — the registry
+    // with the hotel's differences applied. `locked` never leaves the server
+    // for the guest: the guest page only needs what to render.
+    const sections = (await portalRepo.getGuestPageSections(reservation.property_id, reservation.property_country))
+      .filter((s) => s.enabled)
+      .map(({ key, order, config }) => ({ key, order, config }));
 
     const propertyName = reservation.property_name || '';
 
@@ -86,6 +92,7 @@ export async function getGuestPortal(
         remaining: reservation.total_price - (payments?.total_paid || 0) + (payments?.total_refunded || 0),
       },
       photos: { unitType: unitTypePhotos, property: propertyPhotos },
+      sections,
       services,
       orderedServices,
       guestPageConfig,

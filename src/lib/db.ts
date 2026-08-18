@@ -1451,6 +1451,23 @@ function runMigrations(database: any) {
       database.exec("ALTER TABLE unit_types ADD COLUMN pet_charge INTEGER NOT NULL DEFAULT 400");
       console.log('[DB] Added pet_charge to unit_types (default 400 CZK)');
     }
+    // How a property's guest page differs from the section registry in code.
+    // No rows = registry defaults. See migration 0022.
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS guest_page_sections (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        section TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER,
+        config TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(property_id, section)
+      )
+    `);
+
     // Reception can sell it, the website cannot. See migration 0021.
     if (!utCols.includes('bookable_online')) {
       database.exec("ALTER TABLE unit_types ADD COLUMN bookable_online INTEGER NOT NULL DEFAULT 1");

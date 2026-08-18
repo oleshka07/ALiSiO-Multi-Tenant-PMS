@@ -922,6 +922,22 @@ CREATE TABLE "guest_page_config" (
   UNIQUE ("unit_type_id")
 );
 
+-- How THIS property's guest page differs from the section registry in code
+-- (guest-page-sections.ts). No rows = the registry's defaults. Inline
+-- REFERENCES on purpose: migration 0022 creates this table on environments
+-- that predate it, and the auto-generated constraint names must match.
+CREATE TABLE "guest_page_sections" (
+  "id" TEXT PRIMARY KEY DEFAULT encode(gen_random_bytes(16), 'hex'),
+  "organization_id" TEXT,
+  "property_id" TEXT NOT NULL,
+  "section" TEXT NOT NULL,
+  "enabled" BOOLEAN NOT NULL DEFAULT true,
+  "sort_order" BIGINT,
+  "config" TEXT,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE "guest_registrations" (
   "id" TEXT NOT NULL,
   "reservation_id" TEXT NOT NULL,
@@ -2009,6 +2025,10 @@ ALTER TABLE "gift_cards" ADD CONSTRAINT "fk_gift_cards_property_id_4"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_chat_messages" ADD CONSTRAINT "fk_guest_chat_messages_reservation_id_1"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
+ALTER TABLE "guest_page_sections" ADD CONSTRAINT "fk_guest_page_sections_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "guest_page_sections" ADD CONSTRAINT "fk_guest_page_sections_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_page_config" ADD CONSTRAINT "fk_guest_page_config_unit_type_id_1"
   FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_registrations" ADD CONSTRAINT "fk_guest_registrations_guest_id_1"
@@ -2217,6 +2237,7 @@ CREATE INDEX "idx_ch_conn_channel" ON "channel_connections" ("channel");
 CREATE INDEX "idx_ch_conn_org" ON "channel_connections" ("organization_id");
 CREATE INDEX "idx_ch_conn_status" ON "channel_connections" ("status");
 CREATE UNIQUE INDEX "idx_channel_rate_rules_row" ON "channel_rate_rules" (organization_id, property_id, (COALESCE(channel, '')));
+CREATE UNIQUE INDEX "idx_guest_page_sections_row" ON "guest_page_sections" ("property_id", "section");
 CREATE INDEX "idx_ch_room_conn" ON "channel_room_mapping" ("connection_id");
 CREATE INDEX "idx_ct_hash" ON "content_translations" ("text_hash");
 CREATE INDEX "idx_ct_lang" ON "content_translations" ("text_hash", "lang");
@@ -2351,6 +2372,7 @@ CREATE INDEX IF NOT EXISTS "idx_capex_items_org" ON "capex_items" ("organization
 CREATE INDEX IF NOT EXISTS "idx_channel_connections_org" ON "channel_connections" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_channel_credentials_org" ON "channel_credentials" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_channel_rate_rules_org" ON "channel_rate_rules" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_guest_page_sections_org" ON "guest_page_sections" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cost_allocations_org" ON "cost_allocations" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_coupons_org" ON "coupons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_expense_categories_org" ON "expense_categories" ("organization_id");
@@ -2420,6 +2442,8 @@ ALTER TABLE "channel_connections" ALTER COLUMN "organization_id"
 ALTER TABLE "channel_credentials" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "channel_rate_rules" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "guest_page_sections" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "cost_allocations" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2616,6 +2640,12 @@ CREATE POLICY "channel_connections_tenant" ON "channel_connections"
 ALTER TABLE "channel_credentials" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "channel_credentials" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "channel_credentials_tenant" ON "channel_credentials"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "guest_page_sections" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "guest_page_sections" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "guest_page_sections_tenant" ON "guest_page_sections"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

@@ -1,5 +1,66 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from '@core/db/async';
+import {
+  resolveSections, isKnownSection,
+  type ResolvedSection, type StoredSectionRow,
+} from '../domain/guest-page-sections';
+
+/**
+ * The guest page's sections for one property: the registry with this hotel's
+ * differences applied. Callers get the final answer — enabled, order, locked —
+ * never the raw rows, so nobody else re-implements the merge.
+ */
+export async function getGuestPageSections(
+  propertyId: string,
+  propertyCountry?: string | null,
+): Promise<ResolvedSection[]> {
+  const sql = getSql();
+  let rows: StoredSectionRow[] = [];
+  try {
+    rows = await sql.rows<StoredSectionRow>(
+      'SELECT section, enabled, sort_order, config FROM guest_page_sections WHERE property_id = ?',
+      [propertyId]);
+  } catch { /* a database from before migration 0022 — registry defaults */ }
+  return resolveSections(rows, { propertyCountry });
+}
+
+/**
+ * Store one section's difference from the registry. Unknown keys are refused,
+ * not stored: the registry decides what exists, and a typo that quietly lands
+ * in the table would read as "configured, does nothing".
+ */
+export async function saveGuestPageSection(
+  organizationId: string,
+  propertyId: string,
+  input: { section: string; enabled?: boolean; sortOrder?: number | null; config?: Record<string, unknown> | null },
+): Promise<boolean> {
+  if (!isKnownSection(input.section)) return false;
+  const sql = getSql();
+  const existing = await sql.row<any>(
+    'SELECT id, enabled, sort_order, config FROM guest_page_sections WHERE property_id = ? AND section = ?',
+    [propertyId, input.section]);
+  const enabled = input.enabled === undefined
+    ? (existing ? Number(existing.enabled) : 1)
+    : (input.enabled ? 1 : 0);
+  const sortOrder = input.sortOrder === undefined
+    ? (existing?.sort_order ?? null)
+    : input.sortOrder;
+  const config = input.config === undefined
+    ? (existing?.config ?? null)
+    : (input.config == null ? null : JSON.stringify(input.config));
+  if (existing) {
+    await sql.run(
+      `UPDATE guest_page_sections SET enabled = ?, sort_order = ?, config = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND property_id = ?`,
+      [enabled, sortOrder, config, existing.id, propertyId]);
+  } else {
+    await sql.run(
+      `INSERT INTO guest_page_sections (organization_id, property_id, section, enabled, sort_order, config)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [organizationId, propertyId, input.section, enabled, sortOrder, config]);
+  }
+  return true;
+}
 
 export async function getReservationByToken(token: string) {
   const sql = getSql();
