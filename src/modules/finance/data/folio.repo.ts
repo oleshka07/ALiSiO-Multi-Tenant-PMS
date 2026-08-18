@@ -111,6 +111,88 @@ export async function openCharges(folioId: string, t?: Sql): Promise<FolioItem[]
   );
 }
 
+/**
+ * Move uninvoiced charges onto another folio of the same stay.
+ *
+ * This is the verb behind splitting a bill: the room's charges land on one
+ * folio, reception drags half of them onto the second payer's, each folio
+ * becomes its own invoice. Only the folio_id moves — amounts, dates and VAT
+ * stay exactly as posted, because splitting who PAYS must not be able to
+ * change what is OWED.
+ *
+ * Refused, not filtered, when a charge is already invoiced: its line is frozen
+ * under a numbered document, and silently skipping it would leave reception
+ * believing the guest's share moved when part of it did not.
+ */
+export async function moveCharges(itemIds: readonly string[], toFolioId: string): Promise<number> {
+  const organizationId = await requireOrganizationId();
+  const sql = getSql();
+  if (!itemIds.length) return 0;
+
+  const target = await sql.row<any>(
+    'SELECT id, reservation_id FROM fin_folios WHERE id = ? AND organization_id = ?',
+    [toFolioId, organizationId]);
+  if (!target) throw new Error('Folio not found');
+
+  let moved = 0;
+  await sql.tx(async (t) => {
+    for (const itemId of itemIds) {
+      const item = await t.row<any>(
+        `SELECT id, folio_id, reservation_id, invoice_id, voided_by_item_id
+           FROM fin_folio_items WHERE id = ? AND organization_id = ?`,
+        [itemId, organizationId]);
+      if (!item) throw new Error('Charge not found');
+      if (item.invoice_id) throw new Error('Charge is already invoiced — storno the invoice first');
+      if (item.voided_by_item_id) throw new Error('Charge is voided');
+      // Same stay on both sides. Money moving between two bookings' bills is
+      // not a split, it is a transfer nobody asked for.
+      if (item.reservation_id && target.reservation_id
+          && item.reservation_id !== target.reservation_id) {
+        throw new Error('Charge and folio belong to different reservations');
+      }
+      await t.run(
+        'UPDATE fin_folio_items SET folio_id = ? WHERE id = ? AND organization_id = ?',
+        [toFolioId, itemId, organizationId]);
+      moved += 1;
+    }
+  });
+  return moved;
+}
+
+/**
+ * Everything the split-bill screen needs about one stay, in one query burst:
+ * each folio with its payer, its still-open charges and the invoices already
+ * raised from it. The alternative — the UI stitching this from three endpoints
+ * per folio — is N+1 over HTTP with loading flicker as the failure mode.
+ */
+export async function foliosOverview(reservationId: string): Promise<Array<Folio & {
+  openGross: number;
+  openItems: FolioItem[];
+  invoices: Array<{ id: string; invoice_number: string; status: string; amount: number }>;
+}>> {
+  const organizationId = await requireOrganizationId();
+  const sql = getSql();
+  const heads = await sql.rows<Folio>(
+    'SELECT * FROM fin_folios WHERE organization_id = ? AND reservation_id = ? ORDER BY created_at',
+    [organizationId, reservationId]);
+
+  const out = [];
+  for (const folio of heads) {
+    const openItems = await openCharges(folio.id);
+    const invoices = await sql.rows<any>(
+      `SELECT id, invoice_number, status, amount FROM invoices
+        WHERE organization_id = ? AND folio_id = ? ORDER BY issued_at, invoice_number`,
+      [organizationId, folio.id]);
+    out.push({
+      ...folio,
+      openItems,
+      openGross: Math.round(openItems.reduce((s, i) => s + Number(i.total_gross), 0) * 100) / 100,
+      invoices: invoices.map((i: any) => ({ ...i, amount: Number(i.amount) })),
+    });
+  }
+  return out;
+}
+
 export interface IssueResult {
   invoiceId: string;
   invoiceNumber: string;

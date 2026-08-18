@@ -36,7 +36,7 @@ import '../../../../scripts/lib/module-aliases.mjs';
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
-const { createFolio, addCharges, issueInvoice, stornoInvoice } = await import('./folio.repo.ts');
+const { createFolio, addCharges, issueInvoice, stornoInvoice, moveCharges, foliosOverview } = await import('./folio.repo.ts');
 const { reissueInvoiceForReservation } = await import('./reservation-invoice.repo.ts');
 
 const sql = getSql();
@@ -87,15 +87,28 @@ try {
     const folioB = await createFolio({ reservationId: RES, payerKind: 'guest', payerName: 'Bernd Kraus', label: 'B' });
     assert.notStrictEqual(folioA, folioB);
 
-    // Half the room each. The split itself is reception's decision; what is
-    // under test is that it survives to two documents.
-    for (const [folioId, guest] of [[folioA, 'Anna Weber'], [folioB, 'Bernd Kraus']] as const) {
-      await addCharges([{
-        folioId, reservationId: RES, serviceDate: '2026-10-05', kind: 'lodging',
-        description: 'Übernachtung', guestName: guest, unitCode: '204',
-        quantity: 2, unitPriceGross: 44.5, totalGross: 89, vatRate: 7, source: 'manual',
-      }]);
-    }
+    // The way it actually happens at the desk: ALL the room's charges land on
+    // the first folio, and reception moves the second guest's half over. The
+    // split is a decision made after the fact, not a plan made before posting.
+    await addCharges([
+      { folioId: folioA, reservationId: RES, serviceDate: '2026-10-05', kind: 'lodging',
+        description: 'Übernachtung', guestName: 'Anna Weber', unitCode: '204',
+        quantity: 2, unitPriceGross: 44.5, totalGross: 89, vatRate: 7, source: 'manual' },
+      { folioId: folioA, reservationId: RES, serviceDate: '2026-10-05', kind: 'lodging',
+        description: 'Übernachtung', guestName: 'Bernd Kraus', unitCode: '204',
+        quantity: 2, unitPriceGross: 44.5, totalGross: 89, vatRate: 7, source: 'manual' },
+    ]);
+
+    const before = await foliosOverview(RES);
+    const berndItem = before.find((f) => f.id === folioA)!
+      .openItems.find((i: any) => i.guest_name === 'Bernd Kraus')!;
+    const movedCount = await moveCharges([berndItem.id], folioB);
+    assert.strictEqual(movedCount, 1);
+
+    const after = await foliosOverview(RES);
+    assert.strictEqual(after.find((f) => f.id === folioA)!.openGross, 89, 'на A мала лишитись половина');
+    assert.strictEqual(after.find((f) => f.id === folioB)!.openGross, 89, 'на B мала приїхати половина');
+    console.log('  ok  половина рахунку переїхала на другого платника, суми не змінились');
 
     const a = await issueInvoice({ folioId: folioA });
     const b = await issueInvoice({ folioId: folioB });
@@ -121,6 +134,16 @@ try {
     assert.strictEqual((await owner(b.invoiceId)).folio_id, folioB);
     assert.strictEqual((await owner(a.invoiceId)).reservation_id, RES, 'рахунок загубив бронь');
     console.log('  ok  кожен рахунок знає свого платника і спільну бронь');
+
+    // A charge frozen under a numbered document must refuse to move. Skipping
+    // it silently would leave reception believing a share moved when it did not.
+    const frozenItem = await sql.row<any>(
+      "SELECT id FROM fin_folio_items WHERE folio_id = ? AND invoice_id IS NOT NULL", [folioA]);
+    await assert.rejects(
+      () => moveCharges([frozenItem.id], folioB),
+      /already invoiced/,
+      'зафактурована позиція переїхала — рядок під номером документа посунувся');
+    console.log('  ok  позицію під виставленим рахунком перенести не можна');
 
     // ── the reissue route must not reach a payer's document ─────────────────
     //

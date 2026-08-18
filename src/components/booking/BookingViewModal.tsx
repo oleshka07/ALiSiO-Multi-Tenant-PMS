@@ -211,6 +211,82 @@ export default function BookingViewModal({
     finally { setSavingDiscount(false); }
   };
 
+  // Поділ рахунку між платниками одного номера. Йорг: «es müssen bitte mind.
+  // 2 Rechnungen mit fortlaufender RG-Nr. aus einem Zimmer möglich sein».
+  //
+  // Фоліо — це «чий документ»: усі позиції броні лягають на перше, рецепція
+  // перекидає частку другого платника на його фоліо, і кожне фоліо стає
+  // окремим рахунком зі своїм номером. Згорнуто за замовчуванням: для
+  // більшості бронювань платник один і цей блок не потрібен.
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [folios, setFolios] = useState<any[]>([]);
+  const [folioBusy, setFolioBusy] = useState(false);
+  const [newPayer, setNewPayer] = useState('');
+
+  const fetchFolios = async () => {
+    try {
+      const res = await fetch(`/api/finance/folios?reservation_id=${b.id}&overview=1`);
+      const data = await res.json();
+      setFolios(Array.isArray(data.folios) ? data.folios : []);
+    } catch { setFolios([]); }
+  };
+  useEffect(() => { if (splitOpen) fetchFolios(); }, [splitOpen, b?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const folioCall = async (run: () => Promise<Response>, failMsg: string) => {
+    setFolioBusy(true);
+    try {
+      const res = await run();
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(`❌ ${data.error || failMsg}`);
+        return null;
+      }
+      await fetchFolios();
+      return await res.json().catch(() => ({}));
+    } catch { showToast(`❌ ${failMsg}`); return null; }
+    finally { setFolioBusy(false); }
+  };
+
+  // Перший крок: фоліо головного гостя, на яке конвеєр кладе проживання і
+  // послуги — та сама кнопка, що й «нарахувати», лише з платником.
+  const startFolios = () => folioCall(async () => {
+    const created = await fetch('/api/finance/folios', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reservation_id: b.id, payer_kind: 'guest',
+        payer_name: `${b.first_name ?? ''} ${b.last_name ?? ''}`.trim() || null,
+      }),
+    });
+    if (!created.ok) return created;
+    const { id } = await created.json();
+    return fetch(`/api/finance/folios/${id}/post-stay`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reservation_id: b.id }),
+    });
+  }, tUi('Не вдалося нарахувати проживання'));
+
+  const addPayer = () => {
+    const name = newPayer.trim();
+    if (!name) return;
+    folioCall(() => fetch('/api/finance/folios', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reservation_id: b.id, payer_kind: 'guest', payer_name: name }),
+    }), tUi('Не вдалося додати платника')).then((r) => { if (r) setNewPayer(''); });
+  };
+
+  const moveItem = (itemId: string, toFolioId: string) =>
+    folioCall(() => fetch(`/api/finance/folios/${toFolioId}/move`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_ids: [itemId] }),
+    }), tUi('Не вдалося перенести позицію'));
+
+  const issueFolio = (folioId: string) =>
+    folioCall(() => fetch(`/api/finance/folios/${folioId}/issue`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    }), tUi('Не вдалося виставити рахунок')).then((r) => {
+      if (r?.invoiceNumber) showToast(`🧾 ${r.invoiceNumber}`);
+    });
+
   // Load current invoice whenever modal opens or booking changes
   useEffect(() => {
     if (!b?.id) return;
@@ -994,6 +1070,88 @@ export default function BookingViewModal({
                         {tUi('ℹ️ Після зміни — натисни "Перевиставити" в блоці фактури нижче, щоб оновити документ.')}
                       </div>
                     )}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Поділ рахунку між платниками ── */}
+              <div style={{ marginTop: 8, padding: '10px 14px', background: 'var(--surface-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button className="btn btn-sm btn-ghost" style={{ alignSelf: 'flex-start', fontSize: 12, fontWeight: 600, padding: 0 }}
+                  onClick={() => setSplitOpen(!splitOpen)}>
+                  {splitOpen ? '▾' : '▸'} {tUi('🧾 Рахунки по платниках')}
+                </button>
+                {splitOpen && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {folios.length === 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                          {tUi('Позиції ще не нараховані.')}
+                        </span>
+                        <button className="btn btn-sm btn-primary" style={{ fontSize: 11 }} disabled={folioBusy} onClick={startFolios}>
+                          {tUi('Нарахувати проживання і послуги')}
+                        </button>
+                      </div>
+                    )}
+                    {folios.map((f) => (
+                      <div key={f.id} style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 12, fontWeight: 600 }}>
+                            👤 {f.payer_name || tUi('Гість')}
+                            <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}> · {tUi('відкрито:')} {f.openGross.toFixed(2)} {b.currency || 'EUR'}</span>
+                          </span>
+                          {f.openGross > 0 && (
+                            <button className="btn btn-sm btn-primary" style={{ fontSize: 10, padding: '2px 8px' }} disabled={folioBusy}
+                              onClick={() => issueFolio(f.id)}>
+                              <Receipt size={10} /> {tUi('Виставити рахунок')}
+                            </button>
+                          )}
+                        </div>
+                        {f.openItems.map((it: any) => (
+                          <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+                            <span style={{ flex: 1 }}>{it.description}{it.guest_name ? ` — ${it.guest_name}` : ''}</span>
+                            <span style={{ color: 'var(--text-tertiary)' }}>{Number(it.total_gross).toFixed(2)}</span>
+                            {folios.length > 1 && (
+                              <select value="" disabled={folioBusy} style={{ fontSize: 10, padding: '1px 4px', border: '1px solid var(--border)', borderRadius: 4 }}
+                                onChange={(e) => { if (e.target.value) moveItem(it.id, e.target.value); }}>
+                                <option value="">{tUi('→ кому')}</option>
+                                {folios.filter((o) => o.id !== f.id).map((o) => (
+                                  <option key={o.id} value={o.id}>{o.payer_name || o.label || '—'}</option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        ))}
+                        {f.invoices.map((inv: any) => (
+                          <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+                            <Receipt size={11} style={{ color: inv.status === 'issued' ? '#22c55e' : 'var(--text-tertiary)', flexShrink: 0 }} />
+                            <span style={{ fontWeight: 600, color: inv.status === 'issued' ? '#22c55e' : 'var(--text-tertiary)' }}>{inv.invoice_number}</span>
+                            <span style={{ color: 'var(--text-tertiary)' }}>{inv.amount.toFixed(2)} · {inv.status}</span>
+                            <button className="btn btn-sm btn-ghost" style={{ fontSize: 10, padding: '1px 5px' }}
+                              onClick={() => window.open(`/api/invoices/${inv.id}`, '_blank')}>👁</button>
+                            {inv.status === 'issued' && (
+                              <button className="btn btn-sm btn-ghost" style={{ fontSize: 10, padding: '1px 5px', color: '#f59e0b' }} disabled={folioBusy}
+                                onClick={() => folioCall(() => fetch(`/api/finance/invoices/${inv.id}/storno`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }), tUi('Не вдалося зробити сторно'))}>
+                                {tUi('Сторно')}
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                    {folios.length > 0 && (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <input placeholder={tUi("Ім'я другого платника")} value={newPayer}
+                          onChange={(e) => setNewPayer(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') addPayer(); }}
+                          style={{ flex: 1, padding: '5px 8px', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4 }} />
+                        <button className="btn btn-sm btn-ghost" style={{ fontSize: 11 }} disabled={folioBusy || !newPayer.trim()} onClick={addPayer}>
+                          + {tUi('Платник')}
+                        </button>
+                      </div>
+                    )}
+                    <div style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>
+                      {tUi('Кожен платник отримує окремий рахунок зі своїм номером. Виставлений рахунок виправляється через сторно.')}
+                    </div>
                   </div>
                 )}
               </div>

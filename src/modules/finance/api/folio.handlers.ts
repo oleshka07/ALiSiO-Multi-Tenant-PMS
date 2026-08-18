@@ -19,7 +19,7 @@ function refuse(e: unknown) {
   const message = e instanceof Error ? e.message : 'Failed';
   // These are decisions, not faults: the caller asked for something the rules
   // do not allow, and the sentence explains which rule.
-  const expected = /not found|Nothing to invoice|is closed|already a reversal/i.test(message);
+  const expected = /not found|Nothing to invoice|is closed|already a reversal|already invoiced|is voided|different reservations/i.test(message);
   if (!expected) console.error('[folio]', e);
   return NextResponse.json(
     { error: expected ? message : 'Failed' },
@@ -28,8 +28,31 @@ function refuse(e: unknown) {
 }
 
 export const listFolios = withPermission('manage_documents', async (request: Request) => {
-  const reservationId = new URL(request.url).searchParams.get('reservation_id') || undefined;
+  const url = new URL(request.url);
+  const reservationId = url.searchParams.get('reservation_id') || undefined;
+  // The split-bill screen wants each folio with its open charges and its
+  // invoices in one response; everything else keeps the flat list.
+  if (reservationId && url.searchParams.get('overview') === '1') {
+    return NextResponse.json({ folios: await folios.foliosOverview(reservationId) });
+  }
   return NextResponse.json({ folios: await folios.listFolios(reservationId) });
+});
+
+/** Move uninvoiced charges onto this folio — the verb behind splitting a bill. */
+export const moveFolioCharges = withPermission('manage_documents', async (
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) => {
+  const { id } = await params;
+  const body = await request.json().catch(() => ({})) as any;
+  const itemIds = (Array.isArray(body.item_ids) ? body.item_ids : [])
+    .map(String).filter(Boolean);
+  if (!itemIds.length) {
+    return NextResponse.json({ error: 'item_ids is required' }, { status: 400 });
+  }
+  try {
+    return NextResponse.json({ moved: await folios.moveCharges(itemIds, id) });
+  } catch (e) { return refuse(e); }
 });
 
 export const createFolio = withPermission('manage_documents', async (request: Request) => {

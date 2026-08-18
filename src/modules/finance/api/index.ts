@@ -319,7 +319,7 @@ export {
 } from './invoicing-config.handlers';
 export {
   listFolios, createFolio, getFolioCharges, addFolioCharges,
-  issueFolioInvoice, stornoInvoice,
+  issueFolioInvoice, stornoInvoice, moveFolioCharges,
 } from './folio.handlers';
 
 // What each channel's price includes, and the split it turns into.
