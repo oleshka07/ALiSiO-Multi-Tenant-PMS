@@ -31,6 +31,7 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
         -- відкривається з рядка списку, і без цих двох колонок вона показувала б
         -- «0 %» на броні, де знижка є, — і перший же blur затер би її.
         r.lodging_discount_percent, r.lodging_discount_reason,
+        r.breakfast_included,
         (SELECT COUNT(*) FROM reservation_sub_bookings WHERE reservation_id = r.id) as sub_booking_count,
         g.id as guest_id, g.first_name, g.last_name, g.email as guest_email, g.phone as guest_phone, g.nationality,
         u.id as unit_id, u.name as unit_name, u.code as unit_code, u.is_pool as unit_is_pool,

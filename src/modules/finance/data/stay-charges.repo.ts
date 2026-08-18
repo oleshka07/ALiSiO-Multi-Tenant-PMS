@@ -62,6 +62,7 @@ export async function postStayCharges(input: {
   const res = await sql.row<any>(
     `SELECT r.id, r.check_in, r.check_out, r.adults, r.children, r.total_price, r.source,
             r.property_id, r.lodging_discount_percent, r.lodging_discount_reason,
+            r.breakfast_included,
             u.code AS unit_code, u.name AS unit_name,
             g.first_name, g.last_name
        FROM reservations r
@@ -113,8 +114,29 @@ export async function postStayCharges(input: {
   const lodgingRate = rateFor(lodgingCode);
   if (!lodgingRate) return { reason: 'no_tax_rate', code: lodgingCode, date: checkIn };
 
+  // Whether to carve breakfast out of the total: the BOOKING answers first,
+  // the channel rule only when the booking says nothing (NULL).
+  //
+  // The rule is a property-wide guess keyed on the booking's source, and for
+  // the pilot it is accidentally right — every current tariff includes
+  // breakfast. It is wrong for the Appartements («zzgl. FRST 15,00 € /
+  // Person») and for any room sold without breakfast: carving 15 € out of a
+  // 45 € night that contains none drops the lodging line to 30 € and moves
+  // 3 € from 7 % into 19 % VAT — a wrong tax return, not a rounding slip.
+  //
+  // Read as `!= null` + truthiness, not `=== true`: SQLite hands the flag
+  // back as 0/1 and Postgres as 1/0 through the seam's bool shape, and NULL
+  // is the only value that means "the booking didn't say".
+  const bookingSaysBreakfast = res.breakfast_included != null
+    ? Boolean(Number(res.breakfast_included))
+    : null;
+
   let breakfast = null;
-  if (rule?.includes_breakfast) {
+  // `&& rule`: the booking can say breakfast is inside the price, but only
+  // the rule knows what the split costs (12 + 3 for the pilot). A booking
+  // that says "included" in a hotel with no rule cannot be split honestly —
+  // it posts as one lodging line, exactly what happened before this flag.
+  if ((bookingSaysBreakfast ?? rule?.includes_breakfast) && rule) {
     const foodRate = rateFor(rule.food_tax_code);
     if (!foodRate) return { reason: 'no_tax_rate', code: rule.food_tax_code, date: checkIn };
     const drinksRate = rateFor(rule.drinks_tax_code);

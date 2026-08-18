@@ -5109,6 +5109,11 @@ function runMigrations(database: any) {
     if (cols.length > 0 && !cols.includes('lodging_discount_reason')) {
       database.exec('ALTER TABLE reservations ADD COLUMN lodging_discount_reason TEXT');
     }
+    // Three states on purpose: NULL follows the channel rule, 1 carves the
+    // breakfast out, 0 leaves the whole amount as lodging. See migration 0020.
+    if (cols.length > 0 && !cols.includes('breakfast_included')) {
+      database.exec('ALTER TABLE reservations ADD COLUMN breakfast_included INTEGER');
+    }
   } catch { /* таблиці ще немає — створиться зі схемою */ }
 
   // (GoBD). That needs two statuses the CHECK refused — `storno` for the

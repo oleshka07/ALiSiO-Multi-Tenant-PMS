@@ -1,0 +1,32 @@
+-- Breakfast is what was sold, not what the channel says.
+--
+-- Whether an invoice carves breakfast out of the booking's total is decided
+-- today by channel_rate_rules — a property-wide rule keyed on the booking's
+-- SOURCE. For the pilot that rule says "included" for everything, and it is
+-- accidentally right, because every current tariff includes breakfast.
+--
+-- It stops being right on the two cases already on the table:
+--
+--   the Appartements (111/112) — «zzgl. FRST 15,00 € / Person»: breakfast is
+--   bought on top, never inside the price. Applying the property rule to a
+--   45 € night would carve 15 € of breakfast out of money that contains none:
+--   the lodging line drops to 30 €, and 3 € move from 7 % into 19 % VAT — a
+--   wrong tax return, not a cosmetic slip;
+--
+--   any direct rate sold without breakfast.
+--
+-- So the booking itself records what was agreed. Three states, and NULL is
+-- one of them on purpose:
+--
+--   NULL   nothing was said — follow the property rule, exactly as before.
+--          Every existing booking keeps meaning what it meant.
+--   TRUE   breakfast is inside this booking's price — carve it out.
+--   FALSE  it is not — the whole amount is lodging. If the guest buys
+--          breakfast anyway, it is posted as the service it is
+--          (additional_services already carries Frühstück at its VAT codes).
+--
+-- A DEFAULT here would be a lie: the default is "we don't know", and that is
+-- what NULL says. When rate plans exist someday, the plan will set this same
+-- flag — the booking stays the authority on what was sold.
+ALTER TABLE "reservations"
+  ADD COLUMN IF NOT EXISTS "breakfast_included" BOOLEAN;

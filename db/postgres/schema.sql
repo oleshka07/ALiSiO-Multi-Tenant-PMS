@@ -1400,6 +1400,10 @@ CREATE TABLE "reservations" (
   "total_price" NUMERIC(14,2) DEFAULT 0 NOT NULL,
   "lodging_discount_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
   "lodging_discount_reason" TEXT,
+  -- What was sold on THIS booking: NULL follows the property's channel rule,
+  -- TRUE carves breakfast out of the total, FALSE means the whole amount is
+  -- lodging. See migration 0020.
+  "breakfast_included" BOOLEAN,
   "currency" TEXT DEFAULT 'CZK' NOT NULL,
   "notes" TEXT,
   "internal_notes" TEXT,

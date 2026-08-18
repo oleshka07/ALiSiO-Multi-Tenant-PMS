@@ -211,6 +211,30 @@ export default function BookingViewModal({
     finally { setSavingDiscount(false); }
   };
 
+  // Чи входить сніданок у ціну ЦІЄЇ броні. Три стани, і порожній — навмисно:
+  // NULL означає «бронь нічого не сказала, діє правило готелю». Для пілота
+  // правило каже «входить» і майже завжди має рацію; апартаменти (сніданок
+  // zzgl. 15 €/особу) і прямі тарифи без сніданку — саме ті випадки, де бронь
+  // мусить мати останнє слово, інакше з ціни виріжеться сніданок, якого в ній
+  // немає, і 3 € переїдуть із 7 % у 19 % ПДВ.
+  const [breakfastMode, setBreakfastMode] = useState(
+    bAny.breakfast_included == null ? '' : (Number(bAny.breakfast_included) ? '1' : '0'));
+  const [savingBreakfast, setSavingBreakfast] = useState(false);
+  const persistBreakfast = async (mode: string) => {
+    setSavingBreakfast(true);
+    try {
+      const res = await fetch(`/api/bookings/${b.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ breakfast_included: mode === '' ? null : Number(mode) }),
+      });
+      if (!res.ok) { showToast(tUi('❌ Не вдалося зберегти')); return; }
+      setBreakfastMode(mode);
+      onFetchBookings();
+    } catch { showToast(tUi('❌ Помилка')); }
+    finally { setSavingBreakfast(false); }
+  };
+
   // Поділ рахунку між платниками одного номера. Йорг: «es müssen bitte mind.
   // 2 Rechnungen mit fortlaufender RG-Nr. aus einem Zimmer möglich sein».
   //
@@ -961,6 +985,23 @@ export default function BookingViewModal({
                 )}
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
                   {tUi('Знижка діє лише на нічліг. Сніданок і послуги — за своєю ціною.')}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>{tUi('🥐 Сніданок у ціні')}</span>
+                  {savingBreakfast && <Loader2 size={12} className="animate-spin" />}
+                  <select
+                    value={breakfastMode}
+                    disabled={savingBreakfast}
+                    onChange={(e) => persistBreakfast(e.target.value)}
+                    style={{ fontSize: 11, padding: '3px 6px', border: '1px solid var(--border)', borderRadius: 4 }}
+                  >
+                    <option value="">{tUi('За правилом готелю')}</option>
+                    <option value="1">{tUi('Так — входить у ціну')}</option>
+                    <option value="0">{tUi('Ні — вся сума за проживання')}</option>
+                  </select>
+                  <span style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>
+                    {tUi('Впливає на розбивку рахунку за ставками ПДВ.')}
+                  </span>
                 </div>
               </div>
 

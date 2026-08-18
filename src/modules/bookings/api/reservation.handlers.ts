@@ -97,6 +97,10 @@ export const updateReservation = withActor(async (request: NextRequest, { params
       // clamped below rather than trusted from the body: this list only says
       // which columns may be written, not what may be written into them.
       'lodging_discount_percent', 'lodging_discount_reason',
+      // What was sold: NULL follows the channel rule, TRUE/FALSE overrides it
+      // for this booking. Normalized below — the column is a three-state flag,
+      // not a place for whatever the body carried.
+      'breakfast_included',
     ];
     // 0…100, decided here and not left to the database.
     //
@@ -109,6 +113,13 @@ export const updateReservation = withActor(async (request: NextRequest, { params
     if (body.lodging_discount_percent !== undefined) {
       const p = Number(body.lodging_discount_percent);
       body.lodging_discount_percent = Number.isFinite(p) ? Math.min(100, Math.max(0, p)) : 0;
+    }
+    // Three states and nothing else: null (follow the rule), 1, 0. Written as
+    // integers because the SQLite column is INTEGER and Postgres casts a bound
+    // 1/0 into BOOLEAN; a bare string like "yes" must not survive to either.
+    if (body.breakfast_included !== undefined && body.breakfast_included !== null) {
+      body.breakfast_included = (body.breakfast_included === true
+        || body.breakfast_included === 1 || body.breakfast_included === '1') ? 1 : 0;
     }
 
     const sets: string[] = [];
