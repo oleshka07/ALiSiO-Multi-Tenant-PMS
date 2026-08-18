@@ -172,7 +172,13 @@ export async function createWidgetReservation(request: NextRequest) {
       SELECT u.id, u.name, u.code, u.property_id, u.unit_type_id
       FROM units u
       JOIN categories c ON u.category_id = c.id
+      JOIN unit_types ut ON ut.id = u.unit_type_id
+      -- bookable_online is enforced HERE, not only in the listings: hiding a
+      -- room from search means nothing to a request that arrives with the
+      -- unit id already in it. «Online nicht buchbar» has to hold against the
+      -- request, not against the screen.
       WHERE u.id = ? AND u.is_active = TRUE AND u.room_status = 'available'
+        AND ut.bookable_online = TRUE
     `, [unitId]) as any;
 
     if (unit && siteId && existingTables.has('site_listings')) {

@@ -61,7 +61,9 @@ export async function getWidgetConfig(request: NextRequest) {
              ut.max_adults, ut.max_children, ut.max_occupancy, ut.base_occupancy,
              ut.beds_single, ut.beds_double, ut.beds_sofa
       FROM unit_types ut
-      WHERE ut.is_active = TRUE AND ut.property_id = ?
+      -- bookable_online: «online nicht buchbar, nur auf Anfrage» — the room
+      -- exists, reception sells it, the website must not even show it.
+      WHERE ut.is_active = TRUE AND ut.bookable_online = TRUE AND ut.property_id = ?
       ORDER BY ut.sort_order
     `, [property.id]) as any[];
 

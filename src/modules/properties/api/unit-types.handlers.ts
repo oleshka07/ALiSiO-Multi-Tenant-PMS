@@ -60,6 +60,8 @@ export const createUnitType = withPermission('manage_properties', async (request
       property_id, category_id, building_id, name, code, description,
       max_adults, max_children, max_occupancy, base_occupancy,
       beds_single, beds_double, beds_sofa, extra_bed_available, sort_order,
+      bookable_online: body.bookable_online,
+      breakfast_included: body.breakfast_included,
     });
     if (!created) return NextResponse.json({ error: 'Property, category or building not found' }, { status: 404 });
     return NextResponse.json(created, { status: 201 });
@@ -73,6 +75,16 @@ export const updateUnitType = withPermission('manage_properties', async (request
   try {
     const { id } = await context.params;
     const body = await request.json();
+    // Flags arrive as JS booleans from the settings screen; SQLite refuses to
+    // bind a boolean and Postgres would take it — normalize to 0/1 here so
+    // both engines store the same thing. breakfast_included keeps its third
+    // state: null means "defer to the channel rule".
+    if (body.bookable_online !== undefined) {
+      body.bookable_online = body.bookable_online ? 1 : 0;
+    }
+    if (body.breakfast_included !== undefined && body.breakfast_included !== null) {
+      body.breakfast_included = body.breakfast_included ? 1 : 0;
+    }
     const updated = await unitTypesRepo.updateUnitType(actor.organizationId, id, body);
     if (!updated) return NextResponse.json({ error: 'Unit type not found' }, { status: 404 });
     return NextResponse.json(updated);

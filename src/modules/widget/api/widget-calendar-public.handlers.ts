@@ -145,6 +145,7 @@ async function calendarFor(searchParams: URLSearchParams) {
         SELECT COUNT(*) as cnt FROM units u
         JOIN unit_types ut ON u.unit_type_id = ut.id
         WHERE u.is_active = TRUE AND u.room_status = 'available' AND ut.property_id = ?
+          AND ut.bookable_online = TRUE
       `, [property.id]) as any;
       totalCount = row?.cnt || 0;
     }
@@ -172,6 +173,9 @@ async function calendarFor(searchParams: URLSearchParams) {
         JOIN units u ON r.unit_id = u.id
         JOIN unit_types ut ON u.unit_type_id = ut.id
         WHERE ut.property_id = ?
+          -- The calendar counts the ONLINE capacity; a stay in a room the
+          -- website does not sell must not make an online day look booked.
+          AND ut.bookable_online = TRUE
           AND r.status NOT IN ('cancelled', 'no_show')
           AND r.check_in < ? AND r.check_out > ?
       `, [property.id, nextMonthStart, monthStart]) as any[];
@@ -196,7 +200,7 @@ async function calendarFor(searchParams: URLSearchParams) {
           SELECT ab.unit_id, ab.date_from, ab.date_to FROM availability_blocks ab
           JOIN units u ON ab.unit_id = u.id
           JOIN unit_types ut ON u.unit_type_id = ut.id
-          WHERE ut.property_id = ?
+          WHERE ut.property_id = ? AND ut.bookable_online = TRUE
             AND ab.date_from < ? AND ab.date_to > ?
         `, [property.id, nextMonthStart, monthStart]) as any[];
       }
@@ -205,7 +209,7 @@ async function calendarFor(searchParams: URLSearchParams) {
     // ── 8. Price map (optional) ─────────────────────────────────────────────
     const unitTypes = await sql.rows<any>(`
       SELECT ut.id, ut.base_occupancy FROM unit_types ut
-      WHERE ut.is_active = TRUE AND ut.property_id = ?
+      WHERE ut.is_active = TRUE AND ut.bookable_online = TRUE AND ut.property_id = ?
     `, [property.id]) as any[];
 
     // The owner's rate card, priced at each category's base occupancy — the

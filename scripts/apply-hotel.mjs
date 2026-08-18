@@ -354,6 +354,12 @@ async function applyStructure(organizationId, plan) {
         base_occupancy: Number(both(t, 'baseOccupancy')) || 2,
         extra_bed_available: !!both(t, 'extraBedAvailable'),
         sort_order: Number(both(t, 'sortOrder')) || 0,
+        // «online nicht buchbar, nur auf Anfrage» — рецепція продає, сайт ні.
+        // Відсутнє поле = продається онлайн, як і всі типи до цього поля.
+        bookable_online: both(t, 'bookableOnline') ?? true,
+        // Чи входить сніданок у ціни ЦЬОГО типу. Відсутнє = вирішує правило
+        // каналу; false — апартаменти, де сніданок «zzgl. 15 € / Person».
+        breakfast_included: both(t, 'breakfastIncluded') ?? null,
       });
       if (!ut) { say.refused(`тип ${code}`, 'обʼєкт, категорія або будівля не цієї організації'); continue; }
       typeByCode.set(code, ut);

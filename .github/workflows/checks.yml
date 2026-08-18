@@ -151,7 +151,7 @@ jobs:
     timeout-minutes: 25
     # On Postgres, because that is the engine every customer is served by.
     #
-    # This job holds check-isolation.mjs — forty-three assertions, the strongest
+    # This job holds check-isolation.mjs — forty-four assertions, the strongest
     # thing in the repository — and it ran on SQLite. So the one check that
     # decides whether one hotel can see another's data was answering about a
     # database no customer has. The two engines do not merely differ in

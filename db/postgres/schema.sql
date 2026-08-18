@@ -1712,6 +1712,11 @@ CREATE TABLE "unit_types" (
   "extra_person_charge" BIGINT DEFAULT 1000 NOT NULL,
   "pet_allowed" BIGINT DEFAULT 1 NOT NULL,
   "pet_charge" BIGINT DEFAULT 400 NOT NULL,
+  -- Reception can sell it, the website cannot. See migration 0021.
+  "bookable_online" BOOLEAN DEFAULT TRUE NOT NULL,
+  -- Whether this type's PRICES include breakfast; NULL defers to the channel
+  -- rule. Middle level of the chain booking → type → rule. See migration 0021.
+  "breakfast_included" BOOLEAN,
   PRIMARY KEY ("id")
 );
 

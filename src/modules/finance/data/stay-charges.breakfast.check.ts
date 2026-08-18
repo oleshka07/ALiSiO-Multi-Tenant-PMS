@@ -111,6 +111,48 @@ try {
       'бронь продана зі сніданком — правило каналу не має права це стерти');
     assert.strictEqual(byKind(soldWith, 'breakfast_drinks').vatRate, 19);
     console.log('  ok  TRUE → вирізає 12 + 3, навіть коли правило каже «ні»');
+
+    // ── середній голос: тип номера ──────────────────────────────────────────
+    // Апартаменти пілота: правило готелю каже «входить» (бо всі готельні
+    // тарифи зі сніданком), а прайс ЦЬОГО типу — «zzgl. FRST». Бронь мовчить,
+    // тип відповідає.
+    await sql.run("UPDATE channel_rate_rules SET includes_breakfast = TRUE WHERE id = 'frst_rule'", []);
+    // FALSE, not 0: the column is BOOLEAN on Postgres, and an integer literal
+    // in the SQL text is refused there — exactly the class check-boolean-flags
+    // documents. FALSE reads as 0 on SQLite, so one spelling serves both.
+    await sql.run(
+      `INSERT INTO unit_types(id, property_id, category_id, name, code, breakfast_included)
+       VALUES ('frst_t2','frst_p','frst_c','Appartement','AP',FALSE)`, []);
+    await sql.run(
+      `INSERT INTO units(id, unit_type_id, property_id, category_id, name, code)
+       VALUES ('frst_u2','frst_t2','frst_p','frst_c','112','112')`, []);
+
+    const postOn = async (id: string, unitId: string, total: number, flag: number | null) => {
+      await sql.run(
+        `INSERT INTO reservations(id, organization_id, property_id, unit_id, guest_id,
+                                  check_in, check_out, nights, adults, children, infants,
+                                  status, payment_status, source, total_price, currency,
+                                  commission_amount, breakfast_included)
+         VALUES (?,?,?,?,?, '2026-09-10','2026-09-11',1,1,0,0,'confirmed','unpaid','direct',?, 'EUR',0,?)`,
+        [id, ORG, 'frst_p', unitId, 'frst_g', total, flag]);
+      const folio = await createFolio({ reservationId: id, payerKind: 'guest' });
+      const result: any = await postStayCharges({ reservationId: id, folioId: folio });
+      assert.ok(!('reason' in result), `нарахування відмовило: ${JSON.stringify(result)}`);
+      return result.lines as any[];
+    };
+
+    const viaType = await postOn('frst_type', 'frst_u2', 45, null);
+    assert.strictEqual(viaType.length, 1,
+      'тип каже «окремо», бронь мовчить — а сніданок все одно вирізали');
+    assert.strictEqual(byKind(viaType, 'lodging').totalGross, 45);
+    console.log('  ok  бронь мовчить → відповідає тип: 45,00 без вирізання');
+
+    // Бронь сильніша за тип: у апартаментах продали ЗІ сніданком у ціні.
+    const overType = await postOn('frst_over', 'frst_u2', 60, 1);
+    assert.strictEqual(byKind(overType, 'lodging').totalGross, 45,
+      'бронь каже «входить» — 60 − 12 − 3 = 45, тип не має права це стерти');
+    assert.ok(byKind(overType, 'breakfast_food'));
+    console.log('  ok  бронь сильніша за тип: 60,00 → 45 + 12 + 3');
   });
 } finally {
   await cleanup();

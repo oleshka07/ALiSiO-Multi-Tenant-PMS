@@ -64,9 +64,11 @@ export async function postStayCharges(input: {
             r.property_id, r.lodging_discount_percent, r.lodging_discount_reason,
             r.breakfast_included,
             u.code AS unit_code, u.name AS unit_name,
+            ut.breakfast_included AS type_breakfast_included,
             g.first_name, g.last_name
        FROM reservations r
        LEFT JOIN units u ON u.id = r.unit_id
+       LEFT JOIN unit_types ut ON ut.id = u.unit_type_id
        LEFT JOIN guests g ON g.id = r.guest_id
       WHERE r.id = ? AND r.organization_id = ?`,
     [input.reservationId, organizationId],
@@ -114,22 +116,28 @@ export async function postStayCharges(input: {
   const lodgingRate = rateFor(lodgingCode);
   if (!lodgingRate) return { reason: 'no_tax_rate', code: lodgingCode, date: checkIn };
 
-  // Whether to carve breakfast out of the total: the BOOKING answers first,
-  // the channel rule only when the booking says nothing (NULL).
+  // Whether to carve breakfast out of the total — three voices, most specific
+  // first, first non-NULL wins:
   //
-  // The rule is a property-wide guess keyed on the booking's source, and for
-  // the pilot it is accidentally right — every current tariff includes
-  // breakfast. It is wrong for the Appartements («zzgl. FRST 15,00 € /
-  // Person») and for any room sold without breakfast: carving 15 € out of a
-  // 45 € night that contains none drops the lodging line to 30 € and moves
-  // 3 € from 7 % into 19 % VAT — a wrong tax return, not a rounding slip.
+  //   the booking      what was actually sold to this guest;
+  //   the unit type    what this room's price list means. The Appartements are
+  //                    why this level exists: their prices are «zzgl. FRST
+  //                    15,00 € / Person» while every hotel-room tariff includes
+  //                    breakfast — one property, two truths, and the channel
+  //                    rule below can only hold one;
+  //   the channel rule the property-wide guess keyed on the booking's source,
+  //                    exactly as before these columns existed.
+  //
+  // Carving 15 € out of a 45 € night that contains none drops the lodging
+  // line to 30 € and moves 3 € from 7 % into 19 % VAT — a wrong tax return,
+  // not a rounding slip. That is what the two upper voices prevent.
   //
   // Read as `!= null` + truthiness, not `=== true`: SQLite hands the flag
   // back as 0/1 and Postgres as 1/0 through the seam's bool shape, and NULL
-  // is the only value that means "the booking didn't say".
-  const bookingSaysBreakfast = res.breakfast_included != null
-    ? Boolean(Number(res.breakfast_included))
-    : null;
+  // is the only value that means "this level didn't say".
+  const asStated = (v: unknown) => (v == null ? null : Boolean(Number(v)));
+  const bookingSaysBreakfast = asStated(res.breakfast_included)
+    ?? asStated(res.type_breakfast_included);
 
   let breakfast = null;
   // `&& rule`: the booking can say breakfast is inside the price, but only

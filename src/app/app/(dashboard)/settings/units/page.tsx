@@ -179,7 +179,7 @@ export default function SettingsUnitsPage() {
   // Edit Unit Type modal
   const [editTypeModal, setEditTypeModal] = useState(false);
   const [editingType, setEditingType] = useState<UnitTypeFromAPI | null>(null);
-  const [typeForm, setTypeForm] = useState({ name: '', code: '', category_id: '', building_id: '', max_adults: 2, max_children: 2, max_occupancy: 4, base_occupancy: 2, beds_single: 0, beds_double: 1, sort_order: 0 });
+  const [typeForm, setTypeForm] = useState({ name: '', code: '', category_id: '', building_id: '', max_adults: 2, max_children: 2, max_occupancy: 4, base_occupancy: 2, beds_single: 0, beds_double: 1, sort_order: 0, bookable_online: true, breakfast_included: '' as '' | '1' | '0' });
 
   // Delete modals
   const [deleteUnitModal, setDeleteUnitModal] = useState(false);
@@ -444,6 +444,8 @@ export default function SettingsUnitsPage() {
       beds_single: ut.beds_single,
       beds_double: ut.beds_double,
       sort_order: ut.sort_order,
+      bookable_online: (ut as any).bookable_online == null ? true : !!Number((ut as any).bookable_online),
+      breakfast_included: ((ut as any).breakfast_included == null ? '' : (Number((ut as any).breakfast_included) ? '1' : '0')) as '' | '1' | '0',
     });
     setError('');
     setEditTypeModal(true);
@@ -463,6 +465,8 @@ export default function SettingsUnitsPage() {
       beds_single: 0,
       beds_double: 1,
       sort_order: 0,
+      bookable_online: true,
+      breakfast_included: '' as '' | '1' | '0',
     });
     setError('');
     setEditTypeModal(true);
@@ -478,7 +482,12 @@ export default function SettingsUnitsPage() {
     try {
       const url = editingType ? `/api/unit-types/${editingType.id}` : '/api/unit-types';
       const method = editingType ? 'PATCH' : 'POST';
-      const body: any = { ...typeForm, building_id: typeForm.building_id || null };
+      const body: any = {
+        ...typeForm,
+        building_id: typeForm.building_id || null,
+        // Три стани: '' означає «вирішує правило готелю» і їде як null.
+        breakfast_included: typeForm.breakfast_included === '' ? null : Number(typeForm.breakfast_included),
+      };
       if (!editingType) {
         // See above: the property is the server's to decide, not the form's.
       }
@@ -951,6 +960,27 @@ export default function SettingsUnitsPage() {
             <div className="form-group">
               <label className="form-label">Base occupancy</label>
               <input className="form-input" type="number" value={typeForm.base_occupancy} onChange={(e) => setTypeForm((p) => ({ ...p, base_occupancy: Number(e.target.value) }))} />
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={typeForm.bookable_online}
+                  onChange={(e) => setTypeForm((p) => ({ ...p, bookable_online: e.target.checked }))} />
+                {tUi('Продається онлайн')}
+              </label>
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                {tUi('Вимкнено — номер продає лише рецепція, на сайті його немає.')}
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">{tUi('Сніданок у цінах типу')}</label>
+              <select className="form-select" value={typeForm.breakfast_included}
+                onChange={(e) => setTypeForm((p) => ({ ...p, breakfast_included: e.target.value as '' | '1' | '0' }))}>
+                <option value="">{tUi('За правилом готелю')}</option>
+                <option value="1">{tUi('Входить у ціну')}</option>
+                <option value="0">{tUi('Окремо / не входить')}</option>
+              </select>
             </div>
           </div>
           <div className="form-row">

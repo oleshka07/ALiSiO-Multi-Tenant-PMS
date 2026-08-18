@@ -575,6 +575,44 @@ async function main() {
     assert.strictEqual(stillOffForA.status, 403, "B's toggle changed A's features");
     console.log("  ok  a feature toggles per organization, not per server");
 
+    // ── A room reception sells and the website must not ─────────────────
+    // The pilot's Appartements: «online nicht buchbar, nur auf Anfrage».
+    // bookable_online=false must keep a type out of the PUBLIC widget config
+    // — the endpoint any visitor can call — while the type stays fully
+    // visible to the staff. Hiding it from the admin instead would be the
+    // inverse bug: a room nobody can sell.
+    const widgetOnA = await call(cookieA, '/api/settings/features', {
+      method: 'PUT', body: JSON.stringify({ feature: 'widget', enabled: true }),
+    });
+    assert.ok(widgetOnA.ok, `enabling the widget for A failed: ${widgetOnA.status}`);
+
+    const offlineType = await call(cookieA, '/api/unit-types', {
+      method: 'POST',
+      body: JSON.stringify({
+        property_id: propA.id, category_id: catA.id,
+        name: 'Desk-only type', code: 'PRB-OFF', bookable_online: false,
+      }),
+    });
+    assert.strictEqual(offlineType.status, 201, `offline type not created: ${offlineType.status}`);
+    const offType = await offlineType.json();
+
+    // Public endpoint on purpose — no cookie. This is what the internet sees.
+    const pubConfig = await fetch(`${BASE}/api/widget/config?propertyId=${propA.id}`);
+    assert.ok(pubConfig.ok, `public widget config refused: ${pubConfig.status}`);
+    const pubTypes = (await pubConfig.json()).unitTypes ?? [];
+    assert.ok(pubTypes.some((t) => t.id === utA.id),
+      'the sellable type disappeared from the public widget');
+    assert.ok(!pubTypes.some((t) => t.id === offType.id),
+      'a desk-only type (bookable_online=false) is offered on the public widget');
+
+    // …while the staff list still carries it — otherwise reception cannot
+    // sell the room either, and the flag would just be a slower is_active.
+    const staffTypes = await (await call(cookieA, '/api/unit-types')).json();
+    const staffRows = Array.isArray(staffTypes) ? staffTypes : (staffTypes.unitTypes ?? []);
+    assert.ok(staffRows.some((t) => t.id === offType.id),
+      'the desk-only type vanished from the staff list too');
+    console.log('  ok  a desk-only room type is invisible to the widget, visible to staff');
+
     // ── Staff tasks ──────────────────────────────────────────────────────
     // The tasks repositories put an organization on every INSERT and on no
     // SELECT. So the writes were filed correctly and every read returned the

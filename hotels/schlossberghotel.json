@@ -1,5 +1,5 @@
 {
-  "_": "Schlossberghotel Greiz. Джерела: офіційні прайси 2027, фірмова таблиця 01.01.2024 (стандарт = фірмова ÷ 0,9), еталонна фактура 22.421. Чинні ціни діють до 31.12.2026; з 01.03.2027 — безстроковий базовий прайс, майбутні сезони кладуться поверх вужчими вікнами. 29 номерів з 31: два DZD (кандидати 207/213 або 1-й поверх) додаються після звірки з базою Winhotel. checkIn/checkOut — типові, підтвердити з готелем. Aufbettung прибрано як окрему послугу 14.08.2026 за підтвердженням власника: «nicht von Nöten, wenn jeder daran denkt, die richtige Personenanzahl einzugeben» — додаткове ліжко вже в ціні за особу (крок 2→3 осіб = рівно +19 у кожному вікні). 103 і 104 додано 14.08.2026 за списком власника (звичайні DZD). 241 і 242 у тому списку відсутні — чекає на звірку. ownerName прибрано 18.08.2026: там стояло імʼя людини, яка вже не працює в готелі (і було записане з двома помилками). Вхід — спільна скринька info@, а не особиста, тож без цього поля обліковий запис назветься іменем готелю (provisioning.ts: ownerName || name). Хто має бути названий власником — питання до готелю, а не здогадка звідси.",
+  "_": "Schlossberghotel Greiz. Джерела: офіційні прайси 2027, фірмова таблиця 01.01.2024 (стандарт = фірмова ÷ 0,9), еталонна фактура 22.421. Чинні ціни діють до 31.12.2026; з 01.03.2027 — безстроковий базовий прайс, майбутні сезони кладуться поверх вужчими вікнами. 31 номер готелю (29 + 103/104) плюс два Appartements 111/112 в Altstadtgalerie — внесені 18.08.2026 за словами Jörg Rödel: EZ 40 / DZ 45 за ніч, сніданок ОКРЕМО 15 €/особу (breakfastIncluded=false, інакше правило каналу вирізало б із 45 € сніданок, якого там нема), онлайн не продаються (bookableOnline=false) — «nur auf Anfrage bzw. Alternative, wenn 31 Zimmer ausgebucht». checkIn/checkOut — типові, підтвердити з готелем. Aufbettung прибрано як окрему послугу 14.08.2026 за підтвердженням власника: «nicht von Nöten, wenn jeder daran denkt, die richtige Personenanzahl einzugeben» — додаткове ліжко вже в ціні за особу (крок 2→3 осіб = рівно +19 у кожному вікні). 103 і 104 додано 14.08.2026 за списком власника (звичайні DZD). 241 і 242 у тому списку відсутні — чекає на звірку. ownerName прибрано 18.08.2026: там стояло імʼя людини, яка вже не працює в готелі (і було записане з двома помилками). Вхід — спільна скринька info@, а не особиста, тож без цього поля обліковий запис назветься іменем готелю (provisioning.ts: ownerName || name). Хто має бути названий власником — питання до готелю, а не здогадка звідси.",
   "organization": {
     "name": "Schlossberghotel Greiz",
     "slug": "schlossberghotel",
@@ -59,6 +59,11 @@
     {
       "name": "Haupthaus",
       "code": "HH",
+      "category": "Zimmer"
+    },
+    {
+      "name": "Altstadtgalerie",
+      "code": "AG",
       "category": "Zimmer"
     }
   ],
@@ -671,6 +676,29 @@
         }
       ],
       "losTiers": []
+    },
+    {
+      "code": "AP",
+      "name": "Appartement",
+      "category": "Zimmer",
+      "building": "Altstadtgalerie",
+      "maxAdults": 2,
+      "maxOccupancy": 2,
+      "baseOccupancy": 1,
+      "bookableOnline": false,
+      "breakfastIncluded": false,
+      "occupancyPrices": [
+        {
+          "persons": 1,
+          "priceGross": 40,
+          "label": "EZ-Belegung (Winhotel, чинна)"
+        },
+        {
+          "persons": 2,
+          "priceGross": 45,
+          "label": "DZ-Belegung (Winhotel, чинна)"
+        }
+      ]
     }
   ],
   "units": [
@@ -810,6 +838,20 @@
       "name": "244",
       "floor": "3",
       "building": "Haupthaus"
+    },
+    {
+      "unitType": "AP",
+      "code": "111",
+      "name": "111",
+      "floor": 3,
+      "building": "Altstadtgalerie"
+    },
+    {
+      "unitType": "AP",
+      "code": "112",
+      "name": "112",
+      "floor": 3,
+      "building": "Altstadtgalerie"
     }
   ],
   "channelRules": [
@@ -894,6 +936,20 @@
       "checkIn": "2027-01-10",
       "checkOut": "2027-01-14",
       "expectTotal": 592
+    },
+    {
+      "unitType": "AP",
+      "persons": 1,
+      "checkIn": "2026-09-10",
+      "checkOut": "2026-09-12",
+      "expectTotal": 80
+    },
+    {
+      "unitType": "AP",
+      "persons": 2,
+      "checkIn": "2027-03-05",
+      "checkOut": "2027-03-08",
+      "expectTotal": 135
     }
   ]
 }

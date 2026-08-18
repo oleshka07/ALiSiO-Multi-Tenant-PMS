@@ -197,6 +197,9 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
         ${siteIdObj ? 'AND sl.site_id = ?' : ''}
       WHERE u.is_active = TRUE
         AND u.room_status = 'available'
+        -- A room reception sells but the website must not: it exists, it is
+        -- priced, and it never appears in an online search result.
+        AND ut.bookable_online = TRUE
         ${categoryType ? 'AND c.type = ?' : ''}
       GROUP BY u.id, u.name, u.code, u.beds, u.room_status, u.is_active,
                ut.id, ut.name, ut.code, ut.photos, ut.description,

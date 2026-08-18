@@ -1435,6 +1435,14 @@ function runMigrations(database: any) {
       database.exec("ALTER TABLE unit_types ADD COLUMN pet_charge INTEGER NOT NULL DEFAULT 400");
       console.log('[DB] Added pet_charge to unit_types (default 400 CZK)');
     }
+    // Reception can sell it, the website cannot. See migration 0021.
+    if (!utCols.includes('bookable_online')) {
+      database.exec("ALTER TABLE unit_types ADD COLUMN bookable_online INTEGER NOT NULL DEFAULT 1");
+    }
+    // NULL defers to the channel rule — middle level of booking → type → rule.
+    if (!utCols.includes('breakfast_included')) {
+      database.exec("ALTER TABLE unit_types ADD COLUMN breakfast_included INTEGER");
+    }
   } catch (e: any) {
     console.log('[DB] unit_types extension note:', e.message);
   }
