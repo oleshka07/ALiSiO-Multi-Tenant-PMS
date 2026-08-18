@@ -8,6 +8,8 @@ import { generateInvoicePdf } from '@/modules/finance/domain/invoice-pdf';
 import { requirePermission } from '@core/security/route-guard';
 import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
 import { showBuyerName, dueDateFor } from '@/modules/finance/domain/invoice-rules';
+import { loadInvoiceDocument } from '@/modules/finance/data/invoice-document.repo';
+import { generateGermanInvoicePdf } from '@/modules/finance/domain/invoice-pdf-de';
 
 export const GET = requirePermission('manage_documents', _GET);
 async function _GET(
@@ -17,6 +19,24 @@ async function _GET(
   try {
     const { id } = await params;
     const sql    = getSql();
+
+    // A German property's invoice renders through the German layout — §14
+    // fields, MwSt-Übersicht, Stornorechnung wording. The assembler answers
+    // null for anything it cannot answer honestly (no line items, no property
+    // to take a jurisdiction from), and those fall through to the Czech
+    // renderer below, which is what produced them in the first place.
+    const doc = await loadInvoiceDocument(id);
+    if (doc && doc.locale === 'de-DE') {
+      const pdf = await generateGermanInvoicePdf(doc);
+      return new NextResponse(new Uint8Array(pdf), {
+        status: 200,
+        headers: {
+          'Content-Type':        'application/pdf',
+          'Content-Disposition': `attachment; filename="rechnung-${doc.number}.pdf"`,
+          'Cache-Control':       'no-store',
+        },
+      });
+    }
 
     const row = await sql.row<Record<string, unknown>>(`
       SELECT

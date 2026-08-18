@@ -21,6 +21,8 @@ import {
   reissueInvoiceForReservation,
   resolveDocumentDate,
 } from '@/modules/finance/data/reservation-invoice.repo';
+import { loadInvoiceDocument } from '@/modules/finance/data/invoice-document.repo';
+import { generateGermanInvoicePdf } from '@/modules/finance/domain/invoice-pdf-de';
 
 // Raising and replacing a stay's invoice moved to data/reservation-invoice.repo.ts:
 // none of it needs a request or a response, and behind this module's
@@ -76,6 +78,24 @@ export async function getInvoiceHtml(
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const asDownload = searchParams.get('format') === 'download';
+
+    // The view button opens this route in a browser tab. A German property's
+    // invoice has no HTML form — its document is the §14 PDF — so the tab gets
+    // the PDF inline instead of a Czech template filled with German data.
+    // Everything the assembler cannot answer honestly (no lines, no property)
+    // returns null here and renders through the legacy HTML below.
+    const deDoc = await loadInvoiceDocument(id);
+    if (deDoc && deDoc.locale === 'de-DE') {
+      const pdf = await generateGermanInvoicePdf(deDoc);
+      return new NextResponse(new Uint8Array(pdf), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `${asDownload ? 'attachment' : 'inline'}; filename="rechnung-${deDoc.number}.pdf"`,
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
 
     // LEFT JOIN units/guests so a deleted unit or guest doesn't drop the entire
     // row and turn into a misleading 404. The template tolerates null fields.
