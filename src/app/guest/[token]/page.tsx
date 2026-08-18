@@ -538,7 +538,6 @@ export default function GuestPage() {
     if (r?.id) script.setAttribute('data-reservation', r.id);
     if (r?.check_in) script.setAttribute('data-checkin', r.check_in);
     if (r?.check_out) script.setAttribute('data-checkout', r.check_out);
-    if (widgetService === 'sauna') script.setAttribute('data-promo', 'GLAMPING');
     container.appendChild(script);
 
     return () => { container.innerHTML = ''; };
@@ -597,7 +596,11 @@ export default function GuestPage() {
   }
 
   // ─── PAYMENT GATE ─────────────────────────────
-  if (!isPaid) {
+  // Вимкнена секція payments знімає платіжний шлагбаум: готель, який бере
+  // гроші на рецепції, не мусить тримати гостя перед екраном оплати.
+  const paymentsSectionOn = !Array.isArray(data?.sections)
+    || data.sections.some((sec: any) => sec.key === 'payments');
+  if (!isPaid && paymentsSectionOn) {
     return (
       <div className="gp-root">
         <PaymentGateScreen data={data} t={t} lang={lang} setLang={setLang} token={token} />
@@ -784,6 +787,18 @@ export default function GuestPage() {
   const currentDay = dayOfStay(r.check_in);
   const unitName = r.unit_name || r.unit_type_name || 'Your cabin';
 
+  // Які секції цей готель показує. Портал віддає лише увімкнені; стара
+  // відповідь без `sections` означає «показати все» — сторінка не має права
+  // спорожніти через кеш старого API.
+  const sectionRows: Array<{ key: string; order: number; config: any }> | null =
+    Array.isArray(data?.sections) ? data.sections : null;
+  const sectionOn = (k: string) => !sectionRows || sectionRows.some((sec) => sec.key === k);
+  const sectionOrder = (k: string, dflt: number) =>
+    sectionRows?.find((sec) => sec.key === k)?.order ?? dflt;
+  // Коли секцію реєстрації вимкнено (не-DE юрисдикції), інструкція входу не
+  // замикається на реєстрацію, якої не існує.
+  const regRequired = sectionOn('registration');
+
   // Stage message
   const stageMsg = (() => {
     if (phase === 'before') return t.daysToGo(Math.max(1, dLeft));
@@ -840,22 +855,24 @@ export default function GuestPage() {
           </div>
 
           {/* ── STORIES ROW ── */}
+          {sectionOn('quick_actions') && (
           <div className="gp-stories">
             <StoryBubble emoji="📍" label={t.directions} active onClick={() => setSheet('directions')} />
             <StoryBubble emoji="🔑" label={t.entry} active onClick={() => {
-              if (!isRegistered) { setSheet('reg-required'); return; }
+              if (regRequired && !isRegistered) { setSheet('reg-required'); return; }
               setSheet('entry');
             }} />
             <StoryBubble emoji="📶" label={t.wifi} active onClick={() => setSheet('wifi')} />
             <StoryBubble emoji="🅿️" label={t.parking} active onClick={() => setSheet('parking')} />
-            {cfg?.restaurant_name && (
+            {sectionOn('restaurant') && cfg?.restaurant_name && (
               <StoryBubble emoji="🍽" label={t.restaurant} active={false} onClick={() => setSheet('restaurant')} />
             )}
 
           </div>
+          )}
 
           {/* ── ACTION CARD (registration required — always visible until complete) ── */}
-          {!isRegistered && (
+          {regRequired && !isRegistered && (
             <div className="gp-action-card">
               <div className="gp-action-card-top">
                 <div className="gp-action-badge">!</div>
@@ -881,21 +898,24 @@ export default function GuestPage() {
             </div>
           )}
 
-          {/* ── STAGE-BASED ACTIONS ── */}
-          <div className="gp-section">
+          {/* ── Реордерні блоки: кожен ключем у реєстрі, порядок — з конфігурації.
+                 Масив сортується нижче; вимкнена секція не потрапляє взагалі. ── */}
+          {[
+          sectionOn('stay_status') && { key: 'stay_status', order: sectionOrder('stay_status', 30), node: (
+          <div className="gp-section" key="stay_status">
             <div className="gp-section-title">
               {phase === 'checkout' ? t.beforeYouLeave : phase === 'before' ? t.gettingReady : t.yourStay}
             </div>
             <div className="gp-list-card">
               {phase === 'before' && <>
                 <ListRow icon="✅" label={t.bookingConfirmed} chevron={false} />
-                <ListRow icon={isRegistered ? '✅' : '⚠️'} label={t.guestReg}
+                {regRequired && <ListRow icon={isRegistered ? '✅' : '⚠️'} label={t.guestReg}
                   value={isRegistered ? t.done : `${registeredCount}/${requiredGuests}`}
                   valueClass={isRegistered ? '' : 'required'}
-                  onClick={isRegistered ? null : () => { setRegCurrentGuest(registeredCount); setRegData({ fullName: '', email: '', phone: '', dateOfBirth: '', documentType: '', documentNumber: '', nationality: '', address: '', purposeOfStay: 'Tourism', visaNumber: '' }); setShowReg(true); }} />
-                <ListRow icon={isRegistered ? '🔑' : '🔒'} label={t.entryInstructions}
-                  value={isRegistered ? '' : formatDateLocalized(r.check_in, lang)}
-                  onClick={isRegistered ? () => setSheet('entry') : () => setSheet('reg-required')}
+                  onClick={isRegistered ? null : () => { setRegCurrentGuest(registeredCount); setRegData({ fullName: '', email: '', phone: '', dateOfBirth: '', documentType: '', documentNumber: '', nationality: '', address: '', purposeOfStay: 'Tourism', visaNumber: '' }); setShowReg(true); }} />}
+                <ListRow icon={(!regRequired || isRegistered) ? '🔑' : '🔒'} label={t.entryInstructions}
+                  value={(!regRequired || isRegistered) ? '' : formatDateLocalized(r.check_in, lang)}
+                  onClick={(!regRequired || isRegistered) ? () => setSheet('entry') : () => setSheet('reg-required')}
                   last />
               </>}
               {phase === 'checkin_day' && <>
@@ -932,9 +952,11 @@ export default function GuestPage() {
               })()}
             </div>
           </div>
+          )},
 
-          {/* ── GOOD TO KNOW ── */}
-          <div className="gp-section">
+          // ── GOOD TO KNOW ──
+          sectionOn('good_to_know') && { key: 'good_to_know', order: sectionOrder('good_to_know', 80), node: (
+          <div className="gp-section" key="good_to_know">
             <div className="gp-section-title">{t.goodToKnow}</div>
             <div className="gp-list-card gp-list-card-padded">
               <ListRow icon="🕐" label={t.checkInTime} value={r.check_in_time || '15:00'} chevron={false} />
@@ -951,10 +973,11 @@ export default function GuestPage() {
               )}
             </div>
           </div>
+          )},
 
-          {/* ── YOUR CABIN (amenities) ── */}
-          {amenities.length > 0 && (
-            <div className="gp-section">
+          // ── YOUR CABIN (amenities) ──
+          sectionOn('unit_info') && amenities.length > 0 && { key: 'unit_info', order: sectionOrder('unit_info', 70), node: (
+            <div className="gp-section" key="unit_info">
               <div className="gp-section-title">{t.yourCabin}</div>
               <div className="gp-list-card" style={{ padding: 16 }}>
                 <div className="gp-amenity-grid">
@@ -964,11 +987,11 @@ export default function GuestPage() {
                 </div>
               </div>
             </div>
-          )}
+          )},
 
-          {/* ── HOUSE RULES ── */}
-          {rules.length > 0 && (
-            <div className="gp-section">
+          // ── HOUSE RULES ──
+          sectionOn('rules') && rules.length > 0 && { key: 'rules', order: sectionOrder('rules', 120), node: (
+            <div className="gp-section" key="rules">
               <div className="gp-rules-compact">
                 <div className="gp-rules-title">{t.houseRules}</div>
                 <div className="gp-rules-chips">
@@ -978,11 +1001,11 @@ export default function GuestPage() {
                 </div>
               </div>
             </div>
-          )}
+          )},
 
-          {/* ── FAQ (accordion) ── */}
-          {faqItems.length > 0 && (
-            <div className="gp-section">
+          // ── FAQ (accordion) ──
+          sectionOn('faq') && faqItems.length > 0 && { key: 'faq', order: sectionOrder('faq', 110), node: (
+            <div className="gp-section" key="faq">
               <div className="gp-section-title">{t.faqTitle}</div>
               <div className="gp-list-card" style={{ padding: '4px 16px' }}>
                 {faqItems.map((faq: any, i: number) => (
@@ -993,19 +1016,22 @@ export default function GuestPage() {
                 ))}
               </div>
             </div>
-          )}
+          )},
 
-          {/* ── CHECKOUT FEEDBACK ── */}
-          {phase === 'checkout' && (
-            <div className="gp-section">
+          // ── CHECKOUT FEEDBACK ──
+          sectionOn('feedback') && phase === 'checkout' && { key: 'feedback', order: sectionOrder('feedback', 130), node: (
+            <div className="gp-section" key="feedback">
               <FeedbackForm t={t} token={token} showToast={showToast} />
             </div>
-          )}
+          )},
+          ].filter((b): b is Exclude<typeof b, false | 0 | '' | null | undefined> => !!b)
+            .sort((a, b) => a.order - b.order)
+            .map((b) => b.node)}
         </div>
       )}
 
       {/* ════ SERVICES TAB ════ */}
-      {tab === 'services' && (
+      {tab === 'services' && sectionOn('services') && (
         <div className="gp-tab-pad">
           <div className="gp-tab-title">{t.servicesTitle}</div>
           <div className="gp-tab-subtitle">{t.servicesSubtitle}</div>
@@ -1125,7 +1151,7 @@ export default function GuestPage() {
       )}
 
       {/* ════ EXPLORE TAB ════ */}
-      {tab === 'explore' && (
+      {tab === 'explore' && sectionOn('explore') && (
         <div className="gp-tab-pad">
           <div className="gp-tab-title">{t.exploreTitle}</div>
           <div className="gp-tab-subtitle">{t.exploreSubtitle}</div>
@@ -1614,7 +1640,10 @@ export default function GuestPage() {
           { id: 'services' as const, icon: '✨', label: t.services },
           { id: 'explore' as const, icon: '🗺', label: t.explore },
           { id: 'whatsapp' as const, icon: '💬', label: 'WhatsApp' },
-        ] as const).map(item => (
+        ] as const).filter(item =>
+          (item.id !== 'services' || sectionOn('services'))
+          && (item.id !== 'explore' || sectionOn('explore'))
+        ).map(item => (
           <button key={item.id} className={`gp-tab-btn ${item.id !== 'whatsapp' && tab === item.id ? 'active' : ''}`}
             onClick={() => item.id === 'whatsapp' ? openWhatsApp() : setTab(item.id as 'home' | 'services' | 'explore')}
             style={item.id === 'whatsapp' ? { color: '#25D366' } : undefined}>
