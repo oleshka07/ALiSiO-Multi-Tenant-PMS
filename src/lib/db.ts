@@ -1334,17 +1334,33 @@ function runMigrations(database: any) {
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
-    // Seed 3 breakfast menu items
-    const insMI = database.prepare(
-      'INSERT INTO menu_items (id, service_id, name, name_en, name_cs, name_de, description, weight_grams, price, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    );
-    insMI.run('mi_breakfast_1', 'svc_breakfast', 'Classic Breakfast', 'Classic Breakfast', 'Klasická snídaně', 'Klassisches Frühstück',
-      'Eggs, toast, butter, jam, fresh vegetables, coffee or tea', 400, 250, 1);
-    insMI.run('mi_breakfast_2', 'svc_breakfast', 'Pancakes with Berries', 'Pancakes with Berries', 'Lívanečky s ovocem', 'Pfannkuchen mit Beeren',
-      'Fluffy pancakes with seasonal berries, honey and sour cream', 350, 280, 2);
-    insMI.run('mi_breakfast_3', 'svc_breakfast', 'Granola Bowl', 'Granola Bowl', 'Granola mísa', 'Granola Schüssel',
-      'House granola with yoghurt, fruit and honey', 300, 220, 3);
-    console.log('[DB] Created menu_items table with 3 breakfast items');
+    // Seed 3 breakfast menu items — ONLY where their parent service exists.
+    //
+    // svc_breakfast is itself seeded conditionally (`if (propRow)`, further
+    // up): a database with no property gets no services. This seed ran
+    // unconditionally, so on exactly that database it violated the foreign
+    // key — and because it runs inside first boot, getDb() threw, and EVERY
+    // route that still touches the legacy handle answered 500.
+    //
+    // That is not a theoretical shape. It is why the CI live job was red from
+    // the day it existed: a production server whose data lives in Postgres
+    // boots an empty SQLite alongside — no property, no svc_breakfast — and
+    // the first request into a getDb() route died on this line. Locally it
+    // never showed, because a dev boot seeds a demo property first.
+    const svcBreakfast = database.prepare(
+      "SELECT 1 FROM additional_services WHERE id = 'svc_breakfast'").get();
+    if (svcBreakfast) {
+      const insMI = database.prepare(
+        'INSERT INTO menu_items (id, service_id, name, name_en, name_cs, name_de, description, weight_grams, price, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      );
+      insMI.run('mi_breakfast_1', 'svc_breakfast', 'Classic Breakfast', 'Classic Breakfast', 'Klasická snídaně', 'Klassisches Frühstück',
+        'Eggs, toast, butter, jam, fresh vegetables, coffee or tea', 400, 250, 1);
+      insMI.run('mi_breakfast_2', 'svc_breakfast', 'Pancakes with Berries', 'Pancakes with Berries', 'Lívanečky s ovocem', 'Pfannkuchen mit Beeren',
+        'Fluffy pancakes with seasonal berries, honey and sour cream', 350, 280, 2);
+      insMI.run('mi_breakfast_3', 'svc_breakfast', 'Granola Bowl', 'Granola Bowl', 'Granola mísa', 'Granola Schüssel',
+        'House granola with yoghurt, fruit and honey', 300, 220, 3);
+      console.log('[DB] Created menu_items table with 3 breakfast items');
+    }
   }
 
   // --- Migration: create booking_service_orders table ---

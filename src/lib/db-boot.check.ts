@@ -9,15 +9,23 @@
  * `if (db) return db` guard, and the app served a half-migrated schema with
  * the real error long gone from any log near the symptom.
  *
- * Three assertions, in order:
+ * Four assertions, in order:
  *   1. a database that cannot migrate makes getDb() THROW;
  *   2. the second call throws AGAIN — nothing broken was cached;
- *   3. once the file is replaced, the SAME process boots normally.
+ *   3. once the file is replaced, the SAME process boots normally;
+ *   4. a FRESH file boots under NODE_ENV=production — in a subprocess,
+ *      because that is the one boot nothing else ever exercises. A dev boot
+ *      seeds a demo property first; a production boot seeds nothing, and a
+ *      seed that assumes its parent row exists fails only there. That exact
+ *      shape (menu items referencing a service no empty database has) kept
+ *      the CI live job red from the day it existed: getDb() threw on first
+ *      boot, and every route still touching the legacy handle answered 500.
  */
 import assert from 'node:assert';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'alisio-boot-'));
 process.env.ALISIO_DATA_DIR = tmp;
@@ -46,6 +54,31 @@ const orgs = db.prepare('SELECT COUNT(*) c FROM organizations').get() as { c: nu
 assert.ok(orgs.c >= 1, 'fresh boot did not build and seed the schema');
 
 _resetDb();
+
+// ── 4. the production first boot ─────────────────────────────────────────────
+const prodTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'alisio-boot-prod-'));
+const probe = `
+  import './scripts/lib/module-aliases.mjs';
+  const { getDb } = await import('@core/db');
+  getDb();
+  console.log('PROD-BOOT-OK');
+`;
+try {
+  const out = execFileSync(process.execPath, [
+    '--disable-warning=MODULE_TYPELESS_PACKAGE_JSON', '--input-type=module', '-e', probe,
+  ], {
+    encoding: 'utf8',
+    cwd: process.cwd(),
+    env: { ...process.env, NODE_ENV: 'production', ALISIO_DATA_DIR: prodTmp },
+  });
+  assert.ok(out.includes('PROD-BOOT-OK'), `production fresh boot printed: ${out}`);
+} catch (e: any) {
+  assert.fail(`production fresh boot failed: ${String(e.stderr || e.message).split('\n').slice(0, 4).join('\n')}`);
+} finally {
+  try { fs.rmSync(prodTmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* see below */ }
+}
+console.log('db-boot: a pristine production boot succeeds — no seed assumes another seed ran');
+
 try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); }
 catch { /* Windows may hold the file a moment; the OS temp dir cleans itself */ }
 
