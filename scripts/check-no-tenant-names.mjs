@@ -38,6 +38,15 @@ const FORBIDDEN = [
   // The hotel's own voice belongs in widget_config.email_confirmed_body.
   /Stepeniev/i,
   /Степен[ії]єв/i,
+  // The first customer's guest-page SECRETS, shipped as column DEFAULTS: every
+  // new database was born with their real door code, their wifi password and
+  // a Google-Maps pin on their driveway. A default is code, and these were
+  // one customer's keys written into it.
+  /4971#/,
+  /ALiSiO2026/i,
+  /WH2CKhTydtDx9EBe7/,
+  /ALiSiO_Guest\b/i,
+  /Ресторан ALiSiO/i,
 ];
 
 // Path → why the name is allowed to remain there.
@@ -45,6 +54,9 @@ const ALLOWED = new Map([
   ['src/modules/widget/data/site.repo.ts', 'documents the hardcodes it replaced'],
   ['scripts/check-no-tenant-names.mjs', 'this file lists them on purpose'],
   ['docs/SECURITY-FINDINGS.md', 'the findings record'],
+  // The migration that REMOVES the leaked defaults has to name them in its
+  // WHERE clauses — that is the one place they may remain.
+  ['db/postgres/migrations/0023-a-default-is-code-and-these-were-somebodys-keys.sql', 'removes the leaked values it names'],
 ]);
 
 const files = [];

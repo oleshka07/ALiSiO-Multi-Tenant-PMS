@@ -38,6 +38,31 @@ export const listGuestPageSections = withPermission('manage_properties', async (
   }
 });
 
+/**
+ * A token the settings screen can preview with: the property's most recent
+ * stay that has a guest page. Read-only and owner-scoped — the preview shows
+ * a REAL page, because a synthetic one would hide exactly the data problems
+ * the operator is trying to see.
+ */
+export const getGuestPagePreview = withPermission('manage_properties', async (
+  request: NextRequest, _ctx: unknown, actor: Actor,
+) => {
+  try {
+    const property = await resolveProperty(actor, new URL(request.url).searchParams.get('property_id'));
+    const row = await getSql().row<any>(
+      `SELECT guest_page_token FROM reservations
+        WHERE property_id = ? AND guest_page_token IS NOT NULL
+          AND status NOT IN ('cancelled', 'no_show')
+        ORDER BY created_at DESC LIMIT 1`,
+      [property.id]);
+    return NextResponse.json({ token: row?.guest_page_token ?? null });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : 'Failed' },
+      { status: propertyErrorStatus(e) });
+  }
+});
+
 export const updateGuestPageSections = withPermission('manage_properties', async (
   request: NextRequest, _ctx: unknown, actor: Actor,
 ) => {

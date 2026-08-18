@@ -32,7 +32,19 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: "/((?!w/).*)",
+        // The guest page may be framed by OUR OWN origin only: the settings
+        // screen shows it live in a phone frame while the hotel toggles
+        // sections. 'self', not '*' — a stranger's site still cannot wrap the
+        // page for clickjacking.
+        source: "/guest/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+          ...securityHeaders.filter((h) => h.key !== 'X-Frame-Options'),
+        ],
+      },
+      {
+        source: "/((?!w/|guest/).*)",
         headers: securityHeaders,
       },
     ];

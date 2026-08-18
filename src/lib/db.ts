@@ -989,9 +989,9 @@ function runMigrations(database: any) {
         external_amenities TEXT,
         faq_items TEXT,
         rules TEXT,
-        wifi_network TEXT DEFAULT 'ALiSiO_Guest',
-        wifi_password TEXT DEFAULT 'ALiSiO2026!',
-        restaurant_name TEXT DEFAULT 'Ресторан ALiSiO',
+        wifi_network TEXT,
+        wifi_password TEXT,
+        restaurant_name TEXT,
         restaurant_hours TEXT,
         restaurant_menu_url TEXT,
         useful_info TEXT,
@@ -1056,7 +1056,7 @@ function runMigrations(database: any) {
 
     const insGPC = database.prepare(`
       INSERT INTO guest_page_config (unit_type_id, amenities, check_in_instructions, faq_items, rules, wifi_network, wifi_password, restaurant_name, restaurant_hours, useful_info)
-      VALUES (?, ?, ?, ?, ?, 'ALiSiO_Guest', 'ALiSiO2026!', 'Ресторан ALiSiO', ?, ?)
+      VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)
     `);
     for (const ut of utRows) {
       const catType = catTypeMap[ut.category_id];
@@ -1074,10 +1074,12 @@ function runMigrations(database: any) {
   // --- Migration: add lock_code, maps_url, territory_map_url to guest_page_config ---
   const gpcCols = database.prepare("PRAGMA table_info(guest_page_config)").all().map((c: any) => c.name);
   if (!gpcCols.includes('lock_code')) {
-    try { database.exec("ALTER TABLE guest_page_config ADD COLUMN lock_code TEXT DEFAULT '4971#'"); } catch { /* */ }
+    // No default: an unset door code is EMPTY. The previous default was the
+    // first customer's real lock code, born into every new database.
+    try { database.exec("ALTER TABLE guest_page_config ADD COLUMN lock_code TEXT"); } catch { /* */ }
   }
   if (!gpcCols.includes('maps_url')) {
-    try { database.exec("ALTER TABLE guest_page_config ADD COLUMN maps_url TEXT DEFAULT 'https://maps.app.goo.gl/WH2CKhTydtDx9EBe7'"); } catch { /* */ }
+    try { database.exec("ALTER TABLE guest_page_config ADD COLUMN maps_url TEXT"); } catch { /* */ }
   }
   if (!gpcCols.includes('territory_map_url')) {
     try { database.exec("ALTER TABLE guest_page_config ADD COLUMN territory_map_url TEXT"); } catch { /* */ }
@@ -2643,18 +2645,18 @@ function runMigrations(database: any) {
       CREATE TABLE property_guest_config (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
         property_id TEXT NOT NULL UNIQUE REFERENCES properties(id) ON DELETE CASCADE,
-        wifi_network TEXT DEFAULT 'ALiSiO_Guest',
-        wifi_password TEXT DEFAULT 'ALiSiO2026!',
-        restaurant_name TEXT DEFAULT 'Ресторан ALiSiO',
+        wifi_network TEXT,
+        wifi_password TEXT,
+        restaurant_name TEXT,
         restaurant_hours TEXT,
         restaurant_menu_url TEXT,
         rules TEXT,
         useful_info TEXT,
         faq_items TEXT,
-        maps_url TEXT DEFAULT 'https://maps.app.goo.gl/WH2CKhTydtDx9EBe7',
+        maps_url TEXT,
         territory_map_url TEXT,
         pets_policy TEXT DEFAULT 'welcome',
-        parking_info TEXT DEFAULT 'Free parking at the entrance',
+        parking_info TEXT,
         video_guide_url TEXT,
         emergency_phone TEXT,
         weather_lat REAL,

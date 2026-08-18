@@ -78,7 +78,7 @@ function SectionHeader({ id, title, icon, openSections, toggle }: { id: string; 
 // ═════════════════════════════════════════════════
 export default function GuestPageSettingsPage() {
   const t = useT();
-  const [activeTab, setActiveTab] = useState<'property' | 'unit-types'>('property');
+  const [activeTab, setActiveTab] = useState<'sections' | 'property' | 'unit-types'>('sections');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
@@ -123,6 +123,65 @@ export default function GuestPageSettingsPage() {
   const [petsPolicy, setPetsPolicy] = useState('');
   const [entryPhotoUrl, setEntryPhotoUrl] = useState('');
 
+  // ═══ SECTIONS STATE (реєстр сторінки) ═══
+  const [pageSections, setPageSections] = useState<any[]>([]);
+  const [previewToken, setPreviewToken] = useState<string | null>(null);
+  const [previewNonce, setPreviewNonce] = useState(0);
+  const [sectionsBusy, setSectionsBusy] = useState(false);
+
+  // stale?: дві зміни selectedProperty поспіль = два запити в польоті, і
+  // повільніший ПЕРШИЙ приходив останнім — превʼю показувало «немає броні»
+  // для обʼєкта, якого вже не вибрано. Відповідь застосовується лише якщо
+  // ефект, що її замовив, ще чинний.
+  const fetchSections = useCallback(async (propertyId: string, stale?: () => boolean) => {
+    if (!propertyId) return;
+    try {
+      const res = await fetch(`/api/settings/guest-page-sections?property_id=${propertyId}`);
+      const data = await res.json();
+      if (stale?.()) return;
+      if (Array.isArray(data.sections)) setPageSections(data.sections);
+    } catch { /* залишаємо попередній стан */ }
+    try {
+      const res = await fetch(`/api/settings/guest-page-preview?property_id=${propertyId}`);
+      const data = await res.json();
+      if (stale?.()) return;
+      setPreviewToken(data.token ?? null);
+    } catch { if (!stale?.()) setPreviewToken(null); }
+  }, []);
+
+  // Зміни зберігаються одразу — перемикач без кнопки «Зберегти», бо превʼю
+  // поруч має показувати наслідок того самого кліку.
+  const pushSections = async (changes: Array<{ section: string; enabled?: boolean; sort_order?: number }>) => {
+    if (!selectedProperty) return;
+    setSectionsBusy(true);
+    try {
+      const res = await fetch('/api/settings/guest-page-sections', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ property_id: selectedProperty, sections: changes }),
+      });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.sections)) {
+        setPageSections(data.sections);
+        setPreviewNonce((n) => n + 1);
+      } else showToast(data.error || t('Помилка збереження'));
+    } catch { showToast(t('Помилка мережі')); }
+    setSectionsBusy(false);
+  };
+
+  const toggleSectionEnabled = (key: string, enabled: boolean) =>
+    pushSections([{ section: key, enabled }]);
+
+  // Переставлення: міняємось порядковими місцями з сусідом. Порядок пишемо
+  // ОБОМ рядкам явно, кроком 10 — щоб між будь-якими двома лишалося місце.
+  const moveSection = (key: string, dir: -1 | 1) => {
+    const idx = pageSections.findIndex((sec) => sec.key === key);
+    const other = idx + dir;
+    if (idx < 0 || other < 0 || other >= pageSections.length) return;
+    const reordered = [...pageSections];
+    [reordered[idx], reordered[other]] = [reordered[other], reordered[idx]];
+    pushSections(reordered.map((sec, i) => ({ section: sec.key, sort_order: (i + 1) * 10 })));
+  };
+
   // ─── Fetch ─────────────────────────────────────
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -161,6 +220,11 @@ export default function GuestPageSettingsPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchSections(selectedProperty, () => cancelled);
+    return () => { cancelled = true; };
+  }, [selectedProperty, fetchSections]);
 
   // ─── Load property config ─────────────────────
   const loadPropertyConfig = (cfg: any) => {
@@ -278,14 +342,17 @@ export default function GuestPageSettingsPage() {
             </div>
             <div className="page-subtitle">{t('Спільні налаштування та контент для кожного типу проживання')}</div>
           </div>
-          <button className="btn btn-primary" onClick={activeTab === 'property' ? savePropertyConfig : saveUnitTypeConfig} disabled={saving}>
-            {saving ? <Loader2 size={16} className="animate-pulse" /> : <Save size={16} />} {t('Зберегти')}
-          </button>
+          {activeTab !== 'sections' && (
+            <button className="btn btn-primary" onClick={activeTab === 'property' ? savePropertyConfig : saveUnitTypeConfig} disabled={saving}>
+              {saving ? <Loader2 size={16} className="animate-pulse" /> : <Save size={16} />} {t('Зберегти')}
+            </button>
+          )}
         </div>
 
         {/* ═══ TAB SWITCHER ═══ */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', padding: 4 }}>
           {[
+            { id: 'sections' as const, label: t('🧩 Секції сторінки'), desc: t('Що показувати і в якому порядку') },
             { id: 'property' as const, label: t('🏨 Property (спільне)'), desc: t('WiFi, ресторан, правила, Explore') },
             { id: 'unit-types' as const, label: '🏠 Unit Types', desc: t('Amenities, код замка, інструкції') },
           ].map(tab => (
@@ -308,6 +375,104 @@ export default function GuestPageSettingsPage() {
           </div>
         ) : (
           <>
+            {/* ═══════════════════════════════════════════ */}
+            {/* ═══ SECTIONS TAB: що показувати і як ═══════ */}
+            {/* ═══════════════════════════════════════════ */}
+            {activeTab === 'sections' && (
+              <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                {/* Список секцій */}
+                <div className="card" style={{ padding: 20, flex: '1 1 420px', minWidth: 340 }}>
+                  <div style={{ marginBottom: 4, fontWeight: 700, fontSize: 15 }}>
+                    {t('Секції гостьової сторінки')}
+                  </div>
+                  <div style={{ marginBottom: 16, fontSize: 12, color: 'var(--text-tertiary)' }}>
+                    {t('Вимикайте зайве і розставляйте порядок — превʼю праворуч показує сторінку гостя одразу.')}
+                  </div>
+                  {pageSections.map((sec, i) => {
+                    const NAMES: Record<string, { icon: string; name: string; desc: string }> = {
+                      hero:          { icon: '🎫', name: t('Шапка й відлік'),        desc: t('Імʼя, дати, скільки днів лишилось') },
+                      quick_actions: { icon: '⚡', name: t('Швидкі дії'),            desc: t('Кнопки: як доїхати, вхід, Wi-Fi, паркінг') },
+                      stay_status:   { icon: '📋', name: t('Статус проживання'),     desc: t('Чеклист дня: підтверджено, реєстрація, вхід') },
+                      registration:  { icon: '🪪', name: t('Реєстрація гостей'),     desc: t('Онлайн-реєстрація перед заїздом') },
+                      payments:      { icon: '💳', name: t('Оплата'),                desc: t('Залишок і кнопка оплати перед заїздом') },
+                      services:      { icon: '✨', name: t('Послуги'),               desc: t('Вкладка замовлення послуг і кошик') },
+                      unit_info:     { icon: '🛏', name: t('Ваш номер'),             desc: t('Фото, зручності, опис') },
+                      good_to_know:  { icon: '💡', name: t('Корисно знати'),         desc: t('Час заїзду/виїзду, Wi-Fi, тварини, телефон') },
+                      restaurant:    { icon: '🍽', name: t('Ресторан'),              desc: t('Картка ресторану і меню') },
+                      explore:       { icon: '🗺', name: t('Околиці'),               desc: t('Вкладка з місцями поруч і мапою') },
+                      faq:           { icon: '❓', name: t('Питання й відповіді'),   desc: t('Акордеон найчастіших питань') },
+                      rules:         { icon: '📜', name: t('Правила будинку'),       desc: t('Короткі правила чипсами') },
+                      feedback:      { icon: '💬', name: t('Відгук після виїзду'),   desc: t('Форма враження в день виїзду') },
+                    };
+                    const info = NAMES[sec.key] || { icon: '▫️', name: sec.key, desc: '' };
+                    return (
+                      <div key={sec.key} style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px',
+                        borderBottom: '1px solid var(--border)', opacity: sec.enabled ? 1 : 0.55,
+                      }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <button className="btn btn-sm btn-ghost" style={{ padding: '0 6px', fontSize: 11, lineHeight: '14px' }}
+                            disabled={sectionsBusy || i === 0} onClick={() => moveSection(sec.key, -1)}>▲</button>
+                          <button className="btn btn-sm btn-ghost" style={{ padding: '0 6px', fontSize: 11, lineHeight: '14px' }}
+                            disabled={sectionsBusy || i === pageSections.length - 1} onClick={() => moveSection(sec.key, 1)}>▼</button>
+                        </div>
+                        <span style={{ fontSize: 20 }}>{info.icon}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13 }}>{info.name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{info.desc}</div>
+                        </div>
+                        {sec.locked ? (
+                          <span title={sec.locked === 'jurisdiction'
+                              ? t('Обовʼязкова за законом країни обʼєкта (реєстрація гостей)')
+                              : t('Без цієї секції сторінка не працює')}
+                            style={{ fontSize: 11, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            🔒 {sec.locked === 'jurisdiction' ? t('закон') : t('основа')}
+                          </span>
+                        ) : (
+                          <label style={{ position: 'relative', display: 'inline-block', width: 40, height: 22, flexShrink: 0 }}>
+                            <input type="checkbox" checked={!!sec.enabled} disabled={sectionsBusy}
+                              onChange={(e) => toggleSectionEnabled(sec.key, e.target.checked)}
+                              style={{ opacity: 0, width: 0, height: 0 }} />
+                            <span style={{
+                              position: 'absolute', inset: 0, borderRadius: 22, transition: 'all .15s',
+                              background: sec.enabled ? 'var(--accent-primary)' : 'var(--border)',
+                            }} />
+                            <span style={{
+                              position: 'absolute', top: 2, left: sec.enabled ? 20 : 2, width: 18, height: 18,
+                              borderRadius: '50%', background: '#fff', transition: 'all .15s',
+                              boxShadow: '0 1px 3px rgba(0,0,0,.3)',
+                            }} />
+                          </label>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Превʼю телефона: справжня сторінка справжньої броні */}
+                <div style={{ flex: '0 0 360px' }}>
+                  <div style={{
+                    width: 340, borderRadius: 36, border: '10px solid #1a1a2e', overflow: 'hidden',
+                    boxShadow: '0 12px 40px rgba(0,0,0,.35)', background: '#000',
+                  }}>
+                    {previewToken ? (
+                      <iframe key={previewNonce} src={`/guest/${previewToken}`} title={t('Превʼю сторінки гостя')}
+                        style={{ width: '100%', height: 640, border: 'none', display: 'block', background: '#fff' }} />
+                    ) : (
+                      <div style={{ height: 640, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b8fa3', fontSize: 13, textAlign: 'center', padding: 24 }}>
+                        {t('Превʼю зʼявиться, щойно в обʼєкта буде хоч одна бронь зі сторінкою гостя.')}
+                      </div>
+                    )}
+                  </div>
+                  {previewToken && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center' }}>
+                      {t('Це жива сторінка останньої броні — зміни видно одразу.')}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* ═══════════════════════════════════════════ */}
             {/* ═══ PROPERTY TAB ═══════════════════════════ */}
             {/* ═══════════════════════════════════════════ */}
@@ -591,7 +756,7 @@ export default function GuestPageSettingsPage() {
                     <div style={{ padding: '16px 0' }}>
                       <div className="form-group">
                         <label className="form-label">{t('Код замка / лок-бокса')}</label>
-                        <input className="form-input" value={lockCode} placeholder="4971#" onChange={e => setLockCode(e.target.value)} />
+                        <input className="form-input" value={lockCode} placeholder="1234#" onChange={e => setLockCode(e.target.value)} />
                       </div>
                     </div>
                   )}

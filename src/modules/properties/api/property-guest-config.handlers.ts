@@ -5,15 +5,21 @@ import { getSql } from '@core/db/async';
 import { extractTexts, translateAndStore } from '@core/i18n/translate';
 import { withActor, withPermission } from '@core/auth/session';
 
-export const listPropertyGuestConfigs = withActor(async () => {
+export const listPropertyGuestConfigs = withActor(async (_req, _ctx, actor) => {
   try {
     const sql = getSql();
+    // Scoped in the query, not left to RLS. On Postgres the policy would
+    // filter this anyway; on any engine without one, the unfiltered version
+    // handed every hotel every other hotel's wifi passwords and emergency
+    // phones — found because a settings screen quietly selected another
+    // tenant's property out of this very list.
     const configs = await sql.rows<any>(`
       SELECT pgc.*, p.name as property_name, p.slug as property_slug
       FROM property_guest_config pgc
       JOIN properties p ON pgc.property_id = p.id
+      WHERE p.organization_id = ?
       ORDER BY p.name
-    `);
+    `, [actor.organizationId]);
     return NextResponse.json(configs);
   } catch (error: any) {
     console.error('GET /api/property-guest-config error:', error?.message);
@@ -21,13 +27,21 @@ export const listPropertyGuestConfigs = withActor(async () => {
   }
 });
 
-export const updatePropertyGuestConfig = withPermission('manage_properties', async (request: NextRequest) => {
+export const updatePropertyGuestConfig = withPermission('manage_properties', async (request: NextRequest, _ctx, actor) => {
   try {
     const sql = getSql();
     const body = await request.json();
     const { property_id } = body;
     if (!property_id) {
       return NextResponse.json({ error: 'property_id required' }, { status: 400 });
+    }
+    // The id arrives in the body; another tenant's property must look exactly
+    // like a missing one.
+    const owned = await sql.row<any>(
+      'SELECT id FROM properties WHERE id = ? AND organization_id = ?',
+      [property_id, actor.organizationId]);
+    if (!owned) {
+      return NextResponse.json({ error: 'Property not found' }, { status: 404 });
     }
 
     const existing = await sql.row<any>('SELECT id FROM property_guest_config WHERE property_id = ?', [property_id]);
@@ -58,7 +72,7 @@ export const updatePropertyGuestConfig = withPermission('manage_properties', asy
         INSERT INTO property_guest_config (property_id, wifi_network, wifi_password, restaurant_name, restaurant_hours, restaurant_menu_url, rules, useful_info, faq_items, maps_url, territory_map_url, pets_policy, parking_info, video_guide_url, emergency_phone, weather_lat, weather_lon)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [property_id,
-        body.wifi_network || 'ALiSiO_Guest', body.wifi_password || '',
+        body.wifi_network || null, body.wifi_password || null,
         body.restaurant_name || '', body.restaurant_hours || '', body.restaurant_menu_url || null,
         typeof body.rules === 'object' ? JSON.stringify(body.rules) : body.rules || '[]',
         typeof body.useful_info === 'object' ? JSON.stringify(body.useful_info) : body.useful_info || '[]',

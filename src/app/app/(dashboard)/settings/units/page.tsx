@@ -769,7 +769,7 @@ export default function SettingsUnitsPage() {
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">{tUi('Код замка')}</label>
-                <input className="form-input" value={unitForm.lock_code} onChange={(e) => setUnitForm((p) => ({ ...p, lock_code: e.target.value }))} placeholder={tUi('Напр.: 4971#')} />
+                <input className="form-input" value={unitForm.lock_code} onChange={(e) => setUnitForm((p) => ({ ...p, lock_code: e.target.value }))} placeholder={tUi('Напр.: 1234#')} />
               </div>
             </div>
             <ImageUploadField

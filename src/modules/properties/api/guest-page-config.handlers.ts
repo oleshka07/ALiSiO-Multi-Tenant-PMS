@@ -3,11 +3,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 // TODO: move to @core/translate or emit event for translation
 import { extractTexts, translateAndStore } from '@core/i18n/translate';
+import { withActor } from '@core/auth/session';
 
-export async function getGuestPageConfig(_request: NextRequest, { params }: { params: Promise<{ unitTypeId: string }> }) {
+/** Another tenant's unit type must look exactly like a missing one. */
+async function ownsUnitType(organizationId: string, unitTypeId: string): Promise<boolean> {
+  const sql = getSql();
+  return !!await sql.row<any>(`
+    SELECT ut.id FROM unit_types ut
+    JOIN properties p ON p.id = ut.property_id
+    WHERE ut.id = ? AND p.organization_id = ?
+  `, [unitTypeId, organizationId]);
+}
+
+export const getGuestPageConfig = withActor(async (_request: NextRequest, { params }: { params: Promise<{ unitTypeId: string }> }, actor) => {
   try {
     const sql = getSql();
     const { unitTypeId } = await params;
+    if (!await ownsUnitType(actor.organizationId, unitTypeId)) {
+      return NextResponse.json({ error: 'Config not found' }, { status: 404 });
+    }
 
     const config = await sql.row<any>(`
       SELECT gpc.*, ut.name as unit_type_name, ut.code as unit_type_code,
@@ -27,16 +41,18 @@ export async function getGuestPageConfig(_request: NextRequest, { params }: { pa
     console.error('GET /api/guest-page-config/[unitTypeId] error:', error?.message);
     return NextResponse.json({ error: 'Failed to fetch config' }, { status: 500 });
   }
-}
+});
 
-export async function updateGuestPageConfig(request: NextRequest, { params }: { params: Promise<{ unitTypeId: string }> }) {
+export const updateGuestPageConfig = withActor(async (request: NextRequest, { params }: { params: Promise<{ unitTypeId: string }> }, actor) => {
   try {
     const sql = getSql();
     const { unitTypeId } = await params;
     const body = await request.json();
 
-    const ut = await sql.row<any>('SELECT id FROM unit_types WHERE id = ?', [unitTypeId]);
-    if (!ut) {
+    // This row carries the door code. The id arrives in the URL, so the
+    // ownership check is the whole difference between "my room type" and
+    // "any room type on the server".
+    if (!await ownsUnitType(actor.organizationId, unitTypeId)) {
       return NextResponse.json({ error: 'Unit type not found' }, { status: 404 });
     }
 
@@ -76,12 +92,15 @@ export async function updateGuestPageConfig(request: NextRequest, { params }: { 
         typeof body.rules === 'object' ? JSON.stringify(body.rules) : body.rules || '[]',
         body.wifi_network || null,
         body.wifi_password || null,
-        body.restaurant_name || 'Ресторан ALiSiO',
+        // No invented fallbacks: an unnamed restaurant, an unset door code
+        // and an absent map are EMPTY, not the first customer's values. A new
+        // hotel's guest page showing somebody's door code was the bug.
+        body.restaurant_name || null,
         body.restaurant_hours || '',
         body.restaurant_menu_url || null,
         typeof body.useful_info === 'object' ? JSON.stringify(body.useful_info) : body.useful_info || '[]',
-        body.lock_code || '4971#',
-        body.maps_url || 'https://maps.app.goo.gl/WH2CKhTydtDx9EBe7',
+        body.lock_code || null,
+        body.maps_url || null,
         body.territory_map_url || null]);
     }
 
@@ -95,4 +114,4 @@ export async function updateGuestPageConfig(request: NextRequest, { params }: { 
     console.error('PUT /api/guest-page-config/[unitTypeId] error:', error?.message);
     return NextResponse.json({ error: 'Failed to update config' }, { status: 500 });
   }
-}
+});

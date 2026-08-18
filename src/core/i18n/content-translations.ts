@@ -801,14 +801,6 @@ const serviceTranslations: ContentDict = {
 
 // ─── Restaurant ─────────────────────────────────
 const restaurantTranslations: ContentDict = {
-  'Ресторан ALiSiO': {
-    en: 'ALiSiO Restaurant',
-    de: 'Restaurant ALiSiO',
-    cs: 'Restaurace ALiSiO',
-    pl: 'Restauracja ALiSiO',
-    nl: 'Restaurant ALiSiO',
-    fr: 'Restaurant ALiSiO',
-  },
   Ресторан: {
     en: 'Restaurant',
     de: 'Restaurant',

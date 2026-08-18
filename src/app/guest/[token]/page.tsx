@@ -1264,7 +1264,7 @@ export default function GuestPage() {
         <div className="gp-wifi-center">
           <div className="gp-wifi-emoji">📶</div>
           <div className="gp-wifi-label">{t.network}</div>
-          <div className="gp-wifi-value">{cfg?.wifi_network || 'ALiSiO_Guest'}</div>
+          <div className="gp-wifi-value">{cfg?.wifi_network || '—'}</div>
           <div className="gp-wifi-spacer" />
           <div className="gp-wifi-label">{t.password}</div>
           <div className="gp-wifi-value mono">{cfg?.wifi_password || ''}</div>
@@ -1288,7 +1288,7 @@ export default function GuestPage() {
           <div className="gp-entry-steps">
             <strong>1.</strong> {t.entryStep1}<br />
             <strong>2.</strong> {t.entryStep2}<br />
-            <strong>3.</strong> {t.entryStep3Code} <span className="gp-entry-code">{cfg?.lock_code || '4971#'}</span><br />
+            <strong>3.</strong> {t.entryStep3Code} <span className="gp-entry-code">{cfg?.lock_code || '…'}</span><br />
             <strong>4.</strong> {t.entryStep4}
           </div>
         )}

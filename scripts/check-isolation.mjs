@@ -217,6 +217,53 @@ async function main() {
     assert.strictEqual(leaked.c, 0, `${leaked.c} units were written into A's property by B`);
     console.log("  ok  B cannot bulk-create 50 units inside A's property");
 
+    // ── The guest page's configuration ───────────────────────────────────
+    // Wi-Fi passwords, door codes and emergency phones live in these two
+    // tables. The list handlers had no organization filter at all — every
+    // authenticated hotel got every hotel's rows, held back only by RLS on
+    // Postgres and by nothing anywhere else. Found from a settings screen
+    // that mysteriously selected another tenant's property.
+    const cfgAOwn = await call(cookieA, '/api/property-guest-config', {
+      method: 'PUT',
+      body: JSON.stringify({ property_id: propA.id, wifi_network: 'A-Net', wifi_password: 'a-secret-wifi' }),
+    });
+    assert.ok(cfgAOwn.ok, `A could not save its own guest config: ${cfgAOwn.status}`);
+
+    const pgcListB = await (await call(cookieB, '/api/property-guest-config')).json();
+    assert.ok(Array.isArray(pgcListB) && !pgcListB.some((c) => c.property_id === propA.id),
+      "B's property-guest-config list contains A's row — with A's wifi password in it");
+
+    const pgcPutB = await call(cookieB, '/api/property-guest-config', {
+      method: 'PUT',
+      body: JSON.stringify({ property_id: propA.id, wifi_password: 'stolen' }),
+    });
+    assert.ok([403, 404].includes(pgcPutB.status),
+      `B wrote into A's property guest config: ${pgcPutB.status}`);
+    const wifiAfter = await sql.row(
+      'SELECT wifi_password FROM property_guest_config WHERE property_id = ?', [propA.id]);
+    assert.strictEqual(wifiAfter?.wifi_password, 'a-secret-wifi',
+      "B's write reached A's wifi password");
+    console.log("  ok  B can neither read nor rewrite A's property guest config");
+
+    const utCfgAOwn = await call(cookieA, `/api/guest-page-config/${utA.id}`, {
+      method: 'PUT', body: JSON.stringify({ lock_code: '1111#' }),
+    });
+    assert.ok(utCfgAOwn.ok, `A could not save its unit-type guest config: ${utCfgAOwn.status}`);
+
+    const gpcListB = await (await call(cookieB, '/api/guest-page-config')).json();
+    assert.ok(Array.isArray(gpcListB) && !gpcListB.some((c) => c.unit_type_id === utA.id),
+      "B's guest-page-config list contains A's row — the door code travels with it");
+
+    const gpcPutB = await call(cookieB, `/api/guest-page-config/${utA.id}`, {
+      method: 'PUT', body: JSON.stringify({ lock_code: '0000#' }),
+    });
+    assert.ok([403, 404].includes(gpcPutB.status),
+      `B rewrote A's door code: ${gpcPutB.status}`);
+    const lockAfter = await sql.row(
+      'SELECT lock_code FROM guest_page_config WHERE unit_type_id = ?', [utA.id]);
+    assert.strictEqual(lockAfter?.lock_code, '1111#', "B's write reached A's door code");
+    console.log("  ok  B can neither read nor rewrite A's unit-type guest config");
+
     // Channel credentials authenticate the hotel to Booking.com. Leaking them
     // — or letting B point its connection at A's — sells A's rooms under B's
     // account, so this is exercised end to end rather than trusted.
