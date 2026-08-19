@@ -858,7 +858,7 @@
   "eventSpaces": [
     {
       "code": "SAAL",
-      "name": "Großer Saal",
+      "name": "Saal",
       "capacityNote": "bis 100 Personen; Kino 120",
       "blockPrices": { "h4": 190, "h8": 290, "h8plus": 390 },
       "sortOrder": 1
@@ -885,7 +885,7 @@
     {
       "code": "TERRASSE",
       "name": "Terrasse",
-      "capacityNote": "kostenlos als Pausenfläche in allen Paketen",
+      "capacityNote": "Raucherecke und Pausen, kostenlos bei allen Paketen",
       "sortOrder": 5
     },
     {
@@ -897,12 +897,12 @@
   ],
   "eventAddons": [
     { "name": "Wasser", "kind": "per_person", "price": 5, "vatCode": "standard", "sortOrder": 1 },
-    { "name": "Alkoholfreie Getränke + Wasser", "kind": "per_person", "price": 9, "vatCode": "standard", "sortOrder": 2 },
-    { "name": "Konferenzgetränke", "kind": "per_person", "price": 15, "vatCode": "standard", "note": "Tagespauschale 8–10 h", "sortOrder": 3 },
+    { "name": "Softgetränke inkl. Wasser", "kind": "per_person", "price": 9, "vatCode": "standard", "sortOrder": 2 },
+    { "name": "Tagungsgetränke", "kind": "per_person", "price": 15, "vatCode": "standard", "note": "Tagespauschale 8–10 h", "sortOrder": 3 },
     { "name": "Frühstück", "kind": "per_person", "price": 8, "vatCode": "reduced", "sortOrder": 4 },
-    { "name": "Kaffeepause", "kind": "per_person", "price": 7, "vatCode": "reduced", "sortOrder": 5 },
-    { "name": "Geschirr", "kind": "per_person", "price": 3, "vatCode": "standard", "note": "bis 30 Personen", "sortOrder": 6 },
-    { "name": "Gläser / Bar", "kind": "per_person", "price": 2, "vatCode": "standard", "note": "bis 30 Personen", "sortOrder": 7 },
+    { "name": "Vor-/Nachmittagspause", "kind": "per_person", "price": 7, "vatCode": "reduced", "sortOrder": 5 },
+    { "name": "Leihgeschirr", "kind": "per_person", "price": 3, "vatCode": "standard", "note": "bis 30 Personen", "sortOrder": 6 },
+    { "name": "Gläser / Barbenutzung", "kind": "per_person", "price": 2, "vatCode": "standard", "note": "bis 30 Personen", "sortOrder": 7 },
     { "name": "Technikpaket", "kind": "flat", "price": 24, "vatCode": "standard", "sortOrder": 8 },
     { "name": "Flipchart", "kind": "flat", "price": 15, "vatCode": "standard", "sortOrder": 9 },
     { "name": "Sonderreinigung", "kind": "per_hour", "price": 35, "vatCode": "standard", "sortOrder": 10 },

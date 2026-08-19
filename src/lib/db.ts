@@ -1500,13 +1500,6 @@ function runMigrations(database: any) {
         CHECK (time_from < time_to)
       )
     `);
-    try {
-      const ffCols = (database.prepare('PRAGMA table_info(fin_folios)').all() as any[]).map((c: any) => c.name);
-      if (ffCols.length > 0 && !ffCols.includes('property_id')) {
-        database.exec('ALTER TABLE fin_folios ADD COLUMN property_id TEXT');
-      }
-    } catch { /* folios not created yet — schema brings the column */ }
-
     // How a property's guest page differs from the section registry in code.
     // No rows = registry defaults. See migration 0022.
     database.exec(`
@@ -5140,11 +5133,22 @@ function runMigrations(database: any) {
         payer_address   TEXT,
         payer_vat_no    TEXT,
         payer_debtor_no TEXT,
+        property_id     TEXT,
         status          TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','settled')),
         label           TEXT,
         created_at      TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
+    // Jurisdiction for a folio with no reservation (halls, walk-in sales) —
+    // migration 0024. The ALTER upgrades databases born before the column;
+    // it must run HERE, after the table exists: on a fresh boot an earlier
+    // guarded ALTER saw no table, skipped, and CI's production-fresh SQLite
+    // shipped folios without the column while every long-lived dev DB had it.
+    const folioCols = (database.prepare('PRAGMA table_info(fin_folios)').all() as any[]).map((c: any) => c.name);
+    if (!folioCols.includes('property_id')) {
+      database.exec('ALTER TABLE fin_folios ADD COLUMN property_id TEXT');
+      console.log('[DB] fin_folios: added property_id (jurisdiction for reservation-less folios)');
+    }
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folios_res ON fin_folios(reservation_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folios_org ON fin_folios(organization_id, status)');
 
