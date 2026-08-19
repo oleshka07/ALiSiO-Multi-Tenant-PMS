@@ -2529,6 +2529,7 @@
   "що виставлено сьогодні": "was heute berechnet wurde",
   "Що куплено: Teya, Hostex, PriceLabs, Telegram, віджет": "Was gekauft wurde: Teya, Hostex, PriceLabs, Telegram, Widget",
   "Що показувати і в якому порядку": "Was gezeigt wird und in welcher Reihenfolge",
+  "Що показувати, порядок і зміст": "Was gezeigt wird, Reihenfolge und Inhalt",
   "Щоб передати локаль з батьківського сайту динамічно, вставте перед тегом скрипта:": "Um die Locale von der übergeordneten Website dynamisch zu übergeben, fügen Sie vor dem Script-Tag ein:",
   "Щоб уникнути проблем із блокуванням платіжних систем (темний екран Teya) всередині iframe, обов'язково додайте цей скрипт-перехоплювач на ту ж сторінку, де стоїть iframe:": "Um Probleme mit blockierten Zahlungssystemen (schwarzer Teya-Bildschirm) innerhalb des Iframes zu vermeiden, fügen Sie unbedingt dieses Interceptor-Skript auf derselben Seite ein, auf der das Iframe steht:",
   "Щоденний зведений звіт": "Täglicher Sammelbericht",
