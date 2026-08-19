@@ -29,6 +29,7 @@ import {
   CheckSquare,
   Target,
   Printer,
+  Presentation,
 } from 'lucide-react';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { NAV_PERMISSION_MAP, ROLE_LABELS, ROLE_COLORS, hasPermission } from '@core/auth/permissions';
@@ -69,6 +70,7 @@ const navigation: NavSection[] = [
       { label: 'Гості', href: '/app/guests', icon: <Users size={20} />, permission: 'nav:guests' },
       { label: 'Задачі', href: '/app/tasks', icon: <CheckSquare size={20} />, permission: 'nav:tasks' },
       { label: 'Аркуші дня', href: '/app/day-sheets', icon: <Printer size={20} />, permission: 'nav:bookings' },
+      { label: 'Зали', href: '/app/events', icon: <Presentation size={20} />, permission: 'nav:bookings' },
     ],
   },
   {
