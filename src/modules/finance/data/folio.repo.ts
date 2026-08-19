@@ -41,6 +41,8 @@ export async function listFolios(reservationId?: string): Promise<Folio[]> {
 
 export async function createFolio(input: {
   reservationId?: string | null;
+  /** For a folio with no reservation (events): where its invoice's jurisdiction comes from. */
+  propertyId?: string | null;
   payerKind?: 'guest' | 'company';
   payerName?: string | null;
   payerAddress?: string | null;
@@ -52,9 +54,9 @@ export async function createFolio(input: {
   const id = crypto.randomUUID();
   await getSql().run(
     `INSERT INTO fin_folios
-       (id, organization_id, reservation_id, payer_kind, payer_name, payer_address, payer_vat_no, payer_debtor_no, label)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, organizationId, input.reservationId ?? null, input.payerKind ?? 'guest',
+       (id, organization_id, reservation_id, property_id, payer_kind, payer_name, payer_address, payer_vat_no, payer_debtor_no, label)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, organizationId, input.reservationId ?? null, input.propertyId ?? null, input.payerKind ?? 'guest',
      input.payerName ?? null, input.payerAddress ?? null, input.payerVatNo ?? null,
      input.payerDebtorNo ?? null, input.label ?? null],
   );

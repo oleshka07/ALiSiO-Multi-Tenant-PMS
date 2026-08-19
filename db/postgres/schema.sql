@@ -442,6 +442,58 @@ CREATE TABLE "coupons" (
   CHECK (discount_type IN ('fixed_price', 'percentage', 'fixed_amount'))
 );
 
+CREATE TABLE "event_addons" (
+  "id" TEXT PRIMARY KEY DEFAULT encode(gen_random_bytes(16), 'hex'),
+  "organization_id" TEXT,
+  "property_id" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "kind" TEXT NOT NULL,
+  "price_gross" NUMERIC(14,2) NOT NULL DEFAULT 0,
+  "vat_code" TEXT NOT NULL DEFAULT 'standard',
+  "note" TEXT,
+  "sort_order" BIGINT DEFAULT 0 NOT NULL,
+  "is_active" BOOLEAN NOT NULL DEFAULT true,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK ("kind" IN ('per_person','flat','per_hour','per_piece'))
+);
+
+CREATE TABLE "event_bookings" (
+  "id" TEXT PRIMARY KEY DEFAULT encode(gen_random_bytes(16), 'hex'),
+  "organization_id" TEXT,
+  "property_id" TEXT NOT NULL,
+  "space_id" TEXT NOT NULL,
+  "event_date" DATE NOT NULL,
+  "time_from" TEXT NOT NULL,
+  "time_to" TEXT NOT NULL,
+  "persons" BIGINT DEFAULT 0 NOT NULL,
+  "customer_name" TEXT NOT NULL,
+  "customer_email" TEXT,
+  "customer_phone" TEXT,
+  "company" TEXT,
+  "status" TEXT NOT NULL DEFAULT 'confirmed',
+  "notes" TEXT,
+  "folio_id" TEXT,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK ("status" IN ('draft','confirmed','cancelled')),
+  CHECK ("time_from" < "time_to")
+);
+
+-- Halls rented by time block, priced by suggestion — see migration 0024.
+CREATE TABLE "event_spaces" (
+  "id" TEXT PRIMARY KEY DEFAULT encode(gen_random_bytes(16), 'hex'),
+  "organization_id" TEXT,
+  "property_id" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "code" TEXT NOT NULL,
+  "capacity_note" TEXT,
+  "block_prices" TEXT,
+  "sort_order" BIGINT DEFAULT 0 NOT NULL,
+  "is_active" BOOLEAN NOT NULL DEFAULT true,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE "expense_categories" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
@@ -567,6 +619,8 @@ CREATE TABLE "fin_folios" (
   "payer_address" TEXT,
   "payer_vat_no" TEXT,
   "payer_debtor_no" TEXT,
+  -- Jurisdiction for a folio with no reservation (events). See migration 0024.
+  "property_id" TEXT,
   "status" TEXT DEFAULT 'open' NOT NULL,
   "label" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
@@ -2025,6 +2079,20 @@ ALTER TABLE "gift_cards" ADD CONSTRAINT "fk_gift_cards_property_id_4"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_chat_messages" ADD CONSTRAINT "fk_guest_chat_messages_reservation_id_1"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
+ALTER TABLE "event_spaces" ADD CONSTRAINT "fk_event_spaces_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "event_spaces" ADD CONSTRAINT "fk_event_spaces_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "event_addons" ADD CONSTRAINT "fk_event_addons_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "event_addons" ADD CONSTRAINT "fk_event_addons_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "event_bookings" ADD CONSTRAINT "fk_event_bookings_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "event_bookings" ADD CONSTRAINT "fk_event_bookings_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "event_bookings" ADD CONSTRAINT "fk_event_bookings_space_id_3"
+  FOREIGN KEY ("space_id") REFERENCES "event_spaces" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_page_sections" ADD CONSTRAINT "fk_guest_page_sections_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_page_sections" ADD CONSTRAINT "fk_guest_page_sections_organization_id_2"
@@ -2237,6 +2305,9 @@ CREATE INDEX "idx_ch_conn_channel" ON "channel_connections" ("channel");
 CREATE INDEX "idx_ch_conn_org" ON "channel_connections" ("organization_id");
 CREATE INDEX "idx_ch_conn_status" ON "channel_connections" ("status");
 CREATE UNIQUE INDEX "idx_channel_rate_rules_row" ON "channel_rate_rules" (organization_id, property_id, (COALESCE(channel, '')));
+CREATE UNIQUE INDEX "idx_event_spaces_row" ON "event_spaces" ("property_id", "code");
+CREATE UNIQUE INDEX "idx_event_addons_row" ON "event_addons" ("property_id", "name");
+CREATE INDEX "idx_event_bookings_day" ON "event_bookings" ("space_id", "event_date");
 CREATE UNIQUE INDEX "idx_guest_page_sections_row" ON "guest_page_sections" ("property_id", "section");
 CREATE INDEX "idx_ch_room_conn" ON "channel_room_mapping" ("connection_id");
 CREATE INDEX "idx_ct_hash" ON "content_translations" ("text_hash");
@@ -2372,6 +2443,9 @@ CREATE INDEX IF NOT EXISTS "idx_capex_items_org" ON "capex_items" ("organization
 CREATE INDEX IF NOT EXISTS "idx_channel_connections_org" ON "channel_connections" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_channel_credentials_org" ON "channel_credentials" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_channel_rate_rules_org" ON "channel_rate_rules" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_event_spaces_org" ON "event_spaces" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_event_addons_org" ON "event_addons" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_event_bookings_org" ON "event_bookings" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_guest_page_sections_org" ON "guest_page_sections" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cost_allocations_org" ON "cost_allocations" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_coupons_org" ON "coupons" ("organization_id");
@@ -2442,6 +2516,12 @@ ALTER TABLE "channel_connections" ALTER COLUMN "organization_id"
 ALTER TABLE "channel_credentials" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "channel_rate_rules" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "event_spaces" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "event_addons" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "event_bookings" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "guest_page_sections" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2640,6 +2720,24 @@ CREATE POLICY "channel_connections_tenant" ON "channel_connections"
 ALTER TABLE "channel_credentials" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "channel_credentials" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "channel_credentials_tenant" ON "channel_credentials"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "event_spaces" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "event_spaces" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "event_spaces_tenant" ON "event_spaces"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "event_addons" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "event_addons" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "event_addons_tenant" ON "event_addons"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "event_bookings" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "event_bookings" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "event_bookings_tenant" ON "event_bookings"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

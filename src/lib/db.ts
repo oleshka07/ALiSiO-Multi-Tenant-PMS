@@ -1453,6 +1453,60 @@ function runMigrations(database: any) {
       database.exec("ALTER TABLE unit_types ADD COLUMN pet_charge INTEGER NOT NULL DEFAULT 400");
       console.log('[DB] Added pet_charge to unit_types (default 400 CZK)');
     }
+    // Halls rented by time block; money flows through folios. Migration 0024.
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS event_spaces (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        name TEXT NOT NULL, code TEXT NOT NULL,
+        capacity_note TEXT, block_prices TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(property_id, code)
+      )
+    `);
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS event_addons (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        name TEXT NOT NULL, kind TEXT NOT NULL,
+        price_gross REAL NOT NULL DEFAULT 0,
+        vat_code TEXT NOT NULL DEFAULT 'standard',
+        note TEXT, sort_order INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(property_id, name),
+        CHECK (kind IN ('per_person','flat','per_hour','per_piece'))
+      )
+    `);
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS event_bookings (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        space_id TEXT NOT NULL REFERENCES event_spaces(id) ON DELETE CASCADE,
+        event_date TEXT NOT NULL, time_from TEXT NOT NULL, time_to TEXT NOT NULL,
+        persons INTEGER NOT NULL DEFAULT 0,
+        customer_name TEXT NOT NULL, customer_email TEXT, customer_phone TEXT, company TEXT,
+        status TEXT NOT NULL DEFAULT 'confirmed',
+        notes TEXT, folio_id TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        CHECK (status IN ('draft','confirmed','cancelled')),
+        CHECK (time_from < time_to)
+      )
+    `);
+    try {
+      const ffCols = (database.prepare('PRAGMA table_info(fin_folios)').all() as any[]).map((c: any) => c.name);
+      if (ffCols.length > 0 && !ffCols.includes('property_id')) {
+        database.exec('ALTER TABLE fin_folios ADD COLUMN property_id TEXT');
+      }
+    } catch { /* folios not created yet — schema brings the column */ }
+
     // How a property's guest page differs from the section registry in code.
     // No rows = registry defaults. See migration 0022.
     database.exec(`

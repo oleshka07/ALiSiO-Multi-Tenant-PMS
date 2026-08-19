@@ -17,9 +17,9 @@
  *   exactly what produced that invoice in the first place.
  *
  *   No reservation — the jurisdiction comes from the property the stay
- *   belongs to. A custom invoice has no property yet; when seminar rooms
- *   bring folios without stays, THIS is the place that learns where their
- *   jurisdiction comes from.
+ *   belongs to. A folio without a reservation — a seminar room, a walk-in
+ *   sale — carries its property itself (fin_folios.property_id); a folio
+ *   with neither is a custom invoice and stays with the legacy renderer.
  */
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
@@ -41,7 +41,7 @@ export async function loadInvoiceDocument(invoiceId: string): Promise<InvoiceDoc
 
   const inv = await sql.row<any>(
     `SELECT i.*, f.payer_name, f.payer_address, f.payer_vat_no,
-            r.property_id, r.check_in, r.check_out,
+            COALESCE(r.property_id, f.property_id) AS property_id, r.check_in, r.check_out,
             g.first_name AS guest_first_name, g.last_name AS guest_last_name,
             g.address AS guest_address, g.city AS guest_city, g.country AS guest_country
        FROM invoices i

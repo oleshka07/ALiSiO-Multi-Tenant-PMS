@@ -551,6 +551,72 @@ async function applyStructure(organizationId, plan) {
     }
   }
 
+  // ── зали ──────────────────────────────────────────────────────────────────
+  //
+  // Ціни блоків — ПІДКАЗКИ (власник: «Preise sind variabel … manuell
+  // einpflegbar»), тому збіг чи розбіжність рахується по JSON цін цілком:
+  // готель, що прибрав у файлі ціну «до 2 год», прибрав її і в системі.
+  for (const s of plan.eventSpaces || plan.event_spaces || []) {
+    const code = both(s, 'code');
+    const name = both(s, 'name') || code;
+    const prices = both(s, 'blockPrices') ?? null;
+    const pricesJson = prices == null ? null : JSON.stringify(prices);
+    const label = `зала ${code} — ${name}`;
+    const has = await sql.row(
+      'SELECT id, name, capacity_note, block_prices FROM event_spaces WHERE property_id = ? AND code = ?',
+      [property.id, code]);
+    const capacity = both(s, 'capacityNote') ?? null;
+    if (has && has.name === name && (has.capacity_note ?? null) === capacity
+        && (has.block_prices ?? null) === pricesJson) { say.same(label); continue; }
+    if (DRY) { say[has ? 'changed' : 'made'](`[суха] ${label}`); continue; }
+    if (has) {
+      await sql.run(
+        `UPDATE event_spaces SET name = ?, capacity_note = ?, block_prices = ?, sort_order = ?
+          WHERE id = ? AND organization_id = ?`,
+        [name, capacity, pricesJson, Number(both(s, 'sortOrder')) || 0, has.id, organizationId]);
+      say.changed(label);
+    } else {
+      await sql.run(
+        `INSERT INTO event_spaces (id, organization_id, property_id, name, code, capacity_note, block_prices, sort_order, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
+        [crypto.randomUUID(), organizationId, property.id, name, code, capacity,
+          pricesJson, Number(both(s, 'sortOrder')) || 0]);
+      say.made(label);
+    }
+  }
+
+  for (const a of plan.eventAddons || plan.event_addons || []) {
+    const name = both(a, 'name');
+    const kind = both(a, 'kind') || 'flat';
+    const vat = both(a, 'vatCode');
+    // Та сама причина, що в послуг: рядок без податкової ролі зупинить
+    // проводку рахунку в найгірший момент — коли клієнт стоїть поруч.
+    if (!vat) { say.refused(`доплата ${name}`, 'без vatCode — вона зупинить проводку рахунку'); continue; }
+    const price = Number(both(a, 'price') ?? both(a, 'priceGross')) || 0;
+    const note = both(a, 'note') ?? null;
+    const label = `доплата ${name} (${kind}) = ${price}`;
+    const has = await sql.row(
+      'SELECT id, kind, price_gross, vat_code, note FROM event_addons WHERE property_id = ? AND name = ?',
+      [property.id, name]);
+    if (has && has.kind === kind && Number(has.price_gross) === price
+        && has.vat_code === vat && (has.note ?? null) === note) { say.same(label); continue; }
+    if (DRY) { say[has ? 'changed' : 'made'](`[суха] ${label}`); continue; }
+    if (has) {
+      await sql.run(
+        `UPDATE event_addons SET kind = ?, price_gross = ?, vat_code = ?, note = ?, sort_order = ?
+          WHERE id = ? AND organization_id = ?`,
+        [kind, price, vat, note, Number(both(a, 'sortOrder')) || 0, has.id, organizationId]);
+      say.changed(label);
+    } else {
+      await sql.run(
+        `INSERT INTO event_addons (id, organization_id, property_id, name, kind, price_gross, vat_code, note, sort_order, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
+        [crypto.randomUUID(), organizationId, property.id, name, kind, price, vat, note,
+          Number(both(a, 'sortOrder')) || 0]);
+      say.made(label);
+    }
+  }
+
   // ── приймальні перевірки ──────────────────────────────────────────────────
   //
   // Найважливіша частина файла. Усе вище лише записує рядки; ось це питає в

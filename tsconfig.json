@@ -51,7 +51,9 @@
       "@widget": ["./src/modules/widget/api"],
       "@widget/*": ["./src/modules/widget/api/*"],
       "@tasks": ["./src/modules/tasks/api"],
-      "@tasks/*": ["./src/modules/tasks/api/*"]
+      "@tasks/*": ["./src/modules/tasks/api/*"],
+      "@events": ["./src/modules/events/api"],
+      "@events/*": ["./src/modules/events/api/*"]
     }
   },
   "include": [

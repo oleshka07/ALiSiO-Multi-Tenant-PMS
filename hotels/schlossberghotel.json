@@ -854,6 +854,60 @@
       "building": "Altstadtgalerie"
     }
   ],
+  "_eventNote": "Зали — з фотографії прайсу Seminarräume (19.08.2026). Блоки bis 2h / bis 4h / bis 8h / über 8h; відсутній блок = зала на цей час не пропонується (Saal не здають на 2 години). Ціни — ПІДКАЗКИ: власник — «Preise sind variabel (Nutzungsdauer, Personenzahl, Leistungsumfang), müssen manuell einpflegbar sein», рецепція редагує суму на рахунку. Terrasse викреслена з прайсу і безкоштовна як зона пауз у всіх пакетах — тому без цін: система підкаже «ціни немає», не 0. На аркуші є рукописні правки біля групових пакетів напоїв (від 31 особи: 90 € до 50 ос. / 50 € — суперечливі), вони НЕ внесені — питання до Йорга, яка колонка чинна. ПДВ оренди зал = 'standard' як робоче припущення, фінальне слово за Steuerberater (Anett Wezel) — спитано. Знижка −10% на залу від 10 номерів (і навпаки) — правило продажу, не тариф: рецепція застосовує її редагуванням суми.",
+  "eventSpaces": [
+    {
+      "code": "SAAL",
+      "name": "Großer Saal",
+      "capacityNote": "bis 100 Personen; Kino 120",
+      "blockPrices": { "h4": 190, "h8": 290, "h8plus": 390 },
+      "sortOrder": 1
+    },
+    {
+      "code": "KSAAL",
+      "name": "Kleiner Saal",
+      "capacityNote": "bis 16 Personen",
+      "blockPrices": { "h2": 49, "h4": 79, "h8": 119, "h8plus": 149 },
+      "sortOrder": 2
+    },
+    {
+      "code": "ATRIUM",
+      "name": "Atrium",
+      "blockPrices": { "h4": 99, "h8": 159, "h8plus": 199 },
+      "sortOrder": 3
+    },
+    {
+      "code": "BAR",
+      "name": "Bar (Cabana)",
+      "blockPrices": { "h8": 250, "h8plus": 450 },
+      "sortOrder": 4
+    },
+    {
+      "code": "TERRASSE",
+      "name": "Terrasse",
+      "capacityNote": "kostenlos als Pausenfläche in allen Paketen",
+      "sortOrder": 5
+    },
+    {
+      "code": "KUECHE",
+      "name": "Küche",
+      "blockPrices": { "h8": 100, "h8plus": 100 },
+      "sortOrder": 6
+    }
+  ],
+  "eventAddons": [
+    { "name": "Wasser", "kind": "per_person", "price": 5, "vatCode": "standard", "sortOrder": 1 },
+    { "name": "Alkoholfreie Getränke + Wasser", "kind": "per_person", "price": 9, "vatCode": "standard", "sortOrder": 2 },
+    { "name": "Konferenzgetränke", "kind": "per_person", "price": 15, "vatCode": "standard", "note": "Tagespauschale 8–10 h", "sortOrder": 3 },
+    { "name": "Frühstück", "kind": "per_person", "price": 8, "vatCode": "reduced", "sortOrder": 4 },
+    { "name": "Kaffeepause", "kind": "per_person", "price": 7, "vatCode": "reduced", "sortOrder": 5 },
+    { "name": "Geschirr", "kind": "per_person", "price": 3, "vatCode": "standard", "note": "bis 30 Personen", "sortOrder": 6 },
+    { "name": "Gläser / Bar", "kind": "per_person", "price": 2, "vatCode": "standard", "note": "bis 30 Personen", "sortOrder": 7 },
+    { "name": "Technikpaket", "kind": "flat", "price": 24, "vatCode": "standard", "sortOrder": 8 },
+    { "name": "Flipchart", "kind": "flat", "price": 15, "vatCode": "standard", "sortOrder": 9 },
+    { "name": "Sonderreinigung", "kind": "per_hour", "price": 35, "vatCode": "standard", "sortOrder": 10 },
+    { "name": "Tischdecke", "kind": "per_piece", "price": 5, "vatCode": "standard", "sortOrder": 11 }
+  ],
   "channelRules": [
     {
       "channel": null,
