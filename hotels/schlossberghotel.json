@@ -854,10 +854,11 @@
       "building": "Altstadtgalerie"
     }
   ],
-  "_eventNote": "Зали — з фотографії прайсу Seminarräume (19.08.2026). Блоки bis 2h / bis 4h / bis 8h / über 8h; відсутній блок = зала на цей час не пропонується (Saal не здають на 2 години). Ціни — ПІДКАЗКИ: власник — «Preise sind variabel (Nutzungsdauer, Personenzahl, Leistungsumfang), müssen manuell einpflegbar sein», рецепція редагує суму на рахунку. Terrasse викреслена з прайсу і безкоштовна як зона пауз у всіх пакетах — тому без цін: система підкаже «ціни немає», не 0. Групові пакети (ab 31 Personen pauschal) підтверджені другою друкованою сторінкою прайсу 19.08.2026 (рукописні цифри на стор. 1 — її копія): Leihgeschirr 90/120/150 € (до 50/80/100 ос.), Gläser/Bar 50/80/100 € — внесені як flat-доплати. Terrasse «über 8h» 50 € надруковано на стор. 2, але закреслено на стор. 1 — тераса лишається безкоштовною. ПДВ оренди зал = 'standard' як робоче припущення, фінальне слово за Steuerberater (Anett Wezel) — спитано. Знижка −10% на залу від 10 номерів (і навпаки) — правило продажу, не тариф: рецепція застосовує її редагуванням суми.",
+  "_eventNote": "Зали — з фотографії прайсу Seminarräume (19.08.2026). Блоки bis 2h / bis 4h / bis 8h / über 8h; відсутній блок = зала на цей час не пропонується (Saal не здають на 2 години). Ціни — ПІДКАЗКИ: власник — «Preise sind variabel (Nutzungsdauer, Personenzahl, Leistungsumfang), müssen manuell einpflegbar sein», рецепція редагує суму на рахунку. Terrasse викреслена з прайсу і безкоштовна як зона пауз у всіх пакетах — тому без цін: система підкаже «ціни немає», не 0. Групові пакети (ab 31 Personen pauschal) підтверджені другою друкованою сторінкою прайсу 19.08.2026 (рукописні цифри на стор. 1 — її копія): Leihgeschirr 90/120/150 € (до 50/80/100 ос.), Gläser/Bar 50/80/100 € — внесені як flat-доплати. Terrasse «über 8h» 50 € надруковано на стор. 2, але закреслено на стор. 1 — тераса лишається безкоштовною. ПДВ оренди зал = 'reduced' (7%, як у номерів) — відповідь готелю 20.08.2026 через Олега; до 20.08 у коді стояв хардкод 'standard' (19%), який файл не міг перекрити — міграція 0025 перенесла ставку на саму залу. ПОТРЕБУЄ письмового підтвердження Steuerberater (Anett Wezel) до першого рахунку за залу: у Німеччині оренда приміщення і Beherbergung оподатковуються по-різному, і 7% на оренду зали — не типовий випадок. Ставка знімається знімком на рядок фоліо, тому виправлення заднім числом уже виставлені рахунки не перепише. Знижка −10% на залу від 10 номерів (і навпаки) — правило продажу, не тариф: рецепція застосовує її редагуванням суми.",
   "eventSpaces": [
     {
       "code": "SAAL",
+      "vatCode": "reduced",
       "name": "Saal",
       "capacityNote": "bis 100 Personen; Kino 120",
       "blockPrices": {
@@ -869,6 +870,7 @@
     },
     {
       "code": "KSAAL",
+      "vatCode": "reduced",
       "name": "Kleiner Saal",
       "capacityNote": "bis 16 Personen",
       "blockPrices": {
@@ -881,6 +883,7 @@
     },
     {
       "code": "ATRIUM",
+      "vatCode": "reduced",
       "name": "Atrium",
       "blockPrices": {
         "h4": 99,
@@ -891,6 +894,7 @@
     },
     {
       "code": "BAR",
+      "vatCode": "reduced",
       "name": "Bar (Cabana)",
       "blockPrices": {
         "h8": 250,
@@ -900,12 +904,14 @@
     },
     {
       "code": "TERRASSE",
+      "vatCode": "reduced",
       "name": "Terrasse",
       "capacityNote": "Raucherecke und Pausen, kostenlos bei allen Paketen",
       "sortOrder": 5
     },
     {
       "code": "KUECHE",
+      "vatCode": "reduced",
       "name": "Küche",
       "blockPrices": {
         "h8": 100,

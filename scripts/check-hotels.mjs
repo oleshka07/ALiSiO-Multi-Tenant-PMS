@@ -186,6 +186,28 @@ for (const name of files) {
     if (!isNum(num(f(s, 'price')) ?? 0)) note(file, `послуга "${name}": price не число`);
   }
 
+  // ── зали ──────────────────────────────────────────────────────────────────
+  // Ставка зали живе на самій залі (міграція 0025). Помилка в коді ПДВ не
+  // видна ніде, поки рецепція не спробує виставити рахунок за подію — і тоді
+  // проводка падає з «No tax rate», уже перед гостем.
+  const spaceCodes = new Set();
+  for (const sp of plan.eventSpaces || plan.event_spaces || []) {
+    const code = f(sp, 'code');
+    if (!code) { note(file, 'зала без code — її нічим упізнати при повторному прикладанні'); continue; }
+    if (spaceCodes.has(code)) note(file, `зала "${code}" описана двічі`);
+    spaceCodes.add(code);
+    const vat = f(sp, 'vatCode');
+    if (vat && !TAX_CODES.includes(vat)) {
+      note(file, `зала "${code}": vatCode "${vat}" — має бути ${TAX_CODES.join(', ')}`);
+    }
+  }
+  for (const a of plan.eventAddons || plan.event_addons || []) {
+    const vat = f(a, 'vatCode');
+    if (vat && !TAX_CODES.includes(vat)) {
+      note(file, `доплата "${f(a, 'name')}": vatCode "${vat}" — має бути ${TAX_CODES.join(', ')}`);
+    }
+  }
+
   // ── приймальні перевірки ──────────────────────────────────────────────────
   const checks = plan.acceptance || plan.quotes || [];
   if (!template && checks.length === 0 && typeCodes.size > 0) {

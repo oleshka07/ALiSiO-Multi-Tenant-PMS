@@ -561,26 +561,31 @@ async function applyStructure(organizationId, plan) {
     const name = both(s, 'name') || code;
     const prices = both(s, 'blockPrices') ?? null;
     const pricesJson = prices == null ? null : JSON.stringify(prices);
-    const label = `зала ${code} — ${name}`;
+    // Which VAT the rent carries is the hall's own answer — see migration 0025.
+    // Absent in the file means 'standard', the rate every hall carried before
+    // the column existed.
+    const vat = both(s, 'vatCode') || 'standard';
+    const label = `зала ${code} — ${name} (ПДВ ${vat})`;
     const has = await sql.row(
-      'SELECT id, name, capacity_note, block_prices FROM event_spaces WHERE property_id = ? AND code = ?',
+      'SELECT id, name, capacity_note, block_prices, vat_code FROM event_spaces WHERE property_id = ? AND code = ?',
       [property.id, code]);
     const capacity = both(s, 'capacityNote') ?? null;
     if (has && has.name === name && (has.capacity_note ?? null) === capacity
-        && (has.block_prices ?? null) === pricesJson) { say.same(label); continue; }
+        && (has.block_prices ?? null) === pricesJson
+        && (has.vat_code ?? 'standard') === vat) { say.same(label); continue; }
     if (DRY) { say[has ? 'changed' : 'made'](`[суха] ${label}`); continue; }
     if (has) {
       await sql.run(
-        `UPDATE event_spaces SET name = ?, capacity_note = ?, block_prices = ?, sort_order = ?
+        `UPDATE event_spaces SET name = ?, capacity_note = ?, block_prices = ?, vat_code = ?, sort_order = ?
           WHERE id = ? AND organization_id = ?`,
-        [name, capacity, pricesJson, Number(both(s, 'sortOrder')) || 0, has.id, organizationId]);
+        [name, capacity, pricesJson, vat, Number(both(s, 'sortOrder')) || 0, has.id, organizationId]);
       say.changed(label);
     } else {
       await sql.run(
-        `INSERT INTO event_spaces (id, organization_id, property_id, name, code, capacity_note, block_prices, sort_order, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
+        `INSERT INTO event_spaces (id, organization_id, property_id, name, code, capacity_note, block_prices, vat_code, sort_order, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)`,
         [crypto.randomUUID(), organizationId, property.id, name, code, capacity,
-          pricesJson, Number(both(s, 'sortOrder')) || 0]);
+          pricesJson, vat, Number(both(s, 'sortOrder')) || 0]);
       say.made(label);
     }
   }

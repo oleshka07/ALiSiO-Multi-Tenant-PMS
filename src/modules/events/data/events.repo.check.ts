@@ -135,6 +135,42 @@ try {
     const pdf = await generateGermanInvoicePdf(doc);
     assert.ok(pdf.length > 1000, 'PDF порожній');
     console.log(`  ok  зала → фоліо → ${doc.number} (de-DE, 154 €) → PDF ${(pdf.length / 1024).toFixed(0)} KiB`);
+
+    // ── the hall carries its own VAT role, and the request can still override ─
+    //
+    // Until migration 0025 the rate was the literal 'standard' in two places in
+    // code, so a hotel whose Steuerberater reads hall rent as accommodation had
+    // no way to say so — the file could not reach a default written in code.
+    // The hall above kept 19 % without saying anything, which is the other half
+    // of this: switching the mechanism on must not move anybody's tax.
+    const reducedHall = await events.saveSpace({
+      propertyId: 'evrepo_p', name: 'Festsaal', code: 'FEST', vatCode: 'reduced',
+      blockPrices: { h4: 190 },
+    });
+    const feier = await events.createBooking({
+      spaceId: reducedHall, eventDate: '2026-06-01', timeFrom: '18:00', timeTo: '22:00',
+      customerName: 'Familie Muster',
+    });
+    await events.postEventCharges(feier.id, { hallPriceGross: 190 });
+    const feierRows = await sql.rows<any>(
+      `SELECT i.vat_rate FROM fin_folio_items i
+         JOIN event_bookings b ON b.folio_id = i.folio_id
+        WHERE b.id = ? AND b.organization_id = ?`, [feier.id, ORG]);
+    assert.deepStrictEqual(feierRows.map((r) => Number(r.vat_rate)), [7],
+      'зала з vatCode=reduced мала дати 7 %, а не код за замовчуванням');
+
+    const sonder = await events.createBooking({
+      spaceId: reducedHall, eventDate: '2026-06-02', timeFrom: '10:00', timeTo: '14:00',
+      customerName: 'Firmenfeier',
+    });
+    await events.postEventCharges(sonder.id, { hallPriceGross: 190, hallVatCode: 'standard' });
+    const sonderRows = await sql.rows<any>(
+      `SELECT i.vat_rate FROM fin_folio_items i
+         JOIN event_bookings b ON b.folio_id = i.folio_id
+        WHERE b.id = ? AND b.organization_id = ?`, [sonder.id, ORG]);
+    assert.deepStrictEqual(sonderRows.map((r) => Number(r.vat_rate)), [19],
+      'явний код у запиті мав перекрити ставку зали');
+    console.log('  ok  ставка зали — з самої зали (7 %), запит її перекриває (19 %)');
   });
 } finally {
   await cleanup();
