@@ -1147,5 +1147,41 @@
       "checkOut": "2027-03-08",
       "expectTotal": 135
     }
-  ]
+  ],
+  "_guestPageNote": "Зміст гостьової сторінки, 20.08.2026. Тільки перевірені факти: гараж — прайс 2027 (10 €/ніч/місце) + пропозиція 02/2024 (в'їзд «Siebenhitze» / «Neuer Weg») + аудит рецепції (висота ~2 м, квиток на рецепції, або повідомити наступного дня); сніданок 15 €/особу і діти до 6 років безкоштовно — прайс 2027; свіжі яйця на замовлення — аудит рецепції (це закриває повторюваний негативний відгук «не було яєць»); тварини 10 €/день без корму — прайс 2027; телефон — з фактури й чека термінала. НЕ заповнено, бо фактів немає (зібрати під час поїздки в готель): wifiNetwork/wifiPassword, restaurantName/restaurantHours, mapsUrl (точка В'ЇЗДУ в гараж, не готелю — Google веде до дверей і гості кружляють), rules (правила будинку), години сніданку, години рецепції у вихідні, процедура пізнього заїзду. Порожнє поле навмисно відсутнє, а не порожнє: applier пише лише названі поля, тож рецепція може ввести решту руками, і файл цього не затре. checkInTime/checkOutTime у property досі типові — тому в FAQ їх свідомо немає: неперевірений час у гостя на екрані гірший за його відсутність.",
+  "guestPage": {
+    "emergencyPhone": "+49 3661 622123",
+    "petsPolicy": "welcome",
+    "parkingInfo": "Tiefgarage (Schlossgarage Greiz): 10,00 € pro Nacht und Stellplatz.\n\nDie Einfahrt liegt in der Straße „Siebenhitze“ / „Neuer Weg“ — nicht am Hoteleingang. Bitte fahren Sie außen herum; die Navigation meldet sonst „Ziel erreicht“, während Sie noch vor dem Haus stehen.\n\nDurchfahrtshöhe ca. 2,00 m. Die Stellplätze des Hotels liegen direkt am Aufzug — praktisch mit Gepäck.\n\nIhr Parkticket erhalten Sie an der Rezeption. Sie brauchen es zum Ausfahren; alternativ melden Sie die Nutzung am nächsten Tag an der Rezeption.",
+    "faqItems": [
+      {
+        "q": "Was kostet das Frühstück?",
+        "a": "15,00 € pro Person. Kinder unter 6 Jahren frühstücken kostenfrei."
+      },
+      {
+        "q": "Gibt es Eier zum Frühstück?",
+        "a": "Ja. Rührei, Spiegelei oder Omelett bereiten wir frisch auf Wunsch zu — sprechen Sie einfach unser Frühstücksteam an. Auch mit Käse, Speck oder Tomate."
+      },
+      {
+        "q": "Darf mein Hund mit?",
+        "a": "Ja. Wir berechnen 10,00 € pro Tag (ohne Futter)."
+      },
+      {
+        "q": "Wo kann ich parken?",
+        "a": "In der Schlossgarage Greiz, 10,00 € pro Nacht. Die Einfahrt liegt in der Straße „Siebenhitze“ / „Neuer Weg“ — bitte nicht am Hoteleingang suchen. Das Parkticket erhalten Sie an der Rezeption."
+      }
+    ],
+    "usefulInfo": [
+      {
+        "icon": "🏰",
+        "title": "Oberes Schloss",
+        "desc": "Zu Fuß vom Haus erreichbar — einer der beiden Gründe, aus denen Gäste nach Greiz kommen."
+      },
+      {
+        "icon": "🏰",
+        "title": "Unteres Schloss",
+        "desc": "Im Stadtzentrum, wenige Minuten vom Hotel."
+      }
+    ]
+  }
 }

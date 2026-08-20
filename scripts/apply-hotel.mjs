@@ -153,6 +153,7 @@ function f(obj, ...names) {
   return undefined;
 }
 const snake = (s) => s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+const camel = (s) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 /** camelCase-ім'я і його snake_case-двійник за один крок. */
 const both = (obj, name) => f(obj, name, snake(name));
 
@@ -247,6 +248,54 @@ async function applyStructure(organizationId, plan) {
     say.changed(`обʼєкт ${property.name}: ${Object.keys(propPatch).join(', ')}`);
   } else {
     say.same(`обʼєкт ${property.name}`);
+  }
+
+  // ── зміст гостьової сторінки ──────────────────────────────────────────────
+  //
+  // Те, що гість читає замість того, щоб питати рецепцію: маршрут до гаража,
+  // час сніданку, правила, wifi. Досі це можна було ввести лише руками в
+  // адмінці, тобто зміст жив у голові того, хто його вводив, і при заведенні
+  // другого готелю починався з нуля.
+  //
+  // Пишуться ЛИШЕ названі у файлі поля. Відсутнє поле — не «стерти», а
+  // «про це файл нічого не каже»: половина цих полів зʼявляється після
+  // поїздки в готель, і чернетка не має права затирати те, що рецепція вже
+  // ввела руками.
+  const guestPage = plan.guestPage || plan.guest_page;
+  if (guestPage) {
+    const COLS = ['wifi_network', 'wifi_password', 'restaurant_name', 'restaurant_hours',
+      'restaurant_menu_url', 'rules', 'useful_info', 'faq_items', 'maps_url',
+      'territory_map_url', 'pets_policy', 'parking_info', 'video_guide_url',
+      'emergency_phone'];
+    const has = await sql.row(
+      'SELECT * FROM property_guest_config WHERE property_id = ?', [property.id]);
+    const patch = {};
+    for (const col of COLS) {
+      const v = f(guestPage, camel(col), col);
+      if (v === undefined) continue;
+      const want = v === null ? null : String(v);
+      if (String(has?.[col] ?? '') !== String(want ?? '')) patch[col] = want;
+    }
+    const label = `гостьова сторінка: ${Object.keys(patch).join(', ') || 'без змін'}`;
+    if (!Object.keys(patch).length) {
+      say.same('гостьова сторінка');
+    } else if (DRY) {
+      say[has ? 'changed' : 'made'](`[суха] ${label}`);
+    } else if (has) {
+      const set = Object.keys(patch).map((c) => `${c} = ?`).join(', ');
+      await sql.run(
+        `UPDATE property_guest_config SET ${set}, updated_at = CURRENT_TIMESTAMP
+          WHERE property_id = ?`,
+        [...Object.values(patch), property.id]);
+      say.changed(label);
+    } else {
+      const cols = Object.keys(patch);
+      await sql.run(
+        `INSERT INTO property_guest_config (id, property_id, ${cols.join(', ')})
+         VALUES (?, ?, ${cols.map(() => '?').join(', ')})`,
+        [crypto.randomUUID(), property.id, ...cols.map((c) => patch[c])]);
+      say.made(label);
+    }
   }
 
   // ── ставки ПДВ ────────────────────────────────────────────────────────────
