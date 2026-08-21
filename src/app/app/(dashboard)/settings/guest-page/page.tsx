@@ -711,7 +711,7 @@ export default function GuestPageSettingsPage() {
                   )}
 
                   <div style={{ padding: '8px 12px', marginBottom: 16, background: 'rgba(79,110,247,0.06)', borderRadius: 'var(--radius-md)', fontSize: 12, color: 'var(--text-tertiary)', border: '1px solid rgba(79,110,247,0.12)' }}>
-                    {t('💡 Wi-Fi, ресторан, правила, FAQ та Explore редагуються на вкладці')} <strong>&quot;Property&quot;</strong> {t('(спільні для всіх)')}
+                    {t('💡 Wi-Fi, ресторан, правила, FAQ та Explore редагуються у вкладці')} <strong>{t('«Секції сторінки»')}</strong> {t('(спільні для всіх)')}
                   </div>
 
                   {/* Amenities */}

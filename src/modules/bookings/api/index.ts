@@ -16,9 +16,6 @@ export { listAdditionalServices, createAdditionalService, updateAdditionalServic
 export { listAvailabilityBlocks, createAvailabilityBlock, deleteAvailabilityBlock } from './availability-blocks.handlers';
 export { listServiceOrders, updateServiceOrder } from './service-orders.handlers';
 export { fixServiceOrderPayment, getPendingOrders } from './fix-payment.handlers';
-export { previewBookingComImport, confirmBookingComImport } from './import-bookingcom.handlers';
-export type { PreviewRow, PreviewResponse, ConfirmRequest, ConfirmResponse, PlannedUnit } from './import-bookingcom.handlers';
-export type { BookingComRow } from '../domain/booking-com-excel';
 export { notifyReservationCreated } from '../domain/reservation-tg-notify';
 // Used by the widget module when a booking is completed.
 export { sendBookingConfirmationEmail } from '../data/send-confirmation-email';

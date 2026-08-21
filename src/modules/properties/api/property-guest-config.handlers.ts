@@ -13,10 +13,14 @@ export const listPropertyGuestConfigs = withActor(async (_req, _ctx, actor) => {
     // handed every hotel every other hotel's wifi passwords and emergency
     // phones — found because a settings screen quietly selected another
     // tenant's property out of this very list.
+    // Driven by PROPERTIES, not config rows: a property with no row yet is
+    // a property with empty fields, not an invisible one. Same fix as the
+    // unit-type list — the INNER JOIN meant a hotel onboarded after the seed
+    // era saw nothing and had no way to create its first row.
     const configs = await sql.rows<any>(`
-      SELECT pgc.*, p.name as property_name, p.slug as property_slug
-      FROM property_guest_config pgc
-      JOIN properties p ON pgc.property_id = p.id
+      SELECT pgc.*, p.id as property_id, p.name as property_name, p.slug as property_slug
+      FROM properties p
+      LEFT JOIN property_guest_config pgc ON pgc.property_id = p.id
       WHERE p.organization_id = ?
       ORDER BY p.name
     `, [actor.organizationId]);

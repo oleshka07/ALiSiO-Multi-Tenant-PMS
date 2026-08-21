@@ -23,13 +23,16 @@ export const getGuestPageConfig = withActor(async (_request: NextRequest, { para
       return NextResponse.json({ error: 'Config not found' }, { status: 404 });
     }
 
+    // LEFT JOIN: a type with no config row answers with empty fields, not
+    // 404 — otherwise a hotel onboarded after the seed era could never open
+    // the editor to create its first row (PUT already upserts).
     const config = await sql.row<any>(`
-      SELECT gpc.*, ut.name as unit_type_name, ut.code as unit_type_code,
+      SELECT gpc.*, ut.id as unit_type_id, ut.name as unit_type_name, ut.code as unit_type_code,
              c.type as category_type, c.name as category_name
-      FROM guest_page_config gpc
-      JOIN unit_types ut ON gpc.unit_type_id = ut.id
+      FROM unit_types ut
       JOIN categories c ON ut.category_id = c.id
-      WHERE gpc.unit_type_id = ?
+      LEFT JOIN guest_page_config gpc ON gpc.unit_type_id = ut.id
+      WHERE ut.id = ?
     `, [unitTypeId]);
 
     if (!config) {

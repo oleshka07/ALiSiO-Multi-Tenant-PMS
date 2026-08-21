@@ -6,16 +6,22 @@ import { withActor } from '@core/auth/session';
 export const listGuestPageConfigs = withActor(async (_req, _ctx, actor) => {
   try {
     const sql = getSql();
-    // These rows carry door codes. Scoped in the query, not left to RLS —
-    // on an engine without policies the unfiltered version returned every
-    // hotel's rows to any authenticated session.
+    // Driven by UNIT TYPES, not by config rows. The old INNER JOIN from
+    // guest_page_config showed only types that already had a row — and rows
+    // were only ever created by a long-gone seed, so every hotel onboarded
+    // since saw an empty list and had no way in. A type with no config is a
+    // type with empty fields, not an invisible one.
+    //
+    // Scoped in the query, not left to RLS — these rows carry door codes,
+    // and on an engine without policies the unfiltered version returned
+    // every hotel's rows to any authenticated session.
     const configs = await sql.rows<any>(`
-      SELECT gpc.*, ut.name as unit_type_name, ut.code as unit_type_code,
+      SELECT gpc.*, ut.id as unit_type_id, ut.name as unit_type_name, ut.code as unit_type_code,
              c.type as category_type, c.name as category_name, c.icon as category_icon
-      FROM guest_page_config gpc
-      JOIN unit_types ut ON gpc.unit_type_id = ut.id
+      FROM unit_types ut
       JOIN categories c ON ut.category_id = c.id
       JOIN properties p ON ut.property_id = p.id
+      LEFT JOIN guest_page_config gpc ON gpc.unit_type_id = ut.id
       WHERE p.organization_id = ?
       ORDER BY c.sort_order, ut.sort_order
     `, [actor.organizationId]);
