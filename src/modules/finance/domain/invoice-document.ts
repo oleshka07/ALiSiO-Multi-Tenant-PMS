@@ -53,6 +53,29 @@ export interface DocumentTaxTotal {
   tax_amount: number;
 }
 
+/**
+ * §6 KassenSichV on the beleg — one entry per signed till payment. TEXT and
+ * QR both: the QR (DSFinV-K format) is machine convenience, the readable
+ * fields are the law, and neither replaces the other
+ * (docs/TSE-KASSENSICHV.md 6.2 п.2).
+ */
+export interface FiscalBeleg {
+  /** Seriennummer des Aufzeichnungssystems — property setting; the same
+   *  value the hotel names in its ELSTER Kassenmeldung. */
+  recordingSystemSerial?: string | null;
+  tseSerial?: string | null;
+  txNumber?: string | null;
+  signatureCounter?: string | null;
+  /** Prüfwert. */
+  signature?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  qrPayload?: string | null;
+  /** true = the TSE was down for this payment: print the legally required
+   *  outage wording instead of pretending. */
+  failed: boolean;
+}
+
 export interface InvoiceDocumentInput {
   number: string;
   issueDate: string;
@@ -70,6 +93,8 @@ export interface InvoiceDocumentInput {
   paid?: number;
   /** Gross above which a simplified invoice is no longer allowed. */
   smallAmountLimit?: number | null;
+  /** Signed (or loudly unsigned) till payments — absent outside Germany. */
+  fiscal?: FiscalBeleg[] | null;
 }
 
 export interface InvoiceDocument extends InvoiceDocumentInput {
@@ -112,6 +137,15 @@ export interface Labels {
   outstanding: string;
   reverses: string;
   smallAmountNote: string;
+  fiscalTitle: string;
+  fiscalRecordingSerial: string;
+  fiscalTseSerial: string;
+  fiscalTxNumber: string;
+  fiscalSignatureCounter: string;
+  fiscalSignature: string;
+  fiscalStart: string;
+  fiscalEnd: string;
+  fiscalFailed: string;
 }
 
 const LABELS: Record<InvoiceLocale, Labels> = {
@@ -127,6 +161,16 @@ const LABELS: Record<InvoiceLocale, Labels> = {
     total: 'Gesamtbetrag', paid: 'Zahlungen', outstanding: 'Offener Betrag',
     reverses: 'Storniert Rechnung',
     smallAmountNote: 'Kleinbetragsrechnung gemäß § 33 UStDV',
+    fiscalTitle: 'TSE-Daten gemäß § 6 KassenSichV',
+    fiscalRecordingSerial: 'Seriennummer Aufzeichnungssystem',
+    fiscalTseSerial: 'Seriennummer TSE',
+    fiscalTxNumber: 'Transaktionsnummer',
+    fiscalSignatureCounter: 'Signaturzähler',
+    fiscalSignature: 'Prüfwert',
+    fiscalStart: 'Transaktionsbeginn',
+    fiscalEnd: 'Transaktionsende',
+    // The wording the law expects when the TSE was down — never silence.
+    fiscalFailed: 'TSE-Signatur nicht verfügbar: Sicherungseinrichtung ausgefallen',
   },
   'cs-CZ': {
     invoice: 'Faktura', storno: 'Opravný daňový doklad', number: 'Číslo dokladu',
@@ -140,6 +184,11 @@ const LABELS: Record<InvoiceLocale, Labels> = {
     total: 'Celkem k úhradě', paid: 'Uhrazeno', outstanding: 'Zbývá uhradit',
     reverses: 'Opravuje doklad',
     smallAmountNote: 'Zjednodušený daňový doklad',
+    fiscalTitle: 'Fiskální údaje', fiscalRecordingSerial: 'Sériové číslo systému',
+    fiscalTseSerial: 'Sériové číslo TSE', fiscalTxNumber: 'Číslo transakce',
+    fiscalSignatureCounter: 'Čítač podpisů', fiscalSignature: 'Podpis',
+    fiscalStart: 'Začátek transakce', fiscalEnd: 'Konec transakce',
+    fiscalFailed: 'Podpis TSE není k dispozici',
   },
   'en-GB': {
     invoice: 'Invoice', storno: 'Credit note', number: 'Invoice number',
@@ -153,6 +202,11 @@ const LABELS: Record<InvoiceLocale, Labels> = {
     total: 'Total', paid: 'Paid', outstanding: 'Outstanding',
     reverses: 'Reverses invoice',
     smallAmountNote: 'Simplified invoice',
+    fiscalTitle: 'Fiscal data', fiscalRecordingSerial: 'Recording system serial',
+    fiscalTseSerial: 'TSE serial', fiscalTxNumber: 'Transaction number',
+    fiscalSignatureCounter: 'Signature counter', fiscalSignature: 'Signature',
+    fiscalStart: 'Transaction start', fiscalEnd: 'Transaction end',
+    fiscalFailed: 'TSE signature unavailable',
   },
 };
 

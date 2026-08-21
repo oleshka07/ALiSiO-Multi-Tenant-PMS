@@ -27,6 +27,7 @@ import { documentLanguage } from '@core/i18n/resolve';
 import {
   buildInvoiceDocument, localeForLanguage,
   type InvoiceDocument, type DocumentLine, type DocumentTaxTotal, type Party,
+  type FiscalBeleg,
 } from '../domain/invoice-document';
 
 /**
@@ -104,6 +105,29 @@ export async function loadInvoiceDocument(invoiceId: string): Promise<InvoiceDoc
     ? { name: payerName, address: payerAddress || null, vatId: inv.payer_vat_no ?? null }
     : null;
 
+  // §6 KassenSichV on the beleg: every till payment of this invoice that a
+  // TSE signed — or loudly failed to. `tse_status IS NOT NULL` is the filter
+  // on purpose: a transfer never went near the TSE and prints nothing, but a
+  // failed signature prints the legally required outage wording.
+  const fiscalRows = await sql.rows<any>(
+    `SELECT p.*, s.recording_system_serial
+       FROM fin_folio_payments p
+       LEFT JOIN fin_fiscal_settings s ON s.property_id = p.property_id
+      WHERE p.invoice_id = ? AND p.organization_id = ? AND p.tse_status IS NOT NULL
+      ORDER BY p.paid_at, p.created_at`,
+    [invoiceId, organizationId]);
+  const fiscal: FiscalBeleg[] = fiscalRows.map((p: any) => ({
+    recordingSystemSerial: p.recording_system_serial ?? null,
+    tseSerial: p.tse_serial ?? null,
+    txNumber: p.tse_tx_number ?? null,
+    signatureCounter: p.tse_signature_counter ?? null,
+    signature: p.tse_signature ?? null,
+    startTime: p.tse_start_time ?? null,
+    endTime: p.tse_end_time ?? null,
+    qrPayload: p.tse_qr_payload ?? null,
+    failed: p.tse_status === 'tse_failed',
+  }));
+
   return buildInvoiceDocument({
     number: inv.invoice_number,
     issueDate: String(inv.issued_at).slice(0, 10),
@@ -138,5 +162,6 @@ export async function loadInvoiceDocument(invoiceId: string): Promise<InvoiceDoc
       tax_amount: Number(t.tax_amount),
     })),
     smallAmountLimit: locale === 'de-DE' ? DE_SMALL_AMOUNT_LIMIT : null,
+    fiscal: fiscal.length ? fiscal : null,
   });
 }

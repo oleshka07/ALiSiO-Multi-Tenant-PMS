@@ -25,6 +25,7 @@
 import PDFDocument from 'pdfkit';
 import fs from 'node:fs';
 import path from 'node:path';
+import QRCode from 'qrcode';
 import type { InvoiceDocument } from './invoice-document.ts';
 
 /** DejaVu, because the default fonts have no ü, ö or ß. */
@@ -41,6 +42,15 @@ const CR = PW - MR;
 export async function generateGermanInvoicePdf(doc: InvoiceDocument): Promise<Buffer> {
   const L = doc.labels;
   const isStorno = doc.status === 'storno';
+
+  // QR codes are rendered BEFORE the drawing promise: qrcode's API is async,
+  // and pdfkit's stream is not a place to await in.
+  const qrImages = new Map<string, Buffer>();
+  for (const f of doc.fiscal ?? []) {
+    if (f.qrPayload && !qrImages.has(f.qrPayload)) {
+      qrImages.set(f.qrPayload, await QRCode.toBuffer(f.qrPayload, { margin: 0, width: 140 }));
+    }
+  }
 
   return await new Promise<Buffer>((resolve, reject) => {
     const pdf = new PDFDocument({
@@ -193,6 +203,49 @@ export async function generateGermanInvoicePdf(doc: InvoiceDocument): Promise<Bu
       const cells = [`${t.vat_rate} %`, money(t.gross_amount), money(t.net_amount), money(t.tax_amount)];
       rc.forEach((c, i) => pdf.text(cells[i], c.x, y, { width: c.w, align: c.align, lineBreak: false }));
       y += 12;
+    }
+
+    // ── TSE-Daten (§ 6 KassenSichV) ──────────────────────────────────────────
+    // TEXT plus QR, and the text is not optional: the QR is DSFinV-K
+    // machine convenience, the readable fields are what §6 lists. A failed
+    // signature prints the outage wording — the beleg never pretends.
+    for (const f of doc.fiscal ?? []) {
+      const qr = f.qrPayload ? qrImages.get(f.qrPayload) : undefined;
+      const blockH = f.failed ? 34 : 96;
+      if (y + blockH > 740) { pdf.addPage(); y = 56; }
+      y += 14;
+      pdf.font('b').fontSize(8).text(L.fiscalTitle, ML, y);
+      y += 11;
+      if (f.failed) {
+        pdf.font('r').fontSize(8).text(L.fiscalFailed, ML, y, { width: CR - ML - 90 });
+        y = pdf.y + 4;
+      } else {
+        const rowsF: [string, string | null | undefined][] = [
+          [L.fiscalRecordingSerial, f.recordingSystemSerial],
+          [L.fiscalTseSerial, f.tseSerial],
+          [L.fiscalTxNumber, f.txNumber],
+          [L.fiscalSignatureCounter, f.signatureCounter],
+          [L.fiscalStart, f.startTime],
+          [L.fiscalEnd, f.endTime],
+          [L.fiscalSignature, f.signature],
+        ];
+        pdf.fontSize(7);
+        const qrX = CR - 78;
+        const blockTop = y;
+        for (const [k, v] of rowsF) {
+          if (!v) continue;
+          pdf.font('r').text(`${k}:`, ML, y, { width: 150, lineBreak: false });
+          // The Prüfwert is long base64 — wrapped, never truncated: a
+          // shortened signature verifies nothing.
+          pdf.font('b').text(String(v), ML + 154, y, { width: qrX - ML - 162 });
+          y = Math.max(pdf.y, y + 9);
+        }
+        if (qr) {
+          pdf.image(qr, qrX, blockTop, { width: 70, height: 70 });
+          y = Math.max(y, blockTop + 74);
+        }
+        y += 4;
+      }
     }
 
     // ── payment details and footer ───────────────────────────────────────────

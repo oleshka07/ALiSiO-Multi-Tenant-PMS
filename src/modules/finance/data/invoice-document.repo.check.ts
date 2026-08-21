@@ -20,7 +20,9 @@ import '../../../../scripts/lib/module-aliases.mjs';
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
+const { setFeature } = await import('@core/features');
 const { createFolio, addCharges, issueInvoice, stornoInvoice } = await import('./folio.repo.ts');
+const { recordPayment } = await import('./folio-payments.repo.ts');
 const { loadInvoiceDocument } = await import('./invoice-document.repo.ts');
 const { generateGermanInvoicePdf } = await import('../domain/invoice-pdf-de.ts');
 
@@ -29,6 +31,9 @@ const ORG = 'org_dedoc';
 const RES = 'dedoc_res';
 
 async function cleanup() {
+  for (const t of ['fin_folio_payments', 'fin_fiscal_settings', 'fin_fiscal_outages', 'organization_features']) {
+    await sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [ORG]).catch(() => {});
+  }
   await sql.run('DELETE FROM fin_invoice_tax_totals WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM fin_invoice_lines WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM invoices WHERE organization_id = ?', [ORG]);
@@ -106,6 +111,53 @@ try {
     const pdf = await generateGermanInvoicePdf(doc);
     assert.ok(pdf.length > 1000, 'PDF порожній');
     console.log(`  ok  німецький PDF рендериться (${(pdf.length / 1024).toFixed(0)} KiB)`);
+
+    // ── §6 KassenSichV on the beleg ─────────────────────────────────────────
+    // A cash payment signed by the (stubbed) TSE must surface on the
+    // DOCUMENT: every §6 field plus the QR payload, and the recording-system
+    // serial from the property's fiscal settings. TSE spec §6.4, block C.
+    await setFeature(ORG, 'fiscal_de', true);
+    await sql.run(
+      `INSERT INTO fin_fiscal_settings (id, organization_id, property_id, tss_id, tse_client_id, recording_system_serial)
+       VALUES ('dedoc_fs', ?, 'dedoc_p', 'tss-1', 'client-1', 'ALISIO-KASSE-01')`,
+      [ORG]);
+    await recordPayment(
+      { folioId: folio, amount: 176.05, method: 'cash', invoiceId: issued.invoiceId },
+      { device: { async signReceipt() {
+        return {
+          tseSerial: 'TSE-9000', txNumber: '77', signatureCounter: '3001',
+          signature: 'PRUEFWERT==', startTime: '2026-08-05T09:00:00Z', endTime: '2026-08-05T09:00:01Z',
+          qrPayload: 'V0;ALISIO-KASSE-01;Kassenbeleg-V1;77;3001;...',
+          clientId: 'client-1', processType: 'Kassenbeleg-V1', processData: 'Beleg^...',
+        };
+      } } });
+    const fiscalDoc = await loadInvoiceDocument(issued.invoiceId);
+    assert.ok(fiscalDoc?.fiscal?.length, 'підписана готівка мусить зʼявитися на документі');
+    const beleg = fiscalDoc!.fiscal![0];
+    assert.strictEqual(beleg.failed, false);
+    assert.strictEqual(beleg.tseSerial, 'TSE-9000');
+    assert.strictEqual(beleg.txNumber, '77');
+    assert.strictEqual(beleg.signatureCounter, '3001');
+    assert.strictEqual(beleg.signature, 'PRUEFWERT==');
+    assert.strictEqual(beleg.recordingSystemSerial, 'ALISIO-KASSE-01',
+      'серійник системи запису мусить прийти з налаштувань обʼєкта');
+    assert.ok(beleg.qrPayload, 'QR — на додачу до тексту, не замість');
+    const fiscalPdf = await generateGermanInvoicePdf(fiscalDoc!);
+    assert.ok(fiscalPdf.length > pdf.length,
+      'PDF із TSE-блоком і QR мусить бути більшим за PDF без нього');
+    console.log('  ok  §6-реквізити і QR доходять до документа й до PDF');
+
+    // A failed signature reaches the paper too — as the outage wording, not
+    // as invented fields and not as silence.
+    await recordPayment(
+      { folioId: folio, amount: 10, method: 'cash', invoiceId: issued.invoiceId },
+      { device: { async signReceipt(): Promise<never> { throw new Error('down'); } } });
+    const failedDoc = await loadInvoiceDocument(issued.invoiceId);
+    assert.strictEqual(failedDoc!.fiscal!.length, 2);
+    assert.strictEqual(failedDoc!.fiscal![1].failed, true);
+    assert.ok((await generateGermanInvoicePdf(failedDoc!)).length > 1000,
+      'PDF із поміткою про збій TSE мусить рендеритися');
+    console.log('  ok  збій TSE друкується словами закону, не тишею');
 
     // ── the storno inherits the trail ───────────────────────────────────────
     const reversal = await stornoInvoice({ invoiceId: issued.invoiceId });
