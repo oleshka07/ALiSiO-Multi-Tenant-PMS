@@ -16,8 +16,6 @@ export { validatePromo, validatePromoOptions } from './widget-activate.handlers'
 export { getWidgetReservation, getWidgetReservationOptions } from './widget-reservation.handlers';
 export { trackWidgetEvent, trackWidgetEventOptions } from './widget-event.handlers';
 export { createWidgetReservation, createWidgetReservationOptions } from './widget-reserve.handlers';
-export { createWidgetCheckoutSession, createCheckoutSessionOptions } from './widget-checkout.handlers';
-export { handlePaymentReturn } from './widget-payment-return.handlers';
 export { getWidgetServices, bookWidgetService, getWidgetServicesOptions } from './widget-services.handlers';
 export { getWidgetCalendar, getWidgetCalendarOptions } from './widget-calendar-public.handlers';
 export { getWidgetSiteConfig, getWidgetSiteConfigOptions } from './widget-site.handlers';

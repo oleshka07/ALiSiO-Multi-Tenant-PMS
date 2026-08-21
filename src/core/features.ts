@@ -12,7 +12,6 @@ import { getSql, type Sql } from './db/async.ts';
  */
 
 export const FEATURES = {
-  teya: 'Платежі Teya (Чехія)',
   hostex: 'Channel manager Hostex',
   pricelabs: 'Динамічні ціни PriceLabs',
   telegram: 'Telegram-міст (задачі, реєстрація)',

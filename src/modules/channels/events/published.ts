@@ -11,10 +11,3 @@ export interface ARISyncedEvent {
   success: boolean;
 }
 
-export interface PaymentWebhookReceivedEvent {
-  provider: 'teya';
-  paymentRef: string;
-  amount: number;
-  currency: string;
-  status: 'succeeded' | 'failed' | 'refunded';
-}

@@ -15,7 +15,6 @@ export const TABS = [
   { id: 'design',     label: 'Дизайн',            icon: <Palette size={16} /> },
   { id: 'widget',     label: 'Віджет пошуку',     icon: <Code2 size={16} /> },
   { id: 'thank-you',  label: 'Конверсії',           icon: <BarChart2 size={16} /> },
-  { id: 'payments',   label: 'Платежі',            icon: <CreditCard size={16} /> },
   { id: 'rate-plans', label: 'Тарифні плани',     icon: <Tag size={16} /> },
   { id: 'coupons',    label: 'Промокоди',          icon: <Percent size={16} /> },
   { id: 'packages',   label: 'Пакети',             icon: <Package size={16} /> },

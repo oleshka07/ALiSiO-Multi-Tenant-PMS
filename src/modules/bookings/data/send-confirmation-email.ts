@@ -343,12 +343,12 @@ export async function sendBookingConfirmationEmail(reservationId: string, origin
     ${guestPageUrl ? `
     <div style="margin-bottom:24px;">
       <a href="${guestPageUrl}" style="display:inline-block;background:#2E6B4F;color:#fff;text-decoration:none;padding:14px 28px;border-radius:10px;font-weight:600;font-size:15px;box-shadow:0 2px 4px rgba(46,107,79,0.2);">
-        ${isPaid ? L.btnPage : L.btnPay}
+        ${L.btnPage}
       </a>
     </div>` : ''}
 
     <p style="font-size:14px;line-height:1.6;margin:0 0 24px;color:#555;">
-      ${isPaid ? L.pageHintPaid : L.pageHintUnpaid}
+      ${L.pageHintPaid}
     </p>
 
     <p style="font-size:15px;line-height:1.6;margin:0 0 32px;color:#444;">

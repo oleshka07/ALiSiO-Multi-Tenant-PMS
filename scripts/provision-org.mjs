@@ -3,7 +3,7 @@
  *
  *   node scripts/provision-org.mjs --name "Hotel Kyiv" --slug hotel-kyiv \
  *        --email owner@hotel-kyiv.ua [--password '…'] [--city Kyiv] \
- *        [--country UA] [--currency UAH] [--language uk] [--enable widget,teya]
+ *        [--country UA] [--currency UAH] [--language uk] [--enable widget]
  *
  * --language is the hotel's base language: uk en de cs pl nl fr. It sets the
  * interface for its staff and the source language of its content, so a German

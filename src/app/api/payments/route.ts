@@ -61,8 +61,8 @@ export const GET = withActor(async (request: NextRequest, _ctx, actor: Actor) =>
 
 // Methods that represent real money in our hands at the moment of click —
 // only `cash` qualifies. Card / bank / platform / invoice / online are
-// PMS-side markers: the actual money still has to arrive via Teya sync,
-// bank statement import, or channel statement, and creating a fin_operation
+// PMS-side markers: the actual money still has to arrive via a
+// bank statement import or a channel statement, and creating a fin_operation
 // here would double-count the same money once the real source lands.
 const CASH_METHODS = new Set(['cash']);
 
@@ -163,7 +163,7 @@ export const POST = withPermission('manage_payments', async (
       method,
       statusChanged,
       message:
-        'Позначка збережена. Реальна транзакція з\'явиться в Операціях коли надійде з Teya / банку / платформи.',
+        'Позначка збережена. Реальна транзакція з\'явиться в Операціях, коли надійдуть гроші (банк / платформа).',
     }, { status: 201 });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

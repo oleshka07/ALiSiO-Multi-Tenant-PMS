@@ -11,7 +11,6 @@ import CounterpartiesTab from './_components/CounterpartiesTab';
 import TagsTab from './_components/TagsTab';
 import AutoRulesTab from './_components/AutoRulesTab';
 import RecurringTemplatesTab from './_components/RecurringTemplatesTab';
-import TeyaSyncTab from './_components/TeyaSyncTab';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import FinanceUsersTab from './_components/FinanceUsersTab';
 
@@ -24,7 +23,6 @@ type TabId =
   | 'tags'
   | 'auto-rules'
   | 'recurring'
-  | 'teya-sync'
   | 'users';
 
 interface TabDef {
@@ -43,7 +41,6 @@ const TABS: TabDef[] = [
   { id: 'tags', label: 'Теги', icon: <Tag size={16} />, enabled: true },
   { id: 'auto-rules', label: 'Автоправила', icon: <Zap size={16} />, enabled: true },
   { id: 'recurring', label: 'Регулярки', icon: <Repeat size={16} />, enabled: true },
-  { id: 'teya-sync', label: 'Teya sync', icon: <CreditCard size={16} />, enabled: true },
   { id: 'users', label: 'Користувачі', icon: <UserCog size={16} />, enabled: true },
 ];
 
@@ -52,7 +49,7 @@ export default function FinanceSettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>('accounts');
   const { features } = useCurrentUser();
   // An organization without Teya has no Teya sync tab — same registry the API enforces.
-  const tabs = TABS.filter((t) => t.id !== 'teya-sync' || features.teya);
+  const tabs = TABS;
 
   return (
     <div className="page-container" style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -128,7 +125,6 @@ export default function FinanceSettingsPage() {
           {activeTab === 'tags' && <TagsTab />}
           {activeTab === 'auto-rules' && <AutoRulesTab />}
           {activeTab === 'recurring' && <RecurringTemplatesTab />}
-          {activeTab === 'teya-sync' && <TeyaSyncTab />}
           {activeTab === 'users' && <FinanceUsersTab />}
         </main>
       </div>

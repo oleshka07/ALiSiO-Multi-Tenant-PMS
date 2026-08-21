@@ -15,7 +15,6 @@ export { listWidgetSiteSources } from './booking-source-widgets.handlers';
 export { listAdditionalServices, createAdditionalService, updateAdditionalService, deleteAdditionalService } from './additional-services.handlers';
 export { listAvailabilityBlocks, createAvailabilityBlock, deleteAvailabilityBlock } from './availability-blocks.handlers';
 export { listServiceOrders, updateServiceOrder } from './service-orders.handlers';
-export { fixServiceOrderPayment, getPendingOrders } from './fix-payment.handlers';
 export { notifyReservationCreated } from '../domain/reservation-tg-notify';
 // Used by the widget module when a booking is completed.
 export { sendBookingConfirmationEmail } from '../data/send-confirmation-email';

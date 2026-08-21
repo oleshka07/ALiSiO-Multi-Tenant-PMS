@@ -37,9 +37,9 @@ export async function getWidgetSiteConfig(req: NextRequest) {
     // Payment is offered only when the organization has Teya at all — the env
     // fallback used to make every site on the server claim it takes cards.
     const payCfg = JSON.parse(site.payment_config || '{}');
-    const hasPayment = await hasFeature(site.organization_id, 'teya')
-      && (!!(payCfg.enabled && payCfg.provider === 'teya' && payCfg.teya?.client_id)
-        || !!process.env.TEYA_CLIENT_ID);
+    // Online payment is OFF everywhere: the Teya integration was removed
+    // 2026-08-22 and will return as a new, separate payments module.
+    const hasPayment = false;
 
     let maxAdults = 2;
     let maxChildren = 2;

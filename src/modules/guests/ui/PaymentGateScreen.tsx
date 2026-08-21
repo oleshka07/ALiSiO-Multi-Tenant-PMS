@@ -1,6 +1,5 @@
 'use client';
 
-import { useT } from '@core/i18n/client';import { useState } from 'react';
 import type { Translations, Lang } from '@/app/guest/[token]/translations';
 
 const ALL_LANGS: Lang[] = ['en', 'de', 'cs', 'uk', 'pl', 'nl', 'fr'];
@@ -11,17 +10,13 @@ interface Props {
   t: Translations;
   lang: Lang;
   setLang?: (l: Lang) => void;
-  token: string;
 }
 
-export function PaymentGateScreen({ data, t, lang, setLang, token }: Props) {
-  const tUi = useT();
+export function PaymentGateScreen({ data, t, lang, setLang }: Props) {
   const r = data.reservation;
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const remaining = data.payments?.remaining ?? r?.total_price ?? 0;
-  const currency = r?.currency || 'CZK';
+  const currency = r?.currency || '';
 
   // Format date
   const fmt = (d: string) => {
@@ -38,22 +33,6 @@ export function PaymentGateScreen({ data, t, lang, setLang, token }: Props) {
   const nights = r?.nights || 0;
   const guestName = r?.first_name || '';
   const unitName = r?.unit_name || '';
-
-  const handlePay = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/guest/${token}/pay-booking`, { method: 'POST' });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Payment error');
-      if (result.session_url) {
-        window.location.href = result.session_url;
-      }
-    } catch (e: any) {
-      setError(tUi(e.message));
-      setLoading(false);
-    }
-  };
 
   // Locale labels
   const labels: Record<string, Record<string, string>> = {
@@ -130,16 +109,6 @@ export function PaymentGateScreen({ data, t, lang, setLang, token }: Props) {
         <div className="gp-pg-remaining-amount">
           {Number(remaining).toLocaleString()} {currency}
         </div>
-
-        {error && (
-          <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 8, textAlign: 'center' }}>
-            ❌ {error}
-          </div>
-        )}
-
-        <button className="gp-pg-pay-btn" onClick={handlePay} disabled={loading}>
-          {loading ? '⏳ ...' : L.payBtn}
-        </button>
 
         {r?.property_phone && (
           <div className="gp-pg-contact">

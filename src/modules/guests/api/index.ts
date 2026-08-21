@@ -5,8 +5,6 @@ import { getGuestPortal as _getGuestPortal } from './portal.handlers';
 import { registerGuests as _registerGuests } from './register.handlers';
 import { submitFeedback as _submitFeedback } from './feedback.handlers';
 import { orderServices as _orderServices } from './services.handlers';
-import { payForService as _payForService } from './pay.handlers';
-import { payForBooking as _payForBooking } from './pay-booking.handlers';
 import { handleCartEvent as _handleCartEvent } from './cart.handlers';
 
 export { listGuests, createGuest } from './guests.handlers';
@@ -38,8 +36,6 @@ export const getGuestPortal   = withGuest(_getGuestPortal);
 export const registerGuests   = withGuest(_registerGuests);
 export const submitFeedback   = withGuest(_submitFeedback);
 export const orderServices    = withGuest(_orderServices);
-export const payForService    = withGuest(_payForService);
-export const payForBooking    = withGuest(_payForBooking);
 export const handleCartEvent  = withGuest(_handleCartEvent);
 export { getRegistry, updateRegistryEntry, exportRegistry } from './registry.handlers';
 export { getMeldeschein } from './meldeschein.handlers';

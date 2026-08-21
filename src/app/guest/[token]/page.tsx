@@ -327,28 +327,23 @@ export default function GuestPage() {
     return 'before';
   })();
 
-  // ─── Service ordering (with Teya payment) ─────
+  // ─── Service ordering — pay on site. The online-payment leg was removed
+  // with the payments module; orders land on the reception's list and the
+  // guest pays at the desk (or it goes onto the folio).
   const payInProgress = useRef(false);
   const handleOrderService = async (serviceId: string, serviceDates?: string[]) => {
     if (payInProgress.current) return; // W3: prevent double-click
     payInProgress.current = true;
     setOrderingService(serviceId);
     try {
-      const res = await fetch(`/api/guest/${token}/pay`, {
+      const res = await fetch(`/api/guest/${token}/services`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serviceId, quantity: serviceDates?.length || 1, serviceDates }),
+        body: JSON.stringify({ services: [{ serviceId, quantity: serviceDates?.length || 1 }] }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Payment error');
+        throw new Error(err.error || t.orderError);
       }
-      const result = await res.json();
-      if (result.session_url) {
-        // Redirect to Teya payment page
-        window.location.href = result.session_url;
-        return;
-      }
-      // Fallback: if no session_url, treat as simple order
       setSheet(null); setSelectedService(null);
       showToast(t.serviceOrdered);
     } catch (err: any) {
@@ -436,19 +431,18 @@ export default function GuestPage() {
     setSheet(null); // #12 FIX: Close sheet immediately for better UX
     logCartEvent('checkout', undefined, undefined, cartTotal);
     try {
-      const res = await fetch(`/api/guest/${token}/pay`, {
+      // Pay-on-site: the whole cart becomes service orders for reception.
+      const res = await fetch(`/api/guest/${token}/services`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: cartItems.map(i => ({
+          services: cartItems.map(i => ({
             serviceId: i.serviceId,
             quantity: i.quantity,
-            serviceDates: i.serviceDates,
-          }))
+          })),
         }),
       });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Payment error'); }
-      const result = await res.json();
-      if (result.session_url) { window.location.href = result.session_url; return; }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || t.orderError); }
+      setCartItems([]);
       showToast(t.serviceOrdered);
     } catch (err: any) {
       showToast(err.message || t.orderError, 'error');
@@ -603,7 +597,7 @@ export default function GuestPage() {
   if (!isPaid && paymentsSectionOn) {
     return (
       <div className="gp-root">
-        <PaymentGateScreen data={data} t={t} lang={lang} setLang={setLang} token={token} />
+        <PaymentGateScreen data={data} t={t} lang={lang} setLang={setLang} />
       </div>
     );
   }

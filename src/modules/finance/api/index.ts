@@ -290,14 +290,6 @@ export const deleteAttachment = await withPermission('manage_payments', _deleteA
 
 
 
-// ─── Orphan payment recovery (PR #G) + paid services (PR #H) ──
-import {
-  listOrphanPayments as _listOrphanPayments, listPaidServices as _listPaidServices,
-  restoreOrphanPayment as _restoreOrphanPayment,
-} from './payment-recovery.handlers';
-export const listOrphanPayments = await withFinanceRead(_listOrphanPayments);
-export const listPaidServices   = await withFinanceRead(_listPaidServices);
-export const restoreOrphanPayment = await withPermission('manage_payments', _restoreOrphanPayment);
 
 
 // ─── Finance user access (owner-only management + self-read) ──

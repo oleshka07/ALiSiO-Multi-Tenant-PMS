@@ -4,7 +4,6 @@
  * Series (each its own sequence):
  *   booking → BKG-YYYY-NNN
  *   airbnb  → AIR-YYYY-NNN
- *   teya    → TEYA-YYYY-NNN
  *   cash / house (direct) → YYYY-NNN  (HOUSE series, no prefix)
  *
  * Every sequence is per organization. An invoice number is a legal document
@@ -26,7 +25,6 @@ interface SeriesDef { series: string; prefix: string; }
 const SERIES: Record<string, SeriesDef> = {
   booking: { series: 'BKG',   prefix: 'BKG-' },
   airbnb:  { series: 'AIR',   prefix: 'AIR-' },
-  teya:    { series: 'TEYA',  prefix: 'TEYA-' },
   cash:    { series: 'HOUSE', prefix: '' },
   house:   { series: 'HOUSE', prefix: '' },
 };

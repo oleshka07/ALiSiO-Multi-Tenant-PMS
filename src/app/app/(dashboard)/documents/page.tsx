@@ -261,7 +261,7 @@ export default function DocumentsPage() {
   };
 
   // ── Batch Delete State & Handler ───────────────────────────────────────────
-  const [batchDeleteChannel, setBatchDeleteChannel] = useState<'airbnb' | 'booking' | 'teya' | 'all'>('airbnb');
+  const [batchDeleteChannel, setBatchDeleteChannel] = useState<'airbnb' | 'booking' | 'all'>('airbnb');
   const [batchDeleteMonth, setBatchDeleteMonth] = useState<string>(''); // YYYY-MM
   const [batchDeleteLoading, setBatchDeleteLoading] = useState<boolean>(false);
   const [batchDeleteError, setBatchDeleteError] = useState<string | null>(null);
@@ -923,7 +923,6 @@ export default function DocumentsPage() {
               {([
                 { channel: 'airbnb',  label: 'Airbnb',       color: '#FF5A5F', emoji: '🏠', hint: tUi('Airbnb → Фінанси → Виписка виплат (CSV)') },
                 { channel: 'booking', label: 'Booking.com',  color: '#003580', emoji: '🏨', hint: 'Booking → Finance → Payments report (CSV)' },
-                { channel: 'teya',    label: 'Teya',         color: '#7c3aed', emoji: '💳', hint: 'Teya dashboard → Transaction report (CSV)' },
               ] as const).map(({ channel, label, color, emoji, hint }) => (
                 <label key={channel} style={{ display: 'block', cursor: 'pointer' }}>
                   <input type="file" accept=".csv" style={{ display: 'none' }}
@@ -1224,7 +1223,6 @@ export default function DocumentsPage() {
                   >
                     <option value="airbnb">Airbnb (AIR)</option>
                     <option value="booking">Booking.com (BKG)</option>
-                    <option value="teya">Teya (TEYA)</option>
                     <option value="all">{tUi('Усі імпортовані канали')}</option>
                   </select>
                 </div>

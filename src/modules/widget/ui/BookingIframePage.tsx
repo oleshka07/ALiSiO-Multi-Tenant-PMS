@@ -624,27 +624,12 @@ export default function BookingPage() {
       const returnBase = currentSlug ? `/w/${currentSlug}` : '/booking';
       const returnPath = `${returnBase}?success=${resId}&payment_kind=room`;
 
-      const payRes = await fetch(`${API_BASE}/api/booking/checkout-session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: reservation?.totalPrice ?? 0,
-          currency: 'CZK',
-          description: `Booking ${resId} — ${reservation?.unitName}`,
-          reservation_id: resId,
-          site_id: currentSiteId || undefined,
-          return_path: returnPath,
-        }),
-      });
-      if (payRes.ok) {
-        const payData = await payRes.json();
-        if (payData.session_url) {
-          window.dispatchEvent(new CustomEvent('bk:navigate', { detail: { to: 'payment' } }));
-          window.location.href = payData.session_url;
-          return;
-        }
-      }
-      throw new Error('Payment session creation failed');
+      // Online payment was removed with the payments module — the booking
+      // stands as created and is paid on arrival. The success return path is
+      // the same one the payment redirect used to come back to.
+      void currentSiteId;
+      window.location.href = returnPath;
+      return;
     } catch (e: any) {
       setError(e?.message || t.errorOccurred);
       setRedirectingToPayment(false);

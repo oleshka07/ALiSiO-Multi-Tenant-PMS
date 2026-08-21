@@ -82,40 +82,12 @@ function bookingDate(s: string): string {
   return s;
 }
 
-/** Extract YYYY-MM-DD from Teya date fields ("2026-05-31" or "2026-05-31 12:34:56") */
-function teyaDate(s: string): string {
-  if (!s) return '';
-  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
-  return m ? m[1] : s.trim();
-}
 
-// ─── Teya: Payment purpose by CZK amount ─────────────────────────────────────
-//
-// Rules (in priority order):
-//   = 100       → Parkování osobního automobilu
-//   ≤ 50        → Rekreační poplatek
-//   51–150      → Dřevěné uhlí
-//   151–280     → Dřevo na oheň
-//   281–399     → Pronájem grilu
-//   400–599     → Ubytovací služby
-//   600–1 499   → Parkování karavanu a ubytování
-//   ≥ 1 500     → Ubytovací služby
-
-function teyaPurpose(amount: number): string {
-  if (amount === 100)  return 'Parkování osobního automobilu';
-  if (amount <= 50)    return 'Rekreační poplatek';
-  if (amount <= 150)   return 'Dřevěné uhlí';
-  if (amount <= 280)   return 'Dřevo na oheň';
-  if (amount <= 399)   return 'Pronájem grilu';
-  if (amount <= 599)   return 'Ubytovací služby';
-  if (amount <= 1499)  return 'Parkování karavanu a ubytování';
-  return 'Ubytovací služby';
-}
 
 // ─── Parsed row types ────────────────────────────────────────────────────────
 
 export interface BatchRow {
-  source: 'airbnb' | 'booking' | 'teya';
+  source: 'airbnb' | 'booking';
   source_ref: string;
   guest_name: string;
   needs_guest_name?: boolean; // true → amount ≥ 10 000 CZK, buyer name unknown
@@ -269,88 +241,10 @@ function parseBooking(csv: string): BatchRow[] {
 // Rules:
 //   • Keep only Status = SUCCEEDED (skip FAILED, PENDING, REVERSED)
 //   • Skip Payment type = REFUND
-//   • Description = teyaPurpose(Sales in CZK)
 //   • Guest name:
 //       amount < 10 000 CZK  → "Konečný zákazník"
 //       amount ≥ 10 000 CZK  → empty (needs_guest_name=true, UI will ask)
 
-function parseTeya(csv: string): BatchRow[] {
-  const lines = csv.split('\n').map(l => l.replace(/\r$/, ''));
-  if (lines.length < 2) return [];
-  const hdrs = parseLine(lines[0]);
-  const idx = (n: string) => hdrs.findIndex(h => h.trim() === n);
-
-  const iDate    = idx('Date');
-  const iStore   = idx('Store name');
-  const iContext = idx('Payment context');
-  const iDevId   = idx('Device ID');
-  const iStatus  = idx('Status');
-  const iType    = idx('Payment type');
-  const iSales   = idx('Sales');
-
-  if (iDate === -1 || iSales === -1 || iStatus === -1) {
-    throw new Error(
-      'Не розпізнано як Teya-виписку. Перевірте формат CSV ' +
-      '(очікується: Date, Store name, Status, Sales…).'
-    );
-  }
-
-  const rows: BatchRow[] = [];
-  // Track row counters per day+device to handle same-amount transactions
-  const refCounts: Record<string, number> = {};
-
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    const cols = parseLine(line);
-
-    const status = (cols[iStatus] ?? '').trim().toUpperCase();
-    const type   = (cols[iType]   ?? '').trim().toUpperCase();
-
-    // Only SUCCEEDED payments — skip FAILED, PENDING, REVERSED
-    if (status !== 'SUCCEEDED') continue;
-    // REFUND rows become credit notes (storno faktury) — do NOT skip them
-    const isCreditNote = type === 'REFUND';
-
-    const sales = parseNum(cols[iSales] ?? '0');
-    if (sales <= 0) continue;
-
-    const rawDate = (cols[iDate]    ?? '').trim();
-    const store   = (cols[iStore]   ?? '').trim();
-    const context = (cols[iContext] ?? '').trim();
-    const devId   = iDevId >= 0 ? (cols[iDevId] ?? '').trim() : '';
-    const date    = teyaDate(rawDate);
-
-    // Unique ref: date + device + store + sales + counter (for same-day duplicates)
-    // Credit notes get an extra '_REFUND' suffix for deduplication
-    const refBase = `teya_${date}_${devId || store}_${sales}${isCreditNote ? '_REFUND' : ''}`;
-    refCounts[refBase] = (refCounts[refBase] ?? 0) + 1;
-    const ref = refCounts[refBase] > 1 ? `${refBase}_${refCounts[refBase]}` : refBase;
-
-    // Payment purpose — credit notes prefix with "Storno – "
-    const purpose = teyaPurpose(sales);
-
-    // Guest name logic
-    const needsName  = sales >= 10000;
-    const guestName  = needsName ? '' : 'Konečný zákazník';
-
-    rows.push({
-      source: 'teya',
-      source_ref: ref,
-      guest_name: guestName,
-      needs_guest_name: needsName,
-      listing: context,
-      check_in: date,
-      check_out: date,
-      description: purpose,
-      amount: sales,
-      currency: 'CZK',
-      date,
-      op_type: 'income',
-    });
-  }
-  return rows;
-}
 
 // ─── Invoice number generator ─────────────────────────────────────────────────
 
@@ -375,11 +269,11 @@ async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promi
   try {
     const sql = getSql();
     const url = new URL(request.url);
-    const channel = url.searchParams.get('channel')?.toLowerCase(); // 'airbnb', 'booking', 'teya', or 'all'
+    const channel = url.searchParams.get('channel')?.toLowerCase(); // 'airbnb', 'booking', or 'all'
     const month = url.searchParams.get('month'); // optional 'YYYY-MM'
 
-    if (!channel || !['airbnb', 'booking', 'teya', 'all'].includes(channel)) {
-      return NextResponse.json({ error: 'channel must be airbnb|booking|teya|all' }, { status: 400 });
+    if (!channel || !['airbnb', 'booking', 'all'].includes(channel)) {
+      return NextResponse.json({ error: 'channel must be airbnb|booking|all' }, { status: 400 });
     }
 
     // Build conditions
@@ -391,9 +285,6 @@ async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promi
     } else if (channel === 'booking') {
       notesPattern = 'booking:%';
       seriesVal = 'BKG';
-    } else if (channel === 'teya') {
-      notesPattern = 'teya:%';
-      seriesVal = 'TEYA';
     }
 
     // Unscoped this wiped every hotel's imported invoices, not just this one's.
@@ -450,7 +341,6 @@ async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promi
     const channelLabelMap: Record<string, string> = {
       airbnb: 'Airbnb',
       booking: 'Booking.com',
-      teya: 'Teya',
       all: 'всіх імпортованих каналів',
     };
 
@@ -476,16 +366,15 @@ async function _POST(request: NextRequest, _ctx: unknown, actor: Actor): Promise
     if (!(file instanceof File)) {
       return NextResponse.json({ error: 'file required' }, { status: 400 });
     }
-    if (!['airbnb', 'booking', 'teya'].includes(channel)) {
-      return NextResponse.json({ error: 'channel must be airbnb|booking|teya' }, { status: 400 });
+    if (!['airbnb', 'booking'].includes(channel)) {
+      return NextResponse.json({ error: 'channel must be airbnb|booking' }, { status: 400 });
     }
 
     const text = await file.text();
 
     let rows: BatchRow[];
     if (channel === 'airbnb')       rows = parseAirbnb(text);
-    else if (channel === 'booking') rows = parseBooking(text);
-    else                            rows = parseTeya(text);
+    else                            rows = parseBooking(text);
 
     if (rows.length === 0) {
       return NextResponse.json(
