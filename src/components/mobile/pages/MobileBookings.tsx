@@ -318,7 +318,9 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
           </button>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {categoryFilter === 'resort' && (
+          {/* The modal draws Building F's physical corridor — offer it only
+              where F-rooms exist, not to every hotel with a 'resort' type. */}
+          {units.some(u => /^F\d+$/i.test(u.code || u.name || '')) && (
             <button
               onClick={() => setShowRoomAllocation(true)}
               style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 10, background: 'rgba(91,124,255,0.12)', border: '1px solid rgba(91,124,255,0.3)', color: 'var(--accent-primary)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}

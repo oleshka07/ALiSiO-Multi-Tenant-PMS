@@ -162,7 +162,7 @@ export default function CapexPage() {
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="form-group">
                 <label>{t('Назва *')}</label>
-                <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder={t('Реконструкція даху будова F')}
+                <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder={t('Реконструкція даху')}
                   style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>

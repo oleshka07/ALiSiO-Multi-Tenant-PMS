@@ -193,7 +193,7 @@ export function WidgetTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Widg
         <div style={{ marginBottom: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
           {t('Текст, який побачить гість на екрані підтвердження бронювання. Вкажіть email та телефон для зв\'язку.')}
         </div>
-        <input className="form-input" placeholder={t('Якщо щось — пиши на hello@yoursite.com або +420 000 000 000')}
+        <input className="form-input" placeholder={t('Якщо щось — пиши на hello@yoursite.com')}
           value={cfg.supportContact || ''}
           onChange={e => setCfg(c => ({ ...c, supportContact: e.target.value }))} />
         <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>{t('Якщо порожньо — використовується текст за замовчуванням з налаштувань мови')}</div>

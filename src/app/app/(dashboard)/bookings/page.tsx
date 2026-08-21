@@ -972,7 +972,7 @@ function BookingsDesktop() {
               mode="edit"
               bookingId={editBooking.id}
               initial={editInitial}
-              currency={editBooking.currency || 'CZK'}
+              currency={editBooking.currency || undefined}
               unitTypes={unitTypes}
               allUnits={allUnits}
               bookingSources={bookingSources}

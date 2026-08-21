@@ -634,7 +634,7 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
 
           <div className="v3-field">
             <label className="v3-field-label">{t.phone}</label>
-            <input className="v3-field-input" type="tel" placeholder="+420..." value={phone} onChange={e => setPhone(e.target.value)} />
+            <input className="v3-field-input" type="tel" placeholder="+…" value={phone} onChange={e => setPhone(e.target.value)} />
           </div>
 
           {/* Guest page & GDPR notice */}

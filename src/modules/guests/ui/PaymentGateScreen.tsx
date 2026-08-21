@@ -141,9 +141,11 @@ export function PaymentGateScreen({ data, t, lang, setLang, token }: Props) {
           {loading ? '⏳ ...' : L.payBtn}
         </button>
 
-        <div className="gp-pg-contact">
-          {L.contact}: <a href="tel:+420773708849">+420 773 708 849</a>
-        </div>
+        {r?.property_phone && (
+          <div className="gp-pg-contact">
+            {L.contact}: <a href={`tel:${r.property_phone}`}>{r.property_phone}</a>
+          </div>
+        )}
       </div>
 
       {/* Locked features */}

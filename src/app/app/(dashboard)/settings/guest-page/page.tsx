@@ -478,7 +478,7 @@ export default function GuestPageSettingsPage() {
                     </div>
                     <div className="form-group">
                       <label className="form-label">{t('Телефон підтримки / екстренний')}</label>
-                      <input className="form-input" value={pEmergency} placeholder="+420 773 708 849" onChange={e => setPEmergency(e.target.value)} />
+                      <input className="form-input" value={pEmergency} placeholder="+…" onChange={e => setPEmergency(e.target.value)} />
                     </div>
                     <div className="form-group">
                       <label className="form-label">{t('Відео-гайд (URL)')}</label>

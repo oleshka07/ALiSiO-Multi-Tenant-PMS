@@ -3,6 +3,7 @@
 import { useT } from '@core/i18n/client';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Loader2, Save, Plus } from 'lucide-react';
+import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -98,7 +99,6 @@ const CITY_TAX_PAID_OPTIONS: { value: string; label: string }[] = [
   { value: 'exempt', label: '🚫 Звільнено' },
 ];
 
-const CITY_TAX_PER_ADULT_PER_NIGHT = 25;
 
 function emptyValues(): BookingFormValues {
   return {
@@ -159,7 +159,26 @@ export default function BookingForm({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const currency = propCurrency || 'CZK';
+
+  // The property's OWN city tax per adult per night. The literal 25 that
+  // used to sit here was the first customer's Kurtaxe in the first
+  // customer's currency, prefilled into every hotel's bookings. 0 until the
+  // property says otherwise — the operator can always type the amount.
+  const [cityTaxRate, setCityTaxRate] = useState(0);
+  useEffect(() => {
+    fetch('/api/properties')
+      .then(r => (r.ok ? r.json() : []))
+      .then((props) => {
+        if (Array.isArray(props) && props[0]?.city_tax_per_night != null) {
+          setCityTaxRate(Number(props[0].city_tax_per_night) || 0);
+        }
+      })
+      .catch(() => {});
+  }, []);
+  // The organization's currency, never a hardcoded one: 'CZK' here labelled
+  // every hotel's money with the first customer's currency.
+  const { organization } = useCurrentUser();
+  const currency = propCurrency || organization?.currency || '';
 
   const getCommissionPct = useCallback((sourceCode: string) => {
     const src = bookingSources.find(s => s.code === sourceCode);
@@ -174,9 +193,9 @@ export default function BookingForm({
 
   const recalcCityTax = useCallback((adults: number, checkIn: string, checkOut: string) => {
     const nights = calcNights(checkIn, checkOut);
-    if (nights > 0 && adults > 0) return String(adults * nights * CITY_TAX_PER_ADULT_PER_NIGHT);
+    if (nights > 0 && adults > 0 && cityTaxRate > 0) return String(adults * nights * cityTaxRate);
     return '0';
-  }, []);
+  }, [cityTaxRate]);
 
   // The hotel's own categories, from its own unit types — label is the name
   // the operator gave the category, the type stays the behaviour key.
@@ -520,7 +539,7 @@ export default function BookingForm({
           </div>
           <div className="form-group">
             <label className="form-label">{t('Телефон')}</label>
-            <input className="form-input" type="tel" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="+420..." />
+            <input className="form-input" type="tel" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="+…" />
           </div>
         </div>
       </div>
@@ -583,9 +602,9 @@ export default function BookingForm({
           <div className="form-group">
             <label className="form-label">
               {t('Сума збору (')}{currency})
-              {form.checkIn && form.checkOut && form.adults > 0 && (
+              {form.checkIn && form.checkOut && form.adults > 0 && cityTaxRate > 0 && (
                 <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginLeft: 4 }}>
-                  {t('авто:')} {form.adults}×{nights}×{CITY_TAX_PER_ADULT_PER_NIGHT}
+                  {t('авто:')} {form.adults}×{nights}×{cityTaxRate}
                 </span>
               )}
             </label>

@@ -620,7 +620,7 @@ export default function MobileCalendar() {
           <button onClick={goToday} style={todayBtn}>{tUi('Сьогодні')}</button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {category === 'resort' && (
+          {units.some(u => /^F\d+$/i.test(u.code || u.name || '')) && (
             <button
               onClick={() => setShowRoomAllocation(true)}
               style={{ ...navBtn, color: 'var(--accent-primary)' }}

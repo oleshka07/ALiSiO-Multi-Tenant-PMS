@@ -54,6 +54,9 @@ const FORBIDDEN = [
   /Luhačovice/i,
   /49\.1122/,
   /Будови F/i,
+  // The first customer's real reception phone, hardcoded into guest screens:
+  // every hotel's guests were invited to dial it.
+  /773.?708.?849/,
 ];
 
 // Path → why the name is allowed to remain there.

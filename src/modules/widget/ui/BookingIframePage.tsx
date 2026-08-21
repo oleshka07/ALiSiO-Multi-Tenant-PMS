@@ -1418,7 +1418,7 @@ export default function BookingPage() {
                       type="tel"
                       value={phone}
                       onChange={e => setPhone(e.target.value)}
-                      placeholder="+420..."
+                      placeholder="+…"
                     />
                   </div>
                   <div className="booking-field">

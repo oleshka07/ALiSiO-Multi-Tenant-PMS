@@ -276,7 +276,7 @@ export default function GroupBookingModal({ open, onClose, onCreated, bookingSou
               </div>
               <div className="form-group">
                 <label className="form-label">{t('Телефон')}</label>
-                <input className="form-input" type="tel" placeholder="+420..." value={form.phone}
+                <input className="form-input" type="tel" placeholder="+…" value={form.phone}
                   onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} />
               </div>
             </div>

@@ -108,10 +108,15 @@ export function FarBeforeScreen({ data, t, lang, dLeft, onRegisterClick, isRegis
               <span>🕙</span><span>{L.checkOutBy} <b>{checkOutTime}</b></span>
             </div>
           )}
-          <div className="gp-info-row">
-            <span>📞</span>
-            <a href="tel:+420773708849" style={{ color: 'var(--gp-tint)', fontWeight: 600 }}>+420 773 708 849</a>
-          </div>
+          {/* THIS property's phone — a literal here was the first customer's
+              number, dialled by every other hotel's guests. No phone, no row:
+              a guessed number is worse than none. */}
+          {r?.property_phone && (
+            <div className="gp-info-row">
+              <span>📞</span>
+              <a href={`tel:${r.property_phone}`} style={{ color: 'var(--gp-tint)', fontWeight: 600 }}>{r.property_phone}</a>
+            </div>
+          )}
         </div>
       </div>
 

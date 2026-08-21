@@ -68,7 +68,7 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@alisio.cz"
+              placeholder="admin@hotel.com"
               required
               autoComplete="email"
               autoFocus
