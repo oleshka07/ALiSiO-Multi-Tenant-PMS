@@ -1414,6 +1414,7 @@ CREATE TABLE "property_guest_config" (
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "parking_photo_url" TEXT,
+  "parking_maps_url" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("property_id")
 );

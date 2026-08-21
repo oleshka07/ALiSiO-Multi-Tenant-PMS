@@ -2641,7 +2641,8 @@ function runMigrations(database: any) {
         weather_lon REAL,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-        parking_photo_url TEXT
+        parking_photo_url TEXT,
+        parking_maps_url TEXT
       )
     `);
     // Seed from first existing guest_page_config
@@ -2658,6 +2659,20 @@ function runMigrations(database: any) {
       }
     } catch { /* seed silently */ }
     console.log('[DB] Created property_guest_config table');
+  }
+
+  // The route to the parking is its own link (mirror of Postgres 0029).
+  // ALTER after the CREATE above — on a fresh database the table is created
+  // with the column already in place and this block is a no-op; an ALTER
+  // that runs before its CREATE breaks a fresh bootstrap.
+  try {
+    const pgcCols = (database.prepare('PRAGMA table_info(property_guest_config)').all() as any[]).map((c: any) => c.name);
+    if (!pgcCols.includes('parking_maps_url')) {
+      database.exec('ALTER TABLE property_guest_config ADD COLUMN parking_maps_url TEXT');
+      console.log('[DB] Added parking_maps_url to property_guest_config');
+    }
+  } catch (e: any) {
+    console.log('[DB] parking_maps_url migration note:', e.message);
   }
 
   // --- Migration: guest_chat_messages ---

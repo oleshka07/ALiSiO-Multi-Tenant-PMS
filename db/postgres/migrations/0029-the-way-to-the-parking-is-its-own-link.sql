@@ -1,0 +1,12 @@
+-- The way to the parking is its own link.
+--
+-- The guest page's parking sheet navigated with maps_url — the pin of the
+-- HOTEL. Where the parking lot is not at the front door (a separate yard, a
+-- gate around the corner), the button confidently led the guest to the wrong
+-- place, and the only workaround was pasting the route into free-text
+-- parking_info where no button reads it.
+--
+-- One nullable column: a Google-Maps (or any) link straight to the parking.
+-- Empty = the sheet falls back to maps_url, exactly as before, so no
+-- existing page changes until someone fills the field.
+ALTER TABLE "property_guest_config" ADD COLUMN IF NOT EXISTS "parking_maps_url" TEXT;

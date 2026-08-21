@@ -1246,8 +1246,8 @@ export default function GuestPage() {
             <div style={{ fontSize: 14, color: 'var(--gp-sub)' }}>{r.property_address}</div>
           )}
         </div>
-        {cfg?.maps_url && (
-          <a href={cfg.maps_url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+        {(cfg?.parking_maps_url || cfg?.maps_url) && (
+          <a href={cfg.parking_maps_url || cfg.maps_url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
             <button className="gp-btn gp-btn-primary">{t.openGoogleMaps}</button>
           </a>
         )}

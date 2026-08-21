@@ -108,6 +108,7 @@ export default function GuestPageSettingsPage() {
   const [pPets, setPPets] = useState('welcome');
   const [pParking, setPParking] = useState('');
   const [pParkingPhoto, setPParkingPhoto] = useState('');
+  const [pParkingMaps, setPParkingMaps] = useState('');
   const [pWeatherLat, setPWeatherLat] = useState('');
   const [pWeatherLon, setPWeatherLon] = useState('');
   const [pEmergency, setPEmergency] = useState('');
@@ -244,6 +245,7 @@ export default function GuestPageSettingsPage() {
     setPPets(cfg.pets_policy || 'welcome');
     setPParking(cfg.parking_info || '');
     setPParkingPhoto(cfg.parking_photo_url || '');
+    setPParkingMaps(cfg.parking_maps_url || '');
     setPWeatherLat(cfg.weather_lat?.toString() || '');
     setPWeatherLon(cfg.weather_lon?.toString() || '');
     setPEmergency(cfg.emergency_phone || '');
@@ -279,6 +281,7 @@ export default function GuestPageSettingsPage() {
           rules: pRules, faq_items: pFaq, useful_info: pUseful,
           maps_url: pMaps || null, territory_map_url: pTerritoryMap || null,
           pets_policy: pPets, parking_info: pParking, parking_photo_url: pParkingPhoto || null,
+          parking_maps_url: pParkingMaps || null,
           weather_lat: pWeatherLat ? parseFloat(pWeatherLat) : null,
           weather_lon: pWeatherLon ? parseFloat(pWeatherLon) : null,
           emergency_phone: pEmergency || null, video_guide_url: pVideoGuide || null,
@@ -343,10 +346,12 @@ export default function GuestPageSettingsPage() {
                       <label className="form-label">{t('Google Maps URL (спільний)')}</label>
                       <input className="form-input" type="url" value={pMaps} placeholder="https://maps.app.goo.gl/..." onChange={e => setPMaps(e.target.value)} />
                     </div>
-                    <div className="form-group">
-                      <label className="form-label">{t('Карта території (URL зображення)')}</label>
-                      <input className="form-input" type="url" value={pTerritoryMap} placeholder="https://..." onChange={e => setPTerritoryMap(e.target.value)} />
-                    </div>
+                    <ImageUploadField
+                      label={t('Карта території')}
+                      value={pTerritoryMap}
+                      onChange={setPTerritoryMap}
+                      folder="territory-maps"
+                    />
                   </div>
 
                 <div style={{ fontWeight: 700, fontSize: 12, margin: '14px 0 0', color: 'var(--text-secondary)' }}>{t('Тварини та паркінг')}</div>
@@ -363,9 +368,16 @@ export default function GuestPageSettingsPage() {
                       <label className="form-label">{t('Інформація про паркінг')}</label>
                       <textarea className="form-input" rows={2} value={pParking} placeholder="Free parking at the entrance..." onChange={e => setPParking(e.target.value)} style={{ resize: 'vertical' }} />
                     </div>
+                    <ImageUploadField
+                      label={t('Фото паркінгу')}
+                      value={pParkingPhoto}
+                      onChange={setPParkingPhoto}
+                      folder="parking"
+                    />
                     <div className="form-group">
-                      <label className="form-label">{t('Фото паркінгу (URL)')}</label>
-                      <input className="form-input" value={pParkingPhoto} placeholder="https://example.com/parking.jpg" onChange={e => setPParkingPhoto(e.target.value)} />
+                      <label className="form-label">{t('Маршрут до паркінгу (Google Maps URL)')}</label>
+                      <input className="form-input" type="url" value={pParkingMaps} placeholder="https://maps.app.goo.gl/..." onChange={e => setPParkingMaps(e.target.value)} />
+                      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>{t('Якщо порожньо — кнопка навігації в секції паркінгу веде на спільний Google Maps URL')}</div>
                     </div>
                   </div>
     </>),

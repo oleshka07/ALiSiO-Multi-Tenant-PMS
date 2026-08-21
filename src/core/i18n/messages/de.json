@@ -1222,7 +1222,6 @@
   "Канбан": "Kanban",
   "Капекс": "Capex",
   "Карта відвідувань (Сесії)": "Besuchskarte (Sitzungen)",
-  "Карта території (URL зображення)": "Geländekarte (Bild-URL)",
   "Картка": "Karte",
   "Картка гостя": "Gastkarte",
   "Картка ресторану і меню": "Restaurantkarte und Speisekarte",
@@ -2387,7 +2386,6 @@
   "Фото входу / лок-бокса": "Foto des Eingangs / der Schlüsselbox",
   "Фото документа": "Foto des Dokuments",
   "фото документа надсилається в OpenAI (США)": "Das Foto des Dokuments wird an OpenAI (USA) übermittelt",
-  "Фото паркінгу (URL)": "Foto des Parkplatzes (URL)",
   "Фото та файли": "Fotos und Dateien",
   "Фото, зручності, опис": "Fotos, Ausstattung, Beschreibung",
   "Фотографії об'єкта": "Fotos des Objekts",
@@ -2556,5 +2554,11 @@
   "URL сторінки об'єкта": "URL der Objektseite",
   "URL сторінки подяки (Thank You)": "URL der Danke-Seite (Thank You)",
   "UTM Маркетингові кампанії": "UTM-Marketingkampagnen",
-  "VIP ваучер — Романтичний вікенд у лісі: 2 ночі + сесія сауни + чан + сніданки.": "VIP-Gutschein — Romantisches Wochenende im Wald: 2 Nächte + Saunagang + Badezuber + Frühstück."
+  "VIP ваучер — Романтичний вікенд у лісі: 2 ночі + сесія сауни + чан + сніданки.": "VIP-Gutschein — Romantisches Wochenende im Wald: 2 Nächte + Saunagang + Badezuber + Frühstück.",
+  "«Секції сторінки»": "„Seitenbereiche“",
+  "💡 Wi-Fi, ресторан, правила, FAQ та Explore редагуються у вкладці": "💡 WLAN, Restaurant, Regeln, FAQ und Explore werden im Tab bearbeitet",
+  "Карта території": "Geländekarte",
+  "Маршрут до паркінгу (Google Maps URL)": "Route zum Parkplatz (Google-Maps-URL)",
+  "Фото паркінгу": "Foto des Parkplatzes",
+  "Якщо порожньо — кнопка навігації в секції паркінгу веде на спільний Google Maps URL": "Wenn leer, führt die Navigationstaste im Parkplatz-Bereich zur gemeinsamen Google-Maps-URL"
 }
