@@ -228,9 +228,9 @@ CREATE TABLE "booking_sites" (
   "created_by" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "organization_id" TEXT,
   "payment_config" TEXT,
   "allowed_domains" TEXT,
+  "organization_id" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("slug"),
   CHECK (type IN ('widget', 'self-hosted')),
@@ -443,24 +443,22 @@ CREATE TABLE "coupons" (
 );
 
 CREATE TABLE "event_addons" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "id" TEXT PRIMARY KEY DEFAULT encode(gen_random_bytes(16), 'hex'),
   "organization_id" TEXT,
   "property_id" TEXT NOT NULL,
   "name" TEXT NOT NULL,
   "kind" TEXT NOT NULL,
-  "price_gross" NUMERIC(14,2) DEFAULT 0 NOT NULL,
-  "vat_code" TEXT DEFAULT 'standard' NOT NULL,
+  "price_gross" NUMERIC(14,2) NOT NULL DEFAULT 0,
+  "vat_code" TEXT NOT NULL DEFAULT 'standard',
   "note" TEXT,
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
-  "is_active" BOOLEAN DEFAULT true NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  UNIQUE ("property_id", "name"),
-  CHECK (kind IN ('per_person','flat','per_hour','per_piece'))
+  "is_active" BOOLEAN NOT NULL DEFAULT true,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK ("kind" IN ('per_person','flat','per_hour','per_piece'))
 );
 
 CREATE TABLE "event_bookings" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "id" TEXT PRIMARY KEY DEFAULT encode(gen_random_bytes(16), 'hex'),
   "organization_id" TEXT,
   "property_id" TEXT NOT NULL,
   "space_id" TEXT NOT NULL,
@@ -472,18 +470,18 @@ CREATE TABLE "event_bookings" (
   "customer_email" TEXT,
   "customer_phone" TEXT,
   "company" TEXT,
-  "status" TEXT DEFAULT 'confirmed' NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'confirmed',
   "notes" TEXT,
   "folio_id" TEXT,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  CHECK (status IN ('draft','confirmed','cancelled')),
-  CHECK (time_from < time_to)
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK ("status" IN ('draft','confirmed','cancelled')),
+  CHECK ("time_from" < "time_to")
 );
 
+-- Halls rented by time block, priced by suggestion — see migration 0024.
 CREATE TABLE "event_spaces" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "id" TEXT PRIMARY KEY DEFAULT encode(gen_random_bytes(16), 'hex'),
   "organization_id" TEXT,
   "property_id" TEXT NOT NULL,
   "name" TEXT NOT NULL,
@@ -492,11 +490,9 @@ CREATE TABLE "event_spaces" (
   "block_prices" TEXT,
   "vat_code" TEXT DEFAULT 'standard' NOT NULL,
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
-  "is_active" BOOLEAN DEFAULT true NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  UNIQUE ("property_id", "code")
+  "is_active" BOOLEAN NOT NULL DEFAULT true,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE "expense_categories" (
@@ -604,11 +600,11 @@ CREATE TABLE "fin_folio_items" (
   "unit_price_gross" NUMERIC(14,2) DEFAULT 0 NOT NULL,
   "total_gross" NUMERIC(14,2) DEFAULT 0 NOT NULL,
   "vat_rate" DOUBLE PRECISION DEFAULT 0 NOT NULL,
-  "service_order_id" TEXT,
   "source" TEXT DEFAULT 'manual' NOT NULL,
   "voided_by_item_id" TEXT,
   "invoice_id" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "service_order_id" TEXT,
   PRIMARY KEY ("id"),
   CHECK (kind IN ('lodging','service','fee','city_tax','manual')),
   CHECK (source IN ('nightly','ota_split','manual','restaurant','import','service'))
@@ -624,6 +620,7 @@ CREATE TABLE "fin_folios" (
   "payer_address" TEXT,
   "payer_vat_no" TEXT,
   "payer_debtor_no" TEXT,
+  -- Jurisdiction for a folio with no reservation (events). See migration 0024.
   "property_id" TEXT,
   "status" TEXT DEFAULT 'open' NOT NULL,
   "label" TEXT,
@@ -980,18 +977,20 @@ CREATE TABLE "guest_page_config" (
   UNIQUE ("unit_type_id")
 );
 
+-- How THIS property's guest page differs from the section registry in code
+-- (guest-page-sections.ts). No rows = the registry's defaults. Inline
+-- REFERENCES on purpose: migration 0022 creates this table on environments
+-- that predate it, and the auto-generated constraint names must match.
 CREATE TABLE "guest_page_sections" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "id" TEXT PRIMARY KEY DEFAULT encode(gen_random_bytes(16), 'hex'),
   "organization_id" TEXT,
   "property_id" TEXT NOT NULL,
   "section" TEXT NOT NULL,
-  "enabled" BOOLEAN DEFAULT true NOT NULL,
+  "enabled" BOOLEAN NOT NULL DEFAULT true,
   "sort_order" BIGINT,
-  "config" JSONB,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  UNIQUE ("property_id", "section")
+  "config" TEXT,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE "guest_registrations" (
@@ -1150,6 +1149,8 @@ CREATE TABLE "invoices" (
   "custom_description" TEXT,
   "custom_email" TEXT,
   "corrects_invoice_id" TEXT,
+  -- Which payer this document is for. A stay can produce several: two guests
+  -- sharing a room, each paying their own half. See migration 0019.
   "folio_id" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("organization_id", "invoice_number"),
@@ -1468,6 +1469,12 @@ CREATE TABLE "reservations" (
   "payment_status" TEXT DEFAULT 'unpaid' NOT NULL,
   "source" TEXT DEFAULT 'direct' NOT NULL,
   "total_price" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "lodging_discount_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
+  "lodging_discount_reason" TEXT,
+  -- What was sold on THIS booking: NULL follows the property's channel rule,
+  -- TRUE carves breakfast out of the total, FALSE means the whole amount is
+  -- lodging. See migration 0020.
+  "breakfast_included" BOOLEAN,
   "currency" TEXT DEFAULT 'CZK' NOT NULL,
   "notes" TEXT,
   "internal_notes" TEXT,
@@ -1478,7 +1485,6 @@ CREATE TABLE "reservations" (
   "guest_page_token" TEXT,
   "payment_id" TEXT,
   "guest_page_expires_at" TIMESTAMPTZ,
-  "organization_id" TEXT,
   "external_uid" TEXT,
   "bcom_reservation_id" TEXT,
   "price_per_night_json" JSONB,
@@ -1523,13 +1529,12 @@ CREATE TABLE "reservations" (
   "is_prepaid" BOOLEAN DEFAULT false,
   "is_multi_room" BOOLEAN DEFAULT false,
   "multi_room_marker" TEXT,
-  "lodging_discount_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
-  "lodging_discount_reason" NUMERIC(14,2),
-  "breakfast_included" BIGINT,
+  "organization_id" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("guest_page_token"),
   CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
-  CHECK (payment_status IN ('unpaid', 'payment_requested', 'prepaid', 'paid'))
+  CHECK (payment_status IN ('unpaid', 'payment_requested', 'prepaid', 'paid')),
+  CONSTRAINT "reservations_lodging_discount_range" CHECK (lodging_discount_percent >= 0 AND lodging_discount_percent <= 100)
 );
 
 CREATE TABLE "service_addons" (
@@ -1778,8 +1783,11 @@ CREATE TABLE "unit_types" (
   "extra_person_charge" BIGINT DEFAULT 1000 NOT NULL,
   "pet_allowed" BIGINT DEFAULT 1 NOT NULL,
   "pet_charge" BIGINT DEFAULT 400 NOT NULL,
-  "bookable_online" BIGINT DEFAULT 1 NOT NULL,
-  "breakfast_included" BIGINT,
+  -- Reception can sell it, the website cannot. See migration 0021.
+  "bookable_online" BOOLEAN DEFAULT TRUE NOT NULL,
+  -- Whether this type's PRICES include breakfast; NULL defers to the channel
+  -- rule. Middle level of the chain booking → type → rule. See migration 0021.
+  "breakfast_included" BOOLEAN,
   PRIMARY KEY ("id")
 );
 
@@ -1966,20 +1974,6 @@ ALTER TABLE "coupons" ADD CONSTRAINT "fk_coupons_gift_card_rule_id_2"
   FOREIGN KEY ("gift_card_rule_id") REFERENCES "gift_card_automation_rules" ("id") ON DELETE SET NULL;
 ALTER TABLE "coupons" ADD CONSTRAINT "fk_coupons_site_id_3"
   FOREIGN KEY ("site_id") REFERENCES "booking_sites" ("id") ON DELETE SET NULL;
-ALTER TABLE "event_addons" ADD CONSTRAINT "fk_event_addons_property_id_1"
-  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
-ALTER TABLE "event_addons" ADD CONSTRAINT "fk_event_addons_organization_id_2"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "event_bookings" ADD CONSTRAINT "fk_event_bookings_space_id_1"
-  FOREIGN KEY ("space_id") REFERENCES "event_spaces" ("id") ON DELETE CASCADE;
-ALTER TABLE "event_bookings" ADD CONSTRAINT "fk_event_bookings_property_id_2"
-  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
-ALTER TABLE "event_bookings" ADD CONSTRAINT "fk_event_bookings_organization_id_3"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "event_spaces" ADD CONSTRAINT "fk_event_spaces_property_id_1"
-  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
-ALTER TABLE "event_spaces" ADD CONSTRAINT "fk_event_spaces_organization_id_2"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "expense_categories" ADD CONSTRAINT "fk_expense_categories_parent_id_1"
   FOREIGN KEY ("parent_id") REFERENCES "expense_categories" ("id");
 ALTER TABLE "expense_categories" ADD CONSTRAINT "fk_expense_categories_organization_id_2"
@@ -2086,12 +2080,26 @@ ALTER TABLE "gift_cards" ADD CONSTRAINT "fk_gift_cards_property_id_4"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_chat_messages" ADD CONSTRAINT "fk_guest_chat_messages_reservation_id_1"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
-ALTER TABLE "guest_page_config" ADD CONSTRAINT "fk_guest_page_config_unit_type_id_1"
-  FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
+ALTER TABLE "event_spaces" ADD CONSTRAINT "fk_event_spaces_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "event_spaces" ADD CONSTRAINT "fk_event_spaces_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "event_addons" ADD CONSTRAINT "fk_event_addons_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "event_addons" ADD CONSTRAINT "fk_event_addons_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "event_bookings" ADD CONSTRAINT "fk_event_bookings_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "event_bookings" ADD CONSTRAINT "fk_event_bookings_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "event_bookings" ADD CONSTRAINT "fk_event_bookings_space_id_3"
+  FOREIGN KEY ("space_id") REFERENCES "event_spaces" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_page_sections" ADD CONSTRAINT "fk_guest_page_sections_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_page_sections" ADD CONSTRAINT "fk_guest_page_sections_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "guest_page_config" ADD CONSTRAINT "fk_guest_page_config_unit_type_id_1"
+  FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_registrations" ADD CONSTRAINT "fk_guest_registrations_guest_id_1"
   FOREIGN KEY ("guest_id") REFERENCES "guests" ("id") ON DELETE CASCADE;
 ALTER TABLE "guest_registrations" ADD CONSTRAINT "fk_guest_registrations_reservation_id_2"
@@ -2168,10 +2176,10 @@ ALTER TABLE "reservation_sub_bookings" ADD CONSTRAINT "fk_reservation_sub_bookin
   FOREIGN KEY ("child_reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
 ALTER TABLE "reservation_sub_bookings" ADD CONSTRAINT "fk_reservation_sub_bookings_reservation_id_2"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_parent_id_1"
-  FOREIGN KEY ("parent_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_organization_id_2"
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id");
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_parent_id_2"
+  FOREIGN KEY ("parent_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
 ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_group_id_3"
   FOREIGN KEY ("group_id") REFERENCES "reservation_groups" ("id") ON DELETE SET NULL;
 ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_rate_plan_id_4"
@@ -2298,11 +2306,14 @@ CREATE INDEX "idx_ch_conn_channel" ON "channel_connections" ("channel");
 CREATE INDEX "idx_ch_conn_org" ON "channel_connections" ("organization_id");
 CREATE INDEX "idx_ch_conn_status" ON "channel_connections" ("status");
 CREATE UNIQUE INDEX "idx_channel_rate_rules_row" ON "channel_rate_rules" (organization_id, property_id, (COALESCE(channel, '')));
+CREATE UNIQUE INDEX "idx_event_spaces_row" ON "event_spaces" ("property_id", "code");
+CREATE UNIQUE INDEX "idx_event_addons_row" ON "event_addons" ("property_id", "name");
+CREATE INDEX "idx_event_bookings_day" ON "event_bookings" ("space_id", "event_date");
+CREATE UNIQUE INDEX "idx_guest_page_sections_row" ON "guest_page_sections" ("property_id", "section");
 CREATE INDEX "idx_ch_room_conn" ON "channel_room_mapping" ("connection_id");
 CREATE INDEX "idx_ct_hash" ON "content_translations" ("text_hash");
 CREATE INDEX "idx_ct_lang" ON "content_translations" ("text_hash", "lang");
 CREATE INDEX "idx_coupons_org" ON "coupons" ("organization_id");
-CREATE INDEX "idx_event_bookings_day" ON "event_bookings" ("property_id", "space_id", "event_date");
 CREATE INDEX "idx_ec_parent" ON "expense_categories" ("parent_id");
 CREATE INDEX "idx_arm_op" ON "fin_auto_rule_matches" ("operation_id");
 CREATE INDEX "idx_arm_rule" ON "fin_auto_rule_matches" ("rule_id");
@@ -2367,11 +2378,11 @@ CREATE INDEX "idx_guests_name" ON "guests" ("last_name", "first_name");
 CREATE INDEX "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX "idx_invoice_series_channel" ON "invoice_series" ("organization_id", "channel");
 CREATE UNIQUE INDEX "idx_invoice_series_code" ON "invoice_series" ("organization_id", "code");
-CREATE INDEX "idx_invoices_corrects" ON "invoices" ("corrects_invoice_id");
-CREATE INDEX "idx_invoices_folio" ON "invoices" ("folio_id");
 CREATE INDEX "idx_invoices_issued" ON "invoices" ("issued_at");
-CREATE INDEX "idx_invoices_number" ON "invoices" ("organization_id", "invoice_number");
+CREATE INDEX "idx_invoices_corrects" ON "invoices" ("corrects_invoice_id");
+CREATE INDEX "idx_invoices_number" ON "invoices" ("invoice_number");
 CREATE INDEX "idx_invoices_reservation" ON "invoices" ("reservation_id");
+CREATE INDEX "idx_invoices_folio" ON "invoices" ("folio_id");
 CREATE INDEX "idx_partner_reports_period" ON "partner_reports" ("organization_id", "period");
 CREATE INDEX "idx_payment_webhook_log_org" ON "payment_webhook_log" ("organization_id");
 CREATE INDEX "idx_pwl_created" ON "payment_webhook_log" ("created_at");
@@ -2433,11 +2444,12 @@ CREATE INDEX IF NOT EXISTS "idx_capex_items_org" ON "capex_items" ("organization
 CREATE INDEX IF NOT EXISTS "idx_channel_connections_org" ON "channel_connections" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_channel_credentials_org" ON "channel_credentials" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_channel_rate_rules_org" ON "channel_rate_rules" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_cost_allocations_org" ON "cost_allocations" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_coupons_org" ON "coupons" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_event_spaces_org" ON "event_spaces" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_event_addons_org" ON "event_addons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_event_bookings_org" ON "event_bookings" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_event_spaces_org" ON "event_spaces" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_guest_page_sections_org" ON "guest_page_sections" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_cost_allocations_org" ON "cost_allocations" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_coupons_org" ON "coupons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_expense_categories_org" ON "expense_categories" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_auto_rules_org" ON "fin_auto_rules" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_budgets_org" ON "fin_budgets" ("organization_id");
@@ -2458,7 +2470,6 @@ CREATE INDEX IF NOT EXISTS "idx_finance_tags_org" ON "finance_tags" ("organizati
 CREATE INDEX IF NOT EXISTS "idx_gift_card_automation_rules_org" ON "gift_card_automation_rules" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_gift_card_bundles_org" ON "gift_card_bundles" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_gift_cards_org" ON "gift_cards" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_guest_page_sections_org" ON "guest_page_sections" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoice_counters_org" ON "invoice_counters" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoice_periods_org" ON "invoice_periods" ("organization_id");
@@ -2507,15 +2518,17 @@ ALTER TABLE "channel_credentials" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "channel_rate_rules" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
-ALTER TABLE "cost_allocations" ALTER COLUMN "organization_id"
-  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
-ALTER TABLE "coupons" ALTER COLUMN "organization_id"
+ALTER TABLE "event_spaces" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "event_addons" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "event_bookings" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
-ALTER TABLE "event_spaces" ALTER COLUMN "organization_id"
+ALTER TABLE "guest_page_sections" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "cost_allocations" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "coupons" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "expense_categories" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2556,8 +2569,6 @@ ALTER TABLE "gift_card_automation_rules" ALTER COLUMN "organization_id"
 ALTER TABLE "gift_card_bundles" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "gift_cards" ALTER COLUMN "organization_id"
-  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
-ALTER TABLE "guest_page_sections" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "guests" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2713,6 +2724,30 @@ CREATE POLICY "channel_credentials_tenant" ON "channel_credentials"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
+ALTER TABLE "event_spaces" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "event_spaces" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "event_spaces_tenant" ON "event_spaces"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "event_addons" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "event_addons" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "event_addons_tenant" ON "event_addons"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "event_bookings" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "event_bookings" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "event_bookings_tenant" ON "event_bookings"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "guest_page_sections" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "guest_page_sections" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "guest_page_sections_tenant" ON "guest_page_sections"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
 ALTER TABLE "channel_rate_rules" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "channel_rate_rules" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "channel_rate_rules_tenant" ON "channel_rate_rules"
@@ -2734,24 +2769,6 @@ CREATE POLICY "cost_allocations_tenant" ON "cost_allocations"
 ALTER TABLE "coupons" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "coupons" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "coupons_tenant" ON "coupons"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "event_addons" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "event_addons" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "event_addons_tenant" ON "event_addons"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "event_bookings" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "event_bookings" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "event_bookings_tenant" ON "event_bookings"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
-
-ALTER TABLE "event_spaces" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "event_spaces" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "event_spaces_tenant" ON "event_spaces"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
@@ -2916,12 +2933,6 @@ ALTER TABLE "guest_page_config" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "guest_page_config_tenant" ON "guest_page_config"
   USING ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))))
   WITH CHECK ("unit_type_id" IN (SELECT "id" FROM "unit_types" WHERE "property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id'))));
-
-ALTER TABLE "guest_page_sections" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "guest_page_sections" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "guest_page_sections_tenant" ON "guest_page_sections"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "guest_registrations" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "guest_registrations" FORCE ROW LEVEL SECURITY;

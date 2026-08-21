@@ -63,6 +63,11 @@ const OVERRIDE = {
   // Free-text or enum columns caught by a money/date word.
   'reservations.deposit_status': 'TEXT',
   'reservation_guests.fee_exempt_reason': 'TEXT',
+  // «Stammkunde» is not an amount. Missing this one turned the column NUMERIC
+  // on a regeneration, and the failure surfaced three layers away: the API
+  // returned 500 on granting a discount, and check-isolation reported it as a
+  // tenant problem. A reason is text even when the word next to it is money.
+  'reservations.lodging_discount_reason': 'TEXT',
   'coupons.discount_type': 'TEXT',
   'gift_card_automation_rules.discount_type': 'TEXT',
   'gift_cards.value_type': 'TEXT',
