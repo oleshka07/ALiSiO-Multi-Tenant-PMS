@@ -63,6 +63,37 @@ const outOfSeason = quoteStay({ checkIn: '2026-09-15', nights: 1, persons: 2, un
 assert.strictEqual(outOfSeason.total, 119, 'and outside it the standing price applies again');
 console.log('  ok  вужче вікно перекриває базову ціну, поза ним вона повертається');
 
+// ─── A window open on one side is still a season, not a standing price ──────
+//
+// The pilot's rate card is written exactly this way: "until 31.12.2026" has no
+// start, "from 01.03.2027" has no end. Both must beat the dateless row — and
+// must do it whichever order the rows arrive in. When both answered "infinitely
+// wide", the comparator called them equal and the winner was decided by the
+// SQL row order: the same night came out 89 or 45.
+const HALF_OPEN: PriceRow[] = [
+  { unit_type_id: DZ, persons: 2, price_gross: 89, valid_to: '2026-12-31' },
+  { unit_type_id: DZ, persons: 2, price_gross: 45 },
+];
+for (const [name, matrix] of [['season first', HALF_OPEN], ['dateless first', [...HALF_OPEN].reverse()]] as const) {
+  assert.strictEqual(
+    quoteStay({ checkIn: '2026-08-15', nights: 1, persons: 2, unitTypeId: DZ, matrix }).total,
+    89, `a window with only an end beats the dateless row (${name})`,
+  );
+}
+const FROM_ONLY: PriceRow[] = [
+  { unit_type_id: DZ, persons: 2, price_gross: 45 },
+  { unit_type_id: DZ, persons: 2, price_gross: 93, valid_from: '2027-03-01' },
+];
+assert.strictEqual(
+  quoteStay({ checkIn: '2027-06-01', nights: 1, persons: 2, unitTypeId: DZ, matrix: FROM_ONLY }).total,
+  93, 'and so does a window with only a start',
+);
+assert.strictEqual(
+  quoteStay({ checkIn: '2027-01-15', nights: 1, persons: 2, unitTypeId: DZ, matrix: FROM_ONLY }).total,
+  45, 'before it starts, the dateless row is what is left',
+);
+console.log('  ok  вікно, відкрите з одного боку, перекриває рядок без дат — за будь-якого порядку рядків');
+
 // ─── Length of stay ─────────────────────────────────────────────────────────
 const twoNights = quoteStay({ checkIn: '2026-03-10', nights: 2, persons: 2, unitTypeId: DZ, matrix: MATRIX, losTiers: TIERS });
 assert.strictEqual(twoNights.total, 238, 'two nights: no tier, 2 × 119');

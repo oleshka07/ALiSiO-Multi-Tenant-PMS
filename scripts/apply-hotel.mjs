@@ -434,19 +434,23 @@ async function applyStructure(organizationId, plan) {
       const from_ = from == null ? { sql: 'valid_from IS NULL', p: [] } : { sql: 'valid_from = ?', p: [from] };
       const to_ = to == null ? { sql: 'valid_to IS NULL', p: [] } : { sql: 'valid_to = ?', p: [to] };
       const has = await sql.row(
-        `SELECT id, price_gross FROM price_occupancy
+        `SELECT id, price_gross, label FROM price_occupancy
           WHERE organization_id = ? AND property_id = ? AND unit_type_id = ? AND persons = ?
             AND ${from_.sql} AND ${to_.sql}`,
         [organizationId, property.id, ut.id, persons, ...from_.p, ...to_.p]);
-      if (has && Number(has.price_gross) === price) { say.same(label); continue; }
+      // Назва періоду теж звіряється, а не тільки сума: підпис рядка — це те,
+      // як період зветься на екрані цін, і виправлення однієї лише назви у
+      // файлі мовчки не доїжджало до бази.
+      const name = both(p, 'label') ?? null;
+      if (has && Number(has.price_gross) === price && (has.label ?? null) === name) { say.same(label); continue; }
       if (DRY) { say[has ? 'changed' : 'made'](`[суха]${label}`); continue; }
       if (has) {
-        await pricing.updatePrice(has.id, price, both(p, 'label') ?? null);
+        await pricing.updatePrice(has.id, price, name);
         say.changed(label);
       } else {
         const id = await pricing.createPrice(property.id, {
           unit_type_id: ut.id, persons, price_gross: price,
-          valid_from: from, valid_to: to, label: both(p, 'label') ?? null,
+          valid_from: from, valid_to: to, label: name,
         });
         id ? say.made(label) : say.refused(label, 'відмовлено');
       }
@@ -459,19 +463,20 @@ async function applyStructure(organizationId, plan) {
       const label = `   LOS ${code} від ${min} ноч. ×${persons ?? 'будь-скільки'} = ${adj}`;
       const occ = persons == null ? { sql: 'persons IS NULL', p: [] } : { sql: 'persons = ?', p: [persons] };
       const has = await sql.row(
-        `SELECT id, adjustment_gross FROM price_los_tiers
+        `SELECT id, adjustment_gross, label FROM price_los_tiers
           WHERE organization_id = ? AND property_id = ? AND unit_type_id = ? AND min_nights = ?
             AND ${occ.sql}`,
         [organizationId, property.id, ut.id, min, ...occ.p]);
-      if (has && Number(has.adjustment_gross) === adj) { say.same(label); continue; }
+      const name = both(l, 'label') ?? null;
+      if (has && Number(has.adjustment_gross) === adj && (has.label ?? null) === name) { say.same(label); continue; }
       if (DRY) { say[has ? 'changed' : 'made'](`[суха]${label}`); continue; }
       if (has) {
-        await pricing.updateTier(has.id, adj, both(l, 'label') ?? null);
+        await pricing.updateTier(has.id, adj, name);
         say.changed(label);
       } else {
         const id = await pricing.createTier(property.id, {
           unit_type_id: ut.id, min_nights: min, adjustment_gross: adj,
-          persons: persons === null ? null : Number(persons), label: both(l, 'label') ?? null,
+          persons: persons === null ? null : Number(persons), label: name,
         });
         id ? say.made(label) : say.refused(label, 'відмовлено');
       }

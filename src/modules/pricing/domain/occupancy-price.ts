@@ -133,8 +133,22 @@ function pickPrice(
   })[0];
 }
 
+/**
+ * How wide a row's window is, for "the narrower one wins".
+ *
+ * Three widths, not two. A row bounded on one side — "until the end of 2026",
+ * "from March on" — is a season with an open end, not a standing price, and it
+ * has to beat the row that carries no dates at all. Both used to answer
+ * MAX_SAFE_INTEGER, the comparator returned 0, and which price applied came
+ * down to the order the rows happened to arrive in from SQL: the same night
+ * quoted 89 or 45 depending on it. Ordering is not a pricing rule.
+ */
+const OPEN_ENDED = Number.MAX_SAFE_INTEGER;
+const HALF_BOUND = Number.MAX_SAFE_INTEGER - 1;
+
 function span(r: PriceRow): number {
-  if (!r.valid_from || !r.valid_to) return Number.MAX_SAFE_INTEGER;
+  if (!r.valid_from && !r.valid_to) return OPEN_ENDED;
+  if (!r.valid_from || !r.valid_to) return HALF_BOUND;
   return Date.parse(r.valid_to) - Date.parse(r.valid_from);
 }
 

@@ -66,6 +66,27 @@ interface Season {
 
 const seasonKey = (from: string | null, to: string | null) => `${from || ''}..${to || ''}`;
 
+/** Чи це той єдиний період, що не має жодної дати. */
+const isBase = (s: { from: string | null; to: string | null }) => !s.from && !s.to;
+
+/**
+ * Як період зветься у списку вкладок.
+ *
+ * Вікно, відкрите з одного боку, — це теж період, а не базова ціна. «По
+ * 31.12.2026» має кінець, «від 01.03.2027» має початок, і прайс-лист готелю
+ * пишеться саме так. Умова тут питала тільки про початок, тому обидва такі
+ * вікна підписувались «Базові ціни»: власник бачив дві однакові вкладки, з
+ * яких перша — справді бездатна — виглядала майже порожньою. Друга половина
+ * тієї ж помилки: у вікна без кінця в підпис підставлявся рядок «null».
+ */
+function periodTitle(s: Season, t: (text: string) => string): string {
+  if (isBase(s)) return t('Базові ціни');
+  const dates = s.from && s.to
+    ? `${s.from} — ${s.to}`
+    : s.from ? `${t('від')} ${s.from}` : `${t('по')} ${s.to}`;
+  return s.label ? `${s.label}: ${dates}` : dates;
+}
+
 function Modal({ open, onClose, title, children, footer }: {
   open: boolean; onClose: () => void; title: string;
   children: React.ReactNode; footer?: React.ReactNode;
@@ -135,7 +156,13 @@ export default function PricingMatrixPage() {
       const key = seasonKey(p.valid_from, p.valid_to);
       if (!map.has(key)) map.set(key, { key, from: p.valid_from, to: p.valid_to, label: p.label });
     }
-    return [...map.values()].sort((a, b) => (a.from || '').localeCompare(b.from || ''));
+    // Базові — завжди перші; решта за початком, а вікно без початку — за
+    // кінцем. Без цього «по 31.12.2026» і базові сортуються за одним і тим
+    // самим порожнім рядком і міняються місцями від запиту до запиту.
+    return [...map.values()].sort((a, b) => {
+      if (isBase(a) !== isBase(b)) return isBase(a) ? -1 : 1;
+      return (a.from || a.to || '').localeCompare(b.from || b.to || '');
+    });
   }, [prices]);
 
   const current = seasons.find((s) => s.key === season) ?? seasons[0];
@@ -189,13 +216,19 @@ export default function PricingMatrixPage() {
   };
 
   const addSeason = () => {
-    if (!seasonForm.valid_from || !seasonForm.valid_to) { showToast(`❌ ${t('Потрібні обидві дати')}`); return; }
+    // Одна дата — теж період: «по 31.12.2026» діє з початку часів до кінця
+    // року, «від 01.03.2027» — і далі. Вимога обох дат забороняла завести з
+    // екрана рівно ті вікна, якими прайс-лист готелю й написаний.
+    const from = seasonForm.valid_from || null;
+    const to = seasonForm.valid_to || null;
+    if (!from && !to) { showToast(`❌ ${t('Потрібна хоча б одна дата')}`); return; }
+    if (from && to && to < from) { showToast(`❌ ${t('Кінець періоду раніший за початок')}`); return; }
     // Період існує з моменту, коли в ньому є перша ціна. Тому тут лише
     // перемикаємо екран — рядки зʼявляться, щойно власник заповнить комірки.
-    const key = seasonKey(seasonForm.valid_from, seasonForm.valid_to);
+    const key = seasonKey(from, to);
     setPrices((prev) => [...prev, {
       id: `draft:${key}`, unit_type_id: null, persons: 0, price_gross: 0,
-      valid_from: seasonForm.valid_from, valid_to: seasonForm.valid_to, label: seasonForm.label || null,
+      valid_from: from, valid_to: to, label: seasonForm.label || null,
     }]);
     setSeason(key);
     setSeasonModal(false);
@@ -282,7 +315,7 @@ export default function PricingMatrixPage() {
                   className={`btn btn-sm ${s.key === current.key ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setSeason(s.key)}
                 >
-                  {s.from ? `${s.label ? `${s.label}: ` : ''}${s.from} — ${s.to}` : t('Базові ціни')}
+                  {t(periodTitle(s, t))}
                 </button>
               ))}
               <button className="btn btn-sm btn-ghost" onClick={() => { setSeasonForm({ valid_from: '', valid_to: '', label: '' }); setSeasonModal(true); }}>
@@ -291,9 +324,9 @@ export default function PricingMatrixPage() {
             </div>
 
             <div style={{ fontSize: 12.5, color: 'var(--text-tertiary)', marginBottom: 12, maxWidth: '80ch' }}>
-              {current.from
-                ? t('Ціни цього періоду діють поверх базових. Поза ним знову діють базові — базові переписувати не треба.')
-                : t('Базові ціни діють завжди, поки їх не перекриє період.')}
+              {isBase(current)
+                ? t('Базові ціни діють завжди, поки їх не перекриє період.')
+                : t('Ціни цього періоду діють поверх базових. Поза ним знову діють базові — базові переписувати не треба.')}
             </div>
 
             {/* ── Матриця ────────────────────────────────────────────────── */}
@@ -354,6 +387,13 @@ export default function PricingMatrixPage() {
                 </tbody>
               </table>
             </div>
+
+            {types.length > 0 && !prices.some((p) => !p.id.startsWith('draft:')
+              && seasonKey(p.valid_from, p.valid_to) === current.key) && (
+              <div style={{ fontSize: 12.5, color: 'var(--text-tertiary)', marginTop: 8, maxWidth: '80ch' }}>
+                {t('У цьому періоді ще немає жодної ціни — порожня таблиця тут означає саме це, а не «цін немає взагалі». Ціни інших періодів дивіться на вкладках вище.')}
+              </div>
+            )}
 
             {/* ── Знижки за довжину ──────────────────────────────────────── */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '28px 0 12px' }}>
@@ -510,7 +550,7 @@ export default function PricingMatrixPage() {
             </div>
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-            {t('Обидві дати включно. Період зʼявиться в списку, щойно в ньому буде перша ціна.')}
+            {t('Дати включно. Одну з них можна лишити порожньою: без початку період діє від початку часів, без кінця — безстроково. Період зʼявиться в списку, щойно в ньому буде перша ціна.')}
           </div>
         </Modal>
 

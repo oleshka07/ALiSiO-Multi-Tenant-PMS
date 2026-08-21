@@ -81,13 +81,13 @@
           "persons": 1,
           "priceGross": 69,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 2,
           "priceGross": 95,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 1,
@@ -107,13 +107,13 @@
           "persons": 1,
           "priceGross": 72,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         },
         {
           "persons": 2,
           "priceGross": 100,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         }
       ],
       "losTiers": [
@@ -144,13 +144,13 @@
           "persons": 1,
           "priceGross": 64,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 2,
           "priceGross": 89,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 1,
@@ -170,13 +170,13 @@
           "persons": 1,
           "priceGross": 67,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         },
         {
           "persons": 2,
           "priceGross": 93,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         }
       ],
       "losTiers": [
@@ -209,25 +209,25 @@
           "persons": 1,
           "priceGross": 94,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 2,
           "priceGross": 109,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 3,
           "priceGross": 128,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 4,
           "priceGross": 147,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 1,
@@ -261,25 +261,25 @@
           "persons": 1,
           "priceGross": 99,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         },
         {
           "persons": 2,
           "priceGross": 114,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         },
         {
           "persons": 3,
           "priceGross": 133,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         },
         {
           "persons": 4,
           "priceGross": 152,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         }
       ],
       "losTiers": [
@@ -324,25 +324,25 @@
           "persons": 1,
           "priceGross": 79,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 2,
           "priceGross": 99,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 3,
           "priceGross": 118,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 4,
           "priceGross": 137,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 1,
@@ -376,25 +376,25 @@
           "persons": 1,
           "priceGross": 83,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         },
         {
           "persons": 2,
           "priceGross": 104,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         },
         {
           "persons": 3,
           "priceGross": 123,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         },
         {
           "persons": 4,
           "priceGross": 142,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         }
       ],
       "losTiers": [
@@ -438,19 +438,19 @@
           "persons": 1,
           "priceGross": 94,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 2,
           "priceGross": 109,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 3,
           "priceGross": 128,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 1,
@@ -477,19 +477,19 @@
           "persons": 1,
           "priceGross": 99,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         },
         {
           "persons": 2,
           "priceGross": 114,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         },
         {
           "persons": 3,
           "priceGross": 133,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         }
       ],
       "losTiers": [
@@ -527,25 +527,25 @@
           "persons": 1,
           "priceGross": 64,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 2,
           "priceGross": 89,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 3,
           "priceGross": 108,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 4,
           "priceGross": 127,
           "validTo": "2026-12-31",
-          "label": "Haupt 2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 1,
@@ -579,25 +579,25 @@
           "persons": 1,
           "priceGross": 67,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         },
         {
           "persons": 2,
           "priceGross": 93,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         },
         {
           "persons": 3,
           "priceGross": 113,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         },
         {
           "persons": 4,
           "priceGross": 133,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         }
       ],
       "losTiers": [
@@ -640,13 +640,13 @@
           "persons": 1,
           "priceGross": 159,
           "validTo": "2026-12-31",
-          "label": "2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 2,
           "priceGross": 159,
           "validTo": "2026-12-31",
-          "label": "2026 (чинна)"
+          "label": "Hauptsaison 2026"
         },
         {
           "persons": 1,
@@ -666,13 +666,13 @@
           "persons": 1,
           "priceGross": 167,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         },
         {
           "persons": 2,
           "priceGross": 167,
           "validFrom": "2027-03-01",
-          "label": "Hauptsaison 2027 (база)"
+          "label": "Hauptsaison 2027"
         }
       ],
       "losTiers": []
@@ -691,12 +691,12 @@
         {
           "persons": 1,
           "priceGross": 40,
-          "label": "EZ-Belegung (Winhotel, чинна)"
+          "label": "EZ-Belegung (Winhotel)"
         },
         {
           "persons": 2,
           "priceGross": 45,
-          "label": "DZ-Belegung (Winhotel, чинна)"
+          "label": "DZ-Belegung (Winhotel)"
         }
       ]
     }
