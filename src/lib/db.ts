@@ -999,76 +999,13 @@ function runMigrations(database: any) {
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
-    // Seed default configs for all existing unit types
-    const utRows = database.prepare('SELECT id, category_id FROM unit_types').all() as any[];
-    const catRows = database.prepare('SELECT id, type FROM categories').all() as any[];
-    const catTypeMap: Record<string, string> = {};
-    for (const c of catRows) catTypeMap[c.id] = c.type;
-
-    const defaultRestaurantHours = '📅 Щодня: 8:00 – 22:00\n🍳 Сніданок: 8:00 – 10:30\n🥘 Обід: 12:00 – 15:00\n🍷 Вечеря: 18:00 – 22:00';
-
-    const glampingAmenities = JSON.stringify([
-      { icon: '🛏️', name: 'Комфортне ліжко' }, { icon: '🚿', name: 'Душ' }, { icon: '🚽', name: 'Туалет' },
-      { icon: '❄️', name: 'Кондиціонер' }, { icon: '🔥', name: 'Опалення' }, { icon: '☕', name: 'Чайник' },
-      { icon: '🧊', name: 'Міні-холодильник' }, { icon: '📶', name: 'Wi-Fi' }, { icon: '🌿', name: 'Тераса' },
-      { icon: '🔒', name: 'Замок' }, { icon: '🧴', name: 'Рушники' }, { icon: '💡', name: 'Освітлення' },
-    ]);
-    const resortAmenities = JSON.stringify([
-      { icon: '🛏️', name: 'Комфортне ліжко' }, { icon: '🚿', name: 'Душ/Ванна' }, { icon: '🚽', name: 'Туалет' },
-      { icon: '❄️', name: 'Кондиціонер' }, { icon: '📺', name: 'Телевізор' }, { icon: '🔥', name: 'Опалення' },
-      { icon: '☕', name: 'Чайник/Кавоварка' }, { icon: '🧊', name: 'Холодильник' }, { icon: '📶', name: 'Wi-Fi' },
-      { icon: '🧴', name: 'Рушники та білизна' }, { icon: '🪥', name: 'Косметика' }, { icon: '🔒', name: 'Сейф' },
-    ]);
-    const campingAmenities = JSON.stringify([
-      { icon: '⛺', name: 'Місце для намету' }, { icon: '🔌', name: 'Електрика 220V' },
-      { icon: '🚿', name: 'Спільний душ' }, { icon: '🚽', name: 'Спільний туалет' },
-      { icon: '🚰', name: 'Вода' }, { icon: '📶', name: 'Wi-Fi' },
-      { icon: '🅿️', name: 'Паркомісце' }, { icon: '🔥', name: 'Місце для вогнища' },
-    ]);
-
-    const defaultFaq = JSON.stringify([
-      { q: 'Як дістатися до комплексу?', a: 'ALiSiO Resort & Glamping знаходиться в Лугачовіце. GPS: 49.1122°N, 17.7531°E. Від Брно ~1.5 год, від Праги ~3.5 год. Безкоштовна парковка.' },
-      { q: 'О котрій годині заселення та виселення?', a: 'Заселення з 15:00, виселення до 10:00. Ранній заїзд / пізній виїзд за запитом.' },
-      { q: 'Чи можна з тваринами?', a: 'Так, у деяких типах. 200 CZK/ніч. Повідомте заздалегідь.' },
-      { q: 'Чи є сніданок?', a: 'Не включено, але можна замовити. Ресторан з 8:00.' },
-      { q: 'Де магазин?', a: 'Penny Market / COOP — 5 хв їзди. Базові товари — на рецепції.' },
-      { q: 'Чи є дитяче ліжечко?', a: 'Так, безкоштовно за запитом.' },
-    ]);
-    const defaultRules = JSON.stringify([
-      { icon: '🔇', text: 'Насолоджуйся тишею — не вмикай музику та не галасуй.' },
-      { icon: '🤝', text: 'Поважай сусідів — зберігай тишу протягом перебування на території.' },
-      { icon: '🚗', text: 'Не перевищуй швидкість на локації більш ніж 20 км/год.' },
-      { icon: '🍃', text: 'Бережи природу — не залишай їжу та сміття на вулиці.' },
-      { icon: '🌲', text: 'Шануй ліс — не ламай дерева і не пали дрова з лісу. Їх завжди можна привезти з собою чи придбати у нас.' },
-      { icon: '🗑️', text: 'Не спалюй сміття в багатті. Для нього у будинку є симпатичний сміттєвий бак.' },
-      { icon: '🐾', text: 'Слідкуй за своїми тваринами — ти несеш відповідальність за своїх чотирилапих друзів та шкоду, яку вони можуть завдати.' },
-      { icon: '🚭', text: 'Не пали, будь ласка, в будинку. Оселі мають пахнути свіжістю та лісом.' },
-      { icon: '✨', text: 'Залишай чистоту — щоб наступні гості теж відчули затишок.' },
-    ]);
-    const defaultUsefulInfo = JSON.stringify([
-      { icon: '🏪', title: 'Магазини', desc: 'Penny Market та COOP — 5 хв їзди.' },
-      { icon: '🏥', title: 'Аптека та лікарня', desc: 'Аптека в центрі (5 хв). Лікарня — Злін (25 хв).' },
-      { icon: '🏔️', title: 'Пішохідні маршрути', desc: 'Маршрути прямо від комплексу. Карти на рецепції.' },
-      { icon: '🚴', title: 'Велосипедні маршрути', desc: 'Велодоріжки вздовж річки. Оренда на рецепції.' },
-      { icon: '♨️', title: 'Курортна зона', desc: 'Лугачовіце — курорт з мінеральними джерелами.' },
-      { icon: '🎭', title: 'Екскурсії', desc: 'Замок Бухлов, зоопарк Лешна. Запитуйте на рецепції.' },
-    ]);
-
-    const insGPC = database.prepare(`
-      INSERT INTO guest_page_config (unit_type_id, amenities, check_in_instructions, faq_items, rules, wifi_network, wifi_password, restaurant_name, restaurant_hours, useful_info)
-      VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)
-    `);
-    for (const ut of utRows) {
-      const catType = catTypeMap[ut.category_id];
-      const amenities = catType === 'glamping' ? glampingAmenities : catType === 'camping' ? campingAmenities : resortAmenities;
-      const instructions = catType === 'glamping'
-        ? 'Зустріч на рецепції. Ми покажемо ваш будиночок та розкажемо про територію.'
-        : catType === 'camping'
-          ? 'Зареєструйтесь на рецепції, вам покажуть ваше місце та видадуть картку доступу до санітарного блоку.'
-          : 'Зустріч на рецепції будови. Ключі та інструктаж на місці.';
-      insGPC.run(ut.id, amenities, instructions, defaultFaq, defaultRules, defaultRestaurantHours, defaultUsefulInfo);
-    }
-    console.log('[DB] Created guest_page_config table with defaults for', utRows.length, 'unit types');
+    // No content seeding, deliberately. This block used to write the FIRST
+    // CUSTOMER'S life as "defaults" for every unit type — their town, GPS
+    // pin, driving directions, shops, pet price in their currency. The same
+    // family of leak as the wifi/lock-code DEFAULTs (migration 0023). An
+    // empty config means the guest page shows nothing until the hotel writes
+    // its own words, which is the only honest default.
+    console.log('[DB] Created guest_page_config table');
   }
 
   // --- Migration: add lock_code, maps_url, territory_map_url to guest_page_config ---

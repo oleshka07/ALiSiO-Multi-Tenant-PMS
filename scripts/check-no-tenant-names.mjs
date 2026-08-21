@@ -47,6 +47,13 @@ const FORBIDDEN = [
   /WH2CKhTydtDx9EBe7/,
   /ALiSiO_Guest\b/i,
   /Ресторан ALiSiO/i,
+  // The first customer's PLACE, written into "default" guest-page content:
+  // their town, the GPS pin of their driveway, their building F. Seeded for
+  // every unit type of every hotel until 2026-08-21.
+  /Лугачовіце/i,
+  /Luhačovice/i,
+  /49\.1122/,
+  /Будови F/i,
 ];
 
 // Path → why the name is allowed to remain there.
@@ -57,6 +64,10 @@ const ALLOWED = new Map([
   // The migration that REMOVES the leaked defaults has to name them in its
   // WHERE clauses — that is the one place they may remain.
   ['db/postgres/migrations/0023-a-default-is-code-and-these-were-somebodys-keys.sql', 'removes the leaked values it names'],
+  // Translation keys ARE the first customer's stored content: the dictionary
+  // translates what already sits in their rows, and the key must match those
+  // bytes to do it. Removing the entry would break their live guest page.
+  ['src/core/i18n/content-translations.ts', 'translation keys of the first customer\'s stored content'],
 ]);
 
 const files = [];

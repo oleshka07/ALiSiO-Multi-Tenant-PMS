@@ -103,6 +103,7 @@ interface UnitTypeRow {
   code: string;
   max_adults: number;
   category_id: string;
+  category_name: string;
   category_type: string;
   unit_count: number;
 }
@@ -591,10 +592,11 @@ function BookingsDesktop() {
               <option value="cancelled">{t('Тільки скасовані')}</option>
             </select>
             <select className="form-select" style={{ width: 150 }} value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-              <option value="">{t('🏕️ Всі типи')}</option>
-              <option value="glamping">⛺ Glamping</option>
-              <option value="resort">🏨 Resort</option>
-              <option value="camping">🌲 Camping</option>
+              <option value="">{t('Всі типи')}</option>
+              {/* The hotel's OWN categories — a hardcoded trio here was one
+                  customer's vocabulary in every other hotel's filter. */}
+              {[...new Map(unitTypes.map(ut => [ut.category_type, ut.category_name || ut.category_type])).entries()]
+                .map(([type, label]) => <option key={type} value={type}>{label}</option>)}
             </select>
             <select className="form-select" style={{ width: 170 }} value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
               <option value="">{t('Всі оплати')}</option>

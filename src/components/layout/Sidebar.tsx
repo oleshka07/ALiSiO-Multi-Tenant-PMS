@@ -42,6 +42,9 @@ interface NavItem {
   permission?: Permission;
   /** Hidden unless the organization has this feature — see core/features.ts. */
   feature?: string;
+  /** Hidden unless the organization has a property in one of these countries
+   *  — the Czech Evidenční kniha has no business in a German-only menu. */
+  countries?: string[];
 }
 
 interface NavSection {
@@ -79,7 +82,7 @@ const navigation: NavSection[] = [
       { label: 'Ціноутворення', href: '/app/pricing', icon: <DollarSign size={20} />, permission: 'nav:pricing' },
       { label: 'Аналітика продажів', href: '/app/reports', icon: <BarChart3 size={20} />, permission: 'nav:reports' },
       { label: 'Документи', href: '/app/documents', icon: <FileText size={20} />, permission: 'nav:documents' },
-      { label: 'Evidenční kniha', href: '/app/guest-registry', icon: <ClipboardList size={20} />, permission: 'nav:guests' },
+      { label: 'Evidenční kniha', href: '/app/guest-registry', icon: <ClipboardList size={20} />, permission: 'nav:guests', countries: ['CZ'] },
     ],
   },
   {
@@ -112,7 +115,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [draftCount, setDraftCount] = useState(0);
   const pathname = usePathname();
-  const { user, features, loading, logout } = useCurrentUser();
+  const { user, features, organization, loading, logout } = useCurrentUser();
 
   // Close mobile sidebar on route change
   useEffect(() => {
@@ -180,6 +183,9 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
 
         // The registry decides, the menu mirrors — same row the routes check.
         if (item.feature && !features[item.feature]) return false;
+
+        // Jurisdiction-bound items appear only where their law applies.
+        if (item.countries && !item.countries.some((c) => organization?.countries?.includes(c))) return false;
         return true;
       }),
     }))

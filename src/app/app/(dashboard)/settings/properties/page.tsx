@@ -134,8 +134,11 @@ export default function SettingsPropertiesPage() {
   const [saving, setSaving] = useState(false);
 
   // ── Forms ──
-  const [propForm, setPropForm] = useState({ name: '', slug: '', address: '', city: '', country: 'CZ', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00', city_tax_per_night: 0 });
-  const [catForm, setCatForm] = useState({ name: '', type: 'glamping', description: '', icon: '🏕️', color: '#a78bfa', sort_order: 0, show_in_tasks: 1, show_in_finance: 0, show_in_booking: 1 });
+  // country deliberately empty: jurisdiction (Meldeschein, invoice language,
+  // the fiscal till) hangs off it, so it must be chosen, not inherited from
+  // the first customer's default.
+  const [propForm, setPropForm] = useState({ name: '', slug: '', address: '', city: '', country: '', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00', city_tax_per_night: 0 });
+  const [catForm, setCatForm] = useState({ name: '', type: 'hotel', description: '', icon: '🏨', color: '#60a5fa', sort_order: 0, show_in_tasks: 1, show_in_finance: 0, show_in_booking: 1 });
   const [bldForm, setBldForm] = useState({ category_id: '', name: '', code: '', description: '', sort_order: 0 });
   const [utForm, setUtForm] = useState({ category_id: '', building_id: '', name: '', code: '', max_adults: 2, max_children: 2, max_occupancy: 4, base_occupancy: 2, beds_single: 0, beds_double: 1, beds_sofa: 0, extra_bed_available: 0, sort_order: 0 });
   const [unitForm, setUnitForm] = useState({ unit_type_id: '', category_id: '', building_id: '', name: '', code: '', beds: 2, floor: '', zone: '', notes: '', sort_order: 0 });
@@ -262,7 +265,7 @@ export default function SettingsPropertiesPage() {
       setCatForm({ name: cat.name, type: cat.type, description: cat.description || '', icon: cat.icon || '🏕️', color: cat.color || '#a78bfa', sort_order: cat.sort_order, show_in_tasks: (cat as any).show_in_tasks ?? 1, show_in_finance: (cat as any).show_in_finance ?? 0, show_in_booking: (cat as any).show_in_booking ?? 1 });
     } else {
       setEditId(null);
-      setCatForm({ name: '', type: 'glamping', description: '', icon: '🏕️', color: '#a78bfa', sort_order: categories.length, show_in_tasks: 1, show_in_finance: 0, show_in_booking: 1 });
+      setCatForm({ name: '', type: 'hotel', description: '', icon: '🏨', color: '#60a5fa', sort_order: categories.length, show_in_tasks: 1, show_in_finance: 0, show_in_booking: 1 });
     }
     setModal('category');
   };
@@ -809,17 +812,24 @@ export default function SettingsPropertiesPage() {
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">{tUi('Тип *')}</label>
-              <select className="form-select" value={catForm.type} onChange={e => {
-                const t = e.target.value;
-                setCatForm(p => ({ ...p, type: t, icon: CATEGORY_EMOJI[t] || '🏕️', color: CATEGORY_COLORS[t] || '#a78bfa' }));
-              }}>
-                <option value="glamping">Glamping</option>
-                <option value="resort">Resort</option>
-                <option value="camping">Camping</option>
-                <option value="facility">{tUi('Об\'єкт інфраструктури')}</option>
-                <option value="area">{tUi('Зона / Територія')}</option>
-                <option value="zone">{tUi('Ділянка')}</option>
-              </select>
+              {/* Free text with suggestions, not a closed list: the DB
+                  dropped this CHECK long ago, provisioning writes 'hotel',
+                  and a closed menu of one customer's six words refused
+                  every other hotel's vocabulary. */}
+              <input className="form-input" list="category-type-suggestions" value={catForm.type}
+                placeholder="hotel" onChange={e => {
+                  const t = e.target.value;
+                  setCatForm(p => ({ ...p, type: t, icon: CATEGORY_EMOJI[t] || p.icon, color: CATEGORY_COLORS[t] || p.color }));
+                }} />
+              <datalist id="category-type-suggestions">
+                <option value="hotel" />
+                <option value="glamping" />
+                <option value="resort" />
+                <option value="camping" />
+                <option value="facility" />
+                <option value="area" />
+                <option value="zone" />
+              </datalist>
             </div>
             <div className="form-group">
               <label className="form-label">{tUi('Іконка')}</label>

@@ -33,6 +33,8 @@ export interface UnitTypeRow {
   id: string;
   name: string;
   category_type: string;
+  /** The category's own name — what the operator actually called it. */
+  category_name?: string;
   unit_count?: number;
 }
 
@@ -100,7 +102,10 @@ const CITY_TAX_PER_ADULT_PER_NIGHT = 25;
 
 function emptyValues(): BookingFormValues {
   return {
-    category: 'glamping',
+    // Filled from the hotel's own categories once unit types load — a
+    // hardcoded default here was one customer's vocabulary in every other
+    // hotel's form, and their room types invisible behind it.
+    category: '',
     unitTypeId: '',
     unitId: '',
     source: 'direct',
@@ -172,6 +177,24 @@ export default function BookingForm({
     if (nights > 0 && adults > 0) return String(adults * nights * CITY_TAX_PER_ADULT_PER_NIGHT);
     return '0';
   }, []);
+
+  // The hotel's own categories, from its own unit types — label is the name
+  // the operator gave the category, the type stays the behaviour key.
+  const categoryOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const ut of unitTypes) {
+      if (!seen.has(ut.category_type)) seen.set(ut.category_type, ut.category_name || ut.category_type);
+    }
+    return [...seen.entries()].map(([type, label]) => ({ type, label }));
+  }, [unitTypes]);
+
+  // Pick the first real category once types load; never invent one.
+  useEffect(() => {
+    if (mode !== 'create') return;
+    if (categoryOptions.length === 0) return;
+    if (categoryOptions.some(c => c.type === form.category)) return;
+    setForm(p => ({ ...p, category: categoryOptions[0].type, unitTypeId: '', unitId: '' }));
+  }, [mode, categoryOptions, form.category]);
 
   const unitTypesForCategory = useMemo(
     () => unitTypes.filter(ut => ut.category_type === form.category),
@@ -373,9 +396,10 @@ export default function BookingForm({
         <div className="form-group">
           <label className="form-label">{t('Категорія *')}</label>
           <select className="form-select" value={form.category} onChange={e => onCategoryChange(e.target.value)}>
-            <option value="glamping">Glamping</option>
-            <option value="resort">Resort</option>
-            <option value="camping">Camping</option>
+            {categoryOptions.length === 0 && <option value="">—</option>}
+            {categoryOptions.map(c => (
+              <option key={c.type} value={c.type}>{c.label}</option>
+            ))}
           </select>
         </div>
         <div className="form-group">

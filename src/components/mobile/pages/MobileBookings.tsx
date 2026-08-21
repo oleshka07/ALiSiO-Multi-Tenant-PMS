@@ -123,7 +123,9 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
   const [bookingSources, setBookingSources] = useState<BFBookingSourceRow[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const [showNewBooking, setShowNewBooking] = useState(openNew ?? false);
-  const [categoryFilter, setCategoryFilter] = useState('resort');
+  // '' = all categories. Starting on one hardcoded type meant every hotel
+  // without that type opened this page onto an empty list.
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [showArchive, setShowArchive] = useState(false);
   const [showRoomAllocation, setShowRoomAllocation] = useState(false);
 
@@ -144,7 +146,8 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ category: categoryFilter, limit: '500' });
+      const params = new URLSearchParams({ limit: '500' });
+      if (categoryFilter) params.set('category', categoryFilter);
       if (!showArchive) params.set('check_out_from', todayISO);
       const [bRes, sRes, uRes, utRes] = await Promise.all([
         fetch(`/api/bookings?${params}`),
@@ -243,12 +246,12 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
         </div>
       )}
 
-      {/* Category toggle */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+      {/* Category toggle — the hotel's OWN categories, not one customer's trio */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
         {[
-          { key: 'glamping', label: 'Glamping' },
-          { key: 'resort', label: 'Resort' },
-          { key: 'camping', label: 'Camping' },
+          { key: '', label: t('Всі') },
+          ...[...new Map(unitTypes.map(ut => [ut.category_type, ut.category_name || ut.category_type])).entries()]
+            .map(([key, label]) => ({ key, label })),
         ].map(c => (
           <button
             key={c.key}
@@ -319,7 +322,7 @@ export default function MobileBookings({ openNew }: MobileBookingsProps) {
             <button
               onClick={() => setShowRoomAllocation(true)}
               style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 10, background: 'rgba(91,124,255,0.12)', border: '1px solid rgba(91,124,255,0.3)', color: 'var(--accent-primary)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-              title={t('Розселення гостей по кімнатах Будови F')}
+              title={t('Розселення гостей по кімнатах')}
             >
               <Building2 size={13} /> {t('Розселення')}
             </button>

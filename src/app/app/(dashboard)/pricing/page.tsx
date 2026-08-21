@@ -717,7 +717,9 @@ function WidgetPriceListSection() {
     setSaving(false);
   };
 
-  const categories = ['glamping', 'buildings', 'camping'];
+  // Group by the categories the price list actually contains — a fixed trio
+  // here rendered empty sections for every hotel that wasn't the first one.
+  const categories = [...new Set(items.map(i => i.category))];
   const catLabels: Record<string, string> = { glamping: '🏕️ Glamping', buildings: '🏠 Buildings', camping: '⛺ Camping' };
 
   if (loading) return null;

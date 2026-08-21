@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
 
+// Generic on purpose: this legacy page served ONE customer's branding to
+// whoever reached it. Per-site titles live with the sites/widget config.
 export const metadata: Metadata = {
-  title: 'ALiSiO Glamping — Бронювання',
-  description: 'Забронюйте глемпінг-будиночок в ALiSiO Resort, Лугачовіце',
+  title: 'Бронювання',
+  description: 'Онлайн-бронювання',
 };
 
 export default function BookingLayout({

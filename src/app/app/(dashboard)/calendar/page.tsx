@@ -1180,6 +1180,8 @@ function CalendarDesktop() {
           onClose={() => setShowExportModal(false)}
           timelineStart={timelineStart}
           timelineEnd={days[days.length - 1]}
+          categories={[...new Map(units.map(u => [u.category_type, u.category_name || u.category_type])).entries()]
+            .map(([type, label]) => ({ type, label }))}
         />
       )}
 
@@ -1230,10 +1232,12 @@ function CalendarDesktop() {
 }
 
 // ─── Export Report Modal ──────────────────────────────────
-function ExportReportModal({ onClose, timelineStart, timelineEnd }: {
+function ExportReportModal({ onClose, timelineStart, timelineEnd, categories }: {
   onClose: () => void;
   timelineStart: Date;
   timelineEnd: Date;
+  /** The hotel's own categories — the filter offers what the hotel HAS. */
+  categories: { type: string; label: string }[];
 }) {
   const tUi = useT();
   const today = new Date();
@@ -1369,9 +1373,7 @@ function ExportReportModal({ onClose, timelineStart, timelineEnd }: {
             <select className="form-select" value={category} onChange={e => setCategory(e.target.value)}
               style={{ width: '100%', fontSize: 13, padding: '8px 10px' }}>
               <option value="">{tUi('Всі категорії')}</option>
-              <option value="glamping">Glamping</option>
-              <option value="resort">Resort</option>
-              <option value="camping">Camping</option>
+              {categories.map(c => <option key={c.type} value={c.type}>{c.label}</option>)}
             </select>
           </div>
           <div>

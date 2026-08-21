@@ -1,16 +1,13 @@
 'use client';
 
 import { useT, usePlural } from '@core/i18n/client';
+import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
-import { BarChart3, TrendingUp, Calendar, Users, Wallet, RefreshCw, Loader2, Tent } from 'lucide-react';
-import GlampingReportModal from '@/components/reports/GlampingReportModal';
+import { BarChart3, TrendingUp, Calendar, Users, Wallet, RefreshCw, Loader2 } from 'lucide-react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
-const CZK_TO_EUR = 23.5;
-const toEur = (czk: number) => (czk / CZK_TO_EUR).toFixed(1);
 
 const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
   glamping: { label: 'Glamping', color: '#a78bfa' },
@@ -87,13 +84,16 @@ const PRESETS: { key: string; label: string }[] = [
 export default function ReportsPage() {
   const pluralUi = usePlural();
   const tUi = useT();
+  // The organization's own currency — this screen used to say CZK to every
+  // hotel on the server, with a hardcoded ≈EUR rate on top.
+  const { organization } = useCurrentUser();
+  const cur = organization?.currency || '';
   const initRange = getPresetRange('thisMonth');
   const [from, setFrom] = useState(initRange[0]);
   const [to, setTo] = useState(initRange[1]);
   const [activePreset, setActivePreset] = useState('thisMonth');
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [isGlampingModalOpen, setIsGlampingModalOpen] = useState(false);
   const onMenuClick = useMobileMenu();
 
   const fetchReport = useCallback(async () => {
@@ -133,9 +133,6 @@ export default function ReportsPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <button className="btn btn-secondary" onClick={() => setIsGlampingModalOpen(true)}>
-              <Tent size={16} /> {tUi('Глемпінг по будинках')}
-            </button>
             <button className="btn btn-secondary" onClick={fetchReport} title={tUi('Оновити')}>
               <RefreshCw size={16} />
             </button>
@@ -183,7 +180,7 @@ export default function ReportsPage() {
                 <div className="stat-icon green"><BarChart3 size={22} /></div>
                 <div>
                   <div className="stat-value">{(summary.totalRevenue || 0).toLocaleString()}</div>
-                  <div className="stat-label">{tUi('Вартість бронювань (CZK, по заїзду) ≈')} {toEur(summary.totalRevenue || 0)} EUR</div>
+                  <div className="stat-label">{tUi('Вартість бронювань (по заїзду)')}</div>
                 </div>
               </div>
               <div className="stat-card">
@@ -214,9 +211,9 @@ export default function ReportsPage() {
                           <div className="flex justify-between mb-2" style={{ fontSize: 13 }}>
                             <span style={{ fontWeight: 600 }}>{tUi(cfg.label)}</span>
                             <span style={{ fontWeight: 700 }}>
-                              {info.revenue.toLocaleString()} CZK
+                              {info.revenue.toLocaleString()} {cur}
                               <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, marginLeft: 6, fontSize: 11 }}>
-                                {info.bookings} {tUi('брон. · сер.')} {avgCheck.toLocaleString()} CZK
+                                {info.bookings} {tUi('брон. · сер.')} {avgCheck.toLocaleString()} {cur}
                               </span>
                             </span>
                           </div>
@@ -237,9 +234,8 @@ export default function ReportsPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Wallet size={14} style={{ color: 'var(--text-tertiary)' }} />
                     <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--accent-primary)' }}>
-                      {totalMethodPayments.toLocaleString()} CZK
+                      {totalMethodPayments.toLocaleString()} {cur}
                     </span>
-                    <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>≈ {toEur(totalMethodPayments)} EUR</span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -256,7 +252,7 @@ export default function ReportsPage() {
                               <span style={{ fontSize: 16 }}>{cfg.icon}</span> {tUi(cfg.label)}
                             </span>
                             <span>
-                              <span style={{ fontWeight: 700 }}>{(amount as number).toLocaleString()} CZK</span>
+                              <span style={{ fontWeight: 700 }}>{(amount as number).toLocaleString()} {cur}</span>
                               <span style={{ color: 'var(--text-tertiary)', marginLeft: 6, fontSize: 11 }}>({pct}%)</span>
                             </span>
                           </div>
@@ -283,8 +279,7 @@ export default function ReportsPage() {
                       <th>{tUi('Категорія')}</th>
                       <th>{tUi('Бронювань')}</th>
                       <th>{tUi('Ночей')}</th>
-                      <th>{tUi('Вартість бронювань (CZK)')}</th>
-                      <th>≈ EUR</th>
+                      <th>{tUi('Вартість бронювань')}</th>
                       <th>{tUi('Сер. чек')}</th>
                     </tr>
                   </thead>
@@ -301,7 +296,6 @@ export default function ReportsPage() {
                             <td>{info.bookings}</td>
                             <td>{info.nights}</td>
                             <td style={{ fontWeight: 700 }}>{info.revenue.toLocaleString()}</td>
-                            <td style={{ color: 'var(--text-tertiary)' }}>≈ {toEur(info.revenue)}</td>
                             <td>{avgCheck.toLocaleString()}</td>
                           </tr>
                         );
@@ -313,7 +307,6 @@ export default function ReportsPage() {
                         <td>{summary.totalBookings}</td>
                         <td>{Object.values(catData).reduce((s: number, v: any) => s + (v as any).nights, 0)}</td>
                         <td style={{ color: 'var(--accent-primary)' }}>{(summary.totalRevenue || 0).toLocaleString()}</td>
-                        <td style={{ color: 'var(--text-tertiary)' }}>≈ {toEur(summary.totalRevenue || 0)}</td>
                         <td>{(summary.avgCheck || 0).toLocaleString()}</td>
                       </tr>
                     )}
@@ -334,12 +327,12 @@ export default function ReportsPage() {
                         <div key={cat} className="report-category-card">
                           <div className="report-category-card-header">
                             <span className="badge" style={{ background: cfg.color + '22', color: cfg.color }}>{tUi(cfg.label)}</span>
-                            <span className="report-category-card-value">{info.revenue.toLocaleString()} CZK</span>
+                            <span className="report-category-card-value">{info.revenue.toLocaleString()} {cur}</span>
                           </div>
                           <div className="report-category-card-stats">
                             <span>{info.bookings} {tUi('брон.')}</span>
                             <span>{info.nights} {tUi('ночей')}</span>
-                            <span>{tUi('сер.')} {avgCheck.toLocaleString()} CZK</span>
+                            <span>{tUi('сер.')} {avgCheck.toLocaleString()} {cur}</span>
                           </div>
                         </div>
                       );
@@ -348,12 +341,11 @@ export default function ReportsPage() {
                     <div className="report-category-card" style={{ borderColor: 'var(--accent-primary)', borderWidth: 2 }}>
                       <div className="report-category-card-header">
                         <span style={{ fontWeight: 700, fontSize: 14 }}>{tUi('Всього')}</span>
-                        <span className="report-category-card-value" style={{ fontSize: 18 }}>{(summary.totalRevenue || 0).toLocaleString()} CZK</span>
+                        <span className="report-category-card-value" style={{ fontSize: 18 }}>{(summary.totalRevenue || 0).toLocaleString()} {cur}</span>
                       </div>
                       <div className="report-category-card-stats">
                         <span>{summary.totalBookings} {tUi('брон.')}</span>
                         <span>{Object.values(catData).reduce((s: number, v: any) => s + (v as any).nights, 0)} {tUi('ночей')}</span>
-                        <span>≈ {toEur(summary.totalRevenue || 0)} EUR</span>
                       </div>
                     </div>
                   </div>
@@ -364,12 +356,6 @@ export default function ReportsPage() {
         )}
       </div>
 
-      <GlampingReportModal 
-        isOpen={isGlampingModalOpen} 
-        onClose={() => setIsGlampingModalOpen(false)} 
-        from={from} 
-        to={to} 
-      />
     </>
   );
 }

@@ -624,7 +624,7 @@ export default function MobileCalendar() {
             <button
               onClick={() => setShowRoomAllocation(true)}
               style={{ ...navBtn, color: 'var(--accent-primary)' }}
-              title={tUi('Розселення по кімнатах Будови F')}
+              title={tUi('Розселення по кімнатах')}
             >
               <Building2 size={15} />
             </button>

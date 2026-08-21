@@ -14,10 +14,18 @@ export interface CurrentUser {
   permissions: Permission[];
 }
 
+export interface CurrentOrganization {
+  currency: string;
+  /** Distinct countries of the organization's properties — jurisdiction-bound
+   *  UI (Evidenční kniha, currency labels) reads this, never assumes. */
+  countries: string[];
+}
+
 interface UseCurrentUserReturn {
   user: CurrentUser | null;
   /** Enabled integrations for the user's organization — see core/features.ts. */
   features: Record<string, boolean>;
+  organization: CurrentOrganization | null;
   loading: boolean;
   error: string | null;
   logout: () => Promise<void>;
@@ -27,6 +35,7 @@ interface UseCurrentUserReturn {
 export function useCurrentUser(): UseCurrentUserReturn {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
+  const [organization, setOrganization] = useState<CurrentOrganization | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +46,7 @@ export function useCurrentUser(): UseCurrentUserReturn {
         const data = await res.json();
         setUser(data.user);
         setFeatures(data.features || {});
+        setOrganization(data.organization || null);
         setError(null);
       } else {
         setUser(null);
@@ -66,5 +76,5 @@ export function useCurrentUser(): UseCurrentUserReturn {
     }
   }, []);
 
-  return { user, features, loading, error, logout, refresh: fetchUser };
+  return { user, features, organization, loading, error, logout, refresh: fetchUser };
 }
