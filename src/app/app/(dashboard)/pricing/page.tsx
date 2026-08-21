@@ -363,6 +363,18 @@ export default function PricingPage() {
   const [editDay, setEditDay] = useState<PriceDay | null>(null);
   const [showBulkEdit, setShowBulkEdit] = useState(false);
   const [toast, setToast] = useState('');
+  // Чи веде цей готель ціни матрицею заселеності. Порожній день-календар при
+  // заповненій матриці — не «цін немає», а «вони в іншому місці», і без цього
+  // рядка екран про це мовчить (див. pricing/data/nightly-price.ts).
+  const [hasMatrix, setHasMatrix] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/pricing/occupancy')
+      .then((r) => r.json())
+      .then((d) => setHasMatrix(Array.isArray(d?.prices) ? d.prices.length > 0
+        : Array.isArray(d) ? d.length > 0 : false))
+      .catch(() => {});
+  }, []);
 
   // Fetch unit types
   useEffect(() => {
@@ -481,6 +493,23 @@ export default function PricingPage() {
             boxShadow: '0 4px 20px rgba(0,0,0,0.3)', animation: 'fadeIn 0.3s ease',
           }}>
             <Check size={16} /> {toast}
+          </div>
+        )}
+
+        {hasMatrix && priceData.every((d) => !d.base_price) && (
+          <div style={{
+            marginBottom: 16, padding: '12px 16px', borderRadius: 'var(--radius-md)',
+            background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
+            fontSize: 13, lineHeight: 1.6,
+          }}>
+            <strong>{t('Ціни цього обʼєкта ведуться матрицею заселеності')}</strong>
+            <div style={{ color: 'var(--text-secondary)', marginTop: 4 }}>
+              {t('Цей екран — денний календар: його заповнює PriceLabs або канал, і для розрахунку він потрібен лише там, де матриця мовчить. Порожньо тут не означає, що ціни немає.')}
+              {' '}
+              <a href="/app/settings/pricing-matrix" style={{ color: 'var(--accent-primary)' }}>
+                {t('Відкрити ціни за заселеністю')}
+              </a>
+            </div>
           </div>
         )}
 
