@@ -17,6 +17,10 @@ export const FEATURES = {
   pricelabs: 'Динамічні ціни PriceLabs',
   telegram: 'Telegram-міст (задачі, реєстрація)',
   widget: 'Віджет бронювання і сайти',
+  // Німецька фіскалізація (KassenSichV/TSE). Поки вимкнена, DE-готель НЕ
+  // може записати готівку чи карту-на-рецепції — інакше PMS тихо стала б
+  // незареєстрованою касою (docs/TSE-KASSENSICHV.md §6.4, блок A).
+  fiscal_de: 'Фіскалізація Німеччини (TSE)',
 } as const;
 
 export type FeatureKey = keyof typeof FEATURES;

@@ -320,6 +320,7 @@ export {
 export {
   listFolios, createFolio, getFolioCharges, addFolioCharges,
   issueFolioInvoice, stornoInvoice, moveFolioCharges,
+  getFolioPayments, addFolioPayment,
 } from './folio.handlers';
 
 // What each channel's price includes, and the split it turns into.

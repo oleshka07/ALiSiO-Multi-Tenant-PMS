@@ -5196,6 +5196,29 @@ function runMigrations(database: any) {
     // ALTER branch that adds service_order_id, which never runs on a database
     // whose CREATE already has the column.
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_order ON fin_folio_items(service_order_id)');
+
+    // How a folio was paid — first-class, because KassenSichV asks the
+    // DOCUMENT whether it needs a TSE signature (cash / card at the desk:
+    // yes; transfer: no). Migration 0026, TSE spec §6.4 Block A. Created
+    // HERE, after fin_folios exists — the events module already paid for an
+    // ALTER that ran before its CREATE.
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS fin_folio_payments (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id     TEXT REFERENCES properties(id) ON DELETE SET NULL,
+        folio_id        TEXT NOT NULL REFERENCES fin_folios(id) ON DELETE CASCADE,
+        invoice_id      TEXT REFERENCES invoices(id) ON DELETE SET NULL,
+        amount          REAL NOT NULL,
+        method          TEXT NOT NULL,
+        paid_at         TEXT NOT NULL DEFAULT (datetime('now')),
+        received_by     TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        CHECK (method IN ('cash','card_terminal','transfer','voucher'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_payments_folio ON fin_folio_payments(folio_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_payments_org ON fin_folio_payments(organization_id, paid_at)');
   } catch (e: any) {
     console.error('[DB] fin_folios migration:', e.message);
   }
