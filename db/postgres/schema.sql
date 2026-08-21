@@ -644,8 +644,49 @@ CREATE TABLE "fin_folio_payments" (
   "paid_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "received_by" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  -- §6 KassenSichV on the beleg. NULL = signature not required (transfer,
+  -- non-German till); 'signed' | 'tse_failed' otherwise. Migration 0027.
+  "tse_status" TEXT,
+  "tse_serial" TEXT,
+  "tse_tx_number" TEXT,
+  "tse_signature_counter" TEXT,
+  "tse_signature" TEXT,
+  "tse_start_time" TEXT,
+  "tse_end_time" TEXT,
+  "tse_qr_payload" TEXT,
+  "tse_client_id" TEXT,
+  "tse_process_type" TEXT,
+  "tse_process_data" TEXT,
   PRIMARY KEY ("id"),
   CHECK (method IN ('cash','card_terminal','transfer','voucher'))
+);
+
+-- Which TSE a property's till talks to (identifiers; the secrets live in
+-- channel_credentials) and the recording-system serial §6 prints and the
+-- ELSTER Kassenmeldung names. Migration 0027.
+CREATE TABLE "fin_fiscal_settings" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT,
+  "property_id" TEXT NOT NULL,
+  "tss_id" TEXT,
+  "tse_client_id" TEXT,
+  "recording_system_serial" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
+);
+
+-- When the TSE was unreachable, from when to when — the journal a
+-- Betriebsprüfung asks for. Migration 0027.
+CREATE TABLE "fin_fiscal_outages" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT,
+  "property_id" TEXT,
+  "started_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "ended_at" TIMESTAMPTZ,
+  "note" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
 );
 
 CREATE TABLE "fin_invoice_lines" (
@@ -2034,6 +2075,14 @@ ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_folio_id_
   FOREIGN KEY ("folio_id") REFERENCES "fin_folios" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_invoice_id_4"
   FOREIGN KEY ("invoice_id") REFERENCES "invoices" ("id") ON DELETE SET NULL;
+ALTER TABLE "fin_fiscal_settings" ADD CONSTRAINT "fk_fin_fiscal_settings_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "fin_fiscal_settings" ADD CONSTRAINT "fk_fin_fiscal_settings_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "fin_fiscal_outages" ADD CONSTRAINT "fk_fin_fiscal_outages_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "fin_fiscal_outages" ADD CONSTRAINT "fk_fin_fiscal_outages_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_invoice_lines" ADD CONSTRAINT "fk_fin_invoice_lines_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_invoice_tax_totals" ADD CONSTRAINT "fk_fin_invoice_tax_totals_organization_id_1"
@@ -2358,6 +2407,9 @@ CREATE INDEX "idx_fin_folios_org" ON "fin_folios" ("organization_id", "status");
 CREATE INDEX "idx_fin_folios_res" ON "fin_folios" ("reservation_id");
 CREATE INDEX "idx_fin_folio_payments_folio" ON "fin_folio_payments" ("folio_id");
 CREATE INDEX "idx_fin_folio_payments_org" ON "fin_folio_payments" ("organization_id", "paid_at");
+CREATE UNIQUE INDEX "idx_fin_fiscal_settings_row" ON "fin_fiscal_settings" ("property_id");
+CREATE INDEX "idx_fin_fiscal_settings_org" ON "fin_fiscal_settings" ("organization_id");
+CREATE INDEX "idx_fin_fiscal_outages_org" ON "fin_fiscal_outages" ("organization_id", "started_at");
 CREATE INDEX "idx_fin_invoice_lines_invoice" ON "fin_invoice_lines" ("invoice_id", "position");
 CREATE UNIQUE INDEX "idx_fin_invoice_tax_totals_rate" ON "fin_invoice_tax_totals" ("invoice_id", "vat_rate");
 CREATE INDEX "idx_attach_op" ON "fin_operation_attachments" ("operation_id");
@@ -2547,6 +2599,10 @@ ALTER TABLE "channel_credentials" ALTER COLUMN "organization_id"
 ALTER TABLE "channel_rate_rules" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "fin_folio_payments" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "fin_fiscal_settings" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "fin_fiscal_outages" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "event_spaces" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2757,6 +2813,18 @@ CREATE POLICY "channel_credentials_tenant" ON "channel_credentials"
 ALTER TABLE "fin_folio_payments" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "fin_folio_payments" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "fin_folio_payments_tenant" ON "fin_folio_payments"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "fin_fiscal_settings" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "fin_fiscal_settings" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "fin_fiscal_settings_tenant" ON "fin_fiscal_settings"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "fin_fiscal_outages" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "fin_fiscal_outages" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "fin_fiscal_outages_tenant" ON "fin_fiscal_outages"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

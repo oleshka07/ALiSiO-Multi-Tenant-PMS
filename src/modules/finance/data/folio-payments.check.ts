@@ -1,14 +1,20 @@
 /**
- * The payment row and the fiscal guard.
+ * The payment row, the fiscal guard, and the signature that lands with it.
  *
  *   node src/modules/finance/data/folio-payments.check.ts
  *
- * The single behaviour worth breaking things over: a GERMAN property with
- * the fiscal module OFF must refuse cash and card-at-the-desk — otherwise
- * this PMS quietly becomes an unregistered till under §146a AO while the
- * hotel still runs its old system. A transfer must pass (not a till
- * movement), a Czech property must pass (no KassenSichV), and switching
- * `fiscal_de` on must open the till. docs/TSE-KASSENSICHV.md §6.4, Block A.
+ * Block A: a GERMAN property with the fiscal module OFF must refuse cash and
+ * card-at-the-desk — otherwise this PMS quietly becomes an unregistered till
+ * under §146a AO while the hotel still runs its old system. A transfer must
+ * pass (not a till movement), a Czech property must pass (no KassenSichV).
+ *
+ * Block B: with `fiscal_de` ON, a German cash payment is SIGNED — through
+ * the FiscalDevice seam, fed the invoice's own VAT split — and when the TSE
+ * cannot be reached the payment still goes through, but loudly: tse_failed
+ * on the row, an outage entry with both timestamps, and the desk can list
+ * the unsigned operations. The device here is a stub on purpose: the check
+ * proves the TILL's behaviour, not fiskaly's uptime.
+ * docs/TSE-KASSENSICHV.md §6.4, blocks A і B.
  */
 import assert from 'node:assert';
 import '../../../../scripts/lib/module-aliases.mjs';
@@ -17,13 +23,14 @@ const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
 const { setFeature } = await import('@core/features');
 const { createFolio } = await import('./folio.repo.ts');
-const { recordPayment, listPayments } = await import('./folio-payments.repo.ts');
+const { recordPayment, listPayments, unsignedPayments } = await import('./folio-payments.repo.ts');
 
 const sql = getSql();
 const ORG = 'org_paych';
 
 async function cleanup() {
-  for (const t of ['fin_folio_payments', 'fin_folios', 'organization_features']) {
+  for (const t of ['fin_folio_payments', 'fin_fiscal_outages', 'fin_fiscal_settings',
+    'fin_invoice_tax_totals', 'invoices', 'fin_folios', 'organization_features']) {
     await sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [ORG]).catch(() => {});
   }
   await sql.run("DELETE FROM properties WHERE id LIKE 'paych_%'", []);
@@ -66,18 +73,84 @@ try {
     await recordPayment({ folioId: czFolio, amount: 500, method: 'cash' });
     console.log('  ok  переказ у DE і готівка в CZ проходять без фіскального модуля');
 
-    // ── the till opens with the feature ────────────────────────────────────
+    // ── the till opens with the feature — and signs ────────────────────────
     await setFeature(ORG, 'fiscal_de', true);
-    await recordPayment({ folioId: deFolio, amount: 50, method: 'cash' });
+
+    // The beleg being signed is the invoice; German cash without one would
+    // have to invent a VAT split, so it is refused.
+    await assert.rejects(
+      recordPayment({ folioId: deFolio, amount: 50, method: 'cash' }),
+      /must name its invoice/, 'німецька готівка без рахунку мала бути відмовлена');
+
+    await sql.run(
+      `INSERT INTO invoices (id, organization_id, invoice_number, issued_at, amount, currency, status, folio_id)
+       VALUES ('paych_inv', ?, 'K-1', '2026-08-21', 50, 'EUR', 'issued', ?)`,
+      [ORG, deFolio]);
+    await sql.run(
+      `INSERT INTO fin_invoice_tax_totals (id, organization_id, invoice_id, vat_rate, gross_amount, net_amount, tax_amount)
+       VALUES ('paych_tt1', ?, 'paych_inv', 7, 43, 40.19, 2.81), ('paych_tt2', ?, 'paych_inv', 19, 7, 5.88, 1.12)`,
+      [ORG, ORG]);
+
+    // The stub proves the TILL: what it was fed, and that what it returned
+    // landed on the row — not fiskaly's uptime.
+    const fed: any[] = [];
+    const stub = {
+      async signReceipt(receipt: any) {
+        fed.push(receipt);
+        return {
+          tseSerial: 'TSE-77', txNumber: '42', signatureCounter: '1001',
+          signature: 'SIG==', startTime: '2026-08-21T10:00:00Z', endTime: '2026-08-21T10:00:01Z',
+          qrPayload: 'V0;swissbit;...', clientId: 'client-1',
+          processType: 'Kassenbeleg-V1', processData: 'Beleg^43.00_7.00^50.00:Bar',
+        };
+      },
+    };
+    await recordPayment(
+      { folioId: deFolio, amount: 50, method: 'cash', invoiceId: 'paych_inv' },
+      { device: stub });
+    assert.deepStrictEqual(fed[0].vatAmounts, [{ rate: 7, amount: 43 }, { rate: 19, amount: 7 }],
+      'пристрій мусить отримати розбивку ПДВ РАХУНКУ, не вигадану');
     // Money handed back keeps its sign; deleting a payment is not a thing.
-    await recordPayment({ folioId: deFolio, amount: -20, method: 'cash' });
+    await recordPayment(
+      { folioId: deFolio, amount: -20, method: 'cash', invoiceId: 'paych_inv' },
+      { device: stub });
     const rows = await listPayments(deFolio);
-    assert.deepStrictEqual(rows.map((p) => [p.method, Number(p.amount)]),
-      [['transfer', 154], ['cash', 50], ['cash', -20]],
-      'оплати фоліо: спосіб і знак мусять зберегтися як записані');
+    assert.deepStrictEqual(rows.map((p) => [p.method, Number(p.amount), (p as any).tse_status ?? null]),
+      [['transfer', 154, null], ['cash', 50, 'signed'], ['cash', -20, 'signed']],
+      'переказ без підпису, готівка підписана, знак повернення збережено');
+    const signed = rows[1] as any;
+    assert.strictEqual(signed.tse_signature, 'SIG==');
+    assert.strictEqual(signed.tse_tx_number, '42');
+    assert.strictEqual(signed.tse_serial, 'TSE-77');
+    assert.ok(signed.tse_qr_payload, 'QR-payload мусить лягти на белег');
     assert.strictEqual(rows[0].property_id, 'paych_de',
       'оплата мусить знати касу (property) — без неї DSFinV-K не збереться');
-    console.log('  ok  з fiscal_de готівка пишеться, повернення несе мінус, каса відома');
+    console.log('  ok  готівка підписується розбивкою рахунку, підпис лежить на рядку');
+
+    // ── the TSE is down: checkout passes, nothing passes silently ──────────
+    const broken = { async signReceipt(): Promise<never> { throw new Error('TSE unreachable'); } };
+    const failedId = await recordPayment(
+      { folioId: deFolio, amount: 30, method: 'cash', invoiceId: 'paych_inv' },
+      { device: broken });
+    assert.ok(failedId, 'падіння TSE не сміє блокувати виїзд — оплата записана');
+    const failed = (await listPayments(deFolio)).find((p) => p.id === failedId) as any;
+    assert.strictEqual(failed.tse_status, 'tse_failed');
+    assert.strictEqual(failed.tse_signature ?? null, null, 'підпис не вигадується');
+    const outage = await sql.row<any>(
+      'SELECT started_at, ended_at, note FROM fin_fiscal_outages WHERE organization_id = ?', [ORG]);
+    assert.ok(outage?.started_at && outage?.ended_at,
+      'збій мусить лягти в журнал із часом початку І кінця');
+    assert.match(String(outage.note), /TSE unreachable/);
+    const unsigned = await unsignedPayments();
+    assert.strictEqual(unsigned.length, 1, 'рецепція мусить бачити непідписані операції');
+    console.log('  ok  TSE лежить: оплата пройшла, tse_failed на рядку, збій у журналі');
+
+    // No device injected and nothing configured: same loud path, not a hang.
+    const unconfigured = await recordPayment(
+      { folioId: deFolio, amount: 10, method: 'card_terminal', invoiceId: 'paych_inv' });
+    const uRow = (await listPayments(deFolio)).find((p) => p.id === unconfigured) as any;
+    assert.strictEqual(uRow.tse_status, 'tse_failed', 'несконфігурований fiskaly — теж tse_failed, не тиша');
+    console.log('  ok  без конфігурації fiskaly — tse_failed і запис у журналі, виїзд не стоїть');
 
     // ── the honest refusals ────────────────────────────────────────────────
     // A folio with no property cannot prove its till is not German — the
@@ -97,4 +170,4 @@ try {
   await cleanup();
 }
 
-console.log('оплата — факт на фоліо, і німецька каса не відкривається раніше за TSE');
+console.log('оплата — факт на фоліо, німецька готівка носить підпис, а збій TSE — голосний');

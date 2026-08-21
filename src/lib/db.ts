@@ -5214,11 +5214,64 @@ function runMigrations(database: any) {
         paid_at         TEXT NOT NULL DEFAULT (datetime('now')),
         received_by     TEXT,
         created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        tse_status      TEXT,
+        tse_serial      TEXT,
+        tse_tx_number   TEXT,
+        tse_signature_counter TEXT,
+        tse_signature   TEXT,
+        tse_start_time  TEXT,
+        tse_end_time    TEXT,
+        tse_qr_payload  TEXT,
+        tse_client_id   TEXT,
+        tse_process_type TEXT,
+        tse_process_data TEXT,
         CHECK (method IN ('cash','card_terminal','transfer','voucher'))
       )
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_payments_folio ON fin_folio_payments(folio_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_payments_org ON fin_folio_payments(organization_id, paid_at)');
+    // Databases whose CREATE predates the TSE columns catch up here — the
+    // guarded ALTER stands AFTER the CREATE on purpose (lesson of 086ec1d).
+    {
+      const payCols = (database.prepare('PRAGMA table_info(fin_folio_payments)').all() as any[]).map((c: any) => c.name);
+      for (const col of ['tse_status', 'tse_serial', 'tse_tx_number', 'tse_signature_counter',
+        'tse_signature', 'tse_start_time', 'tse_end_time', 'tse_qr_payload',
+        'tse_client_id', 'tse_process_type', 'tse_process_data']) {
+        if (!payCols.includes(col)) database.exec(`ALTER TABLE fin_folio_payments ADD COLUMN ${col} TEXT`);
+      }
+    }
+
+    // Which TSE a property's till talks to (identifiers; secrets live in
+    // channel_credentials) + the §6 recording-system serial. Migration 0027.
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS fin_fiscal_settings (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id     TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        tss_id          TEXT,
+        tse_client_id   TEXT,
+        recording_system_serial TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(property_id)
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_fiscal_settings_org ON fin_fiscal_settings(organization_id)');
+
+    // The outage journal a Betriebsprüfung asks for: when the TSE was
+    // unreachable, from when to when. Migration 0027.
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS fin_fiscal_outages (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id     TEXT REFERENCES properties(id) ON DELETE CASCADE,
+        started_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        ended_at        TEXT,
+        note            TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_fiscal_outages_org ON fin_fiscal_outages(organization_id, started_at)');
   } catch (e: any) {
     console.error('[DB] fin_folios migration:', e.message);
   }

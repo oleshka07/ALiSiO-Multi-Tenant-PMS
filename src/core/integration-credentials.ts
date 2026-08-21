@@ -19,7 +19,7 @@ import { getSql } from './db/async.ts';
  * until its owner saves credentials in the UI.
  */
 
-export type IntegrationChannel = 'hostex' | 'pricelabs' | 'booking_com' | 'telegram';
+export type IntegrationChannel = 'hostex' | 'pricelabs' | 'booking_com' | 'telegram' | 'fiskaly';
 
 export interface IntegrationCredentials {
   clientId?: string;
@@ -42,6 +42,10 @@ function fromEnv(channel: IntegrationChannel): IntegrationCredentials | null {
     case 'booking_com':
       return env.BOOKING_COM_CLIENT_ID
         ? { clientId: env.BOOKING_COM_CLIENT_ID, clientSecret: env.BOOKING_COM_CLIENT_SECRET, perOrganization: false }
+        : null;
+    case 'fiskaly':
+      return env.FISKALY_API_KEY
+        ? { clientId: env.FISKALY_API_KEY, clientSecret: env.FISKALY_API_SECRET, perOrganization: false }
         : null;
     default:
       return null;
@@ -112,6 +116,12 @@ export const INTEGRATION_FIELDS: Record<string, { field: 'accessToken' | 'client
   booking_com: [
     { field: 'clientId', label: 'Client ID' },
     { field: 'clientSecret', label: 'Client secret' },
+  ],
+  // TSE (KassenSichV). Which TSS and which registered till a PROPERTY uses
+  // are identifiers, not secrets — they live in fin_fiscal_settings.
+  fiskaly: [
+    { field: 'clientId', label: 'API key', hint: 'fiskaly dashboard → SIGN DE' },
+    { field: 'clientSecret', label: 'API secret' },
   ],
 };
 
