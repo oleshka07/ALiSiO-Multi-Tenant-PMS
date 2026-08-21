@@ -5272,6 +5272,30 @@ function runMigrations(database: any) {
       )
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_fiscal_outages_org ON fin_fiscal_outages(organization_id, started_at)');
+
+    // The Kassenabschluss as a RECORD, one per property per day — DSFinV-K
+    // is built around it. Not the day-sheets Tagesabschluss. Migration 0028.
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS fin_cash_closings (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id     TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        closing_date    TEXT NOT NULL,
+        closing_number  INTEGER NOT NULL,
+        cash_total      REAL NOT NULL DEFAULT 0,
+        card_total      REAL NOT NULL DEFAULT 0,
+        payments_count  INTEGER NOT NULL DEFAULT 0,
+        signed_count    INTEGER NOT NULL DEFAULT 0,
+        failed_count    INTEGER NOT NULL DEFAULT 0,
+        first_payment_at TEXT,
+        last_payment_at TEXT,
+        closed_by       TEXT,
+        notes           TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(property_id, closing_date)
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_cash_closings_org ON fin_cash_closings(organization_id, closing_date)');
   } catch (e: any) {
     console.error('[DB] fin_folios migration:', e.message);
   }

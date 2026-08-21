@@ -661,6 +661,27 @@ CREATE TABLE "fin_folio_payments" (
   CHECK (method IN ('cash','card_terminal','transfer','voucher'))
 );
 
+-- The Kassenabschluss as a RECORD, one per property per day — DSFinV-K is
+-- built around it. Not the day-sheets Tagesabschluss. Migration 0028.
+CREATE TABLE "fin_cash_closings" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT,
+  "property_id" TEXT NOT NULL,
+  "closing_date" DATE NOT NULL,
+  "closing_number" BIGINT NOT NULL,
+  "cash_total" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "card_total" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "payments_count" BIGINT DEFAULT 0 NOT NULL,
+  "signed_count" BIGINT DEFAULT 0 NOT NULL,
+  "failed_count" BIGINT DEFAULT 0 NOT NULL,
+  "first_payment_at" TIMESTAMPTZ,
+  "last_payment_at" TIMESTAMPTZ,
+  "closed_by" TEXT,
+  "notes" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
+);
+
 -- Which TSE a property's till talks to (identifiers; the secrets live in
 -- channel_credentials) and the recording-system serial §6 prints and the
 -- ELSTER Kassenmeldung names. Migration 0027.
@@ -2075,6 +2096,10 @@ ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_folio_id_
   FOREIGN KEY ("folio_id") REFERENCES "fin_folios" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_folio_payments" ADD CONSTRAINT "fk_fin_folio_payments_invoice_id_4"
   FOREIGN KEY ("invoice_id") REFERENCES "invoices" ("id") ON DELETE SET NULL;
+ALTER TABLE "fin_cash_closings" ADD CONSTRAINT "fk_fin_cash_closings_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "fin_cash_closings" ADD CONSTRAINT "fk_fin_cash_closings_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_fiscal_settings" ADD CONSTRAINT "fk_fin_fiscal_settings_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_fiscal_settings" ADD CONSTRAINT "fk_fin_fiscal_settings_organization_id_2"
@@ -2407,6 +2432,8 @@ CREATE INDEX "idx_fin_folios_org" ON "fin_folios" ("organization_id", "status");
 CREATE INDEX "idx_fin_folios_res" ON "fin_folios" ("reservation_id");
 CREATE INDEX "idx_fin_folio_payments_folio" ON "fin_folio_payments" ("folio_id");
 CREATE INDEX "idx_fin_folio_payments_org" ON "fin_folio_payments" ("organization_id", "paid_at");
+CREATE UNIQUE INDEX "idx_fin_cash_closings_row" ON "fin_cash_closings" ("property_id", "closing_date");
+CREATE INDEX "idx_fin_cash_closings_org" ON "fin_cash_closings" ("organization_id", "closing_date");
 CREATE UNIQUE INDEX "idx_fin_fiscal_settings_row" ON "fin_fiscal_settings" ("property_id");
 CREATE INDEX "idx_fin_fiscal_settings_org" ON "fin_fiscal_settings" ("organization_id");
 CREATE INDEX "idx_fin_fiscal_outages_org" ON "fin_fiscal_outages" ("organization_id", "started_at");
@@ -2599,6 +2626,8 @@ ALTER TABLE "channel_credentials" ALTER COLUMN "organization_id"
 ALTER TABLE "channel_rate_rules" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "fin_folio_payments" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "fin_cash_closings" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "fin_fiscal_settings" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2813,6 +2842,12 @@ CREATE POLICY "channel_credentials_tenant" ON "channel_credentials"
 ALTER TABLE "fin_folio_payments" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "fin_folio_payments" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "fin_folio_payments_tenant" ON "fin_folio_payments"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "fin_cash_closings" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "fin_cash_closings" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "fin_cash_closings_tenant" ON "fin_cash_closings"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

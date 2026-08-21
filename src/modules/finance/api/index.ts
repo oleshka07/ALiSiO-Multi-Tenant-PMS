@@ -322,6 +322,9 @@ export {
   issueFolioInvoice, stornoInvoice, moveFolioCharges,
   getFolioPayments, addFolioPayment,
 } from './folio.handlers';
+export {
+  listCashClosings, createCashClosing, exportTillJournal,
+} from './cash-closings.handlers';
 
 // What each channel's price includes, and the split it turns into.
 export {
