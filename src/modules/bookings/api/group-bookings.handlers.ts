@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { findOrCreateGuest } from '@guests';
-import { notifyGroupBookingCreated } from '../domain/reservation-tg-notify';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { withActor, withPermission } from '@core/auth/session';
 
@@ -123,16 +122,6 @@ export const createGroupBooking = withPermission('manage_bookings', async (reque
         `, [resId, org.id, firstUnit.property_id, finalUnitIds[i], guestId, groupId, checkIn, checkOut, nights, 1, 0, 'confirmed', 'unpaid', source || 'direct', pricePerUnit]);
         createdResIds.push(resId);
       }
-    });
-
-    await notifyGroupBookingCreated({
-      reservationIds: createdResIds,
-      sourceLabel: `Групове · ${source || 'direct'}`,
-      guestName: `${firstName} ${lastName}`,
-      checkIn,
-      checkOut,
-      totalPrice: totalPrice || 0,
-      currency: 'CZK',
     });
 
     return NextResponse.json({ id: groupId, guestId, roomCount: finalUnitIds.length }, { status: 201 });

@@ -72,7 +72,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
 Put a **different** `APP_SECRET_KEY` in each. It encrypts integration
-credentials stored in the database (Telegram token, IMAP passwords), so a leak
+credentials stored in the database (IMAP passwords, API keys), so a leak
 from staging must not decrypt production. Losing the production key makes those
 credentials unrecoverable — back it up somewhere other than the server.
 
@@ -136,7 +136,7 @@ anything is touched.
 
 1. Refuses to start unless `APP_SECRET_KEY` in the env file is 64 hex
    characters. Without it the integration credentials in the database cannot
-   be decrypted, and that surfaces days later as "Telegram stopped working".
+   be decrypted, and that surfaces days later as "the integration stopped working".
 2. Fetches and hard-resets to the branch.
 3. Archives the data volume to `deploy/backups/` — before touching anything,
    so a bad deploy is undoable. Thirty copies are kept.

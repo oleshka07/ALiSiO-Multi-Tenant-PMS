@@ -21,9 +21,9 @@ import {
 | Функція / Тип | Опис |
 |---|---|
 | `listTasks(request)` | Список задач з фільтрами (проєкт, статус, виконавець, пріоритет, пошук, дедлайн) |
-| `createTask(request)` | Створення задачі. Підтримує теги, Telegram-нотифікацію при призначенні |
+| `createTask(request)` | Створення задачі. Підтримує теги |
 | `getTask(request, { params })` | Отримання задачі за ID (з підзадачами та тегами) |
-| `updateTask(request, { params })` | Оновлення полів задачі. Telegram-нотифікація при зміні статусу/виконавця |
+| `updateTask(request, { params })` | Оновлення полів задачі |
 | `deleteTask(request, { params })` | Видалення задачі (+ очищення вкладень з диску) |
 | `reorderTasks(request)` | Масове оновлення `sort_order` для drag-and-drop |
 
@@ -73,8 +73,6 @@ import {
 
 Модуль **не має каталогу `events/`** — не емітить і не слухає подій шини.
 
-> **Примітка:** Telegram-нотифікації (призначення задачі, зміна статусу, щоденний дайджест) реалізовані через прямі HTTP-виклики до Telegram Bot API в `data/task-notifications.ts`, минаючи шину подій.
-
 ## Схема даних
 
 **Таблиці:** `tasks`, `task_projects`, `task_tags`, `task_tag_links`, `task_attachments`
@@ -99,7 +97,6 @@ tasks/
     tasks.repo.ts         ← SQL-запити для задач (list, get, create, update, delete, reorder, setTags)
     projects.repo.ts      ← SQL-запити для проєктів
     tags.repo.ts          ← SQL-запити для тегів
-    task-notifications.ts ← Telegram-нотифікації (assign, status change, daily digest)
   domain/
     types.ts              ← TypeScript типи (Task, TaskProject, TaskTag, TaskStatus, TaskPriority)
                              та константи (TASK_STATUS_CONFIG, TASK_PRIORITY_CONFIG)
@@ -107,7 +104,7 @@ tasks/
 ```
 
 > **Відсутні каталоги** (не потрібні на даному етапі):
-> - `events/` — модуль працює синхронно, Telegram-нотифікації реалізовані напряму
+> - `events/` — модуль працює синхронно
 > - `ui/` — UI використовує API через HTTP-роути
 > - `__tests__/` — TODO: додати тести
 

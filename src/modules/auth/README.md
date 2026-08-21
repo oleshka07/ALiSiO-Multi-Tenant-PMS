@@ -54,7 +54,7 @@ import { login, logout, getMe, listUsers, createUser, getUser, updateUser, delet
 
 ```sql
 -- Користувачі системи
--- app_users (id, organization_id, email, full_name, phone, telegram_chat_id,
+-- app_users (id, organization_id, email, full_name, phone,
 --            role, password_hash, is_active, default_cash_account_id,
 --            last_login, created_at, updated_at)
 

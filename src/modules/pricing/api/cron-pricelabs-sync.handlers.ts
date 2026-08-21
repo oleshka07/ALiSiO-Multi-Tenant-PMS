@@ -16,7 +16,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { syncPriceLabsToCalendar } from '../data/pricelabs-sync';
-import { sendTelegramMessage } from '@notifications';
 
 export async function syncPriceLabsFromCron(request: NextRequest): Promise<NextResponse> {
   const expected = process.env.CRON_SECRET;
@@ -38,28 +37,6 @@ export async function syncPriceLabsFromCron(request: NextRequest): Promise<NextR
 
   try {
     const result = await syncPriceLabsToCalendar(days);
-
-    // Best-effort TG digest. Failures suppressed so the cron exit code
-    // still reflects the actual sync outcome, not Telegram availability.
-    try {
-      const conflictNote = result.conflicts.length > 0
-        ? `\n⚠️ Конфлікти unit_type: ${result.conflicts.length} (типи з кількома лістингами PriceLabs — останній перезаписує)`
-        : '';
-      const errorNote = result.errors.length > 0 ? `\n❌ Помилки: ${result.errors.join('; ')}` : '';
-      const lines = [
-        result.ok ? '📈 <b>PriceLabs sync OK</b>' : '⚠️ <b>PriceLabs sync завершено з помилками</b>',
-        ``,
-        `Будинків: ${result.listingsResolved}${result.listingsSkipped > 0 ? ` (пропущено ${result.listingsSkipped})` : ''}`,
-        `Записано днів: <b>${result.daysWrittenTotal}</b> (період ${result.dateFrom} → ${result.dateTo})`,
-        `EUR→CZK: ${result.eurToCzk.toFixed(3)}`,
-        ...result.perListing.map((p) => `  • ${p.unit_name}: ${p.days_written} днів`),
-        conflictNote,
-        errorNote,
-      ].filter(Boolean).join('\n');
-      await sendTelegramMessage(lines, undefined, { ownerOnly: true });
-    } catch (tgErr: any) {
-      console.error('[PL cron] TG notify failed (non-fatal):', tgErr.message);
-    }
 
     return NextResponse.json(result, { status: result.ok ? 200 : 500 });
   } catch (e: any) {

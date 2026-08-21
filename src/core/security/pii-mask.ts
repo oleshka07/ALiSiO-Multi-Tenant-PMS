@@ -2,7 +2,7 @@
  * PII Masking Utilities
  *
  * Centralized module for masking Personally Identifiable Information
- * before sending to external channels (Telegram, Google Sheets, logs).
+ * before sending to external channels (Google Sheets, logs).
  *
  * Full data always stays in the PMS database — masking only affects
  * outbound notifications and third-party integrations.

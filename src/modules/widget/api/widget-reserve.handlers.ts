@@ -4,7 +4,6 @@ import { appBaseUrl } from '@core/app-url';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { eventBus } from '@core/event-bus';
-import { notifyReservationCreated } from '@bookings';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { hasFeature, featureDisabled } from '@core/features';
 import { withSite } from '../data/site.repo';
@@ -768,25 +767,6 @@ export async function createWidgetReservation(request: NextRequest) {
         // Non-fatal — reservation is already created
       }
     }
-
-    // Smart source label for Telegram notification
-    const isAdminLikely = !utmParams['utm_source'] && (paymentMethod === 'cash' || paymentMethod === 'terminal');
-    const payMethodLabel = paymentMethod === 'cash' ? '💵 готівка'
-      : paymentMethod === 'terminal' ? '💳 термінал'
-      : paymentMethod === 'reception' ? '🏨 на рецепції'
-      : '';
-    let widgetSourceLabel = '';
-    let widgetEmoji = '🌐';
-    if (isAdminLikely) {
-      widgetSourceLabel = `📋 Адмін через віджет${payMethodLabel ? ` · ${payMethodLabel}` : ''}`;
-      widgetEmoji = '📋';
-    } else if (utmParams['utm_source']) {
-      widgetSourceLabel = `🌐 Віджет · ${utmParams['utm_source']}${utmParams['utm_medium'] ? `/${utmParams['utm_medium']}` : ''}${payMethodLabel ? ` · ${payMethodLabel}` : ''}`;
-    } else {
-      widgetSourceLabel = `🌐 Віджет · прямий перехід${payMethodLabel ? ` · ${payMethodLabel}` : ''}`;
-    }
-    notifyReservationCreated(resId, { sourceLabel: widgetSourceLabel, emoji: widgetEmoji });
-
 
     return NextResponse.json({
       success: true,

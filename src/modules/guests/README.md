@@ -43,7 +43,6 @@ import {
 | Dependency | Status | Future plan |
 |-----------|--------|-------------|
 | `@/lib/sync/guest-lead-sync` | direct import | emit `crm.guest_updated` event |
-| `@/lib/channels/telegram-bot` | direct import | emit `channels.notify` event |
 | `@/lib/rate-limit` | direct import | move to `@shared/rate-limit` |
 | `@/lib/teya` | direct import | emit `finance.payment_initiated` event |
 | `@/lib/translate` | direct import | move to `@shared/translate` |

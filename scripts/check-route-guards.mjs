@@ -76,14 +76,14 @@ const HAND_ROLLED = /\bgetSessionUser\b|\bresolveFinanceOwner\b/;
 /**
  * A shared secret instead of a session.
  *
- * Cron entry points and the Telegram bridges authenticate with an environment
- * secret, and there is no session to wrap them in — finance/api/_guard.ts says
- * so explicitly. Recognised by what the route file actually reads rather than
+ * Cron entry points authenticate with an environment secret, and there is
+ * no session to wrap them in — finance/api/_guard.ts says so explicitly.
+ * Recognised by what the route file actually reads rather than
  * by where it sits: /api/channels/sync/process and /api/hostex/bulk-sync are
  * cron endpoints with no `cron` anywhere in their path, and a list of paths
  * would keep missing them.
  */
-const SHARED_SECRET = /\b(CRON_SECRET|TELEGRAM_BRIDGE_TOKEN|INVESTOR_[A-Z_]*TOKEN)\b/;
+const SHARED_SECRET = /\b(CRON_SECRET|INVESTOR_[A-Z_]*TOKEN)\b/;
 
 /**
  * No session by definition, and each carries its own credential instead.
@@ -91,10 +91,9 @@ const SHARED_SECRET = /\b(CRON_SECRET|TELEGRAM_BRIDGE_TOKEN|INVESTOR_[A-Z_]*TOKE
  *   widget, booking, guest    a guest is not a user; a site key or a
  *                             reservation token says which hotel
  *   webhooks, payments        the gateway signs its callback
- *   cron, *-cron              CRON_SECRET
- *   telegram-bridge           TELEGRAM_BRIDGE_TOKEN — finance/api/_guard.ts
- *                             says these must NOT be wrapped in a session
- *                             guard, because there is no session to find
+ *   cron, *-cron              CRON_SECRET — finance/api/_guard.ts says these
+ *                             must NOT be wrapped in a session guard,
+ *                             because there is no session to find
  *   ical-export/[token]       the calendar feed URL is the credential
  *
  * Exempt from THIS check, not from scrutiny: each still has to establish its
@@ -104,7 +103,7 @@ const SHARED_SECRET = /\b(CRON_SECRET|TELEGRAM_BRIDGE_TOKEN|INVESTOR_[A-Z_]*TOKE
 const PUBLIC = new RegExp([
   '/api/(widget|booking|guest|public|webhooks?|auth|health)\\b',
   '/api/cron/', '/api/[^/]+/cron\\b', '/api/[^/]+/[^/]+/cron\\b', '-cron/',
-  '/telegram-bridge/', '/api/tasks/telegram', '/api/payments/webhook',
+  '/api/payments/webhook',
   '/api/ical-export/',
 ].join('|'));
 

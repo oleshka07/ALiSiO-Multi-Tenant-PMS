@@ -601,17 +601,6 @@ function runMigrations(database: any) {
     console.log('[DB] default_cash_account_id migration:', e.message);
   }
 
-  // --- Migration: add telegram_chat_id to app_users ---
-  try {
-    const userColsTg = database.prepare("PRAGMA table_info(app_users)").all() as { name: string }[];
-    if (!userColsTg.some((c: any) => c.name === 'telegram_chat_id')) {
-      database.exec("ALTER TABLE app_users ADD COLUMN telegram_chat_id TEXT");
-      console.log('[DB] Added telegram_chat_id to app_users');
-    }
-  } catch (e: any) {
-    console.log('[DB] telegram_chat_id migration:', e.message);
-  }
-
   // --- Migration: create sessions table if not exists ---
   database.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
@@ -4323,24 +4312,6 @@ function runMigrations(database: any) {
     console.log('[DB] categories expansion note:', e.message);
   }
 
-  // --- Migration: tg_booking_messages table for notification tracking ---
-  try {
-    database.exec(`
-      CREATE TABLE IF NOT EXISTS tg_booking_messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        reservation_id TEXT NOT NULL,
-        chat_id TEXT NOT NULL,
-        message_id INTEGER NOT NULL,
-        sent_payment_status TEXT,
-        sent_text TEXT NOT NULL,
-        created_at TEXT DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_tg_booking_msgs_res ON tg_booking_messages(reservation_id);
-    `);
-  } catch (e: any) {
-    console.log('[DB] tg_booking_messages migration note:', e.message);
-  }
-
   // --- Migration: finance_user_access — per-user finance access control ---
   database.exec(`
     CREATE TABLE IF NOT EXISTS finance_user_access (
@@ -4570,8 +4541,6 @@ function runMigrations(database: any) {
     const BACKFILL: Record<string, string | null> = {
       availability_blocks:
         'UPDATE availability_blocks SET organization_id = (SELECT p.organization_id FROM units u JOIN properties p ON p.id = u.property_id WHERE u.id = availability_blocks.unit_id) WHERE organization_id IS NULL',
-      tg_booking_messages:
-        'UPDATE tg_booking_messages SET organization_id = (SELECT p.organization_id FROM reservations r JOIN properties p ON p.id = r.property_id WHERE r.id = tg_booking_messages.reservation_id) WHERE organization_id IS NULL',
       fin_operation_audit:
         'UPDATE fin_operation_audit SET organization_id = (SELECT o.organization_id FROM fin_operations o WHERE o.id = fin_operation_audit.operation_id) WHERE organization_id IS NULL',
       gift_card_bundles:
@@ -5038,7 +5007,7 @@ function runMigrations(database: any) {
       const seed = database.prepare(
         'INSERT OR IGNORE INTO organization_features (organization_id, feature) SELECT id, ? FROM organizations'
       );
-      for (const f of ['hostex', 'pricelabs', 'telegram', 'widget']) seed.run(f);
+      for (const f of ['hostex', 'pricelabs', 'widget']) seed.run(f);
     }
   } catch (e: any) {
     console.error('[DB] organization_features migration:', e.message);

@@ -45,7 +45,7 @@ export default function SectionIntegrations() {
           </div>
           <div data-reveal={true} style={{ opacity: "0", transform: "translateY(16px)", transition: "all .6s ease .05s", border: "1px solid rgba(255,255,255,.1)", borderRadius: "16px", padding: "26px", background: "#0C1013" }}>
             <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "11px", letterSpacing: ".14em", color: "#5F676E" }}>PEOPLE</div>
-            <h3 style={{ fontSize: "19px", fontWeight: "600", marginTop: "10px" }}>Telegram &amp; messaging</h3>
+            <h3 style={{ fontSize: "19px", fontWeight: "600", marginTop: "10px" }}>Messaging</h3>
             <p style={{ marginTop: "9px", fontSize: "15px", lineHeight: "1.6", color: "#9BA3AB" }}>
               Staff tasks, owner briefing and guest threads in the messenger everyone already has. No licences per seasonal worker.
             </p>

@@ -581,23 +581,6 @@ async function main() {
       console.log("  ok  the dashboard counts only the caller's own hotel");
     }
 
-    // ── The nightly digest ───────────────────────────────────────────────
-    // It sends numbers to Telegram. Every query in it was unscoped, so the
-    // message pasted into one hotel's chat carried both companies' revenue,
-    // arrivals and guest names. The cron now runs once per organization.
-    const digest = await fetch(`${BASE}/api/cron/daily-digest`, {
-      headers: { 'x-cron-secret': process.env.CRON_SECRET || 'local-cron' },
-    });
-    assert.ok(digest.ok, `the digest cron was refused: ${digest.status}`);
-    if (digest.ok) {
-      const d = await digest.json();
-      assert.ok(Array.isArray(d.results), 'the digest cron did not report per-organization results');
-      for (const r of d.results) {
-        assert.ok(!r.error, `digest failed for ${r.organization}: ${r.error}`);
-      }
-      console.log(`  ok  the digest runs per organization (${d.organizations} of them, none failed)`);
-    }
-
     // ── The feature registry ─────────────────────────────────────────────
     // Probe organizations are created after the seed migration, so they have
     // no feature rows — exactly what a brand-new customer looks like. Nothing

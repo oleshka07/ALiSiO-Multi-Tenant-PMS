@@ -12,7 +12,6 @@ import {
   type HostexReservation,
 } from '../domain/hostex-client';
 import { getEurCzkRate } from '@/modules/finance/domain/cnb-rates';
-import { notifyReservationCreated } from '@/modules/bookings/domain/reservation-tg-notify';
 import { findOrCreateGuest as findOrCreateGuestUnified } from '@guests';
 import { money } from '@core/money';
 import { getSql } from '@core/db/async';
@@ -414,11 +413,6 @@ async function processReservation(res: HostexReservation, result: SyncResult) {
       // Write to Hostex custom field — use {{cf.guest_page_url}} in Hostex message templates
       await updateReservationCustomField(res.stay_code, { guest_page_url: guestPageUrl }).catch(() => {});
     }
-
-    notifyReservationCreated(newId, {
-      sourceLabel: `Hostex · ${res.channel_type || 'channel'}`,
-      emoji: '🔄',
-    });
 
     result.created++;
   }

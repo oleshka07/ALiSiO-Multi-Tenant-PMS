@@ -6,8 +6,7 @@ export { listTaskAttachments, uploadTaskAttachment, deleteTaskAttachment } from 
 export type { Task, TaskProject, TaskTag, TaskStatus, TaskPriority } from '../domain/types';
 export { TASK_STATUS_CONFIG, TASK_PRIORITY_CONFIG } from '../domain/types';
 
-// For the evening digest and the Telegram bot. They used to import from
+// For screens that need only the numbers. Callers used to import from
 // ../data directly, which is what the module boundary exists to stop.
 export { getTasksSummary } from '../data/summary.repo';
 export type { TasksSummary } from '../data/summary.repo';
-export { sendDailyTaskDigestAll, formatUserTasksForTelegram } from '../data/task-notifications';

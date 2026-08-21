@@ -4,10 +4,9 @@ import { z } from 'zod';
 import * as registrationRepo from '../data/registration.repo';
 // TODO: replace with @channels eventBus event when channels module is migrated
 import { checkRateLimit } from '@core/security/rate-limit';
-import { sendTelegramMessage } from '@notifications';
-import { maskFullName, maskDob, maskDocNumber, maskDobForSheets, maskDocNumberForSheets } from '@core/security/pii-mask';
+import { maskDobForSheets, maskDocNumberForSheets } from '@core/security/pii-mask';
 
-/** POST to Google Apps Script (same endpoint as the Telegram bot uses) */
+/** POST to Google Apps Script */
 async function syncToGoogleSheets(guests: any[], reservation: any): Promise<void> {
   const url = process.env.GOOGLE_GUESTS_SCRIPT_URL;
   if (!url) return; // not configured — skip silently
@@ -59,37 +58,6 @@ async function syncToGoogleSheets(guests: any[], reservation: any): Promise<void
   }
 }
 
-/** Send TG alert when critical fields are missing — manager can follow up */
-async function alertMissingFields(guests: any[], reservation: any): Promise<void> {
-  const esc = (s: string) => s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
-  const REQUIRED = ['firstName', 'lastName', 'dateOfBirth', 'documentType', 'documentNumber'];
-  const LABELS: Record<string, string> = {
-    firstName: 'Ім\'я', lastName: 'Прізвище', dateOfBirth: 'Дата народження',
-    documentType: 'Тип документа', documentNumber: 'Номер документа',
-    nationality: 'Національність', address: 'Адреса',
-  };
-
-  for (const [i, guest] of guests.entries()) {
-    const missing = REQUIRED.filter(f => !guest[f as keyof typeof guest]);
-    if (missing.length === 0) continue;
-
-    const missingStr = missing.map(f => `• ${LABELS[f] || f}`).join('\n');
-    const text = [
-      `⚠️ <b>Неповна реєстрація гостя</b>`,
-      ``,
-      `👤 Гість ${i + 1}: <b>${esc(guest.firstName || '?')} ${esc(guest.lastName || '?')}</b>`,
-      `🏠 ${esc(reservation.unit_name)} (${reservation.check_in} → ${reservation.check_out})`,
-      ``,
-      `❌ <b>Відсутні поля:</b>`,
-      missingStr,
-      ``,
-      `<i>Гість зареєструвався через гостьову сторінку. Уточніть дані особисто або через чат.</i>`,
-    ].join('\n');
-
-    sendTelegramMessage(text).catch(() => {});
-  }
-}
-
 export async function registerGuests(
   request: NextRequest,
   { params }: { params: Promise<{ token: string }> },
@@ -115,7 +83,7 @@ export async function registerGuests(
     const guestSchema = z.object({
       firstName: z.string().min(1).max(100),
       lastName: z.string().min(1).max(100),
-      // Optional fields — Telegram alert fires when they are missing (alertMissingFields)
+      // Optional fields
       dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().or(z.literal('')),
       documentType: z.enum(VALID_DOC_TYPES).nullable().optional().default('other'),
       documentNumber: z.string().max(50).nullable().optional(),
@@ -147,43 +115,6 @@ export async function registerGuests(
 
     // ── Auto-sync to Google Sheets (non-blocking) ─────────────────────────
     syncToGoogleSheets(parsedGuests, reservation).catch(() => {});
-
-    // ── Alert if critical fields are missing ──────────────────────────────
-    alertMissingFields(parsedGuests, reservation).catch(() => {});
-
-    try {
-      const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const guestLines = registeredGuests.map((g: any, i: number) => {
-        const docLabel: Record<string, string> = { passport: 'Passport', id_card: 'ID Card', driving_license: 'Driving Licence' };
-        return [
-          `\n👤 <b>Гість ${i + 1}:</b> ${escHtml(maskFullName(g.first_name, g.last_name))}`,
-          g.date_of_birth ? `🎂 ${maskDob(g.date_of_birth)}` : '',
-          g.document_type ? `🪪 ${docLabel[g.document_type] || g.document_type}: ${maskDocNumber(g.document_number)}` : '',
-          g.nationality ? `🌍 ${escHtml(g.nationality)}` : '',
-        ].filter(Boolean).join('\n');
-      }).join('\n');
-
-      const text = [
-        `✅ <b>Реєстрація гостя</b>`,
-        ``,
-        `🏠 ${escHtml(reservation.unit_name)} (${escHtml(reservation.unit_type_name)})`,
-        `📅 ${reservation.check_in} — ${reservation.check_out} (${reservation.nights} ночей)`,
-        `💰 ${reservation.total_price} ${reservation.currency} | ${escHtml(reservation.source || 'Direct')}`,
-        `📊 Статус: ${reservation.status} | Оплата: ${reservation.payment_status}`,
-        ``,
-        `━━━ Бронювання ━━━`,
-        `👤 ${escHtml(maskFullName(reservation.booking_first_name, reservation.booking_last_name))}`,
-        ``,
-        `━━━ Зареєстровані гості (${registeredGuests.length}/${reservation.adults}) ━━━`,
-        guestLines,
-      ].filter(Boolean).join('\n');
-
-      sendTelegramMessage(text).catch(err =>
-        console.error('[Registration Telegram] Error:', err.message),
-      );
-    } catch (tgErr: any) {
-      console.error('[Registration Telegram] Error:', tgErr.message);
-    }
 
     return NextResponse.json({ success: true, registeredGuests });
   } catch (error: any) {

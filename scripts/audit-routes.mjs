@@ -53,7 +53,7 @@ const isPublic = (url) =>
 
 // ── how a handler establishes identity ───────────────────────────────────────
 const SESSION = /withActor|withPermission|withOwner|currentActor|getSessionUser|requireOwner|requirePermission|requireAuth|currentUser\s*\(/;
-const TOKEN = /CRON_SECRET|TELEGRAM_BRIDGE_TOKEN|EMAIL_POLL_SECRET|ICAL_CRON_SECRET|HOSTEX_WEBHOOK_SECRET|WHATSAPP_APP_SECRET|verifySignature|x-webhook-signature|Bearer /i;
+const TOKEN = /CRON_SECRET|EMAIL_POLL_SECRET|ICAL_CRON_SECRET|HOSTEX_WEBHOOK_SECRET|WHATSAPP_APP_SECRET|verifySignature|x-webhook-signature|Bearer /i;
 /** Guest/investor links carry an unguessable token that identifies the row. */
 const ROW_TOKEN = /guest_page_token|portal_token|export_token|\btoken\b\s*[,)=]/;
 

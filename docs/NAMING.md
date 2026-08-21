@@ -127,7 +127,7 @@ Historично співіснують `r001`, `u_dlx1`, `org_demo` (сіди) т
 ## 7. Фічі реєстру
 
 Ключі `organization_features.feature` — короткі, плоскі, без крапок:
-`teya`, `hostex`, `pricelabs`, `telegram`, `widget`. Каталог і підписи —
+`hostex`, `pricelabs`, `widget`, `fiscal_de`. Каталог і підписи —
 тільки в `src/core/features.ts`.
 
 ## 8. Слова, які вже мають значення

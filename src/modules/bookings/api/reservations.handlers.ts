@@ -2,7 +2,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { findOrCreateGuest } from '@guests';
-import { notifyReservationCreated } from '../domain/reservation-tg-notify';
 import { writeBookingAudit, getBookingActor } from './audit-log.handlers';
 import { withActor, type Actor } from '@core/auth/session';
 import { ownedUnit } from '../data/owned.repo';
@@ -197,8 +196,6 @@ export const createReservation = withActor(async (request: NextRequest, _ctx, ac
       INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, commission_amount, guest_page_token, city_tax_amount, city_tax_included, city_tax_paid, internal_notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [resId, actor.organizationId, unit.property_id, unitId, guestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', totalPrice || 0, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null]);
-
-    await notifyReservationCreated(resId, { sourceLabel: `Ручне додавання · ${source || 'direct'}` });
 
     // Audit log
     try {

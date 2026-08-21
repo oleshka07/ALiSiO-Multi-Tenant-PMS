@@ -1,7 +1,7 @@
 /**
  * The public origin of this deployment.
  *
- * Twenty places used to build guest links, invoice links and Telegram deep
+ * Twenty places used to build guest links, invoice links and messenger deep
  * links from a literal `https://alisio.swipescape.eu`, usually as the fallback
  * of an environment variable — and across three different variable names
  * (NEXT_PUBLIC_APP_URL, NEXT_PUBLIC_BASE_URL, NEXTAUTH_URL). A deployment that
@@ -38,7 +38,7 @@ export function appUrl(path: string): string {
   return base ? `${base}${p}` : p;
 }
 
-/** True when links leaving the system (emails, Telegram) will be absolute. */
+/** True when links leaving the system (emails, external messages) will be absolute. */
 export function appUrlConfigured(): boolean {
   return resolve() !== '';
 }

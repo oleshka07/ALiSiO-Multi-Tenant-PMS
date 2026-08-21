@@ -19,7 +19,7 @@ import { getSql } from './db/async.ts';
  * until its owner saves credentials in the UI.
  */
 
-export type IntegrationChannel = 'hostex' | 'pricelabs' | 'booking_com' | 'telegram' | 'fiskaly';
+export type IntegrationChannel = 'hostex' | 'pricelabs' | 'booking_com' | 'fiskaly';
 
 export interface IntegrationCredentials {
   clientId?: string;
@@ -37,8 +37,6 @@ function fromEnv(channel: IntegrationChannel): IntegrationCredentials | null {
       return env.HOSTEX_ACCESS_TOKEN ? { accessToken: env.HOSTEX_ACCESS_TOKEN, perOrganization: false } : null;
     case 'pricelabs':
       return env.PRICELABS_API_KEY ? { accessToken: env.PRICELABS_API_KEY, perOrganization: false } : null;
-    case 'telegram':
-      return env.TELEGRAM_BOT_TOKEN ? { accessToken: env.TELEGRAM_BOT_TOKEN, perOrganization: false } : null;
     case 'booking_com':
       return env.BOOKING_COM_CLIENT_ID
         ? { clientId: env.BOOKING_COM_CLIENT_ID, clientSecret: env.BOOKING_COM_CLIENT_SECRET, perOrganization: false }
@@ -112,7 +110,6 @@ export async function integrationConfigured(
 export const INTEGRATION_FIELDS: Record<string, { field: 'accessToken' | 'clientId' | 'clientSecret'; label: string; hint?: string }[]> = {
   hostex: [{ field: 'accessToken', label: 'Access token', hint: 'Hostex → Settings → API' }],
   pricelabs: [{ field: 'accessToken', label: 'API key', hint: 'PriceLabs → Account → API' }],
-  telegram: [{ field: 'accessToken', label: 'Bot token', hint: 'від @BotFather' }],
   booking_com: [
     { field: 'clientId', label: 'Client ID' },
     { field: 'clientSecret', label: 'Client secret' },

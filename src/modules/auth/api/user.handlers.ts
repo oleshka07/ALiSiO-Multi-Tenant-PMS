@@ -32,7 +32,7 @@ export const getUser = withPermission('manage_users', async (
     const { id } = await params;
     const sql = getSql();
     const user = await sql.row<any>(`
-      SELECT id, organization_id, email, full_name, phone, telegram_chat_id, role, is_active,
+      SELECT id, organization_id, email, full_name, phone, role, is_active,
              default_cash_account_id, (payment_pin_hash IS NOT NULL) AS has_payment_pin,
              last_login, created_at, updated_at
       FROM app_users WHERE id = ? AND organization_id = ?
@@ -98,11 +98,10 @@ export const updateUser = withPermission('manage_users', async (
       }
     }
 
-    if (body.full_name || body.email || body.phone !== undefined || body.telegram_chat_id !== undefined || body.role || body.is_active !== undefined || body.default_cash_account_id !== undefined) {
+    if (body.full_name || body.email || body.phone !== undefined || body.role || body.is_active !== undefined || body.default_cash_account_id !== undefined) {
       const fullName = body.full_name || existing.full_name;
       const email = body.email || existing.email;
       const phone = body.phone !== undefined ? body.phone : existing.phone;
-      const telegramChatId = body.telegram_chat_id !== undefined ? (body.telegram_chat_id || null) : existing.telegram_chat_id;
       const role = body.role || existing.role;
       const isActive = body.is_active !== undefined ? (body.is_active ? 1 : 0) : existing.is_active;
       const cashAcct = body.default_cash_account_id !== undefined ? (body.default_cash_account_id || null) : existing.default_cash_account_id;
@@ -120,9 +119,9 @@ export const updateUser = withPermission('manage_users', async (
 
       await sql.run(`
         UPDATE app_users
-        SET full_name = ?, email = ?, phone = ?, telegram_chat_id = ?, role = ?, is_active = ?, default_cash_account_id = ?, updated_at = CURRENT_TIMESTAMP
+        SET full_name = ?, email = ?, phone = ?, role = ?, is_active = ?, default_cash_account_id = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND organization_id = ?
-      `, [fullName, email, phone, telegramChatId, role, isActive, cashAcct, id, actor.organizationId]);
+      `, [fullName, email, phone, role, isActive, cashAcct, id, actor.organizationId]);
     }
 
     if (body.permissions_overrides && Array.isArray(body.permissions_overrides)) {

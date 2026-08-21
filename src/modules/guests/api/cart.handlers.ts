@@ -2,7 +2,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
 import * as repo from '../data/guest-actions.repo';
-import { sendTelegramMessage } from '@notifications';
 import { sendEmail } from '@core/mail/email';
 
 // ─── POST /api/guest/[token]/cart ────────────────────────────────────────────
@@ -64,30 +63,6 @@ export async function sendAbandonNotifications(
     const itemLines = items.map((i: any) =>
       `  • ${i.serviceName || i.name || '?'} ×${i.quantity} — ${(i.price * i.quantity).toFixed(0)} ${i.currency || 'Kč'}`
     ).join('\n');
-
-    // ── Telegram notification ──────────────────────────────────────────────
-    const escHtml = (s: string) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const tgText = [
-      `📦 <b>Abandoned Cart</b> — ${escHtml(propertyName)}`,
-      ``,
-      `👤 ${escHtml(guestName)}`,
-      `🏠 ${escHtml(event.unit_name || '—')}`,
-      `📅 Check-in: ${event.check_in || '—'}`,
-      `📋 Phase: ${event.phase || '—'}`,
-      ``,
-      `🛒 Items:`,
-      ...items.map((i: any) =>
-        `  • ${escHtml(i.serviceName || i.name || '?')} ×${i.quantity} — ${(i.price * i.quantity).toFixed(0)} ${i.currency || 'Kč'}`
-      ),
-      ``,
-      `💰 Total: ${total}`,
-      ``,
-      `🔗 <a href="${guestPageUrl}">Guest page</a>`,
-    ].join('\n');
-
-    sendTelegramMessage(tgText).catch((e: any) =>
-      console.error('[Cart Abandon] TG error:', e.message)
-    );
 
     // ── Email to guest ─────────────────────────────────────────────────────
     if (event.guest_email) {

@@ -1,7 +1,7 @@
 /**
  * Symmetric encryption for integration credentials stored in the database.
  *
- * Every integration a tenant connects — Telegram bot token, IMAP password,
+ * Every integration a tenant connects — IMAP password,
  * channel API key — is written to a per-tenant row, so it must be encrypted at
  * rest. This is the same AES-256-GCM scheme the bank-inbox module already used,
  * lifted out of it so integrations do not have to import from the finance

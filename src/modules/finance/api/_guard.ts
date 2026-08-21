@@ -232,7 +232,7 @@ export async function asFinanceOwner(
  * feature permission required beyond reaching the finance module.
  *
  * Wrap EVERY session-based read handler with this. Token-authenticated entry
- * points (telegram bridge, cron, investor portal) and internal programmatic
+ * points (cron, investor portal) and internal programmatic
  * functions (payment-bridge) must NOT be wrapped — they have their own auth
  * and no user session.
  */

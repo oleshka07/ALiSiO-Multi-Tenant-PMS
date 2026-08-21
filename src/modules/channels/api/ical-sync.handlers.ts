@@ -2,7 +2,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { parseICal, extractGuestName } from '@/modules/channels/domain/ical'; // TODO: move to @core/ical
-import { notifyReservationCreated } from '@bookings';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { getSql } from '@core/db/async';
 import { withPermission } from '@core/auth/session';
@@ -110,14 +109,6 @@ async function syncChannel(channel: any) {
           1, 0, 'confirmed', 'paid', channel.source_code, 0, 0,
           guestPageToken, externalUid,
           `iCal import: ${event.summary}`]);
-
-        // Skip TG for "Blocked" iCal entries (no guest name) — those are owner closures, not real bookings
-        if (guestName) {
-          notifyReservationCreated(resId, {
-            sourceLabel: `iCal · ${channel.source_code || 'channel'}`,
-            emoji: '📆',
-          });
-        }
 
         eventsCreated++;
       }

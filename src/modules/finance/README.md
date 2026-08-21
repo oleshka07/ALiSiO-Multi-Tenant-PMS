@@ -232,17 +232,6 @@ API згруповано за бізнес-доменами. Мутації за
 | `listStatementUploads()` | Список завантажень | view_finance |
 | `uploadStatement(req)` | Завантажити виписку | import_bank_data |
 
-### Telegram bridge
-
-| Функція | Опис | Дозвіл |
-|---|---|---|
-| `recordTelegramOperation(req)` | Записати операцію з бота | — (bearer token) |
-| `listTelegramOperations(req)` | Операції для бота | — (bearer token) |
-| `listTelegramCategories(req)` | Категорії для бота | — (bearer token) |
-| `listTelegramServices(req)` | Послуги для бота | — (bearer token) |
-| `listTelegramReservations(req)` | Резервації для бота | — (bearer token) |
-| `createTelegramServiceOrder(req)` | Замовлення послуги з бота | — (bearer token) |
-
 ### Вкладення (attachments)
 
 | Функція | Опис | Дозвіл |
@@ -304,8 +293,6 @@ API згруповано за бізнес-доменами. Мутації за
 | `upsertMonthlyReport(req)` | Створити/оновити звіт | manage_investors |
 | `deleteMonthlyReport(req, ctx)` | Видалити | manage_investors |
 | `getMonthlyDigest(req)` | Місячний дайджест | view_finance |
-| `sendDigestTelegram(req)` | Надіслати дайджест в Telegram | manage_investors |
-| `getTelegramStatus()` | Статус Telegram-бота | view_finance |
 | `getAutoRevenueForMonth(req)` | Авто-дохід за місяць | view_finance |
 | `listForecastScenarios()` | Сценарії прогнозу | view_finance |
 | `upsertForecastScenario(req)` | Створити/оновити сценарій | manage_investors |
@@ -372,7 +359,6 @@ API згруповано за бізнес-доменами. Мутації за
 - `@/lib/auth` — getSessionUser
 - `@/lib/permissions` — перевірка дозволів
 - `@/lib/invoice-template` — генерація HTML інвойсів
-- `@/lib/channels/telegram-bot` — Telegram-повідомлення
 
 **⚠️ Порушення меж модулів:**
 - `data/teya-reconcile-engine.ts` імпортує з `@/modules/payments/domain/teya-client` — має використовувати `@payments`
@@ -401,8 +387,8 @@ API згруповано за бізнес-доменами. Мутації за
 ## Схема даних
 
 **Головна таблиця:** `fin_operations` — єдиний реєстр фактичного руху коштів
-(income / expense / transfer; всі джерела: ручні, банк-імпорт, Telegram,
-Teya, OTA, recurring). Запис ТІЛЬКИ через `createOperationInTx()`.
+(income / expense / transfer; всі джерела: ручні, банк-імпорт, OTA,
+recurring; історичні рядки Teya лишаються читабельними). Запис ТІЛЬКИ через `createOperationInTx()`.
 
 **Довідники:** `expense_categories` (дерево, op_type + classifier),
 `business_units` (проєкти), `finance_counterparties`, `finance_tags` +
@@ -446,7 +432,6 @@ finance/
     clearing.handlers.ts
     export.handlers.ts
     statement-upload.handlers.ts
-    telegram-bridge.handlers.ts
     attachments.handlers.ts
     teya-sync.handlers.ts
     import-wizard.handlers.ts
@@ -482,7 +467,6 @@ finance/
     recurring-engine.ts
     statement-parsers.ts
     supabase-import-engine.ts
-    telegram-bot.ts
     teya-reconcile-engine.ts
   events/
     published.ts

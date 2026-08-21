@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as tasksRepo from '../data/tasks.repo';
-import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
-import { notifyTaskAssigned, notifyTaskStatusChanged } from '../data/task-notifications';
 
 type IdParams = { params: Promise<{ id: string }> };
 
@@ -49,19 +47,6 @@ export async function createTask(request: NextRequest): Promise<NextResponse> {
 
     const result = await tasksRepo.getTaskById(created.id);
 
-    // Telegram notification: task assigned
-    if (result?.assignee_id) {
-      const user = await getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
-      notifyTaskAssigned({
-        taskId: result.id,
-        taskTitle: result.title,
-        priority: result.priority,
-        dueDate: result.due_date,
-        projectName: result.project_name,
-        assignedByName: user?.full_name,
-      }).catch(e => console.error('[TaskTG] notify error:', e.message));
-    }
-
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     console.error('POST /api/tasks error:', error);
@@ -85,8 +70,6 @@ export async function updateTask(request: NextRequest, context: IdParams): Promi
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const oldTask = await tasksRepo.getTaskById(id);
-
     // Handle tags separately
     if (body.tag_ids && Array.isArray(body.tag_ids)) {
       await tasksRepo.setTaskTags(id, body.tag_ids);
@@ -98,31 +81,6 @@ export async function updateTask(request: NextRequest, context: IdParams): Promi
       const task = await tasksRepo.getTaskById(id);
       if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
       return NextResponse.json(task);
-    }
-
-    // Telegram notifications (fire-and-forget)
-    const user = await getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
-    
-    // Notify if assignee changed
-    if (body.assignee_id && oldTask && body.assignee_id !== oldTask.assignee_id) {
-      notifyTaskAssigned({
-        taskId: updated.id,
-        taskTitle: updated.title,
-        priority: updated.priority,
-        dueDate: updated.due_date,
-        projectName: updated.project_name,
-        assignedByName: user?.full_name,
-      }).catch(e => console.error('[TaskTG] assign notify error:', e.message));
-    }
-    
-    // Notify if status changed
-    if (body.status && oldTask && body.status !== oldTask.status) {
-      notifyTaskStatusChanged({
-        taskId: updated.id,
-        taskTitle: updated.title,
-        newStatus: updated.status,
-        changedByName: user?.full_name,
-      }).catch(e => console.error('[TaskTG] status notify error:', e.message));
     }
 
     return NextResponse.json(updated);

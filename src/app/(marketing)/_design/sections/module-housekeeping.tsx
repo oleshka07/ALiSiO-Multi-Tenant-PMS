@@ -45,7 +45,7 @@ export default function SectionModuleHousekeeping() {
       <div style={{ maxWidth: "1280px", margin: "80px auto 0", padding: "0 28px 120px" }}>
         <div style={{ border: "1px solid rgba(255,255,255,.12)", borderRadius: "20px", padding: "44px", display: "flex", gap: "28px", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", background: "#0B0E11" }}>
           <div>
-            <h2 style={{ fontSize: "26px", fontWeight: "600", letterSpacing: "-.02em" }}>Works over Telegram for staff without accounts</h2>
+            <h2 style={{ fontSize: "26px", fontWeight: "600", letterSpacing: "-.02em" }}>Built for seasonal staff without accounts</h2>
             <p style={{ marginTop: "8px", fontSize: "16px", color: "#9BA3AB" }}>
               Seasonal teams get their tasks where they already are. No onboarding, no licences per person.
             </p>

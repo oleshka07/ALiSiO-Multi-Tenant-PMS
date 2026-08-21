@@ -944,7 +944,7 @@ export default function BookingPage() {
             <span>{siteName || t.brandName}</span>
           </div>
           <div className="booking-header-right">
-            {/* Instagram, Telegram and Facebook icons used to sit here,
+            {/* Social icons used to sit here,
                 all three linking to "#". A social link that goes nowhere is
                 worse than no icon: the guest clicks and nothing happens.
                 Bring them back when a site can store its own handles. */}

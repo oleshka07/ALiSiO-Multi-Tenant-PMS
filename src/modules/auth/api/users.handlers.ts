@@ -17,7 +17,7 @@ export const listUsers = withPermission('manage_users', async (_request: NextReq
 
     const sql = getSql();
     const users = await sql.rows<any>(`
-      SELECT id, organization_id, email, full_name, phone, telegram_chat_id, role, is_active, language, last_login, created_at, updated_at
+      SELECT id, organization_id, email, full_name, phone, role, is_active, language, last_login, created_at, updated_at
       FROM app_users
       WHERE organization_id = ?
       ORDER BY
@@ -62,7 +62,7 @@ export const createUser = withPermission('manage_users', async (request: NextReq
   try {
 
     const body = await request.json();
-    const { email, full_name, phone, telegram_chat_id, role, password, language, permissions_overrides } = body;
+    const { email, full_name, phone, role, password, language, permissions_overrides } = body;
 
     // Null or absent means the person follows the hotel's base language, which
     // is what a new colleague should get unless someone says otherwise.
@@ -92,9 +92,9 @@ export const createUser = withPermission('manage_users', async (request: NextReq
     const id = crypto.randomUUID().replace(/-/g, '').substring(0, 32);
 
     await sql.run(`
-      INSERT INTO app_users (id, organization_id, email, full_name, phone, telegram_chat_id, role, password_hash, language)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, currentUser.organization_id, email, full_name, phone || null, telegram_chat_id || null, role, passwordHash, language || null]);
+      INSERT INTO app_users (id, organization_id, email, full_name, phone, role, password_hash, language)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, currentUser.organization_id, email, full_name, phone || null, role, passwordHash, language || null]);
 
     if (permissions_overrides && Array.isArray(permissions_overrides)) {
       await sql.tx(async (t) => {

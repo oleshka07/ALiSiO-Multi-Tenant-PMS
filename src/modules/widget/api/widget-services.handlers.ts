@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withSite } from '../data/site.repo';
 import { money } from '@core/money';
-import { sendTelegramMessage } from '@notifications'; // TODO: replace with eventBus
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -297,31 +296,6 @@ export async function bookWidgetService(request: NextRequest) {
           site_id || null]);
       }
 
-      try {
-        const esc = (s: string) => s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
-        let guestInfo = 'Зовнішній клієнт';
-        if (reservationId) {
-          const guest = await sql.row<any>(`
-            SELECT g.first_name, g.last_name, u.name as unit_name
-            FROM reservations r
-            JOIN guests g ON r.guest_id = g.id
-            LEFT JOIN units u ON r.unit_id = u.id
-            WHERE r.id = ?
-          `, [reservationId]) as any;
-          if (guest) guestInfo = `${esc(guest.first_name)} ${esc(guest.last_name)}${guest.unit_name ? ' · ' + esc(guest.unit_name) : ''}`;
-        }
-        const svcName = service.name_en || service.name;
-        const payStatus = paymentId ? '💳 Створено замовлення · очікує оплати' : '✅ Без оплати';
-        const text = [
-          `🛒 <b>Замовлення · 🌐 Віджет</b>: ${esc(svcName)}`,
-          ``,
-          `👤 ${guestInfo}`,
-          `📅 ${date}, ${startHour}:00–${startHour + hours}:00`,
-          `💰 ${totalPrice} CZK`,
-          payStatus,
-        ].join('\n');
-        sendTelegramMessage(text).catch(() => {});
-      } catch { /* non-critical */ }
 
       return NextResponse.json({
         success: true,

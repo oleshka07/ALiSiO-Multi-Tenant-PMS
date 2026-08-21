@@ -11,7 +11,7 @@ import {
 
 /**
  * GET/PUT /api/settings/integration-credentials — whose Hostex account, whose
- * PriceLabs key, whose Telegram bot.
+ * PriceLabs key.
  *
  * Owner-only, like the feature switches next to it: these are the keys that
  * bill the organization and reach its guests. GET never returns a secret —

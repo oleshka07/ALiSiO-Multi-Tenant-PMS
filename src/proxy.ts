@@ -6,13 +6,11 @@ const PUBLIC_PREFIXES = [
   '/api/auth/', // login, logout, me
   '/api/guest/', // guest portal (token-based)
   '/api/public/', // public capture, availability
-  '/api/webhooks/', // Hostex, Teya webhooks (own auth)
+  '/api/webhooks/', // Hostex webhooks (own auth)
   '/api/ical-export/', // iCal feed (token-based URL)
   '/api/ical-sync/', // iCal cron sync (own ?secret= auth)
   '/api/booking/', // guest self-registration, payments
   '/api/cron/', // cron jobs (own secret-header auth)
-  '/api/finance/telegram-bridge/', // Telegram bot (Bearer token auth)
-  '/api/registration/telegram-bridge', // Telegram bot guest registration (Bearer token auth)
   '/api/hostex/sync', // Hostex sync (cron secret in route.ts)
   '/api/hostex/bulk-sync', // Hostex bulk sync (cron secret in route.ts)
   '/api/channels/reservations/poll', // Booking.com polling (cron secret in route.ts)
@@ -65,9 +63,9 @@ function isPublicRoute(pathname: string): boolean {
 }
 
 // ─── Legacy operator routes ───────────────────────────────────────────
-// The app used to sit at the top level, so every bookmark, e-mail link and
-// Telegram deep link an operator saved points at the old path. Redirect
-// rather than 404 — one rule here beats a stub page per section.
+// The app used to sit at the top level, so every bookmark and e-mail link
+// an operator saved points at the old path. Redirect rather than 404 — one
+// rule here beats a stub page per section.
 const MOVED_TO_APP = [
   'dashboard',
   'bookings',
@@ -96,22 +94,6 @@ const MOBILE_UA = /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // ─── Special case for /api/guest-registry ──────────────────────────
-  if (pathname.startsWith('/api/guest-registry')) {
-    const sessionId = request.cookies.get('session_id')?.value;
-    const authHeader = request.headers.get('authorization') || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : '';
-    const expectedToken = process.env.TELEGRAM_BRIDGE_TOKEN;
-    const isBridgeAuthorized = Boolean(expectedToken && token === expectedToken);
-
-    if (!sessionId && !isBridgeAuthorized) {
-      return NextResponse.json(
-        { error: 'Unauthorized — session or Bearer token required' },
-        { status: 401 },
-      );
-    }
-  }
-
   // ─── Legacy operator routes ─────────────────────────────────────────
   // Before the auth gate, so an old link lands on the right page rather than
   // on the dashboard by way of the login screen.
@@ -129,14 +111,8 @@ export function proxy(request: NextRequest) {
     const sessionId = request.cookies.get('session_id')?.value;
 
     if (pathname.startsWith('/api/')) {
-      // Allow internal requests authenticated with TELEGRAM_BRIDGE_TOKEN
-      const authHeader = request.headers.get('authorization') || '';
-      const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : '';
-      const expectedToken = process.env.TELEGRAM_BRIDGE_TOKEN;
-      const isBridgeAuthorized = Boolean(expectedToken && token === expectedToken);
-
-      // API routes: return 401 JSON if neither session nor bridge token is present
-      if (!sessionId && !isBridgeAuthorized) {
+      // API routes: return 401 JSON when no session is present
+      if (!sessionId) {
         return NextResponse.json({ error: 'Unauthorized — session required' }, { status: 401 });
       }
     } else {

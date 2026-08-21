@@ -14,7 +14,6 @@ import { getSql, type Sql } from './db/async.ts';
 export const FEATURES = {
   hostex: 'Channel manager Hostex',
   pricelabs: 'Динамічні ціни PriceLabs',
-  telegram: 'Telegram-міст (задачі, реєстрація)',
   widget: 'Віджет бронювання і сайти',
   // Німецька фіскалізація (KassenSichV/TSE). Поки вимкнена, DE-готель НЕ
   // може записати готівку чи карту-на-рецепції — інакше PMS тихо стала б

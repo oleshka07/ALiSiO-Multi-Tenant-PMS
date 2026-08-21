@@ -163,7 +163,7 @@ for (const f of routes) {
   // in-app caller is correct by design; an orphaned page endpoint is not.
   let kind;
   if (/^\/api\/(cron|webhooks)\//.test(url) || /\/cron$/.test(url)) kind = 'external-cron-webhook';
-  else if (/telegram|whatsapp|bot/.test(url)) kind = 'bot-bridge';
+  else if (/whatsapp|bot/.test(url)) kind = 'bot-bridge';
   else if (/^\/api\/(admin|test-|debug)/.test(url) || /debug|cleanup|clean-/.test(url)) kind = 'admin-debug';
   else if (rx.test(routeServerText)) kind = 'server-only';
   else kind = 'orphan';
@@ -212,7 +212,7 @@ const SMELLS = [
 // host, so a literal origin baked into a guest link, invoice or webhook is a
 // multi-tenancy bug, not a style issue. Anything not obviously a third-party
 // API endpoint is suspect.
-const THIRD_PARTY = /googleapis|google\.com|gstatic|openai|telegram|facebook|fbcdn|booking\.com|airbnb|hostex|teya|pricelabs|cnb\.cz|schema\.org|w3\.org|github|npmjs|unpkg|jsdelivr|sentry|stripe|gopay|whatsapp|localhost|127\.0\.0\.1|example\.(com|org)/i;
+const THIRD_PARTY = /googleapis|google\.com|gstatic|openai|facebook|fbcdn|booking\.com|airbnb|hostex|teya|pricelabs|cnb\.cz|schema\.org|w3\.org|github|npmjs|unpkg|jsdelivr|sentry|stripe|gopay|whatsapp|localhost|127\.0\.0\.1|example\.(com|org)/i;
 for (const [f, body] of src) {
   for (const m of body.matchAll(/["'`](https?:\/\/[a-z0-9.-]+[^"'`\s]*)["'`]/gi)) {
     const url = m[1];

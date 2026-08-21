@@ -17,7 +17,6 @@
 //     called from bookings + payments on reservation lifecycle
 //   - getReservationPaymentTotals / recalcReservationPaymentStatus — internal
 //     (db, reservationId) helpers
-//   - telegram-bridge handlers — Bearer TELEGRAM_BRIDGE_TOKEN auth
 //   - pollBankInboxesFromCron — X-Cron-Secret auth
 //   - getInvestorPortalData — investor portal token auth
 // ════════════════════════════════════════════════════════════
@@ -267,13 +266,6 @@ export const exportOperations = await withFinanceRead(_exportOperations);
 export const exportCashflow    = await withFinanceRead(_exportCashflow);
 export const exportPnl         = await withFinanceRead(_exportPnl);
 export const exportStatement   = await withFinanceRead(_exportStatement);
-
-
-// ─── Telegram bridge (PR #17) — Bearer token auth, no session ──
-export {
-  recordTelegramOperation, listTelegramOperations, listTelegramCategories,
-  listTelegramServices, listTelegramReservations, createTelegramServiceOrder,
-} from './telegram-bridge.handlers';
 
 // ─── Attachments (PR #23) — read + manage_payments for write ──
 import {

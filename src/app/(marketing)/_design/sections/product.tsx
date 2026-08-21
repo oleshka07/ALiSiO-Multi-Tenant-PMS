@@ -60,7 +60,7 @@ export default function SectionProduct() {
             <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "11px", color: "#5F676E" }}>07</div>
             <h3 style={{ fontSize: "20px", fontWeight: "600", marginTop: "8px", letterSpacing: "-.02em" }}>Housekeeping &amp; Tasks</h3>
             <p style={{ marginTop: "10px", fontSize: "14.5px", lineHeight: "1.6", color: "#8B939C" }}>
-              Kanban and list boards, tasks bound to units, priorities and deadlines, Telegram assignment, photo proof, cleaning minutes in the P&amp;L.
+              Kanban and list boards, tasks bound to units, priorities and deadlines, photo proof, cleaning minutes in the P&amp;L.
             </p>
             <div style={{ marginTop: "14px", fontSize: "13.5px", color: "var(--acc,#3DDCC0)" }}>Open module →</div>
           </Link>
@@ -84,7 +84,7 @@ export default function SectionProduct() {
               <li>Reports: occupancy, ADR, RevPAR, ALOS, source mix, per-unit performance</li>
               <li>RBAC: owner, manager, finance, reception, housekeeping, investor, auditor</li>
               <li>
-                Admin: system audit log, retention cleaners, Telegram bridge, morning digest
+                Admin: system audit log, retention cleaners, morning digest
               </li>
             </ul>
           </div>
