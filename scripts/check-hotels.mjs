@@ -186,6 +186,60 @@ for (const name of files) {
     if (!isNum(num(f(s, 'price')) ?? 0)) note(file, `послуга "${name}": price не число`);
   }
 
+  // ── гостьова сторінка ─────────────────────────────────────────────────────
+  // Три поля зберігаються як JSON і читаються сторінкою через parseJSON з
+  // фолбеком: помилкова форма не падає, вона просто НІЧОГО не показує гостю.
+  // Тому форму перевіряємо тут, а не чекаємо, поки хтось помітить порожній
+  // розділ на телефоні гостя.
+  const gp = plan.guestPage || plan.guest_page;
+  if (gp) {
+    const shapes = {
+      faqItems: ['q', 'a'],
+      usefulInfo: ['icon', 'title', 'desc'],
+      rules: ['icon', 'text'],
+    };
+    for (const [key, keys] of Object.entries(shapes)) {
+      const val = f(gp, key, snake(key));
+      if (val === undefined) continue;
+      if (!Array.isArray(val)) { note(file, `гостьова сторінка: ${key} має бути масивом`); continue; }
+      val.forEach((item, i) => {
+        if (!item || typeof item !== 'object') {
+          note(file, `гостьова сторінка: ${key}[${i}] — не обʼєкт`);
+          return;
+        }
+        for (const k of keys) {
+          if (!item[k]) note(file, `гостьова сторінка: ${key}[${i}] без "${k}" — розділ покажеться порожнім`);
+        }
+      });
+    }
+    const phone = f(gp, 'emergencyPhone', 'emergency_phone');
+    if (phone !== undefined && !String(phone).trim()) {
+      note(file, 'гостьова сторінка: emergencyPhone порожній — краще не називати поле взагалі');
+    }
+  }
+
+  // ── зали ──────────────────────────────────────────────────────────────────
+  // Ставка зали живе на самій залі (міграція 0025). Помилка в коді ПДВ не
+  // видна ніде, поки рецепція не спробує виставити рахунок за подію — і тоді
+  // проводка падає з «No tax rate», уже перед гостем.
+  const spaceCodes = new Set();
+  for (const sp of plan.eventSpaces || plan.event_spaces || []) {
+    const code = f(sp, 'code');
+    if (!code) { note(file, 'зала без code — її нічим упізнати при повторному прикладанні'); continue; }
+    if (spaceCodes.has(code)) note(file, `зала "${code}" описана двічі`);
+    spaceCodes.add(code);
+    const vat = f(sp, 'vatCode');
+    if (vat && !TAX_CODES.includes(vat)) {
+      note(file, `зала "${code}": vatCode "${vat}" — має бути ${TAX_CODES.join(', ')}`);
+    }
+  }
+  for (const a of plan.eventAddons || plan.event_addons || []) {
+    const vat = f(a, 'vatCode');
+    if (vat && !TAX_CODES.includes(vat)) {
+      note(file, `доплата "${f(a, 'name')}": vatCode "${vat}" — має бути ${TAX_CODES.join(', ')}`);
+    }
+  }
+
   // ── приймальні перевірки ──────────────────────────────────────────────────
   const checks = plan.acceptance || plan.quotes || [];
   if (!template && checks.length === 0 && typeCodes.size > 0) {

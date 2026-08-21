@@ -1461,6 +1461,7 @@ function runMigrations(database: any) {
         property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
         name TEXT NOT NULL, code TEXT NOT NULL,
         capacity_note TEXT, block_prices TEXT,
+        vat_code TEXT NOT NULL DEFAULT 'standard',
         sort_order INTEGER NOT NULL DEFAULT 0,
         is_active INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -1500,6 +1501,10 @@ function runMigrations(database: any) {
         CHECK (time_from < time_to)
       )
     `);
+    // The collision query reads a hall's day on every booking attempt. The
+    // index lived only in migration 0024, so a database created fresh — every
+    // new hotel — never got it.
+    database.exec('CREATE INDEX IF NOT EXISTS idx_event_bookings_day ON event_bookings(property_id, space_id, event_date)');
     // How a property's guest page differs from the section registry in code.
     // No rows = registry defaults. See migration 0022.
     database.exec(`
@@ -5187,6 +5192,10 @@ function runMigrations(database: any) {
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_folio ON fin_folio_items(folio_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_date ON fin_folio_items(organization_id, service_date)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_invoice ON fin_folio_items(invoice_id)');
+    // Same story as idx_event_bookings_day: this one was written only in the
+    // ALTER branch that adds service_order_id, which never runs on a database
+    // whose CREATE already has the column.
+    database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folio_items_order ON fin_folio_items(service_order_id)');
   } catch (e: any) {
     console.error('[DB] fin_folios migration:', e.message);
   }
@@ -5643,6 +5652,25 @@ function runMigrations(database: any) {
     }
   } catch (e: any) {
     console.error('[DB] additional_services vat_code migration:', e.message);
+  }
+
+  // --- Migration: which VAT a hall carries is the hall's own answer ---
+  //
+  // It used to be the literal 'standard' in two places in code, so every
+  // hotel's hall was 19% and no file could say otherwise. Which rate hall
+  // rent carries is a question of what is being sold and where — one hotel's
+  // Steuerberater reads it as accommodation, another's as room hire — so it
+  // belongs to the hall, next to its prices. DEFAULT 'standard' keeps every
+  // existing hall exactly where it was.
+  try {
+    const cols = (database.prepare('PRAGMA table_info(event_spaces)').all() as any[])
+      .map((c: any) => c.name);
+    if (!cols.includes('vat_code')) {
+      database.exec("ALTER TABLE event_spaces ADD COLUMN vat_code TEXT NOT NULL DEFAULT 'standard'");
+      console.log('[DB] event_spaces: added vat_code');
+    }
+  } catch (e: any) {
+    console.error('[DB] event_spaces vat_code migration:', e.message);
   }
 
   // --- Migration: a folio charge remembers which service order it came from ---

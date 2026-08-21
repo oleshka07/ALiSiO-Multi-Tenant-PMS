@@ -70,6 +70,8 @@ export async function saveSpace(input: {
   code: string;
   capacityNote?: string | null;
   blockPrices?: BlockPrices | null;
+  /** VAT role this hall's rent carries; absent keeps whatever it carries now. */
+  vatCode?: string;
   sortOrder?: number;
   isActive?: boolean;
 }): Promise<string> {
@@ -87,20 +89,22 @@ export async function saveSpace(input: {
   if (input.id) {
     const found = await sql.run(
       `UPDATE event_spaces SET name = ?, code = ?, capacity_note = ?, block_prices = ?,
+              vat_code = COALESCE(?, vat_code),
               sort_order = ?, is_active = ${active}, updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND organization_id = ?`,
       [input.name, input.code, input.capacityNote ?? null, prices,
-       input.sortOrder ?? 0, input.id, organizationId]);
+       input.vatCode ?? null, input.sortOrder ?? 0, input.id, organizationId]);
     if (!found.changes) throw new Error('Space not found');
     return input.id;
   }
   const id = crypto.randomUUID();
   await sql.run(
     `INSERT INTO event_spaces
-       (id, organization_id, property_id, name, code, capacity_note, block_prices, sort_order, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${active})`,
+       (id, organization_id, property_id, name, code, capacity_note, block_prices,
+        vat_code, sort_order, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${active})`,
     [id, organizationId, input.propertyId, input.name, input.code,
-     input.capacityNote ?? null, prices, input.sortOrder ?? 0]);
+     input.capacityNote ?? null, prices, input.vatCode ?? 'standard', input.sortOrder ?? 0]);
   return id;
 }
 
@@ -312,8 +316,9 @@ export async function openFolio(bookingId: string): Promise<string> {
 
 /**
  * Post the event's charges: the hall line (the operator's price, suggested or
- * edited) and the chosen add-ons. VAT comes from fin_tax_rates by ROLE at the
- * EVENT's date — a rate change between booking and event day picks the event
+ * edited) and the chosen add-ons. The hall's VAT ROLE comes from the hall
+ * itself (`event_spaces.vat_code`) unless the request names one; the RATE for
+ * that role comes from fin_tax_rates at the EVENT's date — a rate change between booking and event day picks the event
  * day's number, same rule as a stay. A missing rate refuses the whole
  * posting: a line with invented tax would reach a legal document.
  */
@@ -326,7 +331,7 @@ export async function postEventCharges(bookingId: string, input: {
   const organizationId = await requireOrganizationId();
   const sql = getSql();
   const booking = await sql.row<any>(
-    `SELECT b.*, s.name AS space_name FROM event_bookings b
+    `SELECT b.*, s.name AS space_name, s.vat_code AS space_vat_code FROM event_bookings b
        JOIN event_spaces s ON s.id = b.space_id
       WHERE b.id = ? AND b.organization_id = ?`,
     [bookingId, organizationId]);
@@ -353,7 +358,12 @@ export async function postEventCharges(bookingId: string, input: {
       quantity: 1,
       unitPriceGross: input.hallPriceGross,
       totalGross: input.hallPriceGross,
-      vatRate: rateFor(input.hallVatCode ?? 'standard'),
+      // The hall's own code, not a literal: room hire and accommodation are
+      // taxed differently, the line between them is the hotel's Steuerberater's
+      // call, and it is recorded on the hall. An explicit code in the request
+      // still wins — one event can be billed differently, and that is the
+      // operator's decision to make on the spot.
+      vatRate: rateFor(input.hallVatCode ?? booking.space_vat_code ?? 'standard'),
       source: 'manual' as const,
     });
   }

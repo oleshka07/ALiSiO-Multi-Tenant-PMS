@@ -1,5 +1,5 @@
 {
-  "_": "Schlossberghotel Greiz. Джерела: офіційні прайси 2027, фірмова таблиця 01.01.2024 (стандарт = фірмова ÷ 0,9), еталонна фактура 22.421. Чинні ціни діють до 31.12.2026; з 01.03.2027 — безстроковий базовий прайс, майбутні сезони кладуться поверх вужчими вікнами. 31 номер готелю (29 + 103/104) плюс два Appartements 111/112 в Altstadtgalerie — внесені 18.08.2026 за словами Jörg Rödel: EZ 40 / DZ 45 за ніч, сніданок ОКРЕМО 15 €/особу (breakfastIncluded=false, інакше правило каналу вирізало б із 45 € сніданок, якого там нема), онлайн не продаються (bookableOnline=false) — «nur auf Anfrage bzw. Alternative, wenn 31 Zimmer ausgebucht». checkIn/checkOut — типові, підтвердити з готелем. Aufbettung прибрано як окрему послугу 14.08.2026 за підтвердженням власника: «nicht von Nöten, wenn jeder daran denkt, die richtige Personenanzahl einzugeben» — додаткове ліжко вже в ціні за особу (крок 2→3 осіб = рівно +19 у кожному вікні). 103 і 104 додано 14.08.2026 за списком власника (звичайні DZD). 241 і 242 у тому списку відсутні — чекає на звірку. ownerName прибрано 18.08.2026: там стояло імʼя людини, яка вже не працює в готелі (і було записане з двома помилками). Вхід — спільна скринька info@, а не особиста, тож без цього поля обліковий запис назветься іменем готелю (provisioning.ts: ownerName || name). Хто має бути названий власником — питання до готелю, а не здогадка звідси.",
+  "_": "Schlossberghotel Greiz. Джерела: офіційні прайси 2027, фірмова таблиця 01.01.2024 (стандарт = фірмова ÷ 0,9), еталонна фактура 22.421. Чинні ціни діють до 31.12.2026; з 01.03.2027 — безстроковий базовий прайс, майбутні сезони кладуться поверх вужчими вікнами. 31 номер готелю (29 + 103/104) плюс два Appartements 111/112 в Altstadtgalerie — внесені 18.08.2026 за словами Jörg Rödel: EZ 40 / DZ 45 за ніч, сніданок ОКРЕМО 15 €/особу (breakfastIncluded=false, інакше правило каналу вирізало б із 45 € сніданок, якого там нема), онлайн не продаються (bookableOnline=false) — «nur auf Anfrage bzw. Alternative, wenn 31 Zimmer ausgebucht». checkIn/checkOut — типові, підтвердити з готелем. Aufbettung прибрано як окрему послугу 14.08.2026 за підтвердженням власника: «nicht von Nöten, wenn jeder daran denkt, die richtige Personenanzahl einzugeben» — додаткове ліжко вже в ціні за особу (крок 2→3 осіб = рівно +19 у кожному вікні). 103 і 104 додано 14.08.2026 за списком власника (звичайні DZD). 241 і 242 у тому списку власника відсутні, але підтверджені 19.08.2026 Schlüsselliste рецепції (у 241 на той день жив гість) — лишаються як робочі номери. ownerName прибрано 18.08.2026: там стояло імʼя людини, яка вже не працює в готелі (і було записане з двома помилками). Вхід — спільна скринька info@, а не особиста, тож без цього поля обліковий запис назветься іменем готелю (provisioning.ts: ownerName || name). Хто має бути названий власником — питання до готелю, а не здогадка звідси.",
   "organization": {
     "name": "Schlossberghotel Greiz",
     "slug": "schlossberghotel",
@@ -854,10 +854,11 @@
       "building": "Altstadtgalerie"
     }
   ],
-  "_eventNote": "Зали — з фотографії прайсу Seminarräume (19.08.2026). Блоки bis 2h / bis 4h / bis 8h / über 8h; відсутній блок = зала на цей час не пропонується (Saal не здають на 2 години). Ціни — ПІДКАЗКИ: власник — «Preise sind variabel (Nutzungsdauer, Personenzahl, Leistungsumfang), müssen manuell einpflegbar sein», рецепція редагує суму на рахунку. Terrasse викреслена з прайсу і безкоштовна як зона пауз у всіх пакетах — тому без цін: система підкаже «ціни немає», не 0. Групові пакети (ab 31 Personen pauschal) підтверджені другою друкованою сторінкою прайсу 19.08.2026 (рукописні цифри на стор. 1 — її копія): Leihgeschirr 90/120/150 € (до 50/80/100 ос.), Gläser/Bar 50/80/100 € — внесені як flat-доплати. Terrasse «über 8h» 50 € надруковано на стор. 2, але закреслено на стор. 1 — тераса лишається безкоштовною. ПДВ оренди зал = 'standard' як робоче припущення, фінальне слово за Steuerberater (Anett Wezel) — спитано. Знижка −10% на залу від 10 номерів (і навпаки) — правило продажу, не тариф: рецепція застосовує її редагуванням суми.",
+  "_eventNote": "Зали — з фотографії прайсу Seminarräume (19.08.2026). Блоки bis 2h / bis 4h / bis 8h / über 8h; відсутній блок = зала на цей час не пропонується (Saal не здають на 2 години). Ціни — ПІДКАЗКИ: власник — «Preise sind variabel (Nutzungsdauer, Personenzahl, Leistungsumfang), müssen manuell einpflegbar sein», рецепція редагує суму на рахунку. Terrasse викреслена з прайсу і безкоштовна як зона пауз у всіх пакетах — тому без цін: система підкаже «ціни немає», не 0. Групові пакети (ab 31 Personen pauschal) підтверджені другою друкованою сторінкою прайсу 19.08.2026 (рукописні цифри на стор. 1 — її копія): Leihgeschirr 90/120/150 € (до 50/80/100 ос.), Gläser/Bar 50/80/100 € — внесені як flat-доплати. Terrasse «über 8h» 50 € надруковано на стор. 2, але закреслено на стор. 1 — тераса лишається безкоштовною. ПДВ оренди зал = 'reduced' (7%, як у номерів) — відповідь готелю 20.08.2026 через Олега; до 20.08 у коді стояв хардкод 'standard' (19%), який файл не міг перекрити — міграція 0025 перенесла ставку на саму залу. ПОТРЕБУЄ письмового підтвердження Steuerberater (Anett Wezel) до першого рахунку за залу: у Німеччині оренда приміщення і Beherbergung оподатковуються по-різному, і 7% на оренду зали — не типовий випадок. Ставка знімається знімком на рядок фоліо, тому виправлення заднім числом уже виставлені рахунки не перепише. Знижка −10% на залу від 10 номерів (і навпаки) — правило продажу, не тариф: рецепція застосовує її редагуванням суми.",
   "eventSpaces": [
     {
       "code": "SAAL",
+      "vatCode": "reduced",
       "name": "Saal",
       "capacityNote": "bis 100 Personen; Kino 120",
       "blockPrices": {
@@ -869,6 +870,7 @@
     },
     {
       "code": "KSAAL",
+      "vatCode": "reduced",
       "name": "Kleiner Saal",
       "capacityNote": "bis 16 Personen",
       "blockPrices": {
@@ -881,6 +883,7 @@
     },
     {
       "code": "ATRIUM",
+      "vatCode": "reduced",
       "name": "Atrium",
       "blockPrices": {
         "h4": 99,
@@ -891,6 +894,7 @@
     },
     {
       "code": "BAR",
+      "vatCode": "reduced",
       "name": "Bar (Cabana)",
       "blockPrices": {
         "h8": 250,
@@ -900,12 +904,14 @@
     },
     {
       "code": "TERRASSE",
+      "vatCode": "reduced",
       "name": "Terrasse",
       "capacityNote": "Raucherecke und Pausen, kostenlos bei allen Paketen",
       "sortOrder": 5
     },
     {
       "code": "KUECHE",
+      "vatCode": "reduced",
       "name": "Küche",
       "blockPrices": {
         "h8": 100,
@@ -1141,5 +1147,41 @@
       "checkOut": "2027-03-08",
       "expectTotal": 135
     }
-  ]
+  ],
+  "_guestPageNote": "Зміст гостьової сторінки, 20.08.2026. Тільки перевірені факти: гараж — прайс 2027 (10 €/ніч/місце) + пропозиція 02/2024 (в'їзд «Siebenhitze» / «Neuer Weg») + аудит рецепції (висота ~2 м, квиток на рецепції, або повідомити наступного дня); сніданок 15 €/особу і діти до 6 років безкоштовно — прайс 2027; свіжі яйця на замовлення — аудит рецепції (це закриває повторюваний негативний відгук «не було яєць»); тварини 10 €/день без корму — прайс 2027; телефон — з фактури й чека термінала. НЕ заповнено, бо фактів немає (зібрати під час поїздки в готель): wifiNetwork/wifiPassword, restaurantName/restaurantHours, mapsUrl (точка В'ЇЗДУ в гараж, не готелю — Google веде до дверей і гості кружляють), rules (правила будинку), години сніданку, години рецепції у вихідні, процедура пізнього заїзду. Порожнє поле навмисно відсутнє, а не порожнє: applier пише лише названі поля, тож рецепція може ввести решту руками, і файл цього не затре. checkInTime/checkOutTime у property досі типові — тому в FAQ їх свідомо немає: неперевірений час у гостя на екрані гірший за його відсутність.",
+  "guestPage": {
+    "emergencyPhone": "+49 3661 622123",
+    "petsPolicy": "welcome",
+    "parkingInfo": "Tiefgarage (Schlossgarage Greiz): 10,00 € pro Nacht und Stellplatz.\n\nDie Einfahrt liegt in der Straße „Siebenhitze“ / „Neuer Weg“ — nicht am Hoteleingang. Bitte fahren Sie außen herum; die Navigation meldet sonst „Ziel erreicht“, während Sie noch vor dem Haus stehen.\n\nDurchfahrtshöhe ca. 2,00 m. Die Stellplätze des Hotels liegen direkt am Aufzug — praktisch mit Gepäck.\n\nIhr Parkticket erhalten Sie an der Rezeption. Sie brauchen es zum Ausfahren; alternativ melden Sie die Nutzung am nächsten Tag an der Rezeption.",
+    "faqItems": [
+      {
+        "q": "Was kostet das Frühstück?",
+        "a": "15,00 € pro Person. Kinder unter 6 Jahren frühstücken kostenfrei."
+      },
+      {
+        "q": "Gibt es Eier zum Frühstück?",
+        "a": "Ja. Rührei, Spiegelei oder Omelett bereiten wir frisch auf Wunsch zu — sprechen Sie einfach unser Frühstücksteam an. Auch mit Käse, Speck oder Tomate."
+      },
+      {
+        "q": "Darf mein Hund mit?",
+        "a": "Ja. Wir berechnen 10,00 € pro Tag (ohne Futter)."
+      },
+      {
+        "q": "Wo kann ich parken?",
+        "a": "In der Schlossgarage Greiz, 10,00 € pro Nacht. Die Einfahrt liegt in der Straße „Siebenhitze“ / „Neuer Weg“ — bitte nicht am Hoteleingang suchen. Das Parkticket erhalten Sie an der Rezeption."
+      }
+    ],
+    "usefulInfo": [
+      {
+        "icon": "🏰",
+        "title": "Oberes Schloss",
+        "desc": "Zu Fuß vom Haus erreichbar — einer der beiden Gründe, aus denen Gäste nach Greiz kommen."
+      },
+      {
+        "icon": "🏰",
+        "title": "Unteres Schloss",
+        "desc": "Im Stadtzentrum, wenige Minuten vom Hotel."
+      }
+    ]
+  }
 }

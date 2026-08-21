@@ -158,7 +158,10 @@ export const postBookingCharges = withPermission('manage_documents', async (
   try {
     return NextResponse.json(await events.postEventCharges(id, {
       hallPriceGross: Number(body.hall_price_gross) || 0,
-      hallVatCode: body.hall_vat_code || 'standard',
+      // No fallback here: an absent field means «the hall decides», and the
+      // repo asks the hall. Defaulting to a literal at this layer would put
+      // the answer back into code, where no hotel file can reach it.
+      hallVatCode: body.hall_vat_code || undefined,
       hallDescription: body.hall_description || undefined,
       addons: (Array.isArray(body.addons) ? body.addons : []).map((a: any) => ({
         addonId: String(a.addon_id || a.id || ''),
