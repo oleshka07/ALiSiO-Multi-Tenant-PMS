@@ -14,11 +14,12 @@ ERP для готельного бізнесу, з PMS усередині: но�
 | | |
 |---|---|
 | [AGENTS.md](AGENTS.md) | **правила проєкту** — інваріанти, перевірки перед комітом, обов'язок оновлювати документацію |
+| [docs/PRODUCT.md](docs/PRODUCT.md) | **що продукт уміє сьогодні** — по модулях, з чесною межею між «працює», «працює вузько» і «немає» |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | шари, модулі, модель тенантності, guard-и, поточний стан і план |
 | [docs/SECURITY-FINDINGS.md](docs/SECURITY-FINDINGS.md) | усі знайдені вразливості й помилки, з інструкцією як шукати те саме деінде |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | два середовища, спільний VPS, відкат |
 | [db/postgres/README.md](db/postgres/README.md) | схема Postgres, типи даних, row-level security, міграції |
-| [product_capabilities_and_value.md](product_capabilities_and_value.md) | що продукт уміє з точки зору готелю |
+| [product_capabilities_and_value.md](product_capabilities_and_value.md) | ⚠️ застарілий маркетинговий каталог — рекламує видалене; актуальне в `docs/PRODUCT.md` |
 
 Порядок не випадковий: `AGENTS.md` перший, бо система мультитенантна і запит
 без обмеження за організацією не падає — він тихо віддає дані іншого клієнта.

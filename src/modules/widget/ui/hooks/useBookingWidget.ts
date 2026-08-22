@@ -491,9 +491,9 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
           return;
         }
 
-        // If reservation is fully paid / free package, and a thankYouUrl is provided, we can redirect directly or go to step 4
-        // However, we just go to step 4 (Success page). If there's a thankYouUrl, step 4 will handle the redirect, 
-        // OR we let startPayment handle the redirect. Since it's unpaid at this moment, they must go to step 4 or startPayment.
+        // Success page. A booking is taken here and paid at the hotel, so the
+        // last step is a confirmation, not a hand-off to a gateway; step 6
+        // fires the purchase event and redirects to the thank-you URL.
         goToStep(4); 
       } else { 
         const err = await res.json(); 
@@ -510,49 +510,6 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
     if (reservation?.reservationId && !isPreview) { try { await fetch(`${API_BASE}/api/booking/services`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'book-toggle', serviceId:id, reservationId:reservation.reservationId, siteSlug, quantity:adults+kids||1 }) }); } catch(e) { console.error(e); } }
   };
 
-  const startPayment = async () => {
-    if (!reservation) return;
-    if (isPreview) { setSubmitting(true); await new Promise(r=>setTimeout(r,1000)); setSubmitting(false); goToStep(6); return; }
-    if (!siteSlug) { goToStep(6); return; }
-    setSubmitting(true);
-    try {
-      // ── Prefer thank-you URL from reservation response (most reliable) → siteThankYouUrl state → parent page URL ──
-      // reservation.thankYouUrl is returned directly from /api/booking/reserve so it's always correct,
-      // avoiding the race condition where siteThankYouUrl state may not be populated yet.
-      let retPath = (reservation as any).thankYouUrl || siteThankYouUrl || '';
-      if (!retPath) {
-        try { retPath = (window.top as any).location.href.split('?')[0]; } catch { retPath = window.location.href.split('?')[0]; }
-      }
-      const sep = retPath.includes('?') ? '&' : '?';
-      const checkinParam = checkIn ? `&checkin=${encodeURIComponent(checkIn)}` : '';
-      const checkoutParam = checkOut ? `&checkout=${encodeURIComponent(checkOut)}` : '';
-      const amountParam = reservation.totalPrice !== undefined ? `&amount=${reservation.totalPrice}` : '';
-      retPath += `${sep}res_id=${reservation.reservationId}&payment_status=success${checkinParam}${checkoutParam}${amountParam}`;
-
-      const res = await fetch(`${API_BASE}/api/booking/checkout-session`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ reservation_id:reservation.reservationId, site_slug:siteSlug, return_path:retPath }) });
-      if (res.status===403) { goToStep(6); setSubmitting(false); return; }
-      const data = await res.json();
-      if (data.already_paid) {
-        goToStep(6);
-      } else if (data.session_url) {
-        try {
-          if (window.top && window.top !== window) {
-            window.top.location.href = data.session_url;
-          } else {
-            window.location.href = data.session_url;
-          }
-        } catch {
-          try {
-            window.open(data.session_url, '_top');
-          } catch {
-            window.location.href = data.session_url;
-          }
-        }
-      } else setError(data.error||'Payment failed');
-    } catch { setError('Payment gateway error'); }
-    setSubmitting(false);
-  };
-
   const activeDesign = isPreview ? (design || siteDesign) : (siteDesign || design);
   const dynamicStyles = useMemo(() => { const d = activeDesign; if (!d) return {}; const s: any = {}; if (d.primary_color) { s['--moss']=d.primary_color; s['--moss-dark']=d.primary_color; s['--accent-primary']=d.primary_color; } if (d.button_style) { const isSharp=d.button_style.includes('sharp'); const isPill=d.button_style.includes('pill'); s['--radius']=isSharp?'2px':isPill?'24px':'12px'; s['--radius-lg']=isSharp?'4px':isPill?'32px':'16px'; } if (d.show_shadow!==undefined) s['--shadow']=d.show_shadow?'0 8px 32px rgba(0,0,0,0.12)':'none'; return s; }, [activeDesign]);
 
@@ -560,7 +517,7 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
 
   const invalidNightsMsg = offerApplied?.offerType==='package' && offerApplied.bundle?.nights_included && nights>0 && nights!==offerApplied.bundle.nights_included ? t.packageNightsError(offerApplied.bundle.nights_included) : null;
 
-  return { lang, setLang, setOfferError, t, v3t, step, setStep, checkIn, setCheckIn, checkOut, setCheckOut, nights, selectingCheckOut, setSelectingCheckOut, adults, setAdults, kids, setKids, calMonthOffset, setCalMonthOffset, calOpen, setCalOpen, busyDates, partialDates, socialProof, waitlistStatus, joinWaitlist, nextAvailable, availability, loadingAvail, selectedUnitId, setSelectedUnitId, unitInfo, currentImgIndex, setCurrentImgIndex, firstName, setFirstName, lastName, setLastName, email, setEmail, phone, setPhone, submitting, error, reservation, couponCode, setCouponCode, showOffer, setShowOffer, offerApplied, offerError, applyingOffer, extraCouponCode, setExtraCouponCode, showExtraOffer, setShowExtraOffer, extraCouponApplied, setExtraCouponApplied, extraCouponError, setExtraCouponError, applyingExtraCoupon, handleApplyExtraOffer, isHiddenBundle, siteConfig, siteCurrency, services, loadingServices, selectedServiceIds, setSelectedServiceIds, setAvailability, displayUnits, availableCategories, selectedCategoryId, setSelectedCategoryId, categoryStepEnabled, selectedUnit, totalWithDiscount, totalWithoutDiscount, fetchAvailability, handleDayClick, goToStep, handleApplyOffer, submitBooking, toggleService, startPayment, activeDesign, dynamicStyles, invalidNightsMsg, today, getOccupancyString, resolvedSiteId, activeRatePlan };
+  return { lang, setLang, setOfferError, t, v3t, step, setStep, checkIn, setCheckIn, checkOut, setCheckOut, nights, selectingCheckOut, setSelectingCheckOut, adults, setAdults, kids, setKids, calMonthOffset, setCalMonthOffset, calOpen, setCalOpen, busyDates, partialDates, socialProof, waitlistStatus, joinWaitlist, nextAvailable, availability, loadingAvail, selectedUnitId, setSelectedUnitId, unitInfo, currentImgIndex, setCurrentImgIndex, firstName, setFirstName, lastName, setLastName, email, setEmail, phone, setPhone, submitting, error, reservation, couponCode, setCouponCode, showOffer, setShowOffer, offerApplied, offerError, applyingOffer, extraCouponCode, setExtraCouponCode, showExtraOffer, setShowExtraOffer, extraCouponApplied, setExtraCouponApplied, extraCouponError, setExtraCouponError, applyingExtraCoupon, handleApplyExtraOffer, isHiddenBundle, siteConfig, siteCurrency, services, loadingServices, selectedServiceIds, setSelectedServiceIds, setAvailability, displayUnits, availableCategories, selectedCategoryId, setSelectedCategoryId, categoryStepEnabled, selectedUnit, totalWithDiscount, totalWithoutDiscount, fetchAvailability, handleDayClick, goToStep, handleApplyOffer, submitBooking, toggleService, activeDesign, dynamicStyles, invalidNightsMsg, today, getOccupancyString, resolvedSiteId, activeRatePlan };
 }
 
 
