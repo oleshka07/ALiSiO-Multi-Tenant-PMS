@@ -218,6 +218,14 @@ async function clickButtons(pageUrl) {
     }
 
     if (after.url !== before.url) {
+      // Tab bars and table rows navigate with router.push, not <a> — the page
+      // this click just revealed is part of the app too.
+      try {
+        const u = new URL(after.url);
+        if (u.origin === new URL(BASE).origin && (PUBLIC_ONLY || u.pathname.startsWith('/app'))) {
+          enqueue(u.pathname, 1);
+        }
+      } catch { /* about:blank and friends */ }
       await page.goto(pageUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
       await page.waitForTimeout(300);
     } else if (after.dlg !== before.dlg || after.mut > before.mut + 50) {
@@ -232,6 +240,17 @@ async function clickButtons(pageUrl) {
 // ── Crawl ────────────────────────────────────────────────────────────────────
 if (!PUBLIC_ONLY) await login();
 enqueue(PUBLIC_ONLY ? '/' : '/app/dashboard', 0);
+
+// AUDIT_SEED: a file with one path per line, queued up front. Discovery by
+// links alone sees only what the sidebar links to; the filesystem knows every
+// page. Generate with:
+//   find src/app/app -name page.tsx | sed 's|src/app||;s|/page.tsx||;s|/(dashboard)||' > /tmp/seeds
+if (process.env.AUDIT_SEED && fs.existsSync(process.env.AUDIT_SEED)) {
+  for (const line of fs.readFileSync(process.env.AUDIT_SEED, 'utf8').split('\n')) {
+    const p = line.trim();
+    if (p.startsWith('/') && !p.includes('[')) enqueue(p, 1);
+  }
+}
 
 let done = 0;
 while (queue.length && done < MAX_PAGES) {
