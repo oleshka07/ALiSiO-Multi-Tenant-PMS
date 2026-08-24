@@ -52,15 +52,46 @@ export async function createFolio(input: {
 }): Promise<string> {
   const organizationId = await requireOrganizationId();
   const id = crypto.randomUUID();
+  const currency = await resolveCurrency(organizationId, input.reservationId ?? null);
   await getSql().run(
     `INSERT INTO fin_folios
-       (id, organization_id, reservation_id, property_id, payer_kind, payer_name, payer_address, payer_vat_no, payer_debtor_no, label)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, organization_id, reservation_id, property_id, payer_kind, payer_name, payer_address, payer_vat_no, payer_debtor_no, label, currency)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [id, organizationId, input.reservationId ?? null, input.propertyId ?? null, input.payerKind ?? 'guest',
      input.payerName ?? null, input.payerAddress ?? null, input.payerVatNo ?? null,
-     input.payerDebtorNo ?? null, input.label ?? null],
+     input.payerDebtorNo ?? null, input.label ?? null, currency],
   );
   return id;
+}
+
+/**
+ * Which money this folio counts.
+ *
+ * The reservation first — a booking taken in crowns is billed in crowns even
+ * if the hotel later changes its default. Then the organization. Never a
+ * literal: `?? 'EUR'` here is what handed a Czech hotel's guest a euro
+ * invoice over a crown sum, silently, for every split bill and every hall.
+ *
+ * Frozen into the row at creation, so the answer cannot move under a document
+ * that was already issued. Rows older than migration 0031 have NULL and are
+ * resolved the same way at read time.
+ */
+export async function resolveCurrency(organizationId: string, reservationId: string | null): Promise<string> {
+  const sql = getSql();
+  if (reservationId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res: any = await sql.row<any>(
+      'SELECT currency FROM reservations WHERE id = ? AND organization_id = ?',
+      [reservationId, organizationId]);
+    if (res?.currency) return String(res.currency);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const org: any = await sql.row<any>(
+    'SELECT default_currency FROM organizations WHERE id = ?', [organizationId]);
+  if (org?.default_currency) return String(org.default_currency);
+  // Both empty means the organization row is broken, and guessing a currency
+  // for a legal document is worse than refusing to write one.
+  throw new Error(`No currency for organization ${organizationId}: set organizations.default_currency`);
 }
 
 export interface NewCharge {
@@ -241,6 +272,11 @@ export async function issueInvoice(input: {
   }
 
   const snapshot = buildSnapshot(items);
+  // The folio's own answer if it has one; a folio older than migration 0031
+  // resolves it now, from its reservation and then its organization.
+  const invoiceCurrency = folio.currency
+    ? String(folio.currency)
+    : await resolveCurrency(organizationId, folio.reservation_id ?? null);
   const invoiceId = crypto.randomUUID();
   let number = '';
   let allocatedSeries = '';
@@ -259,7 +295,7 @@ export async function issueInvoice(input: {
       `INSERT INTO invoices (id, organization_id, invoice_number, issued_at, amount, currency, status, reservation_id, folio_id)
        VALUES (?, ?, ?, ?, ?, ?, 'issued', ?, ?)`,
       [invoiceId, organizationId, number, issueDate, snapshot.gross,
-       folio.currency ?? 'EUR', folio.reservation_id, folio.id],
+       invoiceCurrency, folio.reservation_id, folio.id],
     );
 
     for (const l of snapshot.lines) {
@@ -360,8 +396,13 @@ export async function stornoInvoice(input: {
       // one guest belongs to that guest's document trail, not to the room's.
       `INSERT INTO invoices (id, organization_id, invoice_number, issued_at, amount, currency, status, reservation_id, folio_id, corrects_invoice_id)
        VALUES (?, ?, ?, ?, ?, ?, 'storno', ?, ?, ?)`,
+      // NOT `?? 'EUR'`. A reversal must be denominated in exactly what it
+      // reverses; `invoices.currency` is NOT NULL, so a missing value here
+      // means the original row is broken, and quietly stamping euro on a
+      // credit note is how the same mistake would survive in the correction
+      // that was supposed to fix it.
       [stornoId, organizationId, number, issueDate, mirrored.gross,
-       original.currency ?? 'EUR', original.reservation_id, original.folio_id ?? null, input.invoiceId],
+       original.currency, original.reservation_id, original.folio_id ?? null, input.invoiceId],
     );
 
     for (const l of mirrored.lines) {

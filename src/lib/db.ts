@@ -5062,6 +5062,7 @@ function runMigrations(database: any) {
         property_id     TEXT,
         status          TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','settled')),
         label           TEXT,
+        currency        TEXT,
         created_at      TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
@@ -5074,6 +5075,13 @@ function runMigrations(database: any) {
     if (!folioCols.includes('property_id')) {
       database.exec('ALTER TABLE fin_folios ADD COLUMN property_id TEXT');
       console.log('[DB] fin_folios: added property_id (jurisdiction for reservation-less folios)');
+    }
+    // Which money this bill counts — migration 0031. Same ALTER-after-CREATE
+    // rule as above. Nullable: rows born before it resolve at read time from
+    // the reservation, then the organization, and never from a literal.
+    if (!folioCols.includes('currency')) {
+      database.exec('ALTER TABLE fin_folios ADD COLUMN currency TEXT');
+      console.log('[DB] fin_folios: added currency (an invoice must not invent EUR)');
     }
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folios_res ON fin_folios(reservation_id)');
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_folios_org ON fin_folios(organization_id, status)');

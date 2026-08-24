@@ -623,6 +623,9 @@ CREATE TABLE "fin_folios" (
   "property_id" TEXT,
   "status" TEXT DEFAULT 'open' NOT NULL,
   "label" TEXT,
+  -- Frozen at creation from the reservation, else the organization. NULL on
+  -- rows older than migration 0031, which resolve at read time.
+  "currency" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   CHECK (payer_kind IN ('guest','company')),

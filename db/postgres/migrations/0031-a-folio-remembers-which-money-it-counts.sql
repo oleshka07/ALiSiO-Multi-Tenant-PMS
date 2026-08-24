@@ -1,0 +1,19 @@
+-- A folio remembers which money it counts.
+--
+-- `issueInvoice` wrote the invoice currency as `folio.currency ?? 'EUR'`, and
+-- `fin_folios` has no currency column — it never had one. So the left side was
+-- always undefined and EVERY invoice issued through a folio came out in euro:
+-- a Czech hotel handed its guest a document reading «1 850,00 €» over a sum
+-- counted in crowns, because `Intl.NumberFormat` was told EUR and simply
+-- believed it. The folio is the only invoicing path for split bills and for
+-- halls, and the legacy path next door (`reservation-invoice.repo.ts`) reads
+-- `res.currency || 'CZK'` correctly — so the two paths disagreed about the
+-- same hotel. `folio` is typed `any`, which is why the compiler said nothing.
+--
+-- The column is nullable on purpose. A folio created before this migration has
+-- no answer stored, and inventing one now would be the same mistake in the
+-- other direction; those rows resolve at read time from the reservation, then
+-- from the organization. New folios freeze the answer at creation, like an
+-- invoice line freezes its price: the money a bill counts must not change
+-- because somebody later edited a setting.
+ALTER TABLE "fin_folios" ADD COLUMN IF NOT EXISTS "currency" TEXT;
