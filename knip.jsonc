@@ -1,0 +1,25 @@
+// Dead code finder — `npm run audit:dead-code`. Zero-config knip flagged 43
+// files, half of them false positives; every entry below exists to keep the
+// report honest, so a listed file is a decision, not a guess.
+//
+// entry: things executed from outside the import graph — operator scripts
+// (run by hand, by CI and by AGENTS.md §4), .check.ts self-checks
+// (npm run check), and src/scripts utilities.
+//
+// public/ is served verbatim to hotel sites' <script> tags, so nothing in it
+// is reachable by import and all of it is ignored rather than declared dead.
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "scripts/**/*.{mjs,js}",
+    "src/**/*.check.ts",
+    "src/scripts/*.js",
+    "next.config.ts",
+    "playwright.config.ts",
+    "playwright.ci.config.ts",
+    "tests/e2e/**/*.spec.ts"
+  ],
+  "project": ["src/**", "scripts/**"],
+  "ignore": ["public/**"],
+  "ignoreBinaries": ["playwright.ci.config.ts"]
+}

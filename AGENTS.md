@@ -180,6 +180,7 @@ DATABASE_URL=… node scripts/check-deployed-db.mjs
 | `check-boolean-flags --strict` | `0`/`1` у колонку `BOOLEAN` |
 | `check-insert-tenant --strict` | `INSERT` у scoped-таблицю без `organization_id` |
 | `check-dialect --strict` | SQL, який Postgres не зрозуміє |
+| `check-price-source --strict` | запит до цінових таблиць поза `modules/pricing` — друге джерело ціни (інваріант 16) |
 | `check-await` | проміс, використаний як значення |
 | `check-no-tenant-names` | бізнес одного клієнта в коді |
 | `check-docs-current --strict` | таблиця з міграції або гейт, яких немає в ARCHITECTURE.md |
