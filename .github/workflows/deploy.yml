@@ -51,6 +51,23 @@
 # stops. A red badge nobody can clear is a badge everybody learns to ignore.
 name: deploy
 
+# What the run list says.
+#
+# A workflow started by `workflow_run` always runs on the DEFAULT branch, so
+# every deploy shows up as `main` in the list of runs no matter which
+# environment it touched. That field is the workflow's own ref, not the branch
+# that triggered it — and reading it as the latter is an easy mistake to make,
+# because it looks exactly like the answer to the question you are asking.
+# It cost one wrong diagnosis already: "beta never deployed", when beta had
+# deployed successfully twice.
+#
+# The environment lives in `github.event.workflow_run.head_branch`, which the
+# job below reads. Putting it in the run title too means the list answers the
+# question without anyone opening a run and finding the job name.
+run-name: >-
+  ${{ (github.event.workflow_run.head_branch || github.ref_name) == 'beta' && 'beta' || 'prod' }}
+  ← ${{ github.event.workflow_run.head_branch || github.ref_name }}
+
 on:
   workflow_run:
     workflows: ['checks']
