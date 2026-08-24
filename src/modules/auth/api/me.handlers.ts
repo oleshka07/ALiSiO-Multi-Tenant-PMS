@@ -1,20 +1,21 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { getSessionUser } from '@core/auth';
-import { getDb } from '@core/db';
+import { currentActor } from '@core/auth/session';
 import { getSql } from '@core/db/async';
 import { listFeatures } from '@core/features';
 import { LANGUAGES, LANGUAGE_CODES } from '@core/i18n/languages';
 
 export async function getMe() {
   try {
-    const cookieStore = await cookies();
-    const sessionId = cookieStore.get('session_id')?.value;
-    const user = await getSessionUser(sessionId);
+    // Through currentActor, not the cookie: this is also how the screen
+    // learns it is being shown to the supplier standing inside a customer's
+    // account. Reading session_id directly answered 401 for that case, and the
+    // dashboard bounced back to the login it had just come from.
+    const actor = await currentActor();
 
-    if (!user) {
+    if (!actor) {
       return NextResponse.json({ error: 'Не авторизовано' }, { status: 401 });
     }
+    const user = actor.user;
 
     // The same registry the routes enforce — the sidebar only mirrors it.
     const features = user.organization_id ? await listFeatures(user.organization_id) : {};
@@ -46,6 +47,9 @@ export async function getMe() {
       organization,
       language: user.language,
       languages: LANGUAGE_CODES.map((code) => ({ code, native: LANGUAGES[code].native })),
+      // Present only for the supplier working inside a customer. The screen
+      // keeps saying whose data is on it; nothing else changes.
+      platform: actor.platform ? { email: actor.platform.email } : null,
     });
   } catch (error) {
     console.error('Auth me error:', error);

@@ -15,20 +15,47 @@ import { cookies } from 'next/headers';
 import { getSessionUser, type SessionUser } from './auth';
 import { hasPermission, type Permission } from './permissions';
 import { runWithOrganization } from './tenant-context';
+import { PLATFORM_COOKIE, actingUserFor, getPlatformSession } from './platform';
 
 export interface Actor {
   user: SessionUser;
   /** Every tenant-scoped query must be constrained by this. */
   organizationId: string;
+  /**
+   * Set only when this is the supplier working inside a customer's account.
+   * Handlers do not need to read it — the acting user already carries a name
+   * that says so, which is what lands in audit rows — but a screen can use it
+   * to keep saying whose data is on the screen.
+   */
+  platform?: { userId: string; email: string };
 }
 
 export async function currentActor(): Promise<Actor | null> {
   const store = await cookies();
+
+  // An ordinary employee session first: the common path, unchanged, so
+  // nothing about a hotel's own logins depends on the platform feature.
   const user = await getSessionUser(store.get('session_id')?.value);
-  if (!user || !user.is_active) return null;
-  // A session without an organization cannot be scoped, so it cannot be trusted.
-  if (!user.organization_id) return null;
-  return { user, organizationId: user.organization_id };
+  if (user) {
+    if (!user.is_active) return null;
+    // A session without an organization cannot be scoped, so it cannot be trusted.
+    if (!user.organization_id) return null;
+    return { user, organizationId: user.organization_id };
+  }
+
+  // Otherwise the supplier, and only while standing inside one hotel. A
+  // platform session that has not entered anywhere has no organization, so it
+  // resolves to no actor at all — every tenant-scoped route refuses it,
+  // exactly as it refuses a stranger.
+  const platform = await getPlatformSession(store.get(PLATFORM_COOKIE)?.value);
+  if (!platform || !platform.actingOrganizationId) return null;
+
+  const acting = await actingUserFor(platform, platform.actingOrganizationId);
+  return {
+    user: acting,
+    organizationId: platform.actingOrganizationId,
+    platform: { userId: platform.userId, email: platform.email },
+  };
 }
 
 export const unauthorized = () =>

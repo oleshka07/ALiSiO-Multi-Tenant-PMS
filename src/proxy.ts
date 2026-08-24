@@ -19,6 +19,8 @@ const PUBLIC_PREFIXES = [
   // '/api/file-upload' is deliberately absent. It was public for the retired
   // /book wizard; every caller is now a dashboard screen, and an open upload
   // endpoint is an invitation. Do not add it back.
+  '/api/platform/login', // the supplier's own entrance (own cookie, own tables)
+  '/app/platform/login', // its login page
   '/app/login', // login page — the only public path under /app
   '/login', // legacy /login, redirects to /app/login
   '/guest/', // guest portal page
@@ -110,14 +112,23 @@ export function proxy(request: NextRequest) {
   if (!isPublicRoute(pathname)) {
     const sessionId = request.cookies.get('session_id')?.value;
 
+    // The supplier's session is a different cookie. The gate only asks whether
+    // SOME session is present — which of the two it is, and whether it may
+    // touch this organization, is decided by currentActor() further in. Without
+    // this the platform operator would be refused at the door by a check that
+    // only knows one kind of key.
+    const platformSessionId = request.cookies.get('platform_session_id')?.value;
+    const anySession = sessionId || platformSessionId;
+
     if (pathname.startsWith('/api/')) {
       // API routes: return 401 JSON when no session is present
-      if (!sessionId) {
+      if (!anySession) {
         return NextResponse.json({ error: 'Unauthorized — session required' }, { status: 401 });
       }
     } else {
-      // Dashboard pages: redirect to login
-      if (!sessionId) {
+      // Dashboard pages: redirect to login. A platform operator inside a
+      // hotel sees the ordinary screens, so their cookie counts here too.
+      if (!anySession) {
         const loginUrl = request.nextUrl.clone();
         loginUrl.pathname = '/app/login';
         return NextResponse.redirect(loginUrl);

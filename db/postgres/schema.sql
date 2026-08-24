@@ -1326,6 +1326,40 @@ CREATE TABLE "payment_webhook_log" (
   CHECK (result IN ('recorded','no_match','duplicate','signature_invalid','parse_error','unhandled','error'))
 );
 
+CREATE TABLE "platform_audit" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "platform_user_id" TEXT,
+  "platform_email" TEXT NOT NULL,
+  "action" TEXT NOT NULL,
+  "ip" TEXT,
+  "at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  CHECK (action IN ('enter', 'leave'))
+);
+
+CREATE TABLE "platform_sessions" (
+  "id" TEXT NOT NULL,
+  "platform_user_id" TEXT NOT NULL,
+  "acting_organization_id" TEXT,
+  "expires_at" TIMESTAMPTZ NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE "platform_users" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "email" TEXT NOT NULL,
+  "full_name" TEXT,
+  "password_hash" TEXT NOT NULL,
+  "is_active" BOOLEAN DEFAULT TRUE NOT NULL,
+  "last_login" TIMESTAMPTZ,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("email")
+);
+
 CREATE TABLE "price_calendar" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "unit_type_id" TEXT NOT NULL,
@@ -2224,6 +2258,14 @@ ALTER TABLE "partner_reports" ADD CONSTRAINT "fk_partner_reports_organization_id
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "payment_webhook_log" ADD CONSTRAINT "fk_payment_webhook_log_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "platform_audit" ADD CONSTRAINT "fk_platform_audit_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "platform_audit" ADD CONSTRAINT "fk_platform_audit_platform_user_id_2"
+  FOREIGN KEY ("platform_user_id") REFERENCES "platform_users" ("id") ON DELETE SET NULL;
+ALTER TABLE "platform_sessions" ADD CONSTRAINT "fk_platform_sessions_platform_user_id_1"
+  FOREIGN KEY ("platform_user_id") REFERENCES "platform_users" ("id") ON DELETE CASCADE;
+ALTER TABLE "platform_sessions" ADD CONSTRAINT "fk_platform_sessions_acting_organization_id_2"
+  FOREIGN KEY ("acting_organization_id") REFERENCES "organizations" ("id") ON DELETE SET NULL;
 ALTER TABLE "price_calendar" ADD CONSTRAINT "fk_price_calendar_unit_type_id_1"
   FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
 ALTER TABLE "price_los_tiers" ADD CONSTRAINT "fk_price_los_tiers_unit_type_id_1"
@@ -2476,6 +2518,8 @@ CREATE INDEX "idx_invoices_corrects" ON "invoices" ("corrects_invoice_id");
 CREATE INDEX "idx_invoices_number" ON "invoices" ("invoice_number");
 CREATE INDEX "idx_invoices_reservation" ON "invoices" ("reservation_id");
 CREATE INDEX "idx_invoices_folio" ON "invoices" ("folio_id");
+CREATE INDEX "idx_platform_audit_org" ON "platform_audit" ("organization_id", "at");
+CREATE INDEX "idx_platform_sessions_user" ON "platform_sessions" ("platform_user_id");
 CREATE INDEX "idx_partner_reports_period" ON "partner_reports" ("organization_id", "period");
 CREATE INDEX "idx_payment_webhook_log_org" ON "payment_webhook_log" ("organization_id");
 CREATE INDEX "idx_pwl_created" ON "payment_webhook_log" ("created_at");
@@ -2687,6 +2731,8 @@ ALTER TABLE "payment_webhook_log" ALTER COLUMN "organization_id"
 ALTER TABLE "price_los_tiers" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "price_occupancy" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "platform_audit" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "properties" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -3123,6 +3169,12 @@ CREATE POLICY "partner_reports_tenant" ON "partner_reports"
 ALTER TABLE "payment_webhook_log" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "payment_webhook_log" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "payment_webhook_log_tenant" ON "payment_webhook_log"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "platform_audit" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "platform_audit" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "platform_audit_tenant" ON "platform_audit"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

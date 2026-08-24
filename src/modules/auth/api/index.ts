@@ -6,3 +6,10 @@ export { getIntegrationCredentials, updateIntegrationCredentials } from './integ
 export { getMyLanguage, setMyLanguage } from './language.handlers';
 export { listUsers, createUser } from './users.handlers';
 export { getUser, updateUser, deleteUser } from './user.handlers';
+
+// The supplier's own entrance — its own cookie, its own tables, no session
+// guard here because there is no customer session to find. core/auth/platform.ts
+export {
+  platformLogin, platformLogout, platformMe,
+  platformOrganizations, platformEnter, platformLeave,
+} from './platform.handlers';

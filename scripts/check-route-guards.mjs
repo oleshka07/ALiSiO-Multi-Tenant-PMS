@@ -94,6 +94,17 @@ const SHARED_SECRET = /\b(CRON_SECRET|INVESTOR_[A-Z_]*TOKEN)\b/;
  *   cron, *-cron              CRON_SECRET — finance/api/_guard.ts says these
  *                             must NOT be wrapped in a session guard,
  *                             because there is no session to find
+ *   platform/*                the supplier's own cookie, checked against
+ *                             platform_users by each handler. Wrapping these
+ *                             in withActor would demand a CUSTOMER session,
+ *                             which by definition does not exist here — and
+ *                             the one route that grants tenant access
+ *                             (platform/enter) is the thing being guarded,
+ *                             not a thing to guard with. What keeps this
+ *                             honest is elsewhere: currentActor() gives a
+ *                             platform session NO organization until it has
+ *                             deliberately entered one, so every tenant route
+ *                             still refuses it — ARCHITECTURE.md §3.3
  *   ical-export/[token]       the calendar feed URL is the credential
  *
  * Exempt from THIS check, not from scrutiny: each still has to establish its
@@ -104,6 +115,7 @@ const PUBLIC = new RegExp([
   '/api/(widget|booking|guest|public|webhooks?|auth|health)\\b',
   '/api/cron/', '/api/[^/]+/cron\\b', '/api/[^/]+/[^/]+/cron\\b', '-cron/',
   '/api/payments/webhook',
+  '/api/platform/',
   '/api/ical-export/',
 ].join('|'));
 

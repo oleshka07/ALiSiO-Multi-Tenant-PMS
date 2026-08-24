@@ -5221,6 +5221,55 @@ function runMigrations(database: any) {
     console.error('[DB] fin_folios migration:', e.message);
   }
 
+  // --- Migration: the supplier's own way in (mirror of Postgres 0030) ---
+  //
+  // A person in app_users belongs to exactly one hotel. That is right for the
+  // people who work in one and wrong for the one who sells the product: ten
+  // customers meant ten accounts, each reachable only through the owner
+  // password printed once at provisioning. platform_users lives OUTSIDE
+  // tenancy — like organizations and sessions, it is what a request consults
+  // before it knows the tenant — and a platform session steps into one
+  // organization at a time. platform_audit is the opposite: it belongs to the
+  // customer, so the customer can see who came in and when.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS platform_users (
+        id            TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        email         TEXT NOT NULL UNIQUE,
+        full_name     TEXT,
+        password_hash TEXT NOT NULL,
+        is_active     INTEGER NOT NULL DEFAULT 1,
+        last_login    TEXT,
+        created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS platform_sessions (
+        id                     TEXT PRIMARY KEY,
+        platform_user_id       TEXT NOT NULL REFERENCES platform_users(id) ON DELETE CASCADE,
+        acting_organization_id TEXT REFERENCES organizations(id) ON DELETE SET NULL,
+        expires_at             TEXT NOT NULL,
+        created_at             TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_platform_sessions_user ON platform_sessions(platform_user_id)');
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS platform_audit (
+        id               TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id  TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        platform_user_id TEXT REFERENCES platform_users(id) ON DELETE SET NULL,
+        platform_email   TEXT NOT NULL,
+        action           TEXT NOT NULL CHECK (action IN ('enter', 'leave')),
+        ip               TEXT,
+        at               TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_platform_audit_org ON platform_audit(organization_id, at)');
+  } catch (e: any) {
+    console.error('[DB] platform access migration:', e.message);
+  }
+
   // --- Migration: invoices learn about reversal ---
   //
   // `CHECK (status IN ('issued','cancelled'))` and no link from a reversal to
