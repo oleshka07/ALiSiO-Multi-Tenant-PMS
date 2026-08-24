@@ -10,14 +10,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@core/db';
 import { syncCnbRates } from '@/modules/finance/domain/cnb-rates';
+import { cronAuthFailure } from '@core/security/cron-auth';
 
 async function handle(request: NextRequest): Promise<NextResponse> {
-  const authHeader = request.headers.get('x-cron-secret')
-    || request.headers.get('authorization')?.replace('Bearer ', '');
-  const secret = process.env.CRON_SECRET || 'local-cron';
-  if (authHeader !== secret) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const denied = cronAuthFailure(request);
+  if (denied) return denied;
 
   try {
     const { searchParams } = new URL(request.url);

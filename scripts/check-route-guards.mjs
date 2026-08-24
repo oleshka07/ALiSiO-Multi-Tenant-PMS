@@ -83,7 +83,13 @@ const HAND_ROLLED = /\bgetSessionUser\b|\bresolveFinanceOwner\b/;
  * cron endpoints with no `cron` anywhere in their path, and a list of paths
  * would keep missing them.
  */
-const SHARED_SECRET = /\b(CRON_SECRET|INVESTOR_[A-Z_]*TOKEN)\b/;
+// `cronAuthFailure`/`secretAuthFailure` are the shared implementation of the
+// same thing — one place that refuses when the secret is unset, instead of the
+// five hand-written spellings that used to fall back to a password printed in
+// the source. A route that calls one of them IS checking a shared secret, and
+// the gate has to know that or the refactor away from copy-paste reads as a
+// route losing its guard.
+const SHARED_SECRET = /\b(CRON_SECRET|INVESTOR_[A-Z_]*TOKEN|cronAuthFailure|secretAuthFailure)\b/;
 
 /**
  * No session by definition, and each carries its own credential instead.

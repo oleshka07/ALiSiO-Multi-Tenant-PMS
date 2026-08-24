@@ -1,15 +1,13 @@
 import { getSql } from '@core/db/async';
 import { NextRequest, NextResponse } from 'next/server';
+import { cronAuthFailure } from '@core/security/cron-auth';
 
 export async function GET(request: NextRequest) {
-  // Simple cron endpoint to anonymize data older than 6 years
-  // Securing cron endpoints usually requires a secret header. We'll check for an auth token.
-  const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET || 'local-cron'}`) {
-    if (process.env.NODE_ENV === 'production') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  // Anonymises six-year-old registrations. It used to refuse only when
+  // NODE_ENV was production, against a secret that defaulted to a word printed
+  // in this file — so in every other environment it ran for anyone who asked.
+  const denied = cronAuthFailure(request);
+  if (denied) return denied;
 
   try {
     const sql = getSql();

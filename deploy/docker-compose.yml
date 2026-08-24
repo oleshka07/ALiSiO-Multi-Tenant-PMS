@@ -21,12 +21,31 @@ services:
     # Bound to loopback: nginx terminates TLS and is the only way in.
     ports:
       - "127.0.0.1:${APP_PORT}:3000"
+    # The whole environment file, not a hand-kept list of it.
+    #
+    # `--env-file` on the command line feeds compose's own interpolation; it
+    # does NOT put anything inside the container. That was the list below, and
+    # it had drifted: CRON_SECRET, HOSTEX_WEBHOOK_SECRET and ICAL_CRON_SECRET
+    # were never passed, so inside the container they were permanently
+    # undefined and the routes that guard on them fell back to `|| 'local-cron'`
+    # — a password printed in the source — or to `if (!SECRET) return true`.
+    # Anyone on the internet could run the crons. OPENAI_API_KEY was in the
+    # env-file template all along, which is worse than missing: the operator
+    # filled it in, saw it in the file, and translations still never ran.
+    #
+    # A whitelist of environment variables has to be edited every time the
+    # application learns a new one, and nothing fails when somebody forgets.
+    # This passes the file the operator actually maintains.
+    env_file:
+      - env.${ENV_NAME}
+    # Derived values stay explicit — an entry here wins over the file, which is
+    # what keeps NODE_ENV and the public mirror of APP_URL from being editable
+    # by accident.
     environment:
       NODE_ENV: production
       ENV_NAME: ${ENV_NAME}
       APP_URL: ${APP_URL}
       NEXT_PUBLIC_APP_URL: ${APP_URL}
-      APP_SECRET_KEY: ${APP_SECRET_KEY}
       # Which engine. Empty means SQLite, which is what both environments ran
       # on for their whole life; `postgres` switches, and only then does
       # DATABASE_URL mean anything. Two variables on purpose — DATABASE_URL was

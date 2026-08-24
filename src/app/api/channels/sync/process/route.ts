@@ -1,16 +1,11 @@
-import { NextResponse } from 'next/server';
+import { cronAuthFailure } from '@core/security/cron-auth';
 import { processSyncQueue } from '@channels';
 
-const CRON_SECRET = process.env.CRON_SECRET || '';
 
 // POST /api/channels/sync/process — ARI sync queue processor, triggered by cron
 export async function POST(request: Request) {
-  if (CRON_SECRET) {
-    const secret = request.headers.get('x-cron-secret')
-      || new URL(request.url).searchParams.get('secret');
-    if (secret !== CRON_SECRET) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  // An unset secret used to skip the check entirely, and in the container it was unset.
+  const denied = cronAuthFailure(request);
+  if (denied) return denied;
   return await processSyncQueue();
 }

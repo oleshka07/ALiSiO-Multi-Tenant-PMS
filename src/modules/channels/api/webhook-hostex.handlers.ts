@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { secretAuthFailure } from '@core/security/cron-auth';
 import { syncSingleReservation, syncReservations } from '../data/hostex-sync';
 
-const WEBHOOK_SECRET = process.env.HOSTEX_WEBHOOK_SECRET || '';
-
 export async function hostexWebhook(request: NextRequest): Promise<NextResponse> {
+  // Checked BEFORE the body is read, and refused when the secret is unset.
+  // `if (WEBHOOK_SECRET && ...)` meant an unconfigured server accepted any
+  // unsigned event and acted on it — and the container never received
+  // HOSTEX_WEBHOOK_SECRET, so that was every server.
+  const denied = secretAuthFailure(request, 'HOSTEX_WEBHOOK_SECRET');
+  if (denied) return denied;
+
   let payload: Record<string, unknown>;
   try {
     payload = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
-
-  const incomingToken = request.headers.get('Hostex-Webhook-Secret-Token') || '';
-  if (WEBHOOK_SECRET && incomingToken !== WEBHOOK_SECRET) {
-    console.warn('[Hostex Webhook] Rejected: invalid secret token');
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const event = (payload.event as string) || '';

@@ -26,10 +26,12 @@ async function isAuthorized(request: NextRequest): Promise<boolean> {
       || new URL(request.url).searchParams.get('secret');
     if (secret === CRON_SECRET) return true;
   }
-  // Logged-in user (session cookie)
+  // Logged-in user (session cookie) — the calendar's «sync now» button.
   if (await hasValidSession(request)) return true;
-  // No CRON_SECRET set → allow (dev mode)
-  if (!CRON_SECRET) return true;
+  // An unset CRON_SECRET used to mean "allow anyone". In production it WAS
+  // unset — docker-compose never passed it into the container — so this line
+  // was not a dev convenience, it was the live configuration of a route that
+  // pulls a channel manager's reservations.
   return false;
 }
 

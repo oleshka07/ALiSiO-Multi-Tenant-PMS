@@ -39,6 +39,7 @@ import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { runWithOrganization } from '@core/auth/tenant-context';
 import { sendGuestReminderEmail } from '@/modules/bookings/data/send-guest-reminder-email';
+import { cronAuthFailure } from '@core/security/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,13 +50,10 @@ const MARKER = '[GUEST_REMINDER_SENT]';
 const dayFromNow = (n: number) => new Date(Date.now() + n * 86400_000).toISOString().slice(0, 10);
 
 export async function GET(request: Request) {
-  const offered = request.headers.get('x-cron-secret')
-    || request.headers.get('authorization')?.replace('Bearer ', '');
-  if (offered !== (process.env.CRON_SECRET || 'local-cron')) {
-    if (process.env.NODE_ENV === 'production') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  // This is the one the audit reproduced: `Bearer local-cron` answered 200 on
+  // the running build, and the route sends email to every arriving guest.
+  const denied = cronAuthFailure(request);
+  if (denied) return denied;
 
   const sql = getSql();
   const origin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;

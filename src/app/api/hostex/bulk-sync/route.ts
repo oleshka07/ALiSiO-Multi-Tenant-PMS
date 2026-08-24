@@ -18,7 +18,7 @@ async function isAuthorized(request: NextRequest): Promise<boolean> {
       if (session) return true;
     } catch { /* ignore */ }
   }
-  if (!CRON_SECRET) return true;
+  // Unset no longer means "allow": see /api/hostex/sync for what that cost.
   return false;
 }
 

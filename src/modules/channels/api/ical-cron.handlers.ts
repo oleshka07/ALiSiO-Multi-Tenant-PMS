@@ -1,16 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { secretAuthFailure } from '@core/security/cron-auth';
 
 export async function runIcalCron(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const secret = searchParams.get('secret');
-    const expectedSecret = process.env.ICAL_CRON_SECRET || 'alisio-ical-sync';
+  // The secret defaulted to 'alisio-ical-sync' — a password written in this
+  // file. Unset now refuses instead: the container never received
+  // ICAL_CRON_SECRET, so the default was the live value, not a dev shortcut.
+  const denied = secretAuthFailure(request, 'ICAL_CRON_SECRET');
+  if (denied) return denied;
 
-    if (secret !== expectedSecret) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  try {
 
     const sql = getSql();
     const channels = await sql.rows<any>(`

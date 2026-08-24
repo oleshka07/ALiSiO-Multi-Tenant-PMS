@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { sendAbandonedCartEmail } from '@/modules/bookings/data/send-abandoned-cart-email';
+import { cronAuthFailure } from '@core/security/cron-auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  // There was no check at all here, and this route emails guests.
+  const denied = cronAuthFailure(request);
+  if (denied) return denied;
+
   try {
     const sql = getSql();
     
