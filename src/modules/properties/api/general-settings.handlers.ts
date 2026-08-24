@@ -114,6 +114,11 @@ export const saveGeneralSettings = withPermission('manage_properties', async (re
     }
 
     const sql = getSql();
+    // What is stored now, so a field the screen did not send keeps its value
+    // instead of being reset to a default by omission.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const current: any = await sql.row<any>(
+      'SELECT ocr_cloud_fallback FROM organizations WHERE id = ?', [user.organization_id]) ?? {};
     await sql.run(`UPDATE organizations SET name = ?, timezone = ?, default_currency = ?, language = ?,
          legal_name = ?, registration_no = ?, vat_no = ?, is_vat_payer = ?, legal_address = ?,
          bank_name = ?, bank_account = ?, iban = ?, swift = ?, invoice_email = ?, website = ?, ocr_cloud_fallback = ?,
@@ -133,6 +138,16 @@ export const saveGeneralSettings = withPermission('manage_properties', async (re
       str(org.swift),
       str(org.invoice_email),
       str(org.website),
+      // The seventeenth placeholder had no value, so every save of this screen
+      // answered 500 «Too few parameter values» and nothing on it could be
+      // changed — name, timezone, currency, IBAN, all of it. The one that went
+      // missing is also the one that matters most: it is the hotel's consent to
+      // send a guest's identity document to a cloud OCR, so it is read
+      // explicitly rather than defaulted — an absent field keeps what is
+      // stored, and only an explicit value turns it on or off.
+      org.ocr_cloud_fallback === undefined
+        ? (current.ocr_cloud_fallback ? 1 : 0)
+        : (org.ocr_cloud_fallback ? 1 : 0),
       user.organization_id]);
 
     if (prop.id) {
