@@ -3,23 +3,42 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withActor, withPermission } from '@core/auth/session';
 
-export const listServiceOrders = withActor(async (req: NextRequest) => {
+export const listServiceOrders = withActor(async (req: NextRequest, _ctx, actor) => {
   try {
     const sql = getSql();
     const url = new URL(req.url);
     const dateParam = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
     const period = url.searchParams.get('period') || 'day';
 
-    // The column is in the boot migration and in db/postgres/schema.sql. This
-    // ALTER ran on every request, swallowing its own error — free on SQLite,
-    // refused on Postgres, where the application's role owns no table.
-
-    let dateFilter = '';
-    if (period === 'day') {
-      dateFilter = `AND bso.service_date = '${dateParam}'`;
-    } else if (period === 'week') {
-      dateFilter = `AND bso.service_date >= '${dateParam}' AND bso.service_date <= date('${dateParam}', '+7 days')`;
+    // `?date=` used to be pasted into the SQL string. `?date=2026-01-01' OR '1'='1`
+    // answered 200 with everything; `?date=x'` answered 500 with the parser's
+    // opinion of the query. Both were reproduced against a running build.
+    //
+    // The shape is checked before anything else, because a date is a date: it
+    // is not the parameteriser's job to explain that `2026-13-99` is not one.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      return NextResponse.json({ error: 'date must be YYYY-MM-DD' }, { status: 400 });
     }
+
+    // The end of a week is computed here rather than by `date(?, '+7 days')`,
+    // which is SQLite's spelling and would have to be rewritten for Postgres.
+    const dateEnd = new Date(`${dateParam}T00:00:00Z`);
+    dateEnd.setUTCDate(dateEnd.getUTCDate() + 7);
+    const dateTo = dateEnd.toISOString().slice(0, 10);
+
+    // Scoped, and not by RLS alone: on SQLite there are no policies, and this
+    // listed every hotel's service orders — guest names included — to anyone
+    // signed in anywhere. Orders reach their tenant two ways, because an order
+    // may have no reservation (a walk-in buying through the widget): through
+    // the booking when there is one, through the service's property always.
+    const orgFilter = `AND ads.property_id IN (SELECT id FROM properties WHERE organization_id = ?)`;
+
+    const dateFilter = period === 'day'
+      ? 'AND bso.service_date = ?'
+      : period === 'week'
+        ? 'AND bso.service_date >= ? AND bso.service_date <= ?'
+        : '';
+    const dateArgs = period === 'day' ? [dateParam] : period === 'week' ? [dateParam, dateTo] : [];
 
     const widgetOrders = await sql.rows<any>(`
       SELECT
@@ -37,11 +56,11 @@ export const listServiceOrders = withActor(async (req: NextRequest) => {
       LEFT JOIN reservations r ON bso.reservation_id = r.id
       LEFT JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
-      WHERE 1=1 ${dateFilter}
+      WHERE 1=1 ${dateFilter} ${orgFilter}
         AND bso.status != 'cancelled'
         AND bso.payment_status NOT IN ('failed', 'refunded')
       ORDER BY bso.service_date ASC, bso.created_at DESC
-    `) as any[];
+    `, [...dateArgs, actor.organizationId]) as any[];
 
     const orders = widgetOrders.map(o => {
       let startHour = null, endHour = null;
@@ -75,12 +94,11 @@ export const listServiceOrders = withActor(async (req: NextRequest) => {
       };
     });
 
-    let soDateFilter = '';
-    if (period === 'day') {
-      soDateFilter = `AND COALESCE(so.service_date, r.check_in) = '${dateParam}'`;
-    } else if (period === 'week') {
-      soDateFilter = `AND COALESCE(so.service_date, r.check_in) >= '${dateParam}' AND COALESCE(so.service_date, r.check_in) <= date('${dateParam}', '+7 days')`;
-    }
+    const soDateFilter = period === 'day'
+      ? 'AND COALESCE(so.service_date, r.check_in) = ?'
+      : period === 'week'
+        ? 'AND COALESCE(so.service_date, r.check_in) >= ? AND COALESCE(so.service_date, r.check_in) <= ?'
+        : '';
 
     const guestOrders = await sql.rows<any>(`
       SELECT
@@ -97,11 +115,12 @@ export const listServiceOrders = withActor(async (req: NextRequest) => {
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
       WHERE 1=1 ${soDateFilter}
+        AND r.organization_id = ?
         AND so.status != 'cancelled'
         AND so.payment_status NOT IN ('failed', 'refunded')
       ORDER BY so.created_at DESC
       LIMIT 50
-    `) as any[];
+    `, [...dateArgs, actor.organizationId]) as any[];
 
     const gOrders = guestOrders.map(o => {
       let startHour = null, endHour = null;
