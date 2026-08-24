@@ -14,7 +14,7 @@ import { withPermission } from '@core/auth/session';
  * hotel's OpenAI bill, and the cloud-consent flag it honours belongs to an
  * organization it had no way to identify.
  */
-export const POST = await withPermission('manage_guests', async (req: Request) => {
+export const POST = await withPermission('manage_guests', async (req: Request, _ctx, actor) => {
   try {
     const { image } = await req.json();
     if (!image) {
@@ -22,7 +22,12 @@ export const POST = await withPermission('manage_guests', async (req: Request) =
     }
 
     const dataUrl = image.includes('base64,') ? image : `data:image/jpeg;base64,${image}`;
-    const result = await ocrDocument(dataUrl, { allowCloudFallback: await cloudOcrAllowed() });
+    // The consent belongs to the hotel whose receptionist is holding the
+    // document, which is the one in the session — not the oldest row in the
+    // organizations table, which is what an argument-less call used to read.
+    const result = await ocrDocument(dataUrl, {
+      allowCloudFallback: await cloudOcrAllowed(actor.organizationId),
+    });
 
     return NextResponse.json({ success: true, data: result });
   } catch (err: any) {

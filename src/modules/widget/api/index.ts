@@ -26,7 +26,6 @@ export { getWidgetConfig, getWidgetConfigOptions } from './widget-config-public.
 export { getWidgetPriceList, listOwnWidgetPrices, updateWidgetPriceItem } from './widget-prices.handlers';
 
 // Reads a guest's identity document during the booking flow.
-export { processWidgetOcr, processWidgetOcrOptions } from './widget-ocr.handlers';
 
 // How the embedded widget performed: sessions, funnel, campaigns, geography.
 // This was 774 lines inside bookings, reading only widget tables — moving it
