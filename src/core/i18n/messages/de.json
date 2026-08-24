@@ -2560,5 +2560,18 @@
   "Карта території": "Geländekarte",
   "Маршрут до паркінгу (Google Maps URL)": "Route zum Parkplatz (Google-Maps-URL)",
   "Фото паркінгу": "Foto des Parkplatzes",
-  "Якщо порожньо — кнопка навігації в секції паркінгу веде на спільний Google Maps URL": "Wenn leer, führt die Navigationstaste im Parkplatz-Bereich zur gemeinsamen Google-Maps-URL"
+  "Якщо порожньо — кнопка навігації в секції паркінгу веде на спільний Google Maps URL": "Wenn leer, führt die Navigationstaste im Parkplatz-Bereich zur gemeinsamen Google-Maps-URL",
+  "Вийти з акаунта": "Konto verlassen",
+  "Вийти з платформи": "Von der Plattform abmelden",
+  "Вхід постачальника": "Anmeldung des Anbieters",
+  "вхід у готель записується в його журнал змін": "Der Zugriff auf ein Hotel wird in dessen Änderungsprotokoll festgehalten",
+  "Готелі": "Hotels",
+  "Кожен вхід у готель записується в його журнал змін.": "Jeder Zugriff auf ein Hotel wird in dessen Änderungsprotokoll festgehalten.",
+  "користувачів": "Benutzer",
+  "Не вдалося завантажити список": "Die Liste konnte nicht geladen werden",
+  "Не вдалося увійти": "Zugriff nicht möglich",
+  "об'єктів": "Objekte",
+  "Помилка входу": "Anmeldefehler",
+  "Режим підтримки — ви в акаунті клієнта. Кожна дія підписана вашим імʼям.": "Support-Modus — Sie befinden sich im Konto eines Kunden. Jede Aktion wird mit Ihrem Namen gezeichnet.",
+  "У цій базі ще немає жодної організації.": "In dieser Datenbank gibt es noch keine Organisation."
 }

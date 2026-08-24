@@ -91,7 +91,7 @@ export default function DashboardLayout({
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
       background: '#7c2d12', color: '#fff', padding: '8px 16px', fontSize: 13, fontWeight: 600,
     }}>
-      <span>Режим підтримки — ви в акаунті клієнта ({platformEmail}). Кожна дія підписана вашим імʼям.</span>
+      <span>{t('Режим підтримки — ви в акаунті клієнта. Кожна дія підписана вашим імʼям.')} ({platformEmail})</span>
       <button
         onClick={async () => {
           await fetch('/api/platform/leave', { method: 'POST' });
@@ -103,7 +103,7 @@ export default function DashboardLayout({
           whiteSpace: 'nowrap',
         }}
       >
-        Вийти з акаунта
+        {t('Вийти з акаунта')}
       </button>
     </div>
   ) : null;

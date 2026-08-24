@@ -7,6 +7,7 @@
  * price. Reading a customer's data starts the moment "Увійти" is pressed, and
  * that moment is written into their own change log.
  */
+import { useT } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -21,6 +22,7 @@ interface Org {
 }
 
 export default function PlatformHomePage() {
+  const t = useT();
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [me, setMe] = useState<{ email: string; acting: { id: string; name: string } | null } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,7 +41,7 @@ export default function PlatformHomePage() {
         setMe(await meRes.json());
         if (orgRes.ok) setOrgs(await orgRes.json());
       } catch {
-        setError('Не вдалося завантажити список');
+        setError(t('Не вдалося завантажити список'));
       } finally {
         setLoading(false);
       }
@@ -56,9 +58,9 @@ export default function PlatformHomePage() {
         body: JSON.stringify({ organizationId: id }),
       });
       if (res.ok) router.push('/app/dashboard');
-      else setError((await res.json()).error || 'Не вдалося увійти');
+      else setError((await res.json()).error || t('Не вдалося увійти'));
     } catch {
-      setError('Помилка мережі');
+      setError(t('Помилка мережі'));
     } finally {
       setBusy(null);
     }
@@ -69,22 +71,22 @@ export default function PlatformHomePage() {
     router.push('/app/platform/login');
   }
 
-  if (loading) return <div style={{ padding: 40 }}>Завантаження…</div>;
+  if (loading) return <div style={{ padding: 40 }}>{t('Завантаження…')}</div>;
 
   return (
     <div style={{ maxWidth: 880, margin: '0 auto', padding: '32px 20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700 }}>Готелі</h1>
-        <button onClick={logout} className="btn btn-sm btn-ghost">Вийти з платформи</button>
+        <h1 style={{ fontSize: 22, fontWeight: 700 }}>{t('Готелі')}</h1>
+        <button onClick={logout} className="btn btn-sm btn-ghost">{t('Вийти з платформи')}</button>
       </div>
       <p style={{ color: 'var(--text-tertiary)', fontSize: 13, marginBottom: 20 }}>
-        {me?.email} · вхід у готель записується в його журнал змін
+        {me?.email} · {t('вхід у готель записується в його журнал змін')}
       </p>
 
       {error && <div className="login-error" style={{ marginBottom: 16 }}>{error}</div>}
 
       {orgs.length === 0 && (
-        <div style={{ color: 'var(--text-tertiary)' }}>У цій базі ще немає жодної організації.</div>
+        <div style={{ color: 'var(--text-tertiary)' }}>{t('У цій базі ще немає жодної організації.')}</div>
       )}
 
       <div style={{ display: 'grid', gap: 10 }}>
@@ -99,13 +101,13 @@ export default function PlatformHomePage() {
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 600 }}>{o.name}</div>
               <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                {o.slug} · об'єктів: {o.properties} · користувачів: {o.users}
+                {o.slug} · {t("об'єктів")}: {o.properties} · {t('користувачів')}: {o.users}
                 {o.default_currency ? ` · ${o.default_currency}` : ''}
                 {o.language ? ` · ${o.language}` : ''}
               </div>
             </div>
             <button className="btn btn-sm" disabled={busy === o.id} onClick={() => enter(o.id)}>
-              {busy === o.id ? '…' : 'Увійти'}
+              {busy === o.id ? '…' : t('Увійти')}
             </button>
           </div>
         ))}

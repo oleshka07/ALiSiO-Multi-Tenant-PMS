@@ -2596,5 +2596,18 @@
   "Карта території": "Mapa areálu",
   "Маршрут до паркінгу (Google Maps URL)": "Trasa k parkovišti (URL Google Maps)",
   "Фото паркінгу": "Fotografie parkoviště",
-  "Якщо порожньо — кнопка навігації в секції паркінгу веде на спільний Google Maps URL": "Pokud je pole prázdné, navigační tlačítko v sekci parkování vede na společnou URL Google Maps"
+  "Якщо порожньо — кнопка навігації в секції паркінгу веде на спільний Google Maps URL": "Pokud je pole prázdné, navigační tlačítko v sekci parkování vede na společnou URL Google Maps",
+  "Вийти з акаунта": "Opustit účet",
+  "Вийти з платформи": "Odhlásit se z platformy",
+  "Вхід постачальника": "Přihlášení dodavatele",
+  "вхід у готель записується в його журнал змін": "Vstup do hotelu se zapisuje do jeho protokolu změn",
+  "Готелі": "Hotely",
+  "Кожен вхід у готель записується в його журнал змін.": "Každý vstup do hotelu se zapisuje do jeho protokolu změn.",
+  "користувачів": "uživatelů",
+  "Не вдалося завантажити список": "Seznam se nepodařilo načíst",
+  "Не вдалося увійти": "Vstup se nezdařil",
+  "об'єктів": "objektů",
+  "Помилка входу": "Chyba přihlášení",
+  "Режим підтримки — ви в акаунті клієнта. Кожна дія підписана вашим імʼям.": "Režim podpory — jste v účtu zákazníka. Každá akce je podepsána vaším jménem.",
+  "У цій базі ще немає жодної організації.": "V této databázi zatím není žádná organizace."
 }
