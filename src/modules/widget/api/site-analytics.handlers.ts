@@ -689,13 +689,24 @@ export const getAnalyticsFunnel = withPermission('nav:sites', async (
     const toTime = `${dateTo}T23:59:59Z`;
 
     // Helpers to query events
+    // The caller's own site ids, for the 'all' case. `1=1` was here, which
+    // counted every widget event on the server — the same shape the overview
+    // already had fixed, left behind in the funnel.
+    const ownSiteIds = (await sql.rows<any>(
+      'SELECT id FROM booking_sites WHERE organization_id = ?', [actor.organizationId]) as { id: string }[])
+      .map((r) => r.id);
+    const siteScope = siteId === 'all'
+      ? (ownSiteIds.length ? `site_id IN (${ownSiteIds.map(() => '?').join(',')})` : '1=0')
+      : 'site_id = ?';
+    const siteScopeParams: any[] = siteId === 'all' ? [...ownSiteIds] : [siteId];
+
     const getEventSessions = async (eventType: string) => {
       let statement = `
         SELECT COUNT(DISTINCT session_id) as count 
         FROM widget_events 
-        WHERE ${siteId === 'all' ? '1=1 AND ' : 'site_id = ? AND '}event_type = ? AND created_at >= ? AND created_at <= ?
+        WHERE ${siteScope} AND event_type = ? AND created_at >= ? AND created_at <= ?
       `;
-      const p: any[] = siteId === 'all' ? [eventType, fromTime, toTime] : [siteId, eventType, fromTime, toTime];
+      const p: any[] = [...siteScopeParams, eventType, fromTime, toTime];
       if (eventType === 'page_view' && pageFilter && pageFilter !== 'all') {
         statement += ' AND page = ?';
         p.push(pageFilter);
@@ -776,12 +787,16 @@ export const getAnalyticsFunnel = withPermission('nav:sites', async (
     });
 
     // Funnel 2: Contact Leads
+    // `site_id = ?` with siteId === 'all' matched no row and reported a funnel
+    // of zeros — indistinguishable from «nobody wrote in». Same scope as the
+    // events above.
     const leadsSql = `
       SELECT id, email, phone, status 
       FROM site_incoming_leads 
-      WHERE site_id = ? AND created_at >= ? AND created_at <= ?
+      WHERE ${siteScope} AND created_at >= ? AND created_at <= ?
     `;
-    const submittedLeads = await sql.rows<any>(leadsSql, [siteId, `${dateFrom} 00:00:00`, `${dateTo} 23:59:59`]) as any[];
+    const submittedLeads = await sql.rows<any>(leadsSql,
+      [...siteScopeParams, `${dateFrom} 00:00:00`, `${dateTo} 23:59:59`]) as any[];
     const leadsSubmitted = submittedLeads.length;
 
     let leadsProcessed = 0;
@@ -808,13 +823,18 @@ export const getAnalyticsFunnel = withPermission('nav:sites', async (
         const guestCond = guestConds.join(' OR ');
 
         // We count reservations created AFTER the start of the period
+        // Scoped to the caller's own properties. Matching a lead to a booking
+        // by email or phone alone crosses tenants the moment the same person
+        // writes to two hotels — and a guest who books elsewhere would be
+        // counted as this hotel's conversion.
+        const propScope = ownIds.length ? `r.property_id IN (${ownIds.map(() => '?').join(',')})` : '1=0';
         const resSql = `
           SELECT DISTINCT r.id, r.status, r.payment_status 
           FROM reservations r
           JOIN guests g ON r.guest_id = g.id
-          WHERE (${guestCond}) AND r.created_at >= ? AND r.status != 'cancelled'
+          WHERE (${guestCond}) AND ${propScope} AND r.created_at >= ? AND r.status != 'cancelled'
         `;
-        const linkedReservations = await sql.rows<any>(resSql, [`${dateFrom} 00:00:00`]) as any[];
+        const linkedReservations = await sql.rows<any>(resSql, [...ownIds, `${dateFrom} 00:00:00`]) as any[];
         
         leadsBooked = linkedReservations.length;
         leadsCheckedIn = linkedReservations.filter(r => r.status === 'checked_in' || r.status === 'checked_out').length;

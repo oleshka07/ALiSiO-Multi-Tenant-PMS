@@ -3,13 +3,35 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import fs from 'fs';
 import path from 'path';
-import { withPermission } from '@core/auth/session';
+import { withPermission, type Actor } from '@core/auth/session';
 
 const DATA_DIR = path.join(process.cwd(), 'data', 'uploads', 'photos');
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
 
-export const uploadPhoto = withPermission('manage_properties', async (request: NextRequest) => {
+/**
+ * Whose property or room type is this photo being attached to, or removed from?
+ *
+ * Both handlers took the id from the request and used it: `property_id` and
+ * `unit_type_id` came out of a form field, and DELETE resolved a photo row by
+ * bare id and then unlinked the file it named. So a user with
+ * `manage_properties` at one hotel could add photos to another hotel's room
+ * types — they appear on that hotel's public listing — and delete the ones
+ * already there. `unit_types` also gets its `photos` column rewritten on
+ * upload, so the write reached two tables.
+ */
+async function ownsEntity(organizationId: string, type: 'unit_type' | 'property', id: string): Promise<boolean> {
+  const sql = getSql();
+  if (type === 'property') {
+    return !!await sql.row('SELECT id FROM properties WHERE id = ? AND organization_id = ?', [id, organizationId]);
+  }
+  return !!await sql.row(`
+    SELECT ut.id FROM unit_types ut
+    JOIN properties p ON ut.property_id = p.id
+    WHERE ut.id = ? AND p.organization_id = ?`, [id, organizationId]);
+}
+
+export const uploadPhoto = withPermission('manage_properties', async (request: NextRequest, _ctx: unknown, actor: Actor) => {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -33,7 +55,11 @@ export const uploadPhoto = withPermission('manage_properties', async (request: N
 
     const sql = getSql();
     const entityId = unitTypeId || propertyId;
-    const entityType = unitTypeId ? 'unit_type' : 'property';
+    const entityType: 'unit_type' | 'property' = unitTypeId ? 'unit_type' : 'property';
+
+    if (!await ownsEntity(actor.organizationId, entityType, entityId)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
     const table = entityType === 'unit_type' ? 'unit_type_photos' : 'property_photos';
     const fkCol = entityType === 'unit_type' ? 'unit_type_id' : 'property_id';
@@ -69,7 +95,7 @@ export const uploadPhoto = withPermission('manage_properties', async (request: N
   }
 });
 
-export const deletePhoto = withPermission('manage_properties', async (request: NextRequest) => {
+export const deletePhoto = withPermission('manage_properties', async (request: NextRequest, _ctx: unknown, actor: Actor) => {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -78,10 +104,19 @@ export const deletePhoto = withPermission('manage_properties', async (request: N
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
     const sql = getSql();
-    const table = type === 'property' ? 'property_photos' : 'unit_type_photos';
+    const entityType: 'unit_type' | 'property' = type === 'property' ? 'property' : 'unit_type';
+    const table = entityType === 'property' ? 'property_photos' : 'unit_type_photos';
+    const fk = entityType === 'property' ? 'property_id' : 'unit_type_id';
 
     const photo = await sql.row<any>(`SELECT * FROM ${table} WHERE id = ?`, [id]) as any;
     if (!photo) return NextResponse.json({ error: 'Photo not found' }, { status: 404 });
+
+    // The photo row points at the property or room type it belongs to; that is
+    // what carries the tenant. 404 either way — a photo of somebody else's
+    // room is not one this caller may learn the existence of.
+    if (!await ownsEntity(actor.organizationId, entityType, String(photo[fk]))) {
+      return NextResponse.json({ error: 'Photo not found' }, { status: 404 });
+    }
 
     if (photo.url?.startsWith('/api/photos/')) {
       const parts = photo.url.replace('/api/photos/', '').split('/');

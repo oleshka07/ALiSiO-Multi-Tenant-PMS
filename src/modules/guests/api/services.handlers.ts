@@ -26,7 +26,9 @@ export async function orderServices(
       return NextResponse.json({ error: 'At least one service is required' }, { status: 400 });
     }
 
-    const orderedServices = await actionsRepo.orderServices(reservation.id, services);
+    // The reservation names the property; the service ids come from the
+    // guest's browser and are resolved inside it.
+    const orderedServices = await actionsRepo.orderServices(reservation.id, reservation.property_id, services);
     return NextResponse.json({ success: true, orderedServices });
   } catch (error: any) {
     console.error('POST /api/guest/[token]/services error:', error?.message || error);

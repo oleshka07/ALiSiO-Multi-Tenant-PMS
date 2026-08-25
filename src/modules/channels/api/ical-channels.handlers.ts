@@ -3,10 +3,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 import { getSql } from '@core/db/async';
-import { withActor, withPermission } from '@core/auth/session';
+import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
 
-export const listIcalChannels = withActor(async () => {
+/**
+ * iCal channels reach their tenant through `property_id`, and neither this
+ * list nor the update/delete beside it mentioned it. The rows carry the import
+ * URL a hotel got from its OTA and the export token that IS the credential for
+ * its own calendar feed — hand that token to anyone and they read every
+ * arrival, departure and guest name the feed contains, with no session at all.
+ */
+export const listIcalChannels = withActor(async (_request: NextRequest, _ctx: unknown, actor: Actor) => {
   try {
     const sql = getSql();
     const channels = await sql.rows<any>(`
@@ -24,11 +31,13 @@ export const listIcalChannels = withActor(async () => {
         bs.color as source_color,
         bs.icon_letter as source_icon
       FROM ical_channels ic
+      JOIN properties p ON ic.property_id = p.id
       LEFT JOIN buildings b ON ic.building_id = b.id
       LEFT JOIN units u ON ic.unit_id = u.id
       LEFT JOIN booking_sources bs ON bs.code = ic.source_code
+      WHERE p.organization_id = ?
       ORDER BY ic.created_at
-    `);
+    `, [actor.organizationId]);
 
     for (const ch of channels as any[]) {
       ch.last_log = await sql.row<any>(
@@ -89,6 +98,8 @@ export const createIcalChannel = withPermission('manage_properties', async (requ
       sync_interval_minutes || 15]);
 
     const created = await sql.row<any>('SELECT * FROM ical_channels WHERE id = ?', [id]);
+    // propertyId above came from requirePropertyId(), which resolves it
+    // against this organization — so the row just written is this hotel's.
     return NextResponse.json(created, { status: 201 });
   } catch (e: any) {
     return serverError('modules/channels/api/ical-channels createIcalChannel', e);

@@ -54,6 +54,13 @@ async function cleanup() {
   await sql.run('DELETE FROM fin_operation_audit WHERE organization_id LIKE ?', [`${TAG}%`]);
   await sql.run('DELETE FROM fin_operations WHERE organization_id LIKE ?', [`${TAG}%`]);
   await sql.run('DELETE FROM finance_accounts WHERE organization_id LIKE ?', [`${TAG}%`]);
+  const icalIds = (await sql.rows(
+    'SELECT ic.id FROM ical_channels ic JOIN properties p ON ic.property_id = p.id WHERE p.organization_id LIKE ?',
+    [`${TAG}%`])).map((r) => r.id);
+  for (const cid of icalIds) {
+    await sql.run('DELETE FROM ical_sync_log WHERE channel_id = ?', [cid]);
+    await sql.run('DELETE FROM ical_channels WHERE id = ?', [cid]);
+  }
 
   const props = (await sql.rows('SELECT id FROM properties WHERE organization_id LIKE ?', [`${TAG}%`])).map((r) => r.id);
   for (const pid of props) {
@@ -401,6 +408,63 @@ async function main() {
       `B's finance history carries ${foreignHist.length} entr(ies) from other hotels' ledgers`);
     console.log("  ok  B cannot read, rename or delete A's finance objects, nor read A's ledger history");
 
+    // ── The last of the id-shaped holes ─────────────────────────────────
+    // A gets a real room, through the real API. Until now A owned a property,
+    // a category and a room TYPE but no unit at all — the fifty units in the
+    // probe above are B's refused attempt, not A's inventory — so anything
+    // aimed at "a room of A's" had nothing to aim at.
+    const unitARes = await call(cookieA, '/api/units', {
+      method: 'POST',
+      body: JSON.stringify({
+        property_id: propA.id, category_id: catA.id, unit_type_id: utA.id,
+        name: 'A-101', code: 'A101',
+      }),
+    });
+    assert.ok(unitARes.ok, `A could not create a unit: ${unitARes.status} ${await unitARes.clone().text()}`);
+    const aUnit = await unitARes.json();
+    assert.ok(aUnit?.id, `no unit id came back for A: ${JSON.stringify(aUnit).slice(0, 200)}`);
+
+
+    // C11 — iCal channels. The rows carry the import URL a hotel got from its
+    // OTA and the export token that IS the credential for its own calendar
+    // feed: hand that token to anyone and they read every arrival, departure
+    // and guest name in it, with no session at all.
+    const icalARes = await call(cookieA, '/api/ical-sync/channels', {
+      method: 'POST',
+      body: JSON.stringify({
+        channel_type: 'unit', unit_id: aUnit.id, source_code: 'vrbo',
+        ical_url: 'https://example.invalid/a.ics', sync_interval_minutes: 15,
+      }),
+    });
+    assert.ok(icalARes.ok, `A could not create an iCal channel: ${icalARes.status} ${await icalARes.clone().text()}`);
+    const icalA = await icalARes.json();
+    assert.ok(icalA?.id, `no iCal channel id came back: ${JSON.stringify(icalA).slice(0, 200)}`);
+
+    const icalListB = await (await call(cookieB, '/api/ical-sync/channels')).json();
+    assert.ok(!(icalListB || []).some((c) => c.id === icalA.id),
+      "B's iCal channel list contains A's channel — with A's export token in it");
+
+    const repoint = await call(cookieB, `/api/ical-sync/channels/${icalA.id}`, {
+      method: 'PUT', body: JSON.stringify({ ical_url: 'https://evil.invalid/feed.ics' }),
+    });
+    assert.strictEqual(repoint.status, 404, `B repointed A's iCal import: ${repoint.status}`);
+    const icalAfter = await sql.row('SELECT ical_url FROM ical_channels WHERE id = ?', [icalA.id]);
+    assert.strictEqual(icalAfter?.ical_url, 'https://example.invalid/a.ics',
+      "B's write reached A's iCal import URL — fabricated bookings would block A's rooms");
+    const icalKill = await call(cookieB, `/api/ical-sync/channels/${icalA.id}`, { method: 'DELETE' });
+    assert.strictEqual(icalKill.status, 404, `B deleted A's iCal channel: ${icalKill.status}`);
+
+    // C14 — the business-unit picker. `WHERE is_active` and nothing else, so
+    // one hotel's tasks screen offered the neighbour's departments by name.
+    const buB = await (await call(cookieB, '/api/business-units')).json();
+    assert.ok(Array.isArray(buB), 'business units did not come back as an array');
+    for (const u of buB) {
+      const own = await sql.row(
+        'SELECT 1 x FROM business_units WHERE id = ? AND organization_id = ?', [u.id, b.orgId]);
+      assert.ok(own, `B's business-unit picker offers ${u.id}, which is not B's`);
+    }
+    console.log("  ok  B cannot see or repoint A's iCal channels, nor A's business units");
+
     // Staff accounts: the permission check was there, the ownership check was
     // not, so an owner could rename, re-role or delete another hotel's staff —
     // including its owner.
@@ -611,9 +675,6 @@ async function main() {
     assert.strictEqual(foreignGroups.length, 0,
       "B's group-booking list contains A's groups, guest name and phone attached");
 
-    const aUnit = await sql.row(
-      'SELECT id FROM units WHERE property_id = ? LIMIT 1', [propA.id]);
-    assert.ok(aUnit?.id, "A has no unit to aim the group-booking probe at");
     const groupOnA = await call(cookieB, '/api/group-bookings', {
       method: 'POST',
       body: JSON.stringify({

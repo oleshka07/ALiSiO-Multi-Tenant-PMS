@@ -36,12 +36,29 @@ export async function getReservationForServiceOrder(token: string) {
   return await sql.row<any>('SELECT id, property_id FROM reservations WHERE guest_page_token = ?', [token]) as any;
 }
 
-export async function orderServices(reservationId: string, services: { serviceId: string; quantity?: number; notes?: string }[]) {
+/**
+ * A guest orders a service from their own page.
+ *
+ * `propertyId` is not optional and the price lookup is joined to it, because
+ * the service ids come from the guest's browser. Unqualified, this read the
+ * price of whatever `additional_services` row carried that id — another
+ * property's, at another property's price, and the order was then written
+ * against this reservation. A hotel with a 5 € breakfast and a neighbour with
+ * a 5 € sauna is not a hypothetical: the ids are handed to the page, and the
+ * page is public to anyone holding the guest token.
+ */
+export async function orderServices(
+  reservationId: string,
+  propertyId: string,
+  services: { serviceId: string; quantity?: number; notes?: string }[],
+) {
   const sql = getSql();
   await sql.tx(async (t) => {
     for (const svc of services) {
       if (!svc.serviceId) throw new Error('serviceId is required');
-      const service = await t.row<{ price: number }>('SELECT price FROM additional_services WHERE id = ?', [svc.serviceId]);
+      const service = await t.row<{ price: number }>(
+        'SELECT price FROM additional_services WHERE id = ? AND property_id = ?',
+        [svc.serviceId, propertyId]);
       if (!service) throw new Error(`Service ${svc.serviceId} not found`);
       const qty = svc.quantity || 1;
       await t.run(
