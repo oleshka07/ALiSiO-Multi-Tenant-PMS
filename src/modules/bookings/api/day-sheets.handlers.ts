@@ -9,22 +9,30 @@
  * bookings that already exist.
  */
 import { NextResponse } from 'next/server';
-import { withActor } from '@core/auth/session';
+import { withActor, type Actor } from '@core/auth/session';
+import { todayFor } from '@core/hotel-day';
 import { houseList, breakfastList, keyList, dayClose } from '../data/day-sheets.repo';
 
-/** A calendar day, defaulting to today. */
-function dateFrom(request: Request): string | null {
+/**
+ * A calendar day, defaulting to today AT THE HOTEL.
+ *
+ * These are the housekeeping, breakfast and key sheets a receptionist prints
+ * at the start of a shift. Defaulting to the server's UTC day meant the sheet
+ * printed at 00:15 in Prague listed yesterday's rooms.
+ */
+async function dateFrom(request: Request, organizationId: string): Promise<string | null> {
   const raw = new URL(request.url).searchParams.get('date');
-  if (!raw) return new Date().toISOString().slice(0, 10);
+  if (!raw) return todayFor(organizationId);
   return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
 }
 
 export const getDaySheet = withActor(async (
   request: Request,
   { params }: { params: Promise<{ kind: string }> },
+  actor: Actor,
 ) => {
   const { kind } = await params;
-  const date = dateFrom(request);
+  const date = await dateFrom(request, actor.organizationId);
   if (!date) return NextResponse.json({ error: 'date must be YYYY-MM-DD' }, { status: 400 });
 
   try {

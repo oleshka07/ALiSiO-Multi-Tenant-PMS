@@ -5,6 +5,7 @@ import { getDb } from '@core/db';
 import { getMonthMoney } from '../data/money-metrics';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { serverError } from '@core/http/errors';
+import { todayFor, shiftMonths, daysBetween, dayString } from '@core/hotel-day';
 
 // Helpers: SQL fragments that filter fin_operations by semantic slice.
 // A "payment" operation = income or refund tied to a reservation (source IN ('booking_widget','teia','hostex','manual') with reservation_id).
@@ -36,10 +37,10 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
   try {
     const sql = getSql();
     const { searchParams } = new URL(request.url);
-    const month = searchParams.get('month') || new Date().toISOString().substring(0, 7);
     // Capex, accruals and depreciation all carry organization_id and none of
     // the three used it: EBITDA was computed from every company's numbers.
     const org = await requireOrganizationId();
+    const month = searchParams.get('month') || (await todayFor(org)).substring(0, 7);
 
     const revenue = await monthRevenueSql(month, org);
     const expenses = await monthExpensesSql(month, org);
@@ -538,11 +539,12 @@ export async function getFinancialIndicators(request: NextRequest): Promise<Next
   try {
     const sql = getSql();
     const { searchParams } = new URL(request.url);
-    const month = searchParams.get('month') || new Date().toISOString().substring(0, 7);
+    const org = await requireOrganizationId();
+    const month = searchParams.get('month') || (await todayFor(org)).substring(0, 7);
 
     // Canonical definitions (money-metrics): revenue nets refunds and
     // excludes financing inflows — same number as the overview shows.
-    const mm = await getMonthMoney(await requireOrganizationId(), month);
+    const mm = await getMonthMoney(org, month);
     const revenue = mm.revenue;
     const cogs = mm.cogs;
     const variable = mm.variable;
@@ -578,7 +580,7 @@ export async function getBalanceSheet(request: NextRequest): Promise<NextRespons
     // arithmetic below does not, and would report zero fixed assets rather
     // than fail — a balance sheet wrong in one line only.
     const asOfRaw = searchParams.get('as_of');
-    const asOf = asOfRaw ? asOfRaw.slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const asOf = asOfRaw ? asOfRaw.slice(0, 10) : await todayFor(org);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf) || Number.isNaN(Date.parse(`${asOf}T00:00:00Z`))) {
       return NextResponse.json({ error: 'as_of must be a date, YYYY-MM-DD' }, { status: 400 });
     }
@@ -772,7 +774,7 @@ export async function getAccountStatement(request: NextRequest): Promise<NextRes
     const accountId = searchParams.get('account_id');
     if (!accountId) return NextResponse.json({ error: 'account_id is required' }, { status: 400 });
     const from = searchParams.get('from') || '2000-01-01';
-    const to = searchParams.get('to') || new Date().toISOString().substring(0, 10);
+    const to = searchParams.get('to') || await todayFor(org);
 
     const account = await sql.row<any>(`SELECT * FROM finance_accounts WHERE id = ? AND organization_id = ?`, [accountId, org]) as any;
     if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
@@ -950,10 +952,14 @@ export async function getExpectedPayments(request: NextRequest): Promise<NextRes
   try {
     const sql = getSql();
     const { searchParams } = new URL(request.url);
-    const fromDate = searchParams.get('from') || new Date().toISOString().substring(0, 10);
-    const toDate = searchParams.get('to') || (() => {
-      const d = new Date(); d.setMonth(d.getMonth() + 3); return d.toISOString().substring(0, 10);
-    })();
+    // The forecast is «money still owed on bookings arriving from today on».
+    // It read every tenant's reservations: on Postgres row-level security hid
+    // the rest, on SQLite there is no policy, so one hotel's payment forecast
+    // included another's guests, by name and by amount.
+    const org = await requireOrganizationId();
+    const today = await todayFor(org);
+    const fromDate = searchParams.get('from') || today;
+    const toDate = searchParams.get('to') || shiftMonths(today, 3);
 
     const bookings = await sql.rows<any>(`
       SELECT r.id, r.check_in, r.check_out, r.nights, r.adults, r.children,
@@ -966,12 +972,14 @@ export async function getExpectedPayments(request: NextRequest): Promise<NextRes
              COALESCE((SELECT SUM(amount) FROM fin_operations
                        WHERE reservation_id = r.id AND op_type = 'expense' AND payment_subtype = 'refund' AND status = 'completed'), 0) as refunded_amount
       FROM reservations r
+      JOIN properties p ON p.id = r.property_id
       JOIN guests g ON r.guest_id = g.id JOIN units u ON r.unit_id = u.id JOIN categories c ON u.category_id = c.id
       LEFT JOIN booking_sources bs ON r.source = bs.code
-      WHERE r.status IN ('confirmed', 'checked_in', 'tentative') AND r.payment_status != 'paid'
+      WHERE p.organization_id = ?
+        AND r.status IN ('confirmed', 'checked_in', 'tentative') AND r.payment_status != 'paid'
         AND r.check_in >= ? AND r.check_in <= ?
       ORDER BY r.check_in ASC
-    `, [fromDate, toDate]) as any[];
+    `, [org, fromDate, toDate]) as any[];
 
     const items = bookings.map(b => {
       const netPaid = b.paid_amount - b.refunded_amount;
@@ -980,7 +988,10 @@ export async function getExpectedPayments(request: NextRequest): Promise<NextRes
       const commission = b.commission_amount || (b.total_price * (b.commission_percent || 0) / 100);
       const expectedTotal = b.total_price - commission;
       const outstanding = expectedTotal - netPaid;
-      const daysUntilCheckIn = Math.ceil((new Date(b.check_in).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+      // «Overdue» is measured against the hotel's day, not the server's: at
+      // 00:30 in Prague an arrival due today was otherwise still counted as
+      // tomorrow's, and the overdue bucket was a day behind.
+      const daysUntilCheckIn = daysBetween(today, dayString(b.check_in));
       let urgency: 'overdue' | 'urgent' | 'soon' | 'upcoming' = 'upcoming';
       if (daysUntilCheckIn < 0) urgency = 'overdue';
       else if (daysUntilCheckIn <= 3) urgency = 'urgent';

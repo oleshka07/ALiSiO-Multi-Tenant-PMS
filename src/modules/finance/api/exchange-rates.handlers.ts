@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { todayFor } from '@core/hotel-day';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { serverError } from '@core/http/errors';
@@ -21,8 +22,9 @@ export async function listExchangeRates(_request: NextRequest): Promise<NextResp
       ORDER BY effective_from DESC, from_currency, to_currency
     `, [orgId]);
 
-    // UTC, because that is what SQLite's date('now') returned here.
-    const today = new Date().toISOString().slice(0, 10);
+    // The hotel's day. A rate is «today's rate» for the hotel asking, and
+    // between midnight and 01:00 local the UTC answer was yesterday's.
+    const today = await todayFor(orgId);
     const latest = await sql.rows<any>(`
       SELECT from_currency, to_currency, rate, effective_from
       FROM finance_exchange_rates fr
@@ -139,7 +141,7 @@ export async function getCurrentRate(request: NextRequest): Promise<NextResponse
     const { searchParams } = new URL(request.url);
     const fromCur = (searchParams.get('from') || '').toUpperCase();
     const toCur = (searchParams.get('to') || 'CZK').toUpperCase();
-    const date = searchParams.get('date') || new Date().toISOString().substring(0, 10);
+    const date = searchParams.get('date') || await todayFor(orgId);
 
     if (!fromCur || fromCur === toCur) {
       return NextResponse.json({ rate: 1, effective_from: date, is_fallback: false });

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { todayFor } from '@core/hotel-day';
 import type { Actor } from '@core/auth/session';
 
 /**
@@ -15,8 +16,10 @@ export async function getReport(request: NextRequest, _ctx: unknown, actor: Acto
     const sql = getSql();
     const org = actor.organizationId;
     const { searchParams } = new URL(request.url);
-    const from = searchParams.get('from') || new Date().toISOString().split('T')[0];
-    const to = searchParams.get('to') || new Date().toISOString().split('T')[0];
+    // Defaulting to «today» means the hotel's today, not the server's.
+    const hotelToday = await todayFor(org);
+    const from = searchParams.get('from') || hotelToday;
+    const to = searchParams.get('to') || hotelToday;
 
     const bookings = await sql.rows<any>(`
       SELECT r.*, u.name as unit_name, c.type as category_type,

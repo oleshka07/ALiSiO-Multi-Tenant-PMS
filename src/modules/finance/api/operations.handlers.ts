@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getSql } from '@core/db/async';
+import { todayFor } from '@core/hotel-day';
 import { getDb } from '@core/db';
 import { getSessionUser } from '@core/auth';
 
@@ -755,7 +756,8 @@ export async function duplicateOperation(
     if (!src) return NextResponse.json({ error: 'Operation not found' }, { status: 404 });
 
     const actor = await getOptionalActor();
-    const today = new Date().toISOString().substring(0, 10);
+    // Dates a ledger entry, so it is the hotel's day.
+    const today = await todayFor(orgId);
     const newId = await createOperationInTx(orgId, {
       op_type: src.op_type,
       account_from_id: src.account_from_id,

@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { todayFor } from '@core/hotel-day';
 import { getDb } from '@core/db';
 import { materializeTemplate, runRecurringTick, type Template } from '../data/recurring-engine';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { ownedFinanceRow } from '../data/owned.repo';
 import { serverError } from '@core/http/errors';
 
 const SCHEDULES = ['daily', 'weekly', 'monthly', 'yearly'] as const;
@@ -95,7 +97,8 @@ export async function updateRecurringTemplate(
     const sql = getSql();
     const { id } = await context.params;
     const body = await request.json();
-    const existing = await sql.row<any>("SELECT * FROM fin_recurring_templates WHERE id = ?", [id]);
+    const orgId = await requireOrganizationId();
+    const existing = await ownedFinanceRow('fin_recurring_templates', id, orgId);
     if (!existing) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
 
     const fields: string[] = [];
@@ -112,9 +115,9 @@ export async function updateRecurringTemplate(
     }
     fields.push("updated_at = CURRENT_TIMESTAMP");
     if (fields.length === 1) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
-    params.push(id);
-    await sql.run(`UPDATE fin_recurring_templates SET ${fields.join(', ')} WHERE id = ?`, [...params]);
-    return NextResponse.json(await sql.row<any>("SELECT * FROM fin_recurring_templates WHERE id = ?", [id]));
+    params.push(id, orgId);
+    await sql.run(`UPDATE fin_recurring_templates SET ${fields.join(', ')} WHERE id = ? AND organization_id = ?`, [...params]);
+    return NextResponse.json(await ownedFinanceRow('fin_recurring_templates', id, orgId));
   } catch (error: any) {
     return serverError('modules/finance/api/recurring updateRecurringTemplate', error);
   }
@@ -127,9 +130,10 @@ export async function deleteRecurringTemplate(
   try {
     const sql = getSql();
     const { id } = await context.params;
-    const row = await sql.row<any>("SELECT id FROM fin_recurring_templates WHERE id = ?", [id]);
+    const orgId = await requireOrganizationId();
+    const row = await ownedFinanceRow('fin_recurring_templates', id, orgId);
     if (!row) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
-    await sql.run("DELETE FROM fin_recurring_templates WHERE id = ?", [id]);
+    await sql.run("DELETE FROM fin_recurring_templates WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return serverError('modules/finance/api/recurring deleteRecurringTemplate', error);
@@ -143,10 +147,11 @@ export async function toggleRecurringTemplate(
   try {
     const sql = getSql();
     const { id } = await context.params;
-    const row = await sql.row<any>("SELECT is_active FROM fin_recurring_templates WHERE id = ?", [id]) as any;
+    const orgId = await requireOrganizationId();
+    const row = await ownedFinanceRow('fin_recurring_templates', id, orgId);
     if (!row) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
-    await sql.run("UPDATE fin_recurring_templates SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [row.is_active ? 0 : 1, id]);
-    return NextResponse.json(await sql.row<any>("SELECT * FROM fin_recurring_templates WHERE id = ?", [id]));
+    await sql.run("UPDATE fin_recurring_templates SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?", [row.is_active ? 0 : 1, id, orgId]);
+    return NextResponse.json(await ownedFinanceRow('fin_recurring_templates', id, orgId));
   } catch (error: any) {
     return serverError('modules/finance/api/recurring toggleRecurringTemplate', error);
   }
@@ -157,13 +162,13 @@ export async function runRecurringNow(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const sql = getSql();
     const { id } = await context.params;
-    const t = await sql.row<any>("SELECT * FROM fin_recurring_templates WHERE id = ?", [id]) as Template | undefined;
+    const orgId = await requireOrganizationId();
+    const t = await ownedFinanceRow('fin_recurring_templates', id, orgId) as Template | undefined;
     if (!t) return NextResponse.json({ error: 'Template not found' }, { status: 404 });
     if (!t.is_active) return NextResponse.json({ error: 'Template is inactive' }, { status: 400 });
 
-    const operationId = await materializeTemplate(t, new Date().toISOString().substring(0, 10));
+    const operationId = await materializeTemplate(t, await todayFor(orgId));
     return NextResponse.json({ ok: true, operation_id: operationId });
   } catch (error: any) {
     return serverError('modules/finance/api/recurring runRecurringNow', error);

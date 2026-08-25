@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { todayFor } from '@core/hotel-day';
 import type { Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
 
@@ -12,7 +13,10 @@ export async function getCityTaxReport(request: Request, _ctx: unknown, actor: A
     const sql = getSql();
     const org = actor.organizationId;
     const { searchParams } = new URL(request.url);
-    const month = searchParams.get('month') || new Date().toISOString().substring(0, 7);
+    // «This month» at the hotel. In UTC, the first hours of the 1st of a
+    // month still belonged to the previous one — and this report is filed
+    // with the municipality.
+    const month = searchParams.get('month') || (await todayFor(org)).slice(0, 7);
 
     const startDate = `${month}-01`;
     const [y, m] = month.split('-').map(Number);

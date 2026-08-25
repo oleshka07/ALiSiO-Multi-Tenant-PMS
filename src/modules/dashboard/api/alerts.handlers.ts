@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { todayFor, shiftDays } from '@core/hotel-day';
 import type { Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
 
@@ -15,12 +16,12 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
   try {
     const sql = getSql();
     const org = actor.organizationId;
-    const today = new Date().toISOString().split('T')[0];
-
-    // Auto-archive: confirmed bookings with check_in > 7 days ago → no_show
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const archiveCutoff = sevenDaysAgo.toISOString().split('T')[0];
+    // The hotel's day. This one WRITES: the auto-archive below flips
+    // confirmed bookings to no_show, and a cutoff computed in UTC moves that
+    // decision by up to three hours across a date boundary — archiving a
+    // booking a day early while the guest is still travelling, or a day late.
+    const today = await todayFor(org);
+    const archiveCutoff = shiftDays(today, -7);
 
     await sql.run(`
       UPDATE reservations

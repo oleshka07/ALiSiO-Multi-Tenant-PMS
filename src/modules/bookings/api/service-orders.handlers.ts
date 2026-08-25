@@ -1,13 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { todayFor } from '@core/hotel-day';
 import { withActor, withPermission } from '@core/auth/session';
 
 export const listServiceOrders = withActor(async (req: NextRequest, _ctx, actor) => {
   try {
     const sql = getSql();
     const url = new URL(req.url);
-    const dateParam = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
+    const dateParam = url.searchParams.get('date') || await todayFor(actor.organizationId);
     const period = url.searchParams.get('period') || 'day';
 
     // `?date=` used to be pasted into the SQL string. `?date=2026-01-01' OR '1'='1`

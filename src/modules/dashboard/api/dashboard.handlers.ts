@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withActor, type Actor } from '@core/auth/session';
+import { todayFor, shiftDays } from '@core/hotel-day';
 
 /**
  * The first screen after logging in — arrivals, departures, occupancy.
@@ -23,7 +24,11 @@ export const getDashboard = withActor(async (_request, _ctx, actor: Actor) => {
   try {
     const sql = getSql();
     const org = actor.organizationId;
-    const today = new Date().toISOString().split('T')[0];
+    // The hotel's day, not the server's. `toISOString()` is UTC, so between
+    // midnight and 01:00–03:00 local a Prague or Kyiv hotel saw yesterday's
+    // arrivals, yesterday's departures and yesterday's occupancy — every
+    // night, at the exact hour a night receptionist starts their shift.
+    const today = await todayFor(org);
 
     const arrivals = await sql.row<any>(`SELECT COUNT(*) as cnt FROM reservations WHERE ${OWN()} AND check_in = ? AND status IN ('confirmed', 'tentative')`, [org, today]);
 
@@ -37,9 +42,7 @@ export const getDashboard = withActor(async (_request, _ctx, actor: Actor) => {
     const occupiedCount = occupied?.cnt || 0;
     const occupancyRate = totalCount > 0 ? Math.round((occupiedCount / totalCount) * 100) : 0;
 
-    const futureDate = new Date();
-    futureDate.setDate(futureDate.getDate() + 3);
-    const future = futureDate.toISOString().split('T')[0];
+    const future = shiftDays(today, 3);
 
     const upcomingArrivals = (await sql.rows<any>(`
       SELECT r.id, r.check_in, r.check_out, r.nights, r.adults, r.children, r.status,

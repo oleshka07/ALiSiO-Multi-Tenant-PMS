@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { todayFor } from '@core/hotel-day';
 import { getDb } from '@core/db';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -77,7 +78,9 @@ export async function uploadAttachment(
     }
 
     const attachmentId = `att_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
-    const yearMonth = new Date().toISOString().substring(0, 7);
+    // The folder is the hotel's month: a receipt uploaded at 00:30 on the 1st
+    // belongs to the month the hotel is in, not the one UTC is still in.
+    const yearMonth = (await todayFor(orgId)).substring(0, 7);
     const orgDir = path.join(ATTACH_ROOT, orgId, yearMonth);
     ensureDir(orgDir);
 

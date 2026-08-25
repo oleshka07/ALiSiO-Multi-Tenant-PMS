@@ -734,6 +734,37 @@ async function main() {
       `${wroteGroups.c} group(s) were written into A's property by B`);
     console.log("  ok  B cannot reach A's booking through units, sub-bookings, the audit trail or groups");
 
+    // The payment forecast — «who still owes us money, and when do they
+    // arrive». It selected from `reservations` naming no tenant at all, and
+    // returns each row with the guest's name and e-mail attached, so on SQLite
+    // one hotel's finance screen listed another hotel's debtors by name. The
+    // horizon is three months from today, so A's booking (2031) is asked for
+    // by an explicit window rather than left to the default.
+    //
+    // A price is set first, and A's own forecast is asserted to contain the
+    // booking: the list drops anything with nothing outstanding, so without
+    // both halves «B sees nothing» would be true of a probe that tests
+    // nothing. Verified by reintroduction — the first version of this check
+    // passed with the tenant filter removed.
+    const WINDOW = 'from=2020-01-01&to=2035-12-31';
+    await sql.run('UPDATE reservations SET total_price = 4000, payment_status = ? WHERE id = ?',
+      ['unpaid', booking.id]);
+
+    const expA = await call(cookieA, `/api/finance/expected-payments?${WINDOW}`);
+    assert.ok(expA.ok, `A could not read its own payment forecast: ${expA.status}`);
+    const ownDebtors = ((await expA.json())?.items || []).filter((i) => i.id === booking.id);
+    assert.strictEqual(ownDebtors.length, 1,
+      "A's own payment forecast is missing A's unpaid booking — the probe below would prove nothing");
+
+    const expB = await call(cookieB, `/api/finance/expected-payments?${WINDOW}`);
+    assert.ok(expB.ok, `B could not read its own payment forecast: ${expB.status}`);
+    const expItems = (await expB.json())?.items || [];
+    assert.ok(Array.isArray(expItems), 'expected-payments did not return an items array');
+    const foreignDebtors = expItems.filter((i) => i.id === booking.id);
+    assert.strictEqual(foreignDebtors.length, 0,
+      "B's payment forecast lists A's unpaid booking — guest name, e-mail and amount owed");
+    console.log("  ok  the payment forecast counts only the caller's own debtors");
+
     // Deleting one's own booking must actually work — it 500'd on a leftover
     // crm_leads statement from the CRM removal until the calendar audit.
     const delBookA = await call(cookieA, `/api/bookings/${booking.id}`, { method: 'DELETE' });

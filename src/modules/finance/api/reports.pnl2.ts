@@ -3,6 +3,7 @@ import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { serverError } from '@core/http/errors';
+import { todayFor } from '@core/hotel-day';
 
 function mapExpense(cnameLower: string, commentLower: string, classifier: string, stdGroup: string): { rowId: string, childName: string } {
     const is = (searchStr: string) => cnameLower.includes(searchStr) || commentLower.includes(searchStr);
@@ -64,7 +65,7 @@ export async function getPnl2(request: NextRequest): Promise<NextResponse> {
     const sql = getSql();
     const org = await requireOrganizationId();
     const { searchParams } = new URL(request.url);
-    const month = searchParams.get('month') || new Date().toISOString().substring(0, 7);
+    const month = searchParams.get('month') || (await todayFor(org)).substring(0, 7);
 
     const originalBus = await sql.rows<any>(`
       SELECT id, name FROM business_units

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createOperationInTx } from '../api/operations.handlers.ts';
 import { getSql } from '@core/db/async';
+import { todayFor } from '@core/hotel-day';
 
 export type Schedule = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
@@ -123,7 +124,6 @@ export async function runRecurringTick(lookaheadDays = 30): Promise<{ created: n
   const lookahead = new Date(today);
   lookahead.setDate(today.getDate() + lookaheadDays);
   const lookaheadIso = toISODate(lookahead);
-  const todayIso = toISODate(today);
 
   const errors: string[] = [];
   let created = 0;
@@ -143,7 +143,11 @@ export async function runRecurringTick(lookaheadDays = 30): Promise<{ created: n
 
     for (const t of due) {
       try {
-        await materializeTemplate(t, todayIso);
+        // Each template belongs to a hotel, and «is this date in the future»
+        // is a question about that hotel's calendar, not the server's: a
+        // template due today would be written as `pending` for the first hours
+        // of the local day if we asked UTC.
+        await materializeTemplate(t, await todayFor(t.organization_id));
         created++;
       } catch (e: any) {
         errors.push(`${t.id} (${t.name}): ${e.message}`);

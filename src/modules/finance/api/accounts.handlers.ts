@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { todayFor } from '@core/hotel-day';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { ownedFinanceRow } from '../data/owned.repo';
@@ -228,7 +229,8 @@ export async function reconcileAccount(
       return NextResponse.json({ computed, actual: actual_balance, delta: 0, adjustment_operation_id: null, message: 'Balances already match' });
     }
 
-    const today = new Date().toISOString().substring(0, 10);
+    // The hotel's day: this dates an adjustment operation in the ledger.
+    const today = await todayFor(orgId);
     const description = note?.trim() || `Звірка залишків (${account.name})`;
     const adjustmentType: 'income' | 'expense' = delta > 0 ? 'income' : 'expense';
     const categoryId = delta > 0 ? null : await ensureReconcileCategory(orgId);
