@@ -112,6 +112,7 @@ export default function GuestPageSettingsPage() {
   const [pWeatherLat, setPWeatherLat] = useState('');
   const [pWeatherLon, setPWeatherLon] = useState('');
   const [pEmergency, setPEmergency] = useState('');
+  const [pWhatsapp, setPWhatsapp] = useState('');
   const [pVideoGuide, setPVideoGuide] = useState('');
 
   // ═══ UNIT TYPE STATE ═══
@@ -249,6 +250,7 @@ export default function GuestPageSettingsPage() {
     setPWeatherLat(cfg.weather_lat?.toString() || '');
     setPWeatherLon(cfg.weather_lon?.toString() || '');
     setPEmergency(cfg.emergency_phone || '');
+    setPWhatsapp(cfg.whatsapp_phone || '');
     setPVideoGuide(cfg.video_guide_url || '');
   };
 
@@ -284,7 +286,8 @@ export default function GuestPageSettingsPage() {
           parking_maps_url: pParkingMaps || null,
           weather_lat: pWeatherLat ? parseFloat(pWeatherLat) : null,
           weather_lon: pWeatherLon ? parseFloat(pWeatherLon) : null,
-          emergency_phone: pEmergency || null, video_guide_url: pVideoGuide || null,
+          emergency_phone: pEmergency || null, whatsapp_phone: pWhatsapp || null,
+          video_guide_url: pVideoGuide || null,
         }),
       });
       if (res.ok) { showToast(t('Збережено!')); fetchAll(); setPreviewNonce(n => n + 1); } else showToast(t('Помилка збереження'));
@@ -491,6 +494,13 @@ export default function GuestPageSettingsPage() {
                     <div className="form-group">
                       <label className="form-label">{t('Телефон підтримки / екстренний')}</label>
                       <input className="form-input" value={pEmergency} placeholder="+…" onChange={e => setPEmergency(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">{t('WhatsApp гостьової сторінки')}</label>
+                      <input className="form-input" value={pWhatsapp} placeholder="+420…" onChange={e => setPWhatsapp(e.target.value)} />
+                      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                        {t('Порожньо — вкладки WhatsApp у гостя не буде.')}
+                      </div>
                     </div>
                     <div className="form-group">
                       <label className="form-label">{t('Відео-гайд (URL)')}</label>

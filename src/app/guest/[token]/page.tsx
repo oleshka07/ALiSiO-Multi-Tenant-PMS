@@ -139,8 +139,15 @@ export default function GuestPage() {
   const [consent, setConsent] = useState(false);
   const [regLoading, setRegLoading] = useState(false);
 
-  // WhatsApp number
-  const WHATSAPP_NUMBER = '420723565616';
+  // The hotel's own WhatsApp number, or none.
+  //
+  // This used to be a `WHATSAPP_NUMBER` constant — one Czech mobile, in the
+  // source, for every hotel on the platform. The tab sits in the bottom bar
+  // next to Home, so a guest tapping it because they are locked out at
+  // midnight reached the pilot hotel's owner instead of the hotel they were
+  // standing in — and that owner received strangers' emergencies.
+  // See migration 0033.
+  const whatsappNumber = String(data?.guestPageConfig?.whatsapp_phone || '').replace(/[^\d]/g, '');
 
   // Weather state
   const [weather, setWeather] = useState<{ temp: number; desc: string; icon: string } | null>(null);
@@ -506,8 +513,9 @@ export default function GuestPage() {
 
   // ─── WhatsApp helper ──────────────────────────
   const openWhatsApp = useCallback(() => {
-    window.open(`https://wa.me/${WHATSAPP_NUMBER}`, '_blank');
-  }, []);
+    if (!whatsappNumber) return;
+    window.open(`https://wa.me/${whatsappNumber}`, '_blank');
+  }, [whatsappNumber]);
 
   // ─── Service widget injection ─────────────────
   useEffect(() => {
@@ -1196,7 +1204,15 @@ export default function GuestPage() {
           {cfg?.maps_url && (
             <div className="gp-explore-card">
               <div className="gp-explore-title">📍 {t.howToGetHere}</div>
-              <div className="gp-explore-desc">{r.property_address || 'Loketská, Radošov, Karlovy Vary'}</div>
+              {/* The hotel's own address, or nothing. The fallback here was
+                  the pilot hotel's street — shown under «How to get here» to
+                  guests of every other hotel, next to a map link that pointed
+                  somewhere else entirely. */}
+              {(r.property_address || r.property_city) && (
+                <div className="gp-explore-desc">
+                  {[r.property_address, r.property_city].filter(Boolean).join(', ')}
+                </div>
+              )}
               <a href={cfg.maps_url} target="_blank" rel="noopener noreferrer">
                 <button className="gp-navigate-btn">🗺 {t.navigate}</button>
               </a>
@@ -1637,6 +1653,9 @@ export default function GuestPage() {
         ] as const).filter(item =>
           (item.id !== 'services' || sectionOn('services'))
           && (item.id !== 'explore' || sectionOn('explore'))
+          // No number, no tab. A button that opens a chat with nobody is
+          // worse than an absent button.
+          && (item.id !== 'whatsapp' || !!whatsappNumber)
         ).map(item => (
           <button key={item.id} className={`gp-tab-btn ${item.id !== 'whatsapp' && tab === item.id ? 'active' : ''}`}
             onClick={() => item.id === 'whatsapp' ? openWhatsApp() : setTab(item.id as 'home' | 'services' | 'explore')}
@@ -1814,7 +1833,17 @@ function PostStayPage({ data, lang, setLang }: {
 
       <footer className="gp-footer">
         <div className="gp-footer-logo">{brandName}</div>
-        <div>{t.footerLocation}</div>
+        {/* `t.footerLocation` used to be one customer's street address —
+            translated into seven languages, which is how it became the footer
+            of every hotel's guest page and why nobody spotted it: in a
+            dictionary it reads as product copy. The address belongs to the
+            property, so it comes from the property. */}
+        {(data?.reservation?.property_address || data?.reservation?.property_city) && (
+          <div>
+            {[data.reservation.property_address, data.reservation.property_city]
+              .filter(Boolean).join(', ')}
+          </div>
+        )}
       </footer>
     </div>
   );

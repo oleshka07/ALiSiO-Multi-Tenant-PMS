@@ -57,6 +57,18 @@ const FORBIDDEN = [
   // The first customer's real reception phone, hardcoded into guest screens:
   // every hotel's guests were invited to dial it.
   /773.?708.?849/,
+  // The pilot's WhatsApp number, and its street. Both were in the guest page:
+  // the number as `const WHATSAPP_NUMBER`, wired to the most prominent button
+  // on the screen, and the street as `footerLocation` — TRANSLATED INTO SEVEN
+  // LANGUAGES, which is how one customer's address became every hotel's
+  // footer. Being translated is what hid it: the dictionary looked like
+  // product copy. Both now come from the property, and this gate is the reason
+  // they cannot come back.
+  /420.?723.?565.?616/,
+  /Loketsk[áa]/i,
+  /Karlovy\s+Vary/i,
+  /Карлові\s+Вари/i,
+  /Radošov/i,
 ];
 
 // Path → why the name is allowed to remain there.
@@ -67,6 +79,9 @@ const ALLOWED = new Map([
   // The migration that REMOVES the leaked defaults has to name them in its
   // WHERE clauses — that is the one place they may remain.
   ['db/postgres/migrations/0023-a-default-is-code-and-these-were-somebodys-keys.sql', 'removes the leaked values it names'],
+  // Another detector, listing the same old names on purpose — same reason this
+  // file is on the list.
+  ['scripts/audit.mjs', 'lists old customer names to search for them'],
   // Translation keys ARE the first customer's stored content: the dictionary
   // translates what already sits in their rows, and the key must match those
   // bytes to do it. Removing the entry would break their live guest page.

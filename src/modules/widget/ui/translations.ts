@@ -139,6 +139,7 @@ export interface BookingTranslations {
   // Error / messages
   errorOccurred: string;
   offerApplied: string;
+  invalidCode: string;
   // Step 2 extras
   yourChoice: string;
   yourHouse: string;
@@ -289,6 +290,7 @@ const translations: Record<BookingLang, any> = {
     guestsShort: 'гостей',
     errorOccurred: 'Сталась помилка. Спробуйте ще раз.',
     offerApplied: 'Промокод застосовано!',
+    invalidCode: 'Промокод недійсний або протермінований.',
     yourChoice: 'Ваш вибір',
     yourHouse: 'Ваш будинок',
     bookingDetails: 'Деталі бронювання',
@@ -435,6 +437,7 @@ const translations: Record<BookingLang, any> = {
     guestsShort: 'guests',
     errorOccurred: 'An error occurred. Please try again.',
     offerApplied: 'Coupon code applied!',
+    invalidCode: 'This code is not valid or has expired.',
     yourChoice: 'Your choice',
     yourHouse: 'Your house',
     bookingDetails: 'Booking details',
@@ -581,6 +584,7 @@ const translations: Record<BookingLang, any> = {
     guestsShort: 'hostů',
     errorOccurred: 'Nastala chyba. Zkuste to prosím znovu.',
     offerApplied: 'Slevový kód byl použit!',
+    invalidCode: 'Kód je neplatný nebo vypršel.',
     yourChoice: 'Váš výběr',
     yourHouse: 'Váš dům',
     bookingDetails: 'Detaily rezervace',
@@ -727,6 +731,7 @@ const translations: Record<BookingLang, any> = {
     guestsShort: 'Gäste',
     errorOccurred: 'Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.',
     offerApplied: 'Gutscheincode angewendet!',
+    invalidCode: 'Der Code ist ungültig oder abgelaufen.',
     yourChoice: 'Ihre Wahl',
     yourHouse: 'Ihr Haus',
     bookingDetails: 'Buchungsdetails',

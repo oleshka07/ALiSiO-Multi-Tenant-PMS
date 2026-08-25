@@ -1,0 +1,19 @@
+-- A guest writes to their own hotel.
+--
+-- The guest page had a `WHATSAPP_NUMBER` constant — one Czech mobile
+-- number, in the source, for every hotel on the platform. The WhatsApp
+-- tab is the most prominent control on that page: it sits in the bottom bar
+-- next to Home, and a guest who taps it because the shower is broken, or
+-- because they are locked out at midnight, reaches the pilot hotel's owner
+-- instead of the hotel they are standing in. The pilot hotel, in turn, gets
+-- strangers' emergencies.
+--
+-- This is the same class of bug the project already found and fixed one
+-- component away — `FarBeforeScreen.tsx` used to hardcode a phone and now
+-- reads `property_phone`. The number lives with the hotel, so it goes in the
+-- hotel's own configuration.
+--
+-- Nullable, and the tab is hidden when it is empty. A hotel that has not
+-- entered a WhatsApp number does not have WhatsApp, and offering a button that
+-- opens a chat with nobody is worse than not offering it.
+ALTER TABLE "property_guest_config" ADD COLUMN IF NOT EXISTS "whatsapp_phone" TEXT;

@@ -170,7 +170,6 @@ export interface Translations {
   childrenShort: string;
   ourAccommodations: string;
   selectAccommodation: string;
-  footerLocation: string;
   // Payment Gate
   paymentRequired: string;
   completePayment: string;
@@ -254,7 +253,7 @@ const translations: Record<Lang, Translations> = {
     thankYou: (n) => `Thank you, ${n}!`, thankYouStay: 'We hope you enjoyed your stay', comeBack: 'Come back soon!',
     earlyBooking: 'Early Booking', earlyBookingDesc: 'Book your next stay at a special rate.',
     discount: 'discount', adultsShort: 'ad.', childrenShort: 'ch.', ourAccommodations: 'Our accommodations',
-    selectAccommodation: 'Select', footerLocation: 'Loketská, Karlovy Vary, Czech Republic',
+    selectAccommodation: 'Select',
     paymentRequired: 'Complete payment to unlock full access',
     completePayment: 'Complete payment →',
     availableAfterPayment: 'Available after payment',
@@ -327,7 +326,7 @@ const translations: Record<Lang, Translations> = {
     thankYou: (n) => `Danke, ${n}!`, thankYouStay: 'Wir hoffen, Sie hatten einen tollen Aufenthalt', comeBack: 'Bis bald!',
     earlyBooking: 'Frühbucher', earlyBookingDesc: 'Buchen Sie Ihren nächsten Aufenthalt zum Sonderpreis.',
     discount: 'Rabatt', adultsShort: 'Erw.', childrenShort: 'Ki.', ourAccommodations: 'Unsere Unterkünfte',
-    selectAccommodation: 'Auswählen', footerLocation: 'Loketská, Karlovy Vary, Tschechien',
+    selectAccommodation: 'Auswählen',
     paymentRequired: 'Schließen Sie die Zahlung ab, um vollen Zugang zu erhalten',
     completePayment: 'Zahlung abschließen →',
     availableAfterPayment: 'Verfügbar nach Zahlung',
@@ -400,7 +399,7 @@ const translations: Record<Lang, Translations> = {
     thankYou: (n) => `Děkujeme, ${n}!`, thankYouStay: 'Doufáme, že jste si pobyt užili', comeBack: 'Příště se těšíme!',
     earlyBooking: 'Předčasná rezervace', earlyBookingDesc: 'Zarezervujte si další pobyt za zvýhodněnou cenu.',
     discount: 'sleva', adultsShort: 'dosp.', childrenShort: 'dětí', ourAccommodations: 'Naše ubytování',
-    selectAccommodation: 'Vybrat', footerLocation: 'Loketská, Karlovy Vary, Česko',
+    selectAccommodation: 'Vybrat',
     paymentRequired: 'Dokončete platbu pro plný přístup',
     completePayment: 'Dokončit platbu →',
     availableAfterPayment: 'Dostupné po platbě',
@@ -473,7 +472,7 @@ const translations: Record<Lang, Translations> = {
     thankYou: (n) => `Дякуємо, ${n}!`, thankYouStay: 'Сподіваємось, вам сподобалось', comeBack: 'Чекаємо знову!',
     earlyBooking: 'Раннє бронювання', earlyBookingDesc: 'Забронюйте наступне перебування за спеціальною ціною.',
     discount: 'знижка', adultsShort: 'дор.', childrenShort: 'діт.', ourAccommodations: 'Наші помешкання',
-    selectAccommodation: 'Обрати', footerLocation: 'Loketská, Карлові Вари, Чехія',
+    selectAccommodation: 'Обрати',
     paymentRequired: 'Завершіть оплату для повного доступу',
     completePayment: 'Завершити оплату →',
     availableAfterPayment: 'Доступно після оплати',
@@ -546,7 +545,7 @@ const translations: Record<Lang, Translations> = {
     thankYou: (n) => `Dziękujemy, ${n}!`, thankYouStay: 'Mamy nadzieję, że pobyt się podobał', comeBack: 'Wracajcie!',
     earlyBooking: 'Wczesna rezerwacja', earlyBookingDesc: 'Zarezerwuj kolejny pobyt w specjalnej cenie.',
     discount: 'zniżka', adultsShort: 'dos.', childrenShort: 'dz.', ourAccommodations: 'Nasze zakwaterowanie',
-    selectAccommodation: 'Wybierz', footerLocation: 'Loketská, Karlovy Vary, Czechy',
+    selectAccommodation: 'Wybierz',
     paymentRequired: 'Dokończ płatność, aby uzyskać pełny dostęp',
     completePayment: 'Dokończ płatność →',
     availableAfterPayment: 'Dostępne po płatności',
@@ -619,7 +618,7 @@ const translations: Record<Lang, Translations> = {
     thankYou: (n) => `Bedankt, ${n}!`, thankYouStay: 'We hopen dat u heeft genoten', comeBack: 'Tot snel!',
     earlyBooking: 'Vroegboeken', earlyBookingDesc: 'Boek uw volgende verblijf tegen een speciaal tarief.',
     discount: 'korting', adultsShort: 'vol.', childrenShort: 'ki.', ourAccommodations: 'Onze accommodaties',
-    selectAccommodation: 'Selecteren', footerLocation: 'Loketská, Karlovy Vary, Tsjechië',
+    selectAccommodation: 'Selecteren',
     paymentRequired: 'Voltooi betaling voor volledige toegang',
     completePayment: 'Betaling voltooien →',
     availableAfterPayment: 'Beschikbaar na betaling',
@@ -692,7 +691,7 @@ const translations: Record<Lang, Translations> = {
     thankYou: (n) => `Merci, ${n} !`, thankYouStay: 'Nous espérons que vous avez passé un bon séjour', comeBack: 'À bientôt !',
     earlyBooking: 'Réservation anticipée', earlyBookingDesc: 'Réservez votre prochain séjour à un tarif spécial.',
     discount: 'réduction', adultsShort: 'ad.', childrenShort: 'enf.', ourAccommodations: 'Nos hébergements',
-    selectAccommodation: 'Sélectionner', footerLocation: 'Loketská, Karlovy Vary, République tchèque',
+    selectAccommodation: 'Sélectionner',
     paymentRequired: 'Finalisez le paiement pour accès complet',
     completePayment: 'Finaliser le paiement →',
     availableAfterPayment: 'Disponible après paiement',

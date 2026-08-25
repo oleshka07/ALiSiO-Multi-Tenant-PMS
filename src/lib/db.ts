@@ -2545,7 +2545,8 @@ function runMigrations(database: any) {
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         parking_photo_url TEXT,
-        parking_maps_url TEXT
+        parking_maps_url TEXT,
+        whatsapp_phone TEXT
       )
     `);
     // Seed from first existing guest_page_config
@@ -2576,6 +2577,21 @@ function runMigrations(database: any) {
     }
   } catch (e: any) {
     console.log('[DB] parking_maps_url migration note:', e.message);
+  }
+
+  // The WhatsApp number belongs to the hotel (mirror of Postgres 0033). It was
+  // a literal in the guest page — one number for every hotel on the platform —
+  // so a guest tapping the most prominent button on that page reached the pilot
+  // hotel's owner. ALTER after the CREATE above, same reason as the block
+  // before it.
+  try {
+    const pgcCols = (database.prepare('PRAGMA table_info(property_guest_config)').all() as any[]).map((c: any) => c.name);
+    if (!pgcCols.includes('whatsapp_phone')) {
+      database.exec('ALTER TABLE property_guest_config ADD COLUMN whatsapp_phone TEXT');
+      console.log('[DB] Added whatsapp_phone to property_guest_config');
+    }
+  } catch (e: any) {
+    console.log('[DB] whatsapp_phone migration note:', e.message);
   }
 
   // --- Migration: guest_chat_messages ---

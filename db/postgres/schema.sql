@@ -1378,6 +1378,7 @@ CREATE TABLE "property_guest_config" (
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "parking_photo_url" TEXT,
   "parking_maps_url" TEXT,
+  "whatsapp_phone" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("property_id")
 );

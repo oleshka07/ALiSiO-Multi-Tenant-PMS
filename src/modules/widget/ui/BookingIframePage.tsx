@@ -171,11 +171,19 @@ export default function BookingPage() {
   const [saunaAdded, setSaunaAdded] = useState(false);
   const [breakfastItems, setBreakfastItems] = useState<Record<string, number>>({});
   const [breakfastAdded, setBreakfastAdded] = useState(false);
+  const [applyingCode, setApplyingCode] = useState(false);
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [servicesLoading, setServicesLoading] = useState(false);
   const [showSaunaPopup, setShowSaunaPopup] = useState(false);
-  const [saunaPrice, setSaunaPrice] = useState(600);
-  const [broomPrice, setBroomPrice] = useState(300);
+  // null until the server answers, and null forever if this hotel does not
+  // sell the service. These used to default to the pilot hotel's own prices —
+  // 600 for the sauna, 300 for the broom, 600 for the tub, 500 for the late
+  // checkout — so a hotel whose sauna costs 400 quoted 600 until the fetch
+  // landed, and a hotel with no sauna at all offered one, priced, in a
+  // currency it might not even use. A number invented by the client is a quote
+  // the hotel never made.
+  const [saunaPrice, setSaunaPrice] = useState<number | null>(null);
+  const [broomPrice, setBroomPrice] = useState<number | null>(null);
   const [bookedSlots, setBookedSlots] = useState<any[]>([]);
   // Tub (Чан)
   const [showTubPopup, setShowTubPopup] = useState(false);
@@ -183,13 +191,13 @@ export default function BookingPage() {
   const [tubStartHour, setTubStartHour] = useState(14);
   const [tubHours, setTubHours] = useState(2);
   const [tubAdded, setTubAdded] = useState(false);
-  const [tubPrice, setTubPrice] = useState(600);
+  const [tubPrice, setTubPrice] = useState<number | null>(null);
   const [tubBookedSlots, setTubBookedSlots] = useState<any[]>([]);
   // Late checkout / Early checkin
   const [lateCheckout, setLateCheckout] = useState(false);
   const [earlyCheckin, setEarlyCheckin] = useState(false);
-  const [lateCheckoutPrice, setLateCheckoutPrice] = useState(500);
-  const [earlyCheckinPrice, setEarlyCheckinPrice] = useState(500);
+  const [lateCheckoutPrice, setLateCheckoutPrice] = useState<number | null>(null);
+  const [earlyCheckinPrice, setEarlyCheckinPrice] = useState<number | null>(null);
 
   // Step 5 — Success
   const [reservation, setReservation] = useState<ReserveResponse | null>(null);
@@ -356,7 +364,7 @@ export default function BookingPage() {
   // Service totals
   const saunaTotal = useMemo(() => {
     if (!saunaAdded) return 0;
-    return saunaPrice * saunaHours + broomPrice * saunaBroom;
+    return (saunaPrice ?? 0) * saunaHours + (broomPrice ?? 0) * saunaBroom;
   }, [saunaAdded, saunaPrice, saunaHours, broomPrice, saunaBroom]);
 
   const breakfastTotal = useMemo(() => {
@@ -366,11 +374,11 @@ export default function BookingPage() {
 
   const tubTotal = useMemo(() => {
     if (!tubAdded) return 0;
-    return tubPrice * tubHours;
+    return (tubPrice ?? 0) * tubHours;
   }, [tubAdded, tubPrice, tubHours]);
 
   const toggleServicesTotal = useMemo(() => {
-    return (lateCheckout ? lateCheckoutPrice : 0) + (earlyCheckin ? earlyCheckinPrice : 0);
+    return (lateCheckout ? (lateCheckoutPrice ?? 0) : 0) + (earlyCheckin ? (earlyCheckinPrice ?? 0) : 0);
   }, [lateCheckout, lateCheckoutPrice, earlyCheckin, earlyCheckinPrice]);
 
   // Extra person charge: if adults > baseOccupancy, charge per extra person per night
@@ -451,11 +459,45 @@ export default function BookingPage() {
   }, [checkIn, checkOut, offerApplied, certInput, t]);
 
   // ─── Apply Coupon ──────
-  const applyCoupon = useCallback(async () => {
-    if (!promoInput.trim()) return;
-    setOfferApplied(promoInput.trim());
-    setPromoMessage({ type: 'success', text: t.offerApplied });
-  }, [promoInput, t]);
+  //
+  // This used to accept anything. It never called an API: it stored whatever
+  // the guest typed and answered «Успішно застосовано» — for a code that does
+  // not exist, for an expired one, for the empty-ish string `  x  `. The guest
+  // then reached the payment step expecting a discount the hotel had never
+  // issued, and either the price silently ignored the code (a guest who feels
+  // cheated) or the booking went through with it (a hotel that lost money to a
+  // code it never created).
+  //
+  // The same endpoint the other widget uses — `/api/booking/activate` — is
+  // what decides. `BookingV2` had this right the whole time; this second,
+  // older widget is the one hotels get from the iframe embed, so both are
+  // shipped and only one of them was telling the truth.
+  const applyCoupon = useCallback(async (rawCode?: string) => {
+    const code = String(rawCode ?? promoInput).trim().toUpperCase();
+    if (!code) return;
+    setApplyingCode(true);
+    setPromoMessage(null);
+    try {
+      const siteParam = (window as any).__BOOKING_SITE_ID__
+        ? `&siteId=${encodeURIComponent((window as any).__BOOKING_SITE_ID__)}` : '';
+      const res = await fetch(
+        `${API_BASE}/api/booking/activate?code=${encodeURIComponent(code)}&unitId=${selectedUnit || ''}${siteParam}`,
+      );
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.valid) {
+        setOfferApplied(data.code || code);
+        setPromoMessage({ type: 'success', text: t.offerApplied });
+      } else {
+        setOfferApplied('');
+        setPromoMessage({ type: 'error', text: data.error || t.invalidCode });
+      }
+    } catch {
+      setOfferApplied('');
+      setPromoMessage({ type: 'error', text: t.errorOccurred });
+    } finally {
+      setApplyingCode(false);
+    }
+  }, [promoInput, selectedUnit, t]);
 
   // ─── Navigation ──────
   const goToStep = useCallback((targetStep: number) => {
@@ -511,29 +553,29 @@ export default function BookingPage() {
       const sRes = await fetch(`${API_BASE}/api/booking/services?serviceId=svc_sauna&checkIn=${ci}&checkOut=${co}${siteParam}`);
       if (sRes.ok) {
         const sData = await sRes.json();
-        setSaunaPrice(sData.price || 600);
+        setSaunaPrice(typeof sData.price === 'number' ? sData.price : null);
         setBookedSlots(sData.bookedSlots || []);
         if (sData.addons?.length) {
-          setBroomPrice(sData.addons[0]?.price || 300);
+          setBroomPrice(typeof sData.addons[0]?.price === 'number' ? sData.addons[0].price : null);
         }
       }
       // Fetch tub details + booked slots
       const tRes = await fetch(`${API_BASE}/api/booking/services?serviceId=svc_tub&checkIn=${ci}&checkOut=${co}${siteParam}`);
       if (tRes.ok) {
         const tData = await tRes.json();
-        setTubPrice(tData.price || 600);
+        setTubPrice(typeof tData.price === 'number' ? tData.price : null);
         setTubBookedSlots(tData.bookedSlots || []);
       }
       // Fetch late checkout price
       const lcRes = await fetch(`${API_BASE}/api/booking/services?serviceId=svc_late_checkout&checkIn=${ci}&checkOut=${co}${siteParam}`);
       if (lcRes.ok) {
         const lcData = await lcRes.json();
-        setLateCheckoutPrice(lcData.price || 500);
+        setLateCheckoutPrice(typeof lcData.price === 'number' ? lcData.price : null);
       }
       const ecRes = await fetch(`${API_BASE}/api/booking/services?serviceId=svc_early_checkin&checkIn=${ci}&checkOut=${co}${siteParam}`);
       if (ecRes.ok) {
         const ecData = await ecRes.json();
-        setEarlyCheckinPrice(ecData.price || 500);
+        setEarlyCheckinPrice(typeof ecData.price === 'number' ? ecData.price : null);
       }
     } catch { /* silent */ }
     setServicesLoading(false);
@@ -901,13 +943,13 @@ export default function BookingPage() {
             {lateCheckout && (
               <div style={{ padding: '6px 12px', background: 'var(--bk-bg)', borderRadius: 'var(--bk-radius-xs)', marginBottom: 6, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
                 <span>🕐 {t.lateCheckoutTitle}</span>
-                <strong>{formatPrice(lateCheckoutPrice)} Kč</strong>
+                <strong>{formatPrice(lateCheckoutPrice ?? 0)} Kč</strong>
               </div>
             )}
             {earlyCheckin && (
               <div style={{ padding: '6px 12px', background: 'var(--bk-bg)', borderRadius: 'var(--bk-radius-xs)', marginBottom: 6, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
                 <span>🕛 {t.earlyCheckinTitle}</span>
-                <strong>{formatPrice(earlyCheckinPrice)} Kč</strong>
+                <strong>{formatPrice(earlyCheckinPrice ?? 0)} Kč</strong>
               </div>
             )}
 
@@ -1081,7 +1123,12 @@ export default function BookingPage() {
                       value={promoInput}
                       onChange={e => { setPromoInput(e.target.value); setPromoMessage(null); }}
                     />
-                    <button className="booking-code-btn" onClick={applyCoupon} type="button">{t.apply}</button>
+                    <button
+                      className="booking-code-btn"
+                      onClick={() => applyCoupon()}
+                      disabled={applyingCode || !promoInput.trim()}
+                      type="button"
+                    >{applyingCode ? '…' : t.apply}</button>
                   </div>
                   <div className="booking-code-input-group">
                     <input
@@ -1090,7 +1137,16 @@ export default function BookingPage() {
                       value={certInput}
                       onChange={e => setCertInput(e.target.value)}
                     />
-                    <button className="booking-code-btn" onClick={() => { }} type="button">{t.apply}</button>
+                    {/* `onClick={() => { }}` — a button on the money path that
+                        did nothing. The guest typed a certificate code, pressed
+                        Apply and got no response of any kind: not an error, not
+                        a discount, not even a spinner. */}
+                    <button
+                      className="booking-code-btn"
+                      onClick={() => applyCoupon(certInput)}
+                      disabled={applyingCode || !certInput.trim()}
+                      type="button"
+                    >{applyingCode ? '…' : t.apply}</button>
                   </div>
                 </div>
 
@@ -1465,6 +1521,9 @@ export default function BookingPage() {
               ) : (
                 <>
                   {/* ─── SAUNA CARD ─── */}
+                  {/* Shown only when this hotel actually sells it at a price
+                      the server returned. */}
+                  {saunaPrice !== null && (
                   <div className={`svc-card ${saunaAdded ? 'added' : ''}`}>
                     <div className="svc-card-photo">🧖</div>
                     <div className="svc-card-body">
@@ -1496,6 +1555,7 @@ export default function BookingPage() {
                       </div>
                     </div>
                   </div>
+                  )}
 
                   {/* Sauna added badge */}
                   {saunaAdded && saunaDate && (
@@ -1588,7 +1648,7 @@ export default function BookingPage() {
                                   <span className="booking-counter-value">{saunaBroom}</span>
                                   <button className="booking-counter-btn" onClick={() => setSaunaBroom(b => Math.min(5, b + 1))} disabled={saunaBroom >= 5} type="button">+</button>
                                 </div>
-                                <div className="svc-popup-counter-sub">{formatPrice(broomPrice)} Kč</div>
+                                <div className="svc-popup-counter-sub">{formatPrice(broomPrice ?? 0)} Kč</div>
                               </div>
                             </div>
                           </div>
@@ -1599,7 +1659,7 @@ export default function BookingPage() {
                           <div className="svc-popup-total">
                             <div className="svc-popup-total-label">{t.totalLabel}</div>
                             <div className="svc-popup-total-amount">
-                              {formatPrice(saunaPrice * saunaHours + broomPrice * saunaBroom)} Kč
+                              {formatPrice((saunaPrice ?? 0) * saunaHours + (broomPrice ?? 0) * saunaBroom)} Kč
                             </div>
                           </div>
                           <div className="svc-popup-actions">
@@ -1692,6 +1752,7 @@ export default function BookingPage() {
                   </div>
 
                   {/* ─── TUB (ЧАН) SECTION ─── */}
+                  {tubPrice !== null && (
                   <div className="svc-card" style={{ marginTop: 16 }}>
                     <div className="svc-card-photo">
                       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #e8f5e9, #c8e6c9)', fontSize: 64 }}>
@@ -1707,7 +1768,7 @@ export default function BookingPage() {
                       <p className="svc-card-desc">{t.tubDesc}</p>
                       <div className="svc-card-price">
                         <span className="svc-card-price-currency">Kč</span>
-                        <span className="svc-card-price-amount">{formatPrice(tubPrice)}</span>
+                        <span className="svc-card-price-amount">{formatPrice(tubPrice ?? 0)}</span>
                         <span className="svc-card-price-unit">{t.tubPerHour}</span>
                       </div>
                       {tubAdded ? (
@@ -1722,6 +1783,7 @@ export default function BookingPage() {
                       )}
                     </div>
                   </div>
+                  )}
 
                   {/* Tub Popup Modal */}
                   {showTubPopup && (
@@ -1793,7 +1855,7 @@ export default function BookingPage() {
                           <div className="svc-popup-total">
                             <div className="svc-popup-total-label">{t.totalLabel}</div>
                             <div className="svc-popup-total-amount">
-                              {formatPrice(tubPrice * tubHours)} Kč
+                              {formatPrice((tubPrice ?? 0) * tubHours)} Kč
                             </div>
                           </div>
                           <div className="svc-popup-actions">
@@ -1815,6 +1877,7 @@ export default function BookingPage() {
                   )}
 
                   {/* ─── LATE CHECKOUT / EARLY CHECKIN ─── */}
+                  {lateCheckoutPrice !== null && (
                   <div className={`svc-toggle-card ${lateCheckout ? 'active' : ''}`}>
                     <div className="svc-toggle-info">
                       <span className="svc-toggle-icon">🕐</span>
@@ -1823,7 +1886,7 @@ export default function BookingPage() {
                         <p>{t.lateCheckoutDesc}</p>
                       </div>
                     </div>
-                    <span className="svc-toggle-price">{formatPrice(lateCheckoutPrice)} Kč</span>
+                    <span className="svc-toggle-price">{formatPrice(lateCheckoutPrice ?? 0)} Kč</span>
                     <button
                       className={`svc-toggle-switch ${lateCheckout ? 'on' : ''}`}
                       onClick={() => setLateCheckout(v => !v)}
@@ -1831,7 +1894,9 @@ export default function BookingPage() {
                       aria-label={t.lateCheckoutTitle}
                     />
                   </div>
+                  )}
 
+                  {earlyCheckinPrice !== null && (
                   <div className={`svc-toggle-card ${earlyCheckin ? 'active' : ''}`}>
                     <div className="svc-toggle-info">
                       <span className="svc-toggle-icon">🕛</span>
@@ -1840,7 +1905,7 @@ export default function BookingPage() {
                         <p>{t.earlyCheckinDesc}</p>
                       </div>
                     </div>
-                    <span className="svc-toggle-price">{formatPrice(earlyCheckinPrice)} Kč</span>
+                    <span className="svc-toggle-price">{formatPrice(earlyCheckinPrice ?? 0)} Kč</span>
                     <button
                       className={`svc-toggle-switch ${earlyCheckin ? 'on' : ''}`}
                       onClick={() => setEarlyCheckin(v => !v)}
@@ -1848,6 +1913,7 @@ export default function BookingPage() {
                       aria-label={t.earlyCheckinTitle}
                     />
                   </div>
+                  )}
 
                   {/* Services Total */}
                   {servicesTotal > 0 && (

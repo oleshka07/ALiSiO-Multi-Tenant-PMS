@@ -208,6 +208,10 @@ export async function getGuestPageConfig(unitTypeId: string, propertyId: string,
     parking_maps_url: propertyConfig.parking_maps_url,
     video_guide_url: propertyConfig.video_guide_url,
     emergency_phone: propertyConfig.emergency_phone,
+    // Null when the hotel has not entered one — the guest page hides the tab
+    // rather than opening a chat with nobody. It used to be a literal in the
+    // page: one number, every hotel.
+    whatsapp_phone: propertyConfig.whatsapp_phone,
     weather_lat: propertyConfig.weather_lat,
     weather_lon: propertyConfig.weather_lon,
     amenities: unitTypeConfig?.amenities,

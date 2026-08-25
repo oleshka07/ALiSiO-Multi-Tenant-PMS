@@ -54,6 +54,7 @@ export const updatePropertyGuestConfig = withPermission('manage_properties', asy
       'wifi_network', 'wifi_password', 'restaurant_name', 'restaurant_hours', 'restaurant_menu_url',
       'rules', 'useful_info', 'faq_items', 'maps_url', 'territory_map_url',
       'pets_policy', 'parking_info', 'parking_photo_url', 'parking_maps_url', 'video_guide_url', 'emergency_phone',
+      'whatsapp_phone',
       'weather_lat', 'weather_lon',
     ];
 
@@ -73,8 +74,8 @@ export const updatePropertyGuestConfig = withPermission('manage_properties', asy
       }
     } else {
       await sql.run(`
-        INSERT INTO property_guest_config (property_id, wifi_network, wifi_password, restaurant_name, restaurant_hours, restaurant_menu_url, rules, useful_info, faq_items, maps_url, territory_map_url, pets_policy, parking_info, parking_photo_url, parking_maps_url, video_guide_url, emergency_phone, weather_lat, weather_lon)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO property_guest_config (property_id, wifi_network, wifi_password, restaurant_name, restaurant_hours, restaurant_menu_url, rules, useful_info, faq_items, maps_url, territory_map_url, pets_policy, parking_info, parking_photo_url, parking_maps_url, video_guide_url, emergency_phone, whatsapp_phone, weather_lat, weather_lon)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [property_id,
         body.wifi_network || null, body.wifi_password || null,
         body.restaurant_name || '', body.restaurant_hours || '', body.restaurant_menu_url || null,
@@ -84,7 +85,8 @@ export const updatePropertyGuestConfig = withPermission('manage_properties', asy
         body.maps_url || null, body.territory_map_url || null,
         body.pets_policy || 'welcome', body.parking_info || '', body.parking_photo_url || null, body.parking_maps_url || null,
         body.video_guide_url || null,
-        body.emergency_phone || null, body.weather_lat || null, body.weather_lon || null]);
+        body.emergency_phone || null, body.whatsapp_phone || null,
+        body.weather_lat || null, body.weather_lon || null]);
     }
 
     const updated = await sql.row<any>('SELECT * FROM property_guest_config WHERE property_id = ?', [property_id]);
