@@ -209,6 +209,39 @@ export const updateSubBooking = withPermission('manage_bookings', async (request
       }
     }
 
+    /**
+     * The card's own heading is `subtotal`, and so is the ✅/⚠️Δ indicator that
+     * tells the receptionist whether the parts add up to the whole. Every
+     * caller that changes the lines — «+ Додати рядок», and deleting one —
+     * sends `lineItems` and no `subtotal`, so the lines moved and the number
+     * above them did not: the card showed a stale figure and the indicator
+     * disagreed with arithmetic anyone could redo on paper.
+     *
+     * Recomputed here rather than in the modal because the SUM is the same
+     * fact for every caller, and because a client that forgets it is exactly
+     * how this happened. An explicit `subtotal` in the same request still
+     * wins — that is the operator overriding the sum on purpose.
+     */
+    if (body.subtotal === undefined && Array.isArray(body.lineItems)) {
+      const hadItems = await sql.row<any>(
+        'SELECT 1 AS present FROM reservation_line_items WHERE sub_booking_id = ? LIMIT 1', [subId]);
+      // An empty list from a sub-booking that had lines means the operator
+      // removed the last one, and zero is the honest total. An empty list on
+      // one that never had any would wipe a hand-entered subtotal, so it is
+      // left alone.
+      if (body.lineItems.length > 0 || hadItems) {
+        const sum = money(body.lineItems.reduce((acc: number, li: any) => {
+          const total = Number(li.total ?? (Number(li.quantity) || 1) * (Number(li.unit_price) || 0));
+          // A line that does not parse contributes nothing rather than
+          // turning the whole subtotal into NaN, which would store as null.
+          return acc + (Number.isFinite(total) ? total : 0);
+        }, 0));
+        sets.push('subtotal = ?');
+        values.push(sum);
+        body.subtotal = sum; // so the child reservation below is synced too
+      }
+    }
+
     if (sets.length > 0) {
       values.push(subId);
       await sql.run(`UPDATE reservation_sub_bookings SET ${sets.join(', ')} WHERE id = ?`, [...values]);
@@ -230,10 +263,11 @@ export const updateSubBooking = withPermission('manage_bookings', async (request
 
     // Handle line items update (replace all)
     if (body.lineItems !== undefined && Array.isArray(body.lineItems)) {
-      await sql.run('DELETE FROM reservation_line_items WHERE sub_booking_id = ?', [subId]);
-      // All the items together: a sub-booking with half its lines priced
-      // is worse than one with none.
+      // All the items together, and the delete with them: the DELETE used to
+      // sit outside the transaction, so a failure on the third insert left
+      // the sub-booking with no lines at all instead of the ones it had.
       await sql.tx(async (t) => {
+        await t.run('DELETE FROM reservation_line_items WHERE sub_booking_id = ?', [subId]);
         for (let i = 0; i < body.lineItems.length; i++) {
           const item = body.lineItems[i];
           const itemId = `li_${Date.now()}_${i}`;

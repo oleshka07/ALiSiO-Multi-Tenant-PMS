@@ -738,9 +738,15 @@ export default function BookingViewModal({
             action = { priority: 'MEDIUM', label: `${tUi('Оплата не прийнята (')}${remaining.toLocaleString()} ${b.currency || 'CZK'})`, context: `${tUi('до заїзду')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Оплата'), onClick: () => { setViewTab('payment'); setShowPayForm(true); } };
           } else if (!isRegistered && daysUntil > 1) {
             action = { priority: 'MEDIUM', label: `${tUi('Документи не заповнені (')}${registrations.length}/${regNeeded})`, context: `${tUi('до заїзду')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Реєстрація'), onClick: () => setViewTab('registration') };
-          } else if (b.status === 'checked_out' && daysSince >= 1 && daysSince <= 7) {
-            action = { priority: 'LOW', label: tUi('Запросити відгук'), context: `${tUi('гість виїхав')} ${daysSince} ${tUi('дн. тому')}`, cta: tUi('Відгук'), onClick: () => {} };
           }
+          // Тут була ще одна дія — «Запросити відгук» для гостя, що виїхав
+          // 1-7 днів тому, з `onClick: () => {}`. Банер називається
+          // «Наступна дія»: портьє натискав, нічого не відбувалося, і
+          // дізнатися, що саме не спрацювало, було ніяк. За кнопкою немає
+          // нічого — ні шаблону листа, ні посилання на відгук у
+          // налаштуваннях об'єкта, ні маршруту відправки. Запит відгуків
+          // приїде окремим модулем разом із цими трьома речами; доти краще
+          // не пропонувати дію, якої немає.
 
           if (!action) return null;
           const bannerColors: Record<string, { bg: string; border: string; label: string }> = {

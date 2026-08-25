@@ -735,6 +735,51 @@ async function main() {
       `${wroteGroups.c} group(s) were written into A's property by B`);
     console.log("  ok  B cannot reach A's booking through units, sub-bookings, the audit trail or groups");
 
+    // ── A sub-booking's total is the sum of its lines ────────────────────
+    // Not an isolation question, but the same class of thing the probe is
+    // for: the card's heading and its ✅/⚠️Δ indicator both read `subtotal`,
+    // and every caller that changes the lines sends `lineItems` and no
+    // `subtotal`. The number above the lines stayed where it was.
+    const subOwn = await call(cookieA, `/api/bookings/${booking.id}/sub-bookings`, {
+      method: 'POST', body: JSON.stringify({ label: 'Probe sub', adults: 1, subtotal: 999 }),
+    });
+    assert.ok(subOwn.ok, `A could not create its own sub-booking: ${subOwn.status}`);
+    const subId = (await subOwn.json())?.id || (await sql.row(
+      'SELECT id FROM reservation_sub_bookings WHERE reservation_id = ? ORDER BY sort_order DESC', [booking.id]))?.id;
+    assert.ok(subId, 'no sub-booking id came back');
+
+    const lined = await call(cookieA, `/api/bookings/${booking.id}/sub-bookings/${subId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ lineItems: [
+        { description: 'Ніч', quantity: 2, unit_price: 1500, total: 3000 },
+        { description: 'Сніданок', quantity: 2, unit_price: 250, total: 500 },
+      ] }),
+    });
+    assert.ok(lined.ok, `A could not add line items: ${lined.status}`);
+    const summed = await sql.row('SELECT subtotal FROM reservation_sub_bookings WHERE id = ?', [subId]);
+    assert.strictEqual(Number(summed?.subtotal), 3500,
+      `the card still shows ${summed?.subtotal} over lines that add up to 3500`);
+
+    // Removing the last line makes the total zero, not stale.
+    const cleared = await call(cookieA, `/api/bookings/${booking.id}/sub-bookings/${subId}`, {
+      method: 'PATCH', body: JSON.stringify({ lineItems: [] }),
+    });
+    assert.ok(cleared.ok, `A could not clear line items: ${cleared.status}`);
+    const zeroed = await sql.row('SELECT subtotal FROM reservation_sub_bookings WHERE id = ?', [subId]);
+    assert.strictEqual(Number(zeroed?.subtotal), 0,
+      `the card still shows ${zeroed?.subtotal} over no lines at all`);
+
+    // An explicit subtotal is the operator overriding the sum on purpose.
+    const forced = await call(cookieA, `/api/bookings/${booking.id}/sub-bookings/${subId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ subtotal: 7000, lineItems: [{ description: 'Пакет', quantity: 1, unit_price: 1000, total: 1000 }] }),
+    });
+    assert.ok(forced.ok, `A could not set an explicit subtotal: ${forced.status}`);
+    const kept = await sql.row('SELECT subtotal FROM reservation_sub_bookings WHERE id = ?', [subId]);
+    assert.strictEqual(Number(kept?.subtotal), 7000,
+      "the operator's own figure was overwritten by the sum of the lines");
+    console.log('  ok  a sub-booking total follows its lines, unless the operator says otherwise');
+
     // The payment forecast — «who still owes us money, and when do they
     // arrive». It selected from `reservations` naming no tenant at all, and
     // returns each row with the guest's name and e-mail attached, so on SQLite
