@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { hasFeature, featureDisabled } from '@core/features';
 import { withSite } from '../data/site.repo';
+import { organizationLanguage } from '@core/i18n/resolve';
+import { asWidgetLang } from '../ui/widget-language';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -56,12 +58,20 @@ export async function getWidgetSiteConfig(req: NextRequest) {
       // ignore
     }
 
+    // The hotel's own language, so the widget has something to fall back to
+    // besides the language this product was written in. Not derived from
+    // Accept-Language here on purpose: this response is the same for every
+    // guest of a site and is cached as such — the browser is read in the
+    // browser. See ui/widget-language.ts.
+    const orgLang = await organizationLanguage(site.organization_id);
+
     return NextResponse.json({
 
       id: site.id,
       name: site.name,
       slug: site.slug,
       title: site.name,
+      language: asWidgetLang(orgLang),
       design: JSON.parse(site.design_config || '{}'),
       config: JSON.parse(site.widget_config || '{}'),
       currency: site.currency || 'CZK',

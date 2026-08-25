@@ -9,6 +9,7 @@ import './booking-iframe.css';
 // TODO: move translations to src/shared/ when creating that layer.
 import type { BookingLang } from './translations';
 import { BOOKING_LANG_LABELS, BOOKING_LANG_FLAGS, getBookingTranslations } from './translations';
+import { asWidgetLang, browserWidgetLang, pickWidgetLanguage } from './widget-language';
 
 
 // API base URL — configurable for subdomain deployment
@@ -106,7 +107,21 @@ const STEPS = [1, 2, 3, 4, 5] as const;
 export default function BookingPage() {
   const tUi = useT();
   // ─── State ──────
-  const [lang, setLang] = useState<BookingLang>('uk');
+  // Was 'uk', unconditionally: this page has no language switcher, so a guest
+  // of a German hotel had no way out of Ukrainian at all. See widget-language.
+  const [lang, setLang] = useState<BookingLang>('en');
+  const langPinned = useRef(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const picked = pickWidgetLanguage({
+      param: params.get('lang'),
+      embed: (window as any).__BOOKING_LANG__,
+      browser: browserWidgetLang(),
+    });
+    setLang(picked.lang);
+    langPinned.current = picked.pinned;
+  }, []);
   const t = useMemo(() => getBookingTranslations(lang), [lang]);
 
   // Language dropdown
@@ -219,7 +234,14 @@ export default function BookingPage() {
     if (!key) return;
     fetch(`${API_BASE}/api/booking/site-config?slug=${encodeURIComponent(key)}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d?.name) setSiteName(d.name); })
+      .then((d) => {
+        if (d?.name) setSiteName(d.name);
+        // The hotel's language, if nothing the guest said outranks it.
+        if (!langPinned.current) {
+          const siteLang = asWidgetLang(d?.language);
+          if (siteLang) { setLang(siteLang); langPinned.current = true; }
+        }
+      })
       .catch(() => { /* the widget works without a name */ });
   }, [widgetSlug, siteId]);
 

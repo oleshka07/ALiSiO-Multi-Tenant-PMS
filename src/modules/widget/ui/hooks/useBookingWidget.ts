@@ -8,6 +8,7 @@ import { getBookingTranslations } from '../translations';
 import type { UnitResult, AvailabilityResponse, ReserveResponse, DesignConfig, ActiveRatePlan } from '../types';
 import { fmtDate, parseDate, formatPrice, groupUnitsByCategory } from '../utils';
 import { v3Locales } from '../locales';
+import { asWidgetLang, browserWidgetLang, pickWidgetLanguage } from '../widget-language';
 
 const API_BASE = process.env.NEXT_PUBLIC_PMS_API_URL || '';
 
@@ -18,7 +19,10 @@ export interface BookingWidgetParams {
 
 export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPreview, initialLang }: BookingWidgetParams) {
   const [isMounted, setIsMounted] = useState(false);
-  const [lang, setLang] = useState<BookingLang>(initialLang || 'uk');
+  const [lang, setLang] = useState<BookingLang>(() => pickWidgetLanguage({ initial: initialLang }).lang);
+  // True once something the guest or the hotel said has decided the
+  // language, so a later answer from the server does not overrule it.
+  const langPinned = useRef(!!asWidgetLang(initialLang));
   const t = useMemo(() => getBookingTranslations(lang), [lang]);
   const v3t = useMemo(() => v3Locales[lang] || v3Locales.uk, [lang]);
   const [step, setStep] = useState(1);
@@ -186,9 +190,16 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
       }).catch(e => console.error(e));
     }
     const uId = params.get('unitId'); if (uId) setSelectedUnitId(uId);
-    const getBrowserLang = () => { if (typeof navigator !== 'undefined' && navigator.language) { const bl = navigator.language.slice(0,2).toLowerCase(); if (['uk','en','cs','de'].includes(bl)) return bl; } return null; };
-    let l = params.get('lang') || (window as any).__BOOKING_LANG__ || initialLang || getBrowserLang() || null;
-    if (l) { const sl = l.slice(0,2).toLowerCase(); if (['uk','en','cs','de'].includes(sl)) setLang(sl as BookingLang); }
+    // The hotel's own language arrives one round-trip later, in site-config;
+    // `pinned` says whether anything here outranks it. See ui/widget-language.
+    const picked = pickWidgetLanguage({
+      param: params.get('lang'),
+      embed: (window as any).__BOOKING_LANG__,
+      initial: initialLang,
+      browser: browserWidgetLang(),
+    });
+    setLang(picked.lang);
+    langPinned.current = picked.pinned;
     const urlIn = params.get('checkin') || params.get('check_in'); const urlOut = params.get('checkout') || params.get('check_out');
     if (urlIn) setCheckIn(urlIn); if (urlOut) setCheckOut(urlOut);
     const urlAdults = params.get('adults'); const urlKids = params.get('kids');
@@ -222,7 +233,7 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
     setSocialProof({ viewers: v, lastBooking: hours < 5 ? `${hours} ${hours===1 ? v3t.agoHour : v3t.agoHours}` : `45 ${v3t.agoMinutes}` });
   }, []);
 
-  useEffect(() => { if (!isMounted || !siteSlug || isPreview) return; (async () => { try { const res = await fetch(`${API_BASE}/api/booking/site-config?slug=${siteSlug}`); const data = await res.json(); if (data.id) { setSiteConfig(data); if (data.design) setSiteDesign(data.design); if (data.currency) setSiteCurrency(data.currency); if (data.config?.thank_you_url) setSiteThankYouUrl(data.config.thank_you_url); if (data.returnUrl && !data.config?.thank_you_url) setSiteThankYouUrl(data.returnUrl); /* notify embed.v2.js on parent page */ if (typeof window !== 'undefined' && window.parent !== window) { window.parent.postMessage({ source: 'alisio-widget', event: 'analytics_config', fbPixelId: data.fbPixelId || null, ga4Id: data.ga4Id || null, tiktokPixelId: data.tiktokPixelId || null, returnUrl: data.returnUrl || null }, '*'); } } } catch(e) { console.error(e); } })(); }, [isMounted, siteSlug, isPreview]);
+  useEffect(() => { if (!isMounted || !siteSlug || isPreview) return; (async () => { try { const res = await fetch(`${API_BASE}/api/booking/site-config?slug=${siteSlug}`); const data = await res.json(); if (data.id) { setSiteConfig(data); if (!langPinned.current) { const siteLang = asWidgetLang(data.language); if (siteLang) { setLang(siteLang); langPinned.current = true; } } if (data.design) setSiteDesign(data.design); if (data.currency) setSiteCurrency(data.currency); if (data.config?.thank_you_url) setSiteThankYouUrl(data.config.thank_you_url); if (data.returnUrl && !data.config?.thank_you_url) setSiteThankYouUrl(data.returnUrl); /* notify embed.v2.js on parent page */ if (typeof window !== 'undefined' && window.parent !== window) { window.parent.postMessage({ source: 'alisio-widget', event: 'analytics_config', fbPixelId: data.fbPixelId || null, ga4Id: data.ga4Id || null, tiktokPixelId: data.tiktokPixelId || null, returnUrl: data.returnUrl || null }, '*'); } } } catch(e) { console.error(e); } })(); }, [isMounted, siteSlug, isPreview]);
 
   useEffect(() => {
     if (step === 6 && !isPreview) {
