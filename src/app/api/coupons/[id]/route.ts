@@ -1,23 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { withPermission } from '@core/auth/session';
+import { withPermission, type Actor } from '@core/auth/session';
+
+/**
+ * A coupon, by id. Both handlers wrote `WHERE id = ?` over a table that
+ * carries organization_id — so on SQLite anyone with `manage_sites` at any
+ * hotel could rewrite or delete another hotel's discount codes. The
+ * neighbouring gift-cards routes were already written correctly, which is
+ * what makes this a slip rather than a design.
+ */
 import { serverError } from '@core/http/errors';
 
 type Ctx = { params: Promise<{ id: string }> };
 
-export const DELETE = withPermission('manage_sites', async (req: NextRequest, ctx: Ctx) => {
+export const DELETE = withPermission('manage_sites', async (req: NextRequest, ctx: Ctx, actor: Actor) => {
   try {
     const { id } = await ctx.params;
     const sql = getSql();
 
-    await sql.run('DELETE FROM coupons WHERE id = ?', [id]);
+    await sql.run('DELETE FROM coupons WHERE id = ? AND organization_id = ?', [id, actor.organizationId]);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 });
   }
 });
 
-export const PUT = withPermission('manage_sites', async (req: NextRequest, ctx: Ctx) => {
+export const PUT = withPermission('manage_sites', async (req: NextRequest, ctx: Ctx, actor: Actor) => {
   try {
     const { id } = await ctx.params;
     const sql = getSql();
@@ -54,9 +62,10 @@ export const PUT = withPermission('manage_sites', async (req: NextRequest, ctx: 
     if (sets.length === 0) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
     
     vals.push(id);
-    await sql.run(`UPDATE coupons SET ${sets.join(', ')} WHERE id = ?`, vals);
+    vals.push(actor.organizationId);
+    await sql.run(`UPDATE coupons SET ${sets.join(', ')} WHERE id = ? AND organization_id = ?`, vals);
 
-    const updated = await sql.row('SELECT * FROM coupons WHERE id = ?', [id]);
+    const updated = await sql.row('SELECT * FROM coupons WHERE id = ? AND organization_id = ?', [id, actor.organizationId]);
     return NextResponse.json({ code: updated });
   } catch (err: unknown) {
     const e = err as Error;

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { ownedFinanceRow } from '../data/owned.repo';
 import { serverError } from '@core/http/errors';
 
 const ALLOWED_TYPES = ['cash', 'bank', 'card', 'investment', 'clearing', 'other'];
@@ -92,7 +93,7 @@ export async function createAccount(request: NextRequest): Promise<NextResponse>
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [id, orgId, name, type, currency, initial_balance, credit_limit, iban, color, sort_order]);
 
-    const account = await sql.row<any>("SELECT * FROM finance_accounts WHERE id = ?", [id]);
+    const account = await ownedFinanceRow('finance_accounts', id, orgId);
     return NextResponse.json(account, { status: 201 });
   } catch (error: any) {
     return serverError('modules/finance/api/accounts createAccount', error);
@@ -123,10 +124,18 @@ export async function updateAccount(request: NextRequest): Promise<NextResponse>
     if (is_active !== undefined) { fields.push('is_active = ?'); params.push(is_active ? 1 : 0); }
     if (fields.length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
-    params.push(id);
-    await sql.run(`UPDATE finance_accounts SET ${fields.join(', ')} WHERE id = ?`, [...params]);
+    // The account id arrives in the body. Without the tenant in the WHERE, a
+    // finance user of one hotel could rename, re-IBAN or re-balance another
+    // hotel's bank account.
+    const orgId = await requireOrganizationId();
+    if (!await ownedFinanceRow('finance_accounts', id, orgId)) {
+      return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+    }
 
-    const account = await sql.row<any>("SELECT * FROM finance_accounts WHERE id = ?", [id]);
+    params.push(id, orgId);
+    await sql.run(`UPDATE finance_accounts SET ${fields.join(', ')} WHERE id = ? AND organization_id = ?`, [...params]);
+
+    const account = await ownedFinanceRow('finance_accounts', id, orgId);
     return NextResponse.json(account);
   } catch (error: any) {
     return serverError('modules/finance/api/accounts updateAccount', error);
@@ -139,8 +148,12 @@ export async function archiveAccount(request: NextRequest): Promise<NextResponse
     const body = await request.json();
     const { id, archived = true } = body;
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
-    await sql.run("UPDATE finance_accounts SET is_active = ? WHERE id = ?", [archived ? 0 : 1, id]);
-    const account = await sql.row<any>("SELECT * FROM finance_accounts WHERE id = ?", [id]);
+    const orgId = await requireOrganizationId();
+    if (!await ownedFinanceRow('finance_accounts', id, orgId)) {
+      return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+    }
+    await sql.run("UPDATE finance_accounts SET is_active = ? WHERE id = ? AND organization_id = ?", [archived ? 0 : 1, id, orgId]);
+    const account = await ownedFinanceRow('finance_accounts', id, orgId);
     if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     return NextResponse.json(account);
   } catch (error: any) {
@@ -157,7 +170,8 @@ export async function deleteAccount(
     const { id } = await context.params;
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
-    const account = await sql.row<any>("SELECT * FROM finance_accounts WHERE id = ?", [id]);
+    const orgId = await requireOrganizationId();
+    const account = await ownedFinanceRow('finance_accounts', id, orgId);
     if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
 
     const linked = await countLinkedOperations(id);
@@ -168,7 +182,7 @@ export async function deleteAccount(
       );
     }
 
-    await sql.run("DELETE FROM finance_accounts WHERE id = ?", [id]);
+    await sql.run("DELETE FROM finance_accounts WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return serverError('modules/finance/api/accounts deleteAccount', error);

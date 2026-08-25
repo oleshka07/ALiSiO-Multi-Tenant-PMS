@@ -6,10 +6,17 @@ import { withFinanceRead } from '@finance/_guard';
 /**
  * GET /api/finance/history
  *
- * Returns ALL audit entries across all operations from `fin_operation_audit`.
+ * Every audit entry of THIS hotel's operations, from `fin_operation_audit`.
  * Enriches each row with live operation data (LEFT JOIN) or, when the
  * operation has been deleted, extracts amount/currency/comment from the
  * stored before_json / after_json snapshot.
+ *
+ * The docstring above used to say «ALL audit entries across all operations»,
+ * and it was accurate: `where[]` started empty and never mentioned the tenant.
+ * Every entry carries before_json/after_json — whole snapshots of financial
+ * operations, amounts, comments, counterparties — so a finance user of one
+ * hotel could read the other hotels' ledgers, including rows deleted from
+ * them. `?search=` made it queryable.
  *
  * Query params:
  *   page   – pagination page (default 1)
@@ -35,8 +42,8 @@ export const GET = await withFinanceRead(async (request: NextRequest, _ctx, acto
 
     const VALID_ACTIONS = ['create', 'update', 'delete', 'convert'];
 
-    const where: string[] = [];
-    const params: any[] = [];
+    const where: string[] = ['a.organization_id = ?'];
+    const params: any[] = [actor.organizationId];
 
     if (from) {
       where.push('a.performed_at >= ?');
@@ -60,7 +67,7 @@ export const GET = await withFinanceRead(async (request: NextRequest, _ctx, acto
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
-    const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+    const whereSql = `WHERE ${where.join(' AND ')}`;
 
     // Count
     const totalRow = await sql.row<any>(
@@ -88,9 +95,9 @@ export const GET = await withFinanceRead(async (request: NextRequest, _ctx, acto
         acc_to.name    AS live_account_to_name,
         acc_from.name  AS live_account_from_name
       FROM fin_operation_audit a
-      LEFT JOIN fin_operations    o        ON o.id      = a.operation_id
-      LEFT JOIN finance_accounts  acc_to   ON acc_to.id = o.account_to_id
-      LEFT JOIN finance_accounts  acc_from ON acc_from.id = o.account_from_id
+      LEFT JOIN fin_operations    o        ON o.id      = a.operation_id AND o.organization_id = a.organization_id
+      LEFT JOIN finance_accounts  acc_to   ON acc_to.id = o.account_to_id AND acc_to.organization_id = a.organization_id
+      LEFT JOIN finance_accounts  acc_from ON acc_from.id = o.account_from_id AND acc_from.organization_id = a.organization_id
       ${whereSql}
       ORDER BY a.performed_at DESC, a.id DESC
       LIMIT ? OFFSET ?
@@ -125,7 +132,9 @@ export const GET = await withFinanceRead(async (request: NextRequest, _ctx, acto
           if (!accountName) {
             const accId = snapshot.account_to_id || snapshot.account_from_id;
             if (accId) {
-              const accRow = await sql.row<{ name: string }>('SELECT name FROM finance_accounts WHERE id = ?', [accId]);
+              const accRow = await sql.row<{ name: string }>(
+                'SELECT name FROM finance_accounts WHERE id = ? AND organization_id = ?',
+                [accId, actor.organizationId]);
               if (accRow) accountName = accRow.name;
             }
           }
@@ -152,7 +161,7 @@ export const GET = await withFinanceRead(async (request: NextRequest, _ctx, acto
     return NextResponse.json({ items, total: totalRow.n, page, limit });
   } catch (error: any) {
     console.error('GET /api/finance/history error:', error?.message || error);
-    return NextResponse.json({ error: 'Failed to fetch history' }, { status: 500 });
+    return NextResponse.json({ error: 'Не вдалося зібрати історію' }, { status: 500 });
   }
 });
 

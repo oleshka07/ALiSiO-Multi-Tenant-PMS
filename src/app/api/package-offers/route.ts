@@ -4,13 +4,31 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { withActor, withPermission } from '@core/auth/session';
+import { withActor, withPermission, type Actor } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
-export const GET = withActor(async (req: NextRequest) => {
+/**
+ * `site_id` arrives in the query string and in the body, and it is not a
+ * secret — the widget publishes it. Both handlers took it on trust: GET listed
+ * another hotel's package offers with their prices, and POST wrote a new
+ * bundle onto another hotel's site, filing it under THAT hotel's organization
+ * through the subselect below. The fix is the same in both places: resolve the
+ * site against the caller's organization first.
+ */
+async function ownedSiteId(organizationId: string, siteId: string): Promise<boolean> {
+  const sql = getSql();
+  return !!await sql.row(
+    'SELECT id FROM booking_sites WHERE id = ? AND organization_id = ?', [siteId, organizationId]);
+}
+
+export const GET = withActor(async (req: NextRequest, _ctx: unknown, actor: Actor) => {
   try {
     const sql = getSql();
     const siteId = new URL(req.url).searchParams.get('site_id');
     if (!siteId) return NextResponse.json({ error: 'site_id required' }, { status: 400 });
+    if (!await ownedSiteId(actor.organizationId, siteId)) {
+      return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    }
 
     const bundles = await sql.rows(`
       SELECT b.*,
@@ -18,18 +36,18 @@ export const GET = withActor(async (req: NextRequest) => {
         SUM(CASE WHEN v.status = 'activated' THEN 1 ELSE 0 END) as activated_count
       FROM gift_card_bundles b
       LEFT JOIN gift_cards v ON v.bundle_id = b.id
-      WHERE b.site_id = ?
+      WHERE b.site_id = ? AND b.organization_id = ?
       GROUP BY b.id
       ORDER BY b.created_at DESC
-    `, [siteId]);
+    `, [siteId, actor.organizationId]);
 
     return NextResponse.json({ bundles });
   } catch (err: unknown) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 });
+    return serverError('app/api/package-offers GET', err, 'Не вдалося зібрати пакети');
   }
 });
 
-export const POST = withPermission('manage_sites', async (req: NextRequest) => {
+export const POST = withPermission('manage_sites', async (req: NextRequest, _ctx: unknown, actor: Actor) => {
   try {
     const sql = getSql();
     const body = await req.json();
@@ -42,6 +60,9 @@ export const POST = withPermission('manage_sites', async (req: NextRequest) => {
 
     if (!site_id || !name || price === undefined) {
       return NextResponse.json({ error: 'site_id, name, price required' }, { status: 400 });
+    }
+    if (!await ownedSiteId(actor.organizationId, String(site_id))) {
+      return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
 
     // RETURNING * rather than RETURNING id plus a SELECT: the row it hands back

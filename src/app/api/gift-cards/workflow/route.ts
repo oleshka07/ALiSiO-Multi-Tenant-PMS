@@ -25,7 +25,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { withActor, withPermission } from '@core/auth/session';
+import { withActor, withPermission, type Actor } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 import { getGiftCardTemplate } from '@/modules/widget/domain/gift-card-builder';
 
 import { randomBytes } from 'crypto';
@@ -36,12 +37,29 @@ function generateCampaignToken(prefix: string): string {
   return `${prefix}-${token}`;
 }
 
+/**
+ * `site_id` comes from the query string and from the body, and the widget
+ * publishes it. GET listed another hotel's voucher-automation rules; POST
+ * created rules and real promo codes ON another hotel's site, filed under that
+ * hotel through the subselects below — free discounts, issued by a stranger,
+ * on somebody else's inventory. The site is now resolved against the caller's
+ * organization first.
+ */
+async function ownedSiteId(organizationId: string, siteId: string): Promise<boolean> {
+  const sql = getSql();
+  return !!await sql.row(
+    'SELECT id FROM booking_sites WHERE id = ? AND organization_id = ?', [siteId, organizationId]);
+}
+
 /* ─── GET: список правил автоматизації ─── */
-export const GET = withActor(async (req: NextRequest) => {
+export const GET = withActor(async (req: NextRequest, _ctx: unknown, actor: Actor) => {
   try {
     const sql = getSql();
     const siteId = new URL(req.url).searchParams.get('site_id');
     if (!siteId) return NextResponse.json({ error: 'site_id required' }, { status: 400 });
+    if (!await ownedSiteId(actor.organizationId, siteId)) {
+      return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    }
 
     const rules = await sql.rows(`
       SELECT r.*,
@@ -49,10 +67,10 @@ export const GET = withActor(async (req: NextRequest) => {
              SUM(CASE WHEN p.current_uses > 0 THEN 1 ELSE 0 END) AS used_codes
       FROM gift_card_automation_rules r
       LEFT JOIN coupons p ON p.gift_card_rule_id = r.id
-      WHERE r.site_id = ?
+      WHERE r.site_id = ? AND r.organization_id = ?
       GROUP BY r.id
       ORDER BY r.created_at DESC
-    `, [siteId]);
+    `, [siteId, actor.organizationId]);
 
     return NextResponse.json({ rules });
   } catch (err: unknown) {
@@ -62,7 +80,7 @@ export const GET = withActor(async (req: NextRequest) => {
 });
 
 /* ─── POST: створити правило + згенерувати промокоди ─── */
-export const POST = withPermission('manage_sites', async (req: NextRequest) => {
+export const POST = withPermission('manage_sites', async (req: NextRequest, _ctx: unknown, actor: Actor) => {
   try {
     const sql = getSql();
     const body = await req.json();
@@ -83,6 +101,9 @@ export const POST = withPermission('manage_sites', async (req: NextRequest) => {
     } = body;
 
     if (!site_id) return NextResponse.json({ error: 'site_id required' }, { status: 400 });
+    if (!await ownedSiteId(actor.organizationId, String(site_id))) {
+      return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    }
     if (!offer_amount && offer_amount !== 0) return NextResponse.json({ error: 'offer_amount required' }, { status: 400 });
     if (count < 1 || count > 500) return NextResponse.json({ error: 'count must be 1-500' }, { status: 400 });
 

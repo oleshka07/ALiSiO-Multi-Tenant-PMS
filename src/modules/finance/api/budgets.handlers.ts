@@ -62,8 +62,8 @@ export async function upsertBudget(request: NextRequest): Promise<NextResponse> 
     `, [orgId, year, month, category_id, project_id]) as { id: string } | undefined;
 
     if (existing) {
-      await sql.run("UPDATE fin_budgets SET planned_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [planned_amount, existing.id]);
-      const updated = await sql.row<any>("SELECT * FROM fin_budgets WHERE id = ?", [existing.id]);
+      await sql.run("UPDATE fin_budgets SET planned_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?", [planned_amount, existing.id, orgId]);
+      const updated = await sql.row<any>("SELECT * FROM fin_budgets WHERE id = ? AND organization_id = ?", [existing.id, orgId]);
       return NextResponse.json(updated);
     }
 
@@ -72,7 +72,7 @@ export async function upsertBudget(request: NextRequest): Promise<NextResponse> 
       INSERT INTO fin_budgets (id, organization_id, year, month, category_id, project_id, planned_amount)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `, [id, orgId, year, month, category_id, project_id, planned_amount]);
-    const created = await sql.row<any>("SELECT * FROM fin_budgets WHERE id = ?", [id]);
+    const created = await sql.row<any>("SELECT * FROM fin_budgets WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
     return serverError('modules/finance/api/budgets upsertBudget', error);
@@ -86,7 +86,8 @@ export async function deleteBudget(
   try {
     const sql = getSql();
     const { id } = await context.params;
-    await sql.run("DELETE FROM fin_budgets WHERE id = ?", [id]);
+    const orgId = await requireOrganizationId();
+    await sql.run("DELETE FROM fin_budgets WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return serverError('modules/finance/api/budgets deleteBudget', error);

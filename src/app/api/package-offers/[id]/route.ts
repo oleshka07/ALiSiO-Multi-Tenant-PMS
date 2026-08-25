@@ -5,12 +5,18 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { withPermission } from '@core/auth/session';
+import { withPermission, type Actor } from '@core/auth/session';
+
+/**
+ * A package offer (gift-card bundle), by id. All three handlers wrote
+ * `WHERE id = ?` over tables carrying organization_id, and POST issues a real
+ * voucher — with a monetary value — from whichever bundle the id named.
+ */
 import { buildGiftCode, calcExpiresAt } from '@/modules/widget/domain/gift-card-builder';
 
 type Ctx = { params: Promise<{ id: string }> };
 
-export const PATCH = withPermission('manage_sites', async (req: NextRequest, ctx: Ctx) => {
+export const PATCH = withPermission('manage_sites', async (req: NextRequest, ctx: Ctx, actor: Actor) => {
   try {
     const { id } = await ctx.params;
     const sql = getSql();
@@ -31,36 +37,37 @@ export const PATCH = withPermission('manage_sites', async (req: NextRequest, ctx
     if (!sets.length) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
     sets.push(`updated_at = CURRENT_TIMESTAMP`);
     vals.push(id);
-    await sql.run(`UPDATE gift_card_bundles SET ${sets.join(', ')} WHERE id = ?`, vals);
+    vals.push(actor.organizationId);
+    await sql.run(`UPDATE gift_card_bundles SET ${sets.join(', ')} WHERE id = ? AND organization_id = ?`, vals);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 });
   }
 });
 
-export const DELETE = withPermission('manage_sites', async (req: NextRequest, ctx: Ctx) => {
+export const DELETE = withPermission('manage_sites', async (req: NextRequest, ctx: Ctx, actor: Actor) => {
   try {
     const { id } = await ctx.params;
     const sql = getSql();
-    await sql.run(`UPDATE gift_card_bundles SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
+    await sql.run(`UPDATE gift_card_bundles SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?`, [id, actor.organizationId]);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 });
   }
 });
 
-export const POST = withPermission('manage_sites', async (req: NextRequest, ctx: Ctx) => {
+export const POST = withPermission('manage_sites', async (req: NextRequest, ctx: Ctx, actor: Actor) => {
   try {
     const { id } = await ctx.params;
     const sql = getSql();
 
-    const bundle = await sql.row<Record<string, unknown>>('SELECT * FROM gift_card_bundles WHERE id = ?', [id]);
+    const bundle = await sql.row<Record<string, unknown>>('SELECT * FROM gift_card_bundles WHERE id = ? AND organization_id = ?', [id, actor.organizationId]);
     if (!bundle) return NextResponse.json({ error: 'Bundle not found' }, { status: 404 });
 
     const body = await req.json().catch(() => ({}));
     const { recipient_name, recipient_email, buyer_name, buyer_phone, message, notes } = body;
 
-    const site = await sql.row<{ property_id: string }>('SELECT property_id FROM booking_sites WHERE id = ?', [bundle.site_id]);
+    const site = await sql.row<{ property_id: string }>('SELECT property_id FROM booking_sites WHERE id = ? AND organization_id = ?', [bundle.site_id, actor.organizationId]);
     if (!site?.property_id) return NextResponse.json({ error: 'Property not found for site' }, { status: 400 });
 
     // Generate unique code

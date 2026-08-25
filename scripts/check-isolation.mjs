@@ -51,6 +51,9 @@ async function makeTenant(suffix) {
 async function cleanup() {
   // Children first: foreign keys are ON.
   await sql.run('DELETE FROM channel_credentials WHERE organization_id LIKE ?', [`${TAG}%`]);
+  await sql.run('DELETE FROM fin_operation_audit WHERE organization_id LIKE ?', [`${TAG}%`]);
+  await sql.run('DELETE FROM fin_operations WHERE organization_id LIKE ?', [`${TAG}%`]);
+  await sql.run('DELETE FROM finance_accounts WHERE organization_id LIKE ?', [`${TAG}%`]);
 
   const props = (await sql.rows('SELECT id FROM properties WHERE organization_id LIKE ?', [`${TAG}%`])).map((r) => r.id);
   for (const pid of props) {
@@ -350,6 +353,53 @@ async function main() {
     assert.ok(tagRow, 'the finance tag was not written');
     assert.strictEqual(tagRow.organization_id, b.orgId, `B's tag was filed under ${tagRow.organization_id}`);
     console.log("  ok  a finance write from B lands under B, not the first organization");
+
+    // ── Finance objects, addressed by id ────────────────────────────────
+    //
+    // The list and create handlers named the organization; get, update, delete
+    // and merge did not — they wrote `WHERE id = ?` and left the rest to RLS.
+    // On SQLite there is no policy at all and the ids are `inc_${Date.now()}`,
+    // which is a range to walk rather than a secret.
+    const accARes = await call(cookieA, '/api/finance/accounts', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'A cash', type: 'cash', currency: 'EUR', initial_balance: 100 }),
+    });
+    assert.ok(accARes.ok, `A could not create a finance account: ${accARes.status}`);
+    const accA = await accARes.json();
+    assert.ok(accA?.id, `no account id came back: ${JSON.stringify(accA).slice(0, 200)}`);
+
+    const accListB = await (await call(cookieB, '/api/finance/accounts')).json();
+    assert.ok(!(accListB || []).some((x) => x.id === accA.id),
+      "B's account list contains A's bank account");
+
+    const renameAcc = await call(cookieB, '/api/finance/accounts', {
+      method: 'PATCH', body: JSON.stringify({ id: accA.id, name: 'hijacked', iban: 'DE00 EVIL' }),
+    });
+    assert.strictEqual(renameAcc.status, 404, `B renamed A's account: ${renameAcc.status}`);
+    const accAfter = await sql.row('SELECT name FROM finance_accounts WHERE id = ?', [accA.id]);
+    assert.strictEqual(accAfter?.name, 'A cash', "B's rename reached A's bank account");
+
+    const killAcc = await call(cookieB, `/api/finance/accounts/${accA.id}`, { method: 'DELETE' });
+    assert.strictEqual(killAcc.status, 404, `B deleted A's account: ${killAcc.status}`);
+    assert.ok(await sql.row('SELECT 1 FROM finance_accounts WHERE id = ?', [accA.id]),
+      "B's delete removed A's bank account");
+
+    // The audit trail of finance operations. Its own docstring said «ALL audit
+    // entries across all operations», and the WHERE started empty — every
+    // entry carries before_json/after_json, so this was the ledgers of every
+    // hotel on the server, searchable with ?search=.
+    const histB = await call(cookieB, '/api/finance/history?limit=500');
+    assert.ok(histB.ok, `B could not read its own finance history: ${histB.status}`);
+    const histItems = (await histB.json()).items || [];
+    const foreignHist = [];
+    for (const h of histItems) {
+      const own = await sql.row(
+        'SELECT 1 x FROM fin_operation_audit WHERE id = ? AND organization_id = ?', [h.id, b.orgId]);
+      if (!own) foreignHist.push(h.id);
+    }
+    assert.strictEqual(foreignHist.length, 0,
+      `B's finance history carries ${foreignHist.length} entr(ies) from other hotels' ledgers`);
+    console.log("  ok  B cannot read, rename or delete A's finance objects, nor read A's ledger history");
 
     // Staff accounts: the permission check was there, the ownership check was
     // not, so an owner could rename, re-role or delete another hotel's staff —

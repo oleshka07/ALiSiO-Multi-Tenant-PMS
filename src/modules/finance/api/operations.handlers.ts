@@ -7,6 +7,7 @@ import { getSessionUser } from '@core/auth';
 
 import { loadActiveRules, isRuleApplicable } from '../data/auto-rules-engine';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { ownedFinanceRow } from '../data/owned.repo';
 import { serverError } from '@core/http/errors';
 
 const OP_TYPES = ['income', 'expense', 'transfer'] as const;
@@ -338,12 +339,13 @@ export async function getOperation(
   try {
     const sql = getSql();
     const { id } = await context.params;
+    const orgId = await requireOrganizationId();
     const row = await sql.row<any>(`
       SELECT o.*, rt.name AS suggested_recurring_name
       FROM fin_operations o
       LEFT JOIN fin_recurring_templates rt ON rt.id = o.suggested_recurring_id
-      WHERE o.id = ?
-    `, [id]);
+      WHERE o.id = ? AND o.organization_id = ?
+    `, [id, orgId]);
     if (!row) return NextResponse.json({ error: 'Operation not found' }, { status: 404 });
     return NextResponse.json(await enrichOperation(row));
   } catch (error: any) {
@@ -539,7 +541,8 @@ export async function updateOperation(
   try {
     const sql = getSql();
     const { id } = await context.params;
-    const existing = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]) as any;
+    const orgId = await requireOrganizationId();
+    const existing = await ownedFinanceRow('fin_operations', id, orgId);
     if (!existing) return NextResponse.json({ error: 'Operation not found' }, { status: 404 });
 
     const body = await request.json();
@@ -592,8 +595,8 @@ export async function updateOperation(
     fields.push("updated_at = CURRENT_TIMESTAMP");
 
     if (fields.length === 1) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
-    params.push(id);
-    await sql.run(`UPDATE fin_operations SET ${fields.join(', ')} WHERE id = ?`, [...params]);
+    params.push(id, orgId);
+    await sql.run(`UPDATE fin_operations SET ${fields.join(', ')} WHERE id = ? AND organization_id = ?`, [...params]);
 
     if (Array.isArray(body.tag_ids)) {
       await sql.run('DELETE FROM fin_operation_tags WHERE operation_id = ?', [id]);
@@ -624,7 +627,8 @@ export async function deleteOperation(
   try {
     const sql = getSql();
     const { id } = await context.params;
-    const existing = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]) as any;
+    const orgId = await requireOrganizationId();
+    const existing = await ownedFinanceRow('fin_operations', id, orgId);
     if (!existing) return NextResponse.json({ error: 'Operation not found' }, { status: 404 });
 
     // Capture actor + snapshot the row BEFORE delete so the audit row
@@ -633,7 +637,7 @@ export async function deleteOperation(
     await writeOperationAudit(id, 'delete', actor, existing, null);
 
     await sql.run('UPDATE bank_transactions SET matched_operation_id = NULL WHERE matched_operation_id = ?', [id]);
-    await sql.run('DELETE FROM fin_operations WHERE id = ?', [id]);
+    await sql.run('DELETE FROM fin_operations WHERE id = ? AND organization_id = ?', [id, orgId]);
 
     if (existing.reservation_id) await recalcReservationPaymentStatus(existing.reservation_id);
     return NextResponse.json({ ok: true, deleted_id: id });
@@ -651,8 +655,13 @@ export async function mergeOperations(request: NextRequest): Promise<NextRespons
     }
 
     const [id1, id2] = body.ids;
-    const op1 = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id1]) as any;
-    const op2 = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id2]) as any;
+    // Both ids come from the request body, so both are resolved against this
+    // organization. Merging turns one operation into a transfer and DELETES
+    // the other — «merge my expense with the neighbour's income» would have
+    // removed a row from their ledger and left a transfer in ours.
+    const orgId = await requireOrganizationId();
+    const op1 = await ownedFinanceRow('fin_operations', id1, orgId);
+    const op2 = await ownedFinanceRow('fin_operations', id2, orgId);
 
     if (!op1 || !op2) {
       return NextResponse.json({ error: 'Операції не знайдено' }, { status: 404 });
@@ -686,8 +695,8 @@ export async function mergeOperations(request: NextRequest): Promise<NextRespons
     await sql.run(`
       UPDATE fin_operations 
       SET op_type = 'transfer', account_to_id = ?, category_id = NULL, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `, [incOp.account_to_id, expOp.id]);
+      WHERE id = ? AND organization_id = ?
+    `, [incOp.account_to_id, expOp.id, orgId]);
 
     // Audit the conversion
     await writeOperationAudit(expOp.id, 'convert', actor, expOp, updatedExp);
@@ -697,7 +706,7 @@ export async function mergeOperations(request: NextRequest): Promise<NextRespons
     
     // Audit and delete the income operation
     await writeOperationAudit(incOp.id, 'delete', actor, incOp, null);
-    await sql.run('DELETE FROM fin_operations WHERE id = ?', [incOp.id]);
+    await sql.run('DELETE FROM fin_operations WHERE id = ? AND organization_id = ?', [incOp.id, orgId]);
 
     if (incOp.reservation_id) await recalcReservationPaymentStatus(incOp.reservation_id);
     if (expOp.reservation_id) await recalcReservationPaymentStatus(expOp.reservation_id);
