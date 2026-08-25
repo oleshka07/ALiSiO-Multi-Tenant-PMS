@@ -22,7 +22,13 @@
  * is expected at the ECJ. If it goes the other way, the change is one function.
  */
 
-/** ISO-3166-1 alpha-2, upper case, or null when nobody said. */
+// Relative, not `@core/...`. This file is imported statically by
+// meldeschein.check.ts, which runs under bare node with no alias loader — an
+// aliased import here takes that check down with ERR_MODULE_NOT_FOUND, which
+// is a strange way to find out that a country code was normalised.
+import { alpha2 } from '../../../core/country-code.ts';
+
+/** A country as it arrived: alpha-2, alpha-3, or nothing. Normalised on use. */
 export type CountryCode = string | null | undefined;
 
 export interface MeldescheinNeed {
@@ -119,8 +125,18 @@ export function retentionWindow(departure: string): { keepUntil: string; destroy
   return { keepUntil: addMonths(departure, 12), destroyBy: addMonths(departure, 15) };
 }
 
+/**
+ * Alpha-2, whatever the source spelled it as.
+ *
+ * This used to be `.trim().toUpperCase()` and nothing else. The MRZ on a
+ * passport is alpha-3 by ISO 9303, so a German guest arrived as `DEU`, and
+ * `'DEU' === 'DE'` is false — meaning `german_national` was never returned and
+ * every German was told a Meldeschein was required. The hotel filled in a form
+ * the law does not ask for, for its own nationals, and nothing anywhere said
+ * so: the form printed, correctly, for the wrong people.
+ */
 function norm(v: CountryCode): string {
-  return String(v ?? '').trim().toUpperCase();
+  return alpha2(v);
 }
 
 /** ISO date + n months, clamped to the end of a shorter month. */

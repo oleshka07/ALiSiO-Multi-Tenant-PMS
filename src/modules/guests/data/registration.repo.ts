@@ -38,8 +38,23 @@ export async function saveRegistrations(reservationId: string, organizationId: s
     findGuest: `SELECT id FROM guests WHERE organization_id = ? AND LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) LIMIT 1`,
     // RETURNING rather than a follow-up lookup by rowid: guests.id is the
     // table's own TEXT default, and Postgres has no rowid to look it up by.
-    insertGuest: `INSERT INTO guests (organization_id, first_name, last_name, date_of_birth, country, address, document_type, document_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-    updateGuest: `UPDATE guests SET date_of_birth = COALESCE(?, date_of_birth), country = COALESCE(?, country), address = COALESCE(?, address), document_type = COALESCE(?, document_type), document_number = COALESCE(?, document_number), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    // `nationality`, not just `country`.
+    //
+    // `guests` has both columns and they mean different things: `nationality`
+    // is citizenship, `country` is where the guest lives. Self-registration
+    // collects citizenship and was writing it into `country` only, leaving
+    // `guests.nationality` NULL — and `meldeschein.repo.ts` reads exactly
+    // `g.nationality`. So the German registration form printed
+    // «Staatsangehörigkeit» as MISSING for every guest who had just typed it
+    // in, and the receptionist filled in by hand a field the guest had already
+    // provided.
+    //
+    // Both are written: citizenship into its own column, and `country` kept as
+    // it was so the guest list's country filter and the dedup path do not
+    // change behaviour. Where the guest actually lives is a separate question
+    // this form does not ask.
+    insertGuest: `INSERT INTO guests (organization_id, first_name, last_name, date_of_birth, nationality, country, address, document_type, document_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    updateGuest: `UPDATE guests SET date_of_birth = COALESCE(?, date_of_birth), nationality = COALESCE(?, nationality), country = COALESCE(?, country), address = COALESCE(?, address), document_type = COALESCE(?, document_type), document_number = COALESCE(?, document_number), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
     insertGr: `
       INSERT INTO guest_registrations (id, reservation_id, guest_id, is_primary, reg_status, registered_at, consent_given, consent_at, consent_ip, purpose_of_stay, visa_number)
       VALUES (?, ?, ?, ?, 'completed', CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP, ?, ?, ?)
@@ -71,9 +86,9 @@ export async function saveRegistrations(reservationId: string, organizationId: s
 
       if (existing) {
         guestId = existing.id;
-        await t.run(SQL.updateGuest, [guest.dateOfBirth ?? null, guest.nationality ?? null, guest.address ?? null, guest.documentType ?? null, guest.documentNumber ?? null, guestId]);
+        await t.run(SQL.updateGuest, [guest.dateOfBirth ?? null, guest.nationality ?? null, guest.nationality ?? null, guest.address ?? null, guest.documentType ?? null, guest.documentNumber ?? null, guestId]);
       } else {
-        const newGuest = await t.row<{ id: string }>(SQL.insertGuest, [organizationId, guest.firstName, guest.lastName, guest.dateOfBirth ?? null, guest.nationality ?? null, guest.address ?? null, guest.documentType ?? null, guest.documentNumber ?? null]);
+        const newGuest = await t.row<{ id: string }>(SQL.insertGuest, [organizationId, guest.firstName, guest.lastName, guest.dateOfBirth ?? null, guest.nationality ?? null, guest.nationality ?? null, guest.address ?? null, guest.documentType ?? null, guest.documentNumber ?? null]);
         guestId = newGuest?.id ?? null;
       }
 

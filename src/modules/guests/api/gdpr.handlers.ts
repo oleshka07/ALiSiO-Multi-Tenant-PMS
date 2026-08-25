@@ -116,6 +116,13 @@ export const eraseGuestData = withPermission('manage_guests', async (_request, {
       `, [id, cutoffStr, actor.organizationId]);
 
       if (!recentStays) {
+        // nationality, email, phone and whatsapp were NOT cleared here, and
+        // the response said identityErased: true regardless. Article 17 is not
+        // partially satisfiable: citizenship is special-category-adjacent
+        // personal data and an e-mail address is the identifier the whole
+        // erasure is about. Claiming completion over a row that still carries
+        // them was the worse half of the bug — a hotel could answer a data
+        // subject in good faith and be wrong.
         await t.run(`
           UPDATE guests
           SET first_name = 'Anonymized',
@@ -123,6 +130,11 @@ export const eraseGuestData = withPermission('manage_guests', async (_request, {
               date_of_birth = NULL,
               document_type = NULL,
               document_number = NULL,
+              nationality = NULL,
+              email = NULL,
+              phone = NULL,
+              whatsapp = NULL,
+              city = NULL,
               country = NULL,
               address = NULL
           WHERE id = ? AND organization_id = ?

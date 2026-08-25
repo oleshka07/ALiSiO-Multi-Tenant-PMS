@@ -93,7 +93,14 @@ export async function getRegistryEntries(organizationId: string, filters: Regist
       rg.address,
       rg.visa_number,
       COALESCE(rg.purpose_of_stay, 'Tourism') as purpose_of_stay,
-      CASE WHEN rg.nationality IS NOT NULL AND rg.nationality != 'CZ' THEN 1 ELSE 0 END as is_foreigner,
+      -- Alpha-2 AND alpha-3, because both reach this column: the MRZ on a
+      -- passport is alpha-3 (ISO 9303) and the registration form's own
+      -- placeholder suggests alpha-3, while this comparison was alpha-2 only.
+      -- So every Czech guest who registered from their passport came out as a
+      -- foreigner in the Evidenční kniha — the register the police read.
+      CASE WHEN rg.nationality IS NOT NULL
+             AND UPPER(rg.nationality) NOT IN ('CZ', 'CZE')
+           THEN 1 ELSE 0 END as is_foreigner,
       CASE WHEN COALESCE(rg.fee_exempt, FALSE) = TRUE THEN 0 ELSE r.nights * p.city_tax_per_night END as fee_amount,
       COALESCE(rg.fee_exempt, FALSE) as fee_exempt,
       rg.fee_exempt_reason,
@@ -121,11 +128,11 @@ export async function getRegistryEntries(organizationId: string, filters: Regist
   }
 
   if (filters.foreignersOnly) {
-    query += " AND rg.nationality != 'CZ' AND rg.nationality IS NOT NULL";
+    query += " AND UPPER(rg.nationality) NOT IN ('CZ', 'CZE') AND rg.nationality IS NOT NULL";
   }
 
   if (filters.unregisteredOnly) {
-    query += " AND COALESCE(rg.police_reported, FALSE) = FALSE AND rg.nationality != 'CZ'";
+    query += " AND COALESCE(rg.police_reported, FALSE) = FALSE AND UPPER(rg.nationality) NOT IN ('CZ', 'CZE')";
   }
 
   if (filters.search) {
@@ -148,9 +155,9 @@ export async function getRegistrySummary(organizationId: string, filters: { mont
   let query = `
     SELECT
       COUNT(*) as totalGuests,
-      SUM(CASE WHEN rg.nationality IS NOT NULL AND rg.nationality != 'CZ' THEN 1 ELSE 0 END) as foreigners,
+      SUM(CASE WHEN rg.nationality IS NOT NULL AND UPPER(rg.nationality) NOT IN ('CZ', 'CZE') THEN 1 ELSE 0 END) as foreigners,
       SUM(CASE WHEN rg.police_reported = TRUE THEN 1 ELSE 0 END) as registeredPolice,
-      SUM(CASE WHEN COALESCE(rg.police_reported, FALSE) = FALSE AND rg.nationality IS NOT NULL AND rg.nationality != 'CZ' THEN 1 ELSE 0 END) as unregisteredPolice,
+      SUM(CASE WHEN COALESCE(rg.police_reported, FALSE) = FALSE AND rg.nationality IS NOT NULL AND UPPER(rg.nationality) NOT IN ('CZ', 'CZE') THEN 1 ELSE 0 END) as unregisteredPolice,
       SUM(CASE WHEN COALESCE(rg.fee_exempt, FALSE) = TRUE THEN 0 ELSE r.nights * p.city_tax_per_night END) as totalFees,
       SUM(CASE WHEN rg.fee_exempt = TRUE THEN 1 ELSE 0 END) as exemptGuests
     FROM reservation_guests rg
