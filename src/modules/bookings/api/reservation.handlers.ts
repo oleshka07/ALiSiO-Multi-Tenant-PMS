@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { withActor, type Actor } from '@core/auth/session';
-import { ownedReservation } from '../data/owned.repo';
+import { ownedReservation, ownedUnit } from '../data/owned.repo';
 import { generateInvoiceForReservation } from '@finance';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@core/auth';
@@ -82,6 +82,21 @@ export const updateReservation = withActor(async (request: NextRequest, { params
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     const body = await request.json();
+
+    // Owning the booking is not owning the room it is being moved into.
+    //
+    // `ownedReservation` above proved the caller may edit THIS booking. The new
+    // unit_id arrives in the body and was written straight through: a
+    // receptionist — or anything posting to this endpoint — could move a
+    // booking onto another hotel's room. The booking then occupies a unit its
+    // own organization cannot see, the neighbour's calendar shows a stay
+    // nobody there made, and the overlap check below runs against the wrong
+    // hotel's inventory.
+    if (body.unit_id !== undefined && body.unit_id !== null) {
+      if (!await ownedUnit(actor.organizationId, String(body.unit_id))) {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      }
+    }
 
     console.log('[PATCH] booking id:', id, 'body:', JSON.stringify(body));
 

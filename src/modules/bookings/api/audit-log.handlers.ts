@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getSql } from '@core/db/async';
 import { getSessionUser } from '@core/auth';
-import { withActor } from '@core/auth/session';
+import { withActor, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
+import { ownedReservation } from '../data/owned.repo';
 
 /** Actor helper — same pattern as finance module's getOptionalActor */
 export async function getBookingActor(): Promise<{ id: string; name: string } | null> {
@@ -65,8 +66,21 @@ export async function writeBookingAudit(
   }
 }
 
-/** GET /api/audit/bookings — owner-only audit trail */
-export const listBookingAudit = withActor(async (request: NextRequest): Promise<NextResponse> => {
+/**
+ * GET /api/audit/bookings — owner-only audit trail, of this hotel's bookings.
+ *
+ * «Owner» was the only check. `role === 'owner'` is true for the owner of every
+ * hotel on the server, and the query named no organization at all — so with no
+ * `reservation_id` this returned EVERY entry from EVERY tenant, and each entry
+ * carries `before_json` and `after_json`: complete row snapshots of other
+ * hotels' reservations, guest ids, prices, notes and internal notes included.
+ * A single GET with no parameters was the widest read in the application.
+ *
+ * The actor now supplies the organization, and `reservation_id` is checked
+ * against it too — otherwise the filtered path would still answer for a
+ * booking id belonging to somebody else.
+ */
+export const listBookingAudit = withActor(async (request: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> => {
   try {
     // Auth check: owner only
     const store = await cookies();
@@ -86,11 +100,16 @@ export const listBookingAudit = withActor(async (request: NextRequest): Promise<
       SELECT id, reservation_id, action, details, user_id, user_name,
              before_json, after_json, booking_label, created_at
       FROM booking_activity_log
+      WHERE organization_id = ?
     `;
-    const params: any[] = [];
+    const params: any[] = [actor.organizationId];
 
     if (reservationId) {
-      statement += ' WHERE reservation_id = ?';
+      // Asking about one booking still has to be a booking of this hotel's.
+      if (!await ownedReservation(actor.organizationId, reservationId)) {
+        return NextResponse.json({ items: [] });
+      }
+      statement += ' AND reservation_id = ?';
       params.push(reservationId);
     }
 

@@ -60,6 +60,7 @@ async function cleanup() {
       await sql.run('DELETE FROM booking_activity_log WHERE reservation_id = ?', [rid]);
     }
     await sql.run('DELETE FROM reservations WHERE property_id = ?', [pid]);
+    await sql.run('DELETE FROM reservation_groups WHERE property_id = ?', [pid]);
     await sql.run('DELETE FROM units WHERE property_id = ?', [pid]);
     await sql.run('DELETE FROM unit_types WHERE property_id = ?', [pid]);
     await sql.run('DELETE FROM buildings WHERE property_id = ?', [pid]);
@@ -112,6 +113,41 @@ async function main() {
     const propA = await created.json();
     assert.ok(propA.id, 'no property id returned');
     console.log('  ok  tenant A created a property');
+
+    // B needs real inventory of its own, not just an account.
+    //
+    // Several probes below ask "can A reach into B?" and need a B-owned unit
+    // to aim at. Without one they quietly skipped — `if (unitOfB?.id)` around
+    // an assertion reads exactly like a passing check, which is the failure
+    // mode this file already learned once with `if (siteRes.ok)`.
+    const createdB = await call(cookieB, '/api/properties', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Probe B Hotel', slug: `${TAG}b-hotel` }),
+    });
+    assert.strictEqual(createdB.status, 201, `B could not create a property: ${createdB.status}`);
+    const propB = await createdB.json();
+    const catBRes = await call(cookieB, '/api/categories', {
+      method: 'POST',
+      body: JSON.stringify({ property_id: propB.id, name: 'B rooms', type: 'resort' }),
+    });
+    assert.ok(catBRes.ok, `B could not create a category: ${catBRes.status}`);
+    const catB = await catBRes.json();
+    const utBRes = await call(cookieB, '/api/unit-types', {
+      method: 'POST',
+      body: JSON.stringify({ property_id: propB.id, category_id: catB.id, name: 'B type', code: 'BPR' }),
+    });
+    assert.ok(utBRes.ok, `B could not create a unit type: ${utBRes.status}`);
+    const utB = await utBRes.json();
+    const unitBRes = await call(cookieB, '/api/units', {
+      method: 'POST',
+      body: JSON.stringify({
+        property_id: propB.id, category_id: catB.id, unit_type_id: utB.id,
+        name: 'B-101', code: 'B101',
+      }),
+    });
+    assert.ok(unitBRes.ok, `B could not create a unit: ${unitBRes.status} ${await unitBRes.clone().text()}`);
+    const unitB = await unitBRes.json();
+    assert.ok(unitB.id, `no unit id came back for B: ${JSON.stringify(unitB).slice(0, 200)}`);
 
     // It must land in A's organization, not in whichever row is first.
     const row = await sql.row('SELECT organization_id FROM properties WHERE id = ?', [propA.id]);
@@ -474,6 +510,76 @@ async function main() {
     assert.strictEqual(delBookB.status, 404, `B deleted A's booking: ${delBookB.status}`);
     console.log("  ok  B cannot read, change or delete A's booking");
 
+    // ── Four more ways into somebody else's booking ─────────────────────
+    //
+    // `reservations` has no organization_id of its own — the tenant arrives
+    // through property_id — so a handler that writes `WHERE id = ?` is not
+    // "relying on RLS", it is asking nothing at all.
+
+    // C4 — moving a booking onto somebody else's room. A owns the booking, so
+    // the ownership check on the BOOKING passes; the unit id came from the
+    // request body and was written straight through. The booking would then
+    // sit on the neighbour's calendar, and the overlap check below it would
+    // run against the wrong hotel's inventory.
+    const moveOntoB = await call(cookieA, `/api/bookings/${booking.id}`, {
+      method: 'PATCH', body: JSON.stringify({ unit_id: unitB.id }),
+    });
+    assert.strictEqual(moveOntoB.status, 404,
+      `A moved its booking onto B's room: ${moveOntoB.status}`);
+    const movedTo = await sql.row('SELECT unit_id FROM reservations WHERE id = ?', [booking.id]);
+    assert.notStrictEqual(movedTo?.unit_id, unitB.id,
+      "the booking landed on B's room — B's calendar now shows a stay nobody there made");
+
+    // C3 — sub-bookings, addressed by the master reservation id.
+    const subList = await call(cookieB, `/api/bookings/${booking.id}/sub-bookings`);
+    assert.strictEqual(subList.status, 404, `B listed A's sub-bookings: ${subList.status}`);
+    const subAdd = await call(cookieB, `/api/bookings/${booking.id}/sub-bookings`, {
+      method: 'POST', body: JSON.stringify({ label: 'intruder', adults: 1 }),
+    });
+    assert.strictEqual(subAdd.status, 404, `B added a sub-booking to A's reservation: ${subAdd.status}`);
+
+    // C5 — the audit trail. `role === 'owner'` is true for the owner of every
+    // hotel on the server, and with no reservation_id the query named no
+    // organization: every entry from every tenant came back, each carrying
+    // before_json/after_json — whole row snapshots of other hotels' bookings,
+    // guest ids, prices and internal notes included. One GET, no parameters.
+    const auditB = await call(cookieB, '/api/audit/bookings?limit=200');
+    assert.ok(auditB.ok, `B could not read its own audit trail: ${auditB.status}`);
+    const auditItems = (await auditB.json()).items || [];
+    const foreign = auditItems.filter((e) => e.reservation_id === booking.id);
+    assert.strictEqual(foreign.length, 0,
+      `B's audit trail carries ${foreign.length} entr(ies) about A's booking, with full row snapshots`);
+
+    // C2 — group bookings. The list named no tenant; creation took unitIds
+    // and buildingId from the body, and then filed the group under whichever
+    // property the FIRST of those rooms belonged to.
+    const groupsB = await call(cookieB, '/api/group-bookings');
+    assert.ok(groupsB.ok, `B could not list its own group bookings: ${groupsB.status}`);
+    const groupList = await groupsB.json();
+    assert.ok(Array.isArray(groupList), 'group list is not an array');
+    const foreignGroups = groupList.filter((g) => g.property_id === propA.id);
+    assert.strictEqual(foreignGroups.length, 0,
+      "B's group-booking list contains A's groups, guest name and phone attached");
+
+    const aUnit = await sql.row(
+      'SELECT id FROM units WHERE property_id = ? LIMIT 1', [propA.id]);
+    assert.ok(aUnit?.id, "A has no unit to aim the group-booking probe at");
+    const groupOnA = await call(cookieB, '/api/group-bookings', {
+      method: 'POST',
+      body: JSON.stringify({
+        firstName: 'Intruder', lastName: 'Probe',
+        checkIn: '2027-03-01', checkOut: '2027-03-03',
+        unitIds: [aUnit.id], groupType: 'custom',
+      }),
+    });
+    assert.strictEqual(groupOnA.status, 404,
+      `B created a group booking on A's rooms: ${groupOnA.status}`);
+    const wroteGroups = await sql.row(
+      "SELECT COUNT(*) c FROM reservation_groups WHERE property_id = ?", [propA.id]);
+    assert.strictEqual(Number(wroteGroups.c), 0,
+      `${wroteGroups.c} group(s) were written into A's property by B`);
+    console.log("  ok  B cannot reach A's booking through units, sub-bookings, the audit trail or groups");
+
     // Deleting one's own booking must actually work — it 500'd on a leftover
     // crm_leads statement from the CRM removal until the calendar audit.
     const delBookA = await call(cookieA, `/api/bookings/${booking.id}`, { method: 'DELETE' });
@@ -591,7 +697,17 @@ async function main() {
     assert.ok(dashB.ok, `B's dashboard was refused: ${dashB.status}`);
     if (dashB.ok) {
       const d = await dashB.json();
-      assert.strictEqual(d.totalUnits, 0, `B's dashboard counts ${d.totalUnits} units it does not own`);
+      // B owns exactly one room — the one it created for itself above — and A
+      // owns fifty. `=== 0` was the assertion while B owned nothing at all,
+      // which meant it could not tell "scoped correctly" from "counted
+      // nothing"; comparing against B's real count says the scoping works AND
+      // that the dashboard is not simply empty.
+      const ownedByB = await sql.row(
+        'SELECT COUNT(*) c FROM units u JOIN properties p ON u.property_id = p.id WHERE p.organization_id = ?',
+        [b.orgId]);
+      assert.strictEqual(Number(d.totalUnits), Number(ownedByB.c),
+        `B's dashboard counts ${d.totalUnits} units, B owns ${ownedByB.c}`);
+      assert.ok(Number(ownedByB.c) > 0, 'B owns no units — the count proves nothing');
       assert.strictEqual((d.upcomingArrivals || []).length, 0, "B's dashboard lists arrivals it does not own");
       assert.strictEqual((d.todayDepartures || []).length, 0, "B's dashboard lists departures it does not own");
       console.log("  ok  the dashboard counts only the caller's own hotel");

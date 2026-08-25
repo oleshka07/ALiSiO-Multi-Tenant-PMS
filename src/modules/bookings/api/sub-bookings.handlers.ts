@@ -3,19 +3,32 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { money } from '@core/money';
 import { getSql } from '@core/db/async';
-import { withActor, withPermission } from '@core/auth/session';
+import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
+import { ownedReservation, ownedUnit } from '../data/owned.repo';
+
+/**
+ * Sub-bookings: several parties, several rooms, one master reservation.
+ *
+ * Every handler here took the master id from the URL and looked it up with
+ * `WHERE id = ?`. `reservations` carries no organization_id — the tenant
+ * arrives through `property_id` — so «is this mine?» was never asked at all.
+ * Any logged-in user of any hotel could list, add, rename and delete
+ * sub-bookings on any reservation on the server, and deleting one deletes the
+ * child reservation with it. `ownedReservation` is the question that was
+ * missing; the module has had it the whole time.
+ */
 
 /**
  * GET /api/bookings/[id]/sub-bookings
  * List sub-bookings + line items for a reservation
  */
-export const listSubBookings = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+export const listSubBookings = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
     const { id } = await params;
     const sql = getSql();
 
-    const reservation = await sql.row<any>('SELECT id FROM reservations WHERE id = ?', [id]);
+    const reservation = await ownedReservation(actor.organizationId, id);
     if (!reservation) {
       return NextResponse.json({ error: 'Reservation not found' }, { status: 404 });
     }
@@ -55,11 +68,15 @@ export const listSubBookings = withActor(async (_request: NextRequest, { params 
  * Create a sub-booking. If unitId is provided and differs from the master's
  * unit, a child reservation is auto-created to block that unit on the calendar.
  */
-export const createSubBooking = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+export const createSubBooking = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
     const { id } = await params;
     const sql = getSql();
     const body = await request.json();
+
+    if (!await ownedReservation(actor.organizationId, id)) {
+      return NextResponse.json({ error: 'Master reservation not found' }, { status: 404 });
+    }
 
     const master = await sql.row<any>(`
       SELECT r.*, g.first_name, g.last_name
@@ -86,6 +103,13 @@ export const createSubBooking = withPermission('manage_bookings', async (request
 
     // If sub-booking targets a DIFFERENT unit → create child reservation
     if (unitId && unitId !== master.unit_id) {
+      // The unit comes from the request body. Owning the master reservation
+      // does not make an arbitrary room yours, and the child reservation
+      // created below would otherwise land on the neighbour's calendar.
+      if (!await ownedUnit(actor.organizationId, String(unitId))) {
+        return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
+      }
+
       // Check availability
       const overlap = await sql.row<any>(`
         SELECT 1 FROM reservations
@@ -160,11 +184,15 @@ export const createSubBooking = withPermission('manage_bookings', async (request
  * PATCH /api/bookings/[id]/sub-bookings/[subId]
  * Update sub-booking metadata (label, adults, children, subtotal, notes)
  */
-export const updateSubBooking = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string; subId: string }> }) => {
+export const updateSubBooking = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string; subId: string }> }, actor: Actor) => {
   try {
     const { id, subId } = await params;
     const sql = getSql();
     const body = await request.json();
+
+    if (!await ownedReservation(actor.organizationId, id)) {
+      return NextResponse.json({ error: 'Sub-booking not found' }, { status: 404 });
+    }
 
     const existing = await sql.row<any>('SELECT * FROM reservation_sub_bookings WHERE id = ? AND reservation_id = ?', [subId, id]) as any;
     if (!existing) {
@@ -231,10 +259,14 @@ export const updateSubBooking = withPermission('manage_bookings', async (request
  * DELETE /api/bookings/[id]/sub-bookings/[subId]
  * Delete sub-booking + its child reservation (if any) + cascade line items
  */
-export const deleteSubBooking = withPermission('manage_bookings', async (_request: NextRequest, { params }: { params: Promise<{ id: string; subId: string }> }) => {
+export const deleteSubBooking = withPermission('manage_bookings', async (_request: NextRequest, { params }: { params: Promise<{ id: string; subId: string }> }, actor: Actor) => {
   try {
     const { id, subId } = await params;
     const sql = getSql();
+
+    if (!await ownedReservation(actor.organizationId, id)) {
+      return NextResponse.json({ error: 'Sub-booking not found' }, { status: 404 });
+    }
 
     const existing = await sql.row<any>('SELECT * FROM reservation_sub_bookings WHERE id = ? AND reservation_id = ?', [subId, id]) as any;
     if (!existing) {

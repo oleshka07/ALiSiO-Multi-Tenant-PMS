@@ -3,10 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
-import { withPermission } from '@core/auth/session';
+import { withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
+import { ownedReservation } from '../data/owned.repo';
 
-export const assignGuest = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+export const assignGuest = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
     const { id: groupId } = await params;
     const sql = getSql();
@@ -15,6 +16,13 @@ export const assignGuest = withPermission('manage_bookings', async (request: Nex
 
     if (!reservationId || !firstName || !lastName) {
       return NextResponse.json({ error: "Обов'язкові поля: reservationId, ім'я, прізвище" }, { status: 400 });
+    }
+
+    // `AND group_id = ?` tied the reservation to the group, and nothing tied
+    // either to a hotel — so naming another tenant's group and one of its
+    // reservations wrote a guest of THIS hotel onto THAT hotel's booking.
+    if (!await ownedReservation(actor.organizationId, String(reservationId))) {
+      return NextResponse.json({ error: 'Reservation not found in this group' }, { status: 404 });
     }
 
     const reservation = await sql.row<any>('SELECT id, guest_id FROM reservations WHERE id = ? AND group_id = ?', [reservationId, groupId]) as any;

@@ -1,13 +1,34 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { withActor, withPermission } from '@core/auth/session';
+import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
 
-export const getGroupBooking = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+/**
+ * One group booking, by id — read, changed and deleted with no tenant named.
+ *
+ * `reservation_groups` reaches its organization through `property_id`.
+ * `ownedGroup` is that join, asked once at the top of each handler; DELETE
+ * needed it most, because it took every reservation in the group with it and
+ * asked nothing at all first.
+ */
+async function ownedGroup(organizationId: string, id: string): Promise<{ id: string } | undefined> {
+  const sql = getSql();
+  return await sql.row<{ id: string }>(`
+    SELECT rg.id FROM reservation_groups rg
+    JOIN properties p ON rg.property_id = p.id
+    WHERE rg.id = ? AND p.organization_id = ?
+  `, [id, organizationId]);
+}
+
+export const getGroupBooking = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
     const { id } = await params;
     const sql = getSql();
+
+    if (!await ownedGroup(actor.organizationId, id)) {
+      return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    }
 
     const group = await sql.row<any>(`
       SELECT rg.*,
@@ -41,11 +62,15 @@ export const getGroupBooking = withActor(async (_request: NextRequest, { params 
   }
 });
 
-export const updateGroupBooking = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+export const updateGroupBooking = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
     const { id } = await params;
     const sql = getSql();
     const body = await request.json();
+
+    if (!await ownedGroup(actor.organizationId, id)) {
+      return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    }
 
     const existing = await sql.row<any>('SELECT * FROM reservation_groups WHERE id = ?', [id]) as any;
     if (!existing) {
@@ -106,10 +131,14 @@ export const updateGroupBooking = withPermission('manage_bookings', async (reque
   }
 });
 
-export const deleteGroupBooking = withPermission('manage_bookings', async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+export const deleteGroupBooking = withPermission('manage_bookings', async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
     const { id } = await params;
     const sql = getSql();
+
+    if (!await ownedGroup(actor.organizationId, id)) {
+      return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    }
 
     await sql.run('DELETE FROM reservations WHERE group_id = ?', [id]);
     await sql.run('DELETE FROM reservation_groups WHERE id = ?', [id]);

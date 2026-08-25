@@ -4,10 +4,22 @@ import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { findOrCreateGuest } from '@guests';
 import { requireOrganizationId } from '@core/auth/tenant-context';
-import { withActor, withPermission } from '@core/auth/session';
+import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
+import { ownedUnit } from '../data/owned.repo';
 
-export const listGroupBookings = withActor(async () => {
+/**
+ * Group bookings: one party, many rooms, one reservation_groups row.
+ *
+ * `reservation_groups` reaches its tenant through `property_id`, and neither
+ * handler here mentioned it. The list returned every group on the server with
+ * the guest's name, email and phone attached; creation took `unitIds` and
+ * `buildingId` straight from the request body, so a group could be written
+ * against another hotel's rooms — and `firstUnit.property_id`, read from the
+ * first of those rooms, then filed the whole group under that hotel.
+ */
+
+export const listGroupBookings = withActor(async (_request: NextRequest, _ctx: unknown, actor: Actor) => {
   try {
     const sql = getSql();
     const groups = await sql.rows<any>(`
@@ -17,16 +29,18 @@ export const listGroupBookings = withActor(async () => {
         (SELECT COUNT(*) FROM reservations WHERE group_id = rg.id) as room_count
       FROM reservation_groups rg
       JOIN guests g ON rg.guest_id = g.id
+      JOIN properties p ON rg.property_id = p.id
       LEFT JOIN buildings b ON rg.building_id = b.id
+      WHERE p.organization_id = ?
       ORDER BY rg.created_at DESC
-    `);
+    `, [actor.organizationId]);
     return NextResponse.json(groups);
   } catch (e: any) {
     return serverError('modules/bookings/api/group-bookings listGroupBookings', e);
   }
 });
 
-export const createGroupBooking = withPermission('manage_bookings', async (request: NextRequest) => {
+export const createGroupBooking = withPermission('manage_bookings', async (request: NextRequest, _ctx: unknown, actor: Actor) => {
   try {
     const sql = getSql();
     const body = await request.json();
@@ -43,12 +57,29 @@ export const createGroupBooking = withPermission('manage_bookings', async (reque
     let finalUnitIds: string[] = unitIds || [];
 
     if (groupType === 'building' && buildingId) {
-      const buildingUnits = await sql.rows<any>('SELECT id FROM units WHERE building_id = ? AND is_active = TRUE ORDER BY sort_order', [buildingId]) as { id: string }[];
+      // The building comes from the body too, so it is joined to properties:
+      // otherwise «book the whole building» would happily expand to another
+      // hotel's building and book every room in it.
+      const buildingUnits = await sql.rows<any>(`
+        SELECT u.id FROM units u
+        JOIN properties p ON u.property_id = p.id
+        WHERE u.building_id = ? AND u.is_active = TRUE AND p.organization_id = ?
+        ORDER BY u.sort_order`, [buildingId, actor.organizationId]) as { id: string }[];
       finalUnitIds = buildingUnits.map(u => u.id);
     }
 
     if (finalUnitIds.length === 0) {
       return NextResponse.json({ error: 'Не обрано жодної кімнати' }, { status: 400 });
+    }
+
+    // Every room named in the body must be this hotel's. Without this the
+    // group was written against the neighbour's inventory and then filed under
+    // whichever property the FIRST of those rooms belonged to — so a booking
+    // could appear in a hotel that never took it.
+    for (const unitId of finalUnitIds) {
+      if (!await ownedUnit(actor.organizationId, String(unitId))) {
+        return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
+      }
     }
 
     // Pre-check overlap for ALL units up-front. Without this, the loop below
