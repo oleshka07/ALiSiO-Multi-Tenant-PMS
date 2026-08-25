@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { withOwner, type Actor } from '@core/auth/session';
 import { hasFeature, type FeatureKey } from '@core/features';
 import {
+  INTEGRATION_FEATURE,
   INTEGRATION_FIELDS,
   integrationStatus,
   saveIntegrationCredentials,
@@ -10,8 +11,7 @@ import {
 } from '@core/integration-credentials';
 
 /**
- * GET/PUT /api/settings/integration-credentials — whose Hostex account, whose
- * integration key.
+ * GET/PUT /api/settings/integration-credentials — whose integration key.
  *
  * Owner-only, like the feature switches next to it: these are the keys that
  * bill the organization and reach its guests. GET never returns a secret —
@@ -22,11 +22,13 @@ import {
 const CHANNELS = Object.keys(INTEGRATION_FIELDS) as IntegrationChannel[];
 
 export const getIntegrationCredentials = withOwner(async (_req, _ctx, actor: Actor) => {
-  // Only integrations this organization actually has. booking_com has no
-  // feature key of its own — it rides on the channel manager.
+  // Only integrations this organization actually has. The switch is looked up
+  // in INTEGRATION_FEATURE, not guessed from the channel name — guessing is
+  // what kept the TSE key off this screen entirely.
   const status: IntegrationStatus[] = [];
   for (const c of CHANNELS) {
-    if (c !== 'booking_com' && !(await hasFeature(actor.organizationId, c as FeatureKey))) continue;
+    const feature = INTEGRATION_FEATURE[c];
+    if (feature && !(await hasFeature(actor.organizationId, feature as FeatureKey))) continue;
     status.push(await integrationStatus(c, actor.organizationId));
   }
   return NextResponse.json({ fields: INTEGRATION_FIELDS, status });
@@ -45,7 +47,8 @@ export const updateIntegrationCredentials = withOwner(async (request: Request, _
   // Saving a key for an integration the organization has not enabled would
   // store a secret nothing can use — and hide the real problem, which is that
   // the feature is off.
-  if (channel !== 'booking_com' && !await hasFeature(actor.organizationId, channel as FeatureKey)) {
+  const requiredFeature = INTEGRATION_FEATURE[channel];
+  if (requiredFeature && !await hasFeature(actor.organizationId, requiredFeature as FeatureKey)) {
     return NextResponse.json({ error: 'Спочатку увімкніть цю інтеграцію' }, { status: 409 });
   }
 

@@ -104,6 +104,24 @@ export async function integrationConfigured(
  * Teya is absent on purpose: payments are configured per booking site, not per
  * organization, and that screen already exists (Сайти → Платежі).
  */
+/**
+ * Which feature switch governs which integration.
+ *
+ * NOT the channel name. The settings handler used to cast the channel straight
+ * to a feature key, which worked only by coincidence: `hostex` and `pricelabs`
+ * happened to be spelled the same on both sides. `fiskaly` is not — its switch
+ * is `fiscal_de` — so the German TSE key could never be saved (409 every time)
+ * and never even appeared on the screen, because the same cast filtered it out
+ * of the list. Nobody noticed while the two coincidences were still here.
+ *
+ * `null` means the integration has no switch of its own: booking_com rides on
+ * the channel manager.
+ */
+export const INTEGRATION_FEATURE: Record<string, string | null> = {
+  booking_com: null,
+  fiskaly: 'fiscal_de',
+};
+
 export const INTEGRATION_FIELDS: Record<string, { field: 'accessToken' | 'clientId' | 'clientSecret'; label: string; hint?: string }[]> = {
   booking_com: [
     { field: 'clientId', label: 'Client ID' },
