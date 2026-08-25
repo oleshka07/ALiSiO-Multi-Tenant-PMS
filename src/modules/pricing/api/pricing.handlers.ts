@@ -30,17 +30,12 @@ export const updatePricing = withPermission('manage_pricing', async (request: Ne
 
     const updated = await upsertPrices(unitTypeId, prices);
 
-    // Trigger ARI sync — non-critical, contained in try/catch.
-    // Will be replaced with eventBus.emit('pricing.updated') when channels module is migrated.
-    try {
-      const { enqueueForAllConnections } = await import('@/modules/channels/data/sync-queue');
-      const dates = prices.map((p: any) => p.date).sort();
-      if (dates.length > 0) {
-        enqueueForAllConnections({ syncType: 'full', unitTypeId, dateFrom: dates[0], dateTo: dates[dates.length - 1], priority: 3 });
-      }
-    } catch (syncError: any) {
-      console.warn('[Pricing] ARI sync enqueue failed:', syncError?.message);
-    }
+    // A price change used to enqueue an ARI push here, wrapped in a try/catch
+    // that swallowed the error — which is how nobody noticed the queue was
+    // never drained. Both the queue and the Connectivity API it fed are gone.
+    // When a channel with its own API arrives, it subscribes to a
+    // `pricing.updated` event; it does not get a hidden call inside this
+    // handler.
 
     return NextResponse.json({ success: true, updated });
   } catch (error: any) {

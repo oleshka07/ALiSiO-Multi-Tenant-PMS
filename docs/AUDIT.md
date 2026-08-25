@@ -303,9 +303,32 @@ PriceLabs жили у **змінних рівня модуля**, які ста�
 
 Тому закриті видаленням: **D8** (PriceLabs-cron без org-контексту),
 **D10** (орендар Hostex у змінній модуля), **D11** (ключ PriceLabs так само).
-Дані лишились читабельними: колонки `reservations.hostex_*`, мітка
-`source='hostex'` у `fin_operations`, таблиці `hostex_sync_log` і
-`hostex_property_map` — їх ніхто не читає, але вони й нікому не заважають.
+Дані лишились читабельними: колонки `reservations.hostex_*` і мітка
+`source='hostex'` у `fin_operations`.
+
+**Booking.com Connectivity API — видалено 2026-08-25.** Те саме рішення,
+поширене на третю інтеграцію, і з іншою підставою: цю ніколи не було
+підключено до живого акаунта. Не «ще не в проді» — взагалі: шість таблиць
+(`channel_connections`, `channel_room_mapping`, `ari_sync_queue`,
+`ari_sync_log`) порожні на кожній базі проєкту, форма облікових даних вказувала
+на змінну оточення, якої ніхто не ставив, а ARI-пуш рахував ціни з
+`price_calendar` зі своєю копією weekend-правила. Тобто ~3 500 рядків коду
+(OAuth, OTA-XML, черга з ретраями, маппінг кімнат, лог RUID) коштували уваги на
+кожному аудиті й не приносили нічого.
+
+Закриті видаленням: **A2** (ARI рахує ціну повз `priceNights()` — запис із
+LEGACY-списку `check-price-source.mjs` прибрано разом із файлом) і **D7**
+(pull reservations без сесії). Схему прибирає міграція
+`0032-a-channel-nobody-connected-is-not-a-channel.sql`; заразом падають
+`hostex_sync_log` і `hostex_property_map`, які Hostex лишив по собі й які не
+були скоуплені за орендарем узагалі. Міграція **зупиняється з поясненням**,
+якщо хоч одна бронь має `bcom_reservation_id` — тобто якщо припущення «ніколи
+не працювало» десь хибне, це буде видно, а не затерто.
+
+Дані лишились читабельними й тут: `source = 'booking_com'` на історичних
+бронях, значок каналу, пункт у списку джерел, правила `channel_rate_rules` для
+ПДВ з однієї суми OTA. `channel_credentials` теж лишається — у ній тепер живуть
+ключі фіскалізації (`@core/integration-credentials`).
 
 **Потребує дії на сервері:** доки `CRON_SECRET`, `HOSTEX_WEBHOOK_SECRET` і
 `ICAL_CRON_SECRET` не вписані в `deploy/env.prod` та `deploy/env.beta`,

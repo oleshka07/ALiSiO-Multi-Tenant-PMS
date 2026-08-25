@@ -78,10 +78,11 @@ const HAND_ROLLED = /\bgetSessionUser\b|\bresolveFinanceOwner\b/;
  *
  * Cron entry points authenticate with an environment secret, and there is
  * no session to wrap them in — finance/api/_guard.ts says so explicitly.
- * Recognised by what the route file actually reads rather than
- * by where it sits: /api/channels/sync/process and /api/hostex/bulk-sync are
- * cron endpoints with no `cron` anywhere in their path, and a list of paths
- * would keep missing them.
+ * Recognised by what the route file actually reads rather than by where it
+ * sits: /api/ical-sync/cron carries its own ICAL_CRON_SECRET and the two
+ * channel-manager cron endpoints that used to be the other examples here had
+ * no `cron` anywhere in their path at all. A list of paths would keep missing
+ * them; what the file reads does not lie.
  */
 // `cronAuthFailure`/`secretAuthFailure` are the shared implementation of the
 // same thing — one place that refuses when the secret is unset, instead of the

@@ -37,12 +37,12 @@ const SRC = path.join(ROOT, 'src');
 const QUERY = /\b(?:FROM|JOIN|INTO|UPDATE)\s+["'`]?price_(?:calendar|occupancy|los_tiers)\b/i;
 
 // The debt as of 2026-08-24 — see docs/AUDIT.md §2 for the full stories.
+//
+// The list had a third entry: the ARI push to Booking.com, which priced nights
+// from price_calendar with its own weekend rule. It was not fixed, it was
+// deleted along with the rest of the Connectivity API (audit A2 → migration
+// 0032), which is the other way a legacy entry may leave this list.
 const LEGACY = new Map([
-  ['src/modules/channels/domain/booking-com/ari.ts',
-    'pushes rates to Booking.com from price_calendar only, with its own copy ' +
-    'of the weekend rule; ignores the occupancy matrix and LOS tiers, so an ' +
-    'OTA guest is quoted numbers the widget and the operator never see. ' +
-    'Fix: build ARI rates from priceNights()/cheapestByDay().'],
   ['src/app/api/booking-sites/[id]/listings/route.ts',
     'the admin "from" price is MIN(base_price) over price_calendar; the ' +
     'public month calendar answers from the matrix via cheapestByDay(), so ' +

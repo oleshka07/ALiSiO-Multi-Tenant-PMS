@@ -7,14 +7,20 @@ import { useMobileMenu } from '@/ui/MobileMenuContext';
 import {
   Plus, Edit3, Trash2, X, Save, Loader2, ArrowLeft,
   RefreshCw, Copy, Check, ExternalLink, Clock, AlertCircle,
-  CheckCircle, Building2, Home, Link2, Settings2, MapPin,
-  Wifi, WifiOff, Shield, Zap, Activity,
+  CheckCircle, Building2, Home,
 } from 'lucide-react';
 import Link from 'next/link';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-// ─── iCal Types (existing) ──────────────────────────────────
+/**
+ * Канал-менеджер: обмін календарями з OTA.
+ *
+ * Тут була ще вкладка «API Інтеграції» — форма з'єднання з Connectivity API
+ * Booking.com, ключі машинного акаунта, маппінг типів кімнат, лічильник черги
+ * ARI. Жоден готель її не вмикав, а екран обіцяв те, чого система не робила.
+ * Вкладку і код за нею прибрано; лишився iCal, який працює.
+ */
 
 interface ICalChannel {
   id: string;
@@ -63,49 +69,6 @@ interface Unit {
   category_type: string;
 }
 
-// ─── API Channel Types (new) ────────────────────────────────
-
-interface APIConnection {
-  id: string;
-  channel: string;
-  external_property_id: string | null;
-  status: string;
-  connection_types: string[];
-  pricing_model: string;
-  credentials_id: string | null;
-  last_synced_at: string | null;
-  error_message: string | null;
-  environment: string | null;
-  client_id: string | null;
-  token_valid: number;
-  created_at: string;
-}
-
-interface RoomMapping {
-  id: string;
-  connection_id: string;
-  unit_type_id: string;
-  external_room_type_id: string;
-  external_rate_plan_id: string;
-  is_active: number;
-  unit_type_name: string;
-  unit_type_code: string;
-}
-
-interface UnitType {
-  id: string;
-  name: string;
-  code: string;
-  max_adults: number;
-  max_occupancy: number;
-}
-
-interface SyncStats {
-  queue: { pending: number; processing: number; completed: number; failed: number; total: number };
-  failedJobs: any[];
-  recentLogs: any[];
-}
-
 // ─── Modal ──────────────────────────────────────────────────
 
 function Modal({ open, onClose, title, children, footer, width }: {
@@ -127,23 +90,12 @@ function Modal({ open, onClose, title, children, footer, width }: {
   );
 }
 
-// ─── Channel Info Badges ────────────────────────────────────
-
-const CHANNEL_INFO: Record<string, { name: string; color: string; icon: string }> = {
-  booking_com: { name: 'Booking.com', color: '#003580', icon: '🅱' },
-  airbnb: { name: 'Airbnb', color: '#FF5A5F', icon: '🏠' },
-  vrbo: { name: 'VRBO', color: '#2577D1', icon: '🏡' },
-  expedia: { name: 'Expedia', color: '#FBCC33', icon: '✈' },
-};
-
 // ─── Main Page ──────────────────────────────────────────────
 
 export default function ChannelManagerPage() {
   const tUi = useT();
-  const [activeTab, setActiveTab] = useState<'api' | 'ical'>('api');
   const onMenuClick = useMobileMenu();
 
-  // ── iCal state (existing) ──
   const [channels, setChannels] = useState<ICalChannel[]>([]);
   const [sources, setSources] = useState<BookingSource[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
@@ -166,54 +118,21 @@ export default function ChannelManagerPage() {
     sync_interval_minutes: 15,
   });
 
-  // ── API connections state (new) ──
-  const [connections, setConnections] = useState<APIConnection[]>([]);
-  const [mappingData, setMappingData] = useState<{ mappings: RoomMapping[]; unitTypes: UnitType[] }>({ mappings: [], unitTypes: [] });
-  const [syncStats, setSyncStats] = useState<SyncStats | null>(null);
-  const [showConnModal, setShowConnModal] = useState(false);
-  const [showCredModal, setShowCredModal] = useState(false);
-  const [showMappingModal, setShowMappingModal] = useState(false);
-  const [selectedConn, setSelectedConn] = useState<APIConnection | null>(null);
-
-  const [connForm, setConnForm] = useState({
-    channel: 'booking_com',
-    external_property_id: '',
-    connection_types: ['RESERVATIONS', 'AVAILABILITY'] as string[],
-  });
-
-  const [credForm, setCredForm] = useState({
-    channel: 'booking_com',
-    environment: 'test',
-    client_id: '',
-    client_secret: '',
-  });
-
-  const [mappingForm, setMappingForm] = useState({
-    connection_id: '',
-    unit_type_id: '',
-    external_room_type_id: '',
-    external_rate_plan_id: '',
-  });
-
   // ── Data fetching ──
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [chRes, srcRes, bldRes, unitRes, connRes, syncRes] = await Promise.all([
+      const [chRes, srcRes, bldRes, unitRes] = await Promise.all([
         fetch('/api/ical-sync/channels'),
         fetch('/api/booking-sources'),
         fetch('/api/buildings'),
         fetch('/api/units'),
-        fetch('/api/channels/connections'),
-        fetch('/api/channels/sync'),
       ]);
       const ch = await chRes.json();
       const src = await srcRes.json();
       const bld = await bldRes.json();
       const units = await unitRes.json();
-      const conn = await connRes.json();
-      const sync = await syncRes.json();
 
       if (Array.isArray(ch)) setChannels(ch);
       if (Array.isArray(src)) setSources(src);
@@ -226,21 +145,8 @@ export default function ChannelManagerPage() {
       // just no way to map a room onto a channel. Which units may be mapped is
       // the operator's decision, not a guess from a category name.
       if (Array.isArray(units)) setMappableUnits(units);
-      if (Array.isArray(conn)) setConnections(conn);
-      if (sync && sync.queue) setSyncStats(sync);
     } catch (e) { console.error(e); }
     setLoading(false);
-  }, []);
-
-  const fetchMappings = useCallback(async (connectionId?: string) => {
-    try {
-      const url = connectionId
-        ? `/api/channels/mapping?connection_id=${connectionId}`
-        : '/api/channels/mapping';
-      const res = await fetch(url);
-      const data = await res.json();
-      setMappingData(data);
-    } catch (e) { console.error(e); }
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -263,7 +169,7 @@ export default function ChannelManagerPage() {
     return d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   };
 
-  // ── iCal handlers (existing logic) ──
+  // ── iCal handlers ──
 
   const openNewICal = () => {
     setEditChannel(null);
@@ -334,91 +240,6 @@ export default function ChannelManagerPage() {
     setTimeout(() => setCopiedToken(''), 2000);
   };
 
-  // ── API Connection handlers ──
-
-  const handleCreateConnection = async () => {
-    setSaving(true);
-    try {
-      const res = await fetch('/api/channels/connections', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(connForm),
-      });
-      const data = await res.json();
-      if (res.ok) { showToast(tUi('✅ З\'єднання створено')); setShowConnModal(false); fetchData(); }
-      else { showToast(`❌ ${tUi(data.error)}`); }
-    } catch (e) { console.error(e); }
-    setSaving(false);
-  };
-
-  const handleSaveCredentials = async () => {
-    setSaving(true);
-    try {
-      const res = await fetch('/api/channels/credentials', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credForm),
-      });
-      const data = await res.json();
-      if (res.ok) { showToast(tUi('✅ Credentials збережено')); setShowCredModal(false); fetchData(); }
-      else { showToast(`❌ ${tUi(data.error)}`); }
-    } catch (e) { console.error(e); }
-    setSaving(false);
-  };
-
-  const handleActivateConnection = async (conn: APIConnection) => {
-    try {
-      const res = await fetch(`/api/channels/connections/${conn.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: conn.status === 'connected' ? 'disconnected' : 'connected' }),
-      });
-      if (res.ok) { showToast(conn.status === 'connected' ? '⏸ З\'єднання деактивовано' : '✅ З\'єднання активовано'); fetchData(); }
-    } catch (e) { console.error(e); }
-  };
-
-  const handleDeleteConnection = async (conn: APIConnection) => {
-    if (!confirm(`Видалити з'єднання ${CHANNEL_INFO[conn.channel]?.name || conn.channel}?`)) return;
-    try {
-      const res = await fetch(`/api/channels/connections/${conn.id}`, { method: 'DELETE' });
-      if (res.ok) { showToast(tUi('✅ З\'єднання видалено')); fetchData(); }
-    } catch (e) { console.error(e); }
-  };
-
-  const handleSaveMapping = async () => {
-    setSaving(true);
-    try {
-      const res = await fetch('/api/channels/mapping', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(mappingForm),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showToast(tUi('✅ Mapping збережено'));
-        fetchMappings(mappingForm.connection_id);
-      } else { showToast(`❌ ${tUi(data.error)}`); }
-    } catch (e) { console.error(e); }
-    setSaving(false);
-  };
-
-  const handleDeleteMapping = async (id: string) => {
-    try {
-      const res = await fetch(`/api/channels/mapping?id=${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        showToast(tUi('✅ Mapping видалено'));
-        if (selectedConn) fetchMappings(selectedConn.id);
-      }
-    } catch (e) { console.error(e); }
-  };
-
-  const openMappingModal = (conn: APIConnection) => {
-    setSelectedConn(conn);
-    setMappingForm({ connection_id: conn.id, unit_type_id: '', external_room_type_id: '', external_rate_plan_id: '' });
-    fetchMappings(conn.id);
-    setShowMappingModal(true);
-  };
-
   // ─── Render ─────────────────────────────────────────────────
 
   return (
@@ -443,229 +264,15 @@ export default function ChannelManagerPage() {
               <ArrowLeft size={14} /> {tUi('Налаштування')}
             </Link>
             <h2 className="page-title">{tUi('Канал-менеджер')}</h2>
-            <div className="page-subtitle">{tUi('API інтеграції та iCal синхронізація з OTA')}</div>
+            <div className="page-subtitle">{tUi('iCal синхронізація з OTA')}</div>
           </div>
-        </div>
-
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--border-primary)' }}>
-          <button
-            onClick={() => setActiveTab('api')}
-            style={{
-              padding: '10px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-              border: 'none', background: 'none',
-              color: activeTab === 'api' ? 'var(--accent-primary)' : 'var(--text-tertiary)',
-              borderBottom: activeTab === 'api' ? '2px solid var(--accent-primary)' : '2px solid transparent',
-              marginBottom: -2, display: 'flex', alignItems: 'center', gap: 6,
-            }}
-          >
-            <Zap size={16} /> {tUi('API Інтеграції')}
-            {connections.length > 0 && (
-              <span style={{ background: 'var(--accent-primary)', color: '#fff', borderRadius: 10, padding: '1px 8px', fontSize: 11 }}>
-                {connections.length}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab('ical')}
-            style={{
-              padding: '10px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-              border: 'none', background: 'none',
-              color: activeTab === 'ical' ? 'var(--accent-primary)' : 'var(--text-tertiary)',
-              borderBottom: activeTab === 'ical' ? '2px solid var(--accent-primary)' : '2px solid transparent',
-              marginBottom: -2, display: 'flex', alignItems: 'center', gap: 6,
-            }}
-          >
-            <RefreshCw size={16} /> iCal Sync
-            {channels.length > 0 && (
-              <span style={{ background: 'var(--text-tertiary)', color: '#fff', borderRadius: 10, padding: '1px 8px', fontSize: 11 }}>
-                {channels.length}
-              </span>
-            )}
-          </button>
         </div>
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 64 }}>
             <Loader2 size={24} className="animate-pulse" style={{ display: 'inline-block' }} /> {tUi('Завантаження...')}
           </div>
-        ) : activeTab === 'api' ? (
-          /* ═══════════════════════════════════════════════════
-             API INTEGRATIONS TAB
-             ═══════════════════════════════════════════════════ */
-          <div>
-            {/* Action buttons */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-              <button className="btn btn-primary" onClick={() => { setConnForm({ channel: 'booking_com', external_property_id: '', connection_types: ['RESERVATIONS', 'AVAILABILITY'] }); setShowConnModal(true); }}>
-                <Plus size={16} /> {tUi('Нове з\'єднання')}
-              </button>
-              <button className="btn btn-secondary" onClick={() => { setCredForm({ channel: 'booking_com', environment: 'test', client_id: '', client_secret: '' }); setShowCredModal(true); }}>
-                <Shield size={16} /> Credentials
-              </button>
-            </div>
-
-            {/* Sync Stats Bar */}
-            {syncStats && (
-              <div className="card" style={{ padding: '12px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-                  <Activity size={14} style={{ color: 'var(--accent-primary)' }} />
-                  <span style={{ fontWeight: 700 }}>Sync Queue:</span>
-                </div>
-                <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
-                  <span>⏳ Pending: <b>{syncStats.queue.pending}</b></span>
-                  <span>⚡ Processing: <b>{syncStats.queue.processing}</b></span>
-                  <span style={{ color: 'var(--accent-success)' }}>✅ Done: <b>{syncStats.queue.completed}</b></span>
-                  {syncStats.queue.failed > 0 && (
-                    <span style={{ color: 'var(--accent-danger)' }}>❌ Failed: <b>{syncStats.queue.failed}</b></span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Connections List */}
-            {connections.length === 0 ? (
-              <div className="card" style={{ textAlign: 'center', padding: '48px 24px' }}>
-                <div style={{ fontSize: 48, marginBottom: 16 }}>🔌</div>
-                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: 'var(--text-primary)' }}>
-                  {tUi('Немає API з\'єднань')}
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginBottom: 20, maxWidth: 400, margin: '0 auto 20px' }}>
-                  {tUi('Додайте з\'єднання з Booking.com для real-time синхронізації бронювань та цін через їх Connectivity API')}
-                </div>
-                <button className="btn btn-primary" onClick={() => { setConnForm({ channel: 'booking_com', external_property_id: '', connection_types: ['RESERVATIONS', 'AVAILABILITY'] }); setShowConnModal(true); }}>
-                  <Plus size={16} /> {tUi('Додати Booking.com')}
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gap: 12 }}>
-                {connections.map(conn => {
-                  const info = CHANNEL_INFO[conn.channel] || { name: conn.channel, color: '#666', icon: '🔗' };
-                  const isConnected = conn.status === 'connected';
-                  const hasCredentials = !!conn.credentials_id;
-                  const hasToken = !!conn.token_valid;
-
-                  return (
-                    <div key={conn.id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                      {/* Header */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--border-primary)' }}>
-                        {/* Channel icon */}
-                        <div style={{
-                          width: 48, height: 48, borderRadius: 'var(--radius-md)',
-                          background: `${info.color}15`, color: info.color,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 22, fontWeight: 700, flexShrink: 0,
-                        }}>
-                          {info.icon}
-                        </div>
-
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--text-primary)' }}>
-                              {info.name}
-                            </span>
-                            <span className="badge" style={{
-                              background: isConnected ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-                              color: isConnected ? '#22c55e' : 'var(--accent-danger)',
-                              fontWeight: 700, fontSize: 11,
-                            }}>
-                              {isConnected ? <><Wifi size={10} /> Connected</> : <><WifiOff size={10} /> {conn.status}</>}
-                            </span>
-                          </div>
-                          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                            {conn.external_property_id && (
-                              <span>🏨 Property: <b>{conn.external_property_id}</b></span>
-                            )}
-                            <span>🔑 {hasCredentials ? (hasToken ? '✅ Token active' : '⚠ Token expired') : '❌ No credentials'}</span>
-                            <span>📋 {conn.connection_types?.join(', ') || '—'}</span>
-                            {conn.last_synced_at && (
-                              <span><Clock size={11} /> {formatTime(conn.last_synced_at)}</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                          <button className="btn btn-sm btn-secondary" onClick={() => openMappingModal(conn)} title="Room Mapping">
-                            <MapPin size={14} /> Mapping
-                          </button>
-                          <button
-                            className={`btn btn-sm ${isConnected ? 'btn-secondary' : 'btn-primary'}`}
-                            onClick={() => handleActivateConnection(conn)}
-                            title={isConnected ? tUi('Деактивувати') : tUi('Активувати')}
-                          >
-                            {isConnected ? <WifiOff size={14} /> : <Wifi size={14} />}
-                          </button>
-                          <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-danger)' }} onClick={() => handleDeleteConnection(conn)} title={tUi('Видалити')}>
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Error */}
-                      {conn.error_message && (
-                        <div style={{
-                          padding: '8px 20px', background: 'rgba(239,68,68,0.08)',
-                          borderTop: '1px solid var(--border-primary)',
-                          fontSize: 12, color: 'var(--accent-danger)',
-                        }}>
-                          ⚠ {conn.error_message}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Recent Sync Logs */}
-            {syncStats && syncStats.recentLogs.length > 0 && (
-              <div style={{ marginTop: 24 }}>
-                <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, color: 'var(--text-primary)' }}>
-                  {tUi('📜 Останні sync логи')}
-                </h3>
-                <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-                  <table className="data-table" style={{ fontSize: 12 }}>
-                    <thead>
-                      <tr>
-                        <th>{tUi('Час')}</th>
-                        <th>{tUi('Канал')}</th>
-                        <th>{tUi('Напрямок')}</th>
-                        <th>Endpoint</th>
-                        <th>Status</th>
-                        <th>RUID</th>
-                        <th>{tUi('Час (ms)')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {syncStats.recentLogs.map((log: any) => (
-                        <tr key={log.id}>
-                          <td>{formatTime(log.created_at)}</td>
-                          <td>{CHANNEL_INFO[log.channel]?.name || log.channel}</td>
-                          <td>{log.direction === 'outbound' ? '⬆' : '⬇'} {log.direction}</td>
-                          <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{log.endpoint}</td>
-                          <td>
-                            <span className="badge" style={{
-                              background: log.response_status < 300 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-                              color: log.response_status < 300 ? '#22c55e' : 'var(--accent-danger)',
-                              fontSize: 10,
-                            }}>
-                              {log.response_status || '—'}
-                            </span>
-                          </td>
-                          <td style={{ fontFamily: 'monospace', fontSize: 10 }}>{log.ruid || '—'}</td>
-                          <td>{log.duration_ms ? `${log.duration_ms}ms` : '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
         ) : (
-          /* ═══════════════════════════════════════════════════
-             iCAL TAB (existing logic, preserved)
-             ═══════════════════════════════════════════════════ */
           <div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
               <button className="btn btn-secondary" onClick={handleSyncAllICal} disabled={syncingAll || channels.length === 0}>
@@ -768,161 +375,6 @@ export default function ChannelManagerPage() {
           </div>
         )}
 
-        {/* ═══ MODALS ═══ */}
-
-        {/* New API Connection Modal */}
-        <Modal
-          open={showConnModal}
-          onClose={() => setShowConnModal(false)}
-          title={tUi('Нове API з\'єднання')}
-          footer={<>
-            <button className="btn btn-secondary" onClick={() => setShowConnModal(false)}>{tUi('Скасувати')}</button>
-            <button className="btn btn-primary" onClick={handleCreateConnection} disabled={saving}>
-              <Save size={16} /> {saving ? tUi('Створення...') : tUi('Створити')}
-            </button>
-          </>}
-        >
-          <div className="form-group">
-            <label className="form-label">{tUi('Канал *')}</label>
-            <select className="form-select" value={connForm.channel} onChange={e => setConnForm(p => ({ ...p, channel: e.target.value }))}>
-              <option value="booking_com">🅱 Booking.com</option>
-              <option value="airbnb">🏠 Airbnb</option>
-              <option value="vrbo">🏡 VRBO</option>
-              <option value="expedia">✈ Expedia</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">External Property ID</label>
-            <input className="form-input" placeholder={tUi('Наприклад: 12345678')} value={connForm.external_property_id} onChange={e => setConnForm(p => ({ ...p, external_property_id: e.target.value }))} />
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
-              {tUi('ID вашого об\'єкту на платформі OTA (можна додати пізніше)')}
-            </div>
-          </div>
-          <div className="form-group">
-            <label className="form-label">{tUi('Типи з\'єднання')}</label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {['RESERVATIONS', 'AVAILABILITY', 'CONTENT', 'PHOTOS', 'PROMOTIONS'].map(t => (
-                <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={connForm.connection_types.includes(t)}
-                    onChange={e => {
-                      setConnForm(p => ({
-                        ...p,
-                        connection_types: e.target.checked
-                          ? [...p.connection_types, t]
-                          : p.connection_types.filter(x => x !== t),
-                      }));
-                    }}
-                  />
-                  {t}
-                </label>
-              ))}
-            </div>
-          </div>
-        </Modal>
-
-        {/* Credentials Modal */}
-        <Modal
-          open={showCredModal}
-          onClose={() => setShowCredModal(false)}
-          title="API Credentials"
-          footer={<>
-            <button className="btn btn-secondary" onClick={() => setShowCredModal(false)}>{tUi('Скасувати')}</button>
-            <button className="btn btn-primary" onClick={handleSaveCredentials} disabled={saving}>
-              <Shield size={16} /> {saving ? tUi('Збереження...') : tUi('Зберегти')}
-            </button>
-          </>}
-        >
-          <div className="form-group">
-            <label className="form-label">{tUi('Канал *')}</label>
-            <select className="form-select" value={credForm.channel} onChange={e => setCredForm(p => ({ ...p, channel: e.target.value }))}>
-              <option value="booking_com">🅱 Booking.com</option>
-              <option value="airbnb">🏠 Airbnb</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">{tUi('Середовище *')}</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className={`btn ${credForm.environment === 'test' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }} onClick={() => setCredForm(p => ({ ...p, environment: 'test' }))}>
-                🧪 Test
-              </button>
-              <button className={`btn ${credForm.environment === 'production' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }} onClick={() => setCredForm(p => ({ ...p, environment: 'production' }))}>
-                🚀 Production
-              </button>
-            </div>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Client ID *</label>
-            <input className="form-input" placeholder="machine-account-client-id" value={credForm.client_id} onChange={e => setCredForm(p => ({ ...p, client_id: e.target.value }))} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Client Secret *</label>
-            <input className="form-input" type="password" placeholder="●●●●●●●●●●" value={credForm.client_secret} onChange={e => setCredForm(p => ({ ...p, client_secret: e.target.value }))} />
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
-              {tUi('Отримані з Booking.com Provider Portal → Machine Accounts')}
-            </div>
-          </div>
-        </Modal>
-
-        {/* Room Mapping Modal */}
-        <Modal
-          open={showMappingModal}
-          onClose={() => setShowMappingModal(false)}
-          title={`Room Mapping — ${selectedConn ? (CHANNEL_INFO[selectedConn.channel]?.name || selectedConn.channel) : ''}`}
-          width={640}
-          footer={<button className="btn btn-secondary" onClick={() => setShowMappingModal(false)}>{tUi('Закрити')}</button>}
-        >
-          {/* Existing mappings */}
-          {mappingData.mappings.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: 'var(--text-tertiary)' }}>{tUi('АКТИВНІ MAPPING')}</div>
-              <div style={{ display: 'grid', gap: 8 }}>
-                {mappingData.mappings.map(m => (
-                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)' }}>
-                    <Link2 size={14} style={{ color: 'var(--accent-primary)' }} />
-                    <span style={{ flex: 1, fontSize: 13 }}>
-                      <b>{m.unit_type_name}</b> ({m.unit_type_code})
-                      <span style={{ color: 'var(--text-tertiary)' }}> → </span>
-                      Room: <b>{m.external_room_type_id || '—'}</b>, Rate: <b>{m.external_rate_plan_id || '—'}</b>
-                    </span>
-                    <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-danger)' }} onClick={() => handleDeleteMapping(m.id)}>
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Add new mapping */}
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: 'var(--text-tertiary)' }}>{tUi('ДОДАТИ MAPPING')}</div>
-          <div style={{ display: 'grid', gap: 8 }}>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">{tUi('Тип кімнати (PMS)')}</label>
-              <select className="form-select" value={mappingForm.unit_type_id} onChange={e => setMappingForm(p => ({ ...p, unit_type_id: e.target.value }))}>
-                <option value="">{tUi('Оберіть...')}</option>
-                {mappingData.unitTypes.map(ut => (
-                  <option key={ut.id} value={ut.id}>{ut.name} ({ut.code})</option>
-                ))}
-              </select>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">External Room Type ID</label>
-                <input className="form-input" placeholder="RT_12345" value={mappingForm.external_room_type_id} onChange={e => setMappingForm(p => ({ ...p, external_room_type_id: e.target.value }))} />
-              </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">External Rate Plan ID</label>
-                <input className="form-input" placeholder="RP_STD" value={mappingForm.external_rate_plan_id} onChange={e => setMappingForm(p => ({ ...p, external_rate_plan_id: e.target.value }))} />
-              </div>
-            </div>
-            <button className="btn btn-primary btn-sm" onClick={handleSaveMapping} disabled={!mappingForm.unit_type_id || saving}>
-              <Plus size={14} /> {tUi('Зберегти mapping')}
-            </button>
-          </div>
-        </Modal>
-
         {/* iCal Create/Edit Modal */}
         <Modal
           open={showICalModal}
@@ -958,7 +410,7 @@ export default function ChannelManagerPage() {
             )}
             {icalForm.channel_type === 'unit' && (
               <div className="form-group">
-                <label className="form-label">{tUi('Будинок (Glamping) *')}</label>
+                <label className="form-label">{tUi('Одиниця розміщення *')}</label>
                 <select className="form-select" value={icalForm.unit_id} onChange={e => setICalForm(p => ({ ...p, unit_id: e.target.value }))}>
                   <option value="">{tUi('Оберіть...')}</option>
                   {mappableUnits.map(u => <option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}

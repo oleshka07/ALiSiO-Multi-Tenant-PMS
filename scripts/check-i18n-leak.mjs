@@ -43,7 +43,6 @@ const PROTECTED = [
   { dir: 'src/modules/finance/data', why: 'документ і експорт' },
   { dir: 'src/modules/bookings/data', why: 'лист гостю' },
   { dir: 'src/core/mail', why: 'лист' },
-  { dir: 'src/modules/channels/data', why: 'інтеграція з OTA' },
   { dir: 'src/app/api', why: 'відповідь API і файли на віддачу' },
 ];
 

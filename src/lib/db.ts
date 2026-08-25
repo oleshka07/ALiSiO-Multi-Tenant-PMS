@@ -401,24 +401,6 @@ function buildSchema(database: any) {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS hostex_sync_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      sync_type TEXT NOT NULL,
-      status TEXT NOT NULL,
-      records_synced INTEGER DEFAULT 0,
-      error_message TEXT,
-      started_at TEXT,
-      completed_at TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS hostex_property_map (
-      hostex_property_id INTEGER PRIMARY KEY,
-      hostex_title TEXT,
-      unit_id TEXT NOT NULL,
-      channels TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-
     CREATE INDEX IF NOT EXISTS idx_availability_blocks_unit ON availability_blocks(unit_id, date_from, date_to);
   `);
 
@@ -2373,31 +2355,18 @@ function runMigrations(database: any) {
   database.exec('CREATE INDEX IF NOT EXISTS idx_price_cal_ut_date ON price_calendar(unit_type_id, date)');
 
   // ═══════════════════════════════════════════════════════
-  // CHANNEL MANAGER MODULE (Booking.com, Airbnb, VRBO...)
+  // CHANNEL MANAGER MODULE
   // ═══════════════════════════════════════════════════════
+  //
+  // Five tables used to be created here — channel_connections,
+  // channel_room_mapping, ari_sync_queue, ari_sync_log, plus seven columns
+  // bolted onto `reservations` — for the Connectivity API of Booking.com. That
+  // integration was never connected to a live account and has been deleted;
+  // migration 0032 drops the tables on Postgres and tells the story.
+  //
+  // channel_credentials stays, and stays here, because it outlived its origin:
+  // the German fiscalisation keys live in it (@core/integration-credentials).
 
-  // --- Migration: create channel_connections table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS channel_connections (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      channel TEXT NOT NULL,
-      external_property_id TEXT,
-      status TEXT NOT NULL DEFAULT 'pending',
-      connection_types TEXT NOT NULL DEFAULT '[]',
-      pricing_model TEXT NOT NULL DEFAULT 'Standard',
-      credentials_id TEXT,
-      last_synced_at TEXT,
-      error_message TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_ch_conn_org ON channel_connections(organization_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_ch_conn_channel ON channel_connections(channel)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_ch_conn_status ON channel_connections(status)');
-
-  // --- Migration: create channel_credentials table ---
   database.exec(`
     CREATE TABLE IF NOT EXISTS channel_credentials (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
@@ -2414,78 +2383,12 @@ function runMigrations(database: any) {
     )
   `);
 
-  // --- Migration: create channel_room_mapping table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS channel_room_mapping (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      connection_id TEXT NOT NULL REFERENCES channel_connections(id) ON DELETE CASCADE,
-      unit_type_id TEXT NOT NULL REFERENCES unit_types(id) ON DELETE CASCADE,
-      external_room_type_id TEXT NOT NULL DEFAULT '',
-      external_rate_plan_id TEXT NOT NULL DEFAULT '',
-      is_active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(connection_id, unit_type_id)
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_ch_room_conn ON channel_room_mapping(connection_id)');
-
-  // --- Migration: create ari_sync_queue table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS ari_sync_queue (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      connection_id TEXT NOT NULL REFERENCES channel_connections(id) ON DELETE CASCADE,
-      sync_type TEXT NOT NULL DEFAULT 'full',
-      unit_type_id TEXT,
-      date_from TEXT NOT NULL,
-      date_to TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      attempts INTEGER NOT NULL DEFAULT 0,
-      max_attempts INTEGER NOT NULL DEFAULT 3,
-      last_error TEXT,
-      priority INTEGER NOT NULL DEFAULT 5,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_ari_queue_status ON ari_sync_queue(status)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_ari_queue_conn ON ari_sync_queue(connection_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_ari_queue_priority ON ari_sync_queue(priority, created_at)');
-
-  // --- Migration: create ari_sync_log table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS ari_sync_log (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      connection_id TEXT NOT NULL REFERENCES channel_connections(id) ON DELETE CASCADE,
-      direction TEXT NOT NULL DEFAULT 'outbound',
-      endpoint TEXT NOT NULL DEFAULT '',
-      request_body TEXT,
-      response_status INTEGER,
-      response_body TEXT,
-      ruid TEXT,
-      duration_ms INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_ari_log_conn ON ari_sync_log(connection_id)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_ari_log_created ON ari_sync_log(created_at)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_ari_log_ruid ON ari_sync_log(ruid)');
-
-  // --- Migration: add Booking.com fields to reservations ---
-  try {
-    database.exec("ALTER TABLE reservations ADD COLUMN bcom_reservation_id TEXT");
-  } catch { /* column already exists */ }
-  try {
-    database.exec("ALTER TABLE reservations ADD COLUMN price_per_night_json TEXT");
-  } catch { /* column already exists */ }
-  try {
-    database.exec("ALTER TABLE reservations ADD COLUMN smoking_preference TEXT");
-  } catch { /* column already exists */ }
+  // Three of the seven Booking.com columns survive on their own merits: the
+  // booking widget writes promotions_applied, and the CSV export reads
+  // meal_plan and cancellation_policy. The other four were the wire format of
+  // an API nobody ever spoke to.
   try {
     database.exec("ALTER TABLE reservations ADD COLUMN promotions_applied TEXT");
-  } catch { /* column already exists */ }
-  try {
-    database.exec("ALTER TABLE reservations ADD COLUMN rate_rewriting_info TEXT");
   } catch { /* column already exists */ }
   try {
     database.exec("ALTER TABLE reservations ADD COLUMN cancellation_policy TEXT");

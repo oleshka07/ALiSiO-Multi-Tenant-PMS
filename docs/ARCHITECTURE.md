@@ -422,13 +422,14 @@ organizations                      ← клієнт SaaS (готель або м
               └── invoices
 ```
 
-92 таблиці. Кожна дістається до організації одним із трьох способів:
+106 таблиць. Кожна дістається до організації одним із трьох способів:
 
 - **напряму** — має колонку `organization_id`;
 - **через зв'язок** — має FK, який веде до організації;
-- **глобальна** — довідник, однаковий для всіх (8 таблиць:
-  `organizations`, `sessions`, `rate_limits`, `settings`,
-  `content_translations`, `hostex_property_map` тощо).
+- **глобальна** — довідник, однаковий для всіх, або таблиця, яку читають ще
+  до того, як орендар відомий: `organizations`, `sessions`, `platform_users`,
+  `platform_sessions`, `rate_limits`, `settings`, `content_translations`,
+  `fin_system_state`.
 
 **Таблиць без жодного шляху — нуль.** Це перевіряється:
 
@@ -1049,9 +1050,9 @@ node scripts/check-isolation.mjs
 - створення клієнта — `scripts/provision-org.mjs`, усі інтеграції вимкнені.
 
 **Межі модулів** (`check-boundaries.mjs`, друга колонка — пробої):
-нуль мають `dashboard`, `reports`, `payments`, `tasks`. Тримають:
-`auth` 1, `notifications` 3, `channels` 3, `pricing` 5, `guests` 7,
-`widget` 7, `properties` 8, `bookings` 9, `finance` 18.
+нуль мають `dashboard`, `channels`, `reports`, `auth`. Тримають:
+`events` 1, `tasks` 1, `bookings` 2, `pricing` 5, `guests` 6,
+`widget` 6, `properties` 9, `finance` 16.
 
 **Аудит застосунку — 2026-08-24.** Питання «як перевірити все» отримало
 постійну відповідь замість разових пошуків руками: [AUDIT.md](AUDIT.md) —

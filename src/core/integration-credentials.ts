@@ -14,13 +14,14 @@ import { getSql } from './db/async.ts';
  * written against it.
  *
  * channel_credentials already had the right shape (organization_id, channel,
- * client_id/secret/access_token) — it was built for Booking.com and never
- * used for anything else. This reads it for any integration, and falls back
- * to the environment so the existing single-tenant install keeps working
- * until its owner saves credentials in the UI.
+ * client_id/secret/access_token) — it was built for the Connectivity API of
+ * Booking.com, which has since been deleted, and the table outlived it. This
+ * reads it for any integration, and falls back to the environment so the
+ * existing single-tenant install keeps working until its owner saves
+ * credentials in the UI.
  */
 
-export type IntegrationChannel = 'booking_com' | 'fiskaly';
+export type IntegrationChannel = 'fiskaly';
 
 export interface IntegrationCredentials {
   clientId?: string;
@@ -34,10 +35,6 @@ export interface IntegrationCredentials {
 function fromEnv(channel: IntegrationChannel): IntegrationCredentials | null {
   const env = process.env;
   switch (channel) {
-    case 'booking_com':
-      return env.BOOKING_COM_CLIENT_ID
-        ? { clientId: env.BOOKING_COM_CLIENT_ID, clientSecret: env.BOOKING_COM_CLIENT_SECRET, perOrganization: false }
-        : null;
     case 'fiskaly':
       return env.FISKALY_API_KEY
         ? { clientId: env.FISKALY_API_KEY, clientSecret: env.FISKALY_API_SECRET, perOrganization: false }
@@ -114,19 +111,14 @@ export async function integrationConfigured(
  * and never even appeared on the screen, because the same cast filtered it out
  * of the list. Nobody noticed while the two coincidences were still here.
  *
- * `null` means the integration has no switch of its own: booking_com rides on
- * the channel manager.
+ * `null` would mean an integration with no switch of its own. Nothing uses it
+ * today; the type keeps it because the next integration may.
  */
 export const INTEGRATION_FEATURE: Record<string, string | null> = {
-  booking_com: null,
   fiskaly: 'fiscal_de',
 };
 
 export const INTEGRATION_FIELDS: Record<string, { field: 'accessToken' | 'clientId' | 'clientSecret'; label: string; hint?: string }[]> = {
-  booking_com: [
-    { field: 'clientId', label: 'Client ID' },
-    { field: 'clientSecret', label: 'Client secret' },
-  ],
   // TSE (KassenSichV). Which TSS and which registered till a PROPERTY uses
   // are identifiers, not secrets — they live in fin_fiscal_settings.
   fiskaly: [

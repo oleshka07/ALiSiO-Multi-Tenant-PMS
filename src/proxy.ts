@@ -10,8 +10,6 @@ const PUBLIC_PREFIXES = [
   '/api/ical-sync/', // iCal cron sync (own ?secret= auth)
   '/api/booking/', // guest self-registration, payments
   '/api/cron/', // cron jobs (own secret-header auth)
-  '/api/channels/reservations/poll', // Booking.com polling (cron secret in route.ts)
-  '/api/channels/sync/process', // ARI sync queue (cron secret in route.ts)
   '/api/widget', // widget-* endpoints (public embed)
   // '/api/file-upload' is deliberately absent. It was public for the retired
   // /book wizard; every caller is now a dashboard screen, and an open upload
