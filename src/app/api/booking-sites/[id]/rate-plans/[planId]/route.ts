@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
+import { serverError } from '@core/http/errors';
+import { withOwnedSite } from '../../../_owned-site';
 
 // PATCH /api/booking-sites/[id]/rate-plans/[planId]
 export async function PATCH(
@@ -9,12 +10,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; planId: string }> }
 ) {
   try {
-    const session = await getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const { id, planId } = await params;
-    const sql = getSql();
     const body = await request.json();
+
+    return await withOwnedSite(request.headers.get('cookie'), id, async () => {
+    const sql = getSql();
 
     const plan = await sql.row<any>('SELECT * FROM site_rate_plans WHERE id = ? AND site_id = ?', [planId, id]);
     if (!plan) return NextResponse.json({ error: 'Rate plan not found' }, { status: 404 });
@@ -51,19 +51,19 @@ export async function PATCH(
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
     }
 
-    values.push(planId);
-    await sql.run(`UPDATE site_rate_plans SET ${setClauses.join(', ')} WHERE id = ?`, values);
+    values.push(planId, id);
+    await sql.run(`UPDATE site_rate_plans SET ${setClauses.join(', ')} WHERE id = ? AND site_id = ?`, values);
 
-    const updated = await sql.row<any>('SELECT * FROM site_rate_plans WHERE id = ?', [planId]);
+    const updated = await sql.row<any>('SELECT * FROM site_rate_plans WHERE id = ? AND site_id = ?', [planId, id]);
     try { updated.payment_schedule = JSON.parse(updated.payment_schedule); } catch { /* */ }
     try { updated.meals_included = JSON.parse(updated.meals_included); } catch { /* */ }
     try { updated.applied_listings = JSON.parse(updated.applied_listings); } catch { /* */ }
     try { updated.valid_weekdays = updated.valid_weekdays ? JSON.parse(updated.valid_weekdays) : null; } catch { /* */ }
 
     return NextResponse.json({ plan: updated });
+    });
   } catch (error: any) {
-    console.error('PATCH rate-plan error:', error?.message);
-    return NextResponse.json({ error: 'Failed to update rate plan' }, { status: 500 });
+    return serverError('app/api/booking-sites/[id]/rate-plans/[planId] PATCH', error, 'Failed to update rate plan');
   }
 }
 
@@ -73,20 +73,19 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; planId: string }> }
 ) {
   try {
-    const session = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const { id, planId } = await params;
+
+    return await withOwnedSite(req.headers.get('cookie'), id, async () => {
     const sql = getSql();
 
     const plan = await sql.row<any>('SELECT id FROM site_rate_plans WHERE id = ? AND site_id = ?', [planId, id]);
     if (!plan) return NextResponse.json({ error: 'Rate plan not found' }, { status: 404 });
 
-    await sql.run("UPDATE site_rate_plans SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [planId]);
+    await sql.run("UPDATE site_rate_plans SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND site_id = ?", [planId, id]);
     return NextResponse.json({ success: true });
+    });
   } catch (error: any) {
-    console.error('DELETE rate-plan error:', error?.message);
-    return NextResponse.json({ error: 'Failed to delete rate plan' }, { status: 500 });
+    return serverError('app/api/booking-sites/[id]/rate-plans/[planId] DELETE', error, 'Failed to delete rate plan');
   }
 }
 

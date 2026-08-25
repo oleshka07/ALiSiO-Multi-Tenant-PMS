@@ -507,6 +507,47 @@ async function main() {
     assert.ok(own.ok, `A cannot read its own analytics: ${own.status}`);
     console.log("  ok  B cannot read A's site analytics, A still can");
 
+    // The site itself, not just its analytics. Six route files under
+    // booking-sites/[id]/** checked for a session and then queried
+    // `WHERE id = ?` with no tenant context at all — over an id the widget
+    // publishes through /api/booking/site-config?slug=. On Postgres that meant
+    // two failures at once: `booking_sites` has a uniquely permissive policy
+    // (`OR app.organization_id = ''`), so the READ leaked another hotel's
+    // design_config, widget_config and allowed_domains, while every WRITE was
+    // refused by the same empty setting — site editing was broken for every
+    // customer on production. On SQLite there is no policy, so it was plain
+    // cross-tenant read, write and delete.
+    //
+    // Both halves are asserted, because fixing only the leak would leave the
+    // product broken and fixing only the writes would leave the leak.
+    for (const path of ['', '/listings', '/rate-plans', '/services']) {
+      const leak = await call(cookieB, `/api/booking-sites/${siteId}${path}`);
+      assert.strictEqual(leak.status, 404,
+        `B read A's site${path || ''}: ${leak.status}`);
+    }
+    const hijack = await call(cookieB, `/api/booking-sites/${siteId}`, {
+      method: 'PATCH', body: JSON.stringify({ name: 'hijacked', allowed_domains: 'evil.example' }),
+    });
+    assert.strictEqual(hijack.status, 404, `B renamed A's site: ${hijack.status}`);
+    const killed = await call(cookieB, `/api/booking-sites/${siteId}`, { method: 'DELETE' });
+    assert.strictEqual(killed.status, 404, `B deleted A's site: ${killed.status}`);
+
+    const siteAfterB = await sql.row('SELECT name, status FROM booking_sites WHERE id = ?', [siteId]);
+    assert.strictEqual(siteAfterB?.name, 'Probe site', "B's write reached A's site name");
+    assert.notStrictEqual(siteAfterB?.status, 'deleted', "B's delete reached A's site");
+
+    // A editing its own site has to WORK. This is the half that was broken on
+    // Postgres for everyone, and a fix that only tightens the read would leave
+    // it broken while looking finished.
+    const ownEdit = await call(cookieA, `/api/booking-sites/${siteId}`, {
+      method: 'PATCH', body: JSON.stringify({ name: 'Probe site renamed' }),
+    });
+    assert.ok(ownEdit.ok, `A could not edit its own site: ${ownEdit.status} ${await ownEdit.clone().text()}`);
+    const renamed = await sql.row('SELECT name FROM booking_sites WHERE id = ?', [siteId]);
+    assert.strictEqual(renamed?.name, 'Probe site renamed',
+      "A's own edit did not reach the database — this is the production bug, not the leak");
+    console.log("  ok  B cannot read or change A's site; A can edit its own");
+
     // 'all' must mean "all of MINE". It expanded to `1=1` — every reservation
     // on the server — which read correctly only while there was one hotel.
     const allB = await call(cookieB, '/api/booking-sites/all/analytics/overview');

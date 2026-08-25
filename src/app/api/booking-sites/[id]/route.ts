@@ -1,106 +1,89 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
+import { serverError } from '@core/http/errors';
+import { withOwnedSite } from '../_owned-site';
+
+/**
+ * One booking site. See `../_owned-site.ts` for what was wrong here: no tenant
+ * context and `WHERE id = ?`, over an id the widget publishes.
+ */
+
+function parseConfigs(site: any) {
+  for (const key of ['design_config', 'widget_config']) {
+    if (site?.[key]) {
+      try { site[key] = JSON.parse(site[key]); } catch { /* leave as string */ }
+    }
+  }
+  return site;
+}
 
 // GET /api/booking-sites/[id]
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const { id } = await params;
-    const sql = getSql();
-    const site = await sql.row<any>(
-      "SELECT * FROM booking_sites WHERE id = ? AND status != 'deleted'", [id]
-    );
-
-    if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
-
-    if (site.design_config) {
-      try { site.design_config = JSON.parse(site.design_config); } catch { /* leave as string */ }
-    }
-    if (site.widget_config) {
-      try { site.widget_config = JSON.parse(site.widget_config); } catch { /* leave as string */ }
-    }
-
-    return NextResponse.json({ site });
+    return await withOwnedSite(req.headers.get('cookie'), id, async ({ site }) =>
+      NextResponse.json({ site: parseConfigs(site) }));
   } catch (error: any) {
-    console.error('GET /api/booking-sites/[id] error:', error?.message);
-    return NextResponse.json({ error: 'Failed to fetch site' }, { status: 500 });
+    return serverError('app/api/booking-sites/[id] GET', error, 'Failed to fetch site');
   }
 }
 
 // PATCH /api/booking-sites/[id]
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const { id } = await params;
-    const sql = getSql();
     const body = await request.json();
 
-    const site = await sql.row<any>(
-      "SELECT * FROM booking_sites WHERE id = ? AND status != 'deleted'", [id]
-    );
-    if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    return await withOwnedSite(request.headers.get('cookie'), id, async ({ organizationId }) => {
+      const sql = getSql();
+      const allowed = ['name', 'slug', 'site_url', 'type', 'currency', 'status', 'design_config', 'widget_config', 'allowed_domains'];
+      const setClauses: string[] = ['updated_at = CURRENT_TIMESTAMP'];
+      const values: any[] = [];
 
-    const allowed = ['name', 'slug', 'site_url', 'type', 'currency', 'status', 'design_config', 'widget_config', 'allowed_domains'];
-    const setClauses: string[] = ["updated_at = CURRENT_TIMESTAMP"];
-    const values: any[] = [];
-
-    for (const key of allowed) {
-      if (key in body) {
-        setClauses.push(`${key} = ?`);
-        const val = body[key];
-        values.push(typeof val === 'object' && val !== null ? JSON.stringify(val) : val);
+      for (const key of allowed) {
+        if (key in body) {
+          setClauses.push(`${key} = ?`);
+          const val = body[key];
+          values.push(typeof val === 'object' && val !== null ? JSON.stringify(val) : val);
+        }
       }
-    }
 
-    if (setClauses.length === 1) {
-      return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
-    }
+      if (setClauses.length === 1) {
+        return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+      }
 
-    values.push(id);
-    await sql.run(`UPDATE booking_sites SET ${setClauses.join(', ')} WHERE id = ?`, values);
+      // organization_id in the WHERE as well as in the ownership read above:
+      // the read proves the caller may touch this row, this makes the write
+      // unable to reach any other one even if that read is ever loosened.
+      values.push(id, organizationId);
+      await sql.run(
+        `UPDATE booking_sites SET ${setClauses.join(', ')} WHERE id = ? AND organization_id = ?`,
+        values,
+      );
 
-    const updated = await sql.row<any>('SELECT * FROM booking_sites WHERE id = ?', [id]);
-    if (updated.design_config) {
-      try { updated.design_config = JSON.parse(updated.design_config); } catch { /* */ }
-    }
-    if (updated.widget_config) {
-      try { updated.widget_config = JSON.parse(updated.widget_config); } catch { /* */ }
-    }
-
-    return NextResponse.json({ site: updated });
+      const updated = await sql.row<any>(
+        'SELECT * FROM booking_sites WHERE id = ? AND organization_id = ?', [id, organizationId]);
+      return NextResponse.json({ site: parseConfigs(updated) });
+    });
   } catch (error: any) {
-    console.error('PATCH /api/booking-sites/[id] error:', error?.message);
-    return NextResponse.json({ error: 'Failed to update site' }, { status: 500 });
+    return serverError('app/api/booking-sites/[id] PATCH', error, 'Failed to update site');
   }
 }
 
 // DELETE /api/booking-sites/[id] — soft delete
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const { id } = await params;
-    const sql = getSql();
-
-    const site = await sql.row<any>(
-      "SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'", [id]
-    );
-    if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
-
-    await sql.run(
-      "UPDATE booking_sites SET status = 'deleted', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [id]
-    );
-
-    return NextResponse.json({ success: true });
+    return await withOwnedSite(req.headers.get('cookie'), id, async ({ organizationId }) => {
+      const sql = getSql();
+      await sql.run(
+        "UPDATE booking_sites SET status = 'deleted', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?",
+        [id, organizationId],
+      );
+      return NextResponse.json({ success: true });
+    });
   } catch (error: any) {
-    console.error('DELETE /api/booking-sites/[id] error:', error?.message);
-    return NextResponse.json({ error: 'Failed to delete site' }, { status: 500 });
+    return serverError('app/api/booking-sites/[id] DELETE', error, 'Failed to delete site');
   }
 }

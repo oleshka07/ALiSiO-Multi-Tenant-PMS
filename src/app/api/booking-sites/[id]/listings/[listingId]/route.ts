@@ -1,7 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
+import { serverError } from '@core/http/errors';
+import { withOwnedSite } from '../../../_owned-site';
+
+/**
+ * A listing belongs to a site, and the site is proven this hotel's first.
+ * `AND site_id = ?` was already here and was doing real work — but only
+ * relative to a site nobody had checked the ownership of.
+ */
 
 // PATCH /api/booking-sites/[id]/listings/[listingId]
 export async function PATCH(
@@ -9,12 +16,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; listingId: string }> }
 ) {
   try {
-    const session = await getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const { id, listingId } = await params;
-    const sql = getSql();
     const body = await request.json();
+
+    return await withOwnedSite(request.headers.get('cookie'), id, async () => {
+    const sql = getSql();
 
     const listing = await sql.row<any>(
       'SELECT id FROM site_listings WHERE id = ? AND site_id = ?', [listingId, id]
@@ -36,14 +42,14 @@ export async function PATCH(
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
     }
 
-    values.push(listingId);
-    await sql.run(`UPDATE site_listings SET ${setClauses.join(', ')} WHERE id = ?`, values);
+    values.push(listingId, id);
+    await sql.run(`UPDATE site_listings SET ${setClauses.join(', ')} WHERE id = ? AND site_id = ?`, values);
 
-    const updated = await sql.row<any>('SELECT * FROM site_listings WHERE id = ?', [listingId]);
+    const updated = await sql.row<any>('SELECT * FROM site_listings WHERE id = ? AND site_id = ?', [listingId, id]);
     return NextResponse.json({ listing: updated });
+    });
   } catch (error: any) {
-    console.error('PATCH listing error:', error?.message);
-    return NextResponse.json({ error: 'Failed to update listing' }, { status: 500 });
+    return serverError('app/api/booking-sites/[id]/listings/[listingId] PATCH', error, 'Failed to update listing');
   }
 }
 
@@ -53,10 +59,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; listingId: string }> }
 ) {
   try {
-    const session = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const { id, listingId } = await params;
+
+    return await withOwnedSite(req.headers.get('cookie'), id, async () => {
     const sql = getSql();
 
     const listing = await sql.row<any>(
@@ -64,10 +69,10 @@ export async function DELETE(
     );
     if (!listing) return NextResponse.json({ error: 'Listing not found' }, { status: 404 });
 
-    await sql.run('DELETE FROM site_listings WHERE id = ?', [listingId]);
+    await sql.run('DELETE FROM site_listings WHERE id = ? AND site_id = ?', [listingId, id]);
     return NextResponse.json({ success: true });
+    });
   } catch (error: any) {
-    console.error('DELETE listing error:', error?.message);
-    return NextResponse.json({ error: 'Failed to delete listing' }, { status: 500 });
+    return serverError('app/api/booking-sites/[id]/listings/[listingId] DELETE', error, 'Failed to delete listing');
   }
 }

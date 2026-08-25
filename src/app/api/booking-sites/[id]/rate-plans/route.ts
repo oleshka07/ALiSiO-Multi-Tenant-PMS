@@ -1,19 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
+import { serverError } from '@core/http/errors';
+import { withOwnedSite } from '../../_owned-site';
 
 // GET /api/booking-sites/[id]/rate-plans
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getSessionUser(getSessionIdFromCookies(req.headers.get('cookie')));
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const { id } = await params;
+    return await withOwnedSite(req.headers.get('cookie'), id, async () => {
     const sql = getSql();
-
-    const site = await sql.row<any>("SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'", [id]);
-    if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
 
     const plans = await sql.rows<any>(`
       SELECT * FROM site_rate_plans
@@ -29,24 +25,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     return NextResponse.json({ plans });
+    });
   } catch (error: any) {
-    console.error('GET rate-plans error:', error?.message);
-    return NextResponse.json({ error: 'Failed to fetch rate plans' }, { status: 500 });
+    return serverError('app/api/booking-sites/[id]/rate-plans GET', error, 'Failed to fetch rate plans');
   }
 }
 
 // POST /api/booking-sites/[id]/rate-plans
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const { id } = await params;
-    const sql = getSql();
     const body = await request.json();
 
-    const site = await sql.row<any>("SELECT id FROM booking_sites WHERE id = ? AND status != 'deleted'", [id]);
-    if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    return await withOwnedSite(request.headers.get('cookie'), id, async () => {
+    const sql = getSql();
 
     const {
       name,
@@ -107,8 +99,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     try { plan.valid_weekdays = plan.valid_weekdays ? JSON.parse(plan.valid_weekdays) : null; } catch { /* */ }
 
     return NextResponse.json({ plan }, { status: 201 });
+    });
   } catch (error: any) {
-    console.error('POST rate-plans error:', error?.message);
-    return NextResponse.json({ error: 'Failed to create rate plan' }, { status: 500 });
+    return serverError('app/api/booking-sites/[id]/rate-plans POST', error, 'Failed to create rate plan');
   }
 }
