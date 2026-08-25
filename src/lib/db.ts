@@ -2876,8 +2876,12 @@ function runMigrations(database: any) {
       phone       TEXT,
       message     TEXT,
       status      TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'read', 'archived')),
-      source_url  TEXT,
-      raw_data    TEXT,
+      -- source_url and raw_data used to be here and are not in
+      -- db/postgres/schema.sql, so a fresh SQLite database had two columns
+      -- Postgres does not — and a live SQLite database created before they
+      -- were added has neither. A query written against them answered on one
+      -- engine and threw «no such column» on the others. Nothing writes this
+      -- table yet; the shape that survives is the one Postgres has.
       created_at  TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
@@ -4435,15 +4439,17 @@ function runMigrations(database: any) {
           phone       TEXT,
           message     TEXT,
           status      TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'read', 'archived')),
-          source_url  TEXT,
-          raw_data    TEXT,
           created_at  TEXT NOT NULL DEFAULT (datetime('now'))
         )
       `);
+      // Only the columns Postgres also has: the old table on a live database
+      // has no source_url, so naming it here made this rebuild throw and be
+      // swallowed by the catch below — leaving the dead foreign key in place,
+      // which is the whole thing this block exists to remove.
       database.exec(`
         INSERT INTO site_incoming_leads
-          (id, site_id, full_name, email, phone, message, status, source_url, raw_data, created_at)
-        SELECT id, site_id, full_name, email, phone, message, status, source_url, raw_data, created_at
+          (id, site_id, full_name, email, phone, message, status, created_at)
+        SELECT id, site_id, full_name, email, phone, message, status, created_at
         FROM site_incoming_leads_old
       `);
       database.exec('DROP TABLE site_incoming_leads_old');

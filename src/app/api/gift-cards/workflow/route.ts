@@ -181,15 +181,25 @@ export const POST = withPermission('manage_sites', async (req: NextRequest, _ctx
 });
 
 /* ─── DELETE: видалити правило + його промокоди ─── */
-export const DELETE = withPermission('manage_sites', async (req: NextRequest) => {
+export const DELETE = withPermission('manage_sites', async (req: NextRequest, _ctx: unknown, actor: Actor) => {
   try {
     const sql = getSql();
     const ruleId = new URL(req.url).searchParams.get('rule_id');
     if (!ruleId) return NextResponse.json({ error: 'rule_id required' }, { status: 400 });
 
+    // GET and POST were scoped to the caller's organization; DELETE was not.
+    // A rule id is short and sequential (`vr_${Date.now()}`), and this handler
+    // deactivates every unused code the rule issued — so one hotel's user
+    // could switch off another hotel's live discount campaign and delete the
+    // rule that made it, with a single query string.
+    const rule = await sql.row(
+      'SELECT id FROM gift_card_automation_rules WHERE id = ? AND organization_id = ?',
+      [ruleId, actor.organizationId]);
+    if (!rule) return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
+
     // Не видаляти вже використані коди — лише деактивувати
-    await sql.run(`UPDATE coupons SET is_active = FALSE WHERE gift_card_rule_id = ? AND current_uses = 0`, [ruleId]);
-    await sql.run(`DELETE FROM gift_card_automation_rules WHERE id = ?`, [ruleId]);
+    await sql.run(`UPDATE coupons SET is_active = FALSE WHERE gift_card_rule_id = ? AND current_uses = 0 AND organization_id = ?`, [ruleId, actor.organizationId]);
+    await sql.run(`DELETE FROM gift_card_automation_rules WHERE id = ? AND organization_id = ?`, [ruleId, actor.organizationId]);
 
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {

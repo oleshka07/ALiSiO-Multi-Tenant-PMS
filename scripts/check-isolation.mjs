@@ -80,6 +80,7 @@ async function cleanup() {
   }
   await sql.run('DELETE FROM properties WHERE organization_id LIKE ?', [`${TAG}%`]);
   try { await sql.run('DELETE FROM waitlist WHERE site_id IN (SELECT id FROM booking_sites WHERE slug LIKE ?)', [`${TAG}%`]); } catch { /* table may not exist */ }
+  try { await sql.run('DELETE FROM site_incoming_leads WHERE id LIKE ?', [`${TAG}%`]); } catch { /* table may not exist */ }
   try { await sql.run('DELETE FROM booking_sites WHERE slug LIKE ?', [`${TAG}%`]); } catch { /* table may not exist */ }
   await sql.run('DELETE FROM finance_tags WHERE organization_id LIKE ?', [`${TAG}%`]);
   // The app creates this table on first boot; cleanup may run against a
@@ -838,6 +839,40 @@ async function main() {
     assert.strictEqual(renamed?.name, 'Probe site renamed',
       "A's own edit did not reach the database — this is the production bug, not the leak");
     console.log("  ok  B cannot read or change A's site; A can edit its own");
+
+    // ── The contact form's inbox ─────────────────────────────────────────
+    // `site_incoming_leads` is a stranger's name, e-mail, phone and message,
+    // and the site id it hangs off is published by the widget. The tab that
+    // reads it was written now — the read must be A's alone from the first
+    // day, so the endpoint is probed with a row that really exists.
+    await sql.run(
+      "INSERT INTO site_incoming_leads (id, site_id, full_name, email, phone, message, status) VALUES (?, ?, ?, ?, ?, ?, 'new')",
+      [`${TAG}lead`, siteId, 'Probe Enquirer', 'enquirer@example.invalid', '+420000000000', 'Probe enquiry'],
+    );
+
+    const leadsA = await call(cookieA, `/api/booking-sites/${siteId}/leads`);
+    assert.ok(leadsA.ok, `A could not read its own enquiries: ${leadsA.status}`);
+    const leadsABody = await leadsA.json();
+    assert.ok((leadsABody.leads || []).some((l) => l.id === `${TAG}lead`),
+      "A's own inbox does not contain A's enquiry — the leak check below would prove nothing");
+
+    const leadsB = await call(cookieB, `/api/booking-sites/${siteId}/leads`);
+    assert.strictEqual(leadsB.status, 404, `B read A's contact-form inbox: ${leadsB.status}`);
+    const leadMoveB = await call(cookieB, `/api/booking-sites/${siteId}/leads`, {
+      method: 'PATCH', body: JSON.stringify({ id: `${TAG}lead`, status: 'archived' }),
+    });
+    assert.strictEqual(leadMoveB.status, 404, `B archived A's enquiry: ${leadMoveB.status}`);
+    const leadStill = await sql.row('SELECT status FROM site_incoming_leads WHERE id = ?', [`${TAG}lead`]);
+    assert.strictEqual(leadStill?.status, 'new', "B's archive reached A's enquiry");
+
+    // A's own write must land: «nobody can touch it» is not the goal.
+    const leadMoveA = await call(cookieA, `/api/booking-sites/${siteId}/leads`, {
+      method: 'PATCH', body: JSON.stringify({ id: `${TAG}lead`, status: 'read' }),
+    });
+    assert.ok(leadMoveA.ok, `A could not mark its own enquiry read: ${leadMoveA.status}`);
+    const leadRead = await sql.row('SELECT status FROM site_incoming_leads WHERE id = ?', [`${TAG}lead`]);
+    assert.strictEqual(leadRead?.status, 'read', "A's own status change did not reach the database");
+    console.log("  ok  the contact-form inbox is the site owner's alone, and its owner can work it");
 
     // 'all' must mean "all of MINE". It expanded to `1=1` — every reservation
     // on the server — which read correctly only while there was one hotel.

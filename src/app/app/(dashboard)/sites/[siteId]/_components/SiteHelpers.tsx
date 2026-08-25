@@ -4,7 +4,7 @@ import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { X, Copy, Check } from 'lucide-react';
 import {
-  LayoutList, Sparkles, Palette, Code2, Tag, CreditCard, Percent, Package, BarChart2, Inbox, Mail, PieChart,
+  LayoutList, Sparkles, Palette, Code2, Tag, CreditCard, Percent, Package, BarChart2, Inbox, Mail, PieChart, Gift, Zap,
 } from 'lucide-react';
 
 export const TABS = [
@@ -18,6 +18,11 @@ export const TABS = [
   { id: 'rate-plans', label: 'Тарифні плани',     icon: <Tag size={16} /> },
   { id: 'coupons',    label: 'Промокоди',          icon: <Percent size={16} /> },
   { id: 'packages',   label: 'Пакети',             icon: <Package size={16} /> },
+  // Сертифікати й кампанії кодів були написані повністю — з API, правами й
+  // ізоляцією — і не були підключені до цієї панелі. Тобто випустити
+  // подарунковий сертифікат не було як узагалі, хоч погасити вже можна було.
+  { id: 'gift-cards', label: 'Сертифікати',        icon: <Gift size={16} /> },
+  { id: 'campaigns',  label: 'Кампанії кодів',     icon: <Zap size={16} /> },
   { id: 'forms',      label: 'Форми',              icon: <Inbox size={16} /> },
   { id: 'notifications', label: 'Емайли',            icon: <Mail size={16} /> },
 ] as const;

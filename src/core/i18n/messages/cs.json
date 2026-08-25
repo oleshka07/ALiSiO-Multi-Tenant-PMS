@@ -1,4 +1,12 @@
 {
+  "В архіві": "V archivu",
+  "Без імені": "Bez jména",
+  "Прочитані": "Přečtené",
+  "Прочитано": "Přečteno",
+  "Звернень немає": "Žádné poptávky",
+  "Не вдалося змінити статус": "Nepodařilo se změnit stav",
+  "Не вдалося завантажити звернення": "Nepodařilo se načíst poptávky",
+  "Тут з’являються повідомлення з контактної форми сайту": "Zde se objevují zprávy z kontaktního formuláře webu",
   "-го)": "-ho)",
   "— Без корпуса —": "— Bez budovy —",
   "— Використати з Property —": "— Použít z Property —",

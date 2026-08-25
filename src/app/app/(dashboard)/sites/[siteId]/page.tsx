@@ -18,6 +18,9 @@ import { CouponsTab } from './_components/CouponsTab';
 import { PackageOffersTab } from './_components/PackageOffersTab';
 import { ThankYouTab } from './_components/ThankYouTab';
 import { NotificationsTab } from './_components/NotificationsTab';
+import { SiteGiftCardsTab } from './_components/SiteGiftCardsTab';
+import { OfferWorkflowTab } from './_components/OfferWorkflowTab';
+import { FormsTab } from './_components/FormsTab';
 import type { Site } from './_types';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -60,6 +63,10 @@ export default function SiteDetailPage() {
   const couponCountCb = useCallback((n: number) => setTabCounts(prev => ({ ...prev, coupons: n })), []);
   const ratePlanCountCb = useCallback((n: number) => setTabCounts(prev => ({ ...prev, 'rate-plans': n })), []);
   const packageCountCb = useCallback((n: number) => setTabCounts(prev => ({ ...prev, packages: n })), []);
+  const giftCardCountCb = useCallback((n: number) => setTabCounts(prev => ({ ...prev, 'gift-cards': n })), []);
+  // Лічильник «Форм» — це кількість НЕпрочитаних звернень: людина, яка
+  // написала готелю й не дочекалася відповіді, має бути видно з панелі.
+  const leadCountCb = useCallback((n: number) => setTabCounts(prev => ({ ...prev, forms: n })), []);
 
   const fetchSite = useCallback(async () => {
     if (siteId === 'all') {
@@ -176,6 +183,9 @@ export default function SiteDetailPage() {
         {activeTab === 'rate-plans'  && <RatePlansTab siteId={siteId} onCountChange={ratePlanCountCb} />}
         {activeTab === 'coupons' && <CouponsTab siteId={siteId} siteCurrency={site.currency} onCountChange={couponCountCb} />}
         {activeTab === 'packages'    && <PackageOffersTab siteId={siteId} siteCurrency={site.currency} onCountChange={packageCountCb} />}
+        {activeTab === 'gift-cards'  && <SiteGiftCardsTab siteId={siteId} onCountChange={giftCardCountCb} />}
+        {activeTab === 'campaigns'   && <OfferWorkflowTab siteId={siteId} />}
+        {activeTab === 'forms'       && <FormsTab siteId={siteId} onCountChange={leadCountCb} />}
         {activeTab === 'notifications' && <NotificationsTab site={site} onUpdate={cfg => setSite(s => s ? { ...s, widget_config: { ...s.widget_config, ...cfg } } : s)} />}
       </div>
     </>

@@ -1,4 +1,12 @@
 {
+  "В архіві": "Archiviert",
+  "Без імені": "Ohne Namen",
+  "Прочитані": "Gelesen",
+  "Прочитано": "Gelesen",
+  "Звернень немає": "Keine Anfragen",
+  "Не вдалося змінити статус": "Status konnte nicht geändert werden",
+  "Не вдалося завантажити звернення": "Anfragen konnten nicht geladen werden",
+  "Тут з’являються повідомлення з контактної форми сайту": "Hier erscheinen Nachrichten aus dem Kontaktformular der Website",
   "-го)": ".)",
   "— Без корпуса —": "— Ohne Gebäude —",
   "— Використати з Property —": "— Mit Property verwenden —",
