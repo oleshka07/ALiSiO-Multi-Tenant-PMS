@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getDb } from './db/index.ts';
 import { getSql } from './db/async.ts';
+import { encryptSecret, decryptSecret, secretsConfigured } from './security/secrets.ts';
 
 /**
  * Whose integration account is this?
@@ -44,6 +45,67 @@ function fromEnv(channel: IntegrationChannel): IntegrationCredentials | null {
   }
 }
 
+// ─── Encryption at rest ───────────────────────────────────────────────────
+
+/**
+ * A secret in this table is stored encrypted, and it says so.
+ *
+ * `core/security/secrets.ts` has had AES-256-GCM in it the whole time.
+ * `deploy.sh` refuses to start without a 64-hex `APP_SECRET_KEY`, `DEPLOY.md`
+ * tells the operator that key encrypts integration credentials — and not one
+ * line called `encryptSecret`. Every key a hotel ever pasted into the settings
+ * screen sat in `channel_credentials` as readable `TEXT`: in the backups, in
+ * any `pg_dump` sent for support, in front of anyone who reached the database
+ * through a wholly unrelated bug. The promise was in three files and the
+ * implementation in none.
+ *
+ * The prefix is the point. Without a marker, "is this ciphertext?" has to be
+ * guessed from shape, and a guess that goes wrong either decrypts garbage or
+ * stores a plaintext key believing it is already sealed. With it, the answer is
+ * read, not inferred, and a row written before this change is recognised as
+ * legacy plaintext rather than corrupted — it keeps working, and
+ * `scripts/encrypt-credentials.mjs` converts it in place.
+ */
+const SEAL = 'enc1:';
+
+function seal(plain: string | null): string | null {
+  if (plain === null || plain === '') return plain;
+  if (plain.startsWith(SEAL)) return plain; // already sealed — do not double-wrap
+  // No key means no save. Storing it in the clear "for now" is exactly how the
+  // previous state came about, and the operator would never learn of it: the
+  // screen would say saved, and it would be saved, in the clear, for years.
+  if (!secretsConfigured()) {
+    throw new Error('APP_SECRET_KEY is not configured — refusing to store an integration secret in the clear');
+  }
+  return SEAL + encryptSecret(plain);
+}
+
+/**
+ * Read a stored value. Sealed values are decrypted; anything else is a row
+ * from before this change and is returned as it stands.
+ *
+ * A seal that will not open is NOT returned as ciphertext. That happens when
+ * the key was rotated or the row was restored from another environment's
+ * backup, and handing the caller a base64 blob would send it to fiskaly as an
+ * API key: a confusing 401 from a third party instead of a plain "this hotel
+ * has no usable key". Null is the honest answer.
+ */
+function unseal(stored: string | null | undefined): string | null {
+  if (!stored) return null;
+  if (!stored.startsWith(SEAL)) return stored;
+  try {
+    return decryptSecret(stored.slice(SEAL.length));
+  } catch {
+    console.error('[integration-credentials] a stored secret could not be decrypted — wrong APP_SECRET_KEY?');
+    return null;
+  }
+}
+
+/** Is this value stored sealed? Used by the gate that proves it. */
+export function isSealed(stored: string | null | undefined): boolean {
+  return !!stored && stored.startsWith(SEAL);
+}
+
 /**
  * The organization's own credentials, or the server's, or nothing.
  *
@@ -69,9 +131,9 @@ export async function integrationCredentials(
 
       if (row && (row.access_token || row.client_id)) {
         return {
-          clientId: row.client_id || undefined,
-          clientSecret: row.client_secret || undefined,
-          accessToken: row.access_token || undefined,
+          clientId: unseal(row.client_id) || undefined,
+          clientSecret: unseal(row.client_secret) || undefined,
+          accessToken: unseal(row.access_token) || undefined,
           perOrganization: true,
         };
       }
@@ -171,6 +233,11 @@ export async function integrationStatus(channel: IntegrationChannel, organizatio
  * An empty string clears a field — that is how an owner takes a key back off
  * the server. Fields not named are left as they were, so saving only a client
  * secret does not silently wipe the client id.
+ *
+ * Every value goes through `seal()`. There is no branch that writes plaintext:
+ * with no key configured this throws before touching the database, so the
+ * failure mode is a save that visibly does not happen, not a save that quietly
+ * stores the secret in the clear.
  */
 export async function saveIntegrationCredentials(
   organizationId: string,
@@ -184,7 +251,7 @@ export async function saveIntegrationCredentials(
   for (const [key, value] of Object.entries(values)) {
     if (!allowed.has(key as any)) continue;
     sets.push(`${COLUMN[key as keyof typeof COLUMN]} = ?`);
-    params.push(value === '' ? null : value);
+    params.push(seal(value === '' ? null : value));
   }
   if (!sets.length) return;
 

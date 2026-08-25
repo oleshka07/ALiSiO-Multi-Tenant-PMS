@@ -76,6 +76,24 @@ credentials stored in the database (IMAP passwords, API keys), so a leak
 from staging must not decrypt production. Losing the production key makes those
 credentials unrecoverable — back it up somewhere other than the server.
 
+Until 2026-08-25 this paragraph was a promise nothing kept: the encryption
+existed in `core/security/secrets.ts` and no code called it, so every key
+pasted into the settings screen sat in `channel_credentials` as readable text.
+New saves are encrypted (`enc1:` prefix) and refuse outright when the key is
+absent. Rows written before that are still plaintext and no migration can
+convert them — `APP_SECRET_KEY` lives in the app's environment, not in psql's.
+Run this once per environment, inside the container where the key already is:
+
+```bash
+docker compose -f deploy/docker-compose.yml exec app \
+  node scripts/encrypt-credentials.mjs           # report first
+docker compose -f deploy/docker-compose.yml exec app \
+  node scripts/encrypt-credentials.mjs --write
+```
+
+It is idempotent and never prints a secret. If it reports «порожньо» there is
+nothing to do — no hotel has saved an integration key on that server yet.
+
 ## The flow
 
 ```

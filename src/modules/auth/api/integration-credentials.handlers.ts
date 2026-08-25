@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { withOwner, type Actor } from '@core/auth/session';
 import { hasFeature, type FeatureKey } from '@core/features';
+import { secretsConfigured } from '@core/security/secrets';
 import {
   INTEGRATION_FEATURE,
   INTEGRATION_FIELDS,
@@ -50,6 +51,16 @@ export const updateIntegrationCredentials = withOwner(async (request: Request, _
   const requiredFeature = INTEGRATION_FEATURE[channel];
   if (requiredFeature && !await hasFeature(actor.organizationId, requiredFeature as FeatureKey)) {
     return NextResponse.json({ error: 'Спочатку увімкніть цю інтеграцію' }, { status: 409 });
+  }
+  // Secrets are stored encrypted or not at all. Without a key the save would
+  // have to write plaintext, and a screen that says «Збережено» over a
+  // plaintext API key is worse than a screen that refuses — the operator can
+  // fix a refusal, and will never look for the other.
+  if (!secretsConfigured()) {
+    return NextResponse.json(
+      { error: 'APP_SECRET_KEY не налаштовано на сервері — ключ інтеграції нема куди зашифрувати' },
+      { status: 503 },
+    );
   }
 
   const clean: Record<string, string> = {};
