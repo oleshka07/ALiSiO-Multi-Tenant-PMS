@@ -260,6 +260,40 @@ async function main() {
     assert.strictEqual(lockAfter?.lock_code, '1111#', "B's write reached A's door code");
     console.log("  ok  B can neither read nor rewrite A's unit-type guest config");
 
+    // An uploaded file is a guest's passport as often as it is a logo. The
+    // read route used to check only that there WAS a session, because the
+    // stored path said nothing about whose file it was — so B, logged in as
+    // itself, could fetch A's registration scans by name. The name was
+    // `${original}_${Date.now()}`, which is a range, not a secret.
+    //
+    // Uploaded as a real file through the real route, then fetched by the
+    // neighbour, because the interesting part is what the URL alone gets you.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64');
+    const form = new FormData();
+    form.append('file', new Blob([png], { type: 'image/png' }), 'passport-scan.png');
+    form.append('folder', 'registrations');
+    const upRes = await fetch(`${BASE}/api/file-upload`, {
+      method: 'POST', headers: { cookie: cookieA }, body: form,
+    });
+    assert.ok(upRes.ok, `A could not upload a file: ${upRes.status}`);
+    const { url: fileUrl } = await upRes.json();
+
+    const ownRead = await call(cookieA, fileUrl);
+    assert.ok(ownRead.ok, `A cannot read its own upload: ${ownRead.status}`);
+
+    const neighbourRead = await call(cookieB, fileUrl);
+    assert.strictEqual(neighbourRead.status, 404,
+      `B read A's uploaded document: ${neighbourRead.status} — this is the leak`);
+
+    // And the old shape, with no organization in it, must not resolve either:
+    // that is the path every legacy row still carries.
+    const legacyShape = await call(cookieB, `/api/uploads/registrations/${fileUrl.split('/').pop()}`);
+    assert.strictEqual(legacyShape.status, 404,
+      `the pre-migration path still serves files: ${legacyShape.status}`);
+    console.log("  ok  B cannot read A's uploaded documents, by new path or old");
+
     // The channel-manager probes that stood here — save credentials, create a
     // connection, map a room — spoke to /api/channels/*, which was the
     // Connectivity API of Booking.com and is deleted. `channel_credentials`

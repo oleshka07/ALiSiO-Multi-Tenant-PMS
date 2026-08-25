@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import path from 'path';
-import fs from 'fs';
+import crypto from 'node:crypto';
+import path from 'node:path';
+import fs from 'node:fs';
 import { getSql } from '@core/db/async';
 import { withPermission, notFound, type Actor } from '@core/auth/session';
+import { uploadDirFor, uploadUrl, safeFilename, resolveUploadPath } from '@core/storage/uploads';
 
 /**
  * Files attached to a task.
@@ -14,8 +16,6 @@ import { withPermission, notFound, type Actor } from '@core/auth/session';
  * task id, POST attached a file to any task, and DELETE removed any result
  * by id. GET and DELETE did not look at the session at all.
  */
-
-const UPLOAD_DIR = path.join(process.cwd(), 'data', 'uploads', 'tasks');
 
 const ALLOWED_TYPES = [
   'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
@@ -75,19 +75,20 @@ export const uploadTaskAttachment = withPermission('manage_tasks', async (
       return NextResponse.json({ error: 'Файл завеликий. Максимум 10MB' }, { status: 400 });
     }
 
-    if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
-    const ext = path.extname(file.name) || '.jpg';
-    const baseName = path.basename(file.name, ext).replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 50);
-    const filename = `${baseName}_${Date.now()}${ext}`;
-    fs.writeFileSync(path.join(UPLOAD_DIR, filename), Buffer.from(await file.arrayBuffer()));
+    // Under this organization's folder, because that path is what
+    // GET /api/uploads checks ownership with. A task attachment is a photo of
+    // a broken pipe as often as it is an invoice — either way it is not the
+    // neighbouring hotel's to read.
+    const dir = uploadDirFor(actor.organizationId, 'tasks');
+    const filename = safeFilename(file.name, crypto.randomBytes(8).toString('hex'));
+    fs.writeFileSync(path.join(dir, filename), Buffer.from(await file.arrayBuffer()));
 
     const result = await sql.row<any>(
     `
       INSERT INTO task_attachments (task_id, organization_id, filename, url, file_size, content_type, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     RETURNING *`,
-    [taskId, actor.organizationId, file.name, `/api/uploads/tasks/${filename}`,
+    [taskId, actor.organizationId, file.name, uploadUrl(actor.organizationId, 'tasks', filename),
            file.size, file.type, actor.user.id],
   );
     return NextResponse.json(result, { status: 201 });
@@ -113,10 +114,15 @@ export const deleteTaskAttachment = withPermission('manage_tasks', async (
 
     // The row goes whether or not the file is still on disk; a missing file
     // must not leave an result nobody can remove.
-    const filename = String(result.url || '').split('/').pop();
-    if (filename) {
-      const filePath = path.join(UPLOAD_DIR, filename);
-      try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); }
+    //
+    // The path is rebuilt from the URL through the same resolver the read
+    // route uses, so a row that somehow names another organization's file
+    // resolves to null and deletes nothing. Rebuilding it from the bare file
+    // name — as this did — would have followed the row wherever it pointed.
+    const stored = String(result.url || '').replace(/^\/api\/uploads\//, '');
+    const filePath = stored ? resolveUploadPath(actor.organizationId, stored.split('/')) : null;
+    if (filePath) {
+      try { fs.unlinkSync(filePath); }
       catch (e: any) { console.error('task result file not removed:', e?.message); }
     }
     await sql.run('DELETE FROM task_attachments WHERE id = ? AND organization_id = ?', [attachment_id, actor.organizationId]);

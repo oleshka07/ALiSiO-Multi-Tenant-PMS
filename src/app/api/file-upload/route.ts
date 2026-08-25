@@ -1,21 +1,24 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { withActor } from '@core/auth/session';
-import path from 'path';
-import fs from 'fs';
+import crypto from 'node:crypto';
+import path from 'node:path';
+import fs from 'node:fs';
+import { withActor, type Actor } from '@core/auth/session';
+import { uploadDirFor, uploadUrl, safeFilename } from '@core/storage/uploads';
 
-const UPLOAD_DIR = path.join(process.cwd(), 'data', 'uploads');
-
-// POST /api/file-upload — dashboard image upload.
-// Requires a session. This route was exempted from the middleware for the
-// retired public booking wizard, which left an open upload endpoint behind.
-async function uploadHandler(request: NextRequest) {
+/**
+ * POST /api/file-upload — dashboard image upload.
+ *
+ * Requires a session. This route was exempted from the middleware for the
+ * retired public booking wizard, which left an open upload endpoint behind.
+ *
+ * The file lands under the uploader's organization, because that path is what
+ * `GET /api/uploads/...` checks ownership with. The random suffix replaces
+ * `Date.now()`: a millisecond is guessable in a range, and these are guest
+ * passports and bank statements.
+ */
+async function uploadHandler(request: NextRequest, actor: Actor) {
   try {
-    // Ensure upload directory exists
-    if (!fs.existsSync(UPLOAD_DIR)) {
-      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-    }
-
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
     const folder = (formData.get('folder') as string) || 'general';
@@ -40,33 +43,18 @@ async function uploadHandler(request: NextRequest) {
       return NextResponse.json({ error: 'File too large. Max 10MB' }, { status: 400 });
     }
 
-    // Create subfolder
-    const folderPath = path.join(UPLOAD_DIR, folder);
-    if (!fs.existsSync(folderPath)) {
-      fs.mkdirSync(folderPath, { recursive: true });
-    }
+    const dir = uploadDirFor(actor.organizationId, folder);
+    const filename = safeFilename(file.name, crypto.randomBytes(8).toString('hex'));
 
-    // Generate unique filename
-    const ext = path.extname(file.name) || '.jpg';
-    const baseName = path.basename(file.name, ext)
-      .replace(/[^a-zA-Z0-9_-]/g, '_')
-      .substring(0, 50);
-    const timestamp = Date.now();
-    const filename = `${baseName}_${timestamp}${ext}`;
-    const filePath = path.join(folderPath, filename);
-
-    // Write file
     const buffer = Buffer.from(await file.arrayBuffer());
-    fs.writeFileSync(filePath, buffer);
+    fs.writeFileSync(path.join(dir, filename), buffer);
 
-    // Return URL
-    const url = `/api/uploads/${folder}/${filename}`;
+    const url = uploadUrl(actor.organizationId, folder, filename);
     return NextResponse.json({ url, filename, size: file.size });
   } catch (error: any) {
-    console.error('POST /api/upload error:', error?.message);
-    return NextResponse.json({ error: error?.message || 'Upload failed' }, { status: 500 });
+    console.error('POST /api/file-upload error:', error?.message);
+    return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
   }
 }
 
-
-export const POST = withActor((req) => uploadHandler(req as NextRequest));
+export const POST = withActor((req, _ctx, actor: Actor) => uploadHandler(req as NextRequest, actor));
