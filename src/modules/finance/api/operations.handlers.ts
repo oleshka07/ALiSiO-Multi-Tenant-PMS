@@ -838,7 +838,7 @@ export async function getReservationPaymentTotals(reservationId: string): Promis
   // real dedup is no longer needed: signals stopped being created in
   // PR clean-1, legacy ones were deleted in PR clean-2, the column itself
   // is dropped in this PR. PMS check-in for channel-prepaid bookings now
-  // relies on reservation.is_prepaid (set by hostex-sync), not on any
+  // relies on reservation.is_prepaid (set by whatever imported the booking), not on any
   // fin_operation existing here — and recalcReservationPaymentStatus
   // already early-returns for is_prepaid=1.
   const paidRow = await sql.row<any>(`

@@ -4,8 +4,6 @@ export { listCredentials, upsertCredentials } from './credentials.handlers';
 export { listMappings, upsertMapping, deleteMapping } from './mapping.handlers';
 export { getSyncStatus, processSyncQueue } from './sync.handlers';
 export { pollReservations } from './poll.handlers';
-export { hostexWebhook, hostexWebhookInfo } from './webhook-hostex.handlers';
-export { hostexSync, hostexSyncStatus, hostexReservations, hostexProperties, hostexBulkSync } from './hostex.handlers';
 export { listIcalChannels, createIcalChannel } from './ical-channels.handlers';
 export { updateIcalChannel, deleteIcalChannel } from './ical-channel.handlers';
 export { syncIcal } from './ical-sync.handlers';

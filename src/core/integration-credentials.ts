@@ -3,14 +3,15 @@ import { getDb } from './db/index.ts';
 import { getSql } from './db/async.ts';
 
 /**
- * Whose Hostex account is this? Whose PriceLabs key?
+ * Whose integration account is this?
  *
- * Until now: the server's. `process.env.HOSTEX_ACCESS_TOKEN` and
- * `PRICELABS_API_KEY` are single values for the whole process, so every
- * organization on the box shared one channel-manager account. The feature
- * registry could switch Hostex OFF for a hotel, but it could not give two
- * hotels their own — turning it on for the second would have pointed it at
- * the first one's listings.
+ * Until now: the server's. An `API_KEY` in the environment is a single value
+ * for the whole process, so every organization on the box shared one account.
+ * The feature registry could switch an integration OFF for a hotel, but it
+ * could not give two hotels their own — turning it on for the second would
+ * have pointed it at the first one's listings. The two integrations that
+ * carried that flaw are gone; the seam stays, because the next one will be
+ * written against it.
  *
  * channel_credentials already had the right shape (organization_id, channel,
  * client_id/secret/access_token) — it was built for Booking.com and never
@@ -19,7 +20,7 @@ import { getSql } from './db/async.ts';
  * until its owner saves credentials in the UI.
  */
 
-export type IntegrationChannel = 'hostex' | 'pricelabs' | 'booking_com' | 'fiskaly';
+export type IntegrationChannel = 'booking_com' | 'fiskaly';
 
 export interface IntegrationCredentials {
   clientId?: string;
@@ -33,10 +34,6 @@ export interface IntegrationCredentials {
 function fromEnv(channel: IntegrationChannel): IntegrationCredentials | null {
   const env = process.env;
   switch (channel) {
-    case 'hostex':
-      return env.HOSTEX_ACCESS_TOKEN ? { accessToken: env.HOSTEX_ACCESS_TOKEN, perOrganization: false } : null;
-    case 'pricelabs':
-      return env.PRICELABS_API_KEY ? { accessToken: env.PRICELABS_API_KEY, perOrganization: false } : null;
     case 'booking_com':
       return env.BOOKING_COM_CLIENT_ID
         ? { clientId: env.BOOKING_COM_CLIENT_ID, clientSecret: env.BOOKING_COM_CLIENT_SECRET, perOrganization: false }
@@ -108,8 +105,6 @@ export async function integrationConfigured(
  * organization, and that screen already exists (Сайти → Платежі).
  */
 export const INTEGRATION_FIELDS: Record<string, { field: 'accessToken' | 'clientId' | 'clientSecret'; label: string; hint?: string }[]> = {
-  hostex: [{ field: 'accessToken', label: 'Access token', hint: 'Hostex → Settings → API' }],
-  pricelabs: [{ field: 'accessToken', label: 'API key', hint: 'PriceLabs → Account → API' }],
   booking_com: [
     { field: 'clientId', label: 'Client ID' },
     { field: 'clientSecret', label: 'Client secret' },

@@ -11,7 +11,7 @@ import { useMobileMenu } from '@/ui/MobileMenuContext';
  * Which integrations this organization has, and whose account each one uses.
  *
  * The switches and the keys belong on one screen because they answer halves of
- * the same question: turning Hostex on without a token gives a menu item that
+ * the same question: turning an integration on without a token gives a menu item that
  * refuses every request, and a token saved for an integration that is off is a
  * secret nothing can use. Owner-only: the API refuses everyone else.
  */

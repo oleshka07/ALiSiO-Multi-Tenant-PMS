@@ -8,7 +8,7 @@
  * from one number, once per booking, every morning.
  *
  * It happens HERE rather than in each channel importer for two reasons. There
- * are six importers — iCal, Hostex, Booking.com, the Excel import, the widget
+ * are the importers — iCal, Booking.com, the widget
  * and the operator's own screen — and six copies of this would be six
  * different bills. And a booking changes after it arrives: dates move, guests
  * are added, the amount is corrected. Charges posted at import time would be

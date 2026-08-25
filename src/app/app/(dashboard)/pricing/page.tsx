@@ -504,7 +504,7 @@ export default function PricingPage() {
           }}>
             <strong>{t('Ціни цього обʼєкта ведуться матрицею заселеності')}</strong>
             <div style={{ color: 'var(--text-secondary)', marginTop: 4 }}>
-              {t('Цей екран — денний календар: його заповнює PriceLabs або канал, і для розрахунку він потрібен лише там, де матриця мовчить. Порожньо тут не означає, що ціни немає.')}
+              {t('Цей екран — денний календар, і для розрахунку він потрібен лише там, де матриця мовчить. Порожньо тут не означає, що ціни немає.')}
               {' '}
               <a href="/app/settings/pricing-matrix" style={{ color: 'var(--accent-primary)' }}>
                 {t('Відкрити ціни за заселеністю')}
@@ -522,9 +522,6 @@ export default function PricingPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <a className="btn btn-secondary" href="/app/pricing/pricelabs" title={t('Подивитися ціни з PriceLabs та запустити sync')}>
-              📈 PriceLabs
-            </a>
             <button className="btn btn-secondary" onClick={() => setShowBulkEdit(true)}>
               <Edit3 size={16} /> {t('Масове редагування')}
             </button>

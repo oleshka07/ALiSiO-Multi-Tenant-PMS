@@ -108,7 +108,7 @@ const settingsItems = [
   },
   {
     title: 'Модулі та інтеграції',
-    desc: 'Що куплено: Hostex, PriceLabs, віджет',
+    desc: 'Що куплено: віджет, фіскалізація',
     icon: <SettingsIcon size={22} />,
     href: '/app/settings/features',
     color: 'orange',

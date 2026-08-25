@@ -6,9 +6,6 @@
 export async function register() {
   // Only run on the Node.js server (not edge, not client)
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    const { startHostexCron } = await import('./modules/channels/data/hostex-cron');
-    startHostexCron();
-
     // Register event subscribers
     const { registerBookingsSubscribers } = await import('@bookings');
     registerBookingsSubscribers();

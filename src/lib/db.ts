@@ -5022,7 +5022,7 @@ function runMigrations(database: any) {
       const seed = database.prepare(
         'INSERT OR IGNORE INTO organization_features (organization_id, feature) SELECT id, ? FROM organizations'
       );
-      for (const f of ['hostex', 'pricelabs', 'widget']) seed.run(f);
+      for (const f of ['widget']) seed.run(f);
     }
   } catch (e: any) {
     console.error('[DB] organization_features migration:', e.message);

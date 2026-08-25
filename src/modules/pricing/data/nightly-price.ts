@@ -11,7 +11,7 @@
  *
  * `price_occupancy` is the rate card the owner types: category × occupancy ×
  * season. `price_calendar` is one row per day — what a channel manager or
- * PriceLabs writes, and what the day-by-day screen edits.
+ * a channel writes, and what the day-by-day screen edits.
  *
  * A night is priced from the matrix when the matrix has a row for that unit
  * type AND that number of guests. Otherwise the day row is used. Otherwise the

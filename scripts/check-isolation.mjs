@@ -586,22 +586,22 @@ async function main() {
     // no feature rows — exactly what a brand-new customer looks like. Nothing
     // may work until a feature is switched on, and switching one on for B must
     // change nothing for A.
-    const hostexOff = await call(cookieB, '/api/hostex/sync');
-    assert.strictEqual(hostexOff.status, 403, `hostex without the feature returned ${hostexOff.status}`);
-
-    const widgetOff = await call(cookieA, `/api/widget/config?propertyId=${propA.id}`);
-    assert.strictEqual(widgetOff.status, 403, `widget without the feature returned ${widgetOff.status}`);
+    // Hostex and PriceLabs used to be the two probes here. Both integrations
+    // were removed — each kept its tenant in a module-level variable, so a
+    // cron or a webhook ran with whoever's token was set last — and the
+    // invariant they were probing is not about them. It is about the registry:
+    // off until bought, and bought by one hotel is not bought by its neighbour.
+    const widgetOffA = await call(cookieA, `/api/widget/config?propertyId=${propA.id}`);
+    assert.strictEqual(widgetOffA.status, 403, `widget without the feature returned ${widgetOffA.status}`);
     console.log('  ok  a new organization has every integration off');
 
     const turnOn = await call(cookieB, '/api/settings/features', {
       method: 'PUT',
-      body: JSON.stringify({ feature: 'hostex', enabled: true }),
+      body: JSON.stringify({ feature: 'widget', enabled: true }),
     });
     assert.ok(turnOn.ok, `enabling a feature failed: ${turnOn.status}`);
-    const hostexOn = await call(cookieB, '/api/hostex/sync');
-    assert.notStrictEqual(hostexOn.status, 403, 'hostex still refused after enabling the feature');
 
-    const stillOffForA = await call(cookieA, '/api/hostex/sync');
+    const stillOffForA = await call(cookieA, `/api/widget/config?propertyId=${propA.id}`);
     assert.strictEqual(stillOffForA.status, 403, "B's toggle changed A's features");
     console.log("  ok  a feature toggles per organization, not per server");
 
@@ -720,16 +720,16 @@ async function main() {
     }
 
     // ── Integration keys ─────────────────────────────────────────────────
-    // The point of per-organization credentials is that B's Hostex token bills
-    // B and reaches B's listings. Two things have to hold: A must not see it,
-    // and the screen must not hand the raw token back to anyone — including
-    // its owner, since whoever opens the page can read what it renders.
-    const KEY = `hx_probe_${TAG}_wxyz9876`;
+    // The point of per-organization credentials is that B's key bills B and
+    // reaches B's account. Two things have to hold: A must not see it, and the
+    // screen must not hand the raw key back to anyone — including its owner,
+    // since whoever opens the page can read what it renders.
+    const KEY = `fk_probe_${TAG}_wxyz9876`;
     await call(cookieB, '/api/settings/features', {
-      method: 'PUT', body: JSON.stringify({ feature: 'hostex', enabled: true }),
+      method: 'PUT', body: JSON.stringify({ feature: 'fiscal_de', enabled: true }),
     });
     const savedKey = await call(cookieB, '/api/settings/integration-credentials', {
-      method: 'PUT', body: JSON.stringify({ channel: 'hostex', values: { accessToken: KEY } }),
+      method: 'PUT', body: JSON.stringify({ channel: 'fiskaly', values: { clientId: KEY } }),
     });
     assert.ok(savedKey.ok, `saving an integration key was refused: ${savedKey.status}`);
     if (savedKey.ok) {
@@ -748,7 +748,7 @@ async function main() {
 
       // An organization without the feature cannot park a secret for it.
       const offChannel = await call(cookieA, '/api/settings/integration-credentials', {
-        method: 'PUT', body: JSON.stringify({ channel: 'pricelabs', values: { accessToken: 'x' } }),
+        method: 'PUT', body: JSON.stringify({ channel: 'fiskaly', values: { clientId: 'x' } }),
       });
       assert.strictEqual(offChannel.status, 409, `saving a key for a disabled integration returned ${offChannel.status}`);
       console.log('  ok  a key cannot be saved for an integration that is off');

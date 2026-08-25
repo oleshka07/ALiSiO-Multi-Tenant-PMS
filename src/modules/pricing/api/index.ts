@@ -20,7 +20,6 @@ export type { PriceRow, LosTier, NightPrice, Quote } from '../domain/occupancy-p
 
 // Not wrapped with withPermission — authenticates via X-Cron-Secret header
 // against process.env.CRON_SECRET. Called from a daily VPS crontab.
-export { syncPriceLabsFromCron } from './cron-pricelabs-sync.handlers';
 
 export type {
   PriceCalendar,
@@ -31,4 +30,3 @@ export type {
   Promotion,
   PromotionType,
 } from '../domain/types';
-export { previewPricelabs } from './pricelabs-preview.handlers';
