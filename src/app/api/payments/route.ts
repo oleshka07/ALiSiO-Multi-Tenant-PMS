@@ -4,6 +4,7 @@ import { getSql } from '@core/db/async';
 import { createPaymentOperation } from '@/modules/finance/api/payment-bridge';
 import { getOptionalActor } from '@/modules/finance/api/operations.handlers';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 // Legacy /api/payments endpoint — reads/writes via fin_operations.
 //
@@ -55,7 +56,7 @@ export const GET = withActor(async (request: NextRequest, _ctx, actor: Actor) =>
     `, params);
     return NextResponse.json(rows);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('app/api/payments GET', e);
   }
 });
 
@@ -166,6 +167,6 @@ export const POST = withPermission('manage_payments', async (
         'Позначка збережена. Реальна транзакція з\'явиться в Операціях, коли надійдуть гроші (банк / платформа).',
     }, { status: 201 });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('app/api/payments POST', e);
   }
 });

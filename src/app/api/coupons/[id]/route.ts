@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withPermission } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -62,6 +63,6 @@ export const PUT = withPermission('manage_sites', async (req: NextRequest, ctx: 
     if (e?.message?.includes('UNIQUE')) {
       return NextResponse.json({ error: 'Промокод з таким кодом вже існує' }, { status: 409 });
     }
-    return NextResponse.json({ error: e.message || 'Error' }, { status: 500 });
+    return serverError('app/api/coupons/[id] PUT', e, 'Error');
   }
 });

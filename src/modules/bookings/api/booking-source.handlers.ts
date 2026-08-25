@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { serverError } from '@core/http/errors';
 
 export async function updateBookingSource(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -38,7 +39,7 @@ export async function updateBookingSource(request: Request, { params }: { params
     const updated = await sql.row<any>('SELECT * FROM booking_sources WHERE id = ?', [id]);
     return NextResponse.json(updated);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/booking-source updateBookingSource', e);
   }
 }
 
@@ -64,6 +65,6 @@ export async function deleteBookingSource(_request: Request, { params }: { param
     await sql.run('DELETE FROM booking_sources WHERE id = ?', [id]);
     return NextResponse.json({ success: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/booking-source deleteBookingSource', e);
   }
 }

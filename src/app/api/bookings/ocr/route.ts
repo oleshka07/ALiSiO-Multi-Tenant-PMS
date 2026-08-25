@@ -31,10 +31,13 @@ export const POST = await withPermission('manage_guests', async (req: Request, _
 
     return NextResponse.json({ success: true, data: result });
   } catch (err: any) {
-    console.error('[OCR Admin] Error:', err?.message);
+    // The vision provider's own error text used to come back here. It can
+    // carry the prompt, the model name and occasionally part of the request —
+    // and this endpoint is handed a photograph of somebody's passport.
+    console.error('[OCR Admin]', err?.message, err?.stack);
     return NextResponse.json(
-      { success: false, error: err?.message || 'OCR processing failed' },
-      { status: 500 }
+      { success: false, error: 'Не вдалося розпізнати документ' },
+      { status: 500 },
     );
   }
 })

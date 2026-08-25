@@ -11,6 +11,7 @@ import { getSql } from '@core/db/async';
 import { getSessionUser } from '@core/auth';
 import { LANGUAGES, LANGUAGE_CODES, isLanguage } from '@core/i18n/languages';
 import { withActor, withPermission } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 async function currentUser() {
   const store = await cookies();
@@ -170,6 +171,6 @@ export const saveGeneralSettings = withPermission('manage_properties', async (re
     return readGeneralSettings();
   } catch (e: any) {
     console.error('PUT /api/settings/general error:', e);
-    return NextResponse.json({ error: e?.message || 'Не вдалося зберегти' }, { status: 500 });
+    return serverError('modules/properties/api/general-settings saveGeneralSettings', e, 'Не вдалося зберегти');
   }
 });

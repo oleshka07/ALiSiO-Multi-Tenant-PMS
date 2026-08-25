@@ -7,6 +7,7 @@ import {
   type AutoRuleRow, type Condition, type Actions, type Operation,
 } from '../data/auto-rules-engine';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 const OP_TYPES = ['income', 'expense', 'any'] as const;
 
@@ -51,7 +52,7 @@ export async function listAutoRules(_request: NextRequest): Promise<NextResponse
     `, [orgId]) as AutoRuleRow[];
     return NextResponse.json(await Promise.all(rows.map((r) => enrichRule(r))));
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/auto-rules listAutoRules', error);
   }
 }
 
@@ -93,7 +94,7 @@ export async function createAutoRule(request: NextRequest): Promise<NextResponse
     const row = await sql.row<any>("SELECT * FROM fin_auto_rules WHERE id = ?", [id]) as AutoRuleRow;
     return NextResponse.json(await enrichRule(row), { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/auto-rules createAutoRule', error);
   }
 }
 
@@ -135,7 +136,7 @@ export async function updateAutoRule(
     const row = await sql.row<any>("SELECT * FROM fin_auto_rules WHERE id = ?", [id]) as AutoRuleRow;
     return NextResponse.json(await enrichRule(row));
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/auto-rules updateAutoRule', error);
   }
 }
 
@@ -151,7 +152,7 @@ export async function deleteAutoRule(
     await sql.run('DELETE FROM fin_auto_rules WHERE id = ?', [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/auto-rules deleteAutoRule', error);
   }
 }
 
@@ -170,7 +171,7 @@ export async function toggleAutoRule(
     const updated = await sql.row<any>("SELECT * FROM fin_auto_rules WHERE id = ?", [id]) as AutoRuleRow;
     return NextResponse.json(await enrichRule(updated));
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/auto-rules toggleAutoRule', error);
   }
 }
 
@@ -210,7 +211,7 @@ export async function applyAutoRulesToOperations(request: NextRequest): Promise<
     }
     return NextResponse.json({ processed: ops.length, changed: changedCount, rulesCount: rules.length, results });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/auto-rules applyAutoRulesToOperations', error);
   }
 }
 
@@ -246,6 +247,6 @@ export async function autoMatchCounterpartiesAllOps(request: NextRequest): Promi
     }
     return NextResponse.json({ processed: ops.length, matched });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/auto-rules autoMatchCounterpartiesAllOps', error);
   }
 }

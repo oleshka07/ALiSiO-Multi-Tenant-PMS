@@ -5,6 +5,7 @@ import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { withActor, type Actor } from '@core/auth/session';
 import { ownedReservation } from '../data/owned.repo';
+import { serverError } from '@core/http/errors';
 
 export const listRegistrations = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
@@ -25,7 +26,7 @@ export const listRegistrations = withActor(async (_request: NextRequest, { param
     `, [id]);
     return NextResponse.json(rows);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/reservation-registrations listRegistrations', e);
   }
 });
 
@@ -83,7 +84,7 @@ export const registerGuest = withActor(async (request: NextRequest, { params }: 
 
     return NextResponse.json({ id: regId, guestId }, { status: 201 });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/reservation-registrations registerGuest', e);
   }
 });
 
@@ -103,7 +104,7 @@ export const removeRegistration = withActor(async (request: NextRequest, { param
 
     return NextResponse.json({ success: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/reservation-registrations removeRegistration', e);
   }
 });
 

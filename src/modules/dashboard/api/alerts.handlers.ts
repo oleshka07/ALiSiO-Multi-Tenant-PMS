@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import type { Actor } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 /**
  * reservations reach an organization through property_id. Every query here uses
@@ -120,6 +121,6 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
 
     return NextResponse.json(alerts);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/dashboard/api/alerts getAlerts', e);
   }
 }

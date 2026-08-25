@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { serverError } from '@core/http/errors';
 
 const CAPEX_JOIN = `SELECT c.*, bu.name as bu_name FROM capex_items c LEFT JOIN business_units bu ON c.business_unit_id = bu.id WHERE c.id = ?`;
 
@@ -15,7 +16,7 @@ export async function getCapexItem(
     if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json(item);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/capex-item getCapexItem', error);
   }
 }
 
@@ -46,7 +47,7 @@ export async function updateCapexItem(
 
     return NextResponse.json(await sql.row<any>(CAPEX_JOIN, [id]));
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/capex-item updateCapexItem', error);
   }
 }
 
@@ -61,6 +62,6 @@ export async function deleteCapexItem(
     if (result.changes === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/capex-item deleteCapexItem', error);
   }
 }

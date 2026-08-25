@@ -4,6 +4,7 @@ import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId, requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 import { withActor } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 export const listBookingSources = withActor(async () => {
   try {
@@ -18,7 +19,7 @@ export const listBookingSources = withActor(async () => {
     `, [await requireOrganizationId()]);
     return NextResponse.json(sources);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/booking-sources listBookingSources', e);
   }
 });
 
@@ -51,6 +52,6 @@ export const createBookingSource = withActor(async (request: Request) => {
     const created = await sql.row<any>('SELECT * FROM booking_sources WHERE id = ?', [id]);
     return NextResponse.json(created, { status: 201 });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/booking-sources createBookingSource', e);
   }
 });

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { serverError } from '@core/http/errors';
 
 /**
  * GET /api/booking-sources/widget-sites
@@ -46,6 +47,6 @@ export async function listWidgetSiteSources() {
 
     return NextResponse.json(rows);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/booking-source-widgets listWidgetSiteSources', e);
   }
 }

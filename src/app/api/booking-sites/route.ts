@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 import { requirePropertyId, propertyErrorStatus, runWithOrganization } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 // GET /api/booking-sites — list all sites for property
 export async function GET(_req: NextRequest) {
@@ -97,6 +98,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('POST /api/booking-sites error:', error);
-    return NextResponse.json({ error: error?.message || 'Failed to create site' }, { status: 500 });
+    return serverError('app/api/booking-sites POST', error, 'Failed to create site');
   }
 }

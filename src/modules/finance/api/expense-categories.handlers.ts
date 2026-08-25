@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 export async function listExpenseCategories(): Promise<NextResponse> {
   try {
@@ -10,7 +11,7 @@ export async function listExpenseCategories(): Promise<NextResponse> {
     const categories = await sql.rows<any>(`SELECT * FROM expense_categories WHERE is_active = TRUE ORDER BY sort_order ASC`);
     return NextResponse.json(categories);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/expense-categories listExpenseCategories', error);
   }
 }
 
@@ -46,6 +47,6 @@ export async function createExpenseCategory(request: Request): Promise<NextRespo
 
     return NextResponse.json(await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [id]), { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/expense-categories createExpenseCategory', error);
   }
 }

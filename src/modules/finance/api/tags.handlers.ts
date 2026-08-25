@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 const getOrgId = requireOrganizationId;
 
@@ -18,7 +19,7 @@ export async function listTags(request: NextRequest): Promise<NextResponse> {
     `, [orgId]);
     return NextResponse.json(rows);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/tags listTags', error);
   }
 }
 
@@ -54,7 +55,7 @@ export async function createTag(request: NextRequest): Promise<NextResponse> {
     const created = await sql.row<any>("SELECT * FROM finance_tags WHERE id = ?", [id]);
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/tags createTag', error);
   }
 }
 
@@ -100,7 +101,7 @@ export async function updateTag(
     const updated = await sql.row<any>("SELECT * FROM finance_tags WHERE id = ?", [id]);
     return NextResponse.json(updated);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/tags updateTag', error);
   }
 }
 
@@ -121,7 +122,7 @@ export async function archiveTag(
     const updated = await sql.row<any>("SELECT * FROM finance_tags WHERE id = ?", [id]);
     return NextResponse.json(updated);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/tags archiveTag', error);
   }
 }
 
@@ -139,6 +140,6 @@ export async function deleteTag(
     await sql.run("DELETE FROM finance_tags WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/tags deleteTag', error);
   }
 }

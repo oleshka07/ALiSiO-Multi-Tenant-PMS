@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 interface ProjectRow {
   id: string;
@@ -60,7 +61,7 @@ export async function listProjects(request: NextRequest): Promise<NextResponse> 
     `, [orgId]);
     return NextResponse.json(rows);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/projects listProjects', error);
   }
 }
 
@@ -87,7 +88,7 @@ export async function getProjectTree(request: NextRequest): Promise<NextResponse
     const tree = roots.map((root) => ({ ...root, children: childrenByParent.get(root.id) || [] }));
     return NextResponse.json({ tree });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/projects getProjectTree', error);
   }
 }
 
@@ -139,7 +140,7 @@ export async function createProject(request: NextRequest): Promise<NextResponse>
     const created = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]);
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/projects createProject', error);
   }
 }
 
@@ -185,7 +186,7 @@ export async function updateProject(
     const updated = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]);
     return NextResponse.json(updated);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/projects updateProject', error);
   }
 }
 
@@ -210,7 +211,7 @@ export async function archiveProject(
     const updated = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]);
     return NextResponse.json(updated);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/projects archiveProject', error);
   }
 }
 
@@ -245,7 +246,7 @@ export async function deleteProject(
     await sql.run("DELETE FROM business_units WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/projects deleteProject', error);
   }
 }
 
@@ -288,6 +289,6 @@ export async function moveProject(
     const updated = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]);
     return NextResponse.json(updated);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/projects moveProject', error);
   }
 }

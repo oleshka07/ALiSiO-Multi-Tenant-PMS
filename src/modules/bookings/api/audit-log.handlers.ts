@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { getSql } from '@core/db/async';
 import { getSessionUser } from '@core/auth';
 import { withActor } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 /** Actor helper — same pattern as finance module's getOptionalActor */
 export async function getBookingActor(): Promise<{ id: string; name: string } | null> {
@@ -100,6 +101,6 @@ export const listBookingAudit = withActor(async (request: NextRequest): Promise<
     return NextResponse.json({ items: rows });
   } catch (error: any) {
     console.error('GET /api/audit/bookings error:', error?.message || error);
-    return NextResponse.json({ error: error?.message || 'Failed' }, { status: 500 });
+    return serverError('modules/bookings/api/audit-log listBookingAudit', error, 'Failed');
   }
 });

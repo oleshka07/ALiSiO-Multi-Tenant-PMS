@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withPermission } from '@core/auth/session';
 import { recalcReservationPaymentStatus } from '@/modules/finance/api/operations.handlers';
+import { serverError } from '@core/http/errors';
 
 // Legacy DELETE /api/payments/:id — deletes the fin_operations row.
 // Deleting a payment is money leaving the books, so it needs the permission
@@ -21,6 +22,6 @@ export const DELETE = withPermission('manage_payments', async (
     if (op.reservation_id) await recalcReservationPaymentStatus(op.reservation_id);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('app/api/payments/[id] DELETE', e);
   }
 });

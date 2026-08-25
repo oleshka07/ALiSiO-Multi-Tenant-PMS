@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { serverError } from '@core/http/errors';
 
 // ─────────────────────────────────────────────────────────────────
 // Finance User Access — API handlers
@@ -104,7 +105,7 @@ export async function listFinanceAccess(): Promise<NextResponse> {
 
     return NextResponse.json({ users: result });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/finance-access listFinanceAccess', error);
   }
 }
 
@@ -168,7 +169,7 @@ export async function upsertFinanceAccess(request: NextRequest, context: any): P
 
     return NextResponse.json({ ok: true });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/finance-access upsertFinanceAccess', error);
   }
 }
 
@@ -187,7 +188,7 @@ export async function deleteFinanceAccess(_request: NextRequest, context: any): 
 
     return NextResponse.json({ ok: true });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/finance-access deleteFinanceAccess', error);
   }
 }
 
@@ -237,6 +238,6 @@ export async function getMyFinanceAccess(request: NextRequest): Promise<NextResp
       ...access,
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/finance-access getMyFinanceAccess', error);
   }
 }

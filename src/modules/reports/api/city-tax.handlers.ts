@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import type { Actor } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 /** reservations reach an organization through property_id — see reports.handlers.ts. */
 const OWN = (alias = '') => `${alias}property_id IN (SELECT id FROM properties WHERE organization_id = ?)`;
@@ -57,6 +58,6 @@ export async function getCityTaxReport(request: Request, _ctx: unknown, actor: A
       bySource, bookings,
     });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/reports/api/city-tax getCityTaxReport', e);
   }
 }

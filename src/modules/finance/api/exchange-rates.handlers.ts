@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 function isIsoDate(value: any): boolean {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -38,7 +39,7 @@ export async function listExchangeRates(_request: NextRequest): Promise<NextResp
 
     return NextResponse.json({ rates, latest });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/exchange-rates listExchangeRates', error);
   }
 }
 
@@ -104,7 +105,7 @@ export async function upsertExchangeRate(request: NextRequest): Promise<NextResp
     const created = await sql.row<any>("SELECT * FROM finance_exchange_rates WHERE id = ?", [newId]);
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/exchange-rates upsertExchangeRate', error);
   }
 }
 
@@ -122,7 +123,7 @@ export async function deleteExchangeRate(
     await sql.run("DELETE FROM finance_exchange_rates WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/exchange-rates deleteExchangeRate', error);
   }
 }
 
@@ -168,6 +169,6 @@ export async function getCurrentRate(request: NextRequest): Promise<NextResponse
 
     return NextResponse.json({ rate: null, effective_from: null, is_fallback: false, error: `No ${fromCur}→${toCur} rate configured` });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/exchange-rates getCurrentRate', error);
   }
 }

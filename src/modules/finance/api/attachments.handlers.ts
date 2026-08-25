@@ -17,6 +17,7 @@ import * as crypto from 'crypto';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@core/auth';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const ATTACH_ROOT = path.join(DATA_DIR, 'attachments');
@@ -99,7 +100,7 @@ export async function uploadAttachment(
     const row = await sql.row<any>("SELECT * FROM fin_operation_attachments WHERE id = ?", [attachmentId]);
     return NextResponse.json({ ok: true, attachment: row }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/attachments uploadAttachment', error);
   }
 }
 
@@ -126,7 +127,7 @@ export async function listOperationAttachments(
     `, [orgId, operationId]);
     return NextResponse.json({ items: rows });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/attachments listOperationAttachments', error);
   }
 }
 
@@ -166,7 +167,7 @@ export async function downloadAttachment(
       },
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/attachments downloadAttachment', error);
   }
 }
 
@@ -196,7 +197,7 @@ export async function deleteAttachment(
     await sql.run("DELETE FROM fin_operation_attachments WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/attachments deleteAttachment', error);
   }
 }
 
@@ -224,6 +225,6 @@ export async function getAttachmentCounts(request: NextRequest): Promise<NextRes
     for (const r of rows) counts[r.operation_id] = r.cnt;
     return NextResponse.json({ counts });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/attachments getAttachmentCounts', error);
   }
 }

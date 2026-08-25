@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { secretAuthFailure } from '@core/security/cron-auth';
+import { serverError } from '@core/http/errors';
 
 export async function runIcalCron(request: Request) {
   // The secret defaulted to 'alisio-ical-sync' — a password written in this
@@ -51,6 +52,6 @@ export async function runIcalCron(request: Request) {
     });
   } catch (e: any) {
     console.error('[iCal Cron] Error:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/channels/api/ical-cron runIcalCron', e);
   }
 }

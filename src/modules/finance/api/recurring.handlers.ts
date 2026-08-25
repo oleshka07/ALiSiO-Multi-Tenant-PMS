@@ -4,6 +4,7 @@ import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { materializeTemplate, runRecurringTick, type Template } from '../data/recurring-engine';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 const SCHEDULES = ['daily', 'weekly', 'monthly', 'yearly'] as const;
 const OP_TYPES = ['income', 'expense', 'transfer'] as const;
@@ -32,7 +33,7 @@ export async function listRecurringTemplates(request: NextRequest): Promise<Next
     `, [orgId]);
     return NextResponse.json(rows);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/recurring listRecurringTemplates', error);
   }
 }
 
@@ -82,7 +83,7 @@ export async function createRecurringTemplate(request: NextRequest): Promise<Nex
     const row = await sql.row<any>("SELECT * FROM fin_recurring_templates WHERE id = ?", [id]);
     return NextResponse.json(row, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/recurring createRecurringTemplate', error);
   }
 }
 
@@ -115,7 +116,7 @@ export async function updateRecurringTemplate(
     await sql.run(`UPDATE fin_recurring_templates SET ${fields.join(', ')} WHERE id = ?`, [...params]);
     return NextResponse.json(await sql.row<any>("SELECT * FROM fin_recurring_templates WHERE id = ?", [id]));
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/recurring updateRecurringTemplate', error);
   }
 }
 
@@ -131,7 +132,7 @@ export async function deleteRecurringTemplate(
     await sql.run("DELETE FROM fin_recurring_templates WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/recurring deleteRecurringTemplate', error);
   }
 }
 
@@ -147,7 +148,7 @@ export async function toggleRecurringTemplate(
     await sql.run("UPDATE fin_recurring_templates SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [row.is_active ? 0 : 1, id]);
     return NextResponse.json(await sql.row<any>("SELECT * FROM fin_recurring_templates WHERE id = ?", [id]));
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/recurring toggleRecurringTemplate', error);
   }
 }
 
@@ -165,7 +166,7 @@ export async function runRecurringNow(
     const operationId = await materializeTemplate(t, new Date().toISOString().substring(0, 10));
     return NextResponse.json({ ok: true, operation_id: operationId });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/recurring runRecurringNow', error);
   }
 }
 

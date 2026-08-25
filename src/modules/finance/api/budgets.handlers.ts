@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 export async function listBudgets(request: NextRequest): Promise<NextResponse> {
   try {
@@ -27,7 +28,7 @@ export async function listBudgets(request: NextRequest): Promise<NextResponse> {
     `, [...params]);
     return NextResponse.json(rows);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/budgets listBudgets', error);
   }
 }
 
@@ -74,7 +75,7 @@ export async function upsertBudget(request: NextRequest): Promise<NextResponse> 
     const created = await sql.row<any>("SELECT * FROM fin_budgets WHERE id = ?", [id]);
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/budgets upsertBudget', error);
   }
 }
 
@@ -88,6 +89,6 @@ export async function deleteBudget(
     await sql.run("DELETE FROM fin_budgets WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/budgets deleteBudget', error);
   }
 }

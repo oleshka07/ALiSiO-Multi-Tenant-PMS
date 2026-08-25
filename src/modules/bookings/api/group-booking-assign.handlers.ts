@@ -4,6 +4,7 @@ import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { withPermission } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 export const assignGuest = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   try {
@@ -44,6 +45,6 @@ export const assignGuest = withPermission('manage_bookings', async (request: Nex
     return NextResponse.json({ success: true, guestId });
   } catch (e: any) {
     console.error('POST /api/group-bookings/[id]/assign-guest error:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/group-booking-assign assignGuest', e);
   }
 });

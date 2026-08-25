@@ -1,6 +1,7 @@
 import { getSql } from '@core/db/async';
 import { NextRequest, NextResponse } from 'next/server';
 import { cronAuthFailure } from '@core/security/cron-auth';
+import { serverError } from '@core/http/errors';
 
 export async function GET(request: NextRequest) {
   // Anonymises six-year-old registrations. It used to refuse only when
@@ -76,6 +77,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, message: 'Data retention policy applied successfully' });
   } catch (error: any) {
     console.error('GDPR Retention Cron Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('app/api/cron/gdpr-retention GET', error);
   }
 }

@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 const KINDS = ['client', 'supplier', 'employee', 'other'] as const;
 type Kind = typeof KINDS[number];
@@ -89,7 +90,7 @@ export async function listCounterparties(request: NextRequest): Promise<NextResp
     `, [...params]) as CounterpartyRow[];
     return NextResponse.json(rows.map(enrich));
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/counterparties listCounterparties', error);
   }
 }
 
@@ -126,7 +127,7 @@ export async function getCounterpartyTree(request: NextRequest): Promise<NextRes
 
     return NextResponse.json({ tree, byKind });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/counterparties getCounterpartyTree', error);
   }
 }
 
@@ -185,7 +186,7 @@ export async function createCounterparty(request: NextRequest): Promise<NextResp
     const created = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow;
     return NextResponse.json(enrich(created), { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/counterparties createCounterparty', error);
   }
 }
 
@@ -243,7 +244,7 @@ export async function updateCounterparty(
     const updated = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow;
     return NextResponse.json(enrich(updated));
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/counterparties updateCounterparty', error);
   }
 }
 
@@ -268,7 +269,7 @@ export async function archiveCounterparty(
     const updated = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow;
     return NextResponse.json(enrich(updated));
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/counterparties archiveCounterparty', error);
   }
 }
 
@@ -294,7 +295,7 @@ export async function deleteCounterparty(
     await sql.run("DELETE FROM finance_counterparties WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/counterparties deleteCounterparty', error);
   }
 }
 
@@ -340,7 +341,7 @@ export async function moveCounterparty(
     const updated = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow;
     return NextResponse.json(enrich(updated));
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/counterparties moveCounterparty', error);
   }
 }
 
@@ -376,6 +377,6 @@ export async function getAliasSuggestions(_request: NextRequest): Promise<NextRe
 
     return NextResponse.json({ suggestions });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/counterparties getAliasSuggestions', error);
   }
 }

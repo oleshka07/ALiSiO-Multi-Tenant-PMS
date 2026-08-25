@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { requirePermission } from '@core/security/route-guard';
+import { serverError } from '@core/http/errors';
 
 export const PATCH = requirePermission('manage_documents', _PATCH);
 async function _PATCH(
@@ -45,6 +46,6 @@ async function _PATCH(
     return NextResponse.json({ ok: true, id, guest_name: name });
   } catch (e: any) {
     console.error('[invoices/buyer] PATCH error:', e.message);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('app/api/invoices/[id]/buyer _PATCH', e);
   }
 }

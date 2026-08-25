@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withActor, type Actor } from '@core/auth/session';
 import { ownedUnit } from '../data/owned.repo';
+import { serverError } from '@core/http/errors';
 
 export const listAvailabilityBlocks = withActor(async (_req, _ctx, actor: Actor) => {
   try {
@@ -44,7 +45,7 @@ export const createAvailabilityBlock = withActor(async (request: Request, _ctx, 
     `, [id, actor.organizationId, unit_id, date_from, date_to, reason || 'maintenance', notes || null]);
     return NextResponse.json({ ok: true, id });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/availability-blocks createAvailabilityBlock', e);
   }
 });
 
@@ -61,6 +62,6 @@ export const deleteAvailabilityBlock = withActor(async (request: Request, _ctx, 
     `, [id, actor.organizationId]);
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/availability-blocks deleteAvailabilityBlock', e);
   }
 });

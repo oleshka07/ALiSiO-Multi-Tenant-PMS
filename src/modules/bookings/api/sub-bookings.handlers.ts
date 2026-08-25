@@ -4,6 +4,7 @@ import { getDb, generateGuestToken } from '@core/db';
 import { money } from '@core/money';
 import { getSql } from '@core/db/async';
 import { withActor, withPermission } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 /**
  * GET /api/bookings/[id]/sub-bookings
@@ -45,7 +46,7 @@ export const listSubBookings = withActor(async (_request: NextRequest, { params 
 
     return NextResponse.json(result);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/sub-bookings listSubBookings', e);
   }
 });
 
@@ -151,7 +152,7 @@ export const createSubBooking = withPermission('manage_bookings', async (request
     return NextResponse.json({ id: subId, childReservationId }, { status: 201 });
   } catch (e: any) {
     console.error('POST sub-booking error:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/sub-bookings createSubBooking', e);
   }
 });
 
@@ -222,7 +223,7 @@ export const updateSubBooking = withPermission('manage_bookings', async (request
 
     return NextResponse.json({ success: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/sub-bookings updateSubBooking', e);
   }
 });
 
@@ -250,6 +251,6 @@ export const deleteSubBooking = withPermission('manage_bookings', async (_reques
 
     return NextResponse.json({ success: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/sub-bookings deleteSubBooking', e);
   }
 });

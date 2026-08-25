@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { anonymizeOldRegistrations } from '@/modules/guests/data/registration.repo';
+import { serverError } from '@core/http/errors';
 
 export async function GET(request: Request) {
   // Fails closed. This used to run unauthenticated whenever CRON_SECRET was
@@ -36,6 +37,6 @@ export async function GET(request: Request) {
     });
   } catch (err: any) {
     console.error('[GDPR Cron Error]:', err);
-    return NextResponse.json({ error: err?.message || 'Failed' }, { status: 500 });
+    return serverError('app/api/guests/gdpr-cron GET', err, 'Failed');
   }
 }

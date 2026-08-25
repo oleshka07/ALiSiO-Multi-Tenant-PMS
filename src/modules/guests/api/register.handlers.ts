@@ -5,6 +5,7 @@ import * as registrationRepo from '../data/registration.repo';
 // TODO: replace with @channels eventBus event when channels module is migrated
 import { checkRateLimit } from '@core/security/rate-limit';
 import { maskDobForSheets, maskDocNumberForSheets } from '@core/security/pii-mask';
+import { serverError } from '@core/http/errors';
 
 /** POST to Google Apps Script */
 async function syncToGoogleSheets(guests: any[], reservation: any): Promise<void> {
@@ -119,6 +120,6 @@ export async function registerGuests(
     return NextResponse.json({ success: true, registeredGuests });
   } catch (error: any) {
     console.error('POST /api/guest/[token]/register error:', error?.message || error);
-    return NextResponse.json({ error: error?.message || 'Failed to register guests' }, { status: 500 });
+    return serverError('modules/guests/api/register registerGuests', error, 'Failed to register guests');
   }
 }

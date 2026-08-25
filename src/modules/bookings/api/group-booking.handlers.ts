@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withActor, withPermission } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 export const getGroupBooking = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   try {
@@ -36,7 +37,7 @@ export const getGroupBooking = withActor(async (_request: NextRequest, { params 
 
     return NextResponse.json({ ...group as any, rooms });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/group-booking getGroupBooking', e);
   }
 });
 
@@ -101,7 +102,7 @@ export const updateGroupBooking = withPermission('manage_bookings', async (reque
 
     return NextResponse.json({ success: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/group-booking updateGroupBooking', e);
   }
 });
 
@@ -115,6 +116,6 @@ export const deleteGroupBooking = withPermission('manage_bookings', async (_requ
 
     return NextResponse.json({ success: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/group-booking deleteGroupBooking', e);
   }
 });

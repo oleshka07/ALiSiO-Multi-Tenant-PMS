@@ -40,6 +40,7 @@ import { getSql } from '@core/db/async';
 import { runWithOrganization } from '@core/auth/tenant-context';
 import { sendGuestReminderEmail } from '@/modules/bookings/data/send-guest-reminder-email';
 import { cronAuthFailure } from '@core/security/cron-auth';
+import { serverError } from '@core/http/errors';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,6 +133,6 @@ export async function GET(request: Request) {
     });
   } catch (error: any) {
     console.error('[GuestReminders] Error:', error?.message || error);
-    return NextResponse.json({ error: error?.message }, { status: 500 });
+    return serverError('app/api/cron/guest-reminders GET', error);
   }
 }

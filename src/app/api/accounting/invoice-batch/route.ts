@@ -18,6 +18,7 @@ import { requireOwner } from '@core/security/route-guard';
 import { allocateInvoiceNumber, seriesForChannel, isPeriodLocked } from '@/modules/finance/domain/invoice-numbering';
 import type { Actor } from '@core/auth/session';
 import { getSql } from '@core/db/async';
+import { serverError } from '@core/http/errors';
 
 // ─── CSV utilities ──────────────────────────────────────────────────────────
 
@@ -351,7 +352,7 @@ async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promi
     });
   } catch (e: any) {
     console.error('[BatchInvoices] delete error:', e.message);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('app/api/accounting/invoice-batch _DELETE', e);
   }
 }
 
@@ -464,6 +465,6 @@ async function _POST(request: NextRequest, _ctx: unknown, actor: Actor): Promise
     });
   } catch (e: any) {
     console.error('[BatchInvoices] error:', e.message);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('app/api/accounting/invoice-batch _POST', e);
   }
 }

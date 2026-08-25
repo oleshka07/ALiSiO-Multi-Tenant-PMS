@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { requireOwner } from '@core/security/route-guard';
+import { serverError } from '@core/http/errors';
 
 export const GET = requireOwner(_GET);
 async function _GET(request: NextRequest): Promise<NextResponse> {
@@ -92,6 +93,6 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json(filtered);
   } catch (e: any) {
     console.error('[accounting/invoices/list]', e.message);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('app/api/accounting/invoices/list _GET', e);
   }
 }

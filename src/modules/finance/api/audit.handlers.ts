@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 interface SectionResult {
   key: string;
@@ -309,6 +310,6 @@ export async function getFinanceAudit(_request: NextRequest): Promise<NextRespon
       sections,
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/audit getFinanceAudit', error);
   }
 }

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 const OP_TYPES = ['income', 'expense', 'transfer', 'other'] as const;
 type OpType = typeof OP_TYPES[number];
@@ -65,7 +66,7 @@ export async function listCategories(request: NextRequest): Promise<NextResponse
     `, [...params]);
     return NextResponse.json(rows);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/categories listCategories', error);
   }
 }
 
@@ -106,7 +107,7 @@ export async function getCategoryTree(request: NextRequest): Promise<NextRespons
 
     return NextResponse.json({ tree, byOpType });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/categories getCategoryTree', error);
   }
 }
 
@@ -175,7 +176,7 @@ export async function createCategory(request: NextRequest): Promise<NextResponse
     const created = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [id]);
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/categories createCategory', error);
   }
 }
 
@@ -236,7 +237,7 @@ export async function updateCategory(
     const updated = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [id]);
     return NextResponse.json(updated);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/categories updateCategory', error);
   }
 }
 
@@ -262,7 +263,7 @@ export async function archiveCategory(
     const updated = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [id]);
     return NextResponse.json(updated);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/categories archiveCategory', error);
   }
 }
 
@@ -296,7 +297,7 @@ export async function deleteCategory(
     await sql.run("DELETE FROM expense_categories WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/categories deleteCategory', error);
   }
 }
 
@@ -344,6 +345,6 @@ export async function moveCategory(
     const updated = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [id]);
     return NextResponse.json(updated);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/categories moveCategory', error);
   }
 }

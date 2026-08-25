@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 function mapExpense(cnameLower: string, commentLower: string, classifier: string, stdGroup: string): { rowId: string, childName: string } {
     const is = (searchStr: string) => cnameLower.includes(searchStr) || commentLower.includes(searchStr);
@@ -358,7 +359,7 @@ export async function getPnl2(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({ month, businessUnits: bus, rows: finalRows });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/reports.pnl2 getPnl2', error);
   }
 }
 

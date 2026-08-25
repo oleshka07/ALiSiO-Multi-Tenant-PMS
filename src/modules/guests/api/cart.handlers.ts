@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
 import * as repo from '../data/guest-actions.repo';
 import { sendEmail } from '@core/mail/email';
+import { serverError } from '@core/http/errors';
 
 // ─── POST /api/guest/[token]/cart ────────────────────────────────────────────
 export async function handleCartEvent(
@@ -38,7 +39,7 @@ export async function handleCartEvent(
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('[Cart Event] error:', error?.message);
-    return NextResponse.json({ error: error?.message || 'Failed' }, { status: 500 });
+    return serverError('modules/guests/api/cart handleCartEvent', error, 'Failed');
   }
 }
 

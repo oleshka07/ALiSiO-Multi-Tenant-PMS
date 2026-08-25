@@ -7,6 +7,7 @@ import { getSessionUser } from '@core/auth';
 
 import { loadActiveRules, isRuleApplicable } from '../data/auto-rules-engine';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 const OP_TYPES = ['income', 'expense', 'transfer'] as const;
 type OpType = typeof OP_TYPES[number];
@@ -326,7 +327,7 @@ export async function listOperations(request: NextRequest): Promise<NextResponse
     return NextResponse.json({ items, total: totalRow.n, page, pageSize });
   } catch (error: any) {
     console.error('GET /api/finance/operations error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/operations listOperations', error);
   }
 }
 
@@ -346,7 +347,7 @@ export async function getOperation(
     if (!row) return NextResponse.json({ error: 'Operation not found' }, { status: 404 });
     return NextResponse.json(await enrichOperation(row));
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/operations getOperation', error);
   }
 }
 
@@ -612,7 +613,7 @@ export async function updateOperation(
 
     return NextResponse.json(await enrichOperation(updated));
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/operations updateOperation', error);
   }
 }
 
@@ -637,7 +638,7 @@ export async function deleteOperation(
     if (existing.reservation_id) await recalcReservationPaymentStatus(existing.reservation_id);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/operations deleteOperation', error);
   }
 }
 
@@ -704,7 +705,7 @@ export async function mergeOperations(request: NextRequest): Promise<NextRespons
     return NextResponse.json({ ok: true, merged_into: expOp.id });
 
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/operations mergeOperations', error);
   }
 }
 
@@ -729,7 +730,7 @@ export async function getOperationAudit(
     `, [id]);
     return NextResponse.json({ items: rows });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/operations getOperationAudit', error);
   }
 }
 
@@ -820,7 +821,7 @@ export async function applyRecurringSuggestion(
     const updated = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, action: 'applied', operation: enrichOperation(updated) });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/operations applyRecurringSuggestion', error);
   }
 }
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { sendAbandonedCartEmail } from '@/modules/bookings/data/send-abandoned-cart-email';
 import { cronAuthFailure } from '@core/security/cron-auth';
+import { serverError } from '@core/http/errors';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +48,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, processed, totalFound: abandonedReservations.length });
   } catch (error: any) {
     console.error('[CronAbandonedCarts] Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('app/api/cron/abandoned-carts GET', error);
   }
 }

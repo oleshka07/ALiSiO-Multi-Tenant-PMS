@@ -8,6 +8,7 @@ import { cookies } from 'next/headers';
 import { getSessionUser } from '@core/auth';
 import { writeBookingAudit, getBookingActor, buildBookingLabel } from './audit-log.handlers';
 import { getSql } from '@core/db/async';
+import { serverError } from '@core/http/errors';
 
 export const getReservation = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
@@ -69,7 +70,7 @@ export const getReservation = withActor(async (_request: NextRequest, { params }
     });
   } catch (error: any) {
     console.error('GET /api/bookings/[id] error:', error?.message || error);
-    return NextResponse.json({ error: error?.message || 'Failed to fetch booking' }, { status: 500 });
+    return serverError('modules/bookings/api/reservation getReservation', error, 'Failed to fetch booking');
   }
 });
 
@@ -304,7 +305,7 @@ export const updateReservation = withActor(async (request: NextRequest, { params
     return NextResponse.json({ success: true, guest_page_token: updated?.guest_page_token || null });
   } catch (error: any) {
     console.error('PATCH /api/bookings/[id] error:', error?.message || error);
-    return NextResponse.json({ error: error?.message || 'Failed to update booking' }, { status: 500 });
+    return serverError('modules/bookings/api/reservation updateReservation', error, 'Failed to update booking');
   }
 });
 
@@ -349,6 +350,6 @@ export const deleteReservation = withActor(async (_request: NextRequest, { param
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('DELETE /api/bookings/[id] error:', error?.message || error);
-    return NextResponse.json({ error: error?.message || 'Failed to delete booking' }, { status: 500 });
+    return serverError('modules/bookings/api/reservation deleteReservation', error, 'Failed to delete booking');
   }
 });

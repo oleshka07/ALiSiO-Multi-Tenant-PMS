@@ -4,6 +4,7 @@ import { getDb, generateGuestToken } from '@core/db';
 import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 import { getSql } from '@core/db/async';
 import { withActor, withPermission } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 export const listIcalChannels = withActor(async () => {
   try {
@@ -38,7 +39,7 @@ export const listIcalChannels = withActor(async () => {
 
     return NextResponse.json(channels);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/channels/api/ical-channels listIcalChannels', e);
   }
 });
 
@@ -90,6 +91,6 @@ export const createIcalChannel = withPermission('manage_properties', async (requ
     const created = await sql.row<any>('SELECT * FROM ical_channels WHERE id = ?', [id]);
     return NextResponse.json(created, { status: 201 });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/channels/api/ical-channels createIcalChannel', e);
   }
 });

@@ -5,6 +5,7 @@ import { getDb } from '@core/db';
 import { findOrCreateGuest } from '@guests';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { withActor, withPermission } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 export const listGroupBookings = withActor(async () => {
   try {
@@ -21,7 +22,7 @@ export const listGroupBookings = withActor(async () => {
     `);
     return NextResponse.json(groups);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/group-bookings listGroupBookings', e);
   }
 });
 
@@ -127,6 +128,6 @@ export const createGroupBooking = withPermission('manage_bookings', async (reque
     return NextResponse.json({ id: groupId, guestId, roomCount: finalUnitIds.length }, { status: 201 });
   } catch (e: any) {
     console.error('POST /api/group-bookings error:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/group-bookings createGroupBooking', e);
   }
 });

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withActor, type Actor } from '@core/auth/session';
 import { ownedReservation } from '../data/owned.repo';
+import { serverError } from '@core/http/errors';
 
 export const listActivity = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
@@ -14,7 +15,7 @@ export const listActivity = withActor(async (_request: NextRequest, { params }: 
     const rows = await sql.rows<any>('SELECT * FROM booking_activity_log WHERE reservation_id = ? ORDER BY created_at DESC', [id]);
     return NextResponse.json(rows);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/reservation-activity listActivity', e);
   }
 });
 
@@ -35,6 +36,6 @@ export const createActivity = withActor(async (request: NextRequest, { params }:
     );
     return NextResponse.json({ id: logId }, { status: 201 });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/bookings/api/reservation-activity createActivity', e);
   }
 });

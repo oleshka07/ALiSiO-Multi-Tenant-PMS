@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withPermission } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 export const updateIcalChannel = withPermission('manage_properties', async (request: Request,
   { params }: { params: Promise<{ id: string }> }) => {
@@ -34,7 +35,7 @@ export const updateIcalChannel = withPermission('manage_properties', async (requ
     const updated = await sql.row<any>('SELECT * FROM ical_channels WHERE id = ?', [id]);
     return NextResponse.json(updated);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/channels/api/ical-channel updateIcalChannel', e);
   }
 });
 
@@ -54,6 +55,6 @@ export const deleteIcalChannel = withPermission('manage_properties', async (_req
 
     return NextResponse.json({ success: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/channels/api/ical-channel deleteIcalChannel', e);
   }
 });

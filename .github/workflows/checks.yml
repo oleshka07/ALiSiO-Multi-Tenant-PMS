@@ -221,7 +221,12 @@ jobs:
 
       - name: start
         env:
-          APP_SECRET_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+          # Quoted, and it has to be. YAML reads an unquoted run of digits as a
+          # NUMBER: this line without quotes reached the container as "0", one
+          # character instead of sixty-four, and the run failed on «saving an
+          # integration key was refused: 503» — which was the new guard doing
+          # exactly its job on a server whose key was, in fact, not usable.
+          APP_SECRET_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
           PORT: 3000
         run: |
           npm start > /tmp/server.log 2>&1 &

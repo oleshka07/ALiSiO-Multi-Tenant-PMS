@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 const ALLOWED_TYPES = ['cash', 'bank', 'card', 'investment', 'clearing', 'other'];
 
@@ -51,7 +52,7 @@ export async function listAccounts(request: NextRequest): Promise<NextResponse> 
     const accounts = await selectAccountsWithBalance(orgId, { includeArchived });
     return NextResponse.json(accounts);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/accounts listAccounts', error);
   }
 }
 
@@ -94,7 +95,7 @@ export async function createAccount(request: NextRequest): Promise<NextResponse>
     const account = await sql.row<any>("SELECT * FROM finance_accounts WHERE id = ?", [id]);
     return NextResponse.json(account, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/accounts createAccount', error);
   }
 }
 
@@ -128,7 +129,7 @@ export async function updateAccount(request: NextRequest): Promise<NextResponse>
     const account = await sql.row<any>("SELECT * FROM finance_accounts WHERE id = ?", [id]);
     return NextResponse.json(account);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/accounts updateAccount', error);
   }
 }
 
@@ -143,7 +144,7 @@ export async function archiveAccount(request: NextRequest): Promise<NextResponse
     if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     return NextResponse.json(account);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/accounts archiveAccount', error);
   }
 }
 
@@ -170,7 +171,7 @@ export async function deleteAccount(
     await sql.run("DELETE FROM finance_accounts WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/accounts deleteAccount', error);
   }
 }
 
@@ -240,6 +241,6 @@ export async function reconcileAccount(
       adjustment_type: adjustmentType,
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/accounts reconcileAccount', error);
   }
 }

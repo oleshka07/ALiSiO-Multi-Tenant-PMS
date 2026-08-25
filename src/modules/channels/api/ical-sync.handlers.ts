@@ -5,6 +5,7 @@ import { parseICal, extractGuestName } from '@/modules/channels/domain/ical'; //
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { getSql } from '@core/db/async';
 import { withPermission } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 export const syncIcal = withPermission('manage_properties', async (request: NextRequest) => {
   try {
@@ -30,7 +31,7 @@ export const syncIcal = withPermission('manage_properties', async (request: Next
     return NextResponse.json({ synced: results.length, results });
   } catch (e: any) {
     console.error('[iCal Sync] Error:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return serverError('modules/channels/api/ical-sync syncIcal', e);
   }
 });
 

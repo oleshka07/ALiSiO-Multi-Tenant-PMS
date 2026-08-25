@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withPermission, type Actor } from '@core/auth/session';
 import ExcelJS from 'exceljs';
+import { serverError } from '@core/http/errors';
 
 /**
  * GET /api/bookings/export-csv?from=YYYY-MM-DD&to=YYYY-MM-DD&category=&format=xlsx|csv
@@ -248,6 +249,6 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
     });
   } catch (err: any) {
     console.error('[export-csv] Error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return serverError('app/api/bookings/export-csv GET', err);
   }
 })

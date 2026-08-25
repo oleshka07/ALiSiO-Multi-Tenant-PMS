@@ -4,6 +4,7 @@ import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { getMonthMoney } from '../data/money-metrics';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { serverError } from '@core/http/errors';
 
 // Helpers: SQL fragments that filter fin_operations by semantic slice.
 // A "payment" operation = income or refund tied to a reservation (source IN ('booking_widget','teia','hostex','manual') with reservation_id).
@@ -161,7 +162,7 @@ export async function getFinanceOverview(request: NextRequest): Promise<NextResp
       monthlyData, buBreakdown, alerts, recentTransactions: recent,
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/reports getFinanceOverview', error);
   }
 }
 
@@ -368,7 +369,7 @@ export async function getCashflowMatrix(request: NextRequest): Promise<NextRespo
       summary: { totalIncome, totalExpense, netFlow: totalIncome - totalExpense },
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/reports getCashflowMatrix', error);
   }
 }
 
@@ -529,7 +530,7 @@ export async function getPnlMatrix(request: NextRequest): Promise<NextResponse> 
       ],
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/reports getPnlMatrix', error);
   }
 }
 
@@ -559,7 +560,7 @@ export async function getFinancialIndicators(request: NextRequest): Promise<Next
       margin_pct: marginPct, gross_margin_pct: grossMarginPct,
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/reports getFinancialIndicators', error);
   }
 }
 
@@ -676,7 +677,7 @@ export async function getBalanceSheet(request: NextRequest): Promise<NextRespons
       fixed_assets: { total: fixedAssets.total, count: fixedAssets.cnt, currency: 'CZK' },
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/reports getBalanceSheet', error);
   }
 }
 
@@ -759,7 +760,7 @@ export async function getProjectProfitability(request: NextRequest): Promise<Nex
 
     return NextResponse.json({ months, projects, totals, basis });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/reports getProjectProfitability', error);
   }
 }
 
@@ -821,7 +822,7 @@ export async function getAccountStatement(request: NextRequest): Promise<NextRes
 
     return NextResponse.json({ account, from, to, opening, closing, totalIn, totalOut, items });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/reports getAccountStatement', error);
   }
 }
 
@@ -893,7 +894,7 @@ export async function getPlanFactReport(request: NextRequest): Promise<NextRespo
 
     return NextResponse.json({ year, month, by, rows });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/reports getPlanFactReport', error);
   }
 }
 
@@ -941,7 +942,7 @@ export async function getOperationsForDrillDown(request: NextRequest): Promise<N
     `, [...params]);
     return NextResponse.json({ operations: rows });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/reports getOperationsForDrillDown', error);
   }
 }
 
@@ -1025,6 +1026,6 @@ export async function getExpectedPayments(request: NextRequest): Promise<NextRes
 
     return NextResponse.json({ items, summary, timeline, byCategory: Object.values(byCategory) });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('modules/finance/api/reports getExpectedPayments', error);
   }
 }
