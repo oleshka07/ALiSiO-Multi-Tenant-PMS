@@ -15,7 +15,6 @@ import {
   UserCheck,
   Code2,
   Sparkles,
-  Brain,
   Receipt,
   Users2,
   Coffee,
@@ -84,13 +83,6 @@ const settingsItems = [
     icon: <Sparkles size={22} />,
     href: '/app/settings/services',
     color: 'orange',
-  },
-  {
-    title: 'AI База знань',
-    desc: 'Навчання AI-рецепціоніста: знання, правила, відповіді',
-    icon: <Brain size={22} />,
-    href: '/app/settings/ai-knowledge',
-    color: 'purple',
   },
   {
     title: 'Канал-менеджер',
