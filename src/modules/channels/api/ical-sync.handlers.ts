@@ -2,29 +2,51 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { parseICal, extractGuestName } from '@/modules/channels/domain/ical'; // TODO: move to @core/ical
-import { requireOrganizationId } from '@core/auth/tenant-context';
 import { getSql } from '@core/db/async';
-import { withPermission } from '@core/auth/session';
+import { withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
 
-export const syncIcal = withPermission('manage_properties', async (request: NextRequest) => {
+/**
+ * Pull one iCal feed into the hotel's calendar.
+ *
+ * `syncChannel` is exported and takes the organization as an argument rather
+ * than reading it from the request context. That is what lets the cron call it
+ * — see `ical-cron.handlers.ts`, which used to HTTP-POST to this very route
+ * with no cookie, get a 401 from `withPermission`, and not look at `res.ok`.
+ * It then reported «Synced N channel(s)» every time. Automatic iCal sync — the
+ * 5/15/30/60-minute interval the operator picks on screen — had never once run;
+ * only the manual button worked.
+ *
+ * Two calls instead of a self-request also means one process, one transaction
+ * boundary and no chance of the server refusing itself.
+ */
+export const syncIcal = withPermission('manage_properties', async (request: NextRequest, _ctx: unknown, actor: Actor) => {
   try {
     const sql = getSql();
     const body = await request.json().catch(() => ({}));
     const { channel_id } = body as { channel_id?: string };
 
+    // Scoped, like everything else that takes a channel id from the client.
     let channels: any[];
     if (channel_id) {
-      const ch = await sql.row<any>('SELECT * FROM ical_channels WHERE id = ? AND is_active = TRUE', [channel_id]) as any;
+      const ch = await sql.row<any>(`
+        SELECT ic.* FROM ical_channels ic
+        JOIN properties p ON ic.property_id = p.id
+        WHERE ic.id = ? AND ic.is_active = TRUE AND p.organization_id = ?
+      `, [channel_id, actor.organizationId]) as any;
       if (!ch) return NextResponse.json({ error: 'Channel not found or inactive' }, { status: 404 });
       channels = [ch];
     } else {
-      channels = await sql.rows<any>('SELECT * FROM ical_channels WHERE is_active = TRUE AND ical_url IS NOT NULL') as any[];
+      channels = await sql.rows<any>(`
+        SELECT ic.* FROM ical_channels ic
+        JOIN properties p ON ic.property_id = p.id
+        WHERE ic.is_active = TRUE AND ic.ical_url IS NOT NULL AND p.organization_id = ?
+      `, [actor.organizationId]) as any[];
     }
 
     const results: any[] = [];
     for (const channel of channels) {
-      const result = await syncChannel(channel);
+      const result = await syncChannel(channel, actor.organizationId);
       results.push(result);
     }
 
@@ -35,7 +57,7 @@ export const syncIcal = withPermission('manage_properties', async (request: Next
   }
 });
 
-async function syncChannel(channel: any) {
+export async function syncChannel(channel: any, organizationId: string) {
   const sql = getSql();
   const logId = `isl_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
@@ -58,7 +80,7 @@ async function syncChannel(channel: any) {
     const unitIds = await getChannelUnitIds(channel);
     if (unitIds.length === 0) throw new Error('No units found for this channel');
 
-    const org = { id: await requireOrganizationId() } as any;
+    const org = { id: organizationId };
 
     for (const event of events) {
       const externalUid = `ical_${channel.id}_${event.uid}`;

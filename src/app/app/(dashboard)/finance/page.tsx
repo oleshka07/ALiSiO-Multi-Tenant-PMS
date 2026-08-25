@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { Wallet, TrendingUp, TrendingDown, BarChart3, AlertTriangle, CheckCircle, Settings, ListChecks, Repeat, AlertOctagon, ShoppingBag } from 'lucide-react';
 import { useDevice } from '@/ui/hooks/useDevice';
 import MobileFinanceOverview from '@/components/mobile/pages/MobileFinanceOverview';
-import ReconcileWidget from './_components/ReconcileWidget';
 
 interface KPI {
   revenue: number;
@@ -202,7 +201,14 @@ export default function FinanceOverviewPage() {
         </div>
       </div>
 
-      <ReconcileWidget />
+      {/* A «Reconciliation Inbox» widget stood here. It fetched
+          /api/finance/reconcile, which does not exist, caught the failure and
+          rendered null — so it had always been invisible — and linked to
+          /app/finance/reconcile, which does not exist either. An inbox of
+          tasks and exceptions is a feature nobody built; a placeholder for it
+          on the finance dashboard only makes the screen look finished.
+          What DOES exist is per-account balance reconciliation, in
+          Фінанси → Налаштування, and it now has the route it was missing. */}
 
       {/* KPI Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>

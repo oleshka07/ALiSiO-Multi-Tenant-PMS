@@ -54,6 +54,8 @@ async function cleanup() {
   await sql.run('DELETE FROM fin_operation_audit WHERE organization_id LIKE ?', [`${TAG}%`]);
   await sql.run('DELETE FROM fin_operations WHERE organization_id LIKE ?', [`${TAG}%`]);
   await sql.run('DELETE FROM finance_accounts WHERE organization_id LIKE ?', [`${TAG}%`]);
+  await sql.run('DELETE FROM tasks WHERE organization_id LIKE ?', [`${TAG}%`]);
+  await sql.run('DELETE FROM business_units WHERE organization_id LIKE ?', [`${TAG}%`]);
   const icalIds = (await sql.rows(
     'SELECT ic.id FROM ical_channels ic JOIN properties p ON ic.property_id = p.id WHERE p.organization_id LIKE ?',
     [`${TAG}%`])).map((r) => r.id);
@@ -464,6 +466,47 @@ async function main() {
       assert.ok(own, `B's business-unit picker offers ${u.id}, which is not B's`);
     }
     console.log("  ok  B cannot see or repoint A's iCal channels, nor A's business units");
+
+    // ── A task can be tied to an object, and it stays tied ──────────────
+    //
+    // `tasks.property_id` has a foreign key to `properties(id)`, and the picker
+    // on the tasks screen was filled from /api/business-units — the wrong
+    // table. On Postgres the write was refused by that key; on SQLite it was
+    // stored pointing at nothing. The field had never once saved, in either
+    // engine, and the UI reported success both times because the PATCH result
+    // was never looked at. So: write it, then READ IT BACK, because "the
+    // request returned 200" is exactly the evidence that was trusted before.
+    const objTaskRes = await call(cookieA, '/api/tasks', {
+      method: 'POST', body: JSON.stringify({ title: `${TAG}object-probe` }),
+    });
+    assert.ok(objTaskRes.ok, `A could not create a task: ${objTaskRes.status}`);
+    const objTask = await objTaskRes.json();
+    assert.ok(objTask?.id, `no task id came back: ${JSON.stringify(objTask).slice(0, 200)}`);
+
+    const tie = await call(cookieA, `/api/tasks/${objTask.id}`, {
+      method: 'PATCH', body: JSON.stringify({ property_id: propA.id }),
+    });
+    assert.ok(tie.ok, `tying a task to an object was refused: ${tie.status} ${await tie.clone().text()}`);
+    const tied = await sql.row('SELECT property_id FROM tasks WHERE id = ?', [objTask.id]);
+    assert.strictEqual(tied?.property_id, propA.id,
+      `the task's object was not saved (${tied?.property_id}) — this is the bug the screen hid`);
+
+    // And a business-unit id must NOT be accepted in that field: that is what
+    // the picker used to offer, and taking it would put the foreign key back
+    // in the position of being the only thing saying no.
+    // Seeded, not looked for: the assertion has to run, and nothing else in
+    // this file creates a business unit. With the old picker this exact value
+    // is what the screen sent, and it answers 500 from the foreign key —
+    // verified by pointing the probe at it.
+    await sql.run('INSERT INTO business_units (id, organization_id, name) VALUES (?, ?, ?)',
+      [`${TAG}bu_a`, a.orgId, 'Probe BU']);
+    await call(cookieA, `/api/tasks/${objTask.id}`, {
+      method: 'PATCH', body: JSON.stringify({ property_id: `${TAG}bu_a` }),
+    });
+    const after = await sql.row('SELECT property_id FROM tasks WHERE id = ?', [objTask.id]);
+    assert.strictEqual(after?.property_id, propA.id,
+      `a business-unit id reached tasks.property_id (${after?.property_id}), which points at properties`);
+    console.log('  ok  задачу можна прив\'язати до обʼєкта, і вона лишається прив\'язаною');
 
     // Staff accounts: the permission check was there, the ownership check was
     // not, so an owner could rename, re-role or delete another hotel's staff —

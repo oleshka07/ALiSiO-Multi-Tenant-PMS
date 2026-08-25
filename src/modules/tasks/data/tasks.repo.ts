@@ -104,7 +104,10 @@ export async function listTasks(filters: ListTasksFilters = {}): Promise<Task[]>
     LEFT JOIN app_users a  ON a.id = t.assignee_id
     LEFT JOIN app_users cr ON cr.id = t.created_by
     LEFT JOIN task_projects tp ON tp.id = t.project_id
-    LEFT JOIN business_units p ON p.id = t.property_id
+    -- properties, not business_units. tasks.property_id has a foreign key to
+    -- properties(id); joining the other table meant the Object column could
+    -- only ever show a name for a value the foreign key would have refused.
+    LEFT JOIN properties p ON p.id = t.property_id
     WHERE ${conditions.join(' AND ')}
     ORDER BY t.sort_order, t.created_at DESC
   `, params);
@@ -137,7 +140,10 @@ export async function getTaskById(id: string): Promise<(Task & { subtasks?: Task
     LEFT JOIN app_users a  ON a.id = t.assignee_id
     LEFT JOIN app_users cr ON cr.id = t.created_by
     LEFT JOIN task_projects tp ON tp.id = t.project_id
-    LEFT JOIN business_units p ON p.id = t.property_id
+    -- properties, not business_units. tasks.property_id has a foreign key to
+    -- properties(id); joining the other table meant the Object column could
+    -- only ever show a name for a value the foreign key would have refused.
+    LEFT JOIN properties p ON p.id = t.property_id
     WHERE t.id = ? AND t.organization_id = ?
   `, [id, org]);
 

@@ -523,11 +523,20 @@ function BookingsDesktop() {
                   onClick={async (e) => {
                     e.stopPropagation();
                     if (a.type === 'overdue_arrival') {
-                      await fetch(`/api/bookings/${a.bookingId}`, {
-                        method: 'PUT',
+                      // PATCH, not PUT. The route exports GET/PATCH/DELETE, so
+                      // PUT answered 405 — and nothing looked at the response,
+                      // so the alert disappeared as if the booking had been
+                      // marked, while the status stayed `confirmed`. The guest
+                      // who never arrived kept their room blocked.
+                      const res = await fetch(`/api/bookings/${a.bookingId}`, {
+                        method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ status: 'no_show' }),
                       });
+                      if (!res.ok) {
+                        alert(t('Не вдалося позначити no-show. Спробуйте ще раз.'));
+                        return;
+                      }
                       fetchBookings();
                     }
                     setAlerts(prev => prev.filter((_: any, idx: number) => idx !== i));

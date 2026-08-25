@@ -477,6 +477,7 @@ function TaskDrawer({
   };
 
   // Debounce save
+  const [saveError, setSaveError] = useState(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const autoSave = useCallback(
     (updates: Partial<typeof form>) => {
@@ -484,15 +485,26 @@ function TaskDrawer({
       setForm(newForm);
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = setTimeout(async () => {
+        // `res.ok` is checked, and `onUpdated()` only runs when the save
+        // actually happened. Before, a 500 from the foreign key above went
+        // into an empty catch — no, worse than that: fetch does not throw on a
+        // 500, so the catch never even ran. `onUpdated()` fired
+        // unconditionally, the drawer redrew from its own local state, and the
+        // field looked saved until the next reload emptied it.
         try {
-          await fetch(`/api/tasks/${task.id}`, {
+          const res = await fetch(`/api/tasks/${task.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ...newForm, tag_ids: taskTags }),
           });
+          if (!res.ok) {
+            setSaveError(true);
+            return;
+          }
+          setSaveError(false);
           onUpdated();
         } catch {
-          /* */
+          setSaveError(true);
         }
       }, 600);
     },
@@ -547,6 +559,19 @@ function TaskDrawer({
         </div>
 
         <div className="task-drawer-body">
+          {/* A save that did not happen has to say so. This drawer saves on a
+              600 ms debounce with no button to press, so silence is the only
+              feedback there is — and silence used to mean both «saved» and
+              «refused». */}
+          {saveError && (
+            <div style={{
+              margin: '8px 12px', padding: '8px 12px', borderRadius: 8,
+              background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.35)',
+              color: 'var(--accent-danger)', fontSize: 12,
+            }}>
+              {tUi('Зміни не збережено. Перевірте зʼєднання й спробуйте ще раз.')}
+            </div>
+          )}
           {/* Fields */}
           <div className="task-drawer-section">
             <div className="task-drawer-field">
@@ -1412,9 +1437,18 @@ function TasksDesktop() {
     }
   }, []);
 
+  // Properties, not business units.
+  //
+  // `tasks.property_id` has a foreign key to `properties(id)` — but this
+  // picker was filled from /api/business-units, so every id it offered was
+  // from the wrong table. On Postgres the write was refused by that foreign
+  // key; on SQLite it was stored and pointed at nothing. The «Object» field on
+  // a task has never once been saved successfully, in either engine, since it
+  // was added. The `Property` type here says `{ id, name, slug }`, which is
+  // the properties shape — the intent was right and the URL was wrong.
   const fetchProperties = useCallback(async () => {
     try {
-      const res = await fetch("/api/business-units");
+      const res = await fetch("/api/properties");
       if (res.ok) {
         const data = await res.json();
         setProperties(Array.isArray(data) ? data : []);
@@ -1632,11 +1666,15 @@ function TasksDesktop() {
       if (field === "status") {
         body.completed_at = value === "done" ? new Date().toISOString() : null;
       }
-      await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      // The optimistic update above already redrew the row. If the server
+      // refused it, re-read rather than leave the screen showing a change
+      // that did not happen — the same reason the catch below re-reads.
+      if (!res.ok) fetchTasks();
     } catch {
       fetchTasks();
     }
