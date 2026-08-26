@@ -1345,7 +1345,7 @@ CREATE TABLE "properties" (
   "slug" TEXT NOT NULL,
   "address" TEXT,
   "city" TEXT,
-  "country" TEXT DEFAULT 'CZ',
+  "country" TEXT,
   "phone" TEXT,
   "email" TEXT,
   "check_in_time" TEXT DEFAULT '15:00' NOT NULL,

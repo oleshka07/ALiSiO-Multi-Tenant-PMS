@@ -136,7 +136,17 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
       input.propertyName || name,
       `${slug}-1`,
       input.city || null,
-      input.country || 'CZ']);
+      // Країна, якої ніхто не назвав, — NULL, а не «CZ».
+      //
+      // Ця колонка не етикетка: `documentLanguage()` виводить із неї
+      // ЮРИСДИКЦІЮ рахунка, і вона перебиває мову організації. «CZ» за
+      // замовчуванням давало німецькому готелю чеську фактуру в кронах —
+      // і, що гірше, порожнє значення дало б правильну відповідь: при NULL
+      // та сама функція падає на мову організації, тобто на `de`.
+      //
+      // Тому мовчазного вгадування тут більше немає: не названо — NULL, і
+      // юрисдикцію вирішує мова готелю, поки країну не введуть явно.
+      input.country || null]);
 
     // One category so the calendar has a group to draw. Its name is generic on
     // purpose — the hotel renames it, and the type is now free text.

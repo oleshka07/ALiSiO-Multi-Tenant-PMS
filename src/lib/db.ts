@@ -134,7 +134,10 @@ function buildSchema(database: any) {
       slug TEXT NOT NULL,
       address TEXT,
       city TEXT,
-      country TEXT DEFAULT 'CZ',
+      -- Без DEFAULT навмисно: із цієї колонки виводиться ЮРИСДИКЦІЯ документа,
+      -- і вона перебиває мову організації. «CZ» за замовчуванням давало
+      -- німецькому готелю чеську фактуру в кронах — див. міграцію 0036.
+      country TEXT,
       phone TEXT,
       email TEXT,
       check_in_time TEXT NOT NULL DEFAULT '15:00',

@@ -10,6 +10,7 @@ import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
 import { showBuyerName, dueDateFor } from '@/modules/finance/domain/invoice-rules';
 import { loadInvoiceDocument } from '@/modules/finance/data/invoice-document.repo';
 import { generateGermanInvoicePdf } from '@/modules/finance/domain/invoice-pdf-de';
+import { documentLanguage } from '@core/i18n/resolve';
 
 export const GET = requirePermission('manage_documents', _GET);
 async function _GET(
@@ -21,10 +22,7 @@ async function _GET(
     const sql    = getSql();
 
     // A German property's invoice renders through the German layout — §14
-    // fields, MwSt-Übersicht, Stornorechnung wording. The assembler answers
-    // null for anything it cannot answer honestly (no line items, no property
-    // to take a jurisdiction from), and those fall through to the Czech
-    // renderer below, which is what produced them in the first place.
+    // fields, MwSt-Übersicht, Stornorechnung wording.
     const doc = await loadInvoiceDocument(id);
     if (doc && doc.locale === 'de-DE') {
       const pdf = await generateGermanInvoicePdf(doc);
@@ -36,6 +34,47 @@ async function _GET(
           'Cache-Control':       'no-store',
         },
       });
+    }
+
+    // ── Німецький обʼєкт НІКОЛИ не друкується чеським рендерером ──────────
+    //
+    // Тут стояв мовчазний фолбек: не зібрався документ — падаємо нижче. Нижче
+    // живе чеський рахунок, і він не просто іншою мовою. Він пише «Ubytování»,
+    // форматує дати як `cs-CZ`, не робить розбивки МПДВ по ставках — і
+    // `convertToCzkAuto` ПЕРЕРАХОВУЄ суму в крони. Німецький готель діставав
+    // документ чужої юрисдикції, чужою мовою і в чужій валюті, без жодної
+    // помилки на екрані.
+    //
+    // Саме це й сталося на пілоті: `properties.country` лишився зі значенням
+    // за замовчуванням, юрисдикція вирахувалась як CZ, локаль — не `de-DE`, і
+    // фолбек тихо видав гостю чеську фактуру в кронах.
+    //
+    // Рахунок — документ із номером у книзі. Відмова гучна й полагоджувана;
+    // неправильний рахунок треба сторнувати. Тому тепер краще не видати
+    // нічого й назвати причину.
+    // Обʼєкта може не бути зовсім — фоліо без броні й без property_id. Це рівно
+    // той випадок, у якому `loadInvoiceDocument` віддає null, тож питати лише
+    // обʼєкт означало б лишити відкритою ту саму дірку. Тоді юрисдикцію
+    // називає організація: у неї одна мова на всіх її обʼєктів.
+    const juris = await sql.row<{ property_id: string | null; org_language: string | null }>(
+      `SELECT COALESCE(r.property_id, f.property_id) AS property_id,
+              o.language AS org_language
+         FROM invoices i
+         LEFT JOIN fin_folios f ON f.id = i.folio_id
+         LEFT JOIN reservations r ON r.id = i.reservation_id
+         LEFT JOIN organizations o ON o.id = i.organization_id
+        WHERE i.id = ?`, [id]);
+    const language = juris?.property_id
+      ? await documentLanguage(juris.property_id)
+      : (juris?.org_language ?? null);
+    if (language === 'de') {
+      console.error(`[invoice-pdf] ${id}: юрисдикція німецька, а документ не зібрався`
+        + ` (${doc ? `локаль ${doc.locale}` : 'loadInvoiceDocument → null'};`
+        + ` обʼєкт ${juris?.property_id ?? 'невідомий'})`);
+      return NextResponse.json({
+        error: 'This property issues German invoices and the document could not be assembled.'
+          + ' Check the property country and that the invoice has line items.',
+      }, { status: 409 });
     }
 
     const row = await sql.row<Record<string, unknown>>(`
