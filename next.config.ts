@@ -20,6 +20,25 @@ const nextConfig: NextConfig = {
   // Fix Turbopack workspace root detection on VPS. Must be absolute — a relative
   // path is ignored with a warning and root detection falls back to guessing.
   turbopack: { root: import.meta.dirname },
+  async rewrites() {
+    return [
+      {
+        // One embed script, two URLs.
+        //
+        // `public/embed.v2.js` and `public/widget/embed.v2.js` were two real
+        // files, and they had drifted: the root one grew the Meta/GA4/TikTok
+        // listeners, the one the interface hands out grew language, redirect
+        // and query forwarding. Neither was a superset, so whichever a hotel
+        // had, something silently did not work.
+        //
+        // Now there is one file. This keeps the older URL alive for pages that
+        // already reference it — we do not get to edit a hotel's website, so a
+        // path we once published has to keep answering.
+        source: '/embed.v2.js',
+        destination: '/widget/embed.v2.js',
+      },
+    ];
+  },
   async headers() {
     return [
       {

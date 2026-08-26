@@ -568,6 +568,46 @@ async function main() {
     assert.ok([401, 403].includes(anonDel.status), `anonymous delete returned ${anonDel.status}`);
     console.log('  ok  anonymous requests are rejected');
 
+    // ── …and the embed scripts are reachable BY a stranger ───────────────
+    //
+    // The mirror image of the assertion above, and the one nobody had made.
+    // `/widget/` was never in the middleware's public list, and its matcher
+    // excludes svg, png, css, woff… but not `.js`. So every embed file
+    // answered 307 to /app/login: the hotel's page followed the redirect and
+    // executed an HTML login page as JavaScript. No widget, no form collector,
+    // and a console message about a script that would not parse.
+    //
+    // `embed.css` passed the whole time, which is why it looked like styling.
+    //
+    // The status code alone is not enough — a 200 that is the login page in
+    // disguise is exactly what a redirect-following browser sees — so the
+    // content is checked too.
+    for (const path of ['/widget/embed.v2.js', '/embed.v2.js', '/widget/collector.js']) {
+      const asset = await fetch(`${BASE}${path}`, { redirect: 'manual' });
+      assert.strictEqual(asset.status, 200,
+        `${path} is not reachable without a session (${asset.status}) — every hotel's embed is dead`);
+      const body = await asset.text();
+      assert.ok(!/<!DOCTYPE html>/i.test(body),
+        `${path} answered with a page instead of a script`);
+    }
+
+    // The two URLs are one file, and it is the one that carries the pixels.
+    const widgetPath = await (await fetch(`${BASE}/widget/embed.v2.js`)).text();
+    const rootPath = await (await fetch(`${BASE}/embed.v2.js`)).text();
+    assert.strictEqual(widgetPath, rootPath,
+      'the two embed URLs serve different files again — that divergence is the bug');
+    assert.ok(widgetPath.includes("e.data.event === 'purchase'"),
+      'the embed no longer forwards purchase to the hotel’s pixels');
+    // Comments stripped first: this file explains the old `|| 'uk'` in prose,
+    // and an assertion that cannot tell code from a comment about code fails
+    // on the very fix it is guarding.
+    const widgetCode = widgetPath.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    assert.ok(!/\|\|\s*'[a-z]{2}'\s*;/.test(widgetCode),
+      "the embed invents a language again — ?lang= outranks the hotel's own setting");
+    assert.ok(/if \(lang\) queryParams\.set\('lang', lang\)/.test(widgetCode),
+      'the embed must send ?lang= only when it knows one');
+    console.log('  ok  the embed scripts answer a stranger, and both URLs are one file');
+
     // The public widget price list must be read-only.
     const put = await fetch(`${BASE}/api/widget/prices`, {
       method: 'PUT',

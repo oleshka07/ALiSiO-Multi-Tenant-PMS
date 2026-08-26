@@ -24,6 +24,26 @@ const PUBLIC_PREFIXES = [
   '/w/', // booking widget
   '/modules/', // marketing site: one page per product module
   '/blog/', // marketing site: journal posts
+
+  // ─── The embed scripts, which live on OTHER people's websites ───────
+  //
+  // This prefix was never here, and the matcher below excludes svg, png,
+  // css, woff… but not `.js`. So every file under /widget/ — embed.v2.js,
+  // service-embed.js, collector.js, native-embed.js — answered 307 to
+  // /app/login. A hotel's page loaded the tag, followed the redirect, and
+  // executed an HTML login page as JavaScript. No widget rendered, no form
+  // was collected, and the browser console said only that a script had
+  // failed to parse.
+  //
+  // `/widget/embed.css` worked the whole time, because `css` is in the
+  // matcher's exclusion list. That is why the widget looked like a styling
+  // problem rather than a missing script.
+  //
+  // Public is not a concession here — it is the entire purpose. These files
+  // are meant to be fetched by strangers' browsers from strangers' domains.
+  // They carry no data: they build an iframe pointing at /w/<slug>, and
+  // everything private stays behind the routes that iframe calls.
+  '/widget/',
 ];
 
 // ─── Public marketing site — src/app/(marketing) ──────────────────────
@@ -52,6 +72,13 @@ const PUBLIC_EXACT = [
   '/api/auth/logout',
   '/api/auth/me',
   '/api/admin/export-may',
+  // The older embed URL. next.config.ts rewrites it onto /widget/embed.v2.js,
+  // but this list is consulted first — and a hotel that installed the snippet
+  // when that path was the published one cannot be asked to edit its website.
+  '/embed.v2.js',
+  // The PWA manifest, linked from the root layout: the browser fetches it on
+  // /app/login too, where there is by definition no session yet.
+  '/manifest.json',
 ];
 
 function isPublicRoute(pathname: string): boolean {
