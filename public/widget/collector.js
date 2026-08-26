@@ -43,7 +43,14 @@
 
   function send(data) {
     data.siteId = SITE_ID;
-    data._hp_trap = ''; // empty = human
+    // The honeypot, only if nothing already set it.
+    //
+    // This line used to be unconditional: `data._hp_trap = ''`. Between that
+    // and serializeForm skipping the field entirely, whatever a bot typed into
+    // the trap was thrown away here and replaced with "human" — so the trap
+    // could not fire, ever, for anyone. It read like a working defence and was
+    // a constant.
+    if (typeof data[HP] !== 'string') data[HP] = '';
     data.sourceUrl = window.location.href;
     return fetch(ENDPOINT, {
       method: 'POST',
@@ -60,7 +67,10 @@
     var fields = form.elements;
     for (var i = 0; i < fields.length; i++) {
       var f = fields[i];
-      if (!f.name || f.disabled || f.type === 'submit' || f.type === 'button' || f.type === 'reset' || f.name === HP) continue;
+      // The honeypot is NOT skipped: its value is the whole signal. Skipping
+      // it here, and then hard-setting it to '' in send(), is what made the
+      // trap unable to fire.
+      if (!f.name || f.disabled || f.type === 'submit' || f.type === 'button' || f.type === 'reset') continue;
       if ((f.type === 'checkbox' || f.type === 'radio') && !f.checked) continue;
       obj[f.name] = f.value || '';
     }

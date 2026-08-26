@@ -80,7 +80,12 @@ async function cleanup() {
   }
   await sql.run('DELETE FROM properties WHERE organization_id LIKE ?', [`${TAG}%`]);
   try { await sql.run('DELETE FROM waitlist WHERE site_id IN (SELECT id FROM booking_sites WHERE slug LIKE ?)', [`${TAG}%`]); } catch { /* table may not exist */ }
+  // Two clauses: the row this file inserts carries a TAG id, but the rows the
+  // capture route creates get a server-side id, so they are only reachable
+  // through the site. Deleting by id alone left them behind, and a probe that
+  // leaves rows in a customer's table is a probe nobody will run twice.
   try { await sql.run('DELETE FROM site_incoming_leads WHERE id LIKE ?', [`${TAG}%`]); } catch { /* table may not exist */ }
+  try { await sql.run('DELETE FROM site_incoming_leads WHERE site_id IN (SELECT id FROM booking_sites WHERE slug LIKE ?)', [`${TAG}%`]); } catch { /* table may not exist */ }
   try { await sql.run('DELETE FROM booking_sites WHERE slug LIKE ?', [`${TAG}%`]); } catch { /* table may not exist */ }
   await sql.run('DELETE FROM finance_tags WHERE organization_id LIKE ?', [`${TAG}%`]);
   // The app creates this table on first boot; cleanup may run against a
@@ -918,6 +923,76 @@ async function main() {
     const leadRead = await sql.row('SELECT status FROM site_incoming_leads WHERE id = ?', [`${TAG}lead`]);
     assert.strictEqual(leadRead?.status, 'read', "A's own status change did not reach the database");
     console.log("  ok  the contact-form inbox is the site owner's alone, and its owner can work it");
+
+    // ── The form on the hotel's own website reaches that inbox ───────────
+    //
+    // The half above reads `site_incoming_leads`. Nothing in the application
+    // WROTE to it: `public/widget/collector.js` — the snippet a hotel pastes
+    // into its own site — POSTed to `/api/public/capture`, and that route did
+    // not exist. The collector's `.catch(function () {})` swallowed the 404 by
+    // design, so the guest saw «дякуємо» and the enquiry went nowhere.
+    //
+    // Probed without a cookie, because that is how it is really called: from
+    // the hotel's domain, by a browser that has never seen a session.
+    const capture = (body) => fetch(`${BASE}/api/public/capture`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+
+    // The route is behind the same feature gate as every other public widget
+    // endpoint, and a probe tenant starts with nothing enabled. Turning it on
+    // here rather than dropping the gate: a hotel that does not pay for the
+    // widget must not have a public write endpoint standing open on its behalf.
+    await sql.run(
+      'INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)',
+      [a.orgId, 'widget'],
+    );
+
+    const sent = await capture({
+      siteId, jmeno: 'Probe Walkin', 'e-mail': 'walkin@example.invalid',
+      zprava: 'Probe website enquiry', pocet_hostu: '3', _hp_trap: '',
+    });
+    assert.ok(sent.ok, `the contact form could not reach the hotel: ${sent.status} ${await sent.clone().text()}`);
+
+    const captured = await sql.row(
+      'SELECT full_name, email, message FROM site_incoming_leads WHERE site_id = ? AND email = ?',
+      [siteId, 'walkin@example.invalid'],
+    );
+    assert.ok(captured, 'the form answered 200 and stored nothing — this is exactly the shipped bug');
+    assert.strictEqual(captured.full_name, 'Probe Walkin', 'a Czech field name must not lose the guest');
+    assert.ok(String(captured.message).includes('pocet_hostu: 3'),
+      'a field with no column of its own must survive as text, not vanish');
+
+    // An invented site id must not file an enquiry into a real hotel's inbox.
+    const strayBefore = await sql.row('SELECT COUNT(*) AS c FROM site_incoming_leads WHERE site_id = ?', [siteId]);
+    const stray = await capture({ siteId: 'no-such-site-id', email: 'stray@example.invalid', message: 'x' });
+    assert.strictEqual(stray.status, 404, `an invented site id was accepted: ${stray.status}`);
+    const strayAfter = await sql.row('SELECT COUNT(*) AS c FROM site_incoming_leads WHERE site_id = ?', [siteId]);
+    assert.strictEqual(Number(strayAfter.c), Number(strayBefore.c),
+      "a rejected capture still added a row to A's inbox");
+
+    // The honeypot answers 200 and stores nothing: telling a bot it was caught
+    // teaches whoever wrote it to leave the field alone next time.
+    const trapped = await capture({
+      siteId, email: 'bot@example.invalid', message: 'buy now', _hp_trap: 'http://spam.invalid',
+    });
+    assert.ok(trapped.ok, 'the honeypot must look like success to whoever tripped it');
+    const botRow = await sql.row(
+      'SELECT id FROM site_incoming_leads WHERE site_id = ? AND email = ?', [siteId, 'bot@example.invalid']);
+    assert.ok(!botRow, "the honeypot stored the bot's row anyway");
+
+    // Off again. A later block asserts that a hotel WITHOUT the feature gets
+    // 403 from the widget, and leaving this on made that assertion pass for
+    // the wrong reason — which is the same class of vacuous check this file
+    // has been bitten by twice already.
+    await sql.run('DELETE FROM organization_features WHERE organization_id = ? AND feature = ?',
+      [a.orgId, 'widget']);
+
+    // …and with the feature gone, the same call must stop working. Otherwise
+    // the gate above is decoration.
+    const afterOff = await capture({ siteId, email: 'later@example.invalid', message: 'x' });
+    assert.strictEqual(afterOff.status, 403,
+      `a hotel without the widget still has an open public write endpoint: ${afterOff.status}`);
+    console.log('  ok  a form on the hotel site lands in that hotel’s inbox, and only a real site id does');
 
     // 'all' must mean "all of MINE". It expanded to `1=1` — every reservation
     // on the server — which read correctly only while there was one hotel.
