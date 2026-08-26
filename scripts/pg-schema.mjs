@@ -286,6 +286,11 @@ const READ_BEFORE_TENANT = new Set(['app_users', 'booking_sites']);
 const PUBLIC_TOKEN_READ = new Map([
   ['reservations', 'guest_page_token'],
   ['partner_reports', 'token'],
+  // The channel manager holds this URL and opens it with no session, so the
+  // token has to reach the row the same way a guest link does. Without the
+  // entry the feed read nothing on Postgres and answered with an empty
+  // calendar — every date free, the room sellable twice (migration 0035).
+  ['ical_channels', 'export_token'],
 ]);
 
 const REFERENCE = new Set([

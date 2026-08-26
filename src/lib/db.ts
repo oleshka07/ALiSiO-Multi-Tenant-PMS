@@ -1022,6 +1022,7 @@ function runMigrations(database: any) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS ical_channels (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
       property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
       channel_type TEXT NOT NULL CHECK (channel_type IN ('building', 'unit')),
       building_id TEXT REFERENCES buildings(id) ON DELETE CASCADE,
@@ -1036,6 +1037,24 @@ function runMigrations(database: any) {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+
+  // --- Migration: ical_channels carries its tenant ---
+  // The export URL is the credential a channel manager holds, so the feed is
+  // read with no session. Postgres then needs the row to be reachable by the
+  // token alone, and everything the feed reads afterwards — units, buildings,
+  // reservations — needs the hotel. Reading it back out of `properties` is not
+  // possible from inside the token context, so the channel names its own
+  // tenant. AGENTS.md §3 invariant 2.
+  try {
+    const icalCols = database.prepare("PRAGMA table_info(ical_channels)").all().map((c: any) => c.name);
+    if (!icalCols.includes('organization_id')) {
+      database.exec('ALTER TABLE ical_channels ADD COLUMN organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE');
+      database.exec(`UPDATE ical_channels SET organization_id = (
+        SELECT p.organization_id FROM properties p WHERE p.id = ical_channels.property_id)
+        WHERE organization_id IS NULL`);
+    }
+  } catch { /* table not created yet on a fresh database */ }
+  database.exec('CREATE INDEX IF NOT EXISTS idx_ical_channels_org ON ical_channels(organization_id)');
 
   // --- Migration: create ical_sync_log table ---
   database.exec(`

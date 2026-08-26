@@ -1,16 +1,31 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from '@core/db/async';
+import { runWithPublicToken, runWithOrganization } from '@core/auth/tenant-context';
 import { generateICal } from '@/modules/channels/domain/ical'; // TODO: move to @core/ical
 
+/**
+ * The calendar a channel manager subscribes to. The token in the URL is the
+ * credential — there is no session here.
+ *
+ * The read used to happen on a bare connection. On Postgres that meant an
+ * empty tenant context, the policy on `ical_channels` matched nothing, and the
+ * handler took «no row» for «unknown token»: 200, and a calendar with no
+ * events. Booking.com and Airbnb read that as «everything is free» and kept
+ * selling dates the hotel had already given away. On SQLite, with no policies
+ * at all, the same code worked — so nothing ever pointed here.
+ *
+ * Now the token opens its own row (migration 0035 lets the policy accept it),
+ * and everything the calendar is made of is read as the hotel that owns it.
+ */
 export async function exportIcal(
   _request: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
     const { token } = await params;
-    const sql = getSql();
 
-    const channel = await sql.row<any>('SELECT * FROM ical_channels WHERE export_token = ?', [token]) as any;
+    const channel = await runWithPublicToken(token, () =>
+      getSql().row<any>('SELECT * FROM ical_channels WHERE export_token = ?', [token])) as any;
     if (!channel) {
       return new Response(generateICal([], 'ALiSiO — Unknown'), {
         status: 200,
@@ -18,6 +33,19 @@ export async function exportIcal(
       });
     }
 
+    // From here on the calendar is this hotel's data, so it is read as this
+    // hotel. A channel from before the column was backfilled has no tenant to
+    // act as; an empty calendar is wrong, but inventing one is worse.
+    if (!channel.organization_id) {
+      console.error('[iCal Export] channel without organization_id:', channel.id);
+      return new Response(generateICal([], 'ALiSiO'), {
+        status: 200,
+        headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'no-cache, no-store, must-revalidate' },
+      });
+    }
+
+    return await runWithOrganization(channel.organization_id, async () => {
+    const sql = getSql();
     let unitIds: string[] = [];
     let calName = 'ALiSiO';
 
@@ -67,6 +95,7 @@ export async function exportIcal(
         'Content-Disposition': `attachment; filename="${token}.ics"`,
         'Cache-Control': 'no-cache, no-store, must-revalidate',
       },
+    });
     });
   } catch (e: any) {
     console.error('[iCal Export] Error:', e);

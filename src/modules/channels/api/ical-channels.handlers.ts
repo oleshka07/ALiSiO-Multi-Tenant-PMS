@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
-import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
+import { requirePropertyId, propertyErrorStatus, requireOrganizationId } from '@core/auth/tenant-context';
 import { getSql } from '@core/db/async';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
@@ -71,10 +71,16 @@ export const createIcalChannel = withPermission('manage_properties', async (requ
     }
 
     if (channel_type === 'building') {
-      const dup = await sql.row<any>('SELECT id FROM ical_channels WHERE building_id = ? AND source_code = ?', [building_id, source_code]);
+      const dup = await sql.row<any>(
+        `SELECT id FROM ical_channels WHERE building_id = ? AND source_code = ?
+           AND property_id IN (SELECT id FROM properties WHERE organization_id = ?)`,
+        [building_id, source_code, await requireOrganizationId()]);
       if (dup) return NextResponse.json({ error: 'Channel already exists for this building + source' }, { status: 400 });
     } else {
-      const dup = await sql.row<any>('SELECT id FROM ical_channels WHERE unit_id = ? AND source_code = ?', [unit_id, source_code]);
+      const dup = await sql.row<any>(
+        `SELECT id FROM ical_channels WHERE unit_id = ? AND source_code = ?
+           AND property_id IN (SELECT id FROM properties WHERE organization_id = ?)`,
+        [unit_id, source_code, await requireOrganizationId()]);
       if (dup) return NextResponse.json({ error: 'Channel already exists for this unit + source' }, { status: 400 });
     }
 
@@ -88,16 +94,20 @@ export const createIcalChannel = withPermission('manage_properties', async (requ
     const id = `ich_${Date.now()}`;
     const exportToken = generateGuestToken() + generateGuestToken();
 
+    // The tenant is named, and taken from the property the channel hangs on —
+    // a subquery cannot drift from the row it comes from. AGENTS.md §3 nr 12.
     await sql.run(`
-      INSERT INTO ical_channels (id, property_id, channel_type, building_id, unit_id, source_code, ical_url, export_token, sync_interval_minutes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, propertyId, channel_type,
+      INSERT INTO ical_channels (id, organization_id, property_id, channel_type, building_id, unit_id, source_code, ical_url, export_token, sync_interval_minutes)
+      VALUES (?, (SELECT organization_id FROM properties WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, propertyId, propertyId, channel_type,
       channel_type === 'building' ? building_id : null,
       channel_type === 'unit' ? unit_id : null,
       source_code, ical_url || null, exportToken,
       sync_interval_minutes || 15]);
 
-    const created = await sql.row<any>('SELECT * FROM ical_channels WHERE id = ?', [id]);
+    const created = await sql.row<any>(
+      'SELECT * FROM ical_channels WHERE id = ? AND organization_id = ?',
+      [id, await requireOrganizationId()]);
     // propertyId above came from requirePropertyId(), which resolves it
     // against this organization — so the row just written is this hotel's.
     return NextResponse.json(created, { status: 201 });

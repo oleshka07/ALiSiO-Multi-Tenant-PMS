@@ -4,6 +4,7 @@ import { getSql } from '@core/db/async';
 import { cloudOcrAllowed } from '@core/privacy/ocr-consent';
 import { ocrDocument } from '@/modules/guests/domain/ai/ocr-document';
 import { checkRateLimit } from '@core/security/rate-limit';
+import { runWithPublicToken } from '@core/auth/tenant-context';
 
 /**
  * Read a guest's identity document, from the guest's own page.
@@ -29,9 +30,18 @@ export async function POST(
   if (!token) return NextResponse.json({ error: 'Missing token' }, { status: 400 });
 
   // Before the rate limiter, so a forged token cannot spend anyone's budget.
-  const sql = getSql();
-  const reservation: any = await sql.row<any>(
-    'SELECT organization_id FROM reservations WHERE guest_page_token = ?', [token]);
+  //
+  // Read inside runWithPublicToken, like every other page a guest opens
+  // without a session: the row-level policy on `reservations` compares
+  // `guest_page_token` with `app.public_token`, and that setting is empty
+  // until this wrapper fills it. Without it the SELECT is correct SQL that
+  // matches nothing on Postgres — so on the server this endpoint answered 404
+  // to every valid token, and the guest was told to type the document in by
+  // hand. On SQLite, where there are no policies, it worked — which is why it
+  // read as fixed.
+  const reservation: any = await runWithPublicToken(token, () =>
+    getSql().row<any>(
+      'SELECT organization_id FROM reservations WHERE guest_page_token = ?', [token]));
   if (!reservation?.organization_id) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
