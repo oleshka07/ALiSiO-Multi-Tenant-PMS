@@ -2,6 +2,7 @@
 import { getSql } from '@core/db/async';
 import type { RegisteredGuest } from '../domain/types';
 import { retentionCutoff } from '../domain/retention';
+import { runWithOrganization } from '@core/auth/tenant-context';
 
 export async function getReservationForRegistration(token: string) {
   const sql = getSql();
@@ -140,32 +141,56 @@ export async function anonymizeOldRegistrations(monthsToKeep = 6): Promise<numbe
   // throw is deliberate: this is the one operation with no undo, so a caller
   // that asked for something impossible should fail, not be corrected.
   const cutoff = retentionCutoff(monthsToKeep);
+  const sql = getSql();
 
-  try {
-    const sql = getSql();
-    const info = await sql.run(`
-      UPDATE guest_registrations
-      SET 
-        first_name = 'Anonymized',
-        last_name = 'Anonymized',
-        date_of_birth = NULL,
-        document_number = NULL,
-        document_type = NULL,
-        nationality = NULL,
-        address = NULL,
-        email = NULL,
-        phone = NULL
-      WHERE id IN (
-        SELECT gr.id
-        FROM guest_registrations gr
-        JOIN reservations r ON gr.reservation_id = r.id
-        WHERE r.check_out < ?
-          AND gr.first_name != 'Anonymized'
-      )
-    `, [cutoff]);
-    return info.changes;
-  } catch (error) {
-    console.error('Failed to anonymize old registrations:', error);
-    return 0;
+  // Walked per hotel, inside runWithOrganization.
+  //
+  // This ran on a bare connection. On Postgres the policy on
+  // `guest_registrations` reaches the tenant through `guests.organization_id`
+  // and compares it with `app.organization_id`, which is the empty string
+  // until this wrapper fills it — so the UPDATE matched no rows, every run
+  // answered `{ success: true, anonymizedCount: 0 }`, and it read exactly like
+  // "nothing was due". Retention was not happening at all: §30 BMG gives the
+  // Meldeschein fifteen months, and the GDPR gives the rest a limit too.
+  //
+  // Same shape as cron/guest-reminders, which was fixed for the same reason.
+  const organizations = await sql.rows<{ id: string }>('SELECT id FROM organizations');
+  let total = 0;
+
+  for (const org of organizations) {
+    try {
+      total += await runWithOrganization(org.id, async () => {
+        // The organization is named in the query as well: on SQLite there are
+        // no policies, so the wrapper alone would let one hotel's run
+        // anonymise every hotel's guests.
+        const info = await sql.run(`
+          UPDATE guest_registrations
+          SET
+            first_name = 'Anonymized',
+            last_name = 'Anonymized',
+            date_of_birth = NULL,
+            document_number = NULL,
+            document_type = NULL,
+            nationality = NULL,
+            address = NULL,
+            email = NULL,
+            phone = NULL
+          WHERE id IN (
+            SELECT gr.id
+            FROM guest_registrations gr
+            JOIN reservations r ON gr.reservation_id = r.id
+            WHERE r.check_out < ?
+              AND r.organization_id = ?
+              AND gr.first_name != 'Anonymized'
+          )
+        `, [cutoff, org.id]);
+        return info.changes;
+      });
+    } catch (error) {
+      // One hotel's failure must not stop retention for the others.
+      console.error(`Failed to anonymize old registrations for ${org.id}:`, error);
+    }
   }
+
+  return total;
 }

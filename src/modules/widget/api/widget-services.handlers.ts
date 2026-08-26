@@ -162,233 +162,253 @@ async function servicesFor(searchParams: URLSearchParams) {
 }
 
 export async function bookWidgetService(request: NextRequest) {
+  // Booking a service runs as the hotel that owns the site, exactly like
+  // reading the list of services next door. Without this the handler worked on
+  // a bare connection: on Postgres every policy compared the tenant with an
+  // empty `app.organization_id`, so `additional_services`, `coupons` and
+  // `service_time_slots` all came back empty and the guest was told "Service
+  // not found" for a service that was right there on the screen. On SQLite,
+  // with no policies, it booked — which is why it looked finished.
+  //
+  // The key is whatever the caller carries: BookingV2 sends siteSlug, the
+  // iframe page sends neither and falls back the way the rest of the widget
+  // does — the sole organization, or a refusal once there is more than one.
+  const body = await request.json().catch(() => ({} as any));
+  const siteKey = body?.siteId ?? body?.siteSlug ?? null;
 
-  try {
-    const sql = getSql();
-    const body = await request.json();
-    const { action } = body;
+  const answer = await withSite(siteKey, async () => {
 
-    if (action === 'book-slots') {
-      const { serviceId, date, startHour, hours, persons, addons, reservationId, paymentId, couponCode } = body;
+    try {
+      const sql = getSql();
+      const { action } = body;
 
-      if (!serviceId || !date || startHour === undefined || !hours || hours < 2) {
-        return NextResponse.json(
-          { error: 'serviceId, date, startHour, hours (min 2) required' },
-          { status: 400, headers: CORS_HEADERS }
-        );
-      }
+      if (action === 'book-slots') {
+        const { serviceId, date, startHour, hours, persons, addons, reservationId, paymentId, couponCode } = body;
 
-      const service = await sql.row<any>('SELECT * FROM additional_services WHERE id = ?', [serviceId]) as any;
-      if (!service) {
-        return NextResponse.json({ error: 'Service not found' }, { status: 404, headers: CORS_HEADERS });
-      }
+        if (!serviceId || !date || startHour === undefined || !hours || hours < 2) {
+          return NextResponse.json(
+            { error: 'serviceId, date, startHour, hours (min 2) required' },
+            { status: 400, headers: CORS_HEADERS }
+          );
+        }
 
-      let pricePerHour = service.price;
+        const service = await sql.row<any>('SELECT * FROM additional_services WHERE id = ?', [serviceId]) as any;
+        if (!service) {
+          return NextResponse.json({ error: 'Service not found' }, { status: 404, headers: CORS_HEADERS });
+        }
 
-      let appliedPromo: string | null = null;
-      if (couponCode) {
-        const offer = await sql.row<any>('SELECT * FROM coupons WHERE code = ? AND is_active = TRUE', [String(couponCode).toUpperCase().trim()]) as any;
-        if (offer) {
-          let applicable = true;
-          if (offer.applicable_services) {
-            try {
-              const svcs = JSON.parse(offer.applicable_services) as string[];
-              if (svcs.length > 0 && !svcs.includes(serviceId)) applicable = false;
-            } catch { /* ignore */ }
-          }
-          if (offer.max_uses !== null && offer.current_uses >= offer.max_uses) applicable = false;
-          const now = new Date().toISOString();
-          if (offer.valid_from && now < offer.valid_from) applicable = false;
-          if (offer.valid_until && now > offer.valid_until) applicable = false;
+        let pricePerHour = service.price;
 
-          if (applicable) {
-            appliedPromo = offer.code;
-            if (offer.discount_type === 'fixed_price') {
-              pricePerHour = offer.offer_amount;
-            } else if (offer.discount_type === 'percentage') {
-              pricePerHour = pricePerHour * (1 - offer.offer_amount / 100);
+        let appliedPromo: string | null = null;
+        if (couponCode) {
+          const offer = await sql.row<any>('SELECT * FROM coupons WHERE code = ? AND is_active = TRUE', [String(couponCode).toUpperCase().trim()]) as any;
+          if (offer) {
+            let applicable = true;
+            if (offer.applicable_services) {
+              try {
+                const svcs = JSON.parse(offer.applicable_services) as string[];
+                if (svcs.length > 0 && !svcs.includes(serviceId)) applicable = false;
+              } catch { /* ignore */ }
             }
-            await sql.run('UPDATE coupons SET current_uses = current_uses + 1 WHERE id = ?', [offer.id]);
-            console.log('[Booking] Applied offer:', offer.code, '→', pricePerHour, 'CZK/hr');
+            if (offer.max_uses !== null && offer.current_uses >= offer.max_uses) applicable = false;
+            const now = new Date().toISOString();
+            if (offer.valid_from && now < offer.valid_from) applicable = false;
+            if (offer.valid_until && now > offer.valid_until) applicable = false;
+
+            if (applicable) {
+              appliedPromo = offer.code;
+              if (offer.discount_type === 'fixed_price') {
+                pricePerHour = offer.offer_amount;
+              } else if (offer.discount_type === 'percentage') {
+                pricePerHour = pricePerHour * (1 - offer.offer_amount / 100);
+              }
+              await sql.run('UPDATE coupons SET current_uses = current_uses + 1 WHERE id = ?', [offer.id]);
+              console.log('[Booking] Applied offer:', offer.code, '→', pricePerHour, 'CZK/hr');
+            }
           }
         }
-      }
 
-      let totalPrice = money(pricePerHour * hours);
+        let totalPrice = money(pricePerHour * hours);
 
-      const existingTables = new Set(
-        (await sql.rows<any>(sql.dialect.tables()) as { name: string }[])
-          .map(t => t.name)
-      );
+        const existingTables = new Set(
+          (await sql.rows<any>(sql.dialect.tables()) as { name: string }[])
+            .map(t => t.name)
+        );
 
-      if (existingTables.has('service_time_slots')) {
+        if (existingTables.has('service_time_slots')) {
+          for (let h = 0; h < hours; h++) {
+            const slotStart = `${String(startHour + h).padStart(2, '0')}:00`;
+            const existing = await sql.row<any>(`
+              SELECT id FROM service_time_slots
+              WHERE service_id = ? AND date = ? AND start_time = ? AND booked_count >= max_capacity
+            `, [serviceId, date, slotStart]) as any;
+
+            if (existing) {
+              return NextResponse.json(
+                { error: `Slot ${slotStart} on ${date} is already booked` },
+                { status: 409, headers: CORS_HEADERS }
+              );
+            }
+          }
+        }
+
+        let addonTotal = 0;
+        const addonDetails: any[] = [];
+        if (addons && existingTables.has('service_addons')) {
+          for (const addon of addons) {
+            const addonRow = await sql.row<any>('SELECT * FROM service_addons WHERE id = ?', [addon.id]) as any;
+            if (addonRow) {
+              const qty = addon.quantity || 1;
+              addonTotal += addonRow.price * qty;
+              addonDetails.push({ id: addonRow.id, name: addonRow.name, price: addonRow.price, quantity: qty });
+            }
+          }
+        }
+        totalPrice += addonTotal;
+
+        const slotIds: string[] = [];
         for (let h = 0; h < hours; h++) {
           const slotStart = `${String(startHour + h).padStart(2, '0')}:00`;
-          const existing = await sql.row<any>(`
-            SELECT id FROM service_time_slots
-            WHERE service_id = ? AND date = ? AND start_time = ? AND booked_count >= max_capacity
+          const slotEnd = `${String(startHour + h + 1).padStart(2, '0')}:00`;
+          const slotId = `slot_${Date.now()}_${h}`;
+
+          const existingSlot = await sql.row<any>(`
+            SELECT id, booked_count FROM service_time_slots
+            WHERE service_id = ? AND date = ? AND start_time = ?
           `, [serviceId, date, slotStart]) as any;
 
+          if (existingSlot) {
+            await sql.run('UPDATE service_time_slots SET booked_count = booked_count + 1, reservation_id = ? WHERE id = ?', [reservationId || null, existingSlot.id]);
+            slotIds.push(existingSlot.id);
+          } else {
+            await sql.run(`
+              INSERT INTO service_time_slots (id, service_id, date, start_time, end_time, max_capacity, booked_count, reservation_id)
+              VALUES (?, ?, ?, ?, ?, 1, 1, ?)
+            `, [slotId, serviceId, date, slotStart, slotEnd, reservationId || null]);
+            slotIds.push(slotId);
+          }
+        }
+
+        if (paymentId) {
+          for (const sid of slotIds) {
+            await sql.run('UPDATE service_time_slots SET booking_session_id = ? WHERE id = ?', [paymentId, sid]);
+          }
+        }
+
+        if (existingTables.has('booking_service_orders')) {
+          const orderId = `bso_${Date.now()}`;
+          const { site_id } = body;
+          await sql.run(`
+            INSERT INTO booking_service_orders (id, reservation_id, service_id, quantity, service_date, time_slot_id, options_json, unit_price, total_price, status, payment_id, payment_status, coupon_code, site_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?)
+          `, [orderId, reservationId || null, serviceId, hours, date, slotIds[0],
+            JSON.stringify({ persons: persons || 1, addons: addonDetails, hours, startHour }),
+            pricePerHour, totalPrice,
+            paymentId || null,
+            paymentId ? 'pending' : 'none',
+            appliedPromo,
+            site_id || null]);
+        }
+
+
+        return NextResponse.json({
+          success: true,
+          slotIds,
+          hours,
+          date,
+          startHour,
+          endHour: startHour + hours,
+          persons: persons || 1,
+          pricePerHour,
+          addonTotal,
+          totalPrice,
+          addons: addonDetails,
+          offerApplied: appliedPromo,
+        }, { status: 201, headers: CORS_HEADERS });
+
+      } else if (action === 'book-breakfast') {
+        const { reservationId, items, serviceDate, paymentId } = body;
+
+        if (!items || items.length === 0) {
+          return NextResponse.json({ error: 'items required' }, { status: 400, headers: CORS_HEADERS });
+        }
+
+        let totalPrice = 0;
+        const orderDetails: any[] = [];
+
+        for (const item of items) {
+          const menuItem = await sql.row<any>('SELECT * FROM menu_items WHERE id = ? AND is_available = TRUE', [item.menuItemId]) as any;
+          if (!menuItem) continue;
+
+          const qty = item.quantity || 1;
+          const itemTotal = money(menuItem.price * qty);
+          totalPrice += itemTotal;
+
+          if (reservationId) {
+            const orderId = `bso_${Date.now()}_${menuItem.id}`;
+            await sql.run(`
+              INSERT INTO booking_service_orders (id, reservation_id, service_id, menu_item_id, quantity, service_date, unit_price, total_price, status, payment_id, payment_status)
+              VALUES (?, ?, 'svc_breakfast', ?, ?, ?, ?, ?, 'confirmed', ?, ?)
+            `, [orderId, reservationId, menuItem.id, qty, serviceDate || null, menuItem.price, itemTotal, paymentId || null, paymentId ? 'pending' : 'none']);
+          }
+
+          orderDetails.push({
+            menuItemId: menuItem.id,
+            name: menuItem.name,
+            quantity: qty,
+            unitPrice: menuItem.price,
+            totalPrice: itemTotal,
+          });
+        }
+
+        return NextResponse.json({ success: true, items: orderDetails, totalPrice }, { status: 201, headers: CORS_HEADERS });
+
+      } else if (action === 'book-toggle') {
+        const { serviceId, reservationId, quantity: reqQuantity } = body;
+
+        if (!serviceId || !reservationId) {
+          return NextResponse.json({ error: 'serviceId and reservationId required' }, { status: 400, headers: CORS_HEADERS });
+        }
+
+        const service = await sql.row<any>('SELECT * FROM additional_services WHERE id = ?', [serviceId]) as any;
+        if (!service) {
+          return NextResponse.json({ error: 'Service not found' }, { status: 404, headers: CORS_HEADERS });
+        }
+
+        const qty = reqQuantity || 1;
+        const existingTables = new Set(
+          (await sql.rows<any>(sql.dialect.tables()) as { name: string }[])
+            .map(t => t.name)
+        );
+
+        if (existingTables.has('booking_service_orders')) {
+          const existing = await sql.row<any>('SELECT id FROM booking_service_orders WHERE reservation_id = ? AND service_id = ?', [reservationId, serviceId]) as any;
+
           if (existing) {
-            return NextResponse.json(
-              { error: `Slot ${slotStart} on ${date} is already booked` },
-              { status: 409, headers: CORS_HEADERS }
-            );
+            await sql.run('DELETE FROM booking_service_orders WHERE id = ?', [existing.id]);
+          } else {
+            const orderId = `bso_${Date.now()}_${serviceId}`;
+            await sql.run(`
+              INSERT INTO booking_service_orders (id, reservation_id, service_id, quantity, unit_price, total_price, status)
+              VALUES (?, ?, ?, ?, ?, ?, 'confirmed')
+            `, [orderId, reservationId, serviceId, qty, service.price, service.price * qty]);
           }
         }
+
+        return NextResponse.json({ success: true, serviceId, price: service.price }, { status: 201, headers: CORS_HEADERS });
       }
 
-      let addonTotal = 0;
-      const addonDetails: any[] = [];
-      if (addons && existingTables.has('service_addons')) {
-        for (const addon of addons) {
-          const addonRow = await sql.row<any>('SELECT * FROM service_addons WHERE id = ?', [addon.id]) as any;
-          if (addonRow) {
-            const qty = addon.quantity || 1;
-            addonTotal += addonRow.price * qty;
-            addonDetails.push({ id: addonRow.id, name: addonRow.name, price: addonRow.price, quantity: qty });
-          }
-        }
-      }
-      totalPrice += addonTotal;
-
-      const slotIds: string[] = [];
-      for (let h = 0; h < hours; h++) {
-        const slotStart = `${String(startHour + h).padStart(2, '0')}:00`;
-        const slotEnd = `${String(startHour + h + 1).padStart(2, '0')}:00`;
-        const slotId = `slot_${Date.now()}_${h}`;
-
-        const existingSlot = await sql.row<any>(`
-          SELECT id, booked_count FROM service_time_slots
-          WHERE service_id = ? AND date = ? AND start_time = ?
-        `, [serviceId, date, slotStart]) as any;
-
-        if (existingSlot) {
-          await sql.run('UPDATE service_time_slots SET booked_count = booked_count + 1, reservation_id = ? WHERE id = ?', [reservationId || null, existingSlot.id]);
-          slotIds.push(existingSlot.id);
-        } else {
-          await sql.run(`
-            INSERT INTO service_time_slots (id, service_id, date, start_time, end_time, max_capacity, booked_count, reservation_id)
-            VALUES (?, ?, ?, ?, ?, 1, 1, ?)
-          `, [slotId, serviceId, date, slotStart, slotEnd, reservationId || null]);
-          slotIds.push(slotId);
-        }
-      }
-
-      if (paymentId) {
-        for (const sid of slotIds) {
-          await sql.run('UPDATE service_time_slots SET booking_session_id = ? WHERE id = ?', [paymentId, sid]);
-        }
-      }
-
-      if (existingTables.has('booking_service_orders')) {
-        const orderId = `bso_${Date.now()}`;
-        const { site_id } = body;
-        await sql.run(`
-          INSERT INTO booking_service_orders (id, reservation_id, service_id, quantity, service_date, time_slot_id, options_json, unit_price, total_price, status, payment_id, payment_status, coupon_code, site_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?)
-        `, [orderId, reservationId || null, serviceId, hours, date, slotIds[0],
-          JSON.stringify({ persons: persons || 1, addons: addonDetails, hours, startHour }),
-          pricePerHour, totalPrice,
-          paymentId || null,
-          paymentId ? 'pending' : 'none',
-          appliedPromo,
-          site_id || null]);
-      }
-
-
-      return NextResponse.json({
-        success: true,
-        slotIds,
-        hours,
-        date,
-        startHour,
-        endHour: startHour + hours,
-        persons: persons || 1,
-        pricePerHour,
-        addonTotal,
-        totalPrice,
-        addons: addonDetails,
-        offerApplied: appliedPromo,
-      }, { status: 201, headers: CORS_HEADERS });
-
-    } else if (action === 'book-breakfast') {
-      const { reservationId, items, serviceDate, paymentId } = body;
-
-      if (!items || items.length === 0) {
-        return NextResponse.json({ error: 'items required' }, { status: 400, headers: CORS_HEADERS });
-      }
-
-      let totalPrice = 0;
-      const orderDetails: any[] = [];
-
-      for (const item of items) {
-        const menuItem = await sql.row<any>('SELECT * FROM menu_items WHERE id = ? AND is_available = TRUE', [item.menuItemId]) as any;
-        if (!menuItem) continue;
-
-        const qty = item.quantity || 1;
-        const itemTotal = money(menuItem.price * qty);
-        totalPrice += itemTotal;
-
-        if (reservationId) {
-          const orderId = `bso_${Date.now()}_${menuItem.id}`;
-          await sql.run(`
-            INSERT INTO booking_service_orders (id, reservation_id, service_id, menu_item_id, quantity, service_date, unit_price, total_price, status, payment_id, payment_status)
-            VALUES (?, ?, 'svc_breakfast', ?, ?, ?, ?, ?, 'confirmed', ?, ?)
-          `, [orderId, reservationId, menuItem.id, qty, serviceDate || null, menuItem.price, itemTotal, paymentId || null, paymentId ? 'pending' : 'none']);
-        }
-
-        orderDetails.push({
-          menuItemId: menuItem.id,
-          name: menuItem.name,
-          quantity: qty,
-          unitPrice: menuItem.price,
-          totalPrice: itemTotal,
-        });
-      }
-
-      return NextResponse.json({ success: true, items: orderDetails, totalPrice }, { status: 201, headers: CORS_HEADERS });
-
-    } else if (action === 'book-toggle') {
-      const { serviceId, reservationId, quantity: reqQuantity } = body;
-
-      if (!serviceId || !reservationId) {
-        return NextResponse.json({ error: 'serviceId and reservationId required' }, { status: 400, headers: CORS_HEADERS });
-      }
-
-      const service = await sql.row<any>('SELECT * FROM additional_services WHERE id = ?', [serviceId]) as any;
-      if (!service) {
-        return NextResponse.json({ error: 'Service not found' }, { status: 404, headers: CORS_HEADERS });
-      }
-
-      const qty = reqQuantity || 1;
-      const existingTables = new Set(
-        (await sql.rows<any>(sql.dialect.tables()) as { name: string }[])
-          .map(t => t.name)
-      );
-
-      if (existingTables.has('booking_service_orders')) {
-        const existing = await sql.row<any>('SELECT id FROM booking_service_orders WHERE reservation_id = ? AND service_id = ?', [reservationId, serviceId]) as any;
-
-        if (existing) {
-          await sql.run('DELETE FROM booking_service_orders WHERE id = ?', [existing.id]);
-        } else {
-          const orderId = `bso_${Date.now()}_${serviceId}`;
-          await sql.run(`
-            INSERT INTO booking_service_orders (id, reservation_id, service_id, quantity, unit_price, total_price, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'confirmed')
-          `, [orderId, reservationId, serviceId, qty, service.price, service.price * qty]);
-        }
-      }
-
-      return NextResponse.json({ success: true, serviceId, price: service.price }, { status: 201, headers: CORS_HEADERS });
+      return NextResponse.json({ error: 'Unknown action' }, { status: 400, headers: CORS_HEADERS });
+    } catch (error: any) {
+      console.error('POST /api/booking/services error:', error?.message || error);
+      return NextResponse.json({ error: 'Failed to process service booking' }, { status: 500, headers: CORS_HEADERS });
     }
+  });
 
-    return NextResponse.json({ error: 'Unknown action' }, { status: 400, headers: CORS_HEADERS });
-  } catch (error: any) {
-    console.error('POST /api/booking/services error:', error?.message || error);
-    return NextResponse.json({ error: 'Failed to process service booking' }, { status: 500, headers: CORS_HEADERS });
+  if (answer === null) {
+    return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: CORS_HEADERS });
   }
+  return answer;
 }
 
 function formatService(s: any) {
