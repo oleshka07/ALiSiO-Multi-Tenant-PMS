@@ -4,6 +4,7 @@ import { getSql } from '@core/db/async';
 import { todayFor, shiftDays } from '@core/hotel-day';
 import type { Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
+import type { DashboardAlert } from '../domain/alerts';
 
 /**
  * reservations reach an organization through property_id. Every query here uses
@@ -29,7 +30,11 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
       WHERE ${OWN()} AND check_in < ? AND status = 'confirmed'
     `, [org, archiveCutoff]);
 
-    const alerts: { type: string; severity: 'warning' | 'danger' | 'info'; message: string; bookingId: string; guestName: string }[] = [];
+    // Код і дані, а не готовий рядок. Українське речення, складене тут,
+    // німецький портьє читав як є: `check-i18n-leak` забороняє `t()` під
+    // src/app/api навмисно, щоб мова оператора не вирішувала мову документів
+    // і листів гостю. Рядок складає екран — див. domain/alerts.ts.
+    const alerts: DashboardAlert[] = [];
 
     // Overdue arrivals: confirmed with check_in in the past, but within 7 days
     const overdueArrivals = await sql.rows<any>(`
@@ -44,8 +49,8 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
     for (const r of overdueArrivals) {
       alerts.push({
         type: 'overdue_arrival', severity: 'danger',
-        message: `Прострочений заїзд ${r.check_in} — ${r.unit_name}`,
         bookingId: r.id, guestName: `${r.first_name} ${r.last_name}`,
+        unitName: r.unit_name, checkIn: r.check_in,
       });
     }
 
@@ -65,23 +70,23 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
           // Zero-price booking — requires admin confirmation (promo/barter/error)
           alerts.push({
             type: 'zero_price_arrival', severity: 'warning',
-            message: `Сьогодні заїзд, ціна = 0 — потрібне підтвердження — ${r.unit_name}`,
             bookingId: r.id, guestName: `${r.first_name} ${r.last_name}`,
+            unitName: r.unit_name,
           });
         } else {
           // Regular unpaid booking
           alerts.push({
             type: 'unpaid_arrival', severity: 'warning',
-            message: `Сьогодні заїзд, оплата не завершена — ${r.unit_name}`,
             bookingId: r.id, guestName: `${r.first_name} ${r.last_name}`,
+            unitName: r.unit_name,
           });
         }
       }
       if (r.registration_status !== 'registered') {
         alerts.push({
           type: 'unregistered_arrival', severity: 'warning',
-          message: `Сьогодні заїзд, реєстрація не пройдена — ${r.unit_name}`,
           bookingId: r.id, guestName: `${r.first_name} ${r.last_name}`,
+          unitName: r.unit_name,
         });
       }
     }
@@ -98,8 +103,8 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
     for (const r of noRegCheckedIn) {
       alerts.push({
         type: 'checked_in_no_reg', severity: 'danger',
-        message: `Заселений без реєстрації — ${r.unit_name}`,
         bookingId: r.id, guestName: `${r.first_name} ${r.last_name}`,
+        unitName: r.unit_name,
       });
     }
 
@@ -115,8 +120,8 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
     for (const r of todayDepartures) {
       alerts.push({
         type: 'today_departure', severity: 'info',
-        message: `Сьогодні виїзд — ${r.unit_name}`,
         bookingId: r.id, guestName: `${r.first_name} ${r.last_name}`,
+        unitName: r.unit_name,
       });
     }
 

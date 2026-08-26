@@ -13,6 +13,7 @@ import GroupBookingModal from '@/components/booking/GroupBookingModal';
 import GroupViewModal from '@/components/booking/GroupViewModal';
 import BookingViewModal from '@/components/booking/BookingViewModal';
 import BookingForm, { type WidgetSiteSourceRow } from '@/components/booking/BookingForm';
+import type { DashboardAlert } from '@/modules/dashboard/domain/alerts';
 import {
   Plus,
   Search,
@@ -136,6 +137,45 @@ const PAYMENT_STATUS_MAP: Record<string, { label: string; color: string; bg: str
 };
 
 // SOURCE_MAP is built dynamically from /api/booking-sources
+
+/* ================================================================
+   Alerts
+   ================================================================ */
+/**
+ * Текст попередження — тут, а не в API.
+ *
+ * `/api/alerts` складав ці речення сам, українською, у SQL-хендлері, без
+ * жодного `t()`. Німецький портьє відкривав цей екран і бачив стіну
+ * українського тексту — на першому екрані, який він відкриває сам.
+ *
+ * Перекласти на місці не можна навмисно: `check-i18n-leak` забороняє `t()`
+ * під `src/app/api`, щоб мова оператора не вирішувала мову документів і
+ * листів гостю. Тому API віддає код, а рядок складається тут.
+ *
+ * Назва номера й дата в `t()` не загортаються: це дані готелю, а не текст.
+ * `t` приходить аргументом, бо це результат хука, а хук живе в компоненті.
+ */
+function alertText(a: DashboardAlert, t: (s: string) => string): string {
+  const where = a.unitName ? ` — ${a.unitName}` : '';
+  switch (a.type) {
+    case 'overdue_arrival':
+      return `${t('Прострочений заїзд')} ${a.checkIn ?? ''}${where}`;
+    case 'zero_price_arrival':
+      return `${t('Сьогодні заїзд, ціна = 0 — потрібне підтвердження')}${where}`;
+    case 'unpaid_arrival':
+      return `${t('Сьогодні заїзд, оплата не завершена')}${where}`;
+    case 'unregistered_arrival':
+      return `${t('Сьогодні заїзд, реєстрація не пройдена')}${where}`;
+    case 'checked_in_no_reg':
+      return `${t('Заселений без реєстрації')}${where}`;
+    case 'today_departure':
+      return `${t('Сьогодні виїзд')}${where}`;
+    // Код, якого цей екран не знає, означає, що API пішов уперед. Показати
+    // сам код гірше, ніж показати те, що точно правда: який це номер.
+    default:
+      return a.unitName || '';
+  }
+}
 
 /* ================================================================
    Modal
@@ -516,7 +556,7 @@ function BookingsDesktop() {
                 }}>
                   {a.severity === 'danger' ? <AlertTriangle size={16} /> : a.severity === 'warning' ? <Bell size={16} /> : <FileText size={16} />}
                   <span style={{ fontWeight: 600 }}>{a.guestName}</span>
-                  <span style={{ color: 'var(--text-secondary)' }}>{a.message}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{t(alertText(a, t))}</span>
                 </div>
                 <button
                   title={a.type === 'overdue_arrival' ? t('Позначити no-show та прибрати') : t('Приховати')}
