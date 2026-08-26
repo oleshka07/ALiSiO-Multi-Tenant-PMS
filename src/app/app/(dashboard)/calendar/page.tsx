@@ -194,7 +194,6 @@ function CalendarDesktop() {
   const [bookingSources, setBookingSources] = useState<any[]>([]);
   const [blocks, setBlocks] = useState<{ id: string; unit_id: string; date_from: string; date_to: string; notes: string }[]>([]);
   const [toast, setToast] = useState('');
-  const [syncing, setSyncing] = useState(false);
   const [draftCount, setDraftCount] = useState(0);
   const [showPayForm, setShowPayForm] = useState(false);
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', type: 'partial', notes: '' });
@@ -656,30 +655,15 @@ function CalendarDesktop() {
                 ))}
               </div>
               <button className="btn btn-secondary btn-sm" onClick={() => fetchData()} title={tUi('Оновити дані')} style={{ padding: '4px 6px' }}><RefreshCw size={14} /></button>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={async () => {
-                  setSyncing(true);
-                  try {
-                    const res = await fetch('/api/hostex/sync', { method: 'POST' });
-                    const data = await res.json();
-                    await fetchData();
-                    let msg = `✅ Hostex: +${data.created || 0} нових, ${data.updated || 0} оновлено`;
-                    if (data.unmappedProperties?.length) {
-                      msg += `\n⚠️ ${data.unmappedProperties.length} непривʼязаних: ${data.unmappedProperties.map((p: any) => `${p.title} (id:${p.id})`).join(', ')}`;
-                    }
-                    if (data.error) msg = `❌ ${data.error}`;
-                    showToast(msg);
-                  } catch { showToast(tUi('❌ Помилка синхронізації')); }
-                  setSyncing(false);
-                }}
-                disabled={syncing}
-                title={tUi('Синхронізувати з Hostex')}
-                style={{ padding: '4px 8px', fontSize: 11, gap: 4, opacity: syncing ? 0.6 : 1 }}
-              >
-                {syncing ? <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <span>🔄</span>}
-                {syncing ? tUi('Синх...') : ' Hostex'}
-              </button>
+              {/* Кнопка «Синхронізувати з Hostex» стояла тут.
+
+                  Hostex викорчувано, маршруту /api/hostex/sync немає — кнопка
+                  давала 404, `res.json()` падав на HTML сторінки помилки, і
+                  catch показував «Помилка синхронізації». Тобто портьє тиснув
+                  її, бачив помилку і не мав способу зрозуміти, що синхронізації
+                  просто не існує: кнопка виглядала як тимчасово зламана, а не
+                  як прибрана. Колонки hostex_* лишаються — у них історичні дані
+                  вже завезених броней, і бейдж 🌐 нижче їх показує. */}
               <button className="btn btn-secondary btn-sm" onClick={() => setShowGroupModal(true)} style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Users size={14} /> {tUi('Групове')}</button>
               <button className="btn btn-secondary btn-sm" onClick={() => setShowRoomAllocation(true)} title={tUi('Розселення по кімнатах (Building View)')} style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Building2 size={14} /> {tUi('Будова')}</button>
               {draftCount > 0 && (
