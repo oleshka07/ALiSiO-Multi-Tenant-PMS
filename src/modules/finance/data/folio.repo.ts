@@ -95,6 +95,15 @@ export async function resolveCurrency(organizationId: string, reservationId: str
 }
 
 export interface NewCharge {
+  /**
+   * Ідентифікатор рядка, коли він потрібен викликачу НАПЕРЕД.
+   *
+   * Зали посилаються на свій рядок зали (`event_bookings.hall_charge_item_id`),
+   * щоб не виставити ту саму залу двічі. Дізнатись id постфактум ніяк:
+   * запит «останній ручний рядок цього фоліо» вгадує, а не знає. Пропущено —
+   * генерується тут, як і раніше.
+   */
+  id?: string;
   folioId: string;
   reservationId?: string | null;
   /** The order this came from, so posting the same one twice adds nothing. */
@@ -122,7 +131,7 @@ export async function addCharges(charges: readonly NewCharge[], t?: Sql): Promis
          (id, organization_id, folio_id, reservation_id, service_order_id, service_date, kind, description,
           guest_name, unit_code, quantity, unit_price_gross, total_gross, vat_rate, source)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [crypto.randomUUID(), organizationId, c.folioId, c.reservationId ?? null,
+      [c.id ?? crypto.randomUUID(), organizationId, c.folioId, c.reservationId ?? null,
        c.serviceOrderId ?? null, c.serviceDate,
        c.kind, c.description, c.guestName ?? null, c.unitCode ?? null, c.quantity,
        c.unitPriceGross, c.totalGross, c.vatRate, c.source ?? 'manual'],

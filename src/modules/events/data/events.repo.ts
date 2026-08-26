@@ -347,9 +347,37 @@ export async function postEventCharges(bookingId: string, input: {
     return rate.rate;
   };
 
+  // ── Зала виставляється один раз ──────────────────────────────────────
+  //
+  // Кнопка «Рахунок» кладе позиції й одразу випускає рахунок. `openFolio`
+  // ідемпотентний, `issueInvoice` відмовляється брати вже зафактуровану
+  // позицію — а ця функція при кожному виклику ДОДАЄ рядки. Тож друге
+  // натискання давало другий рахунок із тим самим заходом і новим номером у
+  // книзі. У Німеччині номер видано; прибрати його можна лише сторно.
+  //
+  // Перевіряється живий РЯДОК, а не прапорець: сторнований рядок означає, що
+  // залу треба виставити наново, і система мусить це дозволити.
+  let hallAlreadyBilled = false;
+  if (booking.hall_charge_item_id) {
+    const line = await sql.row<any>(
+      `SELECT id FROM fin_folio_items
+        WHERE id = ? AND organization_id = ? AND voided_by_item_id IS NULL`,
+      [booking.hall_charge_item_id, organizationId]);
+    hallAlreadyBilled = !!line;
+  }
+  if (hallAlreadyBilled && input.hallPriceGross > 0) {
+    throw new Error('The hall of this event is already on the folio — void that line before billing it again');
+  }
+
   const charges = [];
+  // Id відомий наперед, бо бронь мусить на нього послатись. Дізнатись його
+  // постфактум ніяк: запит «останній ручний рядок цього фоліо» вгадує.
+  const hallItemId = crypto.randomUUID();
+  // Доповнення НЕ обмежуються: додаткова кава на тому ж заході — законна
+  // операція, а не дублікат.
   if (input.hallPriceGross > 0) {
     charges.push({
+      id: hallItemId,
       folioId: '',
       serviceDate: eventDate,
       kind: 'service' as const,
@@ -399,5 +427,12 @@ export async function postEventCharges(bookingId: string, input: {
   const folioId = await openFolio(bookingId);
   for (const c of charges) c.folioId = folioId;
   const posted = await addCharges(charges);
+  // Запам'ятовуємо рядок зали, а не факт «виставлено»: сторнований рядок
+  // означає, що залу можна виставити наново.
+  if (input.hallPriceGross > 0) {
+    await sql.run(
+      'UPDATE event_bookings SET hall_charge_item_id = ? WHERE id = ? AND organization_id = ?',
+      [hallItemId, bookingId, organizationId]);
+  }
   return { folioId, posted };
 }

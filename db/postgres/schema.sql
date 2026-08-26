@@ -416,6 +416,7 @@ CREATE TABLE "event_bookings" (
   "status" TEXT NOT NULL DEFAULT 'confirmed',
   "notes" TEXT,
   "folio_id" TEXT,
+  "hall_charge_item_id" TEXT,
   "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
   "updated_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK ("status" IN ('draft','confirmed','cancelled')),

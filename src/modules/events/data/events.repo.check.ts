@@ -171,6 +171,55 @@ try {
     assert.deepStrictEqual(sonderRows.map((r) => Number(r.vat_rate)), [19],
       'явний код у запиті мав перекрити ставку зали');
     console.log('  ok  ставка зали — з самої зали (7 %), запит її перекриває (19 %)');
+
+    // ── зала виставляється один раз ──────────────────────────────────────
+    //
+    // Кнопка «Рахунок» кладе позиції й одразу випускає рахунок. openFolio
+    // ідемпотентний, issueInvoice відмовляється брати вже зафактуровану
+    // позицію — а postEventCharges при кожному виклику ДОДАВАВ рядки. Тож
+    // друге натискання давало другий рахунок із тим самим заходом і новим
+    // номером у книзі. У Німеччині номер видано; прибрати його можна лише
+    // сторно. setBilling(true) на екрані блокує тільки подвійний клік у межах
+    // одного запиту — портьє, який відкрив діалог удруге, отримував дублікат.
+    await assert.rejects(
+      () => events.postEventCharges(sonder.id, { hallPriceGross: 190 }),
+      /already on the folio/,
+      'друге виставлення тієї самої зали мусить бути відхилене');
+    const afterSecond = await sql.rows<any>(
+      `SELECT i.id FROM fin_folio_items i
+         JOIN event_bookings b ON b.folio_id = i.folio_id
+        WHERE b.id = ? AND b.organization_id = ?`, [sonder.id, ORG]);
+    assert.strictEqual(afterSecond.length, 1,
+      'після відхиленої спроби на фоліо мусить лишитись рівно один рядок');
+    console.log('  ok  друге натискання «Рахунок» не створює другого рядка зали');
+
+    // Доплати після виставленої зали — законна операція, а не дублікат:
+    // додаткова кава на тому ж заході. Гейт саме тут, бо найпростіший спосіб
+    // прибрати дублікат — заборонити ВСЕ повторне, і це зламало б роботу.
+    const kaffee = await events.saveAddon({
+      propertyId: 'evrepo_p', name: 'Kaffee', kind: 'per_person',
+      priceGross: 3, vatCode: 'standard',
+    });
+    const added = await events.postEventCharges(sonder.id, {
+      hallPriceGross: 0, addons: [{ addonId: kaffee, quantity: 5 }],
+    });
+    assert.strictEqual(added.posted, 1, 'доплату після зали мусить бути можна додати');
+    console.log('  ok  доплата після виставленої зали проходить');
+
+    // Сторнований рядок означає, що залу треба виставити наново — тому
+    // запам'ятовується сам РЯДОК, а не прапорець «уже виставлено». Прапорець
+    // тут збрехав би і залишив готель без способу виставити захід.
+    const booking = await sql.row<any>(
+      'SELECT hall_charge_item_id FROM event_bookings WHERE id = ? AND organization_id = ?',
+      [sonder.id, ORG]);
+    assert.ok(booking.hall_charge_item_id, 'бронь мусить пам’ятати свій рядок зали');
+    await sql.run(
+      'UPDATE fin_folio_items SET voided_by_item_id = ? WHERE id = ? AND organization_id = ?',
+      ['storno_probe', booking.hall_charge_item_id, ORG]);
+    const reposted = await events.postEventCharges(sonder.id, { hallPriceGross: 190 });
+    assert.strictEqual(reposted.posted, 1,
+      'після сторно зали її мусить бути можна виставити наново');
+    console.log('  ok  сторнована зала виставляється наново, прапорець це заборонив би');
   });
 } finally {
   await cleanup();

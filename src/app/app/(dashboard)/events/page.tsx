@@ -30,6 +30,8 @@ interface Booking {
   time_from: string; time_to: string; persons: number;
   customer_name: string; company: string | null; status: string;
   notes: string | null; folio_id: string | null;
+  /** Рядок фоліо, який несе оренду зали, — заповнений означає «вже в рахунку». */
+  hall_charge_item_id: string | null;
 }
 
 function blockPricesOf(s: Space | undefined) {
@@ -129,7 +131,9 @@ export default function EventsPage() {
     const sug = space
       ? suggestedBlockPrice(blockPricesOf(space), minutesBetween(b.time_from, b.time_to))
       : null;
-    setHallPrice(sug != null ? String(sug) : '');
+    // Зала вже в рахунку — підказка з прайсу тут була б пропозицією виставити
+    // її вдруге.
+    setHallPrice(b.hall_charge_item_id ? '' : (sug != null ? String(sug) : ''));
     setPicked({});
     setError('');
     setBillFor(b);
@@ -137,16 +141,23 @@ export default function EventsPage() {
 
   async function issueBill() {
     if (!billFor) return;
+    const chosen = Object.entries(picked)
+      .filter(([, q]) => Number(q) > 0)
+      .map(([addon_id, q]) => ({ addon_id, quantity: Number(q) }));
+    const hall = billFor.hall_charge_item_id ? 0 : Number(hallPrice) || 0;
+    // Рахунок без жодного рядка. Сервер це теж відхиляє («Nothing to invoice on
+    // this folio»), але вже після того, як відкрив фоліо, — і повідомлення
+    // приходить англійською. Питання ставиться тут, де на нього є відповідь
+    // мовою готелю.
+    if (hall <= 0 && chosen.length === 0) {
+      setError(t('Нема чого виставляти: вкажіть ціну оренди або оберіть доплату.'));
+      return;
+    }
     setBilling(true); setError('');
     try {
       const chargesRes = await fetch(`/api/events/bookings/${billFor.id}/charges`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          hall_price_gross: Number(hallPrice) || 0,
-          addons: Object.entries(picked)
-            .filter(([, q]) => Number(q) > 0)
-            .map(([addon_id, q]) => ({ addon_id, quantity: Number(q) })),
-        }),
+        body: JSON.stringify({ hall_price_gross: hall, addons: chosen }),
       });
       const charges = await chargesRes.json();
       if (!chargesRes.ok) { setError(charges.error || t('Не вдалося')); return; }
@@ -340,9 +351,25 @@ export default function EventsPage() {
                 {t('Платник')}: {billFor.company || billFor.customer_name}
               </div>
 
-              <label style={labelStyle}>{t('Оренда зали, € (підказка з прайсу — можна змінити)')}</label>
-              <input type="number" min="0" step="0.01" value={hallPrice}
-                onChange={(e) => setHallPrice(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+              {/*
+                Зала, яка вже в рахунку, тут не пропонується повторно. Сервер
+                таку спробу відхиляє (див. postEventCharges), але діалог, що
+                показує ціну й дозволяє її надіслати, виглядає як робоча дія —
+                а відмова приходить уже після натискання. Доплати лишаються
+                доступні: додаткова кава на тому ж заході — законна операція.
+              */}
+              {billFor.hall_charge_item_id ? (
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 14px',
+                  padding: '10px 12px', borderRadius: 8, background: 'var(--bg-secondary)' }}>
+                  {t('Оренда зали вже в рахунку. Щоб виставити її наново, спершу сторнуйте той рядок у фоліо.')}
+                </div>
+              ) : (
+                <>
+                  <label style={labelStyle}>{t('Оренда зали, € (підказка з прайсу — можна змінити)')}</label>
+                  <input type="number" min="0" step="0.01" value={hallPrice}
+                    onChange={(e) => setHallPrice(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+                </>
+              )}
 
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
                 {t('Доплати')}

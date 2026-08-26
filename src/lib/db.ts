@@ -1403,12 +1403,26 @@ function runMigrations(database: any) {
         customer_name TEXT NOT NULL, customer_email TEXT, customer_phone TEXT, company TEXT,
         status TEXT NOT NULL DEFAULT 'confirmed',
         notes TEXT, folio_id TEXT,
+        -- Рядок фоліо, який несе саму залу. Не прапорець «виставлено»: рядок
+        -- відповідає і на «чи вже в рахунку», і на «чи його сторновано».
+        -- Див. міграцію 0034.
+        hall_charge_item_id TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         CHECK (status IN ('draft','confirmed','cancelled')),
         CHECK (time_from < time_to)
       )
     `);
+    // Для баз, створених до 0034.
+    try {
+      const ebCols = database.prepare('PRAGMA table_info(event_bookings)').all() as { name: string }[];
+      if (!ebCols.some((c) => c.name === 'hall_charge_item_id')) {
+        database.exec('ALTER TABLE event_bookings ADD COLUMN hall_charge_item_id TEXT');
+        console.log('[DB] event_bookings: added hall_charge_item_id');
+      }
+    } catch (e: any) {
+      console.log('[DB] hall_charge_item_id migration note:', e.message);
+    }
     // The collision query reads a hall's day on every booking attempt. The
     // index lived only in migration 0024, so a database created fresh — every
     // new hotel — never got it.
