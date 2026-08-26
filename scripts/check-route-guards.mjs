@@ -40,7 +40,7 @@ import path from 'node:path';
  * exactly why this list has to be complete rather than remembered:
  *
  *   core/auth/session.ts        withActor, withPermission, withOwner
- *   core/security/route-guard.ts  requireOwner, requirePermission
+ *   core/security/route-guard.ts  requireFinanceAccess, requirePermission
  *   modules/finance/api/_guard.ts withFinanceRead, withPermission,
  *                                 withAnyPermission, asFinanceOwner
  *
@@ -51,7 +51,7 @@ import path from 'node:path';
  */
 const GUARDS = new RegExp([
   '\\bwith(Actor|Permission|AnyPermission|Owner|OwnedSite|FinanceRead|FinanceWrite|Site)\\b',
-  '\\brequire(Owner|Permission)\\b', '\\basFinanceOwner\\b',
+  '\\brequire(FinanceAccess|Permission|FinanceUser)\\b', '\\basFinanceOwner\\b',
   '\\bcurrentActor\\b', '\\brunWithOrganization\\b',
 ].join('|'));
 

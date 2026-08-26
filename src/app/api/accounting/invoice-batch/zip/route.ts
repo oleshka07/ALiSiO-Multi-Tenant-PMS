@@ -16,7 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql, type Sql } from '@core/db/async';
 import { generateIsdocXml } from '@/modules/finance/domain/isdoc';
-import { requireOwner } from '@core/security/route-guard';
+import { requireFinanceAccess } from '@core/security/route-guard';
 import { generateInvoicePdf } from '@/modules/finance/domain/invoice-pdf';
 import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
 import { showBuyerName, dueDateFor } from '@/modules/finance/domain/invoice-rules';
@@ -288,7 +288,7 @@ async function buildPdfBytes(sql: Sql, row: any): Promise<Uint8Array> {
 
 // ─── Route handler ────────────────────────────────────────────────────────────
 
-export const POST = requireOwner(_POST);
+export const POST = requireFinanceAccess(_POST);
 async function _POST(request: NextRequest): Promise<NextResponse> {
   try {
     const body = await request.json() as {

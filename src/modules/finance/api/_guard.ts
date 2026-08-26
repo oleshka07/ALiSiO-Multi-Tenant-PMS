@@ -144,7 +144,7 @@ function forbidden(message: string, extra: Record<string, unknown> = {}): NextRe
  * This validates the session against the DB (the edge middleware only checks
  * cookie presence) — so a forged or expired cookie is rejected here.
  */
-async function requireFinanceUser(
+export async function requireFinanceUser(
   request?: NextRequest,
   isWrite = false,
 ): Promise<Actor | NextResponse> {

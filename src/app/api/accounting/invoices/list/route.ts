@@ -11,10 +11,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
-import { requireOwner } from '@core/security/route-guard';
+import { requireFinanceAccess } from '@core/security/route-guard';
 import { serverError } from '@core/http/errors';
 
-export const GET = requireOwner(_GET);
+export const GET = requireFinanceAccess(_GET);
 async function _GET(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();

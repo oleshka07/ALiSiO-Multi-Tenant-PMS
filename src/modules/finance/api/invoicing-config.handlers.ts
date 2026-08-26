@@ -9,8 +9,13 @@
  *
  * Owner-only, on purpose. A tax rate is a statement about the company's
  * position with its tax office, and an invoice number is a legal sequence;
- * neither belongs on a receptionist's screen. `withOwner` also establishes the
- * tenant, so every query below is already scoped.
+ * neither belongs on a receptionist's screen — and «owner-only» is the finance
+ * module's own policy, so it is asked here through the finance guard rather
+ * than through `withOwner`, which also admits a director. That divergence was
+ * live: this file said owner-only in prose while its guard let a director set
+ * VAT rates, skipped the finance step-up passphrase and ignored a restricted
+ * finance user's read-only flag — on routes under /api/finance/ at that. The
+ * guard establishes the tenant too, so every query below is already scoped.
  *
  * Nothing here validates a rate against a country. We do not know what
  * Germany, Czechia or the next jurisdiction will charge next year, and a
@@ -18,7 +23,7 @@
  */
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { withOwner } from '@core/auth/session';
+import { withFinanceRead, withPermission as withFinanceWrite } from './_guard';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { DEFAULT_TEMPLATE, formatInvoiceNumber } from '../domain/invoice-number-format';
 
@@ -29,7 +34,7 @@ const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{
 
 // ── VAT rates ───────────────────────────────────────────────────────────────
 
-export const listTaxRates = withOwner(async () => {
+export const listTaxRates = withFinanceRead(async () => {
   const organizationId = await requireOrganizationId();
   const rows = await getSql().rows(
     `SELECT id, code, rate, label, valid_from, valid_to
@@ -40,7 +45,7 @@ export const listTaxRates = withOwner(async () => {
   return NextResponse.json({ rates: rows });
 });
 
-export const createTaxRate = withOwner(async (request: Request) => {
+export const createTaxRate = withFinanceWrite('manage_finance_settings', async (request: Request) => {
   const body = await request.json().catch(() => null) as any;
 
   if (!isCode(body?.code)) {
@@ -85,7 +90,7 @@ export const createTaxRate = withOwner(async (request: Request) => {
  * what the hotel was charging and when — which is the one thing a tax audit
  * asks for. So the only edit offered is an end date.
  */
-export const closeTaxRate = withOwner(async (
+export const closeTaxRate = withFinanceWrite('manage_finance_settings', async (
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) => {
@@ -113,7 +118,7 @@ export const closeTaxRate = withOwner(async (
  * this must start refusing. Written down here rather than left to be
  * rediscovered.
  */
-export const deleteTaxRate = withOwner(async (
+export const deleteTaxRate = withFinanceWrite('manage_finance_settings', async (
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) => {
@@ -129,7 +134,7 @@ export const deleteTaxRate = withOwner(async (
 
 // ── Invoice series ──────────────────────────────────────────────────────────
 
-export const listInvoiceSeries = withOwner(async () => {
+export const listInvoiceSeries = withFinanceRead(async () => {
   const organizationId = await requireOrganizationId();
   const sql = getSql();
   const rows = await sql.rows<any>(
@@ -162,7 +167,7 @@ export const listInvoiceSeries = withOwner(async () => {
   });
 });
 
-export const createInvoiceSeries = withOwner(async (request: Request) => {
+export const createInvoiceSeries = withFinanceWrite('manage_finance_settings', async (request: Request) => {
   const body = await request.json().catch(() => null) as any;
   const code = typeof body?.code === 'string' ? body.code.trim().toUpperCase() : '';
   if (!/^[A-Z0-9_-]{1,16}$/.test(code)) {
@@ -196,7 +201,7 @@ export const createInvoiceSeries = withOwner(async (request: Request) => {
   return NextResponse.json({ id }, { status: 201 });
 });
 
-export const updateInvoiceSeries = withOwner(async (
+export const updateInvoiceSeries = withFinanceWrite('manage_finance_settings', async (
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) => {
@@ -224,7 +229,7 @@ export const updateInvoiceSeries = withOwner(async (
   return NextResponse.json({ ok: true });
 });
 
-export const deleteInvoiceSeries = withOwner(async (
+export const deleteInvoiceSeries = withFinanceWrite('manage_finance_settings', async (
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) => {

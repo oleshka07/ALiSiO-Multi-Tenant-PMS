@@ -1,9 +1,14 @@
 /**
  * What each channel's price includes, and what we add on top.
  *
- * Owner-only. Whether Booking.com's figure contains breakfast, and how that
- * breakfast divides between food and drink, decides what VAT the hotel declares
- * on every channel booking it takes. That is a statement to a tax office, not a
+ * Owner-only — through the finance module's own guard, which is where that
+ * policy is defined. It used to be `withOwner`, which also admits a director
+ * and asks neither the finance step-up passphrase nor a restricted finance
+ * user's read-only flag: the file said owner-only and the guard did not.
+ *
+ * Whether Booking.com's figure contains breakfast, and how that breakfast
+ * divides between food and drink, decides what VAT the hotel declares on every
+ * channel booking it takes. That is a statement to a tax office, not a
  * reception setting.
  *
  * The tax roles are chosen, never the percentages: a rate written here as 7
@@ -12,14 +17,15 @@
  */
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { withOwner, withPermission } from '@core/auth/session';
+import { withPermission } from '@core/auth/session';
+import { withFinanceRead, withPermission as withFinanceWrite } from './_guard';
 import { requireOrganizationId, requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 import { postStayCharges, postServiceCharges } from '../data/stay-charges.repo';
 
 const CODES = ['standard', 'reduced', 'zero'];
 const isCode = (v: unknown): v is string => typeof v === 'string' && CODES.includes(v);
 
-export const listChannelRules = withOwner(async (request: Request) => {
+export const listChannelRules = withFinanceRead(async (request: Request) => {
   const organizationId = await requireOrganizationId();
   try {
     const propertyId = await requirePropertyId(new URL(request.url).searchParams.get('property_id'));
@@ -37,7 +43,7 @@ export const listChannelRules = withOwner(async (request: Request) => {
   }
 });
 
-export const saveChannelRule = withOwner(async (request: Request) => {
+export const saveChannelRule = withFinanceWrite('manage_finance_settings', async (request: Request) => {
   const body = await request.json().catch(() => null) as any;
 
   // Empty means "any channel" — the default rule. A hotel with one arrangement
@@ -107,7 +113,7 @@ export const saveChannelRule = withOwner(async (request: Request) => {
   }
 });
 
-export const deleteChannelRule = withOwner(async (
+export const deleteChannelRule = withFinanceWrite('manage_finance_settings', async (
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) => {

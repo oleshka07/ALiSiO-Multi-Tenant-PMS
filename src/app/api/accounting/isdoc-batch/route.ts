@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { generateIsdocXml } from '@/modules/finance/domain/isdoc';
-import { requireOwner } from '@core/security/route-guard';
+import { requireFinanceAccess } from '@core/security/route-guard';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import type { InvoiceData } from '@/modules/finance/domain/invoice-template';
 import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
@@ -42,7 +42,7 @@ function buildDescription(data: {
 
 // ─── Route handler ────────────────────────────────────────────────────────────
 
-export const GET = requireOwner(_GET);
+export const GET = requireFinanceAccess(_GET);
 async function _GET(request: NextRequest): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(request.url);

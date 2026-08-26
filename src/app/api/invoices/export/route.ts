@@ -7,10 +7,10 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { requireOwner } from '@core/security/route-guard';
+import { requireFinanceAccess } from '@core/security/route-guard';
 import type { Actor } from '@core/auth/session';
 
-export const GET = requireOwner(_GET);
+export const GET = requireFinanceAccess(_GET);
 async function _GET(req: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(req.url);

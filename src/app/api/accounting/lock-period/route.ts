@@ -8,12 +8,12 @@
  * deleted or renumbered — corrections go through a storno (credit note).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { requireOwner } from '@core/security/route-guard';
+import { requireFinanceAccess } from '@core/security/route-guard';
 import { lockPeriod, unlockPeriod, seriesForChannel } from '@/modules/finance/domain/invoice-numbering';
 import type { Actor } from '@core/auth/session';
 import { getSql } from '@core/db/async';
 
-export const GET = requireOwner(async (_request, _ctx, actor: Actor): Promise<NextResponse> => {
+export const GET = requireFinanceAccess(async (_request, _ctx, actor: Actor): Promise<NextResponse> => {
   const sql = getSql();
   const periods = await sql.rows(
     'SELECT series, month, status, locked_at FROM invoice_periods WHERE organization_id = ? ORDER BY month DESC, series',
@@ -28,7 +28,7 @@ export const GET = requireOwner(async (_request, _ctx, actor: Actor): Promise<Ne
   return NextResponse.json({ periods, derived });
 });
 
-export const POST = requireOwner(async (request: NextRequest, _ctx, actor: Actor): Promise<NextResponse> => {
+export const POST = requireFinanceAccess(async (request: NextRequest, _ctx, actor: Actor): Promise<NextResponse> => {
   try {
     const { series, month, action, channel } = await request.json();
     const resolvedSeries = (series || seriesForChannel(channel).series) as string;

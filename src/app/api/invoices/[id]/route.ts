@@ -5,7 +5,7 @@
 import { getInvoiceHtml } from '@finance';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { requireOwner } from '@core/security/route-guard';
+import { requireFinanceAccess } from '@core/security/route-guard';
 import type { Actor } from '@core/auth/session';
 import { isPeriodLocked } from '@/modules/finance/domain/invoice-numbering';
 import { serverError } from '@core/http/errors';
@@ -28,7 +28,7 @@ export const GET = getInvoiceHtml;
  * already supports. That is the difference between an accounting system and a
  * spreadsheet.
  */
-export const DELETE = requireOwner(_DELETE);
+export const DELETE = requireFinanceAccess(_DELETE);
 async function _DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

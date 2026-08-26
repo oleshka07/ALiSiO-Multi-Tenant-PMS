@@ -14,7 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireOwner } from '@core/security/route-guard';
+import { requireFinanceAccess } from '@core/security/route-guard';
 import { allocateInvoiceNumber, seriesForChannel, isPeriodLocked } from '@/modules/finance/domain/invoice-numbering';
 import type { Actor } from '@core/auth/session';
 import { getSql } from '@core/db/async';
@@ -265,7 +265,7 @@ export interface BatchInvoiceResult {
   created: boolean;
 }
 
-export const DELETE = requireOwner(_DELETE);
+export const DELETE = requireFinanceAccess(_DELETE);
 async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
     const sql = getSql();
@@ -356,7 +356,7 @@ async function _DELETE(request: NextRequest, _ctx: unknown, actor: Actor): Promi
   }
 }
 
-export const POST = requireOwner(_POST);
+export const POST = requireFinanceAccess(_POST);
 async function _POST(request: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> {
   try {
     const sql = getSql();
