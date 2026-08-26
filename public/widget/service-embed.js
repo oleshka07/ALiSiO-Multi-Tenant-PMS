@@ -20,7 +20,13 @@
     return scripts.length > 0 ? scripts[scripts.length - 1] : null;
   })();
   var API_BASE = scriptTag ? (scriptTag.getAttribute('data-api') || scriptTag.src.replace(/\/widget\/service-embed\.js.*$/, '')) : '';
-  var SERVICE_TYPE = scriptTag ? (scriptTag.getAttribute('data-service') || 'sauna') : 'sauna';
+  // Which service, and which of the three layouts it needs.
+  //
+  // `data-service` is the service's own id. `data-kind` picks the layout —
+  // a slot picker for sauna and hot tub, a menu for breakfast. They used to be
+  // the same attribute, and that conflation is the bug below.
+  var SERVICE_ID = scriptTag ? (scriptTag.getAttribute('data-service') || '') : '';
+  var SERVICE_TYPE = scriptTag ? (scriptTag.getAttribute('data-kind') || scriptTag.getAttribute('data-service') || 'sauna') : 'sauna';
   var LANG = scriptTag ? (scriptTag.getAttribute('data-lang') || 'en') : 'en';
   var ACCENT = scriptTag ? (scriptTag.getAttribute('data-color') || '#1a1a2e') : '#1a1a2e';
   var RESERVATION_ID = scriptTag ? (scriptTag.getAttribute('data-reservation') || '') : '';
@@ -32,9 +38,40 @@
   var STAY_CHECKIN  = scriptTag ? (scriptTag.getAttribute('data-checkin')  || '') : '';
   var STAY_CHECKOUT = scriptTag ? (scriptTag.getAttribute('data-checkout') || '') : '';
 
-  // Service ID mapping
-  var SERVICE_IDS = { sauna: 'svc_sauna', tub: 'svc_pool', breakfast: 'svc_breakfast' };
-  var serviceId = SERVICE_IDS[SERVICE_TYPE] || 'svc_sauna';
+  // Which service this widget sells.
+  //
+  // `data-service` carries one of two things, and the difference mattered more
+  // than it looked. The guest page passes a KIND — «sauna», «tub»,
+  // «breakfast». The site's Services tab passes a real service ID, because
+  // that is what a hotel's own service is called.
+  //
+  // The old line was `SERVICE_IDS[SERVICE_TYPE] || 'svc_sauna'`. A real id
+  // misses the map, so every hotel that copied the snippet from its own
+  // Services tab silently asked for `svc_sauna` — a seed id belonging to the
+  // pilot customer. One hotel's widget, another hotel's service.
+  //
+  // So: a known kind maps; anything else IS the id. And there is no fallback,
+  // because the honest answer to «which service?» with nothing given is not
+  // somebody else's.
+  // No mapping table any more, and no fallback.
+  //
+  // The old line was `SERVICE_IDS[SERVICE_TYPE] || 'svc_sauna'`, over a table
+  // of three seed ids belonging to the pilot customer. A hotel that copied the
+  // snippet from its own Services tab passes a real id, which misses that
+  // table — so every such hotel's widget silently asked for `svc_sauna`. One
+  // hotel's page, another hotel's service.
+  //
+  // The honest answer to «which service?» with nothing given is not somebody
+  // else's, so a missing id stops the widget instead.
+  var serviceId = SERVICE_ID;
+  if (!serviceId) {
+    console.error('ALiSiO service widget: data-service is missing.');
+    return;
+  }
+  // A layout we do not have is not a reason to render the wrong one.
+  if (SERVICE_TYPE !== 'sauna' && SERVICE_TYPE !== 'tub' && SERVICE_TYPE !== 'breakfast') {
+    SERVICE_TYPE = 'sauna';
+  }
 
   // ─── i18n ───
   var T = {
@@ -156,8 +193,8 @@
     // Calendar
     calOpen: false, calMonthOffset: 0,
     // Payment
-    paymentSessionToken: null, paymentSessionId: null,
-    paymentSdkUrl: null, paymentSessionUrl: null,
+    // The payment-session fields that lived here are gone with the gateway
+    // hop: nothing sets them and nothing reads them.
     teyaCheckout: null, paymentTotal: 0,
     // Promo
     promoCode: AUTO_PROMO, promoApplied: false, promoOpen: !!AUTO_PROMO,
@@ -290,7 +327,20 @@
     if (!code) return;
     state.promoError = null;
     try {
-      var res = await fetch(API_BASE + '/api/booking/promo?code=' + encodeURIComponent(code) + '&serviceId=' + serviceId);
+      // `/api/booking/activate`, not `/api/booking/promo`.
+      //
+      // The route was renamed and this line was not, so the fetch 404'd, the
+      // catch below turned that into «Invalid» and every coupon a hotel ever
+      // issued was rejected by its own widget — including the gift-card
+      // bundles it had sold. A wrong answer that looks like the right kind of
+      // answer is the hardest sort to notice.
+      //
+      // siteId travels with it: a coupon belongs to a hotel, and this route
+      // finds the hotel through its site. Without one it cannot answer at all,
+      // which is why the promo box is not offered when there is no site.
+      var res = await fetch(API_BASE + '/api/booking/activate?code=' + encodeURIComponent(code)
+        + '&serviceId=' + encodeURIComponent(serviceId)
+        + '&siteId=' + encodeURIComponent(SITE_ID));
       var data = await res.json();
       if (data.valid) {
         state.promoApplied = true;
@@ -314,155 +364,31 @@
     render();
   }
 
-  // ─── Payment Flow (Hosted Checkout) ───
-  async function initiatePayment(amount, description) {
-    if (!ENABLE_PAYMENT) {
-      return null;
-    }
-    state.loading = true; state.error = null; state.paymentTotal = amount; render();
-    try {
-      // Save booking data to sessionStorage so we can finalize after redirect back
-      var bookingData = {
-        serviceType: SERVICE_TYPE,
-        serviceId: serviceId,
-        date: state.date,
-        startHour: state.startHour,
-        hours: state.hours,
-        brooms: state.brooms,
-        itemQty: state.itemQty,
-        selectedBreakfastDates: state.selectedBreakfastDates,
-        reservationId: RESERVATION_ID,
-        promoCode: state.promoApplied ? state.promoCode : null,
-      };
-      try { sessionStorage.setItem('asw_pending_booking', JSON.stringify(bookingData)); } catch(e) {}
+  // ─── There is no payment step ───
+  //
+  // This widget used to POST to /api/booking/checkout-session and redirect the
+  // guest to Teya's hosted checkout. That route was deleted with the Teya
+  // integration on 2026-08-22, so for months the last button answered 404 and
+  // showed «Payment init failed»: the guest had picked a time, applied a code
+  // and pressed pay, and the product's reply was an error string.
+  //
+  // What is gone is only the middle of the flow. `doSubmitSlot` and
+  // `doSubmitBreakfast` below already write the real booking through
+  // /api/booking/services — with the slot, the hours, the add-ons and one row
+  // per breakfast morning — and they always did. The gateway hop sat between
+  // the button and them, and taking it out is the whole repair. BookingV2 was
+  // fixed the same way in d1d52b4: the payment step was removed, not replaced.
+  //
+  // ENABLE_PAYMENT stays as the seam. When a gateway ships (see
+  // src/core/payments.ts) this is where the branch goes back — and until then
+  // the button says «order», because that is what pressing it does.
+  var ENABLE_PAYMENT_LIVE = false;
 
-      var res = await fetch(API_BASE + '/api/booking/checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(SERVICE_TYPE === 'breakfast' ? {
-          // Breakfast-specific payload: no hours/slots
-          amount: amount,
-          currency: 'CZK',
-          description: description,
-          reservation_id: RESERVATION_ID || undefined,
-          return_path: window.location.pathname,
-          service_id: serviceId,
-          service_date: (state.selectedBreakfastDates && state.selectedBreakfastDates.length > 0)
-            ? state.selectedBreakfastDates[0]
-            : (STAY_CHECKIN || new Date().toISOString().split('T')[0]),
-          breakfast_dates: state.selectedBreakfastDates.length > 0
-            ? state.selectedBreakfastDates : undefined,
-          menu_items: Object.keys(state.itemQty).filter(function(id) { return state.itemQty[id] > 0; }).map(function(id) {
-            var item = state.menuItems.find(function(m) { return m.id === id; });
-            return { menuItemId: id, name: (item && (item.nameEn || item.name)) || id, quantity: state.itemQty[id] };
-          }),
-          promoCode: (state.promoApplied && state.promoCode) ? state.promoCode : undefined,
-          site_slug: SITE_ID || undefined,
-        } : {
-          // Slot service (sauna/tub) payload
-          amount: amount,
-          currency: 'CZK',
-          description: description,
-          reservation_id: RESERVATION_ID || undefined,
-          return_path: window.location.pathname,
-          service_id: serviceId,
-          service_date: state.date,
-          start_hour: state.startHour,
-          hours: state.hours,
-          addons: (SERVICE_TYPE === 'sauna' && state.brooms > 0) ? [{ id: 'addon_broom', quantity: state.brooms, price: state.broomPrice }] : undefined,
-          promoCode: (state.promoApplied && state.promoCode) ? state.promoCode : undefined,
-          site_slug: SITE_ID || undefined,
-        })
-      });
-      if (!res.ok) { var err = await res.json(); throw new Error(err.error || 'Payment init failed'); }
-      var data = await res.json();
-      
-      state.paymentSessionId = data.session_id;
-      state.paymentSessionUrl = data.session_url;
-
-      // Redirect to Teya Hosted Checkout
-      if (data.session_url) {
-        try {
-          if (window.top && window.top !== window) {
-            window.top.location.href = data.session_url;
-          } else {
-            window.location.href = data.session_url;
-          }
-        } catch (e) {
-          try {
-            window.open(data.session_url, '_top');
-          } catch (err) {
-            window.location.href = data.session_url;
-          }
-        }
-        return data;
-      } else {
-        throw new Error('No checkout URL received');
-      }
-    } catch(e) {
-      state.error = e.message || t.errorOccurred;
-      state.loading = false; render();
-      return null;
-    }
-  }
-
-  // Check if returning from payment (on page load)
-  function checkPaymentReturn() {
-    var params = new URLSearchParams(window.location.search);
-    var paymentStatus = params.get('payment_status');
-    var sessionId = params.get('session_id');
-    
-    if (!paymentStatus) return;
-    
-    // Clean URL params
-    var cleanUrl = window.location.pathname;
-    window.history.replaceState({}, '', cleanUrl);
-
-    if (paymentStatus === 'success' && sessionId) {
-      // Retrieve saved booking data and finalize
-      try {
-        var saved = sessionStorage.getItem('asw_pending_booking');
-        if (saved) {
-          var bookingData = JSON.parse(saved);
-          sessionStorage.removeItem('asw_pending_booking');
-          finalizeBookingAfterPayment(bookingData, sessionId);
-          return;
-        }
-      } catch(e) {
-        console.error('[ASW] Error restoring booking data:', e);
-      }
-      // No saved data — just show success
-      state.view = 'success'; render();
-    } else if (paymentStatus === 'cancel') {
-      state.error = t.paymentFailed;
-      render();
-    }
-  }
-
-  async function finalizeBookingAfterPayment(bookingData, paymentSessionId) {
-    // For slot services (sauna, tub) the preliminary service_orders row
-    // created by /api/booking/checkout-session already covers everything —
-    // payment-return confirmed it. Just show success.
-    //
-    // Breakfast is special: the preliminary SO row only captures the total
-    // amount, not the per-menu-item details. Restore widget state from
-    // bookingData and call book-breakfast (one POST per selected day) so
-    // the dashboard sees one booking_service_orders row per (item, date).
-    if (bookingData && bookingData.serviceType === 'breakfast') {
-      try {
-        if (bookingData.itemQty) state.itemQty = bookingData.itemQty;
-        if (bookingData.selectedBreakfastDates) state.selectedBreakfastDates = bookingData.selectedBreakfastDates;
-        await doSubmitBreakfast(paymentSessionId);
-        return;
-      } catch (e) {
-        console.error('[ASW] finalize breakfast error:', e);
-        // Fall through to plain success state — payment succeeded, the
-        // operator can see the SO row even if BSO creation failed.
-      }
-    }
-    state.view = 'success';
-    state.loading = false; render();
-  }
+  // The «returning from the payment page» handler lived here: it read
+  // ?payment_status= from the URL, restored the booking from sessionStorage
+  // and finalised it. Nothing redirects anywhere any more, so nothing can
+  // return — the whole path was unreachable, and unreachable code that looks
+  // like a payment flow is how a deleted gateway keeps seeming present.
 
   // ─── Original Submit Logic (extracted) ───
   async function doSubmitSlot(paymentId) {
@@ -525,10 +451,10 @@
   async function submitSlotBooking() {
     if (!state.date) return;
     var total = getSlotTotal();
-    if (ENABLE_PAYMENT && total > 0) {
-      var svcName = SERVICE_TYPE === 'sauna' ? t.sauna : t.tub;
-      var desc = svcName + ' — ' + state.hours + ' ' + t.hours + ', ' + fmtDisplay(state.date);
-      await initiatePayment(total, desc);
+    if (ENABLE_PAYMENT && ENABLE_PAYMENT_LIVE && total > 0) {
+      // Reserved for the gateway. Unreachable today, and deliberately not a
+      // call to something that does not exist.
+      state.error = t.errorOccurred; render();
     } else {
       state.loading = true; state.error = null; render();
       try { await doSubmitSlot(null); } catch(e) { state.error = e.message || t.errorOccurred; state.loading = false; render(); }
@@ -541,8 +467,8 @@
       state.error = t.noDaysSelected; render(); return;
     }
     var total = getBreakfastTotal();
-    if (ENABLE_PAYMENT && total > 0) {
-      await initiatePayment(total, t.breakfast);
+    if (ENABLE_PAYMENT && ENABLE_PAYMENT_LIVE && total > 0) {
+      state.error = t.errorOccurred; render();
     } else {
       state.loading = true; state.error = null; render();
       try { await doSubmitBreakfast(null); } catch(e) { state.error = e.message || t.errorOccurred; state.loading = false; render(); }
@@ -600,8 +526,14 @@
     h += '<span class="asw-price-unit">' + t.perHour + '</span>';
     h += '</div>';
 
-    // Promo code section
-    if (SERVICE_TYPE !== 'breakfast') {
+    // Promo code section.
+    //
+    // Only where a site exists. A coupon belongs to a hotel and is looked up
+    // through its booking site; on the guest page there is no site, so the box
+    // could never do anything but say «Invalid» — which it did, to every code,
+    // for as long as it has been there. A field that can only refuse is worse
+    // than no field.
+    if (SERVICE_TYPE !== 'breakfast' && SITE_ID) {
       if (state.promoApplied) {
         h += '<div class="asw-promo-applied">✅ ' + t.promoApplied + ': <strong>' + escHtml(state.promoCode) + '</strong></div>';
       } else {
@@ -688,7 +620,10 @@
 
     // Book / Pay button + optional Add-to-cart button (only when guest
     // page exposed the bridge and we have a reservation context).
-    var btnLabel = ENABLE_PAYMENT ? (t.payAmount + ' ' + fmtPrice(total) + ' Kč') : t.addToBooking;
+    // «Оплатити» would be a promise the button cannot keep — see the note
+    // above ENABLE_PAYMENT_LIVE.
+    var btnLabel = (ENABLE_PAYMENT && ENABLE_PAYMENT_LIVE)
+      ? (t.payAmount + ' ' + fmtPrice(total) + ' Kč') : t.addToBooking;
     if (cartBridgeAvailable()) {
       h += '<div class="asw-btn-row">';
       h += '<button class="asw-book-btn asw-book-btn-secondary" id="asw-cart">🛒 ' + t.addToCart + '</button>';
@@ -790,7 +725,8 @@
     h += '<span class="asw-total-amount">Kč ' + fmtPrice(total) + '</span>';
     h += '</div>';
 
-    var btnLabel = ENABLE_PAYMENT ? (t.payAmount + ' ' + fmtPrice(total) + ' Kč') : t.order;
+    var btnLabel = (ENABLE_PAYMENT && ENABLE_PAYMENT_LIVE)
+      ? (t.payAmount + ' ' + fmtPrice(total) + ' Kč') : t.order;
     if (cartBridgeAvailable() && total > 0) {
       h += '<div class="asw-btn-row">';
       h += '<button class="asw-book-btn asw-book-btn-secondary" id="asw-cart">🛒 ' + t.addToCart + '</button>';
@@ -1169,6 +1105,6 @@
   }
 
   // ─── Init ───
-  checkPaymentReturn();
+
   loadServiceData();
 })();

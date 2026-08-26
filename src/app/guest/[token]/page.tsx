@@ -111,7 +111,17 @@ export default function GuestPage() {
   const [selectedService, setSelectedService] = useState<any>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [orderingService, setOrderingService] = useState<string | null>(null);
-  const [widgetService, setWidgetService] = useState<'sauna' | 'tub' | 'breakfast' | null>(null);
+  // Both halves: which service this is, and which layout it needs.
+  //
+  // This used to hold only the kind — 'sauna' | 'tub' | 'breakfast' — and the
+  // real service id, which the page had in hand, was thrown away. Two places
+  // then reconstructed an id from the kind: the embed mapped 'sauna' to
+  // `svc_sauna` and the sheet title looked for `svc_${kind}`. Both are seed ids
+  // of the pilot customer, so on any other hotel the widget asked for a service
+  // that is not theirs and the title found nothing at all — `svc_tub` was not
+  // even the id the embed used (`svc_pool`), so the hot tub sheet had been
+  // untitled the whole time.
+  const [widgetService, setWidgetService] = useState<{ id: string; kind: 'sauna' | 'tub' | 'breakfast' } | null>(null);
   const widgetContainerRef = useRef<HTMLDivElement>(null);
   const ocrInputRef = useRef<HTMLInputElement>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -532,7 +542,11 @@ export default function GuestPage() {
     const nonce = 'asw-' + Date.now();
     const script = document.createElement('script');
     script.src = '/widget/service-embed.js';
-    script.setAttribute('data-service', widgetService);
+    // The real service id and the layout it needs. The booking itself goes
+    // through `data-reservation` below, so the guest's token stays out of an
+    // attribute on a public script.
+    script.setAttribute('data-service', widgetService.id);
+    script.setAttribute('data-kind', widgetService.kind);
     script.setAttribute('data-lang', lang);
     script.setAttribute('data-color', '#1a1a2e');
     script.setAttribute('data-container', widgetId);
@@ -931,7 +945,7 @@ export default function GuestPage() {
                   return (
                     <ListRow key={svc.id} icon={svc.icon || '✨'} label={svcField(svc, 'name')}
                       onClick={() => {
-                        if (wType) { setWidgetService(wType); }
+                        if (wType) { setWidgetService({ id: svc.id, kind: wType }); }
                         else { setSelectedService(svc); setSheet('service'); }
                       }}
                       last={i === Math.min(2, (data.services?.length || 1) - 1)} />
@@ -1104,7 +1118,7 @@ export default function GuestPage() {
               <button key={svc.id}
                 className={svc.photo_url ? 'gp-service-card gp-service-card--photo' : 'gp-service-card'}
                 onClick={() => {
-                  if (wType) { setWidgetService(wType); }
+                  if (wType) { setWidgetService({ id: svc.id, kind: wType }); }
                   else { setSelectedService(svc); setSheet('service'); }
                 }}>
                 {svc.photo_url ? (
@@ -1437,8 +1451,8 @@ export default function GuestPage() {
       {/* Service widget popup (sauna / tub / breakfast) */}
       <BottomSheet open={!!widgetService} onClose={() => setWidgetService(null)}
         title={(() => {
-          const wsvc = data?.services?.find((s: any) => s.id === `svc_${widgetService}`);
-          return wsvc ? svcField(wsvc, 'name') : widgetService || '';
+          const wsvc = data?.services?.find((s: any) => s.id === widgetService?.id);
+          return wsvc ? svcField(wsvc, 'name') : '';
         })()}>
         <div ref={widgetContainerRef} style={{ minHeight: 200 }} />
       </BottomSheet>
