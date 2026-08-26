@@ -153,7 +153,16 @@ export interface Translations {
   petsWithFee: string;
   // Parking
   parkingTitle: string;
-  parkingFree: string;
+  // Показується, коли готель НЕ заповнив parking_info. Раніше на його місці
+  // стояло «безкоштовна парковка біля входу» — твердження, якого жоден готель
+  // не робив. Порожнє поле означає «ми не знаємо», а не «безкоштовно».
+  parkingAsk: string;
+  // Підпис до territory_map_url і emergency_phone — обидва поля готель
+  // заповнював, обидва нікуди не виводились.
+  territoryMap: string;
+  emergencyPhone: string;
+  // Заїзд без введених інструкцій: рецепція, а не код із замка, якого немає.
+  entryAtReception: string;
   // FAQ
   faqTitle: string;
   // Empty states
@@ -248,7 +257,10 @@ const translations: Record<Lang, Translations> = {
     notFound: 'Booking not found', notFoundDesc: 'Please check the link you received.', loading: 'Loading...',
     regSaved: 'Registration saved!', regError: 'Please fill in all required fields.', serviceOrdered: 'Service ordered!', orderError: 'Error ordering service.',
     petsNotAllowed: 'Not allowed', petsWithFee: 'With fee',
-    parkingTitle: 'Parking', parkingFree: 'Free parking at the entrance',
+    parkingTitle: 'Parking',
+    parkingAsk: 'Please ask reception about parking.',
+    territoryMap: 'Site map', emergencyPhone: 'Reception / emergencies',
+    entryAtReception: 'You will receive your key at reception.',
     faqTitle: 'FAQ', noServices: 'No additional services available at this time.', noExplore: 'Explore information will appear closer to your stay.',
     thankYou: (n) => `Thank you, ${n}!`, thankYouStay: 'We hope you enjoyed your stay', comeBack: 'Come back soon!',
     earlyBooking: 'Early Booking', earlyBookingDesc: 'Book your next stay at a special rate.',
@@ -321,7 +333,10 @@ const translations: Record<Lang, Translations> = {
     notFound: 'Buchung nicht gefunden', notFoundDesc: 'Bitte überprüfen Sie den erhaltenen Link.', loading: 'Laden...',
     regSaved: 'Registrierung gespeichert!', regError: 'Bitte füllen Sie alle Pflichtfelder aus.', serviceOrdered: 'Service bestellt!', orderError: 'Fehler bei der Bestellung.',
     petsNotAllowed: 'Nicht erlaubt', petsWithFee: 'Mit Gebühr',
-    parkingTitle: 'Parken', parkingFree: 'Kostenloser Parkplatz am Eingang',
+    parkingTitle: 'Parken',
+    parkingAsk: 'Bitte erfragen Sie die Parkmöglichkeiten an der Rezeption.',
+    territoryMap: 'Lageplan', emergencyPhone: 'Rezeption / Notfall',
+    entryAtReception: 'Ihren Schlüssel erhalten Sie an der Rezeption.',
     faqTitle: 'FAQ', noServices: 'Derzeit sind keine zusätzlichen Services verfügbar.', noExplore: 'Informationen zur Umgebung erscheinen kurz vor Ihrem Aufenthalt.',
     thankYou: (n) => `Danke, ${n}!`, thankYouStay: 'Wir hoffen, Sie hatten einen tollen Aufenthalt', comeBack: 'Bis bald!',
     earlyBooking: 'Frühbucher', earlyBookingDesc: 'Buchen Sie Ihren nächsten Aufenthalt zum Sonderpreis.',
@@ -394,7 +409,10 @@ const translations: Record<Lang, Translations> = {
     notFound: 'Rezervace nenalezena', notFoundDesc: 'Zkontrolujte prosím odkaz.', loading: 'Načítání...',
     regSaved: 'Registrace uložena!', regError: 'Prosím vyplňte všechna povinná pole.', serviceOrdered: 'Služba objednána!', orderError: 'Chyba při objednání.',
     petsNotAllowed: 'Nepovoleno', petsWithFee: 'S poplatkem',
-    parkingTitle: 'Parkování', parkingFree: 'Bezplatné parkování u vchodu',
+    parkingTitle: 'Parkování',
+    parkingAsk: 'Na možnosti parkování se prosím zeptejte na recepci.',
+    territoryMap: 'Plán areálu', emergencyPhone: 'Recepce / nouzový kontakt',
+    entryAtReception: 'Klíč obdržíte na recepci.',
     faqTitle: 'Časté dotazy', noServices: 'Žádné další služby nejsou momentálně k dispozici.', noExplore: 'Informace o okolí se objeví blíže k vašemu pobytu.',
     thankYou: (n) => `Děkujeme, ${n}!`, thankYouStay: 'Doufáme, že jste si pobyt užili', comeBack: 'Příště se těšíme!',
     earlyBooking: 'Předčasná rezervace', earlyBookingDesc: 'Zarezervujte si další pobyt za zvýhodněnou cenu.',
@@ -467,7 +485,10 @@ const translations: Record<Lang, Translations> = {
     notFound: 'Бронювання не знайдено', notFoundDesc: 'Перевірте посилання.', loading: 'Завантаження...',
     regSaved: 'Реєстрацію збережено!', regError: 'Будь ласка, заповніть всі обов\'язкові поля.', serviceOrdered: 'Послугу замовлено!', orderError: 'Помилка замовлення.',
     petsNotAllowed: 'Не дозволено', petsWithFee: 'З доплатою',
-    parkingTitle: 'Парковка', parkingFree: 'Безкоштовна парковка біля входу',
+    parkingTitle: 'Парковка',
+    parkingAsk: 'Про парковку запитайте, будь ласка, на рецепції.',
+    territoryMap: 'План території', emergencyPhone: 'Рецепція / екстрений зв’язок',
+    entryAtReception: 'Ключ ви отримаєте на рецепції.',
     faqTitle: 'Часті питання', noServices: 'Наразі додаткові послуги недоступні.', noExplore: 'Інформація про околиці з\'явиться ближче до перебування.',
     thankYou: (n) => `Дякуємо, ${n}!`, thankYouStay: 'Сподіваємось, вам сподобалось', comeBack: 'Чекаємо знову!',
     earlyBooking: 'Раннє бронювання', earlyBookingDesc: 'Забронюйте наступне перебування за спеціальною ціною.',
@@ -540,7 +561,10 @@ const translations: Record<Lang, Translations> = {
     notFound: 'Nie znaleziono rezerwacji', notFoundDesc: 'Sprawdź link.', loading: 'Ładowanie...',
     regSaved: 'Rejestracja zapisana!', regError: 'Proszę wypełnić wszystkie wymagane pola.', serviceOrdered: 'Usługa zamówiona!', orderError: 'Błąd zamówienia.',
     petsNotAllowed: 'Niedozwolone', petsWithFee: 'Z opłatą',
-    parkingTitle: 'Parking', parkingFree: 'Bezpłatny parking przy wjeździe',
+    parkingTitle: 'Parking',
+    parkingAsk: 'O parking zapytaj prosimy w recepcji.',
+    territoryMap: 'Plan terenu', emergencyPhone: 'Recepcja / kontakt awaryjny',
+    entryAtReception: 'Klucz odbierzesz w recepcji.',
     faqTitle: 'FAQ', noServices: 'Brak dodatkowych usług w tym momencie.', noExplore: 'Informacje o okolicy pojawią się bliżej pobytu.',
     thankYou: (n) => `Dziękujemy, ${n}!`, thankYouStay: 'Mamy nadzieję, że pobyt się podobał', comeBack: 'Wracajcie!',
     earlyBooking: 'Wczesna rezerwacja', earlyBookingDesc: 'Zarezerwuj kolejny pobyt w specjalnej cenie.',
@@ -613,7 +637,10 @@ const translations: Record<Lang, Translations> = {
     notFound: 'Boeking niet gevonden', notFoundDesc: 'Controleer de link.', loading: 'Laden...',
     regSaved: 'Registratie opgeslagen!', regError: 'Vul alle verplichte velden in.', serviceOrdered: 'Dienst besteld!', orderError: 'Fout bij bestelling.',
     petsNotAllowed: 'Niet toegestaan', petsWithFee: 'Met toeslag',
-    parkingTitle: 'Parkeren', parkingFree: 'Gratis parkeren bij de ingang',
+    parkingTitle: 'Parkeren',
+    parkingAsk: 'Vraag bij de receptie naar de parkeermogelijkheden.',
+    territoryMap: 'Plattegrond', emergencyPhone: 'Receptie / noodgevallen',
+    entryAtReception: 'U ontvangt uw sleutel bij de receptie.',
     faqTitle: 'FAQ', noServices: 'Op dit moment geen extra diensten beschikbaar.', noExplore: 'Omgevingsinformatie verschijnt dichter bij uw verblijf.',
     thankYou: (n) => `Bedankt, ${n}!`, thankYouStay: 'We hopen dat u heeft genoten', comeBack: 'Tot snel!',
     earlyBooking: 'Vroegboeken', earlyBookingDesc: 'Boek uw volgende verblijf tegen een speciaal tarief.',
@@ -686,7 +713,10 @@ const translations: Record<Lang, Translations> = {
     notFound: 'Réservation introuvable', notFoundDesc: 'Vérifiez le lien reçu.', loading: 'Chargement...',
     regSaved: 'Enregistrement sauvegardé !', regError: 'Veuillez remplir tous les champs obligatoires.', serviceOrdered: 'Service commandé !', orderError: 'Erreur de commande.',
     petsNotAllowed: 'Non autorisés', petsWithFee: 'Avec supplément',
-    parkingTitle: 'Parking', parkingFree: 'Parking gratuit à l\'entrée',
+    parkingTitle: 'Parking',
+    parkingAsk: 'Renseignez-vous à la réception pour le stationnement.',
+    territoryMap: 'Plan du site', emergencyPhone: 'Réception / urgences',
+    entryAtReception: 'Votre clé vous sera remise à la réception.',
     faqTitle: 'FAQ', noServices: 'Aucun service supplémentaire disponible pour le moment.', noExplore: 'Les informations sur les environs apparaîtront plus près de votre séjour.',
     thankYou: (n) => `Merci, ${n} !`, thankYouStay: 'Nous espérons que vous avez passé un bon séjour', comeBack: 'À bientôt !',
     earlyBooking: 'Réservation anticipée', earlyBookingDesc: 'Réservez votre prochain séjour à un tarif spécial.',

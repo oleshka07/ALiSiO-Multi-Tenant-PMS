@@ -1255,14 +1255,32 @@ export default function GuestPage() {
         )}
         <div className="gp-sheet-info">
           <strong>{t.address}:</strong> {r.property_address || `${r.property_city || ''}, ${r.property_country || ''}`}<br />
-          {r.property_phone && <><strong>{t.support}:</strong> {r.property_phone}</>}
+          {r.property_phone && <><strong>{t.support}:</strong> {r.property_phone}<br /></>}
+          {/*
+            Готель заповнює цей номер у налаштуваннях гостьової сторінки, він
+            їде в `emergency_phone` і доїжджає в браузер — і не рендерився
+            ніде. Тобто екстрений контакт існував у базі й був невидимий саме
+            тоді, коли він потрібен.
+          */}
+          {cfg?.emergency_phone && (
+            <><strong>{t.emergencyPhone}:</strong>{' '}
+              <a href={`tel:${String(cfg.emergency_phone).replace(/[^\d+]/g, '')}`}>{cfg.emergency_phone}</a></>
+          )}
         </div>
-        {cfg?.video_guide_url ? (
+        {/*
+          Було: без введеного посилання гість усе одно бачив «🎥 Відео-гід
+          останніх 500 м» — обіцянку відео, якого немає, ще й не клікабельну.
+          Підказка тепер існує рівно тоді, коли за нею щось є.
+        */}
+        {cfg?.video_guide_url && (
           <a href={cfg.video_guide_url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
             <div className="gp-sheet-tip green" style={{ cursor: 'pointer' }}>{t.videoGuide}</div>
           </a>
-        ) : (
-          <div className="gp-sheet-tip green">{t.videoGuide}</div>
+        )}
+        {cfg?.territory_map_url && (
+          <a href={cfg.territory_map_url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+            <div className="gp-sheet-tip green" style={{ cursor: 'pointer' }}>🗺 {t.territoryMap}</div>
+          </a>
         )}
         {cfg?.maps_url && (
           <a href={cfg.maps_url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
@@ -1276,13 +1294,30 @@ export default function GuestPage() {
         {cfg?.parking_photo_url && (
           <img src={cfg.parking_photo_url} alt="Parking" style={{ width: '100%', borderRadius: 12, marginBottom: 16, objectFit: 'cover', maxHeight: 200 }} />
         )}
-        <div className="gp-sheet-info" style={{ textAlign: 'center', padding: '20px 0' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🅿️</div>
-          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>{t.parkingFree}</div>
-          {r.property_address && (
-            <div style={{ fontSize: 14, color: 'var(--gp-sub)' }}>{r.property_address}</div>
-          )}
-        </div>
+        {/*
+          Готель вводить умови парковки в налаштуваннях, вони їдуть у
+          `parking_info` і доїжджають сюди — а рендерився натомість
+          захардкожений `t.parkingFree`, «безкоштовна парковка біля входу».
+          Тобто система брала введений готелем текст про платний гараж,
+          викидала його і писала гостю протилежне. Це гроші: гість читає
+          «безкоштовно», а на виїзді платить.
+
+          Порожнє поле теж більше нічого не стверджує — «ми не знаємо» і
+          «безкоштовно» це різні речі, і другого жоден готель не казав.
+        */}
+        {cfg?.parking_info ? (
+          <div className="gp-sheet-info" style={{ whiteSpace: 'pre-line', fontSize: 15, lineHeight: 1.7 }}>
+            {tc(cfg.parking_info)}
+          </div>
+        ) : (
+          <div className="gp-sheet-info" style={{ textAlign: 'center', padding: '20px 0' }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>🅿️</div>
+            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>{t.parkingAsk}</div>
+            {r.property_address && (
+              <div style={{ fontSize: 14, color: 'var(--gp-sub)' }}>{r.property_address}</div>
+            )}
+          </div>
+        )}
         {(cfg?.parking_maps_url || cfg?.maps_url) && (
           <a href={cfg.parking_maps_url || cfg.maps_url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
             <button className="gp-btn gp-btn-primary">{t.openGoogleMaps}</button>
@@ -1308,20 +1343,33 @@ export default function GuestPage() {
 
       {/* Entry */}
       <BottomSheet open={sheet === 'entry'} onClose={() => setSheet(null)} title={t.entryTitle}>
-        {cfg?.entry_photo_url ? (
-          <img src={cfg.entry_photo_url} alt="Entrance" style={{ width: '100%', borderRadius: 12, marginBottom: 16, objectFit: 'cover', maxHeight: 200 }} />
-        ) : (
-          <div className="gp-entry-photo">📷 Photo of entrance / lockbox</div>
+        {/*
+          Фото входу без фото було плашкою «📷 Photo of entrance / lockbox» —
+          англійською в усіх мовах, тобто службовий плейсхолдер, показаний
+          гостю. Немає фото — немає плашки.
+        */}
+        {cfg?.entry_photo_url && (
+          <img src={cfg.entry_photo_url} alt="" style={{ width: '100%', borderRadius: 12, marginBottom: 16, objectFit: 'cover', maxHeight: 200 }} />
         )}
+        {/*
+          Чотири кроки самозаїзду — це сценарій глемпінгу з кодовим замком.
+          Готель із рецепцією `check_in_instructions` не заповнює (поле живе
+          на типі розміщення, і у файлі готелю його задати нічим), тож гість
+          читав інструкцію ввести код у замок, а замість коду бачив «…».
+          Кроки лишаються для тих, у кого замок справді є: ознака цього —
+          введений `lock_code`, а не його відсутність.
+        */}
         {cfg?.check_in_instructions ? (
           <div className="gp-entry-steps">{tc(cfg.check_in_instructions)}</div>
-        ) : (
+        ) : cfg?.lock_code ? (
           <div className="gp-entry-steps">
             <strong>1.</strong> {t.entryStep1}<br />
             <strong>2.</strong> {t.entryStep2}<br />
-            <strong>3.</strong> {t.entryStep3Code} <span className="gp-entry-code">{cfg?.lock_code || '…'}</span><br />
+            <strong>3.</strong> {t.entryStep3Code} <span className="gp-entry-code">{cfg.lock_code}</span><br />
             <strong>4.</strong> {t.entryStep4}
           </div>
+        ) : (
+          <div className="gp-entry-steps">{t.entryAtReception}</div>
         )}
         {cfg?.lock_code && (
           <>
