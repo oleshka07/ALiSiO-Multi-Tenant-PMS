@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { serverError } from '@core/http/errors';
+import { ownedFinanceRow } from '../data/owned.repo';
 
 const getOrgId = requireOrganizationId;
 
@@ -52,7 +53,8 @@ export async function createTag(request: NextRequest): Promise<NextResponse> {
       throw e;
     }
 
-    const created = await sql.row<any>("SELECT * FROM finance_tags WHERE id = ?", [id]);
+    const created = await sql.row<any>(
+      "SELECT * FROM finance_tags WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
     return serverError('modules/finance/api/tags createTag', error);
@@ -69,7 +71,8 @@ export async function updateTag(
     const body = await request.json();
     const { name, color, sort_order } = body;
 
-    const existing = await sql.row<any>("SELECT * FROM finance_tags WHERE id = ?", [id]);
+    const orgId = await getOrgId();
+    const existing = await ownedFinanceRow('finance_tags', id, orgId);
     if (!existing) return NextResponse.json({ error: 'Tag not found' }, { status: 404 });
 
     const fields: string[] = [];
@@ -88,9 +91,11 @@ export async function updateTag(
 
     if (fields.length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
-    params.push(id);
+    params.push(id, orgId);
     try {
-      await sql.run(`UPDATE finance_tags SET ${fields.join(', ')} WHERE id = ?`, [...params]);
+      await sql.run(
+        `UPDATE finance_tags SET ${fields.join(', ')} WHERE id = ? AND organization_id = ?`,
+        [...params]);
     } catch (e: any) {
       if (String(e.message).includes('UNIQUE')) {
         return NextResponse.json({ error: 'Тег з такою назвою уже існує' }, { status: 409 });
@@ -98,7 +103,7 @@ export async function updateTag(
       throw e;
     }
 
-    const updated = await sql.row<any>("SELECT * FROM finance_tags WHERE id = ?", [id]);
+    const updated = await ownedFinanceRow('finance_tags', id, orgId);
     return NextResponse.json(updated);
   } catch (error: any) {
     return serverError('modules/finance/api/tags updateTag', error);
@@ -115,11 +120,13 @@ export async function archiveTag(
     const body = await request.json().catch(() => ({}));
     const archived = body.archived !== false;
 
-    const existing = await sql.row<any>("SELECT id FROM finance_tags WHERE id = ?", [id]);
+    const orgId = await getOrgId();
+    const existing = await ownedFinanceRow('finance_tags', id, orgId);
     if (!existing) return NextResponse.json({ error: 'Tag not found' }, { status: 404 });
 
-    await sql.run("UPDATE finance_tags SET is_active = ? WHERE id = ?", [archived ? 0 : 1, id]);
-    const updated = await sql.row<any>("SELECT * FROM finance_tags WHERE id = ?", [id]);
+    await sql.run("UPDATE finance_tags SET is_active = ? WHERE id = ? AND organization_id = ?",
+      [archived ? 0 : 1, id, orgId]);
+    const updated = await ownedFinanceRow('finance_tags', id, orgId);
     return NextResponse.json(updated);
   } catch (error: any) {
     return serverError('modules/finance/api/tags archiveTag', error);
@@ -134,10 +141,11 @@ export async function deleteTag(
     const sql = getSql();
     const { id } = await context.params;
 
-    const existing = await sql.row<any>("SELECT id FROM finance_tags WHERE id = ?", [id]);
+    const orgId = await getOrgId();
+    const existing = await ownedFinanceRow('finance_tags', id, orgId);
     if (!existing) return NextResponse.json({ error: 'Tag not found' }, { status: 404 });
 
-    await sql.run("DELETE FROM finance_tags WHERE id = ?", [id]);
+    await sql.run("DELETE FROM finance_tags WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return serverError('modules/finance/api/tags deleteTag', error);

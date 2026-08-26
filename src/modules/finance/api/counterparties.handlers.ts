@@ -134,6 +134,7 @@ export async function getCounterpartyTree(request: NextRequest): Promise<NextRes
 export async function createCounterparty(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
+    const orgId = await getOrgId();
     const body = await request.json();
     const { name, parent_id = null, kind, aliases, icon, color, note, sort_order } = body;
 
@@ -143,7 +144,7 @@ export async function createCounterparty(request: NextRequest): Promise<NextResp
 
     let finalKind: Kind | null = null;
     if (parent_id) {
-      const parent = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [parent_id]) as CounterpartyRow | undefined;
+      const parent = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ? AND organization_id = ?", [parent_id, orgId]) as CounterpartyRow | undefined;
       if (!parent) return NextResponse.json({ error: 'Parent counterparty not found' }, { status: 404 });
       if (parent.parent_id !== null) {
         return NextResponse.json({ error: 'Підконтрагента не можна створити всередині іншого підконтрагента. Дозволено максимум 2 рівні.' }, { status: 400 });
@@ -162,7 +163,6 @@ export async function createCounterparty(request: NextRequest): Promise<NextResp
       catch (e: any) { return NextResponse.json({ error: e.message }, { status: 400 }); }
     }
 
-    const orgId = await getOrgId();
     const id = `cp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     // `IS NOT DISTINCT FROM`: a root-level row has parent_id NULL, and `= ?`
     // never matches NULL. SQLite spells the null-safe form `IS ?`; Postgres
@@ -183,7 +183,7 @@ export async function createCounterparty(request: NextRequest): Promise<NextResp
       color || '#6b7280',
       Number(sort_order) || (maxOrder.mx + 1)]);
 
-    const created = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow;
+    const created = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ? AND organization_id = ?", [id, orgId]) as CounterpartyRow;
     return NextResponse.json(enrich(created), { status: 201 });
   } catch (error: any) {
     return serverError('modules/finance/api/counterparties createCounterparty', error);
@@ -196,11 +196,12 @@ export async function updateCounterparty(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
+    const orgId = await getOrgId();
     const { id } = await context.params;
     const body = await request.json();
     const { name, kind, aliases, icon, color, note, sort_order } = body;
 
-    const existing = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow | undefined;
+    const existing = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ? AND organization_id = ?", [id, orgId]) as CounterpartyRow | undefined;
     if (!existing) return NextResponse.json({ error: 'Counterparty not found' }, { status: 404 });
 
     const isRoot = existing.parent_id === null;
@@ -239,9 +240,9 @@ export async function updateCounterparty(
     if (fields.length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
     params.push(id);
-    await sql.run(`UPDATE finance_counterparties SET ${fields.join(', ')} WHERE id = ?`, [...params]);
+    await sql.run(`UPDATE finance_counterparties SET ${fields.join(', ')} WHERE id = ? AND organization_id = ?`, [...params, orgId]);
 
-    const updated = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow;
+    const updated = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ? AND organization_id = ?", [id, orgId]) as CounterpartyRow;
     return NextResponse.json(enrich(updated));
   } catch (error: any) {
     return serverError('modules/finance/api/counterparties updateCounterparty', error);
@@ -254,19 +255,20 @@ export async function archiveCounterparty(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
+    const orgId = await getOrgId();
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
     const archived = body.archived !== false;
 
-    const existing = await sql.row<any>("SELECT id FROM finance_counterparties WHERE id = ?", [id]);
+    const existing = await sql.row<any>("SELECT id FROM finance_counterparties WHERE id = ? AND organization_id = ?", [id, orgId]);
     if (!existing) return NextResponse.json({ error: 'Counterparty not found' }, { status: 404 });
 
-    await sql.run("UPDATE finance_counterparties SET is_active = ? WHERE id = ?", [archived ? 0 : 1, id]);
+    await sql.run("UPDATE finance_counterparties SET is_active = ? WHERE id = ? AND organization_id = ?", [archived ? 0 : 1, id, orgId]);
     if (archived) {
       await sql.run("UPDATE finance_counterparties SET is_active = FALSE WHERE parent_id = ?", [id]);
     }
 
-    const updated = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow;
+    const updated = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ? AND organization_id = ?", [id, orgId]) as CounterpartyRow;
     return NextResponse.json(enrich(updated));
   } catch (error: any) {
     return serverError('modules/finance/api/counterparties archiveCounterparty', error);
@@ -279,9 +281,10 @@ export async function deleteCounterparty(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
+    const orgId = await getOrgId();
     const { id } = await context.params;
 
-    const existing = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow | undefined;
+    const existing = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ? AND organization_id = ?", [id, orgId]) as CounterpartyRow | undefined;
     if (!existing) return NextResponse.json({ error: 'Counterparty not found' }, { status: 404 });
 
     const childCount = await countChildren(id);
@@ -292,7 +295,7 @@ export async function deleteCounterparty(
       );
     }
 
-    await sql.run("DELETE FROM finance_counterparties WHERE id = ?", [id]);
+    await sql.run("DELETE FROM finance_counterparties WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return serverError('modules/finance/api/counterparties deleteCounterparty', error);
@@ -305,18 +308,19 @@ export async function moveCounterparty(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
+    const orgId = await getOrgId();
     const { id } = await context.params;
     const body = await request.json();
     const { parent_id, sort_order } = body;
 
-    const existing = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow | undefined;
+    const existing = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ? AND organization_id = ?", [id, orgId]) as CounterpartyRow | undefined;
     if (!existing) return NextResponse.json({ error: 'Counterparty not found' }, { status: 404 });
 
     if (parent_id !== undefined && parent_id !== null) {
       if (parent_id === id) {
         return NextResponse.json({ error: 'Контрагент не може бути батьком сам собі' }, { status: 400 });
       }
-      const newParent = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [parent_id]) as CounterpartyRow | undefined;
+      const newParent = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ? AND organization_id = ?", [parent_id, orgId]) as CounterpartyRow | undefined;
       if (!newParent) return NextResponse.json({ error: 'Parent counterparty not found' }, { status: 404 });
       if (newParent.parent_id !== null) {
         return NextResponse.json({ error: 'Обраний батько сам є підконтрагентом. Дозволено максимум 2 рівні.' }, { status: 400 });
@@ -337,8 +341,8 @@ export async function moveCounterparty(
     if (fields.length === 0) return NextResponse.json({ error: 'Nothing to move' }, { status: 400 });
     params.push(id);
 
-    await sql.run(`UPDATE finance_counterparties SET ${fields.join(', ')} WHERE id = ?`, [...params]);
-    const updated = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ?", [id]) as CounterpartyRow;
+    await sql.run(`UPDATE finance_counterparties SET ${fields.join(', ')} WHERE id = ? AND organization_id = ?`, [...params, orgId]);
+    const updated = await sql.row<any>("SELECT * FROM finance_counterparties WHERE id = ? AND organization_id = ?", [id, orgId]) as CounterpartyRow;
     return NextResponse.json(enrich(updated));
   } catch (error: any) {
     return serverError('modules/finance/api/counterparties moveCounterparty', error);

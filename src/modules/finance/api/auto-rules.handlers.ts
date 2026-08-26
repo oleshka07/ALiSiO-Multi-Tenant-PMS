@@ -8,6 +8,7 @@ import {
 } from '../data/auto-rules-engine';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { serverError } from '@core/http/errors';
+import { ownedFinanceRow } from '../data/owned.repo';
 
 const OP_TYPES = ['income', 'expense', 'any'] as const;
 
@@ -91,7 +92,7 @@ export async function createAutoRule(request: NextRequest): Promise<NextResponse
       is_active ? 1 : 0, stop_on_match ? 1 : 0,
       Number(sort_order) || (maxOrder.mx + 1)]);
 
-    const row = await sql.row<any>("SELECT * FROM fin_auto_rules WHERE id = ?", [id]) as AutoRuleRow;
+    const row = await ownedFinanceRow('fin_auto_rules', id, orgId) as AutoRuleRow;
     return NextResponse.json(await enrichRule(row), { status: 201 });
   } catch (error: any) {
     return serverError('modules/finance/api/auto-rules createAutoRule', error);
@@ -106,7 +107,8 @@ export async function updateAutoRule(
     const sql = getSql();
     const { id } = await context.params;
     const body = await request.json();
-    const existing = await sql.row<any>("SELECT * FROM fin_auto_rules WHERE id = ?", [id]);
+    const orgId = await requireOrganizationId();
+    const existing = await ownedFinanceRow('fin_auto_rules', id, orgId);
     if (!existing) return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
 
     const fields: string[] = [];
@@ -132,8 +134,8 @@ export async function updateAutoRule(
     if (fields.length === 1) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
     params.push(id);
-    await sql.run(`UPDATE fin_auto_rules SET ${fields.join(', ')} WHERE id = ?`, [...params]);
-    const row = await sql.row<any>("SELECT * FROM fin_auto_rules WHERE id = ?", [id]) as AutoRuleRow;
+    await sql.run(`UPDATE fin_auto_rules SET ${fields.join(', ')} WHERE id = ? AND organization_id = ?`, [...params, orgId]);
+    const row = await ownedFinanceRow('fin_auto_rules', id, orgId) as AutoRuleRow;
     return NextResponse.json(await enrichRule(row));
   } catch (error: any) {
     return serverError('modules/finance/api/auto-rules updateAutoRule', error);
@@ -147,9 +149,10 @@ export async function deleteAutoRule(
   try {
     const sql = getSql();
     const { id } = await context.params;
-    const existing = await sql.row<any>("SELECT id FROM fin_auto_rules WHERE id = ?", [id]);
+    const orgId = await requireOrganizationId();
+    const existing = await ownedFinanceRow('fin_auto_rules', id, orgId);
     if (!existing) return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
-    await sql.run('DELETE FROM fin_auto_rules WHERE id = ?', [id]);
+    await sql.run('DELETE FROM fin_auto_rules WHERE id = ? AND organization_id = ?', [id, orgId]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return serverError('modules/finance/api/auto-rules deleteAutoRule', error);
@@ -164,11 +167,12 @@ export async function toggleAutoRule(
     const sql = getSql();
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
-    const row = await sql.row<any>("SELECT is_active FROM fin_auto_rules WHERE id = ?", [id]) as { is_active: number } | undefined;
+    const orgId = await requireOrganizationId();
+    const row = await ownedFinanceRow('fin_auto_rules', id, orgId) as { is_active: number } | undefined;
     if (!row) return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
     const next = typeof body.is_active === 'boolean' ? (body.is_active ? 1 : 0) : (row.is_active ? 0 : 1);
-    await sql.run("UPDATE fin_auto_rules SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [next, id]);
-    const updated = await sql.row<any>("SELECT * FROM fin_auto_rules WHERE id = ?", [id]) as AutoRuleRow;
+    await sql.run("UPDATE fin_auto_rules SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?", [next, id, orgId]);
+    const updated = await ownedFinanceRow('fin_auto_rules', id, orgId) as AutoRuleRow;
     return NextResponse.json(await enrichRule(updated));
   } catch (error: any) {
     return serverError('modules/finance/api/auto-rules toggleAutoRule', error);
@@ -185,7 +189,9 @@ export async function applyAutoRulesToOperations(request: NextRequest): Promise<
     let ops: Operation[];
     if (Array.isArray(operation_ids) && operation_ids.length > 0) {
       const placeholders = operation_ids.map(() => '?').join(',');
-      ops = await sql.rows<any>(`SELECT * FROM fin_operations WHERE id IN (${placeholders})`, [...operation_ids]) as Operation[];
+      // The ids come from the request body. Without the organization in the
+      // query, rules of one hotel rewrote another hotel's operations.
+      ops = await sql.rows<any>(`SELECT * FROM fin_operations WHERE id IN (${placeholders}) AND organization_id = ?`, [...operation_ids, orgId]) as Operation[];
     } else {
       const where: string[] = ['organization_id = ?'];
       const params: any[] = [orgId];

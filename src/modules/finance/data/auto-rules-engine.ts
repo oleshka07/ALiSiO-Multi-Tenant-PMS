@@ -191,8 +191,12 @@ export async function applyRulesToOperation(op: Operation, rules: ParsedRule[], 
   if (Object.keys(changes).length > 0) {
     const fields = Object.keys(changes).map((k) => `${k} = ?`).join(', ');
     const vals = Object.values(changes);
-    vals.push(op.id);
-    await sql.run(`UPDATE fin_operations SET ${fields}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [...vals]);
+    vals.push(op.id, orgId);
+    // The organization is named here too, not only where the operations were
+    // selected: this is the statement that rewrites somebody's bookkeeping.
+    await sql.run(
+      `UPDATE fin_operations SET ${fields}, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?`,
+      [...vals]);
   }
 
   if (tagsAdded.size > 0) {

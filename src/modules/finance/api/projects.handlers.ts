@@ -95,6 +95,7 @@ export async function getProjectTree(request: NextRequest): Promise<NextResponse
 export async function createProject(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
+    const orgId = await requireOrganizationId();
     const body = await request.json();
     const { name, parent_id = null, is_shared = 0, unit_type, sort_order } = body;
 
@@ -103,14 +104,13 @@ export async function createProject(request: NextRequest): Promise<NextResponse>
     }
 
     if (parent_id) {
-      const parent = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [parent_id]) as ProjectRow | undefined;
+      const parent = await sql.row<any>("SELECT * FROM business_units WHERE id = ? AND organization_id = ?", [parent_id, orgId]) as ProjectRow | undefined;
       if (!parent) return NextResponse.json({ error: 'Parent project not found' }, { status: 404 });
       if (parent.parent_id !== null) {
         return NextResponse.json({ error: 'Підпроєкт не можна створити всередині іншого підпроєкта. Дозволено максимум 2 рівні.' }, { status: 400 });
       }
     }
 
-    const orgId = await requireOrganizationId();
     const id = `bu_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     // `IS NOT DISTINCT FROM`: a root-level row has parent_id NULL, and `= ?`
     // never matches NULL. SQLite spells the null-safe form `IS ?`; Postgres
@@ -123,7 +123,7 @@ export async function createProject(request: NextRequest): Promise<NextResponse>
     // A subproject cannot be "is_shared" on its own — inherit from parent.
     let finalIsShared = is_shared ? 1 : 0;
     if (parent_id) {
-      const parent = await sql.row<any>("SELECT is_shared FROM business_units WHERE id = ?", [parent_id]) as { is_shared: number };
+      const parent = await sql.row<any>("SELECT is_shared FROM business_units WHERE id = ? AND organization_id = ?", [parent_id, orgId]) as { is_shared: number };
       finalIsShared = parent.is_shared;
     }
 
@@ -137,7 +137,7 @@ export async function createProject(request: NextRequest): Promise<NextResponse>
       Number(sort_order) || (maxOrder.mx + 1),
       parent_id]);
 
-    const created = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]);
+    const created = await sql.row<any>("SELECT * FROM business_units WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
     return serverError('modules/finance/api/projects createProject', error);
@@ -150,11 +150,12 @@ export async function updateProject(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
+    const orgId = await requireOrganizationId();
     const { id } = await context.params;
     const body = await request.json();
     const { name, unit_type, is_shared, sort_order } = body;
 
-    const existing = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]) as ProjectRow | undefined;
+    const existing = await sql.row<any>("SELECT * FROM business_units WHERE id = ? AND organization_id = ?", [id, orgId]) as ProjectRow | undefined;
     if (!existing) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
     const isRoot = existing.parent_id === null;
@@ -181,9 +182,9 @@ export async function updateProject(
     if (fields.length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
     params.push(id);
-    await sql.run(`UPDATE business_units SET ${fields.join(', ')} WHERE id = ?`, [...params]);
+    await sql.run(`UPDATE business_units SET ${fields.join(', ')} WHERE id = ? AND organization_id = ?`, [...params, orgId]);
 
-    const updated = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]);
+    const updated = await sql.row<any>("SELECT * FROM business_units WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json(updated);
   } catch (error: any) {
     return serverError('modules/finance/api/projects updateProject', error);
@@ -196,19 +197,20 @@ export async function archiveProject(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
+    const orgId = await requireOrganizationId();
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
     const archived = body.archived !== false;
 
-    const existing = await sql.row<any>("SELECT id FROM business_units WHERE id = ?", [id]);
+    const existing = await sql.row<any>("SELECT id FROM business_units WHERE id = ? AND organization_id = ?", [id, orgId]);
     if (!existing) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
-    await sql.run("UPDATE business_units SET is_active = ? WHERE id = ?", [archived ? 0 : 1, id]);
+    await sql.run("UPDATE business_units SET is_active = ? WHERE id = ? AND organization_id = ?", [archived ? 0 : 1, id, orgId]);
     if (archived) {
       await sql.run("UPDATE business_units SET is_active = FALSE WHERE parent_id = ?", [id]);
     }
 
-    const updated = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]);
+    const updated = await sql.row<any>("SELECT * FROM business_units WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json(updated);
   } catch (error: any) {
     return serverError('modules/finance/api/projects archiveProject', error);
@@ -221,9 +223,10 @@ export async function deleteProject(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
+    const orgId = await requireOrganizationId();
     const { id } = await context.params;
 
-    const existing = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]) as ProjectRow | undefined;
+    const existing = await sql.row<any>("SELECT * FROM business_units WHERE id = ? AND organization_id = ?", [id, orgId]) as ProjectRow | undefined;
     if (!existing) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
     const childCount = await countChildren(id);
@@ -243,7 +246,7 @@ export async function deleteProject(
       );
     }
 
-    await sql.run("DELETE FROM business_units WHERE id = ?", [id]);
+    await sql.run("DELETE FROM business_units WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return serverError('modules/finance/api/projects deleteProject', error);
@@ -256,18 +259,19 @@ export async function moveProject(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
+    const orgId = await requireOrganizationId();
     const { id } = await context.params;
     const body = await request.json();
     const { parent_id, sort_order } = body;
 
-    const existing = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]) as ProjectRow | undefined;
+    const existing = await sql.row<any>("SELECT * FROM business_units WHERE id = ? AND organization_id = ?", [id, orgId]) as ProjectRow | undefined;
     if (!existing) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
     if (parent_id !== undefined && parent_id !== null) {
       if (parent_id === id) {
         return NextResponse.json({ error: 'Проєкт не може бути батьком сам собі' }, { status: 400 });
       }
-      const newParent = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [parent_id]) as ProjectRow | undefined;
+      const newParent = await sql.row<any>("SELECT * FROM business_units WHERE id = ? AND organization_id = ?", [parent_id, orgId]) as ProjectRow | undefined;
       if (!newParent) return NextResponse.json({ error: 'Parent project not found' }, { status: 404 });
       if (newParent.parent_id !== null) {
         return NextResponse.json({ error: 'Обраний батько сам є підпроєктом. Дозволено максимум 2 рівні.' }, { status: 400 });
@@ -285,8 +289,8 @@ export async function moveProject(
     if (fields.length === 0) return NextResponse.json({ error: 'Nothing to move' }, { status: 400 });
     params.push(id);
 
-    await sql.run(`UPDATE business_units SET ${fields.join(', ')} WHERE id = ?`, [...params]);
-    const updated = await sql.row<any>("SELECT * FROM business_units WHERE id = ?", [id]);
+    await sql.run(`UPDATE business_units SET ${fields.join(', ')} WHERE id = ? AND organization_id = ?`, [...params, orgId]);
+    const updated = await sql.row<any>("SELECT * FROM business_units WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json(updated);
   } catch (error: any) {
     return serverError('modules/finance/api/projects moveProject', error);

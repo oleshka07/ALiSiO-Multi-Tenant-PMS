@@ -114,6 +114,7 @@ export async function getCategoryTree(request: NextRequest): Promise<NextRespons
 export async function createCategory(request: NextRequest): Promise<NextResponse> {
   try {
     const sql = getSql();
+    const orgId = await requireOrganizationId();
     const body = await request.json();
     const { name, parent_id = null, op_type, classifier, icon, color, sort_order } = body;
 
@@ -125,7 +126,7 @@ export async function createCategory(request: NextRequest): Promise<NextResponse
     let finalClassifier: Classifier;
 
     if (parent_id) {
-      const parent = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [parent_id]) as CategoryRow | undefined;
+      const parent = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ? AND organization_id = ?", [parent_id, orgId]) as CategoryRow | undefined;
       if (!parent) return NextResponse.json({ error: 'Parent category not found' }, { status: 404 });
       if (parent.parent_id !== null) {
         return NextResponse.json({ error: 'Підкатегорію не можна створити всередині іншої підкатегорії. Дозволено максимум 2 рівні.' }, { status: 400 });
@@ -143,7 +144,6 @@ export async function createCategory(request: NextRequest): Promise<NextResponse
       finalClassifier = classifier;
     }
 
-    const orgId = await requireOrganizationId();
     const id = `ec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     // `IS NOT DISTINCT FROM`: a root-level row has parent_id NULL, and `= ?`
     // never matches NULL. SQLite spells the null-safe form `IS ?`; Postgres
@@ -173,7 +173,7 @@ export async function createCategory(request: NextRequest): Promise<NextResponse
       color || '#6b7280',
       Number(sort_order) || (maxOrder.mx + 1)]);
 
-    const created = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [id]);
+    const created = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json(created, { status: 201 });
   } catch (error: any) {
     return serverError('modules/finance/api/categories createCategory', error);
@@ -186,11 +186,12 @@ export async function updateCategory(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
+    const orgId = await requireOrganizationId();
     const { id } = await context.params;
     const body = await request.json();
     const { name, op_type, classifier, icon, color, sort_order } = body;
 
-    const existing = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [id]) as CategoryRow | undefined;
+    const existing = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ? AND organization_id = ?", [id, orgId]) as CategoryRow | undefined;
     if (!existing) return NextResponse.json({ error: 'Category not found' }, { status: 404 });
 
     const isRoot = existing.parent_id === null;
@@ -232,9 +233,9 @@ export async function updateCategory(
     if (fields.length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
     params.push(id);
-    await sql.run(`UPDATE expense_categories SET ${fields.join(', ')} WHERE id = ?`, [...params]);
+    await sql.run(`UPDATE expense_categories SET ${fields.join(', ')} WHERE id = ? AND organization_id = ?`, [...params, orgId]);
 
-    const updated = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [id]);
+    const updated = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json(updated);
   } catch (error: any) {
     return serverError('modules/finance/api/categories updateCategory', error);
@@ -247,20 +248,21 @@ export async function archiveCategory(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
+    const orgId = await requireOrganizationId();
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
     const archived = body.archived !== false; // default true
 
-    const existing = await sql.row<any>("SELECT id FROM expense_categories WHERE id = ?", [id]);
+    const existing = await sql.row<any>("SELECT id FROM expense_categories WHERE id = ? AND organization_id = ?", [id, orgId]);
     if (!existing) return NextResponse.json({ error: 'Category not found' }, { status: 404 });
 
-    await sql.run("UPDATE expense_categories SET is_active = ? WHERE id = ?", [archived ? 0 : 1, id]);
+    await sql.run("UPDATE expense_categories SET is_active = ? WHERE id = ? AND organization_id = ?", [archived ? 0 : 1, id, orgId]);
     if (archived) {
       // Cascade archive children when archiving a root
       await sql.run("UPDATE expense_categories SET is_active = FALSE WHERE parent_id = ?", [id]);
     }
 
-    const updated = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [id]);
+    const updated = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json(updated);
   } catch (error: any) {
     return serverError('modules/finance/api/categories archiveCategory', error);
@@ -273,9 +275,10 @@ export async function deleteCategory(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
+    const orgId = await requireOrganizationId();
     const { id } = await context.params;
 
-    const existing = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [id]) as CategoryRow | undefined;
+    const existing = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ? AND organization_id = ?", [id, orgId]) as CategoryRow | undefined;
     if (!existing) return NextResponse.json({ error: 'Category not found' }, { status: 404 });
 
     const childCount = await countChildren(id);
@@ -294,7 +297,7 @@ export async function deleteCategory(
       );
     }
 
-    await sql.run("DELETE FROM expense_categories WHERE id = ?", [id]);
+    await sql.run("DELETE FROM expense_categories WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return serverError('modules/finance/api/categories deleteCategory', error);
@@ -307,11 +310,12 @@ export async function moveCategory(
 ): Promise<NextResponse> {
   try {
     const sql = getSql();
+    const orgId = await requireOrganizationId();
     const { id } = await context.params;
     const body = await request.json();
     const { parent_id, sort_order } = body;
 
-    const existing = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [id]) as CategoryRow | undefined;
+    const existing = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ? AND organization_id = ?", [id, orgId]) as CategoryRow | undefined;
     if (!existing) return NextResponse.json({ error: 'Category not found' }, { status: 404 });
 
     // Validate new parent
@@ -319,7 +323,7 @@ export async function moveCategory(
       if (parent_id === id) {
         return NextResponse.json({ error: 'Категорія не може бути батьком сама собі' }, { status: 400 });
       }
-      const newParent = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [parent_id]) as CategoryRow | undefined;
+      const newParent = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ? AND organization_id = ?", [parent_id, orgId]) as CategoryRow | undefined;
       if (!newParent) return NextResponse.json({ error: 'Parent category not found' }, { status: 404 });
       if (newParent.parent_id !== null) {
         return NextResponse.json({ error: 'Обраний батько сам є підкатегорією. Дозволено максимум 2 рівні.' }, { status: 400 });
@@ -341,8 +345,8 @@ export async function moveCategory(
     if (fields.length === 0) return NextResponse.json({ error: 'Nothing to move' }, { status: 400 });
     params.push(id);
 
-    await sql.run(`UPDATE expense_categories SET ${fields.join(', ')} WHERE id = ?`, [...params]);
-    const updated = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ?", [id]);
+    await sql.run(`UPDATE expense_categories SET ${fields.join(', ')} WHERE id = ? AND organization_id = ?`, [...params, orgId]);
+    const updated = await sql.row<any>("SELECT * FROM expense_categories WHERE id = ? AND organization_id = ?", [id, orgId]);
     return NextResponse.json(updated);
   } catch (error: any) {
     return serverError('modules/finance/api/categories moveCategory', error);

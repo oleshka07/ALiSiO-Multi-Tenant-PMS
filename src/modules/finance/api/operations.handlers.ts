@@ -748,7 +748,9 @@ export async function duplicateOperation(
     const sql = getSql();
     const orgId = await requireOrganizationId();
     const { id } = await context.params;
-    const src = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]) as any;
+    // Read through the owner check: without it, a foreign id copied another
+    // hotel's amount, comment and counterparty into this one's ledger.
+    const src = await ownedFinanceRow('fin_operations', id, orgId);
     if (!src) return NextResponse.json({ error: 'Operation not found' }, { status: 404 });
 
     const actor = await getOptionalActor();
