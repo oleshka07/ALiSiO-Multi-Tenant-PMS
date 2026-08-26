@@ -636,6 +636,9 @@ async function main() {
       body: JSON.stringify({
         firstName: 'Probe', lastName: 'Guest', unitId: `${TAG}unit_a`,
         checkIn: '2031-01-10', checkOut: '2031-01-12', nights: 2,
+        // Вартість обовʼязкова з 5bb92c8 (інваріант 17: ціна, яку ніхто не
+        // назвав, не існує) — проба, як і кожен клієнт API, її називає.
+        totalPrice: 100,
       }),
     });
     assert.strictEqual(bookRes.status, 201, `A could not create a booking: ${bookRes.status}`);
