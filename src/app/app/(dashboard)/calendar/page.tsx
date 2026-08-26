@@ -556,8 +556,20 @@ function CalendarDesktop() {
           setViewBooking({ ...viewBooking, status: newStatus });
         }
         showToast(tUi('Статус оновлено'));
+      } else {
+        // Помилка, яка тут була: `if (res.ok)` без `else`. Заселення без
+        // повної оплати або без реєстрації гостей PATCH /api/bookings/[id]
+        // відхиляє з 422 і готовим поясненням у `error` — а екран мовчав.
+        // Виглядало як «кнопка не працює»: статус не мінявся, тосту не було,
+        // у консолі теж нічого. Причину відмови показуємо так само, як решта
+        // екранів броні (BookingViewModal.folioCall).
+        const data = await res.json().catch(() => ({} as { error?: string }));
+        showToast(`❌ ${data.error || tUi('Не вдалося змінити статус')}`);
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      showToast(`❌ ${tUi('Помилка мережі')}`);
+    }
   };
 
   // ─── Open Edit ──────

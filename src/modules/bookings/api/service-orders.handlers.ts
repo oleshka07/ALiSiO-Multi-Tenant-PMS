@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { todayFor } from '@core/hotel-day';
 import { withActor, withPermission } from '@core/auth/session';
+import { serverError } from '@core/http/errors';
 
 export const listServiceOrders = withActor(async (req: NextRequest, _ctx, actor) => {
   try {
@@ -180,7 +181,46 @@ export const listServiceOrders = withActor(async (req: NextRequest, _ctx, actor)
   }
 });
 
-export const updateServiceOrder = withPermission('manage_bookings', async (req: NextRequest) => {
+/**
+ * «Чи це замовлення цього готелю?» — питаємо в SQL, а не в політики.
+ *
+ * Помилка, яка тут була: `SELECT id FROM booking_service_orders WHERE id = ?`
+ * без організації. Хендлер бачив рядок будь-якого орендаря, відповідав «є» і
+ * далі виконував `UPDATE ... WHERE id = ?` — теж без організації. Тобто
+ * будь-хто з правом `manage_bookings` у будь-якому готелі міг завершити,
+ * скасувати або перевідкрити замовлення послуги чужого готелю, знаючи лише id.
+ *
+ * На Postgres RLS-політика ще прикривала (`booking_service_orders_tenant` /
+ * `service_orders_tenant` у db/postgres/schema.sql), але на SQLite політик
+ * НЕМАЄ — а SQLite стоїть у dev і в CI. Тримає лише явний фільтр у запиті.
+ *
+ * Жодна з двох таблиць не має власного `organization_id`, тож орендар
+ * береться тим самим шляхом, що й у списку вище:
+ *   booking_service_orders → additional_services → properties.organization_id
+ *   service_orders         → reservations.organization_id
+ */
+async function ownedServiceOrder(
+  organizationId: string,
+  id: string,
+): Promise<{ isBSO: boolean; isSO: boolean }> {
+  const sql = getSql();
+  const bso = await sql.row<{ id: string }>(`
+    SELECT bso.id
+    FROM booking_service_orders bso
+    JOIN additional_services ads ON bso.service_id = ads.id
+    JOIN properties p ON ads.property_id = p.id
+    WHERE bso.id = ? AND p.organization_id = ?
+  `, [id, organizationId]);
+  const so = await sql.row<{ id: string }>(`
+    SELECT so.id
+    FROM service_orders so
+    JOIN reservations r ON so.reservation_id = r.id
+    WHERE so.id = ? AND r.organization_id = ?
+  `, [id, organizationId]);
+  return { isBSO: !!bso, isSO: !!so };
+}
+
+export const updateServiceOrder = withPermission('manage_bookings', async (req: NextRequest, _ctx, actor) => {
   try {
     const sql = getSql();
     const body = await req.json();
@@ -190,8 +230,9 @@ export const updateServiceOrder = withPermission('manage_bookings', async (req: 
       return NextResponse.json({ error: 'id and action required' }, { status: 400 });
     }
 
-    const isBSO = await sql.row<any>('SELECT id FROM booking_service_orders WHERE id = ?', [id]);
-    const isSO = await sql.row<any>('SELECT id FROM service_orders WHERE id = ?', [id]);
+    // Чужий id → 404, не 403 (AGENTS.md §3.5): відповідь не повинна
+    // підтверджувати, що замовлення з таким id існує в іншого готелю.
+    const { isBSO, isSO } = await ownedServiceOrder(actor.organizationId, String(id));
 
     if (!isBSO && !isSO) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
@@ -210,7 +251,12 @@ export const updateServiceOrder = withPermission('manage_bookings', async (req: 
       case 'cancel': {
         if (isBSO) {
           await sql.run("UPDATE booking_service_orders SET status = 'cancelled', payment_status = 'cancelled' WHERE id = ?", [id]);
-          await sql.run("UPDATE service_time_slots SET booked_count = MAX(0, booked_count - 1) WHERE id IN (SELECT time_slot_id FROM booking_service_orders WHERE id = ?)", [id]);
+          // `MAX(0, booked_count - 1)` — це двоаргументний max SQLite. У
+          // Postgres MAX — агрегат, і цей рядок падав із «function max(integer,
+          // integer) does not exist», тобто скасування замовлення зі слотом
+          // віддавало 500 на проді. Нижню межу тримає умова, а не функція:
+          // так однаково працює в обох діалектах.
+          await sql.run("UPDATE service_time_slots SET booked_count = booked_count - 1 WHERE booked_count > 0 AND id IN (SELECT time_slot_id FROM booking_service_orders WHERE id = ?)", [id]);
         }
         if (isSO) {
           await sql.run("UPDATE service_orders SET status = 'cancelled', payment_status = 'cancelled' WHERE id = ?", [id]);
@@ -234,8 +280,10 @@ export const updateServiceOrder = withPermission('manage_bookings', async (req: 
     return NextResponse.json({ success: true, id, action });
 
   } catch (error: any) {
-    console.error('PATCH /api/service-orders error:', error?.message);
-    return NextResponse.json({ error: 'Failed to update' }, { status: 500 });
+    // `error?.message` у логу — це половина діагностики без стека; текст
+    // відповіді при цьому все одно нічого не пояснював. serverError робить
+    // обидві половини одним викликом (AGENTS.md §3.6).
+    return serverError('modules/bookings/api/service-orders updateServiceOrder', error);
   }
 });
 

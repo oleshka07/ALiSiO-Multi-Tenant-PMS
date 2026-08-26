@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withActor, type Actor } from '@core/auth/session';
 import { todayFor, shiftDays } from '@core/hotel-day';
+import { occupancyOnDay } from '@core/occupancy-rate';
 
 /**
  * The first screen after logging in — arrivals, departures, occupancy.
@@ -34,13 +35,17 @@ export const getDashboard = withActor(async (_request, _ctx, actor: Actor) => {
 
     const departures = await sql.row<any>(`SELECT COUNT(*) as cnt FROM reservations WHERE ${OWN()} AND check_out = ? AND status IN ('checked_in')`, [org, today]);
 
-    const totalUnits = await sql.row<any>(`SELECT COUNT(*) as cnt FROM units WHERE ${OWN()} AND is_active = TRUE AND is_pool = FALSE`, [org]);
+    // Завантаженість рахує `@core/occupancy-rate`, і ці два запити навмисно не
+    // фільтрують ані юнітів, ані статусів. Тут стояв власний COUNT з власним
+    // набором статусів (checked_in + confirmed), а у звіті — інший, і власник
+    // бачив за один день два різних відсотки (AUDIT.md §2.9). Щойно фільтр
+    // повертається в SQL, повертається й розходження: у чисельнику бракувало
+    // `tentative`, тобто номер, який уже не можна продати, показувався вільним.
+    const unitRows = await sql.rows<any>(`SELECT id, is_active, is_pool FROM units WHERE ${OWN()}`, [org]);
 
-    const occupied = await sql.row<any>(`SELECT COUNT(DISTINCT r.unit_id) as cnt FROM reservations r JOIN units u ON u.id = r.unit_id WHERE ${OWN('r.')} AND r.check_in <= ? AND r.check_out > ? AND r.status IN ('checked_in', 'confirmed') AND u.is_pool = FALSE`, [org, today, today]);
+    const stayRows = await sql.rows<any>(`SELECT unit_id, check_in, check_out, status FROM reservations WHERE ${OWN()} AND check_in <= ? AND check_out > ?`, [org, today, today]);
 
-    const totalCount = totalUnits?.cnt || 0;
-    const occupiedCount = occupied?.cnt || 0;
-    const occupancyRate = totalCount > 0 ? Math.round((occupiedCount / totalCount) * 100) : 0;
+    const occ = occupancyOnDay(unitRows, stayRows, today);
 
     const future = shiftDays(today, 3);
 
@@ -70,9 +75,9 @@ export const getDashboard = withActor(async (_request, _ctx, actor: Actor) => {
     return NextResponse.json({
       arrivalsToday: arrivals?.cnt || 0,
       departuresToday: departures?.cnt || 0,
-      occupancyRate,
-      freeUnits: totalCount - occupiedCount,
-      totalUnits: totalCount,
+      occupancyRate: occ.rate,
+      freeUnits: occ.freeUnits,
+      totalUnits: occ.sellableUnits,
       upcomingArrivals,
       todayDepartures,
     });

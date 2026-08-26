@@ -77,6 +77,32 @@ export const updateGroupBooking = withPermission('manage_bookings', async (reque
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
 
+    // Виїзд мусить бути після заїзду — і це перевіряється ТУТ, а не лише у
+    // формі. Помилка, яка тут була: `GroupViewModal` рахував ночі як
+    // `Math.max(1, ceil(diff))`, тож перевернутий діапазон давав від'ємну
+    // різницю, яка перетворювалась на 1. Група зі 2026-08-20 по 2026-08-15
+    // зберігалась і скрізь показувалась як «1 ніч»; ті самі дати каскадом
+    // лягали на кожну броню групи нижче, і календар малював стіни, яких
+    // немає. Клієнт міг і не питати — перевірку тримає сервер.
+    //
+    // Порівнюємо ефективні значення: PATCH частковий, тож зсув однієї дати
+    // повинен звірятися з тією, що вже лежить у базі.
+    const nextCheckIn = body.check_in !== undefined ? body.check_in : existing.check_in;
+    const nextCheckOut = body.check_out !== undefined ? body.check_out : existing.check_out;
+    if ((body.check_in !== undefined || body.check_out !== undefined) && nextCheckIn && nextCheckOut) {
+      const start = new Date(nextCheckIn);
+      const end = new Date(nextCheckOut);
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        return NextResponse.json({ error: 'Дати мають бути у форматі YYYY-MM-DD' }, { status: 400 });
+      }
+      if (end <= start) {
+        return NextResponse.json({ error: 'Дата виїзду має бути пізніше за дату заїзду' }, { status: 400 });
+      }
+      // Ночі рахує сервер із власних дат, а не тіло запиту: інакше можна
+      // зберегти коректний діапазон і брехливу кількість ночей поруч.
+      body.nights = Math.round((end.getTime() - start.getTime()) / 86400000);
+    }
+
     const allowed = ['total_price', 'status', 'payment_status', 'source', 'notes', 'check_in', 'check_out', 'nights'];
     const sets: string[] = [];
     const values: any[] = [];

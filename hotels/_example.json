@@ -90,6 +90,12 @@
     { "name": "Hund", "price": 12, "vatCode": "standard", "category": "other" }
   ],
 
+  "_fees": "Збори поверх ціни за ніч: міське мито, прибирання, сервісний збір. Квота показує їх окремими рядками. type: per_stay | per_night | per_person | per_person_per_night | percentage. includedInPrice — збір уже сидить у ціні за ніч: показується, але не додається вдруге.",
+  "fees": [
+    {"name": "Kurtaxe", "type": "per_person_per_night", "amount": 2.5},
+    {"name": "Endreinigung", "type": "per_stay", "amount": 35}
+  ],
+
   "acceptance": [
     { "unitType": "DZD", "persons": 2, "checkIn": "2026-02-10", "checkOut": "2026-02-12", "expectTotal": 238 },
     { "unitType": "DZD", "persons": 2, "checkIn": "2026-02-10", "checkOut": "2026-02-13", "expectTotal": 342 }

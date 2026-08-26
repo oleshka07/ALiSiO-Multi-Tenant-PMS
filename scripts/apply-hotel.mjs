@@ -605,6 +605,53 @@ async function applyStructure(organizationId, plan) {
     }
   }
 
+  // ── збори й мито ──────────────────────────────────────────────────────────
+  //
+  // `fees_taxes` існувала від початку, квота її читає й додає до підсумку —
+  // а наповнював її ЛИШЕ demo-seed. Ні екрана, ні CRUD, ні секції тут. Тобто
+  // в кожного реального готелю міське мито й прибирання в квоті були нулем,
+  // і виглядало це не як помилка, а як «цей готель таких зборів не має».
+  // Портьє називає гостю суму саме з того екрана.
+  //
+  // Тип під CHECK-обмеженням схеми: збір із чужим типом не вставиться, тому
+  // краще відмовити тут з назвою поля, ніж отримати помилку драйвера.
+  const FEE_TYPES = ['per_stay', 'per_night', 'per_person', 'per_person_per_night', 'percentage'];
+  for (const f of plan.fees || plan.feesTaxes || plan.fees_taxes || []) {
+    const name = both(f, 'name');
+    const type = both(f, 'type');
+    if (!name) { say.refused('збір без назви', 'у квоті гість побачить порожній рядок'); continue; }
+    if (!FEE_TYPES.includes(type)) {
+      say.refused(`збір ${name}`, `тип «${type || '—'}» не з ${FEE_TYPES.join(' / ')}`);
+      continue;
+    }
+    const amount = Number(both(f, 'amount')) || 0;
+    // `includedInPrice` — збір, який уже сидить у ціні за ніч: він
+    // показується гостю в розбивці, але не додається вдруге.
+    const included = both(f, 'includedInPrice') === true;
+    const active = both(f, 'isActive') !== false;
+
+    const has = await sql.row(
+      'SELECT id, type, amount, is_included_in_price, is_active FROM fees_taxes WHERE property_id = ? AND name = ?',
+      [property.id, name]);
+    const same = has && has.type === type && Number(has.amount) === amount
+      && Boolean(has.is_included_in_price) === included && Boolean(has.is_active) === active;
+    if (same) { say.same(`збір ${name}`); continue; }
+    if (DRY) { say[has ? 'changed' : 'made'](`[суха] збір ${name} (${type}) = ${amount}`); continue; }
+    if (has) {
+      await sql.run(
+        `UPDATE fees_taxes SET type = ?, amount = ?, is_included_in_price = ?, is_active = ?
+          WHERE id = ? AND property_id = ?`,
+        [type, amount, included, active, has.id, property.id]);
+      say.changed(`збір ${name} (${type}) = ${amount}`);
+    } else {
+      await sql.run(
+        `INSERT INTO fees_taxes (id, property_id, name, type, amount, is_included_in_price, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [crypto.randomUUID(), property.id, name, type, amount, included, active]);
+      say.made(`збір ${name} (${type}) = ${amount}`);
+    }
+  }
+
   // ── зали ──────────────────────────────────────────────────────────────────
   //
   // Ціни блоків — ПІДКАЗКИ (власник: «Preise sind variabel … manuell

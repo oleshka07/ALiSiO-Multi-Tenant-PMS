@@ -187,13 +187,27 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
 
   const handleSaveEdit = async () => {
     if (!groupId) return;
+
+    // Перевернутий діапазон ловимо до запиту — це зручність, справжня
+    // перевірка стоїть у PATCH /api/group-bookings/[id].
+    //
+    // Помилка, яка тут була: `Math.max(1, ...)` нижче ховав від'ємну різницю.
+    // Дати 20-те → 15-те зберігалися як є, а поруч писалась «1 ніч» — і саме
+    // ця «1 ніч» потім показувалась в усіх екранах групи.
+    const d1 = new Date(editForm.checkIn);
+    const d2 = new Date(editForm.checkOut);
+    if (Number.isNaN(d1.getTime()) || Number.isNaN(d2.getTime())) {
+      alert(t('Вкажіть дати заїзду і виїзду'));
+      return;
+    }
+    if (d2 <= d1) {
+      alert(t('Дата виїзду має бути пізніше за дату заїзду'));
+      return;
+    }
+    const nights = Math.round((d2.getTime() - d1.getTime()) / 86400000);
+
     setEditSaving(true);
     try {
-      const nights = (() => {
-        const d1 = new Date(editForm.checkIn);
-        const d2 = new Date(editForm.checkOut);
-        return Math.max(1, Math.ceil((d2.getTime() - d1.getTime()) / 86400000));
-      })();
       const res = await fetch(`/api/group-bookings/${groupId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -214,8 +228,8 @@ export default function GroupViewModal({ groupId, onClose, onUpdated }: GroupVie
         fetchGroup();
         onUpdated();
       } else {
-        const d = await res.json();
-        alert(d.error || 'Помилка');
+        const d = await res.json().catch(() => ({} as any));
+        alert(d.error || t('Помилка'));
       }
     } catch { alert(t('Помилка мережі')); }
     setEditSaving(false);

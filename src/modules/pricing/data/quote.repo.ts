@@ -2,6 +2,7 @@
 import { getSql } from '@core/db/async';
 import type { QuoteResult } from '../domain/types';
 import { priceNights } from './nightly-price';
+import { applyFees } from '../domain/fees';
 
 export async function calculateQuote(unitTypeId: string, checkIn: string, checkOut: string, adults = 2, children = 0): Promise<QuoteResult> {
   const sql = getSql();
@@ -51,21 +52,31 @@ export async function calculateQuote(unitTypeId: string, checkIn: string, checkO
     }
   } catch { /* fees_taxes may not exist */ }
 
-  const feeBreakdown: QuoteResult['feeBreakdown'] = [];
-  let feesTotal = 0;
-  const totalGuests = adults + children;
+  const { feeBreakdown, feesTotal } = applyFees(fees, {
+    nights: nightsTotal, adults, children, accommodationTotal,
+  });
 
-  for (const fee of fees) {
-    let amount = 0;
-    switch (fee.type) {
-      case 'per_stay': amount = fee.amount; break;
-      case 'per_night': amount = fee.amount * nightsTotal; break;
-      case 'per_person': amount = fee.amount * totalGuests; break;
-      case 'per_person_per_night': amount = fee.amount * adults * nightsTotal; break;
-      case 'percentage': amount = Math.round(accommodationTotal * fee.amount / 100); break;
-    }
-    if (amount > 0) { feeBreakdown.push({ name: fee.name, amount }); feesTotal += amount; }
-  }
+  // Валюта готелю, а не 'CZK'.
+  //
+  // Тут стояв літерал, і це та сама помилка, що A1 у фоліо: німецький готель
+  // отримував квоту в кронах — на екрані, з якого портьє називає гостю ціну.
+  // `folio.repo.ts` уже відмовляється вгадувати валюту документа; квота —
+  // те саме число до того, як воно стане документом.
+  //
+  // Порожня організація — не привід підставити свою: краще показати ціну без
+  // валюти, ніж не ту валюту, яку гість почує й запамʼятає.
+  const currency = await quoteCurrency(sql, unitTypeId);
 
-  return { unitTypeId, checkIn, checkOut, nights: nightsTotal, adults, children, breakdown, accommodationTotal, feeBreakdown, feesTotal, total: accommodationTotal + feesTotal, currency: 'CZK', missingDays, hasPricing: missingDays < nightsTotal };
+  return { unitTypeId, checkIn, checkOut, nights: nightsTotal, adults, children, breakdown, accommodationTotal, feeBreakdown, feesTotal, total: accommodationTotal + feesTotal, currency, missingDays, hasPricing: missingDays < nightsTotal };
+}
+
+/** Валюта організації, якій належить цей тип номера. */
+async function quoteCurrency(sql: ReturnType<typeof getSql>, unitTypeId: string): Promise<string> {
+  const row = await sql.row<any>(`
+    SELECT o.default_currency AS currency
+      FROM unit_types ut
+      JOIN properties p ON p.id = ut.property_id
+      JOIN organizations o ON o.id = p.organization_id
+     WHERE ut.id = ?`, [unitTypeId]) as { currency?: string } | undefined;
+  return row?.currency || '';
 }

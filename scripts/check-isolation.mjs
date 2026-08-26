@@ -74,6 +74,10 @@ async function cleanup() {
     await sql.run('DELETE FROM reservations WHERE property_id = ?', [pid]);
     await sql.run('DELETE FROM reservation_groups WHERE property_id = ?', [pid]);
     await sql.run('DELETE FROM units WHERE property_id = ?', [pid]);
+    // Збори тримає FK на обʼєкт, тож вони мусять піти першими — інакше
+    // прибирання падає на DELETE properties, і наступний прогін проби
+    // стартує в базі, засміченій попереднім.
+    try { await sql.run('DELETE FROM fees_taxes WHERE property_id = ?', [pid]); } catch { /* table may not exist */ }
     await sql.run('DELETE FROM unit_types WHERE property_id = ?', [pid]);
     await sql.run('DELETE FROM buildings WHERE property_id = ?', [pid]);
     await sql.run('DELETE FROM categories WHERE property_id = ?', [pid]);
@@ -855,6 +859,72 @@ async function main() {
     assert.strictEqual(foreignDebtors.length, 0,
       "B's payment forecast lists A's unpaid booking — guest name, e-mail and amount owed");
     console.log("  ok  the payment forecast counts only the caller's own debtors");
+
+    // ── Збори доходять до квоти, і в валюті готелю ───────────────────────
+    //
+    // `fees_taxes` існує від початку, квота її читає — а наповнював таблицю
+    // ЛИШЕ demo-seed: ні екрана, ні CRUD, ні секції у файлі готелю. Тобто в
+    // кожного реального клієнта міське мито й прибирання в квоті були нулем,
+    // і це мало вигляд «цей готель таких зборів не має». Портьє називає гостю
+    // суму саме з цього екрана.
+    //
+    // Валюта тут же: у відповіді стояв літерал 'CZK' — та сама помилка, що A1
+    // у фоліо. Німецький готель отримував квоту в кронах.
+    const utTypeId = utA.id || utA.unitType?.id || utA.unit_type?.id;
+    assert.ok(utTypeId, `no unit type id to quote: ${JSON.stringify(utA).slice(0, 120)}`);
+
+    await sql.run(
+      `INSERT INTO fees_taxes (id, property_id, name, type, amount, is_active)
+       VALUES (?, ?, ?, ?, ?, TRUE)`,
+      [`${TAG}fee`, propA.id, 'Probe city tax', 'per_person_per_night', 50]);
+
+    const quoteRes = await call(cookieA, '/api/pricing/quote', {
+      method: 'POST',
+      body: JSON.stringify({
+        unitTypeId: utTypeId, checkIn: '2031-05-01', checkOut: '2031-05-04',
+        adults: 2, children: 1,
+      }),
+    });
+    assert.ok(quoteRes.ok, `A could not price a stay: ${quoteRes.status} ${await quoteRes.clone().text()}`);
+    const quote = await quoteRes.json();
+
+    const cityTax = (quote.feeBreakdown || []).find((f) => f.name === 'Probe city tax');
+    assert.ok(cityTax, 'the fee never reached the quote — this is the shipped bug: it reads a table nothing fills');
+    // Троє гостей × три ночі × 50. Раніше рахувалось по adults, тобто дитина
+    // не платила мита — при полі, на якому написано «за особу».
+    assert.strictEqual(Number(cityTax.amount), 450,
+      '«за особу за ніч» рахує не всіх гостей');
+    assert.strictEqual(Number(quote.feesTotal), 450);
+    assert.strictEqual(Number(quote.total), Number(quote.accommodationTotal) + 450,
+      'збори не додались до підсумку, який бачить гість');
+
+    // Валюта — організації A, а не літерал.
+    //
+    // Валюта ставиться ТУТ і навмисно не CZK. Схема має DEFAULT 'CZK', а
+    // літерал, який тут стояв, теж був 'CZK' — тож твердження «валюта збіглася
+    // з організацією» проходило б і з поверненою помилкою. Це той самий клас
+    // порожніх перевірок, на якому цей файл уже двічі ловили; ловлять на ньому
+    // саме тоді, коли обидві сторони випадково однакові.
+    await sql.run("UPDATE organizations SET default_currency = 'EUR' WHERE id = ?", [a.orgId]);
+    const quoteEur = await call(cookieA, '/api/pricing/quote', {
+      method: 'POST',
+      body: JSON.stringify({
+        unitTypeId: utTypeId, checkIn: '2031-05-01', checkOut: '2031-05-04', adults: 2, children: 1,
+      }),
+    });
+    const eur = await quoteEur.json();
+    assert.strictEqual(eur.currency, 'EUR',
+      `quote answered ${eur.currency} for a hotel that sells in EUR`);
+
+    // Сусідній готель цієї квоти не отримує взагалі.
+    const quoteB = await call(cookieB, '/api/pricing/quote', {
+      method: 'POST',
+      body: JSON.stringify({ unitTypeId: utTypeId, checkIn: '2031-05-01', checkOut: '2031-05-04' }),
+    });
+    const quoteBBody = quoteB.ok ? await quoteB.json() : null;
+    assert.ok(!quoteBBody?.feeBreakdown?.length,
+      "B priced A's room type and saw A's fees");
+    console.log('  ok  a hotel’s fees reach its quote, in its own currency');
 
     // Deleting one's own booking must actually work — it 500'd on a leftover
     // crm_leads statement from the CRM removal until the calendar audit.

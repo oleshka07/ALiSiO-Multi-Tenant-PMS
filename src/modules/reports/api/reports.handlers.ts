@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { todayFor } from '@core/hotel-day';
+import { occupancy } from '@core/occupancy-rate';
 import type { Actor } from '@core/auth/session';
 
 /**
@@ -78,29 +79,28 @@ export async function getReport(request: NextRequest, _ctx: unknown, actor: Acto
       paymentsByMethod[key] = (paymentsByMethod[key] || 0) + signed;
     }
 
-    const unitCount = await sql.row<any>(`SELECT COUNT(*) as cnt FROM units WHERE ${OWN()}`, [org]);
-    const totalUnits = unitCount?.cnt || 0;
-    const fromDate = new Date(from);
-    const toDate = new Date(to);
-    const totalDays = Math.max(1, Math.ceil((toDate.getTime() - fromDate.getTime()) / 86400000) + 1);
-    const totalUnitDays = totalUnits * totalDays;
+    // Завантаженість рахує `@core/occupancy-rate` — та сама функція, що й на
+    // дашборді. Тут стояла власна копія: знаменник по ВСІХ юнітах (разом із
+    // знятими з продажу і з віртуальним pool-юнітом «Чорновик»), чисельник по
+    // всіх статусах, крім cancelled і draft. Готель на 10 номерів мав
+    // знаменник 12 і недосяжні 100 %, а no_show — броня, з якої ніхто не
+    // ночував, — рахувалася зайнятим номером (AUDIT.md §2.9).
+    //
+    // Запити свідомо не фільтрують ані юнітів, ані статусів: правило «що
+    // продається» і «що зайняте» живе в одному місці, інакше дві копії знову
+    // розійдуться. Вікно `check_out > from AND check_in <= to` — не частина
+    // формули, а спосіб не тягнути в памʼять усю історію готелю.
+    const unitRows = await sql.rows<any>(`SELECT id, is_active, is_pool FROM units WHERE ${OWN()}`, [org]);
 
-    let bookedUnitDays = 0;
-    const allBookings = await sql.rows<any>(`
-      SELECT unit_id, check_in, check_out FROM reservations
+    const stayRows = await sql.rows<any>(`
+      SELECT unit_id, check_in, check_out, status FROM reservations
       WHERE ${OWN()}
-        AND check_out > ? AND check_in <= ? AND status NOT IN ('cancelled', 'draft')
+        AND check_out > ? AND check_in <= ?
     `, [org, from, to]);
 
-    for (let d = new Date(fromDate); d <= toDate; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split('T')[0];
-      const occupiedUnits = new Set(
-        allBookings.filter((b: any) => dateStr >= b.check_in && dateStr < b.check_out).map((b: any) => b.unit_id)
-      );
-      bookedUnitDays += occupiedUnits.size;
-    }
-
-    const occupancyPct = totalUnitDays > 0 ? Math.round((bookedUnitDays / totalUnitDays) * 100) : 0;
+    const occ = occupancy(unitRows, stayRows, from, to);
+    const totalDays = occ.days;
+    const occupancyPct = occ.rate;
     const avgCheck = totalBookings > 0 ? Math.round(totalRevenue / totalBookings) : 0;
 
     return NextResponse.json({
