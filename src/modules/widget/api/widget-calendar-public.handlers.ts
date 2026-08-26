@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { cheapestByDay } from '@pricing';
 import { withSite } from '../data/site.repo';
+import { money } from '@core/money';
 
 export const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -299,7 +300,7 @@ async function calendarFor(searchParams: URLSearchParams) {
           if (activeRatePlan.pricing_mode === 'dependent' && activeRatePlan.pricing_modifier_percent != null) {
             const pct = activeRatePlan.pricing_modifier_percent;
             const mType = activeRatePlan.pricing_modifier_type || 'less';
-            price = mType === 'more' ? Math.round(price * (1 + pct / 100)) : Math.round(price * (1 - pct / 100));
+            price = mType === 'more' ? money(price * (1 + pct / 100)) : money(price * (1 - pct / 100));
           } else if (activeRatePlan.fixed_price != null) {
             price = activeRatePlan.fixed_price;
           }

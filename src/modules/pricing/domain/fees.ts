@@ -35,6 +35,10 @@
  * коли це нічого не коштує.
  */
 
+// Відносний шлях із розширенням, а не аліас: цей файл читає ще й гейт, який
+// запускають голим node, а `@core/…` знає лише бандлер.
+import { money, percentOf, sumMoney } from '../../../core/money.ts';
+
 export type FeeType =
   | 'per_stay'
   | 'per_night'
@@ -74,7 +78,6 @@ export function applyFees(
   const accommodation = Number(ctx.accommodationTotal) || 0;
 
   const feeBreakdown: FeeLine[] = [];
-  let feesTotal = 0;
 
   for (const fee of fees || []) {
     const amount = Number(fee?.amount);
@@ -82,14 +85,22 @@ export function applyFees(
 
     let line = 0;
     switch (fee.type) {
-      case 'per_stay': line = amount; break;
-      case 'per_night': line = amount * nights; break;
-      case 'per_person': line = amount * guests; break;
-      case 'per_person_per_night': line = amount * guests * nights; break;
+      // `money()` на кожному множенні, бо double не має 0.10: мито 0,10 € на
+      // трьох гостей дає 0.30000000000000004, і це число їде в квоту й далі
+      // в базу. Округлення на виході не рятує — там уже неправильне значення.
+      case 'per_stay': line = money(amount); break;
+      case 'per_night': line = money(amount * nights); break;
+      case 'per_person': line = money(amount * guests); break;
+      case 'per_person_per_night': line = money(amount * guests * nights); break;
       // Відсоток рахується від проживання, а не від проміжного підсумку:
       // інакше порядок зборів у таблиці міняв би суму, і два готелі з
       // однаковими правилами отримували б різні числа.
-      case 'percentage': line = Math.round(accommodation * amount / 100); break;
+      //
+      // `percentOf`, а не `Math.round(x / 100)`: друге округлювало до цілого,
+      // тобто 10 % від 119 € давало 12 € замість 11,90 €. У кронах ця втрата
+      // непомітна, в євро це центи в кожній квоті — і саме той інваріант 9,
+      // заради якого money.ts існує.
+      case 'percentage': line = percentOf(accommodation, amount); break;
       // Тип поза CHECK-обмеженням схеми означає, що база змінилась, а цей
       // файл — ні. Тихо додати нуль — значить недорахувати гроші й нічого
       // про це не сказати.
@@ -100,9 +111,10 @@ export function applyFees(
 
     if (line > 0) {
       feeBreakdown.push({ name: String(fee.name ?? ''), amount: line });
-      feesTotal += line;
     }
   }
 
-  return { feeBreakdown, feesTotal };
+  // Одне округлення на підсумку, а не накопичення `+=`: інакше хвости кожного
+  // рядка складаються, і сума зборів у квоті не дорівнює сумі своїх же рядків.
+  return { feeBreakdown, feesTotal: sumMoney(feeBreakdown.map((f) => f.amount)) };
 }

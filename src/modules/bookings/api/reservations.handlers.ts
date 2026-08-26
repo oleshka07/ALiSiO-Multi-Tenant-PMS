@@ -7,6 +7,7 @@ import { withActor, type Actor } from '@core/auth/session';
 import { ownedUnit } from '../data/owned.repo';
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
+import { percentOf } from '@core/money';
 
 export const listReservations = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
@@ -195,9 +196,23 @@ export const createReservation = withActor(async (request: NextRequest, _ctx, ac
     if (commissionOverride !== undefined && commissionOverride !== null) {
       commissionAmount = Number(commissionOverride);
     } else if (source) {
-      const bsRow = await sql.row<any>('SELECT commission_percent FROM booking_sources WHERE code = ?', [source]) as { commission_percent: number } | undefined;
+      // Орендар названий у запиті. `booking_sources` тримається за обʼєкт, а
+      // не за організацію, і `WHERE code = ?` без цього приєднання брав ПЕРШИЙ
+      // рядок із таким кодом у всій базі: комісія готелю A рахувалась за
+      // ставкою готелю B. На Postgres це прикриває RLS, на SQLite — ніщо, і
+      // саме тому фільтр мусить бути в SQL, а не покладатись на політику.
+      const bsRow = await sql.row<any>(
+        `SELECT bs.commission_percent FROM booking_sources bs
+           JOIN properties p ON p.id = bs.property_id
+          WHERE bs.code = ? AND p.organization_id = ?`,
+        [source, org.id]) as { commission_percent: number } | undefined;
       if (bsRow && bsRow.commission_percent > 0) {
-        commissionAmount = Math.round(priceGiven * bsRow.commission_percent / 100);
+        // Комісія — гроші: 15 % від 119 € це 17,85 €, а не 18 €. Саме це
+        // число потім звіряють із випискою каналу.
+        //
+        // `priceGiven`, а не `totalPrice`: ціна вже перевірена вище й
+        // приведена до числа, і саме вона лягає в рядок броні.
+        commissionAmount = percentOf(priceGiven, bsRow.commission_percent);
       }
     }
 

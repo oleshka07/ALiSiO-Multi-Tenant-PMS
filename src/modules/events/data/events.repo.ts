@@ -15,6 +15,7 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 import { pickRate, type TaxRate } from '../../finance/domain/invoice-vat';
 import { timesOverlap, minutesBetween, suggestedBlockPrice, type BlockPrices } from '../domain/event-pricing';
 import { createFolio, addCharges } from '../../finance/data/folio.repo';
+import { money } from '@core/money';
 
 export interface EventSpace {
   id: string;
@@ -414,7 +415,10 @@ export async function postEventCharges(bookingId: string, input: {
       description: addon.name,
       quantity,
       unitPriceGross: price,
-      totalGross: Math.round(price * quantity * 100) / 100,
+      // `money()`, а не `Math.round(x * 100) / 100`: друге йде через `* 100`,
+      // де 1.005 стає 100.49999999999999 і округлюється ВНИЗ. Це рядок, який
+      // потрапляє в рахунок.
+      totalGross: money(price * quantity),
       vatRate: rateFor(addon.vat_code),
       source: 'service' as const,
     });

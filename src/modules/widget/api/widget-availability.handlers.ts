@@ -1,5 +1,7 @@
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { money } from '@core/money';
 import { getSql } from '@core/db/async';
 import { withSite } from '../data/site.repo';
 import { quoteCertificate } from '../data/certificate.repo';
@@ -308,9 +310,9 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
               const pct = activeRatePlan.pricing_modifier_percent;
               const mType = activeRatePlan.pricing_modifier_type || 'less';
               if (mType === 'more') {
-                dayPrice = Math.round(dayPrice * (1 + pct / 100));
+                dayPrice = money(dayPrice * (1 + pct / 100));
               } else {
-                dayPrice = Math.round(dayPrice * (1 - pct / 100));
+                dayPrice = money(dayPrice * (1 - pct / 100));
               }
             }
 

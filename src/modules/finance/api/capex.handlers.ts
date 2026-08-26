@@ -4,6 +4,7 @@ import { getSql } from '@core/db/async';
 import { getDb } from '@core/db';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { serverError } from '@core/http/errors';
+import { money } from '@core/money';
 
 export async function listCapex(request: NextRequest): Promise<NextResponse> {
   try {
@@ -48,7 +49,7 @@ export async function createCapex(request: Request): Promise<NextResponse> {
     const orgRow = { id: await requireOrganizationId() } as any;
     const id = `capex_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const month = purchase_date.substring(0, 7);
-    const depMonthly = useful_life_months && useful_life_months > 0 ? Math.round((amount / useful_life_months) * 100) / 100 : 0;
+    const depMonthly = useful_life_months && useful_life_months > 0 ? money(amount / useful_life_months) : 0;
 
     await sql.run(`
       INSERT INTO capex_items (id, organization_id, business_unit_id, name, asset_type, amount, counterparty, purchase_date, month, useful_life_months, depreciation_monthly, notes)

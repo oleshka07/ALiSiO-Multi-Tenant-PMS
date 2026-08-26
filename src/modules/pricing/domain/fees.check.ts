@@ -74,6 +74,41 @@ assert.strictEqual(
   0, 'нуль ночей — нуль зборів, а не збір за ніч, якої немає');
 console.log('  ok  нуль, мінус і нуль ночей не створюють рядка');
 
+// ── Інваріант 9: гроші рахує money(), а не Math.round ────────────────
+//
+// Було `Math.round(accommodation * amount / 100)` — округлення до ЦІЛОГО.
+// У кронах втрату не видно, в євро це центи в кожній квоті: 10 % від 119 €
+// давало 12 €. Портьє називає гостю саме це число.
+assert.strictEqual(
+  applyFees([{ name: 'Сервісний збір', type: 'percentage', amount: 10 }],
+    { ...ctx, accommodationTotal: 119 }).feesTotal,
+  11.9, '10 % від 119 — це 11,90, а не 12');
+assert.strictEqual(
+  applyFees([{ name: 'Мито', type: 'percentage', amount: 7 }],
+    { ...ctx, accommodationTotal: 100.05 }).feesTotal,
+  7, '7 % від 100,05 — 7,0035, тобто 7,00 після заокруглення до центів');
+
+// Double не має 0.10: 0.1 × 3 гостей = 0.30000000000000004, і це число їхало
+// в квоту й у базу. Округлення на виході не рятує — там уже не те значення.
+assert.strictEqual(
+  applyFees([{ name: 'Мито', type: 'per_person', amount: 0.1 }], ctx).feesTotal,
+  0.3, 'дрібне мито на трьох гостей не має давати хвіст із double');
+assert.strictEqual(
+  applyFees([{ name: 'Мито', type: 'per_person_per_night', amount: 0.1 }], ctx).feesTotal,
+  0.9, 'те саме через три ночі');
+
+// Підсумок дорівнює сумі своїх же рядків: інакше гість бачить розбивку, яка
+// не сходиться з числом під нею.
+const tails = applyFees([
+  { name: 'A', type: 'per_person', amount: 0.1 },
+  { name: 'B', type: 'per_night', amount: 0.2 },
+  { name: 'C', type: 'percentage', amount: 3 },
+], { ...ctx, accommodationTotal: 119 });
+assert.strictEqual(tails.feesTotal,
+  Number(tails.feeBreakdown.reduce((s, f) => s + f.amount, 0).toFixed(2)),
+  'сума зборів мусить дорівнювати сумі рядків розбивки');
+console.log('  ok  збори рахуються через money(), підсумок сходиться з рядками');
+
 // ── Тип, якого схема не знає ─────────────────────────────────────────
 //
 // Означає, що база змінилась, а цей файл — ні. Тихо додати нуль — значить

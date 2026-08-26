@@ -9,6 +9,7 @@ import type { UnitResult, AvailabilityResponse, ReserveResponse, DesignConfig, A
 import { fmtDate, parseDate, formatPrice, groupUnitsByCategory } from '../utils';
 import { v3Locales } from '../locales';
 import { asWidgetLang, browserWidgetLang, pickWidgetLanguage } from '../widget-language';
+import { money } from '@core/money';
 
 const API_BASE = process.env.NEXT_PUBLIC_PMS_API_URL || '';
 
@@ -326,7 +327,7 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
       if (extraCouponApplied) {
         let base = bundleBase;
         if (extraCouponApplied.offerType === 'fixed_price' || extraCouponApplied.offerType === 'fixed_amount') base -= extraCouponApplied.offerAmount;
-        else if (extraCouponApplied.offerType === 'percentage') base = Math.round(base * (1 - extraCouponApplied.offerAmount / 100));
+        else if (extraCouponApplied.offerType === 'percentage') base = money(base * (1 - extraCouponApplied.offerAmount / 100));
         return Math.max(0, base) + servicesTotal;
       }
       return Math.max(0, bundleBase) + servicesTotal;
@@ -336,10 +337,10 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
     const extraGuests = Math.max(0, adults - selectedUnit.baseOccupancy);
     const extraCharge = extraGuests * (selectedUnit.extraPersonCharge || 0) * nights;
     let base = selectedUnit.totalPrice + extraCharge; let servicesTotal = 0; const guestsCount = adults + kids || 1;
-    if (offerApplied) { if (offerApplied.offerType === 'fixed_price' || offerApplied.offerType === 'fixed_amount') base -= offerApplied.offerAmount; else if (offerApplied.offerType === 'percentage') base = Math.round(base*(1-offerApplied.offerAmount/100)); }
+    if (offerApplied) { if (offerApplied.offerType === 'fixed_price' || offerApplied.offerType === 'fixed_amount') base -= offerApplied.offerAmount; else if (offerApplied.offerType === 'percentage') base = money(base * (1 - offerApplied.offerAmount / 100)); }
     if (base < 0) base = 0;
     if (extraCouponApplied) {
-      if (extraCouponApplied.offerType === 'fixed_price' || extraCouponApplied.offerType === 'fixed_amount') base -= extraCouponApplied.offerAmount; else if (extraCouponApplied.offerType === 'percentage') base = Math.round(base*(1-extraCouponApplied.offerAmount/100));
+      if (extraCouponApplied.offerType === 'fixed_price' || extraCouponApplied.offerType === 'fixed_amount') base -= extraCouponApplied.offerAmount; else if (extraCouponApplied.offerType === 'percentage') base = money(base * (1 - extraCouponApplied.offerAmount / 100));
     }
     if (base < 0) base = 0;
     services.forEach(s => { if (selectedServiceIds.has(s.id)) servicesTotal += (s.price||0)*guestsCount; });

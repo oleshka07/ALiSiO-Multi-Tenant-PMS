@@ -23,6 +23,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { Printer, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { money } from '@core/money';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -205,7 +206,10 @@ function DayClose({ rows, t }: { rows: any[]; t: (s: string) => string }) {
       });
     }
   }
-  const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+  // `money()` замість трюку з EPSILON: додавання епсилона зсуває лише ті
+  // випадки, де похибка додатна, і мовчки псує вїд’ємні. Один хелпер на
+  // весь продукт, і він уже написаний.
+  const round = (n: number) => money(n);
   const total = round([...byRate.values()].reduce((s, g) => s + g.gross, 0));
 
   return (

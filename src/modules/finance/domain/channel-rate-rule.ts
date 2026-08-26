@@ -11,6 +11,9 @@
  * knows nothing about tables or channels; this one decides which numbers to
  * hand it.
  */
+// Відносний шлях із розширенням: цей файл читає гейт, який запускають голим
+// node, а `@core/…` знає лише бандлер.
+import { money } from '../../../core/money.ts';
 
 export interface ChannelRateRule {
   channel: string | null;
@@ -62,5 +65,7 @@ function normalize(v: string | null | undefined): string {
 }
 
 function round(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
+  // money(), а не трюк із EPSILON: епсилон зсуває лише додатну похибку
+  // і мовчки псує відʼємну. Один хелпер на весь продукт.
+  return money(n);
 }

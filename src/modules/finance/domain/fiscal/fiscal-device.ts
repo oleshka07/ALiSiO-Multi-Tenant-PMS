@@ -1,3 +1,4 @@
+
 /**
  * What a fiscal device owes the till: a signature over what was paid.
  *
@@ -11,6 +12,9 @@
  * Everything in this file is pure — the fiskaly HTTP implementation lives in
  * data/, where IO belongs.
  */
+// Відносний шлях із розширенням, а не аліас: цей файл чистий, і його читають
+// гейти, які запускають голим node — `@core/…` знає лише бандлер.
+import { money } from '../../../../core/money.ts';
 
 /** One VAT bucket of the receipt, gross. */
 export interface VatAmount {
@@ -68,5 +72,7 @@ export function dsfinvkPaymentType(method: 'cash' | 'card_terminal'): 'CASH' | '
 
 /** Money formatted the way process_data wants it: dot decimal, two places. */
 export function fiscalAmount(n: number): string {
-  return (Math.round(n * 100) / 100).toFixed(2);
+  // `money()`, а не `* 100 / 100`: друге йде через множення, де 1.005
+  // стає 100.49999999999999 і округлюється ВНИЗ. Це число підписує TSE.
+  return money(n).toFixed(2);
 }

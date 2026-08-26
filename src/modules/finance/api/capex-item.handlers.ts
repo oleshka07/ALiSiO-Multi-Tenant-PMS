@@ -4,6 +4,7 @@ import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { ownedFinanceRow } from '../data/owned.repo';
+import { money } from '@core/money';
 
 /**
  * A capital asset, addressed by id. All three handlers wrote `WHERE id = ?`
@@ -49,7 +50,7 @@ export async function updateCapexItem(
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    const depMonthly = useful_life_months && useful_life_months > 0 && amount ? Math.round((amount / useful_life_months) * 100) / 100 : undefined;
+    const depMonthly = useful_life_months && useful_life_months > 0 && amount ? money(amount / useful_life_months) : undefined;
     const month = purchase_date ? purchase_date.substring(0, 7) : undefined;
 
     await sql.run(`

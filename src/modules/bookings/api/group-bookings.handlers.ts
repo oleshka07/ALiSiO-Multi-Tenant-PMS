@@ -7,6 +7,7 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
 import { ownedUnit } from '../data/owned.repo';
+import { splitMoney } from '@core/money';
 
 /**
  * Group bookings: one party, many rooms, one reservation_groups row.
@@ -140,7 +141,11 @@ export const createGroupBooking = withPermission('manage_bookings', async (reque
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT default_currency FROM organizations WHERE id = ?), ?, ?)
     `, [groupId, firstUnit.property_id, guestId, groupType || 'custom', buildingId || null, checkIn, checkOut, nights, totalPrice || 0, org.id, source || 'direct', notes || null]);
 
-    const pricePerUnit = finalUnitIds.length > 0 ? Math.round((totalPrice || 0) / finalUnitIds.length) : 0;
+    // `splitMoney`, а не ділення з округленням: 100 на три кімнати давало
+    // 33 + 33 + 33 = 99, і підсумок групи назавжди розходився з сумою своїх
+    // же кімнат — на екрані, у фоліо й у рахунку. Залишок роздається по
+    // одній мінімальній одиниці з початку.
+    const perUnit = splitMoney(totalPrice || 0, finalUnitIds.length);
     const createdResIds: string[] = [];
     // A group booking is one booking to the guest: either every room is
     // reserved or none is, or the group has rooms it did not ask for.
@@ -157,7 +162,7 @@ export const createGroupBooking = withPermission('manage_bookings', async (reque
           -- ПЕРШОЮ, — рахунок групі виписався б у кронах над сумою в євро.
           INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, group_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, currency)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT default_currency FROM organizations WHERE id = ?))
-        `, [resId, org.id, firstUnit.property_id, finalUnitIds[i], guestId, groupId, checkIn, checkOut, nights, 1, 0, 'confirmed', 'unpaid', source || 'direct', pricePerUnit, org.id]);
+        `, [resId, org.id, firstUnit.property_id, finalUnitIds[i], guestId, groupId, checkIn, checkOut, nights, 1, 0, 'confirmed', 'unpaid', source || 'direct', perUnit[i] ?? 0, org.id]);
         createdResIds.push(resId);
       }
     });

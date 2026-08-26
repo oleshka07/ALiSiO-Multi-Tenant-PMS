@@ -15,6 +15,9 @@
  * same document the German tax office does. That separation is already a CI
  * gate (check-i18n-leak).
  */
+// Відносний шлях із розширенням: цей файл читає гейт, який запускають голим
+// node, а `@core/…` знає лише бандлер.
+import { money } from '../../../core/money.ts';
 
 export type InvoiceLocale = 'de-DE' | 'cs-CZ' | 'en-GB';
 
@@ -339,7 +342,9 @@ export function missingMandatoryFields(doc: InvoiceDocument): string[] {
 }
 
 function round(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
+  // money(), а не трюк із EPSILON: епсилон зсуває лише додатну похибку
+  // і мовчки псує відʼємну. Це число друкується на рахунку.
+  return money(n);
 }
 
 function formatDate(iso: string, locale: InvoiceLocale): string {

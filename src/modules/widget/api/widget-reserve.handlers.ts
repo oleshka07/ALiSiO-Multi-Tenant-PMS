@@ -7,6 +7,7 @@ import { eventBus } from '@core/event-bus';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { hasFeature, featureDisabled } from '@core/features';
 import { withSite } from '../data/site.repo';
+import { percentOf } from '@core/money';
 import { siteAllowsHost, type SiteRow } from '../data/site.repo';
 import { quoteCertificate, claimCertificate } from '../data/certificate.repo';
 import { priceNights } from '@pricing';
@@ -348,7 +349,9 @@ export async function createWidgetReservation(request: NextRequest) {
             await sql.run('UPDATE gift_card_bundles SET current_uses = current_uses + 1 WHERE id = ?', [offer.id]);
           } else {
             if (offer.discount_type === 'percentage') {
-              offerDiscount = Math.round(totalPrice * offer.offer_amount / 100);
+              // Округлення до цілого з'їдало центи знижки: 10 % від 119 € давало
+              // 12 € замість 11,90 €, і гість платив на 10 центів менше, ніж каже купон.
+              offerDiscount = percentOf(totalPrice, offer.offer_amount);
             } else if (offer.discount_type === 'fixed_price' || offer.discount_type === 'fixed_amount') {
               offerDiscount = Math.max(0, totalPrice - offer.offer_amount);
             } else {
@@ -399,7 +402,7 @@ export async function createWidgetReservation(request: NextRequest) {
           // Calculate discount based on the price AFTER package/first offer
           const currentPrice = Math.max(0, totalPrice - offerDiscount);
           if (extraOffer.discount_type === 'percentage') {
-            extraDiscount = Math.round(currentPrice * extraOffer.offer_amount / 100);
+            extraDiscount = percentOf(currentPrice, extraOffer.offer_amount);
           } else if (extraOffer.discount_type === 'fixed_price' || extraOffer.discount_type === 'fixed_amount') {
             extraDiscount = Math.max(0, currentPrice - extraOffer.offer_amount);
           } else {

@@ -10,6 +10,7 @@ import './booking-iframe.css';
 import type { BookingLang } from './translations';
 import { BOOKING_LANG_LABELS, BOOKING_LANG_FLAGS, getBookingTranslations } from './translations';
 import { asWidgetLang, browserWidgetLang, pickWidgetLanguage } from './widget-language';
+import { percentOf } from '@core/money';
 
 
 // API base URL — configurable for subdomain deployment
@@ -423,7 +424,7 @@ export default function BookingPage() {
     if (availability?.offerDiscount) {
       const pd = availability.offerDiscount;
       if (pd.discountType === 'percentage') {
-        total -= Math.round(total * pd.offerAmount / 100);
+        total -= percentOf(total, pd.offerAmount);
       } else {
         total -= pd.offerAmount;
       }

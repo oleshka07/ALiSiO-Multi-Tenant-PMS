@@ -5,6 +5,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Loader2, Save, Plus } from 'lucide-react';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { shouldAskQuote, readQuote, type QuoteResponse } from './quote-prefill';
+import { percentOf } from '@core/money';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -200,7 +201,9 @@ export default function BookingForm({
 
   const recalcCommission = useCallback((price: string, sourceCode: string) => {
     const pct = getCommissionPct(sourceCode);
-    if (pct > 0 && Number(price) > 0) return String(Math.round(Number(price) * pct / 100));
+    // Комісія — це гроші: `percentOf`, а не округлення до цілого. 15 % від
+    // 119 € — 17,85 €, а не 18 €, і саме це число їде у звірку з каналом.
+    if (pct > 0 && Number(price) > 0) return String(percentOf(Number(price), pct));
     return '0';
   }, [getCommissionPct]);
 
