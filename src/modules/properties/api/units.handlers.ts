@@ -91,11 +91,13 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
     return NextResponse.json(unit, { status: 201 });
   } catch (error: unknown) {
     console.error('POST /api/units error:', error);
-    const msg = error instanceof Error ? error.message : 'Failed to create unit';
-    if (msg.includes('UNIQUE')) {
+    const msg = error instanceof Error ? error.message : '';
+    // UNIQUE — SQLite, duplicate key — Postgres: та сама відповідь обома мовами.
+    if (msg.includes('UNIQUE') || msg.includes('duplicate key')) {
       return NextResponse.json({ error: 'Unit with this code already exists in this property' }, { status: 409 });
     }
-    return NextResponse.json({ error: msg }, { status: 500 });
+    // Текст помилки БД — у лог; клієнту він і незрозумілий, і небезпечний.
+    return NextResponse.json({ error: 'Failed to create unit' }, { status: 500 });
   }
 });
 

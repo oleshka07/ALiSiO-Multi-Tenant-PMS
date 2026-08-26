@@ -72,6 +72,20 @@ async function ownsAllRefs(
   return true;
 }
 
+/**
+ * Число з форми, де порожньо означає «не вказано».
+ *
+ * `'' ?? null` — це `''`: оператор бачить лише null/undefined, а форма шле
+ * порожній РЯДОК. SQLite мовчки клав '' у INTEGER-колонку, Postgres чесно
+ * відмовляв — `invalid input syntax for type bigint: ""` — і перший же
+ * номер, заведений руками на проді, не створювався.
+ */
+function intOr<T>(v: unknown, fallback: T): number | T {
+  if (v === '' || v == null) return fallback;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 export async function createUnit(organizationId: string, input: CreateUnitInput) {
   if (!await ownsAllRefs(organizationId, input)) return null;
 
@@ -81,9 +95,9 @@ export async function createUnit(organizationId: string, input: CreateUnitInput)
     INSERT INTO units (unit_type_id, property_id, category_id, building_id, name, code, floor, zone, beds, notes, sort_order)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING *`,
-    [input.unit_type_id, input.property_id, input.category_id, input.building_id ?? null,
-    input.name, input.code, input.floor ?? null, input.zone ?? null,
-    input.beds ?? 0, input.notes ?? null, input.sort_order ?? 0],
+    [input.unit_type_id, input.property_id, input.category_id, input.building_id || null,
+    input.name, input.code, intOr(input.floor, null), input.zone || null,
+    intOr(input.beds, 0), input.notes || null, intOr(input.sort_order, 0)],
   );
   return result;
 }
@@ -158,8 +172,8 @@ export async function bulkCreateUnits(organizationId: string, input: BulkCreateU
       await t.run(`
         INSERT INTO units (unit_type_id, property_id, category_id, building_id, name, code, floor, beds, zone, sort_order)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [input.unit_type_id, input.property_id, input.category_id, input.building_id ?? null, w.name, w.code,
-        input.floor == null ? null : String(input.floor), input.beds ?? 0, input.zone ?? null, w.sort]);
+      `, [input.unit_type_id, input.property_id, input.category_id, input.building_id || null, w.name, w.code,
+        intOr(input.floor, null), intOr(input.beds, 0), input.zone || null, w.sort]);
     }
   });
 
@@ -180,6 +194,11 @@ export async function updateUnit(organizationId: string, id: string, fields: Rec
   const nullableFields = ['building_id', 'floor', 'zone', 'notes', 'lock_code', 'entry_photo_url'];
   for (const f of nullableFields) {
     if (fields[f] === '') fields[f] = null;
+  }
+  // NOT NULL-числа: порожній рядок — це «не міняти», а не нуль і не помилка
+  // Postgres про bigint: "".
+  for (const f of ['beds', 'sort_order']) {
+    if (fields[f] === '') delete fields[f];
   }
 
   const allowed = ['name', 'code', 'unit_type_id', 'category_id', 'building_id', 'floor', 'zone', 'beds', 'room_status', 'cleaning_status', 'notes', 'sort_order', 'is_active', 'lock_code', 'entry_photo_url'];
