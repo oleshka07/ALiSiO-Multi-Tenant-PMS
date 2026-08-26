@@ -5,6 +5,7 @@ import { FEATURES, setFeature, type FeatureKey } from './features.ts';
 import { getSql } from './db/async.ts';
 import { runWithOrganization } from './auth/tenant-context.ts';
 import { DEFAULT_LANGUAGE, LANGUAGE_CODES, isLanguage } from './i18n/languages.ts';
+import { defaultBookingSources } from './booking-sources.ts';
 
 /**
  * Creating a customer.
@@ -143,6 +144,24 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
       INSERT INTO categories (id, property_id, name, type, sort_order)
       VALUES (?, ?, ?, 'rooms', 1)
     `, [categoryId, propertyId, DEFAULT_CATEGORY_NAME[language] ?? DEFAULT_CATEGORY_NAME.en]);
+
+    // Канали, з яких приходить бронь. Без них КОЖНА бронь малюється сірим
+    // бейджем «direct» — однаковим для прямого гостя, дзвінка й пошти, — а
+    // звіт «звідки приходять гості» показує одну колонку.
+    //
+    // Наповнювала цю таблицю рівно одна SQLite-міграція, і рівно для
+    // `properties LIMIT 1`: список діставався demo-seed, а кожен реальний
+    // готель стартував порожнім. На Postgres та міграція не виконується
+    // взагалі. Місце цього — тут, де готель заводиться.
+    //
+    // OTA в списку немає навмисно: див. booking-sources.ts.
+    for (const s of defaultBookingSources(language)) {
+      await t.run(`
+        INSERT INTO booking_sources (id, property_id, name, code, icon_letter, color, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [`bs_${crypto.randomBytes(8).toString('hex')}`, propertyId,
+        s.name, s.code, s.iconLetter, s.color, s.sortOrder]);
+    }
 
     // The owner's language stays NULL: they follow the hotel, so changing the
     // hotel's base language later moves them with it.

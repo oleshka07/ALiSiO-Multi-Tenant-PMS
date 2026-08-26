@@ -217,6 +217,27 @@ for (const name of files) {
     }
   }
 
+  // ── джерела бронювань ─────────────────────────────────────────────────────
+  //
+  // Прямо / телефон / пошта / з вулиці засіває provisionOrganization мовою
+  // готелю; тут готель називає МАЙДАНЧИКИ, на яких справді продає. Комісія не
+  // косметика: вона йде в розрахунок нетто по каналу, тож помилка в ній
+  // видно не одразу, а у звіті за місяць.
+  const seenCodes = new Set();
+  for (const src of plan.bookingSources || plan.booking_sources || []) {
+    const code = f(src, 'code');
+    const name = f(src, 'name') || code;
+    if (!code) { note(file, 'джерело без code — код це те, чим бронь на нього посилається'); continue; }
+    if (seenCodes.has(code)) note(file, `джерело "${code}" названо двічі — застосується останнє`);
+    seenCodes.add(code);
+    const commission = num(f(src, 'commissionPercent'));
+    if (commission != null && !isNum(commission)) {
+      note(file, `джерело "${name}": commissionPercent не число`);
+    } else if (commission != null && (commission < 0 || commission > 100)) {
+      note(file, `джерело "${name}": комісія ${commission}% поза 0–100`);
+    }
+  }
+
   // ── гостьова сторінка ─────────────────────────────────────────────────────
   // Три поля зберігаються як JSON і читаються сторінкою через parseJSON з
   // фолбеком: помилкова форма не падає, вона просто НІЧОГО не показує гостю.

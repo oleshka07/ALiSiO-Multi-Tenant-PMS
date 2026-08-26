@@ -680,14 +680,70 @@ async function applyStructure(organizationId, plan) {
       await sql.run(
         `UPDATE fees_taxes SET type = ?, amount = ?, is_included_in_price = ?, is_active = ?
           WHERE id = ? AND property_id = ?`,
-        [type, amount, included, active, has.id, property.id]);
+        [type, amount, +included, +active, has.id, property.id]);
       say.changed(`збір ${name} (${type}) = ${amount}`);
     } else {
       await sql.run(
         `INSERT INTO fees_taxes (id, property_id, name, type, amount, is_included_in_price, is_active)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [crypto.randomUUID(), property.id, name, type, amount, included, active]);
+        [crypto.randomUUID(), property.id, name, type, amount, +included, +active]);
       say.made(`збір ${name} (${type}) = ${amount}`);
+    }
+  }
+
+  // ── джерела бронювань ─────────────────────────────────────────────────────
+  //
+  // Чотири канали, які має будь-який готель (прямо, телефон, пошта, з вулиці),
+  // засіває provisionOrganization мовою готелю. Тут — те, чого за готель не
+  // вигадаєш: майданчики, на яких він справді продає, і комісія, яку вони
+  // беруть. Без цієї секції готель має робочий список, але без своїх OTA;
+  // раніше він не мав НІЧОГО, і кожна бронь малювалась сірим «direct».
+  //
+  // Комісія тут не косметика: вона йде в розрахунок нетто по каналу.
+  for (const s of plan.bookingSources || plan.booking_sources || []) {
+    const code = both(s, 'code');
+    const name = both(s, 'name') || code;
+    if (!code) { say.refused('джерело без коду', 'код — те, чим бронь на нього посилається'); continue; }
+    const commission = Number(both(s, 'commissionPercent')) || 0;
+    if (commission < 0 || commission > 100) {
+      say.refused(`джерело ${name}`, `комісія ${commission}% поза 0–100`);
+      continue;
+    }
+    const letter = both(s, 'iconLetter') || name.slice(0, 1).toUpperCase();
+    const color = both(s, 'color') || '#6c7086';
+    const order = Number(both(s, 'sortOrder')) || 10;
+    // Прапорець іде в запит як 0/1, а не як булеве: драйвер SQLite булеве
+    // ЗНАЧЕННЯ прив'язати не вміє («can only bind numbers, strings, bigints,
+    // buffers, and null») і падає, а pg приймає і те, й те. Аплаєр запускають
+    // по продакшену, тобто по Postgres, тож така помилка місяцями не видно.
+    // (0/1 саме як ПАРАМЕТР; у тексті SQL прапорець мусить бути TRUE/FALSE —
+    // це різні речі, і за другим стежить check-boolean-flags.mjs.)
+    const active = both(s, 'isActive') !== false;
+
+    const has = await sql.row(
+      `SELECT id, name, icon_letter, color, sort_order, is_active, commission_percent
+         FROM booking_sources WHERE property_id = ? AND code = ?`,
+      [property.id, code]);
+    const same = has && has.name === name && has.icon_letter === letter
+      && has.color === color && Number(has.sort_order) === order
+      && Boolean(has.is_active) === active
+      && Number(has.commission_percent) === commission;
+    if (same) { say.same(`джерело ${name}`); continue; }
+    if (DRY) { say[has ? 'changed' : 'made'](`[суха] джерело ${name} (${code}), комісія ${commission}%`); continue; }
+    if (has) {
+      await sql.run(
+        `UPDATE booking_sources
+            SET name = ?, icon_letter = ?, color = ?, sort_order = ?, is_active = ?, commission_percent = ?
+          WHERE id = ? AND property_id = ?`,
+        [name, letter, color, order, +active, commission, has.id, property.id]);
+      say.changed(`джерело ${name} (${code}), комісія ${commission}%`);
+    } else {
+      await sql.run(
+        `INSERT INTO booking_sources
+           (id, property_id, name, code, icon_letter, color, sort_order, is_active, commission_percent)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [crypto.randomUUID(), property.id, name, code, letter, color, order, +active, commission]);
+      say.made(`джерело ${name} (${code}), комісія ${commission}%`);
     }
   }
 
