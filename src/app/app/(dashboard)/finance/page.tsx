@@ -1,9 +1,10 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { Wallet, TrendingUp, TrendingDown, BarChart3, AlertTriangle, CheckCircle, Settings, ListChecks, Repeat, AlertOctagon, ShoppingBag } from 'lucide-react';
+import { Wallet, TrendingUp, TrendingDown, BarChart3, AlertTriangle, CheckCircle, Settings, ListChecks, ShoppingBag } from 'lucide-react';
 import { useDevice } from '@/ui/hooks/useDevice';
 import MobileFinanceOverview from '@/components/mobile/pages/MobileFinanceOverview';
 
@@ -60,10 +61,14 @@ interface OverviewData {
   recentTransactions: RecentTransaction[];
 }
 
-function formatCZK(amount: number): string {
-  if (amount === 0) return '0 CZK';
-  const prefix = amount < 0 ? '-' : '';
-  return `${prefix}${Math.abs(Math.round(amount)).toLocaleString('cs-CZ')} CZK`;
+// Валюта — організації, не літерал: «0 CZK» на євро-готелі — це не нуль,
+// це чужа каса. Форматер віддає замикання, бо валюта відома лише в компоненті.
+function moneyFormatter(cur: string) {
+  return (amount: number): string => {
+    if (amount === 0) return `0 ${cur}`;
+    const prefix = amount < 0 ? '-' : '';
+    return `${prefix}${Math.abs(Math.round(amount)).toLocaleString()} ${cur}`;
+  };
 }
 
 function getMonthLabel(m: string): string {
@@ -74,6 +79,8 @@ function getMonthLabel(m: string): string {
 
 export default function FinanceOverviewPage() {
   const t = useT();
+  const { organization } = useCurrentUser();
+  const formatCZK = moneyFormatter(organization?.currency || '');
   const { isMobile } = useDevice();
   if (isMobile) return <MobileFinanceOverview />;
 
@@ -147,17 +154,6 @@ export default function FinanceOverviewPage() {
             <ListChecks size={16} /> {t('Операції')}
           </Link>
           <Link
-            href="/app/finance/clearing"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '0.5rem 1rem', borderRadius: '8px',
-              border: '1px solid var(--border)', background: 'var(--surface)',
-              color: 'var(--text-primary)', textDecoration: 'none', fontSize: 14,
-            }}
-          >
-            <Repeat size={16} /> Clearing
-          </Link>
-          <Link
             href="/app/finance/payments/services"
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -168,18 +164,6 @@ export default function FinanceOverviewPage() {
             title={t('Усі оплачені послуги по датах + статус fin_operation')}
           >
             <ShoppingBag size={16} /> {t('Послуги')}
-          </Link>
-          <Link
-            href="/app/finance/payments/orphans"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '0.5rem 1rem', borderRadius: '8px',
-              border: '1px solid var(--border)', background: 'var(--surface)',
-              color: 'var(--text-primary)', textDecoration: 'none', fontSize: 14,
-            }}
-            title={t('Знайти платежі без fin_operation')}
-          >
-            <AlertOctagon size={16} /> Orphans
           </Link>
           <Link
             href="/app/finance/settings"

@@ -1,6 +1,7 @@
 'use client';
 
 import { useT, usePlural } from '@core/i18n/client';
+import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, AlertTriangle, CheckCircle, Calendar, Users } from 'lucide-react';
 
@@ -24,7 +25,11 @@ interface Summary {
 interface TimelineItem { week: string; amount: number; count: number; }
 interface CategoryItem { name: string; amount: number; count: number; }
 
-function formatCZK(n: number): string { return `${Math.round(n).toLocaleString('cs-CZ')} CZK`; }
+// Єдиний фінекран із живими сумами броней — і він підписував їх валютою
+// першого клієнта. Валюта — організації.
+function moneyFormatter(cur: string) {
+  return (n: number): string => `${Math.round(n).toLocaleString()} ${cur}`;
+}
 
 const URGENCY_STYLES: Record<string, { bg: string; color: string; label: string; icon: string }> = {
   overdue: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', label: 'Прострочено', icon: '🔴' },
@@ -36,6 +41,8 @@ const URGENCY_STYLES: Record<string, { bg: string; color: string; label: string;
 export default function ExpectedPaymentsPage() {
   const pluralUi = usePlural();
   const tUi = useT();
+  const { organization } = useCurrentUser();
+  const formatCZK = moneyFormatter(organization?.currency || '');
   const [items, setItems] = useState<ExpectedItem[]>([]);
   const [summary, setSummary] = useState<Summary>({ total_expected: 0, total_bookings: 0, overdue: 0, overdue_count: 0, urgent: 0, urgent_count: 0, soon: 0, soon_count: 0, upcoming: 0, upcoming_count: 0 });
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);

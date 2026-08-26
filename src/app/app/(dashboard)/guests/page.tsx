@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { useDevice } from '@/ui/hooks/useDevice';
+import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import MobileGuests from '@/components/mobile/pages/MobileGuests';
 import {
   Plus, Search, Eye, Edit3, X, Save, Trash2, Check,
@@ -132,6 +133,9 @@ function emptyForm() {
 function DesktopGuests() {
   const plural = usePlural();
   const t = useT();
+  // Дохід гостя — у валюті організації; «CZK» тут було валютою першого клієнта.
+  const { organization } = useCurrentUser();
+  const cur = organization?.currency || '';
   /* ── data state ──────────────────────────────────── */
   const [guests, setGuests] = useState<GuestRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -568,7 +572,7 @@ function DesktopGuests() {
                     {g.last_check_in || <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
                   </td>
                   <td style={{ fontWeight: 600, fontSize: 13 }}>
-                    {g.total_revenue ? `${g.total_revenue.toLocaleString()} CZK` : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                    {g.total_revenue ? `${g.total_revenue.toLocaleString()} {cur}` : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
                   </td>
                   <td>
                     <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
@@ -710,7 +714,7 @@ function DesktopGuests() {
                 </div>
                 <div style={{ padding: 14, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Загальний дохід')}</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: 'var(--accent-success)' }}>{(viewGuest.total_revenue || 0).toLocaleString()} CZK</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: 'var(--accent-success)' }}>{(viewGuest.total_revenue || 0).toLocaleString()} {cur}</div>
                 </div>
                 <div style={{ padding: 14, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Дата створення')}</div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -65,6 +66,8 @@ const MONTH_NAMES = [
   'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень',
 ];
 const DAY_NAMES = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+// Підказка «≈ EUR» має сенс лише для кронової організації; курс — відомий
+// борг (той самий клас, що A7 у модалці броні), не конфіг.
 const CZK_TO_EUR = 23.5;
 
 /* ================================================================
@@ -94,11 +97,11 @@ function EditDayModal({ day, onSave, onClose }: {
         </div>
         <div className="modal-body">
           <div className="form-group">
-            <label className="form-label">{t('Базова ціна (CZK)')}</label>
+            <label className="form-label">{t('Базова ціна')}</label>
             <input className="form-input" type="number" value={basePrice} onChange={e => setBasePrice(Number(e.target.value))} min={0} />
           </div>
           <div className="form-group">
-            <label className="form-label">{t('Ціна вихідних — Пт/Сб/Нд (CZK)')}</label>
+            <label className="form-label">{t('Ціна вихідних — Пт/Сб/Нд')}</label>
             <input className="form-input" type="number" value={weekendPrice} onChange={e => setWeekendPrice(e.target.value === '' ? '' : Number(e.target.value))} min={0} placeholder={t('Як базова')} />
             <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Залиште порожнім щоб = базовій')}</span>
           </div>
@@ -194,11 +197,11 @@ function BulkEditModal({ onSave, onClose }: {
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">{t('Базова ціна (CZK)')}</label>
+              <label className="form-label">{t('Базова ціна')}</label>
               <input className="form-input" type="number" placeholder={t('Не змінювати')} value={basePrice} onChange={e => setBasePrice(e.target.value)} min={0} />
             </div>
             <div className="form-group">
-              <label className="form-label">{t('Ціна вихідних (CZK)')}</label>
+              <label className="form-label">{t('Ціна вихідних')}</label>
               <input className="form-input" type="number" placeholder={t('Не змінювати')} value={weekendPrice} onChange={e => setWeekendPrice(e.target.value)} min={0} />
             </div>
           </div>
@@ -234,6 +237,8 @@ function BulkEditModal({ onSave, onClose }: {
    ================================================================ */
 function TestQuoteSection({ unitTypes }: { unitTypes: UnitType[] }) {
   const t = useT();
+  const { organization } = useCurrentUser();
+  const cur = organization?.currency || '';
   const [unitTypeId, setUnitTypeId] = useState('');
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
@@ -317,24 +322,26 @@ function TestQuoteSection({ unitTypes }: { unitTypes: UnitType[] }) {
             {quote.breakdown.map(b => (
               <div key={b.date} className="flex justify-between" style={{ color: b.price === 0 ? 'var(--text-tertiary)' : undefined }}>
                 <span>{b.date} ({b.dayName}){b.isWeekend ? ' 🌙' : ''}</span>
-                <span style={{ fontWeight: b.price > 0 ? 600 : 400 }}>{b.price.toLocaleString()} CZK</span>
+                <span style={{ fontWeight: b.price > 0 ? 600 : 400 }}>{b.price.toLocaleString()} {cur}</span>
               </div>
             ))}
             <div style={{ borderTop: '1px solid var(--border-primary)', paddingTop: 6, marginTop: 4 }} className="flex justify-between">
               <span>{t('Проживання')}</span>
-              <span style={{ fontWeight: 600 }}>{quote.accommodationTotal.toLocaleString()} CZK</span>
+              <span style={{ fontWeight: 600 }}>{quote.accommodationTotal.toLocaleString()} {cur}</span>
             </div>
             {quote.feeBreakdown.map(f => (
               <div key={f.name} className="flex justify-between" style={{ color: 'var(--text-tertiary)' }}>
                 <span>{f.name}</span>
-                <span>{f.amount.toLocaleString()} CZK</span>
+                <span>{f.amount.toLocaleString()} {cur}</span>
               </div>
             ))}
             <div style={{ borderTop: '2px solid var(--accent-primary)', paddingTop: 8, marginTop: 4 }} className="flex justify-between">
               <span style={{ fontWeight: 700, fontSize: 15 }}>{t('Всього')}</span>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--accent-primary)' }}>{quote.total.toLocaleString()} CZK</div>
-                <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>≈ {(quote.total / CZK_TO_EUR).toFixed(0)} EUR</div>
+                <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--accent-primary)' }}>{quote.total.toLocaleString()} {cur}</div>
+                {cur === 'CZK' && (
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>≈ {(quote.total / CZK_TO_EUR).toFixed(0)} EUR</div>
+                )}
               </div>
             </div>
           </div>
@@ -367,6 +374,10 @@ export default function PricingPage() {
   // заповненій матриці — не «цін немає», а «вони в іншому місці», і без цього
   // рядка екран про це мовчить (див. pricing/data/nightly-price.ts).
   const [hasMatrix, setHasMatrix] = useState(false);
+  // Валюта екрана — організації; «CZK» тут було валютою першого клієнта.
+  const { organization } = useCurrentUser();
+  const cur = organization?.currency || '';
+  const isCzk = cur === 'CZK';
 
   useEffect(() => {
     fetch('/api/pricing/occupancy')
@@ -560,7 +571,7 @@ export default function PricingPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
           <div className="card" style={{ padding: '12px 16px', textAlign: 'center' }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--accent-primary)' }}>{stats.avgPrice.toLocaleString()}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Серед. ціна CZK')}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Серед. ціна')} {cur}</div>
           </div>
           <div className="card" style={{ padding: '12px 16px', textAlign: 'center' }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: stats.withData === stats.total ? 'var(--accent-success)' : '#f59e0b' }}>{stats.withData}/{stats.total}</div>
@@ -570,10 +581,12 @@ export default function PricingPage() {
             <div style={{ fontSize: 20, fontWeight: 700, color: stats.closedDays > 0 ? 'var(--accent-danger)' : 'var(--accent-success)' }}>{stats.closedDays}</div>
             <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Закритих днів')}</div>
           </div>
+          {isCzk && (
           <div className="card" style={{ padding: '12px 16px', textAlign: 'center' }}>
             <div style={{ fontSize: 20, fontWeight: 700 }}>{stats.avgPrice > 0 ? Math.round(stats.avgPrice / CZK_TO_EUR) : 0}</div>
             <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Серед. EUR')}</div>
           </div>
+          )}
         </div>
 
         {/* Month Navigation */}
@@ -645,8 +658,8 @@ export default function PricingPage() {
                 <tr>
                   <th>{t('Дата')}</th>
                   <th>{t('День')}</th>
-                  <th>{t('Базова (CZK)')}</th>
-                  <th>{t('Вихідні (CZK)')}</th>
+                  <th>{t('Базова')} ({cur})</th>
+                  <th>{t('Вихідні')} ({cur})</th>
                   <th>{t('Ефективна')}</th>
                   <th>Min Stay</th>
                   <th>CTA</th>
