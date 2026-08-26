@@ -892,6 +892,7 @@ function runMigrations(database: any) {
         available_for TEXT NOT NULL DEFAULT 'all',
         is_active INTEGER NOT NULL DEFAULT 1,
         sort_order INTEGER NOT NULL DEFAULT 0,
+        vat_split TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
@@ -1208,6 +1209,11 @@ function runMigrations(database: any) {
     }
     if (!asCols.includes('name_de')) {
       database.exec("ALTER TABLE additional_services ADD COLUMN name_de TEXT");
+    }
+    if (!asCols.includes('vat_split')) {
+      // Фіскальний поділ однієї послуги: гість бачить «Frühstück 15 €», а на
+      // рахунок ідуть Speisen 7% і Getränke 19% — вимога бухгалтера, не меню.
+      database.exec("ALTER TABLE additional_services ADD COLUMN vat_split TEXT");
     }
     // Update existing services with correct types
     database.exec("UPDATE additional_services SET service_type = 'slot_booking', duration_minutes = 60 WHERE id = 'svc_sauna'");

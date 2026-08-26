@@ -191,6 +191,30 @@ for (const name of files) {
       note(file, `послуга "${name}": category "${cat}" — має бути ${SERVICE_CATEGORIES.join(', ')}`);
     }
     if (!isNum(num(f(s, 'price')) ?? 0)) note(file, `послуга "${name}": price не число`);
+
+    // Фіскальний поділ: компоненти мають зійтись у ціну послуги копійка в
+    // копійку — інакше рахунок гостя і каталог назвуть різні числа.
+    const split = f(s, 'vatSplit') || f(s, 'vat_split');
+    if (split !== undefined) {
+      if (!Array.isArray(split) || split.length < 2) {
+        note(file, `послуга "${name}": vatSplit — масив щонайменше з двох компонентів {label, amount, vatCode}`);
+      } else {
+        let sum = 0;
+        for (const c of split) {
+          const label = f(c, 'label');
+          const amount = num(f(c, 'amount'));
+          const cVat = f(c, 'vatCode');
+          if (!label) note(file, `послуга "${name}": компонент поділу без label`);
+          if (!isNum(amount) || amount <= 0) note(file, `послуга "${name}": компонент "${label}" — amount має бути числом > 0`);
+          else sum += amount;
+          if (!TAX_CODES.includes(cVat)) note(file, `послуга "${name}": компонент "${label}": vatCode "${cVat}" — має бути ${TAX_CODES.join(', ')}`);
+        }
+        const price = num(f(s, 'price')) ?? 0;
+        if (Math.abs(sum - price) > 0.005) {
+          note(file, `послуга "${name}": сума компонентів ${sum} ≠ ціні ${price} — гість і бухгалтерія побачать різні числа`);
+        }
+      }
+    }
   }
 
   // ── збори й мито ──────────────────────────────────────────────────────────

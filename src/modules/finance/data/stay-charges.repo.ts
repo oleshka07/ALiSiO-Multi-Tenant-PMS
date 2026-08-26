@@ -19,6 +19,7 @@
  * than the breakfast it supposedly includes, stops the posting and says why.
  */
 import { getSql } from '@core/db/async';
+import { parseVatSplit, splitCharge } from '../domain/service-vat-split.ts';
 import { money } from '@core/money';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { pickRate, type TaxRate } from '../domain/invoice-vat';
@@ -237,7 +238,7 @@ export async function postServiceCharges(input: {
 
   const orders = await sql.rows<any>(
     `SELECT o.id, o.quantity, o.unit_price, o.total_price, o.service_date,
-            s.name AS service_name, s.name_de, s.vat_code
+            s.name AS service_name, s.name_de, s.vat_code, s.vat_split
        FROM booking_service_orders o
        JOIN additional_services s ON s.id = o.service_id
       WHERE o.reservation_id = ?
@@ -270,6 +271,40 @@ export async function postServiceCharges(input: {
   const charges: NewCharge[] = [];
   for (const o of orders) {
     const serviceDate = day(o.service_date) || day(new Date());
+    // The hotel's own name for the service, in the document language where
+    // it has one. Not chargeName(): these are the hotel's words, not ours.
+    const baseName = (locale === 'de-DE' && o.name_de) ? o.name_de : String(o.service_name);
+    const quantity = Number(o.quantity) || 1;
+
+    // Фіскальний поділ: гість замовив «Frühstück 15 €» одним рядком, а на
+    // рахунок ідуть Speisen 7% + Getränke 19%. Поділ — властивість проводки,
+    // не каталогу; його відсутність чи битий JSON — не помилка, а «одна
+    // ставка, як завжди».
+    const split = parseVatSplit(o.vat_split);
+    if (split) {
+      const parts = splitCharge(split, Number(o.unit_price) || 0, quantity);
+      for (const part of parts) {
+        const rate = pickRate(rates, part.vatCode as TaxRate['code'], serviceDate);
+        if (!rate) return { reason: 'no_tax_rate', code: part.vatCode, date: serviceDate };
+        charges.push({
+          folioId: input.folioId,
+          reservationId: input.reservationId,
+          serviceOrderId: o.id,
+          serviceDate,
+          kind: 'service',
+          description: `${baseName} – ${part.label}`,
+          guestName,
+          unitCode,
+          quantity,
+          unitPriceGross: part.unitGross,
+          totalGross: part.totalGross,
+          vatRate: rate.rate,
+          source: 'service',
+        });
+      }
+      continue;
+    }
+
     const rate = pickRate(rates, o.vat_code as TaxRate['code'], serviceDate);
     if (!rate) return { reason: 'no_tax_rate', code: String(o.vat_code), date: serviceDate };
 
@@ -279,12 +314,10 @@ export async function postServiceCharges(input: {
       serviceOrderId: o.id,
       serviceDate,
       kind: 'service',
-      // The hotel's own name for the service, in the document language where
-      // it has one. Not chargeName(): these are the hotel's words, not ours.
-      description: (locale === 'de-DE' && o.name_de) ? o.name_de : String(o.service_name),
+      description: baseName,
       guestName,
       unitCode,
-      quantity: Number(o.quantity) || 1,
+      quantity,
       unitPriceGross: Number(o.unit_price) || 0,
       totalGross: Number(o.total_price) || 0,
       vatRate: rate.rate,

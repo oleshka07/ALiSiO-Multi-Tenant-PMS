@@ -1077,16 +1077,36 @@
   ],
   "services": [
     {
+      "name": "Frühstück",
+      "price": 15,
+      "vatCode": "reduced",
+      "category": "food",
+      "vatSplit": [
+        {
+          "label": "Speisen",
+          "amount": 12,
+          "vatCode": "reduced"
+        },
+        {
+          "label": "Getränke",
+          "amount": 3,
+          "vatCode": "standard"
+        }
+      ]
+    },
+    {
       "name": "Frühstück – Speisen",
       "price": 12,
       "vatCode": "reduced",
-      "category": "food"
+      "category": "food",
+      "isActive": false
     },
     {
       "name": "Frühstück – Getränke",
       "price": 3,
       "vatCode": "standard",
-      "category": "food"
+      "category": "food",
+      "isActive": false
     },
     {
       "name": "Tiefgarage",
@@ -1105,19 +1125,32 @@
       "price": 8,
       "vatCode": "reduced",
       "category": "food",
-      "isActive": false
+      "vatSplit": [
+        {
+          "label": "Speisen",
+          "amount": 5.6,
+          "vatCode": "reduced"
+        },
+        {
+          "label": "Getränke",
+          "amount": 2.4,
+          "vatCode": "standard"
+        }
+      ]
     },
     {
       "name": "Lunchpaket – Speisen",
       "price": 5.6,
       "vatCode": "reduced",
-      "category": "food"
+      "category": "food",
+      "isActive": false
     },
     {
       "name": "Lunchpaket – Getränke",
       "price": 2.4,
       "vatCode": "standard",
-      "category": "food"
+      "category": "food",
+      "isActive": false
     }
   ],
   "acceptance": [

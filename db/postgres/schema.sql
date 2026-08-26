@@ -54,6 +54,7 @@ CREATE TABLE "additional_services" (
   "category" TEXT DEFAULT 'other' NOT NULL,
   "available_for" TEXT DEFAULT 'all' NOT NULL,
   "is_active" BOOLEAN DEFAULT true NOT NULL,
+  "vat_split" TEXT,
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "service_type" TEXT DEFAULT 'simple',
