@@ -637,7 +637,6 @@ export async function deleteOperation(
     const actor = await getOptionalActor();
     await writeOperationAudit(id, 'delete', actor, existing, null);
 
-    await sql.run('UPDATE bank_transactions SET matched_operation_id = NULL WHERE matched_operation_id = ?', [id]);
     await sql.run('DELETE FROM fin_operations WHERE id = ? AND organization_id = ?', [id, orgId]);
 
     if (existing.reservation_id) await recalcReservationPaymentStatus(existing.reservation_id);
@@ -702,9 +701,6 @@ export async function mergeOperations(request: NextRequest): Promise<NextRespons
     // Audit the conversion
     await writeOperationAudit(expOp.id, 'convert', actor, expOp, updatedExp);
 
-    // Re-link bank transactions from the deleted income operation to the new transfer operation
-    await sql.run('UPDATE bank_transactions SET matched_operation_id = ? WHERE matched_operation_id = ?', [expOp.id, incOp.id]);
-    
     // Audit and delete the income operation
     await writeOperationAudit(incOp.id, 'delete', actor, incOp, null);
     await sql.run('DELETE FROM fin_operations WHERE id = ? AND organization_id = ?', [incOp.id, orgId]);
