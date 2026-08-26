@@ -40,7 +40,7 @@ export default function SectionModuleChannels() {
             <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "11px", color: "#5F676E", letterSpacing: ".1em", marginBottom: "14px" }}>SYNC QUEUE · LIVE</div>
             <div style={{ display: "grid", gap: "9px", fontSize: "14px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 14px", border: "1px solid rgba(61,220,192,.28)", background: "rgba(61,220,192,.05)", borderRadius: "11px" }}>
-                <span>Booking.com · ARI push</span>
+                <span>Booking.com · iCal sync</span>
                 <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "12px", color: "var(--acc,#3DDCC0)" }}>2s</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 14px", border: "1px solid rgba(255,255,255,.1)", borderRadius: "11px" }}>
@@ -52,7 +52,7 @@ export default function SectionModuleChannels() {
                 <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "12px", color: "var(--acc,#3DDCC0)" }}>31s</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 14px", border: "1px solid rgba(242,180,90,.34)", background: "rgba(242,180,90,.05)", borderRadius: "11px" }}>
-                <span>Hostex · retry 1/3</span>
+                <span>Expedia · iCal sync</span>
                 <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "12px", color: "#F2B45A" }}>auto</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 14px", border: "1px solid rgba(255,255,255,.1)", borderRadius: "11px" }}>

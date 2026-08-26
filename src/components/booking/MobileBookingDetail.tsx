@@ -62,6 +62,9 @@ function formatDate(iso: string): { date: string; day: string } {
   return { date: `${dd}.${mm}.${d.getFullYear()}`, day: WEEKDAY_SHORT[d.getDay()] };
 }
 
+// Відомий борг A7: курс CZK→EUR захардкоджено (25.5), конфіг буде окремо.
+// Функція застосовується ЛИШЕ до сум у CZK — рендер нижче звіряє
+// b.currency === 'CZK', тож EUR- та будь-які інші броні через 25.5 не йдуть.
 function toEur(czk: number): string {
   return Math.round(czk / 25.5).toLocaleString();
 }
@@ -445,7 +448,7 @@ export default function MobileBookingDetail({
                 <span style={{ width: 3, height: 3, background: 'var(--text-tertiary)', borderRadius: '50%' }} />
                 <span>{b.adults} {tUi(adultsLabel(b.adults))}{b.children > 0 ? ` + ${b.children} ${pluralUi(b.children, 'діт.')}` : ''}</span>
               </div>
-              {b.currency !== 'EUR' && (
+              {b.currency === 'CZK' && (
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
                   ≈ {toEur(total)} €
                 </div>

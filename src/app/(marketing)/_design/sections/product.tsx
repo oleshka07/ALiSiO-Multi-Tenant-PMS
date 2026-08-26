@@ -28,7 +28,7 @@ export default function SectionProduct() {
             <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "11px", color: "#5F676E" }}>02</div>
             <h3 style={{ fontSize: "20px", fontWeight: "600", marginTop: "8px", letterSpacing: "-.02em" }}>Channel Manager</h3>
             <p style={{ marginTop: "10px", fontSize: "14.5px", lineHeight: "1.6", color: "#8B939C" }}>
-              Two-way ARI with Booking.com, Airbnb, Expedia, Hostex and iCal. Unit mapping, retry queue, parity monitoring, per-channel true cost.
+              One calendar across Booking.com, Airbnb, Expedia and any iCal channel. Reservations picked up automatically, per-channel true cost.
             </p>
             <div style={{ marginTop: "14px", fontSize: "13.5px", color: "var(--acc,#3DDCC0)" }}>Open module →</div>
           </Link>

@@ -19,7 +19,7 @@ export default function SectionIntegrations() {
             <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "11px", letterSpacing: ".14em", color: "#5F676E" }}>DISTRIBUTION</div>
             <h3 style={{ fontSize: "19px", fontWeight: "600", marginTop: "10px" }}>OTAs &amp; marketplaces</h3>
             <p style={{ marginTop: "9px", fontSize: "15px", lineHeight: "1.6", color: "#9BA3AB" }}>
-              Booking.com, Airbnb, Expedia, Hostex, plus any iCal endpoint for the long tail. Two-way ARI, reservations in seconds, mapping health monitored.
+              Booking.com, Airbnb, Expedia, plus any iCal endpoint for the long tail. Two-way availability sync, reservations picked up automatically.
             </p>
           </div>
           <div data-reveal={true} style={{ opacity: "0", transform: "translateY(16px)", transition: "all .6s ease .05s", border: "1px solid rgba(255,255,255,.1)", borderRadius: "16px", padding: "26px", background: "#0C1013" }}>
@@ -34,13 +34,6 @@ export default function SectionIntegrations() {
             <h3 style={{ fontSize: "19px", fontWeight: "600", marginTop: "10px" }}>Banks &amp; accounting</h3>
             <p style={{ marginTop: "9px", fontSize: "15px", lineHeight: "1.6", color: "#9BA3AB" }}>
               Statement import and matching, export packs for your accountant, structured e-invoices where the law requires them.
-            </p>
-          </div>
-          <div data-reveal={true} style={{ opacity: "0", transform: "translateY(16px)", transition: "all .6s ease", border: "1px solid rgba(255,255,255,.1)", borderRadius: "16px", padding: "26px", background: "#0C1013" }}>
-            <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "11px", letterSpacing: ".14em", color: "#5F676E" }}>REVENUE</div>
-            <h3 style={{ fontSize: "19px", fontWeight: "600", marginTop: "10px" }}>Pricing tools</h3>
-            <p style={{ marginTop: "9px", fontSize: "15px", lineHeight: "1.6", color: "#9BA3AB" }}>
-              Already run PriceLabs or a similar engine? Keep it. Alisio can consume its recommendations or hand pricing to the Rate agent, your choice, per rate plan.
             </p>
           </div>
           <div data-reveal={true} style={{ opacity: "0", transform: "translateY(16px)", transition: "all .6s ease .05s", border: "1px solid rgba(255,255,255,.1)", borderRadius: "16px", padding: "26px", background: "#0C1013" }}>

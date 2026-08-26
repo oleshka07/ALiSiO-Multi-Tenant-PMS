@@ -97,7 +97,7 @@ export default function SectionHome() {
                   <span style={{ color: "#B6BCC3" }}>Loft A2</span>
                   <span data-cell={true} style={{ gridColumn: "3/span 5", background: "linear-gradient(90deg,rgba(96,140,255,.24),rgba(96,140,255,.14))", border: "1px solid rgba(96,140,255,.4)", borderRadius: "7px", padding: "7px 10px", color: "#D3DDFF", cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden" }} data-bk="Guest #2205 · Expedia · 5 nights · €710">Guest #2205 · Expedia</span>
                   <span data-cell={true} style={{ gridColumn: "9/span 2", background: "rgba(255,255,255,.05)", border: "1px dashed rgba(255,255,255,.16)", borderRadius: "7px", padding: "7px 10px", color: "#7F888F", cursor: "pointer" }} data-bk="Open · min-LOS raised to 2 by Rate agent">open</span>
-                  <span data-cell={true} style={{ gridColumn: "11/span 3", background: "linear-gradient(90deg,rgba(61,220,192,.24),rgba(61,220,192,.14))", border: "1px solid rgba(61,220,192,.4)", borderRadius: "7px", padding: "7px 10px", color: "#CFF6EE", cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden" }} data-bk="Walk-in · 3 nights · paid at reception via Teya">Walk-in</span>
+                  <span data-cell={true} style={{ gridColumn: "11/span 3", background: "linear-gradient(90deg,rgba(61,220,192,.24),rgba(61,220,192,.14))", border: "1px solid rgba(61,220,192,.4)", borderRadius: "7px", padding: "7px 10px", color: "#CFF6EE", cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden" }} data-bk="Walk-in · 3 nights · paid at reception">Walk-in</span>
                 </div>
                 <div style={{ height: "1px", background: "rgba(255,255,255,.07)", margin: "12px 0 10px" }} />
                 <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "10.5px", letterSpacing: ".12em", color: "#5F676E", marginBottom: "8px" }}>NON-ROOM RESOURCES · SAME CALENDAR</div>
@@ -346,9 +346,9 @@ export default function SectionHome() {
           </div>
           <div data-tab-panel="chan" style={{ display: "none", gridTemplateColumns: "1fr 1fr", gap: "44px", alignItems: "center", paddingTop: "38px" }}>
             <div>
-              <h3 style={{ fontSize: "28px", fontWeight: "600", letterSpacing: "-.02em" }}>Two-way ARI. Overbooking becomes structurally impossible.</h3>
+              <h3 style={{ fontSize: "28px", fontWeight: "600", letterSpacing: "-.02em" }}>One calendar. Overbooking becomes structurally impossible.</h3>
               <p style={{ marginTop: "16px", fontSize: "16.5px", lineHeight: "1.65", color: "#9BA3AB" }}>
-                Availability, rates and inventory push to Booking.com, Airbnb, Expedia, Hostex and any iCal endpoint. New reservations land in the tape in 2–5 seconds. The resource invariant lives in the database, not in an agent, nothing in the system can create a conflict.
+                Availability syncs both ways with Booking.com, Airbnb, Expedia and any other channel that speaks iCal. New reservations land in the tape on the next sync. The resource invariant lives in the database, not in an agent, nothing in the system can create a conflict.
               </p>
               <Link href="/modules/channels" data-route="m-channels" style={{ display: "inline-block", marginTop: "24px", fontWeight: "600" }}>Explore the channel manager →</Link>
             </div>
@@ -356,28 +356,24 @@ export default function SectionHome() {
               <div style={{ display: "grid", gap: "9px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 14px", border: "1px solid rgba(61,220,192,.28)", background: "rgba(61,220,192,.05)", borderRadius: "11px" }}>
                   <span style={{ fontWeight: "500" }}>Booking.com</span>
-                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "12px", color: "var(--acc,#3DDCC0)" }}>synced 2s ago · 18/18 mapped</span>
+                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "12px", color: "var(--acc,#3DDCC0)" }}>iCal · synced 2m ago</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 14px", border: "1px solid rgba(255,255,255,.1)", borderRadius: "11px" }}>
                   <span style={{ fontWeight: "500" }}>Airbnb</span>
-                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "12px", color: "var(--acc,#3DDCC0)" }}>synced 9s ago</span>
+                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "12px", color: "var(--acc,#3DDCC0)" }}>iCal · synced 5m ago</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 14px", border: "1px solid rgba(255,255,255,.1)", borderRadius: "11px" }}>
                   <span style={{ fontWeight: "500" }}>Expedia</span>
-                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "12px", color: "var(--acc,#3DDCC0)" }}>synced 31s ago</span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 14px", border: "1px solid rgba(242,180,90,.34)", background: "rgba(242,180,90,.05)", borderRadius: "11px" }}>
-                  <span style={{ fontWeight: "500" }}>Hostex</span>
-                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "12px", color: "#F2B45A" }}>retry 1/3 · auto</span>
+                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "12px", color: "var(--acc,#3DDCC0)" }}>iCal · synced 9m ago</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 14px", border: "1px solid rgba(255,255,255,.1)", borderRadius: "11px" }}>
                   <span style={{ fontWeight: "500" }}>iCal · 6 endpoints</span>
                   <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "12px", color: "#8B939C" }}>parsed 4m ago</span>
                 </div>
                 <div style={{ marginTop: "6px", padding: "13px 14px", borderRadius: "11px", background: "rgba(255,255,255,.03)", fontSize: "13.5px", color: "#8B939C" }}>
-                  Parity check:
+                  Availability check:
                   <span style={{ color: "var(--acc,#3DDCC0)" }}>no gaps</span>
-                  across 5 channels · 0 overbookings in 214 days
+                  across 4 channels · 0 overbookings in 214 days
                 </div>
               </div>
             </div>
@@ -410,7 +406,7 @@ export default function SectionHome() {
                   <span>−€30.24</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", color: "#FF8E80" }}>
-                  <span>Acquiring (Teya, real)</span>
+                  <span>Acquiring fee (real)</span>
                   <span>−€2.61</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", color: "#FF8E80" }}>

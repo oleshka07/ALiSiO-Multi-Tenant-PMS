@@ -48,6 +48,9 @@ const TYPE_LABELS: Record<string, string> = {
   deposit: 'Передплата', full: 'Повна', partial: 'Часткова', refund: 'Повернення',
 };
 
+// Відомий борг A7: курс CZK→EUR захардкоджено (25.5), конфіг буде окремо.
+// Функція застосовується ЛИШЕ до сум у CZK — рендер нижче звіряє
+// b.currency === 'CZK', тож EUR- та будь-які інші броні через 25.5 не йдуть.
 function toEur(czk: number) { return Math.round(czk / 25.5).toLocaleString(); }
 
 interface Props {
@@ -94,9 +97,13 @@ export default function BookingViewModal({
   // Owner-only audit tab
   const [isOwner, setIsOwner] = useState(false);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  // Валюта організації — запасний підпис суми, коли в броні валюти немає.
+  // Їде тим самим запитом /api/auth/me, що й роль, — без окремого фетча.
+  const [orgCurrency, setOrgCurrency] = useState('');
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(data => {
       if (data.user?.role === 'owner' || data.role === 'owner') setIsOwner(true);
+      if (data.organization?.currency) setOrgCurrency(data.organization.currency);
     }).catch(() => {});
   }, []);
   useEffect(() => {
@@ -116,7 +123,7 @@ export default function BookingViewModal({
   const [expandedSubs, setExpandedSubs] = useState<Set<string>>(new Set());
   const [editingLineItems, setEditingLineItems] = useState<string | null>(null);
   const [newLineItem, setNewLineItem] = useState({ description: '', quantity: 1, unit_price: 0 });
-  const [availableUnits, setAvailableUnits] = useState<{ id: string; name: string; code: string; category_name: string }[]>([]);
+  const [availableUnits, setAvailableUnits] = useState<{ id: string; name: string; code: string; category_name: string; unit_type_id?: string }[]>([]);
 
   // Invoice-to-company override (rendered as Odberatel block in faktura HTML).
   const bAny = b as any;
@@ -322,6 +329,22 @@ export default function BookingViewModal({
       .catch(() => {});
   }, []);
 
+  // Ставка турзбору ЦЬОГО об'єкта (за дорослого за ніч) — той самий шлях, що
+  // в BookingForm. Захардкоджені «25 CZK», які стояли у вкладці збору, були
+  // ставкою першого клієнта в його валюті — і показувались кожному готелю.
+  // 0 = об'єкт збору не має, і вкладка не рендериться зовсім (див. showTaxTab).
+  const [cityTaxRate, setCityTaxRate] = useState(0);
+  useEffect(() => {
+    fetch('/api/properties')
+      .then(r => (r.ok ? r.json() : []))
+      .then((props) => {
+        if (!Array.isArray(props)) return;
+        const prop = props.find((p: any) => p.id === (b as any).property_id) || props[0];
+        if (prop?.city_tax_per_night != null) setCityTaxRate(Number(prop.city_tax_per_night) || 0);
+      })
+      .catch(() => {});
+  }, [b?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleReissue = async () => {
     const isFresh = !invoice;
     const confirmMsg = isFresh
@@ -355,6 +378,11 @@ export default function BookingViewModal({
   const isRegistered = b.registration_status === 'registered';
   const canCheckIn = isPaid && isRegistered;
   const regNeeded = b.adults || 1;
+  // Вкладка турзбору існує лише там, де існує сам збір: ставка в налаштуваннях
+  // об'єкта або вже нарахована сума в цій броні. Готель без збору (німецький
+  // пілот) її не бачить; чеський зі ставкою — бачить, як і раніше.
+  const cityTaxAmt = Number(b.city_tax_amount) || 0;
+  const showTaxTab = cityTaxRate > 0 || cityTaxAmt > 0;
 
   const saveRegistration = async (formData: any) => {
     setSavingReg(true);
@@ -488,26 +516,56 @@ export default function BookingViewModal({
                       if (datesEditCI === b.check_in && datesEditCO === b.check_out) { setDatesEditOpen(false); return; }
                       const newNights = Math.ceil((new Date(datesEditCO + 'T00:00:00').getTime() - new Date(datesEditCI + 'T00:00:00').getTime()) / 86400000);
                       const oldNights = b.nights || 1;
-                      const pricePerNight = total / oldNights;
-                      const newTotal = Math.round(pricePerNight * newNights);
-                      const msg = newTotal !== total
-                        ? `Змінити дати?\n${b.check_in} → ${datesEditCI}\n${b.check_out} → ${datesEditCO}\n${oldNights} → ${newNights} ночей\n\nЦіна: ${total.toLocaleString()} → ${newTotal.toLocaleString()} ${b.currency || 'CZK'}`
-                        : `Змінити дати?\n${b.check_in} → ${datesEditCI}\n${b.check_out} → ${datesEditCO}`;
-                      if (!confirm(msg)) return;
                       setSavingInline(true);
+                      let confirmed = false;
                       try {
+                        // Нові дати = нова ціна зі СПРАВЖНЬОЇ квоти (той самий
+                        // POST /api/pricing/quote, що й у BookingForm). Раніше тут
+                        // стояло «total / старі ночі × нові ночі» — пропорція не
+                        // знає ні сезонних цін, ні знижок за довжину проживання.
+                        // Квоті віримо лише коли вона покрила КОЖНУ ніч (інваріант
+                        // 17: ціни, якої немає, не існує) і відповіла у валюті
+                        // броні; інакше стару суму НЕ чіпаємо і чесно просимо
+                        // перевірити ціну руками — нуль мовчки не підставляється.
+                        const unitTypeId = (b as any).unit_type_id
+                          || availableUnits.find(u => u.id === (b as any).unit_id)?.unit_type_id
+                          || '';
+                        let newTotal: number | null = null;
+                        if (unitTypeId) {
+                          try {
+                            const qRes = await fetch('/api/pricing/quote', {
+                              method: 'POST', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ unitTypeId, checkIn: datesEditCI, checkOut: datesEditCO, adults: b.adults || 1, children: b.children || 0 }),
+                            });
+                            if (qRes.ok) {
+                              const q = await qRes.json();
+                              const currencyOk = !q?.currency || !b.currency || q.currency === b.currency;
+                              if (q?.hasPricing && Number(q.missingDays || 0) === 0 && Number(q.total) > 0 && currencyOk) {
+                                newTotal = Number(q.total);
+                              }
+                            }
+                          } catch { /* квота не відповіла — гілка newTotal == null нижче */ }
+                        }
+                        const head = `${tUi('Змінити дати?')}\n${b.check_in} → ${datesEditCI}\n${b.check_out} → ${datesEditCO}\n${oldNights} → ${newNights} ${pluralUi(newNights, 'ноч.')}`;
+                        const priceLine = newTotal == null
+                          ? `\n\n⚠️ ${tUi('Ціну не вдалося переквотувати автоматично — залишиться стара сума:')} ${total.toLocaleString()} ${b.currency || 'CZK'}. ${tUi('Перевірте ціну вручну.')}`
+                          : newTotal !== total
+                            ? `\n\n${tUi('Ціна за квотою:')} ${total.toLocaleString()} → ${newTotal.toLocaleString()} ${b.currency || 'CZK'}`
+                            : '';
+                        confirmed = confirm(head + priceLine);
+                        if (!confirmed) return;
                         const payload: any = { check_in: datesEditCI, check_out: datesEditCO, nights: newNights };
-                        if (newTotal !== total) payload.total_price = newTotal;
+                        if (newTotal != null && newTotal !== total) payload.total_price = newTotal;
                         const res = await fetch(`/api/bookings/${b.id}`, {
                           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify(payload),
                         });
                         if (res.ok) {
-                          setBooking({ ...b, check_in: datesEditCI, check_out: datesEditCO, nights: newNights, ...(newTotal !== total ? { total_price: newTotal } : {}) });
+                          setBooking({ ...b, check_in: datesEditCI, check_out: datesEditCO, nights: newNights, ...(newTotal != null && newTotal !== total ? { total_price: newTotal } : {}) });
                           onFetchBookings();
                           showToast(`\u2705 Дати змінено: ${datesEditCI} → ${datesEditCO}`);
                         } else { showToast(tUi('Помилка зміни дат')); }
-                      } finally { setSavingInline(false); setDatesEditOpen(false); }
+                      } finally { setSavingInline(false); if (confirmed) setDatesEditOpen(false); }
                     }}
                     style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 5, background: '#22c55e', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>✓</button>
                   <button onClick={() => setDatesEditOpen(false)}
@@ -623,7 +681,7 @@ export default function BookingViewModal({
             <button onClick={onClose} style={{ position: 'absolute', top: -2, right: -2, background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', borderRadius: 7, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-secondary)' }} aria-label={tUi('Закрити')}><X size={14} /></button>
             <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--accent-primary)', marginTop: 16 }}>{total.toLocaleString()} {b.currency || 'CZK'}</div>
             {(b.commission_amount || 0) > 0 && <div style={{ fontSize: 11, color: '#f59e0b' }}>{tUi('Комісія')} {(b.commission_amount || 0).toLocaleString()}</div>}
-            {b.currency !== 'EUR' && <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>≈ {toEur(total)} EUR</div>}
+            {b.currency === 'CZK' && <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>≈ {toEur(total)} EUR</div>}
             {b.created_at && (
               <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
                  <Clock size={10} /> {new Date(b.created_at + 'Z').toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -781,7 +839,7 @@ export default function BookingViewModal({
             { key: 'payment' as const, label: tUi('💰 Оплата'), badge: isPaid ? undefined : `${pct}%` },
             { key: 'registration' as const, label: tUi('📋 Реєстрація'), badge: !isRegistered ? `${registrations.length}/${regNeeded}` : undefined },
             { key: 'groups' as const, label: tUi('👥 Групи'), badge: subBookings.length > 0 ? String(subBookings.length) : undefined },
-            { key: 'tax' as const, label: tUi('🏛️ Збір'), badge: undefined as string | undefined },
+            ...(showTaxTab ? [{ key: 'tax' as const, label: tUi('🏛️ Збір'), badge: undefined as string | undefined }] : []),
             { key: 'notes' as const, label: tUi('📝 Примітки'), badge: undefined as string | undefined },
             { key: 'history' as const, label: tUi('📊 Історія'), badge: undefined as string | undefined },
             ...(isOwner ? [{ key: 'audit' as const, label: tUi('🕐 Історія'), badge: undefined as string | undefined }] : []),
@@ -1333,11 +1391,14 @@ export default function BookingViewModal({
             </div>
           )}
 
-          {/* 🏛️ TAX TAB */}
-          {viewTab === 'tax' && (() => {
-            const taxAmt = b.city_tax_amount || 0;
+          {/* 🏛️ TAX TAB — лише коли збір існує (ставка об'єкта або сума в броні).
+              Ставка і валюта — з даних, не з коду: «дор. × ноч. × 25 CZK» тут
+              було ставкою одного клієнта в його валюті для всіх готелів (A4). */}
+          {viewTab === 'tax' && showTaxTab && (() => {
+            const taxAmt = cityTaxAmt;
             const taxIncluded = !!b.city_tax_included;
             const taxPaid = b.city_tax_paid || 'pending';
+            const taxCurrency = b.currency || orgCurrency || '';
             const txMap: Record<string, { label: string; color: string; icon: string }> = {
               pending: { label: tUi('Очікує'), color: '#f59e0b', icon: '⏳' },
               paid: { label: tUi('Оплачено'), color: '#22c55e', icon: '✅' },
@@ -1349,14 +1410,16 @@ export default function BookingViewModal({
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 16, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
                   <div>
                     <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('🏛️ Туристичний збір')}</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{taxAmt.toLocaleString()} CZK</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{taxAmt.toLocaleString()} {taxCurrency}</div>
                     {taxIncluded && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{tUi('Включено у вартість')}</div>}
                   </div>
                   <span className="badge" style={{ background: ts.color + '22', color: ts.color, fontSize: 13 }}>{ts.icon} {ts.label}</span>
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                  {b.adults} {tUi('дор. ×')} {b.nights} {tUi('н. × 25 CZK =')} {b.adults * b.nights * 25} CZK
-                </div>
+                {cityTaxRate > 0 && (
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                    {b.adults} {tUi('дор. ×')} {b.nights} {tUi('н. ×')} {cityTaxRate.toLocaleString()} {taxCurrency} = {(b.adults * b.nights * cityTaxRate).toLocaleString()} {taxCurrency}
+                  </div>
+                )}
               </div>
             );
           })()}
