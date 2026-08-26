@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getPriceMonth, upsertPrices } from '../data/price-calendar.repo';
-import { withActor, withPermission } from '@core/auth/session';
+import { withActor, withPermission, type Actor } from '@core/auth/session';
+import { ownedUnitType } from '../data/owned.repo';
 
-export const getPricing = withActor(async (request: NextRequest): Promise<NextResponse> => {
+export const getPricing = withActor(async (request: NextRequest, _ctx, actor: Actor): Promise<NextResponse> => {
   try {
     const { searchParams } = new URL(request.url);
     const unitTypeId = searchParams.get('unitTypeId');
@@ -12,6 +13,13 @@ export const getPricing = withActor(async (request: NextRequest): Promise<NextRe
 
     if (!unitTypeId) return NextResponse.json({ error: 'unitTypeId is required' }, { status: 400 });
 
+    // price_calendar is keyed by unit type alone, and the id comes from the
+    // query string — so without this a logged-in user of any hotel could read
+    // and rewrite another hotel's rates.
+    if (!await ownedUnitType(unitTypeId, actor.organizationId)) {
+      return NextResponse.json({ error: 'Unit type not found' }, { status: 404 });
+    }
+
     return NextResponse.json(await getPriceMonth(unitTypeId, month, year));
   } catch (error: any) {
     console.error('GET /api/pricing error:', error?.message || error);
@@ -19,13 +27,17 @@ export const getPricing = withActor(async (request: NextRequest): Promise<NextRe
   }
 });
 
-export const updatePricing = withPermission('manage_pricing', async (request: NextRequest): Promise<NextResponse> => {
+export const updatePricing = withPermission('manage_pricing', async (request: NextRequest, _ctx, actor: Actor): Promise<NextResponse> => {
   try {
     const body = await request.json();
     const { unitTypeId, prices } = body;
 
     if (!unitTypeId || !Array.isArray(prices) || prices.length === 0) {
       return NextResponse.json({ error: 'unitTypeId and prices array required' }, { status: 400 });
+    }
+
+    if (!await ownedUnitType(unitTypeId, actor.organizationId)) {
+      return NextResponse.json({ error: 'Unit type not found' }, { status: 404 });
     }
 
     const updated = await upsertPrices(unitTypeId, prices);

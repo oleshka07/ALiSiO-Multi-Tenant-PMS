@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withActor, type Actor, withPermission } from '@core/auth/session';
 import { getBulkPrices, bulkUpdatePrices } from '../data/price-calendar.repo';
+import { ownedUnitType } from '../data/owned.repo';
 
 export const getBulkPricing = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
@@ -18,13 +19,19 @@ export const getBulkPricing = withActor(async (request: NextRequest, _ctx, actor
   }
 })
 
-export const updateBulkPricing = withPermission('manage_pricing', async (request: NextRequest): Promise<NextResponse> => {
+export const updateBulkPricing = withPermission('manage_pricing', async (request: NextRequest, _ctx, actor: Actor): Promise<NextResponse> => {
   try {
     const body = await request.json();
     const { unitTypeId, dateFrom, dateTo, applyTo = 'all' } = body;
 
     if (!unitTypeId || !dateFrom || !dateTo) {
       return NextResponse.json({ error: 'unitTypeId, dateFrom, dateTo required' }, { status: 400 });
+    }
+
+    // Same as the day calendar: the id is handed to us, so ownership is asked
+    // in SQL rather than left to a policy that only one of the two engines has.
+    if (!await ownedUnitType(unitTypeId, actor.organizationId)) {
+      return NextResponse.json({ error: 'Unit type not found' }, { status: 404 });
     }
 
     const updated = await bulkUpdatePrices({ unitTypeId, dateFrom, dateTo, applyTo, ...body });
