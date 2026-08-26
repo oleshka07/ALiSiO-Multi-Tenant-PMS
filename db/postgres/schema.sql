@@ -1079,6 +1079,7 @@ CREATE TABLE "ical_channels" (
   "last_synced_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "organization_id" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("export_token"),
   CHECK (channel_type IN ('building', 'unit'))
@@ -2152,6 +2153,8 @@ ALTER TABLE "ical_channels" ADD CONSTRAINT "fk_ical_channels_building_id_2"
   FOREIGN KEY ("building_id") REFERENCES "buildings" ("id") ON DELETE CASCADE;
 ALTER TABLE "ical_channels" ADD CONSTRAINT "fk_ical_channels_property_id_3"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "ical_channels" ADD CONSTRAINT "fk_ical_channels_organization_id_4"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "ical_sync_log" ADD CONSTRAINT "fk_ical_sync_log_channel_id_1"
   FOREIGN KEY ("channel_id") REFERENCES "ical_channels" ("id") ON DELETE CASCADE;
 ALTER TABLE "invoice_counters" ADD CONSTRAINT "fk_invoice_counters_organization_id_1"
@@ -2513,6 +2516,7 @@ CREATE INDEX IF NOT EXISTS "idx_gift_card_automation_rules_org" ON "gift_card_au
 CREATE INDEX IF NOT EXISTS "idx_gift_card_bundles_org" ON "gift_card_bundles" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_gift_cards_org" ON "gift_cards" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_guests_org" ON "guests" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_ical_channels_org" ON "ical_channels" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoice_counters_org" ON "invoice_counters" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoice_periods_org" ON "invoice_periods" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_invoice_series_org" ON "invoice_series" ("organization_id");
@@ -3000,7 +3004,7 @@ CREATE POLICY "guests_tenant" ON "guests"
 ALTER TABLE "ical_channels" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "ical_channels" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "ical_channels_tenant" ON "ical_channels"
-  USING ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))
+  USING ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')) OR "export_token" = NULLIF(current_setting('app.public_token', true), ''))
   WITH CHECK ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "ical_sync_log" ENABLE ROW LEVEL SECURITY;
