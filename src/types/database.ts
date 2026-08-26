@@ -279,11 +279,14 @@ export interface Reservation {
   group_id?: string;
   guest_page_token?: string;
   external_uid?: string;
-  bcom_reservation_id?: string;
-  price_per_night_json?: string;
-  smoking_preference?: string;
+  // `bcom_reservation_id`, `price_per_night_json`, `smoking_preference` and
+  // `rate_rewriting_info` used to be declared here. Migration 0032 dropped all
+  // four from `reservations` with the Booking.com Connectivity API; the type
+  // kept them, so `row.bcom_reservation_id` still compiled — and the bookings
+  // export went on selecting a column no database has, answering 500 to every
+  // request. A type that describes a table has to lose a column when the table
+  // does, or it becomes the reason nobody notices.
   promotions_applied?: string;
-  rate_rewriting_info?: string;
   cancellation_policy?: string;
   meal_plan?: string;
   price_breakdown?: PriceBreakdownLine[];

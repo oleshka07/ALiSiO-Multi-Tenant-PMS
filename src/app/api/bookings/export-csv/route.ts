@@ -47,7 +47,12 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
         r.currency,
         r.payment_status,
         r.commission_amount,
-        r.bcom_reservation_id,
+        -- No bcom_reservation_id here. Migration 0032 dropped it together
+        -- with the Booking.com Connectivity API, and this SELECT kept naming
+        -- it — so every export answered 500 with «no such column», on both
+        -- databases, for everyone. Deleting a feature ends at the last line
+        -- that still reads its columns; tsc cannot see inside a SQL string,
+        -- so nothing said a word.
         r.external_uid,
         r.notes,
         r.meal_plan,
@@ -166,7 +171,9 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
       { header: 'Телефон', key: 'phone', width: 15 },
       { header: 'Примітки', key: 'notes', width: 30 },
       { header: 'Створено', key: 'created_at', width: 18 },
-      { header: 'Booking ID', key: 'bcom_id', width: 14 },
+      // «Booking ID» was the Connectivity API's own id, removed in 0032. The
+      // OTA reference that survives is `external_uid`, which is what the
+      // importer writes — one column, not two.
       { header: 'External ID', key: 'ext_id', width: 14 },
     ];
 
@@ -204,7 +211,6 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
         phone: row.guest_phone || '',
         notes: (row.notes || '').replace(/\n/g, ' ').substring(0, 200),
         created_at: row.created_at || '',
-        bcom_id: row.bcom_reservation_id || '',
         ext_id: row.external_uid || '',
       });
     }
@@ -224,8 +230,9 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
     });
 
-    // Auto-filter
-    ws.autoFilter = { from: 'A1', to: `Y${rows.length + 1}` };
+    // Auto-filter — X, not Y: the range has to end on the last column that
+    // exists, and there are 24 of them now.
+    ws.autoFilter = { from: 'A1', to: `X${rows.length + 1}` };
 
     // Freeze header
     ws.views = [{ state: 'frozen', ySplit: 1 }];
