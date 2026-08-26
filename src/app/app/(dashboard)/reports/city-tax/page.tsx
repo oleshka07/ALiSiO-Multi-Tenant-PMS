@@ -1,6 +1,7 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -22,6 +23,10 @@ const TAX_STATUS: Record<string, { label: string; color: string; icon: string }>
 export default function CityTaxReportPage() {
   const t = useT();
   const onMenuClick = useMobileMenu();
+  // The organization's own currency — the amounts here used to say CZK to
+  // every hotel on the server (audit A5).
+  const { organization } = useCurrentUser();
+  const cur = organization?.currency || '';
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [month, setMonth] = useState(() => {
@@ -105,19 +110,19 @@ export default function CityTaxReportPage() {
               </div>
               <div style={{ padding: 20, background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)' }}>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Збір до сплати')}</div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--accent-primary)', marginTop: 8 }}>{(data.totalTaxAmount || 0).toLocaleString()} CZK</div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--accent-primary)', marginTop: 8 }}>{(data.totalTaxAmount || 0).toLocaleString()} {cur}</div>
               </div>
               <div style={{ padding: 20, background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)' }}>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Оплачено')}</div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: '#22c55e', marginTop: 8 }}>{(data.totalTaxPaid || 0).toLocaleString()} CZK</div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: '#22c55e', marginTop: 8 }}>{(data.totalTaxPaid || 0).toLocaleString()} {cur}</div>
               </div>
               <div style={{ padding: 20, background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)' }}>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Очікує оплати')}</div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: '#f59e0b', marginTop: 8 }}>{(data.totalTaxPending || 0).toLocaleString()} CZK</div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: '#f59e0b', marginTop: 8 }}>{(data.totalTaxPending || 0).toLocaleString()} {cur}</div>
               </div>
               <div style={{ padding: 20, background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)' }}>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{t('Включено у ціну')}</div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: '#a78bfa', marginTop: 8 }}>{(data.totalTaxIncluded || 0).toLocaleString()} CZK</div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: '#a78bfa', marginTop: 8 }}>{(data.totalTaxIncluded || 0).toLocaleString()} {cur}</div>
               </div>
             </div>
 
@@ -135,7 +140,7 @@ export default function CityTaxReportPage() {
                     <div key={src} style={{ display: 'contents' }}>
                       <div style={{ fontWeight: 600 }}>{sourceLabel(src)}</div>
                       <div style={{ textAlign: 'right' }}>{d.count}</div>
-                      <div style={{ textAlign: 'right', fontWeight: 600 }}>{d.amount.toLocaleString()} CZK</div>
+                      <div style={{ textAlign: 'right', fontWeight: 600 }}>{d.amount.toLocaleString()} {cur}</div>
                       <div style={{ textAlign: 'right', color: '#22c55e' }}>{d.paid.toLocaleString()}</div>
                       <div style={{ textAlign: 'right', color: '#f59e0b' }}>{d.pending.toLocaleString()}</div>
                     </div>
@@ -173,7 +178,7 @@ export default function CityTaxReportPage() {
                           <td>{b.check_out}</td>
                           <td>{b.adults}</td>
                           <td>{sourceLabel(b.source)}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 700 }}>{(b.city_tax_amount || 0).toLocaleString()} CZK</td>
+                          <td style={{ textAlign: 'right', fontWeight: 700 }}>{(b.city_tax_amount || 0).toLocaleString()} {cur}</td>
                           <td>{b.city_tax_included ? t('✅ Так') : '—'}</td>
                           <td>
                             <span className="badge" style={{ background: ts.color + '22', color: ts.color, fontSize: 11 }}>

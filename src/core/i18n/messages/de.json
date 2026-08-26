@@ -1618,6 +1618,7 @@
   "Немає транзакцій": "Keine Transaktionen",
   "Немає транзакцій за цей місяць": "Keine Transaktionen in diesem Monat",
   "Немає фактур з обраним фільтром": "Keine Rechnungen mit dem gewählten Filter",
+  "Немає ціни для такої кількості гостей або цих дат — перевірте матрицю цін": "Für diese Gästezahl oder diese Daten ist kein Preis hinterlegt — prüfen Sie die Preismatrix",
   "Немає ціни на": "Kein Preis für",
   "Немає юнітів": "Keine Einheiten",
   "Немає API з'єднань": "Keine API-Verbindungen",

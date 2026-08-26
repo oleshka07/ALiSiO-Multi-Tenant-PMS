@@ -282,49 +282,34 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
   }, [bookings, poolUnitId]);
 
   // ── Validation
-  const canAccept = useCallback((destUnitId: string, bookingId: string): { ok: boolean; type?: 'move' | 'swap'; reason?: string } => {
+  // Room↔room swap was cut (audit D6): the two sequential PATCHes could not
+  // pass the API overlap guard, so the old branch always threw «Обмін поки
+  // не підтримується» AFTER the UI had invited the drag with a highlight.
+  // An occupied room is simply not a drop target now — silent refusal, no
+  // highlight, no error toast. Moves onto free rooms and into/out of the
+  // Чорновик pool are untouched.
+  const canAccept = useCallback((destUnitId: string, bookingId: string): { ok: boolean; reason?: string } => {
     const guest = bookings.find(b => b.id === bookingId);
     if (!guest) return { ok: false, reason: 'Бронювання не знайдено' };
     if (guest.unit_id === destUnitId) return { ok: false };
     // Drop on the staging pool is always a valid move — no capacity,
     // no overlap, multiple bookings can sit in the pool simultaneously.
-    if (destUnitId === poolUnitId) return { ok: true, type: 'move' };
+    if (destUnitId === poolUnitId) return { ok: true };
     const room = units.find(u => u.id === destUnitId);
     if (!room) return { ok: false, reason: 'Кімната не знайдена' };
+    if (bookingByUnit.get(destUnitId)) return { ok: false };
     const party = partyOf(guest);
     if (room.beds < party) return { ok: false, reason: `${room.code}: ${room.beds} місць, треба ${party}` };
 
-    const occupant = bookingByUnit.get(destUnitId);
-    if (!occupant) {
-      const conflict = bookings.find(b =>
-        b.id !== guest.id &&
-        b.unit_id === destUnitId &&
-        rangesOverlap(guest.check_in, guest.check_out, b.check_in, b.check_out),
-      );
-      if (conflict) {
-        return { ok: false, reason: `${room.code}: зайнято ${formatShort(conflict.check_in)}–${formatShort(conflict.check_out)} (${conflict.first_name} ${conflict.last_name})` };
-      }
-      return { ok: true, type: 'move' };
-    }
-    if (occupant.id === guest.id) return { ok: false };
-
-    // Swap proposed: both bookings need to fit the other room AND not collide with other bookings there
-    const fromRoom = units.find(u => u.id === guest.unit_id);
-    if (!fromRoom) return { ok: false };
-    if (fromRoom.beds < partyOf(occupant)) return { ok: false, reason: `Обмін: ${occupant.first_name} не вміщується у ${fromRoom.code}` };
-    const otherInDest = bookings.find(b =>
-      b.id !== guest.id && b.id !== occupant.id &&
+    const conflict = bookings.find(b =>
+      b.id !== guest.id &&
       b.unit_id === destUnitId &&
       rangesOverlap(guest.check_in, guest.check_out, b.check_in, b.check_out),
     );
-    if (otherInDest) return { ok: false, reason: `${room.code}: інше бронювання на ці дати` };
-    const otherInOrigin = bookings.find(b =>
-      b.id !== guest.id && b.id !== occupant.id &&
-      b.unit_id === guest.unit_id &&
-      rangesOverlap(occupant.check_in, occupant.check_out, b.check_in, b.check_out),
-    );
-    if (otherInOrigin) return { ok: false, reason: `${fromRoom.code}: інше бронювання на ці дати` };
-    return { ok: true, type: 'swap' };
+    if (conflict) {
+      return { ok: false, reason: `${room.code}: зайнято ${formatShort(conflict.check_in)}–${formatShort(conflict.check_out)} (${conflict.first_name} ${conflict.last_name})` };
+    }
+    return { ok: true };
   }, [bookings, units, bookingByUnit, poolUnitId]);
 
   const showToast = (text: string, kind: 'ok' | 'err' = 'ok') => {
@@ -360,60 +345,36 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
     const res = canAccept(destUnitId, bookingId);
     if (!res.ok) { if (res.reason) showToast(res.reason, 'err'); return; }
 
-    if (res.type === 'move') {
-      // When a draft leaves the pool → promote to confirmed
-      const isDraft = guest.status === 'draft';
-      const destIsReal = destUnitId !== poolUnitId;
-      const patchBody: Record<string, string> = { unit_id: destUnitId };
-      if (isDraft && destIsReal) patchBody.status = 'confirmed';
+    // When a draft leaves the pool → promote to confirmed
+    const isDraft = guest.status === 'draft';
+    const destIsReal = destUnitId !== poolUnitId;
+    const patchBody: Record<string, string> = { unit_id: destUnitId };
+    if (isDraft && destIsReal) patchBody.status = 'confirmed';
 
-      // Optimistic update
-      const next = bookings.map(b => b.id === bookingId
-        ? { ...b, unit_id: destUnitId, status: (isDraft && destIsReal) ? 'confirmed' : b.status }
-        : b
-      );
-      setBookings(next);
-      try {
-        const resp = await fetch(`/api/bookings/${bookingId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(patchBody),
-        });
-        if (!resp.ok) {
-          const data = await resp.json().catch(() => ({}));
-          throw new Error(data.error || 'Не вдалося перенести');
-        }
-        const room = units.find(u => u.id === destUnitId);
-        showToast(`${guest.first_name} → ${room?.code || ''}${isDraft && destIsReal ? ' ✓' : ''}`);
-        onChanged?.();
-      } catch (e: any) {
-        showToast(e.message || 'Помилка', 'err');
-        await fetchData();
+    // Optimistic update
+    const next = bookings.map(b => b.id === bookingId
+      ? { ...b, unit_id: destUnitId, status: (isDraft && destIsReal) ? 'confirmed' : b.status }
+      : b
+    );
+    setBookings(next);
+    try {
+      const resp = await fetch(`/api/bookings/${bookingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patchBody),
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || 'Не вдалося перенести');
       }
-    } else {
-      // Swap: 2 PATCHes (origin → temp impossible without nullable; use sequential with API guards)
-      const occupant = bookingByUnit.get(destUnitId);
-      if (!occupant) return;
-      const originUnit = guest.unit_id;
-      // Move occupant to origin first, then guest to dest. If first PATCH fails — abort.
-      // If first succeeds but second fails — try to revert occupant.
-      try {
-        // 1) Move occupant out of dest into a placeholder? We can't (NOT NULL on unit_id).
-        // Strategy: temporarily set occupant.check_in/out aside? No — too risky.
-        // Better: move guest first into dest only if we can free dest first. Since we can't,
-        // use the PATCH overlap guard which would block us anyway. We instead bypass by
-        // updating occupant first to origin, accepting a brief moment of overlap-in-origin
-        // (guest still there) — but the PATCH overlap guard will reject that.
-        //
-        // Cleanest path: two-phase swap via a "no-op temp" technique is not supported.
-        // For V1 we surface a clear error and ask user to free dest manually.
-        throw new Error('Обмін поки не підтримується: спершу звільни кімнату вручну');
-      } catch (e: any) {
-        showToast(e.message || 'Обмін недоступний', 'err');
-      }
-      void originUnit; void occupant;
+      const room = units.find(u => u.id === destUnitId);
+      showToast(`${guest.first_name} → ${room?.code || ''}${isDraft && destIsReal ? ' ✓' : ''}`);
+      onChanged?.();
+    } catch (e: any) {
+      showToast(e.message || 'Помилка', 'err');
+      await fetchData();
     }
-  }, [bookings, units, bookingByUnit, canAccept, onChanged, fetchData]);
+  }, [bookings, units, poolUnitId, canAccept, onChanged, fetchData]);
 
   // ── Drag-and-drop / tap state
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -443,7 +404,7 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
     scrollDirRef.current = 0;
     document.querySelectorAll<HTMLElement>('[data-ram-card].ram-dragging').forEach(el => el.classList.remove('ram-dragging'));
     document.querySelectorAll<HTMLElement>('[data-ram-dropzone]').forEach(el => {
-      el.classList.remove('ram-valid', 'ram-swap', 'ram-drop-hover');
+      el.classList.remove('ram-valid', 'ram-drop-hover');
     });
   };
 
@@ -457,8 +418,8 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
     document.querySelectorAll<HTMLElement>('[data-ram-dropzone]').forEach(z => {
       const id = z.dataset.ramDropzone || '';
       const r = canAccept(id, bookingId);
-      z.classList.remove('ram-valid', 'ram-swap');
-      if (r.ok) z.classList.add(r.type === 'swap' ? 'ram-swap' : 'ram-valid');
+      z.classList.remove('ram-valid');
+      if (r.ok) z.classList.add('ram-valid');
     });
   };
 
@@ -578,7 +539,7 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
       // tap
       if (selectedId === c.id) {
         setSelectedId(null);
-        document.querySelectorAll<HTMLElement>('[data-ram-dropzone]').forEach(z => z.classList.remove('ram-valid', 'ram-swap'));
+        document.querySelectorAll<HTMLElement>('[data-ram-dropzone]').forEach(z => z.classList.remove('ram-valid'));
       } else {
         setSelectedId(c.id);
         applyValidHighlights(c.id);
@@ -600,13 +561,13 @@ export default function RoomAllocationModal({ open, onClose, onChanged, building
     if (!selectedId) return;
     const id = selectedId;
     setSelectedId(null);
-    document.querySelectorAll<HTMLElement>('[data-ram-dropzone]').forEach(z => z.classList.remove('ram-valid', 'ram-swap'));
+    document.querySelectorAll<HTMLElement>('[data-ram-dropzone]').forEach(z => z.classList.remove('ram-valid'));
     attemptMove(id, destUnitId);
   };
 
   const clearSelection = () => {
     setSelectedId(null);
-    document.querySelectorAll<HTMLElement>('[data-ram-dropzone]').forEach(z => z.classList.remove('ram-valid', 'ram-swap'));
+    document.querySelectorAll<HTMLElement>('[data-ram-dropzone]').forEach(z => z.classList.remove('ram-valid'));
   };
 
   useEffect(() => {
@@ -1288,15 +1249,8 @@ function RoomAllocationStyles() {
         box-shadow: 0 0 0 2px rgba(74,222,128,0.18);
         background: rgba(74,222,128,0.08);
       }
-      [data-ram-dropzone].ram-swap {
-        border-color: #5B7CFF !important;
-        box-shadow: 0 0 0 2px rgba(91,124,255,0.18);
-      }
       [data-ram-dropzone].ram-drop-hover.ram-valid {
         box-shadow: 0 0 0 3px #4ADE80;
-      }
-      [data-ram-dropzone].ram-drop-hover.ram-swap {
-        box-shadow: 0 0 0 3px #5B7CFF;
       }
       .ram-room.ram-dragging { opacity: .35; }
       .ram-ghost {

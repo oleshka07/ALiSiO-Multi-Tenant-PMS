@@ -201,7 +201,7 @@ async function seedOne(plan) {
     const units = await sql.rows(
       `SELECT u.id, u.code, u.unit_type_id, t.name AS type_name, t.max_occupancy
          FROM units u JOIN unit_types t ON t.id = u.unit_type_id
-        WHERE u.property_id = ? AND u.is_active = 1 AND u.is_pool = 0
+        WHERE u.property_id = ? AND u.is_active = TRUE AND u.is_pool = FALSE
         ORDER BY t.max_occupancy, u.code`, [property.id]);
     if (units.length === 0) { say.skipped(slug, 'номерів немає'); return; }
 

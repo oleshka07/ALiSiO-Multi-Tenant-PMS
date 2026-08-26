@@ -282,7 +282,11 @@ export default function BookingForm({
     return unitsForType[0]?.id || '';
   };
 
-  const fetchQuoteIfNeeded = async (unitTypeId: string): Promise<number> => {
+  // Resolves to null when the quote itself answers "I have no price for this
+  // stay" (guests beyond the occupancy matrix, dates outside every price
+  // window). That is not a zero — saving it would book a price the hotel
+  // never named.
+  const fetchQuoteIfNeeded = async (unitTypeId: string): Promise<number | null> => {
     if (Number(form.totalPrice) > 0) return Number(form.totalPrice);
     if (!unitTypeId) return 0;
     try {
@@ -299,6 +303,7 @@ export default function BookingForm({
       });
       if (!res.ok) return 0;
       const data = await res.json();
+      if (data.hasPricing === false || Number(data.missingDays) > 0) return null;
       return Number(data.total) || 0;
     } catch {
       return 0;
@@ -326,6 +331,11 @@ export default function BookingForm({
           || allUnits.find(u => u.id === unitId)?.unit_type_id
           || '';
         const totalPrice = await fetchQuoteIfNeeded(unitTypeForQuote);
+        if (totalPrice === null) {
+          setError(t('Немає ціни для такої кількості гостей або цих дат — перевірте матрицю цін'));
+          setSaving(false);
+          return;
+        }
 
         const res = await fetch('/api/bookings', {
           method: 'POST',
@@ -596,6 +606,9 @@ export default function BookingForm({
         </div>
       </div>
 
+      {/* A hotel without a city tax must not see the section at all; a booking
+          that already carries an amount stays visible so it can be corrected. */}
+      {(cityTaxRate > 0 || Number(form.cityTaxAmount) > 0) && (
       <div style={{ borderTop: '1px solid var(--border-primary)', marginTop: 16, paddingTop: 16 }}>
         <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{t('🏛️ Туристичний збір')}</h4>
         <div className="form-row">
@@ -636,6 +649,7 @@ export default function BookingForm({
           </label>
         </div>
       </div>
+      )}
 
       <div style={{ borderTop: '1px solid var(--border-primary)', marginTop: 16, paddingTop: 16 }}>
         <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{t('📝 Примітки')}</h4>
