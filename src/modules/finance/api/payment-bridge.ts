@@ -72,7 +72,6 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
   const sql = getSql();
   const {
     reservationId, amount, method, paymentSubtype, source,
-    currency = 'CZK',
     sourceRef,
     paidAt = new Date().toISOString(),
     accountId,
@@ -83,11 +82,16 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
   // Get organization_id via reservations -> properties (+ stay dates for
   // accrual attribution below)
   const row = await sql.row<any>(`
-    SELECT prop.organization_id AS org_id, r.check_in, r.check_out
+    SELECT prop.organization_id AS org_id, r.check_in, r.check_out, r.currency
     FROM reservations r JOIN properties prop ON r.property_id = prop.id
     WHERE r.id = ?
-  `, [reservationId]) as { org_id: string; check_in: string | null; check_out: string | null } | undefined;
+  `, [reservationId]) as { org_id: string; check_in: string | null; check_out: string | null; currency: string | null } | undefined;
   if (!row) throw new Error(`Reservation ${reservationId} not found`);
+
+  // The money is in whatever currency the reservation is in. The old default
+  // ('CZK', the first customer's currency) recorded a German hotel's cash as
+  // koruna and then went looking for a koruna till to put it in.
+  const currency = input.currency || row.currency || 'EUR';
 
   const isRefund = paymentSubtype === 'refund';
   const opType = isRefund ? 'expense' : 'income';

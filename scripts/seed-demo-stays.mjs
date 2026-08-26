@@ -146,9 +146,12 @@ const PEOPLE = [
  * посіяне по серверному годиннику, показувало б заїзди не в тому дні.
  */
 const SLOTS = [
-  { off: -1, nights: 3, persons: 2, status: 'checked_in',  pay: 'unpaid' },
+  // Заселені — оплачені: у пілота платять при заїзді, і гостьова сторінка
+  // неоплаченій броні чесно показує платіжний шлагбаум замість контенту —
+  // на демо це виглядало б як «сторінка не працює».
+  { off: -1, nights: 3, persons: 2, status: 'checked_in',  pay: 'paid'   },
   { off: -2, nights: 2, persons: 2, status: 'checked_in',  pay: 'paid'   }, // виїзд сьогодні
-  { off: -1, nights: 4, persons: 2, status: 'checked_in',  pay: 'unpaid' },
+  { off: -1, nights: 4, persons: 2, status: 'checked_in',  pay: 'paid'   },
   { off:  0, nights: 2, persons: 1, status: 'confirmed',   pay: 'unpaid' }, // заїзд сьогодні
   { off:  0, nights: 3, persons: 4, status: 'confirmed',   pay: 'unpaid' }, // заїзд сьогодні
   { off:  1, nights: 5, persons: 2, status: 'confirmed',   pay: 'unpaid' },
@@ -228,8 +231,20 @@ async function seedOne(plan) {
       const checkOut = addDays(checkIn, slot.nights);
       const who = `${person.first} ${person.last}`;
 
-      const existing = await sql.row('SELECT id FROM reservations WHERE id = ?', [id]);
-      if (existing) { say.same(`${who} · ${checkIn}→${checkOut}`); continue; }
+      const existing = await sql.row(
+        'SELECT id, payment_status FROM reservations WHERE id = ?', [id]);
+      if (existing) {
+        // Сценарій дня міг змінитись (наприклад, заселені стали «оплачені») —
+        // ідемпотентність означає «привести до файлу», а не «ніколи не чіпати».
+        if (existing.payment_status !== slot.pay) {
+          await sql.run('UPDATE reservations SET payment_status = ? WHERE id = ? AND organization_id = ?',
+            [slot.pay, id, org.id]);
+          say.made(`${who} · ${checkIn}→${checkOut} → ${slot.pay}`);
+        } else {
+          say.same(`${who} · ${checkIn}→${checkOut}`);
+        }
+        continue;
+      }
 
       // Номер: обходимо типи по колу; підходить той, куди вміщаються гості,
       // на чиї дати є ціна і чиї ночі ніким не зайняті.
