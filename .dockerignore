@@ -1,0 +1,53 @@
+# What does NOT go into the build context.
+#
+# There was no such file. `COPY . .` in the builder stage therefore copied the
+# whole working tree — and the tree on the server contains `deploy/backups/`,
+# which is thirty gzipped dumps of the production database. Every build packed
+# the guests of the last month into a layer, and the daemon had to receive them
+# over the socket before it could even start. On a developer machine the same
+# line sends `.next/` (nine gigabytes here) and `node_modules/` (one), which are
+# then thrown away by the very next instruction, because the builder takes
+# node_modules from the `deps` stage and rebuilds `.next` itself.
+#
+# So this file is not a tidiness measure. It is the difference between a build
+# context of a few megabytes and one that carries the database off the machine.
+
+# Rebuilt inside the image; taking the host's copy is how a stale build wins.
+node_modules
+.next
+out
+dist
+
+# Database dumps and volume archives. Never in an image.
+deploy/backups
+
+# The live SQLite database and guest uploads — volumes at runtime, not content.
+data
+public/uploads
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Secrets. `deploy/env.prod` holds APP_SECRET_KEY and the Postgres password.
+.env
+.env.*
+deploy/env.prod
+deploy/env.beta
+deploy/env.*.local
+
+# History and CI configuration: the build reads neither.
+.git
+.github
+.gitignore
+
+# Local noise.
+.DS_Store
+*.log
+npm-debug.log*
+coverage
+playwright-report
+test-results
+.vscode
+.idea

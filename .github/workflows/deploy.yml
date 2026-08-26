@@ -6,9 +6,43 @@
 # enforced — so "it is in main" and "it is live" could differ for days, and
 # nothing said which.
 #
-# This closes it: when the `checks` workflow goes green, this connects to the
-# server and runs the same deploy script. Not a second deploy path — the same
-# one, invoked by a machine instead of by whoever remembered.
+# This closes it: when the `checks` workflow goes green, this builds the image,
+# then connects to the server and runs the same deploy script. Not a second
+# deploy path — the same one, invoked by a machine instead of by whoever
+# remembered.
+#
+# ── Why the build is here and not there ─────────────────────────────────────
+#
+# It used to be on the server. `deploy.sh` ran `docker compose build`, and a
+# Next.js image is not a cheap thing to build: the builder layer holds the
+# source, node_modules and the whole `.next` output at once. Five deploys in
+# one day filled a 75 GB disk to 100 %. Postgres died mid-write —
+#
+#   PANIC: could not write to file "pg_logical/replorigin_checkpoint.tmp":
+#          No space left on device
+#
+# — and then crash-looped in recovery, which is why login answered «Помилка
+# сервера» instead of «Невірний пароль», and why every OTHER project on that
+# box answered 502 for an hour. One 4 GB VPS was serving a hotel and compiling
+# a JavaScript bundle at the same time, and the compile won.
+#
+# A GitHub runner is a machine that exists to be thrown away. Building there
+# costs the deploy a few minutes and costs the server nothing: it pulls a
+# finished image and starts it. The build also stops being something that can
+# fail differently on the server than in CI, because there is only one build
+# left.
+#
+# The image is tagged with the commit — `ghcr.io/<owner>/alisio-pms:<sha>` —
+# and `deploy.sh` is given that same sha to check out. So the code on the
+# server's disk (migrations, `hotels/*.json`, the script itself) is the code
+# inside the container, by construction rather than by timing. Tagging only
+# `:prod` would have left the two free to drift apart whenever a second commit
+# landed while a deploy was in flight, and nothing would have said so.
+#
+# The server can still build for itself: `./deploy/deploy.sh prod` with no
+# APP_IMAGE does exactly what it always did. That is the fallback for a night
+# when GitHub is unreachable — a choice a person makes, not one the script
+# makes quietly at 3 a.m.
 #
 # ── The branch decides the environment ──────────────────────────────────────
 #
@@ -43,9 +77,11 @@
 #   DEPLOY_PATH     absolute path of the checkout on the server,
 #                   e.g. /opt/alisio  — the DIRECTORY, not deploy/deploy.sh
 #
-# Both environments use the same four: one server, one checkout, two compose
-# projects. What differs is `deploy/env.prod` and `deploy/env.beta` on the
-# server, and those never leave it.
+# And nothing else. The registry needs no secret: the run's own GITHUB_TOKEN
+# both pushes the image and logs the server in, and it expires when the run
+# ends. A long-lived personal token sitting in `/root/.docker/config.json` on
+# a machine that serves hotels was the alternative, and it is worse — it does
+# not expire, it is not scoped to this repository, and nothing rotates it.
 #
 # Without the secrets the job does not fail — it says what is missing and
 # stops. A red badge nobody can clear is a badge everybody learns to ignore.
@@ -86,23 +122,42 @@ concurrency:
   group: deploy-${{ github.event.workflow_run.head_branch || github.ref_name }}
   cancel-in-progress: false
 
+# Read the repository, write the package. Nothing else — in particular not
+# `contents: write`: a deploy has no business pushing.
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-  deploy:
-    # The environment in the job name, so the run list says which one this was
-    # without opening it.
-    name: ${{ (github.event.workflow_run.head_branch || github.ref_name) == 'beta' && 'beta' || 'prod' }}
+  # ── What are we deploying, and can we? ─────────────────────────────────────
+  #
+  # Separate from the build so that a repository without the deploy secrets
+  # spends no runner minutes compiling an image it cannot ship anywhere.
+  plan:
+    name: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 5
     # A manual run has no workflow_run to inspect; a triggered one must have
     # passed. Deploying a commit whose checks failed is the thing this guards.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
+    outputs:
+      env: ${{ steps.env.outputs.name }}
+      sha: ${{ steps.env.outputs.sha }}
+      image: ${{ steps.env.outputs.image }}
+      owner: ${{ steps.env.outputs.owner }}
+      ready: ${{ steps.gate.outputs.ready }}
     steps:
-      - name: which environment
+      - name: which environment, which commit
         id: env
         env:
           BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+          # The commit `checks` actually ran against. `github.sha` on a
+          # workflow_run is the tip of the DEFAULT branch — a different commit,
+          # usually the same one, and silently not on the day it matters.
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          OWNER: ${{ github.repository_owner }}
         run: |
           case "$BRANCH" in
             main) echo "name=prod" >> "$GITHUB_OUTPUT" ;;
@@ -114,6 +169,12 @@ jobs:
               echo "::error::no environment is bound to branch '$BRANCH' — deploy from main or beta"
               exit 1 ;;
           esac
+          # Container registries reject an upper-case path component, and this
+          # owner has capitals in it depending on how you type it.
+          owner="$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          echo "owner=$owner" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/$owner/alisio-pms" >> "$GITHUB_OUTPUT"
 
       - name: are the deploy secrets set
         id: gate
@@ -148,8 +209,79 @@ jobs:
             echo "ready=yes" >> "$GITHUB_OUTPUT"
           fi
 
+  # ── Build the image on a machine nobody depends on ─────────────────────────
+  image:
+    name: image (${{ needs.plan.outputs.env }})
+    needs: plan
+    if: needs.plan.outputs.ready == 'yes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # The commit `checks` passed, not the default branch's tip: on a
+      # workflow_run event actions/checkout defaults to the latter.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: log in to ghcr
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ needs.plan.outputs.owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          # Two tags, two jobs. The sha tag is what the deploy pulls — it is
+          # the only one that cannot be pointing at something else by the time
+          # the server acts on it. The environment tag is for a human reading
+          # `docker images` on the box and asking "what is this".
+          tags: |
+            ${{ needs.plan.outputs.image }}:${{ needs.plan.outputs.sha }}
+            ${{ needs.plan.outputs.image }}:${{ needs.plan.outputs.env }}
+          # Links the package to this repository, which is what gives the run's
+          # own GITHUB_TOKEN permission to pull it later.
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.plan.outputs.sha }}
+          # npm ci and `next build` are most of the time here, and neither
+          # changes when only a component does.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # A plain image manifest. The attestation manifest buildx adds by
+          # default is one more thing that has to be understood by whatever
+          # docker the server happens to be running, and it buys nothing here.
+          provenance: false
+
+      - name: say what was built
+        run: |
+          {
+            echo "### Образ зібрано"
+            echo
+            echo '```'
+            echo "${{ needs.plan.outputs.image }}:${{ needs.plan.outputs.sha }}"
+            echo '```'
+            echo
+            echo "Збірка йшла на раннері GitHub. Сервер її не компілював."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Ship it ────────────────────────────────────────────────────────────────
+  deploy:
+    # The environment in the job name, so the run list says which one this was
+    # without opening it.
+    name: ${{ needs.plan.outputs.env }}
+    needs: [plan, image]
+    if: needs.plan.outputs.ready == 'yes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
       - name: authorise against the server
-        if: steps.gate.outputs.ready == 'yes'
         env:
           KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           HOST: ${{ secrets.DEPLOY_HOST }}
@@ -163,37 +295,69 @@ jobs:
           # of the one you meant.
           ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
+      - name: let the server read the registry
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          OWNER: ${{ needs.plan.outputs.owner }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Through stdin, never as an argument: an argument is visible in
+          # `ps` to everyone on the machine for as long as the command runs.
+          #
+          # This credential dies with the run, so what is left in the server's
+          # docker config afterwards is an expired string. That is the point.
+          # It also means a manual deploy tomorrow cannot pull — by design:
+          # a manual deploy builds locally, and choosing that should be
+          # deliberate.
+          printf '%s' "$TOKEN" | ssh -i ~/.ssh/id_deploy -o BatchMode=yes \
+            "$USER@$HOST" \
+            "docker login ghcr.io -u '$OWNER' --password-stdin"
+
       - name: deploy
-        if: steps.gate.outputs.ready == 'yes'
         env:
           HOST: ${{ secrets.DEPLOY_HOST }}
           USER: ${{ secrets.DEPLOY_USER }}
           DPATH: ${{ secrets.DEPLOY_PATH }}
-          ENV_NAME: ${{ steps.env.outputs.name }}
+          ENV_NAME: ${{ needs.plan.outputs.env }}
+          APP_IMAGE: ${{ needs.plan.outputs.image }}:${{ needs.plan.outputs.sha }}
+          DEPLOY_SHA: ${{ needs.plan.outputs.sha }}
         run: |
-          # deploy.sh does its own fetch/reset to the branch this environment
-          # follows, backs the database up, builds, applies pending migrations
-          # and restarts. It exits non-zero if the backup is empty, if a
-          # migration fails, or if the new container does not answer on a
-          # database-backed route — so its exit code is the honest answer to
-          # "is it live".
+          # deploy.sh checks out exactly DEPLOY_SHA, backs the database up,
+          # pulls APP_IMAGE instead of building, applies pending migrations and
+          # restarts. It exits non-zero if the backup is empty, if the image
+          # cannot be pulled, if a migration fails, or if the new container does
+          # not answer on a database-backed route — so its exit code is the
+          # honest answer to "is it live".
           ssh -i ~/.ssh/id_deploy -o BatchMode=yes \
               "$USER@$HOST" \
-              "cd '$DPATH' && ./deploy/deploy.sh '$ENV_NAME'"
+              "cd '$DPATH' && APP_IMAGE='$APP_IMAGE' DEPLOY_SHA='$DEPLOY_SHA' ./deploy/deploy.sh '$ENV_NAME'"
+
+      - name: forget the credential
+        if: always()
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          # It is expired either way; leaving it there is still leaving a
+          # registry credential in a file on a production machine.
+          ssh -i ~/.ssh/id_deploy -o BatchMode=yes \
+            "$USER@$HOST" "docker logout ghcr.io" || true
 
       - name: say what happened
-        if: always() && steps.gate.outputs.ready == 'yes'
+        if: always()
         env:
-          ENV_NAME: ${{ steps.env.outputs.name }}
+          ENV_NAME: ${{ needs.plan.outputs.env }}
+          SHA: ${{ needs.plan.outputs.sha }}
         run: |
           if [ "${{ job.status }}" = "success" ]; then
-            echo "### $ENV_NAME оновлено до \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "### $ENV_NAME оновлено до \`$SHA\`" >> "$GITHUB_STEP_SUMMARY"
           else
             {
               echo "### Деплой $ENV_NAME не пройшов"
               echo
               echo "Стара версія лишилась працювати: deploy.sh піднімає нову"
-              echo "тільки після успішної збірки й міграцій. Лог кроку \`deploy\`"
+              echo "тільки після успішного pull і міграцій. Лог кроку \`deploy\`"
               echo "вище каже, на чому саме зупинилось."
             } >> "$GITHUB_STEP_SUMMARY"
           fi

@@ -111,10 +111,10 @@ No `ssh` step in either line any more — that is the point of
 `.github/workflows/deploy.yml`. The manual command still exists and is the
 same one; it is the fallback, not the flow.
 
-`deploy.sh` refuses to run without a valid 64-hex `APP_SECRET_KEY`, archives the
-data volume to `deploy/backups/` before touching anything, rebuilds, and waits
-for the app to answer. If it does not come up within 60 seconds it prints the
-container logs and exits non-zero.
+`deploy.sh` refuses to run without a valid 64-hex `APP_SECRET_KEY`, dumps the
+database to `deploy/backups/` before touching anything, brings up the image CI
+built, and waits for the app to answer. If it does not come up within 90 seconds
+it prints the container logs and exits non-zero.
 
 ## How the server gets the code
 
@@ -123,8 +123,16 @@ The server holds its own clone at `/opt/alisio` and `deploy.sh` pulls into it:
 ```bash
 git fetch origin "$BRANCH"
 git checkout "$BRANCH"
-git reset --hard "origin/$BRANCH"
+git reset --hard "${DEPLOY_SHA:-origin/$BRANCH}"
 ```
+
+`DEPLOY_SHA` is what CI passes: the exact commit `checks` went green on, which
+is also the commit its image was built from. Without it the reset lands on
+whatever the branch tip is at that second — and if a second commit landed while
+the first was deploying, the container would run one version while the
+migrations, `hotels/*.json` and this script came from another. Nothing would
+have reported that. By hand there is no sha to pass and the branch tip is the
+right answer.
 
 Two consequences worth knowing before you run it.
 
@@ -155,10 +163,13 @@ anything is touched.
 1. Refuses to start unless `APP_SECRET_KEY` in the env file is 64 hex
    characters. Without it the integration credentials in the database cannot
    be decrypted, and that surfaces days later as "the integration stopped working".
-2. Fetches and hard-resets to the branch.
-3. Archives the data volume to `deploy/backups/` — before touching anything,
-   so a bad deploy is undoable. Thirty copies are kept.
-4. Rebuilds the image and restarts the container.
+2. Fetches and hard-resets to `DEPLOY_SHA`, or to the branch tip when nobody
+   named one.
+3. Dumps Postgres to `deploy/backups/` — before touching anything, so a bad
+   deploy is undoable. An empty dump stops the deploy. Thirty copies are kept.
+4. Pulls `APP_IMAGE` if CI named one, and **fails rather than building** if the
+   pull does not work. With no `APP_IMAGE` it builds here, which is the manual
+   fallback. Then restarts the container.
 5. Waits up to 90 seconds for health, and health means **a POST to
    `/api/auth/login` with junk credentials answering 401 or 400** — a request
    that has to reach the users table. `GET /login` renders from the bundle
@@ -293,7 +304,66 @@ compose-проєкти. Різняться `deploy/env.prod` і `deploy/env.beta
 ніколи не залишають сервер.
 
 Руками — `Actions → deploy → Run workflow` з потрібної гілки, або на самому
-сервері `./deploy/deploy.sh prod|beta`. Обидва роблять те саме.
+сервері `./deploy/deploy.sh prod|beta`. Обидва роблять те саме, з однією
+різницею: перший тягне готовий образ, другий збирає його на сервері.
+
+### Образ збирає GitHub, а не сервер
+
+Раніше `deploy.sh` робив `docker compose build` прямо на VPS. Це і вбило
+сервер 26 серпня.
+
+Збірка Next.js тримає в builder-шарі одночасно вихідники, `node_modules` і
+весь вивід `.next`. П'ять деплоїв за день — і диск на 75 ГБ став на 100 %.
+Постґрес упав посеред запису:
+
+```
+PANIC: could not write to file "pg_logical/replorigin_checkpoint.tmp":
+       No space left on device
+```
+
+а далі зациклився в recovery. Саме тому вхід відповідав «Помилка сервера»
+замість «Невірний пароль»: 500 на маршруті, що йде в базу, виглядає точно
+так. І саме тому **інші проєкти на тій самій машині** віддавали 502 —
+socialio, systemator, rozum не мали до PMS жодного стосунку, просто ділили з
+ним диск. Один VPS на 4 ГБ обслуговував готель і компілював JavaScript
+одночасно, і компіляція перемогла.
+
+Тепер:
+
+```
+checks зеленіє
+  └─ job `image`:  GitHub-раннер збирає й пушить
+                   ghcr.io/<owner>/alisio-pms:<sha>
+                          + рухомий тег :prod / :beta для людини
+  └─ job `deploy`: ssh на сервер →
+                   APP_IMAGE=…:<sha> DEPLOY_SHA=<sha> ./deploy/deploy.sh prod
+                   → docker pull, дамп, міграції, рестарт, health, готелі
+```
+
+Сервер не компілює нічого. Раннер — машина, яку однаково викидають після
+запуску.
+
+**Реєстр не потребує секрету.** `GITHUB_TOKEN` самого запуску і пушить образ,
+і логінить сервер (`docker login … --password-stdin`, через stdin, не
+аргументом — аргумент видно в `ps`). Токен здихає разом із запуском, і
+останнім кроком job робить `docker logout`. Альтернатива — довічний PAT у
+`/root/.docker/config.json` на машині з готелями — гірша: не протухає, не
+обмежений цим репозиторієм, і його ніхто не ротує.
+
+Наслідок, який варто знати: **руками з сервера `docker pull` завтра вже не
+спрацює** — токен протух. Це навмисно. Ручний деплой збирає локально:
+
+```bash
+cd /opt/alisio && ./deploy/deploy.sh prod    # без APP_IMAGE → збірка тут
+```
+
+Це запасний вихід на ніч, коли GitHub недоступний. Він має бути свідомим
+вибором людини, а не тим, що скрипт тихо робить о третій ночі. Тому невдалий
+`docker pull` **зупиняє** деплой замість того, щоб відкотитися до збірки.
+
+І ще: `.dockerignore` до цього не існувало взагалі. `COPY . .` тягнув у
+контекст `deploy/backups/` — тридцять gzip-дампів бойової бази. Кожна збірка
+на сервері пакувала гостей останнього місяця в шар образу.
 
 ### Як прочитати, куди пішов деплой
 

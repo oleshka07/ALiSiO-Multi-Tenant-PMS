@@ -7,6 +7,29 @@
 #
 # Backs the database up first: the flow is beta -> verify -> prod, and the
 # whole point of that flow is that a bad prod deploy can be undone.
+#
+# ── Two ways in ──────────────────────────────────────────────────────────────
+#
+#   ./deploy/deploy.sh prod
+#       builds the image here. The fallback: works with nothing but a checkout
+#       and docker, which is what you want at 3 a.m. when GitHub is down.
+#
+#   APP_IMAGE=ghcr.io/…:<sha> DEPLOY_SHA=<sha> ./deploy/deploy.sh prod
+#       pulls that image instead of compiling. This is what CI does.
+#
+# The second exists because the first, on this machine, is what filled the
+# disk. Building a Next.js image needs the source, node_modules and the whole
+# `.next` output inside a builder layer; five deploys in one day left 75 GB at
+# 100 %, Postgres died mid-write on "No space left on device" and every project
+# on the server answered 502 — the PMS, and the three unrelated ones sharing
+# the box. A 4 GB VPS whose job is to serve a hotel should not also be a build
+# machine.
+#
+# DEPLOY_SHA is not decoration. Without it the script resets to the branch tip,
+# which can already be a commit newer than the one the image was built from —
+# and then the container runs one version while the checkout, the migrations
+# and `hotels/` come from another. Nothing would report that. With it, the code
+# on disk is the code inside the image by construction.
 set -euo pipefail
 
 ENV_NAME="${1:-}"
@@ -51,7 +74,21 @@ if [ -z "${DEPLOY_UPDATED:-}" ]; then
   echo "==> $ENV_NAME: fetching $BRANCH"
   git fetch --quiet origin "$BRANCH"
   git checkout --quiet "$BRANCH"
-  git reset --hard --quiet "origin/$BRANCH"
+  if [ -n "${DEPLOY_SHA:-}" ]; then
+    # The commit CI built and tested, not whatever the branch points at by the
+    # time this line runs.
+    #
+    # It must be ON this branch, not merely present in the repository. A sha
+    # that exists but belongs to some other branch would check out and deploy
+    # perfectly happily — that is exactly the mistake worth refusing, and the
+    # only signal that something is wrong would be the environment quietly
+    # serving code nobody meant to ship.
+    git merge-base --is-ancestor "$DEPLOY_SHA" "origin/$BRANCH" 2>/dev/null || {
+      echo "commit $DEPLOY_SHA is not on origin/$BRANCH — refusing to guess" >&2; exit 1; }
+    git reset --hard --quiet "$DEPLOY_SHA"
+  else
+    git reset --hard --quiet "origin/$BRANCH"
+  fi
   echo "    $(git rev-parse --short HEAD) $(git log -1 --pretty=%s)"
   DEPLOY_UPDATED=1 exec "$SELF" "$ENV_NAME"
 fi
@@ -111,8 +148,28 @@ else
   fi
 fi
 
-echo "==> building"
-docker compose --env-file "$ENV_FILE" -p "$PROJECT" -f deploy/docker-compose.yml build
+# ── The image ────────────────────────────────────────────────────────────────
+#
+# Pull what CI built, or build here if nobody handed us anything.
+#
+# A failed pull stops the deploy instead of quietly falling back to a local
+# build. The fallback is one command away and a person can choose it; choosing
+# it automatically is how the machine ends up compiling on a night when nobody
+# is watching the disk.
+if [ -n "${APP_IMAGE:-}" ]; then
+  export APP_IMAGE
+  echo "==> pulling $APP_IMAGE"
+  if ! docker pull --quiet "$APP_IMAGE"; then
+    echo "!! cannot pull $APP_IMAGE" >&2
+    echo "   registry login expired or the image was never pushed." >&2
+    echo "   docker login ghcr.io -u <user>   # token with read:packages" >&2
+    echo "   or build here instead:  ./deploy/deploy.sh $ENV_NAME" >&2
+    exit 1
+  fi
+else
+  echo "==> building here (no APP_IMAGE — this compiles on the server)"
+  docker compose --env-file "$ENV_FILE" -p "$PROJECT" -f deploy/docker-compose.yml build
+fi
 
 # ── Migrations ───────────────────────────────────────────────────────────────
 #
@@ -196,6 +253,12 @@ for i in $(seq 1 45); do
   case "$CODE" in
     401|400)
       echo "==> $ENV_NAME is up: $(git rev-parse --short HEAD) (db reachable, health $CODE)"
+      echo "    image: ${APP_IMAGE:-alisio-pms:$ENV_NAME}"
+      # Layers of the image this deploy replaced. Dangling only — nothing that
+      # is still a rollback target is touched. The weekly prune covers the rest;
+      # this is here because a deploy is exactly the moment new garbage appears,
+      # and the disk filling up is not a hypothetical failure on this machine.
+      docker image prune -f >/dev/null 2>&1 || true
       apply_hotels
       exit $?
       ;;

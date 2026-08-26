@@ -12,10 +12,24 @@
 
 services:
   app:
+    # Kept for the manual fallback only.
+    #
+    # `docker compose up` builds from this stanza when the named image is not
+    # already present, and uses the image when it is. So with APP_IMAGE set to
+    # something `deploy.sh` has just pulled, nothing is built here; without it,
+    # a person on the server still gets the old behaviour by typing the same
+    # command they always typed.
     build:
       context: ..
       dockerfile: Dockerfile
-    image: alisio-pms:${ENV_NAME}
+    # Which image runs.
+    #
+    # The default is the locally built tag, which is what a manual
+    # `./deploy/deploy.sh prod` still produces. CI sets APP_IMAGE to the exact
+    # digest-bearing tag it built from the commit that passed `checks`, and
+    # then the server never compiles anything — see the header of
+    # .github/workflows/deploy.yml for why that matters.
+    image: ${APP_IMAGE:-alisio-pms:${ENV_NAME}}
     container_name: alisio-${ENV_NAME}-app
     restart: unless-stopped
     # Bound to loopback: nginx terminates TLS and is the only way in.
