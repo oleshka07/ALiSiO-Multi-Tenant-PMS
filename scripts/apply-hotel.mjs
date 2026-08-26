@@ -224,6 +224,33 @@ async function applyOne(plan) {
     say.same(`організація ${slug}`);
   }
 
+  // Юридичні реквізити — те, що йде в шапку фактури (§14 UStG): legal_name,
+  // legal_address, vat_no. Пишуться лише названі у файлі поля, як у гостьової
+  // сторінки: відсутнє поле — «файл про це мовчить», а не «стерти».
+  {
+    const LEGAL = { legalName: 'legal_name', legalAddress: 'legal_address', vatNo: 'vat_no' };
+    const sql2 = getSql();
+    const cur = await sql2.row(
+      'SELECT legal_name, legal_address, vat_no FROM organizations WHERE id = ?', [row.id]);
+    const patch = {};
+    for (const [key, col] of Object.entries(LEGAL)) {
+      const v = both(org, key);
+      if (v === undefined) continue;
+      if (String(cur?.[col] ?? '') !== String(v ?? '')) patch[col] = v;
+    }
+    if (Object.keys(patch).length) {
+      const label = `реквізити: ${Object.keys(patch).join(', ')}`;
+      if (DRY) {
+        say.changed(`[суха] ${label}`);
+      } else {
+        const set = Object.keys(patch).map((c) => `${c} = ?`).join(', ');
+        await sql2.run(`UPDATE organizations SET ${set} WHERE id = ?`,
+          [...Object.values(patch), row.id]);
+        say.changed(label);
+      }
+    }
+  }
+
   await runWithOrganization(row.id, () => applyStructure(row.id, plan));
 }
 
@@ -586,15 +613,24 @@ async function applyStructure(organizationId, plan) {
     const vat = both(s, 'vatCode');
     if (!vat) { say.refused(`послуга ${name}`, 'без vatCode — вона зупинить проводку рахунку'); continue; }
     const price = Number(both(s, 'price')) || 0;
+    // Явне isActive:false — «більше не продаємо», не «зітри». Так послуга,
+    // яку бухгалтер велів розщепити (Lunchpaket → Speisen+Getränke), гасне,
+    // а її історія в замовленнях лишається.
+    const active = both(s, 'isActive') === false ? 0 : 1;
     const has = await sql.row(
-      'SELECT id, price, vat_code FROM additional_services WHERE property_id = ? AND name = ?',
+      'SELECT id, price, vat_code, is_active FROM additional_services WHERE property_id = ? AND name = ?',
       [property.id, name]);
-    if (has && Number(has.price) === price && has.vat_code === vat) { say.same(`послуга ${name}`); continue; }
+    const asBool = (v) => (v === true || v === 1 || v === 't' || v === '1');
+    if (has && Number(has.price) === price && has.vat_code === vat
+        && asBool(has.is_active) === !!active) { say.same(`послуга ${name}`); continue; }
     if (DRY) { say[has ? 'changed' : 'made'](`[суха] послуга ${name}`); continue; }
     if (has) {
-      await sql.run('UPDATE additional_services SET price = ?, vat_code = ? WHERE id = ? AND property_id = ?',
-        [price, vat, has.id, property.id]);
-      say.changed(`послуга ${name}`);
+      await sql.run('UPDATE additional_services SET price = ?, vat_code = ?, is_active = ? WHERE id = ? AND property_id = ?',
+        [price, vat, active, has.id, property.id]);
+      say.changed(`послуга ${name}${active ? '' : ' (вимкнено)'}`);
+    } else if (!active) {
+      // Вимкнену і не заведену — не заводити: стан «її немає» вже досягнуто.
+      say.same(`послуга ${name} (вимкнена, не заведена)`);
     } else {
       // `category` тут — не категорія номерів, а рубрика послуги, і вона під
       // CHECK: food / wellness / sport / entertainment / other. Порожнє —

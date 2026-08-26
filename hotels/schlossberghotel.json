@@ -8,7 +8,10 @@
     "currency": "EUR",
     "country": "DE",
     "city": "Greiz",
-    "timezone": "Europe/Berlin"
+    "timezone": "Europe/Berlin",
+    "legalName": "Schlossberghotel Greiz GmbH",
+    "legalAddress": "Marienstr. 1-5, 07973 Greiz",
+    "vatNo": "DE290231682"
   },
   "property": {
     "name": "Schlossberghotel",
@@ -858,7 +861,7 @@
   "eventSpaces": [
     {
       "code": "SAAL",
-      "vatCode": "reduced",
+      "vatCode": "standard",
       "name": "Saal",
       "capacityNote": "bis 100 Personen; Kino 120",
       "blockPrices": {
@@ -870,7 +873,7 @@
     },
     {
       "code": "KSAAL",
-      "vatCode": "reduced",
+      "vatCode": "standard",
       "name": "Kleiner Saal",
       "capacityNote": "bis 16 Personen",
       "blockPrices": {
@@ -883,7 +886,7 @@
     },
     {
       "code": "ATRIUM",
-      "vatCode": "reduced",
+      "vatCode": "standard",
       "name": "Atrium",
       "blockPrices": {
         "h4": 99,
@@ -894,7 +897,7 @@
     },
     {
       "code": "BAR",
-      "vatCode": "reduced",
+      "vatCode": "standard",
       "name": "Bar (Cabana)",
       "blockPrices": {
         "h8": 250,
@@ -904,14 +907,14 @@
     },
     {
       "code": "TERRASSE",
-      "vatCode": "reduced",
+      "vatCode": "standard",
       "name": "Terrasse",
       "capacityNote": "Raucherecke und Pausen, kostenlos bei allen Paketen",
       "sortOrder": 5
     },
     {
       "code": "KUECHE",
-      "vatCode": "reduced",
+      "vatCode": "standard",
       "name": "Küche",
       "blockPrices": {
         "h8": 100,
@@ -1101,6 +1104,19 @@
       "name": "Lunchpaket",
       "price": 8,
       "vatCode": "reduced",
+      "category": "food",
+      "isActive": false
+    },
+    {
+      "name": "Lunchpaket – Speisen",
+      "price": 5.6,
+      "vatCode": "reduced",
+      "category": "food"
+    },
+    {
+      "name": "Lunchpaket – Getränke",
+      "price": 2.4,
+      "vatCode": "standard",
       "category": "food"
     }
   ],
