@@ -1034,6 +1034,67 @@ async function main() {
       `a hotel without the widget still has an open public write endpoint: ${afterOff.status}`);
     console.log('  ok  a form on the hotel site lands in that hotel’s inbox, and only a real site id does');
 
+    // ── Saved payment keys do not make the widget offer payment ──────────
+    //
+    // The product told hotels it took cards for months after the gateway was
+    // deleted: «Teya Payment Gateway · Visa · Mastercard · Apple Pay» in the
+    // widget, «Stripe та PayPal з коробки» on the sites screen. Now a hotel
+    // can choose a provider and save its keys — and that must NOT be enough.
+    //
+    // This is the assertion that protects the guest. If `hasPayment` ever goes
+    // true here, a booking ends at a «Оплатити» button with nothing behind it,
+    // at the exact moment the guest decided to spend money.
+    // Both switches: the block above turned `widget` back off to prove the
+    // capture route is gated, and site-config answers «feature disabled»
+    // without it — which would have made the assertion below pass on a
+    // response that never contained hasPayment at all.
+    for (const feature of ['widget', 'online_payments']) {
+      await sql.run(
+        'INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)',
+        [a.orgId, feature],
+      );
+    }
+    const keys = await call(cookieA, '/api/settings/payments', {
+      method: 'PUT',
+      body: JSON.stringify({ channel: 'stripe', values: { clientId: 'pk_test_probe', clientSecret: 'sk_test_probe' } }),
+    });
+    assert.ok(keys.ok, `A could not save its gateway keys: ${keys.status} ${await keys.clone().text()}`);
+
+    // By id, not by the slug this file asked for: booking-sites normalises a
+    // slug on create, so the string sent in is not necessarily the string
+    // stored — and the probe would be testing its own guess. withSite accepts
+    // either.
+    const cfgRes = await fetch(`${BASE}/api/booking/site-config?slug=${siteId}`);
+    const cfg = await cfgRes.json();
+    assert.ok(cfg.hasPayment !== undefined,
+      `site-config did not answer with a config: ${cfgRes.status} ${JSON.stringify(cfg).slice(0, 200)}`);
+    assert.strictEqual(cfg.hasPayment, false,
+      'keys are saved and the widget now offers payment — there is no gateway behind that button');
+    assert.strictEqual(cfg.paymentProvider, null,
+      'the widget names a gateway that is not taking the money');
+
+    // The keys themselves never come back to a screen.
+    const shown = await (await call(cookieA, '/api/settings/payments')).json();
+    const stripe = shown.providers.find((p) => p.id === 'stripe');
+    assert.ok(stripe.configured, 'the screen does not show that the key was saved');
+    for (const v of Object.values(stripe.values)) {
+      assert.ok(!String(v).includes('sk_test_probe'),
+        'a payment secret was returned to the screen in full');
+    }
+    assert.strictEqual(shown.anyLive, false, 'a gateway declares itself live with no module behind it');
+
+    // B cannot read A's gateway keys, masked or otherwise.
+    const keysB = await (await call(cookieB, '/api/settings/payments')).json();
+    assert.ok(!keysB.providers?.some((p) => p.configured),
+      "B sees A's payment gateway as configured");
+
+    // Off again, both of them: a later block asserts that a hotel WITHOUT
+    // the widget is refused, and leaving either on would make that pass for
+    // the wrong reason.
+    await sql.run("DELETE FROM organization_features WHERE organization_id = ? AND feature IN ('widget', 'online_payments')",
+      [a.orgId]);
+    console.log('  ok  saved gateway keys stay keys — the widget still offers no payment');
+
     // 'all' must mean "all of MINE". It expanded to `1=1` — every reservation
     // on the server — which read correctly only while there was one hotel.
     const allB = await call(cookieB, '/api/booking-sites/all/analytics/overview');

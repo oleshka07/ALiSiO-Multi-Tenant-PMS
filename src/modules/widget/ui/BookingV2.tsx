@@ -906,7 +906,16 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
               <div className="v3-pay-method selected">
                 <div className="v3-pay-method-radio"></div>
                 <div className="v3-pay-method-info">
-                  <div className="v3-pay-method-name">Teya Payment Gateway</div>
+                  {/* The gateway names itself.
+
+                      This said «Teya Payment Gateway» in the markup — a
+                      gateway deleted from the repository on 2026-08-22. The
+                      branch is unreachable today (`hasPayment` is false while
+                      no gateway is live), and a name burned into JSX is
+                      exactly how it would come back wrong: the first hotel to
+                      connect Stripe would be told, in its own booking widget,
+                      that it is being paid by somebody else. */}
+                  <div className="v3-pay-method-name">{siteConfig?.paymentProvider || t.paymentTitle}</div>
                   <div className="v3-pay-method-sub">Visa · Mastercard · Apple Pay</div>
                 </div>
               </div>

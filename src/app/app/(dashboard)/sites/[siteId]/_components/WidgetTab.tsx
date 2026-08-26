@@ -160,7 +160,7 @@ export function WidgetTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Widg
           <div style={{ position: 'absolute', top: 8, right: 8 }}><CopyBtn text={iframeEmbed} /></div>
         </div>
         <div style={{ marginBottom: 10, fontSize: 13, color: 'var(--text-secondary)' }}>
-          <strong>{t('Увага (важливо для оплат):')}</strong> {t('Щоб уникнути проблем із блокуванням платіжних систем (темний екран Teya) всередині iframe, обов\'язково додайте цей скрипт-перехоплювач на ту ж сторінку, де стоїть iframe:')}
+          <strong>{t('Якщо ставите через iframe:')}</strong> {t('додайте цей скрипт-перехоплювач на ту ж сторінку. Він потрібен, щоб віджет міг вивести гостя з iframe — зокрема на сторінку платіжного шлюзу, коли ви його підключите.')}
         </div>
         <div style={{ position: 'relative' }}>
           <pre style={{ background: 'var(--surface-secondary)', borderRadius: 8, padding: 16, fontSize: 12, overflowX: 'auto', margin: 0 }}>{redirectScript}</pre>

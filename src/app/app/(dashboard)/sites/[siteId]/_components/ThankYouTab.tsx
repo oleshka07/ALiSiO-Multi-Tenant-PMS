@@ -4,6 +4,7 @@ import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { Loader2, Check, Save, BarChart2, ExternalLink, Info } from 'lucide-react';
 import type { Site, WidgetConfig } from '../_types';
+import PaymentGatewayNotice from '@/components/payments/PaymentGatewayNotice';
 
 export function ThankYouTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: WidgetConfig) => void }) {
   const t = useT();
@@ -61,13 +62,16 @@ export function ThankYouTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: Wi
         borderRadius: 12, padding: '14px 16px', marginBottom: 28, fontSize: 13,
         display: 'flex', flexDirection: 'column', gap: 6,
       }}>
+        <div style={{ marginBottom: 6 }}>
+          <PaymentGatewayNotice where="Ця сторінка подяки" />
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Info size={15} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
           <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>{t('Як це працює')}</span>
         </div>
         <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9, color: 'var(--text-secondary)' }}>
           <li>{t('Гість відкриває')} <code>/w/{site.slug}</code> {t('і Pixel ініціалізується')}</li>
-          <li>{t('Оплачує через Teya → система підтверджує і надсилає email')}</li>
+          <li>{t('Адміністратор позначає бронь сплаченою → система підтверджує і надсилає email')}</li>
           <li>{t('Pixel стріляє')} <code>Purchase</code> {t('і гість переходить на ваш сайт')}</li>
           <li>{t('На вашій сторінці підтвердження Pixel стріляє ще раз — Meta дедуплікує')}</li>
         </ol>

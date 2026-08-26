@@ -22,7 +22,13 @@ import { encryptSecret, decryptSecret, secretsConfigured } from './security/secr
  * credentials in the UI.
  */
 
-export type IntegrationChannel = 'fiskaly';
+/**
+ * Spelled out rather than derived from PAYMENT_PROVIDERS: payments.ts imports
+ * this module, so importing it back would be a cycle. payments.check.ts keeps
+ * the two lists honest instead — it fails if a payment provider exists that
+ * this union does not name.
+ */
+export type IntegrationChannel = 'fiskaly' | 'stripe' | 'paypal' | 'teya';
 
 export interface IntegrationCredentials {
   clientId?: string;
@@ -160,8 +166,11 @@ export async function integrationConfigured(
  * it. One list, read by both the API and the screen, so a new integration is
  * one entry rather than three edits that can disagree.
  *
- * Teya is absent on purpose: payments are configured per booking site, not per
- * organization, and that screen already exists (Сайти → Платежі).
+ * Payment gateways are here too, at the bottom. The note that used to stand in
+ * this spot said they were configured «per booking site, and that screen
+ * already exists (Сайти → Платежі)» — there was no such screen, and there had
+ * never been one. They are per organization, like every other key, and their
+ * screen is /app/settings/payments.
  */
 /**
  * Which feature switch governs which integration.
@@ -178,6 +187,11 @@ export async function integrationConfigured(
  */
 export const INTEGRATION_FEATURE: Record<string, string | null> = {
   fiskaly: 'fiscal_de',
+  // One switch for all three gateways: «онлайн-оплата» is the module, and
+  // which provider serves it is the hotel's choice, not a separate purchase.
+  stripe: 'online_payments',
+  paypal: 'online_payments',
+  teya: 'online_payments',
 };
 
 export const INTEGRATION_FIELDS: Record<string, { field: 'accessToken' | 'clientId' | 'clientSecret'; label: string; hint?: string }[]> = {
@@ -186,6 +200,30 @@ export const INTEGRATION_FIELDS: Record<string, { field: 'accessToken' | 'client
   fiskaly: [
     { field: 'clientId', label: 'API key', hint: 'fiskaly dashboard → SIGN DE' },
     { field: 'clientSecret', label: 'API secret' },
+  ],
+
+  // ── Payment gateways ──────────────────────────────────────────────────
+  //
+  // Here rather than in a registry of their own, on purpose: this is the one
+  // path that encrypts with seal(), refuses to save without APP_SECRET_KEY and
+  // never returns a secret to a screen. A second mechanism for payment keys
+  // would be a second chance to get all three wrong.
+  //
+  // Which of these a screen shows is decided by src/core/payments.ts — the
+  // «Модулі та інтеграції» page skips them, the «Онлайн-оплата» page shows
+  // only them. Saving a key here does NOT make the product able to charge a
+  // card; see the note on `live` in that file.
+  stripe: [
+    { field: 'clientId', label: 'Publishable key', hint: 'pk_live_… — Stripe Dashboard → Developers → API keys' },
+    { field: 'clientSecret', label: 'Secret key', hint: 'sk_live_…' },
+  ],
+  paypal: [
+    { field: 'clientId', label: 'Client ID', hint: 'PayPal Developer → Apps & Credentials' },
+    { field: 'clientSecret', label: 'Secret' },
+  ],
+  teya: [
+    { field: 'clientId', label: 'Client ID', hint: 'Teya Portal → API' },
+    { field: 'clientSecret', label: 'Client secret' },
   ],
 };
 

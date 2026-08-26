@@ -10,6 +10,7 @@ import {
   type IntegrationChannel,
   type IntegrationStatus,
 } from '@core/integration-credentials';
+import { isPaymentChannel, PAYMENT_PROVIDERS, anyGatewayImplemented } from '@core/payments';
 
 /**
  * GET/PUT /api/settings/integration-credentials — whose integration key.
@@ -20,7 +21,12 @@ import {
  * open the screen can read what it renders.
  */
 
-const CHANNELS = Object.keys(INTEGRATION_FIELDS) as IntegrationChannel[];
+// Payment gateways share this storage but not this screen: they have their own
+// page, where the choice between providers is the point. Listing them in both
+// places would give an owner two places to paste the same key and no way to
+// tell which one the product reads.
+const CHANNELS = (Object.keys(INTEGRATION_FIELDS) as IntegrationChannel[])
+  .filter((c) => !isPaymentChannel(c));
 
 export const getIntegrationCredentials = withOwner(async (_req, _ctx, actor: Actor) => {
   // Only integrations this organization actually has. The switch is looked up
@@ -74,4 +80,41 @@ export const updateIntegrationCredentials = withOwner(async (request: Request, _
 
   await saveIntegrationCredentials(actor.organizationId, channel as IntegrationChannel, clean);
   return NextResponse.json({ status: await integrationStatus(channel as IntegrationChannel, actor.organizationId) });
+});
+
+/**
+ * GET /api/settings/payments — which gateway this hotel has chosen.
+ *
+ * A separate endpoint from the one above even though it reads the same table,
+ * because it answers a different question. That one asks «which integrations
+ * does this organization have»; this one asks «can a guest pay this hotel
+ * online, and if not, what is missing».
+ *
+ * The answer today is always no, and the field that says so is `live`, per
+ * provider, from the registry. Keys saved here are stored and encrypted and do
+ * nothing else — the code that would call Stripe is not written. A screen that
+ * turned «keys saved» into «payments work» would be the same lie this whole
+ * change removes, told one layer down.
+ */
+export const getPaymentSettings = withOwner(async (_req, _ctx, actor: Actor) => {
+  const enabled = await hasFeature(actor.organizationId, 'online_payments' as FeatureKey);
+  const providers = [];
+  for (const provider of PAYMENT_PROVIDERS) {
+    const status = await integrationStatus(provider.id as IntegrationChannel, actor.organizationId);
+    providers.push({
+      ...provider,
+      fields: INTEGRATION_FIELDS[provider.id],
+      values: status.values,
+      configured: status.configured,
+    });
+  }
+  return NextResponse.json({
+    enabled,
+    // True only when some gateway in the product could ever charge a card.
+    // The screen reads this instead of assuming, so the day one ships the
+    // wording changes by itself rather than by somebody remembering.
+    anyLive: anyGatewayImplemented(),
+    secretsConfigured: secretsConfigured(),
+    providers,
+  });
 });

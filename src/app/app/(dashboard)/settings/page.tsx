@@ -17,8 +17,7 @@ import {
   Sparkles,
   Receipt,
   Users2,
-  Coffee,
-} from 'lucide-react';
+  Coffee, CreditCard } from 'lucide-react';
 
 const settingsItems = [
   {
@@ -96,6 +95,13 @@ const settingsItems = [
     desc: 'Код для вставки на зовнішні сайти',
     icon: <Code2 size={22} />,
     href: '/app/settings/booking-widget',
+    color: 'green',
+  },
+  {
+    title: 'Онлайн-оплата',
+    desc: 'Платіжний шлюз: Stripe, PayPal, Teya',
+    icon: <CreditCard size={22} />,
+    href: '/app/settings/payments',
     color: 'green',
   },
   {

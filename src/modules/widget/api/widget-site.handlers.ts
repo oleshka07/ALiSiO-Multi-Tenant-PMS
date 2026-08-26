@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { hasFeature, featureDisabled } from '@core/features';
+import { connectedPaymentProvider } from '@core/payments';
 import { withSite } from '../data/site.repo';
 import { organizationLanguage } from '@core/i18n/resolve';
 import { asWidgetLang } from '../ui/widget-language';
@@ -36,12 +37,21 @@ export async function getWidgetSiteConfig(req: NextRequest) {
       return featureDisabled('widget', CORS_HEADERS);
     }
 
-    // Payment is offered only when the organization has Teya at all — the env
-    // fallback used to make every site on the server claim it takes cards.
+    // Whether this hotel can be paid online — asked, not assumed.
+    //
+    // This was `const hasPayment = false`, a literal standing in for «the Teya
+    // integration was removed». Honest at the time and inert: nothing about it
+    // could ever become true, and the day a gateway shipped somebody would
+    // have had to remember this line existed.
+    //
+    // connectedPaymentProvider() answers from the registry instead. It returns
+    // a provider only when the hotel enabled the module, saved keys AND that
+    // provider's gateway code exists. The third is false for all of them
+    // today, so the value is still false everywhere — but now it is false
+    // because of something checkable, and it turns true by itself.
     const payCfg = JSON.parse(site.payment_config || '{}');
-    // Online payment is OFF everywhere: the Teya integration was removed
-    // 2026-08-22 and will return as a new, separate payments module.
-    const hasPayment = false;
+    const provider = await connectedPaymentProvider(site.organization_id);
+    const hasPayment = !!provider?.live;
 
     let maxAdults = 2;
     let maxChildren = 2;
@@ -77,6 +87,10 @@ export async function getWidgetSiteConfig(req: NextRequest) {
       currency: site.currency || 'CZK',
       siteUrl: site.site_url,
       hasPayment,
+      // The gateway's own name, for the one line that shows it. Null while
+      // nothing is live, so the widget falls back to a neutral heading rather
+      // than naming a provider that is not taking the money.
+      paymentProvider: provider?.live ? provider.label : null,
       maxAdults,
       maxChildren,
       // Analytics fields — read from widget_config JSON, no DB migration needed

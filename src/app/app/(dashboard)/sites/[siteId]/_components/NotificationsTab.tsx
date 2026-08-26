@@ -4,6 +4,7 @@ import { useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { Loader2, Check, Save, Mail, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Site, WidgetConfig } from '../_types';
+import PaymentGatewayNotice from '@/components/payments/PaymentGatewayNotice';
 
 export function NotificationsTab({ site, onUpdate }: { site: Site; onUpdate: (cfg: WidgetConfig) => void }) {
   const t = useT();
@@ -129,7 +130,11 @@ export function NotificationsTab({ site, onUpdate }: { site: Site; onUpdate: (cf
           {t('2. Лист про успішну оплату та підтвердження')}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16 }}>
-          {t('Надсилається після успішної оплати через платіжний шлюз Teya або коли адміністратор вручну позначає замовлення сплаченим.')}
+          {t('Надсилається, коли адміністратор позначає замовлення сплаченим. Онлайн-оплата не підключена — коли ви оберете платіжний шлюз, лист піде і після успішного платежу.')}
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <PaymentGatewayNotice where="Цей сайт" />
         </div>
 
         <div className="form-group" style={{ marginBottom: 16 }}>
