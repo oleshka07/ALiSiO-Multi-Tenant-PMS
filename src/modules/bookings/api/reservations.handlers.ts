@@ -6,6 +6,7 @@ import { writeBookingAudit, getBookingActor } from './audit-log.handlers';
 import { withActor, type Actor } from '@core/auth/session';
 import { ownedUnit } from '../data/owned.repo';
 import { getSql } from '@core/db/async';
+import { serverError } from '@core/http/errors';
 
 export const listReservations = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
@@ -194,9 +195,20 @@ export const createReservation = withActor(async (request: NextRequest, _ctx, ac
 
     // Валюта — організації, не колонковий DEFAULT: дефолт у схемі — це валюта
     // першого клієнта, і німецька бронь із ним показувала «255 CZK».
+    //
+    // Тут стояло `|| 'EUR'`. Другий літерал замість першого — це та сама
+    // помилка: організація, якої запит не побачив (порожній контекст орендаря
+    // на Postgres читається як «рядка немає», а не як виняток), тихо
+    // отримувала євро. Порожньо — відмовляємось, як `folio.resolveCurrency()`:
+    // вгадана валюта їде далі в бронь, на гостьову сторінку і у фактуру, і
+    // помилки в ній ніхто не помітить, поки гість не заплатить не ту суму.
     const orgRow = await sql.row<any>(
-      'SELECT default_currency FROM organizations WHERE id = ?', [actor.organizationId]);
-    const currency = orgRow?.default_currency || 'EUR';
+      'SELECT default_currency FROM organizations WHERE id = ?', [actor.organizationId]) as { default_currency?: string } | undefined;
+    const currency = orgRow?.default_currency ? String(orgRow.default_currency) : '';
+    if (!currency) {
+      return serverError('modules/bookings/api/reservations createReservation',
+        new Error(`No currency for organization ${actor.organizationId}: set organizations.default_currency`));
+    }
 
     await sql.run(`
       INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, currency, commission_amount, guest_page_token, city_tax_amount, city_tax_included, city_tax_paid, internal_notes)

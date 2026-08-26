@@ -555,8 +555,25 @@ function CalendarDesktop() {
           setViewBooking({ ...viewBooking, status: newStatus });
         }
         showToast(tUi('Статус оновлено'));
+      } else {
+        // Помилка, яка тут була: `if (res.ok)` без `else`. Заселення без
+        // повної оплати або без реєстрації гостей PATCH /api/bookings/[id]
+        // відхиляє з 422 і готовим поясненням у `error` — а екран мовчав.
+        // Виглядало як «кнопка не працює»: статус не мінявся, тосту не було,
+        // у консолі теж нічого. Причину відмови показуємо так само, як решта
+        // екранів броні (BookingViewModal.folioCall).
+        //
+        // Відновлено вдруге: паралельна гілка перезаписала цей файл своєю,
+        // старішою копією і забрала цей `else` разом із нею. Тихий відкат
+        // виправлення виглядає точно як саме виправлення, поки хтось не
+        // натисне кнопку.
+        const data = await res.json().catch(() => ({} as { error?: string }));
+        showToast(`❌ ${data.error || tUi('Не вдалося змінити статус')}`);
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      showToast(`❌ ${tUi('Помилка мережі')}`);
+    }
   };
 
   // ─── Open Edit ──────
@@ -1034,7 +1051,11 @@ function CalendarDesktop() {
               <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Виїзд:')}</span> {b.check_out}</div>
               <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Ночей:')}</span> {b.nights}</div>
               <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Гостей:')}</span> {b.adults} {tUi('дор.')}{b.children > 0 ? ` + ${b.children} ${pluralUi(b.children, 'діт.')}` : ''}</div>
-              <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Сума:')}</span> <strong>{(b.total_price || 0).toLocaleString()} CZK</strong></div>
+              {/* Валюта самої броні, не літерал. Тут стояло «CZK», і портьє
+                  німецького готелю читав із підказки крони над сумою в євро —
+                  саме те число, яке він називає гостю по телефону.
+                  `/api/bookings` віддає `r.currency` у кожному рядку. */}
+              <div><span style={{ color: 'var(--text-tertiary)' }}>{tUi('Сума:')}</span> <strong>{`${(b.total_price || 0).toLocaleString()} ${b.currency || ''}`.trim()}</strong></div>
               <div><span style={{ color: pm.color }}>{pm.icon} {tUi(pm.label)}</span></div>
             </div>
             <div style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'center' }}>

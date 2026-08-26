@@ -123,13 +123,24 @@ export async function syncChannel(channel: any, organizationId: string) {
           -- (migration 0005). On SQLite the row landed with a NULL tenant and
           -- every query that scopes by it found nothing. Taken from the
           -- property so it cannot disagree with it.
+          -- currency, так само названа, а не лишена колонковому DEFAULT.
+          -- DEFAULT там — 'CZK', тож імпорт із каналу віддавав німецькому
+          -- готелю бронь у кронах. Це число далі показує гостьова сторінка
+          -- (маркер guest_page_token видається просто нижче) і бере
+          -- folio.resolveCurrency(), яке дивиться на бронь ПЕРШОЮ, — тобто
+          -- і фактура вийшла б у кронах. Тут немає сесії, тому валюта
+          -- береться підзапитом від того самого обʼєкта, від якого береться
+          -- організація: розійтися вони не можуть.
           INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights,
-            adults, children, status, payment_status, source, total_price, commission_amount,
+            adults, children, status, payment_status, source, total_price, currency, commission_amount,
             guest_page_token, external_uid, notes)
-          VALUES (?, (SELECT organization_id FROM properties WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, (SELECT organization_id FROM properties WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            (SELECT o.default_currency FROM organizations o JOIN properties p ON p.organization_id = o.id WHERE p.id = ?),
+            ?, ?, ?, ?)
         `, [resId, unit?.property_id || channel.property_id, unit?.property_id || channel.property_id, targetUnitId, guestId,
           event.dtstart, event.dtend, nights,
-          1, 0, 'confirmed', 'paid', channel.source_code, 0, 0,
+          1, 0, 'confirmed', 'paid', channel.source_code, 0,
+          unit?.property_id || channel.property_id, 0,
           guestPageToken, externalUid,
           `iCal import: ${event.summary}`]);
 

@@ -772,8 +772,20 @@ export function formatDateLocalized(dateStr: string, lang: Lang): string {
   } catch { return dateStr; }
 }
 
+/**
+ * Сума так, як її бачить гість.
+ *
+ * Тут стояло `const cur = currency || 'CZK'`. Валюта, якої немає, ставала
+ * кронами — на сторінці німецького готелю гість читав «100 Kč» замість
+ * «100 €». Це та сама помилка, що A1 у фоліо: вгадана валюта гірша за
+ * відсутню, бо число з чужим знаком гість запамʼятовує і на нього
+ * розраховує.
+ *
+ * Без валюти друкуємо саме число: воно принаймні правильне.
+ */
 export function formatPriceLocalized(amount: number, currency?: string): string {
-  const cur = currency || 'CZK';
+  const cur = (currency || '').trim();
+  if (!cur) return new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: 0 }).format(amount);
   try {
     return new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: cur, minimumFractionDigits: 0 }).format(amount);
   } catch { return `${amount} ${cur}`; }

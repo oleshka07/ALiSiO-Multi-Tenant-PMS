@@ -1,9 +1,10 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Loader2, Save, Plus } from 'lucide-react';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
+import { shouldAskQuote, readQuote, type QuoteResponse } from './quote-prefill';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -160,6 +161,18 @@ export default function BookingForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // Ціна з прайсингу, поки оператор ще заповнює форму.
+  //
+  // `priceTouched` — щойно оператор сам щось увів у «Вартість», автоматика
+  // більше не втручається: його число і є домовленість із гостем.
+  // `quoteSeq` — номер останнього запиту; відповідь із попереднього вибору
+  // не має права перезаписати поле (клік по типу номера двічі поспіль дає
+  // дві відповіді, і повільніша приходить другою).
+  const priceTouched = useRef(mode === 'edit' || Boolean(initial?.totalPrice));
+  const quoteSeq = useRef(0);
+  const [quoteState, setQuoteState] = useState<{ loading: boolean; missingDays: number; failed: boolean }>(
+    { loading: false, missingDays: 0, failed: false });
+
   // The property's OWN city tax per adult per night. The literal 25 that
   // used to sit here was the first customer's Kurtaxe in the first
   // customer's currency, prefilled into every hotel's bookings. 0 until the
@@ -265,8 +278,62 @@ export default function BookingForm({
   };
 
   const onPriceChange = (price: string) => {
+    // Оператор увів суму сам — з цієї миті прайсинг поле не чіпає.
+    priceTouched.current = true;
+    setQuoteState({ loading: false, missingDays: 0, failed: false });
     setForm(p => ({ ...p, totalPrice: price, commissionAmount: recalcCommission(price, p.source) }));
   };
+
+  // Ціна номера підтягується, щойно відомі тип номера, дати й кількість
+  // гостей — а не при збереженні.
+  //
+  // Помилка, яка тут була: єдиний виклик `/api/pricing/quote` жив усередині
+  // `handleSubmit`. Портьє обирав кількість гостей і номер, поле «Вартість»
+  // із підказкою «авто з прайсингу» лишалось порожнім, і вартість номера він
+  // бачив аж у створеній броні. Прайсинг відповідав правильно — його ніхто
+  // не питав.
+  //
+  // Ночі, яких не покриває жодне джерело, у поле НЕ підставляються (інваріант
+  // 17): часткова сума виглядає як повна.
+  useEffect(() => {
+    if (!shouldAskQuote({
+      mode, priceTouched: priceTouched.current,
+      unitTypeId: form.unitTypeId, checkIn: form.checkIn, checkOut: form.checkOut,
+    })) return;
+
+    const seq = ++quoteSeq.current;
+    setQuoteState({ loading: true, missingDays: 0, failed: false });
+
+    (async () => {
+      let res: { ok: boolean; body?: QuoteResponse | null } = { ok: false };
+      try {
+        const r = await fetch('/api/pricing/quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            unitTypeId: form.unitTypeId,
+            checkIn: form.checkIn,
+            checkOut: form.checkOut,
+            adults: form.adults,
+            children: form.children,
+          }),
+        });
+        res = { ok: r.ok, body: r.ok ? await r.json() : null };
+      } catch { /* мережа: нижче це «не дізнались», а не «ціна нуль» */ }
+
+      // Відповідь на застарілий вибір нікого не цікавить.
+      if (seq !== quoteSeq.current) return;
+      if (priceTouched.current) return;
+
+      const outcome = readQuote(res);
+      setQuoteState({ loading: false, missingDays: outcome.missingDays, failed: outcome.reason === 'failed' });
+      setForm(p => ({
+        ...p,
+        totalPrice: outcome.price,
+        commissionAmount: recalcCommission(outcome.price, p.source),
+      }));
+    })();
+  }, [mode, form.unitTypeId, form.checkIn, form.checkOut, form.adults, form.children, recalcCommission]);
 
   const validate = (): string => {
     if (!form.firstName.trim()) return "Ім'я обовʼязкове";
@@ -282,15 +349,20 @@ export default function BookingForm({
     return unitsForType[0]?.id || '';
   };
 
-  // Resolves to null when the quote itself answers "I have no price for this
-  // stay" (guests beyond the occupancy matrix, dates outside every price
-  // window). That is not a zero — saving it would book a price the hotel
-  // never named.
+  /**
+   * Остання спроба дізнатись ціну перед записом — на випадок, коли ефект вище
+   * ще не встиг або тип номера з'ясувався лише з обраного юніта.
+   *
+   * `null` означає «ціни немає»: раніше тут повертався `0`, і бронь тихо
+   * створювалась на нуль гривень/євро — гість отримував підтвердження на
+   * вартість, якої готель ніколи не називав (інваріант 17).
+   */
   const fetchQuoteIfNeeded = async (unitTypeId: string): Promise<number | null> => {
     if (Number(form.totalPrice) > 0) return Number(form.totalPrice);
-    if (!unitTypeId) return 0;
+    if (!unitTypeId) return null;
+    let res: { ok: boolean; body?: QuoteResponse | null } = { ok: false };
     try {
-      const res = await fetch('/api/pricing/quote', {
+      const r = await fetch('/api/pricing/quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -301,13 +373,10 @@ export default function BookingForm({
           children: form.children,
         }),
       });
-      if (!res.ok) return 0;
-      const data = await res.json();
-      if (data.hasPricing === false || Number(data.missingDays) > 0) return null;
-      return Number(data.total) || 0;
-    } catch {
-      return 0;
-    }
+      res = { ok: r.ok, body: r.ok ? await r.json() : null };
+    } catch { /* нижче це «не дізнались» */ }
+    const outcome = readQuote(res);
+    return outcome.reason === 'priced' ? Number(outcome.price) : null;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -332,7 +401,9 @@ export default function BookingForm({
           || '';
         const totalPrice = await fetchQuoteIfNeeded(unitTypeForQuote);
         if (totalPrice === null) {
-          setError(t('Немає ціни для такої кількості гостей або цих дат — перевірте матрицю цін'));
+          // Відмова, а не нуль: ночі без ціни готель не продає, а оператор
+          // завжди може ввести суму в поле «Вартість» руками.
+          setError(t('Немає ціни для такої кількості гостей або цих дат — введіть вартість вручну'));
           setSaving(false);
           return;
         }
@@ -558,7 +629,12 @@ export default function BookingForm({
         <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{t('💰 Фінанси')}</h4>
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">{t('Вартість (')}{currency})</label>
+            <label className="form-label">
+              {t('Вартість (')}{currency})
+              {quoteState.loading && (
+                <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginLeft: 4 }}>{t('рахуємо…')}</span>
+              )}
+            </label>
             <input
               className="form-input"
               type="number"
@@ -567,6 +643,19 @@ export default function BookingForm({
               value={form.totalPrice}
               onChange={e => onPriceChange(e.target.value)}
             />
+            {/* Порожнє поле мусить пояснити себе. Мовчазна порожнеча — це і був
+                баг: портьє не міг відрізнити «прайсинг ще думає» від «на ці
+                дати ціни немає» і від «сталася помилка». */}
+            {quoteState.missingDays > 0 && (
+              <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 4 }}>
+                {t('Прайсинг не покриває всі ночі — введіть вартість вручну')}
+              </div>
+            )}
+            {quoteState.failed && (
+              <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 4 }}>
+                {t('Не вдалося дізнатись ціну — введіть вартість вручну')}
+              </div>
+            )}
           </div>
           <div className="form-group">
             <label className="form-label">

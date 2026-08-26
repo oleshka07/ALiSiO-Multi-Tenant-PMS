@@ -63,7 +63,11 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
   const [isHiddenBundle, setIsHiddenBundle] = useState(false);
   const [siteConfig, setSiteConfig] = useState<any>(null);
   const [siteDesign, setSiteDesign] = useState<DesignConfig | null>(null);
-  const [siteCurrency, setSiteCurrency] = useState('Kc');
+  // Порожньо, поки не приїхала конфігурація сайту. Тут стояло 'Kc' — валюта
+  // першого клієнта, підписана під цінами віджета будь-якого готелю до
+  // першої відповіді /api/booking/site-config (а якщо конфігурація не
+  // приїхала — і після неї).
+  const [siteCurrency, setSiteCurrency] = useState('');
   const [siteThankYouUrl, setSiteThankYouUrl] = useState(thankYouUrl || '');
   const [services, setServices] = useState<any[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
@@ -466,7 +470,9 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
           siteId:siteId||undefined, 
           couponCode:offerApplied?.code||undefined, 
           extraCouponCode:extraCouponApplied?.code||undefined, 
-          currency:availability?.units.find(u=>u.id===selectedUnitId)?.currency||siteCurrency||'CZK', 
+          // `currency` тут більше не шлеться: валюту броні визначає сервер із
+          // організації готелю. Рядок звідси називав валюту з боку, який
+          // стоїть на чужій сторінці, і закінчувався літералом 'CZK'.
           resolvedUtmParams,
           handshakeToken,
           conversationId,

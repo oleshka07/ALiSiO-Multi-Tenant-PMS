@@ -57,12 +57,18 @@ export async function sendAbandonNotifications(
     try { items = JSON.parse(event.items_json || '[]'); } catch { items = []; }
 
     const guestName = [event.first_name, event.last_name].filter(Boolean).join(' ') || 'Guest';
-    const currency = items[0]?.currency || 'Kč';
-    const total = event.cart_total ? `${event.cart_total} ${currency}` : '—';
+    // Валюта — з самого кошика, і жодного літерала.
+    //
+    // Тут стояло `|| 'Kč'`: лист гостю німецького готелю приходив із сумою в
+    // кронах. Це той самий знак, який гість запамʼятає й на який
+    // розраховуватиме, коли прийде платити. Немає валюти — друкуємо саме
+    // число: воно принаймні правильне.
+    const currency = items[0]?.currency || '';
+    const total = event.cart_total ? `${event.cart_total} ${currency}`.trim() : '—';
     const guestPageUrl = `${appBaseUrl()}/guest/${guestToken}`;
 
     const itemLines = items.map((i: any) =>
-      `  • ${i.serviceName || i.name || '?'} ×${i.quantity} — ${(i.price * i.quantity).toFixed(0)} ${i.currency || 'Kč'}`
+      `  • ${i.serviceName || i.name || '?'} ×${i.quantity} — ${(i.price * i.quantity).toFixed(0)} ${i.currency || ''}`.trimEnd()
     ).join('\n');
 
     // ── Email to guest ─────────────────────────────────────────────────────
@@ -71,7 +77,7 @@ export async function sendAbandonNotifications(
         `<tr>
           <td style="padding:6px 0;border-bottom:1px solid #eee">${i.icon || '✨'} ${i.serviceName || i.name || '?'}</td>
           <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right">
-            ${i.quantity > 1 ? `×${i.quantity} ` : ''}<b>${(i.price * i.quantity).toFixed(0)} ${i.currency || 'Kč'}</b>
+            ${i.quantity > 1 ? `×${i.quantity} ` : ''}<b>${`${(i.price * i.quantity).toFixed(0)} ${i.currency || ''}`.trim()}</b>
           </td>
         </tr>`
       ).join('');

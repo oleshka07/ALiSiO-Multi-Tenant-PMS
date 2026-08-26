@@ -21,9 +21,16 @@ export function formatFullDate(s: string, lang: BookingLang): string {
   return d.toLocaleDateString(locales[lang] || 'uk-UA', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-export function formatPrice(n: number, currency: string = 'Kč'): string {
+/**
+ * Ціна так, як її бачить гість у віджеті.
+ *
+ * Дефолт `'Kč'` тут був валютою першого клієнта: віджет німецького готелю
+ * підписував ціни кронами, поки (і якщо) не приїде конфігурація сайту. Немає
+ * валюти — друкуємо число без знака: воно принаймні правильне.
+ */
+export function formatPrice(n: number, currency: string = ''): string {
   const formatted = new Intl.NumberFormat('cs-CZ').format(n).replace(',', ' ');
-  return `${formatted} ${currency}`;
+  return `${formatted} ${currency}`.trim();
 }
 
 export function getDaysInMonth(year: number, month: number): number {

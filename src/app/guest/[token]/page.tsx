@@ -323,6 +323,13 @@ export default function GuestPage() {
   const catType = r?.category_type || 'resort';
   const brandName = data?.expired ? data.brandName : getBrandName(data?.propertyName || r?.property_name);
 
+  // Валюта, у якій із цим гостем домовлялись: та, що заморожена в його броні
+  // (а вона — валюта організації). Раніше в кожному з цих місць стояло 'Kč',
+  // тож на сторінці німецького готелю кошик і замовлені послуги показувались
+  // у кронах. Порожньо тут краще за чужий знак: сума лишиться без валюти,
+  // але правильною.
+  const stayCurrency: string = r?.currency || '';
+
   // ─── isPaid ────────────────────────────────────
   const isPaid = r?.payment_status === 'paid'
     || r?.payment_status === 'prepaid'
@@ -412,7 +419,7 @@ export default function GuestPage() {
     setCartItems(prev => {
       const existing = prev.find(i => i.serviceId === svc.id);
       if (existing) return prev; // already in cart
-      return [...prev, { serviceId: svc.id, serviceName, price: svc.price, currency: svc.currency || 'Kč', quantity: qty, icon: svc.icon || '✨', serviceDates }];
+      return [...prev, { serviceId: svc.id, serviceName, price: svc.price, currency: svc.currency || stayCurrency, quantity: qty, icon: svc.icon || '✨', serviceDates }];
     });
     setSheet(null); setSelectedService(null); setSelectedBreakfastDates([]);
     showToast(t.addedToCart);
@@ -1092,7 +1099,7 @@ export default function GuestPage() {
                   const dateLabel = o._dates?.length > 0
                     ? o._dates.map((d: string) => formatDateLocalized(d, lang)).join(', ')
                     : formatDateLocalized(r.check_in, lang);
-                  const priceLabel = `${(o.total_price || 0).toFixed(0)} ${o.currency || 'Kč'}`;
+                  const priceLabel = `${(o.total_price || 0).toFixed(0)} ${o.currency || stayCurrency}`.trim();
                   const statusClass = o.payment_status === 'paid' ? 'paid' : o.payment_status === 'refunded' ? 'refunded' : 'pending';
                   const statusLabel = o.payment_status === 'paid' ? '✅ ' + t.done :
                     o.payment_status === 'refunded' ? t.orderRefunded : t.awaitingPayment;
@@ -1731,10 +1738,10 @@ export default function GuestPage() {
             ))}
             <div className="gp-cart-total">
               <span className="gp-cart-total-label">Total</span>
-              <span className="gp-cart-total-value">{cartTotal.toFixed(0)} {cartItems[0]?.currency || 'Kč'}</span>
+              <span className="gp-cart-total-value">{cartTotal.toFixed(0)} {cartItems[0]?.currency || stayCurrency}</span>
             </div>
             <button className="gp-cart-pay-btn" onClick={handleCartPay} disabled={cartLoading}>
-              {cartLoading ? '...' : t.payAll(`${cartTotal.toFixed(0)} ${cartItems[0]?.currency || 'Kč'}`)}
+              {cartLoading ? '...' : t.payAll(`${cartTotal.toFixed(0)} ${cartItems[0]?.currency || stayCurrency}`.trim())}
             </button>
           </div>
         )}

@@ -134,9 +134,11 @@ export const createGroupBooking = withPermission('manage_bookings', async (reque
 
     const groupId = `grp_${Date.now()}`;
     await sql.run(`
-      INSERT INTO reservation_groups (id, property_id, guest_id, group_type, building_id, check_in, check_out, nights, total_price, source, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [groupId, firstUnit.property_id, guestId, groupType || 'custom', buildingId || null, checkIn, checkOut, nights, totalPrice || 0, source || 'direct', notes || null]);
+      -- currency названа: DEFAULT колонки — 'CZK', і сума групи німецького
+      -- готелю зберігалась із чужим знаком поруч із правильним числом.
+      INSERT INTO reservation_groups (id, property_id, guest_id, group_type, building_id, check_in, check_out, nights, total_price, currency, source, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT default_currency FROM organizations WHERE id = ?), ?, ?)
+    `, [groupId, firstUnit.property_id, guestId, groupType || 'custom', buildingId || null, checkIn, checkOut, nights, totalPrice || 0, org.id, source || 'direct', notes || null]);
 
     const pricePerUnit = finalUnitIds.length > 0 ? Math.round((totalPrice || 0) / finalUnitIds.length) : 0;
     const createdResIds: string[] = [];
@@ -149,9 +151,13 @@ export const createGroupBooking = withPermission('manage_bookings', async (reque
           -- organization_id, named rather than left to the column DEFAULT:
           -- that DEFAULT is a Postgres mechanism (migration 0005) and on
           -- SQLite the row landed with a NULL tenant.
-          INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, group_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [resId, org.id, firstUnit.property_id, finalUnitIds[i], guestId, groupId, checkIn, checkOut, nights, 1, 0, 'confirmed', 'unpaid', source || 'direct', pricePerUnit]);
+          -- currency так само названа: колонковий DEFAULT — 'CZK', і кожна
+          -- кімната групи німецького готелю лягала в базу в кронах. Далі це
+          -- значення читає folio.resolveCurrency(), яке дивиться на бронь
+          -- ПЕРШОЮ, — рахунок групі виписався б у кронах над сумою в євро.
+          INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, group_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, currency)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT default_currency FROM organizations WHERE id = ?))
+        `, [resId, org.id, firstUnit.property_id, finalUnitIds[i], guestId, groupId, checkIn, checkOut, nights, 1, 0, 'confirmed', 'unpaid', source || 'direct', pricePerUnit, org.id]);
         createdResIds.push(resId);
       }
     });

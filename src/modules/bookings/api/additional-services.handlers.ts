@@ -24,13 +24,21 @@ export const createAdditionalService = withPermission('manage_properties', async
     const sql = getSql();
     const body = await request.json();
     const id = 'svc_' + Date.now().toString(36);
+    const propertyId = await requirePropertyId(body.property_id);
     await sql.run(`
       INSERT INTO additional_services (id, property_id, name, name_en, description, price, currency, unit_label, icon, category, available_for, is_active, sort_order, service_type, duration_minutes, name_cs, name_de, vat_code)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?, ?, ?, ?)
+      -- Валюта послуги, коли її не назвали, — валюта готелю, а не 'CZK'.
+      --
+      -- Тут стояв літерал, і ціна сніданку німецького готелю ставала «12 CZK»
+      -- на гостьовій сторінці: саме це поле показує гість у списку послуг,
+      -- у кошику і в листі про покинутий кошик.
+      VALUES (?, ?, ?, ?, ?, ?,
+        COALESCE(?, (SELECT o.default_currency FROM organizations o JOIN properties p ON p.organization_id = o.id WHERE p.id = ?)),
+        ?, ?, ?, ?, TRUE, ?, ?, ?, ?, ?, ?)
     `, [id,
-      await requirePropertyId(body.property_id),
+      propertyId,
       body.name || '', body.name_en || '', body.description || '',
-      body.price || 0, body.currency || 'CZK', body.unit_label || '',
+      body.price || 0, body.currency || null, propertyId, body.unit_label || '',
       body.icon || '✨', body.category || 'other', body.available_for || 'all',
       body.sort_order || 99, body.service_type || 'simple',
       body.duration_minutes || null, body.name_cs || null, body.name_de || null,

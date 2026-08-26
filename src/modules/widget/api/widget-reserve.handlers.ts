@@ -109,7 +109,9 @@ export async function createWidgetReservation(request: NextRequest) {
       hasPet = false,
       firstName, lastName, email, phone,
       couponCode, certificateCode, extraCouponCode,
-      currency: clientCurrency,
+      // `currency` з тіла запиту НЕ читається: віджет стоїть на чужій
+      // сторінці, і валюта, яку він назве, — це валюта, яку назвав хтось
+      // інший. Береться з організації нижче.
       utmParams: rawUtmParams,
       lang: rawLang,
       conversationId,
@@ -257,7 +259,22 @@ export async function createWidgetReservation(request: NextRequest) {
     // in one customer's currency, charged to whoever booked next. A German
     // hotel would have taken €2500 for a night, quietly, on a guest's card.
     let totalPrice = 0;
-    let resCurrency = clientCurrency || 'CZK';
+    // Валюта броні — валюта готелю, а не те, що прислав браузер.
+    //
+    // Тут стояло `clientCurrency || 'CZK'`: валюта приходила з ТІЛА запиту
+    // (тобто з чужої сторінки, де стоїть віджет), а коли не приходила —
+    // підставлялись крони. Німецький готель отримував бронь у кронах, і те
+    // саме число потім бачив гість на гостьовій сторінці й у листі
+    // підтвердження. Публічний endpoint не має мовчазного дефолту
+    // (інваріант 8), а вгадана валюта гірша за відмову — як у
+    // `folio.resolveCurrency()`.
+    const orgCurrencyRow = await sql.row<any>(
+      'SELECT default_currency FROM organizations WHERE id = ?', [unitOrg.organization_id]) as { default_currency?: string } | undefined;
+    if (!orgCurrencyRow?.default_currency) {
+      console.error(`[widget-reserve] No currency for organization ${unitOrg.organization_id}: set organizations.default_currency`);
+      return NextResponse.json({ error: 'Booking is not available right now' }, { status: 500, headers: CORS_HEADERS });
+    }
+    let resCurrency = String(orgCurrencyRow.default_currency);
     let priced: Awaited<ReturnType<typeof priceNights>> | null = null;
 
     if (priceOverride != null) {
