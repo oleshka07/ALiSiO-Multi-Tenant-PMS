@@ -123,6 +123,18 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
       if (applyTo === 'weekends' && !isWeekend) { current.setDate(current.getDate() + 1); continue; }
 
       const existing = await t.row<any>('SELECT * FROM price_calendar WHERE unit_type_id = ? AND date = ?', [unitTypeId, dateStr]);
+
+      // A day the hotel has never priced stays unpriced. The form's price field
+      // says «Не змінювати» when left empty, so `base_price` is undefined
+      // whenever the operator bulk-edits only min stay or the open/closed flag —
+      // and `?? 0` turned that into a real row worth zero. From there nothing
+      // objected: the quote answered `hasPricing: true, missingDays: 0, total: 0`,
+      // because a row existed, and a confirmed booking was taken for nothing.
+      // AGENTS.md §3 invariant 17: a night no source can price is missing, not free.
+      if (input.base_price === undefined && !existing) {
+        current.setDate(current.getDate() + 1);
+        continue;
+      }
       const basePrice = input.base_price ?? existing?.base_price ?? 0;
       const weekendPrice = input.weekend_price !== undefined ? input.weekend_price : (existing?.weekend_price ?? null);
       const minStay = input.min_stay ?? existing?.min_stay ?? 1;

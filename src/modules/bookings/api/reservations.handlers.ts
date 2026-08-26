@@ -148,6 +148,21 @@ export const createReservation = withActor(async (request: NextRequest, _ctx, ac
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    // The price is named, or there is no booking. `totalPrice || 0` accepted a
+    // body without one and wrote a confirmed reservation worth nothing — the
+    // booking form asks the quote first and refuses to submit without an
+    // answer, but the form was the only thing standing there, so any other
+    // caller booked for free. A zero the operator typed on purpose (staff stay,
+    // owner's room) still passes: what is refused is silence.
+    // AGENTS.md §3 invariant 17 — a price nobody named does not exist.
+    const priceGiven = Number(totalPrice);
+    if (totalPrice === undefined || totalPrice === null || totalPrice === ''
+      || !Number.isFinite(priceGiven) || priceGiven < 0) {
+      return NextResponse.json(
+        { error: 'Вартість бронювання обовʼязкова: порахуйте її або введіть вручну' },
+        { status: 400 });
+    }
+
     // Wrong tenant's unit looks exactly like a missing one.
     const unit = await ownedUnit(actor.organizationId, unitId);
     if (!unit) {
@@ -182,7 +197,7 @@ export const createReservation = withActor(async (request: NextRequest, _ctx, ac
     } else if (source) {
       const bsRow = await sql.row<any>('SELECT commission_percent FROM booking_sources WHERE code = ?', [source]) as { commission_percent: number } | undefined;
       if (bsRow && bsRow.commission_percent > 0) {
-        commissionAmount = Math.round((totalPrice || 0) * bsRow.commission_percent / 100);
+        commissionAmount = Math.round(priceGiven * bsRow.commission_percent / 100);
       }
     }
 
@@ -210,10 +225,11 @@ export const createReservation = withActor(async (request: NextRequest, _ctx, ac
         new Error(`No currency for organization ${actor.organizationId}: set organizations.default_currency`));
     }
 
+
     await sql.run(`
       INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, currency, commission_amount, guest_page_token, city_tax_amount, city_tax_included, city_tax_paid, internal_notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [resId, actor.organizationId, unit.property_id, unitId, guestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', totalPrice || 0, currency, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null]);
+    `, [resId, actor.organizationId, unit.property_id, unitId, guestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', priceGiven, currency, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null]);
 
     // Audit log
     try {
