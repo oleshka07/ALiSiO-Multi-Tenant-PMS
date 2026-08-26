@@ -260,7 +260,20 @@ for i in $(seq 1 45); do
       # and the disk filling up is not a hypothetical failure on this machine.
       docker image prune -f >/dev/null 2>&1 || true
       apply_hotels
-      exit $?
+      HOTELS_OK=$?
+      # Демо-проживання — тільки поза продом. Скрипт сам відмовляє проду ще
+      # раз (подвійний запобіжник) і ідемпотентний: другий деплой за день
+      # нічого не подвоїть. Його збій деплой не валить — структура готелю
+      # важливіша за декорації, і apply_hotels уже сказав своє.
+      if [ "$ENV_NAME" != "prod" ]; then
+        # Копіюється, як і hotels/: standalone-образ містить лише те, що
+        # трасування вважало потрібним серверу, і розраховувати, що воно
+        # прихопить саме цей скрипт, — значить дізнатись про помилку на демо.
+        docker cp scripts/seed-demo-stays.mjs "alisio-${ENV_NAME}-app:/app/scripts/" >/dev/null \
+          && docker exec "alisio-${ENV_NAME}-app" node scripts/seed-demo-stays.mjs --all --env "$ENV_NAME" \
+          || echo "!! demo seed failed on $ENV_NAME — календар порожній, деплой живий" >&2
+      fi
+      exit $HOTELS_OK
       ;;
     500|502|503)
       # The server is answering but something behind it is broken — report the

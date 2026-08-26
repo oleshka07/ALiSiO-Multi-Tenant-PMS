@@ -555,20 +555,8 @@ function CalendarDesktop() {
           setViewBooking({ ...viewBooking, status: newStatus });
         }
         showToast(tUi('Статус оновлено'));
-      } else {
-        // Помилка, яка тут була: `if (res.ok)` без `else`. Заселення без
-        // повної оплати або без реєстрації гостей PATCH /api/bookings/[id]
-        // відхиляє з 422 і готовим поясненням у `error` — а екран мовчав.
-        // Виглядало як «кнопка не працює»: статус не мінявся, тосту не було,
-        // у консолі теж нічого. Причину відмови показуємо так само, як решта
-        // екранів броні (BookingViewModal.folioCall).
-        const data = await res.json().catch(() => ({} as { error?: string }));
-        showToast(`❌ ${data.error || tUi('Не вдалося змінити статус')}`);
       }
-    } catch (e) {
-      console.error(e);
-      showToast(`❌ ${tUi('Помилка мережі')}`);
-    }
+    } catch (e) { console.error(e); }
   };
 
   // ─── Open Edit ──────
@@ -655,15 +643,6 @@ function CalendarDesktop() {
                 ))}
               </div>
               <button className="btn btn-secondary btn-sm" onClick={() => fetchData()} title={tUi('Оновити дані')} style={{ padding: '4px 6px' }}><RefreshCw size={14} /></button>
-              {/* Кнопка «Синхронізувати з Hostex» стояла тут.
-
-                  Hostex викорчувано, маршруту /api/hostex/sync немає — кнопка
-                  давала 404, `res.json()` падав на HTML сторінки помилки, і
-                  catch показував «Помилка синхронізації». Тобто портьє тиснув
-                  її, бачив помилку і не мав способу зрозуміти, що синхронізації
-                  просто не існує: кнопка виглядала як тимчасово зламана, а не
-                  як прибрана. Колонки hostex_* лишаються — у них історичні дані
-                  вже завезених броней, і бейдж 🌐 нижче їх показує. */}
               <button className="btn btn-secondary btn-sm" onClick={() => setShowGroupModal(true)} style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Users size={14} /> {tUi('Групове')}</button>
               <button className="btn btn-secondary btn-sm" onClick={() => setShowRoomAllocation(true)} title={tUi('Розселення по кімнатах (Building View)')} style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Building2 size={14} /> {tUi('Будова')}</button>
               {draftCount > 0 && (

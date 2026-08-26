@@ -273,7 +273,10 @@ async function applyStructure(organizationId, plan) {
     for (const col of COLS) {
       const v = f(guestPage, camel(col), col);
       if (v === undefined) continue;
-      const want = v === null ? null : String(v);
+      // Масиви (faq, правила, корисне) — JSON-рядком, як їх пише адмінка і
+      // читає гостьова сторінка. String([{...}]) дає «[object Object]»,
+      // сторінка мовчки парсить це у порожньо — і розділ зникає без сліду.
+      const want = v === null ? null : (typeof v === 'object' ? JSON.stringify(v) : String(v));
       if (String(has?.[col] ?? '') !== String(want ?? '')) patch[col] = want;
     }
     const label = `гостьова сторінка: ${Object.keys(patch).join(', ') || 'без змін'}`;

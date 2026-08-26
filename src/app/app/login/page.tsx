@@ -1,10 +1,33 @@
 'use client';
 
-import { useT } from '@core/i18n/client';
+import { I18nProvider, useT } from '@core/i18n/client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { parseLanguage, type Language } from '@core/i18n/languages';
+
+/**
+ * Мова до входу — з браузера.
+ *
+ * До логіну система не знає ні користувача, ні готелю, а I18nProvider живе в
+ * layout дашборда — тож ця сторінка лишалась українською для всіх. Дві
+ * підписи, але це перший екран, який бачить персонал німецького готелю.
+ * Після входу мова, як і раніше, резолвиться користувач → організація.
+ */
+function browserLanguage(): Language {
+  if (typeof navigator === 'undefined') return 'uk';
+  return parseLanguage((navigator.language || '').slice(0, 2), 'uk');
+}
 
 export default function LoginPage() {
+  const [language] = useState<Language>(browserLanguage);
+  return (
+    <I18nProvider language={language}>
+      <LoginForm />
+    </I18nProvider>
+  );
+}
+
+function LoginForm() {
   const t = useT();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,7 +52,8 @@ export default function LoginPage() {
       if (res.ok) {
         router.push('/app/dashboard');
       } else {
-        setError(data.error || 'Помилка входу');
+        // Текст помилки з сервера — українським ключем; перекладає екран.
+        setError(t(data.error || 'Помилка входу'));
       }
     } catch {
       setError(t('Помилка мережі'));
