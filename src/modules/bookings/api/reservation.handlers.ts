@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
-import { withActor, type Actor } from '@core/auth/session';
+import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { ownedReservation, ownedUnit } from '../data/owned.repo';
 import { generateInvoiceForReservation } from '@finance';
 import { cookies } from 'next/headers';
@@ -74,7 +74,7 @@ export const getReservation = withActor(async (_request: NextRequest, { params }
   }
 });
 
-export const updateReservation = withActor(async (request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
+export const updateReservation = withPermission('manage_bookings', async (request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
     const sql = getSql();
     const { id } = await params;
@@ -324,7 +324,7 @@ export const updateReservation = withActor(async (request: NextRequest, { params
   }
 });
 
-export const deleteReservation = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, sessionActor: Actor) => {
+export const deleteReservation = withPermission('manage_bookings', async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, sessionActor: Actor) => {
   try {
     const sql = getSql();
     const { id } = await params;

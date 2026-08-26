@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { findOrCreateGuest } from '@guests';
 import { writeBookingAudit, getBookingActor } from './audit-log.handlers';
-import { withActor, type Actor } from '@core/auth/session';
+import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { ownedUnit } from '../data/owned.repo';
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
@@ -131,7 +131,16 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
   }
 });
 
-export const createReservation = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
+// Creating a booking is a write, so it wants the permission, not just a
+// session. housekeeper and maintenance carry only `nav:dashboard`, yet through
+// this route they could create, reprice and delete any booking — the interface
+// hid the screen and the API did not.
+//
+// Reading (listReservations, getReservation) deliberately stays on withActor:
+// the accountant role has no manage_bookings and does need to see bookings
+// behind the finance screens. Narrowing that is a product decision, not a
+// mechanical one.
+export const createReservation = withPermission('manage_bookings', async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const sql = getSql();
     const body = await request.json();
