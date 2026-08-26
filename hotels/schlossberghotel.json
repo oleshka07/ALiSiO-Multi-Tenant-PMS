@@ -43,8 +43,8 @@
   "invoiceSeries": [
     {
       "code": "RE",
-      "prefix": "RE{year}-",
-      "numberFormat": "{prefix}{seq:4}",
+      "prefix": "RE",
+      "numberFormat": "{prefix}{year}-{seq:4}",
       "isDefault": true
     }
   ],

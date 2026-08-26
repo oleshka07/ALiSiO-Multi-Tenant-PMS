@@ -90,6 +90,13 @@ for (const name of files) {
     const format = f(s, 'numberFormat') || '{prefix}{seq:4}';
     // Шаблон без лічильника видавав би один і той самий номер вічно.
     if (!/\{seq(?::\d+)?\}/.test(format)) note(file, `серія ${code}: numberFormat без {seq} — усі фактури дістануть один номер`);
+    // Токен усередині префікса не розгортається: formatInvoiceNumber підставляє
+    // {prefix} дослівно за один прохід, і «RE{year}-» надрукувався б на фактурі
+    // як є. Рік належить шаблону: prefix "RE", numberFormat "{prefix}{year}-{seq:4}".
+    const prefix = f(s, 'prefix');
+    if (prefix && /[{}]/.test(prefix)) {
+      note(file, `серія ${code}: prefix "${prefix}" містить {…} — токени працюють лише в numberFormat, на фактурі це надрукується дослівно`);
+    }
   }
 
   // ── типи номерів ──────────────────────────────────────────────────────────

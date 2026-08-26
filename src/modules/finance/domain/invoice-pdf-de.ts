@@ -255,6 +255,11 @@ export async function generateGermanInvoicePdf(doc: InvoiceDocument): Promise<Bu
         .text([doc.seller.bankName, `IBAN: ${doc.seller.iban}`].filter(Boolean).join(' · '), ML, y, { width: CR - ML });
     }
 
+    // y=800 лежить нижче нижнього поля (842 − 56 = 786), і pdfkit на це чесно
+    // відповідає новою сторінкою — фактура на один рядок їхала на два аркуші,
+    // другий ніс лише цей підпис. Поле знімається на час підпису: колонтитул
+    // за визначенням живе там, куди звичайному тексту не можна.
+    pdf.page.margins.bottom = 0;
     pdf.font('r').fontSize(7.5)
       .text([doc.seller.name, doc.seller.email, doc.seller.phone].filter(Boolean).join(' · '),
         ML, 800, { width: CR - ML, align: 'center', lineBreak: false });
