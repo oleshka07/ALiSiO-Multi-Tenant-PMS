@@ -837,7 +837,17 @@ function CalendarDesktop() {
                     }}>
                       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
                         <div style={{ fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{unit.name}</div>
-                        {unit.beds > 0 && <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{unit.beds} {tUi('місць')}</div>}
+                        {/* Тип — власна назва готелю (Klassik, Design…): при сортуванні
+                            за номерами це єдине місце, де його видно. */}
+                        {(unit.unit_type_name || unit.beds > 0) && (
+                          <div
+                            style={{ fontSize: 10, color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                            title={unit.unit_type_name || undefined}
+                          >
+                            {[unit.unit_type_name, unit.beds > 0 ? `${unit.beds} ${tUi('місць')}` : null]
+                              .filter(Boolean).join(' · ')}
+                          </div>
+                        )}
                       </div>
                       {/* Cleaning status indicator */}
                       <div title={`${tUi('Прибирання:')} ${unit.cleaning_status}`} style={{
