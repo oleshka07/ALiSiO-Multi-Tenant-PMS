@@ -72,6 +72,30 @@ assert.deepStrictEqual(
   { price: '', missingDays: 0, reason: 'failed' },
   'нуль без пояснення в поле не пишеться: нуль — це безкоштовна бронь');
 
+// ─── Валюта: невідома не вважається збігом ──────────────────────────────────
+//
+// Модалка броні мала власну копію цих правил, і вона казала протилежне:
+//
+//     const currencyOk = !q?.currency || !b.currency || q.currency === b.currency;
+//
+// тобто квота БЕЗ валюти проходила як «валюта та сама». А відсутня валюта —
+// рівно той випадок, коли вірити числу не можна: німецький готель дістав би в
+// бронь суму, порахувану в кронах, і побачив би це аж у рахунку.
+assert.deepStrictEqual(
+  readQuote({ ok: true, body: { total: 400, hasPricing: true, currency: 'EUR' } }, 'EUR'),
+  { price: '400', missingDays: 0, reason: 'priced' },
+  'та сама валюта — квоті можна вірити');
+assert.strictEqual(
+  readQuote({ ok: true, body: { total: 400, hasPricing: true, currency: 'CZK' } }, 'EUR').reason,
+  'failed', 'інша валюта — числу вірити не можна');
+assert.strictEqual(
+  readQuote({ ok: true, body: { total: 400, hasPricing: true } }, 'EUR').reason,
+  'failed', 'квота БЕЗ валюти проти броні в EUR — не збіг, а невідомість');
+assert.strictEqual(
+  readQuote({ ok: true, body: { total: 400, hasPricing: true } }).reason,
+  'priced', 'без очікуваної валюти перевірки немає — це форма створення');
+console.log('  ok  невідома валюта не вважається збігом');
+
 // ─── Ночі ───────────────────────────────────────────────────────────────────
 
 assert.strictEqual(nightsBetween('2026-09-10', '2026-09-12'), 2);
@@ -82,5 +106,37 @@ assert.strictEqual(nightsBetween('', '2026-09-12'), 0);
 // «з'їдати» ніч. Рахуємо в UTC саме тому.
 assert.strictEqual(nightsBetween('2026-03-28', '2026-03-30'), 2,
   'перехід на літній час не міняє кількість ночей');
+
+// ─── Сторож гонки стоїть ПЕРЕД виходом із ефекту ────────────────────────────
+//
+// Це не арифметика, а порядок рядків, тож перевіряється текстом.
+//
+// Було: `quoteSeq` збільшувався ПІСЛЯ `if (!shouldAskQuote(...)) return`. Коли
+// умови переставали дозволяти запит — портьє стер дату виїзду, змінив тип
+// номера, — ефект виходив, не чіпаючи лічильник. Запит, який на той момент
+// летів за старі дати, повертався, бачив свій номер актуальним і дописував
+// ціну ТИХ дат у поле, що вже показує інші. Сторож існував і саме в цьому
+// випадку не спрацьовував.
+//
+// Друга половина — submit: поки квота летить, поле «Вартість» ще порожнє, і
+// збереження в цю мить створювало бронь за нуль.
+{
+  const fs = await import('node:fs');
+  const src = fs.readFileSync('src/components/booking/BookingForm.tsx', 'utf8');
+  const code = src.replace(/\{?\/\*[\s\S]*?\*\/\}?/g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  const bump = code.indexOf('++quoteSeq.current');
+  const guard = code.indexOf('shouldAskQuote(');
+  assert.ok(bump > 0 && guard > 0, 'не знайшов ефект квоти — гейт дивиться не туди');
+  assert.ok(bump < guard,
+    'quoteSeq мусить збільшуватись ДО виходу з ефекту: інакше відповідь на '
+    + 'застарілі дати долітає й дописує ціну в поле, яке показує інші');
+
+  const submit = code.slice(code.indexOf('const handleSubmit'));
+  const body = submit.slice(0, submit.indexOf('const v = validate()'));
+  assert.ok(/quoteState\.loading/.test(body),
+    'handleSubmit мусить відмовляти, поки квота летить — інакше бронь їде за нуль');
+  console.log('  ok  сторож гонки перед виходом, submit чекає на квоту');
+}
 
 console.log('quote-prefill.check.ts OK');

@@ -183,7 +183,18 @@ export default function BookingForm({
     fetch('/api/properties')
       .then(r => (r.ok ? r.json() : []))
       .then((props) => {
-        if (Array.isArray(props) && props[0]?.city_tax_per_night != null) {
+        if (!Array.isArray(props) || props.length === 0) return;
+        // `props[0]` беззастережно означало, що в організації з двома
+        // обʼєктами кожна бронь діставала ставку ПЕРШОГО з них — мовчки, і
+        // курортний збір потрапляв у бронь чужого обʼєкта. Сусідній
+        // BookingViewModal уже шукає обʼєкт броні; тут броні ще немає, тож
+        // єдина чесна відповідь при кількох обʼєктах — жодної.
+        //
+        // Нуль тут не помилка: поле лишається порожнім, портьє вводить суму
+        // сам. Це рівно те, що робить решта цього блоку для готелю, який
+        // збору не має.
+        if (props.length > 1) return;
+        if (props[0]?.city_tax_per_night != null) {
           setCityTaxRate(Number(props[0].city_tax_per_night) || 0);
         }
       })
@@ -299,12 +310,28 @@ export default function BookingForm({
   // Ночі, яких не покриває жодне джерело, у поле НЕ підставляються (інваріант
   // 17): часткова сума виглядає як повна.
   useEffect(() => {
+    // Лічильник збільшується ПЕРШИМ, до будь-якого виходу.
+    //
+    // Було навпаки: коли `shouldAskQuote` ставало false — портьє стер дату
+    // виїзду, змінив тип номера, — ефект виходив, НЕ чіпаючи `quoteSeq`. Запит,
+    // який на той момент летів за старі дати, повертався, бачив свій номер
+    // актуальним і дописував ціну ТИХ дат у поле, що вже показує інші. Тобто
+    // сторож існував і саме в цьому випадку не спрацьовував.
+    //
+    // Тепер кожен перерахунок умов знецінює відповідь, яка ще в дорозі, — і
+    // тоді, коли новий запит іде, і тоді, коли він уже не потрібен.
+    const seq = ++quoteSeq.current;
+
     if (!shouldAskQuote({
       mode, priceTouched: priceTouched.current,
       unitTypeId: form.unitTypeId, checkIn: form.checkIn, checkOut: form.checkOut,
-    })) return;
+    })) {
+      // Умови більше не дають питати ціну — «рахуємо» знімається, інакше
+      // кнопка збереження лишалась би заблокованою назавжди.
+      setQuoteState((p) => (p.loading ? { ...p, loading: false } : p));
+      return;
+    }
 
-    const seq = ++quoteSeq.current;
     setQuoteState({ loading: true, missingDays: 0, failed: false });
 
     (async () => {
@@ -384,6 +411,14 @@ export default function BookingForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Поки квота летить, поле «Вартість» ще порожнє. Збереження в цю мить
+    // створювало бронь за нуль — а через частку секунди прилітала правильна
+    // ціна й дописувалась у поле форми, якої вже немає. Портьє бачив, як
+    // число зʼявилось, і не мав підстав думати, що в базу пішло інше.
+    if (quoteState.loading) {
+      setError(t('Ціна ще рахується — секунду'));
+      return;
+    }
     const v = validate();
     if (v) {
       setError(v);
@@ -764,9 +799,16 @@ export default function BookingForm({
         <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={saving}>
           {t('Скасувати')}
         </button>
-        <button type="submit" className="btn btn-primary" disabled={saving}>
+        {/*
+          Кнопка гасне і поки летить квота: інакше вона виглядає готовою в ту
+          саму мить, коли поле «Вартість» ще порожнє. Обробник це теж
+          перевіряє — кнопка тільки показує стан, вона не сторож.
+        */}
+        <button type="submit" className="btn btn-primary" disabled={saving || quoteState.loading}>
           {saving
             ? <><Loader2 size={14} className="animate-pulse" /> {t('Збереження...')}</>
+            : quoteState.loading
+              ? <><Loader2 size={14} className="animate-pulse" /> {t('Ціна рахується...')}</>
             : mode === 'create'
               ? <><Plus size={14} /> {t('Створити бронювання')}</>
               : <><Save size={14} /> {t('Зберегти зміни')}</>

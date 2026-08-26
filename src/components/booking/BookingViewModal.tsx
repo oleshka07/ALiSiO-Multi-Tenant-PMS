@@ -2,6 +2,7 @@
 
 import { useT, usePlural } from '@core/i18n/client';
 import React, { useState, useEffect } from 'react';
+import { readQuote } from './quote-prefill';
 import {
   Edit3, X, Save, Plus, Check, ArrowRight, Copy, ExternalLink,
   Loader2, Trash2, Phone, Receipt, RefreshCw, Clock, Lock, Mail, MessageCircle,
@@ -537,13 +538,15 @@ export default function BookingViewModal({
                               method: 'POST', headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ unitTypeId, checkIn: datesEditCI, checkOut: datesEditCO, adults: b.adults || 1, children: b.children || 0 }),
                             });
-                            if (qRes.ok) {
-                              const q = await qRes.json();
-                              const currencyOk = !q?.currency || !b.currency || q.currency === b.currency;
-                              if (q?.hasPricing && Number(q.missingDays || 0) === 0 && Number(q.total) > 0 && currencyOk) {
-                                newTotal = Number(q.total);
-                              }
-                            }
+                            // Та сама `readQuote`, що й у формі створення.
+                            // Тут жила друга реалізація тих самих правил, і
+                            // вона розходилась із першою в найгіршому місці:
+                            // квота БЕЗ валюти вважалась збігом валют.
+                            const outcome = readQuote(
+                              { ok: qRes.ok, body: qRes.ok ? await qRes.json() : null },
+                              b.currency || null,
+                            );
+                            if (outcome.reason === 'priced') newTotal = Number(outcome.price);
                           } catch { /* квота не відповіла — гілка newTotal == null нижче */ }
                         }
                         const head = `${tUi('Змінити дати?')}\n${b.check_in} → ${datesEditCI}\n${b.check_out} → ${datesEditCO}\n${oldNights} → ${newNights} ${pluralUi(newNights, 'ноч.')}`;

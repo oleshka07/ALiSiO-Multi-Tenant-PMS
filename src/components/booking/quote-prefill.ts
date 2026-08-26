@@ -70,9 +70,26 @@ export interface QuoteOutcome {
  * `failed` і `missing` розділені навмисне: перше — «ми не дізнались», друге —
  * «готель не назвав ціну на ці дати». Оператору це різні дії: повторити або
  * ввести суму руками.
+ *
+ * `expectCurrency` передають, коли бронь уже існує і має свою валюту —
+ * переквотування дат у модалці броні. Правило просте: невідома валюта не
+ * вважається збігом. Друга реалізація цієї перевірки, яка жила в модалці,
+ * казала протилежне —
+ *
+ *     const currencyOk = !q?.currency || !b.currency || q.currency === b.currency;
+ *
+ * — тобто квота БЕЗ валюти проходила як «валюта та сама». А відсутня валюта
+ * це рівно той випадок, коли вірити числу не можна: німецький готель дістав
+ * би в бронь суму, порахувану в кронах, і побачив би це в рахунку.
  */
-export function readQuote(res: { ok: boolean; body?: QuoteResponse | null }): QuoteOutcome {
+export function readQuote(
+  res: { ok: boolean; body?: QuoteResponse | null },
+  expectCurrency?: string | null,
+): QuoteOutcome {
   if (!res.ok || !res.body) return { price: '', missingDays: 0, reason: 'failed' };
+  if (expectCurrency && res.body.currency !== expectCurrency) {
+    return { price: '', missingDays: 0, reason: 'failed' };
+  }
   const missingDays = Number(res.body.missingDays) || 0;
   if (missingDays > 0 || res.body.hasPricing === false) {
     return { price: '', missingDays, reason: 'missing' };
