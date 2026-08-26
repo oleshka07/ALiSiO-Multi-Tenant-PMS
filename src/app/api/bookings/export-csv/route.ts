@@ -59,7 +59,11 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
       JOIN guests g ON r.guest_id = g.id
       JOIN units u ON r.unit_id = u.id
       JOIN categories c ON u.category_id = c.id
-      WHERE r.parent_id IS NULL
+      -- This export carries guest names, emails, phones, citizenship and
+      -- money. The actor was taken and never used, so on SQLite one hotel's
+      -- report downloaded every hotel's guests in one file.
+      WHERE r.organization_id = ?
+        AND r.parent_id IS NULL
         AND r.status NOT IN ('cancelled', 'no_show')
         AND (
           (r.check_in >= ? AND r.check_in <= ?)
@@ -67,7 +71,7 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
           OR (r.check_in <= ? AND r.check_out >= ?)
         )
     `;
-    const params: string[] = [from, to, from, to, from, to];
+    const params: string[] = [actor.organizationId, from, to, from, to, from, to];
 
     if (category) {
       query += ' AND c.type = ?';

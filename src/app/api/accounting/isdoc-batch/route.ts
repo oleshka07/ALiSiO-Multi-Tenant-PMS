@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { generateIsdocXml } from '@/modules/finance/domain/isdoc';
 import { requireOwner } from '@core/security/route-guard';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 import type { InvoiceData } from '@/modules/finance/domain/invoice-template';
 import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
 import { showBuyerName, dueDateFor } from '@/modules/finance/domain/invoice-rules';
@@ -56,6 +57,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const sql = getSql();
+    const orgId = await requireOrganizationId();
     const zip = new JSZip();
     let count = 0;
     const usedNames = new Set<string>();
@@ -92,10 +94,13 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       LEFT JOIN fin_operations p
         ON p.reservation_id = r.id AND p.op_type = 'income' AND p.status = 'completed'
       WHERE i.status = 'issued'
+        -- Named, not left to the policy: this packs invoices into a ZIP, and
+        -- on SQLite an unscoped month took every hotel's documents with it.
+        AND i.organization_id = ?
         AND ${sql.dialect.month('i.issued_at')} = ?
         ${confirmedFilter}
       ORDER BY i.invoice_number ASC
-    `, [month]);
+    `, [orgId, month]);
 
     for (const inv of invoices) {
       if (!inv.invoice_number) continue;
@@ -146,6 +151,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
         fo.amount, fo.currency, fo.comment, fo.method
       FROM fin_operations fo
       WHERE fo.op_type = 'income'
+        AND fo.organization_id = ?
         AND fo.status = 'completed'
         AND fo.source IN ('airbnb', 'booking_com')
         AND ${sql.dialect.month('fo.paid_at')} = ?
@@ -159,7 +165,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
           AND i.status = 'issued'
         )
       ORDER BY fo.paid_at ASC
-    `, [month]);
+    `, [orgId, month]);
 
     // Sequential counter for OTA invoices (standalone, not in invoices table)
     let otaSeq = count + 1;

@@ -10,6 +10,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 import { requireOwner } from '@core/security/route-guard';
 import { serverError } from '@core/http/errors';
 
@@ -26,6 +27,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
 
     // Build the base query — LEFT JOINs so custom/batch invoices without
     // reservation_id are still returned.
+    const orgId = await requireOrganizationId();
     const rows: any[] = await sql.rows<any>(`
       SELECT
         i.id,
@@ -61,9 +63,12 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       LEFT JOIN reservations r ON i.reservation_id = r.id
       LEFT JOIN guests      g ON r.guest_id = g.id
       LEFT JOIN units       u ON r.unit_id  = u.id
+      -- The tenant is named here, not left to the policy: on SQLite there is
+      -- none, and this list carried invoice numbers, buyers and amounts.
+      WHERE i.organization_id = ?
       ORDER BY i.issued_at DESC, i.invoice_number DESC
       LIMIT 1000
-    `);
+    `, [orgId]);
 
     // Apply source + search filters in JS (simpler than dynamic SQL for SQLite)
     let filtered = rows;

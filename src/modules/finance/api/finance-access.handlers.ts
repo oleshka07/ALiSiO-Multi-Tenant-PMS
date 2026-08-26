@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 import { serverError } from '@core/http/errors';
 
 // ─────────────────────────────────────────────────────────────────
@@ -83,9 +84,13 @@ export async function listFinanceAccess(): Promise<NextResponse> {
              fa.allowed_accounts, fa.can_export, fa.read_only
       FROM app_users u
       LEFT JOIN finance_user_access fa ON fa.user_id = u.id
-      WHERE u.role != 'owner'
+      -- This is the staff list of one hotel. Unscoped it named the people of
+      -- every hotel on the server, and the handlers below then took a user id
+      -- from the URL — so financial access could be granted to, or taken from,
+      -- somebody else's employee.
+      WHERE u.organization_id = ? AND u.role != 'owner'
       ORDER BY u.full_name
-    `) as any[];
+    `, [await requireOrganizationId()]) as any[];
 
     const result = users.map((u) => ({
       id: u.id,
@@ -125,7 +130,9 @@ export async function upsertFinanceAccess(request: NextRequest, context: any): P
     }
 
     // Verify user exists and is not owner
-    const user = await sql.row<any>('SELECT id, role FROM app_users WHERE id = ?', [userId]) as any;
+    const user = await sql.row<any>(
+      'SELECT id, role FROM app_users WHERE id = ? AND organization_id = ?',
+      [userId, await requireOrganizationId()]) as any;
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
@@ -184,7 +191,9 @@ export async function deleteFinanceAccess(_request: NextRequest, context: any): 
     const params = await context.params;
     const userId = params.id;
 
-    await sql.run('DELETE FROM finance_user_access WHERE user_id = ?', [userId]);
+    await sql.run(`DELETE FROM finance_user_access WHERE user_id = ? AND user_id IN (
+      SELECT id FROM app_users WHERE organization_id = ?)`,
+      [userId, await requireOrganizationId()]);
 
     return NextResponse.json({ ok: true });
   } catch (error: any) {
