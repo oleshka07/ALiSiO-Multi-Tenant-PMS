@@ -12,15 +12,19 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 // and by rule, never by tenant. On SQLite that returned every hotel's promo
 // codes to whoever asked. On Postgres the policy returned nobody's, including
 // the caller's. The guard sets the tenant and the policy does the filtering.
-export const GET = withActor(async (req: NextRequest) => {
+export const GET = withActor(async (req: NextRequest, _ctx, actor) => {
   try {
     const sql = getSql();
     const url = new URL(req.url);
     const siteId = url.searchParams.get('site_id');
     const ruleId = url.searchParams.get('rule_id');
 
-    let statement = 'SELECT * FROM coupons WHERE 1=1';
-    const params: (string | number)[] = [];
+    // And named in the SQL, not only left to the policy. The guard fixes
+    // Postgres; SQLite has no policies at all, and that is where development,
+    // demos and the .check.ts files run — there `WHERE 1=1` still handed over
+    // every hotel's promo codes. Two mechanisms, deliberately.
+    let statement = 'SELECT * FROM coupons WHERE organization_id = ?';
+    const params: (string | number)[] = [actor.organizationId];
 
     if (siteId) { statement += ' AND site_id = ?'; params.push(siteId); }
     if (ruleId) { statement += ' AND gift_card_rule_id = ?'; params.push(ruleId); }

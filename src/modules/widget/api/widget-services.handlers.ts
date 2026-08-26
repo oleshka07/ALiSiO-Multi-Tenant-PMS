@@ -3,6 +3,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withSite } from '../data/site.repo';
 import { money } from '@core/money';
+import { requireOrganizationId } from '@core/auth/tenant-context';
+
+/**
+ * `additional_services` reaches its tenant through `property_id → properties`,
+ * which is exactly what the Postgres policy says. Repeated here because the
+ * widget also runs on SQLite, where there are no policies: `withSite` sets the
+ * organization and nothing enforced it, so the service list a guest saw on one
+ * hotel's booking page was every hotel's active services, at their prices, and
+ * `serviceId` from the query string opened any of them.
+ */
+const OWNED_SERVICE = 'property_id IN (SELECT id FROM properties WHERE organization_id = ?)';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -23,6 +34,8 @@ export async function getWidgetServices(request: NextRequest) {
 async function servicesFor(searchParams: URLSearchParams) {
   try {
     const sql = getSql();
+    // Set by withSite above, from the site's own row.
+    const organizationId = await requireOrganizationId();
     const checkIn = searchParams.get('checkIn');
     const checkOut = searchParams.get('checkOut');
     const serviceId = searchParams.get('serviceId');
@@ -38,7 +51,9 @@ async function servicesFor(searchParams: URLSearchParams) {
     }
 
     if (serviceId && checkIn && checkOut) {
-      const service = await sql.row<any>('SELECT * FROM additional_services WHERE id = ? AND is_active = TRUE', [serviceId]) as any;
+      const service = await sql.row<any>(
+        `SELECT * FROM additional_services WHERE id = ? AND is_active = TRUE AND ${OWNED_SERVICE}`,
+        [serviceId, organizationId]) as any;
       if (!service) {
         return NextResponse.json({ error: 'Service not found' }, { status: 404, headers: CORS_HEADERS });
       }
@@ -112,8 +127,9 @@ async function servicesFor(searchParams: URLSearchParams) {
         FROM additional_services s
         LEFT JOIN site_services ss ON ss.service_id = s.id AND ss.site_id = ?
         WHERE s.is_active = TRUE AND COALESCE(ss.is_enabled, TRUE) = TRUE
+          AND s.${OWNED_SERVICE}
         ORDER BY COALESCE(ss.sort_order, s.sort_order), s.sort_order
-      `, [siteId]) as any[];
+      `, [siteId, organizationId]) as any[];
 
       // Apply price_override where set
       services = services.map(s => ({
@@ -125,16 +141,21 @@ async function servicesFor(searchParams: URLSearchParams) {
       // through available_for = 'glamping', one hotel's category name.
       services = await sql.rows<any>(`
         SELECT * FROM additional_services
-        WHERE is_active = TRUE AND available_for = 'all'
+        WHERE is_active = TRUE AND available_for = 'all' AND ${OWNED_SERVICE}
         ORDER BY sort_order
-      `) as any[];
+      `, [organizationId]) as any[];
     }
 
     const ratePlanId = searchParams.get('ratePlanId') || searchParams.get('ratePlan');
     let includedServices: string[] = [];
 
     if (ratePlanId) {
-      const ratePlan = await sql.row<any>('SELECT * FROM rate_plans WHERE id = ? OR code = ?', [ratePlanId, ratePlanId]) as any;
+      // Scoped too: `code` is unique per property, not per server, and this
+      // plan's `included_services_json` sets prices to 0 below. A ratePlan
+      // parameter naming a neighbour's plan made services free here.
+      const ratePlan = await sql.row<any>(
+        `SELECT * FROM rate_plans WHERE (id = ? OR code = ?) AND ${OWNED_SERVICE}`,
+        [ratePlanId, ratePlanId, organizationId]) as any;
       if (ratePlan && ratePlan.included_services_json) {
         try {
           includedServices = JSON.parse(ratePlan.included_services_json);

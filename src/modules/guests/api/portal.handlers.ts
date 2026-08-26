@@ -38,7 +38,7 @@ export async function getGuestPortal(
     const isExpired = now > expiryDate;
 
     if (isExpired) {
-      const unitTypes = await portalRepo.getUnitTypesForRebooking();
+      const unitTypes = await portalRepo.getUnitTypesForRebooking(reservation.property_id);
       return NextResponse.json({
         expired: true,
         guestName: reservation.first_name,

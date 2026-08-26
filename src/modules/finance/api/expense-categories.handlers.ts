@@ -8,7 +8,15 @@ import { serverError } from '@core/http/errors';
 export async function listExpenseCategories(): Promise<NextResponse> {
   try {
     const sql = getSql();
-    const categories = await sql.rows<any>(`SELECT * FROM expense_categories WHERE is_active = TRUE ORDER BY sort_order ASC`);
+    // The organization is named, not only left to the policy. The guard in
+    // index.ts sets the tenant, which is enough on Postgres; SQLite has no
+    // policies, and this list is the chart of accounts every expense form
+    // offers — one hotel was picking from every hotel's categories, and an
+    // operation filed under a foreign category lands in a foreign report.
+    const categories = await sql.rows<any>(
+      `SELECT * FROM expense_categories WHERE organization_id = ? AND is_active = TRUE ORDER BY sort_order ASC`,
+      [await requireOrganizationId()],
+    );
     return NextResponse.json(categories);
   } catch (error: any) {
     return serverError('modules/finance/api/expense-categories listExpenseCategories', error);
@@ -25,7 +33,11 @@ export async function createExpenseCategory(request: Request): Promise<NextRespo
 
     const orgRow = { id: await requireOrganizationId() } as any;
     const id = `ec_${Date.now()}`;
-    const maxOrder = await sql.row<any>("SELECT MAX(sort_order) as mx FROM expense_categories") as any;
+    // Same organization: an unqualified MAX() takes the highest sort_order on
+    // the whole server, so a new category of a small hotel is created at
+    // position 200 because somebody else has 199 of them.
+    const maxOrder = await sql.row<any>(
+      "SELECT MAX(sort_order) as mx FROM expense_categories WHERE organization_id = ?", [orgRow.id]) as any;
 
     // Keep both classification axes in sync — a category without
     // op_type/classifier is invisible to the matrix reports.

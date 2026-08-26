@@ -116,15 +116,26 @@ export async function getReservationStubByToken(token: string) {
   return await sql.row<any>('SELECT id, guest_id, unit_id, property_id FROM reservations WHERE guest_page_token = ?', [token]) as { id: string; guest_id: string; unit_id: string; property_id: string } | undefined;
 }
 
-export async function getUnitTypesForRebooking() {
+/**
+ * What an expired guest page offers to book again.
+ *
+ * The property is required. Without it this listed every `unit_types` row on
+ * the server: the guest of one hotel opened a stale link and was invited to
+ * rebook a neighbour's rooms, under this hotel's name and next to this hotel's
+ * phone number — the rest of that response is all `reservation.*`. Every other
+ * read on this page already takes `reservation.property_id`; this one did not,
+ * and it is the only list on the page a guest is meant to act on.
+ */
+export async function getUnitTypesForRebooking(propertyId: string) {
   const sql = getSql();
   return await sql.rows<any>(`
     SELECT ut.id, ut.name, ut.code, ut.description, ut.max_adults, ut.max_children, ut.base_occupancy,
            c.name as category_name, c.type as category_type, c.icon as category_icon
     FROM unit_types ut
     JOIN categories c ON ut.category_id = c.id
+    WHERE ut.property_id = ?
     ORDER BY c.type, ut.sort_order
-  `);
+  `, [propertyId]);
 }
 
 export async function getRegisteredGuests(reservationId: string) {

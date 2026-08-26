@@ -4,10 +4,22 @@ import { getSql } from '@core/db/async';
 import { withActor, withPermission } from '@core/auth/session';
 import { requirePropertyId } from '@core/auth/tenant-context';
 
-export const listAdditionalServices = withActor(async () => {
+/**
+ * `additional_services` has no organization column — it reaches the tenant
+ * through `property_id → properties`, exactly like `price_calendar` does
+ * through `unit_types`. Postgres has a policy that says so; SQLite has none,
+ * and SQLite is where development, demos and the .check.ts files run. Named in
+ * the SQL as well, so both databases give the same answer.
+ */
+const OWNED = 'property_id IN (SELECT id FROM properties WHERE organization_id = ?)';
+
+export const listAdditionalServices = withActor(async (_request, _ctx, actor) => {
   try {
     const sql = getSql();
-    const services = await sql.rows<any>('SELECT * FROM additional_services ORDER BY sort_order, name');
+    const services = await sql.rows<any>(
+      `SELECT * FROM additional_services WHERE ${OWNED} ORDER BY sort_order, name`,
+      [actor.organizationId],
+    );
     return NextResponse.json(services);
   } catch (error: any) {
     console.error('GET /api/additional-services error:', error?.message);
@@ -54,11 +66,20 @@ export const createAdditionalService = withPermission('manage_properties', async
   }
 });
 
-export const updateAdditionalService = withPermission('manage_properties', async (request: NextRequest) => {
+export const updateAdditionalService = withPermission('manage_properties', async (request: NextRequest, _ctx, actor) => {
   try {
     const sql = getSql();
     const body = await request.json();
     if (!body.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+    // The id comes from the request body. `manage_properties` says the caller
+    // may edit services — it does not say whose. Answered 404, so a foreign id
+    // and a missing one read the same from outside.
+    const owned = await sql.row<any>(
+      `SELECT id FROM additional_services WHERE id = ? AND ${OWNED}`,
+      [body.id, actor.organizationId],
+    );
+    if (!owned) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const fields = [
       'name', 'name_en', 'description', 'price', 'currency', 'unit_label',
@@ -77,10 +98,13 @@ export const updateAdditionalService = withPermission('manage_properties', async
       }
     }
     if (sets.length > 0) {
-      values.push(body.id);
-      await sql.run(`UPDATE additional_services SET ${sets.join(', ')} WHERE id = ?`, [...values]);
+      values.push(body.id, actor.organizationId);
+      await sql.run(`UPDATE additional_services SET ${sets.join(', ')} WHERE id = ? AND ${OWNED}`, [...values]);
     }
-    const updated = await sql.row<any>('SELECT * FROM additional_services WHERE id = ?', [body.id]);
+    const updated = await sql.row<any>(
+      `SELECT * FROM additional_services WHERE id = ? AND ${OWNED}`,
+      [body.id, actor.organizationId],
+    );
     return NextResponse.json(updated);
   } catch (error: any) {
     console.error('PUT /api/additional-services error:', error?.message);
@@ -88,12 +112,19 @@ export const updateAdditionalService = withPermission('manage_properties', async
   }
 });
 
-export const deleteAdditionalService = withPermission('manage_properties', async (request: NextRequest) => {
+export const deleteAdditionalService = withPermission('manage_properties', async (request: NextRequest, _ctx, actor) => {
   try {
     const sql = getSql();
     const id = request.nextUrl.searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
-    await sql.run('DELETE FROM additional_services WHERE id = ?', [id]);
+    const info = await sql.run(
+      `DELETE FROM additional_services WHERE id = ? AND ${OWNED}`,
+      [id, actor.organizationId],
+    );
+    // Nothing deleted means the service was not this hotel's (or is already
+    // gone). `{ ok: true }` for a delete that deleted nothing is how a hole
+    // stays invisible.
+    if (info.changes === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (error: any) {
     console.error('DELETE /api/additional-services error:', error?.message);
