@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
+import { withActor, type Actor } from '@core/auth/session';
 
 /**
  * GET /api/booking-sources/widget-sites
@@ -13,7 +14,7 @@ import { serverError } from '@core/http/errors';
  * The `code` is prefixed with `widget:` so the backend can distinguish
  * widget-originated manual entries from regular OTA sources.
  */
-export async function listWidgetSiteSources() {
+export const listWidgetSiteSources = withActor(async (_request: Request, _ctx, actor: Actor) => {
   try {
     const sql = getSql();
 
@@ -27,12 +28,17 @@ export async function listWidgetSiteSources() {
       return NextResponse.json([]);
     }
 
+    // Scoped to this hotel: unscoped, the "Widgets" group in the booking form
+    // listed every hotel's sites on the server. booking_sites reaches the
+    // tenant through property_id, and its RLS policy deliberately allows the
+    // pre-tenant read the public widget needs — so the filter has to be here.
     const sites = await sql.rows<any>(`
       SELECT id, name, slug, site_url, status
       FROM booking_sites
       WHERE status != 'deleted'
+        AND property_id IN (SELECT id FROM properties WHERE organization_id = ?)
       ORDER BY name
-    `) as any[];
+    `, [actor.organizationId]) as any[];
 
     const rows = sites.map((s) => ({
       code: `widget:${s.id}`,
@@ -49,4 +55,4 @@ export async function listWidgetSiteSources() {
   } catch (e: any) {
     return serverError('modules/bookings/api/booking-source-widgets listWidgetSiteSources', e);
   }
-}
+});

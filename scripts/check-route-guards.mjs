@@ -50,7 +50,7 @@ import path from 'node:path';
  * miss — it sends someone to wrap a route that is already wrapped.
  */
 const GUARDS = new RegExp([
-  '\\bwith(Actor|Permission|AnyPermission|Owner|FinanceRead|FinanceWrite|Site)\\b',
+  '\\bwith(Actor|Permission|AnyPermission|Owner|OwnedSite|FinanceRead|FinanceWrite|Site)\\b',
   '\\brequire(Owner|Permission)\\b', '\\basFinanceOwner\\b',
   '\\bcurrentActor\\b', '\\brunWithOrganization\\b',
 ].join('|'));
@@ -118,8 +118,14 @@ const SHARED_SECRET = /\b(CRON_SECRET|INVESTOR_[A-Z_]*TOKEN|cronAuthFailure|secr
  * tenant from whatever it does carry, which is what broke the widget price
  * list and the task digest.
  */
+// `(?=/)` and not `\b`: a word boundary matches a hyphen, so `\b` after
+// "booking" read `/api/booking-sources/[id]` as a public `/api/booking` route
+// and skipped it. Those two handlers then sat unguarded for as long as the
+// gate reported "every route is covered" — a neighbouring tenant could rename
+// a sales channel, zero its commission or delete it. A prefix here must be a
+// whole path segment, so the next character has to be a slash.
 const PUBLIC = new RegExp([
-  '/api/(widget|booking|guest|public|webhooks?|auth|health)\\b',
+  '/api/(widget|booking|guest|public|webhooks?|auth|health)(?=/)',
   '/api/cron/', '/api/[^/]+/cron\\b', '/api/[^/]+/[^/]+/cron\\b', '-cron/',
   '/api/payments/webhook',
   '/api/platform/',
@@ -170,6 +176,19 @@ function classifyExport(file, name, depth = 0) {
   const body = declared?.[0].split(/\nexport /)[0];
   if (body && GUARDS.test(body)) return 'guard';
   if (body && HAND_ROLLED.test(body)) return 'hand';
+
+  // A route that only dispatches: `export async function GET(req, ctx) {
+  // return format === 'csv' ? exportRegistry(req, ctx) : getRegistry(req, ctx) }`.
+  // The guard is on the handler it hands the request to, so follow the call —
+  // otherwise a correctly guarded route is reported as open, and the report
+  // sends someone to wrap what is already wrapped.
+  if (body && depth <= 2) {
+    const called = new Set([...body.matchAll(/\b([a-z]\w+)\s*\(\s*(?:request|req)\b/g)].map((m) => m[1]));
+    for (const fn of called) {
+      const via = followImport(file, src, fn, depth + 1);
+      if (via === 'guard') return 'guard';
+    }
+  }
 
   // Re-exported from somewhere else: follow it.
   if (assigned) {
