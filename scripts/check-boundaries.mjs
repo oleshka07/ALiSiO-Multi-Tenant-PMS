@@ -22,14 +22,45 @@
  *
  * Read the second number. The first is the size of the seam; the second is
  * whether there is a seam at all.
+ *
+ * --strict is a RATCHET, not a target. The BASELINE below is how many
+ * breaches each module had the day the gate started blocking (2026-08-27) —
+ * a ceiling, not a goal. One more breach fails the build and names the file;
+ * one less fails too, asking to lower the ceiling, so progress locks in and
+ * cannot silently slide back. Zero is unreachable today and that is fine;
+ * what must stay unreachable is growth. A module absent from the list has a
+ * ceiling of zero: a new module is born isolated.
+ *
+ * The numbers in ARCHITECTURE §8 drifted within two weeks of being written —
+ * dashboard and channels each grew a breach, guests grew two, and nothing
+ * said so. That drift is why this is a gate now and not a report.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 
+const BASELINE = {
+  auth: 0,
+  bookings: 3,
+  channels: 1,
+  dashboard: 1,
+  events: 1,
+  finance: 17,
+  guests: 8,
+  pricing: 6,
+  properties: 9,
+  reports: 0,
+  tasks: 1,
+  widget: 6,
+};
+
 const MODULES = fs.readdirSync('src/modules', { withFileTypes: true })
   .filter((e) => e.isDirectory()).map((e) => e.name);
 
-const only = process.argv[2];
+const args = process.argv.slice(2);
+const strict = args.includes('--strict');
+// In strict mode every module is compared against its ceiling; a single-module
+// run would make the absent ones look like stale baseline entries.
+const only = strict ? undefined : args.find((a) => !a.startsWith('--'));
 
 const FILES = [];
 (function walk(d) {
@@ -135,4 +166,43 @@ if (only) {
   }
 } else {
   console.log('Деталі по одному модулю:  node scripts/check-boundaries.mjs <модуль>');
+}
+
+if (strict) {
+  const problems = [];
+
+  for (const r of report) {
+    const ceiling = BASELINE[r.mod] ?? 0;
+    const now = r.breaches.length;
+    if (now > ceiling) {
+      problems.push(
+        `  ${r.mod}: пробоїв ${now}, стеля ${ceiling} — НОВИЙ ПРОБІЙ. Модуль відкривають лише його фасади` +
+        ` ('@${r.mod}' і modules/${r.mod}/ui/); знайдіть свій серед:`,
+      );
+      for (const b of r.breaches) problems.push(`      ${b}`);
+    } else if (now < ceiling) {
+      problems.push(
+        `  ${r.mod}: пробоїв ${now}, стеля ${ceiling} — стало КРАЩЕ. Опустіть стелю: у BASELINE` +
+        ` (scripts/check-boundaries.mjs) поставте ${r.mod}: ${now}, щоб прогрес не відкотився мовчки.`,
+      );
+    }
+  }
+
+  for (const mod of Object.keys(BASELINE)) {
+    if (!MODULES.includes(mod)) {
+      problems.push(`  ${mod}: є в BASELINE, але src/modules/${mod} не існує — приберіть застарілий запис.`);
+    }
+  }
+
+  console.log();
+  if (problems.length) {
+    console.log('ХРАПОВИК МЕЖ — збірка зупинена:');
+    for (const p of problems) console.log(p);
+    console.log();
+    console.log('  Пробій — це імпорт modules/<x>/(data|domain|events) ззовні або SQL до таблиці,');
+    console.log('  якою володіє лише той модуль. Правильні двері — фасад @<x> або modules/<x>/ui/.');
+    process.exit(1);
+  }
+  const total = report.reduce((n, r) => n + r.breaches.length, 0);
+  console.log(`  храповик меж: пробої не зросли (${total} по ${report.length} модулях, у межах стелі)`);
 }
