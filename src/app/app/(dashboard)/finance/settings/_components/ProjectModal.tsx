@@ -105,7 +105,7 @@ export default function ProjectModal({ initial, parent, onClose, onSave }: Props
           <div style={hintStyle}>
             {sharedDisabled
               ? t('Успадковано від батьківського проєкту')
-              : t('Наприклад, HQ/Загальне — витрати розподіляються через cost_allocations')}
+              : t('Наприклад, HQ/Загальне — витрати такого проєкту стосуються всіх')}
           </div>
         </div>
 

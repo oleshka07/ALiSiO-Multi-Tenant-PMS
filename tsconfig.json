@@ -44,8 +44,6 @@
       "@auth/*": ["./src/modules/auth/api/*"],
       "@dashboard": ["./src/modules/dashboard/api"],
       "@dashboard/*": ["./src/modules/dashboard/api/*"],
-      "@payments": ["./src/modules/payments/api"],
-      "@payments/*": ["./src/modules/payments/api/*"],
       "@widget": ["./src/modules/widget/api"],
       "@widget/*": ["./src/modules/widget/api/*"],
       "@tasks": ["./src/modules/tasks/api"],

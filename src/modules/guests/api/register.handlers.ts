@@ -4,60 +4,28 @@ import { z } from 'zod';
 import * as registrationRepo from '../data/registration.repo';
 // TODO: replace with @channels eventBus event when channels module is migrated
 import { checkRateLimit } from '@core/security/rate-limit';
-import { maskDobForSheets, maskDocNumberForSheets } from '@core/security/pii-mask';
 import { serverError } from '@core/http/errors';
 
-/** POST to Google Apps Script */
-async function syncToGoogleSheets(guests: any[], reservation: any): Promise<void> {
-  const url = process.env.GOOGLE_GUESTS_SCRIPT_URL;
-  if (!url) return; // not configured — skip silently
-
-  for (const guest of guests) {
-    const nights = reservation.check_in && reservation.check_out
-      ? Math.max(0, (new Date(reservation.check_out + 'T00:00:00Z').getTime() - new Date(reservation.check_in + 'T00:00:00Z').getTime()) / 86400000)
-      : 0;
-
-    const payload = {
-      action: 'guest',
-      full_name: `${guest.lastName || ''} ${guest.firstName || ''}`.trim(),
-      surname: guest.lastName || '',
-      first_name: guest.firstName || '',
-      birth_date: maskDobForSheets(guest.dateOfBirth),
-      doc_type: guest.documentType || '',
-      doc_number: maskDocNumberForSheets(guest.documentNumber),
-      country_code: '',
-      nationality: guest.nationality || '',
-      address: '',  // PII minimization — full address stays in PMS only
-      visa_number: '',
-      check_in: reservation.check_in || '',
-      check_out: reservation.check_out || '',
-      nights,
-      is_foreigner: 'Tak',
-      tax_amount: 0,
-      exempt_reason: '',
-      purpose: '',
-      note: '[Web registration via guest portal]',
-    };
-
-    try {
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        redirect: 'follow',
-        signal: AbortSignal.timeout(15000),
-      });
-      const text = await resp.text();
-      if (resp.ok && !text.toLowerCase().includes('error')) {
-        console.log('[GuestReg Sheets] Synced:', payload.full_name);
-      } else {
-        console.error('[GuestReg Sheets] Error:', resp.status, text.slice(0, 200));
-      }
-    } catch (e: any) {
-      console.error('[GuestReg Sheets] Failed:', e.message);
-    }
-  }
-}
+/*
+ * Тут стояв `syncToGoogleSheets`: після кожної реєстрації гостя дані летіли
+ * POST-ом на Google Apps Script за адресою з `GOOGLE_GUESTS_SCRIPT_URL`.
+ *
+ * Видалено 2026-08-27 разом із `core/security/pii-mask.ts`, який існував лише
+ * заради нього. Причини, у порядку ваги:
+ *
+ *   1. Одна змінна оточення на весь сервер, а сервер мультитенантний. Кожен
+ *      готель, який реєструє гостя, писав би в ОДНУ таблицю — чужу. Це не
+ *      налаштування інтеграції, це відсутність тенантності.
+ *   2. Персональні дані гостя (імʼя, документ, дата народження, дати заїзду)
+ *      йшли за межу системи без згоди, без запису в аудит і без способу це
+ *      вимкнути з інтерфейсу. Маскування прикривало два поля з восьми.
+ *   3. Ні екрана, ні перемикача, ні ключа в `organization_features`. Про те,
+ *      що синк узагалі є, можна було дізнатись лише з цього файлу.
+ *
+ * Якщо експорт реєстрацій знадобиться — це окремий модуль із власним ключем
+ * інтеграції на організацію (`core/integration-credentials.ts`), а не змінна
+ * оточення.
+ */
 
 export async function registerGuests(
   request: NextRequest,
@@ -113,9 +81,6 @@ export async function registerGuests(
 
     const clientIp = request.headers.get('x-forwarded-for') || 'unknown';
     const registeredGuests = await registrationRepo.saveRegistrations(reservation.id, reservation.organization_id, parsedGuests, clientIp);
-
-    // ── Auto-sync to Google Sheets (non-blocking) ─────────────────────────
-    syncToGoogleSheets(parsedGuests, reservation).catch(() => {});
 
     return NextResponse.json({ success: true, registeredGuests });
   } catch (error: any) {

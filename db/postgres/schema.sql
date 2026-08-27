@@ -347,18 +347,6 @@ CREATE TABLE "content_translations" (
   UNIQUE ("text_hash", "lang")
 );
 
-CREATE TABLE "cost_allocations" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "organization_id" TEXT NOT NULL,
-  "month" TEXT NOT NULL,
-  "alloc_method" TEXT NOT NULL,
-  "business_unit_id" TEXT NOT NULL,
-  "percentage" DOUBLE PRECISION DEFAULT 0 NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  UNIQUE ("organization_id", "month", "alloc_method", "business_unit_id")
-);
-
 CREATE TABLE "coupons" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "code" TEXT NOT NULL,
@@ -1636,13 +1624,6 @@ CREATE TABLE "sessions" (
   PRIMARY KEY ("id")
 );
 
-CREATE TABLE "settings" (
-  "key" TEXT NOT NULL,
-  "value" TEXT,
-  "updated_at" TIMESTAMPTZ DEFAULT now(),
-  PRIMARY KEY ("key")
-);
-
 CREATE TABLE "site_incoming_leads" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "site_id" TEXT NOT NULL,
@@ -1984,10 +1965,6 @@ ALTER TABLE "channel_credentials" ADD CONSTRAINT "fk_channel_credentials_organiz
 ALTER TABLE "channel_rate_rules" ADD CONSTRAINT "fk_channel_rate_rules_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "channel_rate_rules" ADD CONSTRAINT "fk_channel_rate_rules_organization_id_2"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "cost_allocations" ADD CONSTRAINT "fk_cost_allocations_business_unit_id_1"
-  FOREIGN KEY ("business_unit_id") REFERENCES "business_units" ("id");
-ALTER TABLE "cost_allocations" ADD CONSTRAINT "fk_cost_allocations_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "coupons" ADD CONSTRAINT "fk_coupons_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
@@ -2494,7 +2471,6 @@ CREATE INDEX IF NOT EXISTS "idx_event_spaces_org" ON "event_spaces" ("organizati
 CREATE INDEX IF NOT EXISTS "idx_event_addons_org" ON "event_addons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_event_bookings_org" ON "event_bookings" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_guest_page_sections_org" ON "guest_page_sections" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_cost_allocations_org" ON "cost_allocations" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_coupons_org" ON "coupons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_expense_categories_org" ON "expense_categories" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_auto_rules_org" ON "fin_auto_rules" ("organization_id");
@@ -2577,8 +2553,6 @@ ALTER TABLE "event_addons" ALTER COLUMN "organization_id"
 ALTER TABLE "event_bookings" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "guest_page_sections" ALTER COLUMN "organization_id"
-  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
-ALTER TABLE "cost_allocations" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "coupons" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2815,12 +2789,6 @@ CREATE POLICY "channel_rate_rules_tenant" ON "channel_rate_rules"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
-
-ALTER TABLE "cost_allocations" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "cost_allocations" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "cost_allocations_tenant" ON "cost_allocations"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "coupons" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "coupons" FORCE ROW LEVEL SECURITY;

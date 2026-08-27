@@ -1835,33 +1835,6 @@ function runMigrations(database: any) {
     )
   `);
 
-  // --- Migration: create cost_allocations table ---
-  const caExists = database.prepare(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name='cost_allocations'"
-  ).get();
-  if (!caExists) {
-    database.exec(`
-      CREATE TABLE cost_allocations (
-        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-        month TEXT NOT NULL,
-        alloc_method TEXT NOT NULL,
-        business_unit_id TEXT NOT NULL REFERENCES business_units(id),
-        percentage REAL NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        UNIQUE(organization_id, month, alloc_method, business_unit_id)
-      )
-    `);
-    // No seed. This used to insert the first hotel's allocation percentages
-    // for 2026-03 against six of its business unit ids — ids that stopped
-    // existing when the unit seeding was reduced to bu_shared/bu_review, so on
-    // a fresh database the INSERT died on its foreign key. Worker A crashed,
-    // worker B saw the table already created, skipped the block, and the boot
-    // "succeeded" with the crash swallowed. Allocations are the customer's own
-    // numbers; an empty table is the correct start.
-    console.log('[DB] Created cost_allocations table');
-  }
-
   // ═══════════════════════════════════════════════════════
   // FINANCE MODULE PHASE 2 TABLES
   // ═══════════════════════════════════════════════════════
@@ -2576,15 +2549,6 @@ function runMigrations(database: any) {
   if (!guestCols2.includes('language')) {
     try { database.exec("ALTER TABLE guests ADD COLUMN language TEXT"); } catch { /* */ }
   }
-
-  // --- Migration: create settings table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT,
-      updated_at TEXT DEFAULT (datetime('now'))
-    )
-  `);
 
   // --- Migration: property_guest_config (shared property-level settings) ---
   const pgcExists = database.prepare(

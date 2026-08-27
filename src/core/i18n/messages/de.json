@@ -1528,7 +1528,6 @@
   "Напр.: FB": "Z. B.: FB",
   "Напр.: STEALTH": "Z. B.: STEALTH",
   "Напр.: Stealth House (2 місця)": "Z. B.: Stealth House (2 Plätze)",
-  "Наприклад, HQ/Загальне — витрати розподіляються через cost_allocations": "Zum Beispiel HQ/Allgemein — die Kosten werden über cost_allocations verteilt",
   "Наприклад: 12345678": "Zum Beispiel: 12345678",
   "Наприклад: Літня знижка 15%": "Zum Beispiel: Sommerrabatt 15 %",
   "Наприклад: Glamping ALiSiO": "Zum Beispiel: Glamping ALiSiO",
@@ -2644,5 +2643,6 @@
   "URL сторінки подяки (Thank You)": "URL der Danke-Seite (Thank You)",
   "UTM Маркетингові кампанії": "UTM-Marketingkampagnen",
   "VIP ваучер — Романтичний вікенд у лісі: 2 ночі + сесія сауни + чан + сніданки.": "VIP-Gutschein — Romantisches Wochenende im Wald: 2 Nächte + Saunagang + Badezuber + Frühstück.",
-  "WhatsApp гостьової сторінки": "WhatsApp der Gästeseite"
+  "WhatsApp гостьової сторінки": "WhatsApp der Gästeseite",
+  "Наприклад, HQ/Загальне — витрати такого проєкту стосуються всіх": "Zum Beispiel HQ/Allgemein — die Kosten eines solchen Projekts betreffen alle"
 }

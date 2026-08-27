@@ -32,7 +32,8 @@ async function countLinkedRows(projectId: string): Promise<{ total: number; brea
     { table: 'capex_items',        column: 'business_unit_id' },
     { table: 'accruals',           column: 'business_unit_id' },
     { table: 'bank_transactions',  column: 'matched_business_unit_id' },
-    { table: 'cost_allocations',   column: 'business_unit_id' },
+    // `cost_allocations` стояла тут шостою. Таблиця не мала жодного писача,
+    // тож рядок означав «порахуй нуль» — і зник разом із нею (міграція 0038).
   ];
   const breakdown: LinkedCount[] = [];
   let total = 0;
