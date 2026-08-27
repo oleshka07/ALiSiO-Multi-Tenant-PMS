@@ -45,15 +45,25 @@ ERP для готельного бізнесу — мультитенантни�
 
 ```
 src/app/          маршрути й сторінки — тонкі, лише експорт хендлера
-src/modules/      14 доменних модулів — уся бізнес-логіка
+src/modules/      13 доменних модулів — уся бізнес-логіка
 src/core/         інфраструктура, спільна для всіх модулів
 src/lib/          історичний шар; поступово розходиться по modules/
 ```
 
 ### 2.1 Модулі
 
-`auth bookings channels dashboard events finance guests notifications payments
-pricing properties reports tasks widget`
+`auth bookings channels dashboard day-sheets events finance guests pricing
+properties reports tasks widget`
+
+Список був неточний: `notifications` і `payments` у ньому стояли, а каталогів
+із такими назвами в репозиторії немає — аліас `@payments` у tsconfig вказував
+у порожнечу і прибраний 2026-08-27.
+
+`day-sheets` виділено з `bookings` того ж дня. За формою всі чотири аркуші
+виводяться з бронювань, і саме тому вони там і опинились; за призначенням це
+не бронювання, а робочий день готелю, і апартаменти без сніданку й рецепції не
+друкують жодного з них. Поки він сидів усередині `bookings`, вимкнути його
+означало вимкнути броні.
 
 Вирізано як напівзроблене й дуже індивідуальне:
 

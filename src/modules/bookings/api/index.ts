@@ -17,6 +17,5 @@ export { listServiceOrders, updateServiceOrder } from './service-orders.handlers
 export { sendBookingConfirmationEmail } from '../data/send-confirmation-email';
 export { registerBookingsSubscribers } from '../events/subscribers';
 
-// The four sheets reception prints every morning.
-export { getDaySheet } from './day-sheets.handlers';
-export type { StayRow, BreakfastRow, KeyRow, DayCloseRow } from '../data/day-sheets.repo';
+// Аркуші дня переїхали у власний модуль `@day-sheets` (2026-08-27): це не
+// бронювання, а робочий день готелю, і вимикатись він мусить окремо.

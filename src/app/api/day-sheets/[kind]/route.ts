@@ -1,2 +1,2 @@
-import { getDaySheet } from '@bookings';
+import { getDaySheet } from '@day-sheets';
 export const GET = getDaySheet;

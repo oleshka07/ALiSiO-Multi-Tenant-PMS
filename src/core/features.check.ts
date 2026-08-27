@@ -98,7 +98,7 @@ const OWNERS: Record<Exclude<Key, 'widget' | 'fiscal_de' | 'online_payments'>, s
   events: ['src/modules/events/api/events.handlers.ts'],
   reports: ['src/app/api/reports/route.ts', 'src/app/api/reports/city-tax/route.ts'],
   dashboard: ['src/app/api/dashboard/route.ts'],
-  day_sheets: ['src/modules/bookings/api/day-sheets.handlers.ts'],
+  day_sheets: ['src/modules/day-sheets/api/day-sheets.handlers.ts'],
 };
 
 let guarded = 0;

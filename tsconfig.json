@@ -49,7 +49,9 @@
       "@tasks": ["./src/modules/tasks/api"],
       "@tasks/*": ["./src/modules/tasks/api/*"],
       "@events": ["./src/modules/events/api"],
-      "@events/*": ["./src/modules/events/api/*"]
+      "@events/*": ["./src/modules/events/api/*"],
+      "@day-sheets": ["./src/modules/day-sheets/api"],
+      "@day-sheets/*": ["./src/modules/day-sheets/api/*"]
     }
   },
   "include": [
