@@ -83,10 +83,17 @@ export const updateGuestPageConfig = withActor(async (request: NextRequest, { pa
       }
     } else {
       await sql.run(`
+        -- pets_policy і entry_photo_url названі й тут.
+        --
+        -- Гілка UPDATE знала про них, гілка INSERT — ні, а форма шле їх щоразу.
+        -- Тобто ПЕРШЕ збереження для нового типу номера тихо губило обидва
+        -- поля: правила щодо тварин і фото входу зникали, а тост казав
+        -- «Збережено!». Помітити це можна було лише перезавантаживши сторінку
+        -- й побачивши порожні поля, які щойно заповнив.
         INSERT INTO guest_page_config (unit_type_id, amenities, check_in_instructions, external_amenities, faq_items, rules,
           wifi_network, wifi_password, restaurant_name, restaurant_hours, restaurant_menu_url, useful_info,
-          lock_code, maps_url, territory_map_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          lock_code, maps_url, territory_map_url, pets_policy, entry_photo_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [unitTypeId,
         typeof body.amenities === 'object' ? JSON.stringify(body.amenities) : body.amenities || '[]',
         body.check_in_instructions || '',
@@ -104,7 +111,9 @@ export const updateGuestPageConfig = withActor(async (request: NextRequest, { pa
         typeof body.useful_info === 'object' ? JSON.stringify(body.useful_info) : body.useful_info || '[]',
         body.lock_code || null,
         body.maps_url || null,
-        body.territory_map_url || null]);
+        body.territory_map_url || null,
+        typeof body.pets_policy === 'object' ? JSON.stringify(body.pets_policy) : body.pets_policy || null,
+        body.entry_photo_url || null]);
     }
 
     const updated = await sql.row<any>('SELECT * FROM guest_page_config WHERE unit_type_id = ?', [unitTypeId]);

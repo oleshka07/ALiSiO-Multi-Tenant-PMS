@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { todayFor } from '@core/hotel-day';
+import { todayFor, shiftMonths } from '@core/hotel-day';
 import type { Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
 
@@ -19,8 +19,15 @@ export async function getCityTaxReport(request: Request, _ctx: unknown, actor: A
     const month = searchParams.get('month') || (await todayFor(org)).slice(0, 7);
 
     const startDate = `${month}-01`;
-    const [y, m] = month.split('-').map(Number);
-    const endDate = new Date(y, m, 1).toISOString().split('T')[0];
+    // Наступний місяць рахує shiftMonths, а не `new Date(y, m, 1)`.
+    //
+    // Той конструктор бере ЛОКАЛЬНИЙ час, а .toISOString() переводить його в
+    // UTC: під TZ=Europe/Prague перше вересня ставало 31 серпня 22:00Z, і
+    // endDate виходив '2026-08-31' замість '2026-09-01'. Тобто зі звіту, який
+    // подають у міську раду, зникали заїзди останнього дня місяця. На проді
+    // спить, бо контейнер стоїть в UTC, — і саме тому це знайшли б лише коли
+    // хтось запустив би сервер у своєму поясі.
+    const endDate = shiftMonths(startDate, 1);
 
     const bookings = await sql.rows<any>(`
       SELECT

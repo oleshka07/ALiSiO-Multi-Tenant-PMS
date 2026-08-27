@@ -13,7 +13,7 @@ export interface ICalEvent {
 /**
  * Parse an iCal (VCALENDAR) string into an array of events.
  */
-export function parseICal(text: string): ICalEvent[] {
+export function parseICal(text: string, timezone = 'Europe/Prague'): ICalEvent[] {
   const events: ICalEvent[] = [];
   // Unfold long lines (RFC 5545: CRLF + space/tab = continuation)
   const unfolded = text.replace(/\r\n[\t ]/g, '');
@@ -49,9 +49,9 @@ export function parseICal(text: string): ICalEvent[] {
     } else if (trimmed.startsWith('DTSTAMP:')) {
       current.dtstamp = trimmed.substring(8);
     } else if (trimmed.includes('DTSTART')) {
-      current.dtstart = parseDateValue(trimmed);
+      current.dtstart = parseDateValue(trimmed, timezone);
     } else if (trimmed.includes('DTEND')) {
-      current.dtend = parseDateValue(trimmed);
+      current.dtend = parseDateValue(trimmed, timezone);
     }
   }
 
@@ -65,7 +65,7 @@ export function parseICal(text: string): ICalEvent[] {
  *   DTSTART:20260420T220000Z          → "2026-04-21" (UTC 22:00 = midnight Czech UTC+2)
  *   DTSTART;TZID=Europe/Prague:20260421T000000 → "2026-04-21"
  */
-function parseDateValue(line: string): string {
+function parseDateValue(line: string, timezone: string): string {
   const colonIdx = line.lastIndexOf(':');
   if (colonIdx < 0) return '';
   const raw = line.substring(colonIdx + 1).trim();
@@ -85,11 +85,18 @@ function parseDateValue(line: string): string {
       iso = `${iso.substring(0, 4)}-${iso.substring(4, 6)}-${iso.substring(6, 8)}T${iso.substring(9, 11)}:${iso.substring(11, 13)}:${iso.substring(13, 15)}`;
       if (raw.endsWith('Z')) iso += 'Z';
     }
-    // Get the date in Czech timezone (Europe/Prague = UTC+1/+2)
+    // У поясі готелю, а не в чеському.
+    //
+    // Тут стояв літерал 'Europe/Prague'. Booking.com і Airbnb шлють DTSTART в
+    // UTC, і в поясі, який від Праги відрізняється, «22:00Z» перетворювалось на
+    // сусідній день: заїзд або виїзд ставав на добу раніше чи пізніше, ніж
+    // насправді. Для календаря, за яким канал вирішує, чи номер вільний, це
+    // готова подвійна бронь. `organizations.timezone` існує саме для цього, і
+    // `core/hotel-day.ts` тримається того самого правила.
     try {
       const d = new Date(iso);
       if (!isNaN(d.getTime())) {
-        return d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Prague' }); // sv-SE gives YYYY-MM-DD
+        return d.toLocaleDateString('sv-SE', { timeZone: timezone }); // sv-SE gives YYYY-MM-DD
       }
     } catch { /* fall through */ }
     // Fallback: extract just date part

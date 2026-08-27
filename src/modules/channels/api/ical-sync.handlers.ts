@@ -5,6 +5,7 @@ import { parseICal, extractGuestName } from '@/modules/channels/domain/ical'; //
 import { getSql } from '@core/db/async';
 import { withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
+import { organizationTimezone } from '@core/hotel-day';
 
 /**
  * Pull one iCal feed into the hotel's calendar.
@@ -72,7 +73,10 @@ export async function syncChannel(channel: any, organizationId: string) {
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 
     const icalText = await response.text();
-    const events = parseICal(icalText);
+    // Пояс готелю, а не Праги: канал шле DTSTART в UTC, і «22:00Z» — це вже
+    // наступна доба скрізь на схід від Гринвіча. Доба різниці в календарі
+    // зайнятості — це подвійна бронь.
+    const events = parseICal(icalText, await organizationTimezone(organizationId));
 
     let eventsCreated = 0;
     let eventsUpdated = 0;
