@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { captureError } from '../monitoring/sentry';
 
 /**
  * What a caller is told when the server breaks, and what the operator is told.
@@ -26,6 +27,9 @@ export function serverError(scope: string, err: unknown, userMessage?: string): 
     ? `${err.message}${err.stack ? `\n${err.stack}` : ''}`
     : String(err);
   console.error(`[${scope}]`, detail);
+  // Docker keeps 30 MB of logs; Sentry keeps the error until somebody looks.
+  // Fire-and-forget, no-op without SENTRY_DSN — see core/monitoring/sentry.ts.
+  captureError(scope, err);
 
   return NextResponse.json(
     { error: userMessage || 'Внутрішня помилка сервера. Спробуйте ще раз або зверніться в підтримку.' },
