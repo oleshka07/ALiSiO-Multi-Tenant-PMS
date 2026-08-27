@@ -93,7 +93,22 @@ const STATUS_MAP: Record<string, { label: string; badge: string }> = {
   checked_in: { label: 'Заселено', badge: 'badge-primary' },
   checked_out: { label: 'Виселено', badge: 'badge-info' },
   cancelled: { label: 'Скасовано', badge: 'badge-danger' },
+  // no_show бракувало, хоча статус є і в схемі, і в CHECK-обмеженні. Через це
+  // бейдж на картці такої броні виходив як `badge undefined`, а у фільтрі
+  // статусів такого пункту просто не існувало.
+  no_show: { label: 'Не заїхав', badge: 'badge-danger' },
 };
+
+/**
+ * Статуси, за яких номер вільний.
+ *
+ * Весь інший код так і вважає: перевірка на перебронювання, груповий пошук,
+ * розселення — усюди `status NOT IN ('cancelled', 'no_show')`. Сітка ж ховала
+ * лише `cancelled`, тож бронь «не заїхав» лишалась на календарі кольоровою
+ * смугою. Портьє бачив зайнятий номер, відмовляв гостю з вулиці — і номер
+ * стояв порожній, бо сервер весь цей час вважав його вільним.
+ */
+const FREES_THE_ROOM = ['cancelled', 'no_show'];
 
 // SOURCE_MAP is built dynamically from /api/booking-sources
 
@@ -363,9 +378,13 @@ function CalendarDesktop() {
   }, [units, search, categoryFilter, cleaningFilter]);
 
   const filteredBookings = useMemo(() => {
-    // Always hide cancelled bookings from calendar (they sync to external platforms)
-    let result = bookings.filter(b => b.status !== 'cancelled');
-    if (statusFilter) result = result.filter(b => b.status === statusFilter);
+    // Броні, які звільнили номер, сітка не показує — інакше вона малює
+    // зайнятість, якої немає. Але коли портьє САМ обрав такий статус у
+    // фільтрі, він хоче бачити саме їх: доти пункт «Скасовано» був у списку й
+    // не показував нічого, бо фільтр стояв після безумовного приховування.
+    let result = statusFilter
+      ? bookings.filter(b => b.status === statusFilter)
+      : bookings.filter(b => !FREES_THE_ROOM.includes(b.status));
     if (paymentFilter) result = result.filter(b => b.payment_status === paymentFilter);
     return result;
   }, [bookings, statusFilter, paymentFilter]);

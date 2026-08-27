@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
+import { splitMoney } from '@core/money';
 
 /**
  * One group booking, by id — read, changed and deleted with no tenant named.
@@ -149,6 +150,30 @@ export const updateGroupBooking = withPermission('manage_bookings', async (reque
     }
     if (body.source) {
       await sql.run('UPDATE reservations SET source = ? WHERE group_id = ?', [body.source, id]);
+    }
+    if (body.total_price !== undefined) {
+      // Сума групи розкладається по її ж кімнатах.
+      //
+      // Каскад був на всьому, крім ціни: статус, оплата, дати, ночі й джерело
+      // доїжджали до дочірніх броней, а total_price лишався тільки на групі.
+      // Тому підсумок групи розходився з сумою своїх же кімнат — назавжди, бо
+      // ніщо його потім не звіряло: на екрані, у фоліо і в рахунку.
+      //
+      // splitMoney, а не ділення з округленням: 100 на три кімнати дає
+      // 33,34 + 33,33 + 33,33, а не 33 + 33 + 33 = 99 (інваріант 9).
+      // Порядок за id — щоб повторне збереження тієї самої суми не пересувало
+      // копійку з кімнати на кімнату.
+      const rooms = await sql.rows<{ id: string }>(
+        'SELECT id FROM reservations WHERE group_id = ? ORDER BY id', [id]);
+      if (rooms.length > 0) {
+        const perRoom = splitMoney(Number(body.total_price) || 0, rooms.length);
+        await sql.tx(async (t) => {
+          for (let i = 0; i < rooms.length; i++) {
+            await t.run('UPDATE reservations SET total_price = ? WHERE id = ? AND group_id = ?',
+              [perRoom[i] ?? 0, rooms[i].id, id]);
+          }
+        });
+      }
     }
 
     return NextResponse.json({ success: true });
