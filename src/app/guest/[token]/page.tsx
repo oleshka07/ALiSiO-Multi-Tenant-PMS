@@ -626,7 +626,7 @@ export default function GuestPage() {
   if (!isPaid && paymentsSectionOn) {
     return (
       <div className="gp-root">
-        <PaymentGateScreen data={data} t={t} lang={lang} setLang={setLang} />
+        <PaymentGateScreen data={data} t={t} lang={lang} setLang={setLang} token={token} />
       </div>
     );
   }

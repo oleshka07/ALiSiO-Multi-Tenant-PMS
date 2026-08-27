@@ -2606,5 +2606,9 @@
   "Наприклад, HQ/Загальне — витрати такого проєкту стосуються всіх": "Zum Beispiel HQ/Allgemein — die Kosten eines solchen Projekts betreffen alle",
   "Не заїхав": "Nicht angereist",
   "Оберіть готель": "Hotel wählen",
-  "Оплата є, фінансової операції на неї немає": "Zahlung vorhanden, zugehörige Finanzbuchung fehlt"
+  "Оплата є, фінансової операції на неї немає": "Zahlung vorhanden, zugehörige Finanzbuchung fehlt",
+  "Гість просить рахунок на оплату": "Gast bittet um eine Rechnung zur Zahlung",
+  "Ключі шлюзу зберігаються на окремому екрані — у кожного провайдера свої поля.": "Die Gateway-Schlüssel liegen auf einem eigenen Bildschirm — jeder Anbieter hat eigene Felder.",
+  "Налаштуйте оплати для вашого готелю": "Zahlungen für Ihr Hotel einrichten",
+  "Списати картку продукт поки не вміє в жодного з них: збережений ключ чекає на день, коли шлюз буде готовий.": "Eine Karte belasten kann das Produkt bei keinem von ihnen: Der gespeicherte Schlüssel wartet auf den Tag, an dem das Gateway fertig ist."
 }

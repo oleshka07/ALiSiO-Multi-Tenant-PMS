@@ -20,9 +20,31 @@ import { useT } from '@core/i18n/client';
  *
  * `where` names the screen it is standing on, so the sentence reads as an
  * answer to what the operator was just looking at rather than a generic notice.
+ *
+ * `compact` drops the frame and the explanation, leaving the one button. It is
+ * for screens that have already said the same thing in their own words — the
+ * «Модулі та інтеграції» row for `online_payments`, where repeating the whole
+ * paragraph under a toggle would push the other integrations off the screen.
  */
-export default function PaymentGatewayNotice({ where }: { where?: string }) {
+export const PAYMENTS_SETTINGS_HREF = '/app/settings/payments';
+
+export default function PaymentGatewayNotice({ where, compact }: { where?: string; compact?: boolean }) {
   const t = useT();
+
+  // Одне речення на кнопці, одне й те саме всюди. Оператор шукає не «шлюз» —
+  // він шукає, де ввімкнути оплату для СВОГО готелю, і кнопка має називатись
+  // так, як він про це думає.
+  const cta = (
+    <Link
+      href={PAYMENTS_SETTINGS_HREF}
+      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-medium"
+    >
+      <CreditCard size={14} /> {t('Налаштуйте оплати для вашого готелю')}
+    </Link>
+  );
+
+  if (compact) return cta;
+
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
       <div className="flex items-start gap-3">
@@ -36,12 +58,7 @@ export default function PaymentGatewayNotice({ where }: { where?: string }) {
             {' '}
             {t('Щоб приймати картки, оберіть свій платіжний шлюз — Stripe, PayPal, Teya — і збережіть його ключі.')}
           </p>
-          <Link
-            href="/app/settings/payments"
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-medium"
-          >
-            <CreditCard size={14} /> {t('Обрати платіжний шлюз')}
-          </Link>
+          {cta}
         </div>
       </div>
     </div>

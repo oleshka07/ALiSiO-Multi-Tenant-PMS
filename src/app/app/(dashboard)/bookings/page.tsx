@@ -150,6 +150,8 @@ function alertText(a: DashboardAlert, t: (s: string) => string): string {
       return `${t('Заселений без реєстрації')}${where}`;
     case 'today_departure':
       return `${t('Сьогодні виїзд')}${where}`;
+    case 'payment_requested':
+      return `${t('Гість просить рахунок на оплату')}${where}`;
     // Код, якого цей екран не знає, означає, що API пішов уперед. Показати
     // сам код гірше, ніж показати те, що точно правда: який це номер.
     default:

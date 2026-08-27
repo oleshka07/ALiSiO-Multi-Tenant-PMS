@@ -6,6 +6,7 @@ import { registerGuests as _registerGuests } from './register.handlers';
 import { submitFeedback as _submitFeedback } from './feedback.handlers';
 import { orderServices as _orderServices } from './services.handlers';
 import { handleCartEvent as _handleCartEvent } from './cart.handlers';
+import { requestPayment as _requestPayment } from './payment-request.handlers';
 
 export { listGuests, createGuest } from './guests.handlers';
 export { getGuest, updateGuest, deleteGuest } from './guest.handlers';
@@ -37,6 +38,7 @@ export const registerGuests   = withGuest(_registerGuests);
 export const submitFeedback   = withGuest(_submitFeedback);
 export const orderServices    = withGuest(_orderServices);
 export const handleCartEvent  = withGuest(_handleCartEvent);
+export const requestPayment   = withGuest(_requestPayment);
 export { getRegistry, updateRegistryEntry, exportRegistry } from './registry.handlers';
 export { getMeldeschein } from './meldeschein.handlers';
 export { listGuestPageSections, updateGuestPageSections, getGuestPagePreview } from './guest-page-sections.handlers';

@@ -125,6 +125,28 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
       });
     }
 
+    // Гість попросив рахунок зі своєї сторінки (`/api/guest/[token]/payment-request`).
+    // Без дати: гість натискає, коли йому зручно, а не в день заїзду, і
+    // прохання, яке зʼявиться в банері лише в день приїзду, вже нікому не
+    // потрібне. Виїхані й скасовані не рахуються — там питання закрите.
+    const paymentRequests = await sql.rows<any>(`
+      SELECT r.id, g.first_name, g.last_name, u.name as unit_name
+      FROM reservations r
+      JOIN guests g ON r.guest_id = g.id
+      JOIN units u ON r.unit_id = u.id
+      WHERE ${OWN('r.')} AND r.payment_status = 'payment_requested'
+        AND r.status IN ('confirmed', 'tentative', 'checked_in')
+      ORDER BY r.check_in
+    `, [org]);
+
+    for (const r of paymentRequests) {
+      alerts.push({
+        type: 'payment_requested', severity: 'info',
+        bookingId: r.id, guestName: `${r.first_name} ${r.last_name}`,
+        unitName: r.unit_name,
+      });
+    }
+
     return NextResponse.json(alerts);
   } catch (e: any) {
     return serverError('modules/dashboard/api/alerts getAlerts', e);

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Check, Loader2, ToggleLeft, ToggleRight } from 'lucide-react';
 import Header from '@/components/layout/Header';
+import PaymentGatewayNotice from '@/components/payments/PaymentGatewayNotice';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 
 /**
@@ -14,7 +15,19 @@ import { useMobileMenu } from '@/ui/MobileMenuContext';
  * the same question: turning an integration on without a token gives a menu item that
  * refuses every request, and a token saved for an integration that is off is a
  * secret nothing can use. Owner-only: the API refuses everyone else.
+ *
+ * ── Чому оплата тут виглядає інакше ─────────────────────────────────────
+ *
+ * `online_payments` — єдина фіча, чиї ключі НЕ на цьому екрані: шлюзів три
+ * (Stripe, PayPal, Teya), у кожного свій набір полів і своє місце, де готель
+ * ці ключі бере, тож вони живуть на `/app/settings/payments`.
+ *
+ * Без явного посилання це виглядало як зламане: менеджер вмикав перемикач,
+ * під ним не зʼявлялось нічого — ні поля, ні пояснення, — і екран мовчав про
+ * те, що півсправи ще попереду. Тому рядок оплати каже, що шлюзу поки немає в
+ * продукті взагалі, і веде туди, де готель може обрати свій.
  */
+const PAYMENTS_FEATURE = 'online_payments';
 
 interface FieldSpec { field: string; label: string; hint?: string }
 interface Status {
@@ -135,6 +148,17 @@ export default function FeaturesSettingsPage() {
                       {features[key] ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
                     </button>
                   </div>
+
+                  {key === PAYMENTS_FEATURE && (
+                    <div style={{ padding: '0 20px 16px 20px' }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 10 }}>
+                        {t('Ключі шлюзу зберігаються на окремому екрані — у кожного провайдера свої поля.')}
+                        {' '}
+                        {t('Списати картку продукт поки не вміє в жодного з них: збережений ключ чекає на день, коли шлюз буде готовий.')}
+                      </div>
+                      <PaymentGatewayNotice compact />
+                    </div>
+                  )}
 
                   {spec && spec.length > 0 && (
                     <div style={{ padding: '0 20px 16px 20px' }}>

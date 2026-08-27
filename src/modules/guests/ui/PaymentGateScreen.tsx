@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import type { Translations, Lang } from '@/app/guest/[token]/translations';
 
 const ALL_LANGS: Lang[] = ['en', 'de', 'cs', 'uk', 'pl', 'nl', 'fr'];
@@ -10,10 +11,32 @@ interface Props {
   t: Translations;
   lang: Lang;
   setLang?: (l: Lang) => void;
+  /** Токен посилання — ним же підписаний запит «хочу оплатити». */
+  token?: string;
 }
 
-export function PaymentGateScreen({ data, t, lang, setLang }: Props) {
+export function PaymentGateScreen({ data, t, lang, setLang, token }: Props) {
   const r = data.reservation;
+
+  // Стан кнопки «хочу оплатити». `asked` починає з правди в базі: якщо
+  // адміністратор уже бачить запит, гість не має бачити кнопку, наче нічого не
+  // сталося, і не має тиснути її вдруге.
+  const [asked, setAsked] = useState(r?.payment_status === 'payment_requested');
+  const [asking, setAsking] = useState(false);
+
+  const askForInvoice = async () => {
+    if (!token || asking || asked) return;
+    setAsking(true);
+    try {
+      await fetch(`/api/guest/${token}/payment-request`, { method: 'POST' });
+      // Показуємо «готель повідомлений» і на помилці теж. Гість не може нічого
+      // вдіяти з нашою 500, а кнопка, яка після натиску виглядає ненатиснутою,
+      // змусить його дзвонити — тобто зробити рівно те, чого ми уникали.
+    } finally {
+      setAsked(true);
+      setAsking(false);
+    }
+  };
 
   const remaining = data.payments?.remaining ?? r?.total_price ?? 0;
   const currency = r?.currency || '';
@@ -36,13 +59,13 @@ export function PaymentGateScreen({ data, t, lang, setLang }: Props) {
 
   // Locale labels
   const labels: Record<string, Record<string, string>> = {
-    en: { banner: 'Complete payment to unlock full access', nights: 'nights', daysTo: `${dLeft} days to check-in`, bookedFor: 'Booking confirmed', howToPay: 'Payment is taken by the property — call or email us and we will confirm it here', remaining: 'Remaining', contact: 'Questions? Call us', locked: 'Available after payment' },
-    de: { banner: 'Zahlung abschließen für vollständigen Zugang', nights: 'Nächte', daysTo: `${dLeft} Tage bis zum Check-in`, bookedFor: 'Buchung bestätigt', howToPay: 'Die Zahlung nimmt die Unterkunft entgegen — rufen Sie an oder schreiben Sie uns, wir bestätigen sie hier', remaining: 'Ausstehend', contact: 'Fragen? Rufen Sie uns an', locked: 'Verfügbar nach Zahlung' },
-    cs: { banner: 'Dokončete platbu pro plný přístup', nights: 'nocí', daysTo: `${dLeft} dní do příjezdu`, bookedFor: 'Rezervace potvrzena', howToPay: 'Platbu přijímá ubytovatel — zavolejte nebo napište, potvrdíme ji zde', remaining: 'Zbývá uhradit', contact: 'Dotazy? Zavolejte nám', locked: 'Dostupné po platbě' },
-    uk: { banner: 'Завершіть оплату для повного доступу', nights: 'ночей', daysTo: `${dLeft} днів до заїзду`, bookedFor: 'Бронювання підтверджено', howToPay: 'Оплату приймає готель — зателефонуйте або напишіть, і ми підтвердимо її тут', remaining: 'До сплати', contact: 'Питання? Телефонуйте нам', locked: 'Доступно після оплати' },
-    pl: { banner: 'Dokończ płatność, aby uzyskać pełny dostęp', nights: 'nocy', daysTo: `${dLeft} dni do zameldowania`, bookedFor: 'Rezerwacja potwierdzona', howToPay: 'Płatność przyjmuje obiekt — zadzwoń lub napisz, potwierdzimy ją tutaj', remaining: 'Pozostało', contact: 'Pytania? Zadzwoń do nas', locked: 'Dostępne po płatności' },
-    nl: { banner: 'Voltooi betaling voor volledige toegang', nights: 'nachten', daysTo: `${dLeft} dagen tot check-in`, bookedFor: 'Boeking bevestigd', howToPay: 'De accommodatie neemt de betaling aan — bel of mail ons, wij bevestigen het hier', remaining: 'Resterend', contact: 'Vragen? Bel ons', locked: 'Beschikbaar na betaling' },
-    fr: { banner: 'Finalisez le paiement pour accès complet', nights: 'nuits', daysTo: `${dLeft} jours avant arrivée`, bookedFor: 'Réservation confirmée', howToPay: 'Le paiement est encaissé par l’établissement — appelez-nous ou écrivez-nous, nous le confirmerons ici', remaining: 'Reste à payer', contact: 'Questions ? Appelez-nous', locked: 'Disponible après paiement' },
+    en: { banner: 'Complete payment to unlock full access', nights: 'nights', daysTo: `${dLeft} days to check-in`, bookedFor: 'Booking confirmed', howToPay: 'Payment is taken by the property — call or email us and we will confirm it here', remaining: 'Remaining', contact: 'Questions? Call us', locked: 'Available after payment', askPay: 'Ask the property for an invoice', asked: 'The property has been notified — they will be in touch' },
+    de: { banner: 'Zahlung abschließen für vollständigen Zugang', nights: 'Nächte', daysTo: `${dLeft} Tage bis zum Check-in`, bookedFor: 'Buchung bestätigt', howToPay: 'Die Zahlung nimmt die Unterkunft entgegen — rufen Sie an oder schreiben Sie uns, wir bestätigen sie hier', remaining: 'Ausstehend', contact: 'Fragen? Rufen Sie uns an', locked: 'Verfügbar nach Zahlung', askPay: 'Rechnung bei der Unterkunft anfordern', asked: 'Die Unterkunft wurde benachrichtigt und meldet sich' },
+    cs: { banner: 'Dokončete platbu pro plný přístup', nights: 'nocí', daysTo: `${dLeft} dní do příjezdu`, bookedFor: 'Rezervace potvrzena', howToPay: 'Platbu přijímá ubytovatel — zavolejte nebo napište, potvrdíme ji zde', remaining: 'Zbývá uhradit', contact: 'Dotazy? Zavolejte nám', locked: 'Dostupné po platbě', askPay: 'Požádat ubytovatele o fakturu', asked: 'Ubytovatel byl informován a ozve se vám' },
+    uk: { banner: 'Завершіть оплату для повного доступу', nights: 'ночей', daysTo: `${dLeft} днів до заїзду`, bookedFor: 'Бронювання підтверджено', howToPay: 'Оплату приймає готель — зателефонуйте або напишіть, і ми підтвердимо її тут', remaining: 'До сплати', contact: 'Питання? Телефонуйте нам', locked: 'Доступно після оплати', askPay: 'Попросити рахунок у готелю', asked: 'Готель повідомлено — з вами звʼяжуться' },
+    pl: { banner: 'Dokończ płatność, aby uzyskać pełny dostęp', nights: 'nocy', daysTo: `${dLeft} dni do zameldowania`, bookedFor: 'Rezerwacja potwierdzona', howToPay: 'Płatność przyjmuje obiekt — zadzwoń lub napisz, potwierdzimy ją tutaj', remaining: 'Pozostało', contact: 'Pytania? Zadzwoń do nas', locked: 'Dostępne po płatności', askPay: 'Poproś obiekt o fakturę', asked: 'Obiekt został powiadomiony i skontaktuje się z Tobą' },
+    nl: { banner: 'Voltooi betaling voor volledige toegang', nights: 'nachten', daysTo: `${dLeft} dagen tot check-in`, bookedFor: 'Boeking bevestigd', howToPay: 'De accommodatie neemt de betaling aan — bel of mail ons, wij bevestigen het hier', remaining: 'Resterend', contact: 'Vragen? Bel ons', locked: 'Beschikbaar na betaling', askPay: 'Vraag de accommodatie om een factuur', asked: 'De accommodatie is op de hoogte en neemt contact op' },
+    fr: { banner: 'Finalisez le paiement pour accès complet', nights: 'nuits', daysTo: `${dLeft} jours avant arrivée`, bookedFor: 'Réservation confirmée', howToPay: 'Le paiement est encaissé par l’établissement — appelez-nous ou écrivez-nous, nous le confirmerons ici', remaining: 'Reste à payer', contact: 'Questions ? Appelez-nous', locked: 'Disponible après paiement', askPay: 'Demander une facture à l’établissement', asked: 'L’établissement a été prévenu et vous recontactera' },
   };
   const L = labels[lang] || labels.en;
 
@@ -124,6 +147,36 @@ export function PaymentGateScreen({ data, t, lang, setLang }: Props) {
           оплату приймає готель, ось телефон і пошта.
         */}
         <div className="gp-pg-contact">{L.howToPay}</div>
+
+        {/*
+          Кнопка, яка НЕ бере грошей.
+
+          Вона ставить броні `payment_status = 'payment_requested'`, і банер над
+          списком броней показує адміністратору, що цей гість чекає на рахунок
+          (`dashboard/domain/alerts.ts`). Раніше тут не було нічого, крім
+          телефону: гість із іншої країни, який відкрив сторінку вночі, мав або
+          дзвонити зранку, або лишити все як є.
+
+          Це не заміна онлайн-оплати й не має на неї схожості: жодного «Оплатити»,
+          жодних логотипів карток. Обіцяти можна тільки те, що станеться.
+        */}
+        {token && (
+          <button
+            type="button"
+            onClick={askForInvoice}
+            disabled={asked || asking}
+            className="gp-pg-ask"
+            style={{
+              width: '100%', marginTop: 12, padding: '12px 16px', borderRadius: 12,
+              border: '1px solid rgba(0,0,0,0.15)', cursor: asked ? 'default' : 'pointer',
+              background: asked ? 'rgba(0,0,0,0.04)' : '#000',
+              color: asked ? '#333' : '#FFF',
+              fontSize: 14, fontWeight: 600, opacity: asking ? 0.6 : 1,
+            }}
+          >
+            {asked ? `✅ ${L.asked}` : L.askPay}
+          </button>
+        )}
 
         {(r?.property_phone || r?.property_email) && (
           <div className="gp-pg-contact">

@@ -2644,5 +2644,9 @@
   "Наприклад, HQ/Загальне — витрати такого проєкту стосуються всіх": "Například HQ/Obecné — výdaje takového projektu se týkají všech",
   "Не заїхав": "Nedorazil",
   "Оберіть готель": "Vyberte hotel",
-  "Оплата є, фінансової операції на неї немає": "Platba existuje, finanční operace k ní chybí"
+  "Оплата є, фінансової операції на неї немає": "Platba existuje, finanční operace k ní chybí",
+  "Гість просить рахунок на оплату": "Host žádá o fakturu k úhradě",
+  "Ключі шлюзу зберігаються на окремому екрані — у кожного провайдера свої поля.": "Klíče brány se ukládají na samostatné obrazovce — každý poskytovatel má vlastní pole.",
+  "Налаштуйте оплати для вашого готелю": "Nastavte platby pro váš hotel",
+  "Списати картку продукт поки не вміє в жодного з них: збережений ключ чекає на день, коли шлюз буде готовий.": "Strhnout platbu z karty produkt zatím neumí u žádného z nich: uložený klíč čeká na den, kdy bude brána hotová."
 }
