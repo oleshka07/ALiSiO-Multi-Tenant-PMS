@@ -71,6 +71,12 @@ const PUBLIC_EXACT = [
   '/api/auth/login',
   '/api/auth/logout',
   '/api/auth/me',
+  // The external uptime monitor's probe. Public on purpose: it answers
+  // {ok:true|false} and nothing else — proof the database is readable,
+  // never a row of it. It exists so the monitor does not have to POST to
+  // /api/auth/login, whose per-IP failed-login counter would lock the
+  // monitor out for 15 minutes and turn the alert into a liar.
+  '/api/health',
   '/api/admin/export-may',
   // The older embed URL. next.config.ts rewrites it onto /widget/embed.v2.js,
   // but this list is consulted first — and a hotel that installed the snippet

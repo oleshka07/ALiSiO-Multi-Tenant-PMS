@@ -113,6 +113,7 @@ src/modules/<name>/
 | `core/features.ts` | реєстр фіч: які інтеграції купила організація |
 | `core/i18n/languages.ts` | реєстр мов — єдиний список на всю систему |
 | `core/i18n/resolve.ts` | чия мова переважає: оператор, гість, документ |
+| `core/monitoring/sentry.ts` | доставка серверних помилок у Sentry власним конвертом, без SDK; no-op без `SENTRY_DSN`; викликається з `serverError()` і process-хуків `instrumentation.ts` |
 
 ### 2.3 Реєстр фіч
 
