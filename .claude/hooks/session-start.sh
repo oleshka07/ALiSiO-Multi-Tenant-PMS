@@ -30,13 +30,22 @@ fi
 git fetch --quiet origin main beta 2>/dev/null || true
 
 if git rev-parse --verify --quiet origin/beta >/dev/null 2>&1; then
+  # Два напрямки розбіжності — дві різні речі. main попереду beta — прод
+  # обслуговує неперевірене, це тривога. beta попереду main — зміна ще
+  # перевіряється на беті, це правильний стан потоку і лише довідка.
   AHEAD="$(git rev-list --count origin/beta..origin/main 2>/dev/null || echo 0)"
+  BEHIND="$(git rev-list --count origin/main..origin/beta 2>/dev/null || echo 0)"
   if [ "${AHEAD:-0}" != "0" ]; then
     echo ""
     echo "!! MAIN ПОПЕРЕДУ BETA НА ${AHEAD} КОМІТ(ІВ)."
     echo "!! Прод обслуговує код, якого бета не бачила. Порядок проєкту:"
     echo "!! спершу merge у beta, перевірка на беті, потім у main (docs/DEPLOY.md)."
     echo "!! СКАЖИ ПРО ЦЕ ЛЮДИНІ ПЕРШИМ РЯДКОМ СВОЄЇ ПЕРШОЇ ВІДПОВІДІ."
+  fi
+  if [ "${BEHIND:-0}" != "0" ]; then
+    echo ""
+    echo "beta попереду main на ${BEHIND} коміт(ів): зміни перевіряються на беті"
+    echo "й чекають merge у main. Це правильний напрямок потоку, не тривога."
   fi
 else
   echo "(origin/beta недоступна — відставання перевірити не вдалося)"
