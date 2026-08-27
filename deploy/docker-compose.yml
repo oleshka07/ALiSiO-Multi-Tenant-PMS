@@ -71,6 +71,13 @@ services:
     volumes:
       - app-data:/app/data
       - app-uploads:/app/public/uploads
+    # A ceiling, because the host is 4 GB shared with unrelated projects and
+    # the OOM killer goes for the fattest process — which is prod's Postgres.
+    # Without limits one hungry neighbour takes everyone down; with them the
+    # hungry container is the one that dies. Tune per environment in the env
+    # file; the defaults leave room for two stacks plus the neighbours.
+    mem_limit: ${APP_MEM_LIMIT:-900m}
+    mem_reservation: ${APP_MEM_RESERVATION:-256m}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
@@ -102,6 +109,10 @@ services:
       - "127.0.0.1:${PG_PORT}:5432"
     volumes:
       - pg-data:/var/lib/postgresql/data
+    # Postgres gets its own ceiling for the same reason, sized well above its
+    # default shared_buffers (128 MB) so the limit is a fence, not a noose.
+    mem_limit: ${PG_MEM_LIMIT:-640m}
+    mem_reservation: ${PG_MEM_RESERVATION:-256m}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${PG_SUPERUSER:-alisio_admin} -d ${PG_DATABASE:-alisio}"]
       interval: 10s

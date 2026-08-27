@@ -45,10 +45,13 @@ ${DUMP_AT} cd ${ROOT} && ./deploy/backup.sh ${ENV_NAME} >> ${LOG} 2>&1 ${MARK}
 LINES
 )"
 # The weekly restore drill runs once, against prod's dumps — beta's data is
-# demo seed and proves nothing about a customer's recoverability.
+# demo seed and proves nothing about a customer's recoverability. The disk
+# check is also installed once, from prod: the disk is one per host, and two
+# per-env alerts would just repeat each other.
 if [ "$ENV_NAME" = "prod" ]; then
   WANT="${WANT}
-15 4 * * 0 cd ${ROOT} && ./deploy/restore-test.sh prod >> ${LOG} 2>&1 ${MARK}"
+15 4 * * 0 cd ${ROOT} && ./deploy/restore-test.sh prod >> ${LOG} 2>&1 ${MARK}
+30 * * * * cd ${ROOT} && ./deploy/check-disk.sh >> ${LOG} 2>&1 ${MARK}"
 fi
 
 CURRENT="$(crontab -l 2>/dev/null || true)"

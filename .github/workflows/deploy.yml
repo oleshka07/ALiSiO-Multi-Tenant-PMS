@@ -176,6 +176,45 @@ jobs:
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "image=ghcr.io/$owner/alisio-pms" >> "$GITHUB_OUTPUT"
 
+      # ── Prod ships only what beta has seen ──────────────────────────────
+      #
+      # The SessionStart hook WARNS about main running ahead of beta; this
+      # step makes it impossible. Between 5 and 13 August beta sat
+      # ninety-six commits behind while every change went straight to
+      # production — a rule that lives in prose, not in a machine, lasts
+      # exactly until somebody forgets it.
+      #
+      # Counted with --no-merges, and that flag is load-bearing: a release
+      # (`merge --no-ff beta` into main) leaves a merge commit that exists
+      # only on main BY DEFINITION and carries no change beta has not run.
+      # Without the flag this gate would refuse every release it is meant
+      # to allow — the same false alarm the hook had, fixed the same way.
+      # What it refuses is real content on main that beta never saw:
+      # a direct commit, or a feature branch merged past beta.
+      - uses: actions/checkout@v4
+        if: steps.env.outputs.name == 'prod'
+        with:
+          fetch-depth: 0
+      - name: prod ships only what beta has seen
+        if: steps.env.outputs.name == 'prod'
+        env:
+          SHA: ${{ steps.env.outputs.sha }}
+        run: |
+          git fetch --quiet origin beta "$SHA"
+          UNSEEN="$(git rev-list --count --no-merges "origin/beta..$SHA")"
+          if [ "$UNSEEN" != "0" ]; then
+            {
+              echo "### Прод не поїде: main несе зміни, яких бета не бачила"
+              echo
+              echo "Комітів поза бетою: $UNSEEN. Порядок проєкту:"
+              echo "спершу merge у beta, перевірка на беті, потім у main."
+              git rev-list --no-merges "origin/beta..$SHA" --pretty=oneline | head -10 | sed 's/^/    /'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::$UNSEEN commit(s) on main that beta never ran — merge into beta first (docs/DEPLOY.md)"
+            exit 1
+          fi
+          echo "beta already carries everything in $SHA — ok"
+
       - name: are the deploy secrets set
         id: gate
         env:
