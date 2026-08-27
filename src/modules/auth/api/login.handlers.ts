@@ -68,49 +68,98 @@ export async function login(request: Request) {
       );
     }
 
-    const { email, password } = await request.json();
+    const { email, password, organizationId } = await request.json();
 
     if (!email || !password) {
       return NextResponse.json({ error: "Email та пароль обов'язкові" }, { status: 400 });
     }
 
     const sql = getSql();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    // organization_id is selected because the write below needs it: this query
-    // is the only thing that knows which tenant the person belongs to.
-    // Email is matched without regard to case, because nobody types their own
-    // address the same way twice. `provisionOrganization` stores it
-    // lower-cased; this compared it exactly, so an owner who typed
-    // «Owner@Hotel.de» — the way their mail client shows it — was told
-    // «Невірний email або пароль» with the right password in the box. There is
-    // no way to discover that from the outside: the message is the same one a
-    // wrong password gets, deliberately.
+    // Усі рядки з цією адресою, а не перший-ліпший.
     //
-    // lower() on both sides, not just on the input: rows created before
-    // createUser started normalising are still in the table as they were
-    // typed.
-    const user: any = await sql.row<any>(
-      'SELECT id, organization_id, email, full_name, role, password_hash, is_active FROM app_users WHERE lower(email) = lower(?)',
-      [String(email).trim()]);
+    // Одна людина може бути власником у кількох готелях — і на робочій базі
+    // така вже є. А `sql.row()` без ORDER BY повертає ОДИН рядок, і завжди той
+    // самий: другий акаунт із дня створення не міг увійти жодного разу, з
+    // правильним паролем, і без жодного повідомлення про причину. Порожній
+    // last_login на такому рядку — слід саме цього, а не «ним не
+    // користувались».
+    //
+    // Email порівнюється без огляду на регістр: ніхто не набирає власну адресу
+    // однаково двічі, `provisionOrganization` пише її в нижньому, а рядки,
+    // створені до нормалізації, лежать так, як їх набрали. Тому lower() з обох
+    // боків.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const candidates = await sql.rows<any>(
+      `SELECT u.id, u.organization_id, u.email, u.full_name, u.role, u.password_hash, u.is_active,
+              o.name AS organization_name
+         FROM app_users u
+         LEFT JOIN organizations o ON o.id = u.organization_id
+        WHERE lower(u.email) = lower(?)
+        ORDER BY u.created_at`,
+      [String(email).trim()]) as any[];
 
-    if (!user) {
+    if (candidates.length === 0) {
       recordFailure(ip);
       return NextResponse.json({ error: 'Невірний email або пароль' }, { status: 401 });
     }
 
-    if (!user.is_active) {
+    // Пароль звіряється з КОЖНИМ кандидатом, бо в різних готелях він може бути
+    // різний. Це навмисно робиться до того, як назвати хоч один готель:
+    // інакше сторонній дізнавався б із форми входу, у скількох готелях є така
+    // адреса і як вони звуться.
+    //
+    // Кандидатів обмежено: bcrypt коштує ~100 мс на звірку, і це його робота.
+    // Реальне число — один-два; стеля тут лише щоб довгий список не став
+    // способом навантажити сервер.
+    const MAX_CANDIDATES = 10;
+    const matched = candidates.slice(0, MAX_CANDIDATES)
+      .filter((c) => c.password_hash && verifyPassword(password, c.password_hash));
+
+    if (matched.length === 0) {
+      // Деактивований акаунт або акаунт без пароля — це стан, про який людина
+      // вже знає свій пароль, тож він не має рахуватись невдалою спробою.
+      const inactive = candidates.find((c) => !c.is_active);
+      if (inactive) {
+        return NextResponse.json({ error: 'Обліковий запис деактивовано' }, { status: 403 });
+      }
+      if (candidates.some((c) => !c.password_hash)) {
+        return NextResponse.json({ error: 'Пароль не встановлено. Зверніться до адміністратора.' }, { status: 403 });
+      }
+      recordFailure(ip);
+      return NextResponse.json({ error: 'Невірний email або пароль' }, { status: 401 });
+    }
+
+    const active = matched.filter((c) => c.is_active);
+    if (active.length === 0) {
       return NextResponse.json({ error: 'Обліковий запис деактивовано' }, { status: 403 });
     }
 
-    if (!user.password_hash) {
-      return NextResponse.json({ error: 'Пароль не встановлено. Зверніться до адміністратора.' }, { status: 403 });
+    // Готель обрано другим запитом — або він один і питати нема про що.
+    const chosen = organizationId
+      ? active.find((c) => c.organization_id === organizationId)
+      : (active.length === 1 ? active[0] : null);
+
+    if (!chosen) {
+      if (organizationId) {
+        // Пароль правильний, але для названого готелю такого акаунта немає.
+        recordFailure(ip);
+        return NextResponse.json({ error: 'Невірний email або пароль' }, { status: 401 });
+      }
+      // Пароль уже доведено, тож назвати готелі можна: це список того, куди
+      // ця людина й так може увійти. Сесії ще немає — вона зʼявиться, коли
+      // форма повернеться з organizationId.
+      clearFailures(ip);
+      return NextResponse.json({
+        needsOrganization: true,
+        organizations: active.map((c) => ({
+          id: c.organization_id,
+          name: c.organization_name || c.organization_id,
+          role: c.role,
+        })),
+      });
     }
 
-    const valid = verifyPassword(password, user.password_hash);
-    if (!valid) {
-      recordFailure(ip);
-      return NextResponse.json({ error: 'Невірний email або пароль' }, { status: 401 });
-    }
+    const user = chosen;
 
     // Right from here on the credential is proven. A deactivated account or a
     // missing hash above is a state the person already knows their password

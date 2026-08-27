@@ -107,9 +107,13 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
   if (await sql.row<any>('SELECT 1 FROM organizations WHERE slug = ?', [slug])) {
     throw new Error(`slug "${slug}" is taken`);
   }
-  if (await sql.row<any>('SELECT 1 FROM app_users WHERE lower(email) = ?', [email])) {
-    throw new Error(`a user with email "${email}" already exists`);
-  }
+  // Тут НЕ перевіряється, чи адреса вже є десь на сервері.
+  //
+  // Перевірка стояла — і забороняла рівно те, заради чого це місце існує:
+  // завести власнику другий готель. Унікальність адреси потенантна
+  // (idx_app_users_org_email), організація тут щойно створюється, тож дубля в
+  // її межах бути не може за побудовою. А вхід уміє спитати, у який із двох
+  // готелів людина заходить (login.handlers.ts).
 
   const organizationId = `org_${crypto.randomBytes(8).toString('hex')}`;
   const propertyId = `prop_${crypto.randomBytes(8).toString('hex')}`;

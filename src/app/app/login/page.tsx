@@ -33,33 +33,48 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  /**
+   * Готелі, у які ця людина може увійти цим паролем.
+   *
+   * Одна адреса може бути власником у кількох готелях, і доти вхід мовчки
+   * брав перший рядок за email — тобто в другий готель увійти було
+   * неможливо взагалі. Сервер тепер звіряє пароль з усіма й, коли підходить
+   * більше ніж один, повертає список замість сесії. Питаємо тут.
+   */
+  const [choices, setChoices] = useState<{ id: string; name: string; role: string }[] | null>(null);
   const router = useRouter();
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function signIn(organizationId?: string) {
     setError('');
     setLoading(true);
-
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, organizationId }),
       });
 
       const data = await res.json();
 
-      if (res.ok) {
+      if (res.ok && data.needsOrganization) {
+        setChoices(data.organizations || []);
+      } else if (res.ok) {
         router.push('/app/dashboard');
       } else {
         // Текст помилки з сервера — українським ключем; перекладає екран.
         setError(t(data.error || 'Помилка входу'));
+        setChoices(null);
       }
     } catch {
       setError(t('Помилка мережі'));
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await signIn();
   }
 
   return (
@@ -72,7 +87,37 @@ function LoginForm() {
           <p className="login-subtitle">Property Management System</p>
         </div>
 
+        {/* Пароль підійшов до кількох готелів — лишилось сказати, до якого саме */}
+        {choices && (
+          <div className="login-form">
+            <div className="login-field">
+              <label>{t('Оберіть готель')}</label>
+            </div>
+            {choices.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                className="login-btn"
+                disabled={loading}
+                onClick={() => signIn(o.id)}
+                style={{ marginBottom: 8 }}
+              >
+                {o.name}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="login-footer"
+              onClick={() => { setChoices(null); setPassword(''); }}
+              style={{ background: 'none', border: 0, cursor: 'pointer', width: '100%' }}
+            >
+              {t('Назад')}
+            </button>
+          </div>
+        )}
+
         {/* Form */}
+        {!choices && (
         <form onSubmit={handleSubmit} className="login-form">
           {error && (
             <div className="login-error">
@@ -124,6 +169,7 @@ function LoginForm() {
             )}
           </button>
         </form>
+        )}
 
         <div className="login-footer">
           ALiSiO Properties © 2026

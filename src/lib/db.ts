@@ -520,30 +520,31 @@ function runMigrations(database: any) {
     console.log('[DB] columns migration note:', e.message);
   }
 
-  // --- One address, one account ---
+  // --- One address, one account per hotel ---
   //
   // `app_users.email` carried no UNIQUE in either schema, and `login` looks a
-  // person up by email alone (it has nothing else to go on) with `sql.row()`
-  // and no ORDER BY. So two rows with the same address meant the second person
-  // could never sign in — with a correct password, and with no message that
-  // says so. Nothing prevented the pair: the duplicate check in
-  // `users.handlers.ts` compared exact case, so «Anna@…» and «anna@…» passed
-  // each other by.
+  // person up by email alone (it has nothing else to go on). It read ONE row,
+  // with no ORDER BY, and always the same one — so a second account with the
+  // same address could never be signed into, with a correct password and no
+  // message saying why.
   //
-  // Indexed on lower(email) rather than on the column, because that is the
-  // comparison login actually makes.
+  // Per hotel, not per server: one person really can own two hotels, and on
+  // prod one does. The half that makes this work is in login.handlers.ts —
+  // the password is checked against every row with that address, and when more
+  // than one matches, the form asks which hotel. Без цього індекс дозволив би
+  // другий рядок, у який так само не можна увійти.
   try {
-    database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_app_users_email ON app_users (lower(email))');
+    database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_app_users_org_email ON app_users (organization_id, lower(email))');
   } catch (e: any) {
-    // An existing database may already hold the pair this prevents. Naming
-    // them is the useful thing to do — deciding which account is the real one
-    // is not something a boot script should do quietly.
+    // Two rows with one address inside ONE hotel is a data error, and naming
+    // it is the useful thing to do — deciding which of the pair is the real
+    // one is not something a boot script should do quietly.
     const dupes = database.prepare(
-      'SELECT lower(email) AS email, COUNT(*) AS n FROM app_users GROUP BY lower(email) HAVING n > 1'
-    ).all() as { email: string; n: number }[];
+      'SELECT organization_id, lower(email) AS email, COUNT(*) AS n FROM app_users GROUP BY organization_id, lower(email) HAVING n > 1'
+    ).all() as { organization_id: string; email: string; n: number }[];
     console.warn(
-      `[DB] ⚠️ app_users.email не унікальний: ${dupes.map((d) => `${d.email} ×${d.n}`).join(', ') || e.message}. ` +
-      'Другий акаунт із такою адресою не зможе увійти. Приберіть зайвий рядок, і індекс створиться при наступному старті.');
+      `[DB] ⚠️ app_users: одна адреса двічі в одному готелі: ${dupes.map((d) => `${d.email} @ ${d.organization_id} ×${d.n}`).join(', ') || e.message}. ` +
+      'Другий такий акаунт не зможе увійти. Приберіть зайвий рядок, і індекс створиться при наступному старті.');
   }
 
   // --- Migration: set secure random password for users without one ---

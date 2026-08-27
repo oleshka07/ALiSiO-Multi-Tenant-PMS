@@ -85,14 +85,16 @@ export const createUser = withPermission('manage_users', async (request: NextReq
 
     // Stored lower-cased, and looked for the same way — `login` matches
     // without regard to case, so «Anna@hotel.de» and «anna@hotel.de» are one
-    // person as far as signing in is concerned. Checked case-insensitively too,
-    // or this would happily create the second row that login can never reach:
-    // it takes the first match and has no ORDER BY.
+    // person as far as signing in is concerned.
     //
-    // Deliberately not scoped to the organization: an address identifies a
-    // person across the whole server, because that is all login is given.
+    // Scoped to THIS hotel, because that is what uniqueness means here: the
+    // same person may be a user of two hotels (on prod one is), and login asks
+    // which one when the password fits both. What must not exist is the same
+    // address twice inside one hotel — there nothing could tell the two apart.
     const normalizedEmail = String(email).trim().toLowerCase();
-    const existing = await sql.row<any>('SELECT id FROM app_users WHERE lower(email) = ?', [normalizedEmail]);
+    const existing = await sql.row<any>(
+      'SELECT id FROM app_users WHERE organization_id = ? AND lower(email) = ?',
+      [currentUser.organization_id, normalizedEmail]);
     if (existing) {
       return NextResponse.json({ error: 'Користувач з таким email вже існує' }, { status: 409 });
     }
