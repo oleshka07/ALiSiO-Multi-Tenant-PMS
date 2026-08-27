@@ -1,5 +1,5 @@
 /**
- * Кожен `/api/...`, який кличе екран, мусить існувати.
+ * Те, що кличе екран, мусить існувати: і маршрут, і сторінка.
  *
  *   node scripts/check-dead-fetch.mjs --strict
  *
@@ -15,13 +15,17 @@
  * синхронізації» — тобто кнопка мала вигляд тимчасово зламаної, а не
  * прибраної. Знайшов її не гейт, а сторонній перегляд.
  *
- * ── Чому список дозволених рядків замість «нуль знахідок» ─────────────
+ * ── Друга половина: посилання ─────────────────────────────────────────
  *
- * Кілька мертвих викликів уже відомі й чекають на рішення, більше за правку
- * рядка (див. AUDIT.md §2.6). Якби гейт падав на них, він падав би на кожному
- * коміті — і його вимкнули б. Тому вони перелічені тут ІМЕНОВАНО: список
- * видно в кожному прогоні, він може тільки коротшати, а будь-який НОВИЙ
- * мертвий виклик валить збірку.
+ * `fetch()` — це кнопка, яка мовчки не працює; `<Link href="/app/…">` — це
+ * пункт меню, який відкриває 404. Клас той самий, і гейт довго бачив лише
+ * перший бік. Через це в фінансах жило ШІСТЬ живих посилань на ТРИ сторінки,
+ * яких немає, і знайшов їх сторонній аудит, а не збірка.
+ *
+ * ── Список винятків ───────────────────────────────────────────────────
+ *
+ * Він порожній, і це стан, а не задум: обидва рядки, які тут стояли, закриті
+ * разом з екранами, що їх кликали. Список може тільки коротшати.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -33,12 +37,12 @@ const API_DIR = 'src/app/api';
  * Відомі мертві виклики, кожен із причиною і з тим, що з ним робити.
  * Рядок звідси зникає разом із самим викликом — іншого способу немає.
  */
-const KNOWN = new Map([
-  ['/api/finance/paid-services',
-    'сторінка «Оплачені послуги» має посилання з /app/finance, а маршруту немає — потрібен або звіт, або прибрати сторінку'],
-  ['/api/guests/*/reservations',
-    'мобільна картка гостя показує його попередні заїзди; маршруту немає, список завжди порожній'],
-]);
+// Порожній — і це не тимчасово. Обидва рядки, які тут стояли
+// (`/api/finance/paid-services`, `/api/guests/*/reservations`), закриті:
+// виклики прибрані разом із екранами, які їх робили. Список може тільки
+// коротшати, і зараз він порожній — новий мертвий виклик валить збірку без
+// жодних винятків.
+const KNOWN = new Map([]);
 
 /** Кожен route.ts на диску як URL, який він відповідає. */
 function routePaths() {
@@ -126,6 +130,68 @@ for (const file of screenFiles()) {
     if (KNOWN.has(url)) { seenKnown.add(url); continue; }
     problems.push(`${file}: ${url}`);
   }
+}
+
+// ── Посилання, які ведуть на неіснуючий екран ────────────────────────
+//
+// Той самий клас, інший бік. `fetch()` — це кнопка, яка мовчки не працює;
+// `<Link href="/app/…">` — це пункт меню, який відкриває 404. Для TypeScript
+// обидва рядки однаково просто рядки.
+//
+// Гейт цього не бачив, і саме тому в фінансах жило ШІСТЬ живих посилань на
+// ТРИ сторінки, яких немає: /app/finance/clearing, /app/finance/calendar,
+// /app/finance/payments/orphans. Знайшов їх сторонній аудит, не збірка.
+//
+// Групи маршрутів `(dashboard)` в URL не потрапляють — саме через них
+// наївне порівняння шляху з текою й не працює.
+function pagePaths() {
+  const found = new Set();
+  const walk = (dir, url) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        const seg = entry.name.startsWith('(') ? '' // група маршрутів: не в URL
+          : entry.name.startsWith('[') ? '/*'       // динамічний сегмент
+            : `/${entry.name}`;
+        walk(full, url + seg);
+      } else if (/^page\.(tsx|ts|jsx|js)$/.test(entry.name)) {
+        found.add(url || '/');
+      }
+    }
+  };
+  walk('src/app', '');
+  return found;
+}
+
+const pages = pagePaths();
+const deadLinks = [];
+for (const file of screenFiles()) {
+  if (!/\.tsx$/.test(file)) continue;
+  const src = fs.readFileSync(file, 'utf8');
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  const targets = [
+    ...code.matchAll(/href=["'`](\/app\/[^"'`?#\s]*)/g),
+    ...code.matchAll(/href=\{\s*["'`](\/app\/[^"'`?#\s]*)/g),
+    ...code.matchAll(/router\.(?:push|replace)\(\s*["'`](\/app\/[^"'`?#\s]*)/g),
+  ];
+  for (const m of targets) {
+    const url = m[1].replace(/\$\{[^}]*\}/g, '*').replace(/\/+$/, '') || '/';
+    // Підстановка всередині сегмента — адреса складена зі змінної, не судимо.
+    if (!/^[/A-Za-z0-9_\-*.]+$/.test(url)) continue;
+    if (matches(url, pages)) continue;
+    const line = code.slice(0, m.index).split('\n').length;
+    deadLinks.push(`${file}:${line}  ${url}`);
+  }
+}
+
+if (deadLinks.length) {
+  console.error('\nПосилання веде на екран, якого немає:\n');
+  for (const p of [...new Set(deadLinks)]) console.error(`  ${p}`);
+  console.error('\nКористувач тисне пункт меню й отримує 404.\n');
+  if (STRICT) process.exit(1);
+} else {
+  console.log(`посилання ведуть лише на наявні екрани (${pages.size} сторінок)`);
 }
 
 for (const [url, why] of KNOWN) {
