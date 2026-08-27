@@ -117,6 +117,19 @@ export interface Translations {
   dateOfBirth: string;
   // Step 2
   step2Title: string;
+  /**
+   * ЧОМУ просять документ — без назви країни.
+   *
+   * Тут стояло «за чеським законом», у всіх семи мовах. Секція реєстрації
+   * показується в DE, AT і CZ (REGISTRATION_LAW у guest-page-sections.ts),
+   * тобто двом гостям із трьох система називала закон чужої держави — на
+   * екрані, де в них просять паспорт.
+   *
+   * Обов'язок реальний у кожній із трьох юрисдикцій, тож речення каже саме
+   * його. Назвати конкретний закон правильно можна було б лише окремим
+   * рядком на кожну країну; поки цього немає, загальне формулювання вірне
+   * скрізь, а колишнє було хибним у двох випадках із трьох.
+   */
   step2Why: string;
   securityNotice: string;
   documentType: string;
@@ -246,7 +259,7 @@ const translations: Record<Lang, Translations> = {
     regTitle: 'Guest Registration', stepOf: (c, t) => `Step ${c} of ${t}`, back: '← Back', continue_: 'Continue →', confirmReg: 'Confirm Registration ✓',
     step1Title: 'Guest Details', fullName: 'Full name', email: 'Email', phone: 'Phone', phoneHint: 'Only for check-in day contact',
     dateOfBirth: 'Date of birth',
-    step2Title: 'ID Document', step2Why: 'Required by Czech law for all accommodation guests',
+    step2Title: 'ID Document', step2Why: 'Required by law for all accommodation guests',
     securityNotice: '🔒 Your data is stored securely and used only for mandatory guest registration',
     documentType: 'Document type', selectDoc: 'Select...', passportDoc: 'Passport', idCardDoc: 'National ID', drivingLicenseDoc: 'Driving licence',
     documentNumber: 'Document number', nationality: 'Nationality', permanentAddress: 'Permanent address', purposeOfStay: 'Purpose of stay', visaNumber: 'Visa number (if applicable)', guest: 'Guest',
@@ -322,7 +335,7 @@ const translations: Record<Lang, Translations> = {
     regTitle: 'Gästeregistrierung', stepOf: (c, t) => `Schritt ${c} von ${t}`, back: '← Zurück', continue_: 'Weiter →', confirmReg: 'Registrierung bestätigen ✓',
     step1Title: 'Gästedaten', fullName: 'Vollständiger Name', email: 'E-Mail', phone: 'Telefon', phoneHint: 'Nur für Kontakt am Check-in-Tag',
     dateOfBirth: 'Geburtsdatum',
-    step2Title: 'Ausweis', step2Why: 'Gesetzlich vorgeschrieben für alle Unterkunftsgäste in Tschechien',
+    step2Title: 'Ausweis', step2Why: 'Gesetzlich vorgeschrieben für alle Unterkunftsgäste',
     securityNotice: '🔒 Ihre Daten werden sicher gespeichert und nur für die Pflichtregistrierung verwendet',
     documentType: 'Dokumenttyp', selectDoc: 'Auswählen...', passportDoc: 'Reisepass', idCardDoc: 'Personalausweis', drivingLicenseDoc: 'Führerschein',
     documentNumber: 'Dokumentnummer', nationality: 'Nationalität', permanentAddress: 'Ständige Adresse', purposeOfStay: 'Reisezweck', visaNumber: 'Visumnummer (falls zutreffend)', guest: 'Gast',
@@ -398,7 +411,7 @@ const translations: Record<Lang, Translations> = {
     regTitle: 'Registrace hostů', stepOf: (c, t) => `Krok ${c} z ${t}`, back: '← Zpět', continue_: 'Pokračovat →', confirmReg: 'Potvrdit registraci ✓',
     step1Title: 'Údaje hosta', fullName: 'Celé jméno', email: 'E-mail', phone: 'Telefon', phoneHint: 'Pouze pro kontakt v den příjezdu',
     dateOfBirth: 'Datum narození',
-    step2Title: 'Doklad totožnosti', step2Why: 'Vyžadováno českým zákonem pro všechny ubytované hosty',
+    step2Title: 'Doklad totožnosti', step2Why: 'Vyžadováno zákonem pro všechny ubytované hosty',
     securityNotice: '🔒 Vaše data jsou uložena bezpečně a použita pouze pro povinnou registraci',
     documentType: 'Typ dokladu', selectDoc: 'Vyberte...', passportDoc: 'Cestovní pas', idCardDoc: 'Občanský průkaz', drivingLicenseDoc: 'Řidičský průkaz',
     documentNumber: 'Číslo dokladu', nationality: 'Národnost', permanentAddress: 'Trvalé bydliště', purposeOfStay: 'Účel pobytu', visaNumber: 'Číslo víza (pokud se vás týká)', guest: 'Host',
@@ -474,7 +487,7 @@ const translations: Record<Lang, Translations> = {
     regTitle: 'Реєстрація гостей', stepOf: (c, t) => `Крок ${c} з ${t}`, back: '← Назад', continue_: 'Далі →', confirmReg: 'Підтвердити реєстрацію ✓',
     step1Title: 'Дані гостя', fullName: 'Повне ім\'я', email: 'Email', phone: 'Телефон', phoneHint: 'Тільки для зв\'язку в день заїзду',
     dateOfBirth: 'Дата народження',
-    step2Title: 'Документ', step2Why: 'Вимагається чеським законодавством для всіх гостей',
+    step2Title: 'Документ', step2Why: 'Вимагається законом для всіх гостей',
     securityNotice: '🔒 Ваші дані зберігаються безпечно і використовуються лише для обов\'язкової реєстрації',
     documentType: 'Тип документа', selectDoc: 'Оберіть...', passportDoc: 'Паспорт', idCardDoc: 'ID-картка', drivingLicenseDoc: 'Водійське посвідчення',
     documentNumber: 'Номер документа', nationality: 'Громадянство', permanentAddress: 'Адреса проживання', purposeOfStay: 'Мета поїздки', visaNumber: 'Номер візи (якщо є)', guest: 'Гість',
@@ -550,7 +563,7 @@ const translations: Record<Lang, Translations> = {
     regTitle: 'Rejestracja gości', stepOf: (c, t) => `Krok ${c} z ${t}`, back: '← Wstecz', continue_: 'Dalej →', confirmReg: 'Potwierdź rejestrację ✓',
     step1Title: 'Dane gościa', fullName: 'Imię i nazwisko', email: 'E-mail', phone: 'Telefon', phoneHint: 'Tylko do kontaktu w dniu przyjazdu',
     dateOfBirth: 'Data urodzenia',
-    step2Title: 'Dokument tożsamości', step2Why: 'Wymagane czeskim prawem dla wszystkich gości',
+    step2Title: 'Dokument tożsamości', step2Why: 'Wymagane prawem dla wszystkich gości',
     securityNotice: '🔒 Dane są przechowywane bezpiecznie i używane wyłącznie do obowiązkowej rejestracji',
     documentType: 'Typ dokumentu', selectDoc: 'Wybierz...', passportDoc: 'Paszport', idCardDoc: 'Dowód osobisty', drivingLicenseDoc: 'Prawo jazdy',
     documentNumber: 'Numer dokumentu', nationality: 'Narodowość', permanentAddress: 'Adres zamieszkania', purposeOfStay: 'Cel podróży', visaNumber: 'Numer wizy (jeśli dotyczy)', guest: 'Gość',
@@ -626,7 +639,7 @@ const translations: Record<Lang, Translations> = {
     regTitle: 'Gastregistratie', stepOf: (c, t) => `Stap ${c} van ${t}`, back: '← Terug', continue_: 'Verder →', confirmReg: 'Registratie bevestigen ✓',
     step1Title: 'Gastgegevens', fullName: 'Volledige naam', email: 'E-mail', phone: 'Telefoon', phoneHint: 'Alleen voor contact op de dag van aankomst',
     dateOfBirth: 'Geboortedatum',
-    step2Title: 'Identiteitsbewijs', step2Why: 'Vereist door de Tsjechische wet voor alle gasten',
+    step2Title: 'Identiteitsbewijs', step2Why: 'Wettelijk vereist voor alle gasten',
     securityNotice: '🔒 Uw gegevens worden veilig opgeslagen en alleen gebruikt voor verplichte registratie',
     documentType: 'Documenttype', selectDoc: 'Selecteer...', passportDoc: 'Paspoort', idCardDoc: 'ID-kaart', drivingLicenseDoc: 'Rijbewijs',
     documentNumber: 'Documentnummer', nationality: 'Nationaliteit', permanentAddress: 'Vast adres', purposeOfStay: 'Doel van het verblijf', visaNumber: 'Visumnummer (indien van toepassing)', guest: 'Gast',
@@ -702,7 +715,7 @@ const translations: Record<Lang, Translations> = {
     regTitle: 'Enregistrement', stepOf: (c, t) => `Étape ${c} sur ${t}`, back: '← Retour', continue_: 'Continuer →', confirmReg: 'Confirmer l\'enregistrement ✓',
     step1Title: 'Détails de l\'hôte', fullName: 'Nom complet', email: 'E-mail', phone: 'Téléphone', phoneHint: 'Uniquement pour le contact le jour d\'arrivée',
     dateOfBirth: 'Date de naissance',
-    step2Title: 'Pièce d\'identité', step2Why: 'Exigé par la loi tchèque pour tous les hôtes',
+    step2Title: 'Pièce d\'identité', step2Why: 'Exigé par la loi pour tous les hôtes',
     securityNotice: '🔒 Vos données sont stockées en sécurité et utilisées uniquement pour l\'enregistrement obligatoire',
     documentType: 'Type de document', selectDoc: 'Sélectionnez...', passportDoc: 'Passeport', idCardDoc: 'Carte d\'identité', drivingLicenseDoc: 'Permis de conduire',
     documentNumber: 'Numéro de document', nationality: 'Nationalité', permanentAddress: 'Adresse permanente', purposeOfStay: 'But du séjour', visaNumber: 'Numéro de visa (le cas échéant)', guest: 'Invité',

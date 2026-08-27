@@ -41,10 +41,17 @@ const DICT = 'src/app/guest/[token]/translations.ts';
 const repoSrc = fs.readFileSync(REPO, 'utf8');
 const pageSrc = fs.readFileSync(PAGE, 'utf8');
 const dictSrc = fs.readFileSync(DICT, 'utf8');
+// Словник теж читається БЕЗ коментарів: перший прогін цієї перевірки впав
+// на власному ж поясненні, де слово «чеським» стоїть як опис виправленої
+// помилки. Третій раз у цьому проєкті — тому очищення тепер спільне.
 
 // Коментарі пояснюють рядки, яких БІЛЬШЕ немає. Гейт, який не відрізняє
 // пояснення від коду, падав би на власній документації — уже було.
-const pageCode = pageSrc.replace(/\{?\/\*[\s\S]*?\*\/\}?/g, '').replace(/^\s*\/\/.*$/gm, '');
+const strip = (src) => src
+  .replace(/\{?\/\*[\s\S]*?\*\/\}?/g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+const pageCode = strip(pageSrc);
+const dictCode = strip(dictSrc);
 
 // ── Кожне поле конфігу десь малюється ────────────────────────────────
 //
@@ -70,11 +77,11 @@ console.log(`  ok  усі ${fields.length} полів гостьового ко�
 // ── Паркінг: текст готелю, а не наш ──────────────────────────────────
 assert.ok(/cfg\??\.parking_info/.test(pageCode),
   'шіт «Паркінг» мусить малювати введений готелем parking_info');
-assert.ok(!/parkingFree/.test(pageCode) && !/parkingFree/.test(dictSrc),
+assert.ok(!/parkingFree/.test(pageCode) && !/parkingFree/.test(dictCode),
   'рядок «безкоштовна парковка біля входу» — твердження, якого жоден готель не робив');
 for (const claim of ['Kostenloser Parkplatz', 'Free parking', 'Безкоштовна парковка',
   'Bezplatné parkování', 'Bezpłatny parking', 'Gratis parkeren', 'Parking gratuit']) {
-  assert.ok(!dictSrc.includes(claim),
+  assert.ok(!dictCode.includes(claim),
     `«${claim}» — ціна паркінгу, вигадана за готель; вона мусить приходити з parking_info`);
 }
 console.log('  ok  про парковку говорить готель, а не словник');
@@ -92,5 +99,28 @@ const videoTips = [...pageCode.matchAll(/t\.videoGuide/g)].length;
 assert.strictEqual(videoTips, 1,
   'підказка про відео-гід мусить бути одна — усередині перевірки video_guide_url');
 console.log('  ok  сторінка не обіцяє того, чого готель не вводив');
+
+// ── Сторінка не називає чужу юрисдикцію ──────────────────────────────
+//
+// «Вимагається чеським законодавством» стояло у ВСІХ семи мовах, а секція
+// реєстрації показується в DE, AT і CZ (REGISTRATION_LAW). Тобто двом гостям
+// із трьох система називала закон чужої держави — на екрані, де в них просять
+// паспорт. Обовʼязок реальний у кожній із трьох, тож речення каже саме його.
+for (const claim of ['Czech law', 'Tschechien', 'českým zákonem', 'чеським',
+  'czeskim prawem', 'Tsjechische wet', 'loi tchèque']) {
+  assert.ok(!dictCode.includes(claim),
+    `«${claim}» на гостьовій сторінці — закон чужої держави для двох готелів із трьох`);
+}
+console.log('  ok  гостю не називають закон чужої країни');
+
+// ── Бренд першого клієнта не підписує чужі готелі ────────────────────
+//
+// `data.brandName || 'ALiSiO Resort'` на сторінці «після виїзду»: гість
+// німецького готелю прощався з чужим брендом у шапці й у підвалі. Основна
+// сторінка цей фолбек уже прибрала, а копія лишилась — рівно та форма, через
+// яку такі рядки й виживають.
+assert.ok(!/['"`]ALiSiO[^'"`]*['"`]/.test(pageCode),
+  'назва першого клієнта як фолбек — її бачать гості всіх інших готелів');
+console.log('  ok  порожній підпис краще за чужий бренд');
 
 console.log('гостьова сторінка: показує введене, не вигадує відсутнє');

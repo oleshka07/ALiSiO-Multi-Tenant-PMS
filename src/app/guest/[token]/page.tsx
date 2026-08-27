@@ -1839,7 +1839,16 @@ function PostStayPage({ data, lang, setLang }: {
   data: any; lang: Lang; setLang: (l: Lang) => void;
 }) {
   const t = getTranslations(lang);
-  const brandName = data.brandName || 'ALiSiO Resort';
+  // `getBrandName`, як на основній сторінці, а не літерал.
+  //
+  // Тут стояло `|| 'ALiSiO Resort'` — назва першого клієнта. Сторінка «після
+  // виїзду» показує її в шапці й у підвалі, тобто гість німецького готелю
+  // прощався з чужим брендом. Основна сторінка цей фолбек уже прибрала
+  // (getBrandName повертає порожній рядок), а ця копія лишилась.
+  //
+  // Порожньо краще за чуже: підпис зникає, і сторінка не називає готель,
+  // якого немає.
+  const brandName = getBrandName(data.brandName || data.propertyName);
   const guestName = data.guestName || '';
   const unitTypes = data.unitTypes || [];
   const catIcons: Record<string, string> = { glamping: '🏕️', resort: '🏨', camping: '⛺' };
