@@ -67,20 +67,20 @@ const navigation: NavSection[] = [
   {
     title: 'Основне',
     items: [
-      { label: 'Dashboard', href: '/app/dashboard', icon: <LayoutDashboard size={20} />, permission: 'nav:dashboard' },
+      { label: 'Dashboard', href: '/app/dashboard', icon: <LayoutDashboard size={20} />, permission: 'nav:dashboard', feature: 'dashboard' },
       { label: 'Календар', href: '/app/calendar', icon: <CalendarDays size={20} />, permission: 'nav:calendar' },
       { label: 'Бронювання', href: '/app/bookings', icon: <BookOpen size={20} />, permission: 'nav:bookings' },
       { label: 'Гості', href: '/app/guests', icon: <Users size={20} />, permission: 'nav:guests' },
-      { label: 'Задачі', href: '/app/tasks', icon: <CheckSquare size={20} />, permission: 'nav:tasks' },
-      { label: 'Аркуші дня', href: '/app/day-sheets', icon: <Printer size={20} />, permission: 'nav:bookings' },
-      { label: 'Зали', href: '/app/events', icon: <Presentation size={20} />, permission: 'nav:bookings' },
+      { label: 'Задачі', href: '/app/tasks', icon: <CheckSquare size={20} />, permission: 'nav:tasks', feature: 'tasks' },
+      { label: 'Аркуші дня', href: '/app/day-sheets', icon: <Printer size={20} />, permission: 'nav:bookings', feature: 'day_sheets' },
+      { label: 'Зали', href: '/app/events', icon: <Presentation size={20} />, permission: 'nav:bookings', feature: 'events' },
     ],
   },
   {
     title: 'Управління',
     items: [
       { label: 'Ціноутворення', href: '/app/pricing', icon: <DollarSign size={20} />, permission: 'nav:pricing' },
-      { label: 'Аналітика продажів', href: '/app/reports', icon: <BarChart3 size={20} />, permission: 'nav:reports' },
+      { label: 'Аналітика продажів', href: '/app/reports', icon: <BarChart3 size={20} />, permission: 'nav:reports', feature: 'reports' },
       { label: 'Документи', href: '/app/documents', icon: <FileText size={20} />, permission: 'nav:documents' },
       { label: 'Evidenční kniha', href: '/app/guest-registry', icon: <ClipboardList size={20} />, permission: 'nav:guests', countries: ['CZ'] },
     ],

@@ -8,7 +8,7 @@
  * that IS what it eventually becomes.
  */
 import { NextResponse } from 'next/server';
-import { withPermission } from '@core/auth/session';
+import { withModule } from '@core/auth/session';
 import * as events from '../data/events.repo';
 
 /** A refusal the operator should read; anything else is logged and hidden. */
@@ -22,12 +22,12 @@ function refuse(e: unknown) {
   );
 }
 
-export const listSpaces = withPermission('manage_bookings', async (request: Request) => {
+export const listSpaces = withModule('events', 'manage_bookings', async (request: Request) => {
   const all = new URL(request.url).searchParams.get('all') === '1';
   return NextResponse.json({ spaces: await events.listSpaces({ all }) });
 });
 
-export const saveSpace = withPermission('manage_bookings', async (request: Request) => {
+export const saveSpace = withModule('events', 'manage_bookings', async (request: Request) => {
   const body = await request.json().catch(() => ({})) as any;
   const name = String(body.name || '').trim();
   const code = String(body.code || '').trim();
@@ -48,12 +48,12 @@ export const saveSpace = withPermission('manage_bookings', async (request: Reque
   } catch (e) { return refuse(e); }
 });
 
-export const listAddons = withPermission('manage_bookings', async (request: Request) => {
+export const listAddons = withModule('events', 'manage_bookings', async (request: Request) => {
   const all = new URL(request.url).searchParams.get('all') === '1';
   return NextResponse.json({ addons: await events.listAddons({ all }) });
 });
 
-export const saveAddon = withPermission('manage_bookings', async (request: Request) => {
+export const saveAddon = withModule('events', 'manage_bookings', async (request: Request) => {
   const body = await request.json().catch(() => ({})) as any;
   const name = String(body.name || '').trim();
   const kind = String(body.kind || 'flat');
@@ -79,7 +79,7 @@ export const saveAddon = withPermission('manage_bookings', async (request: Reque
   } catch (e) { return refuse(e); }
 });
 
-export const listBookings = withPermission('manage_bookings', async (request: Request) => {
+export const listBookings = withModule('events', 'manage_bookings', async (request: Request) => {
   const url = new URL(request.url);
   return NextResponse.json({
     bookings: await events.listBookings({
@@ -90,7 +90,7 @@ export const listBookings = withPermission('manage_bookings', async (request: Re
   });
 });
 
-export const createBooking = withPermission('manage_bookings', async (request: Request) => {
+export const createBooking = withModule('events', 'manage_bookings', async (request: Request) => {
   const body = await request.json().catch(() => ({})) as any;
   const customerName = String(body.customer_name || '').trim();
   if (!body.space_id || !customerName) {
@@ -114,7 +114,7 @@ export const createBooking = withPermission('manage_bookings', async (request: R
   } catch (e) { return refuse(e); }
 });
 
-export const updateBooking = withPermission('manage_bookings', async (
+export const updateBooking = withModule('events', 'manage_bookings', async (
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) => {
@@ -138,7 +138,7 @@ export const updateBooking = withPermission('manage_bookings', async (
 });
 
 /** Open (or return) the booking's folio — from here the finance endpoints take over. */
-export const openBookingFolio = withPermission('manage_documents', async (
+export const openBookingFolio = withModule('events', 'manage_documents', async (
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) => {
@@ -149,7 +149,7 @@ export const openBookingFolio = withPermission('manage_documents', async (
 });
 
 /** Post the hall line and chosen add-ons onto the booking's folio. */
-export const postBookingCharges = withPermission('manage_documents', async (
+export const postBookingCharges = withModule('events', 'manage_documents', async (
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) => {

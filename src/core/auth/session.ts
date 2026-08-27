@@ -16,6 +16,7 @@ import { getSessionUser, type SessionUser } from './auth';
 import { hasPermission, type Permission } from './permissions';
 import { runWithOrganization } from './tenant-context';
 import { PLATFORM_COOKIE, actingUserFor, getPlatformSession } from './platform';
+import { hasFeature, featureDisabled, type FeatureKey } from '../features';
 
 export interface Actor {
   user: SessionUser;
@@ -90,6 +91,52 @@ export function withPermission<C = any>(permission: Permission, handler: Handler
     if (!actor) return unauthorized();
     if (!hasPermission(actor.user.permissions, permission)) return forbidden();
     return runWithOrganization(actor.organizationId, () => handler(request, context, actor));
+  };
+}
+
+/**
+ * Маршрут МОДУЛЯ: особа, право і те, чи цей модуль у готеля взагалі є.
+ *
+ * ── Навіщо третя перевірка ──────────────────────────────────────────────
+ *
+ * Модуль, вимкнений у налаштуваннях, зникав лише з бічного меню — а меню це
+ * посилання, не двері. `/api/tasks` відповідав так само, як і раніше, тож
+ * «вимкнено» означало «сховано від того, хто не знає адреси». Для готелю, який
+ * вимкнув «Зали», бо не здає їх, це косметика; для того, хто вимкнув модуль,
+ * бо не хоче, щоб персонал туди ходив, — це неправда на екрані налаштувань.
+ *
+ * Тому меню й маршрут читають ОДИН рядок `organization_features`. Вимкнений
+ * модуль не просто невидимий — він недосяжний.
+ *
+ * ── Чому один загорнутий, а не два ──────────────────────────────────────
+ *
+ * `withFeature(f, withPermission(p, h))` виглядало б гнучкіше і було б гірше:
+ * зовнішній шар мусив би сам піти по особу, щоб дізнатись організацію, тобто
+ * розібрати сесію двічі на кожен запит. Тут особа встановлюється один раз, і
+ * фіча питається вже з готовим `organizationId`.
+ *
+ * `hasFeature` викликається ПІСЛЯ `runWithOrganization` навмисно:
+ * `organization_features` — таблиця з орендарем, і на Postgres запит без
+ * контексту повернув би нуль рядків, тобто дефолт замість справжнього стану.
+ * Модуль, який готель вимкнув, знову став би увімкненим — тихо.
+ *
+ * ── `permission: null` — це не «без варти» ──────────────────────────────
+ *
+ * Особа встановлюється завжди; null означає лише «окремого права цей модуль
+ * не питає». Такий один: аркуші дня. Їх друкує кожен, хто виходить на зміну, а
+ * покоївка й технік мають рівно `nav:dashboard` — вимога будь-якого іншого
+ * права вигнала б із аркушів саме тих, для кого їх друкують, і готель повернувся
+ * б до паперу.
+ */
+export function withModule<C = any>(feature: FeatureKey, permission: Permission | null, handler: Handler<C>) {
+  return async (request: any, context: C): Promise<Response> => {
+    const actor = await currentActor();
+    if (!actor) return unauthorized();
+    if (permission && !hasPermission(actor.user.permissions, permission)) return forbidden();
+    return runWithOrganization(actor.organizationId, async () => {
+      if (!(await hasFeature(actor.organizationId, feature))) return featureDisabled(feature);
+      return handler(request, context, actor);
+    });
   };
 }
 

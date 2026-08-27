@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { FEATURES, setFeature, type FeatureKey } from './features.ts';
+import { FEATURES, setFeature, featureDefault, type FeatureKey } from './features.ts';
 import { getSql } from './db/async.ts';
 import { runWithOrganization } from './auth/tenant-context.ts';
 import { DEFAULT_LANGUAGE, LANGUAGE_CODES, isLanguage } from './i18n/languages.ts';
@@ -24,12 +24,17 @@ import { defaultBookingSources } from './booking-sources.ts';
  *
  * What a working organization needs, in one transaction:
  *   organization → owner (real password hash) → property → a category, so the
- *   calendar has something to group by → feature rows, all OFF.
+ *   calendar has something to group by → рядок на КОЖЕН ключ реєстру.
  *
- * Features start off ON PURPOSE. A new customer has no Teya account, no
- * Hostex token and no widget site; showing them menu items that answer 403 is
- * worse than not showing them at all. The operator turns each on when it is
- * actually configured.
+ * Інтеграції стартують вимкненими НАВМИСНО. Новий клієнт не має ані шлюзу
+ * оплати, ані токена каналу, ані сайту віджета; показувати йому пункти меню,
+ * які відповідають 403, гірше, ніж не показувати їх узагалі.
+ *
+ * Модулі PMS стартують увімкненими — з тієї самої причини, з протилежного
+ * боку. «Задачі», «Зали», «Аналітика», «Дашборди», «Аркуші дня» нічого не
+ * вимагають від клієнта: вони працюють із першого дня, і готель, який їх не
+ * потребує, вимикає сам. Хто де — сказано в `FEATURE_SPEC` (core/features.ts),
+ * а не тут: список у двох місцях розійшовся б.
  */
 
 export interface NewOrganization {
@@ -189,9 +194,13 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     // transaction has not committed yet, so on Postgres a second connection
     // would fail the foreign key. On SQLite there is only ever one connection,
     // which is why writing them outside the transaction worked by accident.
+    // `enable` називає ДОКУПЛЕНЕ; модулі, які є в PMS за замовчуванням,
+    // приходять із самого реєстру. Без другої половини новий клієнт
+    // отримував би готель без задач, залів, аналітики й аркушів дня — і
+    // виглядало б це не як «вимкнено», а як «нема такого в продукті».
     const wanted = new Set(input.enable || []);
     for (const key of Object.keys(FEATURES) as FeatureKey[]) {
-      await setFeature(organizationId, key, wanted.has(key), t);
+      await setFeature(organizationId, key, wanted.has(key) || featureDefault(key), t);
     }
   }));
 

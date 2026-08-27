@@ -9,7 +9,7 @@
  * bookings that already exist.
  */
 import { NextResponse } from 'next/server';
-import { withActor, type Actor } from '@core/auth/session';
+import { withModule, type Actor } from '@core/auth/session';
 import { todayFor } from '@core/hotel-day';
 import { houseList, breakfastList, keyList, dayClose } from '../data/day-sheets.repo';
 
@@ -26,7 +26,7 @@ async function dateFrom(request: Request, organizationId: string): Promise<strin
   return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
 }
 
-export const getDaySheet = withActor(async (
+export const getDaySheet = withModule('day_sheets', null, async (
   request: Request,
   { params }: { params: Promise<{ kind: string }> },
   actor: Actor,

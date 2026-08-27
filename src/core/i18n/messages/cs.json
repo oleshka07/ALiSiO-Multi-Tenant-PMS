@@ -2648,5 +2648,10 @@
   "Гість просить рахунок на оплату": "Host žádá o fakturu k úhradě",
   "Ключі шлюзу зберігаються на окремому екрані — у кожного провайдера свої поля.": "Klíče brány se ukládají na samostatné obrazovce — každý poskytovatel má vlastní pole.",
   "Налаштуйте оплати для вашого готелю": "Nastavte platby pro váš hotel",
-  "Списати картку продукт поки не вміє в жодного з них: збережений ключ чекає на день, коли шлюз буде готовий.": "Strhnout platbu z karty produkt zatím neumí u žádného z nich: uložený klíč čeká na den, kdy bude brána hotová."
+  "Списати картку продукт поки не вміє в жодного з них: збережений ключ чекає на день, коли шлюз буде готовий.": "Strhnout platbu z karty produkt zatím neumí u žádného z nich: uložený klíč čeká na den, kdy bude brána hotová.",
+  "Віджет бронювання і сайти": "Rezervační widget a weby",
+  "Фіскалізація Німеччини (TSE)": "Fiskalizace Německa (TSE)",
+  "Задачі персоналу": "Úkoly personálu",
+  "Зали та заходи": "Sály a akce",
+  "Дашборди": "Přehledy"
 }

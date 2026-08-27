@@ -2610,5 +2610,10 @@
   "Гість просить рахунок на оплату": "Gast bittet um eine Rechnung zur Zahlung",
   "Ключі шлюзу зберігаються на окремому екрані — у кожного провайдера свої поля.": "Die Gateway-Schlüssel liegen auf einem eigenen Bildschirm — jeder Anbieter hat eigene Felder.",
   "Налаштуйте оплати для вашого готелю": "Zahlungen für Ihr Hotel einrichten",
-  "Списати картку продукт поки не вміє в жодного з них: збережений ключ чекає на день, коли шлюз буде готовий.": "Eine Karte belasten kann das Produkt bei keinem von ihnen: Der gespeicherte Schlüssel wartet auf den Tag, an dem das Gateway fertig ist."
+  "Списати картку продукт поки не вміє в жодного з них: збережений ключ чекає на день, коли шлюз буде готовий.": "Eine Karte belasten kann das Produkt bei keinem von ihnen: Der gespeicherte Schlüssel wartet auf den Tag, an dem das Gateway fertig ist.",
+  "Віджет бронювання і сайти": "Buchungs-Widget und Websites",
+  "Фіскалізація Німеччини (TSE)": "Kassensicherungsverordnung (TSE)",
+  "Задачі персоналу": "Aufgaben für das Personal",
+  "Зали та заходи": "Säle und Veranstaltungen",
+  "Дашборди": "Dashboards"
 }

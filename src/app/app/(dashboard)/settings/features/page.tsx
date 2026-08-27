@@ -136,13 +136,13 @@ export default function FeaturesSettingsPage() {
                 <div key={key} style={{ borderTop: i ? line : 'none' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px' }}>
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{label}</div>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{t(label)}</div>
                       <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>{key}</div>
                     </div>
                     <button
                       onClick={() => toggle(key)}
                       disabled={busy === key}
-                      aria-label={`${features[key] ? t('Вимкнути') : t('Увімкнути')} ${label}`}
+                      aria-label={`${features[key] ? t('Вимкнути') : t('Увімкнути')} ${t(label)}`}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: features[key] ? 'var(--success, #30a46c)' : 'var(--text-tertiary)' }}
                     >
                       {features[key] ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}

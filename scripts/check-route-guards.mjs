@@ -50,7 +50,10 @@ import path from 'node:path';
  * miss — it sends someone to wrap a route that is already wrapped.
  */
 const GUARDS = new RegExp([
-  '\\bwith(Actor|Permission|AnyPermission|Owner|OwnedSite|FinanceRead|FinanceWrite|Site)\\b',
+  // `withModule` — особа + право + чи цей модуль у готеля є (core/auth/session.ts).
+  // У словнику він, бо СПРАВДІ встановлює особу й орендаря, а не лише питає фічу:
+  // обгортка, яка тільки читає `organization_features`, вартою не є.
+  '\\bwith(Actor|Permission|AnyPermission|Owner|OwnedSite|FinanceRead|FinanceWrite|Site|Module)\\b',
   '\\brequire(FinanceAccess|Permission|FinanceUser)\\b', '\\basFinanceOwner\\b',
   '\\bcurrentActor\\b', '\\brunWithOrganization\\b',
 ].join('|'));

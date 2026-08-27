@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
 import { getSql } from '@core/db/async';
-import { withPermission, notFound, type Actor } from '@core/auth/session';
+import { withModule, notFound, type Actor } from '@core/auth/session';
 import { uploadDirFor, uploadUrl, safeFilename, resolveUploadPath } from '@core/storage/uploads';
 
 /**
@@ -32,7 +32,7 @@ async function ownedTask(organizationId: string, taskId: string): Promise<{ id: 
   return sql.row<{ id: string }>('SELECT id FROM tasks WHERE id = ? AND organization_id = ?', [taskId, organizationId]);
 }
 
-export const listTaskAttachments = withPermission('manage_tasks', async (
+export const listTaskAttachments = withModule('tasks', 'manage_tasks', async (
   _request, { params }: IdParams, actor: Actor,
 ) => {
   try {
@@ -54,7 +54,7 @@ export const listTaskAttachments = withPermission('manage_tasks', async (
   }
 });
 
-export const uploadTaskAttachment = withPermission('manage_tasks', async (
+export const uploadTaskAttachment = withModule('tasks', 'manage_tasks', async (
   request: NextRequest, { params }: IdParams, actor: Actor,
 ) => {
   try {
@@ -98,7 +98,7 @@ export const uploadTaskAttachment = withPermission('manage_tasks', async (
   }
 });
 
-export const deleteTaskAttachment = withPermission('manage_tasks', async (
+export const deleteTaskAttachment = withModule('tasks', 'manage_tasks', async (
   request: NextRequest, { params }: IdParams, actor: Actor,
 ) => {
   try {

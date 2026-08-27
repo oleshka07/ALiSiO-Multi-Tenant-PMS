@@ -2,34 +2,86 @@
 import { getSql, type Sql } from './db/async.ts';
 
 /**
- * The feature registry: which integrations this organization actually bought.
+ * The feature registry: which parts of the product this organization has.
  *
  * One question, asked from both sides. The sidebar hides the menu item and the
  * route refuses the request off the SAME row in organization_features, so a
  * feature an organization does not have is invisible to it, not merely
- * de-linked. Absence of a row means OFF — a new organization starts with
- * nothing enabled.
+ * de-linked.
+ *
+ * ── Дві родини ключів, і чому в них різні дефолти ───────────────────────
+ *
+ * Спочатку тут були лише інтеграції — те, що готель ДОКУПОВУЄ. Для них
+ * «немає рядка = вимкнено» правильно: новий клієнт не має отримати німецьку
+ * фіскалізацію тому, що про неї забули.
+ *
+ * Модулі — інша річ. «Задачі», «Зали», «Аркуші дня», «Аналітика» і
+ * «Dashboard» це не покупка, а частини PMS, які одному готелю потрібні, а
+ * іншому ні. Якби вони теж читались як «немає рядка = вимкнено», то в день
+ * додавання ключа кожен уже наявний готель втратив би пʼять розділів меню
+ * мовчки — саме тому, що ніхто не завів їм рядків.
+ *
+ * Тому дефолт живе поруч із ключем, а не в одному правилі на всіх. `ON`
+ * означає «модуль є, поки готель його не вимкнув»; явний рядок `enabled = 0`
+ * завжди сильніший за дефолт.
  */
 
-export const FEATURES = {
-  widget: 'Віджет бронювання і сайти',
+/** OFF: докуповується. ON: частина PMS, яку готель може вимкнути. */
+const OFF = false;
+const ON = true;
+
+export const FEATURE_SPEC = {
+  widget: { label: 'Віджет бронювання і сайти', on: OFF },
   // Німецька фіскалізація (KassenSichV/TSE). Поки вимкнена, DE-готель НЕ
   // може записати готівку чи карту-на-рецепції — інакше PMS тихо стала б
-  // незареєстрованою касою (docs/TSE-KASSENSICHV.md §6.4, блок A).
-  fiscal_de: 'Фіскалізація Німеччини (TSE)',
+  // незареєстрованою касою (docs/TSE-KASSENSICHV.md §6.4, блок A). Дефолт ON
+  // тут був би не зручністю, а незареєстрованою касою в кожного клієнта.
+  fiscal_de: { label: 'Фіскалізація Німеччини (TSE)', on: OFF },
   // Приймання оплат онлайн. Вимкнено — і поки жоден шлюз не написаний,
   // увімкнення лише відкриває екран, де готель обирає провайдера й зберігає
   // свої ключі. Списати картку продукт сьогодні не вміє: див. `live` у
   // src/core/payments.ts.
-  online_payments: 'Онлайн-оплата',
+  online_payments: { label: 'Онлайн-оплата', on: OFF },
+
+  // ── Модулі PMS ────────────────────────────────────────────────────────
+  // Кожен — свій каталог під src/modules/. Вимикається готелем, не продавцем.
+  /** Задачі персоналу: хаускіпінг, технічна служба, чек-листи. */
+  tasks: { label: 'Задачі персоналу', on: ON },
+  /** Зали й заходи: погодинна оренда, розсадка, кейтеринг. */
+  events: { label: 'Зали та заходи', on: ON },
+  /** Аналітика продажів: заповненість, ADR, RevPAR, канали. */
+  reports: { label: 'Аналітика продажів', on: ON },
+  /** Дашборди. Різні для власника, адміністратора, інвестора. */
+  dashboard: { label: 'Дашборди', on: ON },
+  /** Аркуші дня: чотири друковані списки, які рецепція друкує щоранку. */
+  day_sheets: { label: 'Аркуші дня', on: ON },
 } as const;
 
-export type FeatureKey = keyof typeof FEATURES;
+export type FeatureKey = keyof typeof FEATURE_SPEC;
+
+/**
+ * Ключ → назва. Те, що бачить екран налаштувань і `/api/settings/features`.
+ *
+ * Окремою мапою, а не `FEATURE_SPEC` цілком: каталог їде клієнту, і дефолти
+ * там ні до чого — стан кожного ключа для ЦІЄЇ організації приходить поруч,
+ * уже порахований.
+ */
+export const FEATURES = Object.fromEntries(
+  Object.entries(FEATURE_SPEC).map(([k, v]) => [k, v.label]),
+) as Record<FeatureKey, string>;
+
+/** Чи модуль стоїть у клієнта, поки він явно не сказав інакше. */
+export function featureDefault(feature: FeatureKey): boolean {
+  return FEATURE_SPEC[feature].on;
+}
 
 export async function hasFeature(organizationId: string, feature: FeatureKey): Promise<boolean> {
   const sql = getSql();
   const row = await sql.row<any>('SELECT enabled FROM organization_features WHERE organization_id = ? AND feature = ?', [organizationId, feature]) as { enabled: number } | undefined;
-  return row ? row.enabled === 1 : false;
+  // Рядок сильніший за дефолт — і `enabled = 0` теж рядок. Інакше вимкнути
+  // модуль, який стоїть за замовчуванням, було б неможливо.
+  if (row) return row.enabled === 1;
+  return featureDefault(feature);
 }
 
 /** Every feature with its state — for the settings screen and /api/auth/me. */
