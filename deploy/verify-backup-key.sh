@@ -39,10 +39,21 @@ RC=(docker run --rm
     rclone/rclone)
 FAIL=0
 
-# 1. Write must work.
+# 1. Write must work — tested by the SAME road the real backup takes: copyto
+# of a file. The first version piped into `rcat`, and `docker run` here has no
+# `-i`, so the pipe never reached the container: on its first live run the
+# test printed FAIL while backup.sh was uploading fine right next to it. A
+# check that can fail while the thing it checks works is worse than none —
+# now both travel the same code path and cannot drift apart.
 STAMP="verify-$(date -u +%Y%m%dT%H%M%SZ)"
-if printf 'write-only key check\n' | "${RC[@]}" rcat --no-check-dest --s3-no-head \
-     "${BACKUP_REMOTE}/verify/${STAMP}.txt" >/dev/null 2>&1; then
+VDIR="$(mktemp -d)"
+trap 'rm -rf "$VDIR"' EXIT
+printf 'write-only key check\n' > "${VDIR}/verify.txt"
+if docker run --rm \
+     -v "${VDIR}/verify.txt:/data/verify.txt:ro" \
+     -v "$(pwd)/deploy/rclone.conf:/config/rclone/rclone.conf:ro" \
+     rclone/rclone copyto --retries 2 --no-check-dest --s3-no-head \
+     /data/verify.txt "${BACKUP_REMOTE}/verify/${STAMP}.txt" >/dev/null 2>&1; then
   echo "OK   запис працює (verify/${STAMP}.txt; lifecycle сховища його прибере)"
 else
   echo "FAIL запис НЕ працює — бекапи не залишають сервер" >&2; FAIL=1
