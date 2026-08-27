@@ -40,8 +40,11 @@ import {
   getProjectProfitability as _getProjectProfitability, getAccountStatement as _getAccountStatement,
   getPlanFactReport as _getPlanFactReport,
 } from './reports.handlers';
+import { getPaidServices as _getPaidServices } from './paid-services.handlers';
 export const getFinanceOverview      = await withFinanceRead(_getFinanceOverview);
 export const getExpectedPayments     = await withFinanceRead(_getExpectedPayments);
+// Звіт «оплачені послуги і чи дійшли вони до книг» — екран був, маршруту не було.
+export const getPaidServices         = await withFinanceRead(_getPaidServices);
 export const getCashflowMatrix       = await withFinanceRead(_getCashflowMatrix);
 export const getPnlMatrix            = await withFinanceRead(_getPnlMatrix);
 export const getFinancialIndicators  = await withFinanceRead(_getFinancialIndicators);

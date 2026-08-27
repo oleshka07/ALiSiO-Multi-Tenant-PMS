@@ -16,6 +16,8 @@ interface PaidService {
   payment_id: string | null;
   payment_status: string;
   service_date: string | null;
+  /** Валюта броні, а коли її немає — валюта готелю. Див. fmtMoney. */
+  currency: string | null;
   options_json: string | null;
   created_at: string;
   guest_name: string | null;
@@ -31,9 +33,16 @@ interface ApiResponse {
   orphan_count: number;
 }
 
-function fmtCZK(n: number | null | undefined): string {
+/**
+ * Сума друкується у валюті рядка, а не в кронах.
+ *
+ * Тут стояв літерал 'CZK' — і німецький готель бачив свої євро підписаними
+ * кронами. Відповідь звіту не випадково містить `totals_by_currency`: валют у
+ * готелю може бути кілька, і складати їх без названого курсу не можна.
+ */
+function fmtMoney(n: number | null | undefined, currency?: string | null): string {
   if (n === null || n === undefined) return '—';
-  return `${n.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} CZK`;
+  return `${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${currency || ''}`.trim();
 }
 
 function isoDate(d: Date): string {
@@ -119,9 +128,11 @@ export default function PaidServicesPage() {
           <input type="checkbox" checked={onlyOrphans} onChange={(e) => setOnlyOrphans(e.target.checked)} />
           {t('Тільки orphans')}
         </label>
-        <Link href="/app/finance/payments/orphans" style={{ ...btn, color: '#a855f7', borderColor: '#a855f7', textDecoration: 'none', marginLeft: 'auto' }}>
-          <AlertOctagon size={14} /> {t('Перейти до Orphans')}
-        </Link>
+        {/*
+          Кнопки «Перейти до Orphans» тут більше немає: сторінки
+          /app/finance/payments/orphans не існує, тож вона вела у 404. Те саме
+          питання відповідає перемикач ліворуч — «Тільки orphans».
+        */}
       </div>
 
       {loading ? (
@@ -143,13 +154,19 @@ export default function PaidServicesPage() {
             </span>
             {Object.entries(data.totals_by_currency).map(([cur, val]) => (
               <span key={cur} style={{ marginLeft: 'auto', fontWeight: 600 }}>
-                {t('Сума:')} {val.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} {cur}
+                {t('Сума:')} {fmtMoney(val, cur)}
               </span>
             ))}
           </div>
 
           {grouped.map(([day, rows]) => {
-            const dayTotal = rows.reduce((s, r) => s + (r.total_price || 0), 0);
+            // Підсумок дня — по валютах: складати євро з кронами без курсу,
+            // якого ніхто не називав, — це вигадувати число.
+            const dayTotals = rows.reduce((acc: Record<string, number>, r) => {
+              const cur = r.currency || '';
+              acc[cur] = (acc[cur] || 0) + (r.total_price || 0);
+              return acc;
+            }, {});
             return (
               <div key={day} style={{ marginBottom: 16, border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden' }}>
                 <div style={{
@@ -158,7 +175,7 @@ export default function PaidServicesPage() {
                 }}>
                   <span>{day}</span>
                   <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
-                    {rows.length} {t('зап. ·')} {fmtCZK(dayTotal)}
+                    {rows.length} {t('зап. ·')} {Object.entries(dayTotals).map(([cur, v]) => fmtMoney(v, cur)).join(' · ')}
                   </span>
                 </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -193,7 +210,7 @@ export default function PaidServicesPage() {
                         </td>
                         <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.quantity}</td>
                         <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
-                          {fmtCZK(r.total_price)}
+                          {fmtMoney(r.total_price, r.currency)}
                         </td>
                         <td style={{ ...td, fontSize: 11, color: 'var(--text-secondary)' }}>
                           {r.source_table === 'booking_service_orders' ? 'Widget' : 'Guest page'}
@@ -204,12 +221,12 @@ export default function PaidServicesPage() {
                               <CheckCircle2 size={14} /> ✓
                             </span>
                           ) : (
-                            <Link
-                              href="/app/finance/payments/orphans"
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#a855f7', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}
+                            <span
+                              title={t('Оплата є, фінансової операції на неї немає')}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#a855f7', fontSize: 12, fontWeight: 600 }}
                             >
                               <AlertOctagon size={14} /> orphan
-                            </Link>
+                            </span>
                           )}
                         </td>
                       </tr>

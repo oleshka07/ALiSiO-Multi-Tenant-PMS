@@ -3,7 +3,7 @@
 import { useT, usePlural } from '@core/i18n/client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Minus, ArrowLeftRight, Settings, Search, Trash2, Copy, Calendar, BarChart3, Wallet, Paperclip, Repeat, Pencil, ArrowUp, ArrowDown, X, History, Filter } from 'lucide-react';
+import { Plus, Minus, ArrowLeftRight, Settings, Search, Trash2, Copy, BarChart3, Paperclip, Repeat, Pencil, ArrowUp, ArrowDown, X, History, Filter } from 'lucide-react';
 import OperationModal from './_components/OperationModal';
 import AdvancedFilterModal from './_components/AdvancedFilterModal';
 import InlinePicker, { type InlinePickerOption } from './_components/InlinePicker';
@@ -303,14 +303,15 @@ export default function OperationsPage() {
           params={{ from, to, op_type: filterType, search: search.trim() }}
         />
 
-        <Link href="/app/finance/clearing" style={{ ...btn, background: 'var(--bg-secondary)', color: 'var(--text-primary)', textDecoration: 'none' }}>
-          <Wallet size={16} /> Clearing
-        </Link>
+        {/*
+          Кнопок «Clearing» і «Календар» тут більше немає: сторінок
+          /app/finance/clearing і /app/finance/calendar не існує, тож обидві
+          вели у 404. Кнопка, яка нікуди не веде, гірша за її відсутність —
+          людина двічі перевіряє, чи не зламався в неї браузер. Що вони мали
+          робити, записано в docs/AUDIT-2026-08-26.md §3.8.
+        */}
         <Link href="/app/finance/reports" style={{ ...btn, background: 'var(--bg-secondary)', color: 'var(--text-primary)', textDecoration: 'none' }}>
           <BarChart3 size={16} /> {tUi('Звіти')}
-        </Link>
-        <Link href="/app/finance/calendar" style={{ ...btn, background: 'var(--bg-secondary)', color: 'var(--text-primary)', textDecoration: 'none' }}>
-          <Calendar size={16} /> {tUi('Календар')}
         </Link>
         <Link href="/app/finance/settings" style={{ ...btn, background: 'var(--bg-secondary)', color: 'var(--text-primary)', textDecoration: 'none' }}>
           <Settings size={16} /> {tUi('Налаштування')}

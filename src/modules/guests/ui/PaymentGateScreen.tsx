@@ -36,13 +36,13 @@ export function PaymentGateScreen({ data, t, lang, setLang }: Props) {
 
   // Locale labels
   const labels: Record<string, Record<string, string>> = {
-    en: { banner: 'Complete payment to unlock full access', nights: 'nights', daysTo: `${dLeft} days to check-in`, bookedFor: 'Booking confirmed', payBtn: 'Complete payment →', remaining: 'Remaining', contact: 'Questions? Call us', locked: 'Available after payment' },
-    de: { banner: 'Zahlung abschließen für vollständigen Zugang', nights: 'Nächte', daysTo: `${dLeft} Tage bis zum Check-in`, bookedFor: 'Buchung bestätigt', payBtn: 'Zahlung abschließen →', remaining: 'Ausstehend', contact: 'Fragen? Rufen Sie uns an', locked: 'Verfügbar nach Zahlung' },
-    cs: { banner: 'Dokončete platbu pro plný přístup', nights: 'nocí', daysTo: `${dLeft} dní do příjezdu`, bookedFor: 'Rezervace potvrzena', payBtn: 'Dokončit platbu →', remaining: 'Zbývá uhradit', contact: 'Dotazy? Zavolejte nám', locked: 'Dostupné po platbě' },
-    uk: { banner: 'Завершіть оплату для повного доступу', nights: 'ночей', daysTo: `${dLeft} днів до заїзду`, bookedFor: 'Бронювання підтверджено', payBtn: 'Оплатити бронювання →', remaining: 'До сплати', contact: 'Питання? Телефонуйте нам', locked: 'Доступно після оплати' },
-    pl: { banner: 'Dokończ płatność, aby uzyskać pełny dostęp', nights: 'nocy', daysTo: `${dLeft} dni do zameldowania`, bookedFor: 'Rezerwacja potwierdzona', payBtn: 'Dokończ płatność →', remaining: 'Pozostało', contact: 'Pytania? Zadzwoń do nas', locked: 'Dostępne po płatności' },
-    nl: { banner: 'Voltooi betaling voor volledige toegang', nights: 'nachten', daysTo: `${dLeft} dagen tot check-in`, bookedFor: 'Boeking bevestigd', payBtn: 'Betaling voltooien →', remaining: 'Resterend', contact: 'Vragen? Bel ons', locked: 'Beschikbaar na betaling' },
-    fr: { banner: 'Finalisez le paiement pour accès complet', nights: 'nuits', daysTo: `${dLeft} jours avant arrivée`, bookedFor: 'Réservation confirmée', payBtn: 'Finaliser le paiement →', remaining: 'Reste à payer', contact: 'Questions ? Appelez-nous', locked: 'Disponible après paiement' },
+    en: { banner: 'Complete payment to unlock full access', nights: 'nights', daysTo: `${dLeft} days to check-in`, bookedFor: 'Booking confirmed', howToPay: 'Payment is taken by the property — call or email us and we will confirm it here', remaining: 'Remaining', contact: 'Questions? Call us', locked: 'Available after payment' },
+    de: { banner: 'Zahlung abschließen für vollständigen Zugang', nights: 'Nächte', daysTo: `${dLeft} Tage bis zum Check-in`, bookedFor: 'Buchung bestätigt', howToPay: 'Die Zahlung nimmt die Unterkunft entgegen — rufen Sie an oder schreiben Sie uns, wir bestätigen sie hier', remaining: 'Ausstehend', contact: 'Fragen? Rufen Sie uns an', locked: 'Verfügbar nach Zahlung' },
+    cs: { banner: 'Dokončete platbu pro plný přístup', nights: 'nocí', daysTo: `${dLeft} dní do příjezdu`, bookedFor: 'Rezervace potvrzena', howToPay: 'Platbu přijímá ubytovatel — zavolejte nebo napište, potvrdíme ji zde', remaining: 'Zbývá uhradit', contact: 'Dotazy? Zavolejte nám', locked: 'Dostupné po platbě' },
+    uk: { banner: 'Завершіть оплату для повного доступу', nights: 'ночей', daysTo: `${dLeft} днів до заїзду`, bookedFor: 'Бронювання підтверджено', howToPay: 'Оплату приймає готель — зателефонуйте або напишіть, і ми підтвердимо її тут', remaining: 'До сплати', contact: 'Питання? Телефонуйте нам', locked: 'Доступно після оплати' },
+    pl: { banner: 'Dokończ płatność, aby uzyskać pełny dostęp', nights: 'nocy', daysTo: `${dLeft} dni do zameldowania`, bookedFor: 'Rezerwacja potwierdzona', howToPay: 'Płatność przyjmuje obiekt — zadzwoń lub napisz, potwierdzimy ją tutaj', remaining: 'Pozostało', contact: 'Pytania? Zadzwoń do nas', locked: 'Dostępne po płatności' },
+    nl: { banner: 'Voltooi betaling voor volledige toegang', nights: 'nachten', daysTo: `${dLeft} dagen tot check-in`, bookedFor: 'Boeking bevestigd', howToPay: 'De accommodatie neemt de betaling aan — bel of mail ons, wij bevestigen het hier', remaining: 'Resterend', contact: 'Vragen? Bel ons', locked: 'Beschikbaar na betaling' },
+    fr: { banner: 'Finalisez le paiement pour accès complet', nights: 'nuits', daysTo: `${dLeft} jours avant arrivée`, bookedFor: 'Réservation confirmée', howToPay: 'Le paiement est encaissé par l’établissement — appelez-nous ou écrivez-nous, nous le confirmerons ici', remaining: 'Reste à payer', contact: 'Questions ? Appelez-nous', locked: 'Disponible après paiement' },
   };
   const L = labels[lang] || labels.en;
 
@@ -110,9 +110,27 @@ export function PaymentGateScreen({ data, t, lang, setLang }: Props) {
           {Number(remaining).toLocaleString()} {currency}
         </div>
 
-        {r?.property_phone && (
+        {/*
+          Тут мала бути кнопка «Оплатити»: рядок payBtn був написаний у семи
+          мовах і не траплявся в JSX жодного разу. Кнопки не буде й далі —
+          онлайн-шлюзу в продукті немає взагалі (`anyGatewayImplemented()` у
+          core/payments.ts повертає false, і це не тимчасово).
+
+          Тобто гість бачив «Завершіть оплату для повного доступу», під ним
+          суму, під нею телефон — і жодного способу заплатити. Сторінка з
+          вказівками, паркінгом і кодом від дверей лишалась замкненою.
+
+          Тому екран тепер каже, ЩО робити, а не обіцяє дію, якої немає:
+          оплату приймає готель, ось телефон і пошта.
+        */}
+        <div className="gp-pg-contact">{L.howToPay}</div>
+
+        {(r?.property_phone || r?.property_email) && (
           <div className="gp-pg-contact">
-            {L.contact}: <a href={`tel:${r.property_phone}`}>{r.property_phone}</a>
+            {L.contact}:{' '}
+            {r?.property_phone && <a href={`tel:${r.property_phone}`}>{r.property_phone}</a>}
+            {r?.property_phone && r?.property_email && ' · '}
+            {r?.property_email && <a href={`mailto:${r.property_email}`}>{r.property_email}</a>}
           </div>
         )}
       </div>

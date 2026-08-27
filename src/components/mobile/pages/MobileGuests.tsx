@@ -292,9 +292,18 @@ function GuestDetailSheet({
   useBodyScrollLock(Boolean(guest));
 
   useEffect(() => {
-    fetch(`/api/guests/${guest.id}/reservations`)
-      .then(r => r.ok ? r.json() : [])
-      .then(d => { setStays(Array.isArray(d) ? d : (d.reservations || [])); setLoading(false); })
+    // `/api/guests/[id]`, а не `/api/guests/[id]/reservations`: другого
+    // маршруту не існує, тож картка гостя на телефоні завжди показувала
+    // «попередніх заїздів немає» — і в постійного гостя теж. Перший маршрут
+    // від початку віддає гостя РАЗОМ із його бронями
+    // (`getGuestWithReservations`), у тому самому вигляді, який чекає ця
+    // сторінка.
+    fetch(`/api/guests/${guest.id}`)
+      .then(r => r.ok ? r.json() : {})
+      .then((d: { reservations?: ReservationRow[] }) => {
+        setStays(Array.isArray(d) ? d : (d.reservations || []));
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, [guest.id]);
 
