@@ -9,8 +9,6 @@ import { useDevice } from '@/ui/hooks/useDevice';
 import MobileBookings from '@/components/mobile/pages/MobileBookings';
 import SourceIcon from '@/components/ui/SourceIcon';
 import MobileFilterBar from '@/components/mobile/MobileFilterBar';
-import GroupBookingModal from '@/components/booking/GroupBookingModal';
-import GroupViewModal from '@/components/booking/GroupViewModal';
 import BookingViewModal from '@/components/booking/BookingViewModal';
 import BookingForm, { type WidgetSiteSourceRow } from '@/components/booking/BookingForm';
 import type { DashboardAlert } from '@/modules/dashboard/domain/alerts';
@@ -65,7 +63,6 @@ interface BookingRow {
   category_type: string;
   unit_type_id: string;
   unit_type_name: string;
-  group_id: string | null;
   parent_id: string | null;
   sub_booking_count: number;
   commission_amount: number;
@@ -78,23 +75,6 @@ interface BookingRow {
   nationality: string | null;
   hostex_channel_type?: string;
   hostex_reservation_code?: string;
-  currency?: string;
-}
-
-interface GroupRow {
-  id: string;
-  group_type: string;
-  check_in: string;
-  check_out: string;
-  nights: number;
-  total_price: number;
-  status: string;
-  payment_status: string;
-  source: string;
-  first_name: string;
-  last_name: string;
-  building_name: string | null;
-  room_count: number;
   currency?: string;
 }
 
@@ -282,68 +262,17 @@ function BookingsDesktop() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const onMenuClick = useMobileMenu();
 
-  /* ── group bookings ──────────────────────────────── */
-  const [groupBookings, setGroupBookings] = useState<GroupRow[]>([]);
-  const [showGroupModal, setShowGroupModal] = useState(false);
-  const [viewGroupId, setViewGroupId] = useState<string | null>(null);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-
-  const toggleGroup = (gid: string) => {
-    setExpandedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(gid)) next.delete(gid); else next.add(gid);
-      return next;
-    });
-  };
-
-  // Build merged list: group headers + children interleaved with standalone bookings
-  const mergedBookingRows = useMemo(() => {
-    // Sort bookings first
-    const sorted = [...bookings].sort((a, b) => {
+  // Тут будувався «змішаний» список: шапка групи, під нею її броні, поряд
+  // одиночні. Групові броні (`reservation_groups`) видалено 2026-08-27 —
+  // лишається один плаский відсортований список.
+  const sortedBookings = useMemo(() => {
+    return [...bookings].sort((a, b) => {
       const aVal = (a as any)[sortCol] ?? '';
       const bVal = (b as any)[sortCol] ?? '';
       const cmp = typeof aVal === 'number' ? aVal - bVal : String(aVal).localeCompare(String(bVal));
       return sortDir === 'asc' ? cmp : -cmp;
     });
-
-    const rows: Array<
-      | { type: 'booking'; data: BookingRow }
-      | { type: 'group'; data: GroupRow }
-      | { type: 'child'; data: BookingRow; groupId: string }
-    > = [];
-    const seenGroups = new Set<string>();
-    const groupMap = new Map<string, GroupRow>();
-    for (const g of groupBookings) groupMap.set(g.id, g);
-
-    for (const b of sorted) {
-      if (b.group_id && groupMap.has(b.group_id)) {
-        if (!seenGroups.has(b.group_id)) {
-          seenGroups.add(b.group_id);
-          rows.push({ type: 'group', data: groupMap.get(b.group_id)! });
-          const children = sorted.filter(bb => bb.group_id === b.group_id);
-          for (const c of children) {
-            rows.push({ type: 'child', data: c, groupId: b.group_id });
-          }
-        }
-      } else {
-        rows.push({ type: 'booking', data: b });
-      }
-    }
-    for (const g of groupBookings) {
-      if (!seenGroups.has(g.id)) {
-        rows.push({ type: 'group', data: g });
-      }
-    }
-    return rows;
-  }, [bookings, groupBookings, sortCol, sortDir]);
-
-  const fetchGroupBookings = useCallback(async () => {
-    try {
-      const res = await fetch('/api/group-bookings');
-      const data = await res.json();
-      if (Array.isArray(data)) setGroupBookings(data);
-    } catch (e) { console.error(e); }
-  }, []);
+  }, [bookings, sortCol, sortDir]);
 
   const CZK_TO_EUR = 23.5;
   const toEur = (czk: number) => (czk / CZK_TO_EUR).toFixed(1);
@@ -443,9 +372,9 @@ function BookingsDesktop() {
 
   /* ── fetch on filter change ───────────────────────── */
   useEffect(() => {
-    const debounce = setTimeout(() => { fetchBookings(); fetchGroupBookings(); fetchAlerts(); }, 300);
+    const debounce = setTimeout(() => { fetchBookings(); fetchAlerts(); }, 300);
     return () => clearTimeout(debounce);
-  }, [fetchBookings, fetchGroupBookings, fetchAlerts]);
+  }, [fetchBookings, fetchAlerts]);
 
   const openNewBooking = () => setShowNewBooking(true);
   const openEditBooking = (b: BookingRow) => setEditBooking(b);
@@ -605,11 +534,8 @@ function BookingsDesktop() {
             <div className="page-subtitle">{bookings.length} {t('записів')}</div>
           </div>
           <div className="flex gap-2">
-            <button className="btn btn-secondary" onClick={() => { fetchBookings(); fetchGroupBookings(); }} title={t('Оновити')}>
+            <button className="btn btn-secondary" onClick={() => fetchBookings()} title={t('Оновити')}>
               <RefreshCw size={16} />
-            </button>
-            <button className="btn btn-secondary" onClick={() => setShowGroupModal(true)}>
-              <Building2 size={16} /> {t('Групове')}
             </button>
             <button className="btn btn-primary" onClick={openNewBooking}>
               <Plus size={16} /> {t('Нове бронювання')}
@@ -746,74 +672,12 @@ function BookingsDesktop() {
                   <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> {t('Завантаження...')}
                 </td></tr>
               )}
-              {!loading && mergedBookingRows.length === 0 && (
+              {!loading && sortedBookings.length === 0 && (
                 <tr><td colSpan={11} style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>
                   {t('Нічого не знайдено')}
                 </td></tr>
               )}
-              {mergedBookingRows.map((row, idx) => {
-                if (row.type === 'group') {
-                  const g = row.data;
-                  const isExpanded = expandedGroups.has(g.id);
-                  const childCount = bookings.filter(b => b.group_id === g.id).length;
-                  return (
-                    <tr key={`grp-${g.id}`} style={{ background: 'rgba(99,102,241,0.06)', borderLeft: '3px solid var(--accent-primary)' }}>
-                      <td colSpan={11} style={{ padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                          <button className="btn btn-sm btn-ghost btn-icon" style={{ padding: 2 }}
-                            onClick={(e) => { e.stopPropagation(); toggleGroup(g.id); }}>
-                            {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                          </button>
-                          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(99,102,241,0.15)', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12 }}>
-                            {g.group_type === 'building' ? <Building2 size={16} /> : childCount}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 120, cursor: 'pointer' }} onClick={() => setViewGroupId(g.id)}>
-                            <span style={{ fontWeight: 700, fontSize: 14 }}>{g.first_name} {g.last_name}</span>
-                            <span style={{ fontSize: 12, color: 'var(--text-tertiary)', marginLeft: 8 }}>
-                              {g.group_type === 'building' ? `🏨 ${g.building_name}` : `🛏️ ${childCount} ${plural(childCount, 'кім.')}`}
-                              {' · '}{g.check_in} → {g.check_out} · {g.nights} {t('н.')}
-                            </span>
-                          </div>
-                          <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: STATUS_MAP[g.status]?.badge ? undefined : '#6c7086' }} className={`badge ${STATUS_MAP[g.status]?.badge || 'badge-info'}`}>
-                            {t(STATUS_MAP[g.status]?.label || g.status)}
-                          </span>
-                          <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--accent-primary)' }}>
-                            {(g.total_price || 0).toLocaleString()} {g.currency || 'CZK'}
-                          </span>
-                          <button className="btn btn-sm btn-ghost btn-icon" title={t('Переглянути групу')}
-                            onClick={(e) => { e.stopPropagation(); setViewGroupId(g.id); }}>
-                            <Eye size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                }
-                if (row.type === 'child') {
-                  if (!expandedGroups.has(row.groupId)) return null;
-                  const b = row.data;
-                  return (
-                    <tr key={b.id} style={{ cursor: 'pointer', background: 'rgba(99,102,241,0.03)' }}
-                      onClick={() => openViewBooking(b)}>
-                      <td style={{ fontWeight: 500, paddingLeft: 40 }}>↳ {b.first_name} {b.last_name}</td>
-                      <td><span className="badge badge-primary">{b.unit_name}</span></td>
-                      <td>{b.check_in}</td><td>{b.check_out}</td><td>{b.nights}</td>
-                      <td><span className="flex items-center gap-2" style={{ fontSize: 12 }}><Users size={12} /> {b.adults}{b.children > 0 && <span style={{ color: 'var(--text-tertiary)' }}>+{b.children}</span>}</span></td>
-                      <td><span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{t(STATUS_MAP[b.status]?.label || b.status)}</span></td>
-                      <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>{t(PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status)}</span></td>
-                      <td>
-                        <span className="badge" style={{ background: (sourceMap[b.source]?.color || '#6c7086') + '22', color: sourceMap[b.source]?.color || '#6c7086' }}>{sourceMap[b.source]?.label || b.source}</span>
-                        {b.hostex_channel_type && <span style={{ marginLeft: 4 }} title={`Hostex: ${b.hostex_channel_type}`}>🌐</span>}
-                      </td>
-                      <td><div style={{ fontWeight: 700 }}>{(b.total_price || 0).toLocaleString()} {b.currency || 'CZK'}</div>{(b.commission_amount || 0) > 0 && <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 2 }}>{t('Комісія')} {(b.commission_amount || 0).toLocaleString()}</div>}</td>
-                      <td><div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                        <button className="btn btn-sm btn-ghost btn-icon" title={t('Переглянути')} onClick={() => openViewBooking(b)}><Eye size={14} /></button>
-                      </div></td>
-                    </tr>
-                  );
-                }
-                // type === 'booking' — standalone
-                const b = row.data;
+              {sortedBookings.map((b, idx) => {
                 return (
                   <tr key={b.id} style={{ cursor: 'pointer' }} onClick={() => openViewBooking(b)}>
                     <td style={{ fontWeight: 500 }}>{b.first_name} {b.last_name}{b.sub_booking_count > 0 && <span style={{ marginLeft: 6, fontSize: 10, padding: '1px 6px', borderRadius: 8, background: 'rgba(99,102,241,0.12)', color: '#6366f1', fontWeight: 700 }}>👥 {b.sub_booking_count}</span>}</td>
@@ -849,75 +713,13 @@ function BookingsDesktop() {
               <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> {t('Завантаження...')}
             </div>
           )}
-          {!loading && mergedBookingRows.length === 0 && (
+          {!loading && sortedBookings.length === 0 && (
             <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>
               {t('Нічого не знайдено')}
             </div>
           )}
           <div className="card-list">
-            {mergedBookingRows.map((row, idx) => {
-              if (row.type === 'group') {
-                const g = row.data;
-                const isExpanded = expandedGroups.has(g.id);
-                const childCount = bookings.filter(bb => bb.group_id === g.id).length;
-                return (
-                  <div key={`grp-m-${g.id}`} style={{
-                    padding: '10px 12px', borderRadius: 'var(--radius-md)',
-                    background: 'rgba(99,102,241,0.08)', borderLeft: '4px solid var(--accent-primary)',
-                    marginBottom: 4,
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <button className="btn btn-sm btn-ghost btn-icon" style={{ padding: 2 }}
-                        onClick={() => toggleGroup(g.id)}>
-                        {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                      </button>
-                      <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(99,102,241,0.15)', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
-                        {g.group_type === 'building' ? <Building2 size={16} /> : childCount}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }} onClick={() => setViewGroupId(g.id)}>
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>{g.first_name} {g.last_name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                          {g.check_in} → {g.check_out} · {g.nights} {t('н. ·')} {(g.total_price || 0).toLocaleString()} {g.currency || 'CZK'}
-                        </div>
-                      </div>
-                      <span className={`badge ${STATUS_MAP[g.status]?.badge || 'badge-info'}`} style={{ fontSize: 10, flexShrink: 0 }}>
-                        {t(STATUS_MAP[g.status]?.label || g.status)}
-                      </span>
-                    </div>
-                  </div>
-                );
-              }
-              if (row.type === 'child') {
-                if (!expandedGroups.has(row.groupId)) return null;
-                const b = row.data;
-                return (
-                  <div key={b.id} className="booking-card" style={{ marginLeft: 20, borderLeft: '2px solid rgba(99,102,241,0.3)' }}
-                    onClick={() => openViewBooking(b)}>
-                    <div className="booking-card-row">
-                      <div className="booking-card-source">
-                        <SourceIcon source={b.source} size={36} iconColor={sourceMap[b.source]?.color}
-                          iconLetter={bookingSources.find(s => s.code === b.source)?.icon_letter} />
-                      </div>
-                      <div className="booking-card-main">
-                        <div className="booking-card-guest">↳ {b.first_name} {b.last_name}</div>
-                        <div className="booking-card-meta"><Users size={11} /> {b.adults}</div>
-                      </div>
-                      <div className="booking-card-date">
-                        <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{b.check_in?.split('-').slice(1).join('/')}</div>
-                      </div>
-                    </div>
-                    <div className="booking-card-body">
-                      <div>
-                        <div className="booking-card-unit">{b.unit_name}</div>
-                        <div className="booking-card-price">{(b.total_price || 0).toLocaleString()} {b.currency || 'CZK'}</div>
-                      </div>
-                      <span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{t(STATUS_MAP[b.status]?.label || b.status)}</span>
-                    </div>
-                  </div>
-                );
-              }
-              // standalone booking
-              const b = row.data;
+            {sortedBookings.map((b, idx) => {
               return (
                 <div key={b.id} className="booking-card" onClick={() => openViewBooking(b)}>
                   <div className="booking-card-row">
@@ -1036,21 +838,6 @@ function BookingsDesktop() {
             />
           )}
         </Modal>
-
-        {/* Group Booking Create Modal */}
-        <GroupBookingModal
-          open={showGroupModal}
-          onClose={() => setShowGroupModal(false)}
-          onCreated={() => { fetchBookings(); fetchGroupBookings(); showToast(t('Групове бронювання створено!')); }}
-          bookingSources={bookingSources}
-        />
-
-        {/* Group View Modal */}
-        <GroupViewModal
-          groupId={viewGroupId}
-          onClose={() => setViewGroupId(null)}
-          onUpdated={() => { fetchBookings(); fetchGroupBookings(); }}
-        />
       </div>
     </>
   );

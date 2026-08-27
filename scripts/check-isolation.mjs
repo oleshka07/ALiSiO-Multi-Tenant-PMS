@@ -72,7 +72,6 @@ async function cleanup() {
       await sql.run('DELETE FROM booking_activity_log WHERE reservation_id = ?', [rid]);
     }
     await sql.run('DELETE FROM reservations WHERE property_id = ?', [pid]);
-    await sql.run('DELETE FROM reservation_groups WHERE property_id = ?', [pid]);
     await sql.run('DELETE FROM units WHERE property_id = ?', [pid]);
     // Збори тримає FK на обʼєкт, тож вони мусять піти першими — інакше
     // прибирання падає на DELETE properties, і наступний прогін проби
@@ -760,32 +759,13 @@ async function main() {
     assert.strictEqual(foreign.length, 0,
       `B's audit trail carries ${foreign.length} entr(ies) about A's booking, with full row snapshots`);
 
-    // C2 — group bookings. The list named no tenant; creation took unitIds
-    // and buildingId from the body, and then filed the group under whichever
-    // property the FIRST of those rooms belonged to.
-    const groupsB = await call(cookieB, '/api/group-bookings');
-    assert.ok(groupsB.ok, `B could not list its own group bookings: ${groupsB.status}`);
-    const groupList = await groupsB.json();
-    assert.ok(Array.isArray(groupList), 'group list is not an array');
-    const foreignGroups = groupList.filter((g) => g.property_id === propA.id);
-    assert.strictEqual(foreignGroups.length, 0,
-      "B's group-booking list contains A's groups, guest name and phone attached");
-
-    const groupOnA = await call(cookieB, '/api/group-bookings', {
-      method: 'POST',
-      body: JSON.stringify({
-        firstName: 'Intruder', lastName: 'Probe',
-        checkIn: '2027-03-01', checkOut: '2027-03-03',
-        unitIds: [aUnit.id], groupType: 'custom',
-      }),
-    });
-    assert.strictEqual(groupOnA.status, 404,
-      `B created a group booking on A's rooms: ${groupOnA.status}`);
-    const wroteGroups = await sql.row(
-      "SELECT COUNT(*) c FROM reservation_groups WHERE property_id = ?", [propA.id]);
-    assert.strictEqual(Number(wroteGroups.c), 0,
-      `${wroteGroups.c} group(s) were written into A's property by B`);
-    console.log("  ok  B cannot reach A's booking through units, sub-bookings, the audit trail or groups");
+    // Тут стояла проба C2 — групові броні: список не називав орендаря, а
+    // створення брало unitIds і buildingId з тіла запиту й записувало групу в
+    // той обʼєкт, якому належав ПЕРШИЙ із номерів. Групи видалено 2026-08-27
+    // (міграція 0039) разом із `/api/group-bookings`, тож пробі нема куди
+    // стукати. Та сама діра в новому модулі груп ловиться цією ж пробою —
+    // її треба буде відновити, коли модуль зʼявиться.
+    console.log("  ok  B cannot reach A's booking through units, sub-bookings or the audit trail");
 
     // ── A sub-booking's total is the sum of its lines ────────────────────
     // Not an isolation question, but the same class of thing the probe is

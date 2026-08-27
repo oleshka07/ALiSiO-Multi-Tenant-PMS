@@ -741,39 +741,6 @@ function runMigrations(database: any) {
     console.error('[DB] reservations migration error:', e.message);
   }
 
-  // --- Migration: create reservation_groups table ---
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS reservation_groups (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-      guest_id TEXT NOT NULL REFERENCES guests(id),
-      group_type TEXT NOT NULL DEFAULT 'custom' CHECK (group_type IN ('building', 'custom')),
-      building_id TEXT REFERENCES buildings(id),
-      check_in TEXT NOT NULL,
-      check_out TEXT NOT NULL,
-      nights INTEGER NOT NULL DEFAULT 1,
-      total_price REAL NOT NULL DEFAULT 0,
-      currency TEXT NOT NULL DEFAULT 'CZK',
-      source TEXT NOT NULL DEFAULT 'direct',
-      status TEXT NOT NULL DEFAULT 'confirmed',
-      payment_status TEXT NOT NULL DEFAULT 'unpaid',
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-
-  // --- Migration: add group_id column to reservations ---
-  try {
-    const resCols = database.prepare("PRAGMA table_info(reservations)").all() as { name: string }[];
-    if (!resCols.some((c: any) => c.name === 'group_id')) {
-      database.exec("ALTER TABLE reservations ADD COLUMN group_id TEXT REFERENCES reservation_groups(id) ON DELETE SET NULL");
-      console.log('[DB] Added group_id column to reservations');
-    }
-  } catch (e: any) {
-    console.log('[DB] group_id migration note:', e.message);
-  }
-
   // --- Migration: add commission_percent to booking_sources ---
   try {
     const bsCols = database.prepare("PRAGMA table_info(booking_sources)").all() as { name: string }[];
@@ -2513,19 +2480,11 @@ function runMigrations(database: any) {
         registered_at TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         reg_status TEXT NOT NULL DEFAULT 'not_started',
-        group_id TEXT,
         FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
         FOREIGN KEY (guest_id) REFERENCES guests(id) ON DELETE CASCADE
       )
     `);
   } catch { /* already exists */ }
-
-  // group_id used to be added by a lazy ALTER inside the widget's reserve
-  // handler — so whether a database had the column depended on whether a
-  // widget booking had ever happened on it. Schema lives here.
-  try {
-    database.exec('ALTER TABLE guest_registrations ADD COLUMN group_id TEXT');
-  } catch { /* column already exists */ }
 
   // --- Migration: add registration_status to reservations ---
   try {
@@ -3911,10 +3870,9 @@ function runMigrations(database: any) {
   // group metadata (label, adults, subtotal). reservation_line_items
   // provides optional price breakdown per sub-booking.
   //
-  // Old reservation_groups table stays (empty, 0 rows) — no data to
-  // migrate, but keeping the DDL so the existing group_id FK doesn't
-  // complain. group_id on reservations is deprecated (always NULL for
-  // new bookings).
+  // `reservation_groups` і колонки `group_id` тут більше немає: групи
+  // видалено 2026-08-27 (міграція 0039), sub-bookings лишились єдиним
+  // способом сказати «одна бронь — кілька номерів».
   // ═══════════════════════════════════════════════════════════════════
 
   // --- Migration: add parent_id to reservations ---

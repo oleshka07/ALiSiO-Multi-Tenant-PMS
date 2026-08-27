@@ -6,7 +6,6 @@ import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { useDevice } from '@/ui/hooks/useDevice';
 import MobileCalendar from '@/components/mobile/pages/MobileCalendar';
-import GroupBookingModal from '@/components/booking/GroupBookingModal';
 import RoomAllocationModal from '@/components/booking/RoomAllocationModal';
 import BookingViewModal from '@/components/booking/BookingViewModal';
 import BookingForm from '@/components/booking/BookingForm';
@@ -215,7 +214,6 @@ function CalendarDesktop() {
 
   // Modals
   const [showNewBooking, setShowNewBooking] = useState(false);
-  const [showGroupModal, setShowGroupModal] = useState(false);
   const [showRoomAllocation, setShowRoomAllocation] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
 
@@ -347,7 +345,7 @@ function CalendarDesktop() {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       if (e.key === 'Escape') {
-        setViewBooking(null); setEditBooking(null); setShowNewBooking(false); setShowGroupModal(false); setRangeStart(null);
+        setViewBooking(null); setEditBooking(null); setShowNewBooking(false); setRangeStart(null);
       }
       if (e.key === 'ArrowLeft') { e.preventDefault(); setNavOffset(p => p - 1); }
       if (e.key === 'ArrowRight') { e.preventDefault(); setNavOffset(p => p + 1); }
@@ -679,7 +677,6 @@ function CalendarDesktop() {
                 ))}
               </div>
               <button className="btn btn-secondary btn-sm" onClick={() => fetchData()} title={tUi('Оновити дані')} style={{ padding: '4px 6px' }}><RefreshCw size={14} /></button>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowGroupModal(true)} style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Users size={14} /> {tUi('Групове')}</button>
               <button className="btn btn-secondary btn-sm" onClick={() => setShowRoomAllocation(true)} title={tUi('Розселення по кімнатах (Building View)')} style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Building2 size={14} /> {tUi('Будова')}</button>
               {draftCount > 0 && (
                 <button
@@ -1183,14 +1180,6 @@ function CalendarDesktop() {
           </div>
         </div>
       )}
-
-      {/* ─── Group Booking Modal ───────── */}
-      <GroupBookingModal
-        open={showGroupModal}
-        onClose={() => setShowGroupModal(false)}
-        onCreated={() => { fetchData(); showToast(tUi('Групове бронювання створено!')); }}
-        bookingSources={bookingSources}
-      />
 
       {/* ─── Room Allocation Modal (Building View) ───────── */}
       <RoomAllocationModal

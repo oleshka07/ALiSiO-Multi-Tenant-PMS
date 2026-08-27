@@ -23,7 +23,7 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
       SELECT
         r.id, r.check_in, r.check_out, r.nights, r.adults, r.children,
         r.status, r.payment_status, r.source, r.total_price, r.currency, r.notes, r.internal_notes, r.created_at, r.guest_page_token,
-        r.group_id, r.parent_id, r.commission_amount,
+        r.parent_id, r.commission_amount,
         r.city_tax_amount, r.city_tax_included, r.city_tax_paid,
         r.registration_status, r.hostex_channel_type, r.hostex_reservation_code,
         r.is_multi_room, r.multi_room_marker,

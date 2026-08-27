@@ -1017,7 +1017,6 @@ CREATE TABLE "guest_registrations" (
   "registered_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now(),
   "reg_status" TEXT DEFAULT 'not_started' NOT NULL,
-  "group_id" TEXT,
   "consent_given" BIGINT DEFAULT 0,
   "consent_at" TIMESTAMPTZ,
   "consent_ip" TEXT,
@@ -1413,27 +1412,6 @@ CREATE TABLE "rate_plans" (
   UNIQUE ("property_id", "code")
 );
 
-CREATE TABLE "reservation_groups" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "property_id" TEXT NOT NULL,
-  "guest_id" TEXT NOT NULL,
-  "group_type" TEXT DEFAULT 'custom' NOT NULL,
-  "building_id" TEXT,
-  "check_in" DATE NOT NULL,
-  "check_out" DATE NOT NULL,
-  "nights" BIGINT DEFAULT 1 NOT NULL,
-  "total_price" NUMERIC(14,2) DEFAULT 0 NOT NULL,
-  "currency" TEXT DEFAULT 'CZK' NOT NULL,
-  "source" TEXT DEFAULT 'direct' NOT NULL,
-  "status" TEXT DEFAULT 'confirmed' NOT NULL,
-  "payment_status" TEXT DEFAULT 'unpaid' NOT NULL,
-  "notes" TEXT,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  CHECK (group_type IN ('building', 'custom'))
-);
-
 CREATE TABLE "reservation_guests" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "reservation_id" TEXT NOT NULL,
@@ -1515,7 +1493,6 @@ CREATE TABLE "reservations" (
   "internal_notes" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "group_id" TEXT,
   "commission_amount" NUMERIC(14,2) DEFAULT 0 NOT NULL,
   "guest_page_token" TEXT,
   "payment_id" TEXT,
@@ -2186,12 +2163,6 @@ ALTER TABLE "property_photos" ADD CONSTRAINT "fk_property_photos_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "rate_plans" ADD CONSTRAINT "fk_rate_plans_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
-ALTER TABLE "reservation_groups" ADD CONSTRAINT "fk_reservation_groups_building_id_1"
-  FOREIGN KEY ("building_id") REFERENCES "buildings" ("id");
-ALTER TABLE "reservation_groups" ADD CONSTRAINT "fk_reservation_groups_guest_id_2"
-  FOREIGN KEY ("guest_id") REFERENCES "guests" ("id");
-ALTER TABLE "reservation_groups" ADD CONSTRAINT "fk_reservation_groups_property_id_3"
-  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "reservation_guests" ADD CONSTRAINT "fk_reservation_guests_sub_booking_id_1"
   FOREIGN KEY ("sub_booking_id") REFERENCES "reservation_sub_bookings" ("id");
 ALTER TABLE "reservation_guests" ADD CONSTRAINT "fk_reservation_guests_guest_id_2"
@@ -2208,8 +2179,6 @@ ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id");
 ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_parent_id_2"
   FOREIGN KEY ("parent_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_group_id_3"
-  FOREIGN KEY ("group_id") REFERENCES "reservation_groups" ("id") ON DELETE SET NULL;
 ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_rate_plan_id_4"
   FOREIGN KEY ("rate_plan_id") REFERENCES "rate_plans" ("id");
 ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_guest_id_5"
@@ -3077,12 +3046,6 @@ ALTER TABLE "rate_plans" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "rate_plans_tenant" ON "rate_plans"
   USING ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))
   WITH CHECK ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')));
-
-ALTER TABLE "reservation_groups" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "reservation_groups" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "reservation_groups_tenant" ON "reservation_groups"
-  USING ("guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id')))
-  WITH CHECK ("guest_id" IN (SELECT "id" FROM "guests" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "reservation_guests" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reservation_guests" FORCE ROW LEVEL SECURITY;

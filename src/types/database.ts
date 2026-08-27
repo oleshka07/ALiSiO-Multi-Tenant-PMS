@@ -276,7 +276,6 @@ export interface Reservation {
   total_price: number;
   currency: string;
   commission_amount?: number;
-  group_id?: string;
   guest_page_token?: string;
   external_uid?: string;
   // `bcom_reservation_id`, `price_per_night_json`, `smoking_preference` and

@@ -47,7 +47,9 @@ const BASELINE = {
   finance: 17,
   guests: 8,
   pricing: 6,
-  properties: 9,
+  // 9 → 7: групові броні видалено, і разом із ними два екрани, які лізли в
+  // modules/properties повз фасад (GroupBookingModal, GroupViewModal).
+  properties: 7,
   reports: 0,
   tasks: 1,
   widget: 6,

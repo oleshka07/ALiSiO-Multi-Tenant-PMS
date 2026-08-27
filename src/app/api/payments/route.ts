@@ -8,9 +8,13 @@ import { serverError } from '@core/http/errors';
 
 // Legacy /api/payments endpoint — reads/writes via fin_operations.
 //
-// The endpoint REQUIRES either reservation_id or group_id. Without a filter
-// it used to return every payment system-wide (dump-all bug surfaced when
-// GroupViewModal called it with group_id which was silently ignored).
+// Маршрут ВИМАГАЄ reservation_id або parent_id. Без фільтра він колись
+// повертав усі платежі системи — це виявилось тоді, коли екран групи звався
+// сюди з `group_id`, а маршрут його мовчки ігнорував.
+//
+// `group_id` як фільтр прибрано 2026-08-27 разом із групами (міграція 0039):
+// колонки, за якою він фільтрував, більше немає, тож запит із ним падав би
+// на неіснуючій колонці — а SQL це рядок, і tsc цього не бачить.
 //
 // As of clean-3 there are no signal vs real duplicates any more — every
 // fin_operation row represents real money. The dedup logic that used to
@@ -20,12 +24,11 @@ export const GET = withActor(async (request: NextRequest, _ctx, actor: Actor) =>
     const sql = getSql();
     const { searchParams } = new URL(request.url);
     const reservationId = searchParams.get('reservation_id');
-    const groupId = searchParams.get('group_id');
     const parentId = searchParams.get('parent_id');
 
-    if (!reservationId && !groupId && !parentId) {
+    if (!reservationId && !parentId) {
       return NextResponse.json(
-        { error: 'reservation_id, parent_id, or group_id query param is required' },
+        { error: 'reservation_id or parent_id query param is required' },
         { status: 400 },
       );
     }
@@ -39,10 +42,6 @@ export const GET = withActor(async (request: NextRequest, _ctx, actor: Actor) =>
     } else if (parentId) {
       where.push('(o.reservation_id = ? OR o.reservation_id IN (SELECT id FROM reservations WHERE parent_id = ?))');
       params.push(parentId, parentId);
-    } else if (groupId) {
-      // Legacy: group_id from old reservation_groups
-      where.push('o.reservation_id IN (SELECT id FROM reservations WHERE group_id = ?)');
-      params.push(groupId);
     }
 
     const rows = await sql.rows<any>(`

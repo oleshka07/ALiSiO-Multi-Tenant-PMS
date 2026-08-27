@@ -506,26 +506,22 @@ export async function createWidgetReservation(request: NextRequest) {
       countryCode = countryCode.toUpperCase().slice(0, 2);
     }
 
-    // For group bookings (quantity > 1): create a reservation_groups record first
-    // so that group_id satisfies the FK → reservation_groups(id)
-    let groupId: string | null = null;
-    if (bookingQuantity > 1) {
-      groupId = `grp_${Date.now()}`;
-      try {
-        await sql.run(`
-          INSERT INTO reservation_groups
-            (id, property_id, guest_id, group_type, check_in, check_out, nights,
-             total_price, currency, source, status, payment_status)
-          VALUES (?, ?, ?, 'custom', ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [groupId, unit.property_id, guestId,
-          checkIn, checkOut, nights,
-          finalPrice * bookingQuantity, resCurrency,
-          siteName, resStatus, payStatus]);
-      } catch (grpErr: any) {
-        console.error('[Reserve] Failed to create reservation_group:', grpErr.message);
-        groupId = null; // non-fatal — reservations will have no group link
-      }
-    }
+    // Тут при quantity > 1 створювався рядок `reservation_groups`, щоб усі
+    // броні одного замовлення тримались разом через `group_id`. Групи видалено
+    // 2026-08-27 (міграція 0039) — і разом із ними обидва місця, які цей
+    // звʼязок ПОКАЗУВАЛИ: список груп на екрані бронювань і `/api/group-bookings`.
+    //
+    // Тобто запис лишався б записом у колонку, яку більше ніхто не читає.
+    // Замовлення на кілька номерів тепер створює кілька окремих броней; кожна
+    // зі своїм токеном гостьової сторінки, як і раніше — вони й раніше були
+    // окремими рядками, спільним був лише заголовок у таблиці.
+    //
+    // Наступник для «однієї броні на кілька номерів» у системі вже є —
+    // `reservations.parent_id` і `reservation_sub_bookings` (sub-bookings).
+    // Віджет на нього НЕ перемикається тут навмисно: sub-booking це не просто
+    // спільний id, а дочірня бронь, яка дзеркалить статус і оплату з
+    // батьківської, і рішення «замовлення з віджета — це одна бронь на N
+    // номерів чи N броней» — продуктове, а не побічний ефект видалення.
 
     // Helper to generate a unique guest_page_token
     const generateToken = async (): Promise<string> => {
@@ -566,16 +562,16 @@ export async function createWidgetReservation(request: NextRequest) {
           nights, adults, children, status, payment_status, source,
           total_price, currency, payment_id, promotions_applied, guest_page_token,
           utm_source, utm_medium, utm_campaign, utm_content, utm_term, ga_client_id,
-          booking_lang, country_code, widget_session_id, group_id, notes
+          booking_lang, country_code, widget_session_id, notes
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [resId, unitOrg.organization_id, unit.property_id, unitId, guestId,
         checkIn, checkOut, nights, adults, children,
         resStatus, payStatus, siteName, finalPrice, resCurrency, null,
         JSON.stringify([couponCode, extraCouponCode].filter(Boolean)),
         guestPageToken,
         utmSource, utmMedium, utmCampaign, utmContent, utmTerm, gaClientId,
-        lang, countryCode, session_id_to_store, groupId,
+        lang, countryCode, session_id_to_store,
         finalNotes]);
 
       // The certificate is attached to the first reservation, with a status
@@ -604,10 +600,10 @@ export async function createWidgetReservation(request: NextRequest) {
           const grId = `gr_${Date.now()}_widget`;
           await sql.run(`
             INSERT INTO guest_registrations
-              (id, reservation_id, guest_id, is_primary, reg_status, purpose_of_stay, group_id)
-            VALUES (?, ?, ?, TRUE, 'pending', 'Tourism', ?)
+              (id, reservation_id, guest_id, is_primary, reg_status, purpose_of_stay)
+            VALUES (?, ?, ?, TRUE, 'pending', 'Tourism')
             ON CONFLICT DO NOTHING
-          `, [grId, resId, guestId, groupId]);
+          `, [grId, resId, guestId]);
 
           // Also enrich the guest record with passport data
           await sql.run(`
@@ -867,9 +863,8 @@ export async function createWidgetReservation(request: NextRequest) {
       thankYouUrl,
       guestPageToken,
       testEmailStatus,
-      // Group booking — all reservations with their individual tokens
+      // Замовлення на кілька номерів — усі броні зі своїми токенами.
       quantity: bookingQuantity,
-      groupId,
       reservations: createdReservations,
     }, { status: 201, headers: dynamicHeaders });
 

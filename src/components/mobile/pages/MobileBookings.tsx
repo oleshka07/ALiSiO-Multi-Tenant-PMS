@@ -13,7 +13,7 @@ interface BookingRow {
   source: string; total_price: number; first_name: string; last_name: string;
   guest_email: string | null; guest_phone: string | null;
   unit_name: string; unit_code: string; category_type: string;
-  unit_type_name: string; group_id: string | null;
+  unit_type_name: string;
   commission_amount: number; guest_page_token: string | null;
   internal_notes: string | null; city_tax_amount: number;
   city_tax_included: number; city_tax_paid: string;
