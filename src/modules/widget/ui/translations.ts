@@ -168,6 +168,13 @@ export interface BookingTranslations {
   nightsWord: (n: number) => string;
   packagePrefix: string;
   packageNightsError: (n: number) => string;
+  /**
+   * Чому промокод не діє. `/api/booking/activate` і `/api/booking/reserve`
+   * віддають КОД причини, а не речення: мову тут обирає гість, а не готель —
+   * той самий підхід, що й у `dashboard/domain/alerts.ts`. Коди перелічені у
+   * `widget/domain/coupon-eligibility.ts`.
+   */
+  couponRejection: (reason: string, detail?: number | number[]) => string;
   includedInPackage: string;
   packageServicesNotice: string;
   kidsOccupancyNotice: string;
@@ -317,6 +324,20 @@ const translations: Record<BookingLang, any> = {
     nightsWord: (n: number) => n === 1 ? 'ніч' : n < 5 ? 'ночі' : 'ночей',
     packagePrefix: 'Пакет',
     packageNightsError: (n: number) => `Оберіть рівно ${n} ${n === 1 ? 'ніч' : n < 5 ? 'ночі' : 'ночей'}, щоб застосувати пакет`,
+    couponRejection: (reason: string, detail?: number | number[]) => {
+      const days = (d: number[]) => d.map(n => ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'][n]).filter(Boolean).join(', ');
+      switch (reason) {
+        case 'min_nights': return `Промокод діє від ${detail} ночей`;
+        case 'max_nights': return `Промокод діє щонайбільше на ${detail} ночей`;
+        case 'allowed_days': return `Промокод діє лише на заїзд у ${days((detail as number[]) || [])}`;
+        case 'package_nights': return `Пакет діє рівно на ${detail} ночей — змініть дати`;
+        case 'not_for_stay': return 'Промокод діє лише на послуги';
+        case 'not_for_service': return 'Промокод діє лише на проживання';
+        case 'unit_not_included': return 'Промокод не діє на обраний номер';
+        case 'service_not_included': return 'Промокод не діє на цю послугу';
+        default: return 'Промокод тут не діє';
+      }
+    },
     includedInPackage: 'Включено в пакет',
     packageServicesNotice: 'Деякі послуги вже включені у ваш пакет. Ви можете обрати додаткові за бажанням.',
     kidsOccupancyNotice: 'У будиночку одне велике ліжко — ідеально для двох дорослих. Якщо з вами дитина, ми завжди раді зробити виняток: маленькі гості не займають окреме спальне місце 😊',
@@ -464,6 +485,20 @@ const translations: Record<BookingLang, any> = {
     nightsWord: (n: number) => n === 1 ? 'night' : 'nights',
     packagePrefix: 'Package',
     packageNightsError: (n: number) => `Select exactly ${n} night${n === 1 ? '' : 's'} to apply the package`,
+    couponRejection: (reason: string, detail?: number | number[]) => {
+      const days = (d: number[]) => d.map(n => ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][n]).filter(Boolean).join(', ');
+      switch (reason) {
+        case 'min_nights': return `This code needs a stay of ${detail} night${detail === 1 ? '' : 's'} or more`;
+        case 'max_nights': return `This code applies to stays of up to ${detail} night${detail === 1 ? '' : 's'}`;
+        case 'allowed_days': return `This code applies to arrivals on ${days((detail as number[]) || [])}`;
+        case 'package_nights': return `The package covers exactly ${detail} night${detail === 1 ? '' : 's'} — please adjust your dates`;
+        case 'not_for_stay': return 'This code applies to services only';
+        case 'not_for_service': return 'This code applies to stays only';
+        case 'unit_not_included': return 'This code does not apply to the selected room';
+        case 'service_not_included': return 'This code does not apply to this service';
+        default: return 'This code does not apply here';
+      }
+    },
     includedInPackage: 'Included in package',
     packageServicesNotice: 'Some services are already included in your package. You can choose additional ones if you wish.',
     kidsOccupancyNotice: 'The house has one large bed — ideal for two adults. If you have a child, we are happy to make an exception: young guests do not require a separate bed 😊',
@@ -611,6 +646,20 @@ const translations: Record<BookingLang, any> = {
     nightsWord: (n: number) => n === 1 ? 'noc' : n < 5 ? 'noci' : 'nocí',
     packagePrefix: 'Balíček',
     packageNightsError: (n: number) => `Vyberte přesně ${n} noc${n === 1 ? '' : (n < 5 ? 'i' : 'í')} pro použití balíčku`,
+    couponRejection: (reason: string, detail?: number | number[]) => {
+      const days = (d: number[]) => d.map(n => ['', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'][n]).filter(Boolean).join(', ');
+      switch (reason) {
+        case 'min_nights': return `Kód platí od ${detail} nocí`;
+        case 'max_nights': return `Kód platí nejvýše na ${detail} nocí`;
+        case 'allowed_days': return `Kód platí jen pro příjezd v ${days((detail as number[]) || [])}`;
+        case 'package_nights': return `Balíček platí přesně na ${detail} nocí — upravte prosím termín`;
+        case 'not_for_stay': return 'Kód platí pouze na služby';
+        case 'not_for_service': return 'Kód platí pouze na ubytování';
+        case 'unit_not_included': return 'Kód neplatí pro vybraný pokoj';
+        case 'service_not_included': return 'Kód neplatí pro tuto službu';
+        default: return 'Kód zde neplatí';
+      }
+    },
     includedInPackage: 'Zahrnuto v balíčku',
     packageServicesNotice: 'Některé služby jsou již zahrnuty ve vašem balíčku. Pokud si přejete, můžete si vybrat další.',
     kidsOccupancyNotice: 'Dům má jednu velkou postel — ideální pro dva dospělé. Pokud máte dítě, rádi uděláme výjimku: malí hosté nepotřebují samostatnou postel 😊',
@@ -758,6 +807,20 @@ const translations: Record<BookingLang, any> = {
     nightsWord: (n: number) => n === 1 ? 'Nacht' : 'Nächte',
     packagePrefix: 'Paket',
     packageNightsError: (n: number) => `Wählen Sie genau ${n} ${n === 1 ? 'Nacht' : 'Nächte'}, um das Paket anzuwenden`,
+    couponRejection: (reason: string, detail?: number | number[]) => {
+      const days = (d: number[]) => d.map(n => ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][n]).filter(Boolean).join(', ');
+      switch (reason) {
+        case 'min_nights': return `Der Code gilt ab ${detail} ${detail === 1 ? 'Nacht' : 'Nächten'}`;
+        case 'max_nights': return `Der Code gilt für höchstens ${detail} ${detail === 1 ? 'Nacht' : 'Nächte'}`;
+        case 'allowed_days': return `Der Code gilt nur bei Anreise am ${days((detail as number[]) || [])}`;
+        case 'package_nights': return `Das Paket gilt für genau ${detail} ${detail === 1 ? 'Nacht' : 'Nächte'} — bitte Datum anpassen`;
+        case 'not_for_stay': return 'Der Code gilt nur für Leistungen';
+        case 'not_for_service': return 'Der Code gilt nur für Übernachtungen';
+        case 'unit_not_included': return 'Der Code gilt nicht für das gewählte Zimmer';
+        case 'service_not_included': return 'Der Code gilt nicht für diese Leistung';
+        default: return 'Der Code gilt hier nicht';
+      }
+    },
     includedInPackage: 'Im Paket enthalten',
     packageServicesNotice: 'Einige Dienstleistungen sind bereits in Ihrem Paket enthalten. Sie können auf Wunsch weitere hinzufügen.',
     kidsOccupancyNotice: 'Das Haus verfügt über ein großes Bett — ideal für zwei Erwachsene. Wenn Sie ein Kind haben, machen wir gerne eine Ausnahme: Kleine Gäste benötigen kein separates Bett 😊',

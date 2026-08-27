@@ -10,6 +10,8 @@ import { withSite } from '../data/site.repo';
 import { percentOf } from '@core/money';
 import { siteAllowsHost, type SiteRow } from '../data/site.repo';
 import { quoteCertificate, claimCertificate } from '../data/certificate.repo';
+import { couponApplies, packageApplies } from '../domain/coupon-eligibility';
+import { ratePlanNightPrice, ratePlanNamesItsOwnPrice } from '../domain/rate-plan';
 import { priceNights } from '@pricing';
 
 // Fallback to guarantee event subscribers are registered in Serverless (Vercel) isolated functions
@@ -110,6 +112,9 @@ export async function createWidgetReservation(request: NextRequest) {
       hasPet = false,
       firstName, lastName, email, phone,
       couponCode, certificateCode, extraCouponCode,
+      // Тариф, за яким гість дивився ціну. Віджет пересилає його з URL —
+      // раніше він доходив до пошуку й губився дорогою до броні.
+      ratePlanId,
       // `currency` з тіла запиту НЕ читається: віджет стоїть на чужій
       // сторінці, і валюта, яку він назве, — це валюта, яку назвав хтось
       // інший. Береться з організації нижче.
@@ -278,10 +283,25 @@ export async function createWidgetReservation(request: NextRequest) {
     let resCurrency = String(orgCurrencyRow.default_currency);
     let priced: Awaited<ReturnType<typeof priceNights>> | null = null;
 
+    // Тариф, за яким гість дивився ціну.
+    //
+    // Раніше цього рядка не було зовсім: `site_rate_plans` читав лише пошук.
+    // Гість заходив за посиланням `?ratePlanId=…`, бачив «−20 %» і діставав
+    // підтвердження за базовою ціною. Прив'язка до сайту — не формальність:
+    // ratePlanId приходить від гостя, і без неї сюди можна було б підставити
+    // тариф чужого готелю.
+    const ratePlan = ratePlanId
+      ? await sql.row<any>('SELECT * FROM site_rate_plans WHERE id = ? AND site_id = ?', [String(ratePlanId), siteId]) as any
+      : null;
+
     if (priceOverride != null) {
       // An operator-set price per night: no source is consulted, and that is
       // the point of an override.
       totalPrice = priceOverride * nights;
+    } else if (ratePlanNamesItsOwnPrice(ratePlan)) {
+      // Тариф із фіксованою ціною — це і є ціна, названа готелем, тож
+      // календар цін тут ні до чого. Саме так рахує пошук.
+      totalPrice = ratePlanNightPrice(0, ratePlan) * nights;
     } else {
       priced = hasPriceCalendar
         ? await priceNights({ unitTypeId: unit.unit_type_id, checkIn, nights, persons: adults + children })
@@ -295,7 +315,12 @@ export async function createWidgetReservation(request: NextRequest) {
           { status: 409, headers: CORS_HEADERS },
         );
       }
-      totalPrice = priced.total;
+      // Надбавка тарифу — по ночах, тим самим правилом, що й у пошуку. На суму
+      // її прикласти не можна: округлення по ночах і округлення суми дають
+      // різні числа, а розійтися вони мусять нікуди.
+      totalPrice = ratePlan
+        ? priced.nights.reduce((sum, n) => sum + ratePlanNightPrice(n.price, ratePlan), 0)
+        : priced.total;
     }
 
     let extraPersonTotal = 0;
@@ -341,6 +366,27 @@ export async function createWidgetReservation(request: NextRequest) {
         }
 
         if (offer) {
+          // Умови купона перевіряють ТУТ, бо тут вирішують гроші.
+          //
+          // Раніше їх перевіряв лише `/api/booking/activate` — порада гостю
+          // перед бронюванням, — і навіть він читав не всі: min_nights,
+          // max_nights і allowed_days не читав ніхто, а nights_included жив у
+          // віджеті як умова кнопки. Тобто «пакет на дві ночі за 8500» ставав
+          // ціною двадцятиденного заїзду, щойно дати міняли після застосування
+          // коду або запит надсилали в обхід віджета. Маршрут публічний.
+          //
+          // Відмова, а не тиха відсутність знижки: гість бачив на екрані суму
+          // зі знижкою, і списати з нього більше без пояснення — гірше, ніж
+          // сказати, що код тут не діє, і дати перерахувати.
+          const fits = isBundle
+            ? packageApplies(offer, { checkIn, nights, unitId })
+            : couponApplies(offer, { checkIn, nights, unitId });
+          if (!fits.ok) {
+            return NextResponse.json(
+              { error: 'Coupon code does not apply to this stay', reason: fits.reason, detail: fits.detail },
+              { status: 400, headers: CORS_HEADERS });
+          }
+
           if (isBundle) {
             // Package overrides the totalPrice completely
             offerDiscount = Math.max(0, totalPrice - offer.price);
@@ -399,6 +445,16 @@ export async function createWidgetReservation(request: NextRequest) {
         `, [extraCode, checkOut, checkIn]) as any;
 
         if (extraOffer) {
+          // Другий код — ті самі умови. Без цього «додатковий промокод» був
+          // дірою в тій самій стіні: усе, що заборонено першому, дозволено
+          // другому.
+          const fitsExtra = couponApplies(extraOffer, { checkIn, nights, unitId });
+          if (!fitsExtra.ok) {
+            return NextResponse.json(
+              { error: 'Coupon code does not apply to this stay', reason: fitsExtra.reason, detail: fitsExtra.detail },
+              { status: 400, headers: CORS_HEADERS });
+          }
+
           // Calculate discount based on the price AFTER package/first offer
           const currentPrice = Math.max(0, totalPrice - offerDiscount);
           if (extraOffer.discount_type === 'percentage') {
@@ -498,14 +554,17 @@ export async function createWidgetReservation(request: NextRequest) {
         -- DEFAULT is a Postgres mechanism (migration 0005) and on SQLite the
         -- row landed with a NULL tenant. The organization is the one the unit
         -- belongs to, resolved above.
+        -- rate_plan_id: колонка була в схемі й ніхто її не заповнював, тож
+        -- бронь не пам'ятала, за яким тарифом її продали. Тепер пам'ятає — це
+        -- єдине, що дозволяє потім пояснити суму.
         INSERT INTO reservations (
           id, organization_id, property_id, unit_id, guest_id, check_in, check_out,
           nights, adults, children, status, payment_status, source,
           total_price, currency, payment_id, promotions_applied, guest_page_token,
           utm_source, utm_medium, utm_campaign, utm_content, utm_term, ga_client_id,
-          booking_lang, country_code, widget_session_id, group_id, notes
+          booking_lang, country_code, widget_session_id, group_id, notes, rate_plan_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [resId, unitOrg.organization_id, unit.property_id, unitId, guestId,
         checkIn, checkOut, nights, adults, children,
         resStatus, payStatus, siteName, finalPrice, resCurrency, null,
@@ -513,7 +572,7 @@ export async function createWidgetReservation(request: NextRequest) {
         guestPageToken,
         utmSource, utmMedium, utmCampaign, utmContent, utmTerm, gaClientId,
         lang, countryCode, session_id_to_store, groupId,
-        finalNotes]);
+        finalNotes, ratePlan?.id ?? null]);
 
       // The certificate is attached to the first reservation, with a status
       // guard against a simultaneous second use. If somebody else claimed it

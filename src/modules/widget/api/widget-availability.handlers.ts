@@ -1,10 +1,11 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { money } from '@core/money';
 import { getSql } from '@core/db/async';
 import { withSite } from '../data/site.repo';
 import { quoteCertificate } from '../data/certificate.repo';
+import { couponApplies } from '../domain/coupon-eligibility';
+import { ratePlanNightPrice } from '../domain/rate-plan';
 import { priceNights } from '@pricing';
 
 const CORS_HEADERS = {
@@ -175,7 +176,8 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
         .map(t => t.name)
     );
     const hasAvailBlocks = existingTables.has('availability_blocks');
-    const hasPromotions = existingTables.has('promotions');
+    // `hasPromotions` тут більше немає: таблиці `promotions` не існує в жодній
+    // зі схем, тож прапорець завжди був false і глушив прев'ю знижки нижче.
     const hasPriceCalendar = existingTables.has('price_calendar');
 
     const units = await sql.rows<any>(`
@@ -306,15 +308,10 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
               hasPricing = true;
             }
 
-            if (activeRatePlan && activeRatePlan.pricing_mode === 'dependent' && activeRatePlan.pricing_modifier_percent != null) {
-              const pct = activeRatePlan.pricing_modifier_percent;
-              const mType = activeRatePlan.pricing_modifier_type || 'less';
-              if (mType === 'more') {
-                dayPrice = money(dayPrice * (1 + pct / 100));
-              } else {
-                dayPrice = money(dayPrice * (1 - pct / 100));
-              }
-            }
+            // Те саме правило, що й у бронюванні (`domain/rate-plan.ts`).
+            // Раніше воно жило тут і більше ніде, тож тариф міняв ціну в
+            // пошуку й не міняв у підтвердженні.
+            if (hasPricing) dayPrice = ratePlanNightPrice(dayPrice, activeRatePlan);
 
             breakdown.push({ date: dateStr, dayName: dayNames[dayOfWeek], price: dayPrice, isWeekend });
             totalPrice += dayPrice;
@@ -377,21 +374,30 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
       });
     }
 
+    // Прев'ю знижки читається з `coupons` — з тієї самої таблиці, з якої її
+    // рахують і `/api/booking/activate`, і саме бронювання.
+    //
+    // Тут стояла `promotions` — таблиця, якої немає в жодній зі схем. Тому
+    // `hasPromotions` завжди false, увесь блок був мертвий, і в пошуку діючий
+    // купон не показував нічого. Гість вводив код, бачив ту саму суму й робив
+    // єдиний доступний висновок: код не працює. При бронюванні він працював.
     let offerDiscount: { name: string; discountType: string; offerAmount: number; finalDiscount: number } | null = null;
-    if (couponCode && hasPromotions) {
+    if (couponCode && siteOrganizationId) {
       const offer = await sql.row<any>(`
-        SELECT * FROM promotions
-        WHERE coupon_code = ? AND is_active = TRUE
-          AND (date_from IS NULL OR date_from <= ?)
-          AND (date_to IS NULL OR date_to >= ?)
-          AND (usage_limit IS NULL OR usage_count < usage_limit)
-      `, [couponCode, checkOut, checkIn]) as any;
+        SELECT * FROM coupons
+        WHERE code = ? AND is_active = TRUE AND organization_id = ?
+          AND (valid_from IS NULL OR valid_from <= ?)
+          AND (valid_until IS NULL OR valid_until >= ?)
+          AND (max_uses IS NULL OR current_uses < max_uses)
+      `, [String(couponCode).toUpperCase().trim(), siteOrganizationId, checkOut, checkIn]) as any;
 
-      if (offer) {
+      // Умови купона питають і тут — інакше прев'ю обіцяло б знижку, яку
+      // бронювання потім відхилить.
+      if (offer && couponApplies(offer, { checkIn, nights, unitId: null }).ok) {
         offerDiscount = {
-          name: offer.name,
+          name: offer.description || offer.code,
           discountType: offer.discount_type,
-          offerAmount: offer.offer_amount,
+          offerAmount: Number(offer.offer_amount) || 0,
           finalDiscount: 0,
         };
       }

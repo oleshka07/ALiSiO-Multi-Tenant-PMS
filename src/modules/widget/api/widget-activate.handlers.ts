@@ -2,6 +2,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withSite } from '../data/site.repo';
+import { requireOrganizationId } from '@core/auth/tenant-context';
+import { couponApplies, packageApplies, type Eligibility } from '../domain/coupon-eligibility';
+
+/**
+ * Відмова з кодом, а не з реченням: мову тут обирає гість, і рядок складає
+ * віджет. `error` лишається як запасний варіант для старого вбудованого
+ * бандла, який читає тільки його.
+ */
+function rejected(e: Extract<Eligibility, { ok: false }>) {
+  return { valid: false, reason: e.reason, detail: e.detail, error: 'Coupon code does not apply to this stay' };
+}
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -20,6 +31,14 @@ export async function validatePromo(request: NextRequest) {
     const serviceId = searchParams.get('serviceId') || '';
     const unitId = searchParams.get('unitId') || '';
     const siteId = searchParams.get('siteId') || '';
+    // Дати поїздки: без них умови купона за ночами й днями заїзду не було чим
+    // перевіряти, і вони мовчали. Гість застосовує код і до вибору дат — тоді
+    // ці правила пропускають, а вирішує вже бронювання.
+    const checkIn = searchParams.get('checkIn') || null;
+    const checkOut = searchParams.get('checkOut') || null;
+    const nights = checkIn && checkOut
+      ? Math.round((Date.parse(`${checkOut}T00:00:00Z`) - Date.parse(`${checkIn}T00:00:00Z`)) / 86400_000)
+      : null;
 
     if (!code) {
       return NextResponse.json({ valid: false, error: 'Code is required' }, { status: 400, headers: CORS_HEADERS });
@@ -29,11 +48,19 @@ export async function validatePromo(request: NextRequest) {
     // row-level security a guest carries no tenant of its own.
     return (await withSite(siteId, async () => {
     const sql = getSql();
-    let offer = await sql.row<any>('SELECT * FROM coupons WHERE code = ? AND is_active = TRUE', [code]) as any;
+    // Орендар названий і в самому запиті: withSite ставить його для політик
+    // Postgres, а на SQLite політик немає — там код чужого готелю відкривав
+    // чужий купон.
+    const organizationId = await requireOrganizationId();
+    let offer = await sql.row<any>(
+      'SELECT * FROM coupons WHERE code = ? AND is_active = TRUE AND organization_id = ?',
+      [code, organizationId]) as any;
     let isBundle = false;
 
     if (!offer) {
-      offer = await sql.row<any>('SELECT * FROM gift_card_bundles WHERE coupon_code = ? AND is_active = TRUE', [code]) as any;
+      offer = await sql.row<any>(
+        'SELECT * FROM gift_card_bundles WHERE coupon_code = ? AND is_active = TRUE AND organization_id = ?',
+        [code, organizationId]) as any;
       if (offer) isBundle = true;
     }
 
@@ -48,14 +75,12 @@ export async function validatePromo(request: NextRequest) {
       if (offer.redemption_limit !== null && offer.current_uses >= offer.redemption_limit) {
         return NextResponse.json({ valid: false, error: 'Coupon code usage limit reached' }, { headers: CORS_HEADERS });
       }
-      if (unitId && offer.applied_listings) {
-        try {
-          const appliedListings = JSON.parse(offer.applied_listings) as string[];
-          if (appliedListings.length > 0 && !appliedListings.includes(unitId)) {
-            return NextResponse.json({ valid: false, error: 'Цей пакет недоступний для обраного будиночка' }, { headers: CORS_HEADERS });
-          }
-        } catch { /* treat as applicable to all */ }
-      }
+      // nights_included, дні заїзду і список будиночків — усе в одному місці,
+      // тому самому, яке рахує ціну при бронюванні. Раніше тут перевіряли лише
+      // список, а кількість ночей взагалі жила у віджеті.
+      const fits = packageApplies(offer, { checkIn, nights, unitId: unitId || null });
+      if (!fits.ok) return NextResponse.json(rejected(fits), { headers: CORS_HEADERS });
+
       return NextResponse.json({
         valid: true,
         code: offer.coupon_code,
@@ -90,33 +115,13 @@ export async function validatePromo(request: NextRequest) {
       return NextResponse.json({ valid: false, error: 'Coupon code not valid for this site' }, { headers: CORS_HEADERS });
     }
 
-    const appliesTo = offer.applies_to || 'services';
-
-    if (unitId) {
-      if (appliesTo === 'services') {
-        return NextResponse.json({ valid: false, error: 'Coupon code is only for services' }, { headers: CORS_HEADERS });
-      }
-      if (offer.applied_listings) {
-        try {
-          const appliedListings = JSON.parse(offer.applied_listings) as string[];
-          if (appliedListings.length > 0 && !appliedListings.includes(unitId)) {
-            return NextResponse.json({ valid: false, error: 'Coupon code not valid for this unit' }, { headers: CORS_HEADERS });
-          }
-        } catch { /* treat as applicable to all */ }
-      }
-    } else if (serviceId) {
-      if (appliesTo === 'listings') {
-        return NextResponse.json({ valid: false, error: 'Coupon code is only for listings' }, { headers: CORS_HEADERS });
-      }
-      if (offer.applicable_services) {
-        try {
-          const applicable = JSON.parse(offer.applicable_services) as string[];
-          if (applicable.length > 0 && !applicable.includes(serviceId)) {
-            return NextResponse.json({ valid: false, error: 'Coupon code not valid for this service' }, { headers: CORS_HEADERS });
-          }
-        } catch { /* treat as applicable to all */ }
-      }
-    }
+    // «На що діє», списки будиночків і послуг — і, вперше, min_nights,
+    // max_nights та allowed_days. Оператор задавав їх у «Промокодах» від
+    // самого початку; читав їх досі ніхто.
+    const fits = couponApplies(offer, {
+      checkIn, nights, unitId: unitId || null, serviceId: serviceId || null,
+    });
+    if (!fits.ok) return NextResponse.json(rejected(fits), { headers: CORS_HEADERS });
 
     return NextResponse.json({
       valid: true,

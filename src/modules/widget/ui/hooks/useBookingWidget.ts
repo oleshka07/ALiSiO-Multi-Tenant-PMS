@@ -409,27 +409,27 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
   const handleApplyOffer = useCallback(async (codeToApply?: string | React.MouseEvent) => {
     const code = (typeof codeToApply === 'string' ? codeToApply : couponCode).trim().toUpperCase(); if (!code) return;
     const sId = siteId || siteConfig?.id || siteSlug || ''; setApplyingOffer(true); setOfferError('');
-    try { const uId = selectedUnitId || ''; const res = await fetch(`${API_BASE}/api/booking/activate?code=${encodeURIComponent(code)}&unitId=${uId}&siteId=${sId}`); const data = await res.json();
+    try { const uId = selectedUnitId || ''; const stay = checkIn && checkOut ? `&checkIn=${checkIn}&checkOut=${checkOut}` : ''; const res = await fetch(`${API_BASE}/api/booking/activate?code=${encodeURIComponent(code)}&unitId=${uId}&siteId=${sId}${stay}`); const data = await res.json();
       if (data.valid) { setOfferApplied({ code: data.code, offerType: data.discount_type, offerAmount: data.offer_amount, description: data.description, bundle: data.bundle ? { ...data.bundle, included_services: data.bundle.included_services?.map((inc: any) => ({ service_id: inc.service_id, isIncluded: inc.free })) } : undefined }); setShowOffer(false);
         if (data.discount_type==='package' && data.bundle?.included_services) { const ns = new Set(selectedServiceIds); data.bundle.included_services.forEach((inc: any) => { if (inc.free || inc.isIncluded) ns.add(inc.service_id); }); setSelectedServiceIds(ns); }
         if (data.discount_type==='package' && data.bundle?.applied_listings?.length===1) setSelectedUnitId(data.bundle.applied_listings[0]);
-      } else { setOfferApplied(null); setOfferError(data.error || 'Invalid code'); }
+      } else { setOfferApplied(null); setOfferError(data.reason ? t.couponRejection(data.reason, data.detail) : (data.error || 'Invalid code')); }
     } catch { setOfferError('Server error'); } finally { setApplyingOffer(false); }
-  }, [couponCode, siteId, siteSlug, siteConfig, selectedUnitId, selectedServiceIds]);
+  }, [couponCode, siteId, siteSlug, siteConfig, selectedUnitId, selectedServiceIds, checkIn, checkOut, t]);
 
   const handleApplyExtraOffer = useCallback(async (codeToApply?: string | React.MouseEvent) => {
     const code = (typeof codeToApply === 'string' ? codeToApply : extraCouponCode).trim().toUpperCase(); if (!code) return;
     const sId = siteId || siteConfig?.id || siteSlug || ''; setApplyingExtraCoupon(true); setExtraCouponError('');
-    try { const uId = selectedUnitId || ''; const res = await fetch(`${API_BASE}/api/booking/activate?code=${encodeURIComponent(code)}&unitId=${uId}&siteId=${sId}`); const data = await res.json();
+    try { const uId = selectedUnitId || ''; const stay = checkIn && checkOut ? `&checkIn=${checkIn}&checkOut=${checkOut}` : ''; const res = await fetch(`${API_BASE}/api/booking/activate?code=${encodeURIComponent(code)}&unitId=${uId}&siteId=${sId}${stay}`); const data = await res.json();
       if (data.valid && data.discount_type !== 'package') {
         if (offerApplied?.offerType === 'package' && offerApplied.bundle?.allowed_promo_codes?.includes(data.code)) {
             setExtraCouponApplied({ code: data.code, offerType: data.discount_type, offerAmount: data.offer_amount, description: data.description }); setShowExtraOffer(false);
         } else {
             setExtraCouponError('Цей промокод не діє разом з обраним пакетом');
         }
-      } else { setExtraCouponApplied(null); setExtraCouponError(data.error || 'Invalid code'); }
+      } else { setExtraCouponApplied(null); setExtraCouponError(data.reason ? t.couponRejection(data.reason, data.detail) : (data.error || 'Invalid code')); }
     } catch { setExtraCouponError('Server error'); } finally { setApplyingExtraCoupon(false); }
-  }, [extraCouponCode, siteId, siteSlug, siteConfig, selectedUnitId, offerApplied]);
+  }, [extraCouponCode, siteId, siteSlug, siteConfig, selectedUnitId, offerApplied, checkIn, checkOut, t]);
 
   useEffect(() => { if (!isMounted) return; if (couponCode && !offerApplied && !applyingOffer && !offerError && !!(siteId||siteSlug)) handleApplyOffer(couponCode); }, [isMounted, couponCode, offerApplied, siteId, siteSlug]);
 
@@ -469,6 +469,13 @@ export function useBookingWidget({ siteId, siteSlug, thankYouUrl, design, isPrev
           email, 
           phone, 
           siteId:siteId||undefined, 
+          // Тариф, за яким гість дивився ціну. Віджет пересилав його в пошук і
+          // в календар, а в бронювання — ні, тож сервер рахував суму без нього
+          // і гість платив за базовою після «−20 %» на екрані.
+          ratePlanId: (typeof window !== 'undefined'
+            ? (new URLSearchParams(window.location.search).get('ratePlanId')
+               || new URLSearchParams(window.location.search).get('ratePlan'))
+            : null) || undefined,
           couponCode:offerApplied?.code||undefined, 
           extraCouponCode:extraCouponApplied?.code||undefined, 
           // `currency` тут більше не шлеться: валюту броні визначає сервер із
