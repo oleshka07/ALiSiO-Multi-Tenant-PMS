@@ -302,6 +302,18 @@ Health-check деплою (POST у `/api/auth/login`) — правильна р�
 інтервал 5 хв, keyword-перевірка на `"ok":true` — 200 з `ok:false` теж має
 будити. Алерт — на email і/або в Telegram-інтеграцію монітора.
 
+**Помилки — у Sentry, а не лише в 30 МБ docker-лога.** Кожен `serverError()`
+(єдині двері, через які 143 хендлери відповідають 500) і кожен крах процесу
+летить у Sentry, щойно в env-файлі середовища заданий `SENTRY_DSN`. SDK не
+підключався навмисно: офіційний пакет тягне дерево OpenTelemetry заради
+одного POST-а — замість нього власний конверт на 40 рядків
+(`core/monitoring/sentry.ts`, форму тримає `sentry.check.ts`). `environment`
+береться з `ENV_NAME`, тож prod і beta в Sentry не змішуються. DSN — не
+секрет у класичному сенсі (Sentry проєктував його вбудовуваним у публічні
+сторінки), але живе в `deploy/env.*`, як кожне налаштування середовища.
+Разова дія: дописати `SENTRY_DSN=<dsn>` в `deploy/env.prod` і
+`deploy/env.beta`, перезапустити контейнер (наступний деплой зробить це сам).
+
 ## Beta data
 
 Beta follows the `beta` branch and deploys itself the same way prod does, so
