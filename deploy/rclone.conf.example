@@ -1,0 +1,28 @@
+# Copy to deploy/rclone.conf ON THE SERVER and fill in. Gitignored and
+# dockerignored: these are credentials to the place the backups live.
+#
+# The key you paste here must be WRITE-ONLY — allowed to add files, not to
+# read or delete them. A compromised server then cannot erase its own history.
+# Retention is NOT done from the server: turn on object versioning and a
+# 30-day lifecycle rule in the store itself. Full walkthrough:
+# docs/DEPLOY.md → «Бекапи поза сервером».
+#
+# BACKUP_REMOTE in deploy/env.<env> then points at "<remote>:<bucket>",
+# e.g. BACKUP_REMOTE=offsite:alisio-backups
+
+# ── Variant A: Backblaze B2, native API ─────────────────────────────────────
+# Application key restricted to one bucket, capability writeFiles only.
+[offsite]
+type = b2
+account = <keyID>
+key = <applicationKey>
+
+# ── Variant B: any S3-compatible store ──────────────────────────────────────
+# IAM policy: s3:PutObject on the bucket, nothing else.
+# [offsite]
+# type = s3
+# provider = Other
+# access_key_id = <key>
+# secret_access_key = <secret>
+# endpoint = <https://s3.eu-....example.com>
+# region = <region>

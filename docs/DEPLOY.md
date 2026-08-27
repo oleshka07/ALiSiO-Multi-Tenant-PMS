@@ -226,6 +226,58 @@ docker run --rm -v alisio-prod_app-data:/data -v "$PWD/deploy/backups:/b" \
   alpine sh -c 'rm -rf /data/* && tar xzf /b/alisio-prod-<stamp>.tar.gz -C /data'
 ```
 
+## Бекапи поза сервером
+
+До 2026-08-27 бекап мав три мовчазні вади, і кожна виглядала як «бекапи є»:
+він робився **на подію деплою** (тиждень без деплоїв — тиждень без копії),
+тримав **30 копій, а не 30 днів** (вісім деплоїв у день — і вся історія
+коротша за чотири дні), і лежав у `deploy/backups/` — **на тому самому
+диску, в того самого провайдера**, що й база. Кожен сценарій, від якого
+бекап існує (диск на 100% — це вже було 26 серпня, — збій хоста,
+компрометація, помилковий `rm`), знищував копію разом з оригіналом.
+
+Тепер щодня, розкладом, який ставить сам деплой (`deploy/setup-backup-cron.sh`,
+викликається з `deploy.sh` після health — розклад існує, бо середовище існує):
+
+| Коли | Що | Скрипт |
+|---|---|---|
+| 03:10 / 03:40 | дамп дня + заливка у зовнішнє сховище | `deploy/backup.sh prod\|beta` |
+| 09:00 | вік дампа і off-site копії; >30 год — алерт | `deploy/check-backup-age.sh` |
+| нд 04:15 | відновлення найсвіжішого дампа в одноразовий Postgres, перевірки, час | `deploy/restore-test.sh prod` |
+
+Дамп при деплої лишається — він робить іншу роботу: точка відкату за десять
+хвилин до поганого деплою. Щоденні звуться `alisio-<env>-daily-<дата>.sql.gz`
+і чистяться локально за **віком** (30 днів), не за кількістю.
+
+**Що налаштувати один раз руками** (без цього дампи лише локальні, і
+`check-backup-age.sh` про це кричить щоранку — навмисно):
+
+1. Сховище **поза Hetzner** — Backblaze B2 (найдешевше) або будь-який S3.
+   У бакеті ввімкнути **versioning** і **lifecycle: ховати/видаляти версії
+   старші 30 днів**. Ретеншн робить сховище, не сервер — це принципово.
+2. Ключ **тільки на запис** (B2: application key на один бакет, capability
+   `writeFiles`; S3: політика лише `s3:PutObject`). Скомпрометований сервер
+   тоді не може ані прочитати, ані стерти власну історію; а перезапис
+   об'єкта поверх — не втрата, бо versioning тримає попередню версію.
+3. `deploy/rclone.conf` на сервері за зразком `deploy/rclone.conf.example`
+   (gitignored і dockerignored), і `BACKUP_REMOTE=офсайт:бакет` в
+   `deploy/env.prod` та `deploy/env.beta`.
+4. Рекомендовано: безкоштовний чек на healthchecks.io → його URL у
+   `BACKUP_PING_URL`. Пінг летить **після успішної заливки**, і алерт
+   приходить, коли пінг **зникає** — це єдиний алерт, який ловить навіть
+   мертвий cron: мертвий cron не може повідомити про себе сам.
+5. Опційно: `TG_ALERT_BOT_TOKEN` / `TG_ALERT_CHAT_ID` — і
+   `check-backup-age.sh` пише в Telegram, коли копія старша 30 годин.
+
+Перевірити стан у будь-який момент: `./deploy/status.sh prod` — рядок
+«off-site copy». Репетиція відновлення руками: `./deploy/restore-test.sh prod`
+— вона друкує час, і цей час є фактичним RTO; на порожньому контейнері
+дамп зі 106 таблицями і 50 тис. бронювань відновлюється за секунди.
+
+Чого тут свідомо ще немає: **WAL-архівації і PITR**. Це наступний етап;
+поточний RPO — до 24 годин (щоденний дамп). Спершу має працювати просте, і
+відновлення з нього має бути відрепетируваним.
+
 ## Beta data
 
 Beta follows the `beta` branch and deploys itself the same way prod does, so
@@ -246,10 +298,12 @@ same login.
   as a role that owns nothing, so the row-level policies actually apply to it
   — `FORCE ROW LEVEL SECURITY` covers the owner too, but relying on that alone
   means one table added later without FORCE is a silent read across tenants.
-- Backups are local to the server. Copy `deploy/backups/` off-host — a disk
-  failure currently takes the backups with it. This is the one limit on this
-  list that costs a customer their data, and it is not covered by anything in
-  this repository.
+- Backups leave the server daily since 2026-08-27 — see «Бекапи поза
+  сервером» above. What remains open is WAL archiving / PITR: today's RPO is
+  up to 24 hours (the daily dump), plus the deploy-time dump when a deploy
+  happened in between. Off-site upload only works once a human has created
+  the bucket and `deploy/rclone.conf` — until then `check-backup-age.sh`
+  alerts every morning that this disk is the only copy.
 - `deploy.sh` dumps Postgres before every deploy and refuses to continue if the
   dump comes out empty. It did not always: it archived the `app-data` volume,
   and kept doing so after the move to Postgres — when that volume held a SQLite
@@ -437,9 +491,11 @@ ls -lh deploy/backups/alisio-prod-*.sql.gz | tail -3
 ```
 
 `.tar.gz` — це стара SQLite, а не сьогоднішні дані. Дамп знімається на
-кожному деплої, і деплой зупиняється, якщо дамп вийшов порожній. **Копію
-треба тримати поза цим сервером** — це єдине з відомих обмежень, яке коштує
-клієнту його даних.
+кожному деплої (і щодня о 03:10 крон-скриптом `deploy/backup.sh`), деплой
+зупиняється, якщо дамп вийшов порожній. Копія поза сервером їде щодня
+автоматично — але лише якщо разове налаштування сховища зроблене: перевірте
+рядок «off-site copy» у `./deploy/status.sh prod`, він має казати «ok», а не
+«never».
 
 ```bash
 # 3. Ключ OpenAI, якщо готель має користуватись OCR і перекладом
