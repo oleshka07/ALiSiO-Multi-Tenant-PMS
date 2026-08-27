@@ -554,17 +554,21 @@ export async function createWidgetReservation(request: NextRequest) {
         -- DEFAULT is a Postgres mechanism (migration 0005) and on SQLite the
         -- row landed with a NULL tenant. The organization is the one the unit
         -- belongs to, resolved above.
-        -- rate_plan_id: колонка була в схемі й ніхто її не заповнював, тож
-        -- бронь не пам'ятала, за яким тарифом її продали. Тепер пам'ятає — це
-        -- єдине, що дозволяє потім пояснити суму.
+        -- rate_plan_id тут НЕ заповнюється, хоч і напрошується: ця колонка
+        -- посилається на rate_plans, а тариф сайту — це інша таблиця,
+        -- site_rate_plans. Записати сюди id тарифу сайту означає порушити
+        -- зовнішній ключ, тобто 500 на кожну бронь із тарифом (перевірено
+        -- живим запитом — саме так і сталося). Щоб бронь пам'ятала, за яким
+        -- тарифом сайту її продали, потрібна окрема колонка й міграція; це
+        -- рішення про схему, і воно не входить у виправлення ціни.
         INSERT INTO reservations (
           id, organization_id, property_id, unit_id, guest_id, check_in, check_out,
           nights, adults, children, status, payment_status, source,
           total_price, currency, payment_id, promotions_applied, guest_page_token,
           utm_source, utm_medium, utm_campaign, utm_content, utm_term, ga_client_id,
-          booking_lang, country_code, widget_session_id, group_id, notes, rate_plan_id
+          booking_lang, country_code, widget_session_id, group_id, notes
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [resId, unitOrg.organization_id, unit.property_id, unitId, guestId,
         checkIn, checkOut, nights, adults, children,
         resStatus, payStatus, siteName, finalPrice, resCurrency, null,
@@ -572,7 +576,7 @@ export async function createWidgetReservation(request: NextRequest) {
         guestPageToken,
         utmSource, utmMedium, utmCampaign, utmContent, utmTerm, gaClientId,
         lang, countryCode, session_id_to_store, groupId,
-        finalNotes, ratePlan?.id ?? null]);
+        finalNotes]);
 
       // The certificate is attached to the first reservation, with a status
       // guard against a simultaneous second use. If somebody else claimed it

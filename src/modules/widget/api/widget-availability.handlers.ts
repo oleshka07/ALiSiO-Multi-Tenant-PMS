@@ -5,6 +5,7 @@ import { getSql } from '@core/db/async';
 import { withSite } from '../data/site.repo';
 import { quoteCertificate } from '../data/certificate.repo';
 import { couponApplies } from '../domain/coupon-eligibility';
+import { shiftDays } from '@core/hotel-day';
 import { ratePlanNightPrice } from '../domain/rate-plan';
 import { priceNights } from '@pricing';
 
@@ -243,6 +244,17 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
       }
 
       const dayNames = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+      /**
+       * День тижня календарної дати, 0 = неділя (як у dayNames вище).
+       *
+       * Читається з рядка через UTC-північ, а не з локального Date: три цикли
+       * нижче брали дату через `current.toISOString()`, тобто переводили
+       * локальну північ у UTC. У поясі на схід від Гринвіча «14 вересня»
+       * ставало «13 вересня» — і ніч, у якої ціна Є, читалася як неоцінена.
+       * Гість бачив половину вартості заїзду. На проді спить, бо контейнер в
+       * UTC; під TZ=Europe/Prague двонічна бронь показувалась як одна ніч.
+       */
+      const weekdayOf = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay();
       const breakdown: { date: string; dayName: string; price: number; isWeekend: boolean }[] = [];
       let totalPrice = 0;
       let hasPricing = false;
@@ -251,29 +263,27 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
         if (activeBundle && activeBundle.is_active) {
           // Bundle logic: fixed total price divided by nights
           const bundlePricePerNight = nights > 0 ? activeBundle.price / activeBundle.nights_included : activeBundle.price;
-          const current = new Date(ciDate);
+          let dateStr = checkIn!;
           for (let i = 0; i < nights; i++) {
-            const dateStr = current.toISOString().split('T')[0];
-            const dayOfWeek = current.getDay();
+            const dayOfWeek = weekdayOf(dateStr);
             const isWeekend = dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6;
             const dayPrice = bundlePricePerNight;
             hasPricing = true;
             breakdown.push({ date: dateStr, dayName: dayNames[dayOfWeek], price: dayPrice, isWeekend });
             totalPrice += dayPrice;
-            current.setDate(current.getDate() + 1);
+            dateStr = shiftDays(dateStr, 1);
           }
         } else if (activeRatePlan && activeRatePlan.fixed_price != null) {
           // VIP Tariff: use fixed price for all days
-          const current = new Date(ciDate);
+          let dateStr = checkIn!;
           for (let i = 0; i < nights; i++) {
-            const dateStr = current.toISOString().split('T')[0];
-            const dayOfWeek = current.getDay();
+            const dayOfWeek = weekdayOf(dateStr);
             const isWeekend = dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6;
             const dayPrice = activeRatePlan.fixed_price;
             hasPricing = true;
             breakdown.push({ date: dateStr, dayName: dayNames[dayOfWeek], price: dayPrice, isWeekend });
             totalPrice += dayPrice;
-            current.setDate(current.getDate() + 1);
+            dateStr = shiftDays(dateStr, 1);
           }
         } else {
           // The same resolver the reservation endpoint uses, so what the guest
@@ -289,10 +299,9 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
             : null;
           const byDate = new Map((priced?.nights ?? []).map((n) => [n.date, n]));
 
-          const current = new Date(ciDate);
+          let dateStr = checkIn!;
           for (let i = 0; i < nights; i++) {
-            const dateStr = current.toISOString().split('T')[0];
-            const dayOfWeek = current.getDay();
+            const dayOfWeek = weekdayOf(dateStr);
             const isWeekend = dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6;
             const night = byDate.get(dateStr);
 
@@ -315,7 +324,7 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
 
             breakdown.push({ date: dateStr, dayName: dayNames[dayOfWeek], price: dayPrice, isWeekend });
             totalPrice += dayPrice;
-            current.setDate(current.getDate() + 1);
+            dateStr = shiftDays(dateStr, 1);
           }
         }
       }

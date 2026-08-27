@@ -66,7 +66,10 @@ export async function getPaidServices(request: NextRequest, _ctx: unknown, actor
         o.payment_status,
         o.service_date,
         o.options_json,
-        o.created_at,
+        -- Псевдонім обовʼязковий: у compound SELECT (UNION ALL) SQLite не
+        -- виводить імʼя для o.created_at сам, і ORDER BY нижче падає з
+        -- «1st ORDER BY term does not match any column in the result set».
+        o.created_at             AS created_at,
         COALESCE(r.currency, org.default_currency) AS currency,
         (g.first_name || ' ' || g.last_name)       AS guest_name,
         u.name                   AS unit_name,
@@ -97,7 +100,10 @@ export async function getPaidServices(request: NextRequest, _ctx: unknown, actor
         o.payment_status,
         o.service_date,
         NULL                     AS options_json,
-        o.created_at,
+        -- Псевдонім обовʼязковий: у compound SELECT (UNION ALL) SQLite не
+        -- виводить імʼя для o.created_at сам, і ORDER BY нижче падає з
+        -- «1st ORDER BY term does not match any column in the result set».
+        o.created_at             AS created_at,
         COALESCE(r.currency, org.default_currency) AS currency,
         (g.first_name || ' ' || g.last_name)       AS guest_name,
         u.name                   AS unit_name,
