@@ -5723,6 +5723,43 @@ function runMigrations(database: any) {
     console.error('[DB] fin_folio_items source migration:', e.message);
   }
 
+  // --- Migration: скільки токенів моделі витратив цей готель ---
+  //
+  // OpenAI кличеться з двох місць — розпізнавання документа гостя
+  // (`guests/domain/ai/ocr-document.ts`) і машинний переклад контенту
+  // (`core/i18n/translate.ts`), — і обидва йдуть ключем СЕРВЕРА, спільним на
+  // всіх клієнтів. Тобто рахунок від OpenAI приходить один, а витрачають його
+  // різні готелі, і досі не існувало способу сказати, хто скільки.
+  //
+  // Один рядок = один виклик моделі. Не лічильник, а журнал: підсумок за
+  // місяць виводиться з рядків, а лічильник, який лише збільшується, не вміє
+  // відповісти «за що саме» і не переживає перерахунку.
+  //
+  // `organization_id` NOT NULL навмисно. Рядок без орендаря — це витрата, яку
+  // не виставити нікому, тобто рівно те, що ця таблиця мусить прибрати.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS ai_usage (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        -- Що саме робили: 'ocr_document', 'translate_content'. Рядок, а не
+        -- enum: наступна функція з моделлю не має вимагати міграції.
+        feature TEXT NOT NULL,
+        model TEXT NOT NULL,
+        prompt_tokens INTEGER NOT NULL DEFAULT 0,
+        completion_tokens INTEGER NOT NULL DEFAULT 0,
+        -- Сума двох, збережена окремо: OpenAI віддає її сам, і для
+        -- нерозділених відповідей вона єдине, що є.
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_ai_usage_org ON ai_usage(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_ai_usage_month ON ai_usage(organization_id, created_at)');
+  } catch (e) {
+    console.error('[DB] ai_usage migration:', (e as Error).message);
+  }
+
   // The last line of runMigrations, and the only reliable signal that the
   // schema has settled. scripts/check-fresh-schema.mjs waits for it: polling
   // the table count said "done" while ALTER TABLE ADD COLUMN was still going,

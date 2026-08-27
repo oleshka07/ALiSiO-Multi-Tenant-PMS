@@ -2615,5 +2615,11 @@
   "Фіскалізація Німеччини (TSE)": "Kassensicherungsverordnung (TSE)",
   "Задачі персоналу": "Aufgaben für das Personal",
   "Зали та заходи": "Säle und Veranstaltungen",
-  "Дашборди": "Dashboards"
+  "Дашборди": "Dashboards",
+  "викл.": "Aufr.",
+  "Витрачено токенів AI": "Verbrauchte KI-Tokens",
+  "Переклад контенту": "Übersetzung von Inhalten",
+  "Розпізнавання документів": "Dokumentenerkennung",
+  "Розпізнавання документів і машинний переклад контенту йдуть ключем сервісу. Тарифікація зʼявиться разом із підпискою.": "Dokumentenerkennung und maschinelle Übersetzung laufen über den Schlüssel des Dienstes. Die Abrechnung kommt mit dem Abonnement.",
+  "Цього місяця AI не використовувався": "In diesem Monat wurde keine KI genutzt"
 }

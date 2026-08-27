@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { spawn } from 'child_process';
 import path from 'path';
 import { parseMrz } from './mrz-parser';
+import { recordAiUsage } from '@core/ai-usage';
 
 export interface OcrResult {
   firstName: string;
@@ -96,7 +97,15 @@ async function runLocalTesseract(imageUrl: string): Promise<string | null> {
  */
 export async function ocrDocument(
   imageUrl: string,
-  options: { allowCloudFallback?: boolean } = {},
+  options: {
+    allowCloudFallback?: boolean;
+    /**
+     * Чий це виклик. Ключ OpenAI — серверний, спільний на всіх клієнтів, тож
+     * без цього витрату не виставити нікому. Локальний Tesseract токенів не
+     * витрачає, тому облік стосується лише хмарної гілки нижче.
+     */
+     organizationId?: string;
+  } = {},
 ): Promise<OcrResult> {
   console.log('[OCR] Starting local Tesseract OCR...');
   const text = await runLocalTesseract(imageUrl);
@@ -142,6 +151,13 @@ export async function ocrDocument(
       },
     ],
   });
+
+  // Облік ДО розбору відповіді: токени вже витрачені незалежно від того, чи
+  // модель повернула валідний JSON. Порахувати лише вдалі розпізнавання
+  // означало б недорахувати рівно ті виклики, які коштували й нічого не дали.
+  if (options.organizationId) {
+    await recordAiUsage(options.organizationId, 'ocr_document', 'gpt-4o', response.usage);
+  }
 
   const raw = response.choices[0]?.message?.content?.trim() || '{}';
   const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```$/, '').trim();

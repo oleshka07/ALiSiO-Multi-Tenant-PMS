@@ -27,6 +27,7 @@ export const POST = await withPermission('manage_guests', async (req: Request, _
     // organizations table, which is what an argument-less call used to read.
     const result = await ocrDocument(dataUrl, {
       allowCloudFallback: await cloudOcrAllowed(actor.organizationId),
+      organizationId: actor.organizationId,
     });
 
     return NextResponse.json({ success: true, data: result });

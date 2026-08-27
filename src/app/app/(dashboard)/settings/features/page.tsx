@@ -29,7 +29,24 @@ import { useMobileMenu } from '@/ui/MobileMenuContext';
  */
 const PAYMENTS_FEATURE = 'online_payments';
 
+/**
+ * Людські назви функцій, які кличуть модель.
+ *
+ * Ключ приходить із бази рядком (`ai_usage.feature`), і незнайомий показується
+ * як є: наступна функція з моделлю не має вимагати правки цього файлу, щоб
+ * зʼявитись у лічильнику.
+ */
+const AI_FEATURE_LABEL: Record<string, string> = {
+  ocr_document: 'Розпізнавання документів',
+  translate_content: 'Переклад контенту',
+};
+
 interface FieldSpec { field: string; label: string; hint?: string }
+interface AiUsage {
+  month: string;
+  totalTokens: number;
+  byFeature: { feature: string; model: string; tokens: number; calls: number }[];
+}
 interface Status {
   channel: string;
   values: Record<string, string | null>;
@@ -49,6 +66,7 @@ export default function FeaturesSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+  const [ai, setAi] = useState<AiUsage | null>(null);
 
   const loadCredentials = useCallback(async () => {
     const res = await fetch('/api/settings/integration-credentials');
@@ -66,6 +84,12 @@ export default function FeaturesSettingsPage() {
       })
       .then((d) => { setCatalog(d.catalog); setFeatures(d.features); })
       .then(loadCredentials)
+      // Лічильник — не частина завантаження екрана: якщо він не відповість,
+      // перемикачі мусять зʼявитись усе одно.
+      .then(() => fetch('/api/settings/ai-usage')
+        .then((r) => (r.ok ? r.json() : null))
+        .then(setAi)
+        .catch(() => {}))
       .catch((e) => setError(t(e.message)))
       .finally(() => setLoading(false));
   }, [loadCredentials]);
@@ -215,6 +239,57 @@ export default function FeaturesSettingsPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/*
+          Скільки токенів моделі витратив цей готель.
+
+          Ключ OpenAI серверний і спільний на всіх клієнтів, тож рахунок від
+          постачальника приходить один — а витрачають його різні готелі. Тут
+          видно, хто скільки, у розрізі функцій.
+
+          Число в токенах, а не в грошах, і це рішення, а не незакінченість:
+          тарифу підписки поки немає, і назвати суму раніше за нього означало б
+          назвати ціну, якої ніхто не погоджував. Коли зʼявиться екран білінгу,
+          ці самі дані переїдуть туди.
+        */}
+        {!loading && ai && (
+          <div className="card" style={{ maxWidth: 640, marginTop: 20 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>
+              {t('Витрачено токенів AI')} · {ai.month}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 12 }}>
+              {t('Розпізнавання документів і машинний переклад контенту йдуть ключем сервісу. Тарифікація зʼявиться разом із підпискою.')}
+            </div>
+
+            <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)' }}>
+              {ai.totalTokens.toLocaleString()}
+            </div>
+
+            {ai.byFeature.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 8 }}>
+                {t('Цього місяця AI не використовувався')}
+              </div>
+            ) : (
+              <div style={{ marginTop: 12 }}>
+                {ai.byFeature.map((row) => (
+                  <div key={`${row.feature}-${row.model}`}
+                    style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', borderTop: line, fontSize: 13 }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>
+                      {t(AI_FEATURE_LABEL[row.feature] || row.feature)}
+                      <span style={{ color: 'var(--text-tertiary)', marginLeft: 8, fontSize: 11 }}>{row.model}</span>
+                    </span>
+                    <span style={{ whiteSpace: 'nowrap' }}>
+                      {row.tokens.toLocaleString()}
+                      <span style={{ color: 'var(--text-tertiary)', marginLeft: 8, fontSize: 11 }}>
+                        · {row.calls} {t('викл.')}
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -65,6 +65,7 @@ export async function POST(
     const dataUrl = image.includes('base64,') ? image : `data:image/jpeg;base64,${image}`;
     const result = await ocrDocument(dataUrl, {
       allowCloudFallback: await cloudOcrAllowed(reservation.organization_id),
+      organizationId: reservation.organization_id,
     });
 
     return NextResponse.json({ success: true, data: result });

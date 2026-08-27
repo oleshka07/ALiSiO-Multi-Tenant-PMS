@@ -2653,5 +2653,11 @@
   "Фіскалізація Німеччини (TSE)": "Fiskalizace Německa (TSE)",
   "Задачі персоналу": "Úkoly personálu",
   "Зали та заходи": "Sály a akce",
-  "Дашборди": "Přehledy"
+  "Дашборди": "Přehledy",
+  "викл.": "vol.",
+  "Витрачено токенів AI": "Spotřebováno tokenů AI",
+  "Переклад контенту": "Překlad obsahu",
+  "Розпізнавання документів": "Rozpoznávání dokladů",
+  "Розпізнавання документів і машинний переклад контенту йдуть ключем сервісу. Тарифікація зʼявиться разом із підпискою.": "Rozpoznávání dokladů a strojový překlad obsahu využívají klíč služby. Zpoplatnění přijde spolu s předplatným.",
+  "Цього місяця AI не використовувався": "Tento měsíc se AI nepoužívala"
 }

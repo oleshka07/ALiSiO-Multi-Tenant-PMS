@@ -41,6 +41,22 @@ CREATE TABLE "accruals" (
   PRIMARY KEY ("id")
 );
 
+CREATE TABLE "ai_usage" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  -- Що саме робили: 'ocr_document', 'translate_content'. TEXT, а не CHECK:
+  -- нова функція з моделлю не має вимагати міграції, щоб зʼявитись у лічильнику.
+  "feature" TEXT NOT NULL,
+  "model" TEXT NOT NULL,
+  "prompt_tokens" BIGINT DEFAULT 0 NOT NULL,
+  "completion_tokens" BIGINT DEFAULT 0 NOT NULL,
+  "total_tokens" BIGINT DEFAULT 0 NOT NULL,
+  -- TEXT, не TIMESTAMPTZ: підсумок за місяць береться як substr(created_at,1,7),
+  -- бо strftime немає в Postgres, а to_char — у SQLite. Міграція 0040.
+  "created_at" TEXT NOT NULL,
+  PRIMARY KEY ("id")
+);
+
 CREATE TABLE "additional_services" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "property_id" TEXT NOT NULL,
@@ -1875,6 +1891,8 @@ CREATE TABLE "widget_price_list" (
 
 -- ── Foreign keys ────────────────────────────────────────────────────────
 
+ALTER TABLE "ai_usage" ADD CONSTRAINT "fk_ai_usage_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "accruals" ADD CONSTRAINT "fk_accruals_fin_operation_id_1"
   FOREIGN KEY ("fin_operation_id") REFERENCES "fin_operations" ("id");
 ALTER TABLE "accruals" ADD CONSTRAINT "fk_accruals_created_by_2"
@@ -2274,6 +2292,8 @@ ALTER TABLE "widget_price_list" ADD CONSTRAINT "fk_widget_price_list_organizatio
 
 -- ── Indexes ─────────────────────────────────────────────────────────────
 
+CREATE INDEX IF NOT EXISTS "idx_ai_usage_org" ON "ai_usage" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_ai_usage_month" ON "ai_usage" ("organization_id", "created_at");
 CREATE INDEX "idx_accruals_month" ON "accruals" ("month");
 CREATE UNIQUE INDEX "idx_app_users_org_email" ON "app_users" ("organization_id", lower("email"));
 CREATE INDEX "idx_accruals_org" ON "accruals" ("organization_id");
@@ -2523,6 +2543,8 @@ ALTER TABLE "event_bookings" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "guest_page_sections" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "ai_usage" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "coupons" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "expense_categories" ALTER COLUMN "organization_id"
@@ -2758,6 +2780,12 @@ CREATE POLICY "channel_rate_rules_tenant" ON "channel_rate_rules"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
+
+ALTER TABLE "ai_usage" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ai_usage" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "ai_usage_tenant" ON "ai_usage"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "coupons" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "coupons" FORCE ROW LEVEL SECURITY;

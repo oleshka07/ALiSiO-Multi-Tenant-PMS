@@ -17,6 +17,7 @@ import { requireOrganizationId } from '../auth/tenant-context.ts';
 import { getSql } from '../db/async.ts';
 import { LANGUAGES, type Language, targetLanguages } from './languages.ts';
 import { organizationLanguage } from './resolve.ts';
+import { recordAiUsage } from '../ai-usage.ts';
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
@@ -121,9 +122,11 @@ export async function translateAndStore(
   // throw if there is no context and more than one hotel, because the callers
   // are all fire-and-forget: the save still succeeds, and the failure is
   // logged instead of translating from the wrong language.
-  const source: Language = await organizationLanguage(
-    organizationId ?? (await requireOrganizationId()),
-  );
+  // Той самий id потрібен двічі: щоб знати мову-джерело і щоб записати
+  // витрачені токени на того, хто їх витратив. Ключ OpenAI серверний і
+  // спільний, тож без цього рахунок нікому не виставити.
+  const orgId = organizationId ?? (await requireOrganizationId());
+  const source: Language = await organizationLanguage(orgId);
   const targets = targetLanguages(source);
   const sourceName = LANGUAGES[source].english;
   let translated = 0;
@@ -192,6 +195,11 @@ Return ONLY the translations, one per line, prefixed with index like [0] transla
         }
 
         const data = await res.json();
+
+        // Облік ДО розбору відповіді: токени витрачені незалежно від того, чи
+        // модель відповіла в очікуваному форматі.
+        await recordAiUsage(orgId, 'translate_content', 'gpt-4o-mini', data?.usage);
+
         const reply = data.choices?.[0]?.message?.content || '';
 
         for (const line of reply.split('\n')) {
