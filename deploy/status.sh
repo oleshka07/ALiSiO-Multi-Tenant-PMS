@@ -54,5 +54,18 @@ echo "==> backups (freshest first; .sql.gz is the live database, .tar.gz is old 
 ls -lht deploy/backups/alisio-${ENV_NAME}-*.sql.gz 2>/dev/null | head -3 | sed 's/^/    /' \
   || echo "    no dumps yet — deploy.sh makes one before every deploy"
 
+echo "==> off-site copy (a backup on this disk dies with this disk)"
+OFFSITE_MARKER="deploy/backups/.offsite-${ENV_NAME}"
+if [ -e "$OFFSITE_MARKER" ]; then
+  OFFSITE_AGE_H=$(( ( $(date +%s) - $(stat -c %Y "$OFFSITE_MARKER") ) / 3600 ))
+  if [ "$OFFSITE_AGE_H" -le 30 ]; then
+    echo "    last upload ${OFFSITE_AGE_H}h ago — ok"
+  else
+    echo "    !! last upload ${OFFSITE_AGE_H}h ago (threshold 30) — see deploy/backups/backup.log"
+  fi
+else
+  echo "    !! never — this disk is the only copy (docs/DEPLOY.md → «Бекапи поза сервером»)"
+fi
+
 echo "==> disk (the August 26 incident was this line reaching 100%)"
 df -h / | tail -1 | sed 's/^/    /'

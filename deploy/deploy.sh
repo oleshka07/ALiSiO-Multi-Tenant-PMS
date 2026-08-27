@@ -273,6 +273,12 @@ for i in $(seq 1 45); do
           && docker exec "alisio-${ENV_NAME}-app" node scripts/seed-demo-stays.mjs --all --env "$ENV_NAME" \
           || echo "!! demo seed failed on $ENV_NAME — календар порожній, деплой живий" >&2
       fi
+      # Розклад щоденних бекапів живе тому, що середовище живе, а не тому,
+      # що хтось пам'ятає crontab. Ідемпотентно; збій деплой не валить,
+      # але мовчати не має права: без розкладу RPO знову дорівнює
+      # «скільки часу минуло від останнього деплою».
+      ./deploy/setup-backup-cron.sh "$ENV_NAME" \
+        || echo "!! backup cron не встановився — щоденних дампів НЕМАЄ, лише деплойні" >&2
       exit $HOTELS_OK
       ;;
     500|502|503)
