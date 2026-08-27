@@ -83,7 +83,16 @@ export const createUser = withPermission('manage_users', async (request: NextReq
 
     const sql = getSql();
 
-    const existing = await sql.row<any>('SELECT id FROM app_users WHERE email = ?', [email]);
+    // Stored lower-cased, and looked for the same way — `login` matches
+    // without regard to case, so «Anna@hotel.de» and «anna@hotel.de» are one
+    // person as far as signing in is concerned. Checked case-insensitively too,
+    // or this would happily create the second row that login can never reach:
+    // it takes the first match and has no ORDER BY.
+    //
+    // Deliberately not scoped to the organization: an address identifies a
+    // person across the whole server, because that is all login is given.
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const existing = await sql.row<any>('SELECT id FROM app_users WHERE lower(email) = ?', [normalizedEmail]);
     if (existing) {
       return NextResponse.json({ error: 'Користувач з таким email вже існує' }, { status: 409 });
     }
@@ -94,7 +103,7 @@ export const createUser = withPermission('manage_users', async (request: NextReq
     await sql.run(`
       INSERT INTO app_users (id, organization_id, email, full_name, phone, role, password_hash, language)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, currentUser.organization_id, email, full_name, phone || null, role, passwordHash, language || null]);
+    `, [id, currentUser.organization_id, normalizedEmail, full_name, phone || null, role, passwordHash, language || null]);
 
     if (permissions_overrides && Array.isArray(permissions_overrides)) {
       await sql.tx(async (t) => {

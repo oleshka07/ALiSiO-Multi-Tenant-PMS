@@ -78,7 +78,20 @@ export async function login(request: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // organization_id is selected because the write below needs it: this query
     // is the only thing that knows which tenant the person belongs to.
-    const user: any = await sql.row<any>('SELECT id, organization_id, email, full_name, role, password_hash, is_active FROM app_users WHERE email = ?', [email]);
+    // Email is matched without regard to case, because nobody types their own
+    // address the same way twice. `provisionOrganization` stores it
+    // lower-cased; this compared it exactly, so an owner who typed
+    // «Owner@Hotel.de» — the way their mail client shows it — was told
+    // «Невірний email або пароль» with the right password in the box. There is
+    // no way to discover that from the outside: the message is the same one a
+    // wrong password gets, deliberately.
+    //
+    // lower() on both sides, not just on the input: rows created before
+    // createUser started normalising are still in the table as they were
+    // typed.
+    const user: any = await sql.row<any>(
+      'SELECT id, organization_id, email, full_name, role, password_hash, is_active FROM app_users WHERE lower(email) = lower(?)',
+      [String(email).trim()]);
 
     if (!user) {
       recordFailure(ip);

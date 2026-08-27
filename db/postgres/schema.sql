@@ -2329,6 +2329,7 @@ ALTER TABLE "widget_price_list" ADD CONSTRAINT "fk_widget_price_list_organizatio
 -- ── Indexes ─────────────────────────────────────────────────────────────
 
 CREATE INDEX "idx_accruals_month" ON "accruals" ("month");
+CREATE UNIQUE INDEX "idx_app_users_email" ON "app_users" (lower("email"));
 CREATE INDEX "idx_accruals_org" ON "accruals" ("organization_id");
 CREATE INDEX "idx_accruals_status" ON "accruals" ("status");
 CREATE INDEX "idx_availability_blocks_org" ON "availability_blocks" ("organization_id");
