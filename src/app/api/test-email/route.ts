@@ -78,6 +78,9 @@ export const GET = withOwner(async (request: NextRequest, _context, actor) => {
   try {
     await sendEmail({
       to,
+      // Тест мусить іти ТИМ САМИМ шляхом, що й справжній лист гостю, інакше
+      // він доводить працездатність чужої скриньки.
+      organizationId: actor.organizationId,
       subject: 'ALiSiO Test Email',
       html: `
         <div style="font-family: sans-serif; padding: 20px;">

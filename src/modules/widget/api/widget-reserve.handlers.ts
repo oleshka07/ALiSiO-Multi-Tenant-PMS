@@ -783,6 +783,8 @@ export async function createWidgetReservation(request: NextRequest) {
         import('@core/mail/email').then(({ sendEmail }) => {
           sendEmail({
             to: email,
+            organizationId: unitOrg.organization_id,
+            fromName: propertyName || undefined,
             subject: customizedSubject,
             html: `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#1a1a2e;max-width:600px;margin:0 auto;padding:12px;background:#f7f7f9;">

@@ -47,6 +47,8 @@ export async function handleCartEvent(
 export async function sendAbandonNotifications(
   guestToken: string,
   propertyName: string,
+  /** Чий це лист — щоб він пішов зі скриньки готелю, а не сервісу. */
+  organizationId?: string | null,
 ): Promise<void> {
   try {
     const event = await repo.getPendingAbandonNotifications(guestToken, 30);
@@ -117,6 +119,8 @@ export async function sendAbandonNotifications(
 
       await sendEmail({
         to: event.guest_email,
+        organizationId,
+        fromName: propertyName || undefined,
         subject: `Your services at ${propertyName} are waiting 🛒`,
         html: emailHtml,
         text: `Hi ${guestName},\n\nYou left items in your cart:\n${itemLines}\n\nTotal: ${total}\n\nComplete your order: ${guestPageUrl}`,

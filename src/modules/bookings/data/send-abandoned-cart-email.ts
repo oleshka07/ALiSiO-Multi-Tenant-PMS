@@ -33,7 +33,7 @@ export async function sendAbandonedCartEmail(reservationId: string, origin?: str
            r.guest_page_token,
            g.first_name, g.email, g.phone,
            u.name as unit_name,
-           p.name as property_name
+           p.name as property_name, p.organization_id
     FROM reservations r
     LEFT JOIN guests g ON r.guest_id = g.id
     LEFT JOIN units u ON r.unit_id = u.id
@@ -165,7 +165,7 @@ export async function sendAbandonedCartEmail(reservationId: string, origin?: str
 </html>`;
 
   try {
-    await sendEmail({ to: row.email, subject: t.subject, html });
+    await sendEmail({ to: row.email, organizationId: row.organization_id, fromName: row.property_name || undefined, subject: t.subject, html });
     console.log(`[AbandonedCart] Sent to ${row.email} for reservation ${row.id}`);
     return true;
   } catch (err: any) {

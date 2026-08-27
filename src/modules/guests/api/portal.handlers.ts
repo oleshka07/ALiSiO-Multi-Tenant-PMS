@@ -75,7 +75,7 @@ export async function getGuestPortal(
 
     // ── Variant B: send abandon notifications if >30min pending ──────────
     // Fire-and-forget — does not block the page response
-    await sendAbandonNotifications(token, propertyName).catch(() => {});
+    await sendAbandonNotifications(token, propertyName, reservation.organization_id).catch(() => {});
 
     return NextResponse.json({
       expired: false,

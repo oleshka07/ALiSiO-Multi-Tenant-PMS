@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withOwner, type Actor } from '@core/auth/session';
+import { forgetMailTransports } from '@core/mail/email';
 import { hasFeature, type FeatureKey } from '@core/features';
 import { secretsConfigured } from '@core/security/secrets';
 import {
@@ -79,6 +80,10 @@ export const updateIntegrationCredentials = withOwner(async (request: Request, _
   }
 
   await saveIntegrationCredentials(actor.organizationId, channel as IntegrationChannel, clean);
+  // Транспорти пошти кешуються за «хост|логін», тож зміна ПАРОЛЯ під тим самим
+  // логіном інакше лишилась би непоміченою: процес ходив би зі старим до
+  // перезапуску, і готель бачив би «збережено», а листи не йшли б.
+  if (channel === 'smtp') forgetMailTransports();
   return NextResponse.json({ status: await integrationStatus(channel as IntegrationChannel, actor.organizationId) });
 });
 

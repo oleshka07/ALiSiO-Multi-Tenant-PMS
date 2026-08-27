@@ -217,7 +217,7 @@ export async function sendBookingConfirmationEmail(reservationId: string, origin
            r.total_price, r.currency, r.guest_page_token, r.payment_status,
            g.first_name, g.last_name, g.email,
            u.name as unit_name,
-           p.name as property_name, p.phone as property_phone
+           p.name as property_name, p.phone as property_phone, p.organization_id
     FROM reservations r
     LEFT JOIN guests g ON r.guest_id = g.id
     LEFT JOIN units u ON r.unit_id = u.id
@@ -380,7 +380,7 @@ export async function sendBookingConfirmationEmail(reservationId: string, origin
 </html>`;
 
   try {
-    await sendEmail({ to: row.email, subject, html });
+    await sendEmail({ to: row.email, organizationId: row.organization_id, fromName: row.property_name || undefined, subject, html });
     console.log(`[BookingEmail] Sent confirmation to ${row.email} for reservation ${row.id}`);
     return true;
   } catch (err: any) {

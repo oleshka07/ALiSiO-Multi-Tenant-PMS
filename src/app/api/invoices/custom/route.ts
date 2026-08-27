@@ -164,6 +164,8 @@ async function _POST(req: NextRequest, _ctx: unknown, actor: Actor): Promise<Nex
 
         await sendEmail({
           to:      emailTo.trim(),
+          organizationId: actor.organizationId,
+          fromName: orgName,
           subject: `Faktura ${invoiceNumber} – ${orgName}`,
           html,
           attachments: [{

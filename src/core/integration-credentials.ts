@@ -28,7 +28,7 @@ import { encryptSecret, decryptSecret, secretsConfigured } from './security/secr
  * the two lists honest instead — it fails if a payment provider exists that
  * this union does not name.
  */
-export type IntegrationChannel = 'fiskaly' | 'stripe' | 'paypal' | 'teya';
+export type IntegrationChannel = 'fiskaly' | 'stripe' | 'paypal' | 'teya' | 'smtp';
 
 export interface IntegrationCredentials {
   clientId?: string;
@@ -45,6 +45,18 @@ function fromEnv(channel: IntegrationChannel): IntegrationCredentials | null {
     case 'fiskaly':
       return env.FISKALY_API_KEY
         ? { clientId: env.FISKALY_API_KEY, clientSecret: env.FISKALY_API_SECRET, perOrganization: false }
+        : null;
+    // Поштова скринька сервісу. Запасна, а не основна: готель, який не завів
+    // своєї, шле листи з нашої адреси, і гість це бачить. Саме тому екран
+    // налаштувань каже, чия зараз використовується.
+    case 'smtp':
+      return env.EMAIL_CZ_USER
+        ? {
+          clientId: env.EMAIL_CZ_SMTP_HOST || 'smtp.seznam.cz',
+          accessToken: env.EMAIL_CZ_USER,
+          clientSecret: env.EMAIL_CZ_PASSWORD,
+          perOrganization: false,
+        }
         : null;
     default:
       return null;
@@ -187,6 +199,10 @@ export async function integrationConfigured(
  */
 export const INTEGRATION_FEATURE: Record<string, string | null> = {
   fiskaly: 'fiscal_de',
+  // `null` — вимикача немає, і не має бути. Пошту шле кожен готель: лист із
+  // підтвердженням броні не купують окремо. Питання лише в тому, ЧИЄЮ адресою
+  // він іде, і на це відповідають самі облікові дані.
+  smtp: null,
   // One switch for all three gateways: «онлайн-оплата» is the module, and
   // which provider serves it is the hotel's choice, not a separate purchase.
   stripe: 'online_payments',
@@ -224,6 +240,23 @@ export const INTEGRATION_FIELDS: Record<string, { field: 'accessToken' | 'client
   teya: [
     { field: 'clientId', label: 'Client ID', hint: 'Teya Portal → API' },
     { field: 'clientSecret', label: 'Client secret' },
+  ],
+
+  // ── Пошта готелю ──────────────────────────────────────────────────────
+  //
+  // Три поля, а не пʼять, і це свідоме обмеження. Порт фіксований 587 зі
+  // STARTTLS — так уже робив і серверний транспорт (465 він перетворював на
+  // 587), і так працює переважна більшість провайдерів. Адреса відправника
+  // дорівнює логіну: провайдери, які дозволяють слати «від» іншої адреси,
+  // рідкість, а спроба це підтримати перетворює екран на конструктор.
+  //
+  // Порт і окрема адреса відправника — наступне поле й наступна міграція,
+  // коли зʼявиться готель, якому цього замало. Записано, щоб наступний читач
+  // не шукав, куди вони поділись.
+  smtp: [
+    { field: 'clientId', label: 'SMTP-сервер', hint: 'напр. smtp.gmail.com · порт 587, STARTTLS' },
+    { field: 'accessToken', label: 'Логін', hint: 'він же адреса відправника' },
+    { field: 'clientSecret', label: 'Пароль' },
   ],
 };
 
