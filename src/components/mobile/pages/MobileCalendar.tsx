@@ -7,11 +7,14 @@ import { ChevronLeft, ChevronRight, RefreshCw, Filter, X, Search } from 'lucide-
 import MobileBookingDetail from '@/components/booking/MobileBookingDetail';
 import BookingForm, { type UnitTypeRow as BFUnitTypeRow, type UnitRow as BFUnitRow, type BookingSourceRow as BFBookingSourceRow, type BookingFormValues } from '@/components/booking/BookingForm';
 import MobileShiftChecklists from '@/components/mobile/MobileShiftChecklists';
+import { compareUnitNames } from '@core/unit-order';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 interface UnitRow {
   id: string; name: string; code: string; category_type: string;
+  /** Слово, яким категорію називає САМ готель. Див. фільтр нижче. */
+  category_name: string;
   unit_type_id: string; unit_type_name: string;
   cleaning_status: string; beds: number; zone: string;
 }
@@ -328,10 +331,42 @@ export default function MobileCalendar() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  /**
+   * Один ряд «чипсів» — і в ньому та відмінність, яка в цього готелю є.
+   *
+   * Було два дефекти в одному рядку. Перший: підписом стояв `category_type` —
+   * ключ поведінки (`resort`, `glamping`), тобто український готель бачив
+   * «resort» замість «Номери». Те саме правило десктоп тримає перевіркою:
+   * група зветься словом готелю, ніколи типом.
+   *
+   * Другий: ряд показувався завжди. Готель з однією категорією діставав
+   * «Всі | resort» — вибір із одного варіанта, який не може змінити жодного
+   * рядка.
+   *
+   * Тому: категорії, якщо їх кілька; інакше типи розміщення, якщо їх кілька;
+   * інакше ряду немає. На телефоні місця на два ряди немає, а корисна
+   * відмінність завжди одна — та, якої в готелю більше однієї.
+   */
+  const chips = useMemo(() => {
+    const uniq = (pick: (u: UnitRow) => string, label: (u: UnitRow) => string) =>
+      [...new Map(units.filter(u => pick(u)).map(u => [pick(u), label(u) || pick(u)])).entries()]
+        .sort((a, b) => a[1].localeCompare(b[1]));
+    const cats = uniq(u => u.category_type, u => u.category_name);
+    if (cats.length > 1) return { by: 'category' as const, items: cats };
+    const types = uniq(u => u.unit_type_id, u => u.unit_type_name);
+    if (types.length > 1) return { by: 'type' as const, items: types };
+    return { by: 'none' as const, items: [] };
+  }, [units]);
+
+  // Вибір, якого більше немає серед чипсів, не має тихо ховати номери.
+  useEffect(() => {
+    if (category && units.length && !chips.items.some(([v]) => v === category)) setCategory('');
+  }, [category, chips, units.length]);
+
   // Filter units by category + cleaning status + search
   const filteredUnits = useMemo(() => {
     return units.filter(u => {
-      if (category && u.category_type !== category) return false;
+      if (category && (chips.by === 'type' ? u.unit_type_id : u.category_type) !== category) return false;
       if (cleaningFilter && u.cleaning_status !== cleaningFilter) return false;
       if (search) {
         const s = search.toLowerCase();
@@ -339,7 +374,7 @@ export default function MobileCalendar() {
       }
       return true;
     });
-  }, [units, category, cleaningFilter, search]);
+  }, [units, category, chips, cleaningFilter, search]);
 
   // Групування рядків — за зоною, яку готель назвав сам, інакше за типом
   // номера. Гілки «resort → будова» тут більше немає: будов немає, а зона
@@ -351,6 +386,9 @@ export default function MobileCalendar() {
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(u);
     }
+    // Номери всередині групи — за номером, як на десктопі: «102» після «2»,
+    // а не після «10». База віддає їх у порядку `sort_order`, тобто за типом.
+    for (const us of map.values()) us.sort(compareUnitNames);
     return map;
   }, [filteredUnits]);
 
@@ -553,12 +591,13 @@ export default function MobileCalendar() {
 
       {/* Top Header: Category toggle & View Mode switcher */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }}>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {[{ key: '', label: tUi('Всі') },
-            ...[...new Set(units.map(u => u.category_type))].sort().map(t => ({ key: t, label: t })),
+        <div style={{ display: 'flex', gap: 4, overflowX: 'auto' }}>
+          {chips.by !== 'none' && [{ key: '', label: tUi('Всі') },
+            ...chips.items.map(([key, label]) => ({ key, label })),
           ].map(c => (
             <button key={c.key} onClick={() => setCategory(c.key)} style={{
               padding: '5px 10px', borderRadius: 16, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,
+              whiteSpace: 'nowrap',
               background: category === c.key ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
               color: category === c.key ? '#fff' : 'var(--text-secondary)',
             }}>{c.label}</button>

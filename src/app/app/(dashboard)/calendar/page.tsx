@@ -9,6 +9,7 @@ import { useDevice } from '@/ui/hooks/useDevice';
 import MobileCalendar from '@/components/mobile/pages/MobileCalendar';
 import BookingViewModal from '@/components/booking/BookingViewModal';
 import BookingForm from '@/components/booking/BookingForm';
+import { compareUnitNames } from '@core/unit-order';
 import {
   Search,
   ChevronDown,
@@ -196,6 +197,15 @@ function CalendarDesktop() {
   useEffect(() => {
     localStorage.setItem('calendar_category_v2', categoryFilter);
   }, [categoryFilter]);
+  // Тип розміщення — те, чим готель насправді розрізняє номери, коли
+  // категорія в нього одна. Свій ключ у сховищі, бо це інший вибір.
+  const [typeFilter, setTypeFilter] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('calendar_unit_type') || '';
+    return '';
+  });
+  useEffect(() => {
+    localStorage.setItem('calendar_unit_type', typeFilter);
+  }, [typeFilter]);
   const [statusFilter, setStatusFilter] = useState('');
   const [cleaningFilter, setCleaningFilter] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('');
@@ -364,15 +374,49 @@ function CalendarDesktop() {
     if (availRef.current) availRef.current.scrollLeft = scrollRef.current.scrollLeft;
   }, []);
 
+  /**
+   * Фільтр показується тоді, коли є з чого вибирати.
+   *
+   * Список із одним пунктом — не вибір, а зайвий елемент: він займає місце в
+   * панелі, виглядає робочим і не може змінити жодного рядка. Готель з однією
+   * категорією бачив «Категорії ▾» з єдиним «Номери» всередині.
+   *
+   * Рахуємо по ВСІХ юнітах, не по відфільтрованих: інакше вибір типу звузив
+   * би список типів до одного, фільтр зник би — і повернути його стало б
+   * нічим. Порожні значення відкидаються, бо «без типу» не варіант вибору.
+   */
+  const categoryOptions = useMemo(() => (
+    [...new Map(units.filter(u => u.category_type)
+      .map(u => [u.category_type, u.category_name || u.category_type])).entries()]
+      .sort((a, b) => a[1].localeCompare(b[1]))
+  ), [units]);
+
+  const unitTypeOptions = useMemo(() => (
+    [...new Map(units.filter(u => u.unit_type_id)
+      .map(u => [u.unit_type_id, u.unit_type_name || u.unit_type_id])).entries()]
+      .sort((a, b) => a[1].localeCompare(b[1]))
+  ), [units]);
+
+  // Вибір, який більше нічого не означає, не має тихо ховати номери: якщо
+  // готель видалив тип або категорію, збережений у localStorage ключ інакше
+  // лишив би порожній календар без жодного видимого фільтра.
+  useEffect(() => {
+    if (categoryFilter && units.length && !categoryOptions.some(([v]) => v === categoryFilter)) setCategoryFilter('');
+  }, [categoryFilter, categoryOptions, units.length]);
+  useEffect(() => {
+    if (typeFilter && units.length && !unitTypeOptions.some(([v]) => v === typeFilter)) setTypeFilter('');
+  }, [typeFilter, unitTypeOptions, units.length]);
+
   // ─── Filter units ──────
   const filteredUnits = useMemo(() => {
     return units.filter(u => {
       if (search && !u.name.toLowerCase().includes(search.toLowerCase()) && !u.code.toLowerCase().includes(search.toLowerCase())) return false;
       if (categoryFilter && u.category_type !== categoryFilter) return false;
+      if (typeFilter && u.unit_type_id !== typeFilter) return false;
       if (cleaningFilter && u.cleaning_status !== cleaningFilter) return false;
       return true;
     });
-  }, [units, search, categoryFilter, cleaningFilter]);
+  }, [units, search, categoryFilter, typeFilter, cleaningFilter]);
 
   const filteredBookings = useMemo(() => {
     // Броні, які звільнили номер, сітка не показує — інакше вона малює
@@ -418,6 +462,12 @@ function CalendarDesktop() {
       }
       byKey.get(g.key)!.units.push(u);
     }
+    // Номери всередині групи — за номером, а не за `sort_order` з бази.
+    // `ORDER BY c.sort_order, ut.sort_order, u.sort_order` групує кімнати за
+    // ТИПОМ, тож у готелі з трьома типами поверх виглядав так:
+    // 213 210 207 204 201 110 107 104 101 211 208 205 202 … Портьє шукає
+    // «102» очима зверху вниз і не знаходить.
+    for (const g of byKey.values()) g.units.sort((a, b) => compareUnitNames(a, b));
     return [...byKey.values()].sort((a, b) => a.label.localeCompare(b.label));
   }, [filteredUnits]);
 
@@ -642,7 +692,32 @@ function CalendarDesktop() {
   return (
     <>
       <Header title={tUi('Календар')} onMenuClick={onMenuClick} />
-      <div className="app-content" style={{ padding: '16px 24px', paddingTop: 'calc(var(--header-height) + 16px)', display: 'grid', gridTemplateRows: 'auto auto 1fr', height: 'calc(100vh - 16px)', overflow: 'hidden' }}>
+      {/*
+        Прокручується СІТКА, а не сторінка — інакше шапка з датами і рядок
+        «Вільних» їдуть угору разом із номерами, і на 25-му номері вже не
+        видно, яке це число.
+
+        Тут стояли `height: calc(100vh - 16px)` і `display: grid`, і не
+        працювало ні те, ні те:
+
+        - `.app-content` має в CSS `flex: 1`, тобто `flex-basis: 0%`. Для
+          flex-елемента базис сильніший за `height`, а `min-height: auto`
+          (дефолт) не дає стиснутись менше за вміст — тож контейнер виростав
+          до висоти сітки (1216px у вікні 800px), і прокручувалось вікно.
+          `flex: 'none'` повертає силу властивості `height`;
+        - `gridTemplateRows: 'auto auto 1fr'` рахував банер тривог, якого
+          здебільшого немає. Без нього дітей двоє, сітка потрапляла в другий
+          рядок `auto` — тобто знову у власну висоту. Колонка flex не
+          залежить від того, скільки дітей сьогодні є.
+
+        `minHeight: 0` на кожній ланці обовʼязковий: без нього `overflow`
+        нижче не має чого обрізати, і висота знову тече знизу вгору.
+      */}
+      <div className="app-content" style={{
+        padding: '16px 24px', paddingTop: 'calc(var(--header-height) + 16px)',
+        display: 'flex', flexDirection: 'column', flex: 'none',
+        height: 'calc(100vh - 16px)', minHeight: 0, overflow: 'hidden',
+      }}>
 
         {/* ─── Toolbar ───────────────────── */}
         <div style={{
@@ -699,14 +774,24 @@ function CalendarDesktop() {
 
           {/* Row 2: Filters + Range indicator */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <select className="form-select" style={{ width: 100, fontSize: 11, padding: '4px 6px' }} value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
-              <option value="">{tUi('Категорії')}</option>
-              {[...new Map(units.map(u => [u.category_type, u.category_name])).entries()]
-                .sort((a, b) => (a[1] || a[0]).localeCompare(b[1] || b[0]))
-                .map(([type, label]) => (
-                  <option key={type} value={type}>{label || type}</option>
+            {/* Категорія — лише там, де їх більше однієї. Далі тип розміщення:
+                у готелю з однією категорією саме він розрізняє номери. */}
+            {categoryOptions.length > 1 && (
+              <select className="form-select" style={{ width: 100, fontSize: 11, padding: '4px 6px' }} value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
+                <option value="">{tUi('Категорії')}</option>
+                {categoryOptions.map(([type, label]) => (
+                  <option key={type} value={type}>{label}</option>
                 ))}
-            </select>
+              </select>
+            )}
+            {unitTypeOptions.length > 1 && (
+              <select className="form-select" style={{ width: 130, fontSize: 11, padding: '4px 6px' }} value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
+                <option value="">{tUi('Тип розміщення')}</option>
+                {unitTypeOptions.map(([id, label]) => (
+                  <option key={id} value={id}>{label}</option>
+                ))}
+              </select>
+            )}
             <div style={{ position: 'relative' }}>
               <Search size={12} style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
               <input className="form-input" placeholder={tUi('Пошук...')} value={search} onChange={e => setSearch(e.target.value)}
@@ -746,7 +831,8 @@ function CalendarDesktop() {
 
         {/* ─── Calendar Grid ───────────────── */}
         <div style={{
-          flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          flex: 1, minHeight: 0,
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
           minWidth: 0, width: '100%',
           border: '1px solid var(--border-primary)', borderTop: '1px solid var(--border-primary)',
           borderRadius: '0 0 var(--radius-lg) var(--radius-lg)', background: 'var(--bg-card)',
@@ -823,7 +909,7 @@ function CalendarDesktop() {
           </div>
 
           {/* Bottom section: left panel + scrollable grid */}
-          <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minWidth: 0 }}>
+          <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', minWidth: 0 }}>
             {/* Left panel */}
             <div ref={leftRef} style={{
               width: LEFT_W, minWidth: LEFT_W, overflowY: 'hidden', overflowX: 'hidden',
