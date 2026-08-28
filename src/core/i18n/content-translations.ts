@@ -229,7 +229,6 @@ const amenityNames: ContentDict = {
     nl: 'Open haard',
     fr: 'Cheminée',
   },
-  Сауна: { en: 'Sauna', de: 'Sauna', cs: 'Sauna', pl: 'Sauna', nl: 'Sauna', fr: 'Sauna' },
   Джакузі: {
     en: 'Jacuzzi',
     de: 'Whirlpool',
@@ -315,15 +314,6 @@ const faqTranslations: ContentDict = {
     nl: 'Is er een babybedje beschikbaar?',
     fr: 'Un lit bébé est-il disponible ?',
   },
-  'ALiSiO Resort & Glamping знаходиться в Лугачовіце. GPS: 49.1122°N, 17.7531°E. Від Брно ~1.5 год, від Праги ~3.5 год. Безкоштовна парковка.':
-    {
-      en: 'Located in Luhačovice. GPS: 49.1122°N, 17.7531°E. ~1.5h from Brno, ~3.5h from Prague. Free parking.',
-      de: 'In Luhačovice gelegen. GPS: 49.1122°N, 17.7531°E. ~1,5 Std. von Brno, ~3,5 Std. von Prag. Kostenfreie Parkplätze.',
-      cs: 'Nachází se v Luhačovicích. GPS: 49.1122°N, 17.7531°E. ~1,5 hod od Brna, ~3,5 hod od Prahy. Parkování zdarma.',
-      pl: 'Znajduje się w Luhačovicach. GPS: 49.1122°N, 17.7531°E. ~1,5 godz. z Brna, ~3,5 godz. z Pragi. Bezpłatny parking.',
-      nl: 'Gelegen in Luhačovice. GPS: 49.1122°N, 17.7531°E. ~1,5u van Brno, ~3,5u van Praag. Gratis parkeren.',
-      fr: 'Situé à Luhačovice. GPS: 49.1122°N, 17.7531°E. ~1h30 de Brno, ~3h30 de Prague. Parking gratuit.',
-    },
   'Заселення з 15:00, виселення до 10:00. Ранній заїзд / пізній виїзд за запитом.': {
     en: 'Check-in from 15:00, check-out by 10:00. Early check-in / late check-out on request.',
     de: 'Check-in ab 15:00, Check-out bis 10:00. Früher Check-in / später Check-out auf Anfrage.',
@@ -490,14 +480,6 @@ const rulesTranslations: ContentDict = {
     nl: 'Dieren aan de lijn, ruim op',
     fr: 'Animaux en laisse, ramassez après eux',
   },
-  'Купіль та сауна — за попереднім записом': {
-    en: 'Plunge pool & sauna — by appointment',
-    de: 'Tauchbecken & Sauna — nach Vereinbarung',
-    cs: 'Bazén a sauna — po předchozí rezervaci',
-    pl: 'Kąpiel i sauna — po wcześniejszej rezerwacji',
-    nl: 'Dompelbad & sauna — op afspraak',
-    fr: 'Bain froid et sauna — sur réservation',
-  },
   'При виїзді поверніть ключі на рецепцію': {
     en: 'Return keys to reception at check-out',
     de: 'Schlüssel bei Abreise an der Rezeption abgeben',
@@ -590,22 +572,6 @@ const usefulInfoTranslations: ContentDict = {
     nl: 'Fietspaden langs de rivier. Verhuur bij de receptie.',
     fr: 'Pistes cyclables le long de la rivière. Location à la réception.',
   },
-  'Лугачовіце — курорт з мінеральними джерелами.': {
-    en: 'Luhačovice — a spa town with mineral springs.',
-    de: 'Luhačovice — ein Kurort mit Mineralquellen.',
-    cs: 'Luhačovice — lázně s minerálními prameny.',
-    pl: 'Luhačovice — uzdrowisko ze źródłami mineralnymi.',
-    nl: 'Luhačovice — een kuuroord met minerale bronnen.',
-    fr: 'Luhačovice — une ville thermale avec des sources minérales.',
-  },
-  'Замок Бухлов, зоопарк Лешна. Запитуйте на рецепції.': {
-    en: 'Buchlov Castle, Lešná Zoo. Ask at reception.',
-    de: 'Burg Buchlov, Zoo Lešná. Fragen Sie an der Rezeption.',
-    cs: 'Zámek Buchlov, ZOO Lešná. Ptejte se na recepci.',
-    pl: 'Zamek Buchlov, zoo Lešná. Pytaj w recepcji.',
-    nl: 'Kasteel Buchlov, Lešná Zoo. Vraag bij de receptie.',
-    fr: 'Château de Buchlov, zoo Lešná. Demandez à la réception.',
-  },
 };
 
 // ─── Services ───────────────────────────────────
@@ -617,15 +583,6 @@ const serviceTranslations: ContentDict = {
     pl: 'Śniadanie',
     nl: 'Ontbijt',
     fr: 'Petit-déjeuner',
-  },
-  Сауна: { en: 'Sauna', de: 'Sauna', cs: 'Sauna', pl: 'Sauna', nl: 'Sauna', fr: 'Sauna' },
-  Купіль: {
-    en: 'Plunge pool',
-    de: 'Tauchbecken',
-    cs: 'Studená lázeň',
-    pl: 'Kąpiel',
-    nl: 'Dompelbad',
-    fr: 'Bain froid',
   },
   Велосипед: { en: 'Bicycle', de: 'Fahrrad', cs: 'Kolo', pl: 'Rower', nl: 'Fiets', fr: 'Vélo' },
   Електровелосипед: {
@@ -692,22 +649,6 @@ const serviceTranslations: ContentDict = {
     pl: 'Pełne śniadanie w restauracji',
     nl: 'Volledig ontbijt in restaurant',
     fr: 'Petit-déjeuner complet au restaurant',
-  },
-  'Фінська сауна (2 години)': {
-    en: 'Finnish sauna (2 hours)',
-    de: 'Finnische Sauna (2 Stunden)',
-    cs: 'Finská sauna (2 hodiny)',
-    pl: 'Sauna fińska (2 godziny)',
-    nl: 'Finse sauna (2 uur)',
-    fr: 'Sauna finlandais (2 heures)',
-  },
-  'Холодна купіль після сауни': {
-    en: 'Cold plunge after sauna',
-    de: 'Kaltes Tauchbecken nach der Sauna',
-    cs: 'Studená lázeň po sauně',
-    pl: 'Zimna kąpiel po saunie',
-    nl: 'Koud dompelbad na sauna',
-    fr: 'Bain froid après sauna',
   },
   'Оренда велосипеда на день': {
     en: 'Bicycle rental per day',
@@ -839,14 +780,6 @@ const checkInTranslations: ContentDict = {
       nl: 'Meld u aan bij de receptie — u krijgt uw plek te zien en een toegangskaart voor het sanitairblok.',
       fr: "Inscrivez-vous à la réception — on vous montrera votre emplacement et vous recevrez une carte d'accès au bloc sanitaire.",
     },
-  'Зустріч на рецепції будови. Ключі та інструктаж на місці.': {
-    en: 'Meet at building reception. Keys and briefing on site.',
-    de: 'Treffen an der Gebäuderezeption. Schlüssel und Einweisung vor Ort.',
-    cs: 'Sejdeme se na recepci budovy. Klíče a instrukce na místě.',
-    pl: 'Spotkanie w recepcji budynku. Klucze i instrukcje na miejscu.',
-    nl: 'Ontmoeting bij de receptie van het gebouw. Sleutels en instructies ter plaatse.',
-    fr: 'Rendez-vous à la réception du bâtiment. Clés et instructions sur place.',
-  },
 };
 
 // ─── Merge all dictionaries ─────────────────────

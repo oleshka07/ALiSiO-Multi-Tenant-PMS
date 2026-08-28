@@ -136,6 +136,22 @@ const FORBIDDEN_IN_CODE = [
   // `Будови F` вище ловило рівно одну форму. Корпусів у них два — F і D, — і
   // будь-яка інша відміна проходила повз.
   /будов[аиуоі]\w*\s+[FDФД]\b/i,
+
+  // ── Вичищене 2026-08-28 разом із даними (чистка спадку) ──
+  //
+  // Ці формулювання жили в підказках операторського UI і в словнику
+  // content-translations (він був винятком цього гейта — виняток знято, бо
+  // підстави не стало). Маркери вузькі навмисно: «сауна» як слово належить
+  // багатьом готелям, а «Купіль та сауна — за попереднім записом» — одному.
+  /Оренда\s+кемпінгу/i,
+  /сауна\s*\+\s*сніданок/i,
+  /велосипеди,\s*чан/i,
+  /Купіль\s+та\s+сауна/i,
+  /Холодна\s+купіль/i,
+  /Бухлов/i,
+  /Buchlov/i,
+  /Лешна/i,
+  /Lešná/i,
   /будинок\s+[FD]\b/i,
   /\bbldg_[fd]\b/i,
   /\bu_f\d+\b/,
@@ -169,7 +185,6 @@ const ALLOWED = new Map([
   // Translation keys ARE the first customer's stored content: the dictionary
   // translates what already sits in their rows, and the key must match those
   // bytes to do it. Removing the entry would break their live guest page.
-  ['src/core/i18n/content-translations.ts', 'translation keys of the first customer\'s stored content'],
 ]);
 
 const files = [];

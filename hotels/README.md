@@ -65,3 +65,5 @@ node scripts/apply-hotel.mjs hotels/schlossberghotel.json             # прик
 причини, і тільки її.
 
 Шаблон з усіма розділами — `example.json`.
+
+Покроковий процес заведення і виміряний час: [docs/ONBOARDING.md](../docs/ONBOARDING.md).
