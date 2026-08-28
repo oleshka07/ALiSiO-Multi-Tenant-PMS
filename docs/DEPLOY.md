@@ -111,6 +111,15 @@ No `ssh` step in either line any more — that is the point of
 `.github/workflows/deploy.yml`. The manual command still exists and is the
 same one; it is the fallback, not the flow.
 
+**Одночасний пуш у beta і main — допустимий** (рішення 2026-08-28), бо
+порядок відтепер тримає машина, а не пам'ять. Прод-план у `deploy.yml` не
+поїде, доки останній **успішний** бета-деплой — разом зі смоуком
+`deploy/smoke.sh`, який deploy.sh ганяє після health-check — не покриє
+кожен не-merge коміт того sha; поки бета ще їде, прод чекає її до 15 хвилин
+сам, а якщо вона впала — відмовляє з причиною в summary. «Спершу beta» —
+уже не дисципліна, а гейт: код, якого не бачила жива бета, на прод фізично
+не деплоїться.
+
 `deploy.sh` refuses to run without a valid 64-hex `APP_SECRET_KEY`, dumps the
 database to `deploy/backups/` before touching anything, brings up the image CI
 built, and waits for the app to answer. If it does not come up within 90 seconds
@@ -279,7 +288,10 @@ docker run --rm -v alisio-prod_app-data:/data -v "$PWD/deploy/backups:/b" \
 Перевірити стан у будь-який момент: `./deploy/status.sh prod` — рядок
 «off-site copy». Репетиція відновлення руками: `./deploy/restore-test.sh prod`
 — вона друкує час, і цей час є фактичним RTO; на порожньому контейнері
-дамп зі 106 таблицями і 50 тис. бронювань відновлюється за секунди.
+дамп зі 104 таблицями і 50 тис. бронювань відновлюється за секунди.
+Пам'ять контейнерів: `./deploy/check-oom.sh prod|beta` — чи вбивав ядро
+контейнер за пам'ять (OOMKilled, рестарти, поточні стелі `mem_limit`);
+читає і питає, нічого не рестартує.
 
 Чого тут свідомо ще немає: **WAL-архівації і PITR**. Це наступний етап;
 поточний RPO — до 24 годин (щоденний дамп). Спершу має працювати просте, і

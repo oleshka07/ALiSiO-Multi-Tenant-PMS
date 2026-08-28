@@ -1386,6 +1386,11 @@ function runMigrations(database: any) {
         UNIQUE(property_id, code)
       )
     `);
+    // UNIQUE вище тримає правило; міграція 0024 тримає те саме ІМЕНОВАНИМ
+    // індексом idx_event_spaces_row. Ім'я мусить існувати й у цій базі:
+    // schema.sql генерується з неї, і без нього check-schema-drift показує
+    // «міграція створює, а schema.sql — ні». Так само чотири idx_*_row нижче.
+    database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_event_spaces_row ON event_spaces(property_id, code)');
     database.exec(`
       CREATE TABLE IF NOT EXISTS event_addons (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
@@ -1401,6 +1406,7 @@ function runMigrations(database: any) {
         CHECK (kind IN ('per_person','flat','per_hour','per_piece'))
       )
     `);
+    database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_event_addons_row ON event_addons(property_id, name)');
     database.exec(`
       CREATE TABLE IF NOT EXISTS event_bookings (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
@@ -1452,6 +1458,7 @@ function runMigrations(database: any) {
         UNIQUE(property_id, section)
       )
     `);
+    database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_page_sections_row ON guest_page_sections(property_id, section)');
 
     // Reception can sell it, the website cannot. See migration 0021.
     if (!utCols.includes('bookable_online')) {
@@ -5135,6 +5142,7 @@ function runMigrations(database: any) {
       )
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_fiscal_settings_org ON fin_fiscal_settings(organization_id)');
+    database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_fin_fiscal_settings_row ON fin_fiscal_settings(property_id)');
 
     // The outage journal a Betriebsprüfung asks for: when the TSE was
     // unreachable, from when to when. Migration 0027.
@@ -5174,6 +5182,7 @@ function runMigrations(database: any) {
       )
     `);
     database.exec('CREATE INDEX IF NOT EXISTS idx_fin_cash_closings_org ON fin_cash_closings(organization_id, closing_date)');
+    database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_fin_cash_closings_row ON fin_cash_closings(property_id, closing_date)');
   } catch (e: any) {
     console.error('[DB] fin_folios migration:', e.message);
   }
@@ -5241,7 +5250,14 @@ function runMigrations(database: any) {
   try {
     const cols = (database.prepare('PRAGMA table_info(reservations)').all() as any[]).map((c: any) => c.name);
     if (cols.length > 0 && !cols.includes('lodging_discount_percent')) {
-      database.exec('ALTER TABLE reservations ADD COLUMN lodging_discount_percent REAL NOT NULL DEFAULT 0');
+      // Іменований CHECK прямо в ADD COLUMN: міграція 0018 ставить його на
+      // Postgres, а schema.sql генерується з ЦІЄЇ бази — без імені тут
+      // check-schema-drift показує «міграція створює, а schema.sql — ні».
+      database.exec(
+        'ALTER TABLE reservations ADD COLUMN lodging_discount_percent REAL NOT NULL DEFAULT 0 ' +
+        'CONSTRAINT reservations_lodging_discount_range ' +
+        'CHECK (lodging_discount_percent >= 0 AND lodging_discount_percent <= 100)',
+      );
     }
     if (cols.length > 0 && !cols.includes('lodging_discount_reason')) {
       database.exec('ALTER TABLE reservations ADD COLUMN lodging_discount_reason TEXT');

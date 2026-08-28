@@ -213,7 +213,7 @@ jobs:
         run: |
           node scripts/provision-org.mjs \
             --name "CI Hotel" --slug ci-hotel --email owner@ci.test \
-            --password 'ci-password-1234' --language de | tee /tmp/provision.txt
+            --password 'ci-password-1234' --language de --currency EUR | tee /tmp/provision.txt
           grep -qE 'organization_id +org_' /tmp/provision.txt \
             || { echo '::error::provisioning printed no organization id'; exit 1; }
           grep -qE 'базова мова +de' /tmp/provision.txt \
