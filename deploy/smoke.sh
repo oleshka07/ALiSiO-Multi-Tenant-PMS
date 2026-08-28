@@ -34,7 +34,7 @@ cd "$(dirname "$0")/.."
 ENV_FILE="deploy/env.${ENV_NAME}"
 [ -f "$ENV_FILE" ] || { echo "missing $ENV_FILE — запускати на сервері" >&2; exit 1; }
 
-val() { grep -E "^$1=" "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r'; }
+val() { grep -E "^$1=" "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true; }
 
 BASE="$(val APP_URL)"
 case "$BASE" in

@@ -137,7 +137,7 @@ SQL
 # fixing it, so this stops instead and says what to do. Being generous with a
 # database that is nearly right is how an environment ends up different from
 # production in ways nobody can list.
-WANT="$(grep -c '^CREATE TABLE' db/postgres/schema.sql)"
+WANT="$(grep -c '^CREATE TABLE' db/postgres/schema.sql || true)"
 TABLES="$(psql_super -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")"
 if [ "$TABLES" -eq 0 ]; then
   echo "==> loading schema ($WANT tables)"
@@ -260,7 +260,7 @@ rollback_hint() {
   echo "!! the SQLite file is untouched — nothing in this script writes to it" >&2
 }
 
-PORT="$(grep -E '^APP_PORT=' "$ENV_FILE" | cut -d= -f2)"
+PORT="$(grep -E '^APP_PORT=' "$ENV_FILE" | cut -d= -f2 || true)"
 echo "==> waiting for the app to answer on 127.0.0.1:${PORT}"
 UP=""
 for i in $(seq 1 45); do

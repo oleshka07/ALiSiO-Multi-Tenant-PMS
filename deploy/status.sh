@@ -30,7 +30,7 @@ fi
 
 echo "==> health (POST /api/auth/login has to reach the users table)"
 if [ -f "$ENV_FILE" ]; then
-  PORT="$(grep -E '^APP_PORT=' "$ENV_FILE" | cut -d= -f2 | tr -d '\r')"
+  PORT="$(grep -E '^APP_PORT=' "$ENV_FILE" | cut -d= -f2 | tr -d '\r' || true)"
   CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:${PORT}/api/auth/login" \
     -H 'Content-Type: application/json' \
     -d '{"email":"status@example.invalid","password":"x"}' || true)"
