@@ -14,7 +14,13 @@
 #
 # Checks, and what each catches:
 #   rows in reservations > 0     an empty or truncated dump
-#   newest created_at fresh      a dump that is quietly weeks old
+#   newest created_at fresh      a dump that is quietly weeks old — UNLESS the
+#                                LIVE database's newest row is just as old: a
+#                                sleeping hotel is not a dead backup, so that
+#                                case is green with a note. FAILED here means
+#                                the dump lags the live database by more than
+#                                the dump file's own age — rows that already
+#                                existed at dump time are missing from it.
 #   newest dump file fresh       cron stopped producing dumps at all
 #
 # Runs weekly from cron (setup-backup-cron.sh) and by hand before anything
@@ -109,10 +115,36 @@ echo "    таблиць: $TABLES   RLS-політик: $POLICIES   бронюв
 [ "$ROWS" -gt 0 ] 2>/dev/null || note_fail "reservations порожня — дамп биті або обрізаний"
 [ "$POLICIES" -gt 0 ] 2>/dev/null || note_fail "жодної RLS-політики — відновлена база не ізолює орендарів"
 
+# «Несвіжі дані в дампі» має два прочитання, і лише одне — поломка.
+# Порівнюємо вік останнього запису в ДАМПІ з віком того самого запису в
+# ЖИВІЙ базі: збігаються (з поправкою на вік самого файла — рядки, що
+# зʼявилися ПІСЛЯ зняття дампа, відставанням не є) — бекап чесний, база
+# просто спить, і 2026-08-28 саме так виглядав прод без операційної
+# активності з 31 липня. Дамп, що відстає сильніше, ніж міг би, — не бачить
+# рядків, які вже існували на момент зняття: ось це FAILED.
+LIVE_AGE_H=""
+LIVE_PG_CONTAINER="alisio-${ENV_NAME}-postgres"
+if [ "${RESTORE_TEST_LOCAL_PG:-}" != "1" ] && docker inspect "$LIVE_PG_CONTAINER" >/dev/null 2>&1; then
+  LIVE_DB="$(grep -E '^PG_DATABASE=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r')"
+  LIVE_AGE_H="$(docker exec "$LIVE_PG_CONTAINER" psql -U "$PG_SUPERUSER" -d "${LIVE_DB:-alisio}" -tAc \
+    "SELECT COALESCE(floor(extract(epoch from now()-max(created_at))/3600)::int, -1) FROM reservations" \
+    2>/dev/null | tr -d ' ')" || LIVE_AGE_H=""
+fi
+
 if [ "$DATA_AGE_H" = "-1" ]; then
   note_fail "у reservations немає жодного created_at"
 elif [ "$DATA_AGE_H" -gt "$MAX_DATA_AGE_H" ]; then
-  note_fail "останнє бронювання в дампі старше ${MAX_DATA_AGE_H} год (${DATA_AGE_H} год) — дамп несе несвіжі дані"
+  if [ -n "$LIVE_AGE_H" ] && [ "$LIVE_AGE_H" != "-1" ] && [ "$LIVE_AGE_H" -ge 0 ] 2>/dev/null; then
+    LAG_H=$(( DATA_AGE_H - LIVE_AGE_H ))
+    if [ "$LAG_H" -le $(( DUMP_AGE_H + 1 )) ]; then
+      echo "    база спить, бекап чесний: останній запис і в живій базі ${LIVE_AGE_H} год тому"
+      echo "    (у дампі ${DATA_AGE_H} год; різниця в межах віку самого файла — ${DUMP_AGE_H} год)"
+    else
+      note_fail "дамп ВІДСТАЄ від живої бази: живій останній запис ${LIVE_AGE_H} год тому, дампу — ${DATA_AGE_H} год, а сам файл лише ${DUMP_AGE_H} год. Рядки, що вже існували на момент зняття, у дамп не потрапили — бекапиться не та база або не той обсяг"
+    fi
+  else
+    note_fail "останнє бронювання в дампі старше ${MAX_DATA_AGE_H} год (${DATA_AGE_H} год), а живу базу порівняти не вдалося (контейнер ${LIVE_PG_CONTAINER} недоступний) — «мертвий бекап» від «сплячої бази» звідси не відрізнити"
+  fi
 else
   echo "    останній запис у дампі: ${DATA_AGE_H} год тому (поріг ${MAX_DATA_AGE_H})"
 fi

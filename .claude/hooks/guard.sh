@@ -16,6 +16,10 @@
 #                                         забила диск, Postgres упав, сусідні
 #                                         проєкти віддавали 502
 #
+# Плюс одне ТЕРТЯ без блоку (1b): push у main/beta, коли checks цієї гілки
+# червоні, друкує питання «це фікс чи нова робота?» і пропускає виклик —
+# фікси теж пушаться, але тихо класти нове поверх червоного більше не вийде.
+#
 # Відмова хука — правило проєкту, а не збій. Все інше проходить мовчки.
 set -u
 
@@ -64,6 +68,36 @@ if [[ "$CMD" =~ git[[:space:]].*push || "$CMD" =~ git[[:space:]]+push ]]; then
     if [[ "$CMD" =~ [[:space:]:+](main|beta)([[:space:]]|$) ]]; then
       deny "Force-push у main/beta переписує історію гілки, з якої деплояться готелі. Відкат — образом, не історією: APP_IMAGE=ghcr.io/…:<sha> DEPLOY_SHA=<sha> ./deploy/deploy.sh prod|beta (docs/DEPLOY.md → Rollback). Якщо force справді потрібен — це рішення людини, руками, поза цією сесією."
     fi
+  fi
+fi
+
+# ── 1b. Пуш у main/beta на червоний CI: тертя, не блок ──────────────────────
+# Фікс поломки теж пушиться, тому exit 1 — «шумить, не блокує» (див. шапку).
+# Без gh або без відповіді API судити нема чим, і хук мовчить: про відсутність
+# gh сесії вже сказав session-start, а хибна тривога тут навчила б ігнорувати
+# справжню.
+if [[ "$CMD" =~ git[[:space:]].*push ]] && ! [[ "$CMD" =~ --force ]]; then
+  PUSH_TARGET=""
+  if [[ "$CMD" =~ [[:space:]](main|beta)([[:space:]]|$) ]]; then
+    PUSH_TARGET="${BASH_REMATCH[1]}"
+  elif [[ "$CMD" =~ git[[:space:]]+push([[:space:]]+(-u[[:space:]]+)?origin)?[[:space:]]*$ ]]; then
+    PUSH_TARGET="$(git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    case "$PUSH_TARGET" in main|beta) ;; *) PUSH_TARGET="" ;; esac
+  fi
+  if [ -n "$PUSH_TARGET" ] && command -v gh >/dev/null 2>&1; then
+    TMO=""
+    command -v timeout >/dev/null 2>&1 && TMO="timeout 10"
+    CI_INFO="$(cd "${CLAUDE_PROJECT_DIR:-.}" && $TMO gh api \
+      "repos/{owner}/{repo}/actions/workflows/checks.yml/runs?branch=${PUSH_TARGET}&per_page=1" \
+      --jq '.workflow_runs[0] | (.conclusion // .status) + "|" + .created_at + "|" + (.run_number|tostring)' \
+      2>/dev/null || true)"
+    case "$CI_INFO" in
+      failure\|*|cancelled\|*|timed_out\|*)
+        CI_REST="${CI_INFO#*|}"
+        printf '%s\n' "CI на ${PUSH_TARGET} червоний з ${CI_REST%%|*} (ран №${CI_INFO##*|}). Це фікс поломки чи нова робота поверх неї? Нова робота чекає зеленого." >&2
+        exit 1
+        ;;
+    esac
   fi
 fi
 
