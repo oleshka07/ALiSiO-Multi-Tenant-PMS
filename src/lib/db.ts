@@ -4200,19 +4200,12 @@ function runMigrations(database: any) {
       database.exec('ALTER TABLE categories_new RENAME TO categories');
       database.exec('PRAGMA foreign_keys = ON');
 
-      // Seed non-accommodation categories
-      const propId = (database.prepare('SELECT id FROM properties LIMIT 1').get() as { id: string })?.id;
-      if (propId) {
-        const insertCat = database.prepare(`
-          INSERT OR IGNORE INTO categories (id, property_id, name, type, sort_order, icon, color, show_in_tasks, show_in_finance, show_in_booking)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        insertCat.run('cat_restaurant', propId, 'Ресторан', 'facility', 10, '🍽️', '#f59e0b', 1, 1, 0);
-        insertCat.run('cat_sauna', propId, 'Сауна', 'facility', 11, '🧖', '#ef4444', 1, 1, 0);
-        insertCat.run('cat_pool', propId, 'Купель', 'facility', 12, '🛁', '#06b6d4', 1, 1, 0);
-        insertCat.run('cat_territory', propId, 'Територія', 'area', 13, '🌳', '#22c55e', 1, 0, 0);
-      }
-      console.log('[DB] Categories migration complete: expanded types + visibility flags + seeded facilities');
+      // Тут стояв засів «Ресторан / Сауна / Купель / Територія» для
+      // `properties LIMIT 1` — обʼєкти ПЕРШОГО клієнта, вписані кожній базі,
+      // що мігрувала (свіжа база його пропускала: властивостей ще немає).
+      // Прибрано 2026-08-28 разом із рештою спадку: що в готелю є —
+      // каже його файл у hotels/, не код (інваріант 20).
+      console.log('[DB] Categories migration complete: expanded types + visibility flags');
     }
   } catch (e: any) {
     console.log('[DB] categories expansion note:', e.message);

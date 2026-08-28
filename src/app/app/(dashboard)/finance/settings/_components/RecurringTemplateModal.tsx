@@ -122,7 +122,7 @@ export default function RecurringTemplateModal({ initial, onClose, onSave }: Pro
         </div>
 
         <Field label={t('Назва')}>
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)} style={input} autoFocus placeholder={t('Напр. Оренда кемпінгу')} />
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} style={input} autoFocus placeholder={t('Напр. Оренда залу')} />
         </Field>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: 8 }}>
