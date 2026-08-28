@@ -21,6 +21,9 @@
 # нерозрізненний від скрипта, який не запускався.
 #
 # Що він робить, по порядку:
+#   0. якщо в env-файлі немає рядка PG_MEM_LIMIT — дописує PG_MEM_LIMIT=640m
+#      (чинний compose-дефолт) туди, ідемпотентно: конфігурація має бути
+#      видима у файлі, а не жити в дефолті, якого не видно жодним grep-ом;
 #   1. читає ПОТОЧНІ налаштування пам'яті Postgres (SHOW …) і перевіряє, що
 #      вони вкладаються в майбутній ліміт — інакше ліміт сам стане причиною
 #      OOM: фіксована частина (shared_buffers + wal_buffers +
@@ -35,11 +38,12 @@
 #      різницю конфігурації і перестворює контейнер; дані живуть в
 #      іменованому томі pg-data і перестворення не переживають ЛИШЕ процеси,
 #      не дані;
-#   5. чекає pg_isready і /api/health → 200, друкує ліміт «до → після» і
-#      RestartPolicy.
+#   5. чекає pg_isready і /api/health → 200 — і ЗВІРЯЄ ліміт з очікуваним:
+#      не збігся → exit 1. «Скрипт відпрацював» ≠ «ліміт стоїть».
 #
-# Повторний запуск із уже застосованим лімітом — no-op: compose не
-# перестворює контейнер, конфігурація якого не змінилась.
+# Повторний запуск із уже застосованим лімітом каже це словами і виходить
+# одразу, не чіпаючи базу. Жоден шлях завершення не мовчить: тихий no-op —
+# той самий клас поломки, що зелений health при мертвій базі (INC-007).
 set -euo pipefail
 
 ENV_NAME="${1:-}"
@@ -71,8 +75,23 @@ PG_SUPERUSER="$(val PG_SUPERUSER)"; PG_SUPERUSER="${PG_SUPERUSER:-alisio_admin}"
 PG_DATABASE="$(val PG_DATABASE)";   PG_DATABASE="${PG_DATABASE:-alisio}"
 APP_PORT="$(val APP_PORT)"
 
-# Майбутній ліміт: що скаже compose — PG_MEM_LIMIT з env-файла або дефолт.
-LIMIT_RAW="$(val PG_MEM_LIMIT)"; LIMIT_RAW="${LIMIT_RAW:-640m}"
+# Майбутній ліміт. Реальні env-файли на сервері старші за появу лімітів у
+# compose (fe20228) і рядка PG_MEM_LIMIT не мають: compose мовчки бере дефолт,
+# і жоден перегляд файла цього не покаже — саме на цьому відсутньому ключі
+# перший запуск скрипта помер без жодного слова (INC-007). Тому відсутній
+# ключ дописується СЮДИ Ж, ідемпотентно: конфігурація має бути видима у
+# файлі, а не жити в голові. Порожнє значення (рядок «PG_MEM_LIMIT=» з
+# прикладу) — не дописуємо, щоб не плодити дублікати: діє дефолт, про це
+# кажемо вголос.
+if ! grep -qE '^PG_MEM_LIMIT=' "$ENV_FILE"; then
+  [ -z "$(tail -c1 "$ENV_FILE")" ] || echo >> "$ENV_FILE"   # файл без \n у кінці
+  printf '# дописано apply-db-limits.sh %s: явний ліміт бази замість мовчазного compose-дефолту\nPG_MEM_LIMIT=640m\n' \
+    "$(date +%F)" >> "$ENV_FILE"
+  echo "==> у $ENV_FILE не було PG_MEM_LIMIT — дописав PG_MEM_LIMIT=640m (чинний compose-дефолт, тепер видимий)"
+fi
+LIMIT_RAW="$(val PG_MEM_LIMIT)"
+[ -n "$LIMIT_RAW" ] || echo "==> PG_MEM_LIMIT у $ENV_FILE порожній — діє дефолт 640m"
+LIMIT_RAW="${LIMIT_RAW:-640m}"
 to_mb() { # '128MB' | '4MB' | '16GB' | '512kB' | '640m' | '1g' | '100' -> МБ (ціле)
   local v="$1"
   # Порожнє або дробове значення -> порожня відповідь: хай гучно відмовить
@@ -93,6 +112,15 @@ LIMIT_MB="$(to_mb "$LIMIT_RAW")"
 
 NOW_BYTES="$(docker inspect --format '{{.HostConfig.Memory}}' "$PGC")"
 echo "==> $PGC: mem_limit зараз $(( NOW_BYTES / 1024 / 1024 )) МБ, буде ${LIMIT_MB} МБ (PG_MEM_LIMIT=${LIMIT_RAW})"
+
+# Уже зроблено — кажемо це словами і виходимо, не турбуючи базу. Але лише
+# якщо і політика рестарту на місці: check-oom.sh шле сюди й за нею.
+POLICY_NOW="$(docker inspect --format '{{.HostConfig.RestartPolicy.Name}}' "$PGC")"
+if [ "$NOW_BYTES" = "$(( LIMIT_MB * 1024 * 1024 ))" ] \
+   && { [ "$POLICY_NOW" = unless-stopped ] || [ "$POLICY_NOW" = always ]; }; then
+  echo "==> ліміт уже застосований (${LIMIT_MB} МБ, restart=${POLICY_NOW}) — перестворювати нічого"
+  exit 0
+fi
 
 # ── 1. Чи вкладаються власні налаштування Postgres у майбутній ліміт ─────────
 show() { docker exec "$PGC" psql -U "$PG_SUPERUSER" -d "$PG_DATABASE" -tAc "SHOW $1" 2>/dev/null | tr -d ' ' || true; }
@@ -178,8 +206,18 @@ if [ -n "$APP_PORT" ]; then
   [ "$UP" = 200 ] || { echo "!! застосунок не бачить базу (health ${UP}) — ./deploy/logs.sh $ENV_NAME" >&2; exit 1; }
 fi
 
-# ── 5. Доказ ────────────────────────────────────────────────────────────────
+# ── 5. Доказ: ліміт застосований, або це провал зі статусом 1 ───────────────
+# «Скрипт відпрацював» ≠ «ліміт стоїть»: якщо compose з якоїсь причини не
+# перестворив контейнер, тихий exit 0 був би тим самим класом, що зелений
+# health при мертвій базі. Тому звіряємо число, а не віримо крокам.
 docker inspect --format \
   '==> {{.Name}}: mem_limit={{.HostConfig.Memory}} байт, restart={{.HostConfig.RestartPolicy.Name}}, стан={{.State.Status}}' \
   "$PGC" | sed 's|/||'
-echo "==> перевірити разом з рештою: ./deploy/check-oom.sh $ENV_NAME"
+AFTER_BYTES="$(docker inspect --format '{{.HostConfig.Memory}}' "$PGC")"
+if [ "$AFTER_BYTES" != "$(( LIMIT_MB * 1024 * 1024 ))" ]; then
+  echo "!! ПРОВАЛ: очікував mem_limit=$(( LIMIT_MB * 1024 * 1024 )) байт (${LIMIT_MB} МБ)," >&2
+  echo "!! контейнер має ${AFTER_BYTES}. Ліміт НЕ застосований — чи перестворив compose" >&2
+  echo "!! контейнер узагалі? docker ps -a, ./deploy/logs.sh $ENV_NAME" >&2
+  exit 1
+fi
+echo "==> ліміт застосований і звірений; перевірити разом з рештою: ./deploy/check-oom.sh $ENV_NAME"
