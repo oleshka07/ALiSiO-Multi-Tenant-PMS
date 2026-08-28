@@ -204,7 +204,15 @@ function checksOf(sql) {
       else if (sql[i] === ')') depth--;
       i++;
     }
-    out.push(sql.slice(m.index + m[0].length, i - 1).replace(/\s+/g, ' ').trim());
+    // `CONSTRAINT x CHECK (…)` їде в Postgres під СВОЇМ ім'ям. Безіменний
+    // CHECK Postgres називає сам — і міграція, яка ставить той самий CHECK
+    // за іменем (`IF NOT EXISTS … conname`), не впізнає його й додає другий.
+    // Це вже сталося одного разу; див. коментар у check-schema-drift.mjs.
+    const named = /CONSTRAINT\s+["'`[]?([A-Za-z_0-9]+)["'`\]]?\s*$/i.exec(sql.slice(0, m.index));
+    out.push({
+      name: named ? named[1] : null,
+      expr: sql.slice(m.index + m[0].length, i - 1).replace(/\s+/g, ' ').trim(),
+    });
   }
   return out;
 }
@@ -431,14 +439,14 @@ for (const t of tables) {
   for (const u of uniquesOf(t.name)) lines.push(`  UNIQUE (${u.map(q).join(', ')})`);
 
 
-  for (const chk of checksOf(t.sql || '')) {
+  for (const { name, expr } of checksOf(t.sql || '')) {
     // datetime('now') and friends inside a CHECK would not parse; those are
     // rare and reported rather than translated blindly.
-    if (/datetime\(|date\(|strftime\(/i.test(chk)) {
-      notes.push(`${t.name}: CHECK (${chk}) uses a SQLite date function — review by hand`);
+    if (/datetime\(|date\(|strftime\(/i.test(expr)) {
+      notes.push(`${t.name}: CHECK (${expr}) uses a SQLite date function — review by hand`);
       continue;
     }
-    lines.push(`  CHECK (${chk})`);
+    lines.push(name ? `  CONSTRAINT ${q(name)} CHECK (${expr})` : `  CHECK (${expr})`);
   }
 
   w(`CREATE TABLE ${q(t.name)} (`);
