@@ -26,7 +26,7 @@ esac
 
 cd "$(dirname "$0")/.."
 ENV_FILE="deploy/env.${ENV_NAME}"
-val() { grep -E "^$1=" "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r'; }
+val() { grep -E "^$1=" "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true; }
 
 BACKUP_REMOTE="$(val BACKUP_REMOTE)"
 [ -n "$BACKUP_REMOTE" ] && [ -f deploy/rclone.conf ] || {

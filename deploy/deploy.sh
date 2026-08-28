@@ -111,12 +111,12 @@ echo "==> $ENV_NAME: deploying $(git rev-parse --short HEAD)"
 # carries today's guests.
 mkdir -p deploy/backups
 STAMP="$(date +%Y%m%d-%H%M%S)"
-DB_DRIVER_NOW="$(grep -E '^DB_DRIVER=' "$ENV_FILE" | cut -d= -f2 | tr -d '\r')"
+DB_DRIVER_NOW="$(grep -E '^DB_DRIVER=' "$ENV_FILE" | cut -d= -f2 | tr -d '\r' || true)"
 
 if [ "$DB_DRIVER_NOW" = "postgres" ]; then
   PG_CONTAINER="alisio-${ENV_NAME}-postgres"
-  PG_SUPERUSER="$(grep -E '^PG_SUPERUSER=' "$ENV_FILE" | cut -d= -f2 | tr -d '\r')"
-  PG_DATABASE="$(grep -E '^PG_DATABASE=' "$ENV_FILE" | cut -d= -f2 | tr -d '\r')"
+  PG_SUPERUSER="$(grep -E '^PG_SUPERUSER=' "$ENV_FILE" | cut -d= -f2 | tr -d '\r' || true)"
+  PG_DATABASE="$(grep -E '^PG_DATABASE=' "$ENV_FILE" | cut -d= -f2 | tr -d '\r' || true)"
   DUMP="deploy/backups/alisio-${ENV_NAME}-${STAMP}.sql.gz"
   if docker inspect "$PG_CONTAINER" >/dev/null 2>&1; then
     PG_PRESENT=1
@@ -240,7 +240,7 @@ echo "==> starting"
 docker compose --env-file "$ENV_FILE" -p "$PROJECT" -f deploy/docker-compose.yml up -d
 
 # ── Verify ───────────────────────────────────────────────────────────────────
-PORT="$(grep -E '^APP_PORT=' "$ENV_FILE" | cut -d= -f2)"
+PORT="$(grep -E '^APP_PORT=' "$ENV_FILE" | cut -d= -f2 || true)"
 # Health means "answers a request that opens the database", not "serves a
 # page". GET /login renders from the bundle alone: when a deploy shipped a
 # build that could not load better-sqlite3, this loop said "beta is up" while

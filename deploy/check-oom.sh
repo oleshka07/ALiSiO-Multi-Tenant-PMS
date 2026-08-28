@@ -24,6 +24,11 @@
 #               trace is a site that stopped answering. Checked here because
 #               this is the script a reboot runbook runs FIRST
 #               (docs/DEPLOY.md → «Перезавантаження хоста»).
+#   mem_limit   0 means NO ceiling at all — the exact state this script was
+#               born from. Until 2026-08-28 it printed the zero and still
+#               summarised "all clear": a check that shows the problem but
+#               does not fail on it teaches everyone to scroll past. Zero is
+#               an alarm, not a number.
 #
 # Read-only by design: it inspects and asks, never restarts, never writes.
 set -euo pipefail
@@ -37,6 +42,7 @@ esac
 FOUND=0
 FAIL=0
 POLICY_FAIL=0
+LIMIT_FAIL=0
 for c in $(docker ps -a --filter "name=alisio-${ENV_NAME}-" --format '{{.Names}}'); do
   FOUND=1
   docker inspect --format '{{.Name}}
@@ -55,6 +61,14 @@ for c in $(docker ps -a --filter "name=alisio-${ENV_NAME}-" --format '{{.Names}}
       POLICY_FAIL=1
       ;;
   esac
+  # Стеля нуль — стелі немає: витік у цьому контейнері має право з'їсти
+  # пам'ять усього VPS. До 2026-08-28 цей скрипт друкував нуль і все одно
+  # підсумовував «зелено» — перевірка, яка показує проблему, але не падає
+  # на ній, вчить дивитися повз.
+  if [ "$(docker inspect --format '{{.HostConfig.Memory}}' "$c")" = "0" ]; then
+    echo "    !! mem_limit=0 — стелі немає: витік тут забере пам'ять усього сервера"
+    LIMIT_FAIL=1
+  fi
 done
 
 if [ "$FOUND" = 0 ]; then
@@ -72,7 +86,11 @@ if [ "$POLICY_FAIL" = 1 ]; then
   echo "!! app лікує ./deploy/deploy.sh ${ENV_NAME}; postgres — ./deploy/apply-db-limits.sh ${ENV_NAME}" >&2
   echo "!! (обидва перестворюють контейнер з політикою з docker-compose.yml)." >&2
 fi
-if [ "$FAIL" = 1 ] || [ "$POLICY_FAIL" = 1 ]; then
+if [ "$LIMIT_FAIL" = 1 ]; then
+  echo "!! Є контейнер без mem_limit (0 = стелі немає). app лікує ./deploy/deploy.sh ${ENV_NAME};" >&2
+  echo "!! postgres — ./deploy/apply-db-limits.sh ${ENV_NAME} (свідоме перестворення, ~10–30 с простою)." >&2
+fi
+if [ "$FAIL" = 1 ] || [ "$POLICY_FAIL" = 1 ] || [ "$LIMIT_FAIL" = 1 ]; then
   exit 1
 fi
-echo "==> OOM-кілів немає, політики рестарту на місці; рестарти вище — привід подивитись логи, не тривога"
+echo "==> OOM-кілів немає, стелі й політики рестарту на місці; рестарти вище — привід подивитись логи, не тривога"
