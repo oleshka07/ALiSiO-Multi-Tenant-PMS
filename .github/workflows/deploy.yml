@@ -122,11 +122,14 @@ concurrency:
   group: deploy-${{ github.event.workflow_run.head_branch || github.ref_name }}
   cancel-in-progress: false
 
-# Read the repository, write the package. Nothing else — in particular not
-# `contents: write`: a deploy has no business pushing.
+# Read the repository, write the package, read the run history. Nothing else —
+# in particular not `contents: write`: a deploy has no business pushing.
+# `actions: read` exists for one step: prod asks which sha the last successful
+# beta deploy ran, and that answer lives in this workflow's own run history.
 permissions:
   contents: read
   packages: write
+  actions: read
 
 jobs:
   # ── What are we deploying, and can we? ─────────────────────────────────────
@@ -136,7 +139,9 @@ jobs:
   plan:
     name: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 20, не 5: прод-план уміє ЧЕКАТИ бета-деплой до 15 хвилин (крок нижче) —
+    # одночасний пуш в обидві гілки інакше завжди приходив би раніше за бету.
+    timeout-minutes: 20
     # A manual run has no workflow_run to inspect; a triggered one must have
     # passed. Deploying a commit whose checks failed is the thing this guards.
     if: >-
@@ -214,6 +219,84 @@ jobs:
             exit 1
           fi
           echo "beta already carries everything in $SHA — ok"
+
+      # ── Prod waits for a beta that has RUN this code ────────────────────
+      #
+      # The ancestry gate above proves beta CARRIES every commit. It cannot
+      # prove beta has successfully DEPLOYED them: with a simultaneous push
+      # to both branches the ref is in place while the beta deploy is still
+      # building — or has failed, and prod would ship code no environment
+      # has ever served. This step closes that half. Prod proceeds only when
+      # the latest successful beta deploy covers every non-merge commit of
+      # the sha being shipped; while a deploy run is still in flight it
+      # WAITS instead of failing, because the simultaneous push is the
+      # accepted flow (docs/DEPLOY.md → Потік) and the beta it needs is
+      # minutes away.
+      #
+      # The deployed sha is read from the deploy JOB NAME («beta @ <sha>»).
+      # Not from run.head_sha: on a workflow_run-triggered run that field is
+      # the default branch tip — reading it as «what was deployed» is the
+      # exact mistake the run-name comment at the top of this file warns
+      # about, observed live on run №266 (job deployed 767a8aa, head_sha
+      # said 6ac5f92).
+      - name: prod ships only what beta has RUN
+        if: steps.env.outputs.name == 'prod'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.env.outputs.sha }}
+        run: |
+          jobs_of() { gh api "repos/$GITHUB_REPOSITORY/actions/runs/$1/jobs?per_page=20" \
+                        --jq '.jobs[] | select(.conclusion=="success") | .name'; }
+          # Newest successful beta deploy: sha from the job name, or LEGACY
+          # for a success from before this gate existed (plain name «beta»).
+          latest_beta() {
+            for RID in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?status=success&per_page=20" \
+                           --jq '.workflow_runs[].id'); do
+              NAMES="$(jobs_of "$RID")" || continue
+              S="$(sed -n 's/^beta @ //p' <<<"$NAMES" | head -1)"
+              [ -n "$S" ] && { echo "$S"; return 0; }
+              grep -qx 'beta' <<<"$NAMES" && { echo LEGACY; return 0; }
+            done
+            return 1
+          }
+          DEADLINE=$(( $(date +%s) + 900 ))
+          while :; do
+            FOUND="$(latest_beta || true)"
+            if [ "$FOUND" = LEGACY ]; then
+              # Перший прогін після появи гейта: успішна бета ще без sha в
+              # імені. Покриття тоді тримає лише гейт походження вище — і
+              # цей випадок самозникає з першим новим бета-деплоєм.
+              echo "::notice::останній успішний бета-деплой ще старого формату (без sha) — прийнято за гейтом походження вище"
+              exit 0
+            fi
+            UNRUN=""
+            if [ -n "$FOUND" ]; then
+              git cat-file -e "$FOUND^{commit}" 2>/dev/null || git fetch --quiet origin "$FOUND" || true
+              if git cat-file -e "$FOUND^{commit}" 2>/dev/null; then
+                UNRUN="$(git rev-list --count --no-merges "$FOUND..$SHA")"
+                if [ "$UNRUN" = "0" ]; then
+                  echo "бета вже успішно задеплоїла все, що входить у $SHA (останній бета-деплой: $FOUND) — ok"
+                  exit 0
+                fi
+              fi
+            fi
+            IN_FLIGHT="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?per_page=10" \
+                           --jq '[.workflow_runs[] | select(.status!="completed")] | length')"
+            # Цей прод-ран сам не completed і рахується за одиницю; >1 означає,
+            # що поруч справді щось їде — майже завжди та сама бета.
+            if [ "${IN_FLIGHT:-1}" -gt 1 ] && [ "$(date +%s)" -lt "$DEADLINE" ]; then
+              echo "чекаю бета-деплой (непокритих комітів: ${UNRUN:-невідомо})…"; sleep 20; continue
+            fi
+            {
+              echo "### Прод не поїде: бета ще не задеплоїла цей код успішно"
+              echo
+              echo "Потік проєкту: push → бета деплоїться і проходить смоук → прод."
+              echo "Останній успішний бета-деплой: ${FOUND:-жодного}; комітів поза ним: ${UNRUN:-усі}."
+              echo "Якщо бета-деплой упав — почини бету, прод поїде наступним циклом сам."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::бета не задеплоїла цей код (останній успішний бета-деплой: ${FOUND:-жодного}) — спершу зелений деплой беты зі смоуком (docs/DEPLOY.md)"
+            exit 1
+          done
 
       - name: are the deploy secrets set
         id: gate
@@ -312,9 +395,11 @@ jobs:
 
   # ── Ship it ────────────────────────────────────────────────────────────────
   deploy:
-    # The environment in the job name, so the run list says which one this was
-    # without opening it.
-    name: ${{ needs.plan.outputs.env }}
+    # The environment AND the sha in the job name. The environment — so the
+    # run list says which one this was without opening it. The sha — so the
+    # prod gate above can read «which commit did beta last deploy» from the
+    # run history, where run.head_sha does not carry that answer.
+    name: ${{ needs.plan.outputs.env }} @ ${{ needs.plan.outputs.sha }}
     needs: [plan, image]
     if: needs.plan.outputs.ready == 'yes'
     runs-on: ubuntu-latest
