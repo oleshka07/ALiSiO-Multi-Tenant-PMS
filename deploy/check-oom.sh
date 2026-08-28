@@ -19,6 +19,11 @@
 #   restarts    deaths the restart policy already papered over
 #   exit=137    a SIGKILL exit — OOM is the usual suspect when nobody typed
 #               `docker stop`
+#   restart=    the policy itself. Anything but unless-stopped/always is an
+#               alarm: a host reboot leaves that container down, and the only
+#               trace is a site that stopped answering. Checked here because
+#               this is the script a reboot runbook runs FIRST
+#               (docs/DEPLOY.md → «Перезавантаження хоста»).
 #
 # Read-only by design: it inspects and asks, never restarts, never writes.
 set -euo pipefail
@@ -31,13 +36,25 @@ esac
 
 FOUND=0
 FAIL=0
+POLICY_FAIL=0
 for c in $(docker ps -a --filter "name=alisio-${ENV_NAME}-" --format '{{.Names}}'); do
   FOUND=1
   docker inspect --format '{{.Name}}
     стан={{.State.Status}}  запущений з {{.State.StartedAt}}
     OOMKilled={{.State.OOMKilled}}  рестартів={{.RestartCount}}  останній exit={{.State.ExitCode}}
-    mem_limit={{.HostConfig.Memory}} байт' "$c" | sed 's|^/||'
+    mem_limit={{.HostConfig.Memory}} байт  restart={{.HostConfig.RestartPolicy.Name}}' "$c" | sed 's|^/||'
   if [ "$(docker inspect --format '{{.State.OOMKilled}}' "$c")" = "true" ]; then FAIL=1; fi
+  # Політика рестарту — це «чи встане після перезавантаження хоста».
+  # Контейнер без unless-stopped/always після ребута лишиться лежати, і
+  # єдиний слід — сайт, який не відповідає.
+  POLICY="$(docker inspect --format '{{.HostConfig.RestartPolicy.Name}}' "$c")"
+  case "$POLICY" in
+    unless-stopped|always) ;;
+    *)
+      echo "    !! restart=«${POLICY:-немає}» — після перезавантаження хоста ЦЕЙ контейнер сам не встане"
+      POLICY_FAIL=1
+      ;;
+  esac
 done
 
 if [ "$FOUND" = 0 ]; then
@@ -49,6 +66,13 @@ if [ "$FAIL" = 1 ]; then
   echo "!! OOMKilled=true: контейнер убито за пам'ять. Стеля — в deploy/env.${ENV_NAME}" >&2
   echo "!! (APP_MEM_LIMIT / PG_MEM_LIMIT); підняти її або шукати витік. Логи:" >&2
   echo "!! ./deploy/logs.sh ${ENV_NAME}" >&2
+fi
+if [ "$POLICY_FAIL" = 1 ]; then
+  echo "!! Є контейнер без restart unless-stopped/always — ребут хоста його НЕ підніме." >&2
+  echo "!! app лікує ./deploy/deploy.sh ${ENV_NAME}; postgres — ./deploy/apply-db-limits.sh ${ENV_NAME}" >&2
+  echo "!! (обидва перестворюють контейнер з політикою з docker-compose.yml)." >&2
+fi
+if [ "$FAIL" = 1 ] || [ "$POLICY_FAIL" = 1 ]; then
   exit 1
 fi
-echo "==> OOM-кілів немає; рестарти вище — привід подивитись логи, не тривога"
+echo "==> OOM-кілів немає, політики рестарту на місці; рестарти вище — привід подивитись логи, не тривога"
