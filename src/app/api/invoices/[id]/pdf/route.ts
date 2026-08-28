@@ -13,6 +13,12 @@ import { loadInvoiceDocument } from '@invoicing';
 import { generateGermanInvoicePdf } from '@invoicing';
 import { documentLanguage } from '@core/i18n/resolve';
 
+// `currency` у цих рядках — NOT NULL (invoices, fin_operations, reservations:
+// усі три `TEXT NOT NULL`), тож `|| 'CZK'` тут не спрацьовував ніколи. Він не
+// був захистом — він був схожий на рішення: читач бачив «якщо валюти немає,
+// це крони» і вірив, що такий випадок буває. Прибрано, щоб у коді лишилось
+// рівно одне джерело валюти документа — сам рядок.
+
 export const GET = requirePermission('manage_documents', _GET);
 async function _GET(
   _req: NextRequest,
@@ -124,7 +130,7 @@ async function _GET(
     // Real accounting date: check-in → payment → creation (never import date).
     const documentDate = ((row.check_in as string | null) || (row.payment_date as string | null) || (row.issued_at as string | null) || '').slice(0, 10);
     // Foreign-currency (OTA/EUR) → CZK at the rate effective on the document date.
-    const conv = await convertToCzkAuto((row.amount as number) || 0, (row.currency as string) || 'CZK', documentDate);
+    const conv = await convertToCzkAuto((row.amount as number) || 0, (row.currency as string), documentDate);
     const czkAmount = conv.converted ? conv.amountCzk : ((row.amount as number) || 0);
 
     // Build buyer — explicit company/custom always shown; a personal guest only
@@ -152,7 +158,7 @@ async function _GET(
       paymentMethod:  (row.payment_method as string | null) || 'Příkazem',
       description,
       amount:         conv.converted ? conv.amountCzk : (row.amount as number),
-      currency:       conv.converted ? 'CZK' : ((row.currency as string) || 'CZK'),
+      currency:       conv.converted ? 'CZK' : ((row.currency as string)),
       buyer,
       foreignNote:    conv.converted ? foreignNote(conv) : undefined,
     });

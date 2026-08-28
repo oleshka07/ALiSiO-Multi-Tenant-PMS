@@ -4,6 +4,7 @@ import { getSql } from '@core/db/async';
 import { withPermission, type Actor } from '@core/auth/session';
 import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 import { buildGiftCode, getGiftCardTemplate, calcExpiresAt, GIFT_CARD_TEMPLATES } from '@/modules/widget/domain/gift-card-builder';
+import { organizationCurrency } from '@core/currency';
 
 /**
  * Gift cards / vouchers.
@@ -127,7 +128,14 @@ export const POST = await withPermission('manage_bookings', async (req: Request,
     const resolvedType = type || tpl?.type || 'open_date';
     const resolvedValueType = value_type || tpl?.value_type || 'fixed_czk';
     const resolvedFaceValue = face_value ?? tpl?.face_value ?? 0;
-    const resolvedCurrency = currency || tpl?.currency || 'CZK';
+    // Валюта готелю, якщо не сказали інше — не крони.
+    //
+    // `tpl?.currency` приходить із GIFT_CARD_TEMPLATES: шість шаблонів із
+    // цінами й валютами ОДНОГО клієнта (див. нотатку в
+    // modules/widget/domain/gift-card-builder.ts). Поки вони там, вони
+    // виграють у цьому виразі; коли шаблони стануть даними готелю, лишиться
+    // тільки те, що вибрав оператор, і валюта його готелю.
+    const resolvedCurrency = currency || tpl?.currency || await organizationCurrency(actor.organizationId);
     const resolvedConfig = config_json ?? tpl?.config_json ?? {};
     const resolvedExpires = expires_at
       || (tpl ? calcExpiresAt(tpl.validityMonths) : calcExpiresAt(12));

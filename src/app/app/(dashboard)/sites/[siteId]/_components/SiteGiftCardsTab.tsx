@@ -4,6 +4,7 @@ import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, Plus, Trash2, Gift, Ticket, Check, Copy, CopyPlus } from 'lucide-react';
 import { Modal } from './SiteHelpers';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 
 const GIFT_CARD_STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
   draft:     { label: 'Чернетка',    color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
@@ -45,6 +46,8 @@ interface GiftCardTemplate {
 }
 
 export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; onCountChange?: (n: number) => void }) {
+  // Ваучер випускається у валюті готелю, поки оператор не сказав інше.
+  const hotelCurrency = useHotelCurrency();
   const tUi = useT();
   const [giftCards, setGiftCards] = useState<GiftCard[]>([]);
   const [templates, setTemplates] = useState<GiftCardTemplate[]>([]);
@@ -89,7 +92,7 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
             site_id: siteId,
             name: form.custom_name || 'Ваучер',
             face_value: form.custom_face_value ? +form.custom_face_value : 0,
-            currency: form.custom_currency || 'CZK',
+            currency: form.custom_currency || hotelCurrency,
             type: 'open_date',
             value_type: 'fixed_czk',
             ...form,
@@ -218,7 +221,7 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
                         notes: '',
                         custom_name: v.name + ' (Копія)',
                         custom_face_value: String(v.face_value || ''),
-                        custom_currency: v.currency || 'CZK',
+                        custom_currency: v.currency || hotelCurrency,
                       });
                       setTpl(null);
                       setStep('fill');

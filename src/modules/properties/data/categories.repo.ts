@@ -49,9 +49,9 @@ export interface CreateCategoryInput {
   sort_order?: number;
   icon?: string;
   color?: string;
-  show_in_tasks?: number;
-  show_in_finance?: number;
-  show_in_booking?: number;
+  show_in_tasks?: boolean;
+  show_in_finance?: boolean;
+  show_in_booking?: boolean;
 }
 
 /** A grouping key: present, short, one token. Not a list of allowed businesses. */
@@ -73,8 +73,10 @@ export async function createCategory(organizationId: string, input: CreateCatego
     RETURNING *`,
     [input.property_id, input.name, input.type, input.description ?? null,
     input.sort_order ?? 0, input.icon ?? null, input.color ?? null,
-    input.show_in_tasks ?? 1, input.show_in_finance ?? 0,
-    input.show_in_booking ?? 1],
+    // Булеві, не 0/1: колонки в Postgres — BOOLEAN, а SQLite отримає 1/0 від
+    // шва (`bindable` в core/db/async.ts). Інваріант 12, друга половина.
+    input.show_in_tasks ?? true, input.show_in_finance ?? false,
+    input.show_in_booking ?? true],
   );
   return result;
 }

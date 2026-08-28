@@ -22,6 +22,7 @@ import { SiteGiftCardsTab } from './_components/SiteGiftCardsTab';
 import { OfferWorkflowTab } from './_components/OfferWorkflowTab';
 import { FormsTab } from './_components/FormsTab';
 import type { Site } from './_types';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 
 const STATUS_COLOR: Record<string, string> = {
   active: '#22c55e',
@@ -36,6 +37,10 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function SiteDetailPage() {
+  // `booking_sites.currency` — NOT NULL, тож запасне значення тут стріляло
+  // лише поки сайт вантажиться. Валюта готелю — правильна відповідь на цей
+  // момент; крони були відповіддю про першого клієнта.
+  const hotelCurrency = useHotelCurrency();
   const tUi = useT();
   const params = useParams<{ siteId: string }>();
   const siteId = params?.siteId as string;
@@ -173,7 +178,7 @@ export default function SiteDetailPage() {
         </div>
 
         {/* Tab content */}
-        {activeTab === 'analytics'   && <AnalyticsTab siteId={siteId} siteCurrency={site?.currency || 'CZK'} />}
+        {activeTab === 'analytics'   && <AnalyticsTab siteId={siteId} siteCurrency={site?.currency || hotelCurrency} />}
         {activeTab === 'bookings'    && <BookingsTab siteId={siteId} />}
         {activeTab === 'listings'    && <ListingsTab siteId={siteId} siteSlug={site.slug} siteCurrency={site.currency} />}
         {activeTab === 'services'    && <ServicesTab siteId={siteId} siteCurrency={site.currency} />}

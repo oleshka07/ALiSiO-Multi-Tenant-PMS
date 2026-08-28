@@ -7,6 +7,9 @@ import { withSite } from '../data/site.repo';
 import { organizationLanguage } from '@core/i18n/resolve';
 import { asWidgetLang } from '../ui/widget-language';
 
+// Колонка `currency` тут NOT NULL, тож `|| 'CZK'` не спрацьовував ніколи —
+// це не захист, а вигляд рішення: читач вірив, що порожня валюта буває.
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
@@ -84,7 +87,7 @@ export async function getWidgetSiteConfig(req: NextRequest) {
       language: asWidgetLang(orgLang),
       design: JSON.parse(site.design_config || '{}'),
       config: JSON.parse(site.widget_config || '{}'),
-      currency: site.currency || 'CZK',
+      currency: site.currency,
       siteUrl: site.site_url,
       hasPayment,
       // The gateway's own name, for the one line that shows it. Null while

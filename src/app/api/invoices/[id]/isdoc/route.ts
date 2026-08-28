@@ -11,6 +11,12 @@ import { requirePermission } from '@core/security/route-guard';
 import { convertToCzkAuto, foreignNote } from '@invoicing';
 import { showBuyerName, dueDateFor } from '@invoicing';
 
+// `currency` у цих рядках — NOT NULL (invoices, fin_operations, reservations:
+// усі три `TEXT NOT NULL`), тож `|| 'CZK'` тут не спрацьовував ніколи. Він не
+// був захистом — він був схожий на рішення: читач бачив «якщо валюти немає,
+// це крони» і вірив, що такий випадок буває. Прибрано, щоб у коді лишилось
+// рівно одне джерело валюти документа — сам рядок.
+
 export const GET = requirePermission('manage_documents', _GET);
 async function _GET(
   request: NextRequest,
@@ -65,7 +71,7 @@ async function _GET(
     // Real accounting date: check-in → payment → creation (never import date).
     const documentDate = (data.check_in || data.payment_date || data.issued_at || '').slice(0, 10);
     // Foreign-currency (OTA/EUR) → CZK at the rate effective on the document date.
-    const conv = await convertToCzkAuto(data.amount || 0, data.currency || 'CZK', documentDate);
+    const conv = await convertToCzkAuto(data.amount || 0, data.currency, documentDate);
     const czkAmount = conv.converted ? conv.amountCzk : (data.amount || 0);
 
     // Buyer: explicit company always; personal guest only at/above 9900 CZK.
@@ -99,7 +105,7 @@ async function _GET(
       taxPointDate:   dueDateFor(documentDate || (data.issued_at || '').slice(0, 10), rules),
       description:    desc,
       amount:         conv.converted ? conv.amountCzk : (data.amount || 0),
-      currency:       conv.converted ? 'CZK' : (data.currency || 'CZK'),
+      currency:       conv.converted ? 'CZK' : (data.currency),
       buyer,
       paymentMethod:  data.payment_method || undefined,
       paymentDueDate: dueDateFor(documentDate || (data.issued_at || '').slice(0, 10), rules),

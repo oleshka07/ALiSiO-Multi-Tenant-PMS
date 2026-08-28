@@ -107,6 +107,21 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     throw new Error(`language must be one of: ${LANGUAGE_CODES.join(', ')}`);
   }
 
+  // Валюта — за тим самим правилом, і з тієї ж причини.
+  //
+  // Тут стояло `input.currency || 'CZK'`. Готель, заведений без --currency,
+  // ставав чеським: суми, фактури, віджет і листи гостю — усе в кронах, і
+  // ніде жодної помилки. Це основа, від якої рахує вся система; помилитись у
+  // ній тихо гірше, ніж не створити готель.
+  //
+  // Три літери у верхньому регістрі (ISO 4217). Список не звіряємо: валют
+  // близько 180, і закритий перелік тут означав би відмову справжньому
+  // готелю через те, що ми не встигли за світом.
+  const currency = input.currency?.trim().toUpperCase();
+  if (!currency || !/^[A-Z]{3}$/.test(currency)) {
+    throw new Error('currency is required: three letters, ISO 4217 (CZK, EUR, UAH, …)');
+  }
+
   // Checked before the transaction so the caller gets the real reason rather
   // than a UNIQUE constraint message.
   if (await sql.row<any>('SELECT 1 FROM organizations WHERE slug = ?', [slug])) {
@@ -134,7 +149,7 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     await t.run(`
       INSERT INTO organizations (id, name, slug, timezone, default_currency, language)
       VALUES (?, ?, ?, ?, ?, ?)
-    `, [organizationId, name, slug, input.timezone || 'Europe/Prague', input.currency || 'CZK', language]);
+    `, [organizationId, name, slug, input.timezone || 'Europe/Prague', currency, language]);
 
     // Currency lives on the organization; a property carries location and
     // times. (getOrgIdentity and the ARI push both read it from there.)

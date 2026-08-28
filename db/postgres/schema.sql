@@ -79,7 +79,7 @@ CREATE TABLE "additional_services" (
   "unit_label_pl" TEXT,
   "unit_label_nl" TEXT,
   "unit_label_fr" TEXT,
-  "available_in_widget" BIGINT DEFAULT 0,
+  "available_in_widget" BOOLEAN DEFAULT false,
   "vat_code" TEXT,
   PRIMARY KEY ("id"),
   CHECK (category IN ('food', 'wellness', 'sport', 'entertainment', 'other'))
@@ -293,9 +293,9 @@ CREATE TABLE "categories" (
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
   "icon" TEXT,
   "color" TEXT,
-  "show_in_tasks" BIGINT DEFAULT 1 NOT NULL,
-  "show_in_finance" BIGINT DEFAULT 0 NOT NULL,
-  "show_in_booking" BIGINT DEFAULT 1 NOT NULL,
+  "show_in_tasks" BOOLEAN DEFAULT true NOT NULL,
+  "show_in_finance" BOOLEAN DEFAULT false NOT NULL,
+  "show_in_booking" BOOLEAN DEFAULT true NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id")
 );
@@ -1171,7 +1171,7 @@ CREATE TABLE "organization_invoicing" (
   "logo_url" TEXT,
   "accent_color" TEXT,
   "footer_note" TEXT,
-  "show_payment_qr" BIGINT DEFAULT 0 NOT NULL,
+  "show_payment_qr" BOOLEAN DEFAULT false NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("organization_id")
 );
@@ -1728,7 +1728,7 @@ CREATE TABLE "unit_types" (
   "beds_single" BIGINT DEFAULT 0 NOT NULL,
   "beds_double" BIGINT DEFAULT 1 NOT NULL,
   "beds_sofa" BIGINT DEFAULT 0 NOT NULL,
-  "extra_bed_available" BIGINT DEFAULT 0 NOT NULL,
+  "extra_bed_available" BOOLEAN DEFAULT false NOT NULL,
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
   "photos" TEXT,
   "is_active" BOOLEAN DEFAULT true NOT NULL,
@@ -1737,8 +1737,8 @@ CREATE TABLE "unit_types" (
   "extra_person_charge" BIGINT DEFAULT 1000 NOT NULL,
   "pet_allowed" BIGINT DEFAULT 1 NOT NULL,
   "pet_charge" BIGINT DEFAULT 400 NOT NULL,
-  "bookable_online" BIGINT DEFAULT 1 NOT NULL,
-  "breakfast_included" BIGINT,
+  "bookable_online" BOOLEAN DEFAULT true NOT NULL,
+  "breakfast_included" BOOLEAN,
   PRIMARY KEY ("id")
 );
 
@@ -2226,6 +2226,9 @@ ALTER TABLE "widget_price_list" ADD CONSTRAINT "fk_widget_price_list_organizatio
 
 -- ── Indexes ─────────────────────────────────────────────────────────────
 
+CREATE INDEX "idx_accruals_month" ON "accruals" ("month");
+CREATE INDEX "idx_accruals_org" ON "accruals" ("organization_id");
+CREATE INDEX "idx_accruals_status" ON "accruals" ("status");
 CREATE INDEX "idx_ai_usage_month" ON "ai_usage" ("organization_id", "created_at");
 CREATE INDEX "idx_ai_usage_org" ON "ai_usage" ("organization_id");
 CREATE UNIQUE INDEX "idx_app_users_org_email" ON "app_users" (organization_id, lower(email));

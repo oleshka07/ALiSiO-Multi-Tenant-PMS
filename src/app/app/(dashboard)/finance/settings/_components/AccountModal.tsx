@@ -4,6 +4,7 @@ import { useT } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import type { Account } from './AccountsTab';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 
 export interface AccountFormValues {
   name: string;
@@ -37,7 +38,16 @@ export default function AccountModal({ initial, onClose, onSave }: Props) {
   const t = useT();
   const [name, setName] = useState(initial?.name || '');
   const [type, setType] = useState<Account['type']>(initial?.type || 'cash');
-  const [currency, setCurrency] = useState(initial?.currency || 'CZK');
+  const hotelCurrency = useHotelCurrency();
+  const [currency, setCurrency] = useState(initial?.currency || '');
+  // Валюта готелю як типове значення форми, а не крони.
+  //
+  // Через useEffect, а не в useState: `/api/auth/me` відповідає після першого
+  // рендера, тож ініціалізатор заморозив би порожній рядок. Умова `!currency`
+  // означає «лише поки оператор нічого не обрав і `initial` нічого не приніс».
+  useEffect(() => {
+    if (!currency && hotelCurrency) setCurrency(hotelCurrency);
+  }, [hotelCurrency, currency]);
   const [initialBalance, setInitialBalance] = useState(initial?.initial_balance ?? 0);
   const [creditLimit, setCreditLimit] = useState<number | ''>(initial?.credit_limit ?? '');
   const [iban, setIban] = useState((initial as any)?.iban || '');

@@ -24,6 +24,12 @@ import {
 import { loadInvoiceDocument } from '@/modules/invoicing/data/invoice-document.repo';
 import { generateGermanInvoicePdf } from '@/modules/invoicing/domain/invoice-pdf-de';
 
+// `currency` у цих рядках — NOT NULL (invoices, fin_operations, reservations:
+// усі три `TEXT NOT NULL`), тож `|| 'CZK'` тут не спрацьовував ніколи. Він не
+// був захистом — він був схожий на рішення: читач бачив «якщо валюти немає,
+// це крони» і вірив, що такий випадок буває. Прибрано, щоб у коді лишилось
+// рівно одне джерело валюти документа — сам рядок.
+
 // Raising and replacing a stay's invoice moved to data/reservation-invoice.repo.ts:
 // none of it needs a request or a response, and behind this module's
 // `next/server` import it could not be reached by a self-check run under bare
@@ -154,7 +160,7 @@ export async function getInvoiceHtml(
 
     // Real accounting date + CZK conversion for foreign-currency (OTA) invoices.
     data.document_date = resolveDocumentDate(data);
-    const conv = await convertToCzkAuto(data.amount || 0, data.currency || 'CZK', data.document_date);
+    const conv = await convertToCzkAuto(data.amount || 0, data.currency, data.document_date);
     if (conv.converted) {
       data.amount = conv.amountCzk;
       data.currency = 'CZK';

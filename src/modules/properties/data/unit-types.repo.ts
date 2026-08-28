@@ -84,12 +84,15 @@ export async function createUnitType(organizationId: string, input: CreateUnitTy
     RETURNING *`,
     [input.property_id, input.category_id, input.name, input.code, input.description ?? null,
     input.max_adults ?? 2, input.max_children ?? 2, input.max_occupancy ?? 4, input.base_occupancy ?? 2,
-    input.beds_single ?? 0, input.beds_double ?? 1, input.beds_sofa ?? 0, input.extra_bed_available ? 1 : 0,
+    input.beds_single ?? 0, input.beds_double ?? 1, input.beds_sofa ?? 0, Boolean(input.extra_bed_available),
     input.photos ?? null, input.sort_order ?? 0,
-    // Postgres binds 1/0 into BOOLEAN and SQLite stores them as-is; `?? 1`
-    // keeps the default "sellable online" when the caller says nothing.
-    input.bookable_online === undefined ? 1 : (input.bookable_online ? 1 : 0),
-    input.breakfast_included == null ? null : (input.breakfast_included ? 1 : 0)],
+    // Булеві, не 0/1: `bookable_online` у Postgres — BOOLEAN, а SQLite бере
+    // 1/0 від шва (`bindable` в core/db/async.ts). `?? true` лишає дефолт
+    // «продається онлайн», коли викликач нічого не сказав.
+    input.bookable_online ?? true,
+    // Третій стан: null означає «вирішує правило каналу», і це не те саме,
+    // що false.
+    input.breakfast_included == null ? null : Boolean(input.breakfast_included)],
   );
   return result;
 }

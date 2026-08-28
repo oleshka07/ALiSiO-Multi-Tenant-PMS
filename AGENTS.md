@@ -181,7 +181,7 @@ DATABASE_URL=… node scripts/check-deployed-db.mjs
 | `search` | розділ пошуку без права, провайдер без орендаря, мертва кнопка в шапці |
 | `currency` | нове запасне `|| 'CZK'`; курс, округлений до копійок |
 | `invoicing` | фактурування, яке знову тримається за облік; правила бланка назад у константах |
-| `check-boolean-flags --strict` | `0`/`1` у колонку `BOOLEAN` |
+| `check-boolean-flags --strict` | `0`/`1` у колонку `BOOLEAN` — і навпаки: `TRUE` проти колонки-числа |
 | `check-insert-tenant --strict` | `INSERT` у scoped-таблицю без `organization_id` |
 | `check-dialect --strict` | SQL, який Postgres не зрозуміє |
 | `check-price-source --strict` | запит до цінових таблиць поза `modules/pricing` — друге джерело ціни (інваріант 16) |

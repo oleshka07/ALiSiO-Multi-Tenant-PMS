@@ -63,7 +63,7 @@ export const createUnitType = withPermission('manage_properties', async (request
       bookable_online: body.bookable_online,
       breakfast_included: body.breakfast_included,
     });
-    if (!created) return NextResponse.json({ error: 'Property, category or building not found' }, { status: 404 });
+    if (!created) return NextResponse.json({ error: 'Property or category not found' }, { status: 404 });
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
     console.error('POST /api/unit-types error:', error);
@@ -75,15 +75,19 @@ export const updateUnitType = withPermission('manage_properties', async (request
   try {
     const { id } = await context.params;
     const body = await request.json();
-    // Flags arrive as JS booleans from the settings screen; SQLite refuses to
-    // bind a boolean and Postgres would take it — normalize to 0/1 here so
-    // both engines store the same thing. breakfast_included keeps its third
-    // state: null means "defer to the channel rule".
+    // Прапорці приходять з екрана справжніми булевими — такими й лишаються.
+    //
+    // Тут стояло зведення до 0/1, бо better-sqlite3 не вміє прив'язати
+    // булевий. Тепер це робить шов (`bindable` в core/db/async.ts), і 0/1 у
+    // колонку BOOLEAN більше нікуди не їде: `bookable_online` став BOOLEAN
+    // разом із рештою прапорців, чиї імена не підпадали під шаблон
+    // генератора. `breakfast_included` зберігає третій стан: null означає
+    // «вирішує правило каналу».
     if (body.bookable_online !== undefined) {
-      body.bookable_online = body.bookable_online ? 1 : 0;
+      body.bookable_online = Boolean(body.bookable_online);
     }
     if (body.breakfast_included !== undefined && body.breakfast_included !== null) {
-      body.breakfast_included = body.breakfast_included ? 1 : 0;
+      body.breakfast_included = Boolean(body.breakfast_included);
     }
     const updated = await unitTypesRepo.updateUnitType(actor.organizationId, id, body);
     if (!updated) return NextResponse.json({ error: 'Unit type not found' }, { status: 404 });

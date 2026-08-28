@@ -24,6 +24,12 @@ import { convertToCzkAuto, foreignNote } from '@invoicing';
 import { showBuyerName, dueDateFor } from '@invoicing';
 import { serverError } from '@core/http/errors';
 
+// `currency` у цих рядках — NOT NULL (invoices, fin_operations, reservations:
+// усі три `TEXT NOT NULL`), тож `|| 'CZK'` тут не спрацьовував ніколи. Він не
+// був захистом — він був схожий на рішення: читач бачив «якщо валюти немає,
+// це крони» і вірив, що такий випадок буває. Прибрано, щоб у коді лишилось
+// рівно одне джерело валюти документа — сам рядок.
+
 // ─── Pure-JS ZIP builder (STORE method — no compression, no deps) ─────────────
 // Implements PKZIP 2.0 local file headers + central directory + EOCD.
 
@@ -183,7 +189,7 @@ async function buildIsdocBytes(sql: Sql, row: any, rules: InvoiceSettings): Prom
   // Real document date + CZK conversion + issue+14 dates + 9900 buyer rule —
   // identical to /api/invoices/[id]/isdoc so single and ZIP output match.
   const documentDate = (row.check_in || row.payment_date || row.issued_at || '').slice(0, 10);
-  const conv = await convertToCzkAuto(row.amount || 0, row.currency || 'CZK', documentDate);
+  const conv = await convertToCzkAuto(row.amount || 0, row.currency, documentDate);
   const czkAmount = conv.converted ? conv.amountCzk : (row.amount || 0);
 
   const hasCompany = !!(row.custom_buyer_name || row.invoice_company_name)?.trim();
@@ -225,7 +231,7 @@ async function buildIsdocBytes(sql: Sql, row: any, rules: InvoiceSettings): Prom
     taxPointDate:   dueDateFor(issueDate, rules),
     description:    desc,
     amount:         czkAmount,
-    currency:       conv.converted ? 'CZK' : (row.currency || 'CZK'),
+    currency:       conv.converted ? 'CZK' : (row.currency),
     buyer,
     paymentMethod:  row.payment_method || undefined,
     paymentDueDate: dueDateFor(issueDate, rules),
@@ -240,7 +246,7 @@ async function buildIsdocBytes(sql: Sql, row: any, rules: InvoiceSettings): Prom
 
 async function buildPdfBytes(sql: Sql, row: any, rules: InvoiceSettings): Promise<Uint8Array> {
   const documentDate = ((row.check_in as string | null) || (row.payment_date as string | null) || (row.issued_at as string | null) || '').slice(0, 10);
-  const conv = await convertToCzkAuto((row.amount as number) || 0, (row.currency as string) || 'CZK', documentDate);
+  const conv = await convertToCzkAuto((row.amount as number) || 0, (row.currency as string), documentDate);
   const czkAmount = conv.converted ? conv.amountCzk : ((row.amount as number) || 0);
 
   const companyName = (row.custom_buyer_name || row.invoice_company_name) as string | null;
@@ -280,7 +286,7 @@ async function buildPdfBytes(sql: Sql, row: any, rules: InvoiceSettings): Promis
     paymentMethod:  (row.payment_method as string | null) || 'Příkazem',
     description,
     amount:         czkAmount,
-    currency:       conv.converted ? 'CZK' : ((row.currency as string) || 'CZK'),
+    currency:       conv.converted ? 'CZK' : ((row.currency as string)),
     buyer,
     isCreditNote,
     foreignNote:    conv.converted ? foreignNote(conv) : undefined,

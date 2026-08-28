@@ -50,6 +50,40 @@ const boolColumns = new Map();   // table → Set of column names
 }
 const anyBoolColumn = new Set([...boolColumns.values()].flatMap((s) => [...s]));
 
+// ── А тепер зворотний бік: колонки, які BOOLEAN НЕ є ────────────────────────
+//
+// Перевірка довго дивилась в один бік — 0/1 у колонку BOOLEAN — і пропустила
+// дзеркальну помилку, яка коштувала дорожче: `TRUE` проти колонки, що
+// лишилась числом.
+//
+// `unit_types.bookable_online` не підпадав під шаблон імен у pg-schema.mjs,
+// тож у Postgres виходив BIGINT. Сім запитів у чотирьох ПУБЛІЧНИХ маршрутах
+// віджета порівнювали його з `TRUE`, Postgres відповідав `operator does not
+// exist: bigint = boolean` — і весь віджет (конфіг, календар, доступність,
+// бронювання) віддавав 500 на беті й проді. На SQLite усе працювало.
+//
+// Шаблон імен дірявий за побудовою: наступний прапорець із незвичною назвою
+// зробить те саме. Тому тут звіряється не назва, а ТИП: кожне порівняння з
+// TRUE/FALSE має стояти проти колонки, яку schema.sql оголосила BOOLEAN.
+const nonBoolColumn = new Map();   // column → 'TABLE.TYPE'
+{
+  let table = null;
+  for (const line of fs.readFileSync(SCHEMA, 'utf8').split('\n')) {
+    const open = line.match(/^CREATE TABLE "([^"]+)" \($/);
+    if (open) { table = open[1]; continue; }
+    if (!table) continue;
+    if (line.startsWith(')')) { table = null; continue; }
+    const col = line.match(/^\s+"([^"]+)"\s+([A-Z][A-Z0-9 (),]*)/);
+    if (!col) continue;
+    const [, name, type] = col;
+    if (type.trim().startsWith('BOOLEAN')) continue;
+    // Одне ім'я може жити в кількох таблицях. Позначаємо лише ті, у яких
+    // BOOLEAN-двійника немає ніде: інакше `is_active` з однієї таблиці
+    // звинуватив би `is_active` з іншої.
+    if (!anyBoolColumn.has(name)) nonBoolColumn.set(name, `${table}.${type.trim().split(' ')[0]}`);
+  }
+}
+
 // ── The SQL this codebase writes ────────────────────────────────────────────
 const files = [];
 (function walk(dir) {
@@ -85,6 +119,16 @@ for (const file of files) {
     });
   }
 
+  // ── Зворотний бік: `col = TRUE` проти колонки, що не BOOLEAN ─────────────
+  for (const m of src.matchAll(/\b(\w+)\s*(=|!=|<>)\s*(TRUE|FALSE)\b/g)) {
+    const [, col, op, lit] = m;
+    const where = nonBoolColumn.get(col);
+    if (!where) continue;
+    const line = src.slice(src.lastIndexOf('\n', m.index) + 1, src.indexOf('\n', m.index));
+    if (!/\b(SELECT|UPDATE|SET|WHERE|AND|OR|FROM|JOIN|INSERT)\b/i.test(line)) continue;
+    add(file, m.index, src, 'TYPE', `${col} ${op} ${lit} — але ${where}, не BOOLEAN`);
+  }
+
   // ── SET and WHERE: `col = 1`, `col != 0`, `col <> 1` ─────────────────────
   // Matched on the column name alone, without knowing the statement's table:
   // a name like `is_active` belongs to a boolean column in every table that has
@@ -104,10 +148,19 @@ console.log(`\nboolean-flags: ${anyBoolColumn.size} boolean-колонок у с
 for (const f of findings) {
   console.log(`  ${f.file}:${f.line}  [${f.kind}]  ${f.detail}`);
 }
-if (findings.length) {
+if (findings.some((f) => f.kind !== 'TYPE')) {
   console.log(`\n  Postgres відхиляє і те, і те: у INSERT — "column is of type boolean but`);
   console.log(`  expression is of type integer", у WHERE — "operator does not exist:`);
   console.log(`  boolean = integer". TRUE/FALSE працюють на обох базах.\n`);
+}
+if (findings.some((f) => f.kind === 'TYPE')) {
+  console.log('\n  [TYPE] — інший бік тієї ж помилки: порівняння з TRUE/FALSE проти');
+  console.log('  колонки, яку schema.sql оголосила числом. Postgres: "operator does');
+  console.log('  not exist: bigint = boolean", тобто 500 на кожен виклик; SQLite');
+  console.log('  мовчить, бо TRUE там просто 1.');
+  console.log('  Лікується типом, а не запитом: колонка-прапорець має бути BOOLEAN.');
+  console.log('  Додайте її в OVERRIDE у scripts/pg-schema.mjs, перегенеруйте схему');
+  console.log('  і напишіть міграцію (зразок — 0046).\n');
 }
 
 if (process.argv.includes('--strict') && findings.length) process.exit(1);

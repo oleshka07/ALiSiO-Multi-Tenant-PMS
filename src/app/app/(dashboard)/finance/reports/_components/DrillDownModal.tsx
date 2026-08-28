@@ -4,6 +4,7 @@ import { useT } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { X, ExternalLink } from 'lucide-react';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 
 interface Props {
   month: string;
@@ -19,6 +20,9 @@ function formatMoney(n: number, currency: string): string {
 }
 
 export default function DrillDownModal({ month, categoryId, categoryName, opType, basis = 'paid', onClose }: Props) {
+  // Підсумок підписується валютою готелю, коли операції ще не завантажились
+  // або в них її немає. Крони тут були припущенням про клієнта.
+  const hotelCurrency = useHotelCurrency();
   const t = useT();
   const [ops, setOps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +53,7 @@ export default function DrillDownModal({ month, categoryId, categoryName, opType
 
         <div style={{ padding: 10, background: 'var(--bg-secondary)', borderRadius: 8, marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
           <span style={{ color: 'var(--text-secondary)' }}>{t('Операцій:')} {ops.length}</span>
-          <span style={{ fontWeight: 700 }}>Σ {formatMoney(total, ops[0]?.currency || 'CZK')}</span>
+          <span style={{ fontWeight: 700 }}>Σ {formatMoney(total, ops[0]?.currency || hotelCurrency)}</span>
         </div>
 
         {loading ? (

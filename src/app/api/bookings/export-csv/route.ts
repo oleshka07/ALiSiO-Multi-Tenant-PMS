@@ -5,6 +5,9 @@ import { withPermission, type Actor } from '@core/auth/session';
 import ExcelJS from 'exceljs';
 import { serverError } from '@core/http/errors';
 
+// Колонка `currency` тут NOT NULL, тож `|| 'CZK'` не спрацьовував ніколи —
+// це не захист, а вигляд рішення: читач вірив, що порожня валюта буває.
+
 /**
  * GET /api/bookings/export-csv?from=YYYY-MM-DD&to=YYYY-MM-DD&category=&format=xlsx|csv
  *
@@ -199,7 +202,7 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
         source: getSource(row),
         status: STATUS_LABELS[row.status] || row.status || '',
         total_price: row.total_price || 0,
-        currency: row.currency || 'CZK',
+        currency: row.currency,
         payment_status: PAYMENT_LABELS[row.payment_status] || row.payment_status || '',
         payment_method: getPaymentMethods(row.reservation_id),
         paid_amount: pay?.total || 0,

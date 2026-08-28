@@ -86,6 +86,14 @@ const OVERRIDE = {
   // регенерації, і тричі це правили руками в schema.sql. Правка руками
   // тримається до наступного запуску; запис у OVERRIDE — до рішення.
   'ai_usage.created_at': 'TEXT',
+  // Прапорці, чиї назви не схожі на прапорці. Тут, а не в шаблоні `BOOL`,
+  // саме тому, що це і є призначення OVERRIDE: «колонки, про які назва нічого
+  // не каже». Розширювати шаблон під кожну таку — означає рано чи пізно
+  // затягнути в BOOLEAN справжній лічильник.
+  'unit_types.extra_bed_available': 'BOOLEAN',
+  // Три стани: null = «вирішує правило каналу», і це не те саме, що false.
+  // BOOLEAN у Postgres nullable, тож третій стан зберігається.
+  'unit_types.breakfast_included': 'BOOLEAN',
 };
 
 /** An amount of money. NUMERIC(14,2) — up to 999 999 999 999.99. */
@@ -106,7 +114,24 @@ const TIMESTAMP = /_at$|^created$|^updated$|^timestamp$/;
 /** A calendar day, with no time of day and no zone. */
 const DATE_ONLY = /^check_in$|^check_out$|^date$|_date$|^valid_from$|^valid_to$|^valid_until$|^expires_at$|^period_from$|^period_to$/;
 /** A true/false flag stored as 0/1. */
-const BOOL = /^is_|^has_|^can_|^includes_|_enabled$|^locked$|^confirmed$|^active$|_active$|^read_only$|^needs_|^smoking$|^partial$|_hidden$|_exempt$|_reported$|_included_in_price$|^enabled$|^archived$/;
+// Прапорці. Список імен, а не типів, бо в SQLite прапорець — це INTEGER, і
+// відрізнити його від лічильника можна лише за назвою.
+//
+// ── Чому список довшає ────────────────────────────────────────────────────
+//
+// `bookable_online` під нього не підпадав, тож у Postgres колонка виходила
+// BIGINT — а сім запитів у чотирьох публічних маршрутах віджета порівнювали
+// її з `TRUE`. Postgres на це відповідає `operator does not exist:
+// bigint = boolean`, тобто 500. **Увесь публічний віджет — конфіг, календар,
+// доступність і саме бронювання — не працював на Postgres**, тобто на беті й
+// проді; на SQLite усе було гаразд, бо там `TRUE` це 1.
+//
+// Урок не в тому, що бракувало одного імені, а в тому, що список імен —
+// дірявий за побудовою: кожен новий прапорець із незвичною назвою мовчки
+// стає числом, і ламається лише на сервері. Тому окремо існує перевірка з
+// іншого боку: `check-boolean-flags` тепер звіряє КОЖНЕ порівняння з
+// TRUE/FALSE у коді з типом колонки у schema.sql.
+const BOOL = /^is_|^has_|^can_|^includes_|^show_|^bookable_|^available_in_|_enabled$|^locked$|^confirmed$|^active$|_active$|^read_only$|^needs_|^smoking$|^partial$|_hidden$|_exempt$|_reported$|_included_in_price$|^enabled$|^archived$|_qr$/;
 /** A JSON document kept in a text column. */
 const JSONISH = /_json$|^old_values$|^new_values$|^parameters$|^config$|^payload$|^raw_payload$|^assumptions$|^metadata$|^allowed_tabs$|^connection_types$|^applicable_services$|^allowed_days$|^included_services$|^applied_listings$|^allowed_promo_codes$|^permissions$/;
 

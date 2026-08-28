@@ -4,6 +4,7 @@ import { useT } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import type { RecurringTemplate } from './RecurringTemplatesTab';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 
 export interface TemplateFormValues {
   name: string;
@@ -34,7 +35,16 @@ export default function RecurringTemplateModal({ initial, onClose, onSave }: Pro
   const [name, setName] = useState(initial?.name || '');
   const [opType, setOpType] = useState<TemplateFormValues['op_type']>(initial?.op_type || 'expense');
   const [amount, setAmount] = useState(initial?.amount?.toString() || '');
-  const [currency, setCurrency] = useState(initial?.currency || 'CZK');
+  const hotelCurrency = useHotelCurrency();
+  const [currency, setCurrency] = useState(initial?.currency || '');
+  // Валюта готелю як типове значення форми, а не крони.
+  //
+  // Через useEffect, а не в useState: `/api/auth/me` відповідає після першого
+  // рендера, тож ініціалізатор заморозив би порожній рядок. Умова `!currency`
+  // означає «лише поки оператор нічого не обрав і `initial` нічого не приніс».
+  useEffect(() => {
+    if (!currency && hotelCurrency) setCurrency(hotelCurrency);
+  }, [hotelCurrency, currency]);
   const [accountFromId, setAccountFromId] = useState(initial?.account_from_id || '');
   const [accountToId, setAccountToId] = useState(initial?.account_to_id || '');
   const [categoryId, setCategoryId] = useState(initial?.category_id || '');
