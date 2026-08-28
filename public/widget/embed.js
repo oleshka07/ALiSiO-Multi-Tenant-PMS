@@ -255,6 +255,7 @@
     if (state.calendarData[yearMonth]) return;
     try {
       var url = API_BASE + '/api/widget/calendar?month=' + yearMonth + (PROPERTY_ID ? '&propertyId=' + PROPERTY_ID : '');
+      if (SITE_ID) url += '&siteId=' + SITE_ID;
       var res = await fetch(url);
       var data = await res.json();
       state.calendarData[yearMonth] = {};
@@ -268,6 +269,7 @@
     state.loading = true; state.error = null; render();
     try {
       var url = API_BASE + '/api/booking/availability?checkIn=' + state.checkIn + '&checkOut=' + state.checkOut;
+      if (SITE_ID) url += '&siteId=' + SITE_ID;
       var res = await fetch(url);
       var data = await res.json();
       state.availability = data;
@@ -350,6 +352,7 @@
     state.loading = true; state.error = null; render();
     try {
       var url = API_BASE + '/api/booking/availability?checkIn=' + state.checkIn + '&checkOut=' + state.checkOut;
+      if (SITE_ID) url += '&siteId=' + SITE_ID;
       var res = await fetch(url);
       var data = await res.json();
       state.availability = data;

@@ -177,6 +177,7 @@ DATABASE_URL=… node scripts/check-deployed-db.mjs
 | Гейт | Що ловить |
 |---|---|
 | `check-route-guards --strict` | маршрут без варти |
+| `public-tenant` | публічний маршрут, який не називає орендаря — друга половина інваріанта 4 |
 | `check-boolean-flags --strict` | `0`/`1` у колонку `BOOLEAN` |
 | `check-insert-tenant --strict` | `INSERT` у scoped-таблицю без `organization_id` |
 | `check-dialect --strict` | SQL, який Postgres не зрозуміє |
@@ -337,9 +338,46 @@ SQL це рядок, — тож запит із неіснуючою колон�
   su postgres -c "pg_ctl -D /tmp/pg/data -o '-p 55432 -k /tmp/pg' start"
   psql -h /tmp/pg -p 55432 -U alisio -c "CREATE DATABASE alisio_local"
   psql -h /tmp/pg -p 55432 -U alisio -d alisio_local -f db/postgres/schema.sql
+  # усі міграції по черзі — CI робить так само, і саме тут ловляться ті,
+  # що не переживають schema.sql
+  for m in db/postgres/migrations/*.sql; do
+    psql -h /tmp/pg -p 55432 -U alisio -d alisio_local -v ON_ERROR_STOP=1 -f "$m"
+  done
   psql -h /tmp/pg -p 55432 -U alisio -d alisio_local -f db/postgres/rls-check.sql
   ```
+
+  **Далі — роль без суперправ, і застосунок ходить нею.** Це не деталь:
+  `initdb -U alisio` робить `alisio` **суперкористувачем**, а суперкористувач
+  обходить RLS повністю — `FORCE ROW LEVEL SECURITY` на нього не діє. На такій
+  базі кожна політика мовчить, і перевірка ізоляції показує зелене на будь-якому
+  коді, включно зі свідомо зламаним. Так уже сталося 2026-08-28: «чужий готель
+  бачить чужі дати» виявилось властивістю стенда, а не коду.
+
+  ```bash
+  psql -h /tmp/pg -p 55432 -U alisio -d alisio_local <<'SQL'
+  CREATE ROLE alisio_app LOGIN;
+  GRANT CONNECT ON DATABASE alisio_local TO alisio_app;
+  GRANT USAGE ON SCHEMA public TO alisio_app;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO alisio_app;
+  GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO alisio_app;
+  SQL
+
+  # застосунок — ЦІЄЮ роллю, не власником
+  DB_DRIVER=postgres \
+  DATABASE_URL="postgresql://alisio_app@/alisio_local?host=/tmp/pg&port=55432" \
+  npm run start
+  ```
+
+  Ім'я `alisio_app` — те саме, що в `deploy/to-postgres.sh`; сам `deploy`
+  ходить нею ж, тому локальний стенд і прод відповідають однаково.
+  `provision-org.mjs` і засів даних лишаються за власником: вони створюють
+  готелів, тобто працюють поза орендарем за визначенням.
 
   Далі — **два** готелі через `provision-org.mjs`, і кожне твердження
   перевіряється з обох боків: свій бачить своє, чужий не бачить нічого.
   Один готель не доводить нічого: усе, що зламано, з ним виглядає цілим.
+
+  Читати `SELECT` під власником схеми теж не можна — `FORCE ROW LEVEL
+  SECURITY` діє й на нього, тож без орендаря він бачить порожнечу. Щоб
+  подивитись базу «згори» (перевірити, що засів ліг), додайте
+  `-c "SET row_security = off"` окремим `-c` перед запитом.

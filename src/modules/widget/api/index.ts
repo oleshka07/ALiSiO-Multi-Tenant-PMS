@@ -39,3 +39,14 @@ export {
 // exist, the hotel must have the widget, and one IP gets ten an hour.
 export { joinWaitlist, joinWaitlistOptions } from './widget-waitlist.handlers';
 export { captureLead, captureLeadOptions } from './widget-capture.handlers';
+
+// Хто цей гість — тобто чий це готель.
+//
+// `withSite` — єдиний шов, яким публічний маршрут здобуває орендаря, коли
+// сесії немає: ключ сайту з тега `<script data-site="…">` → рядок
+// `booking_sites` (єдина таблиця, читабельна до орендаря) → далі все під
+// `runWithOrganization`. Він тут, у фасаді, бо його кличуть і маршрути поза
+// модулем — інакше кожен такий маршрут ліз би в `data/site.repo` і
+// перетворював внутрішній файл на публічний контракт.
+export { withSite, resolveSiteByKey, siteAllowsHost } from '../data/site.repo';
+export type { SiteRow } from '../data/site.repo';

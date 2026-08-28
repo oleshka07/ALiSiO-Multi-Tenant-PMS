@@ -319,3 +319,8 @@ export {
 } from './channel-rules.handlers';
 export { ruleFor, withMarkup } from '../domain/channel-rate-rule';
 export type { ChannelRateRule } from '../domain/channel-rate-rule';
+
+// Курс ČNB. Крон ходить по ВСІХ готелях, тож він поза модулем — а отже,
+// заходить фасадом, а не в `domain/cnb-rates` напряму.
+export { syncCnbRates, fetchCnbFixing, DEFAULT_CNB_CURRENCIES } from '../domain/cnb-rates';
+export type { CnbFixing, CnbSyncResult } from '../domain/cnb-rates';

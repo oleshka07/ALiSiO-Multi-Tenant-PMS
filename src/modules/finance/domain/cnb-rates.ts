@@ -1,5 +1,4 @@
 import { getSql } from '@core/db/async';
-import { getDb } from '@core/db';
 /**
  * ALiSiO ERP — ČNB (Czech National Bank) daily FX rates.
  *
@@ -15,7 +14,7 @@ import { getDb } from '@core/db';
  *   ...
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { requireOrganizationId } from '@core/auth/tenant-context';
+import { requireOrganizationId, runWithOrganization } from '@core/auth/tenant-context';
 
 const CNB_DAILY_URL =
   'https://www.cnb.cz/en/financial-markets/foreign-exchange-market/central-bank-exchange-rate-fixing/central-bank-exchange-rate-fixing/daily.txt';
@@ -101,20 +100,33 @@ export interface CnbSyncResult {
  * finance_exchange_rates (effective_from = fixing date). Idempotent.
  */
 export async function syncCnbRates(
-  opts: { date?: string; currencies?: string[] } = {},
+  opts: { date?: string; currencies?: string[]; organizationId?: string; fixing?: CnbFixing } = {},
 ): Promise<CnbSyncResult> {
-  const oid = await orgId();
+  // `organizationId` явно — бо цю функцію кличе крон, а крон обходить УСІ
+  // готелі. `orgId()` під ним повертав null (`requireOrganizationId` кидає,
+  // щойно готелів більше одного), і весь виклик закінчувався 502: курси не
+  // оновлювались ні для кого. Ambient лишається для ручного виклику з
+  // кабінету, де орендар уже на місці.
+  const oid = opts.organizationId ?? await orgId();
   if (!oid) throw new Error('No organization found');
   const want = (opts.currencies || DEFAULT_CNB_CURRENCIES).map(c => c.toUpperCase());
 
-  const fixing = await fetchCnbFixing(opts.date);
+  // Фіксинг можна передати ззовні: крон тягне його ОДИН раз і роздає по
+  // готелях. Інакше сотня готелів — сотня однакових запитів до ČNB за той
+  // самий день, і банк має повне право нас відсікти.
+  const fixing = opts.fixing ?? await fetchCnbFixing(opts.date);
   const sql = getSql();
 
   const upserted: string[] = [];
   const skipped: string[] = [];
   // One fixing is one day's rates: a half-written set would price part of a
   // day at yesterday's rate.
-  await sql.tx(async (t) => {
+  //
+  // `runWithOrganization` — бо на Postgres політика `finance_exchange_rates`
+  // звіряє `app.organization_id` на ЗʼЄДНАННІ (інваріант 11). Правильний
+  // `organization_id` у самому INSERT цього не замінює: рядок відхиляється
+  // політикою, а не приймається.
+  await runWithOrganization(oid, () => sql.tx(async (t) => {
     for (const cur of want) {
       const rate = fixing.rates[cur];
       if (rate == null) { skipped.push(cur); continue; }
@@ -126,7 +138,7 @@ export async function syncCnbRates(
       `, [oid, cur, rate, fixing.date]);
       upserted.push(cur);
     }
-  });
+  }));
 
   return { date: fixing.date, upserted, skipped };
 }

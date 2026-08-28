@@ -44,7 +44,7 @@ const BASELINE = {
   channels: 1,
   dashboard: 1,
   events: 1,
-  finance: 17,
+  finance: 15,
   guests: 8,
   pricing: 6,
   // 9 → 7: групові броні видалено, і разом із ними два екрани, які лізли в
