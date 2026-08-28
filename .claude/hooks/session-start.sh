@@ -57,6 +57,38 @@ else
   echo "(origin/beta недоступна — відставання перевірити не вдалося)"
 fi
 
+# ── Останній checks на origin/main і origin/beta ─────────────────────────
+# Червоний CI, якого ніхто не бачить, збирає поверх себе нові пуші:
+# 2026-08-28 їх лягло чотири поспіль, і деплой стояв чотири години
+# (SECURITY-FINDINGS → «Дрейф за одну добу»). Тому статус — у вічі кожній
+# сесії. Потрібен gh із токеном; якщо його немає — чесно кажемо, що НЕ
+# ЗНАЄМО, а не мовчимо: тиша тут читається як «усе гаразд».
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+  for BR in main beta; do
+    INFO="$(gh api "repos/{owner}/{repo}/actions/workflows/checks.yml/runs?branch=${BR}&per_page=1" \
+              --jq '.workflow_runs[0] | (.conclusion // .status) + "|" + .created_at + "|" + (.run_number|tostring)' \
+              2>/dev/null || true)"
+    STATE="${INFO%%|*}"; REST="${INFO#*|}"; WHEN="${REST%%|*}"; NUM="${INFO##*|}"
+    case "$STATE" in
+      success)
+        echo "checks на ${BR}: зелений (ран №${NUM})" ;;
+      failure|cancelled|timed_out)
+        echo ""
+        echo "!! CHECKS НА ${BR} ЧЕРВОНІ з ${WHEN} (ран №${NUM}, ${STATE})."
+        echo "!! Поверх червоного нову роботу не кладуть: спершу зелений."
+        echo "!! СКАЖИ ПРО ЦЕ ЛЮДИНІ ПЕРШИМ РЯДКОМ СВОЄЇ ПЕРШОЇ ВІДПОВІДІ."
+        ;;
+      in_progress|queued|pending|requested|waiting)
+        echo "checks на ${BR}: ще біжить (ран №${NUM}) — результат подивись перед push" ;;
+      *)
+        echo "checks на ${BR}: статус отримати не вдалося (API відповів «${INFO:-нічого}»)" ;;
+    esac
+  done
+else
+  echo "(статус checks на main/beta НЕВІДОМИЙ: немає gh або він не залогінений —"
+  echo " подивись вкладку Actions руками, перш ніж пушити в main/beta)"
+fi
+
 echo ""
 echo "── docs/ARCHITECTURE.md §8 — «Лишається» ────────────────────────────"
 awk '/^\*\*Лишається:\*\*/{f=1} f' docs/ARCHITECTURE.md 2>/dev/null | head -40

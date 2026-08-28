@@ -259,6 +259,12 @@ for i in $(seq 1 45); do
       # this is here because a deploy is exactly the moment new garbage appears,
       # and the disk filling up is not a hypothetical failure on this machine.
       docker image prune -f >/dev/null 2>&1 || true
+      # Дим по живому — машинна «перевірка на беті» (docs/DEPLOY.md → Потік):
+      # /api/health, логін-401, публічна головна, операторський бандл. Провал
+      # смоуку — провал деплою: нова версія вже серве, тож червоне тут — це
+      # «чинити зараз», а не «гляну потім». Прод при цьому не поїде взагалі,
+      # доки бета не пройде цей самий смоук (гейт у deploy.yml).
+      ./deploy/smoke.sh "$ENV_NAME" || exit 1
       apply_hotels
       HOTELS_OK=$?
       # Демо-проживання — тільки поза продом. Скрипт сам відмовляє проду ще
