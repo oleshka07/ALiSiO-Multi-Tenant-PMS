@@ -111,7 +111,21 @@ TABLES="$(Q "SELECT count(*) FROM pg_tables WHERE schemaname='public'" | tr -d '
 POLICIES="$(Q 'SELECT count(*) FROM pg_policies' | tr -d ' ')"
 DATA_AGE_H="$(Q "SELECT COALESCE(floor(extract(epoch from now()-max(created_at))/3600)::int, -1) FROM reservations" | tr -d ' ')"
 
-echo "    таблиць: $TABLES   RLS-політик: $POLICIES   бронювань: $ROWS"
+# Скільки таблиць МАЄ бути, і чому число не збігається зі schema.sql.
+#
+# `schema.sql` описує базу нового клієнта. Жива база має рівно на одну
+# таблицю більше — `schema_migrations`, журнал накочених міграцій, який
+# створює сам `migrate.sh` і якого немає ні в SQLite, ні в генераторі схеми.
+#
+# Це питали вголос: «у нас 104 чи 105?». Обидва числа правильні, просто про
+# різні бази — 104 у схемі, 105 на розгорнутій. Тому очікуване рахується
+# ТУТ-таки зі schema.sql, а не тримається в голові: додалась таблиця —
+# змінились обидва числа разом, і ця перевірка не почне брехати.
+EXPECT_TABLES="$(( $(grep -c '^CREATE TABLE "' "$(dirname "$0")/../db/postgres/schema.sql") + 1 ))"
+
+echo "    таблиць: $TABLES (очікувано $EXPECT_TABLES = schema.sql + schema_migrations)   RLS-політик: $POLICIES   бронювань: $ROWS"
+[ "$TABLES" = "$EXPECT_TABLES" ] 2>/dev/null || note_fail \
+  "таблиць $TABLES, а schema.sql описує $(( EXPECT_TABLES - 1 )) + журнал міграцій = $EXPECT_TABLES. Дамп зі старішої схеми, або міграція не накотилась"
 [ "$ROWS" -gt 0 ] 2>/dev/null || note_fail "reservations порожня — дамп биті або обрізаний"
 [ "$POLICIES" -gt 0 ] 2>/dev/null || note_fail "жодної RLS-політики — відновлена база не ізолює орендарів"
 
