@@ -408,21 +408,27 @@ export async function autoResolveCategory(
     }
   } catch {}
 
-  // 2. Keyword matching
-  if (text.includes('сауна') || text.includes('sauna')) return 'ec_sauna';
-  if (text.includes('ресторан') || text.includes('кухня') || text.includes('їжа')) return 'ec_restaurant';
-  if (text.includes('сніданок') || text.includes('сніданки') || text.includes('breakfast')) return 'ec_breakfast';
-  if (text.includes('зарплат') || text.includes('аванс') || text.includes('премія') || text.includes('payroll')) return 'ec_payroll';
-  if (text.includes('продукт') || text.includes('закупка')) return 'ec_products';
-  if (text.includes('розхідник') || text.includes('химия') || text.includes('товары')) return 'ec_consumables';
-  if (text.includes('оренда') || text.includes('rent')) return 'ec_rent';
-  if (text.includes('стройка') || text.includes('ремонт') || text.includes('строительство')) return 'ec_capex';
-  if (text.includes('податк') || text.includes('tax')) return 'ec_taxes';
-  if (text.includes('маркетинг') || text.includes('реклама')) return 'ec_marketing';
-
-  if (text.includes('проживання') || text.includes('res ') || text.includes('booking') || text.includes('widget') || text.includes('готівка') || source === 'booking_widget' || source === 'manual') {
-    if (opType === 'income') return 'ec_accommodation';
-  }
+  // 2. Тут була драбина з одинадцяти `text.includes(...)` → `ec_*`
+  //
+  // Словник одного клієнта, зашитий у платформу, і неправильний одразу з двох
+  // боків.
+  //
+  // Мова. Слова українські й російські: «сауна», «химия», «товары»,
+  // «стройка». Німецький готель пише «Frühstück» і «Reinigung», чеський —
+  // «snídaně» і «úklid»; для них драбина не спрацьовувала ніколи, і кожна
+  // операція падала у дефолт.
+  //
+  // Категорії. Половина ідентифікаторів — `ec_sauna`, `ec_restaurant` — не
+  // сіється НІКОМУ: у типовому плані рахунків їх немає навмисно (див.
+  // `src/lib/db.ts`: «Revenue lines that belong to one property's offering
+  // (its sauna, its restaurant) are not seeded»). Тобто драбина проставляла
+  // операціям неіснуючу категорію: у звіті рядок губився, у списку категорія
+  // не показувалась, а помилки не було ніде.
+  //
+  // Механізм для цього вже є вище, і він правильний: `fin_auto_rules` —
+  // правила автокатегоризації, які готель пише сам своїми словами під свій
+  // план рахунків. Драбина лише перехоплювала їх для тих, хто нічого не
+  // написав, і робила це чужою мовою.
 
   // 3. Fallbacks by op_type
   if (opType === 'income') {

@@ -418,7 +418,7 @@ export default function SitesPage() {
                 <label className="form-label">{t('Назва сайту *')}</label>
                 <input
                   className="form-input"
-                  placeholder={t('Наприклад: Glamping ALiSiO')}
+                  placeholder={t('Наприклад: Готель Демо')}
                   value={newName}
                   onChange={e => setNewName(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleCreate()}
@@ -481,7 +481,7 @@ export default function SitesPage() {
                 <label className="form-label">{t('Назва сайту *')}</label>
                 <input
                   className="form-input"
-                  placeholder={t('Наприклад: Glamping ALiSiO')}
+                  placeholder={t('Наприклад: Готель Демо')}
                   value={editName}
                   onChange={e => setEditName(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleEdit()}

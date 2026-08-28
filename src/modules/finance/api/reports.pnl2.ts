@@ -286,25 +286,25 @@ export async function getPnl2(request: NextRequest): Promise<NextResponse> {
     r_var_calc.childrenOrder = r_var.childrenOrder;
     rows.push(r_var_calc);
 
-    const r_royalty = createRow('royalty', 'Роялти=30%', 'calc');
-    for (const bu of bus) {
-      if (bu.name.toLowerCase().includes('glamping') || bu.name.toLowerCase().includes('глемпінг')) {
-        r_royalty.buValues[bu.id] = Math.round(r_rev.buValues[bu.id] * 0.3);
-      } else {
-        r_royalty.buValues[bu.id] = 0;
-      }
-      r_royalty.total += r_royalty.buValues[bu.id];
-    }
-    // Only push if there's actual royalty to show
-    if (r_royalty.total > 0) {
-        rows.push(r_royalty);
-    }
-
+    // Тут був рядок P&L «Роялти=30%»: тридцять відсотків виручки з кожного
+    // напрямку, чия НАЗВА містить «glamping» або «глемпінг».
+    //
+    // Це франшизна угода одного клієнта, вписана в звіт платформи. Наслідок
+    // для інших: готель, який назве свій напрямок «Glamping», мовчки отримає в
+    // P&L рядок роялті на 30% виручки — числа, яких він нікому не винен, у
+    // звіті, за яким ухвалюють рішення. Готель, у якого роялті СПРАВДІ є, але
+    // напрямок зветься інакше, не отримає нічого.
+    //
+    // Роялті — це витрата, і в неї вже є місце: категорія витрат із
+    // `expense_categories` і операція. Тоді воно рахується з того, що готель
+    // винен насправді, а не з того, як він назвав рядок довідника. Тому в
+    // Store-level EBITDA нижче роялті теж більше не віднімається окремо: як
+    // звичайна витрата воно вже сидить у `r_fixed` або `r_var`.
     rows.push(r_fixed);
 
     const r_store_ebitda = createRow('store_ebitda', 'Store-level EBITDA', 'calc');
     for (const bu of bus) {
-      r_store_ebitda.buValues[bu.id] = r_rev.buValues[bu.id] - r_var.buValues[bu.id] - r_royalty.buValues[bu.id] - r_fixed.buValues[bu.id];
+      r_store_ebitda.buValues[bu.id] = r_rev.buValues[bu.id] - r_var.buValues[bu.id] - r_fixed.buValues[bu.id];
       r_store_ebitda.total += r_store_ebitda.buValues[bu.id];
     }
     rows.push(r_store_ebitda);

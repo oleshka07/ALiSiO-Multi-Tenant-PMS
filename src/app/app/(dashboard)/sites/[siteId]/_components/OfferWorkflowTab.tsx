@@ -4,7 +4,7 @@ import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, Plus, Trash2, Zap, Copy, Check, CopyPlus } from 'lucide-react';
 import { Modal } from './SiteHelpers';
-import { GIFT_CARD_TEMPLATES } from '@/modules/widget/domain/gift-card-builder';
+import type { GiftCardTemplate } from '@/modules/widget/domain/gift-card-builder';
 
 const DAY_LABELS = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
 const DAYS = [1, 2, 3, 4, 5, 6, 7];
@@ -138,11 +138,19 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
     toastTimer.current = setTimeout(() => setToast(''), 3500);
   };
 
+  // Шаблони ЦЬОГО готелю, з сервера. Раніше екран імпортував спільну
+  // константу, тобто показував прайс одного кемпінгу кожному, хто його
+  // відкриє. Порожній список — нормальний стан: готель, який не завів
+  // пропозицій, створює правило без шаблону.
+  const [templates, setTemplates] = useState<GiftCardTemplate[]>([]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const d = await fetch(`/api/gift-cards/workflow?site_id=${siteId}`).then(r => r.json());
       if (d.rules) setRules(d.rules);
+      const g = await fetch('/api/gift-cards').then(r => r.json());
+      setTemplates(Array.isArray(g.templates) ? g.templates : []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [siteId]);
@@ -223,7 +231,7 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {rules.map(rule => {
-            const tpl = GIFT_CARD_TEMPLATES.find(t => t.id === rule.template_id);
+            const tpl = templates.find((t) => t.id === rule.template_id);
             const daysLabel = rule.allowed_days
               ? (JSON.parse(rule.allowed_days) as number[]).map(d => DAY_LABELS[d]).join(', ')
               : tUi('Будь-який день');
@@ -319,7 +327,7 @@ export function OfferWorkflowTab({ siteId }: { siteId: string }) {
                 <div style={{ fontWeight: 600 }}>{tUi('Без шаблону')}</div>
                 <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{tUi('Власні параметри')}</div>
               </button>
-              {GIFT_CARD_TEMPLATES.map(t => (
+              {templates.map((t) => (
                 <button key={t.id} type="button" onClick={() => setForm(f => ({ ...f, template_id: t.id, rule_name: f.rule_name || t.name }))}
                   style={{ padding: '8px 10px', borderRadius: 8, fontSize: 12, cursor: 'pointer', textAlign: 'left', border: `2px solid ${form.template_id === t.id ? 'var(--accent-primary)' : 'var(--border-primary)'}`, background: form.template_id === t.id ? 'var(--accent-primary-dim)' : 'var(--surface-secondary)' }}>
                   <div style={{ fontWeight: 600 }}>{tUi(t.emoji)} {tUi(t.name)}</div>

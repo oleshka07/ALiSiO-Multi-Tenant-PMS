@@ -107,7 +107,7 @@ export const POST = withPermission('manage_sites', async (req: NextRequest, _ctx
     if (!offer_amount && offer_amount !== 0) return NextResponse.json({ error: 'offer_amount required' }, { status: 400 });
     if (count < 1 || count > 500) return NextResponse.json({ error: 'count must be 1-500' }, { status: 400 });
 
-    const tpl = template_id ? getGiftCardTemplate(template_id) : null;
+    const tpl = template_id ? await getGiftCardTemplate(actor.organizationId, template_id) : null;
     const resolvedName = rule_name || tpl?.name || 'Автоматизований ваучер';
 
     // Зберегти правило

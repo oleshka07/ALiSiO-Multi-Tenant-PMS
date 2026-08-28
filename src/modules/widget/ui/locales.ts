@@ -1,83 +1,23 @@
+import { translateContent } from '@core/i18n/content-translations';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // ─── Booking Widget Locales ───
 
-export const commonTranslations: Record<string, Record<string, string>> = {
-  en: {
-    'Комфортне ліжко': 'Comfortable bed',
-    'Душ': 'Shower',
-    'Туалет': 'Toilet',
-    'Опалення': 'Heating',
-    'Чайник': 'Kettle',
-    'Міні-холодильник': 'Mini-fridge',
-    'Wi-Fi': 'Wi-Fi',
-    'Тераса': 'Terrace',
-    'Замок': 'Lock',
-    'Рушники': 'Towels',
-    'Освітлення': 'Lighting',
-    'Сніданок': 'Breakfast',
-    'Повноцінний сніданок у ресторані': 'Full breakfast in the restaurant',
-    'Сауна': 'Sauna',
-    'Фінська сауна (2 години)': 'Finnish sauna (2 hours)',
-    'Чан карпатський': 'Carpathian vat',
-    'Нержавіючий чан під відкритим небом. Мінімальне бронювання — 2 години.': 'Stainless open-air vat. Minimum booking — 2 hours.',
-    'Мангал': 'BBQ Grill',
-    'Набір для барбекю та вогнища з вугіллям, розпалювачем та дровами': 'BBQ and fire pit set with charcoal, fire starter and wood',
-    'Пізнє виселення': 'Late Check-out',
-    'Виселення до 14:00 замість 11:00': 'Check-out until 14:00 instead of 11:00',
-    'Раннє заселення': 'Early Check-in',
-    'Заселення з 11:00 замість 15:00': 'Check-in from 11:00 instead of 15:00',
-  },
-  cs: {
-    'Комфортне ліжко': 'Pohodlná postel',
-    'Душ': 'Sprcha',
-    'Туалет': 'Toaleta',
-    'Опалення': 'Topení',
-    'Чайник': 'Rychlovarná konvice',
-    'Міні-холодильник': 'Mini-lednice',
-    'Wi-Fi': 'Wi-Fi',
-    'Тераса': 'Terasa',
-    'Замок': 'Zámek',
-    'Рушники': 'Ručníky',
-    'Освітлення': 'Osvětlení',
-    'Сніданок': 'Snídaně',
-    'Повноцінний сніданок у ресторані': 'Plná snídaně v restauraci',
-    'Сауна': 'Sauna',
-    'Фінська сауна (2 години)': 'Finská sauna (2 hodiny)',
-    'Чан карпатський': 'Karpatská káď',
-    'Нержавіючий чан під відкритим небом. Мінімальне бронювання — 2 години.': 'Nerezová venkovní káď. Minimální rezervace — 2 hodiny.',
-    'Мангал': 'BBQ Gril',
-    'Набір для барбекю та вогнища з вугіллям, розпалювачем та дровами': 'Sada pro BBQ a ohniště s uhlím, podpalovačem a dřevem',
-    'Пізнє виселення': 'Pozdní odhlášení',
-    'Виселення do 14:00 замість 11:00': 'Odhlášení do 14:00 místo 11:00',
-    'Раннє заселення': 'Dřívější přihlášení',
-    'Заселення з 11:00 замість 15:00': 'Přihlášení od 11:00 místo 15:00',
-  },
-  de: {
-    'Комфортне ліжко': 'Bequemes Bett',
-    'Душ': 'Dusche',
-    'Туалет': 'Toilette',
-    'Опалення': 'Heizung',
-    'Чайник': 'Wasserkocher',
-    'Міні-холодильник': 'Minikühlschrank',
-    'Wi-Fi': 'WLAN',
-    'Тераса': 'Terrasse',
-    'Замок': 'Schloss',
-    'Рушники': 'Handtücher',
-    'Освітлення': 'Beleuchtung',
-    'Сніданок': 'Frühstück',
-    'Повноцінний сніданок у ресторані': 'Ausgiebiges Frühstück im Restaurant',
-    'Сауна': 'Sauna',
-    'Фінська сауна (2 години)': 'Finnische Sauna (2 Stunden)',
-    'Чан карпатський': 'Karpaten-Badefass',
-    'Нержавіючий чан під відкритим небом. Мінімальне бронювання — 2 години.': 'Rostfreies Freiluft-Badefass. Mindestbuchung — 2 Stunden.',
-    'Мангал': 'BBQ-Grill',
-    'Набір для барбекю та вогнища з вугіллям, розпалювачем та дровами': 'BBQ- und Feuerstellen-Set mit Holzkohle, Anzünder und Holz',
-    'Пізнє виселення': 'Später Check-out',
-    'Виселення до 14:00 замість 11:00': 'Check-out bis 14:00 statt 11:00',
-    'Раннє заселення': 'Früher Check-in',
-    'Заселення з 11:00 замість 15:00': 'Check-in ab 11:00 statt 15:00',
-  },
-};
+/**
+ * Тут був `commonTranslations` — словник назв послуг ОДНОГО готелю
+ * («Фінська сауна (2 години)», «Чан карпатський», «Виселення до 14:00 замість
+ * 11:00») з перекладами на en/cs/de, продубльований трьома копіями.
+ *
+ * Дві причини прибрати. Він містив час заселення й тривалість послуг
+ * конкретного кемпінгу — тобто чужі робочі дані у файлі платформи. І він був
+ * ДРУГИМ словником того самого призначення: `@core/i18n/content-translations`
+ * робить рівно це, на шість мов замість трьох, і саме там таким рядкам місце
+ * (гейт `check-no-tenant-names` дозволяє його поіменно, бо ключі мусять
+ * збігатися з тим, що вже лежить у рядках клієнта).
+ *
+ * Два словники одного призначення розходяться: цей знав «Сауна», а той —
+ * «Сауна» і ще сорок зручностей, і яка з відповідей дійде до гостя, залежало
+ * від того, який файл прочитали першим.
+ */
 
 export const tName = (obj: any, key: string, l: string): string => {
   if (!obj) return '';
@@ -85,10 +25,9 @@ export const tName = (obj: any, key: string, l: string): string => {
   if (l === 'cs' && obj[`${key}Cs`]) return obj[`${key}Cs`];
   if (l === 'de' && obj[`${key}De`]) return obj[`${key}De`];
   const baseVal = obj[key];
-  if (baseVal && commonTranslations[l] && commonTranslations[l][baseVal]) {
-    return commonTranslations[l][baseVal];
-  }
-  return baseVal;
+  // Один словник на весь продукт. Порожня відповідь означає «перекладу немає»,
+  // і тоді показуємо як є — назву, яку ввів готель.
+  return baseVal ? translateContent(baseVal, l) : baseVal;
 };
 
 export const v3Locales: Record<string, any> = {

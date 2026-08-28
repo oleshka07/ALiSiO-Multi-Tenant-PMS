@@ -910,6 +910,28 @@ CREATE TABLE "gift_card_bundles" (
   UNIQUE ("coupon_code")
 );
 
+CREATE TABLE "gift_card_templates" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "template_key" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "description" TEXT DEFAULT '' NOT NULL,
+  "type" TEXT DEFAULT 'open_date' NOT NULL,
+  "value_type" TEXT DEFAULT 'fixed_czk' NOT NULL,
+  "face_value" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "currency" TEXT NOT NULL,
+  "config_json" JSONB DEFAULT '{}'::jsonb NOT NULL,
+  "emoji" TEXT DEFAULT '🎁' NOT NULL,
+  "badge" TEXT DEFAULT '' NOT NULL,
+  "validity_months" BIGINT DEFAULT 12 NOT NULL,
+  "sort_order" BIGINT DEFAULT 0 NOT NULL,
+  "is_active" BOOLEAN DEFAULT true NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("organization_id", "template_key")
+);
+
 CREATE TABLE "gift_cards" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "property_id" TEXT NOT NULL,
@@ -2037,6 +2059,8 @@ ALTER TABLE "gift_card_automation_rules" ADD CONSTRAINT "fk_gift_card_automation
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "gift_card_bundles" ADD CONSTRAINT "fk_gift_card_bundles_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "gift_card_templates" ADD CONSTRAINT "fk_gift_card_templates_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "gift_cards" ADD CONSTRAINT "fk_gift_cards_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "gift_cards" ADD CONSTRAINT "fk_gift_cards_bundle_id_2"
@@ -2311,6 +2335,7 @@ CREATE INDEX "idx_var_site" ON "gift_card_automation_rules" ("site_id");
 CREATE INDEX "idx_gift_card_bundles_org" ON "gift_card_bundles" ("organization_id");
 CREATE UNIQUE INDEX "idx_vb_coupon_code" ON "gift_card_bundles" ("coupon_code") WHERE coupon_code IS NOT NULL;
 CREATE INDEX "idx_vb_site" ON "gift_card_bundles" ("site_id");
+CREATE INDEX "idx_gift_card_templates_org" ON "gift_card_templates" ("organization_id");
 CREATE UNIQUE INDEX "idx_gift_cards_code" ON "gift_cards" ("code");
 CREATE INDEX "idx_gift_cards_org" ON "gift_cards" ("organization_id");
 CREATE INDEX "idx_gift_cards_property" ON "gift_cards" ("property_id");
@@ -2410,6 +2435,7 @@ CREATE INDEX IF NOT EXISTS "idx_finance_exchange_rates_org" ON "finance_exchange
 CREATE INDEX IF NOT EXISTS "idx_finance_tags_org" ON "finance_tags" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_gift_card_automation_rules_org" ON "gift_card_automation_rules" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_gift_card_bundles_org" ON "gift_card_bundles" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_gift_card_templates_org" ON "gift_card_templates" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_gift_cards_org" ON "gift_cards" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_guest_page_sections_org" ON "guest_page_sections" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_guests_org" ON "guests" ("organization_id");
@@ -2515,6 +2541,8 @@ ALTER TABLE "finance_tags" ALTER COLUMN "organization_id"
 ALTER TABLE "gift_card_automation_rules" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "gift_card_bundles" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "gift_card_templates" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "gift_cards" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2855,6 +2883,12 @@ CREATE POLICY "gift_card_automation_rules_tenant" ON "gift_card_automation_rules
 ALTER TABLE "gift_card_bundles" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "gift_card_bundles" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "gift_card_bundles_tenant" ON "gift_card_bundles"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "gift_card_templates" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "gift_card_templates" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "gift_card_templates_tenant" ON "gift_card_templates"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

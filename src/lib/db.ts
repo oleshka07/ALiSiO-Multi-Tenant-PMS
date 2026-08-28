@@ -1195,14 +1195,18 @@ function runMigrations(database: any) {
       // рахунок ідуть Speisen 7% і Getränke 19% — вимога бухгалтера, не меню.
       database.exec("ALTER TABLE additional_services ADD COLUMN vat_split TEXT");
     }
-    // Update existing services with correct types
-    database.exec("UPDATE additional_services SET service_type = 'slot_booking', duration_minutes = 60 WHERE id = 'svc_sauna'");
-    database.exec("UPDATE additional_services SET service_type = 'slot_booking', duration_minutes = 60 WHERE id = 'svc_pool'");
-    database.exec("UPDATE additional_services SET service_type = 'menu_selection' WHERE id = 'svc_breakfast'");
-    // Update sauna price to 600 CZK/hour as specified
-    database.exec("UPDATE additional_services SET price = 600, unit_label = 'за годину', name_cs = 'Sauna', name_de = 'Sauna' WHERE id = 'svc_sauna'");
-    database.exec("UPDATE additional_services SET name_cs = 'Studená lázeň', name_de = 'Kalttauchbecken' WHERE id = 'svc_pool'");
-    database.exec("UPDATE additional_services SET name_cs = 'Snídaně', name_de = 'Frühstück' WHERE id = 'svc_breakfast'");
+    // Тут стояли сім UPDATE-ів, які на КОЖНОМУ старті переписували рядки
+    // `svc_sauna`, `svc_pool` і `svc_breakfast`: тип послуги, тривалість,
+    // чеські й німецькі назви — і ціну, «UPDATE … SET price = 600».
+    //
+    // Дві причини прибрати. По-перше, `svc_sauna` і `svc_pool` не сіються
+    // ніде (сіється лише `svc_breakfast`, і той узагальнений), тож на будь-якій
+    // новій базі ці рядки не влучали нікуди — мертвий код, що виглядав як
+    // налаштування. По-друге, там, де ті рядки Є — у першого клієнта, — цикл
+    // працював проти нього: він міняв ціну сауни в інтерфейсі, а найближчий
+    // рестарт повертав 600. Ціна послуги належить готелю, і застосунок не має
+    // права її переписувати щостарту.
+    database.exec("UPDATE additional_services SET service_type = 'menu_selection' WHERE id = 'svc_breakfast' AND service_type IS NULL");
     console.log('[DB] Extended additional_services with service_type columns');
   } catch (e: any) {
     console.log('[DB] additional_services extension note:', e.message);
@@ -3740,6 +3744,40 @@ function runMigrations(database: any) {
   }
 
   console.log('[DB] gift_card_automation_rules ready');
+
+  // --- Migration: gift_card_templates ---
+  //
+  // Шаблони ваучерів, які готель пропонує до видачі. Раніше це була константа
+  // `GIFT_CARD_TEMPLATES` у коді модуля — шість шаблонів із цінами й
+  // продуктами ОДНОГО кемпінгу, які бачив кожен готель на сервері.
+  //
+  // Порожня таблиця — нормальний і правильний стан нового клієнта: свої
+  // пропозиції він заводить сам. Нічого не сіється (див. міграцію 0047: там
+  // шість рядків дістаються лише тим організаціям, які вже видавали ваучери
+  // за цими шаблонами — за даними, не за назвою готелю).
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS gift_card_templates (
+      id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      template_key    TEXT NOT NULL,
+      name            TEXT NOT NULL,
+      description     TEXT NOT NULL DEFAULT '',
+      type            TEXT NOT NULL DEFAULT 'open_date',
+      value_type      TEXT NOT NULL DEFAULT 'fixed_czk',
+      face_value      REAL NOT NULL DEFAULT 0,
+      currency        TEXT NOT NULL,
+      config_json     TEXT NOT NULL DEFAULT '{}',
+      emoji           TEXT NOT NULL DEFAULT '🎁',
+      badge           TEXT NOT NULL DEFAULT '',
+      validity_months INTEGER NOT NULL DEFAULT 12,
+      sort_order      INTEGER NOT NULL DEFAULT 0,
+      is_active       INTEGER NOT NULL DEFAULT 1,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (organization_id, template_key)
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_gift_card_templates_org ON gift_card_templates(organization_id)');
 
   // --- Migration: gift_card_bundles (bundle/package gift_cards) ---
   database.exec(`

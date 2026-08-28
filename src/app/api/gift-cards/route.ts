@@ -3,7 +3,7 @@ import { getDb } from '@core/db';
 import { getSql } from '@core/db/async';
 import { withPermission, type Actor } from '@core/auth/session';
 import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
-import { buildGiftCode, getGiftCardTemplate, calcExpiresAt, GIFT_CARD_TEMPLATES } from '@/modules/widget/domain/gift-card-builder';
+import { buildGiftCode, getGiftCardTemplate, calcExpiresAt, listGiftCardTemplates } from '@/modules/widget/domain/gift-card-builder';
 import { organizationCurrency } from '@core/currency';
 
 /**
@@ -67,7 +67,12 @@ export const GET = await withPermission('manage_bookings', async (req: Request, 
         AND expires_at < ?
     `, [actor.organizationId, today]);
 
-    return NextResponse.json({ gift_cards: giftCards, templates: GIFT_CARD_TEMPLATES });
+    // Шаблони ЦЬОГО готелю. Раніше сюди йшла спільна константа, тобто прайс
+    // одного кемпінгу віддавався кожному, хто відкриє екран.
+    return NextResponse.json({
+      gift_cards: giftCards,
+      templates: await listGiftCardTemplates(actor.organizationId),
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('GET /api/gift-cards error:', message);
@@ -123,7 +128,7 @@ export const POST = await withPermission('manage_bookings', async (req: Request,
     }
 
     // Визначаємо параметри з шаблону або з тіла запиту
-    const tpl = template_id ? getGiftCardTemplate(template_id) : null;
+    const tpl = template_id ? await getGiftCardTemplate(actor.organizationId, template_id) : null;
     const resolvedName = name || tpl?.name || 'Ваучер';
     const resolvedType = type || tpl?.type || 'open_date';
     const resolvedValueType = value_type || tpl?.value_type || 'fixed_czk';

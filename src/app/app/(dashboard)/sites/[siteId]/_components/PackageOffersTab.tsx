@@ -328,7 +328,7 @@ export function PackageOffersTab({ siteId, siteCurrency = 'CZK', onCountChange }
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div className="form-group">
             <label className="form-label">{t('Назва пакету *')}</label>
-            <input className="form-input" placeholder={t('Романтичний вікенд')} value={form.name}
+            <input className="form-input" placeholder={t('Назва пропозиції')} value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))} autoFocus />
           </div>
           <div className="form-group">

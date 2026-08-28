@@ -287,7 +287,7 @@ export function SiteGiftCardsTab({ siteId, onCountChange }: { siteId: string; on
                   <div className="form-row">
                     <div className="form-group" style={{ flex: 2 }}>
                       <label className="form-label">{tUi('Назва ваучера *')}</label>
-                      <input className="form-input" placeholder={tUi('Романтичний вікенд')} value={form.custom_name} onChange={e => setForm(f => ({ ...f, custom_name: e.target.value }))} autoFocus />
+                      <input className="form-input" placeholder={tUi('Назва ваучера')} value={form.custom_name} onChange={e => setForm(f => ({ ...f, custom_name: e.target.value }))} autoFocus />
                     </div>
                     <div className="form-group">
                       <label className="form-label">{tUi('Сума')}</label>
