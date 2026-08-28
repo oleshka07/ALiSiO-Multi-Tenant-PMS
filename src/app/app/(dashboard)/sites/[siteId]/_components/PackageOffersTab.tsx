@@ -333,7 +333,7 @@ export function PackageOffersTab({ siteId, siteCurrency = 'CZK', onCountChange }
           </div>
           <div className="form-group">
             <label className="form-label">{t('Опис')}</label>
-            <textarea className="form-input" rows={2} placeholder={t('2 ночі + сауна + сніданок...')}
+            <textarea className="form-input" rows={2} placeholder={t('2 ночі + сніданок + пізній виїзд...')}
               value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} style={{ resize: 'vertical' }} />
           </div>
           <div className="form-row">
