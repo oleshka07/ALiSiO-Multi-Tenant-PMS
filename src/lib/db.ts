@@ -165,24 +165,17 @@ function buildSchema(database: any) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    -- Buildings / SubGroups
-    CREATE TABLE buildings (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-      property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      code TEXT NOT NULL,
-      description TEXT,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+    -- Будов тут немає навмисно. Окрема таблиця з CRUD, двома FK і власним
+    -- типом iCal-каналу існувала заради корпусу «F» одного клієнта, а корпус
+    -- чи крило готель називає текстом у units.zone, який друкує сам, і
+    -- календар однаково групував по building_name АБО zone одним виразом.
+    -- Прибрано міграцією 0044.
 
     -- Unit Types
     CREATE TABLE unit_types (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
       category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-      building_id TEXT REFERENCES buildings(id) ON DELETE SET NULL,
       name TEXT NOT NULL,
       code TEXT NOT NULL,
       description TEXT,
@@ -207,7 +200,6 @@ function buildSchema(database: any) {
       unit_type_id TEXT NOT NULL REFERENCES unit_types(id) ON DELETE CASCADE,
       property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
       category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-      building_id TEXT REFERENCES buildings(id) ON DELETE SET NULL,
       name TEXT NOT NULL,
       code TEXT NOT NULL,
       floor INTEGER,
@@ -1022,8 +1014,7 @@ function runMigrations(database: any) {
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       organization_id TEXT REFERENCES organizations(id) ON DELETE CASCADE,
       property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-      channel_type TEXT NOT NULL CHECK (channel_type IN ('building', 'unit')),
-      building_id TEXT REFERENCES buildings(id) ON DELETE CASCADE,
+      channel_type TEXT NOT NULL DEFAULT 'unit' CHECK (channel_type IN ('unit')),
       unit_id TEXT REFERENCES units(id) ON DELETE CASCADE,
       source_code TEXT NOT NULL DEFAULT 'vrbo',
       ical_url TEXT,
@@ -1039,7 +1030,7 @@ function runMigrations(database: any) {
   // --- Migration: ical_channels carries its tenant ---
   // The export URL is the credential a channel manager holds, so the feed is
   // read with no session. Postgres then needs the row to be reachable by the
-  // token alone, and everything the feed reads afterwards — units, buildings,
+  // token alone, and everything the feed reads afterwards — units,
   // reservations — needs the hotel. Reading it back out of `properties` is not
   // possible from inside the token context, so the channel names its own
   // tenant. AGENTS.md §3 invariant 2.
@@ -1151,29 +1142,21 @@ function runMigrations(database: any) {
     console.log('[DB] gender migration note:', e.message);
   }
 
-  // --- Migration: add is_pool column to units + seed pool unit for Building F ---
-  // The room-allocation modal uses pool units as a "staging" location for
-  // bookings without a confirmed room. Pool units are real DB rows so the
-  // existing PATCH unit_id flow works unchanged, but they are filtered out
-  // of every regular list (calendar, bookings, etc.) so they never show up
-  // as bookable rooms.
+  // --- Migration: add is_pool column to units ---
+  // A pool unit is where a booking with no room yet waits: a real row, so the
+  // existing PATCH unit_id flow works unchanged, filtered out of every list
+  // that sells rooms (calendar, occupancy, availability) so it is never
+  // offered as one.
+  //
+  // Тут же стояв засів такого юніта — але лише для будови з кодом «F», тобто
+  // для одного клієнта. Іншим готелям pool-юніт не створювався ніколи, і
+  // чернетки їм не було куди класти. Будов більше немає; pool-юніт заводить
+  // provision-org.mjs разом із рештою обʼєкта, для кожного готеля однаково.
   try {
     const unitsCols = database.prepare("PRAGMA table_info(units)").all().map((c: any) => c.name);
     if (!unitsCols.includes('is_pool')) {
       database.exec("ALTER TABLE units ADD COLUMN is_pool INTEGER NOT NULL DEFAULT 0");
       console.log('[DB] Added is_pool column to units');
-    }
-    // Seed pool unit for Building F (idempotent).
-    const fBldg = database.prepare("SELECT id, property_id, category_id FROM buildings WHERE code = 'F' LIMIT 1").get() as { id: string; property_id: string; category_id: string } | undefined;
-    if (fBldg) {
-      const fUtAny = database.prepare("SELECT id FROM unit_types WHERE building_id = ? LIMIT 1").get(fBldg.id) as { id: string } | undefined;
-      const existing = database.prepare("SELECT id FROM units WHERE building_id = ? AND is_pool = 1 LIMIT 1").get(fBldg.id) as { id: string } | undefined;
-      if (!existing && fUtAny) {
-        database.prepare(
-          "INSERT INTO units (id, unit_type_id, property_id, category_id, building_id, name, code, beds, sort_order, is_pool, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)"
-        ).run('u_f_pool', fUtAny.id, fBldg.property_id, fBldg.category_id, fBldg.id, 'Чорновик F', 'F-POOL', 99, 9999);
-        console.log('[DB] Seeded staging pool unit for Building F');
-      }
     }
   } catch (e: any) {
     console.log('[DB] is_pool migration note:', e.message);
@@ -2406,34 +2389,6 @@ function runMigrations(database: any) {
     database.exec("ALTER TABLE reservations ADD COLUMN meal_plan TEXT");
   } catch { /* column already exists */ }
 
-  // --- Migration: Renumber Building F rooms (F7..F23 → F1..F17) ---
-  try {
-    const hasOldF7 = database.prepare("SELECT id FROM units WHERE id = 'u_f7' AND building_id = 'bldg_f'").get();
-    if (hasOldF7) {
-      console.log('[DB] Renumbering Building F rooms: F7..F23 → F1..F17');
-      const oldNums = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
-      // Step 1: rename to temporary IDs/names to avoid conflicts
-      for (const n of oldNums) {
-        const newN = n - 6;
-        database.prepare("UPDATE units SET id = ?, name = ?, code = ?, sort_order = ? WHERE id = ?")
-          .run(`u_f_tmp${newN}`, `F${newN}`, `F${newN}`, newN, `u_f${n}`);
-        // Also update FK references
-        database.prepare("UPDATE reservations SET unit_id = ? WHERE unit_id = ?")
-          .run(`u_f_tmp${newN}`, `u_f${n}`);
-      }
-      // Step 2: rename from temporary to final IDs
-      for (let newN = 1; newN <= 17; newN++) {
-        database.prepare("UPDATE units SET id = ? WHERE id = ?")
-          .run(`u_f${newN}`, `u_f_tmp${newN}`);
-        database.prepare("UPDATE reservations SET unit_id = ? WHERE unit_id = ?")
-          .run(`u_f${newN}`, `u_f_tmp${newN}`);
-      }
-      console.log('[DB] Building F renumbered successfully');
-    }
-  } catch (e: any) {
-    console.error('[DB] Building F renumbering error:', e.message);
-  }
-
   // --- Migration: add city_tax fields to reservations ---
   try {
     database.exec("ALTER TABLE reservations ADD COLUMN city_tax_amount REAL DEFAULT 0");
@@ -3210,7 +3165,10 @@ function runMigrations(database: any) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS widget_price_list (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      category TEXT NOT NULL CHECK (category IN ('glamping', 'buildings', 'camping')),
+      -- Без CHECK: тут стояв список із трьох слів першого клієнта.
+      -- Готель із категоріями «Номери» і «Апартаменти» діставав відмову
+      -- бази на власну категорію — не порожній список, а помилку запису.
+      category TEXT NOT NULL,
       item_code TEXT NOT NULL UNIQUE,
       item_name TEXT NOT NULL,
       rate_standard REAL NOT NULL DEFAULT 0,
@@ -5855,29 +5813,29 @@ function seedData(database: any) {
   const utDlx = 'ut_deluxe';
   const utSuite = 'ut_suite';
   const insertUT = database.prepare(
-    'INSERT INTO unit_types (id, property_id, category_id, building_id, name, code, max_adults, base_occupancy, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO unit_types (id, property_id, category_id, name, code, max_adults, base_occupancy, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   );
-  insertUT.run(utStd, propId, catRooms, null, 'Standard Double', 'STD', 2, 2, 1);
-  insertUT.run(utDlx, propId, catRooms, null, 'Deluxe Double', 'DLX', 3, 2, 2);
-  insertUT.run(utSuite, propId, catSuites, null, 'Suite', 'SUITE', 4, 2, 3);
+  insertUT.run(utStd, propId, catRooms, 'Standard Double', 'STD', 2, 2, 1);
+  insertUT.run(utDlx, propId, catRooms, 'Deluxe Double', 'DLX', 3, 2, 2);
+  insertUT.run(utSuite, propId, catSuites, 'Suite', 'SUITE', 4, 2, 3);
 
   const insertUnit = database.prepare(
-    'INSERT INTO units (id, unit_type_id, property_id, category_id, building_id, name, code, beds, zone, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO units (id, unit_type_id, property_id, category_id, name, code, beds, zone, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
   const units: string[] = [];
   for (let i = 1; i <= 6; i++) {
     const id = `u_std${i}`;
-    insertUnit.run(id, utStd, propId, catRooms, null, `10${i}`, `10${i}`, 2, null, i);
+    insertUnit.run(id, utStd, propId, catRooms, `10${i}`, `10${i}`, 2, null, i);
     units.push(id);
   }
   for (let i = 1; i <= 4; i++) {
     const id = `u_dlx${i}`;
-    insertUnit.run(id, utDlx, propId, catRooms, null, `20${i}`, `20${i}`, 2, null, 10 + i);
+    insertUnit.run(id, utDlx, propId, catRooms, `20${i}`, `20${i}`, 2, null, 10 + i);
     units.push(id);
   }
   for (let i = 1; i <= 2; i++) {
     const id = `u_suite${i}`;
-    insertUnit.run(id, utSuite, propId, catSuites, null, `30${i}`, `30${i}`, 4, null, 20 + i);
+    insertUnit.run(id, utSuite, propId, catSuites, `30${i}`, `30${i}`, 4, null, 20 + i);
     units.push(id);
   }
 

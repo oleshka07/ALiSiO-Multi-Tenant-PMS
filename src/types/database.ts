@@ -76,24 +76,11 @@ export interface Category {
   created_at: string;
 }
 
-// ─── Building / SubGroup ───────────────────────
-export interface Building {
-  id: string;
-  category_id: string;
-  property_id: string;
-  name: string;
-  code: string;
-  description?: string;
-  sort_order: number;
-  created_at: string;
-}
-
 // ─── Unit Type ─────────────────────────────────
 export interface UnitType {
   id: string;
   property_id: string;
   category_id: string;
-  building_id?: string;
   name: string;
   code: string;
   description?: string;
@@ -118,7 +105,6 @@ export interface Unit {
   unit_type_id: string;
   property_id: string;
   category_id: string;
-  building_id?: string;
   name: string;
   code: string;
   floor?: number;
@@ -134,7 +120,6 @@ export interface Unit {
   // Joined
   unit_type?: UnitType;
   category?: Category;
-  building?: Building;
 }
 
 // ─── Rate Plan ─────────────────────────────────

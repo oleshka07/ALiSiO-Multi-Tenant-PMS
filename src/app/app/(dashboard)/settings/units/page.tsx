@@ -46,9 +46,6 @@ interface UnitFromAPI {
   unit_type_code: string;
   max_adults: number;
   base_occupancy: number;
-  building_id?: string;
-  building_name?: string;
-  building_code?: string;
   lock_code?: string;
   entry_photo_url?: string;
 }
@@ -67,9 +64,6 @@ interface UnitTypeFromAPI {
   category_id: string;
   category_name: string;
   category_type: string;
-  building_id?: string;
-  building_name?: string;
-  building_code?: string;
   unit_count: number;
 }
 
@@ -80,13 +74,6 @@ interface CategoryFromAPI {
   sort_order: number;
   icon?: string;
   color?: string;
-}
-
-interface BuildingFromAPI {
-  id: string;
-  name: string;
-  code: string;
-  category_id: string;
 }
 
 // ─── Display grouping ────────────────────────────────────
@@ -101,7 +88,6 @@ interface DisplayGroup {
 interface DisplaySubGroup {
   key: string;
   label: string;
-  buildingId?: string;
   unitTypeId?: string;
   units: UnitFromAPI[];
 }
@@ -153,7 +139,6 @@ export default function SettingsUnitsPage() {
   const [units, setUnits] = useState<UnitFromAPI[]>([]);
   const [unitTypes, setUnitTypes] = useState<UnitTypeFromAPI[]>([]);
   const [categories, setCategories] = useState<CategoryFromAPI[]>([]);
-  const [buildings, setBuildings] = useState<BuildingFromAPI[]>([]);
   const [loading, setLoading] = useState(true);
 
   // UI state
@@ -167,19 +152,19 @@ export default function SettingsUnitsPage() {
   // and no screen ever called it.
   const [bulkModal, setBulkModal] = useState(false);
   const [bulkForm, setBulkForm] = useState({
-    category_id: '', unit_type_id: '', building_id: '',
+    category_id: '', unit_type_id: '',
     prefix: '', from: 1, to: 10, beds: 2, zone: '',
   });
   const [bulkResult, setBulkResult] = useState('');
   const [editingUnit, setEditingUnit] = useState<UnitFromAPI | null>(null);
-  const [unitForm, setUnitForm] = useState({ name: '', code: '', beds: 0, zone: '', unit_type_id: '', building_id: '', room_status: 'available', cleaning_status: 'clean', lock_code: '', entry_photo_url: '' });
+  const [unitForm, setUnitForm] = useState({ name: '', code: '', beds: 0, zone: '', unit_type_id: '', room_status: 'available', cleaning_status: 'clean', lock_code: '', entry_photo_url: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   // Edit Unit Type modal
   const [editTypeModal, setEditTypeModal] = useState(false);
   const [editingType, setEditingType] = useState<UnitTypeFromAPI | null>(null);
-  const [typeForm, setTypeForm] = useState({ name: '', code: '', category_id: '', building_id: '', max_adults: 2, max_children: 2, max_occupancy: 4, base_occupancy: 2, beds_single: 0, beds_double: 1, sort_order: 0, bookable_online: true, breakfast_included: '' as '' | '1' | '0' });
+  const [typeForm, setTypeForm] = useState({ name: '', code: '', category_id: '', max_adults: 2, max_children: 2, max_occupancy: 4, base_occupancy: 2, beds_single: 0, beds_double: 1, sort_order: 0, bookable_online: true, breakfast_included: '' as '' | '1' | '0' });
 
   // Delete modals
   const [deleteUnitModal, setDeleteUnitModal] = useState(false);
@@ -191,22 +176,19 @@ export default function SettingsUnitsPage() {
   // ─── Fetch data from API ──────────────────────────────────
   const fetchData = useCallback(async () => {
     try {
-      const [unitsRes, typesRes, catsRes, bldsRes] = await Promise.all([
+      const [unitsRes, typesRes, catsRes] = await Promise.all([
         fetch('/api/units'),
         fetch('/api/unit-types'),
         fetch('/api/categories'),
-        fetch('/api/buildings'),
       ]);
-      const [unitsData, typesData, catsData, bldsData] = await Promise.all([
+      const [unitsData, typesData, catsData] = await Promise.all([
         unitsRes.json(),
         typesRes.json(),
         catsRes.json(),
-        bldsRes.json(),
       ]);
       setUnits(Array.isArray(unitsData) ? unitsData : []);
       setUnitTypes(Array.isArray(typesData) ? typesData : []);
       setCategories(Array.isArray(catsData) ? catsData : []);
-      setBuildings(Array.isArray(bldsData) ? bldsData : []);
     } catch (e) {
       console.error('Failed to load data:', e);
     } finally {
@@ -230,31 +212,13 @@ export default function SettingsUnitsPage() {
 
     const subGroups: DisplaySubGroup[] = [];
 
-    // Group by building when this category HAS buildings, by unit type when it
-    // does not. It used to ask `cat.type === 'resort'`, so a pension with two
-    // wings saw no wings at all, and a glamping site that named its clearings
-    // could not see them either. Whether buildings exist is a fact about this
-    // hotel; the category's type is a guess about it.
-    const hasBuildings = catUnits.some(u => u.building_id);
-    if (hasBuildings) {
-      // Group by building
-      const bldgMap = new Map<string, UnitFromAPI[]>();
-      for (const u of catUnits) {
-        const key = u.building_id || '_no_building';
-        if (!bldgMap.has(key)) bldgMap.set(key, []);
-        bldgMap.get(key)!.push(u);
-      }
-      for (const [bKey, bUnits] of bldgMap) {
-        const bldg = buildings.find(b => b.id === bKey);
-        subGroups.push({
-          key: `bldg_${bKey}`,
-          label: bldg ? bldg.name : 'Без будови',
-          buildingId: bldg?.id,
-          units: bUnits.sort((a, b) => a.sort_order - b.sort_order),
-        });
-      }
-    } else {
-      // Group by unit type
+    // Групування — за типом номера, одним способом для всіх готелів.
+    //
+    // Тут був другий спосіб — за будовою, якщо в категорії є будови. Будов
+    // більше немає: окрема таблиця з CRUD і власним типом iCal-каналу
+    // існувала заради одного клієнта, а корпус чи крило готель називає
+    // текстом у `units.zone`, який друкує сам.
+    {
       const typeMap = new Map<string, UnitFromAPI[]>();
       for (const u of catUnits) {
         const key = u.unit_type_id;
@@ -293,7 +257,6 @@ export default function SettingsUnitsPage() {
       beds: unit.beds,
       zone: unit.zone || '',
       unit_type_id: unit.unit_type_id,
-      building_id: unit.building_id || '',
       room_status: unit.room_status,
       cleaning_status: unit.cleaning_status,
       lock_code: unit.lock_code || '',
@@ -306,7 +269,7 @@ export default function SettingsUnitsPage() {
   const openBulk = () => {
     setBulkForm({
       category_id: categories[0]?.id || '',
-      unit_type_id: '', building_id: '',
+      unit_type_id: '',
       prefix: '', from: 1, to: 10, beds: 2, zone: '',
     });
     setBulkResult('');
@@ -334,7 +297,6 @@ export default function SettingsUnitsPage() {
           bulk: true,
           category_id: bulkForm.category_id,
           unit_type_id: bulkForm.unit_type_id,
-          building_id: bulkForm.building_id || null,
           prefix: bulkForm.prefix,
           from: Number(bulkForm.from),
           to: Number(bulkForm.to),
@@ -372,7 +334,6 @@ export default function SettingsUnitsPage() {
         beds: unitForm.beds,
         zone: unitForm.zone || null,
         unit_type_id: unitForm.unit_type_id,
-        building_id: unitForm.building_id || null,
         room_status: unitForm.room_status,
         cleaning_status: unitForm.cleaning_status,
         lock_code: unitForm.lock_code || null,
@@ -436,7 +397,6 @@ export default function SettingsUnitsPage() {
       name: ut.name,
       code: ut.code,
       category_id: ut.category_id,
-      building_id: ut.building_id || '',
       max_adults: ut.max_adults,
       max_children: ut.max_children,
       max_occupancy: ut.max_occupancy,
@@ -457,7 +417,6 @@ export default function SettingsUnitsPage() {
       name: '',
       code: '',
       category_id: categoryId,
-      building_id: '',
       max_adults: 2,
       max_children: 2,
       max_occupancy: 4,
@@ -484,7 +443,6 @@ export default function SettingsUnitsPage() {
       const method = editingType ? 'PATCH' : 'POST';
       const body: any = {
         ...typeForm,
-        building_id: typeForm.building_id || null,
         // Три стани: '' означає «вирішує правило готелю» і їде як null.
         breakfast_included: typeForm.breakfast_included === '' ? null : Number(typeForm.breakfast_included),
       };
@@ -728,17 +686,8 @@ export default function SettingsUnitsPage() {
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">{tUi('Будова')}</label>
-              <select className="form-select" value={unitForm.building_id} onChange={(e) => setUnitForm((p) => ({ ...p, building_id: e.target.value }))}>
-                <option value="">{tUi('— Немає —')}</option>
-                {buildings.map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group">
               <label className="form-label">{tUi('Зона')}</label>
-              <input className="form-input" value={unitForm.zone} onChange={(e) => setUnitForm((p) => ({ ...p, zone: e.target.value }))} placeholder={tUi('Напр.: FB')} />
+              <input className="form-input" value={unitForm.zone} onChange={(e) => setUnitForm((p) => ({ ...p, zone: e.target.value }))} placeholder={tUi('Напр.: східне крило')} />
             </div>
           </div>
           <div className="form-row">
@@ -813,7 +762,7 @@ export default function SettingsUnitsPage() {
               <select
                 className="form-select"
                 value={bulkForm.category_id}
-                onChange={(e) => setBulkForm((p) => ({ ...p, category_id: e.target.value, unit_type_id: '', building_id: '' }))}
+                onChange={(e) => setBulkForm((p) => ({ ...p, category_id: e.target.value, unit_type_id: '' }))}
               >
                 <option value="">—</option>
                 {categories.map((c) => (
@@ -835,21 +784,6 @@ export default function SettingsUnitsPage() {
               </select>
             </div>
 
-            {/* Optional: a hotel in one building never opens this. */}
-            {buildings.filter((b) => !bulkForm.category_id || b.category_id === bulkForm.category_id).length > 0 && (
-              <div className="form-group">
-                <label className="form-label">{tUi('Будівля (необовʼязково)')}</label>
-                <select
-                  className="form-select"
-                  value={bulkForm.building_id}
-                  onChange={(e) => setBulkForm((p) => ({ ...p, building_id: e.target.value }))}
-                >
-                  <option value="">{tUi('Без будівлі')}</option>
-                  {buildings.filter((b) => !bulkForm.category_id || b.category_id === bulkForm.category_id)
-                    .map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-              </div>
-            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
               <div className="form-group">
@@ -939,15 +873,6 @@ export default function SettingsUnitsPage() {
                 <option value="">{tUi('Оберіть категорію')}</option>
                 {categories.map(c => (
                   <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">{tUi('Будова')}</label>
-              <select className="form-select" value={typeForm.building_id} onChange={(e) => setTypeForm((p) => ({ ...p, building_id: e.target.value }))}>
-                <option value="">{tUi('— Немає —')}</option>
-                {buildings.map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
             </div>

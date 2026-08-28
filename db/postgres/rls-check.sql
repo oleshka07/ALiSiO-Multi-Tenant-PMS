@@ -146,7 +146,19 @@ BEGIN
     AND NOT c.relrowsecurity
     AND c.relname NOT IN (
       'organizations', 'sessions', 'rate_limits', 'settings', 'content_translations',
-      'email_processed', 'fin_system_state', 'hostex_sync_log', 'hostex_property_map'
+      'email_processed', 'fin_system_state',
+      -- Платформа стоїть НАД орендарями, а не всередині одного з них: це
+      -- облікові записи того, хто обслуговує сервер, і їхні сесії. Політика
+      -- «бачиш лише свою організацію» тут не має сенсу — організації немає.
+      -- Доступ до них дає окрема варта (withPlatformAdmin), не RLS.
+      --
+      -- Їх бракувало в списку від початку, тож ця перевірка падала на кожній
+      -- свіжій базі — і саме тому її вивід звикли читати як «ну там завжди
+      -- щось червоне». Перевірка, якій не вірять, не перевіряє нічого.
+      'platform_users', 'platform_sessions'
+      -- `hostex_sync_log` і `hostex_property_map` звідси прибрано разом із
+      -- мостом Hostex: таблиць більше немає, і рядок у списку винятків для
+      -- неіснуючої таблиці мовчки прикриє майбутню таблицю з тим же іменем.
     );
   IF missing IS NOT NULL THEN
     RAISE EXCEPTION 'tables without row-level security: %', missing;

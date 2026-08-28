@@ -7,7 +7,7 @@ import { useMobileMenu } from '@/ui/MobileMenuContext';
 import {
   Plus, Edit3, Trash2, X, Save, Loader2, ArrowLeft,
   RefreshCw, Copy, Check, ExternalLink, Clock, AlertCircle,
-  CheckCircle, Building2, Home,
+  CheckCircle, Home,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -24,8 +24,7 @@ import Link from 'next/link';
 
 interface ICalChannel {
   id: string;
-  channel_type: 'building' | 'unit';
-  building_id: string | null;
+  channel_type: 'unit';
   unit_id: string | null;
   source_code: string;
   ical_url: string | null;
@@ -54,12 +53,6 @@ interface BookingSource {
   code: string;
   color: string;
   icon_letter: string;
-}
-
-interface Building {
-  id: string;
-  name: string;
-  code: string;
 }
 
 interface Unit {
@@ -98,7 +91,6 @@ export default function ChannelManagerPage() {
 
   const [channels, setChannels] = useState<ICalChannel[]>([]);
   const [sources, setSources] = useState<BookingSource[]>([]);
-  const [buildings, setBuildings] = useState<Building[]>([]);
   const [mappableUnits, setMappableUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showICalModal, setShowICalModal] = useState(false);
@@ -110,8 +102,7 @@ export default function ChannelManagerPage() {
   const [copiedToken, setCopiedToken] = useState('');
 
   const [icalForm, setICalForm] = useState({
-    channel_type: 'unit' as 'building' | 'unit',
-    building_id: '',
+    channel_type: 'unit' as const,
     unit_id: '',
     source_code: 'vrbo',
     ical_url: '',
@@ -123,20 +114,17 @@ export default function ChannelManagerPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [chRes, srcRes, bldRes, unitRes] = await Promise.all([
+      const [chRes, srcRes, unitRes] = await Promise.all([
         fetch('/api/ical-sync/channels'),
         fetch('/api/booking-sources'),
-        fetch('/api/buildings'),
         fetch('/api/units'),
       ]);
       const ch = await chRes.json();
       const src = await srcRes.json();
-      const bld = await bldRes.json();
       const units = await unitRes.json();
 
       if (Array.isArray(ch)) setChannels(ch);
       if (Array.isArray(src)) setSources(src);
-      if (Array.isArray(bld)) setBuildings(bld);
       // Every unit, not one category's.
       //
       // This filtered on `category_type === 'glamping'`, which is one
@@ -173,14 +161,14 @@ export default function ChannelManagerPage() {
 
   const openNewICal = () => {
     setEditChannel(null);
-    setICalForm({ channel_type: 'unit', building_id: '', unit_id: '', source_code: 'vrbo', ical_url: '', sync_interval_minutes: 15 });
+    setICalForm({ channel_type: 'unit', unit_id: '', source_code: 'vrbo', ical_url: '', sync_interval_minutes: 15 });
     setShowICalModal(true);
   };
 
   const openEditICal = (ch: ICalChannel) => {
     setEditChannel(ch);
     setICalForm({
-      channel_type: ch.channel_type, building_id: ch.building_id || '',
+      channel_type: 'unit',
       unit_id: ch.unit_id || '', source_code: ch.source_code,
       ical_url: ch.ical_url || '', sync_interval_minutes: ch.sync_interval_minutes,
     });
@@ -309,7 +297,7 @@ export default function ChannelManagerPage() {
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: 18, fontWeight: 700, flexShrink: 0,
                       }}>
-                        {ch.channel_type === 'building' ? <Building2 size={22} /> : <Home size={22} />}
+                        <Home size={22} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -387,37 +375,21 @@ export default function ChannelManagerPage() {
             </button>
           </>}
         >
-          {!editChannel && (<>
+          {/* Канал прив'язується до одиниці розміщення — іншого типу немає.
+              Тут стояв вибір «Будівля / Будинок»: будівля була окремою
+              таблицею заради одного клієнта, і канал на неї означав один
+              календар на весь корпус. Лишився один тип, тому й вибору немає:
+              перемикач з однією опцією — це рішення, якого оператор не
+              ухвалює. */}
+          {!editChannel && (
             <div className="form-group">
-              <label className="form-label">{tUi('Тип каналу *')}</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className={`btn ${icalForm.channel_type === 'building' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }} onClick={() => setICalForm(p => ({ ...p, channel_type: 'building', unit_id: '' }))}>
-                  <Building2 size={16} /> {tUi('Будівля')}
-                </button>
-                <button className={`btn ${icalForm.channel_type === 'unit' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }} onClick={() => setICalForm(p => ({ ...p, channel_type: 'unit', building_id: '' }))}>
-                  <Home size={16} /> {tUi('Будинок')}
-                </button>
-              </div>
+              <label className="form-label">{tUi('Одиниця розміщення *')}</label>
+              <select className="form-select" value={icalForm.unit_id} onChange={e => setICalForm(p => ({ ...p, unit_id: e.target.value }))}>
+                <option value="">{tUi('Оберіть...')}</option>
+                {mappableUnits.map(u => <option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}
+              </select>
             </div>
-            {icalForm.channel_type === 'building' && (
-              <div className="form-group">
-                <label className="form-label">{tUi('Будівля *')}</label>
-                <select className="form-select" value={icalForm.building_id} onChange={e => setICalForm(p => ({ ...p, building_id: e.target.value }))}>
-                  <option value="">{tUi('Оберіть...')}</option>
-                  {buildings.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-              </div>
-            )}
-            {icalForm.channel_type === 'unit' && (
-              <div className="form-group">
-                <label className="form-label">{tUi('Одиниця розміщення *')}</label>
-                <select className="form-select" value={icalForm.unit_id} onChange={e => setICalForm(p => ({ ...p, unit_id: e.target.value }))}>
-                  <option value="">{tUi('Оберіть...')}</option>
-                  {mappableUnits.map(u => <option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}
-                </select>
-              </div>
-            )}
-          </>)}
+          )}
           <div className="form-group">
             <label className="form-label">{tUi('Джерело (OTA) *')}</label>
             <select className="form-select" value={icalForm.source_code} onChange={e => setICalForm(p => ({ ...p, source_code: e.target.value }))}>

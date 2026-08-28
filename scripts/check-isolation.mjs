@@ -78,7 +78,6 @@ async function cleanup() {
     // стартує в базі, засміченій попереднім.
     try { await sql.run('DELETE FROM fees_taxes WHERE property_id = ?', [pid]); } catch { /* table may not exist */ }
     await sql.run('DELETE FROM unit_types WHERE property_id = ?', [pid]);
-    await sql.run('DELETE FROM buildings WHERE property_id = ?', [pid]);
     await sql.run('DELETE FROM categories WHERE property_id = ?', [pid]);
   }
   await sql.run('DELETE FROM properties WHERE organization_id LIKE ?', [`${TAG}%`]);
@@ -203,7 +202,7 @@ async function main() {
     console.log("  ok  B cannot delete A's property");
 
     // ── The property's children ─────────────────────────────────────────────
-    // categories, buildings, unit_types and units carry no organization_id;
+    // categories, unit_types and units carry no organization_id;
     // they reach one through property_id. That indirection is exactly where a
     // check is easy to forget, so each is exercised rather than assumed.
     const catRes = await call(cookieA, '/api/categories', {

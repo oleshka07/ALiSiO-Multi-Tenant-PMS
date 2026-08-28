@@ -405,7 +405,7 @@ export default function BookingV2({ siteId, siteSlug, thankYouUrl, design, isPre
           )}
 
           {/* Category chooser — the configurable replacement for the retired
-              wizard's hardcoded glamping / buildings / camping screen. Built
+              wizard's hardcoded three-category screen. Built
               from the categories that actually have availability, and shown
               only when the property offers more than one. */}
           {!loadingAvail && !selectedUnitId && categoryStepEnabled && !selectedCategoryId && (

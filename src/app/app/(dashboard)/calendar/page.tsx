@@ -1,12 +1,12 @@
 'use client';
 
 import { useT, usePlural } from '@core/i18n/client';
+import { useRouter } from 'next/navigation';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { useDevice } from '@/ui/hooks/useDevice';
 import MobileCalendar from '@/components/mobile/pages/MobileCalendar';
-import RoomAllocationModal from '@/components/booking/RoomAllocationModal';
 import BookingViewModal from '@/components/booking/BookingViewModal';
 import BookingForm from '@/components/booking/BookingForm';
 import {
@@ -45,7 +45,6 @@ interface UnitRow {
   id: string; name: string; code: string; beds: number;
   category_type: string; category_name: string;
   unit_type_name: string; unit_type_id: string;
-  building_name?: string; building_code?: string;
   zone?: string; room_status: string; cleaning_status: string;
 }
 
@@ -176,6 +175,7 @@ export default function CalendarPage() {
 }
 
 function CalendarDesktop() {
+  const router = useRouter();
   const pluralUi = usePlural();
   const tUi = useT();
   // ─── State ──────
@@ -214,7 +214,6 @@ function CalendarDesktop() {
 
   // Modals
   const [showNewBooking, setShowNewBooking] = useState(false);
-  const [showRoomAllocation, setShowRoomAllocation] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
 
   // Zoom & Navigation
@@ -389,18 +388,18 @@ function CalendarDesktop() {
 
   // ─── Group units ──────
   //
-  // Rows are grouped by whatever this hotel actually uses: a building, a zone,
-  // or — when it names neither — the category itself. Nothing is hardcoded to
-  // one hotel's vocabulary, and nothing is dropped.
+  // Rows are grouped by whatever this hotel actually uses: a zone, or — when
+  // it names none — the category itself. Nothing is hardcoded to one hotel's
+  // vocabulary, and nothing is dropped.
   //
   // The bug this replaces made the calendar render ZERO rooms: the group names
-  // were built with a fallback (`building_name || 'Other'`) but the members
-  // were matched without one (`building_name === 'Other'`), so for the very
-  // common case of a hotel with no buildings named, every group came out
-  // empty. Grouping now keys on one function used for both sides.
+  // were built with a fallback (`sub || 'Other'`) but the members were matched
+  // without one (`sub === 'Other'`), so for the very common case of a hotel
+  // that names no subgroups, every group came out empty. Grouping now keys on
+  // one function used for both sides.
   const groups = useMemo(() => {
     const groupOf = (u: UnitRow) => {
-      const sub = u.building_name || u.zone || '';
+      const sub = u.zone || '';
       // The hotel's own word for this category, not ours. `category_type` is a
       // behaviour key with six possible values; `category_name` is what the
       // operator typed — "Корпус А", "Будиночки", "Місця під каравани". Reading
@@ -677,12 +676,18 @@ function CalendarDesktop() {
                 ))}
               </div>
               <button className="btn btn-secondary btn-sm" onClick={() => fetchData()} title={tUi('Оновити дані')} style={{ padding: '4px 6px' }}><RefreshCw size={14} /></button>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowRoomAllocation(true)} title={tUi('Розселення по кімнатах (Building View)')} style={{ fontSize: 11, padding: '4px 8px', gap: 4 }}><Building2 size={14} /> {tUi('Будова')}</button>
+              {/*
+                Веде в список броней, а не в модалку розселення.
+                Модалка малювала фізичний коридор F1–F17 одного готелю і
+                зʼявлялась лише там, де номери справді так звуться — тобто
+                для решти клієнтів цей значок не робив нічого. Список із
+                фільтром «чорнетки» робить те саме й для всіх.
+              */}
               {draftCount > 0 && (
                 <button
                   className="draft-pool-badge"
-                  onClick={() => setShowRoomAllocation(true)}
-                  title={`${draftCount} ${pluralUi(draftCount, 'бронювань у чорновику — натисніть для розподілу')}`}
+                  onClick={() => router.push('/app/bookings?status=draft')}
+                  title={`${draftCount} ${pluralUi(draftCount, 'бронювань у чорновику — натисніть, щоб розподілити')}`}
                 >
                   📋 {draftCount} {tUi('в чорновику')}
                 </button>
@@ -1180,13 +1185,6 @@ function CalendarDesktop() {
           </div>
         </div>
       )}
-
-      {/* ─── Room Allocation Modal (Building View) ───────── */}
-      <RoomAllocationModal
-        open={showRoomAllocation}
-        onClose={() => setShowRoomAllocation(false)}
-        onChanged={() => fetchData()}
-      />
 
       {/* ─── Export Report Modal ───────── */}
       {showExportModal && (

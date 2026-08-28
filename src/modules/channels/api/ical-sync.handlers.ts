@@ -168,7 +168,8 @@ export async function syncChannel(channel: any, organizationId: string) {
 async function getChannelUnitIds(channel: any): Promise<string[]> {
   const sql = getSql();
   if (channel.channel_type === 'unit') return [channel.unit_id];
-  const units = await sql.rows<any>('SELECT id FROM units WHERE building_id = ?', [channel.building_id]) as any[];
+  // Канал по будові зник разом із будовами: лишився один тип — по номеру.
+  const units: any[] = [];
   return units.map((u: any) => u.id);
 }
 

@@ -3,7 +3,7 @@ import { getSql } from '@core/db/async';
 /**
  * Ownership checks for everything hanging off a property.
  *
- * categories, buildings, unit_types and units carry no organization_id — they
+ * categories, unit_types and units carry no organization_id — they
  * reach one through property_id. That is a fine schema, but it means a query
  * constrained only by the row's own id isolates nothing: the id comes from the
  * URL, and any tenant can type any id. These helpers turn "this id" into "this
@@ -26,7 +26,7 @@ export async function ownsProperty(organizationId: string, propertyId: string): 
  */
 export async function ownsViaProperty(
   organizationId: string,
-  table: 'categories' | 'buildings' | 'unit_types' | 'units',
+  table: 'categories' | 'unit_types' | 'units',
   id: string,
 ): Promise<boolean> {
   const sql = getSql();

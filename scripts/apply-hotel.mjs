@@ -132,7 +132,6 @@ const { getSql } = await import('../src/core/db/async.ts');
 const { provisionOrganization } = await import('../src/core/provisioning.ts');
 const props = await import('../src/modules/properties/data/properties.repo.ts');
 const cats = await import('../src/modules/properties/data/categories.repo.ts');
-const builds = await import('../src/modules/properties/data/buildings.repo.ts');
 const types = await import('../src/modules/properties/data/unit-types.repo.ts');
 const units = await import('../src/modules/properties/data/units.repo.ts');
 const pricing = await import('../src/modules/pricing/data/occupancy-price.repo.ts');
@@ -397,21 +396,10 @@ async function applyStructure(organizationId, plan) {
   const defaultCategory = catByName.values().next().value;
   const categoryOf = (n) => (n ? catByName.get(n) : defaultCategory) || defaultCategory;
 
-  // ── будівлі ───────────────────────────────────────────────────────────────
-  const buildByName = new Map(
-    (await builds.listBuildings(organizationId, { property_id: property.id })).map((b) => [b.name, b]));
-  for (const b of plan.buildings || []) {
-    const name = both(b, 'name');
-    if (buildByName.has(name)) { say.same(`будівля ${name}`); continue; }
-    if (DRY) { say.made(`[суха] будівля ${name}`); continue; }
-    const cat = categoryOf(both(b, 'category'));
-    const made = await builds.createBuilding(organizationId, {
-      property_id: property.id, category_id: cat.id, name,
-      code: both(b, 'code') || name, sort_order: Number(both(b, 'sortOrder')) || 0,
-    });
-    if (!made) { say.refused(`будівля ${name}`, 'обʼєкт або категорія не цієї організації'); continue; }
-    buildByName.set(name, made);
-    say.made(`будівля ${name}`);
+  // Ключа `buildings` у файлі готелю більше немає: будови прибрано міграцією
+  // 0044. Корпус чи крило описується полем `zone` на самому номері.
+  if ((plan.buildings || []).length) {
+    say.refused('buildings', 'будов більше немає — опишіть корпус полем zone на номері');
   }
 
   // ── типи номерів, а з ними ціни й LOS ─────────────────────────────────────
@@ -421,11 +409,9 @@ async function applyStructure(organizationId, plan) {
     let ut = typeByCode.get(code);
     if (!ut) {
       if (DRY) { say.made(`[суха] тип ${code}`); continue; }
-      const building = both(t, 'building');
       ut = await types.createUnitType(organizationId, {
         property_id: property.id,
         category_id: categoryOf(both(t, 'category')).id,
-        building_id: building ? buildByName.get(building)?.id : undefined,
         name: both(t, 'name') || code, code,
         max_adults: Number(both(t, 'maxAdults')) || 2,
         max_children: Number(both(t, 'maxChildren')) || 0,
@@ -521,7 +507,6 @@ async function applyStructure(organizationId, plan) {
     const typeCode = f(u, 'unitType', 'unit_type', 'unitTypeCode', 'unit_type_code');
     const ut = typeByCode.get(typeCode);
     if (!ut) { say.refused(`номери типу ${typeCode}`, 'такого типу у файлі не описано'); continue; }
-    const building = both(u, 'building');
     const from = both(u, 'from');
 
     if (from !== undefined) {
@@ -531,7 +516,6 @@ async function applyStructure(organizationId, plan) {
       if (DRY) { say.made(`[суха] ${label}`); continue; }
       const made = await units.bulkCreateUnits(organizationId, {
         property_id: property.id, category_id: ut.category_id, unit_type_id: ut.id,
-        building_id: building ? buildByName.get(building)?.id : ut.building_id ?? undefined,
         prefix, from: Number(from), to: Number(to),
         floor: both(u, 'floor') ?? null,
         beds: Number(both(u, 'beds')) || 0, zone: both(u, 'zone'),
@@ -549,7 +533,6 @@ async function applyStructure(organizationId, plan) {
     if (DRY) { say.made(`[суха] ${label}`); continue; }
     const made = await units.createUnit(organizationId, {
       property_id: property.id, category_id: ut.category_id, unit_type_id: ut.id,
-      building_id: building ? buildByName.get(building)?.id : ut.building_id ?? undefined,
       name: both(u, 'name') || code, code,
       floor: both(u, 'floor'), beds: Number(both(u, 'beds')) || 0, zone: both(u, 'zone'),
     });

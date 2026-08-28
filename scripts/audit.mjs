@@ -198,7 +198,6 @@ for (const t of [...declared].sort()) {
 const SMELLS = [
   ['org_alisio', /org_alisio\w*/g],
   ['old property name', /Carlsbad|Březová|Karlovy Vary/gi],
-  ['old buildings', /\bBudova [A-Z]\b|Будова [A-Z]|bldg_[a-z]/g],
   ['old unit types', /Stealth House|Mirror House|Tiny House|Barn House/gi],
   ['old services', /svc_sauna|svc_tub|svc_pool|svc_sup|svc_bbq|addon_broom/g],
   ['old business units', /bu_glamping|bu_camping|bu_restaurant|bu_sauna|bu_pool|bu_budova/g],

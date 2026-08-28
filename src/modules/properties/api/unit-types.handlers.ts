@@ -27,7 +27,7 @@ export const listUnitTypes = withActor(async (request: NextRequest, _ctx, actor:
 export const createUnitType = withPermission('manage_properties', async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const body = await request.json();
-    const { category_id, building_id, name, code, description, max_adults, max_children, max_occupancy, base_occupancy, beds_single, beds_double, beds_sofa, extra_bed_available, sort_order } = body;
+    const { category_id, name, code, description, max_adults, max_children, max_occupancy, base_occupancy, beds_single, beds_double, beds_sofa, extra_bed_available, sort_order } = body;
 
     if (!category_id || !name || !code) {
       return NextResponse.json({ error: 'category_id, name and code are required' }, { status: 400 });
@@ -57,7 +57,7 @@ export const createUnitType = withPermission('manage_properties', async (request
     }
 
     const created = await unitTypesRepo.createUnitType(actor.organizationId, {
-      property_id, category_id, building_id, name, code, description,
+      property_id, category_id, name, code, description,
       max_adults, max_children, max_occupancy, base_occupancy,
       beds_single, beds_double, beds_sofa, extra_bed_available, sort_order,
       bookable_online: body.bookable_online,

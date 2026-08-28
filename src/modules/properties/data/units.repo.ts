@@ -14,12 +14,10 @@ export function listUnits(organizationId: string, filters: { category?: string; 
     SELECT
       u.id, u.name, u.code, u.beds, u.zone, u.room_status, u.cleaning_status, u.sort_order, u.is_active, u.is_pool, u.lock_code, u.entry_photo_url,
       c.id as category_id, c.name as category_name, c.type as category_type, c.icon as category_icon, c.color as category_color,
-      ut.id as unit_type_id, ut.name as unit_type_name, ut.code as unit_type_code, ut.max_adults, ut.base_occupancy,
-      b.id as building_id, b.name as building_name, b.code as building_code
+      ut.id as unit_type_id, ut.name as unit_type_name, ut.code as unit_type_code, ut.max_adults, ut.base_occupancy
     FROM units u
     JOIN categories c ON u.category_id = c.id
     JOIN unit_types ut ON u.unit_type_id = ut.id
-    LEFT JOIN buildings b ON u.building_id = b.id
     WHERE u.is_active = TRUE AND ${propertyScopeSql('u')}
   `;
 
@@ -50,7 +48,6 @@ export interface CreateUnitInput {
   unit_type_id: string;
   property_id: string;
   category_id: string;
-  building_id?: string;
   name: string;
   code: string;
   floor?: number;
@@ -63,12 +60,11 @@ export interface CreateUnitInput {
 /** Every id below arrives in the request body, so each is checked separately. */
 async function ownsAllRefs(
   organizationId: string,
-  input: { property_id: string; category_id: string; unit_type_id: string; building_id?: string },
+  input: { property_id: string; category_id: string; unit_type_id: string },
 ): Promise<boolean> {
   if (!await ownsProperty(organizationId, input.property_id)) return false;
   if (!await ownsViaProperty(organizationId, 'categories', input.category_id)) return false;
   if (!await ownsViaProperty(organizationId, 'unit_types', input.unit_type_id)) return false;
-  if (input.building_id && !await ownsViaProperty(organizationId, 'buildings', input.building_id)) return false;
   return true;
 }
 
@@ -92,10 +88,10 @@ export async function createUnit(organizationId: string, input: CreateUnitInput)
   const sql = getSql();
   const result = await sql.row<any>(
     `
-    INSERT INTO units (unit_type_id, property_id, category_id, building_id, name, code, floor, zone, beds, notes, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO units (unit_type_id, property_id, category_id, name, code, floor, zone, beds, notes, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING *`,
-    [input.unit_type_id, input.property_id, input.category_id, input.building_id || null,
+    [input.unit_type_id, input.property_id, input.category_id,
     input.name, input.code, intOr(input.floor, null), input.zone || null,
     intOr(input.beds, 0), input.notes || null, intOr(input.sort_order, 0)],
   );
@@ -105,7 +101,6 @@ export async function createUnit(organizationId: string, input: CreateUnitInput)
 export interface BulkCreateUnitsInput {
   property_id: string;
   category_id: string;
-  building_id?: string;
   unit_type_id: string;
   prefix: string;
   from: number;
@@ -131,7 +126,7 @@ export async function bulkCreateUnits(organizationId: string, input: BulkCreateU
   // null, not []: the caller has to tell "these ids are not yours" from "every
   // one of those room numbers already exists". Both used to come back as an
   // empty array, so a hotel re-entering a range it had already entered was
-  // told "Property, category, unit type or building not found" — an answer
+  // told "Property, category or unit type not found" — an answer
   // about ownership to a question about duplicates. It cost an hour to read
   // that message as what it actually was.
   if (!await ownsAllRefs(organizationId, input)) return null;
@@ -170,9 +165,9 @@ export async function bulkCreateUnits(organizationId: string, input: BulkCreateU
   await sql.tx(async (t) => {
     for (const w of fresh) {
       await t.run(`
-        INSERT INTO units (unit_type_id, property_id, category_id, building_id, name, code, floor, beds, zone, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [input.unit_type_id, input.property_id, input.category_id, input.building_id || null, w.name, w.code,
+        INSERT INTO units (unit_type_id, property_id, category_id, name, code, floor, beds, zone, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [input.unit_type_id, input.property_id, input.category_id, w.name, w.code,
         intOr(input.floor, null), intOr(input.beds, 0), input.zone || null, w.sort]);
     }
   });
@@ -184,14 +179,14 @@ export async function updateUnit(organizationId: string, id: string, fields: Rec
   if (!await ownsViaProperty(organizationId, 'units', id)) return null;
   // Reassignment must not move the unit into another tenant.
   for (const [field, table] of [
-    ['category_id', 'categories'], ['unit_type_id', 'unit_types'], ['building_id', 'buildings'],
+    ['category_id', 'categories'], ['unit_type_id', 'unit_types'],
   ] as const) {
     if (fields[field] && !await ownsViaProperty(organizationId, table, String(fields[field]))) return null;
   }
 
   const sql = getSql();
 
-  const nullableFields = ['building_id', 'floor', 'zone', 'notes', 'lock_code', 'entry_photo_url'];
+  const nullableFields = ['floor', 'zone', 'notes', 'lock_code', 'entry_photo_url'];
   for (const f of nullableFields) {
     if (fields[f] === '') fields[f] = null;
   }
@@ -201,7 +196,7 @@ export async function updateUnit(organizationId: string, id: string, fields: Rec
     if (fields[f] === '') delete fields[f];
   }
 
-  const allowed = ['name', 'code', 'unit_type_id', 'category_id', 'building_id', 'floor', 'zone', 'beds', 'room_status', 'cleaning_status', 'notes', 'sort_order', 'is_active', 'lock_code', 'entry_photo_url'];
+  const allowed = ['name', 'code', 'unit_type_id', 'category_id', 'floor', 'zone', 'beds', 'room_status', 'cleaning_status', 'notes', 'sort_order', 'is_active', 'lock_code', 'entry_photo_url'];
   const updates: string[] = [];
   const values: unknown[] = [];
 

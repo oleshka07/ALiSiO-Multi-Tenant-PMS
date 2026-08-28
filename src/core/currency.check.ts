@@ -34,7 +34,7 @@ import path from 'node:path';
  * віджет і публічні екрани, де валюта має приїхати з САЙТУ бронювання, а не
  * з організації, і це окрема робота.
  */
-const CEILING = 70;
+const CEILING = 69;
 
 const SKIP_DIRS = new Set(['node_modules', '.next', '.git', 'dist']);
 const files: string[] = [];

@@ -10,8 +10,8 @@
  *   if (!ownsProperty(org, id)) return null;
  *
  * A promise is truthy, so `!promise` is ALWAYS false. Every ownership guard in
- * the properties module compiled cleanly and stopped guarding — createBuilding
- * would have attached a building to another tenant's property. TypeScript says
+ * the properties module compiled cleanly and stopped guarding — createUnitType
+ * would have attached a unit type to another tenant's property. TypeScript says
  * nothing, because `!` accepts any value.
  *
  *   return NextResponse.json(listCategories(org));

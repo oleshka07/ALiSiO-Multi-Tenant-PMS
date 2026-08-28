@@ -74,6 +74,18 @@ const OVERRIDE = {
   'fin_system_state.value': 'TEXT',
   'settings.value': 'TEXT',
   'import_entity_mappings.source_value': 'TEXT',
+  // Спожиті токени — цілі штуки, а не гроші. Слово `total` у назві тягне
+  // колонку в NUMERIC(14,2), і лічильник починає рахувати «1500.00 токенів».
+  'ai_usage.total_tokens': 'BIGINT',
+  // Дата як ТЕКСТ, і це рішення міграції 0040, а не недогляд: підсумок за
+  // місяць береться як substr(created_at, 1, 7), і цей вираз має однаково
+  // працювати на SQLite і на Postgres. TIMESTAMPTZ там дав би обрізаний
+  // рядок іншого формату — тобто порожній місяць у звіті, без помилки.
+  //
+  // Ці два рядки тут тому, що генератор уже тричі повертав їх назад при
+  // регенерації, і тричі це правили руками в schema.sql. Правка руками
+  // тримається до наступного запуску; запис у OVERRIDE — до рішення.
+  'ai_usage.created_at': 'TEXT',
 };
 
 /** An amount of money. NUMERIC(14,2) — up to 999 999 999 999.99. */
@@ -157,12 +169,26 @@ function pgDefault(raw, type) {
   if (raw == null) return null;
   const v = String(raw).trim();
 
-  if (/^datetime\(\s*'now'\s*\)$/i.test(v)) return 'now()';
-  if (/^date\(\s*'now'\s*\)$/i.test(v)) return 'CURRENT_DATE';
-  if (/^CURRENT_TIMESTAMP$/i.test(v)) return 'now()';
+  // Годинник у колонку ТЕКСТУ.
+  //
+  // `now()` повертає timestamptz, і в TEXT-колонці Postgres відхиляє це на
+  // рівні DDL: схема не завантажується взагалі. Досі такого поєднання не
+  // траплялось, бо `datetime('now')` у SQLite майже завжди стоїть на
+  // DATETIME-колонці. `ai_usage.created_at` — перша TEXT: там дата навмисно
+  // текст (міграція 0040), щоб substr(created_at, 1, 7) давав місяць на обох
+  // двигунах.
+  //
+  // Формат — той самий ISO 8601, що пише застосунок (`toISOString()`), інакше
+  // рядок за замовчуванням і рядок від коду порівнювалися б по-різному.
+  const nowText = `to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`;
+  const isText = type === 'TEXT';
+
+  if (/^datetime\(\s*'now'\s*\)$/i.test(v)) return isText ? nowText : 'now()';
+  if (/^date\(\s*'now'\s*\)$/i.test(v)) return isText ? `to_char(CURRENT_DATE, 'YYYY-MM-DD')` : 'CURRENT_DATE';
+  if (/^CURRENT_TIMESTAMP$/i.test(v)) return isText ? nowText : 'now()';
   const rb = v.match(/^lower\(hex\(randomblob\((\d+)\)\)\)$/i);
   if (rb) return `encode(gen_random_bytes(${rb[1]}), 'hex')`;
-  if (/^strftime\(\s*'%Y-%m-%dT%H:%M:%SZ'\s*,\s*'now'\s*\)$/i.test(v)) return 'now()';
+  if (/^strftime\(\s*'%Y-%m-%dT%H:%M:%SZ'\s*,\s*'now'\s*\)$/i.test(v)) return isText ? nowText : 'now()';
   if (/^NULL$/i.test(v)) return null; // no default is the same thing, and clearer
 
   if (type === 'BOOLEAN') {

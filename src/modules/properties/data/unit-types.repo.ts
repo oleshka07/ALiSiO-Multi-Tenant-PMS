@@ -26,12 +26,10 @@ export function listUnitTypes(organizationId: string, filters: { category?: stri
     SELECT
       ut.id, ut.name, ut.code, ut.max_adults, ut.max_children, ut.max_occupancy, ut.base_occupancy,
       ut.beds_single, ut.beds_double, ut.photos, ut.sort_order,
-      c.id as category_id, c.name as category_name, c.type as category_type,
-      b.id as building_id, b.name as building_name, b.code as building_code,
+      c.id as category_id, c.name as category_name, c.type as category_type
       COUNT(u.id) as unit_count
     FROM unit_types ut
     JOIN categories c ON ut.category_id = c.id
-    LEFT JOIN buildings b ON ut.building_id = b.id
     LEFT JOIN units u ON u.unit_type_id = ut.id AND u.is_active = TRUE
     WHERE ut.is_active = TRUE AND ${propertyScopeSql('ut')}
   `;
@@ -51,7 +49,6 @@ export function listUnitTypes(organizationId: string, filters: { category?: stri
 export interface CreateUnitTypeInput {
   property_id: string;
   category_id: string;
-  building_id?: string;
   name: string;
   code: string;
   description?: string;
@@ -75,18 +72,17 @@ export async function createUnitType(organizationId: string, input: CreateUnitTy
   // Ids arrive in the request body, so each is verified against the caller.
   if (!await ownsProperty(organizationId, input.property_id)) return null;
   if (!await ownsViaProperty(organizationId, 'categories', input.category_id)) return null;
-  if (input.building_id && !await ownsViaProperty(organizationId, 'buildings', input.building_id)) return null;
 
   const sql = getSql();
   const result = await sql.row<any>(
     `
-    INSERT INTO unit_types (property_id, category_id, building_id, name, code, description,
+    INSERT INTO unit_types (property_id, category_id, name, code, description,
       max_adults, max_children, max_occupancy, base_occupancy,
       beds_single, beds_double, beds_sofa, extra_bed_available, photos, sort_order,
       bookable_online, breakfast_included)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING *`,
-    [input.property_id, input.category_id, input.building_id ?? null, input.name, input.code, input.description ?? null,
+    [input.property_id, input.category_id, input.name, input.code, input.description ?? null,
     input.max_adults ?? 2, input.max_children ?? 2, input.max_occupancy ?? 4, input.base_occupancy ?? 2,
     input.beds_single ?? 0, input.beds_double ?? 1, input.beds_sofa ?? 0, input.extra_bed_available ? 1 : 0,
     input.photos ?? null, input.sort_order ?? 0,
@@ -103,17 +99,15 @@ export async function updateUnitType(organizationId: string, id: string, fields:
   // Reassignment must not move the type into another tenant.
   if (fields.category_id !== undefined
     && !await ownsViaProperty(organizationId, 'categories', String(fields.category_id))) return null;
-  if (fields.building_id
-    && !await ownsViaProperty(organizationId, 'buildings', String(fields.building_id))) return null;
 
   const sql = getSql();
 
-  const nullableFields = ['building_id', 'description'];
+  const nullableFields = ['description'];
   for (const f of nullableFields) {
     if (fields[f] === '') fields[f] = null;
   }
 
-  const allowed = ['name', 'code', 'description', 'category_id', 'building_id', 'max_adults', 'max_children', 'max_occupancy', 'base_occupancy', 'beds_single', 'beds_double', 'beds_sofa', 'extra_bed_available', 'photos', 'sort_order', 'is_active', 'bookable_online', 'breakfast_included'];
+  const allowed = ['name', 'code', 'description', 'category_id', 'max_adults', 'max_children', 'max_occupancy', 'base_occupancy', 'beds_single', 'beds_double', 'beds_sofa', 'extra_bed_available', 'photos', 'sort_order', 'is_active', 'bookable_online', 'breakfast_included'];
   const updates: string[] = [];
   const values: unknown[] = [];
 

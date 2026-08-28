@@ -4,7 +4,6 @@ export type {
   CleaningStatus,
   Property,
   Category,
-  Building,
   UnitType,
   Unit,
 } from '@/types/database';

@@ -20,7 +20,7 @@ interface PropertyRow extends AnyRow {
   id: string; name: string; slug: string; address?: string; city?: string;
   country?: string; phone?: string; email?: string;
   check_in_time: string; check_out_time: string; city_tax_per_night?: number; is_active: number;
-  category_count: number; building_count: number; unit_count: number; unit_type_count: number;
+  category_count: number; unit_count: number; unit_type_count: number;
 }
 
 interface CategoryRow extends AnyRow {
@@ -29,26 +29,21 @@ interface CategoryRow extends AnyRow {
   unit_count: number;
 }
 
-interface BuildingRow extends AnyRow {
-  id: string; category_id: string; property_id: string; name: string; code: string;
-  description?: string; sort_order: number; unit_count: number;
-}
-
 interface UnitTypeRow extends AnyRow {
-  id: string; property_id: string; category_id: string; building_id?: string;
+  id: string; property_id: string; category_id: string;
   name: string; code: string; max_adults: number; base_occupancy: number;
   beds_single: number; beds_double: number; sort_order: number; unit_count: number;
 }
 
 interface UnitRow extends AnyRow {
   id: string; unit_type_id: string; property_id: string; category_id: string;
-  building_id?: string; name: string; code: string; beds: number;
+  name: string; code: string; beds: number;
   zone?: string; room_status: string; cleaning_status: string; is_active: number;
   sort_order: number; unit_type_name?: string; category_name?: string;
-  category_type?: string; building_name?: string;
+  category_type?: string;
 }
 
-type ModalType = 'none' | 'property' | 'category' | 'building' | 'unitType' | 'unit' | 'bulkUnit' | 'delete';
+type ModalType = 'none' | 'property' | 'category' | 'unitType' | 'unit' | 'bulkUnit' | 'delete';
 
 /* ================================================================
    Constants
@@ -118,7 +113,6 @@ export default function SettingsPropertiesPage() {
   const [properties, setProperties] = useState<PropertyRow[]>([]);
   const [selectedProperty, setSelectedProperty] = useState<string>('');
   const [categories, setCategories] = useState<CategoryRow[]>([]);
-  const [buildings, setBuildings] = useState<BuildingRow[]>([]);
   const [unitTypes, setUnitTypes] = useState<UnitTypeRow[]>([]);
   const [units, setUnits] = useState<UnitRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,10 +133,9 @@ export default function SettingsPropertiesPage() {
   // the first customer's default.
   const [propForm, setPropForm] = useState({ name: '', slug: '', address: '', city: '', country: '', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00', city_tax_per_night: 0 });
   const [catForm, setCatForm] = useState({ name: '', type: 'hotel', description: '', icon: '🏨', color: '#60a5fa', sort_order: 0, show_in_tasks: 1, show_in_finance: 0, show_in_booking: 1 });
-  const [bldForm, setBldForm] = useState({ category_id: '', name: '', code: '', description: '', sort_order: 0 });
-  const [utForm, setUtForm] = useState({ category_id: '', building_id: '', name: '', code: '', max_adults: 2, max_children: 2, max_occupancy: 4, base_occupancy: 2, beds_single: 0, beds_double: 1, beds_sofa: 0, extra_bed_available: 0, sort_order: 0 });
-  const [unitForm, setUnitForm] = useState({ unit_type_id: '', category_id: '', building_id: '', name: '', code: '', beds: 2, floor: '', zone: '', notes: '', sort_order: 0 });
-  const [bulkForm, setBulkForm] = useState({ unit_type_id: '', category_id: '', building_id: '', prefix: '', from: 1, to: 10, beds: 0, zone: '' });
+  const [utForm, setUtForm] = useState({ category_id: '', name: '', code: '', max_adults: 2, max_children: 2, max_occupancy: 4, base_occupancy: 2, beds_single: 0, beds_double: 1, beds_sofa: 0, extra_bed_available: 0, sort_order: 0 });
+  const [unitForm, setUnitForm] = useState({ unit_type_id: '', category_id: '', name: '', code: '', beds: 2, floor: '', zone: '', notes: '', sort_order: 0 });
+  const [bulkForm, setBulkForm] = useState({ unit_type_id: '', category_id: '', prefix: '', from: 1, to: 10, beds: 0, zone: '' });
   const [deleteTarget, setDeleteTarget] = useState<{ type: string; id: string; name: string } | null>(null);
 
   // ── Fetch Properties List ──
@@ -167,7 +160,6 @@ export default function SettingsPropertiesPage() {
       const res = await fetch(`/api/properties/${selectedProperty}`);
       const data = await res.json();
       setCategories(data.categories || []);
-      setBuildings(data.buildings || []);
       setUnitTypes(data.unitTypes || []);
       setUnits(data.units || []);
     } catch (e) { console.error('Fetch details error:', e); }
@@ -189,20 +181,18 @@ export default function SettingsPropertiesPage() {
     const q = search.toLowerCase();
     return units.filter(u =>
       u.name.toLowerCase().includes(q) || u.code.toLowerCase().includes(q) ||
-      u.unit_type_name?.toLowerCase().includes(q) || u.category_name?.toLowerCase().includes(q) ||
-      u.building_name?.toLowerCase().includes(q)
+      u.unit_type_name?.toLowerCase().includes(q) || u.category_name?.toLowerCase().includes(q)
     );
   }, [units, search]);
 
   // ── Tree structure ──
   const tree = useMemo(() => {
     return categories.map(cat => {
-      const catBuildings = buildings.filter(b => b.category_id === cat.id);
       const catUnitTypes = unitTypes.filter(ut => ut.category_id === cat.id);
       const catUnits = filteredUnits.filter(u => u.category_id === cat.id);
-      return { category: cat, buildings: catBuildings, unitTypes: catUnitTypes, units: catUnits };
+      return { category: cat, unitTypes: catUnitTypes, units: catUnits };
     });
-  }, [categories, buildings, unitTypes, filteredUnits]);
+  }, [categories, unitTypes, filteredUnits]);
 
   /* ════════════════════════════════════════════════════════════
      CRUD Operations
@@ -294,48 +284,12 @@ export default function SettingsPropertiesPage() {
     setSaving(false);
   };
 
-  // ── Building CRUD ──
-  const openBuildingModal = (catId: string, bld?: BuildingRow) => {
-    if (bld) {
-      setEditId(bld.id);
-      setBldForm({ category_id: bld.category_id, name: bld.name, code: bld.code, description: bld.description || '', sort_order: bld.sort_order });
-    } else {
-      setEditId(null);
-      setBldForm({ category_id: catId, name: '', code: '', description: '', sort_order: 0 });
-    }
-    setModal('building');
-  };
-
-  const saveBuilding = async () => {
-    if (!bldForm.name || !bldForm.code) { alert(tUi('Назва і код обов\'язкові')); return; }
-    setSaving(true);
-    try {
-      if (editId) {
-        await fetch(`/api/buildings/${editId}`, {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(bldForm),
-        });
-        showToast(tUi('Корпус оновлено!'));
-      } else {
-        const res = await fetch('/api/buildings', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...bldForm, property_id: selectedProperty }),
-        });
-        if (!res.ok) { const d = await res.json(); alert(tUi(d.error)); setSaving(false); return; }
-        showToast(tUi('Корпус створено!'));
-      }
-      setModal('none');
-      fetchDetails();
-    } catch { alert(tUi('Помилка мережі')); }
-    setSaving(false);
-  };
-
   // ── Unit Type CRUD ──
-  const openUnitTypeModal = (catId: string, bldId?: string, ut?: UnitTypeRow) => {
+  const openUnitTypeModal = (catId: string, ut?: UnitTypeRow) => {
     if (ut) {
       setEditId(ut.id);
       setUtForm({
-        category_id: ut.category_id, building_id: ut.building_id || '',
+        category_id: ut.category_id,
         name: ut.name, code: ut.code,
         max_adults: ut.max_adults, max_children: 2, max_occupancy: 4, base_occupancy: ut.base_occupancy,
         beds_single: ut.beds_single, beds_double: ut.beds_double, beds_sofa: 0,
@@ -344,7 +298,7 @@ export default function SettingsPropertiesPage() {
     } else {
       setEditId(null);
       setUtForm({
-        category_id: catId, building_id: bldId || '',
+        category_id: catId,
         name: '', code: '', max_adults: 2, max_children: 2, max_occupancy: 4, base_occupancy: 2,
         beds_single: 0, beds_double: 1, beds_sofa: 0, extra_bed_available: 0, sort_order: 0,
       });
@@ -378,18 +332,18 @@ export default function SettingsPropertiesPage() {
   };
 
   // ── Unit CRUD ──
-  const openUnitModal = (catId: string, utId: string, bldId?: string, u?: UnitRow) => {
+  const openUnitModal = (catId: string, utId: string, u?: UnitRow) => {
     if (u) {
       setEditId(u.id);
       setUnitForm({
-        unit_type_id: u.unit_type_id, category_id: u.category_id, building_id: u.building_id || '',
+        unit_type_id: u.unit_type_id, category_id: u.category_id,
         name: u.name, code: u.code, beds: u.beds, floor: '', zone: u.zone || '',
         notes: '', sort_order: u.sort_order,
       });
     } else {
       setEditId(null);
       setUnitForm({
-        unit_type_id: utId, category_id: catId, building_id: bldId || '',
+        unit_type_id: utId, category_id: catId,
         name: '', code: '', beds: 2, floor: '', zone: '', notes: '', sort_order: 0,
       });
     }
@@ -422,8 +376,8 @@ export default function SettingsPropertiesPage() {
   };
 
   // ── Bulk Unit Creation ──
-  const openBulkModal = (catId: string, utId: string, bldId?: string) => {
-    setBulkForm({ unit_type_id: utId, category_id: catId, building_id: bldId || '', prefix: '', from: 1, to: 10, beds: 0, zone: '' });
+  const openBulkModal = (catId: string, utId: string) => {
+    setBulkForm({ unit_type_id: utId, category_id: catId, prefix: '', from: 1, to: 10, beds: 0, zone: '' });
     setModal('bulkUnit');
   };
 
@@ -460,7 +414,6 @@ export default function SettingsPropertiesPage() {
     const urlMap: Record<string, string> = {
       property: `/api/properties/${deleteTarget.id}`,
       category: `/api/categories/${deleteTarget.id}`,
-      building: `/api/buildings/${deleteTarget.id}`,
       unitType: `/api/unit-types/${deleteTarget.id}`,
       unit: `/api/units/${deleteTarget.id}`,
     };
@@ -627,7 +580,7 @@ export default function SettingsPropertiesPage() {
         {/* Tree View */}
         {!loading && (
           <div className="settings-tree">
-            {tree.map(({ category: cat, buildings: catBlds, unitTypes: catUTs, units: catUnits }) => (
+            {tree.map(({ category: cat, unitTypes: catUTs, units: catUnits }) => (
               <div className="settings-tree-group" key={cat.id}>
                 {/* Category Header */}
                 <div className="settings-tree-header" onClick={() => toggle(`cat-${cat.id}`)}>
@@ -657,9 +610,6 @@ export default function SettingsPropertiesPage() {
                     })}
                   </div>
                   <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                    <button className="btn btn-sm btn-ghost" title={tUi('Додати корпус')} onClick={() => openBuildingModal(cat.id)}>
-                      <Home size={14} />
-                    </button>
                     <button className="btn btn-sm btn-ghost" title={tUi('Додати тип юніта')} onClick={() => openUnitTypeModal(cat.id)}>
                       <BedDouble size={14} />
                     </button>
@@ -676,51 +626,9 @@ export default function SettingsPropertiesPage() {
                 {/* Expanded content */}
                 {!collapsed[`cat-${cat.id}`] && (
                   <div className="settings-tree-children">
-                    {/* Buildings in this category */}
-                    {catBlds.map(bld => {
-                      const bldUTs = catUTs.filter(ut => ut.building_id === bld.id);
-                      const bldUnits = catUnits.filter(u => u.building_id === bld.id);
-
-                      return (
-                        <div key={bld.id}>
-                          <div className="settings-tree-item" style={{ paddingLeft: 32, background: 'var(--bg-secondary)', cursor: 'pointer' }}
-                            onClick={() => toggle(`bld-${bld.id}`)}>
-                            <div className="settings-tree-item-info">
-                              <span className={`settings-tree-chevron ${!collapsed[`bld-${bld.id}`] ? 'open' : ''}`}>
-                                <ChevronRight size={14} />
-                              </span>
-                              <Home size={14} style={{ color: 'var(--text-tertiary)' }} />
-                              <span style={{ fontWeight: 500, fontSize: 13 }}>{bld.name}</span>
-                              <span className="badge badge-primary" style={{ fontSize: 10 }}>{bldUnits.length}</span>
-                            </div>
-                            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                              <button className="btn btn-sm btn-ghost" title={tUi('Додати тип юніта')}
-                                onClick={() => openUnitTypeModal(cat.id, bld.id)}>
-                                <Plus size={14} />
-                              </button>
-                              <button className="btn btn-sm btn-ghost btn-icon" onClick={() => openBuildingModal(cat.id, bld)}>
-                                <Edit3 size={14} />
-                              </button>
-                              <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-danger)' }}
-                                onClick={() => openDelete('building', bld.id, bld.name)}>
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Unit types in building */}
-                          {!collapsed[`bld-${bld.id}`] && bldUTs.map(ut => {
-                            const utUnits = bldUnits.filter(u => u.unit_type_id === ut.id);
-                            return renderUnitType(ut, utUnits, cat.id, bld.id, 56);
-                          })}
-                        </div>
-                      );
-                    })}
-
-                    {/* Unit Types without building */}
-                    {catUTs.filter(ut => !ut.building_id).map(ut => {
-                      const utUnits = catUnits.filter(u => u.unit_type_id === ut.id && !u.building_id);
-                      return renderUnitType(ut, utUnits, cat.id, undefined, 32);
+                    {catUTs.map(ut => {
+                      const utUnits = catUnits.filter(u => u.unit_type_id === ut.id);
+                      return renderUnitType(ut, utUnits, cat.id, 32);
                     })}
                   </div>
                 )}
@@ -867,38 +775,6 @@ export default function SettingsPropertiesPage() {
           </div>
         </Modal>
 
-        {/* Building Modal */}
-        <Modal open={modal === 'building'} onClose={() => setModal('none')}
-          title={editId ? tUi('Редагувати корпус') : tUi('Новий корпус')}
-          footer={<>
-            <button className="btn btn-secondary" onClick={() => setModal('none')}>{tUi('Скасувати')}</button>
-            <button className="btn btn-primary" onClick={saveBuilding} disabled={saving}>
-              {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />}
-              {editId ? tUi('Зберегти') : tUi('Створити')}
-            </button>
-          </>}>
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">{tUi('Назва *')}</label>
-              <input className="form-input" value={bldForm.name} onChange={e => setBldForm(p => ({ ...p, name: e.target.value }))} placeholder={tUi('Будова F (Standart)')} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">{tUi('Код *')}</label>
-              <input className="form-input" value={bldForm.code} onChange={e => setBldForm(p => ({ ...p, code: e.target.value }))} placeholder="F" />
-            </div>
-          </div>
-          <div className="form-group">
-            <label className="form-label">{tUi('Категорія')}</label>
-            <select className="form-select" value={bldForm.category_id} onChange={e => setBldForm(p => ({ ...p, category_id: e.target.value }))}>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">{tUi('Опис')}</label>
-            <input className="form-input" value={bldForm.description} onChange={e => setBldForm(p => ({ ...p, description: e.target.value }))} />
-          </div>
-        </Modal>
-
         {/* Unit Type Modal */}
         <Modal open={modal === 'unitType'} onClose={() => setModal('none')}
           title={editId ? tUi('Редагувати тип юніта') : tUi('Новий тип юніта')}
@@ -912,11 +788,11 @@ export default function SettingsPropertiesPage() {
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">{tUi('Назва *')}</label>
-              <input className="form-input" value={utForm.name} onChange={e => setUtForm(p => ({ ...p, name: e.target.value }))} placeholder={tUi('F — 3-місний')} />
+              <input className="form-input" value={utForm.name} onChange={e => setUtForm(p => ({ ...p, name: e.target.value }))} placeholder={tUi('Тримісний')} />
             </div>
             <div className="form-group">
               <label className="form-label">{tUi('Код *')}</label>
-              <input className="form-input" value={utForm.code} onChange={e => setUtForm(p => ({ ...p, code: e.target.value }))} placeholder="F-3BED" />
+              <input className="form-input" value={utForm.code} onChange={e => setUtForm(p => ({ ...p, code: e.target.value }))} placeholder="3BED" />
             </div>
           </div>
           <div className="form-row">
@@ -924,15 +800,6 @@ export default function SettingsPropertiesPage() {
               <label className="form-label">{tUi('Категорія')}</label>
               <select className="form-select" value={utForm.category_id} onChange={e => setUtForm(p => ({ ...p, category_id: e.target.value }))}>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">{tUi('Корпус')}</label>
-              <select className="form-select" value={utForm.building_id} onChange={e => setUtForm(p => ({ ...p, building_id: e.target.value }))}>
-                <option value="">{tUi('— Без корпуса —')}</option>
-                {buildings.filter(b => b.category_id === utForm.category_id).map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
               </select>
             </div>
           </div>
@@ -1065,7 +932,7 @@ export default function SettingsPropertiesPage() {
   /* ════════════════════════════════════════════════════════════
      Render Unit Type (reused in tree)
      ════════════════════════════════════════════════════════════ */
-  function renderUnitType(ut: UnitTypeRow, utUnits: UnitRow[], catId: string, bldId?: string, paddingLeft = 32) {
+  function renderUnitType(ut: UnitTypeRow, utUnits: UnitRow[], catId: string, paddingLeft = 32) {
     return (
       <div key={ut.id}>
         {/* Unit Type Header */}
@@ -1085,13 +952,13 @@ export default function SettingsPropertiesPage() {
             <span className="badge badge-primary" style={{ fontSize: 10 }}>{utUnits.length}</span>
           </div>
           <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-            <button className="btn btn-sm btn-ghost" title={tUi('Додати юніт')} onClick={() => openUnitModal(catId, ut.id, bldId)}>
+            <button className="btn btn-sm btn-ghost" title={tUi('Додати юніт')} onClick={() => openUnitModal(catId, ut.id)}>
               <Plus size={14} />
             </button>
-            <button className="btn btn-sm btn-ghost" title={tUi('Масове створення')} onClick={() => openBulkModal(catId, ut.id, bldId)}>
+            <button className="btn btn-sm btn-ghost" title={tUi('Масове створення')} onClick={() => openBulkModal(catId, ut.id)}>
               <Copy size={14} />
             </button>
-            <button className="btn btn-sm btn-ghost btn-icon" title={tUi('Редагувати')} onClick={() => openUnitTypeModal(catId, bldId, ut)}>
+            <button className="btn btn-sm btn-ghost btn-icon" title={tUi('Редагувати')} onClick={() => openUnitTypeModal(catId, ut)}>
               <Edit3 size={14} />
             </button>
             <button className="btn btn-sm btn-ghost btn-icon" title={tUi('Видалити')} style={{ color: 'var(--accent-danger)' }}
@@ -1127,7 +994,7 @@ export default function SettingsPropertiesPage() {
               </div>
             </div>
             <div className="settings-tree-item-actions">
-              <button className="btn btn-sm btn-ghost btn-icon" onClick={() => openUnitModal(catId, ut.id, bldId, unit)}>
+              <button className="btn btn-sm btn-ghost btn-icon" onClick={() => openUnitModal(catId, ut.id, unit)}>
                 <Edit3 size={14} />
               </button>
               <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-danger)' }}

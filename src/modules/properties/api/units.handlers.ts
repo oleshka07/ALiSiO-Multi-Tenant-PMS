@@ -45,7 +45,7 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
     }
 
     if (body.bulk) {
-      const { category_id, building_id, unit_type_id, prefix, from, to, beds, zone, floor } = body;
+      const { category_id, unit_type_id, prefix, from, to, beds, zone, floor } = body;
 
       // `prefix == null`, not `!prefix`. An empty prefix is a normal answer:
       // a hotel whose rooms are 105, 106, 201 has no prefix at all, and the
@@ -59,7 +59,7 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
       }
 
       const created = await unitsRepo.bulkCreateUnits(actor.organizationId, {
-        property_id, category_id, building_id, unit_type_id, prefix, from, to, beds, zone, floor,
+        property_id, category_id, unit_type_id, prefix, from, to, beds, zone, floor,
       });
       // null means the referenced ids are not this tenant's — unchecked, this
       // call wrote up to 200 rooms into someone else's property.
@@ -78,14 +78,14 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
       return NextResponse.json({ created: created.length, items: created }, { status: 201 });
     }
 
-    const { unit_type_id, category_id, building_id, name, code, floor, zone, beds, notes, sort_order } = body;
+    const { unit_type_id, category_id, name, code, floor, zone, beds, notes, sort_order } = body;
 
     if (!unit_type_id || !category_id || !name || !code) {
       return NextResponse.json({ error: 'unit_type_id, category_id, name and code are required' }, { status: 400 });
     }
 
     const unit = await unitsRepo.createUnit(actor.organizationId, {
-      unit_type_id, property_id, category_id, building_id, name, code, floor, zone, beds, notes, sort_order,
+      unit_type_id, property_id, category_id, name, code, floor, zone, beds, notes, sort_order,
     });
     if (!unit) return NextResponse.json({ error: 'Property, category, unit type or building not found' }, { status: 404 });
     return NextResponse.json(unit, { status: 201 });

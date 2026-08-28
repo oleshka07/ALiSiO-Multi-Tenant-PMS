@@ -77,7 +77,7 @@ export default function SectionProduct() {
             <h3 style={{ fontSize: "20px", fontWeight: "600", marginTop: "8px", letterSpacing: "-.02em" }}>And the rest of the plumbing</h3>
             <ul style={{ marginTop: "12px", display: "grid", gap: "8px", fontSize: "14.5px", color: "#8B939C" }}>
               <li>
-                Properties, buildings, categories, unit types, bulk generator up to 200 units
+                Properties, categories, unit types, bulk generator up to 200 units
               </li>
               <li>Dynamic pricing, weekend rates, min-LOS, bulk updates, promo codes</li>
               <li>Payments: links, pre-auth deposits, webhooks, partial refunds</li>

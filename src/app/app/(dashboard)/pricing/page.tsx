@@ -759,7 +759,10 @@ function WidgetPriceListSection() {
   // Group by the categories the price list actually contains — a fixed trio
   // here rendered empty sections for every hotel that wasn't the first one.
   const categories = [...new Set(items.map(i => i.category))];
-  const catLabels: Record<string, string> = { glamping: '🏕️ Glamping', buildings: '🏠 Buildings', camping: '⛺ Camping' };
+  // Словника тут більше немає. Стояли три ключі одного клієнта —
+  // glamping / buildings / camping, — і будь-яка інша категорія друкувалась
+  // сирим ключем поруч із трьома гарними. Готель називає свої категорії сам;
+  // назва, яку він увів, і є підписом.
 
   if (loading) return null;
 
@@ -786,7 +789,7 @@ function WidgetPriceListSection() {
         return (
           <div key={cat} style={{ marginBottom: 16 }}>
             <div style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border-primary)' }}>
-              {catLabels[cat] || cat}
+              {cat}
             </div>
             <div className="table-wrapper">
               <table className="table" style={{ fontSize: 13 }}>

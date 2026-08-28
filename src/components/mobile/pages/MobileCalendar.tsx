@@ -3,17 +3,16 @@
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ChevronLeft, ChevronRight, RefreshCw, Filter, X, Search, Building2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RefreshCw, Filter, X, Search } from 'lucide-react';
 import MobileBookingDetail from '@/components/booking/MobileBookingDetail';
 import BookingForm, { type UnitTypeRow as BFUnitTypeRow, type UnitRow as BFUnitRow, type BookingSourceRow as BFBookingSourceRow, type BookingFormValues } from '@/components/booking/BookingForm';
-import RoomAllocationModal from '@/components/booking/RoomAllocationModal';
 import MobileShiftChecklists from '@/components/mobile/MobileShiftChecklists';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 interface UnitRow {
   id: string; name: string; code: string; category_type: string;
-  building_name: string; unit_type_id: string; unit_type_name: string;
+  unit_type_id: string; unit_type_name: string;
   cleaning_status: string; beds: number; zone: string;
 }
 
@@ -287,7 +286,6 @@ export default function MobileCalendar() {
   const [rangeStart, setRangeStart] = useState<{ unitId: string; date: string } | null>(null);
   const [showCreateSheet, setShowCreateSheet] = useState(false);
   const [newBookingPrefill, setNewBookingPrefill] = useState<Partial<BookingFormValues> | null>(null);
-  const [showRoomAllocation, setShowRoomAllocation] = useState(false);
 
   const [startDay, setStartDay] = useState<Date>(() => mondayOf(new Date()));
 
@@ -343,19 +341,18 @@ export default function MobileCalendar() {
     });
   }, [units, category, cleaningFilter, search]);
 
-  // Group units — by building for resort, by zone for camping, flat for glamping
+  // Групування рядків — за зоною, яку готель назвав сам, інакше за типом
+  // номера. Гілки «resort → будова» тут більше немає: будов немає, а зона
+  // робила ту саму роботу однією текстовою колонкою.
   const groups = useMemo(() => {
     const map = new Map<string, UnitRow[]>();
     for (const u of filteredUnits) {
-      let key: string;
-      if (category === 'resort') key = u.building_name || '—';
-      else if (category === 'camping') key = u.zone || '—';
-      else key = u.unit_type_name || u.category_type || '—';
+      const key = u.zone || u.unit_type_name || u.category_type || '—';
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(u);
     }
     return map;
-  }, [filteredUnits, category]);
+  }, [filteredUnits]);
 
   const flatUnits = useMemo(() => {
     const arr: UnitRow[] = [];
@@ -620,15 +617,6 @@ export default function MobileCalendar() {
           <button onClick={goToday} style={todayBtn}>{tUi('Сьогодні')}</button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {units.some(u => /^F\d+$/i.test(u.code || u.name || '')) && (
-            <button
-              onClick={() => setShowRoomAllocation(true)}
-              style={{ ...navBtn, color: 'var(--accent-primary)' }}
-              title={tUi('Розселення по кімнатах')}
-            >
-              <Building2 size={15} />
-            </button>
-          )}
           <button onClick={() => setShowSearch(s => !s)} style={{ ...navBtn, color: showSearch ? 'var(--accent-primary)' : 'var(--text-secondary)' }}>
             <Search size={16} />
           </button>
@@ -848,8 +836,8 @@ export default function MobileCalendar() {
           <div style={{ height: HEADER_H, flexShrink: 0, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-primary)' }} />
           <div style={{ height: AVAIL_H, flexShrink: 0, background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{tUi('Вільних')}</div>
           <div style={{ overflowY: 'scroll', flex: 1, scrollbarWidth: 'none' } as React.CSSProperties} id="gantt-left">
-            {Array.from(groups.entries()).map(([building, us]) => (
-              <div key={building}>
+            {Array.from(groups.entries()).map(([groupLabel, us]) => (
+              <div key={groupLabel}>
                 <div style={{
                   height: 22, display: 'flex', alignItems: 'center', paddingLeft: 8,
                   fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5,
@@ -857,7 +845,7 @@ export default function MobileCalendar() {
                   borderBottom: '1px solid var(--border-primary)',
                   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                 }}>
-                  {building}
+                  {groupLabel}
                 </div>
                 {us.map(u => (
                   <div key={u.id} style={{
@@ -938,8 +926,8 @@ export default function MobileCalendar() {
             {loading && units.length === 0 ? (
               <div style={{ padding: 24, color: 'var(--text-tertiary)', textAlign: 'center', fontSize: 13 }}>{tUi('Завантаження...')}</div>
             ) : (
-              Array.from(groups.entries()).map(([building, us]) => (
-                <div key={building}>
+              Array.from(groups.entries()).map(([groupLabel, us]) => (
+                <div key={groupLabel}>
                   <div style={{ height: 22, background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-primary)', display: 'flex' }}>
                     {days.map((_, i) => (
                       <div key={i} style={{ width: COL_W, flexShrink: 0, borderRight: '1px solid var(--border-primary)' }} />
@@ -1164,13 +1152,6 @@ export default function MobileCalendar() {
         </>
       )}
 
-      {/* Room allocation modal (Building F) */}
-      <RoomAllocationModal
-        open={showRoomAllocation}
-        onClose={() => setShowRoomAllocation(false)}
-        onChanged={fetchData}
-        buildingCode="F"
-      />
     </div>
   );
 }
