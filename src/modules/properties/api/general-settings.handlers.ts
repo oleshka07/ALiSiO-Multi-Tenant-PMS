@@ -71,7 +71,14 @@ export const saveGeneralSettings = withPermission('manage_properties', async (re
     const name = String(org.name ?? '').trim();
     if (!name) return NextResponse.json({ error: 'Назва організації обовʼязкова' }, { status: 400 });
 
-    const currency = String(org.default_currency ?? 'CZK').toUpperCase();
+    // Без запасного значення. `?? 'CZK'` тут означало, що екран, який не
+    // надіслав валюту, мовчки переводив готель на крони — і німецький готель
+    // побачив би це вперше в сумі на фактурі. Валюти, якої не назвали, не
+    // існує; правильна відповідь — відмова.
+    const currency = String(org.default_currency ?? '').trim().toUpperCase();
+    if (!currency) {
+      return NextResponse.json({ error: 'Основна валюта обовʼязкова' }, { status: 400 });
+    }
     if (!SUPPORTED_CURRENCIES.includes(currency as (typeof SUPPORTED_CURRENCIES)[number])) {
       return NextResponse.json({ error: `Валюта не підтримується: ${currency}` }, { status: 400 });
     }

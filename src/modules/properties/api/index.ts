@@ -58,3 +58,7 @@ export type {
 
 // Загальний пошук питає модуль, а не таблицю. Див. core/search-types.ts.
 export { searchUnits } from '../data/unit-search';
+
+// Валюти готелю: основна одна (organizations.default_currency), другорядних
+// 1–3, курс до основної — завжди у finance_exchange_rates.
+export { getCurrencies, saveCurrencies, saveManualRate } from './currency.handlers';

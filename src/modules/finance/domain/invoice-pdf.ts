@@ -12,6 +12,8 @@ import PDFDocument from 'pdfkit';
 import path from 'path';
 import fs from 'fs';
 import { getOrgIdentity } from '@core/org-identity';
+import { organizationCurrency } from '@core/currency';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 
 // ─── Font resolution ─────────────────────────────────────────────────────────
 function resolveFont(name: 'regular' | 'bold'): string {
@@ -158,9 +160,17 @@ export async function generateInvoicePdf(data: InvoicePdfInput): Promise<Buffer>
   // Settings takes effect on the next invoice without a restart.
   const SUPPLIER = await supplierOf();
   const BANK = await bankOf();
+  // Валюта готелю — до відкриття Promise: усередині нього `await` уже не
+  // можна, а підставляти крони «бо чеський шаблон» означає надрукувати
+  // німецькому готелю чужу валюту на документі, який далі йде в бухгалтерію.
+  //
+  // Організація тут та сама, що й у `supplierOf()` вище — з контексту
+  // запиту. Якщо валюти немає, `organizationCurrency` кидає, і документ не
+  // друкується: фактура з невідомою валютою гірша за її відсутність.
+  const fallbackCurrency = data.currency || await organizationCurrency(await requireOrganizationId());
   return new Promise((resolve, reject) => {
     const isCreditNote = data.isCreditNote === true;
-    const currency     = data.currency     || 'CZK';
+    const currency     = fallbackCurrency;
     const payMethod    = data.paymentMethod || 'Příkazem';
     const varSymbol    = data.invoiceNumber.replace(/-/g, '');
     const issueDateFmt = fmtDate(data.issueDate);

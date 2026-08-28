@@ -22,6 +22,7 @@
  *   with neither is a custom invoice and stays with the legacy renderer.
  */
 import { getSql } from '@core/db/async';
+import { organizationCurrency } from '@core/currency';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { documentLanguage } from '@core/i18n/resolve';
 import {
@@ -138,7 +139,9 @@ export async function loadInvoiceDocument(invoiceId: string): Promise<InvoiceDoc
       ? (await sql.row<any>('SELECT invoice_number FROM invoices WHERE id = ? AND organization_id = ?',
           [inv.corrects_invoice_id, organizationId]))?.invoice_number ?? null
       : null,
-    currency: inv.currency || 'EUR',
+    // Валюта з рядка фактури; запасне — валюта готелю, а не євро. Тут це
+    // видно найгостріше: цей рядок друкується на документі.
+    currency: inv.currency || await organizationCurrency(organizationId),
     locale,
     seller,
     buyer,

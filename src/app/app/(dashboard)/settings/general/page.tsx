@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, Save } from 'lucide-react';
 import Header from '@/components/layout/Header';
+import SecondaryCurrencies from './_components/SecondaryCurrencies';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -170,7 +171,7 @@ export default function GeneralSettingsPage() {
                     <select className="form-select" value={org.default_currency} onChange={(e) => setOrgField('default_currency', e.target.value)}>
                       {currencies.map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
-                    <div className="form-hint">{t('Валюта звітів. Наявні операції не перераховуються.')}</div>
+                    <div className="form-hint">{t('Валюта, у якій готель веде облік: ціни, фоліо, фактури, звіти. Наявні документи не перераховуються — кожен несе свою валюту рядком.')}</div>
                   </div>
                 </div>
                 <div className="form-row">
@@ -186,6 +187,8 @@ export default function GeneralSettingsPage() {
                 </div>
               </div>
             </div>
+
+            <SecondaryCurrencies onToast={showToast} />
 
             <div className="card" style={{ marginBottom: 20 }}>
               <div className="card-header"><div className="card-title">{t('Реквізити для документів')}</div></div>

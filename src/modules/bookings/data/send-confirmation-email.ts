@@ -25,6 +25,7 @@
  * Nothing here may be true of one customer only.
  */
 import { getSql } from '@core/db/async';
+import { organizationCurrency } from '@core/currency';
 import { appBaseUrl } from '@core/app-url';
 import { sendEmail } from '@core/mail/email';
 import { reservationLanguage } from '@core/i18n/resolve';
@@ -55,7 +56,7 @@ function fmtDate(iso: string | null | undefined, locale: string): string {
 function fmtPrice(n: number, currency: string, locale: string): string {
   try {
     return new Intl.NumberFormat(locale, {
-      style: 'currency', currency: currency || 'EUR', maximumFractionDigits: 0,
+      style: 'currency', currency, maximumFractionDigits: 0,
     }).format(n);
   } catch {
     return `${Math.round(n)} ${currency}`;
@@ -245,7 +246,20 @@ export async function sendBookingConfirmationEmail(reservationId: string, origin
   const L = LETTER[lang];
 
   const guestName = `${row.first_name || ''} ${row.last_name || ''}`.trim() || L.guest;
-  const total = fmtPrice(row.total_price || 0, row.currency || 'CZK', locale);
+  /**
+   * Валюта листа.
+   *
+   * Тут стояло два різні запасні значення в ОДНОМУ файлі: форматувальник брав
+   * `currency || 'EUR'`, а виклик нижче передавав `row.currency || 'CZK'`. Тобто
+   * та сама сума в тому самому листі могла отримати два різні підписи залежно
+   * від того, який із двох запасних спрацював.
+   *
+   * Запасного немає. Валюта броні, а якщо її немає — валюта готелю, який цей
+   * лист шле. Обидва значення завжди відомі: `row` уже несе `organization_id`,
+   * бо лист і так іде зі скриньки цього готеля.
+   */
+  const currency = row.currency || await organizationCurrency(row.organization_id);
+  const total = fmtPrice(row.total_price || 0, currency, locale);
   let guestPageUrl = null;
   if (row.guest_page_token) {
     const baseUrl = appBaseUrl();

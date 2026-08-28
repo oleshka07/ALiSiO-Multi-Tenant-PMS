@@ -12,6 +12,7 @@
  * `@finance` keep working unchanged.
  */
 import { getSql } from '@core/db/async';
+import { organizationCurrency } from '@core/currency';
 import { allocateInvoiceNumber, isInvoiceLocked } from '@/modules/finance/domain/invoice-numbering';
 
 /**
@@ -96,7 +97,10 @@ export async function generateInvoiceForReservation(
     await sql.run(`
       INSERT INTO invoices (id, organization_id, reservation_id, invoice_number, issued_at, due_date, amount, currency, status, series, period, confirmed, confirmation_source)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'issued', 'HOUSE', ?, ?, ?)
-    `, [invoiceId, organizationId, reservationId, invoiceNumber, today, dueDate, res.total_price, res.currency || 'CZK', period, confirmed, confirmationSource]);
+    // Валюта броні, а якщо її немає — валюта ГОТЕЛЮ, не крони. Фактура з
+    // чужою валютою — не «майже правильна»: 4200 EUR і 4200 CZK це різні
+    // зобовʼязання, і виправити виписаний документ можна лише сторно.
+    `, [invoiceId, organizationId, reservationId, invoiceNumber, today, dueDate, res.total_price, res.currency || await organizationCurrency(organizationId), period, confirmed, confirmationSource]);
 
     console.log(`[Invoices] Created ${invoiceNumber} for reservation ${reservationId}`);
     return invoiceId;

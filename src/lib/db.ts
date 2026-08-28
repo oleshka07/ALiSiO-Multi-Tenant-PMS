@@ -4944,6 +4944,34 @@ function runMigrations(database: any) {
     console.error('[DB] organization_features migration:', e.message);
   }
 
+  // --- Migration: the currencies a hotel shows amounts in ---
+  //
+  // ОСНОВНА валюта живе в organizations.default_currency і не дублюється тут:
+  // одне значення в двох місцях розходиться, і потім ніхто не знає, котре
+  // чинне. Ця таблиця — лише про ДРУГОРЯДНІ: 1–3 валюти, у яких готель
+  // показує суми гостю чи партнеру.
+  //
+  // Курсу тут теж немає, і це навмисно. Курс — у finance_exchange_rates, тій
+  // самій таблиці для ручного й автоматичного: ручний просто пишеться туди
+  // рядком із датою. Два джерела курсу дали б два різні числа на одному
+  // екрані — рівно те, чим колись були чотири цикли по днях у ціноутворенні.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS organization_currencies (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        code TEXT NOT NULL,
+        rate_source TEXT NOT NULL DEFAULT 'manual',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(organization_id, code)
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_org_currencies_org ON organization_currencies(organization_id)');
+  } catch (e: any) {
+    console.error('[DB] organization_currencies migration:', e.message);
+  }
+
   // --- Migration: create fin_folios and fin_folio_items ---
   //
   // A folio is the running bill of a stay; an invoice is a frozen snapshot of

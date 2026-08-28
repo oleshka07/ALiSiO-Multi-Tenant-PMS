@@ -1,0 +1,135 @@
+/**
+ * Валюта береться з готелю, а не вигадується.
+ *
+ *   node src/core/currency.check.ts
+ *
+ * ── Що тут ловиться ─────────────────────────────────────────────────────
+ *
+ * `row.currency || 'CZK'` — 77 місць на момент написання. Кожне з них каже:
+ * «якщо база не назвала валюти, це чеські крони». Для чеського готелю це
+ * непомітно; для німецького це сума в євро з підписом CZK. 4200 EUR і
+ * 4200 CZK — різні гроші й різні зобовʼязання, а на фактурі ще й різний
+ * податок.
+ *
+ * Гейт — храповик, а не заборона: 77 місць не виправляються одним комітом,
+ * і збірка, яку ніхто не може полагодити, — це збірка, яку вчаться
+ * ігнорувати (та сама причина, чому в CI немає `npm run lint`). Стеля стоїть
+ * тут-таки; ріст валить збірку, зменшення вимагає опустити стелю.
+ *
+ * ── Чого гейт НЕ чіпає ──────────────────────────────────────────────────
+ *
+ * `'CZK'` як значення у списку валют, у тесті чи в назві колонки — не вада.
+ * Вада — саме ЗАПАСНЕ значення: `|| 'CZK'`, `?? 'CZK'`, `= 'CZK'` там, де
+ * зліва стоїть прочитане з бази.
+ */
+import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
+
+/**
+ * Скільки запасних валют лишилось.
+ *
+ * 77 → 70 у цьому коміті: виправлено шлях ДОКУМЕНТА (фактура на друк, PDF,
+ * запис рядка фактури) і два листи гостю. Нуля тут не буде швидко: решта —
+ * віджет і публічні екрани, де валюта має приїхати з САЙТУ бронювання, а не
+ * з організації, і це окрема робота.
+ */
+const CEILING = 70;
+
+const SKIP_DIRS = new Set(['node_modules', '.next', '.git', 'dist']);
+const files: string[] = [];
+(function walk(dir: string) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (SKIP_DIRS.has(e.name)) continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) walk(p);
+    else if (/\.tsx?$/.test(e.name) && !e.name.endsWith('.check.ts')) files.push(p);
+  }
+})('src');
+
+/** Запасне значення валюти: те, що підставляється, коли база промовчала. */
+const FALLBACK = /(\|\||\?\?)\s*['"][A-Z]{3}['"]/g;
+
+/**
+ * Проза — не код.
+ *
+ * Без цього перевірка рахувала власний коментар: у документації вгорі стоїть
+ * `row.currency || 'CZK'` як приклад того, що ловиться, — і сама себе ловила.
+ * Той самий урок, що й у `check-boundaries.mjs`: «Prose is not SQL».
+ */
+const stripComments = (s: string) =>
+  s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+
+const found: string[] = [];
+for (const file of files) {
+  const raw = fs.readFileSync(file, 'utf8');
+  const src = stripComments(raw);
+  for (const m of src.matchAll(FALLBACK)) {
+    const line = src.slice(0, m.index!).split('\n').length;
+    // Контекст рядка: `|| 'CZK'` після слова, яке не про валюту (наприклад
+    // `|| 'USD'` у списку кодів країн), сюди не потрапляє — але щоб не
+    // вгадувати, дивимось, чи в рядку взагалі йдеться про валюту.
+    const text = src.split('\n')[line - 1] ?? '';
+    if (!/currenc|Currenc|CURRENC/.test(text)) continue;
+    found.push(`${file}:${line}  ${text.trim().slice(0, 96)}`);
+  }
+}
+
+assert.ok(found.length <= CEILING,
+  `запасних валют ${found.length}, стеля ${CEILING} — НОВЕ ЗАПАСНЕ ЗНАЧЕННЯ.\n` +
+  `    Валюта береться з organizationCurrency() у @core/currency, і її\n` +
+  `    відсутність — відмова, а не крони. Нові:\n    ` +
+  found.slice(CEILING).join('\n    '));
+
+if (found.length < CEILING) {
+  assert.fail(
+    `запасних валют ${found.length}, стеля ${CEILING} — стало КРАЩЕ.\n` +
+    `    Опустіть CEILING у src/core/currency.check.ts до ${found.length},\n` +
+    '    щоб прогрес не відкотився мовчки.');
+}
+console.log(`  ok  запасних валют ${found.length} (стеля ${CEILING}) — не зросло`);
+
+// ── Акцесор відмовляє, а не вгадує ──────────────────────────────────────
+const currency = fs.readFileSync('src/core/currency.ts', 'utf8');
+assert.ok(/throw new Error\(\s*\n?\s*`У організації/.test(currency),
+  'organizationCurrency() має кидати, коли валюти немає — підставити будь-що означає пустити далі суму невідомої валюти');
+assert.ok(!/(\|\||\?\?)\s*['"][A-Z]{3}['"]/.test(stripComments(currency)),
+  'у самому core/currency.ts зʼявилось запасне значення валюти — це те, що він мав прибрати');
+console.log('  ok  organizationCurrency() відмовляє замість вгадування');
+
+// ── Курс не округлюється до копійок ─────────────────────────────────────
+//
+// `money(rate)` за замовчуванням дає два знаки, а колонка — NUMERIC(18,8).
+// Курс 24.53750000 став би 24.54: на рахунку в 300 000 це тридцять крон з
+// нічого. Інваріант 9 — про суму, не про курс.
+const handlers = fs.readFileSync('src/modules/properties/api/currency.handlers.ts', 'utf8');
+assert.ok(/money\(rate, 8\)/.test(currency),
+  'ручний курс округлюється не до 8 знаків — колонка NUMERIC(18,8), і два знаки її псують');
+console.log('  ok  ручний курс лягає з тією ж точністю, що й автоматичний');
+
+// ── Один курс, а не два ─────────────────────────────────────────────────
+//
+// Спокуса тримати ручний курс колонкою в organization_currencies велика. Два
+// джерела курсу розходяться так само тихо, як чотири цикли по днях колись
+// давали чотири різні ціни за ніч (інваріант 16).
+const migration = fs.readFileSync(
+  'db/postgres/migrations/0041-a-hotel-keeps-its-own-money.sql', 'utf8');
+assert.ok(!/\brate\b\s+NUMERIC/i.test(migration),
+  'в organization_currencies зʼявилась колонка курсу — курс живе в finance_exchange_rates, і лише там');
+assert.ok(/INSERT INTO finance_exchange_rates/.test(currency),
+  'ручний курс пишеться не у finance_exchange_rates — тобто в друге джерело істини');
+// Запис валют живе в core, а не в модулі. Храповик меж спіймав протилежне:
+// поки таблицю писав @properties, вона ставала його власністю, і читання з
+// core рахувалось пробоєм — що правильно як діагноз, бо валюта наскрізна.
+assert.ok(!/INSERT INTO organization_currencies/.test(handlers),
+  'хендлер знову пише organization_currencies напряму — таблиця стає власністю @properties, а валюта наскрізна');
+console.log('  ok  курс має одне джерело — finance_exchange_rates');
+
+// ── Другорядних не більше трьох ─────────────────────────────────────────
+assert.ok(/MAX_SECONDARY_CURRENCIES = 3/.test(currency),
+  'межа другорядних валют змінилась — це продуктове рішення, не константа');
+assert.ok(/incoming\.length > MAX_SECONDARY_CURRENCIES/.test(handlers),
+  'сервер не перевіряє межу — екран можна обійти запитом');
+console.log('  ok  межа в три валюти тримається на сервері');
+
+console.log('  ok  валюта: своя в кожного готеля, без крон за замовчуванням');
