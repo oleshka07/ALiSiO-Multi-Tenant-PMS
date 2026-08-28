@@ -33,7 +33,12 @@ export async function getMe() {
         'SELECT DISTINCT country FROM properties WHERE organization_id = ? AND country IS NOT NULL',
         [user.organization_id]);
       organization = {
-        currency: org?.default_currency || 'EUR',
+        // `organizations.default_currency` — NOT NULL, тож рядок організації
+        // завжди її має. Порожньо буває лише тоді, коли самої організації
+        // немає, і тоді екран не має чим підписувати суми — це чесніше за
+        // здогадку. Тут стояло `|| 'EUR'`, тоді як решта коду вгадувала
+        // 'CZK': два різні припущення про одного клієнта в одній системі.
+        currency: org?.default_currency ? String(org.default_currency) : '',
         countries: props.map((p) => String(p.country).toUpperCase()).filter(Boolean),
       };
     }

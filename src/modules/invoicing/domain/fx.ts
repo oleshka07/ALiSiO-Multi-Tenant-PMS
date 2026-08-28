@@ -66,7 +66,15 @@ export interface CzkConversion {
  * the amount untouched (never fabricates an FX rate).
  */
 export async function convertToCzk(amount: number, currency: string, dateIso: string): Promise<CzkConversion> {
-  const cur = (currency || 'CZK').toUpperCase();
+  // Порожня валюта — помилка виклику, а не «мабуть крони».
+  //
+  // Тут стояло `(currency || 'CZK')`. Ці функції рахують СУМУ ДЛЯ ПОДАТКОВОГО
+  // ДОКУМЕНТА: якщо валюта не приїхала, тихо оголосити її кронами означає
+  // записати в ISDOC інше число, ніж заплатив гість. Колонки, звідки вона
+  // приходить (invoices, fin_operations, reservations), усі NOT NULL, тож
+  // порожньо тут може бути тільки через помилку в коді — і саме її видно.
+  const cur = String(currency || '').trim().toUpperCase();
+  if (!cur) throw new Error('convertToCzk: валюта суми не названа — конвертувати нічого');
   if (cur === 'CZK') {
     return { amountCzk: amount, rate: 1, original: amount, currency: 'CZK', converted: false };
   }
@@ -84,7 +92,15 @@ export async function convertToCzk(amount: number, currency: string, dateIso: st
  * ČNB is unreachable (never fabricates a rate).
  */
 export async function convertToCzkAuto(amount: number, currency: string, dateIso: string): Promise<CzkConversion> {
-  const cur = (currency || 'CZK').toUpperCase();
+  // Порожня валюта — помилка виклику, а не «мабуть крони».
+  //
+  // Тут стояло `(currency || 'CZK')`. Ці функції рахують СУМУ ДЛЯ ПОДАТКОВОГО
+  // ДОКУМЕНТА: якщо валюта не приїхала, тихо оголосити її кронами означає
+  // записати в ISDOC інше число, ніж заплатив гість. Колонки, звідки вона
+  // приходить (invoices, fin_operations, reservations), усі NOT NULL, тож
+  // порожньо тут може бути тільки через помилку в коді — і саме її видно.
+  const cur = String(currency || '').trim().toUpperCase();
+  if (!cur) throw new Error('convertToCzk: валюта суми не названа — конвертувати нічого');
   if (cur === 'CZK') return { amountCzk: amount, rate: 1, original: amount, currency: 'CZK', converted: false };
 
   let rate = await getCzkRate(cur, dateIso);

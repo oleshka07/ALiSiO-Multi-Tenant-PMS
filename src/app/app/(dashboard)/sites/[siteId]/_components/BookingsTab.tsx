@@ -5,12 +5,16 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, Search, ExternalLink, Calendar, MapPin, Target, RefreshCw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import BookingViewModal from '@/components/booking/BookingViewModal';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 
 interface BookingsTabProps {
   siteId: string;
 }
 
 export function BookingsTab({ siteId }: BookingsTabProps) {
+  // Валюта готелю, а не крони: сайт бронювання може продавати в іншій,
+  // але підпис суми не вигадується.
+  const hotelCurrency = useHotelCurrency();
   const t = useT();
   const router = useRouter();
   const [bookings, setBookings] = useState<any[]>([]);
@@ -218,7 +222,7 @@ export function BookingsTab({ siteId }: BookingsTabProps) {
                       </div>
                     </td>
                     <td>
-                      <div style={{ fontWeight: 700 }}>{b.total_price?.toLocaleString()} {b.currency || 'CZK'}</div>
+                      <div style={{ fontWeight: 700 }}>{b.total_price?.toLocaleString()} {b.currency || hotelCurrency}</div>
                       <div style={{ fontSize: 11, color: b.payment_status === 'paid' ? '#22c55e' : '#f59e0b' }}>
                         {b.payment_status === 'paid' ? t('Оплачено') : t('Очікує')}
                       </div>

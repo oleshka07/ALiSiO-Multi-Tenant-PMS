@@ -7,6 +7,9 @@ import {
 } from './operations.handlers';
 import { applyRulesToOperation, loadActiveRules } from '../data/auto-rules-engine';
 
+// Колонка `currency` тут NOT NULL, тож `|| 'CZK'` не спрацьовував ніколи —
+// це не захист, а вигляд рішення: читач вірив, що порожня валюта буває.
+
 export type PaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'invoice' | 'online' | 'booking_platform';
 export type PaymentSubtype = 'deposit' | 'full' | 'partial' | 'service' | 'refund';
 export type PaymentSource = 'teia' | 'hostex' | 'booking_widget' | 'manual';
@@ -85,13 +88,16 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
     SELECT prop.organization_id AS org_id, r.check_in, r.check_out, r.currency
     FROM reservations r JOIN properties prop ON r.property_id = prop.id
     WHERE r.id = ?
-  `, [reservationId]) as { org_id: string; check_in: string | null; check_out: string | null; currency: string | null } | undefined;
+  `, [reservationId]) as
+    // `reservations.currency` — NOT NULL, тож тип каже це прямо: інакше кожен,
+    // хто його читає, дописує запасне значення, а воно не спрацьовує ніколи.
+    { org_id: string; check_in: string | null; check_out: string | null; currency: string } | undefined;
   if (!row) throw new Error(`Reservation ${reservationId} not found`);
 
   // The money is in whatever currency the reservation is in. The old default
   // ('CZK', the first customer's currency) recorded a German hotel's cash as
   // koruna and then went looking for a koruna till to put it in.
-  const currency = input.currency || row.currency || 'EUR';
+  const currency = input.currency || row.currency;
 
   const isRefund = paymentSubtype === 'refund';
   const opType = isRefund ? 'expense' : 'income';

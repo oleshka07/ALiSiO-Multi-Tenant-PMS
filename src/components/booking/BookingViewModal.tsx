@@ -3,6 +3,7 @@
 import { useT, usePlural } from '@core/i18n/client';
 import React, { useState, useEffect } from 'react';
 import { readQuote } from './quote-prefill';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 import {
   Edit3, X, Save, Plus, Check, ArrowRight, Copy, ExternalLink,
   Loader2, Trash2, Phone, Receipt, RefreshCw, Clock, Lock, Mail, MessageCircle,
@@ -51,8 +52,16 @@ const TYPE_LABELS: Record<string, string> = {
 
 // Відомий борг A7: курс CZK→EUR захардкоджено (25.5), конфіг буде окремо.
 // Функція застосовується ЛИШЕ до сум у CZK — рендер нижче звіряє
-// b.currency === 'CZK', тож EUR- та будь-які інші броні через 25.5 не йдуть.
-function toEur(czk: number) { return Math.round(czk / 25.5).toLocaleString(); }
+// Тут була підказка «≈ N EUR» під сумою в кронах, порахована як `czk / 25.5`
+// — курс одного клієнта, вписаний у код і незмінний з дня написання. Показане
+// число виглядало як факт, а було чиїмось торішнім припущенням.
+//
+// Прибрано, а не полагоджено на льоту: курси тепер живуть у
+// `finance_exchange_rates`, готель заводить свої другорядні валюти
+// (Налаштування → Валюти), і `convert()` з `@core/currency` повертає null,
+// коли курсу немає. Підказка повернеться як звичайна конвертація за цим
+// джерелом — і тоді її не буде видно в готелю, який курсу не задав. Це
+// інваріант 17 іншими словами: ціни, якої немає, не існує.
 
 interface Props {
   booking: any;
@@ -77,6 +86,11 @@ export default function BookingViewModal({
 }: Props) {
   const pluralUi = usePlural();
   const tUi = useT();
+  // Валюта готелю замість запасних крон — 21 місце в самому лише цьому файлі.
+  // Бронь несе свою в `reservations.currency`; порожня колонка означає «як у
+  // готелю», а не «як у першого клієнта». Сума в євро з підписом CZK — це
+  // інші гроші, інше зобовʼязання і інший податок на фактурі.
+  const hotelCurrency = useHotelCurrency();
   const [viewTab, setViewTab] = useState<'payment' | 'registration' | 'groups' | 'tax' | 'notes' | 'history' | 'audit'>('payment');
   const [showPayForm, setShowPayForm] = useState(false);
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', type: 'partial', notes: '' });
@@ -441,7 +455,7 @@ export default function BookingViewModal({
             background: '#f59e0b22', color: '#92400e', border: '1px solid #f59e0b',
             fontSize: 12, lineHeight: 1.4,
           }}>
-            <strong>⚠️ Multi-room booking</strong> {tUi('— Hostex колапсує групове бронювання Booking.com в один запис. Сума')} {total.toLocaleString()} {b.currency || 'CZK'} {tUi('може покривати')} <strong>{tUi('кілька будинків')}</strong>{tUi('. Перевір у Hostex (марker')} <code>{(b as any).multi_room_marker || '?'}</code>{tUi(') скільки фактично кімнат і за потреби створи окремі рядки — інакше календар не заблокує інші будинки.')}
+            <strong>⚠️ Multi-room booking</strong> {tUi('— Hostex колапсує групове бронювання Booking.com в один запис. Сума')} {total.toLocaleString()} {b.currency || hotelCurrency} {tUi('може покривати')} <strong>{tUi('кілька будинків')}</strong>{tUi('. Перевір у Hostex (марker')} <code>{(b as any).multi_room_marker || '?'}</code>{tUi(') скільки фактично кімнат і за потреби створи окремі рядки — інакше календар не заблокує інші будинки.')}
           </div>
         ) : null}
         {/* ── Compact Header ── */}
@@ -551,9 +565,9 @@ export default function BookingViewModal({
                         }
                         const head = `${tUi('Змінити дати?')}\n${b.check_in} → ${datesEditCI}\n${b.check_out} → ${datesEditCO}\n${oldNights} → ${newNights} ${pluralUi(newNights, 'ноч.')}`;
                         const priceLine = newTotal == null
-                          ? `\n\n⚠️ ${tUi('Ціну не вдалося переквотувати автоматично — залишиться стара сума:')} ${total.toLocaleString()} ${b.currency || 'CZK'}. ${tUi('Перевірте ціну вручну.')}`
+                          ? `\n\n⚠️ ${tUi('Ціну не вдалося переквотувати автоматично — залишиться стара сума:')} ${total.toLocaleString()} ${b.currency || hotelCurrency}. ${tUi('Перевірте ціну вручну.')}`
                           : newTotal !== total
-                            ? `\n\n${tUi('Ціна за квотою:')} ${total.toLocaleString()} → ${newTotal.toLocaleString()} ${b.currency || 'CZK'}`
+                            ? `\n\n${tUi('Ціна за квотою:')} ${total.toLocaleString()} → ${newTotal.toLocaleString()} ${b.currency || hotelCurrency}`
                             : '';
                         confirmed = confirm(head + priceLine);
                         if (!confirmed) return;
@@ -621,7 +635,7 @@ export default function BookingViewModal({
                           const guestUrl = b.guest_page_token ? `${window.location.origin}/guest/${b.guest_page_token}` : '';
                           const nights = b.nights || 1;
                           const guestsStr = lang === 'cz' ? `${b.adults} dosp.${b.children > 0 ? ` + ${b.children} dět.` : ''}` : lang === 'uk' ? `${b.adults} дор.${b.children > 0 ? ` + ${b.children} діт.` : ''}` : `${b.adults} adult${b.adults > 1 ? 's' : ''}${b.children > 0 ? ` + ${b.children} child.` : ''}`;
-                          const totalStr = `${total.toLocaleString()} ${b.currency || 'CZK'}`;
+                          const totalStr = `${total.toLocaleString()} ${b.currency || hotelCurrency}`;
                           const templates: { icon: string; name: string; preview: string; msg: string; hasLink?: boolean }[] = [
                             { icon: '✍', name: lang === 'cz' ? 'Bez šablony' : lang === 'uk' ? 'Без шаблону' : 'No template', preview: lang === 'cz' ? 'Otevřít WhatsApp s prázdným polem' : lang === 'uk' ? 'Відкрити WhatsApp з пустим полем' : 'Open WhatsApp with empty message', msg: '' },
                             { icon: '✓', name: lang === 'cz' ? 'Potvrzení rezervace' : lang === 'uk' ? 'Підтвердження броні' : 'Booking confirmation', hasLink: true,
@@ -689,9 +703,8 @@ export default function BookingViewModal({
           </div>
           <div style={{ textAlign: 'right', position: 'relative' }}>
             <button onClick={onClose} style={{ position: 'absolute', top: -2, right: -2, background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', borderRadius: 7, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-secondary)' }} aria-label={tUi('Закрити')}><X size={14} /></button>
-            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--accent-primary)', marginTop: 16 }}>{total.toLocaleString()} {b.currency || 'CZK'}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--accent-primary)', marginTop: 16 }}>{total.toLocaleString()} {b.currency || hotelCurrency}</div>
             {(b.commission_amount || 0) > 0 && <div style={{ fontSize: 11, color: '#f59e0b' }}>{tUi('Комісія')} {(b.commission_amount || 0).toLocaleString()}</div>}
-            {b.currency === 'CZK' && <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>≈ {toEur(total)} EUR</div>}
             {b.created_at && (
               <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
                  <Clock size={10} /> {new Date(b.created_at + 'Z').toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -730,7 +743,7 @@ export default function BookingViewModal({
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: chipStyle.dot, boxShadow: `0 0 0 3px ${chipStyle.dot}33`, flexShrink: 0 }} />
                   <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600 }}>{tUi('Оплата')}</span>
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 500, paddingLeft: 15, marginTop: 4, color: isOk ? 'var(--text-primary)' : '#f59e0b' }}>{paid.toLocaleString()} / {total.toLocaleString()} {b.currency || 'CZK'}</div>
+                <div style={{ fontSize: 13, fontWeight: 500, paddingLeft: 15, marginTop: 4, color: isOk ? 'var(--text-primary)' : '#f59e0b' }}>{paid.toLocaleString()} / {total.toLocaleString()} {b.currency || hotelCurrency}</div>
               </div>
             );
           })()}
@@ -795,7 +808,7 @@ export default function BookingViewModal({
 
           if (b.status === 'cancelled') { /* no action */ }
           else if (!isPaid && daysUntil <= 2 && daysUntil >= 0) {
-            action = { priority: 'URGENT', label: `${tUi('Прийняти оплату')} ${remaining.toLocaleString()} ${b.currency || 'CZK'}`, context: daysUntil === 0 ? tUi('гість прибуває сьогодні') : `${tUi('гість прибуває через')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Прийняти'), onClick: () => { setViewTab('payment'); setShowPayForm(true); } };
+            action = { priority: 'URGENT', label: `${tUi('Прийняти оплату')} ${remaining.toLocaleString()} ${b.currency || hotelCurrency}`, context: daysUntil === 0 ? tUi('гість прибуває сьогодні') : `${tUi('гість прибуває через')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Прийняти'), onClick: () => { setViewTab('payment'); setShowPayForm(true); } };
           } else if (!isRegistered && daysUntil <= 1 && daysUntil >= 0) {
             action = { priority: 'HIGH', label: `${tUi('Зареєструвати гостей (')}${registrations.length}/${regNeeded})`, context: tUi('до заїзду залишилось менше дня'), cta: tUi('Реєстрація'), onClick: () => setViewTab('registration') };
           } else if (b.status === 'confirmed' && daysUntil === 0) {
@@ -803,7 +816,7 @@ export default function BookingViewModal({
           } else if (b.status === 'checked_in' && daysSince >= 0) {
             action = { priority: 'HIGH', label: tUi('Гість має виїхати — виселити'), context: tUi('після 11:00'), cta: tUi('Виселити'), onClick: () => onChangeStatus(b.id, 'checked_out') };
           } else if (!isPaid && daysUntil > 2) {
-            action = { priority: 'MEDIUM', label: `${tUi('Оплата не прийнята (')}${remaining.toLocaleString()} ${b.currency || 'CZK'})`, context: `${tUi('до заїзду')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Оплата'), onClick: () => { setViewTab('payment'); setShowPayForm(true); } };
+            action = { priority: 'MEDIUM', label: `${tUi('Оплата не прийнята (')}${remaining.toLocaleString()} ${b.currency || hotelCurrency})`, context: `${tUi('до заїзду')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Оплата'), onClick: () => { setViewTab('payment'); setShowPayForm(true); } };
           } else if (!isRegistered && daysUntil > 1) {
             action = { priority: 'MEDIUM', label: `${tUi('Документи не заповнені (')}${registrations.length}/${regNeeded})`, context: `${tUi('до заїзду')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Реєстрація'), onClick: () => setViewTab('registration') };
           }
@@ -875,15 +888,15 @@ export default function BookingViewModal({
           {viewTab === 'payment' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-                <div><div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Всього')}</div><div style={{ fontSize: 16, fontWeight: 700, color: 'var(--accent-primary)' }}>{total.toLocaleString()} {b.currency || 'CZK'}</div></div>
-                <div><div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Оплачено')}</div><div style={{ fontSize: 16, fontWeight: 700, color: '#22c55e' }}>{paid.toLocaleString()} {b.currency || 'CZK'}</div></div>
-                <div><div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Залишок')}</div><div style={{ fontSize: 16, fontWeight: 700, color: remaining > 0 ? '#ef4444' : '#22c55e' }}>{remaining.toLocaleString()} {b.currency || 'CZK'}</div></div>
+                <div><div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Всього')}</div><div style={{ fontSize: 16, fontWeight: 700, color: 'var(--accent-primary)' }}>{total.toLocaleString()} {b.currency || hotelCurrency}</div></div>
+                <div><div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Оплачено')}</div><div style={{ fontSize: 16, fontWeight: 700, color: '#22c55e' }}>{paid.toLocaleString()} {b.currency || hotelCurrency}</div></div>
+                <div><div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Залишок')}</div><div style={{ fontSize: 16, fontWeight: 700, color: remaining > 0 ? '#ef4444' : '#22c55e' }}>{remaining.toLocaleString()} {b.currency || hotelCurrency}</div></div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ flex: 1, background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-full)', height: 6, overflow: 'hidden' }}>
                   <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: 'var(--radius-full)', transition: 'width 0.4s ease' }} />
                 </div>
-                <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', letterSpacing: '.04em' }}>{pct}% · {b.currency || 'CZK'}</span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', letterSpacing: '.04em' }}>{pct}% · {b.currency || hotelCurrency}</span>
                 {!showPayForm && (
                   <button onClick={() => setShowPayForm(true)} style={{ background: 'var(--accent-primary)', color: '#fff', padding: '7px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', border: 'none', cursor: 'pointer' }}>
                     <Plus size={11} /> {tUi('Платіж')}
@@ -896,7 +909,7 @@ export default function BookingViewModal({
                   {payments.map((p: any) => (
                     <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border-primary)', fontSize: 12 }}>
                       <span style={{ color: 'var(--text-tertiary)', minWidth: 70 }}>{p.paid_at || '—'}</span>
-                      <span style={{ fontWeight: 700, color: p.type === 'refund' ? '#ef4444' : '#22c55e', minWidth: 80 }}>{p.type === 'refund' ? '-' : '+'}{p.amount.toLocaleString()} {p.currency || b.currency || 'CZK'}</span>
+                      <span style={{ fontWeight: 700, color: p.type === 'refund' ? '#ef4444' : '#22c55e', minWidth: 80 }}>{p.type === 'refund' ? '-' : '+'}{p.amount.toLocaleString()} {p.currency || b.currency || hotelCurrency}</span>
                       <span style={{ color: 'var(--text-secondary)' }}>{tUi(METHOD_LABELS[p.method] || p.method)}</span>
                       <span style={{ color: 'var(--text-tertiary)' }}>{tUi(TYPE_LABELS[p.type] || p.type)}</span>
                       {p.notes && <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.notes}</span>}
@@ -916,7 +929,7 @@ export default function BookingViewModal({
                     {tUi('Безоплатне бронювання')}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                    {tUi('Ціна = 0')} {b.currency || 'CZK'}{tUi('. Це може бути промокод, бартер або помилка. Підтвердіть свідомо або встановіть реальну ціну.')}
+                    {tUi('Ціна = 0')} {b.currency || hotelCurrency}{tUi('. Це може бути промокод, бартер або помилка. Підтвердіть свідомо або встановіть реальну ціну.')}
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button className="btn btn-sm btn-primary"
@@ -941,7 +954,7 @@ export default function BookingViewModal({
               {!showPayForm ? null : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <input className="form-input" type="number" placeholder={`${tUi('Сума')} ${b.currency || 'CZK'}`} style={{ flex: 1, fontSize: 13 }} value={payForm.amount} onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))} />
+                    <input className="form-input" type="number" placeholder={`${tUi('Сума')} ${b.currency || hotelCurrency}`} style={{ flex: 1, fontSize: 13 }} value={payForm.amount} onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))} />
                     <select className="form-select" style={{ width: 140, fontSize: 13 }} value={payForm.method} onChange={e => setPayForm(p => ({ ...p, method: e.target.value }))}>
                       <option value="cash">{tUi('💵 Готівка')}</option><option value="card">{tUi('💳 Картою')}</option><option value="bank_transfer">{tUi('🏦 Рахунок')}</option><option value="invoice">{tUi('📄 Фактура')}</option><option value="booking_platform">{tUi('🏨 Платформа бронювання')}</option>
                     </select>
@@ -981,7 +994,7 @@ export default function BookingViewModal({
                   {remaining > 0 && (
                     <button className="btn btn-sm btn-ghost" style={{ fontSize: 11, alignSelf: 'flex-start' }}
                       onClick={() => setPayForm(p => ({ ...p, amount: String(remaining), type: remaining === total ? 'full' : 'partial' }))}>
-                      {tUi('Залишок:')} {remaining.toLocaleString()} {b.currency || 'CZK'}
+                      {tUi('Залишок:')} {remaining.toLocaleString()} {b.currency || hotelCurrency}
                     </button>
                   )}
                 </div>
@@ -1184,7 +1197,7 @@ export default function BookingViewModal({
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                           <span style={{ fontSize: 12, fontWeight: 600 }}>
                             👤 {f.payer_name || tUi('Гість')}
-                            <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}> · {tUi('відкрито:')} {f.openGross.toFixed(2)} {b.currency || 'EUR'}</span>
+                            <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}> · {tUi('відкрито:')} {f.openGross.toFixed(2)} {b.currency || hotelCurrency}</span>
                           </span>
                           {f.openGross > 0 && (
                             <button className="btn btn-sm btn-primary" style={{ fontSize: 10, padding: '2px 8px' }} disabled={folioBusy}
@@ -1505,7 +1518,7 @@ export default function BookingViewModal({
                         </div>
                       </div>
                       <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--accent-primary)' }}>
-                        {Number(sb.subtotal).toLocaleString()} {b.currency || 'CZK'}
+                        {Number(sb.subtotal).toLocaleString()} {b.currency || hotelCurrency}
                       </div>
                       {/* Payment status badge for child */}
                       {sb.child_payment_status && (
@@ -1663,13 +1676,13 @@ export default function BookingViewModal({
                   <div>
                     <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Σ Sub-bookings</div>
                     <div style={{ fontWeight: 700, fontSize: 15 }}>
-                      {subBookings.reduce((s: number, sb: any) => s + Number(sb.subtotal || 0), 0).toLocaleString()} {b.currency || 'CZK'}
+                      {subBookings.reduce((s: number, sb: any) => s + Number(sb.subtotal || 0), 0).toLocaleString()} {b.currency || hotelCurrency}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{tUi('Total бронювання')}</div>
                     <div style={{ fontWeight: 700, fontSize: 15 }}>
-                      {Number(b.total_price || 0).toLocaleString()} {b.currency || 'CZK'}
+                      {Number(b.total_price || 0).toLocaleString()} {b.currency || hotelCurrency}
                     </div>
                   </div>
                   {(() => {
@@ -1719,7 +1732,7 @@ export default function BookingViewModal({
                         style={{ width: '100%', padding: '8px 10px', fontSize: 13, background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: 6, color: 'var(--text-primary)' }} />
                     </div>
                     <div>
-                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('💰 Вартість цієї групи (')}{b.currency || 'CZK'})</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('💰 Вартість цієї групи (')}{b.currency || hotelCurrency})</label>
                       <input type="number" min={0} value={groupForm.subtotal} onChange={e => setGroupForm(p => ({ ...p, subtotal: Number(e.target.value) }))}
                         style={{ width: '100%', padding: '8px 10px', fontSize: 13, background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: 6, color: 'var(--text-primary)' }} />
                     </div>

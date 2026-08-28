@@ -119,12 +119,34 @@ export interface PgPool extends PgClient {
 }
 
 /**
- * `?` → `$1, $2, …`, skipping anything inside quotes.
+ * `?` → `$1, $2, …`, skipping anything inside quotes AND inside comments.
  *
  * Single quotes are SQL strings, double quotes are identifiers, and a doubled
  * quote inside either is an escaped quote rather than the end of it. Dollar
  * quoting ($$…$$) does not appear in this codebase and is not handled; if it
  * ever does, it goes here.
+ *
+ * ── Чому коментарі теж ─────────────────────────────────────────────────────
+ *
+ * Запити тут пишуться з поясненнями всередині, англійською, і в англійському
+ * реченні буває апостроф:
+ *
+ *   -- the registration form's own placeholder suggests alpha-3
+ *
+ * Для версії, що знала лише лапки, цей апостроф ВІДКРИВАВ рядковий літерал.
+ * Далі все до наступної одинарної лапки вважалося текстом — разом із `?` у
+ * WHERE. Плейсхолдери не перетворювались, Postgres отримував буквальний `?`
+ * і відповідав `syntax error at or near ")"`.
+ *
+ * Так лежала «Evidenční kniha» — реєстр гостей, який читає поліція:
+ * `/api/guest-registry` віддавав 500 на кожен виклик. На SQLite цього не
+ * видно взагалі, бо там `?` і є плейсхолдер; ламалося рівно на Postgres,
+ * тобто лише на проді й беті.
+ *
+ * Це та сама помилка, що й у гейтах, які шукають щось у коді й ловлять власну
+ * документацію (AGENTS.md §4: «перевірка, яка шукає щось у вихідному коді,
+ * спершу вирізає коментарі»). Тут не перевірка, а конвертер — і ціна вища:
+ * не хибний звіт, а мертвий маршрут.
  */
 export function toDollarParams(sql: string): string {
   let out = '';
@@ -140,6 +162,25 @@ export function toDollarParams(sql: string): string {
         if (sql[i + 1] === quote) { out += sql[++i]; }   // an escaped quote
         else quote = null;
       }
+      continue;
+    }
+
+    // `-- …` до кінця рядка. Копіюється як є: плейсхолдера в коментарі бути
+    // не може, а апостроф у ньому — може.
+    if (c === '-' && sql[i + 1] === '-') {
+      const end = sql.indexOf('\n', i);
+      const stop = end === -1 ? sql.length : end;
+      out += sql.slice(i, stop);
+      i = stop - 1;
+      continue;
+    }
+
+    // `/* … */`, включно з тим, що всередині кількох рядків.
+    if (c === '/' && sql[i + 1] === '*') {
+      const end = sql.indexOf('*/', i + 2);
+      const stop = end === -1 ? sql.length : end + 2;
+      out += sql.slice(i, stop);
+      i = stop - 1;
       continue;
     }
 

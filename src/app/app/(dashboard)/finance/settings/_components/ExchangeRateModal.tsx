@@ -1,9 +1,10 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, ArrowRight } from 'lucide-react';
 import type { ExchangeRate } from './ExchangeRatesTab';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 
 export interface ExchangeRateFormValues {
   from_currency: string;
@@ -26,8 +27,18 @@ function todayIso() {
 
 export default function ExchangeRateModal({ initial, onClose, onSave }: Props) {
   const t = useT();
-  const [fromCur, setFromCur] = useState(initial?.from_currency || 'EUR');
-  const [toCur, setToCur] = useState(initial?.to_currency || 'CZK');
+  const hotelCurrency = useHotelCurrency();
+  const [fromCur, setFromCur] = useState(initial?.from_currency || '');
+  const [toCur, setToCur] = useState(initial?.to_currency || '');
+  // Курс завжди веде ДО основної валюти готелю — саме її знає решта системи.
+  // Тут стояло EUR→CZK: пара одного клієнта, накинута всім. «Звідки» лишається
+  // за оператором: другорядних валют може бути до трьох.
+  //
+  // useEffect, а не ініціалізатор useState: валюта приїжджає з /api/auth/me
+  // після першого рендера.
+  useEffect(() => {
+    if (!toCur && hotelCurrency) setToCur(hotelCurrency);
+  }, [hotelCurrency, toCur]);
   const [rate, setRate] = useState<number | ''>(initial?.rate ?? '');
   const [effectiveFrom, setEffectiveFrom] = useState(initial?.effective_from || todayIso());
   const [saving, setSaving] = useState(false);

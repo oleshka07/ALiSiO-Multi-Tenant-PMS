@@ -5,6 +5,9 @@ import { withSite } from '../data/site.repo';
 import { money } from '@core/money';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 
+// Колонка `currency` тут NOT NULL, тож `|| 'CZK'` не спрацьовував ніколи —
+// це не захист, а вигляд рішення: читач вірив, що порожня валюта буває.
+
 /**
  * `additional_services` reaches its tenant through `property_id → properties`,
  * which is exactly what the Postgres policy says. Repeated here because the
@@ -441,7 +444,7 @@ function formatService(s: any) {
     nameDe: s.name_de,
     description: s.description,
     price: s.price,
-    currency: s.currency || 'CZK',
+    currency: s.currency,
     unitLabel: s.unit_label,
     icon: s.icon,
     category: s.category,

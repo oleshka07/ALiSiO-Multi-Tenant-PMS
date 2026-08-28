@@ -10,6 +10,7 @@ import { loadActiveRules, isRuleApplicable } from '../data/auto-rules-engine';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { ownedFinanceRow } from '../data/owned.repo';
 import { serverError } from '@core/http/errors';
+import { organizationCurrency } from '@core/currency';
 
 const OP_TYPES = ['income', 'expense', 'transfer'] as const;
 type OpType = typeof OP_TYPES[number];
@@ -463,7 +464,8 @@ export async function createOperationInTx(
     throw new Error('account_from_id and account_to_id must differ');
   }
 
-  const currency = input.currency || 'CZK';
+  // Валюта готелю, а не крони. `orgId` тут уже є — питати нема кого іншого.
+  const currency = input.currency || await organizationCurrency(orgId);
   const accruedAt = input.accrued_at || paid_at;
   const amountCompany = (input.fx_rate_override && input.fx_rate_override > 0)
     ? amount * input.fx_rate_override

@@ -13,9 +13,9 @@ import { withActor, type Actor } from '@core/auth/session';
  *
  * The checklists themselves were not a bug to patch. All of them were written
  * out in full for one hotel: a sauna inspection triggered by units or notes
- * containing "сауна", and a daily round of "Будинок F / Будинок D". Neither
- * means anything to a second customer, and shipping them would put another
- * hotel's building names on every screen. So this returns the part that is
+ * containing one word, and a daily round of two of its buildings by name.
+ * Neither means anything to a second customer, and shipping them would put
+ * another hotel's vocabulary on every screen. So this returns the part that is
  * genuinely general — which rooms need cleaning — and no checklists until they
  * are something an organization defines. A `checklists` table with per-item
  * rules is the actual feature, and it is not this change.
@@ -26,7 +26,7 @@ export const GET = withActor(async (_req, _ctx, actor: Actor) => {
 
     // Scoped: unqualified this listed every hotel's dirty rooms.
     const dirtyUnits = await sql.rows<any>(`
-      SELECT u.id, u.code, u.name, u.cleaning_status, u.building_id
+      SELECT u.id, u.code, u.name, u.cleaning_status, u.zone
       FROM units u
       JOIN properties p ON p.id = u.property_id
       WHERE p.organization_id = ?

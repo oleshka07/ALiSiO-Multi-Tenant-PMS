@@ -74,22 +74,33 @@ const OVERRIDE = {
   'fin_system_state.value': 'TEXT',
   'settings.value': 'TEXT',
   'import_entity_mappings.source_value': 'TEXT',
-  // Прапорці, яких регекс BOOL не впізнає на ім'я. На проді вони BOOLEAN з
-  // міграцій 0020/0021; без цих записів регенерація робила їх BIGINT, і
-  // `bookable_online = TRUE` падав з «operator does not exist: bigint =
-  // boolean» на кожній СВІЖІЙ базі — live-джоба CI спіймала це на першій же
-  // чесній регенерації (2026-08-28).
-  'unit_types.bookable_online': 'BOOLEAN',
+  // Спожиті токени — цілі штуки, а не гроші. Слово `total` у назві тягне
+  // колонку в NUMERIC(14,2), і лічильник починає рахувати «1500.00 токенів».
+  'ai_usage.total_tokens': 'BIGINT',
+  // Дата як ТЕКСТ, і це рішення міграції 0040, а не недогляд: підсумок за
+  // місяць береться як substr(created_at, 1, 7), і цей вираз має однаково
+  // працювати на SQLite і на Postgres. TIMESTAMPTZ там дав би обрізаний
+  // рядок іншого формату — тобто порожній місяць у звіті, без помилки.
+  //
+  // Ці два рядки тут тому, що генератор уже тричі повертав їх назад при
+  // регенерації, і тричі це правили руками в schema.sql. Правка руками
+  // тримається до наступного запуску; запис у OVERRIDE — до рішення.
+  'ai_usage.created_at': 'TEXT',
+  // Прапорці, чиї назви не схожі на прапорці. Тут, а не в шаблоні `BOOL`,
+  // саме тому, що це і є призначення OVERRIDE: «колонки, про які назва нічого
+  // не каже». Розширювати шаблон під кожну таку — означає рано чи пізно
+  // затягнути в BOOLEAN справжній лічильник.
+  'unit_types.extra_bed_available': 'BOOLEAN',
+  // Три стани: null = «вирішує правило каналу», і це не те саме, що false.
+  // BOOLEAN у Postgres nullable, тож третій стан зберігається.
   'unit_types.breakfast_included': 'BOOLEAN',
+  // Той самий третій стан рівнем нижче — саме бронювання (міграція 0020).
   'reservations.breakfast_included': 'BOOLEAN',
-  // Миті платформи, що не ловляться `_at$`. Міграція 0030 — TIMESTAMPTZ.
+  // Миті платформи, що не ловляться `_at$`: міграція 0030 — TIMESTAMPTZ.
+  // Без цих записів чесна регенерація на свіжій базі робила їх TEXT
+  // (диф проти c129593, аудит 2026-08-28).
   'platform_audit.at': 'TIMESTAMPTZ',
   'platform_users.last_login': 'TIMESTAMPTZ',
-  // 0040 тримає created_at ТЕКСТОМ навмисно — місяць береться
-  // substr(created_at, 1, 7); а total_tokens — лічильник, не гроші,
-  // хоч слово в імені й «total».
-  'ai_usage.created_at': 'TEXT',
-  'ai_usage.total_tokens': 'BIGINT',
   // 0022: «JSON text, same as every other free-form config». JSONB зробив би
   // свіжу базу інакшою за мігрований прод.
   'guest_page_sections.config': 'TEXT',
@@ -113,7 +124,24 @@ const TIMESTAMP = /_at$|^created$|^updated$|^timestamp$/;
 /** A calendar day, with no time of day and no zone. */
 const DATE_ONLY = /^check_in$|^check_out$|^date$|_date$|^valid_from$|^valid_to$|^valid_until$|^expires_at$|^period_from$|^period_to$/;
 /** A true/false flag stored as 0/1. */
-const BOOL = /^is_|^has_|^can_|^includes_|_enabled$|^locked$|^confirmed$|^active$|_active$|^read_only$|^needs_|^smoking$|^partial$|_hidden$|_exempt$|_reported$|_included_in_price$|^enabled$|^archived$/;
+// Прапорці. Список імен, а не типів, бо в SQLite прапорець — це INTEGER, і
+// відрізнити його від лічильника можна лише за назвою.
+//
+// ── Чому список довшає ────────────────────────────────────────────────────
+//
+// `bookable_online` під нього не підпадав, тож у Postgres колонка виходила
+// BIGINT — а сім запитів у чотирьох публічних маршрутах віджета порівнювали
+// її з `TRUE`. Postgres на це відповідає `operator does not exist:
+// bigint = boolean`, тобто 500. **Увесь публічний віджет — конфіг, календар,
+// доступність і саме бронювання — не працював на Postgres**, тобто на беті й
+// проді; на SQLite усе було гаразд, бо там `TRUE` це 1.
+//
+// Урок не в тому, що бракувало одного імені, а в тому, що список імен —
+// дірявий за побудовою: кожен новий прапорець із незвичною назвою мовчки
+// стає числом, і ламається лише на сервері. Тому окремо існує перевірка з
+// іншого боку: `check-boolean-flags` тепер звіряє КОЖНЕ порівняння з
+// TRUE/FALSE у коді з типом колонки у schema.sql.
+const BOOL = /^is_|^has_|^can_|^includes_|^show_|^bookable_|^available_in_|_enabled$|^locked$|^confirmed$|^active$|_active$|^read_only$|^needs_|^smoking$|^partial$|_hidden$|_exempt$|_reported$|_included_in_price$|^enabled$|^archived$|_qr$/;
 /** A JSON document kept in a text column. */
 const JSONISH = /_json$|^old_values$|^new_values$|^parameters$|^config$|^payload$|^raw_payload$|^assumptions$|^metadata$|^allowed_tabs$|^connection_types$|^applicable_services$|^allowed_days$|^included_services$|^applied_listings$|^allowed_promo_codes$|^permissions$/;
 
@@ -176,12 +204,26 @@ function pgDefault(raw, type) {
   if (raw == null) return null;
   const v = String(raw).trim();
 
-  if (/^datetime\(\s*'now'\s*\)$/i.test(v)) return 'now()';
-  if (/^date\(\s*'now'\s*\)$/i.test(v)) return 'CURRENT_DATE';
-  if (/^CURRENT_TIMESTAMP$/i.test(v)) return 'now()';
+  // Годинник у колонку ТЕКСТУ.
+  //
+  // `now()` повертає timestamptz, і в TEXT-колонці Postgres відхиляє це на
+  // рівні DDL: схема не завантажується взагалі. Досі такого поєднання не
+  // траплялось, бо `datetime('now')` у SQLite майже завжди стоїть на
+  // DATETIME-колонці. `ai_usage.created_at` — перша TEXT: там дата навмисно
+  // текст (міграція 0040), щоб substr(created_at, 1, 7) давав місяць на обох
+  // двигунах.
+  //
+  // Формат — той самий ISO 8601, що пише застосунок (`toISOString()`), інакше
+  // рядок за замовчуванням і рядок від коду порівнювалися б по-різному.
+  const nowText = `to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`;
+  const isText = type === 'TEXT';
+
+  if (/^datetime\(\s*'now'\s*\)$/i.test(v)) return isText ? nowText : 'now()';
+  if (/^date\(\s*'now'\s*\)$/i.test(v)) return isText ? `to_char(CURRENT_DATE, 'YYYY-MM-DD')` : 'CURRENT_DATE';
+  if (/^CURRENT_TIMESTAMP$/i.test(v)) return isText ? nowText : 'now()';
   const rb = v.match(/^lower\(hex\(randomblob\((\d+)\)\)\)$/i);
   if (rb) return `encode(gen_random_bytes(${rb[1]}), 'hex')`;
-  if (/^strftime\(\s*'%Y-%m-%dT%H:%M:%SZ'\s*,\s*'now'\s*\)$/i.test(v)) return 'now()';
+  if (/^strftime\(\s*'%Y-%m-%dT%H:%M:%SZ'\s*,\s*'now'\s*\)$/i.test(v)) return isText ? nowText : 'now()';
   if (/^NULL$/i.test(v)) return null; // no default is the same thing, and clearer
 
   if (type === 'BOOLEAN') {

@@ -1,6 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Sql } from '../../../core/db/async.ts';
 
+// `gift_cards.currency` — NOT NULL, тож `|| 'CZK'` тут не спрацьовував ніколи.
+// Гірше: у порівнянні вище він означав «сертифікат без валюти вважаємо
+// кронським», тобто міг би прийняти чужу валюту до оплати.
+
 /**
  * Gift certificate redemption for the widget.
  *
@@ -59,7 +63,7 @@ export async function quoteCertificate(
 
   const fixed = row.value_type === 'fixed_czk' || row.value_type === 'fixed_eur';
   if (!fixed) return { valid: false, message: AT_DESK };
-  if ((row.currency || 'CZK') !== currency) return { valid: false, message: AT_DESK };
+  if (row.currency !== currency) return { valid: false, message: AT_DESK };
   if (!(row.face_value > 0)) return { valid: false, message: 'Сертифікат має нульовий номінал.' };
 
   return {
@@ -68,7 +72,7 @@ export async function quoteCertificate(
       id: row.id,
       code: row.code,
       amount: Math.min(row.face_value, Math.max(0, totalPrice)),
-      currency: row.currency || 'CZK',
+      currency: row.currency,
     },
   };
 }

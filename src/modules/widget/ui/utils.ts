@@ -58,7 +58,7 @@ export interface CategoryOption {
 /**
  * Group available units into categories for the optional category step.
  *
- * Replaces the retired wizard's hardcoded glamping / buildings / camping
+ * Replaces the retired wizard's hardcoded three-category
  * branches: the grouping now comes from whatever categories the property
  * actually has units in. Units without a category are ignored rather than
  * bucketed under a fake one, so a mis-seeded row cannot invent a category.

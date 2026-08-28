@@ -88,8 +88,8 @@ const navigation: NavSection[] = [
   {
     title: 'Фінанси',
     items: [
-      { label: 'Огляд', href: '/app/finance', icon: <Wallet size={20} />, permission: 'nav:finance' },
-      { label: 'Операції', href: '/app/finance/operations', icon: <ListChecks size={20} />, permission: 'nav:finance' },
+      { label: 'Огляд', href: '/app/finance', icon: <Wallet size={20} />, permission: 'nav:finance', feature: 'accounting' },
+      { label: 'Операції', href: '/app/finance/operations', icon: <ListChecks size={20} />, permission: 'nav:finance', feature: 'accounting' },
     ],
   },
   {

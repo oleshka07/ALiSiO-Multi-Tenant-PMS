@@ -5,6 +5,7 @@ import { priceNights } from '@pricing';
 import { getDb } from '@core/db';
 import { hasFeature, featureDisabled } from '@core/features';
 import { runWithOrganization } from '@core/auth/tenant-context';
+import { organizationCurrency } from '@core/currency';
 
 export const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -153,7 +154,7 @@ export async function getWidgetConfig(request: NextRequest) {
       widgetServices = await sql.rows<any>(`
         SELECT id, name, name_en, description, price, currency, unit_label, icon, category, available_for
         FROM additional_services
-        WHERE property_id = ? AND is_active = TRUE AND available_in_widget = 1
+        WHERE property_id = ? AND is_active = TRUE AND available_in_widget = TRUE
         ORDER BY sort_order
       `, [property.id]);
     } catch { /* table may not exist yet */ }
@@ -164,7 +165,17 @@ export async function getWidgetConfig(request: NextRequest) {
         name: property.name,
         checkInTime: property.check_in_time,
         checkOutTime: property.check_out_time,
-        currency: property.default_currency || 'CZK',
+        // Валюта готелю, і це виправлення, а не косметика.
+        //
+        // Тут стояло `property.default_currency || 'CZK'`, але в таблиці
+        // `properties` НЕМАЄ колонки `default_currency` — запит іде через
+        // `SELECT *`, тож поле приходило undefined, і запасне значення
+        // спрацьовувало ЗАВЖДИ. Публічний віджет кожного готелю — німецького,
+        // українського, будь-якого — підписував ціни кронами.
+        //
+        // Гість бачив число, за яким збирався платити, з чужою валютою: не
+        // помилка на екрані, а неправильна ціна на вітрині.
+        currency: await organizationCurrency(String(owner.organization_id)),
       },
       unitTypes: unitTypes.map((ut: any) => ({
         id: ut.id,

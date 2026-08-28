@@ -20,11 +20,9 @@ export const listIcalChannels = withActor(async (_request: NextRequest, _ctx: un
       SELECT
         ic.*,
         CASE ic.channel_type
-          WHEN 'building' THEN b.name
           WHEN 'unit' THEN u.name
         END as target_name,
         CASE ic.channel_type
-          WHEN 'building' THEN b.code
           WHEN 'unit' THEN u.code
         END as target_code,
         bs.name as source_name,
@@ -32,7 +30,6 @@ export const listIcalChannels = withActor(async (_request: NextRequest, _ctx: un
         bs.icon_letter as source_icon
       FROM ical_channels ic
       JOIN properties p ON ic.property_id = p.id
-      LEFT JOIN buildings b ON ic.building_id = b.id
       LEFT JOIN units u ON ic.unit_id = u.id
       LEFT JOIN booking_sources bs ON bs.code = ic.source_code
       WHERE p.organization_id = ?
@@ -56,33 +53,28 @@ export const createIcalChannel = withPermission('manage_properties', async (requ
   try {
     const sql = getSql();
     const body = await request.json();
-    const { channel_type, building_id, unit_id, source_code, ical_url, sync_interval_minutes } = body;
+    const { channel_type, unit_id, source_code, ical_url, sync_interval_minutes } = body;
 
     if (!channel_type || !source_code) {
       return NextResponse.json({ error: 'channel_type and source_code are required' }, { status: 400 });
     }
 
-    if (channel_type === 'building' && !building_id) {
-      return NextResponse.json({ error: 'building_id is required for building channels' }, { status: 400 });
+    // Тип лишився один — канал по номеру. Канал по будові пішов разом із
+    // будовами (міграція 0044): вони існували заради одного клієнта, а
+    // календар усе одно групував по `building_name || zone`.
+    if (channel_type !== 'unit') {
+      return NextResponse.json(
+        { error: `Невідомий тип каналу: ${channel_type}. Доступний лише 'unit'.` }, { status: 400 });
     }
-
-    if (channel_type === 'unit' && !unit_id) {
+    if (!unit_id) {
       return NextResponse.json({ error: 'unit_id is required for unit channels' }, { status: 400 });
     }
 
-    if (channel_type === 'building') {
-      const dup = await sql.row<any>(
-        `SELECT id FROM ical_channels WHERE building_id = ? AND source_code = ?
-           AND property_id IN (SELECT id FROM properties WHERE organization_id = ?)`,
-        [building_id, source_code, await requireOrganizationId()]);
-      if (dup) return NextResponse.json({ error: 'Channel already exists for this building + source' }, { status: 400 });
-    } else {
-      const dup = await sql.row<any>(
-        `SELECT id FROM ical_channels WHERE unit_id = ? AND source_code = ?
-           AND property_id IN (SELECT id FROM properties WHERE organization_id = ?)`,
-        [unit_id, source_code, await requireOrganizationId()]);
-      if (dup) return NextResponse.json({ error: 'Channel already exists for this unit + source' }, { status: 400 });
-    }
+    const dup = await sql.row<any>(
+      `SELECT id FROM ical_channels WHERE unit_id = ? AND source_code = ?
+         AND property_id IN (SELECT id FROM properties WHERE organization_id = ?)`,
+      [unit_id, source_code, await requireOrganizationId()]);
+    if (dup) return NextResponse.json({ error: 'Channel already exists for this unit + source' }, { status: 400 });
 
     let propertyId: string;
     try {
@@ -97,11 +89,10 @@ export const createIcalChannel = withPermission('manage_properties', async (requ
     // The tenant is named, and taken from the property the channel hangs on —
     // a subquery cannot drift from the row it comes from. AGENTS.md §3 nr 12.
     await sql.run(`
-      INSERT INTO ical_channels (id, organization_id, property_id, channel_type, building_id, unit_id, source_code, ical_url, export_token, sync_interval_minutes)
+      INSERT INTO ical_channels (id, organization_id, property_id, channel_type, unit_id, source_code, ical_url, export_token, sync_interval_minutes)
       VALUES (?, (SELECT organization_id FROM properties WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?)
     `, [id, propertyId, propertyId, channel_type,
-      channel_type === 'building' ? building_id : null,
-      channel_type === 'unit' ? unit_id : null,
+      unit_id,
       source_code, ical_url || null, exportToken,
       sync_interval_minutes || 15]);
 

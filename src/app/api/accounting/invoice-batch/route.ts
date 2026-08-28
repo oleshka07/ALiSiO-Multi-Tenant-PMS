@@ -122,8 +122,14 @@ function parseAirbnb(csv: string): BatchRow[] {
   const iAmount    = idx('Сума');
   const iGross     = idx('Валовий дохід');
 
-  if (iDate === -1 || iType === -1 || iCode === -1) {
-    throw new Error('Не розпізнано як Airbnb-виписку. Переконайтесь що файл завантажено з Airbnb (CSV → Виписка виплат).');
+  // Валюта — така сама обовʼязкова колонка, як дата й код.
+  //
+  // Тут її не було, а нижче стояло `(cols[iCurrency] ?? 'EUR') || 'EUR'`:
+  // виписка без колонки валюти імпортувалась ЦІЛКОМ як євро. Це гроші в
+  // книгах — не підпис на екрані. Виписка в кронах, завантажена з іншої
+  // локалі Airbnb, лягла б у бухгалтерію з чужою валютою і без жодної скарги.
+  if (iDate === -1 || iType === -1 || iCode === -1 || iCurrency === -1) {
+    throw new Error('Не розпізнано як Airbnb-виписку. Переконайтесь що файл завантажено з Airbnb (CSV → Виписка виплат) і містить колонку «Валюта».');
   }
 
   const rows: BatchRow[] = [];
@@ -160,7 +166,7 @@ function parseAirbnb(csv: string): BatchRow[] {
       check_out: checkOut,
       description: desc,
       amount: gross > 0 ? gross : amount,  // prefer gross for the invoice
-      currency: (cols[iCurrency] ?? 'EUR').trim() || 'EUR',
+      currency: (cols[iCurrency] ?? '').trim(),
       date: airbnbDate(cols[iDate] ?? ''),
       op_type: isExpense ? 'expense' : 'income',
     });
@@ -186,8 +192,8 @@ function parseBooking(csv: string): BatchRow[] {
   const iAmount     = idx('Amount');
   const iPayoutDate = idx('Payout date');
 
-  if (iType === -1 || iBookingNum === -1 || iAmount === -1) {
-    throw new Error('Не розпізнано як Booking.com виписку. Перевірте формат CSV.');
+  if (iType === -1 || iBookingNum === -1 || iAmount === -1 || iCurrency === -1) {
+    throw new Error('Не розпізнано як Booking.com виписку: потрібні колонки Type, Booking number, Amount і Currency.');
   }
 
   const rows: BatchRow[] = [];
@@ -223,7 +229,7 @@ function parseBooking(csv: string): BatchRow[] {
       check_out: checkOut,
       description: desc,
       amount,
-      currency: (cols[iCurrency] ?? 'EUR').trim() || 'EUR',
+      currency: (cols[iCurrency] ?? '').trim(),
       date: paidAt,
       op_type: 'income',
     });

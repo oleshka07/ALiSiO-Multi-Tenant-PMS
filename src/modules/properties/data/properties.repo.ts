@@ -20,7 +20,6 @@ export async function listProperties(organizationId: string) {
     SELECT
       p.*,
       (SELECT COUNT(*) FROM categories c WHERE c.property_id = p.id) as category_count,
-      (SELECT COUNT(*) FROM buildings b WHERE b.property_id = p.id) as building_count,
       (SELECT COUNT(*) FROM units u WHERE u.property_id = p.id AND u.is_active = TRUE) as unit_count,
       (SELECT COUNT(*) FROM unit_types ut WHERE ut.property_id = p.id AND ut.is_active = TRUE) as unit_type_count
     FROM properties p
@@ -52,15 +51,6 @@ export async function getPropertyById(organizationId: string, id: string) {
     ORDER BY c.sort_order
   `, [id]);
 
-  const buildings = await sql.rows<any>(`
-    SELECT b.*, COUNT(u.id) as unit_count
-    FROM buildings b
-    LEFT JOIN units u ON u.building_id = b.id AND u.is_active = TRUE
-    WHERE b.property_id = ?
-    GROUP BY b.id
-    ORDER BY b.sort_order
-  `, [id]);
-
   const unitTypes = await sql.rows<any>(`
     SELECT ut.*, COUNT(u.id) as unit_count
     FROM unit_types ut
@@ -73,17 +63,15 @@ export async function getPropertyById(organizationId: string, id: string) {
   const units = await sql.rows<any>(`
     SELECT u.*,
       ut.name as unit_type_name, ut.code as unit_type_code,
-      c.name as category_name, c.type as category_type, c.icon as category_icon, c.color as category_color,
-      b.name as building_name, b.code as building_code
+      c.name as category_name, c.type as category_type, c.icon as category_icon, c.color as category_color
     FROM units u
     JOIN unit_types ut ON u.unit_type_id = ut.id
     JOIN categories c ON u.category_id = c.id
-    LEFT JOIN buildings b ON u.building_id = b.id
     WHERE u.property_id = ?
-    ORDER BY c.sort_order, b.sort_order, ut.sort_order, u.sort_order
+    ORDER BY c.sort_order, ut.sort_order, u.sort_order
   `, [id]);
 
-  return { property, categories, buildings, unitTypes, units };
+  return { property, categories, unitTypes, units };
 }
 
 export interface CreatePropertyInput {

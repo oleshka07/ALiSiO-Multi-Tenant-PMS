@@ -25,12 +25,11 @@ export {
   deleteUnitType,
 } from './unit-types.handlers';
 
-export {
-  listBuildings,
-  createBuilding,
-  updateBuilding,
-  deleteBuilding,
-} from './buildings.handlers';
+// Будов більше немає. Корпуси й зони готель називає колонкою `units.zone` —
+// простим текстом, який він друкує сам. Окрема таблиця з CRUD, FK і власним
+// типом iCal-каналу існувала заради одного клієнта з будовою «F», і календар
+// однаково групував по `building_name || zone`, тобто робив ту саму роботу
+// вдвічі. Прибрано міграцією 0044.
 
 export {
   listCategories,
@@ -48,7 +47,6 @@ export { uploadPhoto, deletePhoto } from './photos.handlers';
 export type {
   Property,
   Category,
-  Building,
   UnitType,
   Unit,
   CategoryType,

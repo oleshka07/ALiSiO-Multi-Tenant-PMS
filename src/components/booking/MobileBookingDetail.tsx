@@ -4,6 +4,7 @@ import { useT, usePlural } from '@core/i18n/client';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 import {
   X, MoreVertical, Phone, Mail, MessageCircle, Check, Clock, Lock,
   Plus, Copy, ExternalLink, Edit3, Loader2, Save, Receipt,
@@ -62,12 +63,16 @@ function formatDate(iso: string): { date: string; day: string } {
   return { date: `${dd}.${mm}.${d.getFullYear()}`, day: WEEKDAY_SHORT[d.getDay()] };
 }
 
-// Відомий борг A7: курс CZK→EUR захардкоджено (25.5), конфіг буде окремо.
-// Функція застосовується ЛИШЕ до сум у CZK — рендер нижче звіряє
-// b.currency === 'CZK', тож EUR- та будь-які інші броні через 25.5 не йдуть.
-function toEur(czk: number): string {
-  return Math.round(czk / 25.5).toLocaleString();
-}
+// Тут була підказка «≈ N EUR» під сумою в кронах, порахована як `czk / 25.5`
+// — курс одного клієнта, вписаний у код і незмінний з дня написання. Показане
+// число виглядало як факт, а було чиїмось торішнім припущенням.
+//
+// Прибрано, а не полагоджено на льоту: курси тепер живуть у
+// `finance_exchange_rates`, готель заводить свої другорядні валюти
+// (Налаштування → Валюти), і `convert()` з `@core/currency` повертає null,
+// коли курсу немає. Підказка повернеться як звичайна конвертація за цим
+// джерелом — і тоді її не буде видно в готелю, який курсу не задав. Це
+// інваріант 17 іншими словами: ціни, якої немає, не існує.
 
 function nightsLabel(n: number): string {
   if (n === 1) return 'ніч';
@@ -92,6 +97,10 @@ export default function MobileBookingDetail({
 }: MobileBookingDetailProps) {
   const pluralUi = usePlural();
   const tUi = useT();
+  // Валюта готелю, а не «CZK, якщо база промовчала»: сума в євро з підписом
+  // CZK — це інша сума й інше зобовʼязання. Порожньо, поки /api/auth/me не
+  // відповів: сума без підпису читається як завантаження, з чужим — як факт.
+  const hotelCurrency = useHotelCurrency();
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
   useBodyScrollLock(Boolean(b));
@@ -431,7 +440,7 @@ export default function MobileBookingDetail({
                 {b.first_name} {b.last_name}
               </div>
               <div style={{ fontSize: 19, fontWeight: 700, color: 'var(--accent-primary)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                {total.toLocaleString()} {b.currency || 'CZK'}
+                {total.toLocaleString()} {b.currency || hotelCurrency}
               </div>
             </div>
 
@@ -448,11 +457,6 @@ export default function MobileBookingDetail({
                 <span style={{ width: 3, height: 3, background: 'var(--text-tertiary)', borderRadius: '50%' }} />
                 <span>{b.adults} {tUi(adultsLabel(b.adults))}{b.children > 0 ? ` + ${b.children} ${pluralUi(b.children, 'діт.')}` : ''}</span>
               </div>
-              {b.currency === 'CZK' && (
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
-                  ≈ {toEur(total)} €
-                </div>
-              )}
             </div>
 
             {/* Dates */}
@@ -597,7 +601,7 @@ export default function MobileBookingDetail({
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'ui-monospace, monospace' }}>
                 <span>{pct}{tUi('% оплачено')}</span>
-                <span>{tUi('в')} {b.currency || 'CZK'}</span>
+                <span>{tUi('в')} {b.currency || hotelCurrency}</span>
               </div>
 
               {/* Action buttons */}
@@ -623,7 +627,7 @@ export default function MobileBookingDetail({
               {showPayForm && (
                 <div style={{ marginTop: 12, padding: 12, background: 'var(--bg-secondary)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <input className="form-input" type="number" placeholder={`${tUi('Сума')} ${b.currency || 'CZK'}`} value={payForm.amount}
+                    <input className="form-input" type="number" placeholder={`${tUi('Сума')} ${b.currency || hotelCurrency}`} value={payForm.amount}
                       onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))}
                       style={{ fontSize: 13 }} />
                     <select className="form-select" value={payForm.method}
@@ -652,7 +656,7 @@ export default function MobileBookingDetail({
                   {remaining > 0 && (
                     <button onClick={() => setPayForm(p => ({ ...p, amount: String(remaining), type: remaining === total ? 'full' : 'partial' }))}
                       style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: 11, fontWeight: 600, padding: 0, textAlign: 'left', cursor: 'pointer' }}>
-                      {tUi('Залишок:')} {remaining.toLocaleString()} {b.currency || 'CZK'}
+                      {tUi('Залишок:')} {remaining.toLocaleString()} {b.currency || hotelCurrency}
                     </button>
                   )}
                   <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
@@ -860,7 +864,7 @@ export default function MobileBookingDetail({
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{sb.label || tUi('Без назви')}</div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                        {(sb.subtotal || 0).toLocaleString()} {b.currency || 'CZK'}
+                        {(sb.subtotal || 0).toLocaleString()} {b.currency || hotelCurrency}
                       </div>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>

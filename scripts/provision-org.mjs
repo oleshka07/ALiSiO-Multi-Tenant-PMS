@@ -2,8 +2,14 @@
  * Create a customer.
  *
  *   node scripts/provision-org.mjs --name "Hotel Kyiv" --slug hotel-kyiv \
- *        --email owner@hotel-kyiv.ua [--password '…'] [--city Kyiv] \
- *        [--country UA] [--currency UAH] [--language uk] [--enable widget]
+ *        --email owner@hotel-kyiv.ua --currency UAH [--password '…'] \
+ *        [--city Kyiv] [--country UA] [--language uk] [--enable widget]
+ *
+ * --currency is the hotel's base currency, and it is required for the same
+ * reason --language is checked: it decides what every sum in the system means.
+ * It used to default to CZK, so a hotel created without it silently became
+ * Czech — prices, invoices, the widget and guest emails all in koruna, with no
+ * error anywhere.
  *
  * --language is the hotel's base language: uk en de cs pl nl fr. It sets the
  * interface for its staff and the source language of its content, so a German
@@ -27,10 +33,13 @@ const arg = (name) => {
 const name = arg('name');
 const slug = arg('slug');
 const email = arg('email');
+// Валюта обовʼязкова: це основа, від якої рахує вся система. Раніше її
+// відсутність тихо давала крони.
+const currency = arg('currency');
 
-if (!name || !slug || !email) {
-  console.error('Потрібно: --name "Назва" --slug slug --email owner@example.com');
-  console.error('Необовʼязково: --password --city --country --currency --timezone --language --property --enable');
+if (!name || !slug || !email || !currency) {
+  console.error('Потрібно: --name "Назва" --slug slug --email owner@example.com --currency CZK');
+  console.error('Необовʼязково: --password --city --country --timezone --language --property --enable');
   process.exit(2);
 }
 
@@ -52,7 +61,7 @@ try {
     propertyName: arg('property'),
     city: arg('city'),
     country: arg('country'),
-    currency: arg('currency'),
+    currency,
     timezone: arg('timezone'),
     language: arg('language'),
     enable: (arg('enable') || '').split(',').map((s) => s.trim()).filter(Boolean),

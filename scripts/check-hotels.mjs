@@ -102,7 +102,6 @@ for (const name of files) {
   // ── типи номерів ──────────────────────────────────────────────────────────
   const typeCodes = new Set();
   const categoryNames = new Set((plan.categories || []).map((c) => f(c, 'name')));
-  const buildingNames = new Set((plan.buildings || []).map((b) => f(b, 'name')));
 
   for (const t of plan.unitTypes || plan.unit_types || []) {
     const code = f(t, 'code');
@@ -112,8 +111,6 @@ for (const name of files) {
 
     const cat = f(t, 'category');
     if (cat && !categoryNames.has(cat)) note(file, `тип ${code}: категорії "${cat}" немає в categories`);
-    const bld = f(t, 'building');
-    if (bld && !buildingNames.has(bld)) note(file, `тип ${code}: будівлі "${bld}" немає в buildings`);
 
     const windows = new Set();
     for (const p of f(t, 'occupancyPrices') || t.prices || []) {

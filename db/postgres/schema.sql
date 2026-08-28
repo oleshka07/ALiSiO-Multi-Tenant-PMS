@@ -79,7 +79,7 @@ CREATE TABLE "additional_services" (
   "unit_label_pl" TEXT,
   "unit_label_nl" TEXT,
   "unit_label_fr" TEXT,
-  "available_in_widget" BIGINT DEFAULT 0,
+  "available_in_widget" BOOLEAN DEFAULT false,
   "vat_code" TEXT,
   PRIMARY KEY ("id"),
   CHECK (category IN ('food', 'wellness', 'sport', 'entertainment', 'other'))
@@ -93,7 +93,7 @@ CREATE TABLE "ai_usage" (
   "prompt_tokens" BIGINT DEFAULT 0 NOT NULL,
   "completion_tokens" BIGINT DEFAULT 0 NOT NULL,
   "total_tokens" BIGINT DEFAULT 0 NOT NULL,
-  "created_at" TEXT DEFAULT now() NOT NULL,
+  "created_at" TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') NOT NULL,
   PRIMARY KEY ("id")
 );
 
@@ -234,18 +234,6 @@ CREATE TABLE "booking_sources" (
   PRIMARY KEY ("id")
 );
 
-CREATE TABLE "buildings" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "category_id" TEXT NOT NULL,
-  "property_id" TEXT NOT NULL,
-  "name" TEXT NOT NULL,
-  "code" TEXT NOT NULL,
-  "description" TEXT,
-  "sort_order" BIGINT DEFAULT 0 NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id")
-);
-
 CREATE TABLE "business_units" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
@@ -305,9 +293,9 @@ CREATE TABLE "categories" (
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
   "icon" TEXT,
   "color" TEXT,
-  "show_in_tasks" BIGINT DEFAULT 1 NOT NULL,
-  "show_in_finance" BIGINT DEFAULT 0 NOT NULL,
-  "show_in_booking" BIGINT DEFAULT 1 NOT NULL,
+  "show_in_tasks" BOOLEAN DEFAULT true NOT NULL,
+  "show_in_finance" BOOLEAN DEFAULT false NOT NULL,
+  "show_in_booking" BOOLEAN DEFAULT true NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id")
 );
@@ -1046,8 +1034,7 @@ CREATE TABLE "ical_channels" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT,
   "property_id" TEXT NOT NULL,
-  "channel_type" TEXT NOT NULL,
-  "building_id" TEXT,
+  "channel_type" TEXT DEFAULT 'unit' NOT NULL,
   "unit_id" TEXT,
   "source_code" TEXT DEFAULT 'vrbo' NOT NULL,
   "ical_url" TEXT,
@@ -1059,7 +1046,7 @@ CREATE TABLE "ical_channels" (
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("export_token"),
-  CHECK (channel_type IN ('building', 'unit'))
+  CHECK (channel_type IN ('unit'))
 );
 
 CREATE TABLE "ical_sync_log" (
@@ -1189,7 +1176,7 @@ CREATE TABLE "organization_invoicing" (
   "logo_url" TEXT,
   "accent_color" TEXT,
   "footer_note" TEXT,
-  "show_payment_qr" BIGINT DEFAULT 0 NOT NULL,
+  "show_payment_qr" BOOLEAN DEFAULT false NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("organization_id")
 );
@@ -1737,7 +1724,6 @@ CREATE TABLE "unit_types" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "property_id" TEXT NOT NULL,
   "category_id" TEXT NOT NULL,
-  "building_id" TEXT,
   "name" TEXT NOT NULL,
   "code" TEXT NOT NULL,
   "description" TEXT,
@@ -1748,7 +1734,7 @@ CREATE TABLE "unit_types" (
   "beds_single" BIGINT DEFAULT 0 NOT NULL,
   "beds_double" BIGINT DEFAULT 1 NOT NULL,
   "beds_sofa" BIGINT DEFAULT 0 NOT NULL,
-  "extra_bed_available" BIGINT DEFAULT 0 NOT NULL,
+  "extra_bed_available" BOOLEAN DEFAULT false NOT NULL,
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
   "photos" TEXT,
   "is_active" BOOLEAN DEFAULT true NOT NULL,
@@ -1767,7 +1753,6 @@ CREATE TABLE "units" (
   "unit_type_id" TEXT NOT NULL,
   "property_id" TEXT NOT NULL,
   "category_id" TEXT NOT NULL,
-  "building_id" TEXT,
   "name" TEXT NOT NULL,
   "code" TEXT NOT NULL,
   "floor" BIGINT,
@@ -1851,8 +1836,7 @@ CREATE TABLE "widget_price_list" (
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "organization_id" TEXT,
   PRIMARY KEY ("id"),
-  UNIQUE ("organization_id", "item_code"),
-  CHECK (category IN ('glamping', 'buildings', 'camping'))
+  UNIQUE ("organization_id", "item_code")
 );
 
 -- ── Foreign keys ────────────────────────────────────────────────────────
@@ -1901,10 +1885,6 @@ ALTER TABLE "booking_sites" ADD CONSTRAINT "fk_booking_sites_property_id_3"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "booking_sources" ADD CONSTRAINT "fk_booking_sources_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
-ALTER TABLE "buildings" ADD CONSTRAINT "fk_buildings_property_id_1"
-  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
-ALTER TABLE "buildings" ADD CONSTRAINT "fk_buildings_category_id_2"
-  FOREIGN KEY ("category_id") REFERENCES "categories" ("id") ON DELETE CASCADE;
 ALTER TABLE "business_units" ADD CONSTRAINT "fk_business_units_parent_id_1"
   FOREIGN KEY ("parent_id") REFERENCES "business_units" ("id");
 ALTER TABLE "business_units" ADD CONSTRAINT "fk_business_units_organization_id_2"
@@ -2085,11 +2065,9 @@ ALTER TABLE "guests" ADD CONSTRAINT "fk_guests_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "ical_channels" ADD CONSTRAINT "fk_ical_channels_unit_id_1"
   FOREIGN KEY ("unit_id") REFERENCES "units" ("id") ON DELETE CASCADE;
-ALTER TABLE "ical_channels" ADD CONSTRAINT "fk_ical_channels_building_id_2"
-  FOREIGN KEY ("building_id") REFERENCES "buildings" ("id") ON DELETE CASCADE;
-ALTER TABLE "ical_channels" ADD CONSTRAINT "fk_ical_channels_property_id_3"
+ALTER TABLE "ical_channels" ADD CONSTRAINT "fk_ical_channels_property_id_2"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
-ALTER TABLE "ical_channels" ADD CONSTRAINT "fk_ical_channels_organization_id_4"
+ALTER TABLE "ical_channels" ADD CONSTRAINT "fk_ical_channels_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "ical_sync_log" ADD CONSTRAINT "fk_ical_sync_log_channel_id_1"
   FOREIGN KEY ("channel_id") REFERENCES "ical_channels" ("id") ON DELETE CASCADE;
@@ -2229,19 +2207,15 @@ ALTER TABLE "tasks" ADD CONSTRAINT "fk_tasks_organization_id_6"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "unit_type_photos" ADD CONSTRAINT "fk_unit_type_photos_unit_type_id_1"
   FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
-ALTER TABLE "unit_types" ADD CONSTRAINT "fk_unit_types_building_id_1"
-  FOREIGN KEY ("building_id") REFERENCES "buildings" ("id") ON DELETE SET NULL;
-ALTER TABLE "unit_types" ADD CONSTRAINT "fk_unit_types_category_id_2"
+ALTER TABLE "unit_types" ADD CONSTRAINT "fk_unit_types_category_id_1"
   FOREIGN KEY ("category_id") REFERENCES "categories" ("id") ON DELETE CASCADE;
-ALTER TABLE "unit_types" ADD CONSTRAINT "fk_unit_types_property_id_3"
+ALTER TABLE "unit_types" ADD CONSTRAINT "fk_unit_types_property_id_2"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
-ALTER TABLE "units" ADD CONSTRAINT "fk_units_building_id_1"
-  FOREIGN KEY ("building_id") REFERENCES "buildings" ("id") ON DELETE SET NULL;
-ALTER TABLE "units" ADD CONSTRAINT "fk_units_category_id_2"
+ALTER TABLE "units" ADD CONSTRAINT "fk_units_category_id_1"
   FOREIGN KEY ("category_id") REFERENCES "categories" ("id") ON DELETE CASCADE;
-ALTER TABLE "units" ADD CONSTRAINT "fk_units_property_id_3"
+ALTER TABLE "units" ADD CONSTRAINT "fk_units_property_id_2"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
-ALTER TABLE "units" ADD CONSTRAINT "fk_units_unit_type_id_4"
+ALTER TABLE "units" ADD CONSTRAINT "fk_units_unit_type_id_3"
   FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
 ALTER TABLE "user_permissions" ADD CONSTRAINT "fk_user_permissions_user_id_1"
   FOREIGN KEY ("user_id") REFERENCES "app_users" ("id") ON DELETE CASCADE;
@@ -2258,9 +2232,6 @@ ALTER TABLE "widget_price_list" ADD CONSTRAINT "fk_widget_price_list_organizatio
 
 -- ── Indexes ─────────────────────────────────────────────────────────────
 
-CREATE INDEX "idx_accruals_month" ON "accruals" ("month");
-CREATE INDEX "idx_accruals_org" ON "accruals" ("organization_id");
-CREATE INDEX "idx_accruals_status" ON "accruals" ("status");
 CREATE INDEX "idx_ai_usage_month" ON "ai_usage" ("organization_id", "created_at");
 CREATE INDEX "idx_ai_usage_org" ON "ai_usage" ("organization_id");
 CREATE UNIQUE INDEX "idx_app_users_org_email" ON "app_users" (organization_id, lower(email));
@@ -2664,12 +2635,6 @@ CREATE POLICY "booking_sites_tenant" ON "booking_sites"
 ALTER TABLE "booking_sources" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "booking_sources" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "booking_sources_tenant" ON "booking_sources"
-  USING ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))
-  WITH CHECK ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')));
-
-ALTER TABLE "buildings" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "buildings" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "buildings_tenant" ON "buildings"
   USING ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))
   WITH CHECK ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')));
 

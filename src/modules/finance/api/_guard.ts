@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getSessionUser, type SessionUser } from '@core/auth';
 import { hasPermission, type Permission } from '@core/auth';
+import { hasFeature } from '@core/features';
 import { hasFinancePassphrase, isFinanceUnlocked } from './_finance-unlock';
 import type { Actor } from '@core/auth/session';
 import { runWithOrganization } from '@core/auth/tenant-context';
@@ -175,6 +176,23 @@ export async function requireFinanceUser(
   // against a real Postgres — a passphrase in the database, finance opening
   // with no unlock.
   return runWithOrganization(user.organization_id, async () => {
+    // ── Чи веде цей готель тут облік узагалі ──────────────────────────────
+    //
+    // Ключ `accounting` (OFF за замовчуванням, увімкнений міграцією 0045 усім,
+    // хто вже існував). Перевірка стоїть ТУТ, а не обгорткою на кожному з ~78
+    // експортів фасаду, і це не економія рядків: через `requireFinanceUser`
+    // проходить кожен хендлер обліку з сесією, тож новий хендлер отримує
+    // перевірку тим, що йде звичайним шляхом, а не тим, що автор про неї
+    // згадав.
+    //
+    // Після встановлення орендаря — як у `withModule`: без орендаря
+    // `organization_features` на Postgres не читається, і відповідь була б
+    // «вимкнено» для всіх.
+    if (!await hasFeature(user.organization_id!, 'accounting')) {
+      return forbidden('Модуль обліку вимкнено для цієї організації.', {
+        code: 'FEATURE_DISABLED', feature: 'accounting',
+      });
+    }
     // Opt-in step-up: once a finance passphrase is set, every session must unlock.
     if (await hasFinancePassphrase(user.id) && !await isFinanceUnlocked(sessionId)) {
       return forbidden('Фінансовий розділ заблоковано. Введіть пароль фінансів.', {
@@ -224,7 +242,17 @@ export async function asFinanceOwner(
   const r = await resolveFinanceOwner();
   if (r instanceof NextResponse) return r;
   if (!r.user.organization_id) return unauthenticated();
-  return runWithOrganization(r.user.organization_id, () => handler(r));
+  return runWithOrganization(r.user.organization_id, async () => {
+    // Пароль фінансів теж за ключем: вимкнений облік не має екранів, тож і
+    // замок до них ні до чого. Увімкнути облік назад можна в налаштуваннях
+    // фіч — цей шлях сюди не заходить.
+    if (!await hasFeature(r.user.organization_id!, 'accounting')) {
+      return forbidden('Модуль обліку вимкнено для цієї організації.', {
+        code: 'FEATURE_DISABLED', feature: 'accounting',
+      });
+    }
+    return handler(r);
+  });
 }
 
 /**

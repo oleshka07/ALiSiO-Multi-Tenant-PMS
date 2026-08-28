@@ -153,6 +153,32 @@ const SQLITE_DIALECT: Dialect = {
   ilike: (column) => `${column} LIKE ? ESCAPE '\\'`,
 };
 
+/**
+ * Прапорець на вході: `true`/`false` → `1`/`0`.
+ *
+ * ── Навіщо ────────────────────────────────────────────────────────────────
+ *
+ * Шов уже перекладав прапорці на ВИХОДІ (`SHAPES.bool` у postgres.ts: Postgres
+ * віддає boolean, і його зводять до 1/0, як віддавав SQLite). На ВХОДІ не
+ * перекладав ніхто, і це ставило застосунок між двох вимог:
+ *
+ *   better-sqlite3   кидає `TypeError: Can only bind numbers, strings,
+ *                    bigints, buffers, and null` на JS-булеві;
+ *   Postgres         відхиляє число в колонку BOOLEAN — `column "x" is of
+ *                    type boolean but expression is of type integer`.
+ *
+ * Тобто прив'язати `true` не можна, прив'язати `1` теж не можна, і код
+ * розходився по файлах: десь `? 1 : 0`, десь навпаки. Інваріант 12 вимагає
+ * `TRUE`/`FALSE`, а написати їх із TypeScript було нічим.
+ *
+ * Тепер можна: код передає справжній булевий, Postgres бере його як є, а тут
+ * він стає одиницею. Одне місце замість домовленості, яку кожен пам'ятає
+ * по-своєму.
+ */
+function bindable(params: unknown[]): unknown[] {
+  return params.map((v) => (typeof v === 'boolean' ? (v ? 1 : 0) : v));
+}
+
 export function sqliteSql(db: any = null, insideTransaction = false): Sql {
   // Loaded on first use, not at import: `./index.ts` is the SQLite bootstrap —
   // the schema, every migration, better-sqlite3 and bcryptjs for the demo seed
@@ -168,15 +194,15 @@ export function sqliteSql(db: any = null, insideTransaction = false): Sql {
     dialect: SQLITE_DIALECT,
 
     async rows<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
-      return handle().prepare(sql).all(...params) as T[];
+      return handle().prepare(sql).all(...bindable(params)) as T[];
     },
 
     async row<T = any>(sql: string, params: unknown[] = []): Promise<T | undefined> {
-      return handle().prepare(sql).get(...params) as T | undefined;
+      return handle().prepare(sql).get(...bindable(params)) as T | undefined;
     },
 
     async run(sql: string, params: unknown[] = []) {
-      const r = handle().prepare(sql).run(...params);
+      const r = handle().prepare(sql).run(...bindable(params));
       return { changes: r.changes as number, lastId: r.lastInsertRowid as number };
     },
 

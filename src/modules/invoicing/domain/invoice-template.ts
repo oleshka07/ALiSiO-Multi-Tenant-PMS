@@ -23,7 +23,17 @@ export interface InvoiceData {
   issued_at: string | null;
   due_date: string | null;
   amount: number | null;
-  currency: string | null;
+  /**
+   * НЕ nullable, на відміну від сусідів.
+   *
+   * Сусідні поля порожні через LEFT JOIN — видалений номер або гість дають
+   * рядок із null. `currency` приїжджає з самої `invoices`, а там колонка
+   * `TEXT NOT NULL`. Тип, ширший за колонку, змушував кожного, хто читає це
+   * поле, дописувати `|| 'CZK'` — і в п'яти маршрутах він дописаний і був.
+   * Запасне значення, яке ніколи не спрацьовує, гірше за відсутнє: воно
+   * виглядає як рішення.
+   */
+  currency: string;
   status: string | null;
   reservation_id: string | null;
   check_in: string | null;
@@ -96,18 +106,28 @@ function formatDate(dateStr: string | null | undefined): string {
   return d.toLocaleDateString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-function formatAmount(amount: number | null | undefined, currency = 'CZK'): string {
+/**
+ * Сума з підписом валюти. Валюта — обовʼязковий аргумент.
+ *
+ * Було `currency = 'CZK'` у сигнатурі плюс `currency || 'CZK'` у тілі: два
+ * запасні значення на один параметр, обидва про одного клієнта. Виклик, який
+ * забув передати валюту, друкував крони на документі німецького готелю — і
+ * компілювався.
+ *
+ * `Intl` кидає на невідомому коді, і це ловиться нижче: підпис із трьох літер
+ * поруч із сумою гірший за красивий формат, але він правдивий.
+ */
+function formatAmount(amount: number | null | undefined, currency: string): string {
   const safe = typeof amount === 'number' && isFinite(amount) ? amount : 0;
-  const safeCur = currency || 'CZK';
   try {
     return new Intl.NumberFormat('cs-CZ', {
       style: 'currency',
-      currency: safeCur,
+      currency,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(safe);
   } catch {
-    return `${safe.toFixed(2)} ${safeCur}`;
+    return `${safe.toFixed(2)} ${currency}`;
   }
 }
 

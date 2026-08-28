@@ -21,6 +21,12 @@ import { convertToCzkAuto, foreignNote } from '@invoicing';
 import { showBuyerName, dueDateFor } from '@invoicing';
 import JSZip from 'jszip';
 
+// `currency` у цих рядках — NOT NULL (invoices, fin_operations, reservations:
+// усі три `TEXT NOT NULL`), тож `|| 'CZK'` тут не спрацьовував ніколи. Він не
+// був захистом — він був схожий на рішення: читач бачив «якщо валюти немає,
+// це крони» і вірив, що такий випадок буває. Прибрано, щоб у коді лишилось
+// рівно одне джерело валюти документа — сам рядок.
+
 // ─── Helper: build description from invoice or fin_op data ───────────────────
 
 function buildDescription(data: {
@@ -108,7 +114,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       if (!inv.invoice_number) continue;
 
       const documentDate = (inv.check_in || inv.payment_date || inv.issued_at || '').slice(0, 10);
-      const conv = await convertToCzkAuto(inv.amount || 0, inv.currency || 'CZK', documentDate);
+      const conv = await convertToCzkAuto(inv.amount || 0, inv.currency, documentDate);
       const czkAmount = conv.converted ? conv.amountCzk : (inv.amount || 0);
 
       // Buyer: explicit company always; personal guest only at/above 9900 CZK.
@@ -132,7 +138,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
         taxPointDate:   dueDateFor(documentDate || (inv.issued_at || '').slice(0, 10), rules),
         description:    buildDescription(inv as { unit_name?: string | null; check_in?: string | null; check_out?: string | null; comment?: string | null; source?: string | null }),
         amount:         conv.converted ? conv.amountCzk : (inv.amount || 0),
-        currency:       conv.converted ? 'CZK' : (inv.currency || 'CZK'),
+        currency:       conv.converted ? 'CZK' : (inv.currency),
         buyer,
         paymentMethod:  inv.payment_method || undefined,
         paymentDueDate: dueDateFor(documentDate || (inv.issued_at || '').slice(0, 10), rules),
@@ -184,7 +190,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       }
 
       const documentDate = (op.paid_at || '').slice(0, 10);
-      const conv = await convertToCzkAuto(op.amount || 0, op.currency || 'EUR', documentDate);
+      const conv = await convertToCzkAuto(op.amount || 0, op.currency, documentDate);
       const czkAmount = conv.converted ? conv.amountCzk : (op.amount || 0);
 
       const xml = await generateIsdocXml({
@@ -194,7 +200,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
         paymentDueDate: dueDateFor(documentDate, rules),
         description:    op.comment || `Ubytování — ${sourceLabel} (${op.source_ref})`,
         amount:         conv.converted ? conv.amountCzk : (op.amount || 0),
-        currency:       conv.converted ? 'CZK' : (op.currency || 'EUR'),
+        currency:       conv.converted ? 'CZK' : (op.currency),
         buyer:          (showBuyerName(czkAmount, false, rules) && guestName) ? { name: guestName } : undefined,
         paymentMethod:  op.method || 'booking_platform',
         note:           `OTA platba přes ${sourceLabel}. Ref: ${op.source_ref}`,

@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { useDevice } from '@/ui/hooks/useDevice';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 import MobileBookings from '@/components/mobile/pages/MobileBookings';
 import SourceIcon from '@/components/ui/SourceIcon';
 import MobileFilterBar from '@/components/mobile/MobileFilterBar';
@@ -217,6 +218,10 @@ const getSourceIconEmoji = (code: string) => {
 function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
   const plural = usePlural();
   const t = useT();
+  // Валюта готелю замість запасних крон. Бронь майже завжди несе свою
+  // (`reservations.currency`); порожня колонка означає «як у готелю», а не
+  // «як у першого клієнта».
+  const hotelCurrency = useHotelCurrency();
   /* ── data ──────────────────────────────────────────── */
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [unitTypes, setUnitTypes] = useState<UnitTypeRow[]>([]);
@@ -411,7 +416,7 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
       cityTaxIncluded: !!editBooking.city_tax_included,
       cityTaxPaid: editBooking.city_tax_paid || 'pending',
       internalNotes: editBooking.internal_notes || '',
-      currency: editBooking.currency || 'CZK',
+      currency: editBooking.currency || hotelCurrency,
     };
   }, [editBooking]);
 
@@ -699,7 +704,7 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
                       <span className="badge" style={{ background: (sourceMap[b.source]?.color || '#6c7086') + '22', color: sourceMap[b.source]?.color || '#6c7086' }}>{sourceMap[b.source]?.label || b.source}</span>
                       {b.hostex_channel_type && <span style={{ marginLeft: 4 }} title={`Hostex: ${b.hostex_channel_type}`}>🌐</span>}
                     </td>
-                    <td><div style={{ fontWeight: 700 }}>{(b.total_price || 0).toLocaleString()} {b.currency || 'CZK'}</div>{(b.commission_amount || 0) > 0 && <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 2 }}>{t('Комісія')} {(b.commission_amount || 0).toLocaleString()}</div>}</td>
+                    <td><div style={{ fontWeight: 700 }}>{(b.total_price || 0).toLocaleString()} {b.currency || hotelCurrency}</div>{(b.commission_amount || 0) > 0 && <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 2 }}>{t('Комісія')} {(b.commission_amount || 0).toLocaleString()}</div>}</td>
                     <td><div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                       <button className="btn btn-sm btn-ghost btn-icon" title={t('Переглянути')} onClick={() => openViewBooking(b)}><Eye size={14} /></button>
                       <button className="btn btn-sm btn-ghost btn-icon" title={t('Редагувати')} onClick={() => openEditBooking(b)}><Edit3 size={14} /></button>
@@ -753,7 +758,7 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
                       <div className="booking-card-unit">{b.unit_name}</div>
                       <div className="booking-card-unit-sub">{b.category_name || b.category_type || ''}</div>
                       <div className="booking-card-price">
-                        {(b.total_price || 0).toLocaleString()} {b.currency || 'CZK'}
+                        {(b.total_price || 0).toLocaleString()} {b.currency || hotelCurrency}
                         <span style={{ marginLeft: 6, display: 'inline-block', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>
                           {t(PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status)}
                         </span>

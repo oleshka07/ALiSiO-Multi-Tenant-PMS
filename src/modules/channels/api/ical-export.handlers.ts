@@ -48,13 +48,7 @@ export async function exportIcal(
     const sql = getSql();
     let unitIds: string[] = [];
     let calName = 'ALiSiO';
-
-    if (channel.channel_type === 'building') {
-      const building = await sql.row<any>('SELECT name FROM buildings WHERE id = ?', [channel.building_id]) as any;
-      calName = `ALiSiO — ${building?.name || 'Building'}`;
-      const units = await sql.rows<any>('SELECT id FROM units WHERE building_id = ?', [channel.building_id]) as any[];
-      unitIds = units.map((u: any) => u.id);
-    } else {
+    {
       const unit = await sql.row<any>('SELECT name FROM units WHERE id = ?', [channel.unit_id]) as any;
       calName = `ALiSiO — ${unit?.name || 'Unit'}`;
       unitIds = [channel.unit_id];

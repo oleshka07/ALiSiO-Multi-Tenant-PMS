@@ -5,7 +5,6 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Search, RefreshCw, Phone, Plus, X, LogIn, LogOut, Building2, Pencil, Info, Link, MessageCircle } from 'lucide-react';
 import MobileBookingDetail from '@/components/booking/MobileBookingDetail';
 import BookingForm, { type UnitTypeRow as BFUnitTypeRow, type UnitRow as BFUnitRow, type BookingSourceRow as BFBookingSourceRow } from '@/components/booking/BookingForm';
-import RoomAllocationModal from '@/components/booking/RoomAllocationModal';
 
 interface BookingRow {
   id: string; check_in: string; check_out: string; nights: number;
@@ -135,7 +134,6 @@ export default function MobileBookings({ openNew, initialSearch }: MobileBooking
   // without that type opened this page onto an empty list.
   const [categoryFilter, setCategoryFilter] = useState('');
   const [showArchive, setShowArchive] = useState(false);
-  const [showRoomAllocation, setShowRoomAllocation] = useState(false);
 
   const todayISO = useMemo(() => {
     const d = new Date();
@@ -326,17 +324,6 @@ export default function MobileBookings({ openNew, initialSearch }: MobileBooking
           </button>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {/* The modal draws Building F's physical corridor — offer it only
-              where F-rooms exist, not to every hotel with a 'resort' type. */}
-          {units.some(u => /^F\d+$/i.test(u.code || u.name || '')) && (
-            <button
-              onClick={() => setShowRoomAllocation(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 10, background: 'rgba(91,124,255,0.12)', border: '1px solid rgba(91,124,255,0.3)', color: 'var(--accent-primary)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-              title={t('Розселення гостей по кімнатах')}
-            >
-              <Building2 size={13} /> {t('Розселення')}
-            </button>
-          )}
           <button
             onClick={() => setShowNewBooking(true)}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 10, background: 'var(--accent-primary)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
@@ -531,13 +518,6 @@ export default function MobileBookings({ openNew, initialSearch }: MobileBooking
         />
       )}
 
-      {/* Room allocation modal (Building F) */}
-      <RoomAllocationModal
-        open={showRoomAllocation}
-        onClose={() => setShowRoomAllocation(false)}
-        onChanged={fetchData}
-        buildingCode="F"
-      />
     </div>
   );
 }

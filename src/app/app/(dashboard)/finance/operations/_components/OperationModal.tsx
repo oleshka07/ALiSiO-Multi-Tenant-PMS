@@ -4,6 +4,7 @@ import { useT } from '@core/i18n/client';
 import { useEffect, useState } from 'react';
 import { X, Repeat, Check, ArrowLeftRight } from 'lucide-react';
 import AttachmentsSection from './AttachmentsSection';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 
 type OpType = 'income' | 'expense' | 'transfer';
 
@@ -28,7 +29,16 @@ export default function OperationModal({ opType, initial, accounts, onClose, onS
   // op_type until the user saves.
   const [currentOpType, setCurrentOpType] = useState<OpType>(opType);
   const [amount, setAmount] = useState<string>(initial?.amount?.toString() || '');
-  const [currency, setCurrency] = useState(initial?.currency || 'CZK');
+  const hotelCurrency = useHotelCurrency();
+  const [currency, setCurrency] = useState(initial?.currency || '');
+  // Валюта готелю як типове значення форми, а не крони.
+  //
+  // Через useEffect, а не в useState: `/api/auth/me` відповідає після першого
+  // рендера, тож ініціалізатор заморозив би порожній рядок. Умова `!currency`
+  // означає «лише поки оператор нічого не обрав і `initial` нічого не приніс».
+  useEffect(() => {
+    if (!currency && hotelCurrency) setCurrency(hotelCurrency);
+  }, [hotelCurrency, currency]);
   const [accountFromId, setAccountFromId] = useState<string>(initial?.account_from_id || (opType !== 'income' ? accounts[0]?.id || '' : ''));
   const [accountToId, setAccountToId] = useState<string>(initial?.account_to_id || (opType !== 'expense' ? accounts[0]?.id || '' : ''));
   const [paidAt, setPaidAt] = useState((initial?.paid_at || new Date().toISOString()).substring(0, 10));
