@@ -1131,6 +1131,27 @@ in migration 0024, so a database created fresh never got it».
 міграція, що ставить той самий за іменем, додала б другий (цей клас уже
 описаний у шапці `check-schema-drift.mjs`).
 
+Друга хвиля того самого: чесна регенерація **перевернула вісім типів** —
+евристики імен не впізнали `bookable_online` і `breakfast_included`
+(BOOLEAN→BIGINT: `= TRUE` на свіжій базі падає з `operator does not exist`),
+`platform_audit.at` і `platform_users.last_login` (TIMESTAMPTZ→TEXT), зате
+впізнали зайве в `ai_usage.total_tokens` («total» ≠ гроші) та
+`guest_page_sections.config` (на проді TEXT, не JSONB). Старий schema.sql
+мав правильні типи, бо ці блоки були вставлені руками з міграцій — стиль
+видає інлайновий `PRIMARY KEY` міграцій замість генераторського. Спіймала
+live-джоба CI (ран №333: «public widget config refused: 500»), бо
+`check-schema-drift` до цього класу сліпий: міграція з `IF NOT EXISTS`
+пропускає наявну колонку, і обидві його бази однаково неправильні. Рішення
+про кожен тип тепер записане в `OVERRIDE` (`pg-schema.mjs`) з причиною —
+дім, який для цього й існує.
+
+Принагідно: `widget-site.handlers.ts` питав `sl.is_active`, якої немає на
+жодному рушії — запит кидав щоразу, `catch` мовчав, межі місткості віджета
+завжди були дефолтними 2/2. Той самий привид уже був виловлений у
+`send-confirmation-email.ts` (коментар там прямо каже «site_listings has no
+such column»), а в сусідньому файлі лишився. Прибрано умову; клас — §7
+«код, який звертається до неіснуючих колонок».
+
 ### 🟠 Перевірка на беті перед main зникла з потоку
 
 Після `2ac949c` (27-го 18:37) merge-коміти релізів закінчились. Далі 15

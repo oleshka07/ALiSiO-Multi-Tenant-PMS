@@ -74,6 +74,25 @@ const OVERRIDE = {
   'fin_system_state.value': 'TEXT',
   'settings.value': 'TEXT',
   'import_entity_mappings.source_value': 'TEXT',
+  // Прапорці, яких регекс BOOL не впізнає на ім'я. На проді вони BOOLEAN з
+  // міграцій 0020/0021; без цих записів регенерація робила їх BIGINT, і
+  // `bookable_online = TRUE` падав з «operator does not exist: bigint =
+  // boolean» на кожній СВІЖІЙ базі — live-джоба CI спіймала це на першій же
+  // чесній регенерації (2026-08-28).
+  'unit_types.bookable_online': 'BOOLEAN',
+  'unit_types.breakfast_included': 'BOOLEAN',
+  'reservations.breakfast_included': 'BOOLEAN',
+  // Миті платформи, що не ловляться `_at$`. Міграція 0030 — TIMESTAMPTZ.
+  'platform_audit.at': 'TIMESTAMPTZ',
+  'platform_users.last_login': 'TIMESTAMPTZ',
+  // 0040 тримає created_at ТЕКСТОМ навмисно — місяць береться
+  // substr(created_at, 1, 7); а total_tokens — лічильник, не гроші,
+  // хоч слово в імені й «total».
+  'ai_usage.created_at': 'TEXT',
+  'ai_usage.total_tokens': 'BIGINT',
+  // 0022: «JSON text, same as every other free-form config». JSONB зробив би
+  // свіжу базу інакшою за мігрований прод.
+  'guest_page_sections.config': 'TEXT',
 };
 
 /** An amount of money. NUMERIC(14,2) — up to 999 999 999 999.99. */

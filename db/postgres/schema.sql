@@ -92,8 +92,8 @@ CREATE TABLE "ai_usage" (
   "model" TEXT NOT NULL,
   "prompt_tokens" BIGINT DEFAULT 0 NOT NULL,
   "completion_tokens" BIGINT DEFAULT 0 NOT NULL,
-  "total_tokens" NUMERIC(14,2) DEFAULT 0 NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "total_tokens" BIGINT DEFAULT 0 NOT NULL,
+  "created_at" TEXT DEFAULT now() NOT NULL,
   PRIMARY KEY ("id")
 );
 
@@ -993,7 +993,7 @@ CREATE TABLE "guest_page_sections" (
   "section" TEXT NOT NULL,
   "enabled" BOOLEAN DEFAULT true NOT NULL,
   "sort_order" BIGINT,
-  "config" JSONB,
+  "config" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
@@ -1243,7 +1243,7 @@ CREATE TABLE "platform_audit" (
   "platform_email" TEXT NOT NULL,
   "action" TEXT NOT NULL,
   "ip" TEXT,
-  "at" TEXT DEFAULT now() NOT NULL,
+  "at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   CHECK (action IN ('enter', 'leave'))
 );
@@ -1263,7 +1263,7 @@ CREATE TABLE "platform_users" (
   "full_name" TEXT,
   "password_hash" TEXT NOT NULL,
   "is_active" BOOLEAN DEFAULT true NOT NULL,
-  "last_login" TEXT,
+  "last_login" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
@@ -1522,7 +1522,7 @@ CREATE TABLE "reservations" (
   "multi_room_marker" TEXT,
   "lodging_discount_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
   "lodging_discount_reason" TEXT,
-  "breakfast_included" BIGINT,
+  "breakfast_included" BOOLEAN,
   PRIMARY KEY ("id"),
   UNIQUE ("guest_page_token"),
   CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
@@ -1757,8 +1757,8 @@ CREATE TABLE "unit_types" (
   "extra_person_charge" BIGINT DEFAULT 1000 NOT NULL,
   "pet_allowed" BIGINT DEFAULT 1 NOT NULL,
   "pet_charge" BIGINT DEFAULT 400 NOT NULL,
-  "bookable_online" BIGINT DEFAULT 1 NOT NULL,
-  "breakfast_included" BIGINT,
+  "bookable_online" BOOLEAN DEFAULT true NOT NULL,
+  "breakfast_included" BOOLEAN,
   PRIMARY KEY ("id")
 );
 
@@ -2258,6 +2258,9 @@ ALTER TABLE "widget_price_list" ADD CONSTRAINT "fk_widget_price_list_organizatio
 
 -- ── Indexes ─────────────────────────────────────────────────────────────
 
+CREATE INDEX "idx_accruals_month" ON "accruals" ("month");
+CREATE INDEX "idx_accruals_org" ON "accruals" ("organization_id");
+CREATE INDEX "idx_accruals_status" ON "accruals" ("status");
 CREATE INDEX "idx_ai_usage_month" ON "ai_usage" ("organization_id", "created_at");
 CREATE INDEX "idx_ai_usage_org" ON "ai_usage" ("organization_id");
 CREATE UNIQUE INDEX "idx_app_users_org_email" ON "app_users" (organization_id, lower(email));

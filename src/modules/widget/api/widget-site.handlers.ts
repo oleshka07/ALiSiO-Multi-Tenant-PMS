@@ -56,11 +56,16 @@ export async function getWidgetSiteConfig(req: NextRequest) {
     let maxAdults = 2;
     let maxChildren = 2;
     try {
+      // `sl.is_active` тут не буває: site_listings такої колонки не має на
+      // жодному рушії — запит кидав щоразу, catch нижче мовчав, і межі
+      // місткості завжди були дефолтними 2/2. Той самий привид уже виловлений
+      // у send-confirmation-email.ts; статус сайту вже перевірено вище по
+      // site.id, у списках окремого прапорця «активний» немає.
       const maxCap = await sql.row<any>(`
         SELECT MAX(ut.max_adults) as maxA, MAX(ut.max_children) as maxC
         FROM site_listings sl
         JOIN unit_types ut ON sl.unit_type_id = ut.id
-        WHERE sl.site_id = ? AND sl.is_active = TRUE
+        WHERE sl.site_id = ?
       `, [site.id]) as any;
       if (maxCap && maxCap.maxA) maxAdults = maxCap.maxA;
       if (maxCap && maxCap.maxC) maxChildren = maxCap.maxC;
