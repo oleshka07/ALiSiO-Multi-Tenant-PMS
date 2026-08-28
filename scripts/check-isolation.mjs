@@ -120,6 +120,18 @@ async function main() {
   const a = await makeTenant('a');
   const b = await makeTenant('b');
 
+  // З 0045 облік — ключ `accounting` з дефолтом OFF: новий готель отримує
+  // його вимкненим, доки власник не увімкне. Probe-орендарі нижче пишуть у
+  // фінанси, тож ключ вмикається тут — так само, як 'widget' далі по тексту:
+  // гейт лишається на місці, перевіряється сама ізоляція, а не право на
+  // модуль.
+  for (const t of [a, b]) {
+    await sql.run(
+      'INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)',
+      [t.orgId, 'accounting'],
+    );
+  }
+
   try {
     const cookieA = await login(a);
     const cookieB = await login(b);

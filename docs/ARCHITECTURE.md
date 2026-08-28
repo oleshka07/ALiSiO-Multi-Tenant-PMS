@@ -526,8 +526,9 @@ organizations                      ← клієнт SaaS (готель або м
 - **через зв'язок** — має FK, який веде до організації;
 - **глобальна** — довідник, однаковий для всіх, або таблиця, яку читають ще
   до того, як орендар відомий: `organizations`, `sessions`, `platform_users`,
-  `platform_sessions`, `rate_limits`, `settings`, `content_translations`,
-  `fin_system_state`.
+  `platform_sessions`, `rate_limits`, `content_translations`,
+  `fin_system_state`. (`settings` тут була — видалена міграцією 0038 як
+  сховище, якого ніхто не читав.)
 
 **Таблиць без жодного шляху — нуль.** Це перевіряється:
 
