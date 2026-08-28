@@ -384,6 +384,7 @@ CREATE TABLE "event_addons" (
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("property_id", "name"),
+  UNIQUE ("property_id", "name"),
   CHECK (kind IN ('per_person','flat','per_hour','per_piece'))
 );
 
@@ -425,6 +426,7 @@ CREATE TABLE "event_spaces" (
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
+  UNIQUE ("property_id", "code"),
   UNIQUE ("property_id", "code")
 );
 
@@ -516,6 +518,7 @@ CREATE TABLE "fin_cash_closings" (
   "notes" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
+  UNIQUE ("property_id", "closing_date"),
   UNIQUE ("property_id", "closing_date")
 );
 
@@ -560,6 +563,7 @@ CREATE TABLE "fin_fiscal_settings" (
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
+  UNIQUE ("property_id"),
   UNIQUE ("property_id")
 );
 
@@ -977,10 +981,11 @@ CREATE TABLE "guest_page_sections" (
   "section" TEXT NOT NULL,
   "enabled" BOOLEAN DEFAULT true NOT NULL,
   "sort_order" BIGINT,
-  "config" JSONB,
+  "config" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
+  UNIQUE ("property_id", "section"),
   UNIQUE ("property_id", "section")
 );
 
@@ -1225,7 +1230,7 @@ CREATE TABLE "platform_audit" (
   "platform_email" TEXT NOT NULL,
   "action" TEXT NOT NULL,
   "ip" TEXT,
-  "at" TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') NOT NULL,
+  "at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   CHECK (action IN ('enter', 'leave'))
 );
@@ -1245,7 +1250,7 @@ CREATE TABLE "platform_users" (
   "full_name" TEXT,
   "password_hash" TEXT NOT NULL,
   "is_active" BOOLEAN DEFAULT true NOT NULL,
-  "last_login" TEXT,
+  "last_login" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
@@ -1504,11 +1509,12 @@ CREATE TABLE "reservations" (
   "multi_room_marker" TEXT,
   "lodging_discount_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
   "lodging_discount_reason" TEXT,
-  "breakfast_included" BIGINT,
+  "breakfast_included" BOOLEAN,
   PRIMARY KEY ("id"),
   UNIQUE ("guest_page_token"),
   CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
-  CHECK (payment_status IN ('unpaid', 'payment_requested', 'prepaid', 'paid'))
+  CHECK (payment_status IN ('unpaid', 'payment_requested', 'prepaid', 'paid')),
+  CONSTRAINT "reservations_lodging_discount_range" CHECK (lodging_discount_percent >= 0 AND lodging_discount_percent <= 100)
 );
 
 CREATE TABLE "service_addons" (
@@ -2226,9 +2232,6 @@ ALTER TABLE "widget_price_list" ADD CONSTRAINT "fk_widget_price_list_organizatio
 
 -- ── Indexes ─────────────────────────────────────────────────────────────
 
-CREATE INDEX "idx_accruals_month" ON "accruals" ("month");
-CREATE INDEX "idx_accruals_org" ON "accruals" ("organization_id");
-CREATE INDEX "idx_accruals_status" ON "accruals" ("status");
 CREATE INDEX "idx_ai_usage_month" ON "ai_usage" ("organization_id", "created_at");
 CREATE INDEX "idx_ai_usage_org" ON "ai_usage" ("organization_id");
 CREATE UNIQUE INDEX "idx_app_users_org_email" ON "app_users" (organization_id, lower(email));
@@ -2250,7 +2253,9 @@ CREATE UNIQUE INDEX "idx_channel_rate_rules_row" ON "channel_rate_rules" (organi
 CREATE INDEX "idx_ct_hash" ON "content_translations" ("text_hash");
 CREATE INDEX "idx_ct_lang" ON "content_translations" ("text_hash", "lang");
 CREATE INDEX "idx_coupons_org" ON "coupons" ("organization_id");
+CREATE UNIQUE INDEX "idx_event_addons_row" ON "event_addons" ("property_id", "name");
 CREATE INDEX "idx_event_bookings_day" ON "event_bookings" ("property_id", "space_id", "event_date");
+CREATE UNIQUE INDEX "idx_event_spaces_row" ON "event_spaces" ("property_id", "code");
 CREATE INDEX "idx_ec_parent" ON "expense_categories" ("parent_id");
 CREATE INDEX "idx_arm_op" ON "fin_auto_rule_matches" ("operation_id");
 CREATE INDEX "idx_arm_rule" ON "fin_auto_rule_matches" ("rule_id");
@@ -2258,12 +2263,14 @@ CREATE INDEX "idx_ar_active" ON "fin_auto_rules" ("is_active", "sort_order");
 CREATE INDEX "idx_ar_org" ON "fin_auto_rules" ("organization_id");
 CREATE INDEX "idx_budgets_period" ON "fin_budgets" ("organization_id", "year", "month");
 CREATE INDEX "idx_fin_cash_closings_org" ON "fin_cash_closings" ("organization_id", "closing_date");
+CREATE UNIQUE INDEX "idx_fin_cash_closings_row" ON "fin_cash_closings" ("property_id", "closing_date");
 CREATE INDEX "idx_recv_clearing" ON "fin_channel_receivables" ("clearing_account_id");
 CREATE INDEX "idx_recv_extid" ON "fin_channel_receivables" ("external_reservation_id");
 CREATE INDEX "idx_recv_org" ON "fin_channel_receivables" ("organization_id");
 CREATE INDEX "idx_recv_status" ON "fin_channel_receivables" ("status");
 CREATE INDEX "idx_fin_fiscal_outages_org" ON "fin_fiscal_outages" ("organization_id", "started_at");
 CREATE INDEX "idx_fin_fiscal_settings_org" ON "fin_fiscal_settings" ("organization_id");
+CREATE UNIQUE INDEX "idx_fin_fiscal_settings_row" ON "fin_fiscal_settings" ("property_id");
 CREATE INDEX "idx_fin_folio_items_date" ON "fin_folio_items" ("organization_id", "service_date");
 CREATE INDEX "idx_fin_folio_items_folio" ON "fin_folio_items" ("folio_id");
 CREATE INDEX "idx_fin_folio_items_invoice" ON "fin_folio_items" ("invoice_id");
@@ -2315,6 +2322,7 @@ CREATE UNIQUE INDEX "idx_gift_cards_code" ON "gift_cards" ("code");
 CREATE INDEX "idx_gift_cards_org" ON "gift_cards" ("organization_id");
 CREATE INDEX "idx_gift_cards_property" ON "gift_cards" ("property_id");
 CREATE INDEX "idx_gift_cards_status" ON "gift_cards" ("status");
+CREATE UNIQUE INDEX "idx_guest_page_sections_row" ON "guest_page_sections" ("property_id", "section");
 CREATE INDEX "idx_guests_name" ON "guests" ("last_name", "first_name");
 CREATE INDEX "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX "idx_ical_channels_org" ON "ical_channels" ("organization_id");

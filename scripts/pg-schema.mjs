@@ -94,6 +94,16 @@ const OVERRIDE = {
   // Три стани: null = «вирішує правило каналу», і це не те саме, що false.
   // BOOLEAN у Postgres nullable, тож третій стан зберігається.
   'unit_types.breakfast_included': 'BOOLEAN',
+  // Той самий третій стан рівнем нижче — саме бронювання (міграція 0020).
+  'reservations.breakfast_included': 'BOOLEAN',
+  // Миті платформи, що не ловляться `_at$`: міграція 0030 — TIMESTAMPTZ.
+  // Без цих записів чесна регенерація на свіжій базі робила їх TEXT
+  // (диф проти c129593, аудит 2026-08-28).
+  'platform_audit.at': 'TIMESTAMPTZ',
+  'platform_users.last_login': 'TIMESTAMPTZ',
+  // 0022: «JSON text, same as every other free-form config». JSONB зробив би
+  // свіжу базу інакшою за мігрований прод.
+  'guest_page_sections.config': 'TEXT',
 };
 
 /** An amount of money. NUMERIC(14,2) — up to 999 999 999 999.99. */
@@ -255,7 +265,15 @@ function checksOf(sql) {
       else if (sql[i] === ')') depth--;
       i++;
     }
-    out.push(sql.slice(m.index + m[0].length, i - 1).replace(/\s+/g, ' ').trim());
+    // `CONSTRAINT x CHECK (…)` їде в Postgres під СВОЇМ ім'ям. Безіменний
+    // CHECK Postgres називає сам — і міграція, яка ставить той самий CHECK
+    // за іменем (`IF NOT EXISTS … conname`), не впізнає його й додає другий.
+    // Це вже сталося одного разу; див. коментар у check-schema-drift.mjs.
+    const named = /CONSTRAINT\s+["'`[]?([A-Za-z_0-9]+)["'`\]]?\s*$/i.exec(sql.slice(0, m.index));
+    out.push({
+      name: named ? named[1] : null,
+      expr: sql.slice(m.index + m[0].length, i - 1).replace(/\s+/g, ' ').trim(),
+    });
   }
   return out;
 }
@@ -482,14 +500,14 @@ for (const t of tables) {
   for (const u of uniquesOf(t.name)) lines.push(`  UNIQUE (${u.map(q).join(', ')})`);
 
 
-  for (const chk of checksOf(t.sql || '')) {
+  for (const { name, expr } of checksOf(t.sql || '')) {
     // datetime('now') and friends inside a CHECK would not parse; those are
     // rare and reported rather than translated blindly.
-    if (/datetime\(|date\(|strftime\(/i.test(chk)) {
-      notes.push(`${t.name}: CHECK (${chk}) uses a SQLite date function — review by hand`);
+    if (/datetime\(|date\(|strftime\(/i.test(expr)) {
+      notes.push(`${t.name}: CHECK (${expr}) uses a SQLite date function — review by hand`);
       continue;
     }
-    lines.push(`  CHECK (${chk})`);
+    lines.push(name ? `  CONSTRAINT ${q(name)} CHECK (${expr})` : `  CHECK (${expr})`);
   }
 
   w(`CREATE TABLE ${q(t.name)} (`);

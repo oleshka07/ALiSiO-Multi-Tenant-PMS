@@ -90,7 +90,7 @@ export const createIcalChannel = withPermission('manage_properties', async (requ
     // a subquery cannot drift from the row it comes from. AGENTS.md §3 nr 12.
     await sql.run(`
       INSERT INTO ical_channels (id, organization_id, property_id, channel_type, unit_id, source_code, ical_url, export_token, sync_interval_minutes)
-      VALUES (?, (SELECT organization_id FROM properties WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, (SELECT organization_id FROM properties WHERE id = ?), ?, ?, ?, ?, ?, ?, ?)
     `, [id, propertyId, propertyId, channel_type,
       unit_id,
       source_code, ical_url || null, exportToken,
