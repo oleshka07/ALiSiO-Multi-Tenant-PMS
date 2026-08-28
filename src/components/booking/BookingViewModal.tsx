@@ -577,8 +577,15 @@ export default function BookingViewModal({
               )}
               <span style={{ width: 3, height: 3, background: 'var(--text-tertiary)', borderRadius: '50%' }} />
               <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{b.nights} {tUi('н. ·')} {b.adults} {tUi('дор.')}{b.children > 0 ? ` + ${b.children} ${pluralUi(b.children, 'діт.')}` : ''}</span>
+              {/*
+                Було «Hostex: airbnb» — назва посередника, якого в продукті
+                більше немає. Фактом лишається КАНАЛ: бронь прийшла з Airbnb,
+                і це правда незалежно від того, яким мостом вона приїхала.
+                Ім'я мосту на екрані обіцяє інтеграцію, якої немає, і збиває
+                з пантелику того, хто піде її шукати в налаштуваннях.
+              */}
               {b.hostex_channel_type && (
-                <span className="badge" style={{ background: '#ff6b3522', color: '#ff6b35' }}>Hostex: {b.hostex_channel_type}</span>
+                <span className="badge" style={{ background: '#ff6b3522', color: '#ff6b35' }}>{b.hostex_channel_type}</span>
               )}
               {(b as any).is_multi_room ? (
                 <span className="badge" style={{ background: '#f59e0b22', color: '#92400e' }}>⚠️ Multi-room</span>

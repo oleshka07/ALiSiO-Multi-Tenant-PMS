@@ -52,7 +52,15 @@ const isPublic = (url) =>
   PUBLIC_EXACT.includes(url) || PUBLIC_PREFIXES.some((p) => url.startsWith(p));
 
 // ── how a handler establishes identity ───────────────────────────────────────
-const SESSION = /withActor|withPermission|withOwner|currentActor|getSessionUser|requireFinanceAccess|requireFinanceUser|requirePermission|requireAuth|currentUser\s*\(/;
+//
+// Список поіменний, і саме тому його треба доповнювати руками. `withModule`
+// приїхав із реєстром модулів і сюди не потрапив — через що аудит рік
+// показував сім захищених маршрутів як незахищені. Дірки не було
+// (`check-route-guards --strict` і `features.check` про варту знали), був
+// шум у звіті, а звіт, який регулярно бреше, перестають читати.
+//
+// AGENTS.md §2: нова родина guard-ів → словник перевірки. Це той словник.
+const SESSION = /withActor|withPermission|withModule|withOwner|withPlatformAdmin|currentActor|getSessionUser|requireFinanceAccess|requireFinanceUser|requirePermission|requireAuth|currentUser\s*\(/;
 const TOKEN = /CRON_SECRET|EMAIL_POLL_SECRET|ICAL_CRON_SECRET|HOSTEX_WEBHOOK_SECRET|WHATSAPP_APP_SECRET|verifySignature|x-webhook-signature|Bearer /i;
 /** Guest/investor links carry an unguessable token that identifies the row. */
 const ROW_TOKEN = /guest_page_token|portal_token|export_token|\btoken\b\s*[,)=]/;

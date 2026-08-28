@@ -974,16 +974,6 @@ CREATE TABLE "gift_cards" (
   CHECK (status IN ('draft', 'active', 'paid', 'activated', 'expired', 'cancelled'))
 );
 
-CREATE TABLE "guest_chat_messages" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "reservation_id" TEXT NOT NULL,
-  "sender" TEXT NOT NULL,
-  "message" TEXT NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  CHECK (sender IN ('guest', 'host', 'system'))
-);
-
 CREATE TABLE "guest_page_config" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "unit_type_id" TEXT NOT NULL,
@@ -1239,26 +1229,6 @@ CREATE TABLE "partner_reports" (
   "last_viewed_at" TIMESTAMPTZ,
   PRIMARY KEY ("id"),
   UNIQUE ("token")
-);
-
-CREATE TABLE "payment_webhook_log" (
-  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
-  "provider" TEXT NOT NULL,
-  "event_type" TEXT,
-  "session_id" TEXT,
-  "transaction_id" TEXT,
-  "payment_ref" TEXT,
-  "amount" NUMERIC(14,2),
-  "currency" TEXT,
-  "result" TEXT NOT NULL,
-  "error_message" TEXT,
-  "reservation_id" TEXT,
-  "operation_id" TEXT,
-  "raw_payload" JSONB,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "organization_id" TEXT,
-  PRIMARY KEY ("id"),
-  CHECK (result IN ('recorded','no_match','duplicate','signature_invalid','parse_error','unhandled','error'))
 );
 
 CREATE TABLE "platform_audit" (
@@ -1542,10 +1512,7 @@ CREATE TABLE "reservations" (
   "country_code" TEXT,
   "widget_session_id" TEXT,
   "hostex_reservation_code" TEXT,
-  "hostex_stay_code" TEXT,
   "hostex_channel_type" TEXT,
-  "hostex_channel_id" TEXT,
-  "hostex_listing_id" TEXT,
   "total_rate_eur" NUMERIC(14,2),
   "commission_eur" NUMERIC(14,2),
   "net_rate_eur" NUMERIC(14,2),
@@ -2091,8 +2058,6 @@ ALTER TABLE "gift_cards" ADD CONSTRAINT "fk_gift_cards_reservation_id_3"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
 ALTER TABLE "gift_cards" ADD CONSTRAINT "fk_gift_cards_property_id_4"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
-ALTER TABLE "guest_chat_messages" ADD CONSTRAINT "fk_guest_chat_messages_reservation_id_1"
-  FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
 ALTER TABLE "event_spaces" ADD CONSTRAINT "fk_event_spaces_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "event_spaces" ADD CONSTRAINT "fk_event_spaces_organization_id_2"
@@ -2148,8 +2113,6 @@ ALTER TABLE "organization_features" ADD CONSTRAINT "fk_organization_features_org
 ALTER TABLE "partner_reports" ADD CONSTRAINT "fk_partner_reports_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE SET NULL;
 ALTER TABLE "partner_reports" ADD CONSTRAINT "fk_partner_reports_organization_id_2"
-  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
-ALTER TABLE "payment_webhook_log" ADD CONSTRAINT "fk_payment_webhook_log_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "platform_audit" ADD CONSTRAINT "fk_platform_audit_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
@@ -2386,7 +2349,6 @@ CREATE UNIQUE INDEX "idx_gift_cards_code" ON "gift_cards" ("code");
 CREATE INDEX "idx_gift_cards_org" ON "gift_cards" ("organization_id");
 CREATE INDEX "idx_gift_cards_property" ON "gift_cards" ("property_id");
 CREATE INDEX "idx_gift_cards_status" ON "gift_cards" ("status");
-CREATE INDEX "idx_gcm_res" ON "guest_chat_messages" ("reservation_id");
 CREATE INDEX "idx_guests_name" ON "guests" ("last_name", "first_name");
 CREATE INDEX "idx_guests_org" ON "guests" ("organization_id");
 CREATE INDEX "idx_invoice_series_channel" ON "invoice_series" ("organization_id", "channel");
@@ -2399,10 +2361,6 @@ CREATE INDEX "idx_invoices_folio" ON "invoices" ("folio_id");
 CREATE INDEX "idx_platform_audit_org" ON "platform_audit" ("organization_id", "at");
 CREATE INDEX "idx_platform_sessions_user" ON "platform_sessions" ("platform_user_id");
 CREATE INDEX "idx_partner_reports_period" ON "partner_reports" ("organization_id", "period");
-CREATE INDEX "idx_payment_webhook_log_org" ON "payment_webhook_log" ("organization_id");
-CREATE INDEX "idx_pwl_created" ON "payment_webhook_log" ("created_at");
-CREATE INDEX "idx_pwl_payment_ref" ON "payment_webhook_log" ("payment_ref");
-CREATE INDEX "idx_pwl_result" ON "payment_webhook_log" ("result");
 CREATE INDEX "idx_price_cal_date" ON "price_calendar" ("date");
 CREATE INDEX "idx_price_cal_ut" ON "price_calendar" ("unit_type_id");
 CREATE INDEX "idx_price_cal_ut_date" ON "price_calendar" ("unit_type_id", "date");
@@ -2489,7 +2447,6 @@ CREATE INDEX IF NOT EXISTS "idx_invoice_series_org" ON "invoice_series" ("organi
 CREATE INDEX IF NOT EXISTS "idx_invoices_org" ON "invoices" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_organization_features_org" ON "organization_features" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_partner_reports_org" ON "partner_reports" ("organization_id");
-CREATE INDEX IF NOT EXISTS "idx_payment_webhook_log_org" ON "payment_webhook_log" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_price_los_tiers_org" ON "price_los_tiers" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_price_occupancy_org" ON "price_occupancy" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_properties_org" ON "properties" ("organization_id");
@@ -2600,8 +2557,6 @@ ALTER TABLE "invoices" ALTER COLUMN "organization_id"
 ALTER TABLE "organization_features" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "partner_reports" ALTER COLUMN "organization_id"
-  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
-ALTER TABLE "payment_webhook_log" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "price_los_tiers" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2943,11 +2898,6 @@ CREATE POLICY "gift_cards_tenant" ON "gift_cards"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
-ALTER TABLE "guest_chat_messages" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "guest_chat_messages" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "guest_chat_messages_tenant" ON "guest_chat_messages"
-  USING ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "organization_id" = current_setting('app.organization_id')))
-  WITH CHECK ("reservation_id" IN (SELECT "id" FROM "reservations" WHERE "organization_id" = current_setting('app.organization_id')));
 
 ALTER TABLE "guest_page_config" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "guest_page_config" FORCE ROW LEVEL SECURITY;
@@ -3021,11 +2971,6 @@ CREATE POLICY "partner_reports_tenant" ON "partner_reports"
   USING ("organization_id" = current_setting('app.organization_id') OR "token" = NULLIF(current_setting('app.public_token', true), ''))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
-ALTER TABLE "payment_webhook_log" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "payment_webhook_log" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "payment_webhook_log_tenant" ON "payment_webhook_log"
-  USING ("organization_id" = current_setting('app.organization_id'))
-  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "platform_audit" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "platform_audit" FORCE ROW LEVEL SECURITY;

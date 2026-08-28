@@ -88,7 +88,18 @@ export const ROLE_DEFAULTS: Record<UserRole, Permission[]> = {
   ],
   receptionist: [
     'nav:dashboard', 'nav:calendar', 'nav:bookings', 'nav:guests', 'nav:tasks',
-    'manage_bookings', 'manage_guests', 'manage_tasks',
+    // Документи — рішення власника від 2026-08-28: виставити й відредагувати
+    // фактуру це частина роботи рецепції, а не привілей бухгалтера. Гість
+    // виїжджає о сьомій ранку, і чекати, поки хтось із правами прокинеться,
+    // він не буде.
+    //
+    // `manage_documents` дає виписати, змінити, провести оплату у фоліо.
+    // Чого воно НЕ дає: `manage_finance_settings` — ставки ПДВ, серії
+    // нумерації, бланк і сторно лишаються за тим, хто відповідає за
+    // звітність. Сторно тут навмисно: виданий документ не редагується, він
+    // скасовується зустрічним, і це не рішення зміни.
+    'nav:documents',
+    'manage_bookings', 'manage_guests', 'manage_tasks', 'manage_documents',
   ],
   housekeeper: [
     'nav:dashboard',

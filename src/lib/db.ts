@@ -2586,23 +2586,14 @@ function runMigrations(database: any) {
     console.log('[DB] whatsapp_phone migration note:', e.message);
   }
 
-  // --- Migration: guest_chat_messages ---
-  const gcmExists = database.prepare(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name='guest_chat_messages'"
-  ).get();
-  if (!gcmExists) {
-    database.exec(`
-      CREATE TABLE guest_chat_messages (
-        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-        reservation_id TEXT NOT NULL REFERENCES reservations(id) ON DELETE CASCADE,
-        sender TEXT NOT NULL CHECK (sender IN ('guest', 'host', 'system')),
-        message TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      )
-    `);
-    database.exec('CREATE INDEX IF NOT EXISTS idx_gcm_res ON guest_chat_messages(reservation_id)');
-    console.log('[DB] Created guest_chat_messages table');
-  }
+  // `guest_chat_messages` тут БУЛА і не створюється більше.
+  //
+  // Листування гостя й готелю мало жити в ній — і не жило: таблиця
+  // створювалась, індексувалась і жоден рядок коду її не читав і не писав.
+  // Приїхала разом із мостом Hostex, який видалений; чат гостя, коли він
+  // зʼявиться, буде іншим і матиме свою таблицю. Порожня таблиця з чужої
+  // інтеграції — не заготовка, а обіцянка, яку читає наступний.
+  // Прибирає міграція 0043.
 
   // --- Migration: add pets_policy, entry_photo_url to guest_page_config ---
   try {
@@ -3361,33 +3352,16 @@ function runMigrations(database: any) {
     }
   } catch (e: any) { console.log('[DB] PR #C fin_operations columns:', e.message); }
 
-  // ═══════════════════════════════════════════════════════════════════
-  // Finance PR #G: payment_webhook_log — audit trail for every Teya
-  // webhook call. Captures raw payload + outcome so that when a payment
-  // doesn't show up in the system, the admin can look here to see whether
-  // the webhook was received, parsed, matched to an order, and recorded.
-  // ═══════════════════════════════════════════════════════════════════
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS payment_webhook_log (
-      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-      provider TEXT NOT NULL,
-      event_type TEXT,
-      session_id TEXT,
-      transaction_id TEXT,
-      payment_ref TEXT,
-      amount REAL,
-      currency TEXT,
-      result TEXT NOT NULL CHECK (result IN ('recorded','no_match','duplicate','signature_invalid','parse_error','unhandled','error')),
-      error_message TEXT,
-      reservation_id TEXT,
-      operation_id TEXT,
-      raw_payload TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  database.exec('CREATE INDEX IF NOT EXISTS idx_pwl_created ON payment_webhook_log(created_at DESC)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_pwl_payment_ref ON payment_webhook_log(payment_ref)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_pwl_result ON payment_webhook_log(result)');
+  // `payment_webhook_log` тут БУЛА і не створюється більше.
+  //
+  // Журнал вебхуків Teya: створювався, отримував три індекси, у міграції
+  // 0005 йому навіть дописували орендаря — і жоден рядок коду ніколи в
+  // нього не писав і не читав. Teya видалена; шлюз оплат, коли зʼявиться,
+  // матиме свій журнал і свою форму. Порожня таблиця з трьома індексами
+  // виглядає як робоча підсистема — і саме тому гірша за її відсутність:
+  // адміністратор, якому сказали «подивись у журнал вебхуків», побачить
+  // порожньо й вирішить, що вебхук не приходив.
+  // Прибирає міграція 0043.
 
   // ═══════════════════════════════════════════════════════════════════
   // Cleanup #D: backfill needs_review on legacy null-account ops.
@@ -4480,8 +4454,6 @@ function runMigrations(database: any) {
         'UPDATE gift_card_automation_rules SET organization_id = (SELECT p.organization_id FROM booking_sites s JOIN properties p ON p.id = s.property_id WHERE s.id = gift_card_automation_rules.site_id) WHERE organization_id IS NULL',
       // A webhook for a payment we could not match has no reservation and so no
       // owner; those rows stay NULL on purpose.
-      payment_webhook_log:
-        'UPDATE payment_webhook_log SET organization_id = (SELECT p.organization_id FROM reservations r JOIN properties p ON p.id = r.property_id WHERE r.id = payment_webhook_log.reservation_id) WHERE organization_id IS NULL AND reservation_id IS NOT NULL',
       // The rebuild that gave this table user_id/before_json/after_json also
       // dropped its `FOREIGN KEY (reservation_id) REFERENCES reservations(id)`,
       // so it lost its only path to an organization — and rows now outlive the
@@ -4521,7 +4493,10 @@ function runMigrations(database: any) {
       const left = (database.prepare(
         `SELECT COUNT(*) c FROM ${table} WHERE organization_id IS NULL`,
       ).get() as any).c;
-      if (left && table !== 'payment_webhook_log' && table !== 'booking_activity_log') {
+      // `payment_webhook_log` тут більше не називається — таблиці немає
+      // (міграція 0043). `booking_activity_log` лишається: у нього справді
+      // бувають рядки без орендаря, і це не помилка.
+      if (left && table !== 'booking_activity_log') {
         stranded += left;
         console.error(`[DB] ${table}: ${left} rows have no organization`);
       }
@@ -4780,11 +4755,18 @@ function runMigrations(database: any) {
     const resCols2 = (database.prepare('PRAGMA table_info(reservations)').all() as any[])
       .map((c: any) => c.name);
     const hostexCols: [string, string][] = [
+      // Лишились дві з пʼяти, і лишились НАВМИСНО: їх читають екрани.
+      // `hostex_reservation_code` — код броні в каналі, за яким її ще можна
+      // звірити з листуванням; `hostex_channel_type` — єдине місце, що
+      // каже «ця бронь прийшла з Airbnb», бо `source` у таких рядків
+      // «direct». Це історія, а не інтеграція: міст видалений, нових
+      // рядків не буде, старі лишаються читабельними — так само, як рядки
+      // `fin_operations` з `source='teya'`.
       ['hostex_reservation_code', 'TEXT'],
-      ['hostex_stay_code', 'TEXT'],
       ['hostex_channel_type', 'TEXT'],
-      ['hostex_channel_id', 'TEXT'],
-      ['hostex_listing_id', 'TEXT'],
+      // `hostex_stay_code`, `hostex_channel_id`, `hostex_listing_id`
+      // прибрані міграцією 0043: їх не читав і не писав НІХТО — вони
+      // існували лише в цьому списку.
       ['total_rate_eur', 'REAL'],
       ['commission_eur', 'REAL'],
       ['net_rate_eur', 'REAL'],

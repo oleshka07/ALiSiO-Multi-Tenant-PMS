@@ -1001,7 +1001,9 @@ export default function MobileCalendar() {
                           const color = STATUS_BG[b.status] || '#6b7280';
                           const name = `${b.first_name} ${b.last_name?.[0] || ''}`;
                           const hasNotes = !!(b.internal_notes || b.notes);
-                          const isHostex = !!b.hostex_channel_type;
+                          // Прапорець «прийшла з каналу», а не «з Hostex»: посередника немає,
+                          // канал лишився. Іконка 🌐 говорить саме це.
+                          const fromChannel = !!b.hostex_channel_type;
                           const payIcon = b.payment_status && b.payment_status !== 'paid' ? PAYMENT_ICONS[b.payment_status] : null;
                           return (
                             <div
@@ -1032,7 +1034,7 @@ export default function MobileCalendar() {
                                 <span style={{ fontSize: 9, color: '#fff', opacity: 0.9, flexShrink: 0 }}>{payIcon}</span>
                               )}
                               {hasNotes && <span style={{ fontSize: 9, flexShrink: 0 }}>📝</span>}
-                              {isHostex && <span style={{ fontSize: 9, flexShrink: 0 }}>🌐</span>}
+                              {fromChannel && <span style={{ fontSize: 9, flexShrink: 0 }}>🌐</span>}
                             </div>
                           );
                         })}
