@@ -26,7 +26,7 @@ export function listUnitTypes(organizationId: string, filters: { category?: stri
     SELECT
       ut.id, ut.name, ut.code, ut.max_adults, ut.max_children, ut.max_occupancy, ut.base_occupancy,
       ut.beds_single, ut.beds_double, ut.photos, ut.sort_order,
-      c.id as category_id, c.name as category_name, c.type as category_type
+      c.id as category_id, c.name as category_name, c.type as category_type,
       COUNT(u.id) as unit_count
     FROM unit_types ut
     JOIN categories c ON ut.category_id = c.id
@@ -41,7 +41,7 @@ export function listUnitTypes(organizationId: string, filters: { category?: stri
     params.push(filters.category);
   }
 
-  query += ' GROUP BY ut.id, c.id, c.name, c.type, c.sort_order, b.id, b.name, b.code ORDER BY c.sort_order, ut.sort_order';
+  query += ' GROUP BY ut.id, c.id, c.name, c.type, c.sort_order ORDER BY c.sort_order, ut.sort_order';
 
   return sql.rows<any>(query, params);
 }
@@ -80,7 +80,7 @@ export async function createUnitType(organizationId: string, input: CreateUnitTy
       max_adults, max_children, max_occupancy, base_occupancy,
       beds_single, beds_double, beds_sofa, extra_bed_available, photos, sort_order,
       bookable_online, breakfast_included)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING *`,
     [input.property_id, input.category_id, input.name, input.code, input.description ?? null,
     input.max_adults ?? 2, input.max_children ?? 2, input.max_occupancy ?? 4, input.base_occupancy ?? 2,

@@ -42,7 +42,34 @@ assert.strictEqual(
   'SELECT "weird?col" FROM t WHERE id = $1',
   'double quotes are an identifier, and may contain anything',
 );
-console.log('  ok  ? → $n, and not inside quotes');
+
+// ── Апостроф у коментарі ─────────────────────────────────────────────────
+//
+// Це не гіпотетичний випадок. Саме він поклав `/api/guest-registry` —
+// «Evidenční kniha», реєстр, який читає поліція: у поясненні до запиту
+// стояло `the registration form's own placeholder`, апостроф відкривав
+// рядковий літерал, і `?` після нього не перетворювались. Postgres відповідав
+// `syntax error at or near ")"`, а на SQLite усе працювало, бо там `?` і є
+// плейсхолдер. Тобто ламалося рівно там, де живуть клієнти.
+assert.strictEqual(
+  toDollarParams("-- the form's own placeholder\nSELECT * FROM t WHERE id = ?"),
+  "-- the form's own placeholder\nSELECT * FROM t WHERE id = $1",
+  'апостроф у рядковому коментарі — це текст, а не початок літерала',
+);
+
+assert.strictEqual(
+  toDollarParams("/* it's fine */ SELECT * FROM t WHERE id = ? AND b = ?"),
+  "/* it's fine */ SELECT * FROM t WHERE id = $1 AND b = $2",
+  'те саме для блокового коментаря, включно з багаторядковим',
+);
+
+// Коментар не має і ковтати плейсхолдери після себе.
+assert.strictEqual(
+  toDollarParams("SELECT a, -- ?\n b FROM t WHERE id = ?"),
+  "SELECT a, -- ?\n b FROM t WHERE id = $1",
+  'знак питання в коментарі — не плейсхолдер, а наступний за ним — плейсхолдер',
+);
+console.log('  ok  ? → $n, і не всередині лапок чи коментарів');
 
 // ─── A pool of one, over PGlite ─────────────────────────────────────────────
 // PGlite is a single connection. That is enough: `tx` needs the SAME connection

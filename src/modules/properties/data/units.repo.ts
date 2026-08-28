@@ -39,7 +39,7 @@ export function listUnits(organizationId: string, filters: { category?: string; 
     params.push(filters.unitType);
   }
 
-  query += ' ORDER BY c.sort_order, b.sort_order, ut.sort_order, u.sort_order';
+  query += ' ORDER BY c.sort_order, ut.sort_order, u.sort_order';
 
   return sql.rows<any>(query, params);
 }

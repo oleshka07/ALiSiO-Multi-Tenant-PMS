@@ -58,8 +58,8 @@ export const DESTINATIONS: Destination[] = [
   { label: 'Журнал змін', href: '/app/audit', section: 'Управління', permission: 'nav:settings', keywords: ['хто змінив', 'історія', 'аудит'] },
 
   // ── Фінанси ──────────────────────────────────────────────────────────
-  { label: 'Фінанси — огляд', href: '/app/finance', section: 'Фінанси', permission: 'nav:finance', keywords: ['баланс', 'каса', 'гроші'] },
-  { label: 'Фінансові операції', href: '/app/finance/operations', section: 'Фінанси', permission: 'nav:finance', keywords: ['витрати', 'надходження', 'платежі'] },
+  { label: 'Фінанси — огляд', href: '/app/finance', section: 'Фінанси', permission: 'nav:finance', feature: 'accounting', keywords: ['баланс', 'каса', 'гроші'] },
+  { label: 'Фінансові операції', href: '/app/finance/operations', section: 'Фінанси', permission: 'nav:finance', feature: 'accounting', keywords: ['витрати', 'надходження', 'платежі'] },
 
   // ── Інтеграції ───────────────────────────────────────────────────────
   { label: 'Канали', href: '/app/settings/channel-manager', section: 'Інтеграції', permission: 'nav:settings', keywords: ['booking.com', 'airbnb', 'ical', 'синхронізація'] },
