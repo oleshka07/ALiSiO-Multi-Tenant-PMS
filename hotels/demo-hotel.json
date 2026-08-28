@@ -1,0 +1,111 @@
+{
+  "_": "Демо-тенант для беты і репетицій онбордингу. Повністю вигаданий: місто, адреса, телефони і ціни несправжні навмисно. Жодного сліду даних реальних клієнтів — це файл, яким система показує себе, і яким репетирують заведення справжнього готелю.",
+  "organization": {
+    "name": "Hotel Aurora",
+    "slug": "aurora",
+    "ownerEmail": "owner@aurora.example",
+    "ownerName": "Demo Owner",
+    "language": "en",
+    "currency": "EUR",
+    "country": "DE",
+    "city": "Seestadt",
+    "timezone": "Europe/Berlin"
+  },
+  "property": {
+    "name": "Hotel Aurora",
+    "address": "Seepromenade 1",
+    "city": "Seestadt",
+    "country": "DE",
+    "phone": "+49 000 0000000",
+    "email": "reception@aurora.example",
+    "checkInTime": "15:00",
+    "checkOutTime": "11:00"
+  },
+  "taxRates": [
+    { "code": "reduced", "rate": 7, "label": "Beherbergung", "validFrom": "2020-01-01" },
+    { "code": "standard", "rate": 19, "label": "Speisen und Getränke", "validFrom": "2020-01-01" },
+    { "code": "zero", "rate": 0, "label": "steuerfrei", "validFrom": "2020-01-01" }
+  ],
+  "invoiceSeries": [
+    { "code": "RE", "prefix": "RE", "numberFormat": "{prefix}{year}-{seq:4}", "isDefault": true }
+  ],
+  "categories": [
+    { "name": "Rooms", "type": "hotel", "sortOrder": 1 },
+    { "name": "Apartments", "type": "hotel", "sortOrder": 2 }
+  ],
+  "unitTypes": [
+    {
+      "code": "STD",
+      "name": "Standard Room",
+      "category": "Rooms",
+      "maxAdults": 2,
+      "maxOccupancy": 2,
+      "baseOccupancy": 2,
+      "occupancyPrices": [
+        { "persons": 1, "priceGross": 80, "validFrom": "2026-01-01", "validTo": "2027-12-31", "label": "Demo" },
+        { "persons": 2, "priceGross": 100, "validFrom": "2026-01-01", "validTo": "2027-12-31", "label": "Demo" }
+      ]
+    },
+    {
+      "code": "DLX",
+      "name": "Deluxe Room",
+      "category": "Rooms",
+      "maxAdults": 2,
+      "maxOccupancy": 3,
+      "baseOccupancy": 2,
+      "occupancyPrices": [
+        { "persons": 1, "priceGross": 120, "validFrom": "2026-01-01", "validTo": "2027-12-31", "label": "Demo" },
+        { "persons": 2, "priceGross": 150, "validFrom": "2026-01-01", "validTo": "2027-12-31", "label": "Demo" },
+        { "persons": 3, "priceGross": 170, "validFrom": "2026-01-01", "validTo": "2027-12-31", "label": "Demo" }
+      ]
+    },
+    {
+      "code": "APT",
+      "name": "Apartment",
+      "category": "Apartments",
+      "maxAdults": 4,
+      "maxOccupancy": 4,
+      "baseOccupancy": 2,
+      "occupancyPrices": [
+        { "persons": 2, "priceGross": 160, "validFrom": "2026-01-01", "validTo": "2027-12-31", "label": "Demo" },
+        { "persons": 3, "priceGross": 180, "validFrom": "2026-01-01", "validTo": "2027-12-31", "label": "Demo" },
+        { "persons": 4, "priceGross": 200, "validFrom": "2026-01-01", "validTo": "2027-12-31", "label": "Demo" }
+      ]
+    }
+  ],
+  "units": [
+    { "unitType": "STD", "from": 101, "to": 106, "floor": "1" },
+    { "unitType": "DLX", "from": 201, "to": 204, "floor": "2" },
+    { "unitType": "APT", "from": 301, "to": 303, "floor": "3" }
+  ],
+  "channelRules": [
+    {
+      "channel": null,
+      "includesBreakfast": false,
+      "lodgingTaxCode": "reduced",
+      "foodTaxCode": "reduced",
+      "drinksTaxCode": "standard",
+      "markupPercent": 0
+    }
+  ],
+  "services": [
+    { "name": "Frühstück", "price": 10, "vatCode": "reduced", "category": "food" },
+    { "name": "Parkplatz", "price": 5, "vatCode": "standard", "category": "other" },
+    { "name": "Late Check-out", "price": 20, "vatCode": "standard", "category": "other" }
+  ],
+  "bookingSources": [
+    {
+      "code": "booking_com",
+      "name": "Booking.com",
+      "iconLetter": "B",
+      "color": "#003580",
+      "commissionPercent": 15,
+      "sortOrder": 10
+    }
+  ],
+  "acceptance": [
+    { "unitType": "STD", "persons": 2, "checkIn": "2026-09-10", "checkOut": "2026-09-12", "expectTotal": 200 },
+    { "unitType": "DLX", "persons": 2, "checkIn": "2026-09-10", "checkOut": "2026-09-13", "expectTotal": 450 },
+    { "unitType": "APT", "persons": 4, "checkIn": "2027-01-05", "checkOut": "2027-01-07", "expectTotal": 400 }
+  ]
+}

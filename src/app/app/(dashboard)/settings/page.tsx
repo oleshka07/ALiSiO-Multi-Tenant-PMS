@@ -78,7 +78,7 @@ const settingsItems = [
   },
   {
     title: 'Послуги для гостей',
-    desc: 'Сніданки, сауна, велосипеди, чан — ціни та статуси',
+    desc: 'Сніданок, паркінг, трансфер — ціни та статуси',
     icon: <Sparkles size={22} />,
     href: '/app/settings/services',
     color: 'orange',

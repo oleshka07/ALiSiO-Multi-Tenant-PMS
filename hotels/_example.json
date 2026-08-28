@@ -56,19 +56,11 @@
       "sortOrder": 1
     }
   ],
-  "buildings": [
-    {
-      "name": "Haupthaus",
-      "code": "HH",
-      "category": "Zimmer"
-    }
-  ],
   "unitTypes": [
     {
       "code": "DZD",
       "name": "Doppelzimmer Standard",
       "category": "Zimmer",
-      "building": "Haupthaus",
       "maxAdults": 2,
       "maxOccupancy": 2,
       "baseOccupancy": 2,
@@ -108,7 +100,7 @@
       "prefix": "",
       "from": 201,
       "to": 210,
-      "building": "Haupthaus"
+      "zone": "Haupthaus"
     },
     {
       "unitType": "DZD",
