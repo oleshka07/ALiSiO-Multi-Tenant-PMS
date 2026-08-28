@@ -1,7 +1,7 @@
 /**
  * VAT arithmetic, checked against a real invoice.
  *
- *   node src/modules/finance/domain/invoice-vat.check.ts
+ *   node src/modules/invoicing/domain/invoice-vat.check.ts
  *
  * The fixture is not invented. It is invoice no. 22.421 of 05.08.2026 from the
  * German pilot's current system — a document their Steuerberater has accepted.

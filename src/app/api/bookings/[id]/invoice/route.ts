@@ -1,2 +1,2 @@
-import { getInvoiceByReservation } from '@finance';
+import { getInvoiceByReservation } from '@invoicing';
 export const GET = getInvoiceByReservation;

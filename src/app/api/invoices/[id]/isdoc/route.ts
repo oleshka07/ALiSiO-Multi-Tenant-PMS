@@ -4,17 +4,22 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { generateIsdocXml } from '@/modules/finance/domain/isdoc';
-import type { InvoiceData } from '@/modules/finance/domain/invoice-template';
+import { generateIsdocXml, invoiceSettings } from '@invoicing';
+import { requireOrganizationId } from '@core/auth/tenant-context';
+import type { InvoiceData } from '@invoicing';
 import { requirePermission } from '@core/security/route-guard';
-import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
-import { showBuyerName, dueDateFor } from '@/modules/finance/domain/invoice-rules';
+import { convertToCzkAuto, foreignNote } from '@invoicing';
+import { showBuyerName, dueDateFor } from '@invoicing';
 
 export const GET = requirePermission('manage_documents', _GET);
 async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
+  // Правила бланка ЦЬОГО готеля — замість колишніх констант із чеського
+  // закону. Організація вже на зʼєднанні: маршрут під вартою.
+  const rules = await invoiceSettings(await requireOrganizationId());
+
   try {
     const { id } = await params;
     const sql = getSql();
@@ -73,7 +78,7 @@ async function _GET(
       city:    data.invoice_company_city    || undefined,
       country: data.invoice_company_country || undefined,
     } : undefined;
-    if (!buyer && showBuyerName(czkAmount, false)) {
+    if (!buyer && showBuyerName(czkAmount, false, rules)) {
       const gname = `${data.guest_first_name || ''} ${data.guest_last_name || ''}`.trim();
       if (gname) buyer = { name: gname, ico: undefined, dic: undefined, street: data.guest_address || undefined, city: data.guest_city || undefined, country: data.guest_country || undefined };
     }
@@ -89,14 +94,15 @@ async function _GET(
     const xml = await generateIsdocXml({
       invoiceNumber:  data.invoice_number,
       issueDate:      documentDate || (data.issued_at || '').slice(0, 10),
-      // DUZP + splatnost = issue date + 14 days (accounting requirement).
-      taxPointDate:   dueDateFor(documentDate || (data.issued_at || '').slice(0, 10)),
+      // DUZP + строк оплати = дата видачі + стільки днів, скільки задав
+      // готель. Було жорстко 14 — чеський звичай, накинутий усім.
+      taxPointDate:   dueDateFor(documentDate || (data.issued_at || '').slice(0, 10), rules),
       description:    desc,
       amount:         conv.converted ? conv.amountCzk : (data.amount || 0),
       currency:       conv.converted ? 'CZK' : (data.currency || 'CZK'),
       buyer,
       paymentMethod:  data.payment_method || undefined,
-      paymentDueDate: dueDateFor(documentDate || (data.issued_at || '').slice(0, 10)),
+      paymentDueDate: dueDateFor(documentDate || (data.issued_at || '').slice(0, 10), rules),
       foreignNote:    conv.converted ? foreignNote(conv) : undefined,
     });
 

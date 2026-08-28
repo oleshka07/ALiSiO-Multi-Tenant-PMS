@@ -1,2 +1,2 @@
-import { deleteChannelRule } from '@finance';
+import { deleteChannelRule } from '@invoicing';
 export const DELETE = deleteChannelRule;

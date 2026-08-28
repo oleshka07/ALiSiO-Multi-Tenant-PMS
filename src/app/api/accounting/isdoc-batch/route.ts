@@ -13,12 +13,12 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { generateIsdocXml } from '@/modules/finance/domain/isdoc';
+import { generateIsdocXml, invoiceSettings } from '@invoicing';
 import { requireFinanceAccess } from '@core/security/route-guard';
 import { requireOrganizationId } from '@core/auth/tenant-context';
-import type { InvoiceData } from '@/modules/finance/domain/invoice-template';
-import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
-import { showBuyerName, dueDateFor } from '@/modules/finance/domain/invoice-rules';
+import type { InvoiceData } from '@invoicing';
+import { convertToCzkAuto, foreignNote } from '@invoicing';
+import { showBuyerName, dueDateFor } from '@invoicing';
 import JSZip from 'jszip';
 
 // ─── Helper: build description from invoice or fin_op data ───────────────────
@@ -58,6 +58,8 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
 
     const sql = getSql();
     const orgId = await requireOrganizationId();
+    // Правила бланка ЦЬОГО готеля — замість колишніх констант із чеського закону.
+    const rules = await invoiceSettings(orgId);
     const zip = new JSZip();
     let count = 0;
     const usedNames = new Set<string>();
@@ -114,7 +116,7 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       const guestName = `${inv.guest_first_name || ''} ${inv.guest_last_name || ''}`.trim();
       const buyerName = hasCompany
         ? (inv.invoice_company_name as string)
-        : (showBuyerName(czkAmount, false) && guestName ? guestName : undefined);
+        : (showBuyerName(czkAmount, false, rules) && guestName ? guestName : undefined);
       const buyer = buyerName ? {
         name:    buyerName,
         ico:     inv.invoice_company_ico    || undefined,
@@ -127,13 +129,13 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       const xml = await generateIsdocXml({
         invoiceNumber:  inv.invoice_number,
         issueDate:      documentDate || (inv.issued_at || '').slice(0, 10),
-        taxPointDate:   dueDateFor(documentDate || (inv.issued_at || '').slice(0, 10)),
+        taxPointDate:   dueDateFor(documentDate || (inv.issued_at || '').slice(0, 10), rules),
         description:    buildDescription(inv as { unit_name?: string | null; check_in?: string | null; check_out?: string | null; comment?: string | null; source?: string | null }),
         amount:         conv.converted ? conv.amountCzk : (inv.amount || 0),
         currency:       conv.converted ? 'CZK' : (inv.currency || 'CZK'),
         buyer,
         paymentMethod:  inv.payment_method || undefined,
-        paymentDueDate: dueDateFor(documentDate || (inv.issued_at || '').slice(0, 10)),
+        paymentDueDate: dueDateFor(documentDate || (inv.issued_at || '').slice(0, 10), rules),
         foreignNote:    conv.converted ? foreignNote(conv) : undefined,
       });
 
@@ -188,12 +190,12 @@ async function _GET(request: NextRequest): Promise<NextResponse> {
       const xml = await generateIsdocXml({
         invoiceNumber:  virtualNumber,
         issueDate:      documentDate,
-        taxPointDate:   dueDateFor(documentDate),
-        paymentDueDate: dueDateFor(documentDate),
+        taxPointDate:   dueDateFor(documentDate, rules),
+        paymentDueDate: dueDateFor(documentDate, rules),
         description:    op.comment || `Ubytování — ${sourceLabel} (${op.source_ref})`,
         amount:         conv.converted ? conv.amountCzk : (op.amount || 0),
         currency:       conv.converted ? 'CZK' : (op.currency || 'EUR'),
-        buyer:          (showBuyerName(czkAmount, false) && guestName) ? { name: guestName } : undefined,
+        buyer:          (showBuyerName(czkAmount, false, rules) && guestName) ? { name: guestName } : undefined,
         paymentMethod:  op.method || 'booking_platform',
         note:           `OTA platba přes ${sourceLabel}. Ref: ${op.source_ref}`,
         foreignNote:    conv.converted ? foreignNote(conv) : undefined,

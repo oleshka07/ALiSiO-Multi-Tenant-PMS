@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOrgIdentity } from '@core/org-identity';
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
-import { renderInvoiceHtml, type InvoiceData } from '@/modules/finance/domain/invoice-template';
+import { renderInvoiceHtml, type InvoiceData } from '@invoicing';
 import { sendEmail } from '@core/mail/email';
 import { requirePermission } from '@core/security/route-guard';
 

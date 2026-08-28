@@ -13,7 +13,7 @@
  */
 import { getSql } from '@core/db/async';
 import { organizationCurrency } from '@core/currency';
-import { allocateInvoiceNumber, isInvoiceLocked } from '@/modules/finance/domain/invoice-numbering';
+import { allocateInvoiceNumber, isInvoiceLocked } from '@/modules/invoicing/domain/invoice-numbering';
 
 /**
  * The organization of a reservation, through its property. Invoice generation

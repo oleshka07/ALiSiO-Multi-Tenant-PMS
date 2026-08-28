@@ -4944,6 +4944,33 @@ function runMigrations(database: any) {
     console.error('[DB] organization_features migration:', e.message);
   }
 
+  // --- Migration: how THIS hotel's invoice looks and behaves ---
+  //
+  // Фактура в кожного готеля своя, і досі це були константи в коді:
+  // `INVOICE_DUE_DAYS = 14` і `BUYER_NAME_THRESHOLD_CZK = 9900`. Друге гірше
+  // за перше: 9900 — межа чеського «спрощеного податкового документа», тобто
+  // норма ОДНІЄЇ юрисдикції, застосована до всіх; ще й у кронах, тож
+  // німецький готель порівнював суму в євро з числом у кронах.
+  //
+  // Один рядок на готель. Порожній рядок = дефолти, тому таблиця може бути
+  // порожньою й нічого не ламається.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS organization_invoicing (
+        organization_id TEXT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+        due_days INTEGER NOT NULL DEFAULT 14,
+        buyer_name_threshold REAL,
+        logo_url TEXT,
+        accent_color TEXT,
+        footer_note TEXT,
+        show_payment_qr INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+  } catch (e: any) {
+    console.error('[DB] organization_invoicing migration:', e.message);
+  }
+
   // --- Migration: the currencies a hotel shows amounts in ---
   //
   // ОСНОВНА валюта живе в organizations.default_currency і не дублюється тут:

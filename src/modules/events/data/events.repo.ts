@@ -12,9 +12,9 @@
  */
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
-import { pickRate, type TaxRate } from '../../finance/domain/invoice-vat';
+import { pickRate, type TaxRate } from '@invoicing/kernel';
 import { timesOverlap, minutesBetween, suggestedBlockPrice, type BlockPrices } from '../domain/event-pricing';
-import { createFolio, addCharges } from '../../finance/data/folio.repo';
+import { openFolio as createFolio, addCharges } from '@invoicing/kernel';
 import { money } from '@core/money';
 
 export interface EventSpace {

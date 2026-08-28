@@ -1,7 +1,7 @@
 /**
  * The Kassenabschluss: closed once, frozen, and honest about the till.
  *
- *   node src/modules/finance/data/cash-closings.check.ts
+ *   node src/modules/invoicing/data/cash-closings.check.ts
  *
  * Three behaviours with wrong-but-plausible twins. The closing must count
  * ONLY till methods — a bank transfer inside cash_total inflates the

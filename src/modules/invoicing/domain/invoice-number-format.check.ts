@@ -1,7 +1,7 @@
 /**
  * The invoice number's shape is data.
  *
- *   node src/modules/finance/domain/invoice-number-format.check.ts
+ *   node src/modules/invoicing/domain/invoice-number-format.check.ts
  *
  * Two things are asserted here, and the first matters more than the second:
  * the default template must reproduce EXACTLY the numbers this product has

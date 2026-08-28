@@ -1,7 +1,7 @@
 /**
  * Two guests, one room, two invoices — and correcting one must not void the other.
  *
- *   node src/modules/finance/data/folio-invoice.check.ts
+ *   node src/modules/invoicing/data/folio-invoice.check.ts
  *
  * The pilot's owner asked for this in one sentence: «es müssen bitte mind. 2
  * Rechnungen mit fortlaufender RG-Nr. aus einem Zimmer möglich sein», adding

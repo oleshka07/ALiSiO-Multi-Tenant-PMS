@@ -9,7 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireFinanceAccess } from '@core/security/route-guard';
-import { lockPeriod, unlockPeriod, seriesForChannel } from '@/modules/finance/domain/invoice-numbering';
+import { lockPeriod, unlockPeriod, seriesForChannel } from '@invoicing';
 import type { Actor } from '@core/auth/session';
 import { getSql } from '@core/db/async';
 

@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireFinanceAccess } from '@core/security/route-guard';
-import { allocateInvoiceNumber, seriesForChannel, isPeriodLocked } from '@/modules/finance/domain/invoice-numbering';
+import { allocateInvoiceNumber, seriesForChannel, isPeriodLocked } from '@invoicing';
 import type { Actor } from '@core/auth/session';
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';

@@ -2,12 +2,12 @@
  * GET  /api/invoices/[id]   — returns invoice HTML (existing)
  * DELETE /api/invoices/[id] — permanently deletes the invoice
  */
-import { getInvoiceHtml } from '@finance';
+import { getInvoiceHtml } from '@invoicing';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { requireFinanceAccess } from '@core/security/route-guard';
 import type { Actor } from '@core/auth/session';
-import { isPeriodLocked } from '@/modules/finance/domain/invoice-numbering';
+import { isPeriodLocked } from '@invoicing';
 import { serverError } from '@core/http/errors';
 
 export const GET = getInvoiceHtml;

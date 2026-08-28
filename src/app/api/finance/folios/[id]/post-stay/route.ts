@@ -1,2 +1,2 @@
-import { postStayChargesToFolio } from '@finance';
+import { postStayChargesToFolio } from '@invoicing';
 export const POST = postStayChargesToFolio;

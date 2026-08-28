@@ -21,9 +21,21 @@
  * Germany, Czechia or the next jurisdiction will charge next year, and a
  * product that thinks it knows is a product that argues with an accountant.
  */
+/**
+ * Варта — у фасаді (`api/index.ts`), не тут.
+ *
+ * Раніше тут стояли `withFinanceRead` / `withFinanceWrite` з `_guard`, а той
+ * тримається на фінансовому PIN (`finance_security`). PIN писався, щоб
+ * сховати від персоналу прибуток і витрати — і для ставок ПДВ це
+ * неправильна варта двічі: по-перше, вона вимагає від рецепції PIN власника
+ * там, де та просто виписує документ; по-друге, вона лишає фактурування
+ * привʼязаним до модуля обліку, який має вимикатись окремо.
+ *
+ * Тепер тут звичайні функції, а `withModule('invoicing', …)` у фасаді
+ * питає три речі одразу: хто це, чи має право, і чи є в готеля цей модуль.
+ */
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { withFinanceRead, withPermission as withFinanceWrite } from './_guard';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { DEFAULT_TEMPLATE, formatInvoiceNumber } from '../domain/invoice-number-format';
 
@@ -34,7 +46,7 @@ const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{
 
 // ── VAT rates ───────────────────────────────────────────────────────────────
 
-export const listTaxRates = withFinanceRead(async () => {
+export const listTaxRates = async () => {
   const organizationId = await requireOrganizationId();
   const rows = await getSql().rows(
     `SELECT id, code, rate, label, valid_from, valid_to
@@ -43,9 +55,9 @@ export const listTaxRates = withFinanceRead(async () => {
     [organizationId],
   );
   return NextResponse.json({ rates: rows });
-});
+};
 
-export const createTaxRate = withFinanceWrite('manage_finance_settings', async (request: Request) => {
+export const createTaxRate = async (request: Request) => {
   const body = await request.json().catch(() => null) as any;
 
   if (!isCode(body?.code)) {
@@ -80,7 +92,7 @@ export const createTaxRate = withFinanceWrite('manage_finance_settings', async (
     [id, organizationId, body.code, rate, body.label ?? null, body.valid_from, body.valid_to || null],
   );
   return NextResponse.json({ id }, { status: 201 });
-});
+};
 
 /**
  * Close a rate rather than delete it.
@@ -90,7 +102,7 @@ export const createTaxRate = withFinanceWrite('manage_finance_settings', async (
  * what the hotel was charging and when — which is the one thing a tax audit
  * asks for. So the only edit offered is an end date.
  */
-export const closeTaxRate = withFinanceWrite('manage_finance_settings', async (
+export const closeTaxRate = async (
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) => {
@@ -106,7 +118,7 @@ export const closeTaxRate = withFinanceWrite('manage_finance_settings', async (
   );
   if (res.changes === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json({ ok: true });
-});
+};
 
 /**
  * A rate that has never been used may be removed outright — a typo entered
@@ -118,7 +130,7 @@ export const closeTaxRate = withFinanceWrite('manage_finance_settings', async (
  * this must start refusing. Written down here rather than left to be
  * rediscovered.
  */
-export const deleteTaxRate = withFinanceWrite('manage_finance_settings', async (
+export const deleteTaxRate = async (
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) => {
@@ -130,11 +142,11 @@ export const deleteTaxRate = withFinanceWrite('manage_finance_settings', async (
   );
   if (res.changes === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json({ ok: true });
-});
+};
 
 // ── Invoice series ──────────────────────────────────────────────────────────
 
-export const listInvoiceSeries = withFinanceRead(async () => {
+export const listInvoiceSeries = async () => {
   const organizationId = await requireOrganizationId();
   const sql = getSql();
   const rows = await sql.rows<any>(
@@ -165,9 +177,9 @@ export const listInvoiceSeries = withFinanceRead(async () => {
     }),
     default_template: DEFAULT_TEMPLATE,
   });
-});
+};
 
-export const createInvoiceSeries = withFinanceWrite('manage_finance_settings', async (request: Request) => {
+export const createInvoiceSeries = async (request: Request) => {
   const body = await request.json().catch(() => null) as any;
   const code = typeof body?.code === 'string' ? body.code.trim().toUpperCase() : '';
   if (!/^[A-Z0-9_-]{1,16}$/.test(code)) {
@@ -199,9 +211,9 @@ export const createInvoiceSeries = withFinanceWrite('manage_finance_settings', a
   );
   if (body.is_default) await clearOtherDefaults(id, organizationId);
   return NextResponse.json({ id }, { status: 201 });
-});
+};
 
-export const updateInvoiceSeries = withFinanceWrite('manage_finance_settings', async (
+export const updateInvoiceSeries = async (
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) => {
@@ -227,9 +239,9 @@ export const updateInvoiceSeries = withFinanceWrite('manage_finance_settings', a
   if (res.changes === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (body.is_default) await clearOtherDefaults(id, organizationId);
   return NextResponse.json({ ok: true });
-});
+};
 
-export const deleteInvoiceSeries = withFinanceWrite('manage_finance_settings', async (
+export const deleteInvoiceSeries = async (
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) => {
@@ -256,7 +268,7 @@ export const deleteInvoiceSeries = withFinanceWrite('manage_finance_settings', a
 
   await sql.run('DELETE FROM invoice_series WHERE id = ? AND organization_id = ?', [id, organizationId]);
   return NextResponse.json({ ok: true });
-});
+};
 
 /** Exactly one default, or the fallback order stops being predictable. */
 async function clearOtherDefaults(keepId: string, organizationId: string): Promise<void> {

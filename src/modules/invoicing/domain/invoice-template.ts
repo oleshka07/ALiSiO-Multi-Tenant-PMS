@@ -10,6 +10,8 @@
  */
 
 import { showBuyerName, dueDateFor } from './invoice-rules';
+import { invoiceSettings } from '../data/invoice-settings.repo';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 import { getOrgIdentity } from '@core/org-identity';
 
 // Inline type — avoids cross-module coupling for a pure template helper.
@@ -121,6 +123,9 @@ function formatCountry(code: string | null | undefined): string {
 
 export async function renderInvoiceHtml(data: InvoiceData): Promise<string> {
   const SUP = await supplier();
+  // Правила бланка — цього готеля, не константи. Організація береться звідти
+  // ж, звідки й реквізити постачальника рядком вище: з контексту запиту.
+  const rules = await invoiceSettings(await requireOrganizationId());
   // Defensive: any of these can arrive as null from a LEFT JOIN with deleted
   // units/guests, or from legacy rows that pre-date a column being NOT NULL.
   const invoiceNumber = data.invoice_number || data.id || '—';
@@ -148,7 +153,7 @@ export async function renderInvoiceHtml(data: InvoiceData): Promise<string> {
   // on invoices under 15 000 CZK, and the operator prefers anonymous invoices.
   const isCompanyInvoice = !!(data.invoice_company_name && data.invoice_company_name.trim());
   // data.amount is already the CZK payable at render time (handler converts EUR).
-  const buyerRequired = showBuyerName(data.amount || 0, isCompanyInvoice);
+  const buyerRequired = showBuyerName(data.amount || 0, isCompanyInvoice, rules);
   const buyerLabel = 'Odběratel';
   let buyerHtml: string;
   if (isCompanyInvoice) {
@@ -603,11 +608,11 @@ export async function renderInvoiceHtml(data: InvoiceData): Promise<string> {
         </div>
         <div class="date-cell">
           <div class="label">Datum uskuteč. plnění</div>
-          <div class="value">${formatDate(dueDateFor(data.document_date || data.issued_at || ''))}</div>
+          <div class="value">${formatDate(dueDateFor(data.document_date || data.issued_at || '', rules))}</div>
         </div>
         <div class="date-cell">
           <div class="label">Datum splatnosti</div>
-          <div class="value">${formatDate(dueDateFor(data.document_date || data.issued_at || ''))}</div>
+          <div class="value">${formatDate(dueDateFor(data.document_date || data.issued_at || '', rules))}</div>
         </div>
         <div class="date-cell">
           <div class="label">Forma úhrady</div>

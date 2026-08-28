@@ -1,7 +1,7 @@
 /**
  * Invoice numbers are per organization — on both engines.
  *
- *   node src/modules/finance/domain/invoice-numbering.check.ts
+ *   node src/modules/invoicing/domain/invoice-numbering.check.ts
  *
  * The claim being checked is the one that decides whether two hotels can share
  * a server at all: each of them issues 2026-001 as its first invoice of the

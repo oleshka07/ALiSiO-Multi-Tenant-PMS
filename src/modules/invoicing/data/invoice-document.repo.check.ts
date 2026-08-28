@@ -1,7 +1,7 @@
 /**
  * From database rows to a German invoice document — and an honest null.
  *
- *   node src/modules/finance/data/invoice-document.repo.check.ts
+ *   node src/modules/invoicing/data/invoice-document.repo.check.ts
  *
  * The German renderer and the §14 document model were both finished and both
  * unreachable: nothing loaded an issued invoice out of the database into

@@ -1,7 +1,7 @@
 /**
  * Німецький обʼєкт не друкується чеським рахунком.
  *
- *   node src/modules/finance/domain/invoice-jurisdiction.check.ts
+ *   node src/modules/invoicing/domain/invoice-jurisdiction.check.ts
  *
  * ── Що сталося на пілоті ────────────────────────────────────────────────
  *

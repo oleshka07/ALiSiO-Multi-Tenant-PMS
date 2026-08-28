@@ -1,7 +1,7 @@
 /**
  * What an invoice must say — checked against the law, not against a layout.
  *
- *   node src/modules/finance/domain/invoice-document.check.ts
+ *   node src/modules/invoicing/domain/invoice-document.check.ts
  *
  * The numbers are invoice 22.421 again. What is new here is the German
  * paperwork around them: the § 14 UStG mandatory fields, the § 33 UStDV

@@ -7,7 +7,7 @@
  * inconsistently store the pair direction.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { syncCnbRates } from './cnb-rates';
+import { syncCnbRates } from '@core/fx/cnb';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { money } from '@core/money';
 import { getSql } from '@core/db/async';

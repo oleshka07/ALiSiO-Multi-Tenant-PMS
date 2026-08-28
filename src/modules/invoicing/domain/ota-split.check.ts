@@ -1,7 +1,7 @@
 /**
  * Splitting one channel amount into invoice lines.
  *
- *   node src/modules/finance/domain/ota-split.check.ts
+ *   node src/modules/invoicing/domain/ota-split.check.ts
  *
  * The headline case is the pilot's own acceptance criterion: a booking that
  * arrives as 91,05 € for one person must come out as 76,05 accommodation,

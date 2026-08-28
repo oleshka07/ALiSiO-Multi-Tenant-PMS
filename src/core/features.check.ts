@@ -43,6 +43,10 @@ const EXPECTED_DEFAULT: Record<Key, boolean> = {
   reports: true,
   dashboard: true,
   day_sheets: true,
+  // ON: готель, який здає номери, виписує документ — питання лише, чиїм
+  // бланком. Дефолт OFF означав би, що в день появи ключа кожен наявний
+  // клієнт мовчки втратив фактури, а новий не зміг би закрити перший заїзд.
+  invoicing: true,
 };
 
 for (const key of Object.keys(FEATURE_SPEC) as Key[]) {
@@ -70,7 +74,7 @@ console.log('  ok  каталог для екрана збігається з р
 // `day_sheets` у меню пишеться так само, як у реєстрі — підкресленням. Дефіс
 // у ключі («day-sheets») дав би пункт, який ніколи не ховається: `features`
 // такого ключа не має, і `!features[undefined]` — це просто `true`.
-const MODULES: Key[] = ['tasks', 'events', 'reports', 'dashboard', 'day_sheets'];
+const MODULES: Key[] = ['tasks', 'events', 'reports', 'dashboard', 'day_sheets', 'invoicing'];
 
 const sidebar = fs.readFileSync('src/components/layout/Sidebar.tsx', 'utf8');
 for (const key of MODULES) {
@@ -99,6 +103,10 @@ const OWNERS: Record<Exclude<Key, 'widget' | 'fiscal_de' | 'online_payments'>, s
   reports: ['src/app/api/reports/route.ts', 'src/app/api/reports/city-tax/route.ts'],
   dashboard: ['src/app/api/dashboard/route.ts'],
   day_sheets: ['src/modules/day-sheets/api/day-sheets.handlers.ts'],
+  // Варта фактурування стоїть у ФАСАДІ, а не в хендлерах: там вона одна на
+  // всі 25 експортів, а в хендлерах її довелось би повторити 25 разів — і
+  // забути в одному з них.
+  invoicing: ['src/modules/invoicing/api/index.ts'],
 };
 
 let guarded = 0;

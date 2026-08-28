@@ -11,11 +11,10 @@
  *
  * ── Права й функції ─────────────────────────────────────────────────────
  *
- * `permission` тут — не косметика і не «сховати зайве». Пошук, який показує
- * оператору без `nav:finance` рядок «Ставки ПДВ», повідомляє, що така
- * сторінка існує, і дає посилання; те, що вона потім відмовить, уже не
- * рятує — назва екрана сама по собі є інформацією про готель. Тому фільтр
- * застосовується на СЕРВЕРІ, а не в браузері.
+ * `permission` тут — обіцянка не пропонувати перехід, який закінчиться 403.
+ * Це НЕ перевірка безпеки, і називати її так було б самообманом: цей каталог
+ * імпортує клієнтський `AccountMenu`, тобто він цілком лежить у бандлі
+ * браузера. Справжня варта — на кожному екрані й кожному маршруті окремо.
  *
  * `feature` — ключ із `core/features.ts`. Вимкнений модуль не має
  * знаходитись: інакше «Зали» знайдуться в готелі, який залів не має.
@@ -54,7 +53,7 @@ export const DESTINATIONS: Destination[] = [
   // ── Управління ───────────────────────────────────────────────────────
   { label: 'Ціноутворення', href: '/app/pricing', section: 'Управління', permission: 'nav:pricing', keywords: ['тарифи', 'ціни', 'сезони'] },
   { label: 'Аналітика продажів', href: '/app/reports', section: 'Управління', permission: 'nav:reports', feature: 'reports', keywords: ['звіти', 'статистика', 'завантаження'] },
-  { label: 'Документи', href: '/app/documents', section: 'Управління', permission: 'nav:documents', keywords: ['фактури', 'інвойси', 'рахунки', 'договори'] },
+  { label: 'Документи', href: '/app/documents', section: 'Управління', permission: 'nav:documents', feature: 'invoicing', keywords: ['фактури', 'інвойси', 'рахунки', 'договори'] },
   { label: 'Evidenční kniha', href: '/app/guest-registry', section: 'Управління', permission: 'nav:guests', keywords: ['книга гостей', 'реєстр', 'поліція'] },
   { label: 'Журнал змін', href: '/app/audit', section: 'Управління', permission: 'nav:settings', keywords: ['хто змінив', 'історія', 'аудит'] },
 
@@ -74,7 +73,7 @@ export const DESTINATIONS: Destination[] = [
   { label: 'Номери / Юніти', href: '/app/settings/units', section: 'Налаштування', permission: 'nav:settings', keywords: ['кімнати', 'типи номерів', 'будівлі', 'поверхи'] },
   { label: 'Користувачі та ролі', href: '/app/settings/users', section: 'Налаштування', permission: 'manage_users', keywords: ['персонал', 'доступи', 'права', 'пароль'] },
   { label: 'Модулі та інтеграції', href: '/app/settings/features', section: 'Налаштування', permission: 'nav:settings', keywords: ['увімкнути', 'вимкнути', 'ключі', 'API'] },
-  { label: 'Фактурування', href: '/app/settings/invoicing', section: 'Налаштування', permission: 'nav:settings', keywords: ['ПДВ', 'ставки податку', 'серії', 'нумерація', 'фактура'] },
+  { label: 'Фактурування', href: '/app/settings/invoicing', section: 'Налаштування', permission: 'nav:settings', feature: 'invoicing', keywords: ['ПДВ', 'ставки податку', 'серії', 'нумерація', 'фактура', 'строк оплати', 'бланк'] },
   { label: 'Оплати', href: '/app/settings/payments', section: 'Налаштування', permission: 'nav:settings', keywords: ['еквайринг', 'термінал', 'картка', 'готівка'] },
   { label: 'Ціни за заселеністю', href: '/app/settings/pricing-matrix', section: 'Налаштування', permission: 'nav:pricing', keywords: ['одномісний', 'двомісний', 'матриця', 'знижка за тривалість'] },
   { label: 'Ціни каналів', href: '/app/settings/channel-rules', section: 'Налаштування', permission: 'nav:pricing', keywords: ['націнка', 'комісія', 'сніданок у ціні'] },

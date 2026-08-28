@@ -1,7 +1,7 @@
 /**
  * The payment row, the fiscal guard, and the signature that lands with it.
  *
- *   node src/modules/finance/data/folio-payments.check.ts
+ *   node src/modules/invoicing/data/folio-payments.check.ts
  *
  * Block A: a GERMAN property with the fiscal module OFF must refuse cash and
  * card-at-the-desk — otherwise this PMS quietly becomes an unregistered till

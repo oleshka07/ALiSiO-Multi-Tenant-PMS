@@ -1,2 +1,2 @@
-import { issueFolioInvoice } from '@finance';
+import { issueFolioInvoice } from '@invoicing';
 export const POST = issueFolioInvoice;

@@ -148,19 +148,6 @@ export const deleteCapexItem = await withPermission('manage_finance_settings', _
 
 
 
-// ─── Invoices ─────────────────────────────────────────────────
-// generateInvoiceForReservation is internal (called from bookings + payments
-// on the reservation lifecycle) — NOT guarded.
-export { generateInvoiceForReservation } from './invoices.handlers';
-import {
-  listInvoices as _listInvoices, getInvoiceHtml as _getInvoiceHtml,
-  getInvoiceByReservation as _getInvoiceByReservation,
-  reissueInvoiceHandler as _reissueInvoiceHandler,
-} from './invoices.handlers';
-export const listInvoices            = await withFinanceRead(_listInvoices);
-export const getInvoiceHtml          = await withFinanceRead(_getInvoiceHtml);
-export const getInvoiceByReservation = await withFinanceRead(_getInvoiceByReservation);
-export const reissueInvoiceHandler   = await withPermission('manage_finance_settings', _reissueInvoiceHandler);
 
 // ─── Invoice Reconciliation Journal ───────────────────────────
 
@@ -300,30 +287,20 @@ export const deleteFinanceAccess  = await withPermission('manage_users', _delete
 export const getMyFinanceAccess   = await withFinanceRead(_getMyFinanceAccess);
 
 // Re-export auth helpers for use in _guard.ts and other modules
-export {
-  listTaxRates, createTaxRate, closeTaxRate, deleteTaxRate,
-  listInvoiceSeries, createInvoiceSeries, updateInvoiceSeries, deleteInvoiceSeries,
-} from './invoicing-config.handlers';
-export {
-  listFolios, createFolio, getFolioCharges, addFolioCharges,
-  issueFolioInvoice, stornoInvoice, moveFolioCharges,
-  getFolioPayments, addFolioPayment,
-} from './folio.handlers';
-export {
-  listCashClosings, createCashClosing, exportTillJournal,
-} from './cash-closings.handlers';
 
-// What each channel's price includes, and the split it turns into.
-export {
-  listChannelRules, saveChannelRule, deleteChannelRule, postStayChargesToFolio,
-} from './channel-rules.handlers';
-export { ruleFor, withMarkup } from '../domain/channel-rate-rule';
-export type { ChannelRateRule } from '../domain/channel-rate-rule';
 
 // Курс ČNB. Крон ходить по ВСІХ готелях, тож він поза модулем — а отже,
 // заходить фасадом, а не в `domain/cnb-rates` напряму.
-export { syncCnbRates, fetchCnbFixing, DEFAULT_CNB_CURRENCIES } from '../domain/cnb-rates';
-export type { CnbFixing, CnbSyncResult } from '../domain/cnb-rates';
+export { syncCnbRates, fetchCnbFixing, DEFAULT_CNB_CURRENCIES } from '@core/fx/cnb';
+export type { CnbFixing, CnbSyncResult } from '@core/fx/cnb';
 
-// Загальний пошук питає модуль, а не таблицю. Див. core/search-types.ts.
-export { searchInvoices } from '../data/invoice-search';
+// ─── Фактурування переїхало ──────────────────────────────────────────────
+//
+// Фоліо, рахунки, серії, ставки ПДВ, каса, фіскалізація і правила каналів
+// тепер у `@invoicing`. Реекспортувати їх звідси було б зручно й
+// неправильно: тоді облік лишався б дверима до фактур, і вимкнути його,
+// не зачепивши їх, стало б неможливо — тобто розділення існувало б лише
+// на папері.
+//
+// Курс ČNB поїхав у `@core/fx/cnb`: це джерело курсу, а не бухгалтерія, і
+// його читає `core/currency.ts`, який не має права залежати від модуля.

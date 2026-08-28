@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
 import { ownedReservation, ownedUnit } from '../data/owned.repo';
-import { generateInvoiceForReservation } from '@finance';
+import { generateInvoiceForReservation } from '@invoicing';
 import { cookies } from 'next/headers';
 import { getSessionUser } from '@core/auth';
 import { writeBookingAudit, getBookingActor, buildBookingLabel } from './audit-log.handlers';

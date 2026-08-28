@@ -12,17 +12,17 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { renderInvoiceHtml, type InvoiceData } from '@/modules/finance/domain/invoice-template';
-import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
-import { allocateInvoiceNumber, isInvoiceLocked } from '@/modules/finance/domain/invoice-numbering';
+import { renderInvoiceHtml, type InvoiceData } from '@/modules/invoicing/domain/invoice-template';
+import { convertToCzkAuto, foreignNote } from '@/modules/invoicing/domain/fx';
+import { allocateInvoiceNumber, isInvoiceLocked } from '@/modules/invoicing/domain/invoice-numbering';
 import type { Actor } from '@core/auth/session';
 import {
   generateInvoiceForReservation,
   reissueInvoiceForReservation,
   resolveDocumentDate,
-} from '@/modules/finance/data/reservation-invoice.repo';
-import { loadInvoiceDocument } from '@/modules/finance/data/invoice-document.repo';
-import { generateGermanInvoicePdf } from '@/modules/finance/domain/invoice-pdf-de';
+} from '@/modules/invoicing/data/reservation-invoice.repo';
+import { loadInvoiceDocument } from '@/modules/invoicing/data/invoice-document.repo';
+import { generateGermanInvoicePdf } from '@/modules/invoicing/domain/invoice-pdf-de';
 
 // Raising and replacing a stay's invoice moved to data/reservation-invoice.repo.ts:
 // none of it needs a request or a response, and behind this module's
@@ -113,7 +113,7 @@ export async function getInvoiceHtml(
         r.invoice_company_name, r.invoice_company_ico, r.invoice_company_dic,
         r.invoice_company_address, r.invoice_company_city, r.invoice_company_country,
         r.invoice_company_email,
-        p.method as payment_method, p.comment as payment_notes, p.paid_at as payment_date
+        p.method as payment_method, NULL as payment_notes, p.paid_at as payment_date
       FROM invoices i
       JOIN reservations r ON i.reservation_id = r.id
       LEFT JOIN units u ON r.unit_id = u.id
@@ -128,10 +128,20 @@ export async function getInvoiceHtml(
         ORDER BY gr.registered_at ASC
         LIMIT 1
       ) rg ON rg.reservation_id = r.id
-      LEFT JOIN fin_operations p
-        ON p.reservation_id = r.id
-        AND p.op_type = 'income'
-        AND p.status = 'completed'
+      -- Оплата — з fin_folio_payments, а НЕ з fin_operations.
+      --
+      -- Тут стояв журнал обліку, і це був єдиний рядок у всьому
+      -- фактуруванні, який туди заглядав. Він же й неправильний: журнал
+      -- обліку знає бронь, а не фактуру, тож при двох фактурах на одну
+      -- бронь (наприклад, депозит і решта) обидві отримували ОДНУ й ту саму
+      -- останню оплату. fin_folio_payments має invoice_id — прямий
+      -- звʼязок із документом, за яким платили.
+      --
+      -- Побічно це і є шов між модулями: після нього фактурування не читає
+      -- жодної таблиці обліку, і облік можна вимкнути, не зачепивши фактур.
+      LEFT JOIN fin_folio_payments p
+        ON p.invoice_id = i.id
+        AND p.organization_id = i.organization_id
       WHERE i.id = ? AND i.organization_id = ?
       ORDER BY p.paid_at DESC
       LIMIT 1

@@ -1,2 +1,2 @@
-import { listInvoices } from '@finance';
+import { listInvoices } from '@invoicing';
 export const GET = listInvoices;

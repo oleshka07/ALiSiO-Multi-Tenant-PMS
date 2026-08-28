@@ -81,7 +81,7 @@ const navigation: NavSection[] = [
     items: [
       { label: 'Ціноутворення', href: '/app/pricing', icon: <DollarSign size={20} />, permission: 'nav:pricing' },
       { label: 'Аналітика продажів', href: '/app/reports', icon: <BarChart3 size={20} />, permission: 'nav:reports', feature: 'reports' },
-      { label: 'Документи', href: '/app/documents', icon: <FileText size={20} />, permission: 'nav:documents' },
+      { label: 'Документи', href: '/app/documents', icon: <FileText size={20} />, permission: 'nav:documents', feature: 'invoicing' },
       { label: 'Evidenční kniha', href: '/app/guest-registry', icon: <ClipboardList size={20} />, permission: 'nav:guests', countries: ['CZ'] },
     ],
   },

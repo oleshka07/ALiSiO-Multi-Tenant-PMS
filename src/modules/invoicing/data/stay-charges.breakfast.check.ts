@@ -1,7 +1,7 @@
 /**
  * Whether breakfast is carved out of a booking's total, the booking decides.
  *
- *   node src/modules/finance/data/stay-charges.breakfast.check.ts
+ *   node src/modules/invoicing/data/stay-charges.breakfast.check.ts
  *
  * The property's channel rule is a guess keyed on the booking's SOURCE, and
  * for the pilot it happens to be right — every current tariff includes

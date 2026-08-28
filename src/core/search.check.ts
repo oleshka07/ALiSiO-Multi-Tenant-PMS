@@ -35,7 +35,7 @@ const PROVIDERS = [
   'src/modules/guests/data/guest-search.ts',
   'src/modules/bookings/data/booking-search.ts',
   'src/modules/properties/data/unit-search.ts',
-  'src/modules/finance/data/invoice-search.ts',
+  'src/modules/invoicing/data/invoice-search.ts',
 ];
 
 for (const file of PROVIDERS) {

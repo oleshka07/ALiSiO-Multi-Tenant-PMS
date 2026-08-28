@@ -4,12 +4,13 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { generateInvoicePdf } from '@/modules/finance/domain/invoice-pdf';
+import { generateInvoicePdf, invoiceSettings } from '@invoicing';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 import { requirePermission } from '@core/security/route-guard';
-import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
-import { showBuyerName, dueDateFor } from '@/modules/finance/domain/invoice-rules';
-import { loadInvoiceDocument } from '@/modules/finance/data/invoice-document.repo';
-import { generateGermanInvoicePdf } from '@/modules/finance/domain/invoice-pdf-de';
+import { convertToCzkAuto, foreignNote } from '@invoicing';
+import { showBuyerName, dueDateFor } from '@invoicing';
+import { loadInvoiceDocument } from '@invoicing';
+import { generateGermanInvoicePdf } from '@invoicing';
 import { documentLanguage } from '@core/i18n/resolve';
 
 export const GET = requirePermission('manage_documents', _GET);
@@ -17,6 +18,10 @@ async function _GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
+  // Правила бланка ЦЬОГО готеля — замість колишніх констант із чеського
+  // закону. Організація вже на зʼєднанні: маршрут під вартою.
+  const rules = await invoiceSettings(await requireOrganizationId());
+
   try {
     const { id } = await params;
     const sql    = getSql();
@@ -133,7 +138,7 @@ async function _GET(
       city:    (row.custom_buyer_city    || row.invoice_company_city)    as string | undefined,
       country: (row.custom_buyer_country || row.invoice_company_country) as string | undefined,
     } : undefined;
-    if (!buyer && showBuyerName(czkAmount, false)) {
+    if (!buyer && showBuyerName(czkAmount, false, rules)) {
       const gname = `${row.guest_first_name || ''} ${row.guest_last_name || ''}`.trim();
       if (gname) buyer = { name: gname, ico: undefined, dic: undefined, address: undefined, city: undefined, country: undefined };
     }
@@ -141,8 +146,9 @@ async function _GET(
     const pdfBuffer = await generateInvoicePdf({
       invoiceNumber:  row.invoice_number as string,
       issueDate:      documentDate || (row.issued_at as string).slice(0, 10),
-      // Datum splatnosti = issue date + 14 days.
-      dueDate:        dueDateFor(documentDate || (row.issued_at as string).slice(0, 10)),
+      // Строк оплати = дата видачі + стільки днів, скільки задав готель
+      // (organization_invoicing.due_days). Було жорстко 14 для всіх.
+      dueDate:        dueDateFor(documentDate || (row.issued_at as string).slice(0, 10), rules),
       paymentMethod:  (row.payment_method as string | null) || 'Příkazem',
       description,
       amount:         conv.converted ? conv.amountCzk : (row.amount as number),

@@ -1,2 +1,2 @@
-import { stornoInvoice } from '@finance';
+import { stornoInvoice } from '@invoicing';
 export const POST = stornoInvoice;

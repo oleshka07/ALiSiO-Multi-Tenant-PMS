@@ -12,6 +12,7 @@
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
+import InvoiceBlank from './_components/InvoiceBlank';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { Plus, Trash2, X, Save, Loader2, ArrowLeft, Hash, Percent, Lock } from 'lucide-react';
 import Link from 'next/link';
@@ -192,9 +193,11 @@ export default function InvoicingSettingsPage() {
               <ArrowLeft size={14} /> {t('Налаштування')}
             </Link>
             <h2 className="page-title">{t('Фактурування')}</h2>
-            <div className="page-subtitle">{t('Ставки ПДВ і серії нумерації цього готелю')}</div>
+            <div className="page-subtitle">{t('Бланк, ставки ПДВ і серії нумерації цього готелю')}</div>
           </div>
         </div>
+
+        <InvoiceBlank />
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 64 }}>

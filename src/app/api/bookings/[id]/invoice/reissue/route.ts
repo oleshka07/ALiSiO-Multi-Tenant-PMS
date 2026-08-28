@@ -1,2 +1,2 @@
-import { reissueInvoiceHandler } from '@finance';
+import { reissueInvoiceHandler } from '@invoicing';
 export const POST = reissueInvoiceHandler;

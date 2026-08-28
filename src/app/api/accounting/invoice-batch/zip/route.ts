@@ -15,11 +15,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql, type Sql } from '@core/db/async';
-import { generateIsdocXml } from '@/modules/finance/domain/isdoc';
+import { generateIsdocXml, invoiceSettings } from '@invoicing';
+import { requireOrganizationId } from '@core/auth/tenant-context';
+import type { InvoiceSettings } from '@invoicing';
 import { requireFinanceAccess } from '@core/security/route-guard';
-import { generateInvoicePdf } from '@/modules/finance/domain/invoice-pdf';
-import { convertToCzkAuto, foreignNote } from '@/modules/finance/domain/fx';
-import { showBuyerName, dueDateFor } from '@/modules/finance/domain/invoice-rules';
+import { generateInvoicePdf } from '@invoicing';
+import { convertToCzkAuto, foreignNote } from '@invoicing';
+import { showBuyerName, dueDateFor } from '@invoicing';
 import { serverError } from '@core/http/errors';
 
 // ─── Pure-JS ZIP builder (STORE method — no compression, no deps) ─────────────
@@ -177,7 +179,7 @@ function getInvoiceForPdf(sql: Sql, id: string) {
 
 // ─── ISDOC generation (reused from /api/invoices/[id]/isdoc) ─────────────────
 
-async function buildIsdocBytes(sql: Sql, row: any): Promise<Uint8Array> {
+async function buildIsdocBytes(sql: Sql, row: any, rules: InvoiceSettings): Promise<Uint8Array> {
   // Real document date + CZK conversion + issue+14 dates + 9900 buyer rule —
   // identical to /api/invoices/[id]/isdoc so single and ZIP output match.
   const documentDate = (row.check_in || row.payment_date || row.issued_at || '').slice(0, 10);
@@ -193,12 +195,12 @@ async function buildIsdocBytes(sql: Sql, row: any): Promise<Uint8Array> {
     city:    (row.custom_buyer_city    || row.invoice_company_city)    as string | undefined,
     country: (row.custom_buyer_country || row.invoice_company_country) as string | undefined,
   } : undefined;
-  if (!buyer && showBuyerName(czkAmount, false)) {
+  if (!buyer && showBuyerName(czkAmount, false, rules)) {
     const gname = `${row.guest_first_name || ''} ${row.guest_last_name || ''}`.trim();
     if (gname) buyer = { name: gname, ico: undefined, dic: undefined, street: undefined, city: undefined, country: undefined };
   }
   // Below-threshold anonymisation even when the batch stored a name.
-  if (buyer && !hasCompany && !showBuyerName(czkAmount, false)) buyer = undefined;
+  if (buyer && !hasCompany && !showBuyerName(czkAmount, false, rules)) buyer = undefined;
 
   let desc = (row.custom_description as string | null) || '';
   if (!desc) {
@@ -220,13 +222,13 @@ async function buildIsdocBytes(sql: Sql, row: any): Promise<Uint8Array> {
   const xml = await generateIsdocXml({
     invoiceNumber:  row.invoice_number,
     issueDate,
-    taxPointDate:   dueDateFor(issueDate),
+    taxPointDate:   dueDateFor(issueDate, rules),
     description:    desc,
     amount:         czkAmount,
     currency:       conv.converted ? 'CZK' : (row.currency || 'CZK'),
     buyer,
     paymentMethod:  row.payment_method || undefined,
-    paymentDueDate: dueDateFor(issueDate),
+    paymentDueDate: dueDateFor(issueDate, rules),
     documentType:   isCreditNote ? 2 : 1,
     originalDocRef,
     foreignNote:    conv.converted ? foreignNote(conv) : undefined,
@@ -236,7 +238,7 @@ async function buildIsdocBytes(sql: Sql, row: any): Promise<Uint8Array> {
 
 // ─── PDF generation (reused from /api/invoices/[id]/pdf) ─────────────────────
 
-async function buildPdfBytes(sql: Sql, row: any): Promise<Uint8Array> {
+async function buildPdfBytes(sql: Sql, row: any, rules: InvoiceSettings): Promise<Uint8Array> {
   const documentDate = ((row.check_in as string | null) || (row.payment_date as string | null) || (row.issued_at as string | null) || '').slice(0, 10);
   const conv = await convertToCzkAuto((row.amount as number) || 0, (row.currency as string) || 'CZK', documentDate);
   const czkAmount = conv.converted ? conv.amountCzk : ((row.amount as number) || 0);
@@ -251,11 +253,11 @@ async function buildPdfBytes(sql: Sql, row: any): Promise<Uint8Array> {
     country: (row.custom_buyer_country || row.invoice_company_country) as string | undefined,
   } : undefined;
   if (buyer && !companyName?.trim()) buyer = undefined; // never reached, kept for parity
-  if (!buyer && showBuyerName(czkAmount, false)) {
+  if (!buyer && showBuyerName(czkAmount, false, rules)) {
     const gname = `${row.guest_first_name || ''} ${row.guest_last_name || ''}`.trim();
     if (gname) buyer = { name: gname, ico: undefined, dic: undefined, address: undefined, city: undefined, country: undefined };
   }
-  if (buyer && !companyName?.trim() && !showBuyerName(czkAmount, false)) buyer = undefined;
+  if (buyer && !companyName?.trim() && !showBuyerName(czkAmount, false, rules)) buyer = undefined;
 
   let description = (row.custom_description as string | null) || '';
   if (!description) {
@@ -274,7 +276,7 @@ async function buildPdfBytes(sql: Sql, row: any): Promise<Uint8Array> {
   const buf = await generateInvoicePdf({
     invoiceNumber:  row.invoice_number as string,
     issueDate,
-    dueDate:        dueDateFor(issueDate),
+    dueDate:        dueDateFor(issueDate, rules),
     paymentMethod:  (row.payment_method as string | null) || 'Příkazem',
     description,
     amount:         czkAmount,
@@ -290,6 +292,10 @@ async function buildPdfBytes(sql: Sql, row: any): Promise<Uint8Array> {
 
 export const POST = requireFinanceAccess(_POST);
 async function _POST(request: NextRequest): Promise<NextResponse> {
+  // Правила бланка ЦЬОГО готеля — замість колишніх констант із чеського
+  // закону. Організація вже на зʼєднанні: маршрут під вартою.
+  const rules = await invoiceSettings(await requireOrganizationId());
+
   try {
     const body = await request.json() as {
       invoice_ids?: string[];
@@ -321,12 +327,12 @@ async function _POST(request: NextRequest): Promise<NextResponse> {
         if (format === 'isdoc') {
           const row = await getInvoiceForIsdoc(sql, id) as any;
           if (!row || !row.invoice_number) { errors.push(`${id}: not found`); continue; }
-          const data = await buildIsdocBytes(sql, row);
+          const data = await buildIsdocBytes(sql, row, rules);
           files.push({ name: `faktura-${row.invoice_number}${ext}`, data });
         } else {
           const row = await getInvoiceForPdf(sql, id) as any;
           if (!row || !row.invoice_number) { errors.push(`${id}: not found`); continue; }
-          const data = await buildPdfBytes(sql, row);
+          const data = await buildPdfBytes(sql, row, rules);
           files.push({ name: `faktura-${row.invoice_number}${ext}`, data });
         }
       } catch (err: any) {

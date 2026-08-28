@@ -1,7 +1,7 @@
 /**
  * Freezing a folio into an invoice, and reversing one.
  *
- *   node src/modules/finance/domain/invoice-snapshot.check.ts
+ *   node src/modules/invoicing/domain/invoice-snapshot.check.ts
  *
  * The fixture is invoice 22.421 again, this time end to end: four charges off a
  * folio become four printed lines plus the two-row MwSt-Übersicht, and the

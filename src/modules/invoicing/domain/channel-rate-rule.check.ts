@@ -1,7 +1,7 @@
 /**
  * Picking the rule, and the markup.
  *
- *   node src/modules/finance/domain/channel-rate-rule.check.ts
+ *   node src/modules/invoicing/domain/channel-rate-rule.check.ts
  */
 import assert from 'node:assert';
 import { ruleFor, withMarkup, type ChannelRateRule } from './channel-rate-rule.ts';

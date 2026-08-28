@@ -52,7 +52,7 @@ import { SEARCH_MIN_LENGTH, type SearchHit } from '@core/search-types';
 import { searchGuests } from '@guests';
 import { searchBookings } from '@bookings';
 import { searchUnits } from '@properties';
-import { searchInvoices } from '@finance';
+import { searchInvoices } from '@invoicing';
 import type { Permission } from '@core/auth/permissions';
 
 interface Group {
@@ -78,7 +78,9 @@ const SECTIONS: {
   { key: 'bookings', label: 'Бронювання', permission: 'nav:bookings', run: searchBookings },
   { key: 'guests',   label: 'Гості',      permission: 'nav:guests',   run: searchGuests },
   { key: 'units',    label: 'Номери',     permission: 'nav:calendar', run: searchUnits },
-  { key: 'invoices', label: 'Фактури',    permission: 'nav:documents', run: searchInvoices },
+  // `feature` — інакше пошук знаходив би фактури в готелі, який вимкнув
+  // фактурування, і вів на екран, якого в нього немає.
+  { key: 'invoices', label: 'Фактури',    permission: 'nav:documents', feature: 'invoicing', run: searchInvoices },
 ];
 
 export const GET = withActor(async (request: Request, _ctx: unknown, actor: Actor) => {

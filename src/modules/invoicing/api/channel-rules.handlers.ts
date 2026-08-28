@@ -15,17 +15,29 @@
  * would still say 7 after the next change, and the whole point of fin_tax_rates
  * is that a rate has dates.
  */
+/**
+ * Варта — у фасаді (`api/index.ts`), не тут.
+ *
+ * Раніше тут стояли `withFinanceRead` / `withFinanceWrite` з `_guard`, а той
+ * тримається на фінансовому PIN (`finance_security`). PIN писався, щоб
+ * сховати від персоналу прибуток і витрати — і для ставок ПДВ це
+ * неправильна варта двічі: по-перше, вона вимагає від рецепції PIN власника
+ * там, де та просто виписує документ; по-друге, вона лишає фактурування
+ * привʼязаним до модуля обліку, який має вимикатись окремо.
+ *
+ * Тепер тут звичайні функції, а `withModule('invoicing', …)` у фасаді
+ * питає три речі одразу: хто це, чи має право, і чи є в готеля цей модуль.
+ */
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withPermission } from '@core/auth/session';
-import { withFinanceRead, withPermission as withFinanceWrite } from './_guard';
 import { requireOrganizationId, requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 import { postStayCharges, postServiceCharges } from '../data/stay-charges.repo';
 
 const CODES = ['standard', 'reduced', 'zero'];
 const isCode = (v: unknown): v is string => typeof v === 'string' && CODES.includes(v);
 
-export const listChannelRules = withFinanceRead(async (request: Request) => {
+export const listChannelRules = async (request: Request) => {
   const organizationId = await requireOrganizationId();
   try {
     const propertyId = await requirePropertyId(new URL(request.url).searchParams.get('property_id'));
@@ -41,9 +53,9 @@ export const listChannelRules = withFinanceRead(async (request: Request) => {
   } catch (e) {
     return NextResponse.json({ error: message(e) }, { status: propertyErrorStatus(e) });
   }
-});
+};
 
-export const saveChannelRule = withFinanceWrite('manage_finance_settings', async (request: Request) => {
+export const saveChannelRule = async (request: Request) => {
   const body = await request.json().catch(() => null) as any;
 
   // Empty means "any channel" — the default rule. A hotel with one arrangement
@@ -111,9 +123,9 @@ export const saveChannelRule = withFinanceWrite('manage_finance_settings', async
   } catch (e) {
     return NextResponse.json({ error: message(e) }, { status: propertyErrorStatus(e) });
   }
-});
+};
 
-export const deleteChannelRule = withFinanceWrite('manage_finance_settings', async (
+export const deleteChannelRule = async (
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) => {
@@ -123,7 +135,7 @@ export const deleteChannelRule = withFinanceWrite('manage_finance_settings', asy
     'DELETE FROM channel_rate_rules WHERE id = ? AND organization_id = ?', [id, organizationId]);
   if (res.changes === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json({ ok: true });
-});
+};
 
 /**
  * Post a stay's charges onto a folio, split by the rules.

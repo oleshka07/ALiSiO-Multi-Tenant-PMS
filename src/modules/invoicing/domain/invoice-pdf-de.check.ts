@@ -1,7 +1,7 @@
 /**
  * The German invoice, generated and then read back.
  *
- *   node src/modules/finance/domain/invoice-pdf-de.check.ts
+ *   node src/modules/invoicing/domain/invoice-pdf-de.check.ts
  *
  * A layout check that asserts nothing about layout. It renders the PDF, parses
  * the text out of the produced file, and requires that every field § 14 UStG

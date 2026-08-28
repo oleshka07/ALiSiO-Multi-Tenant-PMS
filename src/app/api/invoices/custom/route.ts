@@ -25,11 +25,11 @@ import { getSql } from '@core/db/async';
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrgIdentity } from '@core/org-identity';
 import { requirePermission } from '@core/security/route-guard';
-import { generateInvoicePdf } from '@/modules/finance/domain/invoice-pdf';
-import { generateIsdocXml }   from '@/modules/finance/domain/isdoc';
+import { generateInvoicePdf } from '@invoicing';
+import { generateIsdocXml } from '@invoicing';
 import { sendEmail }           from '@core/mail/email';
-import { renderInvoiceHtml }   from '@/modules/finance/domain/invoice-template';
-import { allocateInvoiceNumber } from '@/modules/finance/domain/invoice-numbering';
+import { renderInvoiceHtml } from '@invoicing';
+import { allocateInvoiceNumber } from '@invoicing';
 import type { Actor } from '@core/auth/session';
 
 /**

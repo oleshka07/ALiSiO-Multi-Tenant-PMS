@@ -1,7 +1,7 @@
 /**
  * An invoice counts the money the booking was taken in.
  *
- *   node src/modules/finance/data/folio-currency.check.ts
+ *   node src/modules/invoicing/data/folio-currency.check.ts
  *
  * `issueInvoice` wrote `folio.currency ?? 'EUR'`, and `fin_folios` had no
  * currency column at all — so the left side was always undefined and EVERY

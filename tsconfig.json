@@ -36,6 +36,8 @@
       "@pricing/*": ["./src/modules/pricing/api/*"],
       "@finance": ["./src/modules/finance/api"],
       "@finance/*": ["./src/modules/finance/api/*"],
+      "@invoicing": ["./src/modules/invoicing/api"],
+      "@invoicing/*": ["./src/modules/invoicing/api/*"],
       "@channels": ["./src/modules/channels/api"],
       "@channels/*": ["./src/modules/channels/api/*"],
       "@reports": ["./src/modules/reports/api"],

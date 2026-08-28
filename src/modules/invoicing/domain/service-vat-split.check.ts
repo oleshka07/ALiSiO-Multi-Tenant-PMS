@@ -1,7 +1,7 @@
 /**
  * Поділ послуги на податкові компоненти.
  *
- *   node src/modules/finance/domain/service-vat-split.check.ts
+ *   node src/modules/invoicing/domain/service-vat-split.check.ts
  *
  * Числа — пілотні (сніданок 12+3, Lunchpaket 70/30), твердження — загальні:
  * рядки завжди сходяться в суму замовлення, битий JSON — не помилка, а

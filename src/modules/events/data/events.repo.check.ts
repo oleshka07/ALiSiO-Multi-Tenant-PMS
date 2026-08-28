@@ -18,9 +18,7 @@ import '../../../../scripts/lib/module-aliases.mjs';
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
 const events = await import('./events.repo.ts');
-const { issueInvoice } = await import('../../finance/data/folio.repo.ts');
-const { loadInvoiceDocument } = await import('../../finance/data/invoice-document.repo.ts');
-const { generateGermanInvoicePdf } = await import('../../finance/domain/invoice-pdf-de.ts');
+const { issueInvoice, loadInvoiceDocument, generateGermanInvoicePdf } = await import('@invoicing/kernel.ts');
 
 const sql = getSql();
 const ORG = 'org_evrepo';

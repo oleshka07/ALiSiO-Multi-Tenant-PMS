@@ -1,2 +1,2 @@
-import { exportTillJournal } from '@finance';
+import { exportTillJournal } from '@invoicing';
 export const GET = exportTillJournal;
