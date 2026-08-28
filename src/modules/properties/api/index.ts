@@ -55,3 +55,6 @@ export type {
   RoomStatus,
   CleaningStatus,
 } from '../domain/types';
+
+// Загальний пошук питає модуль, а не таблицю. Див. core/search-types.ts.
+export { searchUnits } from '../data/unit-search';

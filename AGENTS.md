@@ -178,6 +178,7 @@ DATABASE_URL=… node scripts/check-deployed-db.mjs
 |---|---|
 | `check-route-guards --strict` | маршрут без варти |
 | `public-tenant` | публічний маршрут, який не називає орендаря — друга половина інваріанта 4 |
+| `search` | розділ пошуку без права, провайдер без орендаря, мертва кнопка в шапці |
 | `check-boolean-flags --strict` | `0`/`1` у колонку `BOOLEAN` |
 | `check-insert-tenant --strict` | `INSERT` у scoped-таблицю без `organization_id` |
 | `check-dialect --strict` | SQL, який Postgres не зрозуміє |

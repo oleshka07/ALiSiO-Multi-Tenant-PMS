@@ -6,6 +6,8 @@ import Sidebar from '@/components/layout/Sidebar';
 import BottomNav from '@/components/layout/BottomNav';
 import MobileLayout from '@/components/mobile/MobileLayout';
 import { MobileMenuContext } from '@/ui/MobileMenuContext';
+import { GlobalSearchContext } from '@/ui/GlobalSearchContext';
+import GlobalSearch from '@/components/layout/GlobalSearch';
 import { useDevice } from '@/ui/hooks/useDevice';
 import { I18nProvider, useT } from '@core/i18n/client';
 import { DEFAULT_LANGUAGE, type Language, parseLanguage } from '@core/i18n/languages';
@@ -19,6 +21,7 @@ export default function DashboardLayout({
   const [authorized, setAuthorized] = useState(false);
   const [checking, setChecking] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   // Comes back on the same /api/auth/me the auth check already makes — one
   // request decides both whether this person may be here and what they read.
   const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE);
@@ -49,6 +52,26 @@ export default function DashboardLayout({
     }
     checkAuth();
   }, [router]);
+
+  // Ctrl+K / ⌘K — з будь-якого екрана. Слухач один, у розкладці: у `Header`
+  // він був би на кожному з 77 екранів.
+  //
+  // Поле вводу пропускається навмисно: людина, яка друкує в полі «Ім'я гостя»,
+  // натискає Ctrl+K, щоб стерти рядок (звичка з терміналу), а не щоб відкрити
+  // пошук. Але коли сам пошук уже відкритий, він і є полем — і має право.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'k' && e.key !== 'K' && e.key !== 'л' && e.key !== 'Л') return;
+      if (!e.metaKey && !e.ctrlKey) return;
+      const el = document.activeElement as HTMLElement | null;
+      const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      if (typing && !searchOpen) return;
+      e.preventDefault();
+      setSearchOpen(true);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [searchOpen]);
 
   // Prevent body scroll when mobile menu is open
   useEffect(() => {
@@ -113,10 +136,13 @@ export default function DashboardLayout({
     return (
       <I18nProvider language={language}>
         <MobileMenuContext.Provider value={() => setMobileMenuOpen(true)}>
-          {supportBanner}
-          <MobileLayout>
-            {children}
-          </MobileLayout>
+          <GlobalSearchContext.Provider value={() => setSearchOpen(true)}>
+            {supportBanner}
+            <MobileLayout>
+              {children}
+            </MobileLayout>
+            <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
+          </GlobalSearchContext.Provider>
         </MobileMenuContext.Provider>
       </I18nProvider>
     );
@@ -135,10 +161,13 @@ export default function DashboardLayout({
       />
       <main className="app-main">
         <MobileMenuContext.Provider value={() => setMobileMenuOpen(true)}>
-          {children}
+          <GlobalSearchContext.Provider value={() => setSearchOpen(true)}>
+            {children}
+          </GlobalSearchContext.Provider>
         </MobileMenuContext.Provider>
       </main>
       <BottomNav onMoreClick={() => setMobileMenuOpen(true)} />
+      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
     </I18nProvider>
   );

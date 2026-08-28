@@ -105,15 +105,23 @@ function BookingFormSheet({
 
 interface MobileBookingsProps {
   openNew?: boolean;
+  /** Початковий текст пошуку — приходить із `?q=` загального пошуку. */
+  initialSearch?: string;
 }
 
-export default function MobileBookings({ openNew }: MobileBookingsProps) {
+export default function MobileBookings({ openNew, initialSearch }: MobileBookingsProps) {
   const t = useT();
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [units, setUnits] = useState<UnitRow[]>([]);
   const [unitTypes, setUnitTypes] = useState<BFUnitTypeRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  /*
+    Загальний пошук у шапці приводить сюди з `?q=`. Без цього рядка людина
+    натискала знайдену бронь і опинялась на повному списку — тобто шукала
+    вдруге, вже руками. Значення лише ПОЧАТКОВЕ: далі поле живе своїм життям,
+    інакше воно не давало б себе очистити.
+  */
+  const [search, setSearch] = useState(initialSearch ?? '');
   const [statusFilter, setStatusFilter] = useState('');
   const [viewBooking, setViewBooking] = useState<BookingRow | null>(null);
   const [editBooking, setEditBooking] = useState<BookingRow | null>(null);

@@ -442,11 +442,17 @@ function GuestDetailSheet({
 
 // ─── Main Component ────────────────────────────────────────
 
-export default function MobileGuests({ openNew }: { openNew?: boolean }) {
+export default function MobileGuests({ openNew, initialSearch }: { openNew?: boolean; initialSearch?: string }) {
   const t = useT();
   const [guests, setGuests] = useState<GuestRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  /*
+    Загальний пошук у шапці приводить сюди з `?q=`. Без цього рядка людина
+    натискала знайдену бронь і опинялась на повному списку — тобто шукала
+    вдруге, вже руками. Значення лише ПОЧАТКОВЕ: далі поле живе своїм життям,
+    інакше воно не давало б себе очистити.
+  */
+  const [search, setSearch] = useState(initialSearch ?? '');
   const [showSearch, setShowSearch] = useState(false);
   const [selectedGuest, setSelectedGuest] = useState<GuestRow | null>(null);
   const [editingGuest, setEditingGuest] = useState<GuestRow | null>(null);

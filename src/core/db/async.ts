@@ -109,6 +109,31 @@ export interface Dialect {
    * from the column and normalise in TypeScript.
    */
   day(column: string): string;
+
+  /**
+   * `column` матчиться з шаблоном БЕЗ огляду на регістр.
+   *
+   * Пишеться як `${sql.dialect.ilike('g.last_name')}` і бере один параметр —
+   * шаблон із `%`.
+   *
+   * Потрібно, бо `LIKE` у двох двигунах означає різне. Postgres — завжди
+   * чутливий до регістру, тож «іван» не знайде «Іван». SQLite — навпаки,
+   * нечутливий, але **лише для латиниці**: те саме «іван» там теж не знайде
+   * «Іван». Тобто пошук, написаний через `LIKE`, працює неправильно на обох,
+   * і по-різному.
+   *
+   * Чесна межа: `ILIKE` на Postgres нечутливий до регістру в будь-якій
+   * абетці; SQLite лишається латиницею. Прод на Postgres, тож користувач має
+   * правильну поведінку; на машині розробника кирилиця шукається з
+   * урахуванням регістру. Виправляти це в SQLite нічим: її `lower()` теж
+   * лише ASCII, а тягнути ICU заради dev-двигуна — дорожче за проблему.
+   *
+   * `ESCAPE '\\'` — обовʼязково і в обох. У Postgres зворотний слеш є
+   * екрануванням за замовчуванням, у SQLite екранування немає ЗОВСІМ, поки
+   * його не назвати. Без цього `%` у запиті людини означає «будь-що», і
+   * пошук «50%» повертає весь готель.
+   */
+  ilike(column: string): string;
 }
 
 /**
@@ -125,6 +150,7 @@ const SQLITE_DIALECT: Dialect = {
   tables: () => "SELECT name FROM sqlite_master WHERE type = 'table'",
   plusMinutes: (column, minutes) => `datetime(${column}, (${minutes}) || ' minutes')`,
   day: (column) => `date(${column})`,
+  ilike: (column) => `${column} LIKE ? ESCAPE '\\'`,
 };
 
 export function sqliteSql(db: any = null, insideTransaction = false): Sql {

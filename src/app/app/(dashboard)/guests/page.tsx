@@ -130,7 +130,7 @@ function emptyForm() {
 /* ================================================================
    Main
    ================================================================ */
-function DesktopGuests() {
+function DesktopGuests({ initialSearch }: { initialSearch?: string }) {
   const plural = usePlural();
   const t = useT();
   // Дохід гостя — у валюті організації; «CZK» тут було валютою першого клієнта.
@@ -145,7 +145,13 @@ function DesktopGuests() {
   const [totalPages, setTotalPages] = useState(1);
 
   /* ── filters ─────────────────────────────────────── */
-  const [search, setSearch] = useState('');
+  /*
+    Загальний пошук у шапці приводить сюди з `?q=`. Без цього рядка людина
+    натискала знайдену бронь і опинялась на повному списку — тобто шукала
+    вдруге, вже руками. Значення лише ПОЧАТКОВЕ: далі поле живе своїм життям,
+    інакше воно не давало б себе очистити.
+  */
+  const [search, setSearch] = useState(initialSearch ?? '');
   const [countryFilter, setCountryFilter] = useState('');
 
   /* ── modals ──────────────────────────────────────── */
@@ -872,12 +878,13 @@ function GuestsPageContent() {
   const { isMobile } = useDevice();
   const searchParams = useSearchParams();
   const openNew = searchParams?.get('new') === '1' || searchParams?.get('create') === '1';
+  const initialSearch = searchParams?.get('q') ?? undefined;
 
   if (isMobile) {
-    return <MobileGuests openNew={openNew} />;
+    return <MobileGuests openNew={openNew} initialSearch={initialSearch} />;
   }
 
-  return <DesktopGuests />;
+  return <DesktopGuests initialSearch={initialSearch} />;
 }
 
 export default function GuestsPage() {

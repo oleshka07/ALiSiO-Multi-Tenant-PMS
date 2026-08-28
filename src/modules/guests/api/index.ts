@@ -53,3 +53,6 @@ export type { GuestWithStats, CreateGuestInput, RegisteredGuest } from '../domai
 // to organization_id. Soft-merges new fields without overwriting existing ones.
 export { findOrCreateGuest } from '../data/guest-dedup.repo';
 export type { GuestDedupArgs, GuestDedupResult } from '../data/guest-dedup.repo';
+
+// Загальний пошук питає модуль, а не таблицю. Див. core/search-types.ts.
+export { searchGuests } from '../data/guest-search';

@@ -19,3 +19,6 @@ export { registerBookingsSubscribers } from '../events/subscribers';
 
 // Аркуші дня переїхали у власний модуль `@day-sheets` (2026-08-27): це не
 // бронювання, а робочий день готелю, і вимикатись він мусить окремо.
+
+// Загальний пошук питає модуль, а не таблицю. Див. core/search-types.ts.
+export { searchBookings } from '../data/booking-search';

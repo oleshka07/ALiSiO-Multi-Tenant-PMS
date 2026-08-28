@@ -188,8 +188,9 @@ function BookingsPageContent() {
   const { isMobile } = useDevice();
   const searchParams = useSearchParams();
   const openNew = searchParams?.get('new') === '1' || searchParams?.get('create') === '1';
-  if (isMobile) return <MobileBookings openNew={openNew} />;
-  return <BookingsDesktop />;
+  const initialSearch = searchParams?.get('q') ?? undefined;
+  if (isMobile) return <MobileBookings openNew={openNew} initialSearch={initialSearch} />;
+  return <BookingsDesktop initialSearch={initialSearch} />;
 }
 
 export default function BookingsPage() {
@@ -213,7 +214,7 @@ const getSourceIconEmoji = (code: string) => {
   }
 };
 
-function BookingsDesktop() {
+function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
   const plural = usePlural();
   const t = useT();
   /* ── data ──────────────────────────────────────────── */
@@ -239,7 +240,13 @@ function BookingsDesktop() {
   }, [bookingSources, widgetSources]);
 
   /* ── filters ──────────────────────────────────────── */
-  const [search, setSearch] = useState('');
+  /*
+    Загальний пошук у шапці приводить сюди з `?q=`. Без цього рядка людина
+    натискала знайдену бронь і опинялась на повному списку — тобто шукала
+    вдруге, вже руками. Значення лише ПОЧАТКОВЕ: далі поле живе своїм життям,
+    інакше воно не давало б себе очистити.
+  */
+  const [search, setSearch] = useState(initialSearch ?? '');
   const [statusFilter, setStatusFilter] = useState('active'); // 'active' = exclude cancelled
   const [categoryFilter, setCategoryFilter] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('');

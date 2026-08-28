@@ -1,7 +1,9 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
-import { Bell, Search, User, Menu, ArrowLeft } from 'lucide-react';
+import { Bell, Search, Menu, ArrowLeft } from 'lucide-react';
+import { useGlobalSearch } from '@/ui/GlobalSearchContext';
+import AccountMenu from './AccountMenu';
 
 interface HeaderProps {
   title: string;
@@ -11,6 +13,7 @@ interface HeaderProps {
 
 export default function Header({ title, onMenuClick, onBack }: HeaderProps) {
   const t = useT();
+  const openSearch = useGlobalSearch();
   return (
     <header className="header">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
@@ -42,15 +45,30 @@ export default function Header({ title, onMenuClick, onBack }: HeaderProps) {
       </div>
 
       <div className="header-actions">
-        <button className="btn btn-ghost btn-icon" aria-label="Search">
+        <button
+          className="btn btn-ghost btn-icon"
+          aria-label={t('Пошук')}
+          title={`${t('Пошук')} · Ctrl+K`}
+          onClick={openSearch}
+        >
           <Search size={18} />
         </button>
-        <button className="btn btn-ghost btn-icon" aria-label="Notifications">
+        {/*
+          Дзвіночок поки без змісту — і саме тому `disabled`.
+          Кнопка, яка виглядає робочою і не робить нічого, читається як
+          поломка: людина натискає її двічі, потім іде питати. Вимкнена
+          каже правду — «сюди щось буде», — і не бреше щодня на 77 екранах.
+        */}
+        <button
+          className="btn btn-ghost btn-icon"
+          aria-label={t('Сповіщення')}
+          title={t('Сповіщення — скоро')}
+          disabled
+          style={{ opacity: .45, cursor: 'default' }}
+        >
           <Bell size={18} />
         </button>
-        <button className="btn btn-ghost btn-icon" aria-label="Profile">
-          <User size={18} />
-        </button>
+        <AccountMenu />
       </div>
     </header>
   );

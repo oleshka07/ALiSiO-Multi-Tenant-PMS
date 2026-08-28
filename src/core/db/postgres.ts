@@ -184,6 +184,7 @@ const POSTGRES_DIALECT: Dialect = {
   // The session time zone decides which day 23:30 belongs to. For a day close
   // that matters and is a known limit — see day-sheets.repo.ts.
   day: (column) => `(${column})::date`,
+  ilike: (column) => `${column} ILIKE ? ESCAPE '\\'`,
 };
 
 /**

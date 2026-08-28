@@ -324,3 +324,6 @@ export type { ChannelRateRule } from '../domain/channel-rate-rule';
 // заходить фасадом, а не в `domain/cnb-rates` напряму.
 export { syncCnbRates, fetchCnbFixing, DEFAULT_CNB_CURRENCIES } from '../domain/cnb-rates';
 export type { CnbFixing, CnbSyncResult } from '../domain/cnb-rates';
+
+// Загальний пошук питає модуль, а не таблицю. Див. core/search-types.ts.
+export { searchInvoices } from '../data/invoice-search';
