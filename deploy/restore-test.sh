@@ -57,7 +57,7 @@ fi
 ENV_FILE="deploy/env.${ENV_NAME}"
 PG_SUPERUSER="alisio_admin"
 if [ -f "$ENV_FILE" ]; then
-  V="$(grep -E '^PG_SUPERUSER=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r')"
+  V="$(grep -E '^PG_SUPERUSER=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true)"
   [ -n "$V" ] && PG_SUPERUSER="$V"
 fi
 
@@ -121,7 +121,7 @@ DATA_AGE_H="$(Q "SELECT COALESCE(floor(extract(epoch from now()-max(created_at))
 # різні бази — 104 у схемі, 105 на розгорнутій. Тому очікуване рахується
 # ТУТ-таки зі schema.sql, а не тримається в голові: додалась таблиця —
 # змінились обидва числа разом, і ця перевірка не почне брехати.
-EXPECT_TABLES="$(( $(grep -c '^CREATE TABLE "' "$(dirname "$0")/../db/postgres/schema.sql") + 1 ))"
+EXPECT_TABLES="$(( $(grep -c '^CREATE TABLE "' "$(dirname "$0")/../db/postgres/schema.sql" || true) + 1 ))"
 
 echo "    таблиць: $TABLES (очікувано $EXPECT_TABLES = schema.sql + schema_migrations)   RLS-політик: $POLICIES   бронювань: $ROWS"
 [ "$TABLES" = "$EXPECT_TABLES" ] 2>/dev/null || note_fail \
@@ -139,7 +139,7 @@ echo "    таблиць: $TABLES (очікувано $EXPECT_TABLES = schema.sq
 LIVE_AGE_H=""
 LIVE_PG_CONTAINER="alisio-${ENV_NAME}-postgres"
 if [ "${RESTORE_TEST_LOCAL_PG:-}" != "1" ] && docker inspect "$LIVE_PG_CONTAINER" >/dev/null 2>&1; then
-  LIVE_DB="$(grep -E '^PG_DATABASE=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r')"
+  LIVE_DB="$(grep -E '^PG_DATABASE=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' || true)"
   LIVE_AGE_H="$(docker exec "$LIVE_PG_CONTAINER" psql -U "$PG_SUPERUSER" -d "${LIVE_DB:-alisio}" -tAc \
     "SELECT COALESCE(floor(extract(epoch from now()-max(created_at))/3600)::int, -1) FROM reservations" \
     2>/dev/null | tr -d ' ')" || LIVE_AGE_H=""

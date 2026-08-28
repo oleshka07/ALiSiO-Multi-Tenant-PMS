@@ -28,7 +28,8 @@ cd "$(dirname "$0")/.."
 ENV_FILE="deploy/env.${ENV_NAME}"
 [ -f "$ENV_FILE" ] || { echo "missing $ENV_FILE — запускати на сервері" >&2; exit 1; }
 
-PORT="$(grep -E '^APP_PORT=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '\r')"
+PORT="$(grep -E '^APP_PORT=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '\r' || true)"
+[ -n "$PORT" ] || { echo "в $ENV_FILE немає APP_PORT — не знаю, де питати /api/health" >&2; exit 1; }
 PGC="alisio-${ENV_NAME}-postgres"
 URL="http://127.0.0.1:${PORT}/api/health"
 

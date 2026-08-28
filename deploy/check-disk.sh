@@ -43,8 +43,8 @@ echo "!! $MSG" >&2
 # one, beta's is the fallback so the alert survives a half-configured host.
 for ENV_FILE in deploy/env.prod deploy/env.beta; do
   [ -f "$ENV_FILE" ] || continue
-  TOKEN="$(grep -E '^TG_ALERT_BOT_TOKEN=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r')"
-  CHAT="$(grep -E '^TG_ALERT_CHAT_ID=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r')"
+  TOKEN="$(grep -E '^TG_ALERT_BOT_TOKEN=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+  CHAT="$(grep -E '^TG_ALERT_CHAT_ID=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true)"
   if [ -n "$TOKEN" ] && [ -n "$CHAT" ]; then
     curl -fsS -m 10 "https://api.telegram.org/bot${TOKEN}/sendMessage" \
       --data-urlencode "chat_id=${CHAT}" \
