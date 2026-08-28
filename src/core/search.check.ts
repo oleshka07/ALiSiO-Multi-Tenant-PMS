@@ -112,6 +112,61 @@ const missing = hrefs.filter((h) => !fs.existsSync(path.join('src/app/app/(dashb
 assert.deepStrictEqual(missing, [], `у каталозі є екрани, яких немає:\n    ${missing.join('\n    ')}`);
 console.log(`  ok  ${hrefs.length} екранів каталогу справді існують`);
 
+// ── 3b. Вимкнений модуль не відкривається ────────────────────────────────
+//
+// Той самий каталог відповідає на третє питання: якому модулю належить ця
+// адреса. За ним `ModuleGate` закриває екран вимкненого модуля.
+//
+// Раніше на це питання не відповідав ніхто: меню ховало пункт, `withModule`
+// відмовляв на API — а сторінка відкривалась. Готель, який вимкнув «Задачі
+// персоналу», заходив на `/app/tasks` із закладки й бачив порожній розділ
+// замість «вимкнено».
+const { destinationForPath, DESTINATIONS: DESTS } = await import('./navigation.ts');
+
+// Найдовший префікс, а не перший збіг. Обидва рядки нижче починаються з
+// `/app/finance`; вкладений екран без власного рядка успадковує ключ секції,
+// а екран із власним рядком відповідає за себе сам.
+assert.strictEqual(destinationForPath('/app/finance/reports')?.feature, 'accounting',
+  'вкладений екран без свого рядка має успадкувати ключ секції');
+assert.strictEqual(destinationForPath('/app/finance/operations')?.href, '/app/finance/operations',
+  'збіг не за найдовшим префіксом — екран зі своїм рядком дістав чужий');
+assert.strictEqual(destinationForPath('/app/tasks/whatever')?.feature, 'tasks',
+  'підсторінка модуля лишилась без ключа — вимкнений модуль відкриється');
+
+// Найдовший береться серед УСІХ рядків, а не лише тих, що мають ключ:
+// інакше `/app/settings/units` успадкував би ключ `/app/settings`, якби той
+// колись його дістав.
+assert.strictEqual(destinationForPath('/app/settings/invoicing')?.feature, 'invoicing',
+  'рядок із ключем програв коротшому без ключа');
+assert.strictEqual(destinationForPath('/app/settings/units')?.href, '/app/settings/units',
+  'рядок без ключа програв коротшому — заслінка судить не за тим екраном');
+
+// Екран, який вимикає модулі, сам не має ключа: інакше вимкнути щось було б
+// можна, а повернути — ні.
+assert.strictEqual(destinationForPath('/app/settings/features')?.feature, undefined,
+  'екран модулів має ключ — вимкнувши модуль, готель втратив би шлях назад');
+
+// Адреса поза каталогом не судиться взагалі — заслінка мовчить.
+assert.strictEqual(destinationForPath('/app/nope'), undefined,
+  'невідома адреса дістала збіг — заслінка закриє екран, якого не знає');
+
+// Заслінка справді стоїть в обох гілках оболонки. Обгорнути лише десктоп —
+// це вимкнений модуль, який відкривається з телефона.
+const shell = fs.readFileSync('src/app/app/(dashboard)/layout.tsx', 'utf8');
+assert.strictEqual((shell.match(/<ModuleGate>\{children\}<\/ModuleGate>/g) ?? []).length, 2,
+  'ModuleGate не в обох гілках layout (мобільна + десктопна) — модуль вимкнено лише на одному пристрої');
+
+// І кожен розділ дашборда описаний каталогом. Розділ, якого в каталозі
+// немає, не знайдеться пошуком, не зʼявиться в меню акаунта — і заслінка про
+// нього не знає, тобто його не можна вимкнути.
+const dashboardSections = fs.readdirSync('src/app/app/(dashboard)', { withFileTypes: true })
+  .filter((e) => e.isDirectory() && !e.name.startsWith('_') && !e.name.startsWith('('))
+  .map((e) => `/app/${e.name}`);
+const uncatalogued = dashboardSections.filter((s) => !DESTS.some((d) => d.href === s));
+assert.deepStrictEqual(uncatalogued, [],
+  `розділи дашборда поза каталогом — їх не знайти пошуком і не вимкнути:\n    ${uncatalogued.join('\n    ')}`);
+console.log(`  ok  заслінка модулів судить за каталогом; ${dashboardSections.length} розділів дашборда описані`);
+
 // ── 4. Мертвих кнопок у шапці не лишилось ────────────────────────────────
 //
 // Кнопка без обробника і без `disabled` стояла на всіх 77 екранах: вона

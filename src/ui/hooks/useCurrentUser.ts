@@ -32,6 +32,36 @@ interface UseCurrentUserReturn {
   refresh: () => Promise<void>;
 }
 
+/**
+ * Подія «те, що каже /api/auth/me, змінилося».
+ *
+ * ── Навіщо ──────────────────────────────────────────────────────────────
+ *
+ * `useCurrentUser` — звичайний хук, не контекст: кожен із двох десятків
+ * компонентів (бічне меню, пошук Ctrl+K, меню акаунта, заслінка модулів,
+ * форми) тримає СВОЮ копію `features`, узяту при монтуванні. Тому екран,
+ * який змінив ключ модуля, оновлював лише себе: оператор вимикав «Задачі
+ * персоналу», бачив перемикач у положенні «вимкнено» — і далі бачив
+ * «Задачі» в меню, і розділ відкривався. У базі все було правильно з
+ * першої секунди; неправду казала оболонка, яка не перепитала.
+ *
+ * Хто змінив стан облікового запису або організації — каже про це вголос,
+ * і всі копії перепитують джерело. Спільного контексту на два десятки
+ * споживачів це не заводить: кожен лишається самостійним, просто знає, що
+ * його дані могли застаріти.
+ *
+ * Не для звичайних даних: подія перепитує саме `/api/auth/me` (особа,
+ * права, ключі модулів, валюта). Список броней вона не оновить.
+ */
+const CURRENT_USER_CHANGED = 'alisio:current-user-changed';
+
+/** Сказати всім копіям `useCurrentUser`, що час перепитати `/api/auth/me`. */
+export function notifyCurrentUserChanged(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(CURRENT_USER_CHANGED));
+  }
+}
+
 export function useCurrentUser(): UseCurrentUserReturn {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
@@ -64,6 +94,8 @@ export function useCurrentUser(): UseCurrentUserReturn {
 
   useEffect(() => {
     fetchUser();
+    window.addEventListener(CURRENT_USER_CHANGED, fetchUser);
+    return () => window.removeEventListener(CURRENT_USER_CHANGED, fetchUser);
   }, [fetchUser]);
 
   const logout = useCallback(async () => {

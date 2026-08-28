@@ -101,6 +101,36 @@ export function visibleDestinations(
   });
 }
 
+/**
+ * Якому екрану каталогу належить ця адреса.
+ *
+ * ── Навіщо ──────────────────────────────────────────────────────────────
+ *
+ * Ключ модуля перевіряли дві речі: меню (ховало пункт) і маршрути API
+ * (`withModule` відмовляв 403). Самі СТОРІНКИ не перевіряв ніхто, тож готель,
+ * який вимкнув «Задачі персоналу», відкривав `/app/tasks` із закладки, з
+ * історії або з адресного рядка й бачив нормальний екран розділу. Даних на
+ * ньому не було — API чесно відмовляв, — але людині це виглядало як «розділ
+ * є, просто порожній». Заслінка `ModuleGate` питає звідси.
+ *
+ * ── Найдовший префікс ───────────────────────────────────────────────────
+ *
+ * `/app/finance/operations` має свій рядок, `/app/finance/reports` — ні, але
+ * належить тому самому ключу `accounting`; точний збіг ловив би лише перший.
+ * Найдовший береться серед УСІХ рядків, а не лише серед тих, що мають ключ:
+ * `/app/settings` ключа не має, `/app/settings/invoicing` має `invoicing`, і
+ * навпаки теж буває. Найточніший опис екрана — той, що каже про нього
+ * найбільше; інакше вкладений екран без ключа успадкував би ключ батька.
+ */
+export function destinationForPath(pathname: string): Destination | undefined {
+  let best: Destination | undefined;
+  for (const d of DESTINATIONS) {
+    if (pathname !== d.href && !pathname.startsWith(`${d.href}/`)) continue;
+    if (!best || d.href.length > best.href.length) best = d;
+  }
+  return best;
+}
+
 /** Чи згадує цей екран те, що шукають. Назва, розділ або ключове слово. */
 export function destinationMatches(d: Destination, needle: string): boolean {
   const n = needle.toLowerCase();

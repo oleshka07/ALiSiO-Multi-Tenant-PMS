@@ -7,6 +7,7 @@ import { ArrowLeft, Check, Loader2, ToggleLeft, ToggleRight } from 'lucide-react
 import Header from '@/components/layout/Header';
 import PaymentGatewayNotice from '@/components/payments/PaymentGatewayNotice';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { notifyCurrentUserChanged } from '@/ui/hooks/useCurrentUser';
 
 /**
  * Which integrations this organization has, and whose account each one uses.
@@ -106,6 +107,11 @@ export default function FeaturesSettingsPage() {
         setFeatures((await res.json()).features);
         // Switching a feature on reveals its key fields; off hides them.
         await loadCredentials();
+        // Цей екран — не єдиний, хто живе за ключами модулів: за ними ховається
+        // пункт меню, закривається розділ, зникає рядок у пошуку Ctrl+K.
+        // `setFeatures` вище оновив лише цю сторінку — решта копій
+        // `useCurrentUser` досі тримають те, що прочитали при монтуванні.
+        notifyCurrentUserChanged();
       }
     } finally {
       setBusy('');

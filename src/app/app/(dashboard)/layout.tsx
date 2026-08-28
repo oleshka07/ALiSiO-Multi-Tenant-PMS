@@ -8,6 +8,7 @@ import MobileLayout from '@/components/mobile/MobileLayout';
 import { MobileMenuContext } from '@/ui/MobileMenuContext';
 import { GlobalSearchContext } from '@/ui/GlobalSearchContext';
 import GlobalSearch from '@/components/layout/GlobalSearch';
+import ModuleGate from '@/components/layout/ModuleGate';
 import { useDevice } from '@/ui/hooks/useDevice';
 import { I18nProvider, useT } from '@core/i18n/client';
 import { DEFAULT_LANGUAGE, type Language, parseLanguage } from '@core/i18n/languages';
@@ -139,7 +140,7 @@ export default function DashboardLayout({
           <GlobalSearchContext.Provider value={() => setSearchOpen(true)}>
             {supportBanner}
             <MobileLayout>
-              {children}
+              <ModuleGate>{children}</ModuleGate>
             </MobileLayout>
             <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
           </GlobalSearchContext.Provider>
@@ -162,7 +163,7 @@ export default function DashboardLayout({
       <main className="app-main">
         <MobileMenuContext.Provider value={() => setMobileMenuOpen(true)}>
           <GlobalSearchContext.Provider value={() => setSearchOpen(true)}>
-            {children}
+            <ModuleGate>{children}</ModuleGate>
           </GlobalSearchContext.Provider>
         </MobileMenuContext.Provider>
       </main>

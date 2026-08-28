@@ -55,7 +55,16 @@ const GUARDS = new RegExp([
   // обгортка, яка тільки читає `organization_features`, вартою не є.
   '\\bwith(Actor|Permission|AnyPermission|Owner|OwnedSite|FinanceRead|FinanceWrite|Site|Module)\\b',
   '\\brequire(FinanceAccess|Permission|FinanceUser)\\b', '\\basFinanceOwner\\b',
-  '\\bcurrentActor\\b', '\\brunWithOrganization\\b',
+  // `runWithOrganization` — а НЕ `currentActor`. Той стояв тут поруч і був
+  // єдиною діркою в цьому словнику: він встановлює особу й не встановлює
+  // орендаря, тобто рівно те, від чого застерігає інваріант 4. Маршрут із
+  // самим `currentActor` тепер класифікується як `hand` — див. HAND_ROLLED.
+  //
+  // Це коштувало `/api/auth/me`: він читав `organization_features` без
+  // орендаря, політика не бачила рядків, `hasFeature` брав дефолт — і
+  // вимкнені готелем модулі поверталися увімкненими. Гейт при цьому казав
+  // «усі маршрути вкриті», бо бачив у тілі слово `currentActor`.
+  '\\brunWithOrganization\\b',
 ].join('|'));
 
 /**
@@ -73,8 +82,14 @@ const GUARDS = new RegExp([
  * authenticated, is authenticated, and shows an empty screen.
  *
  * Reported apart from the open ones: not a hole, but the same broken read.
+ *
+ * `currentActor` живе тут із тієї самої причини, з якої тут `getSessionUser`,
+ * і різниця між ними лише в тому, що перший виглядав пристойніше. Обидва
+ * відповідають на питання «хто», жоден — на питання «чий»; орендаря кладе на
+ * зʼєднання тільки `runWithOrganization`. Хендлер, у тілі якого є обидва,
+ * рахується вартою: 'guard' перевіряється раніше за 'hand'.
  */
-const HAND_ROLLED = /\bgetSessionUser\b|\bresolveFinanceOwner\b/;
+const HAND_ROLLED = /\bgetSessionUser\b|\bresolveFinanceOwner\b|\bcurrentActor\b/;
 
 /**
  * A shared secret instead of a session.
@@ -127,8 +142,14 @@ const SHARED_SECRET = /\b(CRON_SECRET|INVESTOR_[A-Z_]*TOKEN|cronAuthFailure|secr
 // gate reported "every route is covered" — a neighbouring tenant could rename
 // a sales channel, zero its commission or delete it. A prefix here must be a
 // whole path segment, so the next character has to be a slash.
+// `/api/auth/` більше не звільняється цілком. Звільнення отримали `login` і
+// `logout` — у них сесії немає за визначенням, у цьому й суть. `me` сидів під
+// тим самим префіксом і тому не перевірявся ЖОДНОГО разу, хоча він рівно
+// протилежний: без сесії відповідає 401, а з сесією читає дані готеля.
+// Сусідство з логіном не робить маршрут публічним.
 const PUBLIC = new RegExp([
-  '/api/(widget|booking|guest|public|webhooks?|auth|health)(?=/)',
+  '/api/auth/(login|logout)\\b',
+  '/api/(widget|booking|guest|public|webhooks?|health)(?=/)',
   '/api/cron/', '/api/[^/]+/cron\\b', '/api/[^/]+/[^/]+/cron\\b', '-cron/',
   '/api/payments/webhook',
   '/api/platform/',
@@ -277,9 +298,14 @@ if (hand.length) {
   запиті.\n`);
 }
 
-// --strict gates on the open ones only, and they are at zero — so the gate
-// holds the line rather than arriving already red. The hand-rolled ones are
-// reported every run and deliberately not gated: they are a real problem but a
-// different one, and failing the build on 20 known items is how a check gets
-// routed around instead of fixed.
-if (process.argv.includes('--strict') && open.length) process.exit(1);
+// --strict валить збірку на обох списках, і обидва зараз на нулі — гейт
+// тримає лінію, а не приїжджає вже червоним.
+//
+// Раніше `hand` навмисно не гейтився: тих маршрутів було два десятки, і
+// «падати на двадцяти відомих пунктах — це як перевірку обходять, а не
+// виправляють». Причина зникла разом зі списком: останній був
+// `/api/auth/me`, і коштував він рівно того, від чого застерігає інваріант
+// 4 — вимкнені готелем модулі поверталися увімкненими, бо політика без
+// орендаря не бачила рядків, а `hasFeature` читав «немає рядка» як «бери
+// дефолт». Нуль, який ніхто не тримає, — це нуль до першого коміта.
+if (process.argv.includes('--strict') && (open.length || hand.length)) process.exit(1);
