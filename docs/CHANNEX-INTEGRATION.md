@@ -1,0 +1,733 @@
+# Інтеграція ALiSiO ↔ Channex
+
+**Чернетка 0.1 · 29 серпня 2026 · гілка `claude/channex-integration-66kv65`**
+
+Це технічне завдання на інтеграцію ALiSiO з менеджером каналів
+[Channex.io](https://channex.io): синхронізація наявності, цін і обмежень,
+приймання бронювань з OTA і листування з гостями через ті самі канали.
+
+---
+
+## 0. Статус документа — прочитати перше
+
+**Цей документ ще не готовий до виконання.** Він написаний до того, як хтось
+прочитав документацію Channex у першоджерелі.
+
+| Позначка | Значення |
+|---|---|
+| ✅ | перевірено в коді ALiSiO, з посиланням на файл і рядок |
+| ⚠️ | взято з пошукової видачі по `docs.channex.io`, **не з самої сторінки** |
+| ❓ | відкрите питання, відповідь потрібна до початку робіт |
+
+Причина: із середовища розробки немає мережевого доступу до `docs.channex.io`,
+`channex.io` і `documenter.getpostman.com` — егрес-проксі відповідає
+`EGRESS_BLOCKED`. Домени вже додано до дозволених у середовищі `DefaultOleg`,
+але політика діє лише на **нові** сесії.
+
+**Перше завдання виконавця:** відкрити нову сесію, прочитати першоджерела зі
+списку в §12 і зняти всі ⚠️. Особливо — **14 сертифікаційних тестів**: вони
+і є справжнім ТЗ, а не цей файл.
+
+Окремо: цей документ замінює зовнішню чернетку «ТЗ: інтеграція ALiSiO ↔
+Channex, версія 1.0». Та чернетка описувала іншу систему — зокрема
+центральний для її алгоритму об'єкт `ari_day` в ALiSiO не існує. Перелік
+розбіжностей — у §11.
+
+---
+
+## 1. Що будуємо і навіщо
+
+### 1.1 Ділова мета
+
+1. **Готель Йорг** підключається до кількох OTA одночасно (Booking.com,
+   Airbnb і далі за списком), і його наявність, ціни та обмеження їдуть у
+   канали автоматично.
+2. Слідом ідуть **ще три готелі** — без переписування коду, лише
+   налаштуванням.
+3. Далі — **самостійне підключення**: готель заводить свої канали сам, без
+   участі розробника й оператора.
+4. **Листування з гостями** з OTA приходить у ALiSiO, і відповідь із ALiSiO
+   доходить назад гостю.
+
+Пункти 3 і 4 — не «колись потім». Вони визначають архітектуру з першого дня:
+самообслуговування означає, що майстер підключення й автомапінг обов'язкові,
+а не опційні; листування означає, що модель даних одразу передбачає нитки
+розмов, а не тільки бронювання.
+
+### 1.2 Межа відповідальності
+
+Це найважливіше речення документа:
+
+> **Channex нормалізує спілкування з OTA і доставляє наші оновлення туди й
+> назад. Він не є нашою базою бронювань і не відповідає на питання «чи
+> вільно».**
+
+Свою сітку наявності робимо ми, і вона лишається джерелом істини. Channex
+відпадає — готель продовжує працювати, просто канали завмирають. Якщо ж
+джерелом істини стане Channex, його недоступність зупинить готель.
+
+| Робить Channex | Робимо ми |
+|---|---|
+| Говорить протоколом кожної OTA | Знає, скільки номерів вільно і скільки коштує ніч |
+| Нормалізує бронювання в єдиний формат | Вирішує, що з бронюванням зробити |
+| Доставляє ARI в канали | Вирішує, що саме відправити і коли |
+| Приймає й віддає повідомлення гостей | Зберігає нитку розмови й показує її оператору |
+| Тримає мапінг на своєму боці | Тримає дзеркало мапінгу і вміє показати розбіжність |
+
+---
+
+## 2. Що вже є в ALiSiO ✅
+
+Перевірено в коді. Виконавцю **не треба** будувати це заново.
+
+| Що | Де | Як використати |
+|---|---|---|
+| Контекст орендаря на з'єднанні | `src/core/auth/tenant-context.ts:26` — `runWithOrganization()` | Уся робота з БД усередині нього |
+| Разовий доступ за токеном із посилання | `src/core/auth/tenant-context.ts:61` — `runWithPublicToken()` | Зразок для резолву орендаря на вебхуку; **новий `app.*_token` не заводити** (інваріант 14) |
+| Транзакції | `sql.tx(async (t) => …)` | Застосування ревізії + запис у чергу одним комітом |
+| Планові роботи | `/api/cron/*` + `deploy/run-cron.sh` (читає **тіло** відповіді, не лише код) | Батчер ARI і опитування стрічки |
+| Секрети інтеграцій на орендаря | `channel_credentials` (`src/lib/db.ts:2374`) — `organization_id`, `channel`, `environment`, `UNIQUE(organization_id, channel, environment)` | Ключ Channex лягає сюди **без міграції** |
+| Ціна ночі | `priceNights()` — `src/modules/pricing/data/nightly-price.ts:66`, повертає `missing: string[]` | Єдине джерело цін (інваріант 16) |
+| Тарифи з похідними | `site_rate_plans` (`src/lib/db.ts:2748`) — `pricing_mode: independent\|dependent`, `derived_from_plan_id`, `pricing_modifier_percent/_type` | Майже дослівний відповідник derived rate plans Channex |
+| Розрахунок вільних номерів | `src/modules/widget/api/widget-availability.handlers.ts` — join `units × reservations × availability_blocks` | **Треба витягти** — див. §3.1 |
+| Пошта | `src/core/mail/email.ts` | Сповіщення оператора про незмаплені броні |
+| Реєстрація публічних маршрутів | `src/proxy.ts:5` — `PUBLIC_PREFIXES` | Вебхук реєструється тут із причиною |
+
+### 2.1 Чого немає — і це головна робота
+
+- **Об'єкта «наявність на дату»** не існує. Є розрахунок усередині віджета.
+- **Тарифів на рівні об'єкта** немає. `site_rate_plans` належить сайту
+  прямих продажів (`site_id → booking_sites → property_id`), не property.
+- **Листування** немає взагалі — жодної таблиці ниток чи повідомлень.
+- **Черги вихідних змін** немає.
+
+### 2.2 Прецедент, який треба знати ✅
+
+`src/lib/db.ts:2364-2368`: тут уже був Connectivity API Booking.com — черга
+ARI (`ari_sync_queue`, `ari_sync_log`), мапінг кімнат (`channel_room_mapping`),
+з'єднання (`channel_connections`), OAuth, ~3500 рядків. **Він жодного разу
+не був підключений до живого готелю.** Таблиці завжди лишалися порожніми.
+Видалено міграцією 0032.
+
+Висновок не «код був поганий», а: **інтеграція без готелю, який на неї
+чекає, помирає незалежно від якості**. Тому §9 починається з Йорга, а не з
+інфраструктури.
+
+Практичний наслідок: імена `ari_sync_queue`, `ari_sync_log`,
+`channel_connections`, `channel_room_mapping` **не перевикористовувати** —
+міграція 0032 їх дропає, і збіг імен заплутає наступного читача.
+
+---
+
+## 3. Архітектурні рішення
+
+### 3.1 Наявність стає самостійним об'єктом — рішення №1
+
+Перш ніж щось відправляти, треба вміти відповісти: **на дату D по типу
+номера T вільно N**. Зараз ця відповідь існує тільки всередині обробника
+віджета, у вигляді SQL із join-ами.
+
+Виносимо в `@modules/inventory` (або в `properties`) одну функцію:
+
+```ts
+availabilityByDay(propertyId, from, to): Promise<Map<UnitTypeId, Map<DateStr, number>>>
+```
+
+Її читають **обидва** споживачі — віджет і батчер ARI. Два розрахунки
+наявності — це два різні числа в один і той самий день, і готель дізнається
+про це від гостя, який приїхав у зайнятий номер.
+
+**Це і є перша фаза.** Не «підняти воркер».
+
+### 3.2 Порт із доменними іменами — рішення №2
+
+Вендор не має просочуватися в домен. Але порт, названий словами Channex,
+протече при першій же заміні.
+
+```ts
+// src/modules/channels/port.ts — домен імпортує ТІЛЬКИ це
+export interface ChannelManagerPort {
+  /** Відправити пакет змін наявності/цін/обмежень. */
+  publishAvailability(propertyId: PropertyId, changes: DayChange[]): Promise<PublishRef[]>
+
+  /** Забрати нові й змінені бронювання, яких ми ще не приймали. */
+  fetchPendingBookings(propertyId: PropertyId): Promise<InboundBooking[]>
+
+  /** Підтвердити, що бронювання прийняте і збережене. */
+  confirmBookingReceived(ref: InboundRef): Promise<void>
+
+  /** Забрати нові повідомлення гостей. */
+  fetchPendingMessages(propertyId: PropertyId): Promise<InboundMessage[]>
+
+  /** Надіслати відповідь гостю. */
+  sendMessage(threadRef: ThreadRef, body: string): Promise<void>
+
+  /** Створити або оновити об'єкт, типи номерів, тарифи; повернути мапінг. */
+  syncCatalog(propertyId: PropertyId): Promise<CatalogMapping>
+}
+```
+
+Слово `channex`, заголовок `user-api-key`, поняття «ревізія», «ack», «ARI»
+живуть **тільки** в `src/modules/channels/channex/`. Тримає гейт
+`check-vendor-isolation.mjs`.
+
+**Чесна межа цієї абстракції.** Порт рятує від переписування домену —
+бронювань, цін, наявності. Він **не** рятує від переписування мапінгу й
+майстра підключення: у кожного менеджера каналів своя модель тарифів. І
+сертифікацію проходять у кожного окремо. Тобто купуємо не «дешеву заміну
+вендора», а «заміну вендора без ризику для ядра». Це варте пів дня роботи.
+
+### 3.3 Вебхук на орендаря, без винятків для RLS — рішення №3
+
+Зовнішня чернетка пропонувала глобальний вебхук і «сервісну роль, яка читає
+таблицю мапінгу в обхід RLS». Це прямо суперечить інваріантам 11 і 14 і
+створює єдиний шлях у системі, де з'єднання відкривається без орендаря.
+
+Робимо інакше: **кожен об'єкт отримує власний URL вебхука з власним
+секретом**:
+
+```
+POST /api/webhooks/channex/<webhook_token>
+```
+
+`webhook_token` генеруємо ми, зберігаємо в `cm_connections`, і реєструємо в
+Channex при підключенні об'єкта (Channex підтримує вебхуки на рівні
+property з власними `headers` і `request_params` ⚠️ — підтвердити).
+
+Тоді:
+
+- орендар відомий **до** першого запиту в базу — інваріант 8 виконано;
+- жодного з'єднання без орендаря — інваріант 11 виконано;
+- винятків у політиках RLS не з'являється взагалі;
+- токен не знайдено → **404, не 403** (інваріант 5) і не «пропустити»
+  (інваріант 13).
+
+Обробник вебхука робить рівно три речі: звіряє токен → пише сирий рядок у
+`cm_events` → віддає `200`. Ніяких запитів до Channex із обробника.
+
+### 3.4 Крон замість другого процесу — рішення №4
+
+Вимога сертифікації — «дельти, а не повний синк за таймером» ⚠️ — це про
+те, **що** відправляється, а не **чим**. Батчер, який раз на хвилину шле
+вміст черги, її задовольняє: він шле зміни, а не стан.
+
+Другий процес у compose — це новий клас відмов: хто його рестартує, чи знає
+про нього `deploy/check-oom.sh`, який у нього `mem_limit`. У нас уже є
+`deploy/run-cron.sh`, навчений після INC-009 дивитися в тіло відповіді.
+
+```
+/api/cron/channels-publish    — раз на хвилину: черга → Channex
+/api/cron/channels-pull       — раз на хвилину: стрічка бронювань і повідомлень
+/api/cron/channels-full-sync  — раз на добу вночі, по одному об'єкту
+```
+
+Воркер знадобиться, коли хвилина стане завеликою затримкою. Це буде видно
+з даних; закладати наперед не треба.
+
+### 3.5 Тарифи: рішення відкладене ❓
+
+Channex будує ціни й обмеження на **тарифних планах**, з `sell_mode:
+per_room | per_person` і масивом occupancy options з похідними
+модифікаторами ⚠️. Наш інваріант 15 («заселеність міняє ціну, ніколи не
+категорію») лягає на `per_person` майже дослівно, а `site_rate_plans` уже
+має `derived_from_plan_id` і `pricing_modifier_percent`.
+
+Питання, на яке потрібна відповідь власника (§10, питання 1): канал OTA —
+це ще один «сайт продажів» (тоді тарифи беремо з `site_rate_plans` як є),
+чи тарифи піднімаються на рівень property (тоді це міграція і переїзд
+даних)?
+
+**Від цієї відповіді залежить уся таблиця мапінгу.** До неї фазу 3 не
+починати.
+
+---
+
+## 4. Модель даних
+
+Іменний префікс — **`cm_`** (channel manager). `channel_*` зайнятий і
+замінований: `channel_credentials` — ключі фіскалізації,
+`channel_rate_rules` — правила ПДВ, решта — імена видаленої інтеграції.
+
+Правила, обов'язкові для кожної таблиці нижче (AGENTS.md §3, docs/NAMING.md §2):
+
+- `organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE`
+  **плюс індекс** по ньому — інваріант 2;
+- PK — `TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16))))`;
+- час — `*_at`, дата — `*_date`, прапорці — `is_*` і пишуться `TRUE`/`FALSE`;
+- DDL пишеться **діалектом SQLite** у `src/lib/db.ts` — і в `CREATE`, **і** в
+  `ALTER` (інакше новий клієнт не отримає колонку); Postgres-схему генерує
+  `scripts/pg-schema.mjs`, руками `db/postgres/schema.sql` не редагується
+  (інваріант 10);
+- кожен `INSERT` **називає `organization_id` явно** — інваріант 12.
+
+### 4.1 Підключення
+
+```sql
+CREATE TABLE IF NOT EXISTS cm_connections (
+  id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  property_id     TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  provider        TEXT NOT NULL DEFAULT 'channex',
+  environment     TEXT NOT NULL DEFAULT 'staging'
+                    CHECK (environment IN ('staging', 'production')),
+  remote_property_id TEXT,
+  webhook_token   TEXT NOT NULL,          -- наш секрет у URL вебхука
+  is_enabled      INTEGER NOT NULL DEFAULT 0,
+  last_full_sync_at TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(organization_id, property_id, provider, environment)
+);
+```
+
+Ключ API сюди **не пишеться** — він лежить у `channel_credentials`
+(інваріант 7: жодних секретів у схемі, яку читає пів застосунку).
+`webhook_token` — виняток за необхідністю; він безглуздий без знання URL і
+відкликається зміною рядка.
+
+### 4.2 Мапінг
+
+```sql
+CREATE TABLE IF NOT EXISTS cm_mappings (
+  id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  connection_id   TEXT NOT NULL REFERENCES cm_connections(id) ON DELETE CASCADE,
+  entity_type     TEXT NOT NULL
+                    CHECK (entity_type IN ('property', 'unit_type', 'rate_plan')),
+  local_id        TEXT NOT NULL,
+  remote_id       TEXT NOT NULL,
+  synced_at       TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(connection_id, entity_type, local_id),
+  UNIQUE(connection_id, entity_type, remote_id)
+);
+```
+
+Обидва `UNIQUE` включають `connection_id`, який належить організації — тобто
+інваріант 3 виконано транзитивно.
+
+### 4.3 Черга вихідних змін
+
+```sql
+CREATE TABLE IF NOT EXISTS cm_outbox (
+  id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  connection_id   TEXT NOT NULL REFERENCES cm_connections(id) ON DELETE CASCADE,
+  kind            TEXT NOT NULL CHECK (kind IN ('availability', 'rate')),
+  unit_type_id    TEXT,
+  rate_plan_id    TEXT,
+  stay_date       TEXT NOT NULL,
+  claimed_at      TEXT,
+  sent_at         TEXT,
+  attempts        INTEGER NOT NULL DEFAULT 0,
+  last_error      TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+**Черга каже «що змінилося», а не «на що».** Батчер бере з неї координати,
+а поточні значення читає з джерела — наявність через `availabilityByDay()`
+(§3.1), ціну через `priceNights()` (інваріант 16). Інакше два записи в
+чергу за 40 секунд дадуть дві відправки з різними числами, і в канал
+поїде застаріле.
+
+> **Захоплення пачки.** `SELECT … FOR UPDATE SKIP LOCKED` — Postgres-only, а
+> розробка й одне завдання CI йдуть на SQLite. Використовуємо
+> `UPDATE cm_outbox SET claimed_at = ? WHERE … AND claimed_at IS NULL`
+> і читаємо позначені — працює в обох.
+
+### 4.4 Вхідні події та бронювання
+
+```sql
+CREATE TABLE IF NOT EXISTS cm_events (          -- сирі вебхуки, до обробки
+  id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  connection_id   TEXT NOT NULL REFERENCES cm_connections(id) ON DELETE CASCADE,
+  event_type      TEXT NOT NULL,
+  payload         TEXT NOT NULL,                -- JSON
+  received_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  processed_at    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS cm_inbound_bookings (
+  id               TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  organization_id  TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  connection_id    TEXT NOT NULL REFERENCES cm_connections(id) ON DELETE CASCADE,
+  remote_revision_id TEXT NOT NULL,
+  remote_booking_id  TEXT NOT NULL,             -- стабільний між ревізіями
+  ota_name         TEXT,
+  status           TEXT NOT NULL
+                     CHECK (status IN ('new', 'modified', 'cancelled')),
+  reservation_id   TEXT REFERENCES reservations(id) ON DELETE SET NULL,
+  payload          TEXT NOT NULL,               -- JSON, сира ревізія
+  is_unmapped      INTEGER NOT NULL DEFAULT 0,
+  received_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  applied_at       TEXT,
+  confirmed_at     TEXT,
+  anonymized_at    TEXT,
+  UNIQUE(connection_id, remote_revision_id)
+);
+```
+
+`UNIQUE(connection_id, remote_revision_id)` — захист від дублів при
+повторній доставці. Працює однаково в обох двигунах.
+
+> **`payload` і GDPR.** Сира ревізія містить ПІБ, email і телефон гостя.
+> Зовнішня чернетка вимагала «не видаляти ніколи» — це створило б таблицю
+> персональних даних поза ретенцією. Правило тут: рядок лишається назавжди
+> (він доказ у суперечці), але `payload` **знеособлюється** тим самим
+> циклом, що й решта, — `/api/cron/gdpr-retention`, розклад 04:40. Поле
+> `anonymized_at` фіксує, коли це сталося.
+
+### 4.5 Листування
+
+```sql
+CREATE TABLE IF NOT EXISTS cm_threads (
+  id                 TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  organization_id    TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  connection_id      TEXT NOT NULL REFERENCES cm_connections(id) ON DELETE CASCADE,
+  remote_thread_id   TEXT NOT NULL,
+  reservation_id     TEXT REFERENCES reservations(id) ON DELETE SET NULL,
+  ota_name           TEXT,
+  subject            TEXT,
+  status             TEXT NOT NULL DEFAULT 'open'
+                       CHECK (status IN ('open', 'awaiting_guest', 'closed', 'no_reply_needed')),
+  last_message_at    TEXT,
+  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(connection_id, remote_thread_id)
+);
+
+CREATE TABLE IF NOT EXISTS cm_messages (
+  id                 TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  organization_id    TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  thread_id          TEXT NOT NULL REFERENCES cm_threads(id) ON DELETE CASCADE,
+  remote_message_id  TEXT,
+  direction          TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+  author             TEXT NOT NULL CHECK (author IN ('guest', 'hotel', 'system')),
+  body               TEXT NOT NULL,
+  sent_at            TEXT,
+  delivered_at       TEXT,
+  failed_reason      TEXT,
+  anonymized_at      TEXT,
+  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(thread_id, remote_message_id)
+);
+```
+
+`reservation_id` — **nullable навмисно**: Airbnb має «запит» (inquiry), коли
+гість пише про дати ще без бронювання ⚠️. Нитка без броні — нормальний
+стан, не помилка.
+
+Текст повідомлення — персональні дані. Знеособлюється тим самим циклом
+ретенції; `anonymized_at` фіксує факт.
+
+> **Таблиця листування тут уже була.** `guest_chat_messages` приїхала з
+> мостом Hostex і прибрана міграцією 0043 разом із ним. Це другий підхід до
+> тієї самої задачі, і різниця має бути в тому, що цього разу нитки
+> належать **нам**, а не конкретному вендору: `cm_threads` живе за портом
+> (§3.2), тож зміна менеджера каналів не забирає з собою історію листування.
+
+---
+
+## 5. Потік: відправлення наявності й цін
+
+```
+дія в UI (зміна ціни, нове бронювання, блокування номера)
+        │
+        ▼
+   запис у cm_outbox — у ТІЙ САМІЙ транзакції, що й сама зміна
+        │
+        ▼
+   /api/cron/channels-publish, раз на хвилину
+        │
+        ├─ 1. позначити пачку (claimed_at)
+        ├─ 2. дедуплікувати за (kind, unit_type_id|rate_plan_id, stay_date)
+        ├─ 3. прочитати ПОТОЧНИЙ стан: availabilityByDay() / priceNights()
+        ├─ 4. ніч без ціни → stop_sell, не пропуск (§7, інваріант И2)
+        ├─ 5. стиснути суміжні дати з однаковими значеннями в діапазони
+        ├─ 6. розділити на два повідомлення: наявність і ціни/обмеження
+        ├─ 7. пройти через обмежувач частоти
+        └─ 8. POST → зберегти sent_at; warnings у відповіді = ПОМИЛКА
+```
+
+**Крок 5 не косметика.** Сертифікаційні тести вимагають, щоб діапазон із
+1 грудня по 1 травня пішов одним об'єктом, а не 152 окремими ⚠️. Цикл по
+датах — підстава для відмови.
+
+**Крок 8, пастка.** Обидва ендпоінти відповідають `200 OK` і кладуть
+проблеми в `meta.warnings[]` ⚠️. Код 200 із непорожніми warnings — це
+**мовчазна втрата даних**. Логувати як помилку, показувати оператору.
+
+**Повний синк** (500 днів усього інвентарю за два виклики ⚠️) потрібен для
+двох випадків: початкове підключення об'єкта і відновлення після простою.
+Раз на добу вночі, по одному об'єкту. Повний синк за таймером **замість**
+дельт — підстава для відмови в сертифікації ⚠️.
+
+---
+
+## 6. Потік: приймання бронювань і повідомлень
+
+```
+Channex ──вебхук──▶ POST /api/webhooks/channex/<webhook_token>
+                       │  звірити токен → 404 якщо немає
+                       │  записати в cm_events
+                       │  200 OK, менш ніж за 200 мс
+                       ▼
+                  /api/cron/channels-pull, раз на хвилину
+                       │
+                       ├─ забрати непідтверджені бронювання зі стрічки,
+                       │  у порядку надходження
+                       │
+                       ├─ для кожного, в ОДНІЙ транзакції:
+                       │     upsert cm_inbound_bookings
+                       │     звести з reservations (не INSERT — reconcile)
+                       │     перерахувати наявність → cm_outbox
+                       │   commit
+                       │
+                       └─ підтвердити прийом — ТІЛЬКИ ПІСЛЯ КОМІТУ
+```
+
+**Вебхук — це дзвінок, а не дані.** Порядок доставки вебхуків може не
+збігатися з порядком подій ⚠️, тому payload вебхука — лише сигнал «сходи по
+стрічку». Стан читаємо зі стрічки, впорядкованої за часом вставки.
+
+**Ревізії, а не бронювання.** Ідентифікатор бронювання стабільний між
+ревізіями, ідентифікатор ревізії — ні. Зміна і скасування приходять новими
+ревізіями з тим самим ідентифікатором бронювання. Тому застосування — це
+**звірка**: знайти, порівняти, застосувати різницю, перерахувати наявність.
+
+**Підтвердження тільки після коміту.** Підтвердили до коміту, процес упав —
+бронювання втрачено назавжди, Channex його більше не віддасть.
+
+**Незмаплені приймати.** Якщо тип номера чи тариф не змаплено, вони
+приходять порожніми ⚠️. Бронювання все одно приймається, позначається
+`is_unmapped = TRUE`, підтверджується і показується оператору в черзі
+«потребує співставлення». Відкинути не можна: гість уже заплатив, і
+бронювання фізично існує.
+
+**Картки гостей.** Повні дані карток Channex віддає лише партнерам із
+сертифікацією PCI DSS ⚠️. До її отримання дані картки **не зберігаються
+взагалі** — окрім типу і останніх чотирьох цифр для впізнавання.
+
+**Повідомлення** ходять тим самим циклом: вебхук будить, стрічка віддає
+стан, відповідь оператора йде через `sendMessage()`. Для Booking.com є
+позначка «відповідь не потрібна» ⚠️ — її треба підтримати, бо час відповіді
+впливає на рейтинг готелю.
+
+---
+
+## 7. Інваріанти інтеграції
+
+Додаються до AGENTS.md §3 після узгодження. Кожен має гейт.
+
+**И1. Слово `channex` не існує поза `src/modules/channels/channex/`.**
+Домен знає `ChannelManagerPort` і доменні типи. Тримає
+`check-vendor-isolation.mjs`.
+
+**И2. Ніч без ціни закривається, а не пропускається.**
+`priceNights()` повертає `missing` (інваріант 17: ціни, якої немає, не
+існує). Для такої дати в канал іде `stop_sell`, ніколи — вигадане число і
+ніколи — мовчазний пропуск. Мовчазний пропуск гірший за помилку: канал
+лишиться зі старою ціною і продасть за нею.
+
+**И3. Наявність має одне джерело.**
+`availabilityByDay()`. Свій join по `units × reservations` не пишеться —
+рівно як `priceNights()` для цін. Тримає `check-availability-source.mjs`.
+
+**И4. `200 OK` з непорожніми `meta.warnings` — це помилка.**
+Логується як помилка, видно оператору, потрапляє в екран звірки.
+
+**И5. Підтвердження прийому — тільки після коміту транзакції.**
+Тримає `channex.check.ts` на мок-сервері.
+
+**И6. Повний синк викликається тільки з нічного завдання.**
+Тримає `check-no-timer-fullsync.mjs`.
+
+**И7. Обробник вебхука не ходить у мережу.**
+Звірка токена, запис, `200`. Будь-який HTTP-виклик до Channex із обробника
+маршруту — порушення.
+
+---
+
+## 8. Гейти
+
+| Файл | Що ловить |
+|---|---|
+| `check-vendor-isolation.mjs` | И1 — вендор поза адаптером |
+| `check-availability-source.mjs` | И3 — другий розрахунок наявності |
+| `check-no-timer-fullsync.mjs` | И6 — повний синк не з нічного завдання |
+| `channex.check.ts` | на мок-сервері: батчинг, стиснення діапазонів, обмежувач, відступ, ідемпотентність, підтвердження після коміту (И5) |
+| `check-insert-tenant --strict` | вже є — `INSERT` без `organization_id` |
+| `check-dialect --strict` | вже є — SQL, який Postgres не зрозуміє |
+| `check-boolean-flags --strict` | вже є — `0`/`1` у `BOOLEAN` |
+| `check-docs-current --strict` | вже є — нова таблиця без рядка в ARCHITECTURE.md |
+
+`channex.check.ts` пишеться **першим, ще до отримання ключа**. Усі критичні
+правила перевіряються на мок-сервері без живого акаунта.
+
+**Перевірка, яка шукає рядок у вихідному коді, спершу вирізає коментарі** —
+інакше `check-vendor-isolation` знайде слово `channex` у власній
+документації і в цьому файлі.
+
+---
+
+## 9. Порядок робіт
+
+Кожна фаза закінчується чимось, що працює. Не «фундамент на три тижні».
+
+### Фаза 1 — Наявність стає об'єктом
+Витягти `availabilityByDay()` з віджета в окремий модуль. Віджет починає
+читати звідти. Гейт И3.
+**Приймання:** віджет працює як раніше, розрахунок наявності — один на всю
+систему. Це корисно **саме по собі**, навіть якщо Channex не буде.
+
+### Фаза 2 — Порт, клієнт, мок
+`ChannelManagerPort`, доменні типи, HTTP-клієнт (заголовок `user-api-key`,
+конверт відповіді, помилки), обмежувач частоти з відступом, мок-сервер,
+`channex.check.ts`. Гейт И1.
+**Приймання:** мок відповідає 429 і `200` з warnings — клієнт поводиться
+правильно на обох.
+
+### Фаза 3 — Мапінг і підключення Йорга ❓
+**Починається тільки після відповіді на питання про тарифи (§10.1).**
+Таблиці `cm_*`, створення об'єкта/типів/тарифів через API, майстер
+підключення з кроками на боці OTA, екран ручного мапінгу.
+**Приймання:** Йорг існує в staging Channex, усі три типи сутностей
+змаплено.
+
+### Фаза 4 — Відправлення ARI
+Запис у чергу з доменної транзакції, батчер, стиснення діапазонів, повний
+синк, нічне оновлення. Гейти И2, И6.
+**Приймання:** зміна ціни в UI Йорга долітає в staging; повний синк 500 днів
+— два виклики; ніч без ціни закрита, а не пропущена.
+
+### Фаза 5 — Приймання бронювань
+Вебхук на орендаря, опитування стрічки, звірка ревізій, черга незмаплених,
+перерахунок наявності. Гейти И5, И7.
+**Приймання:** у staging із тестовим акаунтом Booking.com створення, зміна і
+скасування доходять до UI ALiSiO і підтверджені.
+
+### Фаза 6 — Листування
+Нитки й повідомлення, екран вхідних, відповідь оператора, «відповідь не
+потрібна», прив'язка нитки до бронювання, запити Airbnb без броні.
+**Приймання:** повідомлення гостя з Booking.com видно в ALiSiO, відповідь
+доходить назад.
+
+### Фаза 7 — Екран звірки і сертифікація
+Звірка нашого стану з тим, що бачить Channex, журнал відправлень із
+warnings, декларація можливостей, прапорець увімкнення на рівні property,
+подача на сертифікацію.
+
+### Фаза 8 — Самостійне підключення
+Готель проходить майстра сам: свій акаунт або суб-акаунт, автомапінг за
+замовчуванням, гайд зі скріншотами екстранету OTA, підтвердження кроків на
+боці каналу.
+**Приймання:** другий готель підключається **без розробника**. Це і є
+критерій «готово до трьох наступних».
+
+---
+
+## 10. Що потрібно від власника
+
+### 10.1 Тарифи — блокує фазу 3 ❓
+Канал OTA — це ще один «сайт продажів» (тоді тарифи беремо з
+`site_rate_plans` як є, і це дешево), чи тарифи піднімаються на рівень
+property (тоді це міграція, переїзд даних і зміна UI)?
+
+### 10.2 Акаунт Channex ❓
+Реєстрація на `staging.channex.io` і ключ API. Ключ — **не в чат і не у
+файл** (інваріант 7), а змінною середовища. Плюс: підписка Channex потрібна
+для продакшн-ключа, а листування вимагає окремого застосунку «Messages &
+Reviews» на об'єкті ⚠️ — з'ясувати умови.
+
+### 10.3 Тестовий акаунт Booking.com ❓
+Channex має окрему інструкцію з його отримання. Без нього фаза 5 не
+перевіряється.
+
+### 10.4 Список каналів для Йорга ❓
+Які саме OTA підключаємо в першу чергу і в якому порядку. Від цього
+залежить, які особливості мапінгу вилізуть першими.
+
+### 10.5 Комерція ❓
+Умови Channex для PMS-партнера: ціна за об'єкт, мінімальний обсяг, модель
+розрахунку. Це впливає на те, чи можна взагалі обіцяти самостійне
+підключення.
+
+---
+
+## 11. Питання до support@channex.io
+
+Поставити **до** фази 2:
+
+1. Точне обмеження частоти: скільки запитів на хвилину, на акаунт чи на
+   об'єкт, і чи однакове для наявності й для цін?
+2. Чи можна завести вебхук на рівні об'єкта з унікальним URL і власним
+   секретом? (Від цього залежить рішення §3.3.)
+3. Чи є підпис вебхука — HMAC або інший? Якщо ні, чим ще довести
+   походження запиту, крім секрету в URL?
+4. Формат ціни: рядок чи мінорні одиниці? Чи є різниця між каналами?
+5. Максимальний горизонт дат в одному повідомленні і максимальний розмір
+   повідомлення?
+6. Що очікується для дати, на яку в PMS немає ціни — `stop_sell`, чи є
+   окремий спосіб сказати «не продається»?
+7. Умови й терміни отримання доступу PCI до повних даних карток.
+8. Умови застосунку «Messages & Reviews»: чи входить у підписку, чи
+   окремий тариф.
+
+---
+
+## 12. Чого не робити
+
+**Підстави для відмови в сертифікації** ⚠️:
+
+1. Код інтеграції лише в тестових файлах, а не в основній кодовій базі.
+2. Окремий «сертифікаційний UI» для запуску подій.
+3. Повний синк за таймером замість дельт.
+4. Цикл по датах замість стиснення в діапазони.
+5. Захардкожені ідентифікатори або тестові значення в продакшн-шляхах.
+
+**Помилки зовнішньої чернетки, які не треба повторювати** (перевірено ✅):
+
+| Було | Чому не так |
+|---|---|
+| Батчер «читає `ari_day`» | Такої таблиці немає — 0 згадок у `src/`. На ній тримався весь алгоритм |
+| `tenant_id UUID` | У нас `organization_id TEXT` |
+| `BIGSERIAL`, `JSONB`, `TIMESTAMPTZ`, `now()` | Схема пишеться SQLite-діалектом у `src/lib/db.ts`, Postgres генерується |
+| `SELECT … FOR UPDATE SKIP LOCKED` | Postgres-only; розробка й CI йдуть на SQLite |
+| `withTenant()` | У нас `runWithOrganization()` |
+| Сервісна роль читає мапінг в обхід RLS | Порушує інваріанти 11 і 14; §3.3 вирішує це без винятків |
+| Окремий процес `alisio-worker` | У нас один сервіс `app` і планові роботи через `/api/cron/*` |
+| «`payload` не видаляється ніколи» | Персональні дані поза GDPR-ретенцією |
+
+**І головне.** Не починати з інфраструктури. Попередня спроба — Connectivity
+API Booking.com, ~3500 рядків, чотири таблиці, жодного живого готелю,
+видалена міграцією 0032. Різницю робить не якість коду, а те, чи чекає на
+результат конкретний готель із конкретною датою. Тому фаза 1 корисна сама
+по собі, а фаза 3 названа «підключення Йорга», а не «мапінг».
+
+---
+
+## 13. Джерела
+
+Прочитати в першоджерелі й зняти позначки ⚠️:
+
+- PMS Integration Guide — https://docs.channex.io/guides/pms-integration-guide
+- **PMS Certification Tests** — https://docs.channex.io/api-v.1-documentation/pms-certification-tests
+- Best Practices Guide — https://docs.channex.io/guides/best-practices-guide
+- API Reference — https://docs.channex.io/api-v.1-documentation/api-reference
+- Availability and Rates — https://docs.channex.io/api-v.1-documentation/ari
+- API Rate Limits — https://docs.channex.io/api-v.1-documentation/rate-limits
+- Bookings Collection — https://docs.channex.io/api-v.1-documentation/bookings-collection
+- Webhook Collection — https://docs.channex.io/api-v.1-documentation/webhook-collection
+- Rate Plans Collection — https://docs.channex.io/api-v.1-documentation/rate-plans-collection
+- Room Types Collection — https://docs.channex.io/api-v.1-documentation/room-types-collection
+- **Messages Collection** — https://docs.channex.io/api-v.1-documentation/messages-collection
+- Reviews Collection — https://docs.channex.io/api-v.1-documentation/reviews-collection
+- Property Size Limits — https://docs.channex.io/api-v.1-documentation/property-size-limits
+- Guide to PCI — https://docs.channex.io/guides/guide-to-pci
+- Тестовий акаунт Booking.com — https://docs.channex.io/guides/test-account-for-booking.com
+- Тестові акаунти Airbnb — https://docs.channex.io/guides/test-accounts-for-airbnb
+- Postman-колекція — https://documenter.getpostman.com/view/681982/RztkPpne
+
+Внутрішні документи ALiSiO: `AGENTS.md` §3 (інваріанти), `docs/NAMING.md`,
+`docs/ARCHITECTURE.md`, `src/modules/channels/README.md`.
