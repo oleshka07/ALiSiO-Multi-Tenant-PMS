@@ -32,6 +32,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { registerHooks } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 /**
  * `@core/…` і `@/…` для голого node.
@@ -51,7 +52,10 @@ import { registerHooks } from 'node:module';
  * модулів. Це прибрало б проблему і разом з нею — єдине місце, де для кожної
  * таблиці написано INSERT.
  */
-const ROOT = path.dirname(new URL('.', import.meta.url).pathname.replace(/\/$/, ''));
+// fileURLToPath, не URL.pathname: pathname лишає %20 і слеш перед літерою
+// диска, тож на Windows-копії ROOT не існував, tsconfig не читався і кожен
+// аліас мовчки резолвився в ніщо.
+const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const ALIASES = (() => {
   try {
     const raw = fs.readFileSync(path.join(ROOT, 'tsconfig.json'), 'utf8').replace(/^\s*\/\/.*$/gm, '');
@@ -84,11 +88,11 @@ registerHooks({
     const mapped = fromAlias(spec);
     if (mapped) {
       const file = onDisk(mapped);
-      if (file) return { url: `file://${file}`, shortCircuit: true };
+      if (file) return { url: pathToFileURL(file).href, shortCircuit: true };
     }
     if (spec.startsWith('.') && ctx.parentURL?.startsWith('file://')) {
-      const file = onDisk(path.resolve(path.dirname(ctx.parentURL.slice(7)), spec));
-      if (file) return { url: `file://${file}`, shortCircuit: true };
+      const file = onDisk(path.resolve(path.dirname(fileURLToPath(ctx.parentURL)), spec));
+      if (file) return { url: pathToFileURL(file).href, shortCircuit: true };
     }
     return next(spec, ctx);
   },

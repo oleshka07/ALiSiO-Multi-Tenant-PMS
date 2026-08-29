@@ -28,8 +28,10 @@ import { ALERT_TYPES } from './alerts.ts';
 const HANDLER = 'src/modules/dashboard/api/alerts.handlers.ts';
 const SCREEN = 'src/app/app/(dashboard)/bookings/page.tsx';
 
-const handler = fs.readFileSync(HANDLER, 'utf8');
-const screen = fs.readFileSync(SCREEN, 'utf8');
+// \r\n → \n одразу: на Windows-копії git видає CRLF, і пошук тіла функції за
+// літеральним '\n}\n' нижче не знаходив НІЧОГО — гейт падав на здоровому коді.
+const handler = fs.readFileSync(HANDLER, 'utf8').replace(/\r\n/g, '\n');
+const screen = fs.readFileSync(SCREEN, 'utf8').replace(/\r\n/g, '\n');
 // Коментарі пояснюють рядки, яких БІЛЬШЕ немає, — гейт, який їх не відрізняє,
 // падає на власній документації. Уже було.
 const handlerCode = handler.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');

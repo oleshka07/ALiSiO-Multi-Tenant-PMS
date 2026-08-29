@@ -45,7 +45,9 @@ const SCHEMA = 'db/postgres/schema.sql';
 const scoped = new Set();
 {
   let table = null;
-  for (const line of fs.readFileSync(SCHEMA, 'utf8').split('\n')) {
+  // split(/\r?\n/), не '\n': на Windows-копії рядок закінчується '\r', і
+  // $-анкер нижче не збігається ЖОДНОГО разу — scoped порожній, гейт зелений.
+  for (const line of fs.readFileSync(SCHEMA, 'utf8').split(/\r?\n/)) {
     const open = line.match(/^CREATE TABLE "([^"]+)" \($/);
     if (open) { table = open[1]; continue; }
     if (!table) continue;
@@ -72,7 +74,9 @@ for (const root of ROOTS) walk(root);
 function walk(dir) {
   if (!fs.existsSync(dir)) return;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
+    // Normalised at collection: path.join gives '\' on Windows, and ALLOWED
+    // ('src/lib/db.ts') would silently stop matching.
+    const full = path.join(dir, entry.name).replace(/\\/g, '/');
     if (entry.isDirectory()) { walk(full); continue; }
     if (/\.(ts|tsx|mts)$/.test(entry.name) && !entry.name.includes('.check.')) files.push(full);
   }

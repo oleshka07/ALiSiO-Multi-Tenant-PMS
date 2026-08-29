@@ -135,7 +135,46 @@ export async function saveRegistrations(reservationId: string, organizationId: s
 }
 // ── GDPR Data Retention ───────────────────────────────────────────────────
 
-export async function anonymizeOldRegistrations(monthsToKeep = 6): Promise<number> {
+/** What one retention run did — and for how many tenants it could not run. */
+export interface RetentionRunResult {
+  /** reservation_guests rows anonymised: the per-stay registry copies. */
+  registrations: number;
+  /** guests profiles anonymised: people whose every stay is past the window. */
+  guests: number;
+  /** Organizations whose pass threw. Details are in the server log. */
+  failedOrganizations: number;
+}
+
+/**
+ * Anonymise identification data older than the retention window.
+ *
+ * The one implementation for both retention endpoints (api/guests/gdpr-cron
+ * and api/cron/gdpr-retention). They used to carry two separate copies of
+ * this logic, and the copies drifted until this one anonymised columns its
+ * table does not have.
+ *
+ * 72 months by default: the Czech Evidenční kniha is kept six YEARS after
+ * checkout — the same period the two-step erasure in gdpr.handlers.ts waits
+ * out before touching identity. No default may be shorter; a shorter window
+ * is something an operator typed on purpose (?months= on the cron endpoint).
+ *
+ * This function has failed silently twice, both times reporting a healthy
+ * zero:
+ *
+ *   1. It ran on a bare connection — on Postgres the policies compared the
+ *      tenant against an empty setting and every statement matched nothing.
+ *   2. It UPDATEd `guest_registrations` SET first_name, email, phone —
+ *      columns that table has never had on either engine (it is the consent
+ *      log: reg_status, consent_*, purpose_of_stay, visa_number). Every
+ *      engine refused every statement, the per-organization catch swallowed
+ *      the error, and the cron answered { success: true, anonymizedCount: 0 }
+ *      for every run.
+ *
+ * Identification lives on `reservation_guests` (the registry copy) and
+ * `guests` (the profile). registration-retention.check.ts runs this function
+ * against a real freshly-built database and fails on both regressions.
+ */
+export async function anonymizeOldRegistrations(monthsToKeep = 72): Promise<RetentionRunResult> {
   // retentionCutoff refuses a window that would put the cutoff in the future
   // and anonymise every guest in the database — see domain/retention.ts. The
   // throw is deliberate: this is the one operation with no undo, so a caller
@@ -143,54 +182,100 @@ export async function anonymizeOldRegistrations(monthsToKeep = 6): Promise<numbe
   const cutoff = retentionCutoff(monthsToKeep);
   const sql = getSql();
 
-  // Walked per hotel, inside runWithOrganization.
-  //
-  // This ran on a bare connection. On Postgres the policy on
-  // `guest_registrations` reaches the tenant through `guests.organization_id`
-  // and compares it with `app.organization_id`, which is the empty string
-  // until this wrapper fills it — so the UPDATE matched no rows, every run
-  // answered `{ success: true, anonymizedCount: 0 }`, and it read exactly like
-  // "nothing was due". Retention was not happening at all: §30 BMG gives the
-  // Meldeschein fifteen months, and the GDPR gives the rest a limit too.
-  //
-  // Same shape as cron/guest-reminders, which was fixed for the same reason.
+  const SQL = {
+    // The registry copy, per stay: an old stay's row is anonymised even when
+    // the same person stayed again recently — retention runs per record, not
+    // per person. The column set is the one eraseGuestData clears.
+    anonymizeRegistryRows: `
+      UPDATE reservation_guests
+      SET first_name = 'Anonymized',
+          last_name = 'Anonymized',
+          date_of_birth = NULL,
+          document_type = NULL,
+          document_number = NULL,
+          nationality = NULL,
+          address = NULL,
+          visa_number = NULL,
+          purpose_of_stay = NULL
+      WHERE first_name != 'Anonymized'
+        AND reservation_id IN (
+          SELECT id FROM reservations WHERE check_out < ? AND organization_id = ?
+        )`,
+    // The consent log for those stays goes entirely: it carries no names, but
+    // visa_number and purpose_of_stay are identification too, and consent for
+    // data that no longer exists proves nothing.
+    deleteConsentLog: `
+      DELETE FROM guest_registrations
+      WHERE reservation_id IN (
+        SELECT id FROM reservations WHERE check_out < ? AND organization_id = ?
+      )`,
+    // The profile — only for someone whose EVERY stay is past the window, so
+    // a returning guest keeps their record. Requiring an old stay to exist is
+    // what keeps this off profiles with no stays at all: a guest typed in
+    // yesterday has no checkout to age by, and "not found among recent stays"
+    // alone would wipe them — that exact condition shipped once. Columns
+    // follow eraseGuestData: whatsapp, city and nationality are cleared there
+    // and were missing from the previous version of this statement.
+    anonymizeGuestProfiles: `
+      UPDATE guests
+      SET first_name = 'Anonymized',
+          last_name = 'Anonymized',
+          date_of_birth = NULL,
+          document_type = NULL,
+          document_number = NULL,
+          nationality = NULL,
+          email = NULL,
+          phone = NULL,
+          whatsapp = NULL,
+          city = NULL,
+          country = NULL,
+          address = NULL
+      WHERE organization_id = ?
+        AND first_name != 'Anonymized'
+        AND (EXISTS (
+               SELECT 1 FROM reservations r
+               WHERE r.guest_id = guests.id AND r.check_out < ? AND r.organization_id = ?)
+          OR EXISTS (
+               SELECT 1 FROM reservation_guests rg
+               JOIN reservations r ON r.id = rg.reservation_id
+               WHERE rg.guest_id = guests.id AND r.check_out < ? AND r.organization_id = ?))
+        AND NOT EXISTS (
+          SELECT 1 FROM reservations r
+          WHERE r.guest_id = guests.id AND r.check_out >= ?)
+        AND NOT EXISTS (
+          SELECT 1 FROM reservation_guests rg
+          JOIN reservations r ON r.id = rg.reservation_id
+          WHERE rg.guest_id = guests.id AND r.check_out >= ?)`,
+  };
+
+  // Walked per hotel, inside runWithOrganization, so the Postgres policies
+  // see the tenant on the connection. The organization is named in every
+  // statement as well: SQLite has no policies, and the wrapper alone would
+  // let one hotel's pass anonymise every hotel's guests.
   const organizations = await sql.rows<{ id: string }>('SELECT id FROM organizations');
-  let total = 0;
+  const result: RetentionRunResult = { registrations: 0, guests: 0, failedOrganizations: 0 };
 
   for (const org of organizations) {
     try {
-      total += await runWithOrganization(org.id, async () => {
-        // The organization is named in the query as well: on SQLite there are
-        // no policies, so the wrapper alone would let one hotel's run
-        // anonymise every hotel's guests.
-        const info = await sql.run(`
-          UPDATE guest_registrations
-          SET
-            first_name = 'Anonymized',
-            last_name = 'Anonymized',
-            date_of_birth = NULL,
-            document_number = NULL,
-            document_type = NULL,
-            nationality = NULL,
-            address = NULL,
-            email = NULL,
-            phone = NULL
-          WHERE id IN (
-            SELECT gr.id
-            FROM guest_registrations gr
-            JOIN reservations r ON gr.reservation_id = r.id
-            WHERE r.check_out < ?
-              AND r.organization_id = ?
-              AND gr.first_name != 'Anonymized'
-          )
-        `, [cutoff, org.id]);
-        return info.changes;
-      });
+      const one = await runWithOrganization(org.id, () => sql.tx(async (t) => {
+        const registry = await t.run(SQL.anonymizeRegistryRows, [cutoff, org.id]);
+        await t.run(SQL.deleteConsentLog, [cutoff, org.id]);
+        const profiles = await t.run(SQL.anonymizeGuestProfiles,
+          [org.id, cutoff, org.id, cutoff, org.id, cutoff, cutoff]);
+        return { registry: registry.changes, profiles: profiles.changes };
+      }));
+      result.registrations += one.registry;
+      result.guests += one.profiles;
     } catch (error) {
-      // One hotel's failure must not stop retention for the others.
-      console.error(`Failed to anonymize old registrations for ${org.id}:`, error);
+      // One hotel's failure must not stop retention for the others — but it
+      // must be countable. The two silent-zero regressions above survived
+      // precisely because a swallowed error and "nothing was due" produced
+      // the same answer; the caller now sees how many tenants failed, not
+      // only how many rows moved.
+      result.failedOrganizations += 1;
+      console.error(`GDPR retention failed for organization ${org.id}:`, error);
     }
   }
 
-  return total;
+  return result;
 }

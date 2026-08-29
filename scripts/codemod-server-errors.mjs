@@ -19,9 +19,12 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const dry = process.argv.includes('--dry');
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+// fileURLToPath, не .pathname: на Windows .pathname дає '/D:/…%20…', і
+// readdirSync такого шляху падає з ENOENT ще до першої заміни.
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // `{ error: X.message }` or `{ error: X?.message || 'Fallback' }`, answered 500.
 const LEAK = /return\s+NextResponse\.json\(\s*\{\s*error:\s*(e|err|error)(\??\.message)(\s*\|\|\s*(['"`])((?:[^'"`\\]|\\.)*)\4)?\s*\}\s*,\s*\{\s*status:\s*500\s*,?\s*\}\s*\)\s*;/g;

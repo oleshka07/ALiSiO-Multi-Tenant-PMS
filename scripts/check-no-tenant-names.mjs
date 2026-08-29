@@ -242,7 +242,10 @@ const ownsSeedIds = (f) => SEED_OWNERS.some((re) => re.test(f));
 const hits = [];
 for (const f of files) {
   if (ALLOWED.has(f)) continue;
-  const lines = fs.readFileSync(f, 'utf8').split('\n');
+  // \r?\n, бо на Windows-копії git видає CRLF, а `.` у JS-регексі не матчить
+  // `\r`: хвостовий `\r` не давав `/\/\/.*$/` нижче зрізати коментар, і гейт
+  // оголошував хардкодом власне ДОЗВОЛЕНУ документацію прибраного.
+  const lines = fs.readFileSync(f, 'utf8').split(/\r?\n/);
   const seedAllowed = ownsSeedIds(f);
   lines.forEach((line, i) => {
     // A comment explaining a removed hardcode is not the hardcode.

@@ -49,7 +49,9 @@ for (const file of files) {
   if (!/^\s*set\s+-[a-z]*e/m.test(src)) continue;
   guarded++;
 
-  const lines = src.split('\n');
+  // split(/\r?\n/), не '\n': інакше на Windows-копії '\r' у хвості рядка
+  // ламає $-анкери зрізання коментарів нижче, і гейт рахує документацію.
+  const lines = src.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     // Спершу вирізати коментарі — інакше гейт рахує власну документацію
     // (правило з AGENTS §4; deploy.sh описує цей клас багу текстом).

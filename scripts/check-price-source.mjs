@@ -26,10 +26,13 @@
  * tables is stale and fails --strict, so the list can only shrink.
  */
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const strict = process.argv.includes('--strict');
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+// fileURLToPath, не URL.pathname: на Windows pathname лишає %20 і слеш перед
+// літерою диска, і readdir шукав 'D:\D:\…' — гейт падав, не перевіривши нічого.
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(ROOT, 'src');
 
 // SQL that reads or writes a price table. INSERT INTO / DELETE FROM are
