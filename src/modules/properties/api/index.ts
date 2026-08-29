@@ -60,3 +60,8 @@ export { searchUnits } from '../data/unit-search';
 // Валюти готелю: основна одна (organizations.default_currency), другорядних
 // 1–3, курс до основної — завжди у finance_exchange_rates.
 export { getCurrencies, saveCurrencies, saveManualRate } from './currency.handlers';
+
+// Наявність: одне джерело відповіді «чи вільно» для віджета і для батчера
+// ARI. Другий розрахунок = овербукінг через OTA. Див. data/availability.ts.
+export { availabilityByDay, freeUnitsForRange } from '../data/availability';
+export type { DateStr, UnitId, UnitTypeId, OccupiedSpan } from '../data/availability';

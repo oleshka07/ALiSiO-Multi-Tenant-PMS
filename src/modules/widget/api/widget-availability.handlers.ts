@@ -8,6 +8,7 @@ import { couponApplies } from '../domain/coupon-eligibility';
 import { shiftDays } from '@core/hotel-day';
 import { ratePlanNightPrice } from '../domain/rate-plan';
 import { priceNights } from '@pricing';
+import { freeUnitsForRange } from '@properties';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -176,8 +177,10 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
       (await sql.rows<any>(sql.dialect.tables()) as { name: string }[])
         .map(t => t.name)
     );
-    const hasAvailBlocks = existingTables.has('availability_blocks');
-    // `hasPromotions` тут більше немає: таблиці `promotions` не існує в жодній
+    // `hasAvailBlocks` тут більше немає: перевірку наявності таблиці
+    // `availability_blocks` тепер робить @properties разом із самим
+    // розрахунком зайнятості — це його справа, а не справа віджета.
+    // `hasPromotions` теж немає: таблиці `promotions` не існує в жодній
     // зі схем, тож прапорець завжди був false і глушив прев'ю знижки нижче.
     const hasPriceCalendar = existingTables.has('price_calendar');
 
@@ -218,30 +221,18 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
       ...(categoryType ? [categoryType] : [])
     ]]) as any[];
 
+    // Хто вільний на весь заїзд — одним питанням до @properties, а не двома
+    // запитами на кожен номер у циклі нижче. Це те саме джерело, з якого
+    // читатиме батчер ARI: два розрахунки наявності дали б два різні числа
+    // на одну дату, і різницю побачив би гість, що приїхав у зайнятий номер.
+    const freeUnits = hasDates
+      ? await freeUnitsForRange(units.map((u: any) => u.id), checkIn!, checkOut!)
+      : null;
+
     const results = [];
 
     for (const unit of units) {
-      if (hasDates) {
-        const isBooked = await sql.row<any>(`
-          SELECT 1 FROM reservations r
-          WHERE r.unit_id = ?
-            AND r.status NOT IN ('cancelled', 'no_show')
-            AND r.check_in < ? AND r.check_out > ?
-          LIMIT 1
-        `, [unit.id, checkOut, checkIn]);
-
-        if (isBooked) continue;
-
-        if (hasAvailBlocks) {
-          const isBlocked = await sql.row<any>(`
-            SELECT 1 FROM availability_blocks
-            WHERE unit_id = ?
-              AND date_from < ? AND date_to > ?
-            LIMIT 1
-          `, [unit.id, checkOut, checkIn]);
-          if (isBlocked) continue;
-        }
-      }
+      if (freeUnits && !freeUnits.has(unit.id)) continue;
 
       const dayNames = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
       /**
