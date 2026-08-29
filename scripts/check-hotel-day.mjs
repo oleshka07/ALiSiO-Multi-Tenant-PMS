@@ -24,9 +24,12 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const strict = process.argv.includes('--strict');
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+// fileURLToPath, не .pathname: на Windows .pathname дає '/D:/…%20…' — жодна
+// тека SCOPES не existsSync, walk нічого не сканує, гейт зелений на будь-чому.
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // `new Date().toISOString()` cut down to a date: .slice(0, 10), .split('T')[0],
 // .substring(0, 7) and friends.

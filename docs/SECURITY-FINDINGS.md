@@ -2047,3 +2047,99 @@ grep -rn "catch" src/modules --include=*.repo.ts -A2 | grep -B2 "console.error"
 помилка — одне й те саме число. Такому механізму нуль не можна вірити доти,
 доки поруч не стоїть лічильник відмов і перевірка, що виконує справжній SQL
 на справжній схемі.
+---
+
+## INC-009 · частина 2 · Гейти, що на Windows-копії ставали хибно-зеленими (2026-08-29)
+
+### Що знайдено
+
+Частина 1 цього інциденту — скрипти, які на Windows-копії (worktree зі
+пробілами в шляху, CRLF у робочій копії) **падали**: їх було видно, і їх
+виправлено на місці (module-aliases, apply-hotel, check-price-source,
+check-error-leak, check-route-guards, check-no-tenant-names, alerts.check,
+rate-limit.check). Ця частина — прохід по решті `scripts/*.mjs` і
+`src/**/*.check.ts` за тими самими трьома патернами, у пошуку гіршого
+випадку: гейт, який не падає, а **мовчить**.
+
+Три механізми:
+
+1. `new URL(import.meta.url).pathname` замість `fileURLToPath` — на Windows
+   дає `/D:/…%20…`: `%20` замість пробілу і зайвий слеш перед диском.
+   `existsSync` такого шляху — false, `readdirSync` — ENOENT.
+2. `split('\n')` лишає `\r` у хвості рядка, а `.` і `$` (без прапорця `m`)
+   у JS-регексі `\r` не бачать: `$`-анкерний патерн по рядку не збігається
+   ЖОДНОГО разу. (`$` **з** `m` — безпечний: він матчить перед `\r`; `\s`
+   теж покриває `\r`; substring-пошук `'\n…'` теж живий, бо `\r\n` містить
+   `\n`.)
+3. `path.join` дає `\`, який не збігається з `/`-літералами у
+   `startsWith`/`includes`/`===`.
+
+Хибно-зелені (найгірший клас — на Linux CI усе працює і маскує):
+
+- **check-insert-tenant** (інваріант 12), **check-boolean-flags**,
+  **check-reservation-currency**: усі три парсять `db/postgres/schema.sql`
+  однаковим циклом із `/^CREATE TABLE "…" \($/`. На CRLF-копії схема
+  «порожня» → нуль scoped-таблиць → нуль знахідок при будь-якому коді.
+  Доведено на стенді: `INSERT INTO reservations` без орендаря — старий гейт
+  exit 0, новий exit 1.
+- **pg-schema.mjs → declaredColumns()**: той самий цикл — це запобіжник
+  «відмовитись писати, якщо колонки зникають» (інваріант 10). На CRLF він
+  бачить 0 колонок у старій схемі (проти 1332 реальних) — тобто захист від
+  утрати колонок мовчки знезброєний саме там, де генератор запускають
+  (машина розробника, Windows).
+- **check-hotel-day**: ROOT через `.pathname` → жодна тека зі SCOPES не
+  existsSync → walk нічого не сканує → «чисто».
+- **check-reservation-currency**, друга половина: `GUEST_FACING`-фільтр
+  через `startsWith('src/app/guest')` проти `src\app\guest` — сканування
+  літералів `|| 'CZK'` покривало нуль файлів.
+- **publish-report**: env-парсер `/^([A-Z_]+)=(.*)$/` на CRLF-env губить
+  усі ключі (`.replace(/\r$/,…)` поруч був мертвим кодом — матч уже не
+  відбувся) → `DATABASE_URL` порожній → звіт мовчки їде з локального
+  SQLite замість бази середовища.
+
+Гучні (падали або шуміли, теж виправлено): **codemod-server-errors** і
+**seed-demo-stays** — ENOENT на `.pathname`-ROOT; **check-fatal-grep** —
+$-зрізання коментарів не працює, гейт рахує документацію; **smoke-writes**
+— `toUrl` будував URL зі `src\app\…`, а виняток `includes('/api/auth/')`
+не спрацьовував — прогін розлогінював сам себе.
+
+Перевірені й **безпечні** (уже мали правильні ідіоми): check-dialect
+(`[\\/]`), check-money-rounding, check-boundaries, check-dead-fetch,
+audit-* і smoke-routes (`replace(/\\/g,'/')` при зборі), check-docs-current
+і check-embed-routes (string includes / URL-літерали), i18n-тріо (AST),
+booking-sources.check (`$` анкерить зріз, не рядок), public-tenant.check,
+search.check, invoice-jurisdiction.check (substring `'\n…'`, `\s*$`),
+check-deployed-db (питає каталог БД, не файли), check-schema-drift
+(порівнює psql сам із собою).
+
+### Чому гейт мовчав
+
+`.gitattributes` у репозиторії немає, тож Windows із `autocrlf=true`
+тримає ВСЮ робочу копію в CRLF — включно з `db/postgres/schema.sql`.
+Порожня множина таблиць не відрізняється від «порушень немає», а CI бігає
+на Linux з LF і завжди зелений. Це та сама форма, що інваріант 13:
+«перевірка, яка не знайшла рядка, дозволяє» — тут «не знайшла рядка» через
+`\r`, якого не бачить `$`.
+
+### Виправлено
+
+Мінімально, за трьома шаблонами: `fileURLToPath(import.meta.url)` замість
+`.pathname`; `split(/\r?\n/)` замість `split('\n')` там, де далі
+$-анкери; `path.join(…).replace(/\\/g, '/')` у точці збору шляхів там, де
+далі `/`-порівняння. Файли: check-boolean-flags, check-insert-tenant,
+check-reservation-currency, pg-schema, check-hotel-day, check-fatal-grep,
+publish-report, codemod-server-errors, seed-demo-stays, smoke-writes.
+
+### Як шукати таке саме
+
+- `grep -rn "\.pathname" scripts/` — будь-який ROOT не через
+  `fileURLToPath` підозрілий (легальні `.pathname` — лише в об'єктів URL
+  веб-сторінок, як в audit-ui).
+- `split('\n')` + далі по рядках `$`-регекс без `m`, `endsWith`, `===` —
+  зламано; `trim()`/`\s*$`/`^`-анкери/substring `'\n…'` — живі.
+- `path.join` + далі літерал зі `/` у порівнянні — зламано; нормалізація
+  на місці збору — правильна ідіома, вона вже стоїть у audit-*,
+  smoke-routes, check-money-rounding, check-boundaries.
+- Корінь класу — відсутність `.gitattributes` (`* text=auto eol=lf` зняла
+  б CRLF з робочих копій узагалі); це рішення власника, бо зачепить усі
+  робочі копії одночасно.

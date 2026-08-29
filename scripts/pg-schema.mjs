@@ -673,7 +673,10 @@ const sql = out.join('\n');
 function declaredColumns(text) {
   const found = new Set();
   let table = null;
-  for (const line of text.split('\n')) {
+  // split(/\r?\n/), не '\n': комічена schema.sql на Windows-копії має CRLF,
+  // $-анкер нижче не збігається — `before` порожній, і запобіжник «відмовитись
+  // писати, якщо колонки зникають» мовчки перестає існувати.
+  for (const line of text.split(/\r?\n/)) {
     const open = line.match(/^CREATE TABLE "([^"]+)" \($/);
     if (open) { table = open[1]; continue; }
     if (!table) continue;

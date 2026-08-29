@@ -65,7 +65,10 @@ function fromEnvFile() {
   const path = `deploy/env.${name}`;
   if (!fs.existsSync(path)) return {};
   const out = {};
-  for (const line of fs.readFileSync(path, 'utf8').split('\n')) {
+  // split(/\r?\n/), не '\n': env-файл із CRLF інакше не матчить $-анкер нижче
+  // ЖОДНИМ рядком — DATABASE_URL губиться, і звіт мовчки їде з локального
+  // SQLite замість бази середовища.
+  for (const line of fs.readFileSync(path, 'utf8').split(/\r?\n/)) {
     const m = line.match(/^([A-Z_]+)=(.*)$/);
     if (m) out[m[1]] = m[2].trim().replace(/\r$/, '');
   }
