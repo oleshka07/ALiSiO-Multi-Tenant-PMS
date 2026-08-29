@@ -36,7 +36,9 @@ const SCHEMA = 'db/postgres/schema.sql';
 const boolColumns = new Map();   // table → Set of column names
 {
   let table = null;
-  for (const line of fs.readFileSync(SCHEMA, 'utf8').split('\n')) {
+  // split(/\r?\n/), не '\n': на Windows-копії рядок закінчується '\r', і
+  // $-анкер нижче не збігається ЖОДНОГО разу — множина порожня, гейт зелений.
+  for (const line of fs.readFileSync(SCHEMA, 'utf8').split(/\r?\n/)) {
     const open = line.match(/^CREATE TABLE "([^"]+)" \($/);
     if (open) { table = open[1]; continue; }
     if (!table) continue;
@@ -68,7 +70,7 @@ const anyBoolColumn = new Set([...boolColumns.values()].flatMap((s) => [...s]));
 const nonBoolColumn = new Map();   // column → 'TABLE.TYPE'
 {
   let table = null;
-  for (const line of fs.readFileSync(SCHEMA, 'utf8').split('\n')) {
+  for (const line of fs.readFileSync(SCHEMA, 'utf8').split(/\r?\n/)) {
     const open = line.match(/^CREATE TABLE "([^"]+)" \($/);
     if (open) { table = open[1]; continue; }
     if (!table) continue;
@@ -89,7 +91,9 @@ const files = [];
 (function walk(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
-    const full = path.join(dir, e.name);
+    // Normalised at the point of collection: path.join gives '\' on Windows,
+    // and the 'src/lib/db.ts' comparison below would silently stop excluding.
+    const full = path.join(dir, e.name).replace(/\\/g, '/');
     if (e.isDirectory()) walk(full);
     // lib/db.ts is the SQLite schema builder: its CREATE TABLE and its seed
     // rows never reach Postgres, and its 0/1 defaults are correct there.

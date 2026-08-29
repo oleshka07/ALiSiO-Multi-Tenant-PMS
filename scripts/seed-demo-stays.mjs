@@ -30,10 +30,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { registerHooks } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 // Той самий резолвер аліасів, що в apply-hotel.mjs, і з тієї ж причини: на
 // сервері цей файл виконує голий node без бандлера. Історія — там.
-const ROOT = path.dirname(new URL('.', import.meta.url).pathname.replace(/\/$/, ''));
+// fileURLToPath, не .pathname: на Windows .pathname дає '/D:/…%20…', і
+// tsconfig.json за таким ROOT не читається.
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ALIASES = (() => {
   try {
     const raw = fs.readFileSync(path.join(ROOT, 'tsconfig.json'), 'utf8').replace(/^\s*\/\/.*$/gm, '');

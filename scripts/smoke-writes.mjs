@@ -193,7 +193,10 @@ function bodyFields(src) {
 const routes = [];
 (function walk(d) {
   for (const e of fs.readdirSync(d, { withFileTypes: true })) {
-    const p = path.join(d, e.name);
+    // Normalised at collection: path.join gives '\' on Windows — toUrl нижче
+    // будував би URL зі 'src\app\…', а виняток includes('/api/auth/') не
+    // спрацьовував би, і прогін сам себе розлогінював.
+    const p = path.join(d, e.name).replace(/\\/g, '/');
     if (e.isDirectory()) walk(p);
     else if (e.name === 'route.ts') routes.push(p);
   }
