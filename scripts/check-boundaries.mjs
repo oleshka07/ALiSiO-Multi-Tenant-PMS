@@ -52,7 +52,10 @@ const BASELINE = {
   // рахують ПДВ прямо з fin_invoice_tax_totals. Обидва старші за розділення
   // й обидва лікуються запитом до фасаду, а не переїздом файлу.
   invoicing: 2,
-  guests: 8,
+  // 8 → 7: обидва GDPR-крони тепер кличуть anonymizeOldRegistrations через
+  // фасад @guests, а не з data/ напряму (INC-009 — заодно два маршрути
+  // перестали тримати дві копії однієї ретенційної логіки).
+  guests: 7,
   pricing: 6,
   // 9 → 7: групові броні видалено, і разом із ними два екрани, які лізли в
   // modules/properties повз фасад (GroupBookingModal, GroupViewModal).

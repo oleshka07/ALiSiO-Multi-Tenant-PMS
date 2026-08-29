@@ -29,10 +29,13 @@
  *   - `console.error(err.message)` is a log line and is the point, not the bug.
  */
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const strict = process.argv.includes('--strict');
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+// fileURLToPath, не URL.pathname: на Windows pathname лишає %20 і слеш перед
+// літерою диска, і readdir шукав 'D:\D:\…' — гейт падав, не перевіривши нічого.
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const LEAK = /error:\s*(?:e|err|error)\??\.message[^}]*\}\s*,\s*\{\s*status:\s*500/g;
 

@@ -56,3 +56,9 @@ export type { GuestDedupArgs, GuestDedupResult } from '../data/guest-dedup.repo'
 
 // Загальний пошук питає модуль, а не таблицю. Див. core/search-types.ts.
 export { searchGuests } from '../data/guest-search';
+
+// GDPR-ретенція: обидва крон-маршрути (guests/gdpr-cron і cron/gdpr-retention)
+// кличуть одну реалізацію, і саме через фасад — щоб маршрут не відкривав
+// нутрощі модуля.
+export { anonymizeOldRegistrations } from '../data/registration.repo';
+export type { RetentionRunResult } from '../data/registration.repo';

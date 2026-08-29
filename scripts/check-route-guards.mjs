@@ -251,7 +251,10 @@ const routes = [];
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) walk(full);
-    else if (e.name === 'route.ts') routes.push(full);
+    // Прямі слеші одразу: на Windows path.join дає `src\app\api\…`, і жоден
+    // з /-патернів нижче (PUBLIC, зрізання префікса) не збігався — усі 18
+    // публічних маршрутів оголошувались «без варти» на здоровому коді.
+    else if (e.name === 'route.ts') routes.push(full.split(path.sep).join('/'));
   }
 })('src/app/api');
 

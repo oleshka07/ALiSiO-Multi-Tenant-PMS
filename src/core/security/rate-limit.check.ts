@@ -73,5 +73,11 @@ assert.ok(afterWindow.allowed,
   'спроби поза вікном усе ще рахуються — ліміт не відпускає ніколи');
 console.log('  ok  поза вікном спроби не рахуються');
 
-fs.rmSync(tmp, { recursive: true, force: true });
+// Спершу закрити базу: на Windows відкритий хендл SQLite тримає файл, і
+// rmSync падає з EPERM — перевірка червоніла ПІСЛЯ останнього «ok», на
+// прибиранні за собою. І не падати, якщо тека не піддалась: це тимчасова
+// тека, ОС прибере.
+const { _resetDb } = await import('../db/index.ts');
+_resetDb();
+try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* див. вище */ }
 console.log('  ok  rate-limit: ліміт публічних маршрутів справді рахує');

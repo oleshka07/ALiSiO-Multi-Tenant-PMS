@@ -29,9 +29,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { registerHooks } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
+// fileURLToPath, not URL.pathname: pathname keeps percent-encoding and a
+// leading slash before the drive letter, so on a Windows checkout under a
+// path with a space every alias silently resolved to nothing and each
+// data-level check died with "Cannot find package '@core/db'".
 const ROOT = path.dirname(path.dirname(
-  path.dirname(new URL(import.meta.url).pathname),
+  path.dirname(fileURLToPath(import.meta.url)),
 ));
 
 const ALIASES = (() => {
@@ -66,11 +71,11 @@ registerHooks({
     const mapped = fromAlias(spec);
     if (mapped) {
       const file = onDisk(mapped);
-      if (file) return { url: `file://${file}`, shortCircuit: true };
+      if (file) return { url: pathToFileURL(file).href, shortCircuit: true };
     }
     if (spec.startsWith('.') && ctx.parentURL?.startsWith('file://')) {
-      const file = onDisk(path.resolve(path.dirname(ctx.parentURL.slice(7)), spec));
-      if (file) return { url: `file://${file}`, shortCircuit: true };
+      const file = onDisk(path.resolve(path.dirname(fileURLToPath(ctx.parentURL)), spec));
+      if (file) return { url: pathToFileURL(file).href, shortCircuit: true };
     }
     return next(spec, ctx);
   },
