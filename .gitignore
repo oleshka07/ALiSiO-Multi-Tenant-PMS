@@ -67,4 +67,6 @@ audit-ui-report.json
 # Authorization і персональні дані гостей. У репозиторій їде лише дайджест
 # (scripts/har-digest.mjs), сирий запис — ніколи
 *.har
+/capture*/
+/.crawl-profile*/
 /docs/research/**/capture/

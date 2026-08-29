@@ -26,9 +26,7 @@
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
-
-/** Імена полів, значення яких не показуємо ніколи — лише тип. */
-const SENSITIVE = /(token|password|passwd|secret|api[-_]?key|authorization|session|cookie|signature|iban|bic|card|cvv|pan|email|phone|tel|mobile|passport|birth|dob|ssn|vat[-_]?number|ico|dic|address|street|zip|postal|lat|lng|longitude|latitude|note|comment|message|firstname|lastname|surname|fullname|guest[-_]?name)/i;
+import { SENSITIVE } from './lib/sensitive-names.mjs';
 
 /** Скільки різних значень збирати, поки поле ще схоже на перелік. */
 const ENUM_LIMIT = 12;
