@@ -1,0 +1,289 @@
+/**
+ * Клієнт Channex поводиться правильно на двох відповідях, які виглядають як успіх.
+ *
+ *   node src/modules/channels/channex/channex.check.ts
+ *
+ * Це приймання фази 2 (docs/CHANNEX-INTEGRATION.md §9): «мок відповідає 429
+ * і 200 з warnings — клієнт поводиться правильно на обох». Обидві відповіді
+ * небезпечні тим, що їх легко порахувати нормою: перша має код помилки, але
+ * означає «зачекай», а не «зламалось»; друга має код успіху, але означає, що
+ * ціни не застосувались.
+ *
+ * Проти СПРАВЖНЬОГО HTTP, а не підміненого fetch: перевіряємо, що ми
+ * правильно ЧИТАЄМО відповідь, а не що правильно її склали.
+ *
+ * Час тут — вхідні дані, тому перевірка не спить: годинник лімітера
+ * рухається рукою, а сон клієнта підмінений лічильником.
+ */
+import assert from 'node:assert';
+// Аліаси й розширення для голого node — модулі імпортують одне одного без
+// `.ts`, і без цього хука node їх не знаходить. Спершу хук, потім усе інше.
+import '../../../../scripts/lib/module-aliases.mjs';
+
+const { startMockChannex } = await import('./mock-server.ts');
+const { ChannexClient, ChannexError, ChannexPaused } = await import('./client.ts');
+const { ChannexRateLimiter } = await import('./limiter.ts');
+const { availabilityValues, rateValues } = await import('./ari-payload.ts');
+
+const mock = await startMockChannex();
+const KEY = 'conn-1';
+const PROP = 'remote-prop';
+
+/** Клієнт із керованим часом і без справжнього сну. */
+function makeClient(over: Partial<{ maxAttempts: number }> = {}) {
+  let clock = 1_000_000;
+  const slept: number[] = [];
+  const limiter = new ChannexRateLimiter({ now: () => clock });
+  const client = new ChannexClient({
+    apiKey: 'test-key',
+    baseUrl: mock.url,
+    limiter,
+    now: () => clock,
+    sleep: async (ms) => { slept.push(ms); },
+    maxAttempts: over.maxAttempts ?? 3,
+  });
+  return { client, limiter, slept, advance: (ms: number) => { clock += ms; }, at: () => clock };
+}
+
+/**
+ * Чистий стенд для кожного розділу.
+ *
+ * Черга відповідей мока — спільна, і залишок від попереднього розділу
+ * з'їдається наступним: саме так розділ «не-JSON» одного разу отримав чужий
+ * `200` і мовчки пройшов, нічого не перевіривши.
+ */
+function reset() {
+  mock.queue.length = 0;
+  mock.calls.length = 0;
+}
+
+// ── 1. Ключ їде в заголовку, і саме з тим іменем ─────────────────────────
+{
+  reset();
+  const { client } = makeClient();
+  mock.calls.length = 0;
+  await client.publishAvailability(KEY, [{ property_id: PROP, room_type_id: 'rt', date: '2026-11-22', availability: 3 }]);
+  assert.strictEqual(mock.calls.length, 1, 'виклик не дійшов до сервера');
+  assert.strictEqual(mock.calls[0].apiKey, 'test-key', 'ключ не в заголовку user-api-key');
+  assert.strictEqual(mock.calls[0].path, '/availability', 'наявність пішла не на свій маршрут');
+}
+
+// ── 2. 200 із warnings — це ПОМИЛКА, і видно, що не застосувалось ────────
+{
+  reset();
+  const { client } = makeClient();
+  mock.calls.length = 0;
+  mock.queue.push({
+    kind: 'warnings',
+    warnings: [{
+      property_id: PROP,
+      rate_plan_id: 'rp',
+      date: '2026-11-22',
+      warning: { rate: ['must be greater than 0'] },
+    }],
+  });
+
+  const res = await client.publishRestrictions(KEY, [{ property_id: PROP, rate_plan_id: 'rp', date: '2026-11-22', rate: 0 }]);
+
+  assert.strictEqual(res.warnings.length, 1, 'warnings при 200 загубились — саме так ціни зникають мовчки');
+  assert.strictEqual(res.taskIds.length, 0, 'порожній data мав означати «не застосовано нічого»');
+  assert.strictEqual(res.warnings[0].rate_plan_id, 'rp', 'координати претензії втрачені — нічого повернути в чергу');
+}
+
+// ── 3. Часткове застосування відрізняється від повного провалу ───────────
+{
+  reset();
+  const { client } = makeClient();
+  mock.queue.push({ kind: 'warnings', warnings: [{ rate_plan_id: 'bad' }], taskIds: ['task-partial'] });
+  const res = await client.publishRestrictions(KEY, [{ property_id: PROP, rate_plan_id: 'rp', date: '2026-11-22', rate: 100 }]);
+  assert.strictEqual(res.taskIds.length, 1, 'часткове застосування прочиталось як повний провал');
+  assert.strictEqual(res.warnings.length, 1, 'частина, яку відкинули, лишилась непоміченою');
+}
+
+// ── 4. 429: об'єкт на хвилину, БЕЗ негайного повтору ─────────────────────
+//
+// Повтор через секунду після «забагато запитів» дає ще один 429 і добиває
+// квоту, яка й так вичерпана. Channex просить протилежного: «pause updates
+// for the property for 1 minute and try again».
+{
+  reset();
+  const { client, limiter, slept } = makeClient();
+  mock.calls.length = 0;
+  mock.queue.push({ kind: 'rateLimited' }, { kind: 'ok', taskIds: ['must-not-be-reached'] });
+
+  await assert.rejects(
+    () => client.publishAvailability(KEY, [{ property_id: PROP, room_type_id: 'rt', date: '2026-11-22', availability: 1 }]),
+    (e: unknown) => e instanceof ChannexError && e.status === 429 && e.retryable,
+    '429 мав долетіти нагору як тимчасова помилка — рядки лишаються в черзі',
+  );
+  assert.strictEqual(mock.calls.length, 1, '429 був повторений одразу — це другий 429 і згоріла квота');
+  assert.deepStrictEqual(slept, [], 'після 429 клієнт спав усередині виклику замість паузи на об\'єкт');
+  assert.strictEqual(limiter.pausedFor(KEY), 60_000, 'об\'єкт не став на хвилинну паузу');
+}
+
+// ── 4b. 5xx: коротке наростання тут-таки, бо це блимання ─────────────────
+{
+  reset();
+  const { client, slept } = makeClient();
+  mock.calls.length = 0;
+  mock.queue.push({ kind: 'serverError' }, { kind: 'serverError' }, { kind: 'ok', taskIds: ['after-5xx'] });
+
+  const res = await client.publishAvailability(KEY, [{ property_id: PROP, room_type_id: 'rt', date: '2026-11-22', availability: 1 }]);
+  assert.deepStrictEqual(res.taskIds, ['after-5xx'], 'тимчасова помилка сервера не була повторена');
+  assert.deepStrictEqual(slept, [1000, 2000], 'наростання відступу не подвоюється');
+  assert.strictEqual(mock.calls.length, 3, 'очікувалось три спроби');
+}
+
+// ── 5. 401 не повторюється: вдруге буде те саме ──────────────────────────
+{
+  reset();
+  const { client } = makeClient();
+  mock.calls.length = 0;
+  mock.queue.push({ kind: 'unauthorized' }, { kind: 'ok' });
+
+  await assert.rejects(
+    () => client.publishAvailability(KEY, [{ property_id: PROP, room_type_id: 'rt', date: '2026-11-22', availability: 1 }]),
+    (e: unknown) => e instanceof ChannexError && e.status === 401 && !e.retryable,
+    'поганий ключ мав впасти одразу',
+  );
+  assert.strictEqual(mock.calls.length, 1, 'постійна помилка була повторена — це витрата квоти намарно');
+}
+
+// ── 6. Не-JSON перед API не валить процес ────────────────────────────────
+{
+  reset();
+  const { client } = makeClient({ maxAttempts: 1 });
+  mock.queue.push({ kind: 'garbage' });
+  await assert.rejects(
+    () => client.publishAvailability(KEY, [{ property_id: PROP, room_type_id: 'rt', date: '2026-11-22', availability: 1 }]),
+    (e: unknown) => e instanceof ChannexError && e.code === 'invalid_json',
+    'сторінка проксі замість JSON мала стати зрозумілою помилкою',
+  );
+}
+
+// ── 7. Помилка ставить ОБ'ЄКТ на паузу, і це видно ───────────────────────
+{
+  reset();
+  const { client, limiter } = makeClient({ maxAttempts: 1 });
+  mock.queue.push({ kind: 'serverError' });
+  await assert.rejects(() => client.publishAvailability(KEY, [{ property_id: PROP, room_type_id: 'rt', date: '2026-11-22', availability: 1 }]));
+
+  assert.ok(limiter.pausedFor(KEY) > 0, 'після помилки об\'єкт не став на паузу');
+  assert.strictEqual(limiter.pausedFor('other-conn'), 0, 'пауза одного об\'єкта зупинила інший — ліміт не на акаунт');
+
+  await assert.rejects(
+    () => client.publishAvailability(KEY, [{ property_id: PROP, room_type_id: 'rt', date: '2026-11-23', availability: 1 }]),
+    (e: unknown) => e instanceof ChannexPaused && e.reason === 'paused',
+    'на паузі клієнт усе одно пішов у мережу',
+  );
+}
+
+// ── 8. Ліміт: десять на смугу, смуги незалежні, вікно рухається ──────────
+{
+  reset();
+  let clock = 5_000_000;
+  const limiter = new ChannexRateLimiter({ now: () => clock });
+
+  for (let i = 0; i < 10; i++) {
+    assert.ok(limiter.take(KEY, 'availability').ok, `наявність №${i + 1} мала пройти`);
+  }
+  const over = limiter.take(KEY, 'availability');
+  assert.ok(!over.ok && over.reason === 'window', 'одинадцятий запит наявності мав упертись у вікно');
+
+  assert.ok(limiter.take(KEY, 'rates').ok, 'ціни мають свою квоту — вичерпана наявність їх не блокує');
+  assert.ok(limiter.take('conn-2', 'availability').ok, 'квота іншого об\'єкта з\'їдена чужою — ліміт на об\'єкт, не на акаунт');
+
+  clock += 60_001;
+  assert.ok(limiter.take(KEY, 'availability').ok, 'вікно не зрушило через хвилину');
+}
+
+// ── 9. Стиснення діапазонів: пів року одним записом ──────────────────────
+{
+  reset();
+  const ids = new Map([['rp-local', 'rp-remote']]);
+  const changes = [];
+  for (let d = new Date(Date.UTC(2026, 11, 1)); d <= new Date(Date.UTC(2027, 4, 1)); d.setUTCDate(d.getUTCDate() + 1)) {
+    changes.push({ ratePlanId: 'rp-local', date: d.toISOString().slice(0, 10), priceMinor: 43200, minStay: 2 });
+  }
+  assert.strictEqual(changes.length, 152, 'очікувалось 152 ночі — тест 8 сертифікації');
+
+  const { values } = rateValues(PROP, changes, ids);
+  assert.strictEqual(values.length, 1, `152 ночі з однією ціною мали стиснутись в один запис, вийшло ${values.length}`);
+  assert.strictEqual(values[0].date_from, '2026-12-01');
+  assert.strictEqual(values[0].date_to, '2027-05-01');
+  assert.strictEqual(values[0].rate, 43200, 'ціна мала піти цілим у мінорних одиницях');
+  assert.strictEqual(values[0].date, undefined, 'діапазон не має нести ще й одиночну дату');
+}
+
+// ── 10. Різні обмеження — різні діапазони, а не одне склеєне ─────────────
+{
+  reset();
+  const ids = new Map([['rp', 'rp-remote']]);
+  const { values } = rateValues(PROP, [
+    { ratePlanId: 'rp', date: '2026-11-01', priceMinor: 10000, minStay: 1 },
+    { ratePlanId: 'rp', date: '2026-11-02', priceMinor: 10000, minStay: 1 },
+    { ratePlanId: 'rp', date: '2026-11-03', priceMinor: 10000, minStay: 3 },
+  ], ids);
+  assert.strictEqual(values.length, 2, 'та сама ціна з іншим min_stay мала лишитись окремим діапазоном');
+  assert.strictEqual(values[0].date_to, '2026-11-02');
+  assert.strictEqual(values[1].date, '2026-11-03', 'одиночна дата мала піти як date, не date_from/date_to');
+  assert.strictEqual(values[1].min_stay, 3);
+}
+
+// ── 11. Розрив у датах не склеюється ─────────────────────────────────────
+{
+  reset();
+  const ids = new Map([['rt', 'rt-remote']]);
+  const { values } = availabilityValues(PROP, [
+    { unitTypeId: 'rt', date: '2026-11-01', free: 2 },
+    { unitTypeId: 'rt', date: '2026-11-02', free: 2 },
+    { unitTypeId: 'rt', date: '2026-11-04', free: 2 },
+  ], ids);
+  assert.strictEqual(values.length, 2, 'пропущений день склеївся в діапазон — 3 листопада отримало б чуже число');
+  assert.strictEqual(values[0].date_from, '2026-11-01');
+  assert.strictEqual(values[0].date_to, '2026-11-02');
+  assert.strictEqual(values[1].date, '2026-11-04');
+}
+
+// ── 12. Нуль вільних їде як нуль, а не зникає ────────────────────────────
+{
+  reset();
+  const ids = new Map([['rt', 'rt-remote']]);
+  const { values } = availabilityValues(PROP, [{ unitTypeId: 'rt', date: '2026-11-01', free: 0 }], ids);
+  assert.strictEqual(values.length, 1, 'нуль вільних не поїхав — канал продовжить продавати за старим числом');
+  assert.strictEqual(values[0].availability, 0);
+}
+
+// ── 13. Порожніх полів у тілі немає ──────────────────────────────────────
+{
+  reset();
+  const ids = new Map([['rp', 'rp-remote']]);
+  const { values } = rateValues(PROP, [{ ratePlanId: 'rp', date: '2026-11-01', closed: true }], ids);
+  assert.strictEqual(values[0].stop_sell, true);
+  assert.ok(!('rate' in values[0]), 'ціна, якої не міняли, поїхала полем — Channex відповів би претензією');
+  assert.ok(!('min_stay' in values[0]), 'обмеження, якого не міняли, поїхало полем');
+}
+
+// ── 14. Незмаплене не вигадується ────────────────────────────────────────
+{
+  reset();
+  const { values, unmapped } = availabilityValues(PROP, [
+    { unitTypeId: 'known', date: '2026-11-01', free: 1 },
+    { unitTypeId: 'stranger', date: '2026-11-01', free: 1 },
+  ], new Map([['known', 'known-remote']]));
+  assert.strictEqual(values.length, 1, 'незмаплений тип поїхав у канал');
+  assert.deepStrictEqual(unmapped, ['stranger'], 'про незмаплений тип ніхто не дізнався');
+}
+
+// ── 15. Порожня пачка не витрачає квоту ──────────────────────────────────
+{
+  reset();
+  const { client } = makeClient();
+  mock.calls.length = 0;
+  const res = await client.publishAvailability(KEY, []);
+  assert.deepStrictEqual(res, { taskIds: [], warnings: [] });
+  assert.strictEqual(mock.calls.length, 0, 'порожня пачка пішла в мережу і з\'їла квоту');
+}
+
+await mock.close();
+console.log('channex: all checks passed');

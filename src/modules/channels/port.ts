@@ -1,0 +1,175 @@
+/**
+ * Менеджер каналів — те, що від нього потрібно домену, і нічого більше.
+ *
+ * Домен імпортує ТІЛЬКИ цей файл. Слово `channex`, заголовок `user-api-key`,
+ * поняття «ревізія», «ack», «ARI», `room_type_id`, `stop_sell` живуть
+ * виключно в `./channex/`. Тримає гейт `scripts/check-vendor-isolation.mjs`
+ * (інваріант И1, docs/CHANNEX-INTEGRATION.md §7).
+ *
+ * ЧОГО ЦЕЙ ПОРТ НЕ РЯТУЄ. Він рятує від переписування домену — бронювань,
+ * цін, наявності. Він НЕ рятує від переписування мапінгу й майстра
+ * підключення: у кожного менеджера каналів своя модель тарифів, і
+ * сертифікацію проходять у кожного окремо. Тобто це не «дешева заміна
+ * вендора», а «заміна вендора без ризику для ядра». Обіцяти більше —
+ * означає одного дня здивуватися.
+ *
+ * ЧОМУ ІМЕНА ТАКІ. Кожна назва тут — питання, яке ставить готель, а не
+ * метод чужого API. «Скільки вільно» і «скільки коштує» їдуть окремо не
+ * тому, що так у когось влаштований REST, а тому, що це два різні за
+ * терміновістю повідомлення: наявність застаріває за хвилини, ціна — ні.
+ */
+
+/** Календарна дата, `YYYY-MM-DD`. */
+export type DateStr = string;
+
+/** Ідентифікатори НАШІ. Переклад у чужі — справа адаптера. */
+export type PropertyId = string;
+export type UnitTypeId = string;
+export type RatePlanId = string;
+
+/**
+ * Скільки номерів типу вільно на дату.
+ *
+ * Джерело — `availabilityByDay()` з `@properties` і ніщо інше (інваріант И3).
+ */
+export interface AvailabilityChange {
+  unitTypeId: UnitTypeId;
+  date: DateStr;
+  /** Невід'ємне ціле. Нуль — це значуще число, а не «не надсилати». */
+  free: number;
+}
+
+/**
+ * Ціна й умови продажу тарифу на дату.
+ *
+ * Порожнє поле означає «не міняли», а не «скинути»: канал зберігає останнє
+ * почуте значення, тож надіслати порожнечу і надіслати нуль — це різні дії з
+ * різними наслідками для продажу.
+ */
+export interface RateChange {
+  ratePlanId: RatePlanId;
+  date: DateStr;
+  /**
+   * Ціна ночі в МІНОРНИХ одиницях (2500 = 25.00).
+   *
+   * Ціла копійка, бо саме так сума живе в нас (`money()`, інваріант 9) і
+   * бо дробове число по дорозі через JSON — це те, як ціна стає 24.999999.
+   * Нуль сюди не пишеться: «безкоштовно» не існує, ніч без ціни
+   * закривається через `closed` (інваріант И2 і 17).
+   */
+  priceMinor?: number;
+  /** Ніч не продається. Саме це, а не ціна 0 і не мовчазний пропуск. */
+  closed?: boolean;
+  minStay?: number;
+  maxStay?: number;
+  /** Заїзд цього дня заборонений. */
+  noArrival?: boolean;
+  /** Виїзд цього дня заборонений. */
+  noDeparture?: boolean;
+}
+
+/**
+ * Розписка про прийняте до відправлення.
+ *
+ * Менеджер каналів приймає пакет і обробляє його асинхронно, тож `200` — це
+ * «взяв», а не «канал побачив». Розписку зберігаємо: за нею потім шукають,
+ * чому готель бачить одне, а OTA — інше, і її ж вимагає сертифікація.
+ */
+export interface PublishRef {
+  id: string;
+  /** Скільки з надісланого прийнято. `none` при `200` теж буває — §5.3 ТЗ. */
+  accepted: 'all' | 'partial' | 'none';
+  /**
+   * Претензії до окремих значень.
+   *
+   * Непорожній список — це ПОМИЛКА, навіть якщо HTTP сказав `200`
+   * (інваріант И4). Мовчазно відкинуте значення означає, що канал і далі
+   * продає за попереднім числом.
+   */
+  rejected: RejectedChange[];
+}
+
+/** Одне значення, яке менеджер каналів не взяв, і чому. */
+export interface RejectedChange {
+  /** Координати, щоб повернути саме ці рядки черги в роботу. */
+  ratePlanId?: RatePlanId;
+  unitTypeId?: UnitTypeId;
+  from?: DateStr;
+  to?: DateStr;
+  /** Причина, як її назвав менеджер каналів. Для оператора й журналу. */
+  reason: string;
+}
+
+/** Бронювання, як його бачить домен. Заповнюється у фазі 5. */
+export interface InboundBooking {
+  /** Стабільний між змінами. За ним шукаємо своє бронювання. */
+  externalId: string;
+  /** Змінюється з кожною редакцією. За ним відсікаємо повтори. */
+  externalVersionId: string;
+  /** Код брони в самій OTA — те, що гість називає по телефону. */
+  otaReference?: string;
+  otaName?: string;
+  state: 'new' | 'changed' | 'cancelled';
+  /**
+   * Тип номера й тариф не змаплено.
+   *
+   * Таке бронювання все одно приймається і підтверджується: гість уже
+   * заплатив, і воно фізично існує. Відкинути його — значить створити
+   * овербукінг власноруч.
+   */
+  unmapped: boolean;
+  /** Сира відповідь менеджера каналів, для звірки й доказу в суперечці. */
+  raw: unknown;
+}
+
+/** Нитка листування з гостем. Заповнюється у фазі 6. */
+export interface InboundMessage {
+  threadId: string;
+  messageId?: string;
+  /** Нитка без бронювання — нормальний стан (запит Airbnb), не помилка. */
+  externalBookingId?: string;
+  author: 'guest' | 'hotel';
+  body: string;
+  sentAt?: string;
+}
+
+export interface ThreadRef {
+  propertyId: PropertyId;
+  threadId: string;
+}
+
+/** Дзеркало мапінгу: що з нашого чим стало на тому боці. */
+export interface CatalogMapping {
+  property: string;
+  unitTypes: Map<UnitTypeId, string>;
+  ratePlans: Map<RatePlanId, string>;
+}
+
+export interface ChannelManagerPort {
+  /** Скільки номерів вільно. Найтерміновіше з усього, що ми шлемо. */
+  publishAvailability(propertyId: PropertyId, changes: AvailabilityChange[]): Promise<PublishRef>;
+
+  /** Скільки коштує і на яких умовах продається. */
+  publishRates(propertyId: PropertyId, changes: RateChange[]): Promise<PublishRef>;
+
+  /** Забрати бронювання, яких ми ще не приймали. */
+  fetchPendingBookings(propertyId: PropertyId): Promise<InboundBooking[]>;
+
+  /**
+   * Підтвердити, що бронювання збережене.
+   *
+   * Викликається ТІЛЬКИ після коміту транзакції (інваріант И5): підтвердили
+   * раніше, процес упав — бронювання втрачено назавжди, більше його ніхто
+   * не віддасть.
+   */
+  confirmBookingReceived(propertyId: PropertyId, externalVersionId: string): Promise<void>;
+
+  /** Забрати нові повідомлення гостей. */
+  fetchPendingMessages(propertyId: PropertyId): Promise<InboundMessage[]>;
+
+  /** Надіслати відповідь гостю. */
+  sendMessage(thread: ThreadRef, body: string): Promise<void>;
+
+  /** Створити або оновити об'єкт, типи номерів і тарифи; повернути мапінг. */
+  syncCatalog(propertyId: PropertyId): Promise<CatalogMapping>;
+}
