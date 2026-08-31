@@ -236,6 +236,25 @@ for (const name of files) {
     else if ((amount ?? 0) <= 0) {
       note(file, `збір "${name}": amount ${amount} — нульовий збір не потрапляє в квоту взагалі`);
     }
+    // Два класифікатори з міграції 0050, обидва під CHECK. Пропущені — це
+    // дефолт (`all` / `property`), тобто наявні файли валідні як є.
+    const appliesTo = f(fee, 'appliesTo');
+    if (appliesTo != null && !['all', 'adults'].includes(appliesTo)) {
+      note(file, `збір "${name}": appliesTo "${appliesTo}" — має бути all або adults`);
+    }
+    const collectedFor = f(fee, 'collectedFor');
+    if (collectedFor != null && !['property', 'authority'].includes(collectedFor)) {
+      note(file, `збір "${name}": collectedFor "${collectedFor}" — має бути property або authority`);
+    }
+    // Готель, який заводить збір «для громади», МУСИТЬ сказати про це явно:
+    // без цього турзбір потрапить у документ як звичайна послуга з ПДВ.
+    // Здогадка за назвою тут була б гіршою за мовчання — «Kurtaxe» вгадується,
+    // «Ortstaxe», «Poplatek z pobytu» і «Турзбір» ні, і готель дізнався б про
+    // різницю з перевірки податкової.
+    if (collectedFor == null && /kurtaxe|city\s*tax|tourist|турзб|поплат|poplatek|taxe/i.test(String(name))) {
+      note(file, `збір "${name}": схоже на місцевий збір, але collectedFor не вказано — `
+        + 'без "authority" він піде в документ як послуга готелю, з ПДВ');
+    }
   }
 
   // ── джерела бронювань ─────────────────────────────────────────────────────

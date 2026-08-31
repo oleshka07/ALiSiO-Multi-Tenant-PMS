@@ -646,8 +646,19 @@ async function applyStructure(organizationId, plan) {
   // Портьє називає гостю суму саме з того екрана.
   //
   // Тип під CHECK-обмеженням схеми: збір із чужим типом не вставиться, тому
-  // краще відмовити тут з назвою поля, ніж отримати помилку драйвера.
+  // краще відмовити тут з назвою поля, ніж отримати помилку драйвера. Те саме
+  // для двох класифікаторів із міграції 0050.
   const FEE_TYPES = ['per_stay', 'per_night', 'per_person', 'per_person_per_night', 'percentage'];
+  const FEE_APPLIES = ['all', 'adults'];
+  const FEE_COLLECTED = ['property', 'authority'];
+
+  // Турзбір у цього обʼєкта вже має СВОЮ машинерію: ставка в
+  // `properties.city_tax_per_night`, сума на кожній броні в
+  // `reservations.city_tax_amount`, і з 31.08.2026 — рядок рахунку
+  // `kind='city_tax'`. Другий турзбір рядком `fees_taxes` дав би те саме
+  // двічі: раз у квоті, раз на рахунку. Тому нижче — відмова, а не попередження.
+  const cityTaxRate = Number(property.city_tax_per_night) || 0;
+
   for (const f of plan.fees || plan.feesTaxes || plan.fees_taxes || []) {
     const name = both(f, 'name');
     const type = both(f, 'type');
@@ -661,25 +672,48 @@ async function applyStructure(organizationId, plan) {
     // показується гостю в розбивці, але не додається вдруге.
     const included = both(f, 'includedInPrice') === true;
     const active = both(f, 'isActive') !== false;
+    // `appliesTo` — кого рахувати (звільнення дітей СКАЗАНЕ, а не вгадане);
+    // `collectedFor` — чиї це гроші. Обидва з дефолтом, тобто наявні файли
+    // готелів працюють без правок.
+    const appliesTo = both(f, 'appliesTo') ?? 'all';
+    const collectedFor = both(f, 'collectedFor') ?? 'property';
+    if (!FEE_APPLIES.includes(appliesTo)) {
+      say.refused(`збір ${name}`, `appliesTo «${appliesTo}» не з ${FEE_APPLIES.join(' / ')}`);
+      continue;
+    }
+    if (!FEE_COLLECTED.includes(collectedFor)) {
+      say.refused(`збір ${name}`, `collectedFor «${collectedFor}» не з ${FEE_COLLECTED.join(' / ')}`);
+      continue;
+    }
+    if (collectedFor === 'authority' && cityTaxRate > 0) {
+      say.refused(`збір ${name}`,
+        `обʼєкт уже має турзбір ${cityTaxRate}/ніч у city_tax_per_night — другий збір «для громади» ліг би в рахунок ДВІЧІ`);
+      continue;
+    }
 
     const has = await sql.row(
-      'SELECT id, type, amount, is_included_in_price, is_active FROM fees_taxes WHERE property_id = ? AND name = ?',
+      `SELECT id, type, amount, is_included_in_price, is_active, applies_to, collected_for
+         FROM fees_taxes WHERE property_id = ? AND name = ?`,
       [property.id, name]);
     const same = has && has.type === type && Number(has.amount) === amount
-      && Boolean(has.is_included_in_price) === included && Boolean(has.is_active) === active;
+      && Boolean(has.is_included_in_price) === included && Boolean(has.is_active) === active
+      && (has.applies_to ?? 'all') === appliesTo
+      && (has.collected_for ?? 'property') === collectedFor;
     if (same) { say.same(`збір ${name}`); continue; }
     if (DRY) { say[has ? 'changed' : 'made'](`[суха] збір ${name} (${type}) = ${amount}`); continue; }
     if (has) {
       await sql.run(
-        `UPDATE fees_taxes SET type = ?, amount = ?, is_included_in_price = ?, is_active = ?
+        `UPDATE fees_taxes SET type = ?, amount = ?, is_included_in_price = ?, is_active = ?,
+                               applies_to = ?, collected_for = ?
           WHERE id = ? AND property_id = ?`,
-        [type, amount, +included, +active, has.id, property.id]);
+        [type, amount, +included, +active, appliesTo, collectedFor, has.id, property.id]);
       say.changed(`збір ${name} (${type}) = ${amount}`);
     } else {
       await sql.run(
-        `INSERT INTO fees_taxes (id, property_id, name, type, amount, is_included_in_price, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [crypto.randomUUID(), property.id, name, type, amount, +included, +active]);
+        `INSERT INTO fees_taxes (id, property_id, name, type, amount, is_included_in_price, is_active,
+                                 applies_to, collected_for)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [crypto.randomUUID(), property.id, name, type, amount, +included, +active, appliesTo, collectedFor]);
       say.made(`збір ${name} (${type}) = ${amount}`);
     }
   }

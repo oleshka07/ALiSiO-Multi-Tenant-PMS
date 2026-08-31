@@ -140,12 +140,14 @@
       "category": "other"
     }
   ],
-  "_fees": "Збори поверх ціни за ніч: міське мито, прибирання, сервісний збір. Квота показує їх окремими рядками. type: per_stay | per_night | per_person | per_person_per_night | percentage. includedInPrice — збір уже сидить у ціні за ніч: показується, але не додається вдруге.",
+  "_fees": "Збори поверх ціни за ніч: міське мито, прибирання, сервісний збір. Квота показує їх окремими рядками. type — ЯК множити: per_stay | per_night | per_person | per_person_per_night | percentage. appliesTo — КОГО рахувати: all (дефолт) | adults, тобто звільнення дітей від збору. collectedFor — ЧИЇ це гроші: property (дефолт, виручка готелю) | authority (збір для громади: у документі йде окремим рядком без ПДВ). includedInPrice — збір уже сидить у ціні за ніч: показується, але не додається вдруге. УВАГА: якщо в обʼєкта заповнено city_tax_per_night, другий турзбір рядком тут відхиляється — інакше він ліг би в рахунок двічі.",
   "fees": [
     {
       "name": "Kurtaxe",
       "type": "per_person_per_night",
-      "amount": 2.5
+      "amount": 2.5,
+      "appliesTo": "adults",
+      "collectedFor": "authority"
     },
     {
       "name": "Endreinigung",
