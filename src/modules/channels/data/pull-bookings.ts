@@ -62,8 +62,15 @@ export interface PullDeps {
   tx<T>(fn: () => Promise<T>): Promise<T>;
   /** Записати ревізію й звести з бронню. Викликається ВСЕРЕДИНІ `tx`. */
   apply(connectionId: string, rev: Revision): Promise<ApplyOutcome>;
-  /** Підтвердити менеджеру каналів. Викликається ПІСЛЯ коміту. */
-  ack(connectionId: string, remoteRevisionId: string): Promise<void>;
+  /**
+   * Підтвердити менеджеру каналів. Викликається ПІСЛЯ коміту.
+   *
+   * `ackToken` — це НЕ ключ дедуплікації. На одну ревізію припадає два
+   * ідентифікатори, і в шляху підтвердження стоїть саме цей; підмінити його
+   * ключем дедуплікації означає 404 і ревізію, яка не зникне зі стрічки
+   * ніколи. Домен його не читає — лише повертає тому, хто видав.
+   */
+  ack(connectionId: string, ackToken: string): Promise<void>;
 }
 
 export interface PullReport {
@@ -172,7 +179,7 @@ export async function pullBookings(connectionId: string, deps: PullDeps): Promis
     // лишається непідтвердженою, доки ми не скажемо інакше, а те, що бачили,
     // — наша внутрішня справа.
     try {
-      await deps.ack(connectionId, rev.remoteRevisionId);
+      await deps.ack(connectionId, rev.ackToken);
       report.acked++;
     } catch (e) {
       // Не підтвердили те, що застосували: ревізія приїде ще раз і буде

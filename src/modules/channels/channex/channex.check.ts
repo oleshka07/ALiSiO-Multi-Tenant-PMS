@@ -285,5 +285,159 @@ function reset() {
   assert.strictEqual(mock.calls.length, 0, 'порожня пачка пішла в мережу і з\'їла квоту');
 }
 
+// ── 16. Стрічка: об'єкт названо, порядок попрошено ───────────────────────
+//
+// Дві дрібниці в рядку запиту, кожна з ціною.
+//
+// БЕЗ `filter[property_id]` стрічка віддає ревізії ВСІХ об'єктів акаунта
+// одним списком — тобто броні чужого орендаря приїдуть у транзакцію цього.
+// Це не косметика запиту, це межа орендаря, винесена в query string.
+//
+// БЕЗ `order[inserted_at]=asc` порядок не гарантований, а дві ревізії одного
+// бронювання, застосовані навпаки, дають скасовану бронь як активну.
+{
+  reset();
+  const { client } = makeClient();
+  mock.queue.push({ kind: 'feed', revisions: [] });
+  await client.fetchBookingRevisions(KEY, PROP);
+
+  assert.strictEqual(mock.calls.length, 1);
+  const url = new URL(`http://x${mock.calls[0].path}`);
+  assert.ok(url.pathname.endsWith('/booking_revisions/feed'), `не той шлях: ${url.pathname}`);
+  assert.strictEqual(url.searchParams.get('filter[property_id]'), PROP,
+    'стрічку попрошено без обʼєкта — приїдуть броні всіх готелів акаунта');
+  assert.strictEqual(url.searchParams.get('order[inserted_at]'), 'asc',
+    'порядок не попрошено — скасована бронь може стати активною');
+  assert.strictEqual(mock.calls[0].method, 'GET');
+}
+
+// ── 17. Ревізії лежать у JSON:API конверті ───────────────────────────────
+//
+// Кожен запис стрічки — це `{ type, id, attributes: {…} }`, і корисне лежить
+// у `attributes`. Клієнт, який віддасть конверт як є, дасть маперу об'єкт
+// без жодного знайомого поля: кожна ревізія стане «зіпсованою», стрічка —
+// порожньою, і жодної помилки при цьому не буде.
+{
+  reset();
+  const { client } = makeClient();
+  mock.queue.push({ kind: 'feed', revisions: [
+    { id: 'rev-a', system_id: 'sys-a', booking_id: 'bkg-a', status: 'new' },
+    { id: 'rev-b', system_id: 'sys-b', booking_id: 'bkg-b', status: 'modified' },
+  ] });
+  const page = await client.fetchBookingRevisions(KEY, PROP);
+  assert.strictEqual(page.revisions.length, 2, 'конверт не розгорнуто');
+  assert.strictEqual(page.revisions[0].system_id, 'sys-a', 'attributes не розгорнуто');
+  assert.strictEqual(page.revisions[0].id, 'rev-a', 'id ревізії загублено — підтвердити її буде нічим');
+}
+
+// ── 18. Стрічка посторінкова, і сторінки треба дочитати ──────────────────
+//
+// `meta` віддає `total`, `page`, `limit`; типова сторінка — 10 записів, межа
+// сторінки — 100. Клієнт, який читає лише першу, у завантажений день мовчки
+// губить одинадцяту броню: помилки немає, звіт зелений, гість не заїде.
+{
+  reset();
+  const { client } = makeClient();
+  const many = (n: number, from: number) => Array.from({ length: n }, (_, i) => ({
+    id: `rev-${from + i}`, system_id: `sys-${from + i}`, booking_id: `bkg-${from + i}`, status: 'new',
+  }));
+  mock.queue.push({ kind: 'feed', revisions: many(100, 0), total: 130, page: 1, limit: 100 });
+  mock.queue.push({ kind: 'feed', revisions: many(30, 100), total: 130, page: 2, limit: 100 });
+
+  const all = await client.fetchAllBookingRevisions(KEY, PROP);
+  assert.strictEqual(all.length, 130, `дочитано лише ${all.length} зі 130 — решта броней зникла мовчки`);
+  assert.strictEqual(all[0].system_id, 'sys-0');
+  assert.strictEqual(all[129].system_id, 'sys-129', 'порядок сторінок переплутано');
+  assert.strictEqual(mock.calls.length, 2, 'сторінок прочитано не дві');
+  const p2 = new URL(`http://x${mock.calls[1].path}`);
+  assert.strictEqual(p2.searchParams.get('pagination[page]'), '2');
+  assert.strictEqual(p2.searchParams.get('pagination[limit]'), '100',
+    'сторінку попрошено меншу за максимум — зайві виклики на порожньому місці');
+}
+
+// ── 19. Дочитування має стелю ────────────────────────────────────────────
+//
+// Стрічка віддає лише НЕПІДТВЕРДЖЕНІ ревізії, тож сервер, який завжди
+// відповідає «є ще», перетворив би цикл на нескінченний. Стеля — це не
+// оптимізація, а те, що відрізняє повільний крон від процесу, який не
+// завершується ніколи.
+{
+  reset();
+  const { client } = makeClient();
+  for (let i = 0; i < 40; i++) {
+    mock.queue.push({ kind: 'feed', revisions: [{ id: `r${i}`, system_id: `s${i}`, booking_id: 'b', status: 'new' }],
+      total: 999999, page: i + 1, limit: 1 });
+  }
+  // Сторінка ПОВНА щоразу — саме так виглядає сервер, який завжди каже «є
+  // ще». Неповна сторінка означала б останню, і цикл спинився б сам.
+  const all = await client.fetchAllBookingRevisions(KEY, PROP, { maxPages: 3, limit: 1 });
+  assert.strictEqual(mock.calls.length, 3, 'стеля сторінок не тримає — це нескінченний цикл у кроні');
+  assert.strictEqual(all.length, 3);
+}
+
+// ── 20. Підтвердження йде за `id` ревізії, і це POST ─────────────────────
+{
+  reset();
+  const { client } = makeClient();
+  mock.queue.push({ kind: 'ackOk' });
+  await client.ackBookingRevision(KEY, 'rev-uuid-1');
+  assert.strictEqual(mock.calls.length, 1);
+  assert.strictEqual(mock.calls[0].path, '/booking_revisions/rev-uuid-1/ack',
+    `не той шлях підтвердження: ${mock.calls[0].path}`);
+  assert.strictEqual(mock.calls[0].method, 'POST');
+  assert.strictEqual(mock.calls[0].apiKey, 'test-key');
+}
+
+// ── 21. Читання не їсть квоту ARI ────────────────────────────────────────
+//
+// Ліміт 10+10 на хвилину належить ОНОВЛЕННЯМ ARI. Порахувати читання стрічки
+// в ту саму смугу означає, що активний обмін бронями душить оновлення цін —
+// і навпаки: пачка цін перестає пускати броні в готель.
+{
+  reset();
+  const { client, limiter } = makeClient();
+  for (let i = 0; i < 12; i++) mock.queue.push({ kind: 'feed', revisions: [] });
+  for (let i = 0; i < 12; i++) await client.fetchBookingRevisions(KEY, PROP);
+  assert.strictEqual(limiter.take(KEY, 'availability').ok, true,
+    'читання стрічки зʼїло квоту наявності — застаріле число продає номер, якого немає');
+  assert.strictEqual(limiter.take(KEY, 'rates').ok, true, 'читання стрічки зʼїло квоту цін');
+}
+
+// ── 22. Помилки стрічки: 401 постійна, 429 ставить обʼєкт на паузу ───────
+{
+  reset();
+  const { client } = makeClient({ maxAttempts: 1 });
+  mock.queue.push({ kind: 'unauthorized' });
+  await assert.rejects(() => client.fetchBookingRevisions(KEY, PROP), (e: unknown) => {
+    assert.ok(e instanceof ChannexError, 'помилка стрічки приїхала не розібраною');
+    assert.strictEqual(e.status, 401);
+    return true;
+  });
+}
+{
+  reset();
+  const { client, limiter } = makeClient({ maxAttempts: 1 });
+  mock.queue.push({ kind: 'rateLimited' });
+  await assert.rejects(() => client.fetchBookingRevisions(KEY, PROP), ChannexError);
+  assert.ok(limiter.pausedFor(KEY) > 0,
+    '429 на стрічці не поставив обʼєкт на паузу — наступний запит дасть той самий 429');
+}
+
+// ── 23. Підтвердження неіснуючої ревізії — 404, і це видно ───────────────
+//
+// Саме так виглядає підміна ключа підтвердження ключем дедуплікації. Мовчки
+// проковтнути 404 означало б рахувати підтвердженим те, що назавжди
+// лишилось у стрічці.
+{
+  reset();
+  const { client } = makeClient({ maxAttempts: 1 });
+  mock.queue.push({ kind: 'notFound' });
+  await assert.rejects(() => client.ackBookingRevision(KEY, 'sys-not-a-uuid'), (e: unknown) => {
+    assert.ok(e instanceof ChannexError);
+    assert.strictEqual(e.status, 404, 'ack у нікуди не назвався помилкою');
+    return true;
+  });
+}
+
 await mock.close();
 console.log('channex: all checks passed');

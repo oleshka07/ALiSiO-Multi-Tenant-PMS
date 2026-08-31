@@ -4019,7 +4019,33 @@ function runMigrations(database: any) {
   database.exec('CREATE INDEX IF NOT EXISTS idx_cm_inbound_booking ON cm_inbound_bookings(connection_id, remote_booking_id)');
   database.exec("CREATE INDEX IF NOT EXISTS idx_cm_inbound_unconfirmed ON cm_inbound_bookings(connection_id) WHERE confirmed_at IS NULL");
 
-  console.log('[DB] cm_connections + cm_inbound_bookings ready');
+  // Дзеркало мапінгу: що з нашого чим стало на тому боці. Сам мапінг робить
+  // оператор в iFrame менеджера каналів; тут — лише відповідність, без якої
+  // чужий id типу номера в броні нема чим перекласти.
+  //
+  // occupancy NOT NULL DEFAULT 0, а не nullable: UNIQUE не обмежує NULL ні
+  // тут, ні в Postgres, і саме на цьому вже обпікся price_occupancy. 0 —
+  // значення поза доменом заселеності, тобто "сама сутність, не опція".
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS cm_mappings (
+      id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      connection_id   TEXT NOT NULL REFERENCES cm_connections(id) ON DELETE CASCADE,
+      entity_type     TEXT NOT NULL CHECK (entity_type IN ('property', 'unit_type', 'rate_plan', 'rate_plan_option')),
+      local_id        TEXT NOT NULL,
+      occupancy       INTEGER NOT NULL DEFAULT 0 CHECK (occupancy >= 0),
+      remote_id       TEXT NOT NULL,
+      synced_at       TEXT,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(connection_id, entity_type, local_id, occupancy),
+      UNIQUE(connection_id, entity_type, remote_id)
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_cm_mappings_org ON cm_mappings(organization_id)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_cm_mappings_lookup ON cm_mappings(connection_id, entity_type, remote_id)');
+
+  console.log('[DB] cm_connections + cm_inbound_bookings + cm_mappings ready');
 
   // --- Migration: gift_card_templates ---
   //

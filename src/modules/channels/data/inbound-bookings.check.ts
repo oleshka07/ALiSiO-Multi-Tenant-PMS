@@ -31,6 +31,8 @@ const CAT = '__cm_check__cat';
 const TYPE = '__cm_check__type';
 const GUEST = '__cm_check__guest';
 const CONN = '__cm_check__conn';
+/** Другий орендар: один не доводить нічого. */
+const OTHER = '__cm_check__other';
 
 async function cleanup() {
   await sql.run('DELETE FROM cm_inbound_bookings WHERE organization_id = ?', [ORG]);
@@ -41,10 +43,12 @@ async function cleanup() {
   await sql.run("DELETE FROM guests WHERE id LIKE '__cm_check__%'", []);
   await sql.run("DELETE FROM properties WHERE id LIKE '__cm_check__%'", []);
   await sql.run('DELETE FROM organizations WHERE id = ?', [ORG]);
+  await sql.run('DELETE FROM organizations WHERE id = ?', [OTHER]);
 }
 
 await cleanup();
 await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [ORG, 'CM', ORG]);
+await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [OTHER, 'CM2', OTHER]);
 
 try {
   await runWithOrganization(ORG, async () => {
@@ -148,12 +152,47 @@ try {
     assert.strictEqual(placed.unit_type_id, TYPE, 'тип номера мав зберегтися');
     console.log('  ok  бронь із каналу лягає на ТИП номера, без кімнати');
 
-    // ── Чуже зʼєднання ───────────────────────────────────────────────────
+    // ── Неіснуюче зʼєднання ──────────────────────────────────────────────
     const nowhere = await applyRevision('__no_such_connection__', rev({ remoteRevisionId: 'rev-9' }));
     assert.strictEqual(nowhere.result, 'refused',
       'ревізія на неіснуюче зʼєднання мала бути відхилена, а не створити бронь нізвідки');
     assert.strictEqual(await countReservations(), 1);
     console.log('  ok  ревізія без зʼєднання відмовляє, а не вигадує бронь');
+  });
+
+  // ── ЧУЖЕ зʼєднання ─────────────────────────────────────────────────────
+  //
+  // Це не те саме, що неіснуюче, і саме тут ховається помилка. `id`
+  // зʼєднання приходить іззовні — з URL вебхука, з рядка черги, з аргументу
+  // крона, — тож запит `WHERE id = ?` без орендаря на Postgres рятує
+  // політика, а на SQLite не рятує НІЩО. SQLite стоїть у кожного розробника,
+  // під `npm run dev` і в CI: «локально працює» тут доводить рівно
+  // протилежне тому, що здається. Клас INC-010.
+  //
+  // Ціна: бронь чужого готелю лягає в НАШУ організацію — з іменем гостя,
+  // сумою і датами.
+  await runWithOrganization(OTHER, async () => {
+    const trespass = await applyRevision(CONN, {
+      remoteRevisionId: 'rev-trespass',
+      remoteBookingId: 'bkg-trespass',
+      status: 'new',
+      raw: {},
+      checkIn: '2026-11-01',
+      checkOut: '2026-11-03',
+      unitTypeId: TYPE,
+      adults: 2,
+      totalPrice: 100,
+      currency: 'EUR',
+    });
+    assert.strictEqual(trespass.result, 'refused',
+      'чужий орендар застосував ревізію на НАШЕ зʼєднання — бронь сусіда лягла б до нас');
+  });
+
+  await runWithOrganization(ORG, async () => {
+    const n = Number(((await sql.row<any>(
+      'SELECT COUNT(*) AS n FROM cm_inbound_bookings WHERE organization_id = ?', [ORG])) as any).n);
+    assert.strictEqual(n, 3, 'чужий орендар таки дописав рядок у наш журнал');
+    console.log('  ok  ревізія на ЧУЖЕ зʼєднання відмовляє на обох двигунах');
   });
 } finally {
   await cleanup();

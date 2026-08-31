@@ -18,6 +18,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 export interface RecordedCall {
+  method: string;
   path: string;
   apiKey: string | undefined;
   body: { values?: unknown[] } & Record<string, unknown>;
@@ -27,8 +28,15 @@ export interface RecordedCall {
 export type Reply =
   | { kind: 'ok'; taskIds?: string[] }
   | { kind: 'warnings'; warnings: unknown[]; taskIds?: string[] }
+  // Стрічка ревізій. `revisions` — ПЛОСКІ ревізії; мок сам загортає кожну в
+  // конверт `{ type, id, attributes }`, як це робить справжній API. Конверт
+  // тут не декорація: клієнт, який його не розгорне, віддасть маперу об'єкт
+  // без жодного знайомого поля, і стрічка мовчки стане порожньою.
+  | { kind: 'feed'; revisions: Record<string, unknown>[]; total?: number; page?: number; limit?: number }
+  | { kind: 'ackOk' }
   | { kind: 'rateLimited' }
   | { kind: 'unauthorized' }
+  | { kind: 'notFound' }
   | { kind: 'serverError' }
   | { kind: 'garbage' };
 
@@ -60,8 +68,30 @@ function render(reply: Reply): { status: number; body: unknown } {
           meta: { message: 'Success', warnings: reply.warnings },
         },
       };
+    case 'feed': {
+      const revisions = reply.revisions;
+      return {
+        status: 200,
+        body: {
+          data: revisions.map((r) => ({
+            type: 'booking_revision',
+            id: r.id,
+            attributes: r,
+          })),
+          meta: {
+            total: reply.total ?? revisions.length,
+            page: reply.page ?? 1,
+            limit: reply.limit ?? 10,
+          },
+        },
+      };
+    }
+    case 'ackOk':
+      return { status: 200, body: { meta: { message: 'Success' } } };
     case 'rateLimited':
       return { status: 429, body: { errors: { code: 'http_too_many_requests', title: 'Too Many Requests' } } };
+    case 'notFound':
+      return { status: 404, body: { errors: { code: 'resource_not_found', title: 'Resource Not Found' } } };
     case 'unauthorized':
       return { status: 401, body: { errors: { code: 'unauthorized', title: 'Unauthorized' } } };
     case 'serverError':
@@ -86,6 +116,7 @@ export async function startMockChannex(): Promise<MockChannex> {
         body = {};
       }
       calls.push({
+        method: req.method ?? '',
         path: req.url ?? '',
         apiKey: req.headers['user-api-key'] as string | undefined,
         body,

@@ -41,6 +41,7 @@ const entry = (over: Partial<FeedRevision> = {}): FeedEntry => ({
   ok: true,
   revision: {
     remoteRevisionId: 'sys-1',
+    ackToken: 'ack-1',
     remoteBookingId: 'bkg-1',
     status: 'new',
     otaReservationCode: 'BDC-1',
@@ -81,11 +82,28 @@ function harness(feed: FeedEntry[], over: Partial<PullDeps> = {}) {
 {
   const { log, deps } = harness([entry()]);
   const report = await pullBookings('conn-1', deps);
-  assert.deepStrictEqual(log, ['tx:begin', 'apply:sys-1', 'tx:commit', 'ack:sys-1'],
+  assert.deepStrictEqual(log, ['tx:begin', 'apply:sys-1', 'tx:commit', 'ack:ack-1'],
     'ack стався НЕ після коміту — упавши між ними, ми втратили б бронь назавжди');
   assert.strictEqual(report.applied, 1);
   assert.strictEqual(report.acked, 1);
   console.log('  ok  ack іде після коміту, а не всередині транзакції');
+}
+
+// ─── Підтверджуємо ТИМ ключем, яким підтверджують ───────────────────────────
+//
+// На одну ревізію припадає два ідентифікатори, і вони не взаємозамінні:
+// дедуплікація стоїть на одному (`remoteRevisionId`), підтвердження — на
+// іншому (`ackToken`), бо в менеджера каналів це різні поля і саме друге
+// стоїть у шляху запиту. Тому в приладі вони НАВМИСНО різні: збіг сховав би
+// підміну, а ціна підміни — 404 на кожне підтвердження, ревізія назавжди в
+// стрічці й лист готелю кожні 30 хвилин.
+{
+  const { log, deps } = harness([entry({ remoteRevisionId: 'sys-9', ackToken: 'ack-9' })]);
+  await pullBookings('conn-1', deps);
+  assert.ok(log.includes('ack:ack-9'),
+    'підтвердили не тим ключем — запит піде в нікуди, ревізія лишиться в стрічці назавжди');
+  assert.ok(!log.includes('ack:sys-9'), 'у підтвердження пішов ключ дедуплікації');
+  console.log('  ok  підтвердження йде ключем підтвердження, а не ключем дедуплікації');
 }
 
 // ─── Транзакція впала — не підтверджуємо ────────────────────────────────────
@@ -124,7 +142,7 @@ function harness(feed: FeedEntry[], over: Partial<PullDeps> = {}) {
     apply: async () => ({ result: 'duplicate', reservationId: 'res-1' }),
   });
   const report = await pullBookings('conn-1', deps);
-  assert.ok(log.includes('ack:sys-1'),
+  assert.ok(log.includes('ack:ack-1'),
     'дубль не підтверджено — стрічка віддаватиме його вічно');
   assert.strictEqual(report.duplicates, 1);
   assert.strictEqual(report.applied, 0);

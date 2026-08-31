@@ -1,4 +1,5 @@
 import { getSql } from '@core/db/async';
+import { connectionInTenant } from './connections.repo';
 
 /**
  * Ревізія бронювання з менеджера каналів стає бронню — рівно один раз.
@@ -82,10 +83,14 @@ export async function applyRevision(
 ): Promise<ApplyOutcome> {
   const sql = getSql();
 
-  const conn = await sql.row<any>(
-    'SELECT id, organization_id, property_id FROM cm_connections WHERE id = ?',
-    [connectionId],
-  ) as any;
+  // Зʼєднання шукається В МЕЖАХ ОРЕНДАРЯ, а не за самим лише id: id приходить
+  // іззовні — з URL вебхука, з рядка черги, з аргументу крона. Запит
+  // `WHERE id = ?` на Postgres рятує політика, а на SQLite не рятує НІЩО, і
+  // SQLite стоїть у кожного розробника, під `npm run dev` і в CI. Тобто
+  // «локально працює» тут доводило б рівно протилежне тому, що здається.
+  // Ціна пропуску: бронь чужого готелю — з іменем гостя, сумою і датами —
+  // лягає в НАШУ організацію. Клас INC-010.
+  const conn = await connectionInTenant(connectionId);
   if (!conn) return { result: 'refused', reason: 'connection_not_found' };
 
   // ── Крок 1: журнал ПЕРШИМ. Це і є ворота ────────────────────────────────
@@ -104,7 +109,7 @@ export async function applyRevision(
         ota_reservation_code, ota_name, status, payload, is_unmapped)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (connection_id, remote_revision_id) DO NOTHING`,
-    [journalId, conn.organization_id, connectionId,
+    [journalId, conn.organizationId, connectionId,
       rev.remoteRevisionId, rev.remoteBookingId,
       rev.otaReservationCode ?? null, rev.otaName ?? null, rev.status,
       JSON.stringify(rev.raw), rev.unmapped ? 1 : 0],
@@ -174,8 +179,8 @@ export async function applyRevision(
                                  check_in, check_out, nights, adults, children,
                                  status, payment_status, source, total_price, currency, external_uid)
        VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 'unpaid', ?, ?, ?, ?)`,
-      [reservationId, conn.organization_id, conn.property_id, rev.unitTypeId ?? null,
-        await guestFor(conn.organization_id, rev),
+      [reservationId, conn.organizationId, conn.propertyId, rev.unitTypeId ?? null,
+        await guestFor(conn.organizationId, rev),
         rev.checkIn ?? '', rev.checkOut ?? '', nightsBetween(rev.checkIn, rev.checkOut),
         rev.adults ?? 1, rev.children ?? 0,
         sourceOf(rev.otaName), rev.totalPrice ?? 0, rev.currency ?? '',

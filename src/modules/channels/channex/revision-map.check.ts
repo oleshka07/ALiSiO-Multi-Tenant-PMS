@@ -59,6 +59,30 @@ assert.ok(swapped.ok && swapped.revision.remoteRevisionId === 'sys-1',
   'мапер узяв id замість system_id');
 console.log('  ok  ключ дедуплікації — system_id, як вимагає вендор');
 
+// ─── …а ПІДТВЕРДЖУЄТЬСЯ ревізія за `id`, і це ІНШЕ поле ─────────────────────
+//
+// Найдорожча пастка цієї інтеграції: два ідентифікатори на одну ревізію, і
+// вони не взаємозамінні. Дедуплікація стоїть на `system_id` (контракт
+// вендора), а підтвердження — це `POST /booking_revisions/:id/ack`, тобто
+// шлях складається з `id`. Виміряно: у прикладі стрічки `id` —
+// UUID `03dd7198-…`, а `system_id` — `"12331233123"`, тобто навіть не UUID.
+//
+// Переплутати їх — це 404 на кожне підтвердження: ревізія НІКОЛИ не зникає
+// зі стрічки, застосовується щоразу заново (рятує лише журнал CP4), а
+// готель кожні 30 хвилин отримує лист `non_acked_booking`. Помилка мовчазна
+// з нашого боку й гучна з боку клієнта.
+assert.strictEqual(ok.revision.ackToken, 'rev-uuid',
+  'підтвердження піде не за `id` — кожен ack дасть 404, ревізія не зникне зі стрічки');
+assert.notStrictEqual(ok.revision.ackToken, ok.revision.remoteRevisionId,
+  'ключ дедуплікації і ключ підтвердження злились в одне поле — вони РІЗНІ');
+
+// Ревізія без `id` не підтверджується взагалі — краще назвати, ніж слати
+// запит у нікуди.
+const noAck = mapRevision(base({ id: undefined }), mapping);
+assert.strictEqual(noAck.ok, false, 'ревізію без `id` прийнято — підтвердити її нічим');
+assert.strictEqual((noAck as { reason: string }).reason, 'missing_id');
+console.log('  ok  підтверджується за `id`, а не за system_id — це різні поля');
+
 // ─── Гроші рядком ───────────────────────────────────────────────────────────
 assert.strictEqual(ok.revision.totalAmount, 300, 'сума «300.00» приїхала рядком і не стала числом');
 assert.strictEqual(ok.revision.rooms[0].amount, 300);

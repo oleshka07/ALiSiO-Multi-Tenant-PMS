@@ -7,11 +7,17 @@
  *
  * ── Чотири речі, які тут легко зробити неправильно ──────────────────────
  *
- * 1. **Дедуплікує `system_id`, а не `id`.** Обидва змінюються з кожною
- *    ревізією, тож обидва «працюють» — але вендор прямо каже, що
- *    `system_id` «used to detect have we that message or not». Це його
- *    контракт, і саме на ньому стоїть CP4. `id` лишається в сирому
- *    payload, якщо колись знадобиться.
+ * 1. **Дедуплікує `system_id`, а ПІДТВЕРДЖУЄ `id`.** Обидва змінюються з
+ *    кожною ревізією, тож обидва «працюють» — доки не доходить до справи.
+ *    Вендор прямо каже, що `system_id` «used to detect have we that message
+ *    or not»: це його контракт, і саме на ньому стоїть CP4. Але шлях
+ *    підтвердження — `POST /booking_revisions/:id/ack`, тобто `id`. У
+ *    прикладі стрічки видно, що це навіть не однакові за формою рядки:
+ *    `id` — UUID `03dd7198-…`, `system_id` — `"12331233123"`.
+ *
+ *    Тому мапер віддає обидва: `remoteRevisionId` і `ackToken`. Переплутати
+ *    їх означає 404 на кожне підтвердження — ревізія не зникає зі стрічки
+ *    ніколи, а готель кожні 30 хвилин отримує лист `non_acked_booking`.
  *
  * 2. **`room_type_id: null` означає «не змаплено», а не «немає типу».**
  *    Така бронь усе одно приймається: гість уже заплатив, вона фізично
@@ -102,6 +108,11 @@ export function mapRevision(
 ): MapResult {
   const remoteRevisionId = raw.system_id;
   if (!remoteRevisionId) return { ok: false, reason: 'missing_system_id' };
+  // `id` — те, чим ревізія ПІДТВЕРДЖУЄТЬСЯ: шлях `/booking_revisions/:id/ack`
+  // складається саме з нього, а не з `system_id`. Ревізія без `id` не має
+  // чим підтверджуватись, і прийняти її означало б вічний цикл: застосуємо,
+  // підтвердити не зможемо, отримаємо знову.
+  if (!raw.id) return { ok: false, reason: 'missing_id' };
   if (!raw.booking_id) return { ok: false, reason: 'missing_booking_id' };
 
   const status = raw.status;
@@ -122,6 +133,7 @@ export function mapRevision(
     ok: true,
     revision: {
       remoteRevisionId,
+      ackToken: raw.id,
       remoteBookingId: raw.booking_id,
       status,
       otaReservationCode: raw.ota_reservation_code,

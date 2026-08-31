@@ -29,6 +29,7 @@
  */
 import { ChannexRateLimiter, type Lane } from './limiter';
 import type { AriValue } from './ari-payload';
+import type { ChannexRevision } from './revision-map';
 
 export type ChannexEnvironment = 'staging' | 'production';
 
@@ -66,6 +67,37 @@ export interface AriResponse {
   taskIds: string[];
   warnings: ChannexWarning[];
 }
+
+/** Одна сторінка стрічки ревізій. */
+export interface RevisionPage {
+  /** Ревізії, вже витягнені з конвертів JSON:API. */
+  revisions: ChannexRevision[];
+  /** Скільки всього непідтверджених — за словами сервера. */
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/**
+ * Скільки записів просити на сторінку.
+ *
+ * Максимум API — 100 («Max `limit` value is 100», API Reference); більше
+ * відхиляється з 400. Просимо саме максимум: типова сторінка — 10, тобто
+ * готель із півсотнею броней за ніч читався б шістьма викликами замість
+ * одного.
+ */
+const FEED_PAGE_LIMIT = 100;
+
+/**
+ * Скільки сторінок дочитувати за один прохід.
+ *
+ * Стеля тут не оптимізація, а різниця між повільним кроном і процесом, який
+ * не завершується ніколи: стрічка віддає лише НЕПІДТВЕРДЖЕНІ ревізії, тож
+ * сервер, який з будь-якої причини завжди відповідає «є ще», закрутив би
+ * цикл назавжди. 20 × 100 = 2000 ревізій за прохід — на два порядки більше
+ * за все, що бачить готель за ніч; недочитане візьме наступний прохід.
+ */
+const FEED_MAX_PAGES = 20;
 
 /**
  * Помилка, на яку Channex відповів конвертом `errors`.
@@ -143,6 +175,145 @@ export class ChannexClient {
   }
 
   /**
+   * Одна сторінка стрічки непідтверджених ревізій.
+   *
+   * ДВІ ДРІБНИЦІ В РЯДКУ ЗАПИТУ, КОЖНА З ЦІНОЮ.
+   *
+   * `filter[property_id]` — це межа орендаря, винесена в query string. Один
+   * ключ API обслуговує всі готелі акаунта, тож стрічка без фільтра віддає
+   * ревізії ВСІХ об'єктів одним списком: броні чужого орендаря приїхали б у
+   * транзакцію цього. Тому об'єкт тут обов'язковий аргумент, а не опція.
+   *
+   * `order[inserted_at]=asc` — типовий порядок не той, і його треба просити
+   * (документація каже це окремою підказкою). Дві ревізії одного бронювання,
+   * застосовані навпаки, дають скасовану бронь як активну.
+   */
+  async fetchBookingRevisions(
+    key: string,
+    propertyId: string,
+    options: { page?: number; limit?: number } = {},
+  ): Promise<RevisionPage> {
+    const query = new URLSearchParams({
+      'filter[property_id]': propertyId,
+      'order[inserted_at]': 'asc',
+      'pagination[page]': String(options.page ?? 1),
+      'pagination[limit]': String(options.limit ?? FEED_PAGE_LIMIT),
+    });
+
+    const payload = await this.read(key, `/booking_revisions/feed?${query}`);
+
+    // Кожен запис — конверт JSON:API `{ type, id, attributes }`, і корисне
+    // лежить у `attributes`. Віддати конверт як є означало б дати маперу
+    // об'єкт без жодного знайомого поля: кожна ревізія стала б «зіпсованою»,
+    // стрічка — порожньою, і жодної помилки при цьому не сталося б.
+    const data = Array.isArray(payload.data) ? (payload.data as { attributes?: unknown }[]) : [];
+    const meta = (payload.meta ?? {}) as { total?: number; page?: number; limit?: number };
+
+    return {
+      revisions: data
+        .map((d) => (d && typeof d === 'object' && 'attributes' in d ? d.attributes : d))
+        .filter((r): r is ChannexRevision => !!r && typeof r === 'object'),
+      total: Number(meta.total ?? data.length),
+      page: Number(meta.page ?? 1),
+      limit: Number(meta.limit ?? FEED_PAGE_LIMIT),
+    };
+  }
+
+  /**
+   * Уся стрічка, скільки її є — сторінка за сторінкою, у порядку надходження.
+   *
+   * Читати лише першу сторінку означає в завантажений день мовчки загубити
+   * одинадцяту броню: помилки немає, звіт зелений, гість не заїде. Тому
+   * дочитуємо — але зі стелею (`FEED_MAX_PAGES`), бо стрічка самоочищається
+   * підтвердженнями, а не читанням: сервер, який завжди каже «є ще», інакше
+   * закрутив би крон назавжди.
+   *
+   * Дочитування ЙДЕ ДО першого підтвердження, а не впереміш із ним: інакше
+   * кожен ack зсував би вікно під ногами й сторінки перескакували б через
+   * записи.
+   */
+  async fetchAllBookingRevisions(
+    key: string,
+    propertyId: string,
+    options: { maxPages?: number; limit?: number } = {},
+  ): Promise<ChannexRevision[]> {
+    const maxPages = options.maxPages ?? FEED_MAX_PAGES;
+    const limit = options.limit ?? FEED_PAGE_LIMIT;
+    const all: ChannexRevision[] = [];
+
+    for (let page = 1; page <= maxPages; page++) {
+      const got = await this.fetchBookingRevisions(key, propertyId, { page, limit });
+      all.push(...got.revisions);
+      // Порожня або неповна сторінка означає, що це була остання. `total`
+      // не використовуємо як єдину ознаку: він рахує стан на момент запиту,
+      // а стрічка живе — між сторінками могло і додатись, і зникнути.
+      if (got.revisions.length < limit) break;
+    }
+
+    return all;
+  }
+
+  /**
+   * Підтвердити прийом ревізії.
+   *
+   * `revisionId` — це `id` ревізії, а НЕ її `system_id`. Обидва унікальні на
+   * ревізію, тож помилка не помітна з нашого боку: підтвердження просто
+   * летить у нікуди (404), ревізія назавжди лишається в стрічці, а готель
+   * кожні 30 хвилин отримує лист `non_acked_booking`.
+   *
+   * Викликається ТІЛЬКИ після коміту транзакції (інваріант И5).
+   */
+  async ackBookingRevision(key: string, revisionId: string): Promise<void> {
+    await this.call(key, 'POST', `/booking_revisions/${encodeURIComponent(revisionId)}/ack`, {});
+  }
+
+  /**
+   * Читання: ті самі повтори, але БЕЗ квоти ARI.
+   *
+   * Ліміт 10+10 на хвилину належить оновленням ARI. Порахувати читання
+   * стрічки в ту саму смугу означало б, що жвавий обмін бронями душить
+   * оновлення цін — і навпаки, пачка цін перестає пускати броні в готель.
+   *
+   * З тієї ж причини читання не ставить об'єкт на паузу, коли здається:
+   * помилка стрічки нічого не каже про ARI, а зайва пауза зупинила б
+   * розсилку цін через непов'язане. Виняток — `429`: це прямий сигнал
+   * сервера, і його поважаємо.
+   */
+  private read(key: string, path: string): Promise<Record<string, unknown>> {
+    return this.call(key, 'GET', path);
+  }
+
+  private async call(
+    key: string,
+    method: 'GET' | 'POST',
+    path: string,
+    body?: unknown,
+  ): Promise<Record<string, unknown>> {
+    for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
+      try {
+        return await this.request(method, path, body);
+      } catch (e) {
+        const isChannex = e instanceof ChannexError;
+
+        if (isChannex && e.status === 429) {
+          this.limiter.pause(key, retryAfterMsOf(e));
+          throw e;
+        }
+
+        const transient = !isChannex || e.retryable;
+        if (transient && attempt < this.maxAttempts) {
+          await this.sleep(1000 * 2 ** (attempt - 1));
+          continue;
+        }
+
+        throw e;
+      }
+    }
+
+    throw new Error('channex: unreachable');
+  }
+
+  /**
    * ЯК ТУТ ВЛАШТОВАНИЙ ВІДСТУП, І ЧОМУ САМЕ ТАК.
    *
    * Спокуса — повторити будь-яку помилку через секунду. Для `429` це рівно
@@ -204,14 +375,37 @@ export class ChannexClient {
   }
 
   private async send(path: string, body: unknown): Promise<AriResponse> {
+    const payload = await this.request('POST', path, body);
+
+    const meta = (payload.meta ?? {}) as { warnings?: ChannexWarning[] };
+    const data = Array.isArray(payload.data) ? (payload.data as { id?: string }[]) : [];
+
+    return {
+      taskIds: data.map((d) => d.id).filter((id): id is string => typeof id === 'string'),
+      warnings: Array.isArray(meta.warnings) ? meta.warnings : [],
+    };
+  }
+
+  /**
+   * Один HTTP-виклик і розбір конверта. Спільний для читання й запису.
+   *
+   * Розбір саме тут, а не в кожного викликача: інваріант И4 («200 OK ще не
+   * означає, що застосувалось») тримається на тому, що конверт `errors`
+   * читають ЗАВЖДИ, а не там, де про нього згадали.
+   */
+  private async request(
+    method: 'GET' | 'POST',
+    path: string,
+    body?: unknown,
+  ): Promise<Record<string, unknown>> {
     const response = await this.doFetch(`${this.baseUrl}${path}`, {
-      method: 'POST',
+      method,
       headers: {
         'Content-Type': 'application/json',
         // Саме так, малими літерами й через дефіс — як в API Reference.
         'user-api-key': this.apiKey,
       },
-      body: JSON.stringify(body),
+      body: body === undefined ? undefined : JSON.stringify(body),
     });
 
     const text = await response.text();
@@ -240,13 +434,7 @@ export class ChannexClient {
       throw new ChannexError(response.status, 'http_error', `HTTP ${response.status}`, text.slice(0, 500));
     }
 
-    const meta = (payload.meta ?? {}) as { warnings?: ChannexWarning[] };
-    const data = Array.isArray(payload.data) ? (payload.data as { id?: string }[]) : [];
-
-    return {
-      taskIds: data.map((d) => d.id).filter((id): id is string => typeof id === 'string'),
-      warnings: Array.isArray(meta.warnings) ? meta.warnings : [],
-    };
+    return payload;
   }
 }
 
