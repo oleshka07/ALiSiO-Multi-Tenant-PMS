@@ -17,12 +17,44 @@
 
 ## 2. Дві команди
 
-```bash
+Спершу три умови, кожна з яких інакше валить запуск першим же рядком.
+
+**Тека.** Запускати з кореня репозиторію: `scripts/…` відлічується від
+поточної теки, а `@playwright/test` шукається в сусідньому `node_modules`.
+З домашньої теки буде `Cannot find module '…\scripts\site-crawl.mjs'`.
+
+**Гілка.** Скрипт живе на `claude/hoteliera-architecture-research-f8or88`.
+
+**Браузер.** Playwright потребує свого; або беремо вже встановлений Chrome.
+
+PowerShell, від початку:
+
+```powershell
+cd <тека проєкту>            # там, де лежать package.json і scripts\
+git fetch origin
+git checkout claude/hoteliera-architecture-research-f8or88
+git pull
+
+npm install                  # якщо node_modules ще немає
+npx playwright install chromium
+
 # перший раз: відкриється вікно, увійдіть руками, натисніть Enter
 node scripts/site-crawl.mjs --start https://app.hoteliera.com/ --login
 
 # далі — сам, скільки б там не було сторінок
 node scripts/site-crawl.mjs --start https://app.hoteliera.com/ --max 300
+```
+
+Не хочете тягнути окремий браузер — додайте `--channel chrome`, і візьметься
+встановлений Google Chrome (він і поводиться як звичайний Chrome, що зайвий
+раз не дратує захист від ботів). Chrome стоїть у нетиповому місці —
+`--browser "C:\Path\To\chrome.exe"`.
+
+Якщо не пам'ятаєте, де тека проєкту:
+
+```powershell
+Get-ChildItem C:\,D:\ -Directory -Recurse -Depth 4 -Filter ALiSiO-Multi-Tenant-PMS `
+  -ErrorAction SilentlyContinue | Select-Object -First 5 FullName
 ```
 
 Профіль браузера окремий (`.crawl-profile`), ваш звичайний Chrome не

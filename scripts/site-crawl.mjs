@@ -12,10 +12,17 @@
  *   - опис інтерфейсу → підписи, поля, типи, ОПЦІЇ СПИСКІВ, підказки, вкладки,
  *     заголовки таблиць, порожні стани. Це і є юзабіліті в машиночитаній формі.
  *
+ * Запускається З КОРЕНЯ РЕПОЗИТОРІЮ: шлях `scripts/…` відлічується від
+ * поточної теки, а `@playwright/test` шукається в сусідньому node_modules.
+ *
  * Сесія. Профіль браузера свій (`--profile`), і логінитесь ви руками ОДИН раз:
  *
+ *   cd <тека проєкту>
  *   node scripts/site-crawl.mjs --start https://app.example.com/ --login
  *   node scripts/site-crawl.mjs --start https://app.example.com/
+ *
+ * Браузер: за замовчуванням той, що ставить `npx playwright install chromium`.
+ * Щоб узяти вже встановлений Google Chrome — `--channel chrome`.
  *
  * Chrome від версії 136 не дає під'єднатись налагоджувачем до основного
  * профілю, тому окремий профіль — не примха, а єдиний робочий шлях. Заразом
@@ -50,7 +57,15 @@ const DANGER =
 // ── аргументи ───────────────────────────────────────────────────────────────
 
 const argv = process.argv.slice(2);
-const opts = { ...DEFAULTS, start: null, login: false, headless: false, extraHosts: [], browser: null };
+const opts = {
+  ...DEFAULTS,
+  start: null,
+  login: false,
+  headless: false,
+  extraHosts: [],
+  browser: null,
+  channel: null,
+};
 
 for (let i = 0; i < argv.length; i += 1) {
   const a = argv[i];
@@ -62,6 +77,7 @@ for (let i = 0; i < argv.length; i += 1) {
   else if (a === '--delay') opts.delay = Number(next());
   else if (a === '--host') opts.extraHosts.push(next());
   else if (a === '--browser') opts.browser = next();
+  else if (a === '--channel') opts.channel = next();
   else if (a === '--login') opts.login = true;
   else if (a === '--headless') opts.headless = true;
   else {
@@ -235,6 +251,10 @@ const context = await chromium.launchPersistentContext(opts.profile, {
   headless: opts.headless,
   viewport: { width: 1440, height: 900 },
   args: ['--disable-blink-features=AutomationControlled'],
+  // `--channel chrome` бере встановлений Google Chrome і не потребує
+  // окремого завантаження браузера Playwright; `--browser <шлях>` — коли
+  // Chrome стоїть не там, де його шукають.
+  ...(opts.channel ? { channel: opts.channel } : {}),
   ...(opts.browser ? { executablePath: opts.browser } : {}),
 });
 
