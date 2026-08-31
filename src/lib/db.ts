@@ -3945,6 +3945,82 @@ function runMigrations(database: any) {
 
   console.log('[DB] gift_card_automation_rules ready');
 
+  // --- Migration: cm_connections + cm_inbound_bookings (CP4) ---
+  //
+  // Приймання броней із менеджера каналів. Дві таблиці, і кожна відповідає
+  // на своє питання.
+  //
+  // cm_connections — чим цей ОБʼЄКТ повʼязаний із менеджером каналів.
+  // Ключ API сюди НЕ пишеться: він у channel_credentials (інваріант 7 —
+  // жодних секретів у схемі, яку читає пів застосунку). webhook_token і
+  // webhook_secret тут як виняток за необхідністю: обидва безглузді без
+  // знання URL і відкликаються зміною рядка.
+  //
+  // cm_inbound_bookings — ЖУРНАЛ РЕВІЗІЙ, а не копія броней. Channex віддає
+  // стрічку ревізій: booking_id стабільний між ними, id ревізії — ні.
+  // UNIQUE(connection_id, remote_revision_id) — і є весь захист від дубля
+  // при повторній доставці, однаково в обох двигунах.
+  //
+  // Чому журнал, а не просто INSERT у reservations: вебхуки приходять не в
+  // тому порядку, у якому сталися події (документація Channex каже це
+  // дослівно), а ack ми шлемо ПІСЛЯ коміту. Отже та сама ревізія цілком
+  // нормально приїде вдруге — і має не створити другої броні.
+  //
+  // payload зберігається сирим (доказ у суперечці), але містить ПІБ, email і
+  // телефон гостя. Рядок лишається назавжди, payload знеособлюється тим
+  // самим циклом, що й решта — /api/cron/gdpr-retention; anonymized_at
+  // фіксує, коли це сталося.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS cm_connections (
+      id                 TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id    TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      property_id        TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+      -- Без DEFAULT: імені вендора в спільній схемі не буває (інваріант И1,
+      -- гейт check-vendor-isolation). Зʼєднання без провайдера безглузде,
+      -- і назвати його має адаптер, а не ядро, яке про вендорів не знає.
+      provider           TEXT NOT NULL,
+      environment        TEXT NOT NULL DEFAULT 'staging'
+                           CHECK (environment IN ('staging', 'production')),
+      remote_property_id TEXT,
+      webhook_token      TEXT NOT NULL,
+      webhook_secret     TEXT NOT NULL,
+      remote_webhook_id  TEXT,
+      is_enabled         INTEGER NOT NULL DEFAULT 0,
+      last_full_sync_at  TEXT,
+      created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(organization_id, property_id, provider, environment)
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_cm_connections_org ON cm_connections(organization_id)');
+  database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_cm_connections_token ON cm_connections(webhook_token)');
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS cm_inbound_bookings (
+      id                   TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id      TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      connection_id        TEXT NOT NULL REFERENCES cm_connections(id) ON DELETE CASCADE,
+      remote_revision_id   TEXT NOT NULL,
+      remote_booking_id    TEXT NOT NULL,
+      ota_reservation_code TEXT,
+      ota_name             TEXT,
+      status               TEXT NOT NULL CHECK (status IN ('new', 'modified', 'cancelled')),
+      reservation_id       TEXT REFERENCES reservations(id) ON DELETE SET NULL,
+      payload              TEXT NOT NULL,
+      is_unmapped          INTEGER NOT NULL DEFAULT 0,
+      received_at          TEXT NOT NULL DEFAULT (datetime('now')),
+      applied_at           TEXT,
+      confirmed_at         TEXT,
+      anonymized_at        TEXT,
+      UNIQUE(connection_id, remote_revision_id)
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_cm_inbound_org ON cm_inbound_bookings(organization_id)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_cm_inbound_booking ON cm_inbound_bookings(connection_id, remote_booking_id)');
+  database.exec("CREATE INDEX IF NOT EXISTS idx_cm_inbound_unconfirmed ON cm_inbound_bookings(connection_id) WHERE confirmed_at IS NULL");
+
+  console.log('[DB] cm_connections + cm_inbound_bookings ready');
+
   // --- Migration: gift_card_templates ---
   //
   // Шаблони ваучерів, які готель пропонує до видачі. Раніше це була константа
