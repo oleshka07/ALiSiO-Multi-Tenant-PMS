@@ -13,9 +13,13 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
+  // Base rows only: this is the month grid the operator edits, and it shows
+  // one price per day. A rate plan's row for the same day would overwrite the
+  // base one in the map below, and the screen would display — and then save
+  // back — a number belonging to a rate plan it never mentions.
   const rows = await sql.rows<any>(`
     SELECT * FROM price_calendar
-    WHERE unit_type_id = ? AND date >= ? AND date <= ?
+    WHERE unit_type_id = ? AND date >= ? AND date <= ? AND rate_plan_id IS NULL
     ORDER BY date ASC
   `, [unitTypeId, startDate, endDate]);
 
@@ -50,6 +54,22 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
   return { unitTypeId, month, year, days };
 }
 
+/**
+ * The conflict target, spelled the same way in both upserts below.
+ *
+ * It has to name the expression the unique index is built on, not the plain
+ * columns: `UNIQUE(unit_type_id, date)` was dropped when the calendar gained
+ * `rate_plan_id` (a nullable column UNIQUE would not have constrained), and
+ * `ON CONFLICT` matches an index, not a wish. Left as `(unit_type_id, date)`
+ * this raises "ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE
+ * constraint" on the first price anybody saves — on both engines.
+ *
+ * These two screens write base prices, so `rate_plan_id` stays out of the
+ * column list and the row lands as NULL: the base price of the unit type,
+ * which is what they have always written.
+ */
+const ON_CONFLICT_ROW = `ON CONFLICT(unit_type_id, (COALESCE(rate_plan_id, '')), date)`;
+
 export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[]): Promise<number> {
   const sql = getSql();
   await sql.tx(async (t) => {
@@ -57,7 +77,7 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
       await t.run(`
       INSERT INTO price_calendar (id, unit_type_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(unit_type_id, date) DO UPDATE SET
+      ${ON_CONFLICT_ROW} DO UPDATE SET
         base_price = excluded.base_price,
         weekend_price = excluded.weekend_price,
         min_stay = excluded.min_stay,
@@ -122,7 +142,14 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
       if (applyTo === 'weekdays' && isWeekend) { current.setDate(current.getDate() + 1); continue; }
       if (applyTo === 'weekends' && !isWeekend) { current.setDate(current.getDate() + 1); continue; }
 
-      const existing = await t.row<any>('SELECT * FROM price_calendar WHERE unit_type_id = ? AND date = ?', [unitTypeId, dateStr]);
+      // `rate_plan_id IS NULL` — the base row, which is the one this screen
+      // edits. Without it the day's rate-plan row could answer instead, and
+      // "keep the current price" would carry a rate plan's number into the
+      // base price.
+      const existing = await t.row<any>(
+        'SELECT * FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL',
+        [unitTypeId, dateStr],
+      );
 
       // A day the hotel has never priced stays unpriced. The form's price field
       // says «Не змінювати» when left empty, so `base_price` is undefined
@@ -146,7 +173,7 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
       await t.run(`
       INSERT INTO price_calendar (id, unit_type_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(unit_type_id, date) DO UPDATE SET
+      ${ON_CONFLICT_ROW} DO UPDATE SET
         base_price = excluded.base_price,
         weekend_price = excluded.weekend_price,
         min_stay = excluded.min_stay,

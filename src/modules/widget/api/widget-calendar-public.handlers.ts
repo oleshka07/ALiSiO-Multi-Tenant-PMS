@@ -229,6 +229,7 @@ async function calendarFor(searchParams: URLSearchParams) {
           SELECT pc.date, MIN(pc.base_price) as min_price, MIN(pc.weekend_price) as min_weekend_price
           FROM price_calendar pc
           WHERE pc.unit_type_id IN (${ph}) AND pc.date >= ? AND pc.date <= ?
+            AND pc.rate_plan_id IS NULL
           GROUP BY pc.date
         `, [...unitTypes.map((ut: any) => ut.id), monthStart, monthEnd]) as any[];
         for (const p of priceRows) priceMap.set(p.date, p);

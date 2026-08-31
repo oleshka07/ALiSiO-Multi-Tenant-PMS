@@ -104,6 +104,26 @@ export function quoteStay(input: {
 }
 
 /**
+ * What the rate card says one night costs at this occupancy — or null when it
+ * says nothing.
+ *
+ * Exported because the occupancy surcharge on a rate plan's price is the
+ * difference between two of these (`priceNights()`), and that difference has
+ * to be taken with the same row-picking rules the quote uses. Computing it
+ * from a second `quoteStay()` would fold in the length-of-stay adjustment,
+ * which is per-occupancy and therefore does not cancel out.
+ */
+export function matrixPriceFor(
+  matrix: readonly PriceRow[],
+  unitTypeId: string,
+  persons: number,
+  date: string,
+): number | null {
+  const row = pickPrice(matrix, unitTypeId, persons, date);
+  return row ? money(row.price_gross) : null;
+}
+
+/**
  * The price for this type, this occupancy, this day.
  *
  * A row for the exact unit type beats a house-wide one, and a narrower date

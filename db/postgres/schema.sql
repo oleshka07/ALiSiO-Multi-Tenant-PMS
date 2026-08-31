@@ -1282,6 +1282,7 @@ CREATE TABLE "platform_users" (
 CREATE TABLE "price_calendar" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "unit_type_id" TEXT NOT NULL,
+  "rate_plan_id" TEXT,
   "date" DATE NOT NULL,
   "base_price" NUMERIC(14,2) DEFAULT 0 NOT NULL,
   "weekend_price" NUMERIC(14,2),
@@ -1292,8 +1293,7 @@ CREATE TABLE "price_calendar" (
   "ctd" BIGINT DEFAULT 0 NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id"),
-  UNIQUE ("unit_type_id", "date")
+  PRIMARY KEY ("id")
 );
 
 CREATE TABLE "price_los_tiers" (
@@ -1532,6 +1532,7 @@ CREATE TABLE "reservations" (
   "lodging_discount_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
   "lodging_discount_reason" TEXT,
   "breakfast_included" BOOLEAN,
+  "unit_type_id" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("guest_page_token"),
   CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
@@ -2127,7 +2128,9 @@ ALTER TABLE "platform_sessions" ADD CONSTRAINT "fk_platform_sessions_acting_orga
   FOREIGN KEY ("acting_organization_id") REFERENCES "organizations" ("id") ON DELETE SET NULL;
 ALTER TABLE "platform_sessions" ADD CONSTRAINT "fk_platform_sessions_platform_user_id_2"
   FOREIGN KEY ("platform_user_id") REFERENCES "platform_users" ("id") ON DELETE CASCADE;
-ALTER TABLE "price_calendar" ADD CONSTRAINT "fk_price_calendar_unit_type_id_1"
+ALTER TABLE "price_calendar" ADD CONSTRAINT "fk_price_calendar_rate_plan_id_1"
+  FOREIGN KEY ("rate_plan_id") REFERENCES "rate_plans" ("id");
+ALTER TABLE "price_calendar" ADD CONSTRAINT "fk_price_calendar_unit_type_id_2"
   FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
 ALTER TABLE "price_los_tiers" ADD CONSTRAINT "fk_price_los_tiers_unit_type_id_1"
   FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
@@ -2161,17 +2164,19 @@ ALTER TABLE "reservation_sub_bookings" ADD CONSTRAINT "fk_reservation_sub_bookin
   FOREIGN KEY ("child_reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
 ALTER TABLE "reservation_sub_bookings" ADD CONSTRAINT "fk_reservation_sub_bookings_reservation_id_2"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_parent_id_1"
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_unit_type_id_1"
+  FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id");
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_parent_id_2"
   FOREIGN KEY ("parent_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_organization_id_2"
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id");
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_rate_plan_id_3"
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_rate_plan_id_4"
   FOREIGN KEY ("rate_plan_id") REFERENCES "rate_plans" ("id");
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_guest_id_4"
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_guest_id_5"
   FOREIGN KEY ("guest_id") REFERENCES "guests" ("id");
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_unit_id_5"
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_unit_id_6"
   FOREIGN KEY ("unit_id") REFERENCES "units" ("id");
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_property_id_6"
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_property_id_7"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "service_addons" ADD CONSTRAINT "fk_service_addons_service_id_1"
   FOREIGN KEY ("service_id") REFERENCES "additional_services" ("id") ON DELETE CASCADE;
@@ -2256,6 +2261,9 @@ ALTER TABLE "widget_price_list" ADD CONSTRAINT "fk_widget_price_list_organizatio
 
 -- ── Indexes ─────────────────────────────────────────────────────────────
 
+CREATE INDEX "idx_accruals_month" ON "accruals" ("month");
+CREATE INDEX "idx_accruals_org" ON "accruals" ("organization_id");
+CREATE INDEX "idx_accruals_status" ON "accruals" ("status");
 CREATE INDEX "idx_ai_usage_month" ON "ai_usage" ("organization_id", "created_at");
 CREATE INDEX "idx_ai_usage_org" ON "ai_usage" ("organization_id");
 CREATE UNIQUE INDEX "idx_app_users_org_email" ON "app_users" (organization_id, lower(email));
@@ -2363,8 +2371,10 @@ CREATE INDEX "idx_partner_reports_period" ON "partner_reports" ("organization_id
 CREATE INDEX "idx_platform_audit_org" ON "platform_audit" ("organization_id", "at");
 CREATE INDEX "idx_platform_sessions_user" ON "platform_sessions" ("platform_user_id");
 CREATE INDEX "idx_price_cal_date" ON "price_calendar" ("date");
+CREATE INDEX "idx_price_cal_rate_plan" ON "price_calendar" ("rate_plan_id");
 CREATE INDEX "idx_price_cal_ut" ON "price_calendar" ("unit_type_id");
 CREATE INDEX "idx_price_cal_ut_date" ON "price_calendar" ("unit_type_id", "date");
+CREATE UNIQUE INDEX "idx_price_calendar_row" ON "price_calendar" (unit_type_id, (COALESCE(rate_plan_id, '')), date);
 CREATE INDEX "idx_price_los_tiers_lookup" ON "price_los_tiers" ("organization_id", "property_id", "unit_type_id");
 CREATE UNIQUE INDEX "idx_price_los_tiers_row" ON "price_los_tiers" (organization_id, property_id, (COALESCE(unit_type_id, '')),
                            min_nights, (COALESCE(persons, -1)));
@@ -2383,6 +2393,7 @@ CREATE INDEX "idx_reservations_parent" ON "reservations" ("parent_id");
 CREATE INDEX "idx_reservations_property" ON "reservations" ("property_id");
 CREATE INDEX "idx_reservations_status" ON "reservations" ("status");
 CREATE INDEX "idx_reservations_unit" ON "reservations" ("unit_id");
+CREATE INDEX "idx_reservations_unit_type" ON "reservations" ("unit_type_id");
 CREATE INDEX "idx_incoming_leads_site" ON "site_incoming_leads" ("site_id");
 CREATE INDEX "idx_incoming_leads_status" ON "site_incoming_leads" ("status");
 CREATE INDEX "idx_site_listings_site" ON "site_listings" ("site_id");

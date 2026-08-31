@@ -7,15 +7,23 @@
  * a flat 2500 for a night with no price, which is one customer's currency and
  * one customer's number, silently billed to whoever books next.
  *
- * TWO SOURCES, AND WHY THE MATRIX WINS
+ * THREE SOURCES, AND THE ORDER THEY ANSWER IN
  *
  * `price_occupancy` is the rate card the owner types: category × occupancy ×
  * season. `price_calendar` is one row per day — what a channel manager or
- * a channel writes, and what the day-by-day screen edits.
+ * a channel writes, and what the day-by-day screen edits. Since rate plans
+ * reached the calendar it holds two kinds of row: `rate_plan_id IS NULL` is
+ * the unit type's own price, and a row naming a rate plan is that plan's
+ * price for that day.
  *
- * A night is priced from the matrix when the matrix has a row for that unit
- * type AND that number of guests. Otherwise the day row is used. Otherwise the
- * night is REPORTED as missing.
+ * Asked for a rate plan, that plan's row for the day answers first, with the
+ * occupancy surcharge from the rate card added on top. Otherwise a night is
+ * priced from the matrix when the matrix has a row for that unit type AND that
+ * number of guests. Otherwise the base day row is used. Otherwise the night is
+ * REPORTED as missing.
+ *
+ * Asked WITHOUT a rate plan — which is every caller written before this — the
+ * first step cannot fire and the other three behave exactly as they did.
  *
  * The matrix wins because it is the only source that knows how many people are
  * in the room, and a hotel that sells a double to one person for 89 and to two
@@ -28,15 +36,21 @@
  * answer that does not require reading this file.
  */
 import { getSql } from '@core/db/async';
-import { quoteStay, type PriceRow, type LosTier } from '../domain/occupancy-price';
+import { quoteStay, matrixPriceFor, type PriceRow, type LosTier } from '../domain/occupancy-price';
 import { money } from '@core/money';
 
 export interface NightlyPrice {
   date: string;
   price: number;
-  /** Where the number came from: the owner's rate card, or the day calendar. */
-  source: 'matrix' | 'calendar';
-  /** What the LOS tier took off, when the matrix priced this night. */
+  /**
+   * Where the number came from: the rate plan's own day row, the owner's rate
+   * card, or the day calendar's base row.
+   */
+  source: 'rate_plan' | 'matrix' | 'calendar';
+  /**
+   * What was added to or taken off the base number: the LOS tier when the
+   * matrix priced this night, the occupancy surcharge when a rate plan did.
+   */
   adjustment?: number;
 }
 
@@ -69,9 +83,18 @@ export async function priceNights(input: {
   checkIn: string;
   nights: number;
   persons: number;
+  /**
+   * Price this rate plan rather than the unit type's own price.
+   *
+   * Left out — as every caller written before rate plans reached the calendar
+   * leaves it out — nothing changes: the matrix answers, then the base day
+   * row, then the night is missing. A rate plan only ever adds a way to
+   * answer; it never takes one away.
+   */
+  ratePlanId?: string | null;
 }): Promise<NightlyPrices> {
   const sql = getSql();
-  const { unitTypeId, checkIn, nights, persons } = input;
+  const { unitTypeId, checkIn, nights, persons, ratePlanId = null } = input;
   if (nights <= 0) return { nights: [], missing: [], total: 0, occupancyPriced: false };
 
   const checkOut = addDays(checkIn, nights);
@@ -79,27 +102,67 @@ export async function priceNights(input: {
   // The property comes from the unit type rather than from the session: this
   // runs on the public widget path too, where there is no operator and the
   // organization is established from the unit being booked.
+  //
+  // `base_occupancy` comes along because it is the occupancy a rate plan's
+  // price is quoted at — the same baseline `extra_person_charge` counts extra
+  // guests from, and the same one Channex calls the primary occupancy option.
   const owner = await sql.row<any>(
-    'SELECT p.id AS property_id, p.organization_id FROM unit_types ut JOIN properties p ON p.id = ut.property_id WHERE ut.id = ?',
+    `SELECT p.id AS property_id, p.organization_id, ut.base_occupancy
+       FROM unit_types ut JOIN properties p ON p.id = ut.property_id WHERE ut.id = ?`,
     [unitTypeId],
   );
+
+  const matrix = owner ? await loadMatrixRows(owner.organization_id, owner.property_id) : [];
 
   const quote = owner
     ? quoteStay({
       checkIn, nights, persons, unitTypeId,
-      matrix: await loadMatrixRows(owner.organization_id, owner.property_id),
+      matrix,
       losTiers: await loadTierRows(owner.organization_id, owner.property_id),
     })
     : { nights: [], total: 0, missing: [] as string[] };
 
   const fromMatrix = new Map(quote.nights.map((n) => [n.date, n]));
 
+  // Both kinds of row in one query: the base rows (`rate_plan_id IS NULL`) and,
+  // when a rate plan was asked for, that plan's own. Two queries would be two
+  // round trips for one answer.
   const days = await sql.rows<any>(
-    `SELECT date, base_price, weekend_price FROM price_calendar
-      WHERE unit_type_id = ? AND date >= ? AND date < ? ORDER BY date`,
-    [unitTypeId, checkIn, checkOut],
+    `SELECT date, rate_plan_id, base_price, weekend_price FROM price_calendar
+      WHERE unit_type_id = ? AND date >= ? AND date < ?
+        AND (rate_plan_id IS NULL${ratePlanId ? ' OR rate_plan_id = ?' : ''})
+      ORDER BY date`,
+    ratePlanId ? [unitTypeId, checkIn, checkOut, ratePlanId] : [unitTypeId, checkIn, checkOut],
   );
-  const fromCalendar = new Map(days.map((d) => [day(d.date), d]));
+  const fromCalendar = new Map(days.filter((d) => d.rate_plan_id == null).map((d) => [day(d.date), d]));
+  const fromRatePlan = new Map(days.filter((d) => d.rate_plan_id != null).map((d) => [day(d.date), d]));
+
+  const baseOccupancy = Number(owner?.base_occupancy) || 2;
+
+  /**
+   * What the extra guests cost on top of a rate plan's price, per the rate card.
+   *
+   * The rate plan says what the room costs at `base_occupancy`; the matrix says
+   * what occupancy is worth. Their difference is the surcharge, and because it
+   * comes from the matrix it is THE SAME for every rate plan of this unit type
+   * — the limitation the owner accepted knowingly (§10.11 of
+   * docs/CHANNEX-INTEGRATION.md): "+400 for the second guest" applies to the
+   * flexible rate and the non-refundable one alike.
+   *
+   * `null` means the rate card cannot say — it has no row for this occupancy,
+   * or none for the baseline. Then the rate plan's own price stands alone and
+   * `occupancyPriced` stays false, so the caller falls back to
+   * `extra_person_charge` exactly as it does for a plain calendar night. That
+   * is not an invented number: the hotel did set this rate plan's price for
+   * this day, and only the uplift is unknown.
+   */
+  const surcharge = (date: string): number | null => {
+    if (persons === baseOccupancy) return 0;
+    const at = matrixPriceFor(matrix, unitTypeId, persons, date);
+    const atBase = matrixPriceFor(matrix, unitTypeId, baseOccupancy, date);
+    if (at == null || atBase == null) return null;
+    return money(at - atBase);
+  };
 
   const out: NightlyPrice[] = [];
   const missing: string[] = [];
@@ -108,6 +171,21 @@ export async function priceNights(input: {
   for (let i = 0; i < nights; i++) {
     const date = addDays(checkIn, i);
 
+    // The rate plan's price for this day beats the unit type's, which is the
+    // whole point of putting it in the calendar: two rate plans of one room
+    // type carry independent prices for the same date.
+    const rp = fromRatePlan.get(date);
+    if (rp) {
+      const extra = surcharge(date);
+      const price = money(Math.max(0, Number(dayPrice(rp, date)) + (extra ?? 0)));
+      out.push({ date, price, source: 'rate_plan', adjustment: extra ?? undefined });
+      if (extra != null) occupancyPriced = true;
+      continue;
+    }
+
+    // No price for this rate plan on this day — fall through to the unit
+    // type's. A rate plan priced for part of a stay is normal, not an error:
+    // the certification tests set one for 10–16 November and nothing around it.
     const m = fromMatrix.get(date);
     if (m) {
       out.push({ date, price: m.price, source: 'matrix', adjustment: m.adjustment });
@@ -121,7 +199,7 @@ export async function priceNights(input: {
       continue;
     }
 
-    // Neither source knows. Named, not guessed — an invented price is a
+    // No source knows. Named, not guessed — an invented price is a
     // booking taken at a number the hotel never agreed to.
     missing.push(date);
   }

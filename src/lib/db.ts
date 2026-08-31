@@ -264,6 +264,12 @@ function buildSchema(database: any) {
       organization_id TEXT REFERENCES organizations(id),
       property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
       unit_id TEXT NOT NULL REFERENCES units(id),
+      -- Which category was sold, as opposed to which room it landed in.
+      -- Nullable: every reservation made at the desk has a room from the
+      -- start, and only a booking arriving from a channel knows the type
+      -- before it knows the room. Nothing assigns the room automatically yet
+      -- — that is phase 5 and a product decision of its own.
+      unit_type_id TEXT REFERENCES unit_types(id),
       guest_id TEXT NOT NULL REFERENCES guests(id),
       rate_plan_id TEXT REFERENCES rate_plans(id),
       check_in TEXT NOT NULL,
@@ -2336,10 +2342,23 @@ function runMigrations(database: any) {
   // ═══════════════════════════════════════════════════════
 
   // --- Migration: create price_calendar table ---
+  //
+  // `rate_plan_id` NULL is the unit type's base price — every row written
+  // before rate plans reached the calendar, and every row a hotel that sells
+  // one rate will ever write. A non-null row is that rate plan's price for
+  // that day, and it wins over the base one (§10.11 of docs/CHANNEX-INTEGRATION.md).
+  //
+  // There is deliberately no `UNIQUE(unit_type_id, rate_plan_id, date)` here:
+  // the column is nullable, and UNIQUE does not constrain NULL — in SQLite or
+  // in Postgres. Two base rows for the same day would both be accepted and
+  // which one priced the night would come down to row order. The unique INDEX
+  // with COALESCE below is what actually holds, exactly as
+  // `idx_price_occupancy_row` does for the rate card.
   database.exec(`
     CREATE TABLE IF NOT EXISTS price_calendar (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       unit_type_id TEXT NOT NULL REFERENCES unit_types(id) ON DELETE CASCADE,
+      rate_plan_id TEXT REFERENCES rate_plans(id),
       date TEXT NOT NULL,
       base_price REAL NOT NULL DEFAULT 0,
       weekend_price REAL,
@@ -2349,13 +2368,106 @@ function runMigrations(database: any) {
       cta INTEGER NOT NULL DEFAULT 0,
       ctd INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(unit_type_id, date)
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+
+  // --- Migration: drop the old UNIQUE(unit_type_id, date) from price_calendar ---
+  //
+  // This one cannot be an ALTER. SQLite has no DROP CONSTRAINT, so a table
+  // constraint is removed the only way there is: build the new shape, copy,
+  // drop, rename. Postgres gets the same change as a one-line
+  // `ALTER TABLE ... DROP CONSTRAINT` in migration 0048.
+  //
+  // Leaving it in place would not fail loudly. The second rate plan's price
+  // for a day already carrying the base price would be rejected as a
+  // duplicate — on a customer's database, at the first INSERT the new screen
+  // makes, with a constraint error nobody reads as "the schema is a version
+  // behind". A fresh database created after this commit never has the
+  // constraint at all, which is precisely why it has to be removed by name
+  // here rather than assumed gone.
+  try {
+    const pcSql = database.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='price_calendar'",
+    ).get() as { sql?: string } | undefined;
+
+    if (pcSql?.sql && /UNIQUE\s*\(\s*unit_type_id\s*,\s*date\s*\)/i.test(pcSql.sql)) {
+      console.log('[DB] price_calendar: removing UNIQUE(unit_type_id, date) — rate plans need two rows per day');
+      const before = (database.prepare('SELECT COUNT(*) AS n FROM price_calendar').get() as { n: number }).n;
+
+      // Copy whatever the live table actually holds, not what this file
+      // remembers it holding: a column added by a later migration would
+      // otherwise be silently dropped on the way through.
+      const live = (database.prepare('PRAGMA table_info(price_calendar)').all() as { name: string }[])
+        .map((c) => c.name);
+      const carried = [
+        'id', 'unit_type_id', 'rate_plan_id', 'date', 'base_price', 'weekend_price',
+        'min_stay', 'max_stay', 'closed', 'cta', 'ctd', 'created_at', 'updated_at',
+      ].filter((c) => live.includes(c));
+
+      database.exec('PRAGMA foreign_keys = OFF');
+      database.exec(`
+        CREATE TABLE price_calendar_new (
+          id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+          unit_type_id TEXT NOT NULL REFERENCES unit_types(id) ON DELETE CASCADE,
+          rate_plan_id TEXT REFERENCES rate_plans(id),
+          date TEXT NOT NULL,
+          base_price REAL NOT NULL DEFAULT 0,
+          weekend_price REAL,
+          min_stay INTEGER NOT NULL DEFAULT 1,
+          max_stay INTEGER,
+          closed INTEGER NOT NULL DEFAULT 0,
+          cta INTEGER NOT NULL DEFAULT 0,
+          ctd INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      database.exec(
+        `INSERT INTO price_calendar_new (${carried.join(', ')}) SELECT ${carried.join(', ')} FROM price_calendar`,
+      );
+      database.exec('DROP TABLE price_calendar');
+      database.exec('ALTER TABLE price_calendar_new RENAME TO price_calendar');
+      database.exec('PRAGMA foreign_keys = ON');
+
+      // A rebuild that loses rows is worse than the constraint it removed.
+      const after = (database.prepare('SELECT COUNT(*) AS n FROM price_calendar').get() as { n: number }).n;
+      if (after !== before) {
+        throw new Error(`price_calendar rebuild lost rows: ${before} -> ${after}`);
+      }
+      console.log(`[DB] price_calendar rebuilt without the old UNIQUE (${after} rows carried)`);
+    }
+  } catch (e: any) {
+    console.error('[DB] price_calendar UNIQUE migration error:', e.message);
+  }
+
+  // --- Migration: add rate_plan_id to price_calendar ---
+  // The upgrade path for a database whose table was already rebuilt (or never
+  // carried the constraint). Both halves exist on purpose: AGENTS.md §4 — a
+  // column goes into the CREATE *and* the ALTER, or the next new customer
+  // gets a schema the code reads a missing column from.
+  try {
+    const pcCols = database.prepare('PRAGMA table_info(price_calendar)').all() as { name: string }[];
+    if (!pcCols.some((c) => c.name === 'rate_plan_id')) {
+      database.exec('ALTER TABLE price_calendar ADD COLUMN rate_plan_id TEXT REFERENCES rate_plans(id)');
+      console.log('[DB] Added rate_plan_id to price_calendar');
+    }
+  } catch (e: any) {
+    console.log('[DB] price_calendar.rate_plan_id migration note:', e.message);
+  }
+
   database.exec('CREATE INDEX IF NOT EXISTS idx_price_cal_ut ON price_calendar(unit_type_id)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_price_cal_date ON price_calendar(date)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_price_cal_ut_date ON price_calendar(unit_type_id, date)');
+  // What the dropped UNIQUE used to hold, now holding the nullable column too.
+  // `''` stands in for "no rate plan" and is safe here because the column is
+  // TEXT on both engines — `price_occupancy` needed date sentinels instead
+  // only because Postgres types its columns DATE.
+  database.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_price_calendar_row
+      ON price_calendar(unit_type_id, (COALESCE(rate_plan_id, '')), date)
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_price_cal_rate_plan ON price_calendar(rate_plan_id)');
 
   // ═══════════════════════════════════════════════════════
   // CHANNEL MANAGER MODULE
@@ -2399,6 +2511,23 @@ function runMigrations(database: any) {
   try {
     database.exec("ALTER TABLE reservations ADD COLUMN meal_plan TEXT");
   } catch { /* column already exists */ }
+
+  // --- Migration: add unit_type_id to reservations ---
+  // A booking from an OTA arrives on a category, not on a room: Channex names
+  // a room type, and which physical room the guest gets is the hotel's to
+  // decide. `unit_id NOT NULL` left such a booking nowhere to go, so the raw
+  // revision sat in the inbox and could never be reconciled against
+  // `reservations` (§2.3 blocker 3 of docs/CHANNEX-INTEGRATION.md).
+  //
+  // The column only records the answer. No rule picks a room from the type —
+  // that is phase 5, and inventing one here would quietly assign rooms in
+  // every hotel on the server without anyone having asked for it.
+  try {
+    database.exec("ALTER TABLE reservations ADD COLUMN unit_type_id TEXT REFERENCES unit_types(id)");
+  } catch { /* column already exists */ }
+  try {
+    database.exec('CREATE INDEX IF NOT EXISTS idx_reservations_unit_type ON reservations(unit_type_id)');
+  } catch { /* index already exists */ }
 
   // --- Migration: add city_tax fields to reservations ---
   try {

@@ -28,6 +28,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             WHERE pc.unit_type_id = ut.id
               AND pc.date >= ?
               AND pc.closed = 0
+              -- The unit type's own price. Without this the "from" figure
+              -- would drop to whatever the cheapest rate plan charges, which
+              -- is a price that comes with conditions this column never shows.
+              AND pc.rate_plan_id IS NULL
           ) AS base_price
         FROM site_listings sl
         LEFT JOIN units u      ON sl.unit_id      = u.id
