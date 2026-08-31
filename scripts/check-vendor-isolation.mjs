@@ -77,8 +77,41 @@ function stripComments(text) {
  * Порожньо навмисно: щойно тут з'явиться перший запис, порт перестане бути
  * портом. Список існує, щоб виняток довелося написати руками й пояснити, а
  * не додати мовчки.
+ *
+ * Порожнім він лишається й після появи шва зі світом — див. WIRING нижче:
+ * там не виняток, а вужче правило.
  */
 const ALLOWED = new Map();
+
+/**
+ * ШОВ КОМПОЗИЦІЇ: де адаптер приєднують до застосунку.
+ *
+ * Рівно один раз ім'я модуля вендора мусить бути написане — інакше жоден
+ * маршрут до адаптера не дістанеться, і порт лишиться кресленням. Це не
+ * протікання: протікання — це коли доменна функція починає РОЗУМІТИ чужі
+ * поля, а тут файл лише каже «провайдер `channex` обслуговується ось цим
+ * модулем» і більше не робить нічого.
+ *
+ * Тому не виняток, а вужче правило: у цих файлах ім'я вендора дозволене
+ * ЛИШЕ в рядку `import` і лише в стрічковому літералі поруч із ним. Будь-яке
+ * інше входження — поле, тип, умова, URL — валить гейт так само, як і всюди.
+ * Тобто логіка сюди не переповзе: щойно з'явиться `if (provider ===` з
+ * розгалуженням поведінки або чуже поле, файл стане порушником.
+ *
+ * Ознака, що правило перестало працювати: у списку більше одного файла на
+ * провайдера, або файл із цього списку виріс за десяток рядків.
+ */
+const WIRING = new Map([
+  ['src/modules/channels/providers.ts',
+    'шов композиції: рядок провайдера з cm_connections → модуль адаптера, і нічого більше'],
+]);
+
+/** Чи це рядок, у якому шву композиції дозволено назвати вендора. */
+function isWiringLine(line) {
+  const t = line.trim();
+  return /^import\s/.test(t) || /^\s*await import\(/.test(t) || /^\['?[\w-]+'?,?$/.test(t)
+    || /^['\"][\w-]+['\"]\s*[:,]/.test(t);
+}
 
 const offenders = [];
 
@@ -97,6 +130,20 @@ function walk(dir) {
     if (ALLOWED.has(rel)) continue;
 
     const text = stripComments(fs.readFileSync(p, 'utf8'));
+    const wiring = WIRING.has(rel);
+
+    // У шві композиції перевіряємо ПОРЯДКОВО: import — можна, решта — ні.
+    // Так дозвіл лишається завширшки в один рядок і не стає дозволом на файл.
+    if (wiring) {
+      const lines = text.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        if (isWiringLine(lines[i])) continue;
+        const marker = MARKERS.find((m) => m.re.test(lines[i]));
+        if (marker) offenders.push({ rel, line: i + 1, what: `${marker.what} поза рядком import` });
+      }
+      continue;
+    }
+
     for (const marker of MARKERS) {
       const idx = text.search(marker.re);
       if (idx < 0) continue;
@@ -120,7 +167,8 @@ if (offenders.length) {
 }
 
 if (!failed) {
-  console.log(`✓ vendor isolation: чужі імена не виходять за ${ADAPTER}`);
+  const wired = WIRING.size === 1 ? 'шов композиції один' : `швів композиції: ${WIRING.size}`;
+  console.log(`✓ vendor isolation: чужі імена не виходять за ${ADAPTER} (${wired})`);
 }
 
 if (failed && strict) process.exit(1);

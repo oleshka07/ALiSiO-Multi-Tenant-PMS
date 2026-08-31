@@ -28,7 +28,7 @@ import { encryptSecret, decryptSecret, secretsConfigured } from './security/secr
  * the two lists honest instead — it fails if a payment provider exists that
  * this union does not name.
  */
-export type IntegrationChannel = 'fiskaly' | 'stripe' | 'paypal' | 'teya' | 'smtp';
+export type IntegrationChannel = 'fiskaly' | 'stripe' | 'paypal' | 'teya' | 'smtp' | 'channel_manager';
 
 export interface IntegrationCredentials {
   clientId?: string;
@@ -208,6 +208,11 @@ export const INTEGRATION_FEATURE: Record<string, string | null> = {
   stripe: 'online_payments',
   paypal: 'online_payments',
   teya: 'online_payments',
+  // Ключ менеджера каналів. Назва нейтральна навмисно: який саме менеджер
+  // обслуговує цей готель, каже `cm_connections.provider`, а не назва поля в
+  // ядрі (інваріант И1). Один готель — один менеджер каналів; двох одночасно
+  // не буває, бо вони б розсилали наявність один поверх одного.
+  channel_manager: 'channels',
 };
 
 export const INTEGRATION_FIELDS: Record<string, { field: 'accessToken' | 'clientId' | 'clientSecret'; label: string; hint?: string }[]> = {
@@ -216,6 +221,15 @@ export const INTEGRATION_FIELDS: Record<string, { field: 'accessToken' | 'client
   fiskaly: [
     { field: 'clientId', label: 'API key', hint: 'fiskaly dashboard → SIGN DE' },
     { field: 'clientSecret', label: 'API secret' },
+  ],
+
+  // Менеджер каналів. Один ключ обслуговує ВСІ обʼєкти акаунта, тому кожен
+  // запит до нього мусить називати обʼєкт окремо — інакше стрічка ревізій
+  // віддає броні всіх готелів одним списком. Сам ключ сюди йде через seal(),
+  // як усі інші: у `cm_connections` лежать лише токен і секрет вебхука
+  // (інваріант 7).
+  channel_manager: [
+    { field: 'accessToken', label: 'API key', hint: 'Кабінет менеджера каналів → Profile → API key' },
   ],
 
   // ── Payment gateways ──────────────────────────────────────────────────

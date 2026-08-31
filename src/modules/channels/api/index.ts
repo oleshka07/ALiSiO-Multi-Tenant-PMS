@@ -3,3 +3,4 @@ export { updateIcalChannel, deleteIcalChannel } from './ical-channel.handlers';
 export { syncIcal } from './ical-sync.handlers';
 export { runIcalCron } from './ical-cron.handlers';
 export { exportIcal } from './ical-export.handlers';
+export { runChannelPullCron } from './pull-cron.handlers';
