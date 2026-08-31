@@ -19,7 +19,7 @@ const ctx = { nights: 3, adults: 2, children: 1, accommodationTotal: 9000 };
 // ── Пʼять типів, пʼять різних множників ──────────────────────────────
 assert.deepStrictEqual(
   applyFees([{ name: 'Прибирання', type: 'per_stay', amount: 500 }], ctx),
-  { feeBreakdown: [{ name: 'Прибирання', amount: 500 }], feesTotal: 500 },
+  { feeBreakdown: [{ name: 'Прибирання', amount: 500, collectedFor: 'property' }], feesTotal: 500 },
   'per_stay не залежить ні від ночей, ні від гостей');
 
 assert.strictEqual(
@@ -60,6 +60,65 @@ assert.strictEqual(mixed.feesTotal, 500 + 900,
   'відсоток рахується від проживання, а не від суми з попереднім збором');
 assert.deepStrictEqual(mixed.feeBreakdown.map((f) => f.name), ['Прибирання', 'Сервісний збір']);
 console.log('  ok  відсоток не залежить від порядку рядків');
+
+// ── applies_to: звільнення СКАЗАНЕ, а не вгадане ─────────────────────
+//
+// Міграція 0050. До неї «діти не платять мито» жило в тому, що
+// `per_person_per_night` мовчки рахував лише дорослих — і той самий трюк
+// недобирав гроші готелю зі збором «Сніданок, за особу за ніч».
+//
+// ctx — 2 дорослих + 1 дитина, 3 ночі.
+assert.strictEqual(
+  applyFees([{ name: 'Мито', type: 'per_person_per_night', amount: 50, applies_to: 'adults' }], ctx).feesTotal,
+  300, 'applies_to=adults — 50 × 2 дорослих × 3 ночі, дитина звільнена');
+assert.strictEqual(
+  applyFees([{ name: 'Мито', type: 'per_person_per_night', amount: 50, applies_to: 'all' }], ctx).feesTotal,
+  450, 'applies_to=all — ті самі 50 × 3 особи × 3 ночі');
+assert.strictEqual(
+  applyFees([{ name: 'Трансфер', type: 'per_person', amount: 200, applies_to: 'adults' }], ctx).feesTotal,
+  400, 'звільнення діє й на per_person, не лише на per_person_per_night');
+
+// Рядок, старший за міграцію: поля немає взагалі. Дефолт мусить збігатися з
+// тією арифметикою, яку цей рядок уже мав, інакше міграція тихо переоцінила
+// б кожен наявний збір.
+assert.strictEqual(
+  applyFees([{ name: 'Мито', type: 'per_person_per_night', amount: 50 }], ctx).feesTotal,
+  applyFees([{ name: 'Мито', type: 'per_person_per_night', amount: 50, applies_to: 'all' }], ctx).feesTotal,
+  'відсутнє applies_to = all: рядок до 0050 рахується так само, як рахувався');
+assert.strictEqual(
+  applyFees([{ name: 'Мито', type: 'per_person_per_night', amount: 50, applies_to: null }], ctx).feesTotal,
+  450, 'NULL із бази — теж all, а не привід пропустити збір');
+
+// Для типів без «person» у назві поле ні на що не множиться. Це не помилка:
+// «прибирання, лише з дорослих» — беззмістовне уточнення, а не зіпсовані дані.
+assert.strictEqual(
+  applyFees([{ name: 'Прибирання', type: 'per_stay', amount: 500, applies_to: 'adults' }], ctx).feesTotal,
+  500, 'per_stay не залежить від того, кого рахувати');
+
+// Бронь без дорослих — граничний, але реальний стан даних. Збір «лише з
+// дорослих» тоді дорівнює нулю, а не всім гостям.
+assert.strictEqual(
+  applyFees([{ name: 'Мито', type: 'per_person', amount: 50, applies_to: 'adults' }],
+    { ...ctx, adults: 0, children: 2 }).feesTotal,
+  0, 'нуль дорослих — нуль «дорослого» збору, а не мовчазний відкат до всіх гостей');
+console.log('  ok  applies_to звільняє дітей там, де це сказано, і ніде більше');
+
+// ── collected_for: класифікація їде разом із сумою ───────────────────
+//
+// Ядро знає лише «виручка готелю» проти «збір для громади» і НЕ знає слова
+// «турзбір». Українське «рядок 11 без ПДВ» і німецький durchlaufender Posten
+// читає модуль юрисдикції (AGENTS.md, інваріант 22).
+const classified = applyFees([
+  { name: 'Прибирання', type: 'per_stay', amount: 500 },
+  { name: 'Місцевий збір', type: 'per_person_per_night', amount: 50, collected_for: 'authority' },
+], ctx);
+assert.deepStrictEqual(
+  classified.feeBreakdown.map((f) => [f.name, f.collectedFor]),
+  [['Прибирання', 'property'], ['Місцевий збір', 'authority']],
+  'класифікація мусить доїхати до розбивки — колонка, яку ніхто не читає, мертва');
+assert.strictEqual(classified.feesTotal, 500 + 450,
+  'на суму в квоті collected_for не впливає: гість платить те саме');
+console.log('  ok  collected_for доїжджає в розбивку і не чіпає підсумок');
 
 // ── Що не потрапляє в розбивку ───────────────────────────────────────
 assert.deepStrictEqual(
@@ -122,6 +181,23 @@ assert.strictEqual(unknown.feesTotal, 0);
 assert.ok(complained.includes('per_fortnight'),
   'невідомий тип збору мусить лишити слід у логу, а не зникнути');
 console.log('  ok  невідомий тип збору кричить, а не мовчить');
+
+// Те саме правило для двох нових полів. Значення поза CHECK означає, що база
+// пішла вперед без коду; вгадати тут — це або недобір, або переплата гостя,
+// і обидва мовчазні. Зниклий збір видно одразу: підсумок не сходиться.
+for (const [field, row] of [
+  ['applies_to', { name: 'Мито', type: 'per_person', amount: 50, applies_to: 'seniors' }],
+  ['collected_for', { name: 'Мито', type: 'per_person', amount: 50, collected_for: 'platform' }],
+] as const) {
+  const prev = console.error;
+  let said = '';
+  console.error = (m) => { said = String(m); };
+  const res = applyFees([row], ctx);
+  console.error = prev;
+  assert.strictEqual(res.feesTotal, 0, `невідоме ${field} не сміє порахуватися за вгаданим правилом`);
+  assert.ok(said.includes(field), `невідоме ${field} мусить лишити слід у логу`);
+}
+console.log('  ok  невідомі applies_to / collected_for відмовляють, а не вгадують');
 
 // ── Сміття з бази не валить квоту ────────────────────────────────────
 assert.strictEqual(applyFees([], ctx).feesTotal, 0);

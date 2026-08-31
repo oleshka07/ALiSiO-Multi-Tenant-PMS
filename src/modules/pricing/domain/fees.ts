@@ -33,6 +33,36 @@
  * це зараз безпечно рівно тому, що таблиця в усіх реальних клієнтів порожня:
  * виправити арифметику до того, як у ній зʼявляться гроші, — єдиний момент,
  * коли це нічого не коштує.
+ *
+ * ── Обіцянку виконано: `applies_to` (міграція 0050) ──────────────────────
+ *
+ * `all` — усі гості, це дефолт і поведінка кожного наявного рядка. `adults`
+ * — лише дорослі, тобто те саме звільнення дітей, але СКАЗАНЕ. Готель, який
+ * його хоче, вмикає його полем; готель, який не хоче, отримує число, що
+ * збігається з етикеткою.
+ *
+ * Поле має сенс лише для двох типів із «person» у назві. Для `per_stay`,
+ * `per_night` і `percentage` воно ні на що не множиться — і це не помилка,
+ * яку варто кричати: «прибирання, лише з дорослих» — просто беззмістовне
+ * уточнення, а не зіпсовані дані.
+ *
+ * Чого тут навмисно НЕМАЄ: віку. `applies_to` розрізняє дві множини, які
+ * квота реально знає — `adults` і `children`. Скільки років у цьому готелі
+ * означає «дитина», вирішує сам готель тим, як він рахує гостей у броні.
+ * Поле `exempt_below_age` не додано свідомо: жоден шлях до `applyFees()` не
+ * приносить вік окремого гостя, тож колонка була б числом, яке ніхто не
+ * читає. Персональне звільнення вже існує в іншому місці й на іншому шарі —
+ * `reservation_guests.fee_exempt`, на реєстрації, де людина відома поіменно.
+ *
+ * ── Чиї це гроші: `collected_for` ───────────────────────────────────────
+ *
+ * `property` — виручка готелю (прибирання, сніданок). `authority` — гроші,
+ * які готель лише збирає для громади й віддає (турзбір, Kurtaxe).
+ *
+ * Для суми в квоті різниці немає, і саме тому це поле НЕ бере участі в
+ * арифметиці нижче: обидва додаються до підсумку, гість платить те саме.
+ * Різниця вмикається на документі — і читає її модуль юрисдикції
+ * (`fiscal_ua`, `fiscal_de`), не цей файл (AGENTS.md, інваріант 22).
  */
 
 // Відносний шлях із розширенням, а не аліас: цей файл читає ще й гейт, який
@@ -46,10 +76,20 @@ export type FeeType =
   | 'per_person_per_night'
   | 'percentage';
 
+/** Кого рахувати. `all` — усіх гостей, `adults` — лише дорослих. */
+export type FeeAppliesTo = 'all' | 'adults';
+
+/** Чиї це гроші: виручка готелю чи збір для громади. */
+export type FeeCollectedFor = 'property' | 'authority';
+
 export interface Fee {
   name: string;
   type: FeeType | string;
   amount: number | string;
+  /** Дефолт `all`. Рядки, старші за міграцію 0050, приходять без цього поля. */
+  applies_to?: FeeAppliesTo | string | null;
+  /** Дефолт `property`. Арифметики не змінює — див. шапку файла. */
+  collected_for?: FeeCollectedFor | string | null;
 }
 
 export interface FeeContext {
@@ -59,7 +99,16 @@ export interface FeeContext {
   accommodationTotal: number;
 }
 
-export interface FeeLine { name: string; amount: number }
+export interface FeeLine {
+  name: string;
+  amount: number;
+  /**
+   * Класифікація їде разом із сумою, а не лишається в базі: документ
+   * будується з розбивки, і саме там модуль юрисдикції вирішує, чи цей рядок
+   * оподатковується. Поле, яке не доїхало до споживача, — мертва колонка.
+   */
+  collectedFor: FeeCollectedFor;
+}
 
 /**
  * Скільки додає кожен збір і скільки вони дають разом.
@@ -83,6 +132,29 @@ export function applyFees(
     const amount = Number(fee?.amount);
     if (!Number.isFinite(amount)) continue;
 
+    // Порожнє поле — це рядок, старший за міграцію 0050, і його дефолт
+    // збігається з поведінкою, яку він уже мав. Значення, якого цей файл не
+    // знає, — не дефолт: це база, що пішла вперед без коду.
+    //
+    // Такий рядок пропускається зі скаргою, як і невідомий `type` нижче.
+    // Напрямок обраний свідомо: збір, який зник із квоти, портьє бачить
+    // одразу — підсумок не сходиться. Збір, порахований за вгаданим
+    // правилом, не бачить ніхто, доки не прийде перевірка.
+    const appliesToRaw = fee.applies_to ?? 'all';
+    if (appliesToRaw !== 'all' && appliesToRaw !== 'adults') {
+      console.error(`[fees] невідоме applies_to «${appliesToRaw}» (${fee.name}) — не враховано`);
+      continue;
+    }
+    const collectedForRaw = fee.collected_for ?? 'property';
+    if (collectedForRaw !== 'property' && collectedForRaw !== 'authority') {
+      console.error(`[fees] невідоме collected_for «${collectedForRaw}» (${fee.name}) — не враховано`);
+      continue;
+    }
+
+    // Кого рахує цей збір. Для типів без «person» у назві множник нижче на
+    // це число не дивиться — і це не помилка, а беззмістовне уточнення.
+    const payers = appliesToRaw === 'adults' ? adults : guests;
+
     let line = 0;
     switch (fee.type) {
       // `money()` на кожному множенні, бо double не має 0.10: мито 0,10 € на
@@ -90,8 +162,8 @@ export function applyFees(
       // в базу. Округлення на виході не рятує — там уже неправильне значення.
       case 'per_stay': line = money(amount); break;
       case 'per_night': line = money(amount * nights); break;
-      case 'per_person': line = money(amount * guests); break;
-      case 'per_person_per_night': line = money(amount * guests * nights); break;
+      case 'per_person': line = money(amount * payers); break;
+      case 'per_person_per_night': line = money(amount * payers * nights); break;
       // Відсоток рахується від проживання, а не від проміжного підсумку:
       // інакше порядок зборів у таблиці міняв би суму, і два готелі з
       // однаковими правилами отримували б різні числа.
@@ -110,7 +182,11 @@ export function applyFees(
     }
 
     if (line > 0) {
-      feeBreakdown.push({ name: String(fee.name ?? ''), amount: line });
+      feeBreakdown.push({
+        name: String(fee.name ?? ''),
+        amount: line,
+        collectedFor: collectedForRaw,
+      });
     }
   }
 

@@ -460,8 +460,12 @@ CREATE TABLE "fees_taxes" (
   "is_included_in_price" BOOLEAN DEFAULT false NOT NULL,
   "is_active" BOOLEAN DEFAULT true NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "applies_to" TEXT DEFAULT 'all' NOT NULL,
+  "collected_for" TEXT DEFAULT 'property' NOT NULL,
   PRIMARY KEY ("id"),
-  CHECK (type IN ('per_night', 'per_stay', 'per_person', 'per_person_per_night', 'percentage'))
+  CHECK (type IN ('per_night', 'per_stay', 'per_person', 'per_person_per_night', 'percentage')),
+  CHECK (applies_to IN ('all', 'adults')),
+  CHECK (collected_for IN ('property', 'authority'))
 );
 
 CREATE TABLE "fin_auto_rule_matches" (
@@ -1496,6 +1500,7 @@ CREATE TABLE "reservations" (
   "promotions_applied" TEXT,
   "cancellation_policy" TEXT,
   "meal_plan" TEXT,
+  "unit_type_id" TEXT,
   "city_tax_amount" NUMERIC(14,2) DEFAULT 0,
   "city_tax_included" BIGINT DEFAULT 0,
   "city_tax_paid" TEXT DEFAULT 'pending',
@@ -1532,7 +1537,6 @@ CREATE TABLE "reservations" (
   "lodging_discount_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
   "lodging_discount_reason" TEXT,
   "breakfast_included" BOOLEAN,
-  "unit_type_id" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("guest_page_token"),
   CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
@@ -2164,10 +2168,10 @@ ALTER TABLE "reservation_sub_bookings" ADD CONSTRAINT "fk_reservation_sub_bookin
   FOREIGN KEY ("child_reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
 ALTER TABLE "reservation_sub_bookings" ADD CONSTRAINT "fk_reservation_sub_bookings_reservation_id_2"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_unit_type_id_1"
-  FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id");
-ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_parent_id_2"
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_parent_id_1"
   FOREIGN KEY ("parent_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
+ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_unit_type_id_2"
+  FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id");
 ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id");
 ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_rate_plan_id_4"

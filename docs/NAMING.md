@@ -73,8 +73,17 @@ Charter описує, ЯК називати. Він не вимагає нега
   - `gift_cards.status`: `draft | active | paid | activated | cancelled |
     expired`
   - `tasks.status`: `todo | in_progress | done | cancelled`
+  - `fees_taxes.type` (**множник**, як розмазати суму): `per_night |
+    per_stay | per_person | per_person_per_night | percentage`
+  - `fees_taxes.applies_to` (**кого рахувати**): `all | adults`
+  - `fees_taxes.collected_for` (**чиї гроші**): `property` — виручка готелю |
+    `authority` — збір для громади, готель лише передає
   Новий статус = міграція + рядок тут + бейдж у UI. Статус, якого немає в
   мапі UI, — баг (`partial` у календарі був невидимим саме так).
+- **Без назв юрисдикцій у схемі** (AGENTS.md, інваріант 22): ні в таблиці, ні
+  в колонці, ні у значенні CHECK. `collected_for = 'authority'` — ядро;
+  `tax_type = 'tourist_tax'` — ні, це українське/чеське слово, вбите в
+  спільну колонку. Країна живе в модулі (`fiscal_ua`, `fiscal_de`), не в типі.
 - **Без словників клієнта в схемі**: жодних CHECK-переліків з бізнес-слів
   (типи категорій були `CHECK (type IN ('glamping',…))` — знято). Словник
   бізнесу живе в даних організації.

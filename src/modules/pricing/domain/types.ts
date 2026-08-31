@@ -48,7 +48,12 @@ export interface QuoteResult {
   /** `source` says which of the three price sources answered — see nightly-price.ts. */
   breakdown: { date: string; dayName: string; price: number; isWeekend: boolean; source?: 'rate_plan' | 'matrix' | 'calendar' }[];
   accommodationTotal: number;
-  feeBreakdown: { name: string; amount: number }[];
+  /**
+   * `collectedFor` — виручка готелю (`property`) чи збір для громади
+   * (`authority`). Суму не змінює; вирішує, як рядок стане позицією
+   * фіскального документа. Читає це модуль юрисдикції, не квота.
+   */
+  feeBreakdown: { name: string; amount: number; collectedFor: 'property' | 'authority' }[];
   feesTotal: number;
   total: number;
   currency: string;

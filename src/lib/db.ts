@@ -305,12 +305,36 @@ function buildSchema(database: any) {
     );
 
     -- Fees & Taxes
+    --
+    -- No backticks below: this whole schema is one JS template literal, and a
+    -- backtick around a column name would end the string. (It did, once.)
+    --
+    -- "type" is the multiplier — how the amount is spread over nights and
+    -- guests. applies_to and collected_for answer two different questions the
+    -- multiplier alone cannot:
+    --
+    --   applies_to    — WHO is counted. Many jurisdictions exempt children
+    --                   from the tourist levy; that is an exemption rule, not
+    --                   a different meaning of the word "person" (see the
+    --                   header of modules/pricing/domain/fees.ts).
+    --   collected_for — WHOSE money it is. 'property' = the hotel sells it
+    --                   (cleaning, breakfast) and it is ordinary revenue;
+    --                   'authority' = the hotel collects it for a public body
+    --                   and passes it on (city tax, Kurtaxe, турзбір).
+    --
+    -- collected_for is deliberately jurisdiction-neutral: it says what kind
+    -- of money this is, never how one country's receipt must show it. The
+    -- country-specific reading — Ukraine's non-VAT line 11, Germany's
+    -- durchlaufender Posten — belongs to the fiscal module for that country
+    -- (AGENTS.md invariant 22).
     CREATE TABLE fees_taxes (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       type TEXT NOT NULL CHECK (type IN ('per_night', 'per_stay', 'per_person', 'per_person_per_night', 'percentage')),
       amount REAL NOT NULL DEFAULT 0,
+      applies_to TEXT NOT NULL DEFAULT 'all' CHECK (applies_to IN ('all', 'adults')),
+      collected_for TEXT NOT NULL DEFAULT 'property' CHECK (collected_for IN ('property', 'authority')),
       is_included_in_price INTEGER NOT NULL DEFAULT 0,
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -4821,6 +4845,31 @@ function runMigrations(database: any) {
     }
   } catch (e: any) {
     console.error('[DB] city_tax_per_night migration:', e.message);
+  }
+
+  // --- Migration: a fee says who it applies to and whose money it is ---
+  //
+  // Two questions the multiplier could not answer, and both cost money when
+  // guessed. `applies_to` is the exemption the header of fees.ts promised
+  // instead of silently reinterpreting the word "person"; `collected_for`
+  // separates the hotel's own revenue from money it collects for a public
+  // body and passes on.
+  //
+  // Both defaults are the conservative direction. `all` keeps the arithmetic
+  // every existing row already has. `property` treats an unmarked row as the
+  // hotel's own service — so a levy someone forgot to mark shows up WITH tax
+  // (visible over-collection) rather than without it (a silent tax offence).
+  try {
+    const feeCols = (database.prepare('PRAGMA table_info(fees_taxes)').all() as any[])
+      .map((c: any) => c.name);
+    if (!feeCols.includes('applies_to')) {
+      database.exec("ALTER TABLE fees_taxes ADD COLUMN applies_to TEXT NOT NULL DEFAULT 'all' CHECK (applies_to IN ('all', 'adults'))");
+    }
+    if (!feeCols.includes('collected_for')) {
+      database.exec("ALTER TABLE fees_taxes ADD COLUMN collected_for TEXT NOT NULL DEFAULT 'property' CHECK (collected_for IN ('property', 'authority'))");
+    }
+  } catch (e: any) {
+    console.error('[DB] fees_taxes applies_to/collected_for migration:', e.message);
   }
 
   // --- Migration: categories.type is the hotel's own word ---
