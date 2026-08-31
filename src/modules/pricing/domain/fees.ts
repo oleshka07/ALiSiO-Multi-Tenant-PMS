@@ -63,6 +63,31 @@
  * арифметиці нижче: обидва додаються до підсумку, гість платить те саме.
  * Різниця вмикається на документі — і читає її модуль юрисдикції
  * (`fiscal_ua`, `fiscal_de`), не цей файл (AGENTS.md, інваріант 22).
+ *
+ * ── `is_included_in_price`: контракт був написаний і не виконувався ──────
+ *
+ * `scripts/apply-hotel.mjs` описує це поле словами: «збір, який уже сидить у
+ * ціні за ніч: він показується гостю в розбивці, але **не додається
+ * вдруге**». Файл готелю вміє його виставити, схема має колонку від початку
+ * — а `applyFees()` її не читав. Тобто готель, який чесно позначив «мито вже
+ * в ціні», отримував це мито в підсумку ЩЕ РАЗ, і портьє називав гостю суму,
+ * більшу за справжню.
+ *
+ * Не спрацювало досі лише тому, що `fees_taxes` порожня в усіх реальних
+ * клієнтів. Це не «не баг» — це баг, який чекав на першого, хто заповнить
+ * таблицю.
+ *
+ * Тому збори тепер розходяться на два списки:
+ *
+ *   feeBreakdown  — те, що ДОДАЄТЬСЯ до проживання. `feesTotal` — його сума,
+ *                   і вона й далі точно дорівнює сумі своїх рядків.
+ *   includedFees  — те, що вже всередині ціни ночі. Показується («у тому
+ *                   числі»), не додається. Рядок потрібен: гість і податкова
+ *                   мають бачити, скільки з цієї суми — мито.
+ *
+ * Не один список із прапорцем: тоді будь-який споживач, який просто складе
+ * рядки розбивки, отримає число, більше за підсумок. Список, який не можна
+ * скласти, — пастка; два списки, кожен зі своїм змістом, — ні.
  */
 
 // Відносний шлях із розширенням, а не аліас: цей файл читає ще й гейт, який
@@ -90,6 +115,11 @@ export interface Fee {
   applies_to?: FeeAppliesTo | string | null;
   /** Дефолт `property`. Арифметики не змінює — див. шапку файла. */
   collected_for?: FeeCollectedFor | string | null;
+  /**
+   * Збір уже сидить у ціні ночі. Показується в розбивці, до підсумку НЕ
+   * додається. З бази приходить BOOLEAN (Postgres) або 0/1 (SQLite).
+   */
+  is_included_in_price?: boolean | number | null;
 }
 
 export interface FeeContext {
@@ -115,11 +145,14 @@ export interface FeeLine {
  *
  * Нуль і відʼємне не потрапляють у розбивку: рядок «Прибирання 0» у квоті
  * для гостя — шум, а відʼємний збір — це знижка, і вона живе в іншому місці.
+ *
+ * `feesTotal` — сума ЛИШЕ `feeBreakdown`. `includedFees` показуються окремо
+ * і не додаються: вони вже в ціні ночі.
  */
 export function applyFees(
   fees: readonly Fee[],
   ctx: FeeContext,
-): { feeBreakdown: FeeLine[]; feesTotal: number } {
+): { feeBreakdown: FeeLine[]; includedFees: FeeLine[]; feesTotal: number } {
   const nights = Math.max(0, Math.trunc(Number(ctx.nights) || 0));
   const adults = Math.max(0, Math.trunc(Number(ctx.adults) || 0));
   const children = Math.max(0, Math.trunc(Number(ctx.children) || 0));
@@ -127,6 +160,7 @@ export function applyFees(
   const accommodation = Number(ctx.accommodationTotal) || 0;
 
   const feeBreakdown: FeeLine[] = [];
+  const includedFees: FeeLine[] = [];
 
   for (const fee of fees || []) {
     const amount = Number(fee?.amount);
@@ -182,7 +216,10 @@ export function applyFees(
     }
 
     if (line > 0) {
-      feeBreakdown.push({
+      // `is_included_in_price` приходить BOOLEAN із Postgres і 0/1 із SQLite,
+      // тож перевірка на істинність, а не `=== true`: одиниця це теж «так».
+      const target = fee.is_included_in_price ? includedFees : feeBreakdown;
+      target.push({
         name: String(fee.name ?? ''),
         amount: line,
         collectedFor: collectedForRaw,
@@ -192,5 +229,9 @@ export function applyFees(
 
   // Одне округлення на підсумку, а не накопичення `+=`: інакше хвости кожного
   // рядка складаються, і сума зборів у квоті не дорівнює сумі своїх же рядків.
-  return { feeBreakdown, feesTotal: sumMoney(feeBreakdown.map((f) => f.amount)) };
+  return {
+    feeBreakdown,
+    includedFees,
+    feesTotal: sumMoney(feeBreakdown.map((f) => f.amount)),
+  };
 }

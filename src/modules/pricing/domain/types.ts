@@ -54,6 +54,13 @@ export interface QuoteResult {
    * фіскального документа. Читає це модуль юрисдикції, не квота.
    */
   feeBreakdown: { name: string; amount: number; collectedFor: 'property' | 'authority' }[];
+  /**
+   * Збори, які вже всередині ціни ночі: показуються («у тому числі»), у
+   * `feesTotal` і в `total` НЕ входять. Скласти `feeBreakdown` можна —
+   * вийде рівно `feesTotal`; скласти обидва списки не можна, і саме тому
+   * вони окремі.
+   */
+  includedFees: { name: string; amount: number; collectedFor: 'property' | 'authority' }[];
   feesTotal: number;
   total: number;
   currency: string;

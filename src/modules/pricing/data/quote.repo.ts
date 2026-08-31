@@ -52,7 +52,11 @@ export async function calculateQuote(unitTypeId: string, checkIn: string, checkO
     }
   } catch { /* fees_taxes may not exist */ }
 
-  const { feeBreakdown, feesTotal } = applyFees(fees, {
+  // `includedFees` — збори, які вже сидять у ціні ночі. Вони їдуть у квоту
+  // окремим списком і НЕ входять у `feesTotal`: файл готелю обіцяє гостю
+  // «показати, але не додати вдруге», і до цього виправлення квота обіцянку
+  // порушувала — портьє називав суму, більшу за справжню.
+  const { feeBreakdown, includedFees, feesTotal } = applyFees(fees, {
     nights: nightsTotal, adults, children, accommodationTotal,
   });
 
@@ -67,7 +71,7 @@ export async function calculateQuote(unitTypeId: string, checkIn: string, checkO
   // валюти, ніж не ту валюту, яку гість почує й запамʼятає.
   const currency = await quoteCurrency(sql, unitTypeId);
 
-  return { unitTypeId, checkIn, checkOut, nights: nightsTotal, adults, children, breakdown, accommodationTotal, feeBreakdown, feesTotal, total: accommodationTotal + feesTotal, currency, missingDays, hasPricing: missingDays < nightsTotal };
+  return { unitTypeId, checkIn, checkOut, nights: nightsTotal, adults, children, breakdown, accommodationTotal, feeBreakdown, includedFees, feesTotal, total: accommodationTotal + feesTotal, currency, missingDays, hasPricing: missingDays < nightsTotal };
 }
 
 /** Валюта організації, якій належить цей тип номера. */

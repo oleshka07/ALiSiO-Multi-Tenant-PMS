@@ -19,7 +19,11 @@ const ctx = { nights: 3, adults: 2, children: 1, accommodationTotal: 9000 };
 // ── Пʼять типів, пʼять різних множників ──────────────────────────────
 assert.deepStrictEqual(
   applyFees([{ name: 'Прибирання', type: 'per_stay', amount: 500 }], ctx),
-  { feeBreakdown: [{ name: 'Прибирання', amount: 500, collectedFor: 'property' }], feesTotal: 500 },
+  {
+    feeBreakdown: [{ name: 'Прибирання', amount: 500, collectedFor: 'property' }],
+    includedFees: [],
+    feesTotal: 500,
+  },
   'per_stay не залежить ні від ночей, ні від гостей');
 
 assert.strictEqual(
@@ -120,10 +124,57 @@ assert.strictEqual(classified.feesTotal, 500 + 450,
   'на суму в квоті collected_for не впливає: гість платить те саме');
 console.log('  ok  collected_for доїжджає в розбивку і не чіпає підсумок');
 
+// ── is_included_in_price: показати, але не додати вдруге ─────────────
+//
+// Контракт був НАПИСАНИЙ і не виконувався. `scripts/apply-hotel.mjs` описує
+// це поле словами: «збір, який уже сидить у ціні за ніч: він показується
+// гостю в розбивці, але не додається вдруге». Файл готелю вміє його
+// виставити, колонка є від початку — а `applyFees()` її не читав. Готель,
+// який чесно позначив «мито вже в ціні», отримував його в підсумку ЩЕ РАЗ.
+//
+// Не спрацювало досі лише тому, що таблиця порожня в усіх клієнтів. Це не
+// «не баг» — це баг, який чекав на першого, хто заповнить таблицю.
+const inclusive = applyFees([
+  { name: 'Прибирання', type: 'per_stay', amount: 500 },
+  { name: 'Мито в ціні', type: 'per_person_per_night', amount: 50, is_included_in_price: true },
+], ctx);
+assert.strictEqual(inclusive.feesTotal, 500,
+  'збір, уже включений у ціну ночі, НЕ додається до підсумку вдруге');
+assert.deepStrictEqual(inclusive.feeBreakdown.map((f) => f.name), ['Прибирання']);
+assert.deepStrictEqual(inclusive.includedFees.map((f) => [f.name, f.amount]), [['Мито в ціні', 450]],
+  'але рядок лишається видимим: гість і податкова мають бачити, скільки з ціни — мито');
+
+// Два списки, а не один із прапорцем: споживач, який просто складе рядки
+// розбивки, мусить отримати рівно підсумок. Список, який не можна скласти, —
+// пастка.
+assert.strictEqual(
+  Number(inclusive.feeBreakdown.reduce((s, f) => s + f.amount, 0).toFixed(2)),
+  inclusive.feesTotal,
+  'сума feeBreakdown і далі точно дорівнює feesTotal');
+
+// SQLite віддає прапорці числами, Postgres — булевими. Обидва означають «так».
+assert.strictEqual(
+  applyFees([{ name: 'Мито', type: 'per_stay', amount: 100, is_included_in_price: 1 }], ctx).feesTotal,
+  0, 'одиниця з SQLite — це теж «включено», а не «ні»');
+assert.strictEqual(
+  applyFees([{ name: 'Мито', type: 'per_stay', amount: 100, is_included_in_price: 0 }], ctx).feesTotal,
+  100, 'нуль — не включено, збір додається');
+assert.strictEqual(
+  applyFees([{ name: 'Мито', type: 'per_stay', amount: 100, is_included_in_price: null }], ctx).feesTotal,
+  100, 'NULL — теж не включено');
+
+// Класифікація не губиться дорогою в інший список.
+assert.strictEqual(
+  applyFees([{ name: 'Мито', type: 'per_stay', amount: 100, is_included_in_price: true, collected_for: 'authority' }],
+    ctx).includedFees[0].collectedFor,
+  'authority', 'збір у ціні теж має сказати, чиї це гроші — документ будується і з нього');
+console.log('  ok  збір у ціні ночі показується, але не додається вдруге');
+
 // ── Що не потрапляє в розбивку ───────────────────────────────────────
 assert.deepStrictEqual(
   applyFees([{ name: 'Порожній', type: 'per_stay', amount: 0 }], ctx),
-  { feeBreakdown: [], feesTotal: 0 }, 'рядок «Прибирання 0» у квоті для гостя — шум');
+  { feeBreakdown: [], includedFees: [], feesTotal: 0 },
+  'рядок «Прибирання 0» у квоті для гостя — шум');
 assert.strictEqual(
   applyFees([{ name: 'Мінус', type: 'per_stay', amount: -100 }], ctx).feesTotal, 0,
   'відʼємний збір — це знижка, і вона живе не тут');

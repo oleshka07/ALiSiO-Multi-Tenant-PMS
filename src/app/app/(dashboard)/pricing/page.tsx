@@ -52,6 +52,8 @@ interface QuoteResult {
   breakdown: { date: string; dayName: string; price: number; isWeekend: boolean }[];
   accommodationTotal: number;
   feeBreakdown: { name: string; amount: number }[];
+  /** Уже в ціні ночі: показуються «у т.ч.», у `total` не входять. */
+  includedFees?: { name: string; amount: number }[];
   feesTotal: number;
   total: number;
   missingDays: number;
@@ -332,6 +334,15 @@ function TestQuoteSection({ unitTypes }: { unitTypes: UnitType[] }) {
             {quote.feeBreakdown.map(f => (
               <div key={f.name} className="flex justify-between" style={{ color: 'var(--text-tertiary)' }}>
                 <span>{f.name}</span>
+                <span>{f.amount.toLocaleString()} {cur}</span>
+              </div>
+            ))}
+            {/* Уже в ціні ночі: показуємо, але не додаємо — інакше портьє
+                назве гостю суму, більшу за справжню. Рядок потрібен: гість
+                має бачити, скільки з ціни становить мито. */}
+            {(quote.includedFees ?? []).map(f => (
+              <div key={f.name} className="flex justify-between" style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                <span>{t('у т.ч.')} {f.name}</span>
                 <span>{f.amount.toLocaleString()} {cur}</span>
               </div>
             ))}
