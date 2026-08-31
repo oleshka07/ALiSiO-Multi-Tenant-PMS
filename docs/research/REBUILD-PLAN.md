@@ -37,7 +37,7 @@
 | `price_rules` | **нова** | промо: період заїзду/виїзду/перебування, LOS, зайнятість, дні тижня, купони |
 | `reservations` | змінити | додати `unit_type_id NOT NULL`, `unit_id` зробити nullable |
 | `booking_revision` | **нова** | сирі ревізії каналу, `UNIQUE(system_id)`, `acked_at` |
-| `ari_outbox` | замінити `ari_sync_queue` | додати `rate_plan_id`, дедуплікацію по клітинці |
+| `ari_outbox` | **нова** | `ari_sync_queue` НЕ існує — її видалила міграція 0032 разом із неробочою інтеграцією Booking.com. Це створення, не заміна. `rate_plan_id`, дедуплікація по клітинці |
 
 **Не чіпаємо:** auth, RLS, `@core/db`, гейти, деплой, фінанси, CRM, задачі, інвесторів, віджет, booking sites, housekeeping, POS.
 
@@ -50,11 +50,11 @@
 Не косметика: без цього наступні фази проходять наосліп.
 
 - `tsc --noEmit` стає блокуючим у CI;
-- видалити 15 мертвих таблиць: `finance_accounts_new`, `payments_new`, `categories_new`,
-  `finance_accounts_pr15`, `fin_channel_receivables_pr21`, `booking_activity_log_new`,
-  `invoices__rebuilt`, `additional_services__rebuilt`, `fin_folio_items__rebuilt`,
-  `categories_free`, `audit_log`, `import_formats`, `fin_bank_inboxes`,
-  `fin_receipt_inboxes`, `fin_pending_receipts`, `fin_statement_uploads`;
+- побудувати перелік мертвих таблиць через `node scripts/audit-dead-data.mjs`
+  і дропати **тільки за ним**. Ручний список ненадійний: `invoices__rebuilt`,
+  `additional_services__rebuilt`, `fin_folio_items__rebuilt` — це не таблиці, а
+  імена всередині ідіоми перестворення (`_new` → копія → `DROP` → `RENAME`),
+  тобто робочий код. Перелік із 15 позицій у першій редакції — чернетка;
 - зафіксувати baseline: снапшот схеми, перелік працюючих сценаріїв;
 - **ухвалити рішення про обсяг** (див. нижче).
 
