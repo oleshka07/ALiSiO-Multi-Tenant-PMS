@@ -53,8 +53,8 @@ export async function getWidgetConfig(request: NextRequest) {
       return NextResponse.json({ error: 'Property not found' }, { status: 404, headers: CORS_HEADERS });
     }
 
-    if (!await hasFeature(property.organization_id, 'widget')) {
-      return featureDisabled('widget', CORS_HEADERS);
+    if (!await hasFeature(property.organization_id, 'booking_engine')) {
+      return featureDisabled('booking_engine', CORS_HEADERS);
     }
 
     const unitTypes = await sql.rows<any>(`

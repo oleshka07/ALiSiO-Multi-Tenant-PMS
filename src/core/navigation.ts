@@ -63,8 +63,8 @@ export const DESTINATIONS: Destination[] = [
 
   // ── Інтеграції ───────────────────────────────────────────────────────
   { label: 'Канали', href: '/app/settings/channel-manager', section: 'Інтеграції', permission: 'nav:settings', keywords: ['booking.com', 'airbnb', 'ical', 'синхронізація'] },
-  { label: 'Віджет бронювання', href: '/app/settings/booking-widget', section: 'Інтеграції', permission: 'nav:settings', feature: 'widget', keywords: ['embed', 'код на сайт', 'форма бронювання'] },
-  { label: 'Сайти бронювання', href: '/app/sites', section: 'Інтеграції', permission: 'nav:sites', feature: 'widget', keywords: ['лендінг', 'домен', 'сторінка'] },
+  { label: 'Віджет бронювання', href: '/app/settings/booking-widget', section: 'Інтеграції', permission: 'nav:settings', feature: 'booking_engine', keywords: ['embed', 'код на сайт', 'форма бронювання'] },
+  { label: 'Сайти бронювання', href: '/app/sites', section: 'Інтеграції', permission: 'nav:sites', feature: 'site_builder', keywords: ['лендінг', 'домен', 'сторінка'] },
 
   // ── Налаштування ─────────────────────────────────────────────────────
   { label: 'Налаштування', href: '/app/settings', section: 'Налаштування', permission: 'nav:settings' },

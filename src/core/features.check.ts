@@ -35,11 +35,16 @@ type Key = keyof typeof FEATURE_SPEC;
 // Список тут, а не виведений із FEATURE_SPEC: інакше перевірка звірялася б
 // сама з собою і пропустила б будь-яку зміну.
 const EXPECTED_DEFAULT: Record<Key, boolean> = {
-  widget: false,
+  // Прямі броні даємо, конструктор сайту продаємо — розкол `widget`
+  // 31.08.2026, обґрунтування в core/features.ts.
+  booking_engine: true,
+  site_builder: false,
   fiscal_de: false,
   online_payments: false,
   tasks: true,
-  events: true,
+  // OFF від 31.08.2026: зали — зайвий розділ для обʼєкта на 5 номерів.
+  // Наявні готелі мають явний рядок enabled = 1, поставлений міграцією.
+  events: false,
   reports: true,
   dashboard: true,
   day_sheets: true,
@@ -94,7 +99,7 @@ console.log(`  ok  ${MODULES.length} модулів ховаються з мен
 // делегує. Перевірка на текст `withModule('<ключ>'` — вона не доводить, що
 // варта правильна, але доводить, що фіча взагалі питається; до цього не
 // питалась ніде.
-const OWNERS: Record<Exclude<Key, 'widget' | 'fiscal_de' | 'online_payments'>, string[]> = {
+const OWNERS: Record<Exclude<Key, 'booking_engine' | 'site_builder' | 'fiscal_de' | 'online_payments'>, string[]> = {
   tasks: [
     'src/app/api/tasks/route.ts',
     'src/app/api/tasks/[id]/route.ts',

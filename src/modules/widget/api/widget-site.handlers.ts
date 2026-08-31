@@ -36,8 +36,8 @@ export async function getWidgetSiteConfig(req: NextRequest) {
     // rest of this handler reads that hotel's rooms, prices and payment
     // settings, and under row-level security a guest has no tenant of its own.
     return (await withSite(slug, async (site: any) => {
-    if (!await hasFeature(site.organization_id, 'widget')) {
-      return featureDisabled('widget', CORS_HEADERS);
+    if (!await hasFeature(site.organization_id, 'site_builder')) {
+      return featureDisabled('site_builder', CORS_HEADERS);
     }
 
     // Whether this hotel can be paid online — asked, not assumed.

@@ -5047,6 +5047,39 @@ function runMigrations(database: any) {
       );
       for (const f of ['widget']) seed.run(f);
     }
+
+    // ── Розкол `widget` на `booking_engine` + `site_builder`, 31.08.2026 ──
+    //
+    // Рядок сильніший за дефолт (див. hasFeature), тому просто перейменувати
+    // ключ не можна: готель із явним рядком `widget` лишився б із НУЛЕМ
+    // рядків на обидва нові ключі й поїхав би на дефолти. Для того, хто
+    // `widget` КУПИВ, це означало б тихо втратити конструктор сайту
+    // (`site_builder` за замовчуванням OFF) — тобто ми забрали б оплачене й
+    // ніде цього не показали.
+    //
+    // Тому кожен наявний рядок копіюється в ОБИДВА ключі зі своїм значенням,
+    // і лише потім старий видаляється. `enabled = 0` копіюється так само:
+    // хто вимкнув віджет свідомо, не має отримати його назад через новий
+    // дефолт `booking_engine: ON`.
+    for (const key of ['booking_engine', 'site_builder']) {
+      database.prepare(`
+        INSERT OR IGNORE INTO organization_features (organization_id, feature, enabled, updated_at)
+        SELECT organization_id, ?, enabled, datetime('now')
+          FROM organization_features WHERE feature = 'widget'
+      `).run(key);
+    }
+    database.prepare("DELETE FROM organization_features WHERE feature = 'widget'").run();
+
+    // ── `events` ON → OFF, 31.08.2026 ────────────────────────────────────
+    //
+    // Дефолт змінюється, і без цього рядка кожен уже наявний готель мовчки
+    // втратив би розділ «Зали» — рівно те, від чого застерігає коментар про
+    // дві родини ключів у core/features.ts. Тому явний `enabled = 1` тим,
+    // хто працює зараз; нові організації отримають OFF за дефолтом.
+    database.prepare(`
+      INSERT OR IGNORE INTO organization_features (organization_id, feature, enabled, updated_at)
+      SELECT id, 'events', 1, datetime('now') FROM organizations
+    `).run();
   } catch (e: any) {
     console.error('[DB] organization_features migration:', e.message);
   }

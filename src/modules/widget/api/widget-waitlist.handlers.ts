@@ -65,8 +65,8 @@ export async function joinWaitlist(request: NextRequest) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404, headers: CORS_HEADERS });
     }
     return runWithOrganization(site.organization_id, async () => {
-    if (!await hasFeature(site.organization_id, 'widget')) {
-      return featureDisabled('widget', CORS_HEADERS);
+    if (!await hasFeature(site.organization_id, 'booking_engine')) {
+      return featureDisabled('booking_engine', CORS_HEADERS);
     }
 
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim()
