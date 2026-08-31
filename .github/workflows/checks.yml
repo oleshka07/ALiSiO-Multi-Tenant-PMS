@@ -65,6 +65,24 @@ jobs:
       - name: build
         run: npm run build
 
+      - name: the schema settles on the first boot
+        # Boots the built app twice against ONE empty data directory and diffs
+        # the two schemas — tables, columns and indexes.
+        #
+        # `check-fresh-schema` without the flag needs an aged database to
+        # compare against, and CI has none: a fresh clone has never migrated.
+        # This variant needs nothing but an empty directory, and it catches the
+        # bug that motivated it. A table rebuild dropped three `accruals`
+        # indexes and `CREATE INDEX IF NOT EXISTS` recreated them on the NEXT
+        # boot only — so a new customer got a database weaker than the one the
+        # same customer would have after the first container restart. Pass 1
+        # had 155 indexes, pass 2 had 158.
+        #
+        # Indexes are not decoration here: several are UNIQUE, and a UNIQUE
+        # that is silently missing does not break anything visible — it just
+        # stops forbidding.
+        run: node scripts/check-fresh-schema.mjs --settles
+
   postgres:
     name: hotel onboarding on the engine prod actually runs
     runs-on: ubuntu-latest

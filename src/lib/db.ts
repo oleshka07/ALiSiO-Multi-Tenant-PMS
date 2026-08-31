@@ -1885,7 +1885,11 @@ function runMigrations(database: any) {
       month TEXT NOT NULL,
       accrual_type TEXT NOT NULL DEFAULT 'expense',
       status TEXT NOT NULL DEFAULT 'pending',
-      paid_expense_id TEXT REFERENCES expenses(id),
+      -- Без REFERENCES expenses(id): таблиці expenses немає з часу переходу
+      -- на fin_operations. Посилання тут коштувало трьох індексів у КОЖНОГО
+      -- нового клієнта: воно вмикало перебудову нижче, а та зносила
+      -- таблицю разом з індексами, створеними трьома рядками нижче.
+      paid_expense_id TEXT,
       notes TEXT,
       created_by TEXT REFERENCES app_users(id),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -4544,15 +4548,38 @@ function runMigrations(database: any) {
         .map((c: any) => `"${c.name}"`)
         .join(', ');
 
+      // Індекси знімаються ДО підміни й повертаються після. `DROP TABLE`
+      // зносить їх разом із таблицею, і мовчки: жодної помилки, просто
+      // таблиця без індексів. Тут це коштувало трьох індексів `accruals` у
+      // кожного нового клієнта — зокрема по `organization_id`. У сусідній
+      // перебудові `reservations` те саме зняло УНІКАЛЬНИЙ індекс на
+      // гостьовий токен, тобто вже не швидкість, а два гості на одному
+      // посиланні.
+      const indexes = (database.prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+      ).all(table) as { sql: string }[]).map((r) => r.sql);
+
       database.exec('PRAGMA foreign_keys = OFF');
       database.exec('BEGIN');
       database.exec(rebuilt.replace(new RegExp(`CREATE TABLE ${table}\\b`, 'i'), `CREATE TABLE ${table}__rebuilt`));
       database.exec(`INSERT INTO ${table}__rebuilt (${cols}) SELECT ${cols} FROM ${table}`);
       database.exec(`DROP TABLE ${table}`);
       database.exec(`ALTER TABLE ${table}__rebuilt RENAME TO ${table}`);
+      for (const ix of indexes) {
+        database.exec(ix.replace(/^CREATE\s+(UNIQUE\s+)?INDEX\s+/i, (m) => `${m}IF NOT EXISTS `));
+      }
       database.exec('COMMIT');
       database.exec('PRAGMA foreign_keys = ON');
-      console.log(`[DB] ${table}: removed dead foreign key to dropped table "expenses"`);
+
+      // Довести, а не сподіватися: мовчазна втрата індексу — рівно те, що ця
+      // перебудова робила раніше.
+      const restored = (database.prepare(
+        "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+      ).get(table) as { n: number }).n;
+      if (restored < indexes.length) {
+        throw new Error(`${table} rebuild lost indexes: ${indexes.length} -> ${restored}`);
+      }
+      console.log(`[DB] ${table}: removed dead foreign key to dropped table "expenses" (${restored} index(es) kept)`);
     }
   } catch (e: any) {
     try { database.exec('ROLLBACK'); } catch { /* not inside a transaction */ }
