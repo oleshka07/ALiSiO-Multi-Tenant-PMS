@@ -175,5 +175,96 @@ assert.ok(
 assert.strictEqual((await freeUnitsForRange(all, '2026-09-10', '2026-09-10')).size, 3, 'нуль ночей мав повернути всі номери');
 assert.strictEqual((await freeUnitsForRange([], '2026-09-10', '2026-09-13')).size, 0, 'порожній список мав лишитись порожнім');
 
+// ─── Бронь без призначеного номера з'їдає ЄМНІСТЬ типу ──────────────────────
+//
+// CP3: Channex адресує ТИП номера, тож OTA-бронь приходить без кімнати.
+// Вона не робить жоден номер зайнятим — і саме тому обидва запити зайнятості
+// її не бачать. Але продати з цього типу можна на одну кімнату менше.
+//
+// Якщо цього не відняти, віджет покаже тип вільним і продасть ту саму
+// кімнату вдруге. Овербукінг рівно через той канал, заради якого CP3 і
+// робиться.
+
+const bookType = async (id: string, typeId: string, from: string, to: string, status = 'confirmed') =>
+  sql.run(
+    `INSERT INTO reservations (id, organization_id, property_id, unit_id, unit_type_id, guest_id, check_in, check_out, status)
+     VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
+    [id, ORG, PROP, typeId, GUEST, from, to, status],
+  );
+
+// Тип C: три номери, жоден не зайнятий поіменно.
+const TYPE_C = '__avail_check__type_c';
+await sql.run(
+  'INSERT INTO unit_types (id, property_id, category_id, name, code, bookable_online) VALUES (?, ?, ?, ?, ?, TRUE)',
+  [TYPE_C, PROP, CAT, 'C', 'C'],
+);
+await unit('c1', TYPE_C);
+await unit('c2', TYPE_C);
+await unit('c3', TYPE_C);
+
+const baseline = (await availabilityByDay(PROP, '2026-09-10', '2026-09-13')).get(TYPE_C)!;
+assert.strictEqual(baseline.get('2026-09-10'), 3, 'три вільні номери типу C до безномерних броней');
+
+// Одна безномерна бронь на ніч 10-го.
+await bookType('u1', TYPE_C, '2026-09-10', '2026-09-11');
+const after1 = (await availabilityByDay(PROP, '2026-09-10', '2026-09-13')).get(TYPE_C)!;
+assert.strictEqual(after1.get('2026-09-10'), 2, 'бронь без номера не зменшила наявність — це овербукінг');
+assert.strictEqual(after1.get('2026-09-11'), 3, 'і зменшила її НЕ на ту ніч');
+
+// Скасована безномерна бронь не тисне ні на що.
+await bookType('u2', TYPE_C, '2026-09-10', '2026-09-11', 'cancelled');
+assert.strictEqual(
+  (await availabilityByDay(PROP, '2026-09-10', '2026-09-13')).get(TYPE_C)!.get('2026-09-10'), 2,
+  'скасована бронь без номера все одно віднялась');
+
+// Тиск більший за фонд: нуль, а не відʼємне. Відʼємне число в каналі — це
+// помилка протоколу поверх помилки готелю.
+for (const [i, id] of ['u3', 'u4', 'u5'].entries()) {
+  await bookType(id, TYPE_C, '2026-09-10', '2026-09-11');
+  void i;
+}
+assert.strictEqual(
+  (await availabilityByDay(PROP, '2026-09-10', '2026-09-13')).get(TYPE_C)!.get('2026-09-10'), 0,
+  'чотири безномерні броні на три номери мали дати нуль, а не мінус один');
+
+// Безномерна бронь без ТИПУ — зіпсований рядок, а не бронь типу. Відняти її
+// від якогось типу було б вгадуванням.
+await sql.run(
+  `INSERT INTO reservations (id, organization_id, property_id, unit_id, unit_type_id, guest_id, check_in, check_out, status)
+   VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, 'confirmed')`,
+  ['u6', ORG, PROP, GUEST, '2026-09-11', '2026-09-12'],
+);
+assert.strictEqual(
+  (await availabilityByDay(PROP, '2026-09-10', '2026-09-13')).get(TYPE_C)!.get('2026-09-11'), 3,
+  'бронь без типу відняли від типу, який вона не називала');
+
+console.log('  ok  бронь без номера зменшує наявність СВОГО типу, і лише його');
+
+// ─── Те саме для віджетової відповіді ───────────────────────────────────────
+//
+// Номери типу C вільні ПОІМЕННО — жодної броні на них немає. Але продати
+// можна не всі: ємність уже витрачена. Питання «вільний на весь заїзд»
+// обмежує найгірша ніч діапазону.
+const freeC = await freeUnitsForRange(['c1', 'c2', 'c3'], '2026-09-10', '2026-09-11');
+assert.strictEqual(freeC.size, 0,
+  'чотири безномерні броні на три номери — а віджет усе одно пропонує кімнати');
+
+// Ніч 11-го має лише одну безномерну бронь (u6 без типу не рахується).
+// Отже з трьох номерів продати можна два.
+const free11 = await freeUnitsForRange(['c1', 'c2', 'c3'], '2026-09-11', '2026-09-12');
+assert.strictEqual(free11.size, 3, 'на 11-те тиску немає — усі три вільні');
+
+// Діапазон, що ЗАХОПЛЮЄ найгіршу ніч, обмежений нею, а не середнім.
+const free1012c = await freeUnitsForRange(['c1', 'c2', 'c3'], '2026-09-10', '2026-09-12');
+assert.strictEqual(free1012c.size, 0,
+  'заїзд через переповнену ніч мусить бути неможливим на весь діапазон');
+
+// Тип без тиску не зачеплений: віднімання адресне.
+assert.ok(
+  (await freeUnitsForRange(['e1'], '2026-09-10', '2026-09-13')).has('e1'),
+  'безномерні броні чужого типу зачепили сусідній тип');
+
+console.log('  ok  віджет не пропонує кімнат понад ємність типу');
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('availability: all checks passed');

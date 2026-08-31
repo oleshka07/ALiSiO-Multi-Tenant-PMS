@@ -1473,7 +1473,7 @@ CREATE TABLE "reservation_sub_bookings" (
 CREATE TABLE "reservations" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "property_id" TEXT NOT NULL,
-  "unit_id" TEXT NOT NULL,
+  "unit_id" TEXT,
   "guest_id" TEXT NOT NULL,
   "rate_plan_id" TEXT,
   "check_in" DATE NOT NULL,

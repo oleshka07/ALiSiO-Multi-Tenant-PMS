@@ -5,6 +5,8 @@ import { priceNights } from '@pricing';
 import { getDb } from '@core/db';
 import { hasFeature, featureDisabled } from '@core/features';
 import { runWithOrganization } from '@core/auth/tenant-context';
+import { availabilityByDay } from '@properties';
+import { shiftDays } from '@core/hotel-day';
 import { organizationCurrency } from '@core/currency';
 
 export const CORS_HEADERS = {
@@ -79,7 +81,12 @@ export async function getWidgetConfig(request: NextRequest) {
       (await sql.rows<any>(sql.dialect.tables()) as { name: string }[])
         .map(t => t.name)
     );
-    const hasAvailBlocks = existingTables.has('availability_blocks');
+
+    // Наявність на весь горизонт пошуку — ОДИН раз, а не в циклі. Вікно на
+    // добу ширше за останній заїзд: приклад відкривається на дві ночі.
+    const horizonFrom = today.toISOString().split('T')[0];
+    const horizonTo = new Date(today.getTime() + 62 * 86400000).toISOString().split('T')[0];
+    const byDay = await availabilityByDay(property.id, horizonFrom, horizonTo);
 
     for (let dayOffset = 0; dayOffset < 60; dayOffset++) {
       const ci = new Date(today);
@@ -91,32 +98,22 @@ export async function getWidgetConfig(request: NextRequest) {
       const coStr = co.toISOString().split('T')[0];
 
       for (const ut of unitTypes) {
-        const allUnits = await sql.rows<any>(`
-          SELECT u.id FROM units u
-          WHERE u.unit_type_id = ? AND u.is_active = TRUE AND u.room_status = 'available'
-        `, [ut.id]) as any[];
-
-        const bookedUnitIds = await sql.rows<any>(`
-          SELECT DISTINCT r.unit_id FROM reservations r
-          JOIN units u ON r.unit_id = u.id
-          WHERE u.unit_type_id = ?
-            AND r.status NOT IN ('cancelled', 'no_show')
-            AND r.check_in < ? AND r.check_out > ?
-        `, [ut.id, coStr, ciStr]) as any[];
-
-        const bookedIds = new Set(bookedUnitIds.map((r: any) => r.unit_id));
-
-        if (hasAvailBlocks) {
-          const blockedUnitIds = await sql.rows<any>(`
-            SELECT DISTINCT ab.unit_id FROM availability_blocks ab
-            JOIN units u ON ab.unit_id = u.id
-            WHERE u.unit_type_id = ?
-              AND ab.date_from < ? AND ab.date_to > ?
-          `, [ut.id, coStr, ciStr]) as any[];
-          for (const b of blockedUnitIds) bookedIds.add(b.unit_id);
-        }
-
-        const hasAvailable = allUnits.some((u: any) => !bookedIds.has(u.id));
+        // Наявність питається в @properties, а не рахується тут.
+        //
+        // Було: два-три запити на КОЖЕН тип у КОЖЕН із 60 днів — власна копія
+        // розрахунку, яка не знала про броні без призначеного номера. Такі
+        // броні не займають жодної конкретної кімнати, тож цей код бачив тип
+        // вільним і віджет пропонував продати кімнату, вже продану каналом.
+        //
+        // Тепер одна відповідь на весь горизонт (обчислена перед циклом), і
+        // це те саме джерело, з якого читає батчер ARI: два розрахунки дали б
+        // два різні числа на одну дату — інваріант И3.
+        // Дві ночі: приклад відкривається на [ci, ci+2), тож вільними мають
+        // бути ОБИДВІ — `shiftDays` той самий, що в самому розрахунку.
+        const perDay = byDay.get(ut.id);
+        const hasAvailable = !!perDay
+          && (perDay.get(ciStr) ?? 0) > 0
+          && (perDay.get(shiftDays(ciStr, 1)) ?? 0) > 0;
         if (hasAvailable) {
           defaultCheckIn = ciStr;
           defaultCheckOut = coStr;

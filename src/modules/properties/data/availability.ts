@@ -39,6 +39,28 @@
  * `availability_blocks` створюється міграцією, а не базовою схемою, тому
  * перед запитом перевіряється наявність таблиці — так само, як це робив
  * віджет.
+ *
+ * ТРЕТЄ ДЖЕРЕЛО: БРОНЬ БЕЗ ПРИЗНАЧЕНОГО НОМЕРА
+ *
+ * З CP3 бронь може мати `unit_type_id` і `unit_id = NULL`: Channex про
+ * `units` не знає нічого, він адресує ТИП номера, тож OTA-бронь приходить
+ * без кімнати, і рецепція призначає її потім.
+ *
+ * Така бронь не займає ЖОДНОГО конкретного номера — і саме тому обидва
+ * запити вище її не бачать. Але вона займає **один номер цього типу**, і
+ * якщо цього не відняти, готель продасть ту саму кімнату вдруге. Причому
+ * саме через канал: віджет покаже тип вільним, бо жоден номер не зайнятий.
+ *
+ * Тому зайнятість тут має два виміри, а не один:
+ *
+ *   поіменна   `occupiedSpans()` — цей номер не продається в ці ночі;
+ *   ємнісна    `unassignedByTypeDay()` — з цього типу вже продано N кімнат,
+ *              хоч і не сказано яких.
+ *
+ * Перше відповідає на «чи вільний номер 101», друге — на «чи можу я продати
+ * ще один двомісний». Обидві функції нижче зводять їх разом, бо жоден
+ * споживач не питає лише одне з двох: і віджет, і батчер ARI питають «що я
+ * можу продати».
  */
 import { getSql } from '@core/db/async';
 import { shiftDays, daysBetween } from '@core/hotel-day';
@@ -114,6 +136,85 @@ async function occupiedSpans(unitIds: UnitId[], from: DateStr, to: DateStr): Pro
 }
 
 /**
+ * Скільки броней БЕЗ призначеного номера тисне на кожен тип у кожну ніч.
+ *
+ * Бронь без `unit_id` не робить жоден конкретний номер зайнятим, тож
+ * `occupiedSpans()` її не бачить — і не має бачити. Вона з'їдає ЄМНІСТЬ
+ * типу, і відняти це можна лише тут.
+ *
+ * `unit_type_id IS NOT NULL` обов'язково: бронь без обох ідентифікаторів —
+ * це зіпсований рядок, а не бронь типу. Відняти її від якогось типу було б
+ * вгадуванням, і воно б зменшило наявність там, де для цього немає підстав.
+ *
+ * Проміжок обрізається вікном запиту тим самим півінтервалом, що й скрізь
+ * тут: ніч належить даті заїзду.
+ */
+async function unassignedByTypeDay(
+  propertyIds: string[],
+  from: DateStr,
+  to: DateStr,
+): Promise<Map<UnitTypeId, Map<DateStr, number>>> {
+  const sql = getSql();
+  const result = new Map<UnitTypeId, Map<DateStr, number>>();
+  if (propertyIds.length === 0) return result;
+
+  const ph = propertyIds.map(() => '?').join(', ');
+  const rows = (await sql.rows<{ unit_type_id: UnitTypeId; check_in: string; check_out: string }>(
+    `SELECT r.unit_type_id, r.check_in, r.check_out
+       FROM reservations r
+      WHERE r.property_id IN (${ph})
+        AND r.unit_id IS NULL
+        AND r.unit_type_id IS NOT NULL
+        AND r.status NOT IN ('cancelled', 'no_show')
+        AND r.check_in < ? AND r.check_out > ?`,
+    [...propertyIds, to, from],
+  )) as { unit_type_id: UnitTypeId; check_in: string; check_out: string }[];
+
+  for (const r of rows) {
+    let perDay = result.get(r.unit_type_id);
+    if (!perDay) result.set(r.unit_type_id, (perDay = new Map()));
+    const start = dayOf(r.check_in) > from ? dayOf(r.check_in) : from;
+    const end = dayOf(r.check_out) < to ? dayOf(r.check_out) : to;
+    for (let d = start; d < end; d = shiftDays(d, 1)) {
+      perDay.set(d, (perDay.get(d) ?? 0) + 1);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Скільки кімнат на добу вже продано БЕЗ призначеного номера.
+ *
+ * Публічна форма того самого розрахунку — для тих, хто рахує наявність не
+ * по мапі типів, а одним числом на день. Такий споживач один: публічний
+ * календар віджета, який показує «вільно / частково / зайнято» на весь
+ * обʼєкт або на зріз фонду сайту.
+ *
+ * Віддається саме тиск, а не готова наявність, бо політику «які номери
+ * взагалі рахуються» той календар має свою (три режими: один номер, фонд
+ * сайту, весь обʼєкт), і підмінити її тут означало б змінити його відповідь.
+ * Спільним лишається те, що й має бути спільним: що таке бронь без номера.
+ *
+ * `unitTypeIds` порожній або не переданий — усі типи обʼєкта.
+ */
+export async function unassignedPressureByDay(
+  propertyId: string,
+  from: DateStr,
+  to: DateStr,
+  unitTypeIds?: UnitTypeId[],
+): Promise<Map<DateStr, number>> {
+  const byType = await unassignedByTypeDay([propertyId], from, to);
+  const wanted = unitTypeIds && unitTypeIds.length > 0 ? new Set(unitTypeIds) : null;
+  const total = new Map<DateStr, number>();
+  for (const [typeId, perDay] of byType) {
+    if (wanted && !wanted.has(typeId)) continue;
+    for (const [date, n] of perDay) total.set(date, (total.get(date) ?? 0) + n);
+  }
+  return total;
+}
+
+/**
  * З переданих номерів — ті, що вільні на КОЖНУ ніч діапазону `[from, to)`.
  *
  * Саме те, що питає віджет: гість шукає на весь заїзд, і номер, вільний
@@ -131,8 +232,51 @@ export async function freeUnitsForRange(
   if (unitIds.length === 0) return new Set();
   if (daysBetween(from, to) <= 0) return new Set(unitIds);
 
+  const sql = getSql();
   const taken = new Set((await occupiedSpans(unitIds, from, to)).map(s => s.unitId));
-  return new Set(unitIds.filter(id => !taken.has(id)));
+  const free = unitIds.filter(id => !taken.has(id));
+  if (free.length === 0) return new Set();
+
+  // ── Ємнісний тиск броней без номера ────────────────────────────────────
+  //
+  // Номери вище справді вільні поіменно. Але якщо з цього типу вже продано
+  // дві кімнати «якісь», то дві з них продати вже не можна — і відняти це
+  // треба ТУТ, а не в тому, хто питає: інакше це другий розрахунок
+  // наявності, тобто рівно те, від чого існує інваріант И3.
+  //
+  // Тип і обʼєкт беруться з бази, а не від виклику: споживач передає лише
+  // список номерів, і вимагати від нього ще й типів означало б, що він мусить
+  // знати, як улаштована відповідь.
+  const meta = (await sql.rows<{ id: UnitId; unit_type_id: UnitTypeId; property_id: string }>(
+    `SELECT id, unit_type_id, property_id FROM units WHERE id IN (${free.map(() => '?').join(', ')})`,
+    free,
+  )) as { id: UnitId; unit_type_id: UnitTypeId; property_id: string }[];
+
+  const properties = [...new Set(meta.map(m => m.property_id))];
+  const pressure = await unassignedByTypeDay(properties, from, to);
+  if (pressure.size === 0) return new Set(free);
+
+  const result = new Set(free);
+  const byType = new Map<UnitTypeId, UnitId[]>();
+  for (const m of meta) {
+    const list = byType.get(m.unit_type_id);
+    if (list) list.push(m.id); else byType.set(m.unit_type_id, [m.id]);
+  }
+
+  for (const [typeId, ids] of byType) {
+    const perDay = pressure.get(typeId);
+    if (!perDay) continue;
+    // Питання — «вільний на ВЕСЬ заїзд», тож обмежує найгірша ніч. Тиск у
+    // дві кімнати на одну ніч із трьох робить недоступними дві кімнати на
+    // весь діапазон: гість не може заїхати в номер, який зайнятий у середу.
+    const worst = Math.max(0, ...perDay.values());
+    // Детерміновано за id: яку саме кімнату «зʼїла» безномерна бронь, не
+    // визначено за побудовою — важлива лише кількість. Але однаковий вибір
+    // на однакових даних робить поведінку відтворюваною й перевірною.
+    for (const id of [...ids].sort().slice(0, worst)) result.delete(id);
+  }
+
+  return result;
 }
 
 /**
@@ -198,12 +342,22 @@ export async function availabilityByDay(
     for (let d = start; d < end; d = shiftDays(d, 1)) nightsSet.add(d);
   }
 
+  // Скільки з кожного типу вже продано без призначеної кімнати. Ці броні не
+  // роблять жоден номер зайнятим, тож цикл нижче їх не побачив би — і канал
+  // отримав би на одиницю більше, ніж готель може віддати.
+  const pressure = await unassignedByTypeDay([propertyId], from, to);
+
   for (const [typeId, unitIds] of byType) {
     const perDay = new Map<DateStr, number>();
+    const typePressure = pressure.get(typeId);
     for (const date of dates) {
       let free = 0;
       for (const unitId of unitIds) if (!occupied.get(unitId)?.has(date)) free++;
-      perDay.set(date, free);
+      // Нуль знизу: тиск більший за фонд означає овербукінг, який УЖЕ
+      // стався. Відʼємне число в каналі — це помилка протоколу поверх
+      // помилки готелю; нуль каже правду («більше не продавайте») і лишає
+      // проблему видимою там, де її видно — у списку броней.
+      perDay.set(date, Math.max(0, free - (typePressure?.get(date) ?? 0)));
     }
     result.set(typeId, perDay);
   }

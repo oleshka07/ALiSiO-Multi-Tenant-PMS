@@ -263,7 +263,21 @@ function buildSchema(database: any) {
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       organization_id TEXT REFERENCES organizations(id),
       property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-      unit_id TEXT NOT NULL REFERENCES units(id),
+      -- NULL = номер ще не призначено (CP3). Жодних бектиків у коментарях
+      -- цього блоку: уся схема — один шаблонний рядок JS, і бектик навколо
+      -- імені колонки обриває його. Це вже ламало збірку двічі.
+      --
+      -- Channex про units не знає нічого — він адресує ТИП номера, тож
+      -- бронь з OTA приходить без кімнати, і рецепція призначає її потім.
+      --
+      -- Обʼєкт (property_id) при цьому лишається NOT NULL: він відомий
+      -- завжди і саме через нього бронь досягає орендаря. Nullable там був
+      -- би дірою в ізоляції, а не гнучкістю.
+      --
+      -- Читачі переведені на LEFT JOIN ДО цієї зміни, окремим комітом:
+      -- INNER JOIN на NULL не падає, він фільтрує, і бронь мовчки зникла б
+      -- зі списків. Тримає check-unit-join.mjs.
+      unit_id TEXT REFERENCES units(id),
       -- Which category was sold, as opposed to which room it landed in.
       -- Nullable: every reservation made at the desk has a room from the
       -- start, and only a booking arriving from a channel knows the type
@@ -726,7 +740,11 @@ function runMigrations(database: any) {
         CREATE TABLE reservations (
           id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
           property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-          unit_id TEXT NOT NULL REFERENCES units(id),
+          -- Nullable і тут: ця перебудова знімає CHECK із source, але вона
+          -- ПЕРЕСТВОРЮЄ таблицю, тож лишити тут NOT NULL означало б
+          -- повернути його на кожній базі, яка через цю гілку проходить.
+          -- (Без бектиків — це шаблонний рядок, див. коментар у CREATE.)
+          unit_id TEXT REFERENCES units(id),
           guest_id TEXT NOT NULL REFERENCES guests(id),
           rate_plan_id TEXT REFERENCES rate_plans(id),
           check_in TEXT NOT NULL,
@@ -4867,6 +4885,82 @@ function runMigrations(database: any) {
     }
   } catch (e: any) {
     console.error('[DB] city_tax_per_night migration:', e.message);
+  }
+
+  // --- Migration: reservations.unit_id may be NULL (CP3) ---
+  //
+  // Бронь із каналу приходить на ТИП номера, без кімнати. Postgres це вміє
+  // одним `DROP NOT NULL` (міграція 0051); SQLite послабити обмеження не
+  // вміє взагалі — лише перестворенням таблиці.
+  //
+  // Схема НЕ пишеться руками. `CREATE` береться з живої бази і в ньому
+  // знімається рівно одне `NOT NULL`: `reservations` за рік обросла
+  // десятками колонок від міграцій, і хардкоджений список їх би втратив —
+  // рівно те, чим небезпечна перебудова поруч (гілка `CHECK (source IN`
+  // вище несе список із 20 колонок і сьогодні знищила б решту).
+  try {
+    const createSql = (database.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='reservations'",
+    ).get() as { sql?: string } | undefined)?.sql;
+
+    if (createSql && /\bunit_id\s+TEXT\s+NOT\s+NULL/i.test(createSql)) {
+      const cols = (database.prepare('PRAGMA table_info(reservations)').all() as any[])
+        .map((c: any) => c.name);
+      const before = (database.prepare('SELECT COUNT(*) AS n FROM reservations').get() as { n: number }).n;
+
+      // Індекси знімаються ЗАЗДАЛЕГІДЬ і відтворюються після підміни.
+      //
+      // У SQLite знесення таблиці забирає з собою всі її індекси. Перший
+      // варіант цієї міграції відтворював рівно один — і мовчки втратив
+      // решту шість, включно з УНІКАЛЬНИМ `idx_reservations_guest_token`.
+      // Гостьове посилання без унікальності — це два гості на один токен.
+      //
+      // Зловив це не тест, а `scripts/pg-schema.mjs`: він читає живу SQLite,
+      // і індекси просто зникли з diff-у Postgres-схеми. Тому список
+      // береться з бази, а не пишеться руками — рукописний розійдеться з
+      // наступною міграцією, яка додасть індекс.
+      const indexes = (database.prepare(
+        "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='reservations' AND sql IS NOT NULL",
+      ).all() as { sql: string }[]).map((r) => r.sql);
+
+      const newSql = createSql
+        .replace(/CREATE\s+TABLE\s+"?reservations"?/i, 'CREATE TABLE reservations__unitnull')
+        .replace(/(\bunit_id\s+TEXT\s+)NOT\s+NULL\s+/i, '$1');
+
+      // Ключі вимикаються на час підміни: інакше знесення старої таблиці
+      // забрало б із собою рядки всіх, хто на неї каскадно посилається.
+      database.exec('PRAGMA foreign_keys = OFF');
+      database.exec(newSql);
+      database.exec(
+        `INSERT INTO reservations__unitnull (${cols.join(', ')}) SELECT ${cols.join(', ')} FROM reservations`,
+      );
+      database.exec('DROP TABLE reservations');
+      database.exec('ALTER TABLE reservations__unitnull RENAME TO reservations');
+      database.exec('PRAGMA foreign_keys = ON');
+
+      // Перебудова, яка загубила броні, гірша за обмеження, яке вона знімала.
+      const after = (database.prepare('SELECT COUNT(*) AS n FROM reservations').get() as { n: number }).n;
+      if (after !== before) {
+        throw new Error(`reservations rebuild lost rows: ${before} -> ${after}`);
+      }
+
+      for (const idx of indexes) {
+        database.exec(idx.replace(/^CREATE\s+(UNIQUE\s+)?INDEX\s+/i, (m) => `${m}IF NOT EXISTS `));
+      }
+      database.exec('CREATE INDEX IF NOT EXISTS idx_reservations_unit_type ON reservations(unit_type_id)');
+
+      // Індекс не відтворився — краще впасти тут, ніж віддати базу без
+      // унікальності гостьового токена й дізнатись про це від двох гостей.
+      const restored = (database.prepare(
+        "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='index' AND tbl_name='reservations' AND sql IS NOT NULL",
+      ).get() as { n: number }).n;
+      if (restored < indexes.length) {
+        throw new Error(`reservations rebuild lost indexes: ${indexes.length} -> ${restored}`);
+      }
+      console.log(`[DB] reservations.unit_id is nullable now (${restored} indexes intact) — a booking may arrive without a room`);
+    }
+  } catch (e: any) {
+    console.error('[DB] reservations.unit_id nullable migration:', e.message);
   }
 
   // --- Migration: a fee says who it applies to and whose money it is ---

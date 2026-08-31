@@ -58,9 +58,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 /** Місця, де INNER лишається свідомо. Ключ — файл, значення — причина. */
 const ALLOWED = new Map([
   ['src/modules/widget/api/widget-calendar-public.handlers.ts',
-    'рахує зайняті номери для публічного календаря — модель наявності, не джойн (CP2+CP3)'],
-  ['src/modules/widget/api/widget-config-public.handlers.ts',
-    'той самий розрахунок для пошуку у віджеті — той самий висновок'],
+    'ПОІМЕННА зайнятість фонду, який продається онлайн: цей джойн добирає '
+    + 'номери, а не броні, і бронь без номера сюди й не має потрапляти — '
+    + 'вона рахується окремим виміром через unassignedPressureByDay()'],
 ]);
 
 const SKIP_DIRS = new Set(['node_modules', '.next', '.git', 'dist', 'build', 'harvest']);

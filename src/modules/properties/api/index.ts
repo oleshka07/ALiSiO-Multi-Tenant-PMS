@@ -74,5 +74,5 @@ export { getCurrencies, saveCurrencies, saveManualRate } from './currency.handle
 
 // Наявність: одне джерело відповіді «чи вільно» для віджета і для батчера
 // ARI. Другий розрахунок = овербукінг через OTA. Див. data/availability.ts.
-export { availabilityByDay, freeUnitsForRange } from '../data/availability';
+export { availabilityByDay, freeUnitsForRange, unassignedPressureByDay } from '../data/availability';
 export type { DateStr, UnitId, UnitTypeId, OccupiedSpan } from '../data/availability';

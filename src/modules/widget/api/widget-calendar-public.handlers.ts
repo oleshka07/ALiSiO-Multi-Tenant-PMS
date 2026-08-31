@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { cheapestByDay } from '@pricing';
+import { unassignedPressureByDay } from '@properties';
 import { withSite } from '../data/site.repo';
 import { money } from '@core/money';
 
@@ -236,6 +237,24 @@ async function calendarFor(searchParams: URLSearchParams) {
       } catch { /* price_calendar not available */ }
     }
 
+    // ── 8.1 Тиск броней без призначеного номера ─────────────────────────────
+    //
+    // Область та сама, що й у `totalCount` вище: один номер, фонд сайту або
+    // весь обʼєкт. Інакше віднімалося б від одного фонду те, що продано з
+    // іншого.
+    const scopeTypeIds = targetUnitId
+      ? (await sql.rows<any>('SELECT unit_type_id FROM units WHERE id = ?', [targetUnitId]) as any[])
+        .map((u: any) => u.unit_type_id).filter(Boolean)
+      : siteUnitIds && siteUnitIds.length > 0
+        ? (await sql.rows<any>(
+          `SELECT DISTINCT unit_type_id FROM units WHERE id IN (${siteUnitIds.map(() => '?').join(',')})`,
+          [...siteUnitIds]) as any[]).map((u: any) => u.unit_type_id).filter(Boolean)
+        : unitTypes.map((ut: any) => ut.id);
+
+    const unassignedPerDay = await unassignedPressureByDay(
+      property.id, monthStart, nextMonthStart, scopeTypeIds,
+    );
+
     // ── 9. Build day array ──────────────────────────────────────────────────
     const days: { date: string; status: 'available' | 'booked' | 'partial'; price: number | null }[] = [];
 
@@ -251,7 +270,14 @@ async function calendarFor(searchParams: URLSearchParams) {
         if (dateStr >= b.date_from && dateStr < b.date_to) bookedUnitIds.add(b.unit_id);
       }
 
-      const bookedCount    = bookedUnitIds.size;
+      // Броні без призначеного номера не потрапляють у `bookedUnitIds`: вони
+      // не займають ЖОДНОЇ конкретної кімнати. Але кожна зʼїдає одну кімнату
+      // свого типу, і без цього віднімання календар показав би день вільним,
+      // а канал продав би кімнату вдруге.
+      //
+      // Тиск береться з @properties тією ж функцією, що й уся решта
+      // наявності: два розрахунки дали б два різні числа на одну дату (И3).
+      const bookedCount    = bookedUnitIds.size + (unassignedPerDay.get(dateStr) ?? 0);
       const availableCount = totalCount - bookedCount;
 
       let status: 'available' | 'booked' | 'partial' =
