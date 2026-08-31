@@ -546,6 +546,11 @@ export default function BookingViewModal({
                           || availableUnits.find(u => u.id === (b as any).unit_id)?.unit_type_id
                           || '';
                         let newTotal: number | null = null;
+                        // Турзбір рахується від ночей і гостей, тож зміна дат
+                        // його міняє. Лишити стару суму означало б бронь, у
+                        // якій `total_price` за нові дати, а збір — за старі:
+                        // на рахунку різниця виїхала б у рядок проживання.
+                        let newCityTax: number | null = null;
                         if (unitTypeId) {
                           try {
                             const qRes = await fetch('/api/pricing/quote', {
@@ -560,7 +565,15 @@ export default function BookingViewModal({
                               { ok: qRes.ok, body: qRes.ok ? await qRes.json() : null },
                               b.currency || null,
                             );
-                            if (outcome.reason === 'priced') newTotal = Number(outcome.price);
+                            if (outcome.reason === 'priced') {
+                              newTotal = Number(outcome.price);
+                              // Оновлюємо збір лише тоді, коли він УСЕРЕДИНІ
+                              // суми: інакше це окреме число, яким керує
+                              // оператор, і переписувати його автоматикою не
+                              // можна. Готель без турзбору дає нуль — і
+                              // нічого не змінюється.
+                              if (outcome.cityTax > 0 && b.city_tax_included) newCityTax = outcome.cityTax;
+                            }
                           } catch { /* квота не відповіла — гілка newTotal == null нижче */ }
                         }
                         const head = `${tUi('Змінити дати?')}\n${b.check_in} → ${datesEditCI}\n${b.check_out} → ${datesEditCO}\n${oldNights} → ${newNights} ${pluralUi(newNights, 'ноч.')}`;
@@ -573,6 +586,7 @@ export default function BookingViewModal({
                         if (!confirmed) return;
                         const payload: any = { check_in: datesEditCI, check_out: datesEditCO, nights: newNights };
                         if (newTotal != null && newTotal !== total) payload.total_price = newTotal;
+                        if (newCityTax != null && newCityTax !== cityTaxAmt) payload.city_tax_amount = newCityTax;
                         const res = await fetch(`/api/bookings/${b.id}`, {
                           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify(payload),

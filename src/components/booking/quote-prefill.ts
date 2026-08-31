@@ -23,6 +23,25 @@ export interface QuoteResponse {
   missingDays?: number;
   hasPricing?: boolean;
   currency?: string;
+  /**
+   * Розбивка зборів. Потрібна тут заради одного рядка: `collectedFor`.
+   *
+   * Збір «для громади» (турзбір) сидить УСЕРЕДИНІ `total`, як і решта зборів
+   * — гість платить його разом із проживанням. Але на рахунку він мусить
+   * стати окремим рядком без ПДВ, і бере його звідти `postStayCharges`, з
+   * поля `reservations.city_tax_amount`. Якщо форма це поле не заповнить,
+   * збір поїде в рядок ПРОЖИВАННЯ під його ставкою — 7 % у Німеччині на
+   * гроші, які взагалі не є виручкою готелю.
+   */
+  feeBreakdown?: { name?: string; amount?: number; collectedFor?: string }[];
+  /**
+   * Збори, які вже всередині ціни ночі. Читаються тут із тієї самої причини:
+   * турзбір, який готель поклав у ціну, — це все одно турзбір, і в документі
+   * він мусить стояти окремим рядком без ПДВ. Різниця лише в тому, що гість
+   * не платить його ЗВЕРХУ; але `total` містить його однаково, тож
+   * `city_tax_included` для броні істина в обох випадках.
+   */
+  includedFees?: { name?: string; amount?: number; collectedFor?: string }[];
 }
 
 export interface QuoteAsk {
@@ -62,6 +81,17 @@ export interface QuoteOutcome {
   missingDays: number;
   /** Чому поле лишилось порожнім, якщо лишилось. */
   reason: 'priced' | 'missing' | 'failed';
+  /**
+   * Скільки з `price` — збір для громади (турзбір). Нуль, якщо його немає.
+   *
+   * Це число йде в `reservations.city_tax_amount`, а прапорець «включено» при
+   * ньому мусить стати істиною: збір УЖЕ в сумі, яку форма щойно підставила.
+   * Сказати «не включено» при такій сумі означало б порахувати збір двічі —
+   * раз у вартості, раз окремим рядком рахунку.
+   *
+   * Нуль, коли ціна не лягла в поле: збору без ціни не буває.
+   */
+  cityTax: number;
 }
 
 /**
@@ -86,17 +116,36 @@ export function readQuote(
   res: { ok: boolean; body?: QuoteResponse | null },
   expectCurrency?: string | null,
 ): QuoteOutcome {
-  if (!res.ok || !res.body) return { price: '', missingDays: 0, reason: 'failed' };
+  if (!res.ok || !res.body) return { price: '', missingDays: 0, reason: 'failed', cityTax: 0 };
   if (expectCurrency && res.body.currency !== expectCurrency) {
-    return { price: '', missingDays: 0, reason: 'failed' };
+    return { price: '', missingDays: 0, reason: 'failed', cityTax: 0 };
   }
   const missingDays = Number(res.body.missingDays) || 0;
   if (missingDays > 0 || res.body.hasPricing === false) {
-    return { price: '', missingDays, reason: 'missing' };
+    return { price: '', missingDays, reason: 'missing', cityTax: 0 };
   }
   const total = Number(res.body.total);
-  if (!Number.isFinite(total) || total <= 0) return { price: '', missingDays: 0, reason: 'failed' };
-  return { price: String(total), missingDays: 0, reason: 'priced' };
+  if (!Number.isFinite(total) || total <= 0) return { price: '', missingDays: 0, reason: 'failed', cityTax: 0 };
+  return { price: String(total), missingDays: 0, reason: 'priced', cityTax: cityTaxOf(res.body) };
+}
+
+/**
+ * Скільки в цій квоті збору для громади.
+ *
+ * Складається з рядків розбивки, а не питається окремо: збір уже порахований
+ * там за правилами свого рядка (`per_person_per_night`, звільнення дітей,
+ * округлення через `money()`), і другий розрахунок тут був би другим джерелом
+ * тієї самої відповіді — рівно те, від чого існує інваріант 16.
+ *
+ * Сума заокруглюється до центів: рядки вже заокруглені кожен, але їхня сума в
+ * double може дати хвіст, а це число їде в базу як гроші.
+ */
+function cityTaxOf(body: QuoteResponse): number {
+  const levies = [...(body.feeBreakdown || []), ...(body.includedFees || [])]
+    .filter((f) => f?.collectedFor === 'authority');
+  if (!levies.length) return 0;
+  const sum = levies.reduce((s, f) => s + (Number(f?.amount) || 0), 0);
+  return Number.isFinite(sum) && sum > 0 ? Number(sum.toFixed(2)) : 0;
 }
 
 /** Ночі між двома датами. Виїзд не пізніше заїзду — це нуль ночей. */

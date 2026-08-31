@@ -361,6 +361,20 @@ export default function BookingForm({
         ...p,
         totalPrice: outcome.price,
         commissionAmount: recalcCommission(outcome.price, p.source),
+        // Турзбір, який приїхав рядком квоти, УЖЕ всередині суми вище.
+        //
+        // Без цих двох рядків він там і лишався б — мовчки, як частина
+        // проживання: `postStayCharges` бере збір із `city_tax_amount`, а
+        // порожнє поле означає «збору немає», тож на рахунку він поїхав би в
+        // рядок проживання під його ставкою ПДВ. Готель, який завів турзбір
+        // на екрані зборів, отримав би 7 % на гроші громади.
+        //
+        // Прапорець «включено» тут істина за визначенням: сума в полі
+        // «Вартість» його вже містить. Сказати «не включено» означало б
+        // порахувати збір двічі.
+        ...(outcome.cityTax > 0
+          ? { cityTaxAmount: String(outcome.cityTax), cityTaxIncluded: true }
+          : {}),
       }));
     })();
   }, [mode, form.unitTypeId, form.checkIn, form.checkOut, form.adults, form.children, recalcCommission]);
