@@ -225,21 +225,35 @@ const LABELS: Record<InvoiceLocale, Labels> = {
  * The wording is the reference invoice's, because that is what the hotel's
  * guests, its accountant and its Finanzamt already recognise.
  */
+// `city_tax` — the levy the hotel collects for the municipality and passes on.
+// The word differs by place, not only by language (Kurtaxe in a spa town,
+// Übernachtungssteuer in a city), so this is the FALLBACK: a hotel whose levy
+// has a local name carries it as a `fees_taxes` row, and that row's own name
+// wins over this dictionary.
+//
+// It is the one word here that no jurisdiction module may change after the
+// fact — the line is written into the folio and frozen, like every other
+// (invariant 19: the language of the document, never of the operator).
 const CHARGE_NAMES: Record<InvoiceLocale, Record<string, string>> = {
   'de-DE': {
     lodging: 'Übernachtung',
     breakfast_food: 'Frühstück Speisen',
     breakfast_drinks: 'Frühstück Getränke',
+    city_tax: 'Kurtaxe',
   },
   'cs-CZ': {
     lodging: 'Ubytování',
     breakfast_food: 'Snídaně — jídlo',
     breakfast_drinks: 'Snídaně — nápoje',
+    // The legal name since 2020; «místní poplatek za lázeňský nebo rekreační
+    // pobyt» was merged into it and no longer exists.
+    city_tax: 'Poplatek z pobytu',
   },
   'en-GB': {
     lodging: 'Accommodation',
     breakfast_food: 'Breakfast, food',
     breakfast_drinks: 'Breakfast, drinks',
+    city_tax: 'City tax',
   },
 };
 

@@ -33,6 +33,12 @@ export interface PostResult {
   posted: number;
   gross: number;
   lines: ChargeLine[];
+  /**
+   * Турзбір, якщо він був. Окремим полем, а не рядком у `lines`: `lines` — це
+   * РОЗКЛАД суми проживання, а збір до неї не належить. `carvedOut` каже,
+   * звідки він узявся: вирізаний із суми броні чи доданий поверх неї.
+   */
+  cityTax?: { amount: number; carvedOut: boolean };
 }
 
 /** Why nothing was posted. Each of these is a sentence an operator can act on. */
@@ -41,6 +47,9 @@ export type PostRefusal =
   | { reason: 'already_posted' }
   | { reason: 'no_amount' }
   | { reason: 'breakfast_exceeds_total'; total: number }
+  /** Збір, позначений як «уже в сумі», більший за саму суму — одне з двох чисел
+   *  неправильне, і від'ємний рядок проживання не той спосіб з'ясувати яке. */
+  | { reason: 'city_tax_exceeds_total'; total: number; cityTax: number }
   | { reason: 'no_tax_rate'; code: string; date: string }
   /** A service has no `vat_code`. Named with the service, because the fix is
    *  one field on one row in Settings → Guest services. */
@@ -63,7 +72,7 @@ export async function postStayCharges(input: {
   const res = await sql.row<any>(
     `SELECT r.id, r.check_in, r.check_out, r.adults, r.children, r.total_price, r.source,
             r.property_id, r.lodging_discount_percent, r.lodging_discount_reason,
-            r.breakfast_included,
+            r.breakfast_included, r.city_tax_amount, r.city_tax_included,
             u.code AS unit_code, u.name AS unit_name,
             ut.breakfast_included AS type_breakfast_included,
             g.first_name, g.last_name
@@ -88,6 +97,35 @@ export async function postStayCharges(input: {
 
   const total = Number(res.total_price) || 0;
   if (total <= 0) return { reason: 'no_amount' };
+
+  // ── Турзбір: він був на броні й не доходив до рахунку взагалі ─────────────
+  //
+  // `fin_folio_items.kind` має значення `city_tax` від самого початку, і
+  // `folio.repo.ts` його типізує — а не писав його НІХТО. Тобто збір, який
+  // готель зібрав із гостя, ніде не з'являвся на документі, який готель
+  // видає. Обидві гілки при цьому були неправильні, кожна по-своєму:
+  //
+  //   city_tax_included = FALSE (дефолт) — збір лежить окремою колонкою
+  //     броні, у фоліо не потрапляє, у фактурі його немає. Гість платить,
+  //     документа на це немає;
+  //   city_tax_included = TRUE — збір УСЕРЕДИНІ `total_price`, а
+  //     `splitOtaAmount` ділить цю суму на проживання й сніданок. Тобто збір
+  //     тихо оподатковувався ставкою проживання — 7 % у Німеччині на гроші,
+  //     які взагалі не є виручкою готелю.
+  //
+  // Сума береться з броні як є (інваріант 18: нарахована сума не
+  // перераховується — фактура минулого року не змінюється від нової таблиці).
+  // Ставка ПДВ на цьому рядку — нуль: `collected_for = 'authority'`, це не
+  // виручка. ЯК саме нуль показати в чеку конкретної країни — рядок 11 без
+  // ПДВ в Україні, durchlaufender Posten у Німеччині — вирішує модуль
+  // юрисдикції за `kind`, не цей файл (AGENTS.md, інваріант 22).
+  const cityTax = money(Number(res.city_tax_amount) || 0);
+  // 0/1 із SQLite, BOOLEAN із Postgres — одиниця означає «так».
+  const cityTaxInside = cityTax > 0 && Boolean(Number(res.city_tax_included));
+  // Сума, яку ділимо на проживання й сніданок. Збір, який уже в ній сидить,
+  // спершу вирізається — інакше він поїде в рядок проживання під його ставкою.
+  const stayTotal = cityTaxInside ? money(total - cityTax) : total;
+  if (stayTotal <= 0) return { reason: 'city_tax_exceeds_total', total, cityTax };
 
   const checkIn = day(res.check_in);
   const checkOut = day(res.check_out);
@@ -159,7 +197,7 @@ export async function postStayCharges(input: {
   }
 
   const lines = splitOtaAmount({
-    totalGross: total, persons, nights,
+    totalGross: stayTotal, persons, nights,
     lodgingVatRate: lodgingRate.rate,
     breakfast,
     // Granted by a person, on this stay, on the accommodation only. The split
@@ -169,7 +207,7 @@ export async function postStayCharges(input: {
   // The breakfast costs more than the whole booking. That is a wrong setting or
   // a wrong booking, and a negative room line on a guest's invoice is not the
   // way to find out which.
-  if (lines == null) return { reason: 'breakfast_exceeds_total', total };
+  if (lines == null) return { reason: 'breakfast_exceeds_total', total: stayTotal };
 
   const guestName = [res.first_name, res.last_name].filter(Boolean).join(' ') || null;
   const unitCode = res.unit_code || res.unit_name || null;
@@ -201,8 +239,33 @@ export async function postStayCharges(input: {
     source: 'ota_split',
   }));
 
+  if (cityTax > 0) {
+    charges.push({
+      folioId: input.folioId,
+      reservationId: input.reservationId,
+      serviceDate: checkIn,
+      kind: 'city_tax',
+      // Ім'я збору мовою ДОКУМЕНТА, як і решта рядків. Готель, у якого збір
+      // зветься інакше, заводить його рядком `fees_taxes` зі своєю назвою.
+      description: chargeName('city_tax', locale),
+      guestName,
+      unitCode,
+      quantity: 1,
+      unitPriceGross: cityTax,
+      totalGross: cityTax,
+      // Не виручка готелю — вихідного ПДВ немає. Див. довгий коментар вище.
+      vatRate: 0,
+      source: 'ota_split',
+    });
+  }
+
   await addCharges(charges);
-  return { posted: charges.length, gross: linesGross(lines), lines };
+  return {
+    posted: charges.length,
+    gross: money(linesGross(lines) + cityTax),
+    lines,
+    ...(cityTax > 0 ? { cityTax: { amount: cityTax, carvedOut: cityTaxInside } } : {}),
+  };
 }
 
 /**
