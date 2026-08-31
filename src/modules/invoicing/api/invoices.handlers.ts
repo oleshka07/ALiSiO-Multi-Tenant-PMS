@@ -58,7 +58,7 @@ export async function listInvoices(_request: NextRequest, _ctx: unknown, actor: 
       FROM invoices i
       JOIN reservations r ON i.reservation_id = r.id
       JOIN guests g ON r.guest_id = g.id
-      JOIN units u ON r.unit_id = u.id
+      LEFT JOIN units u ON r.unit_id = u.id
       WHERE i.organization_id = ?
       ORDER BY i.issued_at DESC, i.invoice_number DESC
       LIMIT 200

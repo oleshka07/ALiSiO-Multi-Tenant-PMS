@@ -41,7 +41,7 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
       SELECT r.id, r.check_in, u.name as unit_name, g.first_name, g.last_name
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
-      JOIN units u ON r.unit_id = u.id
+      LEFT JOIN units u ON r.unit_id = u.id
       WHERE ${OWN('r.')} AND r.check_in < ? AND r.check_in >= ? AND r.status = 'confirmed'
       ORDER BY r.check_in DESC
     `, [org, today, archiveCutoff]);
@@ -59,7 +59,7 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
       SELECT r.id, r.payment_status, r.registration_status, r.total_price, g.first_name, g.last_name, u.name as unit_name
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
-      JOIN units u ON r.unit_id = u.id
+      LEFT JOIN units u ON r.unit_id = u.id
       WHERE ${OWN('r.')} AND r.check_in = ? AND r.status IN ('confirmed', 'tentative')
     `, [org, today]);
 
@@ -96,7 +96,7 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
       SELECT r.id, g.first_name, g.last_name, u.name as unit_name
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
-      JOIN units u ON r.unit_id = u.id
+      LEFT JOIN units u ON r.unit_id = u.id
       WHERE ${OWN('r.')} AND r.status = 'checked_in' AND (r.registration_status IS NULL OR r.registration_status = 'not_registered')
     `, [org]);
 
@@ -113,7 +113,7 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
       SELECT r.id, g.first_name, g.last_name, u.name as unit_name
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
-      JOIN units u ON r.unit_id = u.id
+      LEFT JOIN units u ON r.unit_id = u.id
       WHERE ${OWN('r.')} AND r.check_out = ? AND r.status = 'checked_in'
     `, [org, today]);
 
@@ -133,7 +133,7 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
       SELECT r.id, g.first_name, g.last_name, u.name as unit_name
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
-      JOIN units u ON r.unit_id = u.id
+      LEFT JOIN units u ON r.unit_id = u.id
       WHERE ${OWN('r.')} AND r.payment_status = 'payment_requested'
         AND r.status IN ('confirmed', 'tentative', 'checked_in')
       ORDER BY r.check_in

@@ -38,8 +38,8 @@ export async function getCityTaxReport(request: Request, _ctx: unknown, actor: A
         c.type as category_type
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
-      JOIN units u ON r.unit_id = u.id
-      JOIN categories c ON u.category_id = c.id
+      LEFT JOIN units u ON r.unit_id = u.id
+      LEFT JOIN categories c ON u.category_id = c.id
       WHERE ${OWN('r.')}
         AND r.status NOT IN ('cancelled', 'no_show')
         AND r.check_in < ? AND r.check_out > ?

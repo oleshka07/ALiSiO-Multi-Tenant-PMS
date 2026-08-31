@@ -90,8 +90,8 @@ export async function getGuestWithReservations(organizationId: string, id: strin
       u.name as unit_name, u.code as unit_code,
       c.name as category_name, c.type as category_type
     FROM reservations r
-    JOIN units u ON r.unit_id = u.id
-    JOIN categories c ON u.category_id = c.id
+    LEFT JOIN units u ON r.unit_id = u.id
+    LEFT JOIN categories c ON u.category_id = c.id
     JOIN properties p ON p.id = r.property_id
     WHERE r.guest_id = ? AND p.organization_id = ?
     ORDER BY r.check_in DESC

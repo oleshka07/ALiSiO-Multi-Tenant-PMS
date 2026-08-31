@@ -16,8 +16,8 @@ export async function getReservationForRegistration(token: string) {
     FROM reservations r
     JOIN properties p ON r.property_id = p.id
     JOIN guests g ON r.guest_id = g.id
-    JOIN units u ON r.unit_id = u.id
-    JOIN unit_types ut ON u.unit_type_id = ut.id
+    LEFT JOIN units u ON r.unit_id = u.id
+    LEFT JOIN unit_types ut ON u.unit_type_id = ut.id
     WHERE r.guest_page_token = ?
   `, [token]) as any;
 }

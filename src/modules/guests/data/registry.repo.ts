@@ -117,7 +117,7 @@ export async function getRegistryEntries(organizationId: string, filters: Regist
     FROM reservation_guests rg
     JOIN reservations r ON rg.reservation_id = r.id
     JOIN properties p ON r.property_id = p.id
-    JOIN units u ON r.unit_id = u.id
+    LEFT JOIN units u ON r.unit_id = u.id
     WHERE ${ORG_SCOPE} AND r.check_in >= ? AND r.check_in < ?
   `;
   const params: (string | number)[] = [organizationId, monthStart, monthEnd];

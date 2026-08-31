@@ -82,9 +82,9 @@ export async function getReservationByToken(token: string) {
       o.language as organization_language
     FROM reservations r
     JOIN guests g ON r.guest_id = g.id
-    JOIN units u ON r.unit_id = u.id
-    JOIN categories c ON u.category_id = c.id
-    JOIN unit_types ut ON u.unit_type_id = ut.id
+    LEFT JOIN units u ON r.unit_id = u.id
+    LEFT JOIN categories c ON u.category_id = c.id
+    LEFT JOIN unit_types ut ON u.unit_type_id = ut.id
     JOIN properties p ON r.property_id = p.id
     JOIN organizations o ON p.organization_id = o.id
     WHERE r.guest_page_token = ?

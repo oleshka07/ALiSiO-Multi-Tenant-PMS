@@ -26,8 +26,8 @@ export async function getReport(request: NextRequest, _ctx: unknown, actor: Acto
       SELECT r.*, u.name as unit_name, c.type as category_type,
              g.first_name, g.last_name
       FROM reservations r
-      JOIN units u ON r.unit_id = u.id
-      JOIN categories c ON u.category_id = c.id
+      LEFT JOIN units u ON r.unit_id = u.id
+      LEFT JOIN categories c ON u.category_id = c.id
       JOIN guests g ON r.guest_id = g.id
       WHERE ${OWN('r.')}
         AND r.check_in BETWEEN ? AND ?

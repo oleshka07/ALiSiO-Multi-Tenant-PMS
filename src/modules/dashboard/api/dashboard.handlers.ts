@@ -55,7 +55,7 @@ export const getDashboard = withActor(async (_request, _ctx, actor: Actor) => {
         u.name as unit_name, u.code as unit_code
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
-      JOIN units u ON r.unit_id = u.id
+      LEFT JOIN units u ON r.unit_id = u.id
       WHERE ${OWN('r.')} AND r.check_in BETWEEN ? AND ? AND r.status IN ('confirmed', 'tentative')
       ORDER BY r.check_in
       LIMIT 10
@@ -67,7 +67,7 @@ export const getDashboard = withActor(async (_request, _ctx, actor: Actor) => {
         u.name as unit_name, u.code as unit_code, u.cleaning_status
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
-      JOIN units u ON r.unit_id = u.id
+      LEFT JOIN units u ON r.unit_id = u.id
       WHERE ${OWN('r.')} AND r.check_out = ? AND r.status IN ('checked_in', 'confirmed')
       ORDER BY u.name
     `, [org, today]));

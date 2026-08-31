@@ -890,7 +890,7 @@ export async function getWidgetReservation(request: NextRequest, { params }: { p
       SELECT r.id as reservationId, r.check_in as checkIn, r.check_out as checkOut, r.nights, r.total_price as totalPrice, r.currency,
              u.name as unitName
       FROM reservations r
-      JOIN units u ON r.unit_id = u.id
+      LEFT JOIN units u ON r.unit_id = u.id
       WHERE r.id = ?
     `, [id]) as any;
 

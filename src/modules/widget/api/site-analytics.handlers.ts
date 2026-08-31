@@ -486,8 +486,8 @@ export const getAnalyticsListings = withPermission('nav:sites', async (
         SUM(CASE WHEN r.payment_status = 'paid' THEN (r.total_price - COALESCE(r.commission_amount, 0)) ELSE 0 END) as revenue,
         SUM(CASE WHEN r.payment_status != 'paid' THEN (r.total_price - COALESCE(r.commission_amount, 0)) ELSE 0 END) as unpaid_revenue
       FROM reservations r
-      JOIN units u ON r.unit_id = u.id
-      JOIN unit_types ut ON u.unit_type_id = ut.id
+      LEFT JOIN units u ON r.unit_id = u.id
+      LEFT JOIN unit_types ut ON u.unit_type_id = ut.id
       WHERE ${getSourceFilter(siteId, propertyId, ownIds, 'r.')} AND r.status != 'cancelled'
     `;
     const utParams: any[] = getSourceParams(siteId, propertyId, ownIds);
@@ -511,8 +511,8 @@ export const getAnalyticsListings = withPermission('nav:sites', async (
         SUM(CASE WHEN r.payment_status = 'paid' THEN (r.total_price - COALESCE(r.commission_amount, 0)) ELSE 0 END) as revenue,
         SUM(CASE WHEN r.payment_status != 'paid' THEN (r.total_price - COALESCE(r.commission_amount, 0)) ELSE 0 END) as unpaid_revenue
       FROM reservations r
-      JOIN units u ON r.unit_id = u.id
-      JOIN categories c ON u.category_id = c.id
+      LEFT JOIN units u ON r.unit_id = u.id
+      LEFT JOIN categories c ON u.category_id = c.id
       WHERE ${getSourceFilter(siteId, propertyId, ownIds, 'r.')} AND r.status != 'cancelled'
     `;
     const catParams: any[] = getSourceParams(siteId, propertyId, ownIds);

@@ -122,12 +122,13 @@ async function main() {
 
   // З 0045 облік — ключ `accounting` з дефолтом OFF: новий готель отримує
   // його вимкненим, доки власник не увімкне. Probe-орендарі нижче пишуть у
-  // фінанси, тож ключ вмикається тут — так само, як 'widget' далі по тексту:
+  // фінанси, тож ключ вмикається тут — так само, як 'booking_engine' далі по тексту:
   // гейт лишається на місці, перевіряється сама ізоляція, а не право на
   // модуль.
   for (const t of [a, b]) {
     await sql.run(
-      'INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)',
+      `INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)
+       ON CONFLICT(organization_id, feature) DO UPDATE SET enabled = TRUE`,
       [t.orgId, 'accounting'],
     );
   }
@@ -1043,12 +1044,14 @@ async function main() {
     });
 
     // The route is behind the same feature gate as every other public widget
-    // endpoint, and a probe tenant starts with nothing enabled. Turning it on
-    // here rather than dropping the gate: a hotel that does not pay for the
-    // widget must not have a public write endpoint standing open on its behalf.
+    // endpoint. Written explicitly rather than relied upon: since migration
+    // 0049 `booking_engine` defaults to ON (decision П4), so a probe tenant
+    // already has it — and a test that depends on a default is a test that
+    // changes meaning the day the default does.
     await sql.run(
-      'INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)',
-      [a.orgId, 'widget'],
+      `INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)
+       ON CONFLICT(organization_id, feature) DO UPDATE SET enabled = TRUE`,
+      [a.orgId, 'booking_engine'],
     );
 
     const sent = await capture({
@@ -1088,8 +1091,16 @@ async function main() {
     // 403 from the widget, and leaving this on made that assertion pass for
     // the wrong reason — which is the same class of vacuous check this file
     // has been bitten by twice already.
-    await sql.run('DELETE FROM organization_features WHERE organization_id = ? AND feature = ?',
-      [a.orgId, 'widget']);
+    //
+    // `enabled = FALSE`, NOT `DELETE`. Deleting the row means «use the
+    // default», and since 0049 that default is ON — so the delete idiom
+    // silently turned the feature back ON and the assertion below failed with
+    // 200. It was `widget`, OFF by default, when this line was written; the
+    // day the key changed, the test kept its shape and lost its meaning.
+    await sql.run(
+      `INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, FALSE)
+       ON CONFLICT(organization_id, feature) DO UPDATE SET enabled = FALSE`,
+      [a.orgId, 'booking_engine']);
 
     // …and with the feature gone, the same call must stop working. Otherwise
     // the gate above is decoration.
@@ -1108,13 +1119,18 @@ async function main() {
     // This is the assertion that protects the guest. If `hasPayment` ever goes
     // true here, a booking ends at a «Оплатити» button with nothing behind it,
     // at the exact moment the guest decided to spend money.
-    // Both switches: the block above turned `widget` back off to prove the
+    // Both switches: the block above turned `booking_engine` back off to prove the
     // capture route is gated, and site-config answers «feature disabled»
     // without it — which would have made the assertion below pass on a
     // response that never contained hasPayment at all.
-    for (const feature of ['widget', 'online_payments']) {
+    // Upsert, не голий INSERT: блок вище тепер ЗАЛИШАЄ рядок із
+    // `enabled = FALSE` замість того, щоб його видалити (бо видалення при
+    // дефолті ON означало б «увімкнено»). Голий INSERT після цього падає на
+    // PRIMARY KEY (organization_id, feature).
+    for (const feature of ['booking_engine', 'online_payments']) {
       await sql.run(
-        'INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)',
+        `INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)
+         ON CONFLICT(organization_id, feature) DO UPDATE SET enabled = TRUE`,
         [a.orgId, feature],
       );
     }
@@ -1155,8 +1171,14 @@ async function main() {
     // Off again, both of them: a later block asserts that a hotel WITHOUT
     // the widget is refused, and leaving either on would make that pass for
     // the wrong reason.
-    await sql.run("DELETE FROM organization_features WHERE organization_id = ? AND feature IN ('widget', 'online_payments')",
-      [a.orgId]);
+    //
+    // Explicit FALSE rows, not DELETE — same trap as above: `booking_engine`
+    // defaults to ON since 0049, so deleting the row would turn it back on.
+    await sql.run(
+      `INSERT INTO organization_features (organization_id, feature, enabled)
+       VALUES (?, 'booking_engine', FALSE), (?, 'online_payments', FALSE)
+       ON CONFLICT(organization_id, feature) DO UPDATE SET enabled = FALSE`,
+      [a.orgId, a.orgId]);
     console.log('  ok  saved gateway keys stay keys — the widget still offers no payment');
 
     // 'all' must mean "all of MINE". It expanded to `1=1` — every reservation
@@ -1234,7 +1256,7 @@ async function main() {
 
     const turnOn = await call(cookieB, '/api/settings/features', {
       method: 'PUT',
-      body: JSON.stringify({ feature: 'widget', enabled: true }),
+      body: JSON.stringify({ feature: 'booking_engine', enabled: true }),
     });
     assert.ok(turnOn.ok, `enabling a feature failed: ${turnOn.status}`);
 
@@ -1249,7 +1271,7 @@ async function main() {
     // visible to the staff. Hiding it from the admin instead would be the
     // inverse bug: a room nobody can sell.
     const widgetOnA = await call(cookieA, '/api/settings/features', {
-      method: 'PUT', body: JSON.stringify({ feature: 'widget', enabled: true }),
+      method: 'PUT', body: JSON.stringify({ feature: 'booking_engine', enabled: true }),
     });
     assert.ok(widgetOnA.ok, `enabling the widget for A failed: ${widgetOnA.status}`);
 

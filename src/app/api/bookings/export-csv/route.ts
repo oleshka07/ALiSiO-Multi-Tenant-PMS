@@ -65,8 +65,8 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
         r.id AS reservation_id
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
-      JOIN units u ON r.unit_id = u.id
-      JOIN categories c ON u.category_id = c.id
+      LEFT JOIN units u ON r.unit_id = u.id
+      LEFT JOIN categories c ON u.category_id = c.id
       -- This export carries guest names, emails, phones, citizenship and
       -- money. The actor was taken and never used, so on SQLite one hotel's
       -- report downloaded every hotel's guests in one file.

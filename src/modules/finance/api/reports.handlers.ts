@@ -973,7 +973,7 @@ export async function getExpectedPayments(request: NextRequest): Promise<NextRes
                        WHERE reservation_id = r.id AND op_type = 'expense' AND payment_subtype = 'refund' AND status = 'completed'), 0) as refunded_amount
       FROM reservations r
       JOIN properties p ON p.id = r.property_id
-      JOIN guests g ON r.guest_id = g.id JOIN units u ON r.unit_id = u.id JOIN categories c ON u.category_id = c.id
+      JOIN guests g ON r.guest_id = g.id LEFT JOIN units u ON r.unit_id = u.id LEFT JOIN categories c ON u.category_id = c.id
       LEFT JOIN booking_sources bs ON r.source = bs.code
       WHERE p.organization_id = ?
         AND r.status IN ('confirmed', 'checked_in', 'tentative') AND r.payment_status != 'paid'

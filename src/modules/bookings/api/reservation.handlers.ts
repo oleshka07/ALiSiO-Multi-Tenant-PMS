@@ -28,9 +28,9 @@ export const getReservation = withActor(async (_request: NextRequest, { params }
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
       JOIN properties p ON r.property_id = p.id
-      JOIN units u ON r.unit_id = u.id
-      JOIN categories c ON u.category_id = c.id
-      JOIN unit_types ut ON u.unit_type_id = ut.id
+      LEFT JOIN units u ON r.unit_id = u.id
+      LEFT JOIN categories c ON u.category_id = c.id
+      LEFT JOIN unit_types ut ON u.unit_type_id = ut.id
       WHERE r.id = ?
     `, [id]);
 
