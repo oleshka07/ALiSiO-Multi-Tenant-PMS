@@ -26,7 +26,12 @@
  *    це дві наші броні, бо `reservations` це рядок на кімнату. Мапер віддає
  *    масив як є і НЕ вибирає з нього першу: мовчки загублена друга кімната
  *    — це гість, який приїде в готель, що про нього не знає.
+ *
+ * Результат — доменні типи з `../domain/feed.ts`, а не власні. Напрямок
+ * залежності саме такий: адаптер знає домен, домен про адаптер не чув
+ * (інваріант И1).
  */
+import type { FeedEntry, FeedRevision, FeedRoom } from '../domain/feed.ts';
 
 /** Ревізія в тому вигляді, як її віддає стрічка. Поля — за виміряним §5.1. */
 export interface ChannexRevision {
@@ -58,37 +63,16 @@ export interface ChannexRoom {
   [key: string]: unknown;
 }
 
-/** Одна кімната броні, приведена до наших слів. */
-export interface MappedRoom {
-  /** НАШ id типу номера, або null, якщо тип не змаплено. */
-  unitTypeId: string | null;
-  checkIn?: string;
-  checkOut?: string;
-  adults: number;
-  children: number;
-  amount: number;
-}
-
-/** Ревізія домену: те, що з неї треба `applyRevision()`. */
-export interface MappedRevision {
-  remoteRevisionId: string;
-  remoteBookingId: string;
-  status: 'new' | 'modified' | 'cancelled';
-  otaReservationCode?: string;
-  otaName?: string;
-  currency?: string;
-  totalAmount: number;
-  /** Хоча б одна кімната без змапленого типу. */
-  unmapped: boolean;
-  rooms: MappedRoom[];
-  guestFirstName?: string;
-  guestLastName?: string;
-  guestEmail?: string;
-  raw: unknown;
-}
-
+/**
+ * Що віддає мапер — доменні типи, під доменними іменами.
+ *
+ * Аліаси лишились, бо цей файл і його перевірка ними розмовляють; самі типи
+ * живуть у `../domain/feed.ts` і належать домену, не вендору.
+ */
+export type MappedRoom = FeedRoom;
+export type MappedRevision = FeedRevision;
 export type MapFailure = { ok: false; reason: string };
-export type MapResult = { ok: true; revision: MappedRevision } | MapFailure;
+export type MapResult = FeedEntry;
 
 /** Гроші приходять рядком («100.00») або числом — обидва бачені на живому API. */
 function money(v: unknown): number {

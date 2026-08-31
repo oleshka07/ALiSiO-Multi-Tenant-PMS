@@ -1,0 +1,189 @@
+import type { ApplyOutcome, Revision } from './inbound-bookings.repo';
+// Розширення в шляху, а не аліас: цей файл читає ще й перевірка, яку
+// запускають голим node, а бандлер із розширенням теж згоден.
+import type { FeedEntry } from '../domain/feed.ts';
+
+/**
+ * Прочитати стрічку ревізій і завести з неї броні.
+ *
+ * Уся небезпека тут в одному місці — у порядку двох дій.
+ *
+ * ── Інваріант И5: ack ПІСЛЯ коміту ──────────────────────────────────────
+ *
+ * Стрічка віддає **лише непідтверджені** ревізії. Це її головна властивість:
+ * вона самоочищається, і пропущений вебхук не означає пропущену броню.
+ *
+ * Але з неї ж випливає, що підтвердження — незворотне. Підтвердили до
+ * коміту, процес упав — бронювання втрачено НАЗАВЖДИ: більше його ніхто не
+ * покаже, бо для менеджера каналів воно вже доставлене. Гість приїде в
+ * готель, який про нього не знає.
+ *
+ * Тому: транзакція → коміт → і лише тоді ack. Ніколи не в один крок і
+ * ніколи не «заразом, щоб не робити двічі».
+ *
+ * Зворотний бік теж названий: не підтвердили те, що застосували, — ревізія
+ * приїде ще раз. Це не втрата, а повтор, і від нього захищає
+ * `UNIQUE(connection_id, remote_revision_id)` у журналі (CP4). Тобто ціна
+ * помилки в один бік — загублена бронь, у другий — зайвий прохід. Обирати
+ * тут нема з чого.
+ *
+ * ── Порядок ревізій ─────────────────────────────────────────────────────
+ *
+ * Стрічка просить `order[inserted_at]=asc` — без цього параметра порядок не
+ * гарантований, а дві ревізії одного бронювання, застосовані навпаки,
+ * дадуть скасовану бронь як активну. Цикл нижче зберігає порядок, у якому
+ * прийшли дані, і НЕ переставляє їх.
+ *
+ * ── Помилка на одній ревізії не глушить решту ───────────────────────────
+ *
+ * Але лише між РІЗНИМИ бронюваннями. Якщо впала ревізія бронювання X,
+ * наступні ревізії того самого X пропускаються: застосувати «змінено» після
+ * невдалого «створено» означає зміну того, чого немає.
+ *
+ * ── Чого тут НЕМАЄ ──────────────────────────────────────────────────────
+ *
+ * Імені вендора. Цикл — це порядок дій, і він однаковий для будь-якого
+ * менеджера каналів; переклад чужого формату однаковим не буває ніколи.
+ * Тому `fetchFeed` віддає вже доменні записи (`../domain/feed.ts`), а хто і
+ * як їх переклав — справа адаптера (інваріант И1).
+ */
+
+/** Що зробити з однією ревізією. Усе, що торкається світу, приходить ззовні. */
+export interface PullDeps {
+  /**
+   * Записи стрічки, вже перекладені й уже в порядку надходження.
+   *
+   * Порядок задає адаптер запитом до менеджера каналів; цикл його зберігає
+   * і не сортує. Запис може бути відмовою з причиною — крива ревізія не
+   * має валити решту стрічки.
+   */
+  fetchFeed(connectionId: string): Promise<FeedEntry[]>;
+  /** Одна транзакція на одну ревізію. */
+  tx<T>(fn: () => Promise<T>): Promise<T>;
+  /** Записати ревізію й звести з бронню. Викликається ВСЕРЕДИНІ `tx`. */
+  apply(connectionId: string, rev: Revision): Promise<ApplyOutcome>;
+  /** Підтвердити менеджеру каналів. Викликається ПІСЛЯ коміту. */
+  ack(connectionId: string, remoteRevisionId: string): Promise<void>;
+}
+
+export interface PullReport {
+  /** Скільки ревізій прочитано зі стрічки. */
+  seen: number;
+  /** Застосовано вперше. */
+  applied: number;
+  /** Уже були — повтор доставки, не помилка. */
+  duplicates: number;
+  /** Не застосовано; кожна причина названа. */
+  skipped: { remoteRevisionId?: string; remoteBookingId?: string; reason: string }[];
+  /** Підтверджено менеджеру каналів. */
+  acked: number;
+}
+
+export async function pullBookings(connectionId: string, deps: PullDeps): Promise<PullReport> {
+  const report: PullReport = { seen: 0, applied: 0, duplicates: 0, skipped: [], acked: 0 };
+
+  const feed = await deps.fetchFeed(connectionId);
+
+  /** Бронювання, на якому вже спіткнулись: його наступні ревізії пропускаємо. */
+  const broken = new Set<string>();
+
+  for (const entry of feed) {
+    report.seen++;
+
+    if (!entry.ok) {
+      report.skipped.push({ reason: entry.reason });
+      continue;
+    }
+    const rev = entry.revision;
+
+    if (broken.has(rev.remoteBookingId)) {
+      report.skipped.push({
+        remoteRevisionId: rev.remoteRevisionId,
+        remoteBookingId: rev.remoteBookingId,
+        reason: 'earlier_revision_failed',
+      });
+      continue;
+    }
+
+    // Кілька кімнат — це кілька наших броней, і ми ще не вміємо їх заводити.
+    // НЕ підтверджуємо: ревізія лишиться в стрічці, і через 30 хвилин про неї
+    // нагадають листом — це правильний тиск. Мовчки взяти першу кімнату
+    // означало б гостя, який приїде в готель, що про нього не знає.
+    if (rev.rooms.length > 1) {
+      report.skipped.push({
+        remoteRevisionId: rev.remoteRevisionId,
+        remoteBookingId: rev.remoteBookingId,
+        reason: 'multi_room_not_supported',
+      });
+      broken.add(rev.remoteBookingId);
+      continue;
+    }
+
+    const room = rev.rooms[0];
+    const domain: Revision = {
+      remoteRevisionId: rev.remoteRevisionId,
+      remoteBookingId: rev.remoteBookingId,
+      status: rev.status,
+      otaReservationCode: rev.otaReservationCode,
+      otaName: rev.otaName,
+      unmapped: rev.unmapped,
+      raw: rev.raw,
+      checkIn: room?.checkIn,
+      checkOut: room?.checkOut,
+      unitTypeId: room?.unitTypeId ?? null,
+      adults: room?.adults,
+      children: room?.children,
+      totalPrice: rev.totalAmount,
+      currency: rev.currency,
+      guestFirstName: rev.guestFirstName,
+      guestLastName: rev.guestLastName,
+      guestEmail: rev.guestEmail,
+    };
+
+    let outcome: ApplyOutcome;
+    try {
+      outcome = await deps.tx(() => deps.apply(connectionId, domain));
+    } catch (e) {
+      report.skipped.push({
+        remoteRevisionId: rev.remoteRevisionId,
+        remoteBookingId: rev.remoteBookingId,
+        reason: `apply_failed:${e instanceof Error ? e.message : 'unknown'}`,
+      });
+      broken.add(rev.remoteBookingId);
+      continue;
+    }
+
+    if (outcome.result === 'refused') {
+      report.skipped.push({
+        remoteRevisionId: rev.remoteRevisionId,
+        remoteBookingId: rev.remoteBookingId,
+        reason: outcome.reason,
+      });
+      broken.add(rev.remoteBookingId);
+      continue;
+    }
+
+    if (outcome.result === 'duplicate') report.duplicates++;
+    else report.applied++;
+
+    // Коміт уже стався — `deps.tx` повернувся. Аж ТЕПЕР можна підтверджувати.
+    //
+    // Повтор доставки підтверджується так само: для менеджера каналів ревізія
+    // лишається непідтвердженою, доки ми не скажемо інакше, а те, що бачили,
+    // — наша внутрішня справа.
+    try {
+      await deps.ack(connectionId, rev.remoteRevisionId);
+      report.acked++;
+    } catch (e) {
+      // Не підтвердили те, що застосували: ревізія приїде ще раз і буде
+      // впізнана як дубль. Це повтор, а не втрата — див. шапку файла.
+      report.skipped.push({
+        remoteRevisionId: rev.remoteRevisionId,
+        remoteBookingId: rev.remoteBookingId,
+        reason: `ack_failed:${e instanceof Error ? e.message : 'unknown'}`,
+      });
+    }
+  }
+
+  return report;
+}
