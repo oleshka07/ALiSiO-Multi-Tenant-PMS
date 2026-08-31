@@ -2554,6 +2554,28 @@ function runMigrations(database: any) {
   } catch { /* index already exists */ }
 
   // --- Migration: add city_tax fields to reservations ---
+  //
+  // ЩО ТУТ ОЗНАЧАЄ `total_price` — це було неоднозначно, і саме тому
+  // питання поставили вголос (31.08.2026). Відповідь прив'язана до
+  // прапорця, а не окрема:
+  //
+  //   city_tax_included = 1  →  total_price ALL-IN: збір УСЕРЕДИНІ суми
+  //   city_tax_included = 0  →  total_price БЕЗ збору: він поруч, окремо
+  //
+  // Тобто `total_price` — це те, що гість платить ЧЕРЕЗ ЦЕЙ КАНАЛ, а чи
+  // входить туди збір, каже канал: `booking_sources.city_tax_included_default`
+  // засіває прапорець за джерелом (Booking з інклюзивним налаштуванням і
+  // Airbnb, який окремого поняття збору не має, → 1; пряма броня → 0, гість
+  // платить на місці й `city_tax_paid` лишається 'pending').
+  //
+  // На ДОКУМЕНТІ це не змінює нічого: збір там завжди окремий рядок без
+  // ПДВ. Керує цим `fin_folio_items.kind = 'city_tax'` із `vat_rate = 0`, а
+  // не цей прапорець — прапорець лише каже `postStayCharges`, вирізати збір
+  // із суми чи додати до неї. Дві різні речі, обидві потрібні.
+  //
+  // Прапорці тут INTEGER, не BOOLEAN: міграція 0046 перевела вісім колонок,
+  // ці до неї не входили. Тому в SQL їх порівнюють з 1/0, а не з TRUE —
+  // тримає check-boolean-flags.
   try {
     database.exec("ALTER TABLE reservations ADD COLUMN city_tax_amount REAL DEFAULT 0");
   } catch { /* column already exists */ }
