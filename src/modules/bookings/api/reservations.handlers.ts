@@ -42,7 +42,15 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
       LEFT JOIN categories c ON u.category_id = c.id
-      LEFT JOIN unit_types ut ON u.unit_type_id = ut.id
+      -- Тип береться від НОМЕРА, а якщо номера ще немає — від самої броні.
+      --
+      -- Бронь із каналу приходить із власним unit_type_id і без кімнати. Йти
+      -- лише через units означало б показати рецепції «призначити номер», не
+      -- сказавши ЯКОГО типу — тобто попросити зробити вибір і сховати єдине,
+      -- що для нього потрібне.
+      --
+      -- (Без бектиків: увесь запит — шаблонний рядок JS.)
+      LEFT JOIN unit_types ut ON ut.id = COALESCE(u.unit_type_id, r.unit_type_id)
       JOIN properties p ON r.property_id = p.id
       WHERE p.organization_id = ?
     `;

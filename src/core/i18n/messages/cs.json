@@ -2800,5 +2800,8 @@
   "Уже входить у ціну за ніч": "Již je zahrnut v ceně za noc",
   "Цю назву гість побачить у розрахунку вартості та в рахунку.": "Tento název host uvidí ve výpočtu ceny a na účtu.",
   "Чиї це гроші": "Čí jsou to peníze",
-  "Як рахувати": "Jak počítat"
+  "Як рахувати": "Jak počítat",
+  "Без номера": "Bez pokoje",
+  "Номер не призначено — натисніть, щоб обрати": "Pokoj není přidělen — klikněte pro výběr",
+  "Призначити номер": "Přidělit pokoj"
 }

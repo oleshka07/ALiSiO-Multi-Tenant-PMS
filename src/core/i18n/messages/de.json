@@ -2768,5 +2768,8 @@
   "Уже входить у ціну за ніч": "Bereits im Übernachtungspreis enthalten",
   "Цю назву гість побачить у розрахунку вартості та в рахунку.": "Diesen Namen sieht der Gast im Preisrechner und auf der Rechnung.",
   "Чиї це гроші": "Wessen Geld es ist",
-  "Як рахувати": "Berechnungsart"
+  "Як рахувати": "Berechnungsart",
+  "Без номера": "Ohne Zimmer",
+  "Номер не призначено — натисніть, щоб обрати": "Zimmer nicht zugewiesen — zum Auswählen klicken",
+  "Призначити номер": "Zimmer zuweisen"
 }

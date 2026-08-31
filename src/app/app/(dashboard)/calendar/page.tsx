@@ -10,6 +10,7 @@ import MobileCalendar from '@/components/mobile/pages/MobileCalendar';
 import BookingViewModal from '@/components/booking/BookingViewModal';
 import BookingForm from '@/components/booking/BookingForm';
 import { compareUnitNames } from '@core/unit-order';
+import { bookingsOfUnit, unassignedBookings, freeUnitsOnDate, packLanes } from './lanes';
 import {
   Search,
   ChevronDown,
@@ -50,7 +51,7 @@ interface UnitRow {
 }
 
 interface BookingRow {
-  id: string; unit_id: string; check_in: string; check_out: string;
+  id: string; unit_id: string | null; check_in: string; check_out: string;
   nights: number; adults: number; children: number;
   status: string; payment_status: string; source: string; total_price: number; currency: string;
   first_name: string; last_name: string;
@@ -485,9 +486,20 @@ function CalendarDesktop() {
   }, [groups, collapsed]);
 
   // ─── Booking for a unit ──────
+  // Правила беруться з `./lanes` — їх можна ЗАПУСТИТИ (`lanes.check.ts`).
+  // Своя копія тут уже коштувала порожнього календаря: сусідній
+  // grouping.check.ts тримає копію свого правила, і копія розійшлася.
   const getUnitBookings = useCallback((unitId: string) => {
-    return filteredBookings.filter(b => b.unit_id === unitId);
+    return bookingsOfUnit(filteredBookings, unitId);
   }, [filteredBookings]);
+
+  // Броні, яким номер ще не призначено, розкладені по підрядках: перетинні
+  // не мають малюватись одна поверх одної, інакше смуга показує одну бронь
+  // замість двох і виглядає це як правда.
+  const unassignedRows = useMemo(
+    () => packLanes(unassignedBookings(filteredBookings)),
+    [filteredBookings],
+  );
 
   // ─── Booking bar style ──────
   const getBarStyle = useCallback((b: BookingRow) => {
@@ -508,12 +520,11 @@ function CalendarDesktop() {
   const freePerDay = useMemo(() => {
     return days.map(day => {
       const dateStr = fmtDate(day);
-      const busy = new Set(filteredBookings.filter(b => dateStr >= b.check_in && dateStr < b.check_out).map(b => b.unit_id));
-      // A closure (maintenance, owner stay) takes the unit out of "free" too.
-      for (const blk of blocks) {
-        if (dateStr >= blk.date_from && dateStr < blk.date_to) busy.add(blk.unit_id);
-      }
-      return filteredUnits.filter(u => !busy.has(u.id)).length;
+      // Закриття (ремонт, заїзд власника) забирає номер із «вільних», а бронь
+      // без призначеної кімнати зменшує ЄМНІСТЬ — обидва враховує
+      // freeUnitsOnDate(). Раніше тут стояв Set із `b.unit_id`, і безномерна
+      // бронь клала в нього null: не займала нічого й нічого не зменшувала.
+      return freeUnitsOnDate(filteredBookings, blocks, filteredUnits.map(u => u.id), dateStr);
     });
   }, [days, filteredBookings, filteredUnits, blocks]);
 
@@ -654,7 +665,9 @@ function CalendarDesktop() {
     return {
       category: editBooking.category_type,
       unitTypeId: editBooking.unit_type_id || '',
-      unitId: editBooking.unit_id,
+      // Бронь без призначеного номера відкривається з ПОРОЖНІМ полем номера,
+      // а не з «null» у ньому: рецепція саме тут і призначає кімнату.
+      unitId: editBooking.unit_id ?? undefined,
       source: editBooking.source,
       checkIn: editBooking.check_in,
       checkOut: editBooking.check_out,
@@ -916,6 +929,36 @@ function CalendarDesktop() {
               borderRight: '1px solid var(--border-primary)', background: 'var(--bg-secondary)',
               display: 'flex', flexDirection: 'column', justifyContent: 'flex-start'
             }}>
+              {/* Смуга «без номера» — над групами, бо це те, що вимагає дії.
+                  Показується лише коли такі броні є: порожня смуга в готелі
+                  без каналів — це шум, який навчають ігнорувати. */}
+              {unassignedRows.length > 0 && (
+                <div>
+                  <div style={{
+                    height: GROUP_H, display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '0 10px', background: 'var(--bg-tertiary)',
+                    borderBottom: '1px solid var(--border-primary)',
+                    borderLeft: '3px solid var(--accent-warning, #f59e0b)',
+                    fontSize: 12, fontWeight: 600,
+                  }}>
+                    <span style={{ color: 'var(--accent-warning, #f59e0b)' }}>⚠</span>
+                    <span style={{ color: 'var(--text-primary)' }}>{tUi('Без номера')}</span>
+                    <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
+                      ({unassignedRows.flat().length})
+                    </span>
+                  </div>
+                  {unassignedRows.map((_, i) => (
+                    <div key={i} style={{
+                      height: ROW_H, display: 'flex', alignItems: 'center',
+                      padding: '0 10px', borderBottom: '1px solid var(--border-primary)',
+                      fontSize: 12, color: 'var(--text-tertiary)', fontStyle: 'italic',
+                    }}>
+                      {tUi('Призначити номер')}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {groups.map(group => (
                 <div key={group.key}>
                   {/* Group header */}
@@ -976,6 +1019,67 @@ function CalendarDesktop() {
               style={{ flex: 1, overflow: 'auto' }}
             >
               <div style={{ width: totalW, position: 'relative', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start' }}>
+                {/* Смуга «без номера»: та сама висота рядків, що й ліворуч —
+                    дві колонки прокручуються синхронно, і розбіжність у
+                    висоті зсунула б увесь календар. */}
+                {unassignedRows.length > 0 && (
+                  <div>
+                    <div style={{ height: GROUP_H, display: 'flex', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-primary)' }}>
+                      {days.map((day, i) => (
+                        <div key={i} style={{
+                          width: DAY_W, minWidth: DAY_W, height: GROUP_H,
+                          borderRight: '1px solid var(--border-primary)',
+                          background: isToday(day) ? 'rgba(96, 165, 250, 0.06)' : 'transparent',
+                        }} />
+                      ))}
+                    </div>
+                    {unassignedRows.map((rowBookings, ri) => (
+                      <div key={ri} style={{ height: ROW_H, position: 'relative', display: 'flex', borderBottom: '1px solid var(--border-primary)' }}>
+                        {days.map((day, i) => (
+                          <div key={i} style={{
+                            width: DAY_W, minWidth: DAY_W, height: ROW_H,
+                            borderRight: '1px solid var(--border-primary)',
+                            background: isToday(day) ? 'rgba(96, 165, 250, 0.06)'
+                              : isWeekend(day) ? 'var(--bg-secondary)' : 'transparent',
+                          }} />
+                        ))}
+                        {rowBookings.map(booking => {
+                          const bar = getBarStyle(booking);
+                          if (!bar) return null;
+                          const srcColor = sourceMap[booking.source]?.color || '#6c7086';
+                          return (
+                            <div
+                              key={booking.id}
+                              onClick={() => openBookingDetails(booking.id)}
+                              onMouseEnter={e => {
+                                const rect = (e.target as HTMLElement).getBoundingClientRect();
+                                setTooltip({ booking, x: rect.left + rect.width / 2, y: rect.top - 8 });
+                              }}
+                              onMouseLeave={() => setTooltip(null)}
+                              title={tUi('Номер не призначено — натисніть, щоб обрати')}
+                              style={{
+                                position: 'absolute', top: 4, height: ROW_H - 8,
+                                left: bar.left, width: bar.width,
+                                // Штрихування замість заливки: бронь без кімнати
+                                // не «стоїть» на жодному номері, і виглядати як
+                                // звичайна вона не має.
+                                background: `repeating-linear-gradient(45deg, ${srcColor}bb 0 8px, ${srcColor}66 8px 16px)`,
+                                border: '1px dashed var(--accent-warning, #f59e0b)',
+                                borderRadius: 6, display: 'flex', alignItems: 'center',
+                                padding: '0 8px', overflow: 'hidden', cursor: 'pointer',
+                                gap: 4, zIndex: 2, fontSize: 11, color: '#fff',
+                                whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {booking.first_name} {booking.last_name}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {groups.map(group => (
                   <div key={group.key}>
                     {/* Group spacer */}
