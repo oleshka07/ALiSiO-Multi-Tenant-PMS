@@ -38,6 +38,17 @@ export {
   deleteCategory,
 } from './categories.handlers';
 
+// Збори поверх ціни за ніч. Таблиця `fees_taxes` існувала від початку і
+// квота її читала — а завести збір було нічим, крім файла готелю. Тобто в
+// кожного реального клієнта мито й прибирання в квоті були нулем, і це мало
+// вигляд «цей готель таких зборів не має».
+export {
+  listFees,
+  createFee,
+  updateFee,
+  deleteFee,
+} from './fees.handlers';
+
 export { listGuestPageConfigs } from './guest-page-configs.handlers';
 export { getGuestPageConfig, updateGuestPageConfig } from './guest-page-config.handlers';
 export { listPropertyGuestConfigs, updatePropertyGuestConfig } from './property-guest-config.handlers';

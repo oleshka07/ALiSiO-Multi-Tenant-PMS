@@ -26,7 +26,7 @@ export async function ownsProperty(organizationId: string, propertyId: string): 
  */
 export async function ownsViaProperty(
   organizationId: string,
-  table: 'categories' | 'unit_types' | 'units',
+  table: 'categories' | 'unit_types' | 'units' | 'fees_taxes',
   id: string,
 ): Promise<boolean> {
   const sql = getSql();

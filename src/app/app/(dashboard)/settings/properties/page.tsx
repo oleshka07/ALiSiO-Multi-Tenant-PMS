@@ -43,7 +43,21 @@ interface UnitRow extends AnyRow {
   category_type?: string;
 }
 
-type ModalType = 'none' | 'property' | 'category' | 'unitType' | 'unit' | 'bulkUnit' | 'delete';
+interface FeeRow extends AnyRow {
+  id: string; property_id: string; name: string;
+  /** ЯК множити. */
+  type: 'per_stay' | 'per_night' | 'per_person' | 'per_person_per_night' | 'percentage';
+  amount: number;
+  /** КОГО рахувати: `adults` — це звільнення дітей від збору. */
+  applies_to: 'all' | 'adults';
+  /** ЧИЇ це гроші: `authority` — збір для громади, у документі без ПДВ. */
+  collected_for: 'property' | 'authority';
+  /** Уже в ціні ночі: показується в розбивці, до підсумку не додається. */
+  is_included_in_price: boolean | number;
+  is_active: boolean | number;
+}
+
+type ModalType = 'none' | 'property' | 'category' | 'unitType' | 'unit' | 'bulkUnit' | 'fee' | 'delete';
 
 /* ================================================================
    Constants
@@ -55,6 +69,17 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   facility: <Building2 size={16} />,
   area: <MapPin size={16} />,
   zone: <MapPin size={16} />,
+};
+
+// Підписи типів збору. Словник дублює CHECK у схемі — і саме тому короткий:
+// тип, якого тут немає, показується своїм технічним ім'ям, а не вгаданим
+// словом. Побачити `per_fortnight` на екрані краще, ніж правдоподібну брехню.
+const FEE_TYPE_LABEL: Record<string, string> = {
+  per_stay: 'за проживання',
+  per_night: 'за ніч',
+  per_person: 'за особу',
+  per_person_per_night: 'за особу за ніч',
+  percentage: 'відсоток від проживання',
 };
 
 const CATEGORY_EMOJI: Record<string, string> = {
@@ -115,6 +140,11 @@ export default function SettingsPropertiesPage() {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [unitTypes, setUnitTypes] = useState<UnitTypeRow[]>([]);
   const [units, setUnits] = useState<UnitRow[]>([]);
+  // Збори поверх ціни за ніч. Таблиця `fees_taxes` існувала від початку і
+  // квота її читала — а завести збір було нічим, крім файла готелю. Тобто в
+  // кожного реального клієнта мито й прибирання в квоті були нулем, і це
+  // мало вигляд «цей готель таких зборів не має».
+  const [fees, setFees] = useState<FeeRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   // ── UI State ──
@@ -136,6 +166,11 @@ export default function SettingsPropertiesPage() {
   const [utForm, setUtForm] = useState({ category_id: '', name: '', code: '', max_adults: 2, max_children: 2, max_occupancy: 4, base_occupancy: 2, beds_single: 0, beds_double: 1, beds_sofa: 0, extra_bed_available: 0, sort_order: 0 });
   const [unitForm, setUnitForm] = useState({ unit_type_id: '', category_id: '', name: '', code: '', beds: 2, floor: '', zone: '', notes: '', sort_order: 0 });
   const [bulkForm, setBulkForm] = useState({ unit_type_id: '', category_id: '', prefix: '', from: 1, to: 10, beds: 0, zone: '' });
+  const [feeForm, setFeeForm] = useState({
+    name: '', type: 'per_person_per_night', amount: 0,
+    applies_to: 'all', collected_for: 'property',
+    is_included_in_price: false, is_active: true,
+  });
   const [deleteTarget, setDeleteTarget] = useState<{ type: string; id: string; name: string } | null>(null);
 
   // ── Fetch Properties List ──
@@ -163,6 +198,14 @@ export default function SettingsPropertiesPage() {
       setUnitTypes(data.unitTypes || []);
       setUnits(data.units || []);
     } catch (e) { console.error('Fetch details error:', e); }
+    // Збори — окремим запитом: `/api/properties/[id]` їх не віддає, а
+    // розширювати його заради екрана означало б тягнути їх у кожного, хто
+    // питає об'єкт.
+    try {
+      const res = await fetch('/api/fees');
+      const data = await res.json();
+      setFees(Array.isArray(data) ? data.filter((f: FeeRow) => f.property_id === selectedProperty) : []);
+    } catch (e) { console.error('Fetch fees error:', e); }
     setLoading(false);
   }, [selectedProperty]);
 
@@ -402,6 +445,51 @@ export default function SettingsPropertiesPage() {
     setSaving(false);
   };
 
+  // ── Збори CRUD ──
+  const openFeeModal = (f?: FeeRow) => {
+    if (f) {
+      setEditId(f.id);
+      setFeeForm({
+        name: f.name, type: f.type, amount: Number(f.amount) || 0,
+        applies_to: f.applies_to ?? 'all', collected_for: f.collected_for ?? 'property',
+        is_included_in_price: Boolean(Number(f.is_included_in_price)),
+        is_active: Boolean(Number(f.is_active)),
+      });
+    } else {
+      setEditId(null);
+      setFeeForm({
+        name: '', type: 'per_person_per_night', amount: 0,
+        applies_to: 'all', collected_for: 'property',
+        is_included_in_price: false, is_active: true,
+      });
+    }
+    setModal('fee');
+  };
+
+  const saveFee = async () => {
+    if (!feeForm.name.trim()) { alert(tUi('Назва обов\'язкова')); return; }
+    setSaving(true);
+    try {
+      const url = editId ? `/api/fees/${editId}` : '/api/fees';
+      const res = await fetch(url, {
+        method: editId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...feeForm, property_id: selectedProperty }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(editId ? tUi('Збір оновлено!') : tUi('Збір створено!'));
+        setModal('none');
+        fetchDetails();
+      } else {
+        // Сервер відмовляє реченням, яке готель може виправити — зокрема про
+        // другий турзбір. Показуємо саме його, а не «400».
+        alert(data.error || tUi('Помилка збереження'));
+      }
+    } catch { alert(tUi('Помилка мережі')); }
+    setSaving(false);
+  };
+
   // ── Delete ──
   const openDelete = (type: string, id: string, name: string) => {
     setDeleteTarget({ type, id, name });
@@ -416,6 +504,7 @@ export default function SettingsPropertiesPage() {
       category: `/api/categories/${deleteTarget.id}`,
       unitType: `/api/unit-types/${deleteTarget.id}`,
       unit: `/api/units/${deleteTarget.id}`,
+      fee: `/api/fees/${deleteTarget.id}`,
     };
     try {
       const res = await fetch(urlMap[deleteTarget.type], { method: 'DELETE' });
@@ -545,6 +634,84 @@ export default function SettingsPropertiesPage() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Збори й мито */}
+        {currentProperty && (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="flex justify-between items-center" style={{ marginBottom: 12 }}>
+              <div>
+                <h3 style={{ fontSize: 15, fontWeight: 700 }}>{tUi('Збори й мито')}</h3>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                  {tUi('Додаються до ціни за ніч у розрахунку вартості. Порожньо — готель зборів не має.')}
+                </div>
+              </div>
+              <button className="btn btn-secondary btn-sm" onClick={() => openFeeModal()}>
+                <Plus size={14} /> {tUi('Збір')}
+              </button>
+            </div>
+
+            {/* Турзбір уже стоїть колонкою об'єкта: попереджаємо ДО того, як
+                готель заведе другий і отримає його в рахунку двічі. Сервер
+                таке відхилить, але дізнатися про це краще раніше. */}
+            {(currentProperty.city_tax_per_night ?? 0) > 0 && (
+              <div style={{
+                padding: 10, marginBottom: 12, fontSize: 12,
+                background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)',
+                borderLeft: '3px solid var(--accent-warning, #f59e0b)',
+              }}>
+                {tUi('Турзбір цього об\'єкта вже заданий у налаштуваннях:')}{' '}
+                <b>{currentProperty.city_tax_per_night}</b> {tUi('за ніч. Другий збір «для громади» тут потрапив би в рахунок двічі, тому його не приймуть.')}
+              </div>
+            )}
+
+            {fees.length === 0 ? (
+              <div style={{ fontSize: 13, color: 'var(--text-tertiary)', padding: '8px 0' }}>
+                {tUi('Зборів немає')}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {fees.map(f => (
+                  <div key={f.id} className="flex justify-between items-center"
+                    style={{
+                      padding: 10, background: 'var(--bg-secondary)',
+                      borderRadius: 'var(--radius-md)',
+                      opacity: Number(f.is_active) ? 1 : 0.5,
+                    }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>
+                        {f.name}
+                        {f.collected_for === 'authority' && (
+                          <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-tertiary)' }}>
+                            · {tUi('для громади')}
+                          </span>
+                        )}
+                        {Boolean(Number(f.is_included_in_price)) && (
+                          <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-tertiary)' }}>
+                            · {tUi('уже в ціні')}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                        {FEE_TYPE_LABEL[f.type] ? tUi(FEE_TYPE_LABEL[f.type]) : f.type}
+                        {f.applies_to === 'adults' && ` · ${tUi('лише дорослі')}`}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div style={{ fontWeight: 700 }}>{Number(f.amount)}{f.type === 'percentage' ? ' %' : ''}</div>
+                      <button className="btn btn-sm btn-ghost" title={tUi('Редагувати')} onClick={() => openFeeModal(f)}>
+                        <Edit3 size={14} />
+                      </button>
+                      <button className="btn btn-sm btn-ghost" style={{ color: 'var(--accent-danger)' }}
+                        title={tUi('Видалити')} onClick={() => openDelete('fee', f.id, f.name)}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -904,6 +1071,89 @@ export default function SettingsPropertiesPage() {
             <div className="form-group">
               <label className="form-label">{tUi('Зона')}</label>
               <input className="form-input" value={bulkForm.zone} onChange={e => setBulkForm(p => ({ ...p, zone: e.target.value }))} placeholder={tUi('Зона (опціонально)')} />
+            </div>
+          </div>
+        </Modal>
+
+        {/* Збір */}
+        <Modal open={modal === 'fee'} onClose={() => setModal('none')}
+          title={editId ? tUi('Редагувати збір') : tUi('Новий збір')} size="lg"
+          footer={<>
+            <button className="btn btn-secondary" onClick={() => setModal('none')}>{tUi('Скасувати')}</button>
+            <button className="btn btn-primary" onClick={saveFee} disabled={saving}>
+              {saving ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />}
+              {tUi('Зберегти')}
+            </button>
+          </>}>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">{tUi('Назва *')}</label>
+              <input className="form-input" value={feeForm.name}
+                onChange={e => setFeeForm(p => ({ ...p, name: e.target.value }))}
+                placeholder={tUi('Прибирання')} />
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                {tUi('Цю назву гість побачить у розрахунку вартості та в рахунку.')}
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">{tUi('Сума *')}</label>
+              <input className="form-input" type="number" min={0} step="0.01" value={feeForm.amount}
+                onChange={e => setFeeForm(p => ({ ...p, amount: Number(e.target.value) }))} />
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">{tUi('Як рахувати')}</label>
+              <select className="form-select" value={feeForm.type}
+                onChange={e => setFeeForm(p => ({ ...p, type: e.target.value }))}>
+                {Object.entries(FEE_TYPE_LABEL).map(([v, label]) => (
+                  <option key={v} value={v}>{tUi(label)}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">{tUi('З кого')}</label>
+              <select className="form-select" value={feeForm.applies_to}
+                onChange={e => setFeeForm(p => ({ ...p, applies_to: e.target.value }))}>
+                <option value="all">{tUi('З усіх гостей')}</option>
+                <option value="adults">{tUi('Лише з дорослих')}</option>
+              </select>
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                {tUi('«Лише з дорослих» — це звільнення дітей від збору. Діє на типи «за особу».')}
+              </div>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">{tUi('Чиї це гроші')}</label>
+            <select className="form-select" value={feeForm.collected_for}
+              onChange={e => setFeeForm(p => ({ ...p, collected_for: e.target.value }))}>
+              <option value="property">{tUi('Виручка готелю (прибирання, сніданок)')}</option>
+              <option value="authority">{tUi('Збір для громади — готель лише передає (турзбір)')}</option>
+            </select>
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
+              {tUi('Збір для громади йде в документ окремим рядком і не оподатковується ПДВ.')}
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label flex items-center gap-2">
+                <input type="checkbox" checked={feeForm.is_included_in_price}
+                  onChange={e => setFeeForm(p => ({ ...p, is_included_in_price: e.target.checked }))} />
+                {tUi('Уже входить у ціну за ніч')}
+              </label>
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                {tUi('Показується в розбивці, але до підсумку не додається — інакше гість заплатив би двічі.')}
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label flex items-center gap-2">
+                <input type="checkbox" checked={feeForm.is_active}
+                  onChange={e => setFeeForm(p => ({ ...p, is_active: e.target.checked }))} />
+                {tUi('Активний')}
+              </label>
             </div>
           </div>
         </Modal>
