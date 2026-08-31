@@ -5061,12 +5061,12 @@ function runMigrations(database: any) {
     // і лише потім старий видаляється. `enabled = 0` копіюється так само:
     // хто вимкнув віджет свідомо, не має отримати його назад через новий
     // дефолт `booking_engine: ON`.
-    for (const key of ['booking_engine', 'site_builder']) {
+    {
       database.prepare(`
         INSERT OR IGNORE INTO organization_features (organization_id, feature, enabled, updated_at)
-        SELECT organization_id, ?, enabled, datetime('now')
+        SELECT organization_id, 'booking_engine', enabled, datetime('now')
           FROM organization_features WHERE feature = 'widget'
-      `).run(key);
+      `).run();
     }
     database.prepare("DELETE FROM organization_features WHERE feature = 'widget'").run();
 
