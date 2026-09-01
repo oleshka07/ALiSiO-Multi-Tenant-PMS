@@ -32,7 +32,7 @@
  * а перше питання завантажує весь проміжок разом. Це деталь адаптера, і
  * контракт домену від неї не залежить.
  */
-import { ChannexClient, type ChannexEnvironment } from './client';
+import { ChannexClient, type ChannexClientOptions, type ChannexEnvironment } from './client';
 import { availabilityValues, rateValues, type IdMap, type PairMap } from './ari-payload';
 import { connectionInTenant } from '../data/connections.repo';
 import { connectionMirror } from '../data/mappings.repo';
@@ -55,7 +55,16 @@ const CLAIM_LIMIT = 5000;
 export interface AriFlushOptions {
   /** Сьогодні, `YYYY-MM-DD` — для перевірок; дефолт системний. */
   today?: string;
+  /** Межа спроб ЧЕРГИ (Ц14) — не плутати з повторами HTTP у `client`. */
   maxAttempts?: number;
+  /**
+   * Транспорт клієнта — для перевірки, яка ганяє СПРАВЖНІЙ клієнт із
+   * підставленим `fetch`, що віддає автентичне тіло вендора (`429`,
+   * `200` з `meta.warnings`). Це сходинка між заглушкою домену й живим
+   * API: розбір помилки в клієнті і звільнення координати перевіряються
+   * без жодного виклику до вендора. У бойовому шляху не передається.
+   */
+  client?: Pick<ChannexClientOptions, 'fetch' | 'baseUrl' | 'limiter' | 'sleep' | 'now' | 'maxAttempts'>;
 }
 
 /** Ціле в мінорних одиницях, без `* 100`: `1.005 * 100` це 100.49999999999999. */
@@ -104,6 +113,7 @@ export async function ariFlush(
   const client = new ChannexClient({
     apiKey,
     environment: connection.environment as ChannexEnvironment,
+    ...(options.client ?? {}),
   });
 
   // ── Наявність — один запит на весь проміжок захоплених дат ────────────
