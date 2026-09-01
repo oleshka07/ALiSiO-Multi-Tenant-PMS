@@ -76,3 +76,9 @@ export { getCurrencies, saveCurrencies, saveManualRate } from './currency.handle
 // ARI. Другий розрахунок = овербукінг через OTA. Див. data/availability.ts.
 export { availabilityByDay, freeUnitsForRange, unassignedPressureByDay } from '../data/availability';
 export type { DateStr, UnitId, UnitTypeId, OccupiedSpan } from '../data/availability';
+
+// Каталог для менеджера каналів: обʼєкт і фізичний фонд. Шов-близнюк до
+// `propertyRatePlans()` у @pricing — разом вони складають те, що заводиться
+// на тому боці. Модуль каналів не читає таблиць обʼєкта навпростець.
+export { catalogProperty, catalogUnitTypes } from '../data/property-catalog';
+export type { CatalogPropertyRow, CatalogUnitTypeRow } from '../data/property-catalog';

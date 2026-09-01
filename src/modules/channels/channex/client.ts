@@ -268,6 +268,59 @@ export class ChannexClient {
   }
 
   /**
+   * Каталог: створити обʼєкт, тип номера, тариф.
+   *
+   * ── Чому не в смузі ARI ─────────────────────────────────────────────
+   *
+   * Ліміт 10+10 на хвилину належить оновленням наявності й цін. Каталог —
+   * інший рід виклику: він трапляється раз при підключенні, а не щохвилини,
+   * і рахувати його в ту саму квоту означало б, що підключення нового
+   * готелю душить розсилку цін наявних. Повтори при цьому ті самі.
+   *
+   * ── Тіло загорнуте ключем сутності ──────────────────────────────────
+   *
+   * `{"property": {…}}`, `{"room_type": {…}}`, `{"rate_plan": {…}}` — так
+   * вимагає API, і без обгортки він відповідає порожньою валідацією, у якій
+   * не видно жодного поля.
+   */
+  async createProperty(key: string, attributes: Record<string, unknown>): Promise<string> {
+    const payload = await this.call(key, 'POST', '/properties', { property: attributes });
+    return idOf(payload, 'property');
+  }
+
+  async createRoomType(key: string, attributes: Record<string, unknown>): Promise<string> {
+    const payload = await this.call(key, 'POST', '/room_types', { room_type: attributes });
+    return idOf(payload, 'room_type');
+  }
+
+  /**
+   * Тариф і його опції заселеності.
+   *
+   * Повертаються ОБИДВА: id тарифу і id кожної опції. Опції потрібні окремо,
+   * бо живий календар індексований саме ними, а не тарифом (INVENTORY §4.5);
+   * id неосновних опцій не повертаються більше ніде.
+   *
+   * Порядок `options` у відповіді — НЕ той, у якому їх надіслали, і не за
+   * заселеністю: спершу основна, далі решта як вийде. Тому зіставляємо за
+   * полем `occupancy`, а не за позицією.
+   */
+  async createRatePlan(
+    key: string,
+    attributes: Record<string, unknown>,
+  ): Promise<{ id: string; options: { occupancy: number; id: string }[] }> {
+    const payload = await this.call(key, 'POST', '/rate_plans', { rate_plan: attributes });
+    const data = (payload.data ?? {}) as { id?: string; attributes?: Record<string, unknown> };
+    const id = idOf(payload, 'rate_plan');
+    const raw = Array.isArray(data.attributes?.options) ? data.attributes.options : [];
+
+    const options = (raw as Record<string, unknown>[])
+      .map((o) => ({ occupancy: Number(o.occupancy), id: String(o.id ?? '') }))
+      .filter((o) => Number.isFinite(o.occupancy) && o.id !== '');
+
+    return { id, options };
+  }
+
+  /**
    * Читання: ті самі повтори, але БЕЗ квоти ARI.
    *
    * Ліміт 10+10 на хвилину належить оновленням ARI. Порахувати читання
@@ -436,6 +489,22 @@ export class ChannexClient {
 
     return payload;
   }
+}
+
+/**
+ * Ідентифікатор створеної сутності з конверта JSON:API.
+ *
+ * Відсутній id — це відмова, а не «створилось без id»: далі за ним
+ * адресується все інше, і порожній рядок у дзеркалі означав би мапінг у
+ * нікуди. Інваріант 13 у мініатюрі.
+ */
+function idOf(payload: Record<string, unknown>, what: string): string {
+  const data = payload.data as { id?: unknown } | undefined;
+  const id = data && typeof data === 'object' ? data.id : undefined;
+  if (typeof id !== 'string' || id === '') {
+    throw new ChannexError(200, 'no_id', `${what} created without an id`, payload);
+  }
+  return id;
 }
 
 /** `Retry-After` Channex не документує, але поважаємо, якщо прийде. */

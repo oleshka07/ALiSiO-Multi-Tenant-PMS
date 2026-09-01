@@ -116,6 +116,47 @@ try {
     console.log('  ok  опції заселеності лежать окремими рядками, сутність — нулем');
   });
 
+  // ── Пара «тип × тариф» — це ДВА рядки, не один ────────────────────────
+  //
+  // У нас тариф належить обʼєкту, у менеджера каналів — ТИПУ НОМЕРА
+  // (INVENTORY §3: `room_type_id` обовʼязковий при створенні тарифу). Тому
+  // наш тариф із цінами на двох типах стає ДВОМА тарифами на тому боці
+  // (рішення Ц6), і дзеркало мусить розрізняти їх.
+  //
+  // Ключ самим лише `local_id` затирав би перший рядок другим: `putMapping`
+  // видаляє за парою (local_id, occupancy) перед вставкою. Половина фонду
+  // лишилась би без обміну, і жодної помилки при цьому не сталося б —
+  // тому це тут окремим твердженням, а не приміткою.
+  await runWithOrganization(A, async () => {
+    await putMapping(`${A}_conn`, {
+      entityType: 'rate_plan', localId: 'rp_flex', unitTypeId: 'ut_deluxe', remoteId: 'rp-flex-deluxe',
+    });
+    await putMapping(`${A}_conn`, {
+      entityType: 'rate_plan', localId: 'rp_flex', unitTypeId: 'ut_single', remoteId: 'rp-flex-single',
+    });
+
+    assert.strictEqual(
+      await remoteIdOf(`${A}_conn`, 'rate_plan', 'rp_flex', 0, 'ut_deluxe'), 'rp-flex-deluxe',
+      'перша пара тарифу зникла — другий тип номера затер її');
+    assert.strictEqual(
+      await remoteIdOf(`${A}_conn`, 'rate_plan', 'rp_flex', 0, 'ut_single'), 'rp-flex-single',
+      'друга пара тарифу не записалась');
+
+    // І опції заселеності теж належать ПАРІ: та сама заселеність 2 на двох
+    // типах — це дві різні опції з різними чужими id.
+    await putMapping(`${A}_conn`, {
+      entityType: 'rate_plan_option', localId: 'rp_flex', unitTypeId: 'ut_deluxe', occupancy: 2, remoteId: 'opt-d2',
+    });
+    await putMapping(`${A}_conn`, {
+      entityType: 'rate_plan_option', localId: 'rp_flex', unitTypeId: 'ut_single', occupancy: 2, remoteId: 'opt-s2',
+    });
+    assert.strictEqual(await remoteIdOf(`${A}_conn`, 'rate_plan_option', 'rp_flex', 2, 'ut_deluxe'), 'opt-d2');
+    assert.strictEqual(
+      await remoteIdOf(`${A}_conn`, 'rate_plan_option', 'rp_flex', 2, 'ut_single'), 'opt-s2',
+      'та сама заселеність на другому типі затерла першу');
+    console.log('  ok  пара «тип × тариф» ключується обома, і опції разом із нею');
+  });
+
   // ── Чужий орендар не бачить і не псує ─────────────────────────────────
   //
   // `cm_mappings` несе organization_id власною колонкою, але запит за

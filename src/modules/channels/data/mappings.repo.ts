@@ -38,6 +38,15 @@ export interface MappingRow {
   entityType: MappedEntity;
   /** НАШ ідентифікатор. */
   localId: string;
+  /**
+   * Другий бік пари «тип номера × тариф». Порожньо для обʼєкта й типу номера.
+   *
+   * У нас тариф належить обʼєкту, у менеджера каналів — ТИПУ НОМЕРА, тож наш
+   * тариф із цінами на трьох типах стає трьома тарифами на тому боці (Ц6).
+   * Ключ без типу затирав би попередній рядок на кожному наступному типі, і
+   * дві третини фонду лишились би без обміну — беззвучно.
+   */
+  unitTypeId?: string;
   /** Заселеність опції; `0` — сама сутність. */
   occupancy?: number;
   /** Ідентифікатор на тому боці. */
@@ -59,6 +68,7 @@ export interface MappingRow {
 export async function putMapping(connectionId: string, row: MappingRow): Promise<void> {
   const sql = getSql();
   const occupancy = row.occupancy ?? 0;
+  const unitTypeId = row.unitTypeId ?? '';
 
   // Чуже зʼєднання не існує для нас — і це відмова, а не «немає обмежень,
   // отже можна» (інваріант 13). Обмеження тут явне, а не покладене на
@@ -69,16 +79,18 @@ export async function putMapping(connectionId: string, row: MappingRow): Promise
   await sql.run(
     `DELETE FROM cm_mappings
       WHERE connection_id = ? AND organization_id = ? AND entity_type = ?
-        AND (remote_id = ? OR (local_id = ? AND occupancy = ?))`,
-    [connectionId, conn.organizationId, row.entityType, row.remoteId, row.localId, occupancy],
+        AND (remote_id = ? OR (local_id = ? AND unit_type_id = ? AND occupancy = ?))`,
+    [connectionId, conn.organizationId, row.entityType, row.remoteId,
+      row.localId, unitTypeId, occupancy],
   );
 
   await sql.run(
     `INSERT INTO cm_mappings
-       (id, organization_id, connection_id, entity_type, local_id, occupancy, remote_id, synced_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+       (id, organization_id, connection_id, entity_type, local_id, unit_type_id,
+        occupancy, remote_id, synced_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
     [crypto.randomUUID(), conn.organizationId, connectionId,
-      row.entityType, row.localId, occupancy, row.remoteId],
+      row.entityType, row.localId, unitTypeId, occupancy, row.remoteId],
   );
 }
 
@@ -108,12 +120,20 @@ export async function mappingMirror(
   return new Map(rows.map((r) => [r.remote_id, r.local_id]));
 }
 
-/** Наш id → чужий. Для того, що ми ВІДПРАВЛЯЄМО. `null`, якщо не змаплено. */
+/**
+ * Наш id → чужий. Для того, що ми ВІДПРАВЛЯЄМО. `null`, якщо не змаплено.
+ *
+ * `unitTypeId` — другий бік пари для тарифів і їхніх опцій. Обʼєкт і тип
+ * номера пари не мають, тож для них він порожній, і це не «будь-який»:
+ * запит із порожнім типом НЕ знайде рядок тарифу, і навпаки. Ключ,
+ * зіставлений наполовину, віддав би чужий тариф як свій.
+ */
 export async function remoteIdOf(
   connectionId: string,
   entityType: MappedEntity,
   localId: string,
   occupancy = 0,
+  unitTypeId = '',
 ): Promise<string | null> {
   const organizationId = currentOrganizationId();
   if (!organizationId) throw new Error('cm_mappings: read without a tenant');
@@ -121,8 +141,9 @@ export async function remoteIdOf(
   const sql = getSql();
   const row = await sql.row<any>(
     `SELECT remote_id FROM cm_mappings
-      WHERE connection_id = ? AND organization_id = ? AND entity_type = ? AND local_id = ? AND occupancy = ?`,
-    [connectionId, organizationId, entityType, localId, occupancy],
+      WHERE connection_id = ? AND organization_id = ? AND entity_type = ?
+        AND local_id = ? AND unit_type_id = ? AND occupancy = ?`,
+    [connectionId, organizationId, entityType, localId, unitTypeId, occupancy],
   ) as { remote_id: string } | undefined;
 
   return row?.remote_id ?? null;

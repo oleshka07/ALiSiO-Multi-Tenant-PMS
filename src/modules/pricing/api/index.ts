@@ -15,6 +15,15 @@ export { quoteStay, addDays } from '../domain/occupancy-price';
 // One resolver for what a night costs, used by the operator quote and by the
 // widget alike — the two used to keep separate copies of the arithmetic.
 export { priceNights, cheapestByDay } from '../data/nightly-price';
+
+// Шов §3.5: тарифи обʼєкта в тому вигляді, у якому їх треба знати модулю
+// каналів. Іменується `PropertyRatePlan`, бо `RatePlan` у цьому ж фасаді вже
+// зайнятий іншим — тарифом у розумінні екрана цін.
+export { propertyRatePlans } from '../data/property-rate-plans';
+export type {
+  RatePlan as PropertyRatePlan,
+  RatePlanUnitType as PropertyRatePlanUnitType,
+} from '../data/property-rate-plans';
 export type { NightlyPrice, NightlyPrices } from '../data/nightly-price';
 export type { PriceRow, LosTier, NightPrice, Quote } from '../domain/occupancy-price';
 

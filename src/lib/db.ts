@@ -4039,6 +4039,13 @@ function runMigrations(database: any) {
   // occupancy NOT NULL DEFAULT 0, а не nullable: UNIQUE не обмежує NULL ні
   // тут, ні в Postgres, і саме на цьому вже обпікся price_occupancy. 0 —
   // значення поза доменом заселеності, тобто "сама сутність, не опція".
+  //
+  // unit_type_id — той самий прийом і з тієї ж причини, тільки для ПАРИ.
+  // У нас тариф належить обʼєкту, у менеджера каналів — типу номера, тож наш
+  // тариф із цінами на двох типах стає ДВОМА тарифами на тому боці (Ц6).
+  // Ключ без типу затирав би перший рядок другим, і половина фонду лишалась
+  // би без обміну беззвучно. Порожній рядок, а не NULL: у обʼєкта й типу
+  // номера пари немає, і NULL зробив би для них UNIQUE недієвим.
   database.exec(`
     CREATE TABLE IF NOT EXISTS cm_mappings (
       id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
@@ -4046,17 +4053,83 @@ function runMigrations(database: any) {
       connection_id   TEXT NOT NULL REFERENCES cm_connections(id) ON DELETE CASCADE,
       entity_type     TEXT NOT NULL CHECK (entity_type IN ('property', 'unit_type', 'rate_plan', 'rate_plan_option')),
       local_id        TEXT NOT NULL,
+      unit_type_id    TEXT NOT NULL DEFAULT '',
       occupancy       INTEGER NOT NULL DEFAULT 0 CHECK (occupancy >= 0),
       remote_id       TEXT NOT NULL,
       synced_at       TEXT,
       created_at      TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE(connection_id, entity_type, local_id, occupancy),
+      UNIQUE(connection_id, entity_type, local_id, unit_type_id, occupancy),
       UNIQUE(connection_id, entity_type, remote_id)
     )
   `);
   database.exec('CREATE INDEX IF NOT EXISTS idx_cm_mappings_org ON cm_mappings(organization_id)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_cm_mappings_lookup ON cm_mappings(connection_id, entity_type, remote_id)');
+
+  // Перебудова під вісь пари: UNIQUE у SQLite не міняється ALTER-ом, а старий
+  // — (connection_id, entity_type, local_id, occupancy) — ВІДХИЛИВ БИ другу
+  // пару того самого тарифу. Тобто без цієї перебудови нова колонка існує, а
+  // толку з неї нема.
+  //
+  // Індекси знімаються до підміни й повертаються після, а лічильник
+  // звіряється: `DROP TABLE` зносить їх мовчки (AGENTS §4).
+  try {
+    const mapCols = (database.prepare('PRAGMA table_info(cm_mappings)').all() as any[]).map((c: any) => c.name);
+    if (!mapCols.includes('unit_type_id')) {
+      const indexes = (database.prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'cm_mappings' AND sql IS NOT NULL",
+      ).all() as { sql: string }[]).map((r) => r.sql);
+
+      database.exec('PRAGMA foreign_keys = OFF');
+      database.exec('BEGIN');
+      database.exec(`
+        CREATE TABLE cm_mappings__rebuilt (
+          id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          connection_id   TEXT NOT NULL REFERENCES cm_connections(id) ON DELETE CASCADE,
+          entity_type     TEXT NOT NULL CHECK (entity_type IN ('property', 'unit_type', 'rate_plan', 'rate_plan_option')),
+          local_id        TEXT NOT NULL,
+          unit_type_id    TEXT NOT NULL DEFAULT '',
+          occupancy       INTEGER NOT NULL DEFAULT 0 CHECK (occupancy >= 0),
+          remote_id       TEXT NOT NULL,
+          synced_at       TEXT,
+          created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(connection_id, entity_type, local_id, unit_type_id, occupancy),
+          UNIQUE(connection_id, entity_type, remote_id)
+        )
+      `);
+      database.exec(`
+        INSERT INTO cm_mappings__rebuilt
+          (id, organization_id, connection_id, entity_type, local_id, unit_type_id,
+           occupancy, remote_id, synced_at, created_at, updated_at)
+        SELECT id, organization_id, connection_id, entity_type, local_id, '',
+               occupancy, remote_id, synced_at, created_at, updated_at
+          FROM cm_mappings
+      `);
+      const before = (database.prepare('SELECT COUNT(*) c FROM cm_mappings').get() as any).c;
+      database.exec('DROP TABLE cm_mappings');
+      database.exec('ALTER TABLE cm_mappings__rebuilt RENAME TO cm_mappings');
+      for (const ix of indexes) {
+        database.exec(ix.replace(/^CREATE\s+(UNIQUE\s+)?INDEX\s+/i, (m) => `${m}IF NOT EXISTS `));
+      }
+      const after = (database.prepare('SELECT COUNT(*) c FROM cm_mappings').get() as any).c;
+      if (after !== before) throw new Error(`cm_mappings rebuild lost rows: ${before} -> ${after}`);
+      const restored = (database.prepare(
+        "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'index' AND tbl_name = 'cm_mappings' AND sql IS NOT NULL",
+      ).get() as { n: number }).n;
+      if (restored < indexes.length) {
+        throw new Error(`cm_mappings rebuild lost indexes: ${indexes.length} -> ${restored}`);
+      }
+      database.exec('COMMIT');
+      database.exec('PRAGMA foreign_keys = ON');
+      console.log(`[DB] cm_mappings: added unit_type_id axis (${before} row(s), ${restored} index(es) kept)`);
+    }
+  } catch (e: any) {
+    try { database.exec('ROLLBACK'); } catch { /* not inside a transaction */ }
+    database.exec('PRAGMA foreign_keys = ON');
+    console.error('[DB] cm_mappings unit_type_id migration:', e.message);
+  }
 
   // Черга вихідних змін. Тримає КООРДИНАТУ, а не значення: колонки під
   // число тут немає навмисно. Поточну наявність батчер читає через

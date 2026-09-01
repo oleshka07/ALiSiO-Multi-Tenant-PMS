@@ -34,6 +34,15 @@ export type Reply =
   // без жодного знайомого поля, і стрічка мовчки стане порожньою.
   | { kind: 'feed'; revisions: Record<string, unknown>[]; total?: number; page?: number; limit?: number }
   | { kind: 'ackOk' }
+  // Створена сутність каталогу: конверт `{ data: { id, attributes } }`.
+  // `options` мок будує сам за надісланими — і робить це так, як живий API:
+  // основна опція отримує id САМОГО ТАРИФУ, решта власні, а порядок у
+  // відповіді не той, у якому просили (INVENTORY §3.1). Код, який читає
+  // `options[0]` як «перша заселеність», мусить тут спіткнутись.
+  // `omitOccupancies` — заселеності, яких у ВІДПОВІДІ не буде, хоч їх і
+  // просили. Так виглядає тариф, створений наполовину: помилки немає, опції
+  // просто менше, і ціну тієї заселеності потім нема куди покласти.
+  | { kind: 'created'; id: string; omitOccupancies?: number[] }
   | { kind: 'rateLimited' }
   | { kind: 'unauthorized' }
   | { kind: 'notFound' }
@@ -48,8 +57,33 @@ export interface MockChannex {
   close(): Promise<void>;
 }
 
-function render(reply: Reply): { status: number; body: unknown } {
+function render(reply: Reply, request?: Record<string, unknown>): { status: number; body: unknown } {
   switch (reply.kind) {
+    case 'created': {
+      // Опції відбиваються назад так, як це робить живий API: основна несе id
+      // самого тарифу, решта — власні, і порядок перевернутий.
+      const plan = request?.rate_plan as { options?: { occupancy?: number; is_primary?: boolean }[] } | undefined;
+      const omit = new Set(reply.omitOccupancies ?? []);
+      const asked = (Array.isArray(plan?.options) ? plan.options : [])
+        .filter((o) => !omit.has(Number(o.occupancy)));
+      let n = 0;
+      const options = asked.map((o) => ({
+        occupancy: o.occupancy,
+        is_primary: !!o.is_primary,
+        id: o.is_primary ? reply.id : `${reply.id}-opt-${++n}`,
+        derived_option: o.is_primary ? null : { rate: [] },
+      }));
+      return {
+        status: 200,
+        body: {
+          data: {
+            id: reply.id,
+            type: 'rate_plan',
+            attributes: { id: reply.id, options: options.reverse() },
+          },
+        },
+      };
+    }
     case 'ok':
       return {
         status: 200,
@@ -123,7 +157,7 @@ export async function startMockChannex(): Promise<MockChannex> {
       });
 
       const reply = queue.shift() ?? { kind: 'ok' as const };
-      const { status, body: payload } = render(reply);
+      const { status, body: payload } = render(reply, body);
 
       if (reply.kind === 'garbage') {
         // Не JSON: сторінка проксі перед API. Клієнт мусить пережити.

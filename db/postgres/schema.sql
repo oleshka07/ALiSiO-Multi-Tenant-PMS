@@ -390,6 +390,7 @@ CREATE TABLE "cm_mappings" (
   "connection_id" TEXT NOT NULL,
   "entity_type" TEXT NOT NULL,
   "local_id" TEXT NOT NULL,
+  "unit_type_id" TEXT DEFAULT '' NOT NULL,
   "occupancy" BIGINT DEFAULT 0 NOT NULL,
   "remote_id" TEXT NOT NULL,
   "synced_at" TIMESTAMPTZ,
@@ -397,7 +398,7 @@ CREATE TABLE "cm_mappings" (
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("connection_id", "entity_type", "remote_id"),
-  UNIQUE ("connection_id", "entity_type", "local_id", "occupancy"),
+  UNIQUE ("connection_id", "entity_type", "local_id", "unit_type_id", "occupancy"),
   CHECK (entity_type IN ('property', 'unit_type', 'rate_plan', 'rate_plan_option')),
   CHECK (occupancy >= 0)
 );
