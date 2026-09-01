@@ -203,7 +203,8 @@ function reset() {
   const ids = new Map([['rp-local', 'rp-remote']]);
   const changes = [];
   for (let d = new Date(Date.UTC(2026, 11, 1)); d <= new Date(Date.UTC(2027, 4, 1)); d.setUTCDate(d.getUTCDate() + 1)) {
-    changes.push({ ratePlanId: 'rp-local', date: d.toISOString().slice(0, 10), priceMinor: 43200, minStay: 2 });
+    changes.push({ ratePlanId: 'rp-local', date: d.toISOString().slice(0, 10),
+      prices: [{ occupancy: 2, priceMinor: 43200 }], minStay: 2 });
   }
   assert.strictEqual(changes.length, 152, 'очікувалось 152 ночі — тест 8 сертифікації');
 
@@ -211,7 +212,8 @@ function reset() {
   assert.strictEqual(values.length, 1, `152 ночі з однією ціною мали стиснутись в один запис, вийшло ${values.length}`);
   assert.strictEqual(values[0].date_from, '2026-12-01');
   assert.strictEqual(values[0].date_to, '2027-05-01');
-  assert.strictEqual(values[0].rate, 43200, 'ціна мала піти цілим у мінорних одиницях');
+  assert.deepStrictEqual(values[0].rates, [{ occupancy: 2, rate: 43200 }],
+    'ціна мала піти масивом заселеностей, цілим у мінорних одиницях');
   assert.strictEqual(values[0].date, undefined, 'діапазон не має нести ще й одиночну дату');
 }
 
@@ -220,9 +222,9 @@ function reset() {
   reset();
   const ids = new Map([['rp', 'rp-remote']]);
   const { values } = rateValues(PROP, [
-    { ratePlanId: 'rp', date: '2026-11-01', priceMinor: 10000, minStay: 1 },
-    { ratePlanId: 'rp', date: '2026-11-02', priceMinor: 10000, minStay: 1 },
-    { ratePlanId: 'rp', date: '2026-11-03', priceMinor: 10000, minStay: 3 },
+    { ratePlanId: 'rp', date: '2026-11-01', prices: [{ occupancy: 2, priceMinor: 10000 }], minStay: 1 },
+    { ratePlanId: 'rp', date: '2026-11-02', prices: [{ occupancy: 2, priceMinor: 10000 }], minStay: 1 },
+    { ratePlanId: 'rp', date: '2026-11-03', prices: [{ occupancy: 2, priceMinor: 10000 }], minStay: 3 },
   ], ids);
   assert.strictEqual(values.length, 2, 'та сама ціна з іншим min_stay мала лишитись окремим діапазоном');
   assert.strictEqual(values[0].date_to, '2026-11-02');
@@ -260,8 +262,59 @@ function reset() {
   const ids = new Map([['rp', 'rp-remote']]);
   const { values } = rateValues(PROP, [{ ratePlanId: 'rp', date: '2026-11-01', closed: true }], ids);
   assert.strictEqual(values[0].stop_sell, true);
-  assert.ok(!('rate' in values[0]), 'ціна, якої не міняли, поїхала полем — Channex відповів би претензією');
+  assert.ok(!('rates' in values[0]), 'ціна, якої не міняли, поїхала полем — Channex відповів би претензією');
   assert.ok(!('min_stay' in values[0]), 'обмеження, якого не міняли, поїхало полем');
+}
+
+// ── 13.1 И12: ціна їде через `rates[]`, ніколи голим `rate` ──────────────
+//
+// Виміряно на живому API 01.09.2026: голий `rate` рухає ЛИШЕ основну опцію
+// заселеності, решта лишаються зі старою ціною, а відповідь при цьому чиста —
+// `200 OK` без попереджень. Тобто помилка не має жодного зовнішнього прояву,
+// доки хтось не забронює на двох.
+//
+// Тому тіло мусить нести `rates[]` навіть тоді, коли заселеність одна: рівно
+// в цьому випадку спокуса написати голий ключ найбільша, а різниця невидима.
+{
+  reset();
+  const ids = new Map([['rp', 'rp-remote']]);
+  const { values } = rateValues(PROP, [{
+    ratePlanId: 'rp', date: '2026-11-01',
+    prices: [{ occupancy: 1, priceMinor: 9000 }, { occupancy: 2, priceMinor: 11000 }],
+  }], ids);
+  assert.deepStrictEqual(values[0].rates,
+    [{ occupancy: 1, rate: 9000 }, { occupancy: 2, rate: 11000 }],
+    'ціни по заселеностях мали піти масивом rates[]');
+  assert.ok(!('rate' in values[0]),
+    'голий rate рухає лише основну заселеність — решта лишиться зі старою ціною, і мовчки');
+}
+{
+  reset();
+  const ids = new Map([['rp', 'rp-remote']]);
+  const { values } = rateValues(PROP, [{
+    ratePlanId: 'rp', date: '2026-11-01', prices: [{ occupancy: 2, priceMinor: 11000 }],
+  }], ids);
+  assert.deepStrictEqual(values[0].rates, [{ occupancy: 2, rate: 11000 }],
+    'навіть одна заселеність їде масивом — саме тут спокуса написати голий ключ');
+  assert.ok(!('rate' in values[0]), 'одна заселеність не привід повертатись до голого rate');
+}
+
+// ── 13.2 Різні ціни по заселеностях — різні діапазони ────────────────────
+//
+// Стиснення порівнює ВЕСЬ набір цін, а не одне число: діапазон, у якому ціна
+// для двох та сама, а для трьох інша, — це два діапазони. Склеїти їх означало
+// б тихо переписати ціну третьої особи.
+{
+  reset();
+  const ids = new Map([['rp', 'rp-remote']]);
+  const { values } = rateValues(PROP, [
+    { ratePlanId: 'rp', date: '2026-11-01', prices: [{ occupancy: 1, priceMinor: 9000 }, { occupancy: 2, priceMinor: 11000 }] },
+    { ratePlanId: 'rp', date: '2026-11-02', prices: [{ occupancy: 1, priceMinor: 9000 }, { occupancy: 2, priceMinor: 11000 }] },
+    { ratePlanId: 'rp', date: '2026-11-03', prices: [{ occupancy: 1, priceMinor: 9000 }, { occupancy: 2, priceMinor: 12000 }] },
+  ], ids);
+  assert.strictEqual(values.length, 2, 'інша ціна для двох мала розірвати діапазон');
+  assert.strictEqual(values[0].date_to, '2026-11-02');
+  assert.strictEqual(values[1].date, '2026-11-03');
 }
 
 // ── 14. Незмаплене не вигадується ────────────────────────────────────────

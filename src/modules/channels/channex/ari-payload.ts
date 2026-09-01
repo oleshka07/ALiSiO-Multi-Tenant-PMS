@@ -31,8 +31,16 @@ export interface IdMap {
   get(localId: string): string | undefined;
 }
 
-/** Один запис у `values[]`. Ключі — вже чужі, це вміст повідомлення. */
-export type AriValue = Record<string, string | number | boolean>;
+/** Ціна однієї заселеності в тілі повідомлення. */
+export type AriRate = { occupancy: number; rate: number };
+
+/**
+ * Один запис у `values[]`. Ключі — вже чужі, це вміст повідомлення.
+ *
+ * Масив серед типів значення — це `rates[]` (И12), і він там навмисно: ціна
+ * не буває одним числом, навіть коли заселеність одна.
+ */
+export type AriValue = Record<string, string | number | boolean | AriRate[]>;
 
 /** Дата наступного дня. Рядкова арифметика, без Date і без часових поясів. */
 function nextDay(date: DateStr): DateStr {
@@ -128,10 +136,17 @@ export function availabilityValues(
  * і ціле `20000`, і друге безпечніше: воно не проходить через десятковий
  * роздільник і не залежить від локалі.
  *
- * Ніч без ціни сюди не потрапляє числом: `priceMinor` відсутній, а
+ * Ніч без ціни сюди не потрапляє числом: `prices` відсутній, а
  * `closed: true` каже каналу не продавати (інваріанти И2 і 17). Нуль як
  * ціна відхиляється самим Channex — «must be greater than 0», — тож
  * «безкоштовна ніч» неможлива навіть технічно.
+ *
+ * ── Чому `rates[]`, а не одне число (И12) ────────────────────────────────
+ *
+ * Голий ключ ціни рухає лише ОСНОВНУ опцію заселеності; решта лишаються зі
+ * старою ціною, і відповідь чиста. Виміряно на живому API 01.09.2026.
+ * Стиснення діапазонів тому порівнює ВЕСЬ набір цін: діапазон, у якому ціна
+ * для двох та сама, а для трьох інша, — це два діапазони.
  */
 export function rateValues(
   remotePropertyId: string,
@@ -145,8 +160,13 @@ export function rateValues(
     return Boolean(remote);
   });
 
+  // Набір цін входить у порівняння цілком, і в стабільному порядку: два
+  // однакові набори, записані по-різному, — це один і той самий діапазон.
+  const priceShape = (c: RateChange) => (c.prices ?? [])
+    .map((r) => [r.occupancy, r.priceMinor])
+    .sort((a, b) => a[0] - b[0]);
   const shapeOf = (c: RateChange) =>
-    JSON.stringify([c.priceMinor, c.closed, c.minStay, c.maxStay, c.noArrival, c.noDeparture]);
+    JSON.stringify([priceShape(c), c.closed, c.minStay, c.maxStay, c.noArrival, c.noDeparture]);
 
   const values = compress(
     mapped,
@@ -157,7 +177,14 @@ export function rateValues(
         property_id: remotePropertyId,
         rate_plan_id: ratePlans.get(sample.ratePlanId)!,
       };
-      put(v, 'rate', sample.priceMinor);
+      // `rates[]`, ніколи голий ключ ціни — И12. Порожній набір означає
+      // «ціни не міняли», і тоді поля немає взагалі: порожнє поле Channex
+      // читає як «скинь», а скидати ми нічого не просили.
+      if (sample.prices && sample.prices.length) {
+        v.rates = [...sample.prices]
+          .sort((a, b) => a.occupancy - b.occupancy)
+          .map((r) => ({ occupancy: r.occupancy, rate: r.priceMinor }));
+      }
       put(v, 'stop_sell', sample.closed);
       put(v, 'min_stay', sample.minStay);
       put(v, 'max_stay', sample.maxStay);
