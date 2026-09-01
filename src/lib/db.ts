@@ -4025,6 +4025,21 @@ function runMigrations(database: any) {
       webhook_secret     TEXT NOT NULL,
       remote_webhook_id  TEXT,
       is_enabled         INTEGER NOT NULL DEFAULT 0,
+      -- Зсув ЦІЄЇ точки збуту у відсотках (рішення Ц7). ЖОДНИХ ЗВОРОТНИХ
+      -- ЛАПОК: коментар усередині шаблонного рядка, одна лапка закриє його
+      -- посеред SQL.
+      --
+      -- Число ЗНАКОВЕ: -10 це дешевше на 10%, +10 дорожче. Пари
+      -- відсоток-плюс-напрямок тут немає навмисно: два поля можуть
+      -- суперечити одне одному, і сайтова колонка саме на цьому ловилась.
+      --
+      -- Нуль означає не зсувати, і тому він дефолт: точка збуту, яка нічого
+      -- не сказала, нічого й не міняє. Це НЕ той нуль, що в ціні дитини, де
+      -- він був би вигаданою ціною; тут нуль це справді як база.
+      --
+      -- Модифікатор однієї точки збуту ніколи не потрапляє в іншу: зсув
+      -- сайту живе в сайтовому дереві. Це і є визначення прямо дешевше.
+      pricing_modifier_percent REAL NOT NULL DEFAULT 0,
       last_full_sync_at  TEXT,
       created_at         TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
@@ -4212,6 +4227,18 @@ function runMigrations(database: any) {
   `);
   database.exec('CREATE INDEX IF NOT EXISTS idx_cm_events_org ON cm_events(organization_id)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_cm_events_unprocessed ON cm_events(connection_id) WHERE processed_at IS NULL');
+
+  // Ц7: зсув точки збуту на зʼєднанні. І в CREATE, і тут — інакше новий
+  // клієнт отримає базу без колонки, яку читає батчер (AGENTS §4).
+  try {
+    const cmCols = (database.prepare('PRAGMA table_info(cm_connections)').all() as any[]).map((c: any) => c.name);
+    if (!cmCols.includes('pricing_modifier_percent')) {
+      database.exec('ALTER TABLE cm_connections ADD COLUMN pricing_modifier_percent REAL NOT NULL DEFAULT 0');
+      console.log('[DB] Added pricing_modifier_percent to cm_connections');
+    }
+  } catch (e: any) {
+    console.error('[DB] cm_connections pricing_modifier_percent:', e.message);
+  }
 
   console.log('[DB] cm_connections + cm_inbound_bookings + cm_mappings + cm_outbox + cm_events ready');
 

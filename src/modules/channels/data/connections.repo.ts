@@ -31,6 +31,15 @@ export interface Connection {
   environment: string;
   remotePropertyId: string | null;
   isEnabled: boolean;
+  /**
+   * Зсув цієї точки збуту у відсотках (Ц7). Знакове: `-10` дешевше, `+10`
+   * дорожче; нуль — «як база».
+   *
+   * Читає батчер ARI: ціну називає лише `priceNights()`, а точка збуту її
+   * ЗСУВАЄ. Модифікатор сайту сюди не потрапляє й потрапити не може — це і є
+   * визначення «прямо дешевше».
+   */
+  pricingModifierPercent: number;
 }
 
 /** Зʼєднання, якщо воно НАШЕ. Чуже й неіснуюче однаково дають `null`. */
@@ -41,7 +50,7 @@ export async function connectionInTenant(connectionId: string): Promise<Connecti
   const sql = getSql();
   const row = await sql.row<any>(
     `SELECT id, organization_id, property_id, provider, environment,
-            remote_property_id, is_enabled
+            remote_property_id, is_enabled, pricing_modifier_percent
        FROM cm_connections
       WHERE id = ? AND organization_id = ?`,
     [connectionId, organizationId],
@@ -57,6 +66,7 @@ export async function connectionInTenant(connectionId: string): Promise<Connecti
     environment: String(row.environment),
     remotePropertyId: row.remote_property_id == null ? null : String(row.remote_property_id),
     isEnabled: Boolean(Number(row.is_enabled)),
+    pricingModifierPercent: Number(row.pricing_modifier_percent) || 0,
   };
 }
 

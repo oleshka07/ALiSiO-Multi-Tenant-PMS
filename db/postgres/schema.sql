@@ -346,6 +346,7 @@ CREATE TABLE "cm_connections" (
   "last_full_sync_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "pricing_modifier_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("webhook_token"),
   UNIQUE ("organization_id", "property_id", "provider", "environment"),

@@ -1,3 +1,4 @@
+import { percentOf } from '../../../core/money.ts';
 import type { AvailabilityChange, RateChange } from '../port';
 
 /**
@@ -75,6 +76,12 @@ export interface FlushReport {
   sent: number;
   /** Скільки повернулось у чергу. */
   failed: number;
+  /**
+   * Скільки знято з черги без відправлення — координати, які не поїдуть
+   * НІКОЛИ (минула дата). Рахуються окремо: це не успіх і не провал, і
+   * мовчазне зникнення тут було б гіршим за обидва.
+   */
+  retired: number;
   /** Скільки викликів зроблено — те, що витрачає квоту обʼєкта. */
   calls: number;
   /** Причини повернення, по одній на смугу. */
@@ -82,6 +89,24 @@ export interface FlushReport {
 }
 
 export interface FlushDeps {
+  /**
+   * Чи ввімкнене зʼєднання. Дефолт — так.
+   *
+   * Готель, який вимкнув канал, перестав там продавати; штовхати в нього
+   * ціни означає продавати за нього. Але й черги не чіпаємо: вимкнення
+   * буває тимчасовим, і після вмикання канал має отримати ПОТОЧНИЙ стан, а
+   * не порожнечу. Друга варта поверх фільтра в крона — ціна помилки тут
+   * вища за ціну зайвої перевірки.
+   */
+  isEnabled?(): Promise<boolean>;
+  /**
+   * Сьогоднішня дата, `YYYY-MM-DD`. Дефолт — системна.
+   *
+   * Потрібна не для зручності: минулі дати вендор не приймає взагалі, тож
+   * координата в минулому не поїде НІКОЛИ. Повертати її в чергу — вічне
+   * коло, яке щопроходу рахує спробу й забиває смугу собі подібними.
+   */
+  today?: string;
   /** Захопити координати однієї смуги. Порожньо — нема чого слати. */
   claim(kind: 'availability' | 'rate'): Promise<ClaimedCoordinate[]>;
   /**
@@ -100,13 +125,50 @@ export interface FlushDeps {
    * «цін не міняли», і ніч поїхала б зі старою ціною.
    */
   pricesAt(ratePlanId: string, date: string): Promise<{ occupancy: number; priceMinor: number }[] | null>;
-  /** Відправити одне повідомлення. Кидає на помилці; `warnings` — теж помилка. */
+  /**
+   * Відправити одне повідомлення. Кидає на помилці; `warnings` — теж помилка.
+   *
+   * `unmapped` — наші ідентифікатори, яких немає в дзеркалі. Адаптер їх уже
+   * рахує; домен мусить їх ПРОЧИТАТИ, інакше такі координати позначаться
+   * відправленими, хоча про них не пішло нічого.
+   */
   send(
     kind: 'availability' | 'rate',
     values: (AvailabilityChange | RateChange)[],
-  ): Promise<{ warnings: unknown[] }>;
+  ): Promise<{ warnings: unknown[]; unmapped?: string[] }>;
   markSent(ids: string[]): Promise<void>;
   release(ids: string[], reason: string): Promise<void>;
+  /**
+   * Зняти координату з черги без відправлення.
+   *
+   * Не `markSent`: нічого не відправлено, і брехати про це нікому не можна.
+   * Не `release`: рядок не поїде ніколи, і повернення означало б вічне коло.
+   * Третій стан тут — єдина чесна відповідь; дані можуть записати його як
+   * `sent_at` разом із причиною в `last_error`.
+   */
+  retire(ids: string[], reason: string): Promise<void>;
+  /**
+   * Зсув ЦІЄЇ точки збуту, у відсотках. Дефолт — нуль.
+   *
+   * Рішення Ц7: ціна одна — база з `price_calendar × rate_plans`, названа
+   * `priceNights()`. Точка збуту її ЗСУВАЄ і нічого не називає. Число тут
+   * ЗНАКОВЕ: `-10` це «дешевше на 10%», `+10` — «дорожче». Пари «відсоток +
+   * напрямок» тут немає навмисно — два поля можуть суперечити одне одному
+   * (відʼємне число з напрямком «дешевше» — подвійне заперечення), і
+   * перенесення колонки саме на цьому й ловилось.
+   *
+   * ── Модифікатор однієї точки збуту НІКОЛИ не потрапляє в іншу ─────────
+   *
+   * Це і є визначення «прямо дешевше». Сюди приходить зсув ЗʼЄДНАННЯ; зсув
+   * сайту живе в сайтовому дереві й до каналу не має стосунку. Якби він
+   * доїхав, знижка прямого каналу опинилась би на OTA — рівно навпаки до
+   * того, заради чого Ц7 ухвалювалось.
+   *
+   * Перевірка на це стоїть на НЕНУЛЬОВОМУ числі навмисно: при нулі
+   * застосований зсув і забутий зсув дають однакову відповідь, і гейт був
+   * би зеленим в обох світах.
+   */
+  priceModifierPercent?: number;
   /** Стеля тіла одного виклику. Дефолт — 10 МБ вендора з запасом. */
   maxBodyBytes?: number;
   /**
@@ -117,6 +179,33 @@ export interface FlushDeps {
    * адаптер, який знає точний формат, може передати свою функцію.
    */
   sizeOf?(value: AvailabilityChange | RateChange): number;
+}
+
+/**
+ * Зсунути базу модифікатором точки збуту (Ц7).
+ *
+ * Округлення до ЦІЛОЇ мінорної одиниці одразу: дробова копійка по дорозі
+ * через JSON — це те, як ціна стає 24.999999, а канал показує гостю число,
+ * якого готель не називав.
+ *
+ * Рахує `percentOf(x, pct, 0)` з `@core/money`, а не `Math.round` — інваріант
+ * 9, і не з формальності: власне множення пішло б через `x * 100`, а
+ * `1.005 * 100` це 100.49999999999999, тобто округлення ВНИЗ там, де людина
+ * чекає вгору. `money()` зсуває через рядок і саме тому не має цієї діри.
+ * Нуль знаків — бо тут уже мінорні одиниці: ціла копійка і є мінімальна.
+ *
+ * Нуль означає «не зсувати», і саме тому він тут дефолт: точка збуту, яка
+ * нічого не сказала, нічого й не міняє.
+ */
+function shift(
+  prices: { occupancy: number; priceMinor: number }[] | null,
+  percent: number,
+): { occupancy: number; priceMinor: number }[] | null {
+  if (!prices || !percent) return prices;
+  return prices.map((p) => ({
+    occupancy: p.occupancy,
+    priceMinor: p.priceMinor + percentOf(p.priceMinor, percent, 0),
+  }));
 }
 
 /** 10 МБ вендора мінус запас на конверт і на різницю доменного й чужого тіла. */
@@ -171,16 +260,31 @@ async function flushLane<T extends AvailabilityChange | RateChange>(
     const ids = batch.flatMap((r) => r.ids);
     try {
       const answer = await deps.send(kind, batch.map((r) => r.value));
+
+      // Незмаплене — НЕ успіх. Закрити ми його теж не можемо: не знаємо, що
+      // саме закривати на тому боці, а тариф там лишається живим і
+      // продається далі. Тому гучна відмова, і рядок лишається в черзі.
+      const orphanIds = (answer.unmapped ?? []).length
+        ? batch.filter((r) => (answer.unmapped ?? []).some((local) =>
+            local === (r.value as RateChange).ratePlanId
+            || local === (r.value as AvailabilityChange).unitTypeId)).flatMap((r) => r.ids)
+        : [];
+      if (orphanIds.length) {
+        await deps.release(orphanIds, `unmapped: ${(answer.unmapped ?? []).join(', ')}`);
+        report.failed += orphanIds.length;
+        report.errors.push(`${kind}: unmapped ${(answer.unmapped ?? []).join(', ')}`);
+      }
+      const deliveredIds = ids.filter((id) => !orphanIds.includes(id));
       // `200 OK` з непорожніми претензіями — це помилка, а не успіх (И4).
       // Порожній результат означає, що не застосовано НІЧОГО, тож позначити
       // рядки відправленими означало б втратити зміну, доповівши про успіх.
       if (answer.warnings && answer.warnings.length > 0) {
-        await deps.release(ids, `warnings: ${JSON.stringify(answer.warnings).slice(0, 300)}`);
-        report.failed += ids.length;
+        await deps.release(deliveredIds, `warnings: ${JSON.stringify(answer.warnings).slice(0, 300)}`);
+        report.failed += deliveredIds.length;
         report.errors.push(`${kind}: ${answer.warnings.length} claim(s)`);
-      } else {
-        await deps.markSent(ids);
-        report.sent += ids.length;
+      } else if (deliveredIds.length) {
+        await deps.markSent(deliveredIds);
+        report.sent += deliveredIds.length;
       }
     } catch (e: any) {
       // Найважливіші два рядки в усьому файлі — див. правило 1 у шапці.
@@ -199,10 +303,31 @@ async function flushLane<T extends AvailabilityChange | RateChange>(
  * дзеркало читаються в його межах.
  */
 export async function flushOutbox(deps: FlushDeps): Promise<FlushReport> {
-  const report: FlushReport = { sent: 0, failed: 0, calls: 0, errors: [] };
+  const report: FlushReport = { sent: 0, failed: 0, retired: 0, calls: 0, errors: [] };
+
+  // Вимкнене зʼєднання не шле нічого — і черги не втрачає. Це не провал,
+  // тож ні `failed`, ні алерту з нього бути не має.
+  if (deps.isEnabled && !(await deps.isEnabled())) return report;
+
+  const today = deps.today ?? new Date().toISOString().slice(0, 10);
+
+  /**
+   * Відсіяти те, що не поїде ніколи, і зняти з черги.
+   *
+   * Робиться ДО читання джерел: питати ціну на позавчора — марна робота, а
+   * на тисячі застарілих рядків ще й помітна.
+   */
+  const alive = async (claimed: ClaimedCoordinate[]): Promise<ClaimedCoordinate[]> => {
+    const past = claimed.filter((c) => c.date < today);
+    if (past.length) {
+      await deps.retire(past.map((c) => c.id), `date in the past (today ${today})`);
+      report.retired += past.length;
+    }
+    return claimed.filter((c) => c.date >= today);
+  };
 
   // ── Наявність ────────────────────────────────────────────────────────
-  const availability = await deps.claim('availability');
+  const availability = await alive(await deps.claim('availability'));
   const resolvedAvailability: Resolved<AvailabilityChange>[] = [];
   for (const c of availability) {
     if (!c.unitTypeId) continue;
@@ -215,11 +340,12 @@ export async function flushOutbox(deps: FlushDeps): Promise<FlushReport> {
   await flushLane('availability', resolvedAvailability, deps, report);
 
   // ── Ціни й обмеження ─────────────────────────────────────────────────
-  const rates = await deps.claim('rate');
+  const rates = await alive(await deps.claim('rate'));
   const resolvedRates: Resolved<RateChange>[] = [];
   for (const c of rates) {
     if (!c.ratePlanId) continue;
-    const prices = await deps.pricesAt(c.ratePlanId, c.date);
+    const base = await deps.pricesAt(c.ratePlanId, c.date);
+    const prices = shift(base, deps.priceModifierPercent ?? 0);
     // Правило 2 з шапки, і воно тут ціле в двох рядках: або ціни та явне
     // відкриття, або закриття. Третього — «не слати» — немає.
     resolvedRates.push(prices && prices.length
