@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { noteStay, stayById } from '../data/stay-notes';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { money } from '@core/money';
@@ -139,6 +140,8 @@ export const createSubBooking = withPermission('manage_bookings', async (request
         master.check_in, master.check_out, master.nights, adults, children, infants,
         master.status, master.payment_status, master.source, subtotal, master.currency,
         childToken, `Sub-booking: ${label}`]);
+      // Канали: ночі дочірньої броні зайняті — тип від номера, дати від головної.
+      await noteStay(sql, { property_id: master.property_id, unit_id: unitId, check_in: master.check_in, check_out: master.check_out });
     }
 
     // Create sub-booking record
@@ -309,6 +312,8 @@ export const deleteSubBooking = withPermission('manage_bookings', async (_reques
 
     // Delete child reservation if exists (cascade will clean up line items via FK)
     if (existing.child_reservation_id) {
+      // Канали: ночі дочірньої броні звільняються — читається ДО видалення.
+      await noteStay(sql, await stayById(sql, existing.child_reservation_id));
       await sql.run('DELETE FROM reservations WHERE id = ? AND parent_id = ?', [existing.child_reservation_id, id]);
     }
 

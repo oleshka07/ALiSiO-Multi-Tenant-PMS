@@ -86,8 +86,8 @@ try {
   // джерела, тож другий рядок — це зайвий виклик до менеджера каналів із
   // ліміту 10 на хвилину.
   await runWithOrganization(A, async () => {
-    await enqueueChange(CONN, { kind: 'rate', unitTypeId: 'ut1', ratePlanId: 'rp1', date: '2026-10-10' });
-    await enqueueChange(CONN, { kind: 'rate', unitTypeId: 'ut1', ratePlanId: 'rp1', date: '2026-10-10' });
+    await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'ut1', ratePlanId: 'rp1', date: '2026-10-10' });
+    await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'ut1', ratePlanId: 'rp1', date: '2026-10-10' });
     assert.strictEqual(await pendingCount(CONN), 1,
       'та сама координата стала двома рядками — це зайвий виклик із ліміту 10/хв');
     console.log('  ok  повторна зміна тієї самої координати не двоїть чергу');
@@ -131,7 +131,7 @@ try {
 
   // ── Наявність і ціна — різні смуги ────────────────────────────────────
   await runWithOrganization(A, async () => {
-    await enqueueChange(CONN, { kind: 'availability', unitTypeId: 'ut1', date: '2026-10-10' });
+    await enqueueChange(sql, CONN, { kind: 'availability', unitTypeId: 'ut1', date: '2026-10-10' });
     assert.strictEqual(await pendingCount(CONN), 2,
       'наявність злилася з ціною — у менеджера каналів це різні черги з різною терміновістю');
 
@@ -155,7 +155,7 @@ try {
     // ціну ще раз. Злити цю зміну в захоплений рядок означає, що вона не
     // поїде НІКОЛИ — канал лишиться зі старою ціною назавжди, і жодної
     // помилки при цьому не станеться.
-    await enqueueChange(CONN, { kind: 'rate', unitTypeId: 'ut1', ratePlanId: 'rp1', date: '2026-10-10' });
+    await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'ut1', ratePlanId: 'rp1', date: '2026-10-10' });
     assert.strictEqual(await pendingCount(CONN), 2,
       'зміну після захоплення злито в рядок у польоті — вона не поїде ніколи');
     console.log('  ok  зміна після захоплення стає НОВИМ рядком, а не зникає');
@@ -186,7 +186,7 @@ try {
       'чужий орендар захопив чергу сусіда — його зміни поїхали б із чужим ключем');
     assert.strictEqual(await pendingCount(CONN), 0, 'чужий орендар побачив чергу сусіда');
     await assert.rejects(
-      () => enqueueChange(CONN, { kind: 'rate', unitTypeId: 'x', ratePlanId: 'y', date: '2026-10-10' }),
+      () => enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'x', ratePlanId: 'y', date: '2026-10-10' }),
       'чужий орендар дописав у чергу сусіда');
   });
   await runWithOrganization(A, async () => {
@@ -213,7 +213,7 @@ try {
     const leftovers = await claimBatch(CONN, 'rate', 50);
     await markSent(leftovers.map((r) => r.id));
 
-    await enqueueChange(CONN, { kind: 'rate', unitTypeId: 'ut9', ratePlanId: 'rp9', date: '2026-12-01' });
+    await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'ut9', ratePlanId: 'rp9', date: '2026-12-01' });
     for (let i = 1; i <= 3; i++) {
       const b = await claimBatch(CONN, 'rate', 50, 3);
       assert.strictEqual(b.length, 1, `спроба ${i}: рядок мав бути доступним — межа ще не вичерпана`);
@@ -247,7 +247,7 @@ try {
   // коло; позначити відправленою — брехня в журналі, який існує як доказ
   // «ми це слали». Тому знята координата лишає причину поруч із собою.
   await runWithOrganization(A, async () => {
-    await enqueueChange(CONN, { kind: 'availability', unitTypeId: 'ut9', date: '2020-01-01' });
+    await enqueueChange(sql, CONN, { kind: 'availability', unitTypeId: 'ut9', date: '2020-01-01' });
     const b = await claimBatch(CONN, 'availability', 50);
     assert.strictEqual(b.length, 1);
     await retireChanges(b.map((r) => r.id), 'date in the past');
@@ -269,15 +269,49 @@ try {
   // чотири їхні. Координата ціни без типу не має чим ні цінуватись, ні
   // адресуватись, і в черзі вона була б рядком, який не поїде ніколи.
   await runWithOrganization(A, async () => {
-    await assert.rejects(() => enqueueChange(CONN, { kind: 'rate', ratePlanId: 'rp9', date: '2026-12-02' }),
+    await assert.rejects(() => enqueueChange(sql, CONN, { kind: 'rate', ratePlanId: 'rp9', date: '2026-12-02' }),
       'координата ціни без типу номера лягла в чергу — її нема чим цінувати й нема куди адресувати (Ц10)');
-    await assert.rejects(() => enqueueChange(CONN, { kind: 'rate', unitTypeId: 'ut9', date: '2026-12-02' }),
+    await assert.rejects(() => enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'ut9', date: '2026-12-02' }),
       'координата ціни без тарифу лягла в чергу');
-    await assert.rejects(() => enqueueChange(CONN, { kind: 'availability', date: '2026-12-02' }),
+    await assert.rejects(() => enqueueChange(sql, CONN, { kind: 'availability', date: '2026-12-02' }),
       'координата наявності без типу номера лягла в чергу');
     console.log('  ok  координата без адресата відхиляється на вході, а не крутиться в черзі');
   });
 
+
+  // ── Координата може бути ДІАПАЗОНОМ дат (Ц13 → форма, Ц15) ────────────
+  //
+  // Один запис матриці цін без дат — це «кожна майбутня ніч». Подобово це
+  // тисячі рядків на кожне зʼєднання за одну правку в екрані; діапазон —
+  // один. Безпечно саме тому, що черга тримає координату, а не значення:
+  // два діапазони, що перекриваються, розвʼязуються з одного джерела в один
+  // момент і дають однакове число — надлишок, ніколи не розходження.
+  await runWithOrganization(A, async () => {
+    const leftovers = await claimBatch(CONN, 'rate', 50);
+    await markSent(leftovers.map((r) => r.id));
+
+    const range = { kind: 'rate' as const, unitTypeId: 'utR', ratePlanId: 'rpR', date: '2027-01-01', dateTo: '2027-12-31' };
+    await enqueueChange(sql, CONN, range);
+    await enqueueChange(sql, CONN, range);
+    assert.strictEqual(await pendingCount(CONN, 'rate'), 1, 'той самий діапазон двічі — один рядок, як і та сама дата');
+
+    const b = await claimBatch(CONN, 'rate', 50);
+    assert.strictEqual(b.length, 1);
+    assert.strictEqual(b[0].date, '2027-01-01');
+    assert.strictEqual(b[0].dateTo, '2027-12-31', 'кінець діапазону не дійшов до батчера — поїде одна ніч із трьохсот');
+    await markSent(b.map((r) => r.id));
+
+    // Один день — без кінця; батчер читає це як «та сама дата».
+    await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'utR', ratePlanId: 'rpR', date: '2027-03-01' });
+    const one = await claimBatch(CONN, 'rate', 50);
+    assert.strictEqual(one[0].dateTo, null, 'одноденна координата не має кінця');
+    await markSent(one.map((r) => r.id));
+
+    await assert.rejects(
+      () => enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'utR', ratePlanId: 'rpR', date: '2027-02-01', dateTo: '2027-01-01' }),
+      'кінець раніше за початок ліг у чергу — такий рядок не розкладеться на жодну дату й не поїде ніколи');
+    console.log('  ok  діапазон — один рядок, кінець доходить до батчера, навиворіт не лягає');
+  });
 } finally {
   await cleanup();
 }

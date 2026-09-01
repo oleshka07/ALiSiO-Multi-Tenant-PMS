@@ -1,5 +1,6 @@
-import { getSql } from '@core/db/async';
+import type { Sql } from '@core/db/async';
 import { connectionInTenant } from './connections.repo';
+import { noteAvailabilityChanged, lastNight } from './outbox-notes';
 
 /**
  * Ревізія бронювання з менеджера каналів стає бронню — рівно один раз.
@@ -78,10 +79,13 @@ export type ApplyOutcome =
  * коміту і не тут.
  */
 export async function applyRevision(
+  t: Sql,
   connectionId: string,
   rev: Revision,
 ): Promise<ApplyOutcome> {
-  const sql = getSql();
+  // Усе — ручкою транзакції викликача: журнал, бронь, гість і координата
+  // для каналів лягають або разом, або ніяк (інваріант 11).
+  const sql = t;
 
   // Зʼєднання шукається В МЕЖАХ ОРЕНДАРЯ, а не за самим лише id: id приходить
   // іззовні — з URL вебхука, з рядка черги, з аргументу крона. Запит
@@ -143,6 +147,26 @@ export async function applyRevision(
   let reservationId: string | null = prior?.reservation_id ?? null;
   let created = false;
 
+  // Канали дізнаються про ночі, які ця ревізія звільняє чи займає: стан ДО
+  // (скасування, зміна) і ПІСЛЯ (зміна, нова). Тип — із броні: канал адресує
+  // тип, а не номер (CP3).
+  const stayOf = async (id: string) => sql.row<any>(
+    'SELECT property_id, unit_type_id, unit_id, check_in, check_out FROM reservations WHERE id = ?', [id]);
+  const noteStay = async (stay: any) => {
+    if (!stay?.check_in || !stay?.check_out) return;
+    let unitTypeId = stay.unit_type_id ? String(stay.unit_type_id) : null;
+    if (!unitTypeId && stay.unit_id) {
+      const u = await sql.row<any>('SELECT unit_type_id FROM units WHERE id = ?', [stay.unit_id]);
+      unitTypeId = u?.unit_type_id ? String(u.unit_type_id) : null;
+    }
+    if (!unitTypeId) return;
+    await noteAvailabilityChanged(sql, {
+      propertyId: String(stay.property_id ?? conn.propertyId), unitTypeId,
+      from: String(stay.check_in).slice(0, 10), to: lastNight(String(stay.check_out).slice(0, 10)),
+    });
+  };
+  const before = reservationId ? await stayOf(reservationId) : null;
+
   if (rev.status === 'cancelled') {
     // Скасування не стирає бронь: вона була, гість про неї знає, і в звітах
     // за минулий місяць вона має лишитись. Міняється лише статус.
@@ -180,13 +204,16 @@ export async function applyRevision(
                                  status, payment_status, source, total_price, currency, external_uid)
        VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 'unpaid', ?, ?, ?, ?)`,
       [reservationId, conn.organizationId, conn.propertyId, rev.unitTypeId ?? null,
-        await guestFor(conn.organizationId, rev),
+        await guestFor(sql, conn.organizationId, rev),
         rev.checkIn ?? '', rev.checkOut ?? '', nightsBetween(rev.checkIn, rev.checkOut),
         rev.adults ?? 1, rev.children ?? 0,
         sourceOf(rev.otaName), rev.totalPrice ?? 0, rev.currency ?? '',
         rev.otaReservationCode ?? null],
     );
   }
+
+  await noteStay(before);
+  if (reservationId && rev.status !== 'cancelled') await noteStay(await stayOf(reservationId));
 
   await sql.run(
     `UPDATE cm_inbound_bookings
@@ -229,8 +256,7 @@ function sourceOf(otaName?: string): string {
  * дві різні людини, і злиття їх в одну картку зробило б із двох історій одну
  * неправдиву. Обʼєднання карток — окрема свідома дія оператора.
  */
-async function guestFor(organizationId: string, rev: Revision): Promise<string> {
-  const sql = getSql();
+async function guestFor(sql: Sql, organizationId: string, rev: Revision): Promise<string> {
   const id = crypto.randomUUID();
   await sql.run(
     `INSERT INTO guests (id, organization_id, first_name, last_name, email)

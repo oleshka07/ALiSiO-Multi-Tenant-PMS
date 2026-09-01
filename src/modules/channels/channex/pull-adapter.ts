@@ -57,9 +57,11 @@ export async function pullConnection(connectionId: string, apiKey: string): Prom
       return raw.map((r) => mapRevision(r, roomTypes));
     },
 
-    tx: (fn) => sql.tx(() => fn()),
+    // Ручка транзакції — далі в applyRevision: на Postgres це єдиний спосіб
+    // лишити журнал і бронь на одному зʼєднанні (інваріант 11).
+    tx: (fn) => sql.tx((t) => fn(t)),
 
-    apply: (id, rev) => applyRevision(id, rev),
+    apply: (t, id, rev) => applyRevision(t, id, rev),
 
     // Аж після коміту. `ackToken` — це `id` ревізії, а не ключ дедуплікації:
     // переплутати означає 404 на кожне підтвердження й ревізію, яка не зникне

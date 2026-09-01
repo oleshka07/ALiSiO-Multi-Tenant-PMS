@@ -1,3 +1,4 @@
+import type { Sql } from '@core/db/async';
 import type { ApplyOutcome, Revision } from './inbound-bookings.repo';
 // Розширення в шляху, а не аліас: цей файл читає ще й перевірка, яку
 // запускають голим node, а бандлер із розширенням теж згоден.
@@ -58,10 +59,18 @@ export interface PullDeps {
    * має валити решту стрічки.
    */
   fetchFeed(connectionId: string): Promise<FeedEntry[]>;
-  /** Одна транзакція на одну ревізію. */
-  tx<T>(fn: () => Promise<T>): Promise<T>;
-  /** Записати ревізію й звести з бронню. Викликається ВСЕРЕДИНІ `tx`. */
-  apply(connectionId: string, rev: Revision): Promise<ApplyOutcome>;
+  /**
+   * Одна транзакція на одну ревізію.
+   *
+   * `fn` отримує ручку `t` і мусить писати ЛИШЕ нею: зовнішній `getSql()`
+   * усередині `sql.tx` на Postgres — це інше зʼєднання з пулу, тобто запис
+   * повз транзакцію (інваріант 11). Саме так `applyRevision` і був написаний
+   * до 01.09.2026 — журнал і бронь на різних зʼєднаннях, «атомарно» лише на
+   * SQLite, де зʼєднання одне й вісь невидима (інваріант 26).
+   */
+  tx<T>(fn: (t: Sql) => Promise<T>): Promise<T>;
+  /** Записати ревізію й звести з бронню. Викликається ВСЕРЕДИНІ `tx`, тією ж ручкою. */
+  apply(t: Sql, connectionId: string, rev: Revision): Promise<ApplyOutcome>;
   /**
    * Підтвердити менеджеру каналів. Викликається ПІСЛЯ коміту.
    *
@@ -149,7 +158,7 @@ export async function pullBookings(connectionId: string, deps: PullDeps): Promis
 
     let outcome: ApplyOutcome;
     try {
-      outcome = await deps.tx(() => deps.apply(connectionId, domain));
+      outcome = await deps.tx((t) => deps.apply(t, connectionId, domain));
     } catch (e) {
       report.skipped.push({
         remoteRevisionId: rev.remoteRevisionId,

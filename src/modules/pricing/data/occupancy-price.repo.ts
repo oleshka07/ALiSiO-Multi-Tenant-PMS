@@ -12,6 +12,7 @@
  * omitting it there wrote rows with a NULL tenant, the INSERT answered 201 and
  * the list came back empty.
  */
+import { noteRatesChanged } from '@channels/outbox';
 import { getSql } from '@core/db/async';
 import { requireOrganizationId, requirePropertyId } from '@core/auth/tenant-context';
 import type { PriceRow, LosTier } from '../domain/occupancy-price';
@@ -133,14 +134,40 @@ export async function createPrice(propertyId: string | null | undefined, input: 
   if (clash) return null;
 
   const id = crypto.randomUUID();
-  await sql.run(
-    `INSERT INTO price_occupancy
-       (id, organization_id, property_id, unit_type_id, persons, price_gross, valid_from, valid_to, label)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, organizationId, property, input.unit_type_id ?? null, input.persons,
-     input.price_gross, input.valid_from ?? null, input.valid_to ?? null, input.label ?? null],
-  );
+  await sql.tx(async (t) => {
+    await t.run(
+      `INSERT INTO price_occupancy
+         (id, organization_id, property_id, unit_type_id, persons, price_gross, valid_from, valid_to, label)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, organizationId, property, input.unit_type_id ?? null, input.persons,
+       input.price_gross, input.valid_from ?? null, input.valid_to ?? null, input.label ?? null],
+    );
+    // Рядок матриці без дат — це кожна майбутня ніч, без типу — кожен тип:
+    // двері обрізають горизонтом і розкладають по змаплених парах (Ц15).
+    await noteRatesChanged(t, {
+      propertyId: property, unitTypeId: input.unit_type_id ?? null,
+      from: input.valid_from ?? todayIso(), to: input.valid_to ?? null,
+    });
+  });
   return id;
+}
+
+const todayIso = () => new Date().toISOString().slice(0, 10);
+
+/** Координати рядка матриці — ДО зміни чи видалення, бо після нема що читати. */
+async function occupancyRowSpan(t: { row: (q: string, p: unknown[]) => Promise<any> }, table: 'price_occupancy' | 'price_los_tiers', id: string, organizationId: string) {
+  const dated = table === 'price_occupancy';
+  const row = await t.row(
+    `SELECT property_id, unit_type_id${dated ? ', valid_from, valid_to' : ''} FROM ${table} WHERE id = ? AND organization_id = ?`,
+    [id, organizationId],
+  );
+  if (!row) return null;
+  return {
+    propertyId: String(row.property_id),
+    unitTypeId: row.unit_type_id == null ? null : String(row.unit_type_id),
+    from: dated && row.valid_from ? String(row.valid_from).slice(0, 10) : todayIso(),
+    to: dated && row.valid_to ? String(row.valid_to).slice(0, 10) : null,
+  };
 }
 
 /**
@@ -153,18 +180,28 @@ export async function createPrice(propertyId: string | null | undefined, input: 
  */
 export async function updatePrice(id: string, priceGross: number, label?: string | null): Promise<boolean> {
   const organizationId = await requireOrganizationId();
-  const res = await getSql().run(
-    'UPDATE price_occupancy SET price_gross = ?, label = ?, updated_at = ? WHERE id = ? AND organization_id = ?',
-    [priceGross, label ?? null, nowIso(), id, organizationId],
-  );
-  return res.changes > 0;
+  return getSql().tx(async (t) => {
+    const span = await occupancyRowSpan(t, 'price_occupancy', id, organizationId);
+    const res = await t.run(
+      'UPDATE price_occupancy SET price_gross = ?, label = ?, updated_at = ? WHERE id = ? AND organization_id = ?',
+      [priceGross, label ?? null, nowIso(), id, organizationId],
+    );
+    if (res.changes > 0 && span) await noteRatesChanged(t, span);
+    return res.changes > 0;
+  });
 }
 
 export async function deletePrice(id: string): Promise<boolean> {
   const organizationId = await requireOrganizationId();
-  const res = await getSql().run(
-    'DELETE FROM price_occupancy WHERE id = ? AND organization_id = ?', [id, organizationId]);
-  return res.changes > 0;
+  return getSql().tx(async (t) => {
+    // Читається ДО видалення: після нього координат уже нема звідки взяти, а
+    // саме видалена ціна — це ночі, які тепер треба ЗАКРИТИ (інваріант 17).
+    const span = await occupancyRowSpan(t, 'price_occupancy', id, organizationId);
+    const res = await t.run(
+      'DELETE FROM price_occupancy WHERE id = ? AND organization_id = ?', [id, organizationId]);
+    if (res.changes > 0 && span) await noteRatesChanged(t, span);
+    return res.changes > 0;
+  });
 }
 
 export interface TierInput {
@@ -199,30 +236,42 @@ export async function createTier(propertyId: string | null | undefined, input: T
   if (clash) return null;
 
   const id = crypto.randomUUID();
-  await sql.run(
-    `INSERT INTO price_los_tiers
-       (id, organization_id, property_id, unit_type_id, min_nights, adjustment_gross, persons, label)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, organizationId, property, input.unit_type_id ?? null, input.min_nights,
-     input.adjustment_gross, input.persons ?? null, input.label ?? null],
-  );
+  await sql.tx(async (t) => {
+    await t.run(
+      `INSERT INTO price_los_tiers
+         (id, organization_id, property_id, unit_type_id, min_nights, adjustment_gross, persons, label)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, organizationId, property, input.unit_type_id ?? null, input.min_nights,
+       input.adjustment_gross, input.persons ?? null, input.label ?? null],
+    );
+    // Тир не має вікна дат: це кожна майбутня ніч типу (або всіх типів).
+    await noteRatesChanged(t, { propertyId: property, unitTypeId: input.unit_type_id ?? null, from: todayIso(), to: null });
+  });
   return id;
 }
 
 export async function updateTier(id: string, adjustmentGross: number, label?: string | null): Promise<boolean> {
   const organizationId = await requireOrganizationId();
-  const res = await getSql().run(
-    'UPDATE price_los_tiers SET adjustment_gross = ?, label = ?, updated_at = ? WHERE id = ? AND organization_id = ?',
-    [adjustmentGross, label ?? null, nowIso(), id, organizationId],
-  );
-  return res.changes > 0;
+  return getSql().tx(async (t) => {
+    const span = await occupancyRowSpan(t, 'price_los_tiers', id, organizationId);
+    const res = await t.run(
+      'UPDATE price_los_tiers SET adjustment_gross = ?, label = ?, updated_at = ? WHERE id = ? AND organization_id = ?',
+      [adjustmentGross, label ?? null, nowIso(), id, organizationId],
+    );
+    if (res.changes > 0 && span) await noteRatesChanged(t, span);
+    return res.changes > 0;
+  });
 }
 
 export async function deleteTier(id: string): Promise<boolean> {
   const organizationId = await requireOrganizationId();
-  const res = await getSql().run(
-    'DELETE FROM price_los_tiers WHERE id = ? AND organization_id = ?', [id, organizationId]);
-  return res.changes > 0;
+  return getSql().tx(async (t) => {
+    const span = await occupancyRowSpan(t, 'price_los_tiers', id, organizationId);
+    const res = await t.run(
+      'DELETE FROM price_los_tiers WHERE id = ? AND organization_id = ?', [id, organizationId]);
+    if (res.changes > 0 && span) await noteRatesChanged(t, span);
+    return res.changes > 0;
+  });
 }
 
 /**

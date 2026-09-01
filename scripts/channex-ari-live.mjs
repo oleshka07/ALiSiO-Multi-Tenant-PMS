@@ -84,6 +84,8 @@ const DATES = Array.from({ length: DAYS }, (_, i) => addDays(FROM, i));
 const TO = DATES[DATES.length - 1];
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
+const { getSql } = await import('@core/db/async');
+const sql = getSql();
 const { percentOf } = await import('@core/money');
 const {
   channelConnection, connectionMirror, flushConnectionOutboxFor,
@@ -198,11 +200,13 @@ await runWithOrganization(organizationId, async () => {
 
   if (CONFIRM) {
     // ── Черга: те, що робитиме доменна транзакція ────────────────────────
-    for (const u of unitTypes) for (const date of DATES) {
-      await enqueueChannelChange(connectionId, { kind: 'availability', unitTypeId: u.localId, date });
+    // Одним ДІАПАЗОНОМ на тип і на пару (Ц15) — саме так кладуть писачі;
+    // батчер розкладе по ночах сам, а стиснення збере назад у тілі.
+    for (const u of unitTypes) {
+      await enqueueChannelChange(sql, connectionId, { kind: 'availability', unitTypeId: u.localId, date: FROM, dateTo: TO });
     }
-    for (const p of pairs) for (const date of DATES) {
-      await enqueueChannelChange(connectionId, { kind: 'rate', unitTypeId: p.unitTypeId, ratePlanId: p.localId, date });
+    for (const p of pairs) {
+      await enqueueChannelChange(sql, connectionId, { kind: 'rate', unitTypeId: p.unitTypeId, ratePlanId: p.localId, date: FROM, dateTo: TO });
     }
     console.log(`\nУ ЧЕРЗІ: наявність ${await pendingChannelChanges(connectionId, 'availability')}, ціни ${await pendingChannelChanges(connectionId, 'rate')}`);
 
@@ -281,7 +285,7 @@ await runWithOrganization(organizationId, async () => {
       console.log(`\nПРОБА 429, смуга ${lane.kind}: до ${lane.n} проходів по одній координаті (від ${far})`);
       for (let i = 1; i <= lane.n && !hit; i++) {
         const date = addDays(far, ++total);
-        await enqueueChannelChange(connectionId, lane.make(date));
+        await enqueueChannelChange(sql, connectionId, lane.make(date));
         const r = await flushConnectionOutboxFor(connectionId);
         const err = r.errors.join(' | ');
         console.log(`  #${i} ${date}: sent ${r.sent}, failed ${r.failed}, calls ${r.calls}, +${((Date.now() - started) / 1000).toFixed(1)}s${err ? `  → ${err.slice(0, 160)}` : ''}`);

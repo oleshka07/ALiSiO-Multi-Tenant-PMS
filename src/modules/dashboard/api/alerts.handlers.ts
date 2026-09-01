@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { noteAvailabilityChanged, lastNight } from '@channels/outbox';
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { todayFor, shiftDays } from '@core/hotel-day';
@@ -24,11 +25,25 @@ export async function getAlerts(_request: Request, _ctx: unknown, actor: Actor) 
     const today = await todayFor(org);
     const archiveCutoff = shiftDays(today, -7);
 
+    // Канали: no_show звільняє ночі, які ще лишились у броні. Кандидати
+    // читаються ДО оновлення — після нього їх не відрізнити від давніх.
+    const archived = await sql.rows<any>(`
+      SELECT r.property_id, r.check_in, r.check_out, COALESCE(r.unit_type_id, u.unit_type_id) AS unit_type_id
+      FROM reservations r LEFT JOIN units u ON u.id = r.unit_id
+      WHERE ${OWN('r.')} AND r.check_in < ? AND r.status = 'confirmed'
+    `, [org, archiveCutoff]);
     await sql.run(`
       UPDATE reservations
       SET status = 'no_show', updated_at = CURRENT_TIMESTAMP
       WHERE ${OWN()} AND check_in < ? AND status = 'confirmed'
     `, [org, archiveCutoff]);
+    for (const stay of archived) {
+      if (!stay.unit_type_id || !stay.check_in || !stay.check_out) continue;
+      await noteAvailabilityChanged(sql, {
+        propertyId: String(stay.property_id), unitTypeId: String(stay.unit_type_id),
+        from: String(stay.check_in).slice(0, 10), to: lastNight(String(stay.check_out).slice(0, 10)),
+      });
+    }
 
     // Код і дані, а не готовий рядок. Українське речення, складене тут,
     // німецький портьє читав як є: `check-i18n-leak` забороняє `t()` під

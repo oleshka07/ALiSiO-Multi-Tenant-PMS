@@ -1,3 +1,6 @@
+import { getSql } from '@core/db/async';
+import { enqueueChange, OUTBOX_HORIZON_DAYS } from './outbox.repo';
+import { addDays } from './outbox-notes';
 import { catalogProperty, catalogUnitTypes } from '@properties';
 import { propertyRatePlans } from '@pricing';
 import { connectionInTenant, rememberRemoteProperty } from './connections.repo';
@@ -46,14 +49,25 @@ export function tableMirror(connectionId: string): CatalogMirror {
     remoteIdOf(entityType, localId, unitTypeId = '', occupancy = 0) {
       return remoteIdOf(connectionId, entityType, localId, occupancy, unitTypeId);
     },
-    put(row) {
-      return putMapping(connectionId, {
+    async put(row) {
+      await putMapping(connectionId, {
         entityType: row.entityType,
         localId: row.localId,
         unitTypeId: row.unitTypeId ?? '',
         occupancy: row.occupancy ?? 0,
         remoteId: row.remoteId,
       });
+      // Ц16: новий мапінг — це перша відправка. Тариф на тому боці створено
+      // ЗАКРИТИМ, і відкриє його лише батчер із черги; тип чи пара, що
+      // зʼявились у дзеркалі без координати, лишились би закритими назавжди
+      // без жодної помилки — та сама тиша, що И14, поверхом вище.
+      const today = new Date().toISOString().slice(0, 10);
+      const horizon = addDays(today, OUTBOX_HORIZON_DAYS - 1);
+      if (row.entityType === 'unit_type') {
+        await enqueueChange(getSql(), connectionId, { kind: 'availability', unitTypeId: row.localId, date: today, dateTo: horizon });
+      } else if (row.entityType === 'rate_plan' && row.unitTypeId) {
+        await enqueueChange(getSql(), connectionId, { kind: 'rate', unitTypeId: row.unitTypeId, ratePlanId: row.localId, date: today, dateTo: horizon });
+      }
     },
   };
 }

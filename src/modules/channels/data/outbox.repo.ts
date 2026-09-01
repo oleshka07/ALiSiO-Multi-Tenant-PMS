@@ -1,4 +1,4 @@
-import { getSql } from '@core/db/async';
+import { getSql, type Sql } from '@core/db/async';
 import { currentOrganizationId } from '@core/auth/tenant-context';
 import { connectionInTenant } from './connections.repo';
 import { DEFAULT_MAX_ATTEMPTS } from '../domain/ari-batch.ts';
@@ -54,12 +54,20 @@ export type ChangeKind = 'availability' | 'rate';
 
 export interface Change {
   kind: ChangeKind;
-  /** Тип номера. Для наявності — обовʼязковий, вона висить саме на ньому. */
+  /** Тип номера. Обовʼязковий для обох смуг: наявність висить на ньому, а ціна адресується парою (Ц10). */
   unitTypeId?: string | null;
   /** Тариф. Для наявності порожній: вона не залежить від тарифу. */
   ratePlanId?: string | null;
-  /** Доба проживання, `YYYY-MM-DD`. */
+  /** Перша (або єдина) ніч, `YYYY-MM-DD`. */
   date: string;
+  /**
+   * Остання ніч діапазону, ВКЛЮЧНО (Ц15). Порожньо — одна ніч.
+   *
+   * Запис матриці без дат — це кожна майбутня ніч; діапазон кладе його
+   * одним рядком. Перекриття безпечне: черга тримає координату, не число
+   * (Ц13). Не раніше за `date` — інакше рядок не розкладеться на жодну ніч.
+   */
+  dateTo?: string | null;
 }
 
 export interface ClaimedChange {
@@ -68,9 +76,18 @@ export interface ClaimedChange {
   unitTypeId: string | null;
   ratePlanId: string | null;
   date: string;
+  /** Остання ніч включно; `null` — та сама, що `date`. */
+  dateTo: string | null;
   attempts: number;
   lastError: string | null;
 }
+
+/**
+ * Скільки ночей уперед сягає координата без кінця (матриця без дат, тир без
+ * вікна, видалений тариф). Стільки ж бере повний синк у менеджера каналів
+ * (INVENTORY §4.4: «500 днів, 2 виклики»). Далі ночі не існує ні для кого.
+ */
+export const OUTBOX_HORIZON_DAYS = 500;
 
 /**
  * Поставити координату в чергу.
@@ -84,13 +101,17 @@ export interface ClaimedChange {
  * зайвий виклик із ліміту 10 на хвилину. Але щойно рядок захоплено, нова
  * зміна створює НОВИЙ — див. шапку.
  */
-export async function enqueueChange(connectionId: string, change: Change): Promise<void> {
+export async function enqueueChange(t: Sql, connectionId: string, change: Change): Promise<void> {
   const conn = await connectionInTenant(connectionId);
   if (!conn) throw new Error('cm_outbox: connection not found');
 
-  const sql = getSql();
+  const sql = t;
   const unitTypeId = change.unitTypeId ?? null;
   const ratePlanId = change.ratePlanId ?? null;
+  const dateTo = change.dateTo && change.dateTo !== change.date ? change.dateTo : null;
+  if (dateTo && dateTo < change.date) {
+    throw new Error(`cm_outbox: range end ${dateTo} is before its start ${change.date}`);
+  }
 
   // Координата без адресата не лягає взагалі: наявність без типу нема на що
   // покласти, ціну без типу або тарифу — нема чим ні цінувати, ні
@@ -111,13 +132,13 @@ export async function enqueueChange(connectionId: string, change: Change): Promi
   // двигунах. Той самий прийом, що в `price-calendar.repo.ts`.
   await sql.run(
     `INSERT INTO cm_outbox
-       (id, organization_id, connection_id, kind, unit_type_id, rate_plan_id, stay_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (connection_id, kind, (COALESCE(unit_type_id, '')), (COALESCE(rate_plan_id, '')), stay_date)
+       (id, organization_id, connection_id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (connection_id, kind, (COALESCE(unit_type_id, '')), (COALESCE(rate_plan_id, '')), stay_date, (COALESCE(stay_date_to, stay_date)))
        WHERE claimed_at IS NULL AND sent_at IS NULL
        DO NOTHING`,
     [crypto.randomUUID(), conn.organizationId, connectionId,
-      change.kind, unitTypeId, ratePlanId, change.date],
+      change.kind, unitTypeId, ratePlanId, change.date, dateTo],
   );
 }
 
@@ -153,6 +174,7 @@ const toClaimed = (r: Record<string, unknown>): ClaimedChange => ({
   unitTypeId: r.unit_type_id == null ? null : String(r.unit_type_id),
   ratePlanId: r.rate_plan_id == null ? null : String(r.rate_plan_id),
   date: String(r.stay_date).slice(0, 10),
+  dateTo: r.stay_date_to == null ? null : String(r.stay_date_to).slice(0, 10),
   attempts: Number(r.attempts) || 0,
   lastError: r.last_error == null ? null : String(r.last_error),
 });
@@ -171,7 +193,7 @@ export async function queuedChanges(
 
   const sql = getSql();
   const rows = await sql.rows<any>(
-    `SELECT id, kind, unit_type_id, rate_plan_id, stay_date, attempts, last_error
+    `SELECT id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to, attempts, last_error
        FROM cm_outbox
       WHERE connection_id = ? AND organization_id = ?
         AND sent_at IS NULL AND claimed_at IS NULL AND attempts < ?
@@ -196,7 +218,7 @@ export async function stuckChanges(
 
   const sql = getSql();
   const rows = await sql.rows<any>(
-    `SELECT id, kind, unit_type_id, rate_plan_id, stay_date, attempts, last_error
+    `SELECT id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to, attempts, last_error
        FROM cm_outbox
       WHERE connection_id = ? AND organization_id = ?
         AND sent_at IS NULL AND claimed_at IS NULL AND attempts >= ?
@@ -236,9 +258,20 @@ export async function retryStuck(
  * серед `claimed_at IS NULL`. Це заміна `FOR UPDATE SKIP LOCKED`, яка працює
  * на обох двигунах.
  *
- * Мітка одна на пачку — за нею ж рядки й читаються назад. Читати «останні N
- * захоплених» не можна: між двома батчерами це та сама гонка, тільки на крок
- * пізніше.
+ * ── Захоплене читається з `RETURNING`, не за міткою ──────────────────────
+ *
+ * Перша версія писала в `claimed_at` текстову мітку `claim:<uuid>` і читала
+ * рядки назад за нею. На SQLite це працювало — колонка там TEXT. На Postgres
+ * `claimed_at` це TIMESTAMPTZ, і перше ж захоплення падало з
+ * `invalid input syntax for type timestamp with time zone` — тобто батчер не
+ * забрав би з черги ЖОДНОГО рядка на проді, а всі перевірки черги були
+ * зеленими, бо ганялись лише на SQLite. Знайдено 01.09.2026 на стенді
+ * Postgres (AGENTS §7); вісь «який двигун» у `npm run check` вироджена
+ * (інваріант 26), тому DB-перевірки каналів мають і `npm run check:pg`.
+ *
+ * `UPDATE … RETURNING` віддає рівно ті рядки, які ЦЕЙ виклик позначив — без
+ * мітки й без гонки «прочитати останні N захоплених». Обидва двигуни його
+ * вміють (SQLite з 3.35).
  */
 export async function claimBatch(
   connectionId: string,
@@ -250,7 +283,6 @@ export async function claimBatch(
   if (!organizationId) throw new Error('cm_outbox: claim without a tenant');
 
   const sql = getSql();
-  const mark = `claim:${crypto.randomUUID()}`;
 
   // Спершу обираємо кандидатів, потім позначаємо їх поіменно: `UPDATE … LIMIT`
   // існує не в кожній збірці SQLite і не в Postgres, а `IN (SELECT … LIMIT)`
@@ -270,20 +302,15 @@ export async function claimBatch(
   if (candidates.length === 0) return [];
 
   const holes = candidates.map(() => '?').join(', ');
-  await sql.run(
-    `UPDATE cm_outbox SET claimed_at = ?, last_error = NULL
-      WHERE id IN (${holes}) AND claimed_at IS NULL AND sent_at IS NULL`,
-    [mark, ...candidates.map((c) => c.id)],
-  );
-
   const rows = await sql.rows<any>(
-    `SELECT id, kind, unit_type_id, rate_plan_id, stay_date, attempts, last_error
-       FROM cm_outbox
-      WHERE claimed_at = ? AND organization_id = ?
-      ORDER BY created_at`,
-    [mark, organizationId],
+    `UPDATE cm_outbox SET claimed_at = CURRENT_TIMESTAMP, last_error = NULL
+      WHERE id IN (${holes}) AND organization_id = ? AND claimed_at IS NULL AND sent_at IS NULL
+      RETURNING id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to, attempts, last_error, created_at`,
+    [...candidates.map((c) => c.id), organizationId],
   ) as Record<string, unknown>[];
 
+  // RETURNING не впорядковує; порядок черги — за часом появи.
+  rows.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
   return rows.map(toClaimed);
 }
 

@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { noteAvailabilityChanged, lastNight } from './outbox';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { parseICal, extractGuestName } from '@/modules/channels/domain/ical'; // TODO: move to @core/ical
@@ -85,6 +86,16 @@ export async function syncChannel(channel: any, organizationId: string) {
     if (unitIds.length === 0) throw new Error('No units found for this channel');
 
     const org = { id: organizationId };
+    // Ночі броні як координата для каналів; тип — від номера (iCal знає номер).
+    const stayOf = (id: string) => sql.row<any>(
+      'SELECT r.property_id, r.check_in, r.check_out, u.unit_type_id FROM reservations r LEFT JOIN units u ON u.id = r.unit_id WHERE r.id = ?', [id]);
+    const noteStayRow = async (stay: any) => {
+      if (!stay?.check_in || !stay?.check_out || !stay.unit_type_id) return;
+      await noteAvailabilityChanged(sql, {
+        propertyId: String(stay.property_id), unitTypeId: String(stay.unit_type_id),
+        from: String(stay.check_in).slice(0, 10), to: lastNight(String(stay.check_out).slice(0, 10)),
+      });
+    };
 
     for (const event of events) {
       const externalUid = `ical_${channel.id}_${event.uid}`;
@@ -95,11 +106,15 @@ export async function syncChannel(channel: any, organizationId: string) {
           (new Date(event.dtend).getTime() - new Date(event.dtstart).getTime()) / 86400000
         ));
         if (existing.check_in !== event.dtstart || existing.check_out !== event.dtend) {
+          const stayBefore = await stayOf(existing.id);
           await sql.run(`
             UPDATE reservations SET check_in = ?, check_out = ?, nights = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
           `, [event.dtstart, event.dtend, nights, existing.id]);
           eventsUpdated++;
+          // Канали: старі ночі звільнились, нові зайняті.
+          await noteStayRow(stayBefore);
+          await noteStayRow(await stayOf(existing.id));
         }
       } else {
         const guestName = extractGuestName(event.summary);
@@ -147,6 +162,8 @@ export async function syncChannel(channel: any, organizationId: string) {
           unit?.property_id || channel.property_id, 0,
           guestPageToken, externalUid,
           `iCal import: ${event.summary}`]);
+        // Канали: ночі імпортованої броні зайняті.
+        await noteStayRow(await stayOf(resId));
 
         eventsCreated++;
       }

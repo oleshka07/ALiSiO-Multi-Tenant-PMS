@@ -129,8 +129,9 @@ export async function ariFlush(
     claim: async (kind) => {
       const rows = await claimBatch(connectionId, kind, CLAIM_LIMIT, maxAttempts);
       if (kind === 'availability' && rows.length) {
-        const dates = rows.map((r) => r.date).sort();
-        span = { from: dates[0], to: dates[dates.length - 1] };
+        const starts = rows.map((r) => r.date).sort();
+        const ends = rows.map((r) => r.dateTo ?? r.date).sort();
+        span = { from: starts[0], to: ends[ends.length - 1] };
       }
       return rows.map((r) => ({
         id: r.id,
@@ -138,6 +139,7 @@ export async function ariFlush(
         unitTypeId: r.unitTypeId ?? undefined,
         ratePlanId: r.ratePlanId ?? undefined,
         date: r.date,
+        dateTo: r.dateTo ?? undefined,
         attempts: r.attempts,
       }));
     },

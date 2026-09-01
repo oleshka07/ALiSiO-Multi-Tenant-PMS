@@ -64,6 +64,15 @@ export interface ClaimedCoordinate {
   ratePlanId?: string;
   date: string;
   /**
+   * Остання ніч діапазону, включно (Ц15). Порожньо — одна ніч.
+   *
+   * Черга кладе запис матриці без дат одним рядком, а не тисячею; батчер
+   * розкладає його по датах сам, бо значення читається на КОЖНУ ніч —
+   * черга тримає координату, не число. Стиснення в тілі повідомлення збере
+   * однакові назад.
+   */
+  dateTo?: string;
+  /**
    * Скільки разів вона вже НЕ поїхала. Дефолт — нуль.
    *
    * Лічильник веде черга при звільненні; домен його лише читає, щоб знати,
@@ -89,12 +98,31 @@ export interface ClaimedCoordinate {
  */
 export const DEFAULT_MAX_ATTEMPTS = 10;
 
-/** Значення, зібране з джерела, разом із рядками черги, які його породили. */
+/**
+ * Значення однієї ночі разом із рядком черги, який його породив.
+ *
+ * Рядок-діапазон породжує багато значень, і вони можуть розкластись на
+ * кілька пачок. Доля рядка вирішується наприкінці смуги, за всіма його
+ * значеннями разом: поїхав лише той, у кого поїхало все.
+ */
 interface Resolved<T> {
   ids: string[];
   /** Найбільший лічильник серед координат, що злились у це значення. */
   attempts: number;
   value: T;
+}
+
+/** Дата наступного дня, рядковою арифметикою — без часових поясів. */
+function nextDay(date: string): string {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+}
+
+/** Усі ночі координати від `from` до кінця включно. */
+function nightsOf(from: string, to: string): string[] {
+  const out: string[] = [];
+  for (let d = from; d <= to; d = nextDay(d)) out.push(d);
+  return out;
 }
 
 export interface FlushReport {
@@ -303,27 +331,17 @@ async function flushLane<T extends AvailabilityChange | RateChange>(
   const sizeOf = deps.sizeOf ?? jsonSize;
   const maxAttempts = deps.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
 
-  /**
-   * Не поїхало — повернути в чергу, і назвати тих, кому це був останній раз.
-   *
-   * Звільнення стається ЗАВЖДИ, навіть для вичерпаних: саме воно робить
-   * рядок видимим як застряглий (черга перестає його роздавати за
-   * лічильником, а не за захопленням). Не звільнити означало б повернути
-   * вічно захоплений рядок — правило 1 з шапки.
-   */
-  const fail = async (items: Resolved<T>[], reason: string): Promise<void> => {
-    const ids = items.flatMap((r) => r.ids);
-    await deps.release(ids, reason);
-    report.failed += ids.length;
-    report.errors.push(`${kind}: ${reason}`);
+  // Доля кожного РЯДКА черги, не кожного значення: рядок-діапазон живе в
+  // кількох пачках, і поїхав лише той, у кого поїхало все. Успіх першої
+  // пачки не робить його відправленим — інакше друга половина не поїде
+  // ніколи, а журнал казатиме «слали».
+  const attemptsOf = new Map<string, number>();
+  const delivered = new Set<string>();
+  const failedFor = new Map<string, string>();
+  for (const r of resolved) for (const id of r.ids) attemptsOf.set(id, Math.max(attemptsOf.get(id) ?? 0, r.attempts));
 
-    const exhausted = items.filter((r) => r.attempts + 1 >= maxAttempts).flatMap((r) => r.ids);
-    if (exhausted.length) {
-      report.needsAttention += exhausted.length;
-      report.errors.push(
-        `${kind}: ${exhausted.length} coordinate(s) reached the attempt limit (${maxAttempts}) — needs attention`,
-      );
-    }
+  const fail = (items: Resolved<T>[], reason: string): void => {
+    for (const r of items) for (const id of r.ids) failedFor.set(id, reason);
   };
 
   for (const batch of intoBatches(resolved, max, sizeOf as (v: T) => number)) {
@@ -338,25 +356,45 @@ async function flushLane<T extends AvailabilityChange | RateChange>(
       const orphans = unmapped.length
         ? batch.filter((r) => unmapped.some((u) => sameCoordinate(u, r.value)))
         : [];
-      if (orphans.length) {
-        await fail(orphans, `unmapped ${unmapped.map(describe).join(', ')}`);
-      }
-      const delivered = batch.filter((r) => !orphans.includes(r));
+      if (orphans.length) fail(orphans, `unmapped ${unmapped.map(describe).join(', ')}`);
+      const rest = batch.filter((r) => !orphans.includes(r));
       // `200 OK` з непорожніми претензіями — це помилка, а не успіх (И4).
       // Порожній результат означає, що не застосовано НІЧОГО, тож позначити
       // рядки відправленими означало б втратити зміну, доповівши про успіх.
       if (answer.warnings && answer.warnings.length > 0) {
-        await fail(delivered, `${answer.warnings.length} claim(s): ${JSON.stringify(answer.warnings).slice(0, 300)}`);
-      } else if (delivered.length) {
-        const ids = delivered.flatMap((r) => r.ids);
-        await deps.markSent(ids);
-        report.sent += ids.length;
+        fail(rest, `${answer.warnings.length} claim(s): ${JSON.stringify(answer.warnings).slice(0, 300)}`);
+      } else {
+        for (const r of rest) for (const id of r.ids) delivered.add(id);
       }
     } catch (e: any) {
-      // Найважливіші два рядки в усьому файлі — див. правило 1 у шапці.
-      await fail(batch, String(e?.message ?? e));
+      // Найважливіший рядок у всьому файлі — див. правило 1 у шапці.
+      fail(batch, String(e?.message ?? e));
     }
     report.calls++;
+  }
+
+  const sentIds = [...delivered].filter((id) => !failedFor.has(id));
+  if (sentIds.length) {
+    await deps.markSent(sentIds);
+    report.sent += sentIds.length;
+  }
+
+  // Звільнення — один раз на рядок, по одній причині на групу. Стається
+  // ЗАВЖДИ, навіть для вичерпаних: саме воно робить рядок видимим як
+  // застряглий (черга перестає роздавати за лічильником, не за захопленням).
+  const byReason = new Map<string, string[]>();
+  for (const [id, reason] of failedFor) byReason.set(reason, [...(byReason.get(reason) ?? []), id]);
+  for (const [reason, ids] of byReason) {
+    await deps.release(ids, reason);
+    report.failed += ids.length;
+    report.errors.push(`${kind}: ${reason}`);
+  }
+  const exhausted = [...failedFor.keys()].filter((id) => (attemptsOf.get(id) ?? 0) + 1 >= maxAttempts);
+  if (exhausted.length) {
+    report.needsAttention += exhausted.length;
+    report.errors.push(
+      `${kind}: ${exhausted.length} coordinate(s) reached the attempt limit (${maxAttempts}) — needs attention`,
+    );
   }
 }
 
@@ -392,12 +430,17 @@ export async function flushOutbox(deps: FlushDeps): Promise<FlushReport> {
    * на тисячі застарілих рядків ще й помітна.
    */
   const alive = async (claimed: ClaimedCoordinate[]): Promise<ClaimedCoordinate[]> => {
-    const past = claimed.filter((c) => c.date < today);
+    const endOf = (c: ClaimedCoordinate) => c.dateTo ?? c.date;
+    const past = claimed.filter((c) => endOf(c) < today);
     if (past.length) {
       await deps.retire(past.map((c) => c.id), `date in the past (today ${today})`);
       report.retired += past.length;
     }
-    return claimed.filter((c) => c.date >= today);
+    // Діапазон, що почався вчора, не знімається — його майбутні ночі
+    // справжні; обрізається лише початок.
+    return claimed
+      .filter((c) => endOf(c) >= today)
+      .map((c) => (c.date < today ? { ...c, date: today } : c));
   };
 
   /**
@@ -421,12 +464,14 @@ export async function flushOutbox(deps: FlushDeps): Promise<FlushReport> {
   const resolvedAvailability: Resolved<AvailabilityChange>[] = [];
   for (const c of availability) {
     if (!c.unitTypeId) continue;
-    const free = await deps.availabilityAt(c.unitTypeId, c.date);
-    resolvedAvailability.push({
-      ids: [c.id],
-      attempts: c.attempts ?? 0,
-      value: { unitTypeId: c.unitTypeId, date: c.date, free: free ?? 0 },
-    });
+    for (const date of nightsOf(c.date, c.dateTo ?? c.date)) {
+      const free = await deps.availabilityAt(c.unitTypeId, date);
+      resolvedAvailability.push({
+        ids: [c.id],
+        attempts: c.attempts ?? 0,
+        value: { unitTypeId: c.unitTypeId, date, free: free ?? 0 },
+      });
+    }
   }
   await flushLane('availability', resolvedAvailability, deps, report);
 
@@ -435,14 +480,16 @@ export async function flushOutbox(deps: FlushDeps): Promise<FlushReport> {
   const resolvedRates: Resolved<RateChange>[] = [];
   for (const c of rates) {
     if (!c.unitTypeId || !c.ratePlanId) continue;
-    const base = await deps.pricesAt(c.unitTypeId, c.ratePlanId, c.date);
-    const prices = shift(base, deps.priceModifierPercent ?? 0);
-    // Правило 2 з шапки, і воно тут ціле в двох рядках: або ціни та явне
-    // відкриття, або закриття. Третього — «не слати» — немає.
-    const at = { ratePlanId: c.ratePlanId, unitTypeId: c.unitTypeId, date: c.date };
-    resolvedRates.push(prices && prices.length
-      ? { ids: [c.id], attempts: c.attempts ?? 0, value: { ...at, prices, closed: false } }
-      : { ids: [c.id], attempts: c.attempts ?? 0, value: { ...at, closed: true } });
+    for (const date of nightsOf(c.date, c.dateTo ?? c.date)) {
+      const base = await deps.pricesAt(c.unitTypeId, c.ratePlanId, date);
+      const prices = shift(base, deps.priceModifierPercent ?? 0);
+      // Правило 2 з шапки, і воно тут ціле в двох рядках: або ціни та явне
+      // відкриття, або закриття. Третього — «не слати» — немає.
+      const at = { ratePlanId: c.ratePlanId, unitTypeId: c.unitTypeId, date };
+      resolvedRates.push(prices && prices.length
+        ? { ids: [c.id], attempts: c.attempts ?? 0, value: { ...at, prices, closed: false } }
+        : { ids: [c.id], attempts: c.attempts ?? 0, value: { ...at, closed: true } });
+    }
   }
   await flushLane('rate', resolvedRates, deps, report);
 

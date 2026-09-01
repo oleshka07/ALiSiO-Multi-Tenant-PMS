@@ -43,6 +43,19 @@ export interface Connection {
 }
 
 /** Зʼєднання, якщо воно НАШЕ. Чуже й неіснуюче однаково дають `null`. */
+function toConnection(row: Record<string, any>): Connection {
+  return {
+    id: String(row.id),
+    organizationId: String(row.organization_id),
+    propertyId: String(row.property_id),
+    provider: String(row.provider),
+    environment: String(row.environment),
+    remotePropertyId: row.remote_property_id == null ? null : String(row.remote_property_id),
+    isEnabled: Boolean(Number(row.is_enabled)),
+    pricingModifierPercent: Number(row.pricing_modifier_percent) || 0,
+  };
+}
+
 export async function connectionInTenant(connectionId: string): Promise<Connection | null> {
   const organizationId = currentOrganizationId();
   if (!organizationId) throw new Error('cm: connection lookup without a tenant');
@@ -58,16 +71,7 @@ export async function connectionInTenant(connectionId: string): Promise<Connecti
 
   if (!row) return null;
 
-  return {
-    id: String(row.id),
-    organizationId: String(row.organization_id),
-    propertyId: String(row.property_id),
-    provider: String(row.provider),
-    environment: String(row.environment),
-    remotePropertyId: row.remote_property_id == null ? null : String(row.remote_property_id),
-    isEnabled: Boolean(Number(row.is_enabled)),
-    pricingModifierPercent: Number(row.pricing_modifier_percent) || 0,
-  };
+  return toConnection(row);
 }
 
 /**
@@ -110,4 +114,35 @@ export async function rememberRemoteProperty(
       WHERE id = ? AND organization_id = ?`,
     [remotePropertyId, new Date().toISOString(), connectionId, organizationId],
   );
+}
+
+/**
+ * Усі зʼєднання обʼєкта — для писачів черги: бронь, ціна, блокування кажуть
+ * «змінилось» кожному менеджеру каналів цього обʼєкта.
+ *
+ * ── Вимкнені теж, і це навмисно ─────────────────────────────────────────
+ *
+ * Вимкнене зʼєднання нічого не шле (батчер це тримає), але чергу отримує:
+ * вимкнення буває тимчасовим, і після вмикання канал має отримати ПОТОЧНИЙ
+ * стан кожної координати, що змінилась за цей час. Фільтрувати тут означало
+ * б, що після вмикання канал продає за старими цінами, доки хтось не зробить
+ * повний синк — а «хтось» у такому реченні завжди ніхто. Черга обмежена
+ * координатами (індекс злиття), тож вимкнене зʼєднання її не роздує.
+ *
+ * Орендар — із сесії, і в SQL явно (див. шапку файла).
+ */
+export async function connectionsForProperty(propertyId: string): Promise<Connection[]> {
+  const organizationId = currentOrganizationId();
+  if (!organizationId) throw new Error('cm: connection lookup without a tenant');
+
+  const sql = getSql();
+  const rows = await sql.rows<any>(
+    `SELECT id, organization_id, property_id, provider, environment,
+            remote_property_id, is_enabled, pricing_modifier_percent
+       FROM cm_connections
+      WHERE property_id = ? AND organization_id = ?
+      ORDER BY id`,
+    [propertyId, organizationId],
+  ) as Record<string, unknown>[];
+  return rows.map(toConnection);
 }

@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { noteStay } from '../data/stay-notes';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { findOrCreateGuest } from '@guests';
@@ -262,6 +263,10 @@ export const createReservation = withPermission('manage_bookings', async (reques
       INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, children, status, payment_status, source, total_price, currency, commission_amount, guest_page_token, city_tax_amount, city_tax_included, city_tax_paid, internal_notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [resId, actor.organizationId, unit.property_id, unitId, guestId, checkIn, checkOut, nights || 1, adults || 1, children || 0, bookingStatus, body.paymentStatus || 'unpaid', source || 'direct', priceGiven, currency, commissionAmount, guestPageToken, finalCityTaxAmount, finalCityTaxIncluded, finalCityTaxPaid, internalNotes || null]);
+
+    // Канали: ночі цього типу стали зайнятішими. Шлях старший за чергу й без
+    // транзакції, тож одразу після запису, тим самим `sql`.
+    await noteStay(sql, { property_id: unit.property_id, unit_id: unitId, check_in: checkIn, check_out: checkOut });
 
     // Audit log
     try {

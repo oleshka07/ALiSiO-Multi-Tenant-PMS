@@ -31,7 +31,7 @@ import { flushOutbox, type FlushDeps } from './ari-batch.ts';
 const DAY = '2026-11-10';
 
 /** Черга в памʼяті: рівно та поведінка, яку дає `cm_outbox`. */
-function queue(rows: { id: string; kind: 'availability' | 'rate'; unitTypeId?: string; ratePlanId?: string; date: string; attempts?: number }[]) {
+function queue(rows: { id: string; kind: 'availability' | 'rate'; unitTypeId?: string; ratePlanId?: string; date: string; dateTo?: string; attempts?: number }[]) {
   const claimed = new Set<string>();
   const sent = new Set<string>();
   const released: { ids: string[]; reason: string }[] = [];
@@ -454,5 +454,66 @@ console.log('  ok  межа спроб: остання дозволена нев
   assert.strictEqual(calls, 0, 'нема чого слати — і нічого не має бути надіслано');
 }
 console.log('  ok  вісь пари: один тариф на двох типах — дві ціни, два адресати; координата без типу знімається вголос');
+
+// ── 12. Діапазон: одна координата — багато дат, і рядок їде лише ЦІЛИМ ────
+//
+// Форма з Ц13: запис матриці без дат — це «кожна майбутня ніч», і черга
+// тримає його одним рядком, а не тисячею. Батчер розкладає діапазон по
+// датах сам: значення читається на КОЖНУ (черга тримає координату, не
+// число), а стиснення в тілі повідомлення збере однакові назад.
+{
+  const q = queue([{ id: 'r1', kind: 'availability', unitTypeId: 'ut', date: '2026-11-10', dateTo: '2026-11-14' }]);
+  const asked: string[] = [];
+  const values: any[] = [];
+  await flushOutbox(base({
+    ...q.deps,
+    availabilityAt: async (_ut: string, date: string) => { asked.push(date); return 2; },
+    send: async (_k, v) => { values.push(...v); return { warnings: [] }; },
+  }));
+  assert.deepStrictEqual(asked, ['2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14'],
+    'діапазон мусить розкластись по датах — значення читається на кожну, інакше поїде одна ніч із пʼяти');
+  assert.strictEqual(values.length, 5);
+  assert.deepStrictEqual(q.free(), [], 'рядок, що поїхав цілим, мусить бути позначений відправленим');
+}
+// Діапазон, що починається в минулому, обрізається сьогоднішнім днем, а не
+// знімається: майбутні ночі в ньому справжні.
+{
+  const q = queue([{ id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: '2026-10-30', dateTo: '2026-11-02' }]);
+  const asked: string[] = [];
+  const report = await flushOutbox(base({
+    ...q.deps,
+    today: '2026-11-01',
+    pricesAt: async (_ut: string, _rp: string, date: string) => { asked.push(date); return [{ occupancy: 2, priceMinor: 11000 }]; },
+  }));
+  assert.deepStrictEqual(asked, ['2026-11-01', '2026-11-02'], 'минулі ночі діапазону не питаються — вендор їх не приймає; майбутні мусять поїхати');
+  assert.strictEqual(report.retired, 0, 'діапазон із майбутніми ночами не знімається');
+  assert.deepStrictEqual(q.free(), []);
+}
+// А діапазон, що весь у минулому, — знімається, як і одна минула дата.
+{
+  const q = queue([{ id: 'old', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: '2026-10-01', dateTo: '2026-10-05' }]);
+  const report = await flushOutbox(base({ ...q.deps, today: '2026-11-01' }));
+  assert.strictEqual(report.retired, 1, 'діапазон цілком у минулому мусить бути знятий і порахований');
+}
+// Рядок, частина якого не поїхала, повертається ЦІЛИМ. Дати одного діапазону
+// можуть розкластись на кілька пачок за розміром; успіх першої пачки не
+// робить рядок відправленим — інакше друга половина не поїде ніколи, а
+// журнал казатиме «слали».
+{
+  const q = queue([{ id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: '2026-11-10', dateTo: '2026-11-19' }]);
+  let calls = 0;
+  const report = await flushOutbox(base({
+    ...q.deps,
+    maxBodyBytes: 250,   // десять ночей не вміщаються в одну пачку
+    send: async () => { calls++; if (calls === 2) throw new Error('boom'); return { warnings: [] }; },
+  }));
+  assert.ok(calls >= 2, `десять ночей при стелі 250 байт мали піти кількома пачками, пішло ${calls}`);
+  assert.deepStrictEqual(q.free(), ['r1'],
+    'рядок, у якого впала друга пачка, позначено відправленим за першою — друга половина не поїде ніколи');
+  assert.strictEqual(report.sent, 0, 'частково відправлений рядок не рахується відправленим');
+  assert.strictEqual(report.failed, 1, 'і рахується одним провалом, не десятьма');
+  assert.strictEqual(q.released.length, 1, 'звільнення — один раз на рядок, не на пачку');
+}
+console.log('  ok  діапазон розкладається по датах, обрізається сьогоднішнім днем, і їде лише цілим');
 
 console.log('ari-batch: помилка звільняє чергу, ніч без ціни закривається, пачка ріжеться за розміром');

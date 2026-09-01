@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { runWithOrganization } from '@core/auth/tenant-context';
+import { noteAvailabilityChanged, lastNight } from '@channels/outbox';
 import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
 import { getSql } from '@core/db/async';
@@ -573,6 +575,16 @@ export async function createWidgetReservation(request: NextRequest) {
         utmSource, utmMedium, utmCampaign, utmContent, utmTerm, gaClientId,
         lang, countryCode, session_id_to_store,
         finalNotes]);
+
+      // Канали: ночі цього типу зайняті. Публічний шлях без сесії — орендар
+      // тут той, кому належить номер, і двері читають зʼєднання через нього.
+      const stayUnit = await sql.row<any>('SELECT unit_type_id FROM units WHERE id = ?', [unitId]);
+      if (stayUnit?.unit_type_id) {
+        await runWithOrganization(String(unitOrg.organization_id), () => noteAvailabilityChanged(sql, {
+          propertyId: String(unit.property_id), unitTypeId: String(stayUnit.unit_type_id),
+          from: checkIn, to: lastNight(checkOut),
+        }));
+      }
 
       // The certificate is attached to the first reservation, with a status
       // guard against a simultaneous second use. If somebody else claimed it

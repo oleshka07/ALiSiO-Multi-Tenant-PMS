@@ -58,6 +58,11 @@ Charter описує, ЯК називати. Він не вимагає нега
 - **Колонки**: `snake_case`, однина. Час — `*_at` (TIMESTAMPTZ у Postgres),
   календарна дата — `*_date` або читабельне ім'я (`check_in`), гроші —
   `NUMERIC(14,2)`, прапорці — `is_*` / `has_*` / `show_in_*` (0/1 → BOOLEAN).
+- **Діапазон дат**: `*_from` / `*_to`, обидві межі **включно** (`valid_from`,
+  `date_from`/`date_to` у `availability_blocks` — виняток зі спадку: там кінець
+  ВИКЛЮЧНИЙ, як `check_out`). Якщо початок уже названий `*_date`, кінець —
+  `*_date_to`, NULL = один день (`cm_outbox.stay_date_to`). Не `*_until`, не
+  `end_*`: одне слово на одне поняття.
 - **Тенант**: кожна таблиця або несе `organization_id`, або досяжна через
   FK-ланцюг до `properties` (як `reservations`). Третього не буває —
   це перевіряє `audit-tenant.mjs`.

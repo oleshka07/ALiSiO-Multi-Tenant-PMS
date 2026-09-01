@@ -1,3 +1,4 @@
+import { noteAvailabilityChanged } from '@channels/outbox';
 import { getSql } from '@core/db/async';
 import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope';
 
@@ -95,8 +96,12 @@ export async function createUnit(organizationId: string, input: CreateUnitInput)
     input.name, input.code, intOr(input.floor, null), input.zone || null,
     intOr(input.beds, 0), input.notes || null, intOr(input.sort_order, 0)],
   );
+  // Канали: у типу побільшало номерів — на кожну ніч до горизонту.
+  await noteAvailabilityChanged(sql, { propertyId: input.property_id, unitTypeId: input.unit_type_id, from: todayIso(), to: null });
   return result;
 }
+
+const todayIso = () => new Date().toISOString().slice(0, 10);
 
 export interface BulkCreateUnitsInput {
   property_id: string;
@@ -170,6 +175,8 @@ export async function bulkCreateUnits(organizationId: string, input: BulkCreateU
       `, [input.unit_type_id, input.property_id, input.category_id, w.name, w.code,
         intOr(input.floor, null), intOr(input.beds, 0), input.zone || null, w.sort]);
     }
+    // Канали — тим самим `t`: номерів побільшало на кожну ніч до горизонту.
+    await noteAvailabilityChanged(t, { propertyId: input.property_id, unitTypeId: input.unit_type_id, from: todayIso(), to: null });
   });
 
   return fresh.map(({ name, code }) => ({ name, code }));
@@ -212,8 +219,20 @@ export async function updateUnit(organizationId: string, id: string, fields: Rec
   updates.push("updated_at = CURRENT_TIMESTAMP");
   values.push(id, organizationId);
 
+  // Канали: стан номера (активність, статус, тип) міняє наявність типу на
+  // кожну ніч до горизонту — старого типу й нового, якщо номер переїхав.
+  const moves = ['room_status', 'is_active', 'unit_type_id'].some((f) => fields[f] !== undefined);
+  const before = moves ? await sql.row<any>('SELECT unit_type_id, property_id FROM units WHERE id = ?', [id]) : null;
+
   await sql.run(`UPDATE units SET ${updates.join(', ')} WHERE id = ? AND ${propertyScopeSql('units')}`, [...values]);
-  return await sql.row<any>('SELECT * FROM units WHERE id = ?', [id]);
+  const after = await sql.row<any>('SELECT * FROM units WHERE id = ?', [id]);
+  if (before) {
+    const types = new Set([String(before.unit_type_id), String(after?.unit_type_id ?? before.unit_type_id)]);
+    for (const unitTypeId of types) {
+      await noteAvailabilityChanged(sql, { propertyId: String(before.property_id), unitTypeId, from: todayIso(), to: null });
+    }
+  }
+  return after;
 }
 
 export async function deleteUnit(organizationId: string, id: string): Promise<{ ok: boolean; error?: string }> {
@@ -226,6 +245,11 @@ export async function deleteUnit(organizationId: string, id: string): Promise<{ 
     return { ok: false, error: `Cannot delete: ${resCount.cnt} active reservations exist for this unit.` };
   }
 
+  // Канали: номера більше немає — ДО видалення, після нема що читати.
+  const gone = await sql.row<any>('SELECT unit_type_id, property_id FROM units WHERE id = ?', [id]);
   await sql.run(`DELETE FROM units WHERE id = ? AND ${propertyScopeSql('units')}`, [id, organizationId]);
+  if (gone?.unit_type_id) {
+    await noteAvailabilityChanged(sql, { propertyId: String(gone.property_id), unitTypeId: String(gone.unit_type_id), from: todayIso(), to: null });
+  }
   return { ok: true };
 }

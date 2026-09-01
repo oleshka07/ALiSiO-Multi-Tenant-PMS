@@ -4189,6 +4189,7 @@ function runMigrations(database: any) {
       unit_type_id    TEXT,
       rate_plan_id    TEXT,
       stay_date       TEXT NOT NULL,
+      stay_date_to    TEXT,
       claimed_at      TEXT,
       sent_at         TEXT,
       attempts        INTEGER NOT NULL DEFAULT 0,
@@ -4196,15 +4197,43 @@ function runMigrations(database: any) {
       created_at      TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+  // Ц15: координата може бути ДІАПАЗОНОМ ночей — stay_date..stay_date_to
+  // включно, NULL = одна ніч. Запис матриці цін без дат це кожна майбутня
+  // ніч: подобово — тисячі рядків на зʼєднання за одну правку, діапазоном —
+  // один. І в CREATE, і тут: інакше новий клієнт отримає базу без колонки,
+  // яку читає батчер (AGENTS §4).
+  try {
+    const obCols = (database.prepare('PRAGMA table_info(cm_outbox)').all() as any[]).map((c: any) => c.name);
+    if (!obCols.includes('stay_date_to')) {
+      database.exec('ALTER TABLE cm_outbox ADD COLUMN stay_date_to TEXT');
+      console.log('[DB] Added stay_date_to to cm_outbox');
+    }
+  } catch (e: any) {
+    console.error('[DB] cm_outbox stay_date_to:', e.message);
+  }
   // Злиття тримає СХЕМА, а не порядок викликів: «спитати й вставити» лишає
   // вікно між двома кроками, і злиття існує доти, доки писач один.
   // COALESCE обовʼязково — UNIQUE не обмежує NULL на жодному двигуні, а
   // rate_plan_id порожній у кожного рядка наявності (пастка price_occupancy).
   // Предикат claimed_at IS NULL — суть, а не оптимізація: захоплений рядок
   // уже в польоті, і нова зміна мусить стати ОКРЕМИМ рядком.
+  // Кінець діапазону — частина ключа: той самий діапазон двічі це один
+  // рядок, а два різні — два (перекриття безпечне, Ц13). Індекс без кінця
+  // знімається один раз — CREATE IF NOT EXISTS за іменем його не оновив би.
+  try {
+    const coordIdx = database.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_cm_outbox_coord'",
+    ).get() as { sql?: string } | undefined;
+    if (coordIdx?.sql && !coordIdx.sql.includes('stay_date_to')) {
+      database.exec('DROP INDEX idx_cm_outbox_coord');
+      console.log('[DB] Rebuilding idx_cm_outbox_coord with the range end');
+    }
+  } catch (e: any) {
+    console.error('[DB] idx_cm_outbox_coord:', e.message);
+  }
   database.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_cm_outbox_coord
-      ON cm_outbox(connection_id, kind, (COALESCE(unit_type_id, '')), (COALESCE(rate_plan_id, '')), stay_date)
+      ON cm_outbox(connection_id, kind, (COALESCE(unit_type_id, '')), (COALESCE(rate_plan_id, '')), stay_date, (COALESCE(stay_date_to, stay_date)))
       WHERE claimed_at IS NULL AND sent_at IS NULL
   `);
   database.exec('CREATE INDEX IF NOT EXISTS idx_cm_outbox_org ON cm_outbox(organization_id)');

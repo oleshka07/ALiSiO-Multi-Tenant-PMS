@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { noteRatesChanged } from '@channels/outbox';
 import crypto from 'crypto';
 import { getSql } from '@core/db/async';
 import type { DayPrice, PriceUpsertInput } from '../domain/types';
@@ -73,6 +74,16 @@ const ON_CONFLICT_ROW = `ON CONFLICT(unit_type_id, (COALESCE(rate_plan_id, '')),
 export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[]): Promise<number> {
   const sql = getSql();
   await sql.tx(async (t) => {
+    // Канали дізнаються В ТІЙ САМІЙ транзакції: черга, що поповнюється
+    // окремим кроком, розходиться зі станом при першому ж падінні між ними.
+    // Одним діапазоном від першої до останньої дати: базова ціна типу
+    // міняє КОЖЕН тариф на ньому, і незмінені дні між ними коштують лише
+    // повторного читання того самого числа (Ц13).
+    const owner = await t.row<any>('SELECT property_id FROM unit_types WHERE id = ?', [unitTypeId]);
+    const dates = prices.map((p) => p.date).sort();
+    if (owner && dates.length) {
+      await noteRatesChanged(t, { propertyId: String(owner.property_id), unitTypeId, from: dates[0], to: dates[dates.length - 1] });
+    }
     for (const p of prices) {
       await t.run(`
       INSERT INTO price_calendar (id, unit_type_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
@@ -133,6 +144,10 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
   const end = new Date(dateTo);
 
   await sql.tx(async (t) => {
+    // Канали — в тій самій транзакції, одним діапазоном (див. upsertPrices).
+    const owner = await t.row<any>('SELECT property_id FROM unit_types WHERE id = ?', [unitTypeId]);
+    if (owner) await noteRatesChanged(t, { propertyId: String(owner.property_id), unitTypeId, from: dateFrom, to: dateTo });
+
     const current = new Date(start);
     while (current <= end) {
       const dateStr = current.toISOString().split('T')[0];

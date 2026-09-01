@@ -95,11 +95,11 @@ try {
         'SELECT COUNT(*) AS n FROM cm_inbound_bookings WHERE organization_id = ?', [ORG])) as any).n);
 
     // ── CP4: та сама ревізія двічі ───────────────────────────────────────
-    const first = await applyRevision(CONN, rev());
+    const first = await applyRevision(sql, CONN, rev());
     assert.strictEqual(first.result, 'applied', `перша ревізія: ${JSON.stringify(first)}`);
     assert.strictEqual(await countReservations(), 1, 'перша ревізія мала створити одну бронь');
 
-    const again = await applyRevision(CONN, rev());
+    const again = await applyRevision(sql, CONN, rev());
     assert.strictEqual(again.result, 'duplicate',
       'повторна доставка тієї самої ревізії мала бути впізнана як дубль');
     assert.strictEqual(await countReservations(), 1,
@@ -109,14 +109,14 @@ try {
 
     // Дубль однаково впізнається, навіть якщо решта полів приїхала іншою:
     // ключ — саме ідентифікатор ревізії, а не вміст.
-    const noisy = await applyRevision(CONN, rev({ totalPrice: 999, adults: 4 }));
+    const noisy = await applyRevision(sql, CONN, rev({ totalPrice: 999, adults: 4 }));
     assert.strictEqual(noisy.result, 'duplicate',
       'ревізія з тим самим id, але іншим вмістом, мала лишитись дублем');
     assert.strictEqual(await countReservations(), 1);
     console.log('  ok  дубль упізнається за id ревізії, а не за вмістом');
 
     // ── Наступна ревізія ТІЄЇ САМОЇ броні — зміна, не нова бронь ─────────
-    const modified = await applyRevision(CONN, rev({
+    const modified = await applyRevision(sql, CONN, rev({
       remoteRevisionId: 'rev-2', status: 'modified', checkOut: '2026-10-14', totalPrice: 450,
     }));
     assert.strictEqual(modified.result, 'applied');
@@ -134,7 +134,7 @@ try {
     console.log('  ok  наступна ревізія змінює ТУ САМУ бронь, а не створює нову');
 
     // ── Скасування ───────────────────────────────────────────────────────
-    const cancelled = await applyRevision(CONN, rev({
+    const cancelled = await applyRevision(sql, CONN, rev({
       remoteRevisionId: 'rev-3', status: 'cancelled',
     }));
     assert.strictEqual(cancelled.result, 'applied');
@@ -153,7 +153,7 @@ try {
     console.log('  ok  бронь із каналу лягає на ТИП номера, без кімнати');
 
     // ── Неіснуюче зʼєднання ──────────────────────────────────────────────
-    const nowhere = await applyRevision('__no_such_connection__', rev({ remoteRevisionId: 'rev-9' }));
+    const nowhere = await applyRevision(sql, '__no_such_connection__', rev({ remoteRevisionId: 'rev-9' }));
     assert.strictEqual(nowhere.result, 'refused',
       'ревізія на неіснуюче зʼєднання мала бути відхилена, а не створити бронь нізвідки');
     assert.strictEqual(await countReservations(), 1);
@@ -172,7 +172,7 @@ try {
   // Ціна: бронь чужого готелю лягає в НАШУ організацію — з іменем гостя,
   // сумою і датами.
   await runWithOrganization(OTHER, async () => {
-    const trespass = await applyRevision(CONN, {
+    const trespass = await applyRevision(sql, CONN, {
       remoteRevisionId: 'rev-trespass',
       remoteBookingId: 'bkg-trespass',
       status: 'new',

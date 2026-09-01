@@ -122,7 +122,9 @@ const PERCENT = /_percent$|^percent$/;
 /** An instant. */
 const TIMESTAMP = /_at$|^created$|^updated$|^timestamp$/;
 /** A calendar day, with no time of day and no zone. */
-const DATE_ONLY = /^check_in$|^check_out$|^date$|_date$|^valid_from$|^valid_to$|^valid_until$|^expires_at$|^period_from$|^period_to$/;
+// `_date_to$` — кінець діапазону ночей (`cm_outbox.stay_date_to`, Ц15): та сама
+// календарна дата, що й початок, і вона мусить лягти тим самим типом.
+const DATE_ONLY = /^check_in$|^check_out$|^date$|_date$|_date_to$|^valid_from$|^valid_to$|^valid_until$|^expires_at$|^period_from$|^period_to$/;
 /** A true/false flag stored as 0/1. */
 // Прапорці. Список імен, а не типів, бо в SQLite прапорець — це INTEGER, і
 // відрізнити його від лічильника можна лише за назвою.

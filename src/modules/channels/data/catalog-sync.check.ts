@@ -44,6 +44,7 @@ const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
 const { syncConnectionCatalog } = await import('./catalog-sync.ts');
 const { remoteIdOf } = await import('./mappings.repo.ts');
+const { queuedChanges, OUTBOX_HORIZON_DAYS } = await import('./outbox.repo.ts');
 
 const sql = getSql();
 const A = '__catsync__a';
@@ -51,6 +52,7 @@ const B = '__catsync__b';
 
 async function cleanup() {
   for (const org of [A, B]) {
+    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [org]);
     await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [org]);
     await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
     await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [`${org}_prop`]);
@@ -173,6 +175,26 @@ await runWithOrganization(A, async () => {
   );
 });
 console.log('  ok  заведення каталогу записує обʼєкт на зʼєднання');
+
+// ── Новий мапінг — це перша відправка: діапазон до горизонту вже в черзі ──
+//
+// Тариф на тому боці створюється ЗАКРИТИМ (шапка catalog-target.ts), і
+// відкриє його лише батчер — а батчер бере координати з черги. Тип чи пара,
+// що зʼявились у дзеркалі й не поклали координати, лишаються закритими
+// назавжди без жодної помилки: та сама тиша, що И14, поверхом вище (Ц16).
+await runWithOrganization(A, async () => {
+  const queued = await queuedChanges(`${A}_conn`);
+  const av = queued.find((q) => q.kind === 'availability' && q.unitTypeId === `${A}_ut`);
+  assert.ok(av, 'заведений тип не поклав координати наявності — канал ніколи не дізнається, скільки вільно');
+  const today = new Date().toISOString().slice(0, 10);
+  assert.equal(av!.date, today, 'перша відправка — від сьогодні');
+  const [y, m, d] = today.split('-').map(Number);
+  assert.equal(av!.dateTo, new Date(Date.UTC(y, m - 1, d + OUTBOX_HORIZON_DAYS - 1)).toISOString().slice(0, 10),
+    'перша відправка — до горизонту, одним рядком');
+  // Тариф тут без ціни (no_price) — пари немає, тож і координати ціни немає.
+  assert.equal(queued.filter((q) => q.kind === 'rate').length, 0, 'непродаваний тариф не має ставати координатою');
+});
+console.log('  ok  новий мапінг кладе першу відправку — діапазон до горизонту');
 
 // ── Межа орендаря: чуже зʼєднання не зачепило ────────────────────────────
 {

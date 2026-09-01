@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { noteStay, movesStay, stayById, staysOfParent } from '../data/stay-notes';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
@@ -227,6 +228,10 @@ export const updateReservation = withPermission('manage_bookings', async (reques
       oldPaymentStatus = oldRes?.payment_status || null;
     }
 
+    // Канали: стан ДО зміни звільняє старі ночі, стан ПІСЛЯ займає нові.
+    const stayBefore = movesStay(body) ? await stayById(sql, id) : undefined;
+    const childrenBefore = movesStay(body) ? await staysOfParent(sql, id) : [];
+
     if (sets.length > 0) {
       sets.push("updated_at = CURRENT_TIMESTAMP");
       values.push(id);
@@ -234,6 +239,10 @@ export const updateReservation = withPermission('manage_bookings', async (reques
       console.log('[PATCH] SQL:', statement, 'values:', values);
       const result = await sql.run(statement, values);
       console.log('[PATCH] result:', JSON.stringify(result));
+      if (stayBefore) {
+        await noteStay(sql, stayBefore);
+        await noteStay(sql, await stayById(sql, id));
+      }
     }
 
     // Emit payment status change event for TG notification editing
@@ -312,6 +321,9 @@ export const updateReservation = withPermission('manage_bookings', async (reques
         cascadeFields.push("updated_at = CURRENT_TIMESTAMP");
         cascadeValues.push(id);
         await sql.run(`UPDATE reservations SET ${cascadeFields.join(', ')} WHERE parent_id = ?`, [...cascadeValues]);
+        // Дочірні броні рухаються разом із головною — і їхні ночі теж.
+        for (const child of childrenBefore) await noteStay(sql, child);
+        for (const child of await staysOfParent(sql, id)) await noteStay(sql, child);
       }
     } catch (cascErr) { console.error('[PATCH] cascade to children error (non-fatal):', cascErr); }
 
@@ -338,6 +350,11 @@ export const deleteReservation = withPermission('manage_bookings', async (_reque
     const actor = await getBookingActor();
 
     await sql.tx(async (t) => {
+      // 1. Канали — у ТІЙ САМІЙ транзакції, до того як рядки зникнуть: ночі
+      //    головної й дочірніх броней звільняються.
+      await noteStay(t, beforeSnapshot);
+      for (const child of await staysOfParent(t, id)) await noteStay(t, child);
+
       // 2. Delete related cart events (keep activity logs — no cascade)
       await t.run('DELETE FROM cart_events WHERE reservation_id = ?', [id]);
 

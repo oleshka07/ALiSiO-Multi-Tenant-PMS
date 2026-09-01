@@ -64,11 +64,11 @@ function harness(feed: FeedEntry[], over: Partial<PullDeps> = {}) {
     fetchFeed: async () => feed,
     tx: async (fn) => {
       log.push('tx:begin');
-      const r = await fn();
+      const r = await fn(null as never);
       log.push('tx:commit');
       return r;
     },
-    apply: async (_c, r) => {
+    apply: async (_t, _c, r) => {
       log.push(`apply:${r.remoteRevisionId}`);
       return { result: 'applied', reservationId: 'res-1', created: true };
     },
@@ -179,7 +179,7 @@ function harness(feed: FeedEntry[], over: Partial<PullDeps> = {}) {
     entry({ remoteRevisionId: 'b1', remoteBookingId: 'Y', status: 'new' }),
   ];
   const { log, deps } = harness(feed, {
-    apply: async (_c, r) => {
+    apply: async (_t, _c, r) => {
       log.push(`apply:${r.remoteRevisionId}`);
       if (r.remoteRevisionId === 'a1') return { result: 'refused', reason: 'bad' };
       return { result: 'applied', reservationId: 'res', created: true };

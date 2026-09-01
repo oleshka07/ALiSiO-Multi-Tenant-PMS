@@ -132,7 +132,7 @@ try {
   await runWithOrganization(ORG, async () => {
     // ── 1. Автентичний 429 → назад у чергу, обʼєкт на паузі, один виклик ──
     {
-      await enqueueChange(CONN, { kind: 'availability', unitTypeId: UT, date: DAY });
+      await enqueueChange(sql, CONN, { kind: 'availability', unitTypeId: UT, date: DAY });
       const t = transport([{ status: 429, body: BODY_429 }]);
       const limiter = new ChannexRateLimiter();
       const report = await ariFlush(CONN, 'key', { client: { fetch: t.fetch, limiter, sleep: async () => {} } });
@@ -196,7 +196,7 @@ try {
     // Смуга цін тут теж ходить: пара є в дзеркалі, ціни немає — координата
     // розвʼязується в «закрито» і їде як stop_sell: true без rates.
     {
-      await enqueueChange(CONN, { kind: 'rate', unitTypeId: UT, ratePlanId: RP, date: DAY });
+      await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT, ratePlanId: RP, date: DAY });
       const t = transport([{ status: 200, body: BODY_OK }, { status: 200, body: BODY_OK }]);
       const report = await ariFlush(CONN, 'key', { client: { fetch: t.fetch } });
       assert.strictEqual(t.calls.length, 2, 'наявність і ціни — два повідомлення');

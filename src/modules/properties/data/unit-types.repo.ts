@@ -1,3 +1,4 @@
+import { noteAvailabilityChanged, noteRatesChanged } from '@channels/outbox';
 import { getSql } from '@core/db/async';
 import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope';
 
@@ -127,7 +128,17 @@ export async function updateUnitType(organizationId: string, id: string, fields:
   values.push(id, organizationId);
 
   await sql.run(`UPDATE unit_types SET ${updates.join(', ')} WHERE id = ? AND ${propertyScopeSql('unit_types')}`, [...values]);
-  return await sql.row<any>('SELECT * FROM unit_types WHERE id = ?', [id]);
+  const after = await sql.row<any>('SELECT * FROM unit_types WHERE id = ?', [id]);
+  // Канали: продаваність і місткість типу — це і наявність (продається чи
+  // ні), і ціни (місткість адресує заселеності) на кожну ніч до горизонту.
+  const sellability = ['is_active', 'bookable_online'].some((f) => fields[f] !== undefined);
+  const capacity = ['max_adults', 'max_children', 'max_occupancy', 'base_occupancy'].some((f) => fields[f] !== undefined);
+  if (after && (sellability || capacity)) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (sellability) await noteAvailabilityChanged(sql, { propertyId: String(after.property_id), unitTypeId: id, from: today, to: null });
+    await noteRatesChanged(sql, { propertyId: String(after.property_id), unitTypeId: id, from: today, to: null });
+  }
+  return after;
 }
 
 export async function deleteUnitType(organizationId: string, id: string): Promise<{ ok: boolean; error?: string }> {
@@ -137,6 +148,14 @@ export async function deleteUnitType(organizationId: string, id: string): Promis
   const unitCount = await sql.row<any>('SELECT COUNT(*) as cnt FROM units WHERE unit_type_id = ?', [id]) as { cnt: number };
   if (unitCount.cnt > 0) {
     return { ok: false, error: `Cannot delete: ${unitCount.cnt} units of this type exist. Delete units first.` };
+  }
+  // Канали: типу більше немає — закрити його ночі й ціни. ДО видалення, і
+  // поки дзеркало ще памʼятає пару: після нема кому адресувати.
+  const gone = await sql.row<any>('SELECT property_id FROM unit_types WHERE id = ?', [id]);
+  if (gone) {
+    const today = new Date().toISOString().slice(0, 10);
+    await noteAvailabilityChanged(sql, { propertyId: String(gone.property_id), unitTypeId: id, from: today, to: null });
+    await noteRatesChanged(sql, { propertyId: String(gone.property_id), unitTypeId: id, from: today, to: null });
   }
   await sql.run(`DELETE FROM unit_types WHERE id = ? AND ${propertyScopeSql('unit_types')}`, [id, organizationId]);
   return { ok: true };

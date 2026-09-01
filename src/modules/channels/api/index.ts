@@ -10,3 +10,5 @@ export {
   queuedChannelChanges, stuckChannelChanges, retryStuckChannelChanges,
 } from './ari.handlers';
 export type { ChannelChange, FlushReport } from './ari.handlers';
+export { noteAvailabilityChanged, noteRatesChanged, lastNight } from './outbox';
+export type { AvailabilityNote, RateNote } from './outbox';
