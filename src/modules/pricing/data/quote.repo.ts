@@ -15,8 +15,12 @@ export async function calculateQuote(unitTypeId: string, checkIn: string, checkO
   // matrix answers where it has a row for this category and this many guests,
   // the day calendar answers where it does not, and a night neither can price
   // is counted as missing rather than charged at zero.
+  // Дорослі адресують матрицю, діти йдуть надбавкою тарифу (Ц12). Тарифу цей
+  // виклик не називає — тож котирування з дітьми поверне ночі як `missing`
+  // доти, доки не буде названо, скільки коштує дитина. Це видно оператору
+  // списком дат, а не тишею, і це навмисно: інваріант 17.
   const priced = await priceNights({
-    unitTypeId, checkIn, nights: nightsTotal, persons: adults + children,
+    unitTypeId, checkIn, nights: nightsTotal, adults, children,
   });
 
   const dayNames = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];

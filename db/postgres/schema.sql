@@ -1499,6 +1499,7 @@ CREATE TABLE "rate_plans" (
   "is_hidden" BOOLEAN DEFAULT false NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "child_extra_gross" NUMERIC(14,2),
   PRIMARY KEY ("id"),
   UNIQUE ("property_id", "code")
 );

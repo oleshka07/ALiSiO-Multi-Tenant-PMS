@@ -72,17 +72,25 @@ export interface NightlyPrices {
 /**
  * Price the nights of a stay.
  *
- * `persons` is how many people sleep in the room — adults and children
- * together, because occupancy is about beds. A hotel that wants children priced
- * differently needs a rule of its own, and inventing one here would apply it to
- * every hotel without being asked.
+ * `adults` addresses the price matrix; children are priced separately by the
+ * rate plan's own surcharge (decision Ц12, 01.09.2026). Before that the two
+ * were added together, so a child cost exactly what an adult cost and a family
+ * of 2+2 paid for four adults — while `unit_types` and `reservations` had told
+ * adults from children all along.
  */
 export async function priceNights(input: {
   unitTypeId: string;
   /** First night, YYYY-MM-DD. */
   checkIn: string;
   nights: number;
-  persons: number;
+  /** ДОРОСЛІ — саме вони адресують матрицю (Ц12). */
+  adults: number;
+  /**
+   * Діти. Їх ціна — надбавка тарифу, і без тарифу її нема звідки взяти:
+   * котирування з дітьми, але без `ratePlanId`, поверне ночі як `missing`.
+   * Це інваріант 17, а не недогляд — «безкоштовно» теж треба назвати.
+   */
+  children?: number;
   /**
    * Price this rate plan rather than the unit type's own price.
    *
@@ -94,7 +102,7 @@ export async function priceNights(input: {
   ratePlanId?: string | null;
 }): Promise<NightlyPrices> {
   const sql = getSql();
-  const { unitTypeId, checkIn, nights, persons, ratePlanId = null } = input;
+  const { unitTypeId, checkIn, nights, adults, children = 0, ratePlanId = null } = input;
   if (nights <= 0) return { nights: [], missing: [], total: 0, occupancyPriced: false };
 
   const checkOut = addDays(checkIn, nights);
@@ -114,9 +122,19 @@ export async function priceNights(input: {
 
   const matrix = owner ? await loadMatrixRows(owner.organization_id, owner.property_id) : [];
 
+  // Надбавка за дитину живе на ТАРИФІ (Ц12) — так само, як `children_fee` у
+  // менеджера каналів. Без тарифу її не існує, і тоді ніч із дітьми не
+  // продається: назвати нуль від імені готелю ми не можемо.
+  const childExtraGross = ratePlanId
+    ? (await sql.row<any>(
+        'SELECT child_extra_gross FROM rate_plans WHERE id = ? AND property_id = ?',
+        [ratePlanId, owner?.property_id ?? ''],
+      ))?.child_extra_gross ?? null
+    : null;
+
   const quote = owner
     ? quoteStay({
-      checkIn, nights, persons, unitTypeId,
+      checkIn, nights, adults, children, childExtraGross, unitTypeId,
       matrix,
       losTiers: await loadTierRows(owner.organization_id, owner.property_id),
     })
@@ -157,8 +175,8 @@ export async function priceNights(input: {
    * this day, and only the uplift is unknown.
    */
   const surcharge = (date: string): number | null => {
-    if (persons === baseOccupancy) return 0;
-    const at = matrixPriceFor(matrix, unitTypeId, persons, date);
+    if (adults === baseOccupancy) return 0;
+    const at = matrixPriceFor(matrix, unitTypeId, adults, date);
     const atBase = matrixPriceFor(matrix, unitTypeId, baseOccupancy, date);
     if (at == null || atBase == null) return null;
     return money(at - atBase);
@@ -246,7 +264,7 @@ export async function cheapestByDay(input: {
 
   for (const ut of input.unitTypes) {
     const quote = quoteStay({
-      checkIn: input.from, nights, persons: ut.persons, unitTypeId: ut.id, matrix,
+      checkIn: input.from, nights, adults: ut.persons, unitTypeId: ut.id, matrix,
     });
     for (const n of quote.nights) {
       const best = out.get(n.date);

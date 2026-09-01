@@ -304,7 +304,7 @@ export async function createWidgetReservation(request: NextRequest) {
       // обʼєкта із `site_rate_plans`, де такої колонки немає.
 
       priced = hasPriceCalendar
-        ? await priceNights({ unitTypeId: unit.unit_type_id, checkIn, nights, persons: adults + children })
+        ? await priceNights({ unitTypeId: unit.unit_type_id, checkIn, nights, adults, children })
         : { nights: [], missing: [checkIn], total: 0, occupancyPriced: false };
       if (priced.missing.length > 0) {
         // Refusing is the only honest answer: the hotel has not said what this

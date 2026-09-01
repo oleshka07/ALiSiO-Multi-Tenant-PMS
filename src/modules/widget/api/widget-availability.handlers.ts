@@ -279,7 +279,8 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
           const priced = hasPriceCalendar
             ? await priceNights({
               unitTypeId: unit.unit_type_id, checkIn, nights,
-              persons: askedPersons > 0 ? askedPersons : (Number(unit.base_occupancy) || 2),
+              adults: askedAdults > 0 ? askedAdults : (Number(unit.base_occupancy) || 2),
+              children: askedChildren,
             })
             : null;
           const byDate = new Map((priced?.nights ?? []).map((n) => [n.date, n]));

@@ -85,8 +85,8 @@ await cal(BNB, '2026-11-12', 111);
 // ── Два тарифи, та сама доба, незалежні ціни ────────────────────────────────
 // Це те саме твердження, яке підтвердив живий API Channex (INVENTORY §14.1),
 // перевірене тепер із нашого боку.
-const bar2 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, persons: 2, ratePlanId: BAR });
-const bnb2 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, persons: 2, ratePlanId: BNB });
+const bar2 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 2, ratePlanId: BAR });
+const bnb2 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 2, ratePlanId: BNB });
 assert.strictEqual(bar2.nights[0].price, 312.66, 'BAR мав коштувати свою ціну, а не базову');
 assert.strictEqual(bnb2.nights[0].price, 111, 'B&B мав коштувати свою ціну, а не базову');
 assert.strictEqual(bar2.nights[0].source, 'rate_plan', 'джерелом ночі мав бути тариф');
@@ -95,7 +95,7 @@ assert.notStrictEqual(bar2.nights[0].price, bnb2.nights[0].price, 'два тар
 // ── Ціна тарифу перекриває базову; відсутня — падає на базову ──────────────
 // 10–11 листопада BAR має свою ціну, 12–13 — ні. Перевіряємо весь заїзд
 // одним викликом, бо саме на межі діапазону це й ламається.
-const mixed = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 4, persons: 2, ratePlanId: BAR });
+const mixed = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 4, adults: 2, ratePlanId: BAR });
 assert.deepStrictEqual(
   mixed.nights.map((n) => [n.date, n.price, n.source]),
   [
@@ -113,7 +113,7 @@ assert.strictEqual(mixed.total, 1025.32, 'сума заїзду порахова
 // Найважливіше твердження файлу: кожен наявний виклик — віджет, кошторис
 // оператора, публічний календар — тарифу не передає, і мусить бачити те саме,
 // що бачив учора. Рядки тарифів у таблиці вже лежать.
-const plain = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 4, persons: 2 });
+const plain = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 4, adults: 2 });
 assert.deepStrictEqual(
   plain.nights.map((n) => [n.price, n.source]),
   [[200, 'calendar'], [200, 'calendar'], [200, 'calendar'], [200, 'calendar']],
@@ -133,8 +133,8 @@ const occ = async (persons: number, price: number) => {
 await occ(2, 200);
 await occ(3, 260);
 
-const bar3 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, persons: 3, ratePlanId: BAR });
-const bnb3 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, persons: 3, ratePlanId: BNB });
+const bar3 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 3, ratePlanId: BAR });
+const bnb3 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 3, ratePlanId: BNB });
 assert.strictEqual(bar3.nights[0].price, 372.66, 'BAR на трьох мав отримати надбавку 60 понад свою ціну');
 assert.strictEqual(bnb3.nights[0].price, 171, 'B&B на трьох мав отримати ТУ САМУ надбавку 60');
 assert.strictEqual(
@@ -147,13 +147,13 @@ assert.strictEqual(bar3.occupancyPriced, true, 'ніч із надбавкою �
 // Заселеність, якої матриця не знає (четверо): ціна тарифу стоїть сама, і
 // occupancyPriced лишається false — щоб виклик далі додав extra_person_charge,
 // рівно як він робить для звичайної календарної ночі.
-const bar4 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, persons: 4, ratePlanId: BAR });
+const bar4 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 4, ratePlanId: BAR });
 assert.strictEqual(bar4.nights[0].price, 312.66, 'без рядка матриці ціна тарифу мала лишитись без надбавки');
 assert.strictEqual(bar4.occupancyPriced, false, 'невідома надбавка не має видавати себе за пораховану заселеність');
 
 // На двох (= base_occupancy) надбавки немає за визначенням, і матриця тут
 // нічого не міняє: 312.66 лишається 312.66.
-const bar2again = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, persons: 2, ratePlanId: BAR });
+const bar2again = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 2, ratePlanId: BAR });
 assert.strictEqual(bar2again.nights[0].price, 312.66, 'заселеність, що дорівнює базовій, не має міняти ціну тарифу');
 
 // ── Ніч, якої не знає жодне джерело ────────────────────────────────────────
@@ -161,7 +161,7 @@ assert.strictEqual(bar2again.nights[0].price, 312.66, 'заселеність, �
 // не має жодного рядка, ні базового, ні тарифного. Матриця тут відповідає на
 // БУДЬ-ЯКУ дату, бо її рядки безстрокові, тож «діру» треба робити по
 // заселеності, а не лише по даті.
-const gap = await priceNights({ unitTypeId: TYPE, checkIn: '2026-12-01', nights: 1, persons: 5, ratePlanId: BAR });
+const gap = await priceNights({ unitTypeId: TYPE, checkIn: '2026-12-01', nights: 1, adults: 5, ratePlanId: BAR });
 assert.deepStrictEqual(gap.missing, ['2026-12-01'], 'ніч без жодного джерела мала лишитись missing');
 assert.strictEqual(gap.nights.length, 0, 'ніч без ціни не має потрапляти в результат');
 assert.strictEqual(gap.total, 0, 'вигадана сума на ніч без ціни');
@@ -169,7 +169,7 @@ assert.strictEqual(gap.total, 0, 'вигадана сума на ніч без �
 // Дзеркало до попереднього: та сама дата на двох матриця ЗНАЄ (рядок
 // безстроковий), тож missing там не буде. Це не дублікат — це те, що робить
 // перевірку вище чесною: діра має бути справжньою, а не наслідком дати.
-const notGap = await priceNights({ unitTypeId: TYPE, checkIn: '2026-12-01', nights: 1, persons: 2, ratePlanId: BAR });
+const notGap = await priceNights({ unitTypeId: TYPE, checkIn: '2026-12-01', nights: 1, adults: 2, ratePlanId: BAR });
 assert.strictEqual(notGap.missing.length, 0, 'безстроковий рядок матриці мав покрити грудень');
 assert.strictEqual(notGap.nights[0].source, 'matrix', 'поза діапазоном тарифу мала відповісти матриця');
 

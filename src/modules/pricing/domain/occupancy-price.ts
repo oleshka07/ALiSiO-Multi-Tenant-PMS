@@ -24,6 +24,20 @@
  *
  * Nothing here knows a season name, a price or a discount. The pilot's
  * "−10 € per night from 3 nights on doubles, −5 € on singles" is two rows.
+ *
+ * ── Вісь — ДОРОСЛІ, дитина йде надбавкою (Ц12, 01.09.2026) ──────────────
+ *
+ * До цього рішення матриця адресувалася сумою «дорослі + діти», тобто дитина
+ * коштувала як доросла, і сімʼя 2+2 платила за чотирьох. Розділ при цьому вже
+ * існував усюди, крім ціни: `unit_types` знає `max_adults`/`max_children`,
+ * `reservations` — `adults`/`children`/`infants`. Сплющувала його одна
+ * колонка `price_occupancy.persons`.
+ *
+ * Два джерела, з яких цей проєкт бере форму, кажуть те саме: у Hoteliera
+ * екран «Extra occupancy» розрізняє Adult і Child окремими родами гостя, а в
+ * Channex опція заселеності за означенням про дорослих, діти — окремим
+ * `children_fee` на тарифі. Тобто вісь дорослих — не запозичення в вендора,
+ * а те, чим решта схеми вже була.
  */
 import { money } from '../../../core/money.ts';
 
@@ -76,25 +90,65 @@ export interface Quote {
 export function quoteStay(input: {
   checkIn: string;
   nights: number;
-  persons: number;
+  /**
+   * ДОРОСЛІ, і саме вони адресують цінову матрицю (рішення Ц12).
+   *
+   * Поле навмисно не називається `persons`, хоч так було до 01.09.2026:
+   * перейменування — це те, що змушує кожного викликача перечитати, ЩО він
+   * сюди клав. Тихе збереження старої назви лишило б три місця, які
+   * продовжують передавати `adults + children`, і жоден компілятор про це
+   * не сказав би.
+   */
+  adults: number;
+  /** Скільки дітей. Вони не входять у `adults` і мають власну ціну. */
+  children?: number;
+  /**
+   * Скільки коштує одна дитина за ніч. `null`/відсутнє — готель цього НЕ
+   * називав.
+   *
+   * І тоді ніч із дітьми — `missing`, а не «діти безкоштовно». Це інваріант
+   * 17 у чистому вигляді, і в цьому файлі вже є його ціна: `?? 0` у
+   * `bulkUpdatePrices` колись перетворив «готель не назвав ціни» на «ніч
+   * коштує нуль», і бронювання пройшло за нуль. Нуль тут — теж ціна, але
+   * названа: `0` означає «діти безкоштовно», і це готель каже сам.
+   */
+  childExtraGross?: number | null;
   unitTypeId: string;
   matrix: readonly PriceRow[];
   losTiers?: readonly LosTier[];
 }): Quote {
   const nights: NightPrice[] = [];
   const missing: string[] = [];
+  const children = Math.max(0, Math.trunc(input.children ?? 0));
 
-  const tier = pickTier(input.losTiers ?? [], input.unitTypeId, input.nights, input.persons);
+  // Знижка за тривалість дивиться на заселеність дорослими — на ту саму вісь,
+  // якою адресована матриця. Інакше «−10 € на двомісному» переставало б діяти
+  // від того, що з батьками поїхала дитина.
+  const tier = pickTier(input.losTiers ?? [], input.unitTypeId, input.nights, input.adults);
   const adjustment = tier ? money(tier.adjustment_gross) : 0;
+
+  // Ціна дитини — надбавка до ночі, а не окремий рядок матриці: у матриці
+  // вісь одна, і другий рід гостя зробив би її двовимірною. Форма з Hoteliera
+  // («Extra occupancy»: Adult і Child окремими родами) і з Channex
+  // (`children_fee` на тарифі) — обидві кажуть надбавку.
+  const childrenGross = children > 0 && input.childExtraGross != null
+    ? money(children * input.childExtraGross)
+    : 0;
 
   for (let i = 0; i < input.nights; i++) {
     const date = addDays(input.checkIn, i);
-    const row = pickPrice(input.matrix, input.unitTypeId, input.persons, date);
+    const row = pickPrice(input.matrix, input.unitTypeId, input.adults, date);
     if (!row) {
       missing.push(date);
       continue;
     }
-    const base = money(row.price_gross);
+    // Діти є, а ціни на них готель не називав — ніч не продається. Мовчки
+    // взяти нуль означало б поселити дитину безкоштовно від імені готелю.
+    if (children > 0 && input.childExtraGross == null) {
+      missing.push(date);
+      continue;
+    }
+    const base = money(row.price_gross + childrenGross);
     // A discount may not turn a night into money owed to the guest.
     const price = money(Math.max(0, base + adjustment));
     nights.push({ date, base, adjustment: money(price - base), price });

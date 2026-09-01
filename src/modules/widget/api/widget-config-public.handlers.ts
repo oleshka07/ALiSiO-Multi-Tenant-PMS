@@ -133,7 +133,8 @@ export async function getWidgetConfig(request: NextRequest) {
             try {
               const priced = await priceNights({
                 unitTypeId: ut.id, checkIn: ciStr, nights: 2,
-                persons: Number(ut.base_occupancy) || 2,
+                // Показова ціна — за базову заселеність ДОРОСЛИМИ, без дітей.
+                adults: Number(ut.base_occupancy) || 2,
               });
               total = priced.missing.length === 0 ? priced.total : null;
             } catch { total = null; }
