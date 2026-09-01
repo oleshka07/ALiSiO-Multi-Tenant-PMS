@@ -8,7 +8,25 @@
  * яку вони розходились би, якби кожен рахував сам.
  */
 import assert from 'node:assert';
-import { ratePlanNightPrice, ratePlanNamesItsOwnPrice } from './rate-plan.ts';
+import { ratePlanNightPrice } from './rate-plan.ts';
+
+// ─── Точка збуту НЕ називає власної ціни (рішення Ц7) ───────────────────────
+//
+// Тариф сайту вміє одне: ЗСУНУТИ базу відсотком. Назвати власне число він не
+// годувався `site_rate_plans`, де такої колонки НЕМАЄ. Гілка була мертва в
+// трьох місцях: пошук, календар і саме бронювання.
+//
+// Тепер це не «прибрати непрацююче», а контракт: база одна, точка збуту лише
+// множить (Ц7). Тому перевіряємо саме те, чого більше не має статися —
+// значення, яке видає себе за ціну, ігнорується як ціна.
+assert.strictEqual(
+  ratePlanNightPrice(2500, { fixed_price: 1800 } as never), 2500,
+  'тариф сайту назвав власну ціну — жодна точка збуту цього не робить (Ц7)');
+assert.strictEqual(
+  ratePlanNightPrice(2500, { fixed_price: 1800, pricing_mode: 'dependent', pricing_modifier_percent: 20 } as never),
+  2000,
+  'модифікатор програв неіснуючій фіксованій ціні — зсув має лишатися єдиним, що вміє точка збуту');
+console.log('  ok  точка збуту зсуває базу і не називає власного числа');
 
 // ── Без тарифу нічого не змінюється ──────────────────────────────────
 assert.strictEqual(ratePlanNightPrice(2500, null), 2500);
@@ -42,23 +60,8 @@ const threeNights = [119, 119, 119]
 assert.strictEqual(Math.round(threeNights * 100) / 100, 285.6, 'три ночі по 95,20 — це 285,60');
 console.log('  ok  знижка й надбавка рахуються по ночах, із копійками');
 
-// ── Фіксована ціна ───────────────────────────────────────────────────
-assert.strictEqual(ratePlanNightPrice(2500, { fixed_price: 1800 }), 1800);
-assert.strictEqual(
-  ratePlanNightPrice(2500, { fixed_price: 1800, pricing_mode: 'dependent', pricing_modifier_percent: 50 }), 1800,
-  'заповнені обидва поля — це помилка оператора, а не команда застосувати обидва; виграє те, що названо прямо',
-);
-assert.strictEqual(ratePlanNightPrice(2500, { fixed_price: 0 }), 0,
-  'нуль — це названа ціна, а не порожнє поле');
-assert.strictEqual(ratePlanNightPrice(2500, { fixed_price: '' }), 2500,
-  'порожнє поле форми приходить як рядок і не має ставати нулем');
-console.log('  ok  фіксована ціна перекриває базову, а порожнє поле — ні');
+// Розділ «фіксована ціна» прибрано разом із самою можливістю (Ц7). Його
+// твердження перенесені нагору у зворотному вигляді: значення, яке видає себе
+// за ціну, ігнорується як ціна.
 
-// ── Чи тариф називає ціну сам ────────────────────────────────────────
-assert.strictEqual(ratePlanNamesItsOwnPrice({ fixed_price: 1800 }), true);
-assert.strictEqual(ratePlanNamesItsOwnPrice({ fixed_price: 0 }), true);
-assert.strictEqual(ratePlanNamesItsOwnPrice({ fixed_price: null }), false);
-assert.strictEqual(ratePlanNamesItsOwnPrice({ pricing_mode: 'dependent', pricing_modifier_percent: 20 }), false,
-  'модифікатор рахують ВІД ціни календаря, тож без календаря він нічого не означає');
-assert.strictEqual(ratePlanNamesItsOwnPrice(null), false);
-console.log('  ok  видно, коли тариф є ціною, а коли лише надбавкою до неї');
+console.log('rate-plan: точка збуту зсуває базу і не називає власного числа');

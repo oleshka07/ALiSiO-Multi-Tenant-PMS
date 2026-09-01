@@ -328,9 +328,11 @@ async function calendarFor(searchParams: URLSearchParams) {
             const pct = activeRatePlan.pricing_modifier_percent;
             const mType = activeRatePlan.pricing_modifier_type || 'less';
             price = mType === 'more' ? money(price * (1 + pct / 100)) : money(price * (1 - pct / 100));
-          } else if (activeRatePlan.fixed_price != null) {
-            price = activeRatePlan.fixed_price;
           }
+          // Гілки `fixed_price` тут більше немає: `activeRatePlan` — рядок
+          // `site_rate_plans`, а такої колонки там немає, тож вона ніколи не
+          // виконувалась. Прибрана як наслідок Ц7: точка збуту зсуває базу і
+          // не називає власного числа.
         }
       }
 

@@ -264,19 +264,13 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
             totalPrice += dayPrice;
             dateStr = shiftDays(dateStr, 1);
           }
-        } else if (activeRatePlan && activeRatePlan.fixed_price != null) {
-          // VIP Tariff: use fixed price for all days
-          let dateStr = checkIn!;
-          for (let i = 0; i < nights; i++) {
-            const dayOfWeek = weekdayOf(dateStr);
-            const isWeekend = dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6;
-            const dayPrice = activeRatePlan.fixed_price;
-            hasPricing = true;
-            breakdown.push({ date: dateStr, dayName: dayNames[dayOfWeek], price: dayPrice, isWeekend });
-            totalPrice += dayPrice;
-            dateStr = shiftDays(dateStr, 1);
-          }
         } else {
+          // Гілки «VIP Tariff: use fixed price» тут більше немає. Вона питала
+          // `activeRatePlan.fixed_price`, а `activeRatePlan` — рядок
+          // `site_rate_plans`, де такої колонки НЕМАЄ: код не виконувався
+          // жодного разу. Прибрана як наслідок Ц7, а не як прибирання
+          // зайвого — жодна точка збуту не називає власної ціни.
+
           // The same resolver the reservation endpoint uses, so what the guest
           // is shown in the search results is what they will be charged. This
           // block used to hold its own copy of the weekday arithmetic and the

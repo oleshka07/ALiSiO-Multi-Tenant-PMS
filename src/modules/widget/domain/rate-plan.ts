@@ -20,9 +20,14 @@
  * ── Це не другий постачальник цін ────────────────────────────────────────
  *
  * AGENTS.md §3, інваріант 16: ніч оцінює лише `priceNights()`. Тариф — це не
- * ціна ночі, а надбавка сайту поверх неї, і застосовується до того, що
- * `priceNights()` уже повернув. Виняток один — `fixed_price`: там готель
- * назвав ціну сам, і це теж «хтось назвав» у сенсі інваріанта 17.
+ * ціна ночі, а ЗСУВ поверх неї, і застосовується до того, що `priceNights()`
+ * уже повернув.
+ *
+ * Винятків немає — і раніше був один, `fixed_price`. Він не працював ніколи:
+ * поле питалося в обʼєкта, зчитаного із `site_rate_plans`, а такої колонки
+ * там немає. Гілка була мертва в трьох місцях — пошук, календар і саме
+ * бронювання. Прибрана не тому, що не працювала, а як наслідок рішення Ц7:
+ * жодна точка збуту не називає власної ціни, вона лише множить базу.
  */
 // Відносний шлях із розширенням, а не '@core/money': цей файл читає і node у
 // rate-plan.check.ts, який запускають без збірки, тож аліаси tsconfig йому
@@ -30,8 +35,6 @@
 import { money } from '../../../core/money.ts';
 
 export interface RatePlan {
-  /** Ціна за ніч, названа тарифом. Перекриває все інше. */
-  fixed_price?: number | string | null;
   /** 'dependent' — рахувати від базової ціни; будь-що інше — не чіпати. */
   pricing_mode?: string | null;
   pricing_modifier_percent?: number | string | null;
@@ -48,10 +51,6 @@ function num(v: unknown): number | null {
 /**
  * Ціна однієї ночі під цим тарифом.
  *
- * Порядок навмисний: `fixed_price` виграє в модифікатора, бо це два різні
- * способи описати тариф, і план, у якому заповнені обидва, — помилка
- * оператора, а не команда «застосуй обидва».
- *
  * `money()` на кожну ніч окремо, а не на суму: саме так рахує пошук, і саме
  * так гроші округлюються всюди в цьому проєкті (інваріант 9). Знижка 20 % від
  * 119 € — це 95,20 € за ніч, а не 95 і не 95,2 після трьох ночей.
@@ -59,9 +58,6 @@ function num(v: unknown): number | null {
 export function ratePlanNightPrice(basePrice: number, plan?: RatePlan | null): number {
   const base = num(basePrice) ?? 0;
   if (!plan) return base;
-
-  const fixed = num(plan.fixed_price);
-  if (fixed !== null) return money(fixed);
 
   const pct = num(plan.pricing_modifier_percent);
   if (plan.pricing_mode === 'dependent' && pct !== null) {
@@ -73,14 +69,4 @@ export function ratePlanNightPrice(basePrice: number, plan?: RatePlan | null): n
   return base;
 }
 
-/**
- * Чи тариф сам називає ціну — тобто чи потрібен йому взагалі календар цін.
- *
- * `widget-reserve` відмовляє в бронюванні, коли ніч не має ціни, і це
- * правильно: підтвердити бронь за вигаданим числом гірше, ніж відмовити. Але
- * тариф із `fixed_price` — це і є ціна, названа готелем, тож відмовляти в ній
- * означало б відмовити гостю, якому щойно показали суму.
- */
-export function ratePlanNamesItsOwnPrice(plan?: RatePlan | null): boolean {
-  return !!plan && num(plan.fixed_price) !== null;
-}
+

@@ -11,7 +11,7 @@ import { percentOf } from '@core/money';
 import { siteAllowsHost, type SiteRow } from '../data/site.repo';
 import { quoteCertificate, claimCertificate } from '../data/certificate.repo';
 import { couponApplies, packageApplies } from '../domain/coupon-eligibility';
-import { ratePlanNightPrice, ratePlanNamesItsOwnPrice } from '../domain/rate-plan';
+import { ratePlanNightPrice } from '../domain/rate-plan';
 import { priceNights } from '@pricing';
 
 // Fallback to guarantee event subscribers are registered in Serverless (Vercel) isolated functions
@@ -298,11 +298,11 @@ export async function createWidgetReservation(request: NextRequest) {
       // An operator-set price per night: no source is consulted, and that is
       // the point of an override.
       totalPrice = priceOverride * nights;
-    } else if (ratePlanNamesItsOwnPrice(ratePlan)) {
-      // Тариф із фіксованою ціною — це і є ціна, названа готелем, тож
-      // календар цін тут ні до чого. Саме так рахує пошук.
-      totalPrice = ratePlanNightPrice(0, ratePlan) * nights;
     } else {
+      // Гілки «тариф називає власну ціну» тут більше немає — наслідок Ц7, а не
+      // прибирання зайвого. Вона й не працювала: питала `fixed_price` в
+      // обʼєкта із `site_rate_plans`, де такої колонки немає.
+
       priced = hasPriceCalendar
         ? await priceNights({ unitTypeId: unit.unit_type_id, checkIn, nights, persons: adults + children })
         : { nights: [], missing: [checkIn], total: 0, occupancyPriced: false };
