@@ -31,7 +31,7 @@ import { flushOutbox, type FlushDeps } from './ari-batch.ts';
 const DAY = '2026-11-10';
 
 /** Черга в памʼяті: рівно та поведінка, яку дає `cm_outbox`. */
-function queue(rows: { id: string; kind: 'availability' | 'rate'; unitTypeId?: string; ratePlanId?: string; date: string }[]) {
+function queue(rows: { id: string; kind: 'availability' | 'rate'; unitTypeId?: string; ratePlanId?: string; date: string; attempts?: number }[]) {
   const claimed = new Set<string>();
   const sent = new Set<string>();
   const released: { ids: string[]; reason: string }[] = [];
@@ -68,7 +68,7 @@ const base = (over: Partial<FlushDeps> = {}): FlushDeps => ({
 
 // ── 1. Помилка звільняє захоплення ───────────────────────────────────────
 {
-  const q = queue([{ id: 'r1', kind: 'rate', ratePlanId: 'rp', date: DAY }]);
+  const q = queue([{ id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: DAY }]);
   const report = await flushOutbox(base({
     ...q.deps,
     send: async () => { throw Object.assign(new Error('429'), { status: 429 }); },
@@ -87,7 +87,7 @@ console.log('  ok  429 звільняє захоплення, а не спожи
 
 // ── 2. `200 OK` з warnings — теж помилка (И4) ────────────────────────────
 {
-  const q = queue([{ id: 'r1', kind: 'rate', ratePlanId: 'rp', date: DAY }]);
+  const q = queue([{ id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: DAY }]);
   await flushOutbox(base({
     ...q.deps,
     send: async () => ({ warnings: [{ warning: { rate: ['must be greater than 0'] }, date: DAY }] }),
@@ -101,12 +101,12 @@ console.log('  ok  200 з warnings повертає координату в че
 {
   const sentValues: Record<string, unknown>[] = [];
   const q = queue([
-    { id: 'a', kind: 'rate', ratePlanId: 'has-price', date: DAY },
-    { id: 'b', kind: 'rate', ratePlanId: 'no-price', date: DAY },
+    { id: 'a', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'has-price', date: DAY },
+    { id: 'b', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'no-price', date: DAY },
   ]);
   await flushOutbox(base({
     ...q.deps,
-    pricesAt: async (ratePlanId: string) =>
+    pricesAt: async (_unitTypeId: string, ratePlanId: string) =>
       (ratePlanId === 'has-price' ? [{ occupancy: 2, priceMinor: 11000 }] : null),
     send: async (_kind, values) => { sentValues.push(...values); return { warnings: [] }; },
   }));
@@ -127,7 +127,7 @@ console.log('  ok  кожна координата розвʼязується в
 // ── 4. Пачка ріжеться за РОЗМІРОМ тіла ───────────────────────────────────
 {
   const rows = Array.from({ length: 40 }, (_, i) => ({
-    id: `r${i}`, kind: 'rate' as const, ratePlanId: `rp${i}`, date: DAY,
+    id: `r${i}`, kind: 'rate' as const, unitTypeId: 'ut', ratePlanId: `rp${i}`, date: DAY,
   }));
   const q = queue(rows);
   const calls: number[] = [];
@@ -147,7 +147,7 @@ console.log('  ok  пачка ріжеться за розміром тіла, �
 
 // ── 5. Одна велика координата їде сама, а не зависає навічно ─────────────
 {
-  const q = queue([{ id: 'big', kind: 'rate', ratePlanId: 'rp', date: DAY }]);
+  const q = queue([{ id: 'big', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: DAY }]);
   const calls: number[] = [];
   await flushOutbox(base({
     ...q.deps,
@@ -165,7 +165,7 @@ console.log('  ok  координата, більша за стелю, їде с
 {
   const q = queue([
     { id: 'a1', kind: 'availability', unitTypeId: 'ut', date: DAY },
-    { id: 'r1', kind: 'rate', ratePlanId: 'rp', date: DAY },
+    { id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: DAY },
   ]);
   const kinds: string[] = [];
   await flushOutbox(base({
@@ -182,7 +182,7 @@ console.log('  ok  наявність і ціни — окремі повідо�
 {
   const q = queue([
     { id: 'a1', kind: 'availability', unitTypeId: 'ut', date: DAY },
-    { id: 'r1', kind: 'rate', ratePlanId: 'rp', date: DAY },
+    { id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: DAY },
   ]);
   await flushOutbox(base({
     ...q.deps,
@@ -211,7 +211,7 @@ console.log('  ok  провал однієї смуги не спиняє дру
 // 8а. Джерела немає, але координата адресується — закрито.
 {
   const q = queue([
-    { id: 'r1', kind: 'rate', ratePlanId: 'gone', date: DAY },
+    { id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'gone', date: DAY },
     { id: 'a1', kind: 'availability', unitTypeId: 'gone', date: DAY },
   ]);
   const values: any[] = [];
@@ -236,10 +236,12 @@ console.log('  ok  видалене джерело закривається, а 
 // Позначити такий рядок відправленим означало б доповісти про успіх там, де
 // не пішло нічого — і осиротити живий тариф у каналі назавжди.
 {
-  const q = queue([{ id: 'r1', kind: 'rate', ratePlanId: 'orphan', date: DAY }]);
+  const q = queue([{ id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'orphan', date: DAY }]);
   const report = await flushOutbox(base({
     ...q.deps,
-    send: async () => ({ warnings: [], unmapped: ['orphan'] }),
+    // Незмаплена ПАРА, не сам тариф: на сусідньому типі той самий тариф
+    // може бути змаплений (Ц10).
+    send: async () => ({ warnings: [], unmapped: [{ ratePlanId: 'orphan', unitTypeId: 'ut' }] }),
   }));
   assert.deepStrictEqual(q.free(), ['r1'],
     'незмаплена координата позначена відправленою — у каналі лишився живий тариф, яким ніхто не керує');
@@ -257,7 +259,7 @@ console.log('  ok  знятий мапінг — гучна відмова, а �
 {
   const q = queue([
     { id: 'a1', kind: 'availability', unitTypeId: 'ut', date: DAY },
-    { id: 'r1', kind: 'rate', ratePlanId: 'rp', date: DAY },
+    { id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: DAY },
   ]);
   let calls = 0;
   const report = await flushOutbox(base({
@@ -281,8 +283,8 @@ console.log('  ok  вимкнене зʼєднання нічого не шле 
 // захопленням, тільки шумний замість тихого.
 {
   const q = queue([
-    { id: 'old', kind: 'rate', ratePlanId: 'rp', date: '2020-01-01' },
-    { id: 'now', kind: 'rate', ratePlanId: 'rp', date: DAY },
+    { id: 'old', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: '2020-01-01' },
+    { id: 'now', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: DAY },
   ]);
   const values: any[] = [];
   const report = await flushOutbox(base({
@@ -312,7 +314,7 @@ console.log('  ok  дата за горизонтом знімається з ч
 // Тому обидва твердження стоять на НЕНУЛЬОВОМУ модифікаторі й арифметично
 // несумісні з його відсутністю.
 {
-  const q = queue([{ id: 'r1', kind: 'rate', ratePlanId: 'rp', date: DAY }]);
+  const q = queue([{ id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: DAY }]);
   const values: any[] = [];
   await flushOutbox(base({
     ...q.deps,
@@ -333,7 +335,7 @@ console.log('  ok  зʼєднання отримує СВІЙ модифікат
 // САЙТУ в канал не їде. Якби він доїхав, знижка прямого каналу опинилась би
 // на OTA — тобто рівно навпаки до того, заради чого Ц7 ухвалювалось.
 {
-  const q = queue([{ id: 'r1', kind: 'rate', ratePlanId: 'rp', date: DAY }]);
+  const q = queue([{ id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: DAY }]);
   const values: any[] = [];
   await flushOutbox(base({
     ...q.deps,
@@ -351,7 +353,7 @@ console.log('  ok  модифікатор сайту в канал не потр
 // Округлення: зсув дає копійки, і вони мусять лягти на ціле мінорне число.
 // Дробова копійка по дорозі через JSON — це те, як ціна стає 24.999999.
 {
-  const q = queue([{ id: 'r1', kind: 'rate', ratePlanId: 'rp', date: DAY }]);
+  const q = queue([{ id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: DAY }]);
   const values: any[] = [];
   await flushOutbox(base({
     ...q.deps,
@@ -364,5 +366,93 @@ console.log('  ok  модифікатор сайту в канал не потр
   assert.strictEqual(got, 3083, '3333 мінус 7.5% це 3083.025 — округлення до цілої копійки');
 }
 console.log('  ok  зсунута ціна лишається цілим числом мінорних одиниць');
+
+// ── 10. Межа спроб: гучна відмова через тиждень така ж тиха, як мовчання ─
+//
+// Рецензія 01.09.2026: «рядок лишається в черзі» для незмапленого — це нова
+// вічність. Координата, яка падає щопроходу, після сотого разу нічим не
+// відрізняється від тієї, про яку забули: журнал повний однакових рядків,
+// які ніхто не читає. Тому межа — і стан «потребує уваги», видимий
+// оператору, а не лише лічильник у колонці.
+//
+// Домен не веде лічильник (його рахує черга при звільненні), але він знає,
+// СКІЛЬКИ разів координата вже падала, і мусить сказати вголос, коли це
+// падіння — останнє дозволене. Звільнення при цьому все одно стається: саме
+// воно робить рядок видимим як застряглий, а не вічно захопленим.
+{
+  const q = queue([{ id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: DAY, attempts: 4 }]);
+  const report = await flushOutbox(base({
+    ...q.deps,
+    maxAttempts: 5,
+    send: async () => { throw new Error('boom'); },
+  }));
+  assert.strictEqual(report.needsAttention, 1,
+    'координата впала вп\'яте з пʼяти дозволених — звіт мусить назвати її такою, що потребує уваги');
+  assert.ok(report.errors.some((e) => /attention/i.test(e)),
+    'звіт мусить сказати це словами, а не лише числом: число в кроні ніхто не читає');
+  assert.deepStrictEqual(q.free(), ['r1'],
+    'звільнення все одно мусить статись — саме воно робить рядок видимим оператору, а не вічно захопленим');
+  assert.strictEqual(report.failed, 1, 'це й далі провал, а не третій стан');
+}
+{
+  // Перша невдача — ще не привід. Інакше кожен 429 ставав би «увагою».
+  const q = queue([{ id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: DAY, attempts: 0 }]);
+  const report = await flushOutbox(base({
+    ...q.deps,
+    maxAttempts: 5,
+    send: async () => { throw new Error('429'); },
+  }));
+  assert.strictEqual(report.needsAttention, 0, 'перша невдача з пʼяти — це ще не «потребує уваги»');
+}
+console.log('  ok  межа спроб: остання дозволена невдача названа вголос, перша — ні');
+
+// ── 11. Вісь ПАРИ у смузі цін (Ц10) ──────────────────────────────────────
+//
+// Знайдено читанням перед живим прогоном, а не самим прогоном — але саме
+// прогін зробив би це видимим першим: один наш тариф на двох типах номерів
+// це ДВА тарифи на тому боці, кожен зі своєю ціною (ціна ночі належить типу
+// номера, а тариф її лише модифікує). Координата «тариф + дата» без типу
+// не має чим ні цінуватись, ні адресуватись.
+{
+  const q = queue([
+    { id: 'a', kind: 'rate', unitTypeId: 'DBL', ratePlanId: 'rp', date: DAY },
+    { id: 'b', kind: 'rate', unitTypeId: 'SGL', ratePlanId: 'rp', date: DAY },
+  ]);
+  const asked: string[] = [];
+  const values: any[] = [];
+  await flushOutbox(base({
+    ...q.deps,
+    pricesAt: async (unitTypeId: string) => {
+      asked.push(unitTypeId);
+      return unitTypeId === 'DBL'
+        ? [{ occupancy: 2, priceMinor: 20000 }]
+        : [{ occupancy: 1, priceMinor: 15000 }];
+    },
+    send: async (_k, v) => { values.push(...v); return { warnings: [] }; },
+  }));
+  assert.deepStrictEqual([...asked].sort(), ['DBL', 'SGL'],
+    'ціну питали без типу номера — а ціна ночі належить типу, тариф її лише зсуває');
+  assert.strictEqual(values.find((v) => v.unitTypeId === 'DBL')?.prices?.[0]?.priceMinor, 20000,
+    'значення для DBL мусить нести свій тип і свою ціну');
+  assert.strictEqual(values.find((v) => v.unitTypeId === 'SGL')?.prices?.[0]?.priceMinor, 15000,
+    'значення для SGL мусить нести свій тип і свою ціну');
+}
+// Координата ціни без типу не адресується — вона знімається й РАХУЄТЬСЯ, а
+// не пропускається мовчки (третьої відповіді «не слати» не існує).
+{
+  const q = queue([{ id: 'x', kind: 'rate', ratePlanId: 'rp', date: DAY }]);
+  const retired: string[] = [];
+  let calls = 0;
+  const report = await flushOutbox(base({
+    ...q.deps,
+    retire: async (ids: string[], reason: string) => { retired.push(...ids); assert.match(reason, /unit type/); },
+    send: async () => { calls++; return { warnings: [] }; },
+  }));
+  assert.deepStrictEqual(retired, ['x'],
+    'координата ціни без типу номера мовчки пропущена — вона лишиться в черзі назавжди і ніде не буде названа');
+  assert.strictEqual(report.retired, 1);
+  assert.strictEqual(calls, 0, 'нема чого слати — і нічого не має бути надіслано');
+}
+console.log('  ok  вісь пари: один тариф на двох типах — дві ціни, два адресати; координата без типу знімається вголос');
 
 console.log('ari-batch: помилка звільняє чергу, ніч без ціни закривається, пачка ріжеться за розміром');

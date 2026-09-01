@@ -43,7 +43,7 @@ import '../../../../scripts/lib/module-aliases.mjs';
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
-const { enqueueChange, claimBatch, markSent, releaseFailed, pendingCount } =
+const { enqueueChange, claimBatch, markSent, releaseFailed, pendingCount, stuckChanges, retryStuck, retireChanges } =
   await import('./outbox.repo.ts');
 
 const sql = getSql();
@@ -179,13 +179,14 @@ try {
     console.log('  ok  невдала відправка повертає рядок і рахує спробу');
   });
 
+
   // ── Чуже зʼєднання ────────────────────────────────────────────────────
   await runWithOrganization(B, async () => {
     assert.deepStrictEqual(await claimBatch(CONN, 'rate', 50), [],
       'чужий орендар захопив чергу сусіда — його зміни поїхали б із чужим ключем');
     assert.strictEqual(await pendingCount(CONN), 0, 'чужий орендар побачив чергу сусіда');
     await assert.rejects(
-      () => enqueueChange(CONN, { kind: 'rate', unitTypeId: 'x', date: '2026-10-10' }),
+      () => enqueueChange(CONN, { kind: 'rate', unitTypeId: 'x', ratePlanId: 'y', date: '2026-10-10' }),
       'чужий орендар дописав у чергу сусіда');
   });
   await runWithOrganization(A, async () => {
@@ -199,6 +200,84 @@ try {
     assert.strictEqual(await pendingCount(`${B}_conn`), 0);
     console.log('  ok  порожня черга дає порожню пачку');
   });
+  // ── Межа спроб: застрягле видно оператору, а не крону ─────────────────
+  //
+  // Рецензія 01.09.2026: «рядок лишається в черзі» для незмапленого — це
+  // нова вічність. Без межі гучна відмова через тиждень така ж тиха, як
+  // мовчання: журнал повний однакових рядків, які ніхто не читає. Тому
+  // рядок, що впав N разів, більше НЕ захоплюється — він переходить у стан
+  // «потребує уваги», який має власний запит, і повертається в чергу лише
+  // рукою оператора.
+  await runWithOrganization(A, async () => {
+    // Хвости попередніх сцен — геть: числа нижче мають бути цієї сцени.
+    const leftovers = await claimBatch(CONN, 'rate', 50);
+    await markSent(leftovers.map((r) => r.id));
+
+    await enqueueChange(CONN, { kind: 'rate', unitTypeId: 'ut9', ratePlanId: 'rp9', date: '2026-12-01' });
+    for (let i = 1; i <= 3; i++) {
+      const b = await claimBatch(CONN, 'rate', 50, 3);
+      assert.strictEqual(b.length, 1, `спроба ${i}: рядок мав бути доступним — межа ще не вичерпана`);
+      await releaseFailed(b.map((r) => r.id), `канал відповів 500 (${i})`);
+    }
+    assert.deepStrictEqual(await claimBatch(CONN, 'rate', 50, 3), [],
+      'рядок із вичерпаними спробами знову захоплюється — гучна відмова стала вічною');
+    assert.strictEqual(await pendingCount(CONN, 'rate', 3), 0,
+      'застряглий рядок рахується як «чекає» — оператор бачить чергу, яка ніколи не порожніє, і не бачить чому');
+
+    const stuck = await stuckChanges(CONN, 3);
+    assert.strictEqual(stuck.length, 1, 'застряглий рядок не видно оператору — це та сама тиша, тільки з лічильником');
+    assert.strictEqual(stuck[0].attempts, 3);
+    assert.match(String(stuck[0].lastError), /500/, 'причина останньої невдачі мусить бути поруч із рядком');
+    assert.strictEqual(stuck[0].ratePlanId, 'rp9');
+    console.log('  ok  рядок, що впав тричі з трьох, більше не захоплюється і видимий як застряглий');
+
+    // Повернення — рукою, і рівно для цього зʼєднання.
+    await retryStuck(CONN, 3);
+    assert.deepStrictEqual(await stuckChanges(CONN, 3), [], 'після повернення застряглих не має лишитись');
+    const again = await claimBatch(CONN, 'rate', 50, 3);
+    assert.strictEqual(again.length, 1, 'повернений оператором рядок мав знову захоплюватись');
+    assert.strictEqual(again[0].attempts, 0, 'повернення мусить обнулити лічильник — інакше рядок застрягне на першій же невдачі');
+    await markSent(again.map((r) => r.id));
+    console.log('  ok  повернення оператором обнуляє спроби, і рядок їде знову');
+  });
+
+  // ── Знято з черги без відправлення — третій стан, названий ────────────
+  //
+  // Минула дата не поїде НІКОЛИ (вендор її не приймає). Повернути — вічне
+  // коло; позначити відправленою — брехня в журналі, який існує як доказ
+  // «ми це слали». Тому знята координата лишає причину поруч із собою.
+  await runWithOrganization(A, async () => {
+    await enqueueChange(CONN, { kind: 'availability', unitTypeId: 'ut9', date: '2020-01-01' });
+    const b = await claimBatch(CONN, 'availability', 50);
+    assert.strictEqual(b.length, 1);
+    await retireChanges(b.map((r) => r.id), 'date in the past');
+
+    assert.strictEqual(await pendingCount(CONN, 'availability'), 0, 'знята координата не має чекати');
+    assert.deepStrictEqual(await claimBatch(CONN, 'availability', 50), [], 'знята координата знову захопилась');
+    assert.deepStrictEqual(await stuckChanges(CONN), [], 'знята — це не застрягла');
+    const row = await sql.row<any>('SELECT sent_at, last_error FROM cm_outbox WHERE id = ?', [b[0].id]);
+    assert.match(String(row?.last_error), /^retired: date in the past/,
+      'рядок, знятий без відправлення, мусить казати це сам — інакше журнал читається як «слали»');
+    assert.ok(row?.sent_at, 'знята координата вийшла з черги — і це має бути видно за тим самим полем, за яким черга рахує');
+    console.log('  ok  знята координата виходить із черги з названою причиною, а не як «відправлена»');
+  });
+
+  // ── Координата, яку нема чим адресувати, в чергу не лягає ─────────────
+  //
+  // Ціна ночі належить типу номера (тариф лише зсуває), а тариф на тому боці
+  // адресується ПАРОЮ тип × тариф (Ц10): один наш тариф на чотирьох типах —
+  // чотири їхні. Координата ціни без типу не має чим ні цінуватись, ні
+  // адресуватись, і в черзі вона була б рядком, який не поїде ніколи.
+  await runWithOrganization(A, async () => {
+    await assert.rejects(() => enqueueChange(CONN, { kind: 'rate', ratePlanId: 'rp9', date: '2026-12-02' }),
+      'координата ціни без типу номера лягла в чергу — її нема чим цінувати й нема куди адресувати (Ц10)');
+    await assert.rejects(() => enqueueChange(CONN, { kind: 'rate', unitTypeId: 'ut9', date: '2026-12-02' }),
+      'координата ціни без тарифу лягла в чергу');
+    await assert.rejects(() => enqueueChange(CONN, { kind: 'availability', date: '2026-12-02' }),
+      'координата наявності без типу номера лягла в чергу');
+    console.log('  ok  координата без адресата відхиляється на вході, а не крутиться в черзі');
+  });
+
 } finally {
   await cleanup();
 }

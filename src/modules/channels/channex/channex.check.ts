@@ -29,6 +29,13 @@ const mock = await startMockChannex();
 const KEY = 'conn-1';
 const PROP = 'remote-prop';
 
+/** Дзеркало пар «наш тариф × наш тип → їхній тариф» — як його бачить `rateValues`. */
+const pairMap = (rows: [string, string, string][]) => {
+  const m = new Map(rows.map(([rp, ut, id]) => [`${rp}|${ut}`, id]));
+  return { get: (rp: string, ut: string) => m.get(`${rp}|${ut}`) };
+};
+
+
 /** Клієнт із керованим часом і без справжнього сну. */
 function makeClient(over: Partial<{ maxAttempts: number }> = {}) {
   let clock = 1_000_000;
@@ -200,10 +207,10 @@ function reset() {
 // ── 9. Стиснення діапазонів: пів року одним записом ──────────────────────
 {
   reset();
-  const ids = new Map([['rp-local', 'rp-remote']]);
+  const ids = pairMap([['rp-local', 'ut', 'rp-remote']]);
   const changes = [];
   for (let d = new Date(Date.UTC(2026, 11, 1)); d <= new Date(Date.UTC(2027, 4, 1)); d.setUTCDate(d.getUTCDate() + 1)) {
-    changes.push({ ratePlanId: 'rp-local', date: d.toISOString().slice(0, 10),
+    changes.push({ ratePlanId: 'rp-local', unitTypeId: 'ut', date: d.toISOString().slice(0, 10),
       prices: [{ occupancy: 2, priceMinor: 43200 }], minStay: 2 });
   }
   assert.strictEqual(changes.length, 152, 'очікувалось 152 ночі — тест 8 сертифікації');
@@ -220,11 +227,11 @@ function reset() {
 // ── 10. Різні обмеження — різні діапазони, а не одне склеєне ─────────────
 {
   reset();
-  const ids = new Map([['rp', 'rp-remote']]);
+  const ids = pairMap([['rp', 'ut', 'rp-remote']]);
   const { values } = rateValues(PROP, [
-    { ratePlanId: 'rp', date: '2026-11-01', prices: [{ occupancy: 2, priceMinor: 10000 }], minStay: 1 },
-    { ratePlanId: 'rp', date: '2026-11-02', prices: [{ occupancy: 2, priceMinor: 10000 }], minStay: 1 },
-    { ratePlanId: 'rp', date: '2026-11-03', prices: [{ occupancy: 2, priceMinor: 10000 }], minStay: 3 },
+    { ratePlanId: 'rp', unitTypeId: 'ut', date: '2026-11-01', prices: [{ occupancy: 2, priceMinor: 10000 }], minStay: 1 },
+    { ratePlanId: 'rp', unitTypeId: 'ut', date: '2026-11-02', prices: [{ occupancy: 2, priceMinor: 10000 }], minStay: 1 },
+    { ratePlanId: 'rp', unitTypeId: 'ut', date: '2026-11-03', prices: [{ occupancy: 2, priceMinor: 10000 }], minStay: 3 },
   ], ids);
   assert.strictEqual(values.length, 2, 'та сама ціна з іншим min_stay мала лишитись окремим діапазоном');
   assert.strictEqual(values[0].date_to, '2026-11-02');
@@ -259,8 +266,8 @@ function reset() {
 // ── 13. Порожніх полів у тілі немає ──────────────────────────────────────
 {
   reset();
-  const ids = new Map([['rp', 'rp-remote']]);
-  const { values } = rateValues(PROP, [{ ratePlanId: 'rp', date: '2026-11-01', closed: true }], ids);
+  const ids = pairMap([['rp', 'ut', 'rp-remote']]);
+  const { values } = rateValues(PROP, [{ ratePlanId: 'rp', unitTypeId: 'ut', date: '2026-11-01', closed: true }], ids);
   assert.strictEqual(values[0].stop_sell, true);
   assert.ok(!('rates' in values[0]), 'ціна, якої не міняли, поїхала полем — Channex відповів би претензією');
   assert.ok(!('min_stay' in values[0]), 'обмеження, якого не міняли, поїхало полем');
@@ -277,9 +284,9 @@ function reset() {
 // в цьому випадку спокуса написати голий ключ найбільша, а різниця невидима.
 {
   reset();
-  const ids = new Map([['rp', 'rp-remote']]);
+  const ids = pairMap([['rp', 'ut', 'rp-remote']]);
   const { values } = rateValues(PROP, [{
-    ratePlanId: 'rp', date: '2026-11-01',
+    ratePlanId: 'rp', unitTypeId: 'ut', date: '2026-11-01',
     prices: [{ occupancy: 1, priceMinor: 9000 }, { occupancy: 2, priceMinor: 11000 }],
   }], ids);
   assert.deepStrictEqual(values[0].rates,
@@ -290,9 +297,9 @@ function reset() {
 }
 {
   reset();
-  const ids = new Map([['rp', 'rp-remote']]);
+  const ids = pairMap([['rp', 'ut', 'rp-remote']]);
   const { values } = rateValues(PROP, [{
-    ratePlanId: 'rp', date: '2026-11-01', prices: [{ occupancy: 2, priceMinor: 11000 }],
+    ratePlanId: 'rp', unitTypeId: 'ut', date: '2026-11-01', prices: [{ occupancy: 2, priceMinor: 11000 }],
   }], ids);
   assert.deepStrictEqual(values[0].rates, [{ occupancy: 2, rate: 11000 }],
     'навіть одна заселеність їде масивом — саме тут спокуса написати голий ключ');
@@ -306,11 +313,11 @@ function reset() {
 // б тихо переписати ціну третьої особи.
 {
   reset();
-  const ids = new Map([['rp', 'rp-remote']]);
+  const ids = pairMap([['rp', 'ut', 'rp-remote']]);
   const { values } = rateValues(PROP, [
-    { ratePlanId: 'rp', date: '2026-11-01', prices: [{ occupancy: 1, priceMinor: 9000 }, { occupancy: 2, priceMinor: 11000 }] },
-    { ratePlanId: 'rp', date: '2026-11-02', prices: [{ occupancy: 1, priceMinor: 9000 }, { occupancy: 2, priceMinor: 11000 }] },
-    { ratePlanId: 'rp', date: '2026-11-03', prices: [{ occupancy: 1, priceMinor: 9000 }, { occupancy: 2, priceMinor: 12000 }] },
+    { ratePlanId: 'rp', unitTypeId: 'ut', date: '2026-11-01', prices: [{ occupancy: 1, priceMinor: 9000 }, { occupancy: 2, priceMinor: 11000 }] },
+    { ratePlanId: 'rp', unitTypeId: 'ut', date: '2026-11-02', prices: [{ occupancy: 1, priceMinor: 9000 }, { occupancy: 2, priceMinor: 11000 }] },
+    { ratePlanId: 'rp', unitTypeId: 'ut', date: '2026-11-03', prices: [{ occupancy: 1, priceMinor: 9000 }, { occupancy: 2, priceMinor: 12000 }] },
   ], ids);
   assert.strictEqual(values.length, 2, 'інша ціна для двох мала розірвати діапазон');
   assert.strictEqual(values[0].date_to, '2026-11-02');
@@ -325,7 +332,31 @@ function reset() {
     { unitTypeId: 'stranger', date: '2026-11-01', free: 1 },
   ], new Map([['known', 'known-remote']]));
   assert.strictEqual(values.length, 1, 'незмаплений тип поїхав у канал');
-  assert.deepStrictEqual(unmapped, ['stranger'], 'про незмаплений тип ніхто не дізнався');
+  assert.deepStrictEqual(unmapped, [{ unitTypeId: 'stranger' }], 'про незмаплений тип ніхто не дізнався');
+}
+
+// ── 14.1 Вісь ПАРИ (Ц10): один наш тариф на двох типах — два їхні тарифи ──
+//
+// Тариф на тому боці створюється на КОЖЕН тип номера окремо (дзеркало
+// ключується парою — 0056). Тіло, яке адресує його самим лише нашим
+// `ratePlanId`, або поклало б обидві ціни на один їхній тариф, або не знало
+// б, який із двох обрати. Незмаплена ПАРА називається парою: «тариф rp» без
+// типу оператору нічого не каже, бо на трьох інших типах той самий rp
+// змаплений.
+{
+  reset();
+  const pairs = pairMap([['rp', 'DBL', 'rp-on-dbl'], ['rp', 'SGL', 'rp-on-sgl']]);
+  const { values, unmapped } = rateValues(PROP, [
+    { ratePlanId: 'rp', unitTypeId: 'DBL', date: '2026-11-01', prices: [{ occupancy: 2, priceMinor: 20000 }], closed: false },
+    { ratePlanId: 'rp', unitTypeId: 'SGL', date: '2026-11-01', prices: [{ occupancy: 1, priceMinor: 15000 }], closed: false },
+    { ratePlanId: 'rp', unitTypeId: 'TWN', date: '2026-11-01', prices: [{ occupancy: 2, priceMinor: 20000 }], closed: false },
+  ], pairs);
+  assert.deepStrictEqual(values.map((v) => v.rate_plan_id).sort(), ['rp-on-dbl', 'rp-on-sgl'],
+    'той самий наш тариф на двох типах мав піти на ДВА їхні тарифи, кожен зі своєю ціною');
+  assert.strictEqual(values.find((v) => v.rate_plan_id === 'rp-on-sgl')?.rates?.[0]?.rate, 15000,
+    'ціна SGL мала лягти на тариф SGL, а не на сусідній');
+  assert.deepStrictEqual(unmapped, [{ ratePlanId: 'rp', unitTypeId: 'TWN' }],
+    'незмаплена ПАРА має бути названа парою — сам «rp» оператору нічого не каже');
 }
 
 // ── 15. Порожня пачка не витрачає квоту ──────────────────────────────────

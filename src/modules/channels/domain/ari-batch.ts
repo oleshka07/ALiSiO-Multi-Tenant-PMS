@@ -1,5 +1,5 @@
 import { percentOf } from '../../../core/money.ts';
-import type { AvailabilityChange, RateChange } from '../port';
+import type { AvailabilityChange, RateChange, Unmapped } from '../port';
 
 /**
  * Що поїде в канал із черги — і що станеться, коли не поїде.
@@ -63,11 +63,37 @@ export interface ClaimedCoordinate {
   unitTypeId?: string;
   ratePlanId?: string;
   date: string;
+  /**
+   * Скільки разів вона вже НЕ поїхала. Дефолт — нуль.
+   *
+   * Лічильник веде черга при звільненні; домен його лише читає, щоб знати,
+   * котра невдача остання дозволена (`maxAttempts`), і сказати про це вголос.
+   */
+  attempts?: number;
 }
+
+/**
+ * Скільки разів координаті дозволено не поїхати, перш ніж вона перестане
+ * захоплюватись і стане «потребує уваги».
+ *
+ * Одне число на домен і на чергу: шов передає його обом. Розійдуться — і
+ * домен доповідатиме про застрягле, яке черга ще роздає, або навпаки.
+ *
+ * Чому саме десять, а не три і не сто. Ліміт вендора — 10 викликів на
+ * хвилину на обʼєкт, і пауза після помилки — хвилина; кілька проходів
+ * поспіль можуть чесно впертись у `429` на одному й тому самому рядку, і
+ * три спроби оголошували б «увагу» там, де просто був жвавий вечір. Сто —
+ * це вже тиждень щохвилинних падінь, тобто та сама тиша, від якої межа
+ * існує. Десять проходів — достатньо, щоб пережити тротлінг, і замало, щоб
+ * пережити незмаплений тариф непоміченим.
+ */
+export const DEFAULT_MAX_ATTEMPTS = 10;
 
 /** Значення, зібране з джерела, разом із рядками черги, які його породили. */
 interface Resolved<T> {
   ids: string[];
+  /** Найбільший лічильник серед координат, що злились у це значення. */
+  attempts: number;
   value: T;
 }
 
@@ -82,6 +108,14 @@ export interface FlushReport {
    * мовчазне зникнення тут було б гіршим за обидва.
    */
   retired: number;
+  /**
+   * Скільки координат впало ВОСТАННЄ з дозволених разів — і далі захоплюватись
+   * не будуть, доки їх не поверне оператор.
+   *
+   * Окремо від `failed`, бо це різні дії для людини: `failed` — почекати
+   * наступного проходу; це — піти подивитись, чому.
+   */
+  needsAttention: number;
   /** Скільки викликів зроблено — те, що витрачає квоту обʼєкта. */
   calls: number;
   /** Причини повернення, по одній на смугу. */
@@ -118,24 +152,30 @@ export interface FlushDeps {
    */
   availabilityAt(unitTypeId: string, date: string): Promise<number | null>;
   /**
-   * Ціни по заселеностях на цю дату. `null` — ціни немає.
+   * Ціни по заселеностях ПАРИ тип × тариф на цю дату. `null` — ціни немає.
+   *
+   * Тип номера тут не для зручності: ціна ночі належить типу, тариф її лише
+   * зсуває, а на тому боці наш тариф заведений на кожен тип окремо (Ц10).
+   * Той самий тариф на двох типах — дві різні ціни й два різні адресати.
    *
    * `null` це НЕ нуль і не порожній масив: ніч, яку не покриває жодне
    * джерело, закривається (інваріант 17). Порожній масив прочитався б як
    * «цін не міняли», і ніч поїхала б зі старою ціною.
    */
-  pricesAt(ratePlanId: string, date: string): Promise<{ occupancy: number; priceMinor: number }[] | null>;
+  pricesAt(unitTypeId: string, ratePlanId: string, date: string): Promise<{ occupancy: number; priceMinor: number }[] | null>;
   /**
    * Відправити одне повідомлення. Кидає на помилці; `warnings` — теж помилка.
    *
-   * `unmapped` — наші ідентифікатори, яких немає в дзеркалі. Адаптер їх уже
+   * `unmapped` — наші координати, яких немає в дзеркалі. Адаптер їх уже
    * рахує; домен мусить їх ПРОЧИТАТИ, інакше такі координати позначаться
-   * відправленими, хоча про них не пішло нічого.
+   * відправленими, хоча про них не пішло нічого. Для ціни це ПАРА тип ×
+   * тариф (Ц10), не сам тариф: той самий тариф на сусідньому типі може бути
+   * змаплений.
    */
   send(
     kind: 'availability' | 'rate',
     values: (AvailabilityChange | RateChange)[],
-  ): Promise<{ warnings: unknown[]; unmapped?: string[] }>;
+  ): Promise<{ warnings: unknown[]; unmapped?: Unmapped[] }>;
   markSent(ids: string[]): Promise<void>;
   release(ids: string[], reason: string): Promise<void>;
   /**
@@ -169,6 +209,12 @@ export interface FlushDeps {
    * би зеленим в обох світах.
    */
   priceModifierPercent?: number;
+  /**
+   * Межа спроб — див. `DEFAULT_MAX_ATTEMPTS`. Те саме число, за яким черга
+   * перестає роздавати рядок: домен звідси лише називає останню дозволену
+   * невдачу, а зупиняє роздачу черга.
+   */
+  maxAttempts?: number;
   /** Стеля тіла одного виклику. Дефолт — 10 МБ вендора з запасом. */
   maxBodyBytes?: number;
   /**
@@ -255,45 +301,73 @@ async function flushLane<T extends AvailabilityChange | RateChange>(
 
   const max = deps.maxBodyBytes ?? DEFAULT_MAX_BODY;
   const sizeOf = deps.sizeOf ?? jsonSize;
+  const maxAttempts = deps.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+
+  /**
+   * Не поїхало — повернути в чергу, і назвати тих, кому це був останній раз.
+   *
+   * Звільнення стається ЗАВЖДИ, навіть для вичерпаних: саме воно робить
+   * рядок видимим як застряглий (черга перестає його роздавати за
+   * лічильником, а не за захопленням). Не звільнити означало б повернути
+   * вічно захоплений рядок — правило 1 з шапки.
+   */
+  const fail = async (items: Resolved<T>[], reason: string): Promise<void> => {
+    const ids = items.flatMap((r) => r.ids);
+    await deps.release(ids, reason);
+    report.failed += ids.length;
+    report.errors.push(`${kind}: ${reason}`);
+
+    const exhausted = items.filter((r) => r.attempts + 1 >= maxAttempts).flatMap((r) => r.ids);
+    if (exhausted.length) {
+      report.needsAttention += exhausted.length;
+      report.errors.push(
+        `${kind}: ${exhausted.length} coordinate(s) reached the attempt limit (${maxAttempts}) — needs attention`,
+      );
+    }
+  };
 
   for (const batch of intoBatches(resolved, max, sizeOf as (v: T) => number)) {
-    const ids = batch.flatMap((r) => r.ids);
     try {
       const answer = await deps.send(kind, batch.map((r) => r.value));
 
       // Незмаплене — НЕ успіх. Закрити ми його теж не можемо: не знаємо, що
       // саме закривати на тому боці, а тариф там лишається живим і
-      // продається далі. Тому гучна відмова, і рядок лишається в черзі.
-      const orphanIds = (answer.unmapped ?? []).length
-        ? batch.filter((r) => (answer.unmapped ?? []).some((local) =>
-            local === (r.value as RateChange).ratePlanId
-            || local === (r.value as AvailabilityChange).unitTypeId)).flatMap((r) => r.ids)
+      // продається далі. Тому гучна відмова, і рядок лишається в черзі — до
+      // межі спроб, після якої він стає «потребує уваги».
+      const unmapped = answer.unmapped ?? [];
+      const orphans = unmapped.length
+        ? batch.filter((r) => unmapped.some((u) => sameCoordinate(u, r.value)))
         : [];
-      if (orphanIds.length) {
-        await deps.release(orphanIds, `unmapped: ${(answer.unmapped ?? []).join(', ')}`);
-        report.failed += orphanIds.length;
-        report.errors.push(`${kind}: unmapped ${(answer.unmapped ?? []).join(', ')}`);
+      if (orphans.length) {
+        await fail(orphans, `unmapped ${unmapped.map(describe).join(', ')}`);
       }
-      const deliveredIds = ids.filter((id) => !orphanIds.includes(id));
+      const delivered = batch.filter((r) => !orphans.includes(r));
       // `200 OK` з непорожніми претензіями — це помилка, а не успіх (И4).
       // Порожній результат означає, що не застосовано НІЧОГО, тож позначити
       // рядки відправленими означало б втратити зміну, доповівши про успіх.
       if (answer.warnings && answer.warnings.length > 0) {
-        await deps.release(deliveredIds, `warnings: ${JSON.stringify(answer.warnings).slice(0, 300)}`);
-        report.failed += deliveredIds.length;
-        report.errors.push(`${kind}: ${answer.warnings.length} claim(s)`);
-      } else if (deliveredIds.length) {
-        await deps.markSent(deliveredIds);
-        report.sent += deliveredIds.length;
+        await fail(delivered, `${answer.warnings.length} claim(s): ${JSON.stringify(answer.warnings).slice(0, 300)}`);
+      } else if (delivered.length) {
+        const ids = delivered.flatMap((r) => r.ids);
+        await deps.markSent(ids);
+        report.sent += ids.length;
       }
     } catch (e: any) {
       // Найважливіші два рядки в усьому файлі — див. правило 1 у шапці.
-      await deps.release(ids, String(e?.message ?? e));
-      report.failed += ids.length;
-      report.errors.push(`${kind}: ${e?.message ?? e}`);
+      await fail(batch, String(e?.message ?? e));
     }
     report.calls++;
   }
+}
+
+/** Та сама координата: збігаються обидва наші ідентифікатори, включно з порожнім. */
+function sameCoordinate(u: Unmapped, v: AvailabilityChange | RateChange): boolean {
+  return (u.unitTypeId ?? null) === ((v as RateChange).unitTypeId ?? null)
+    && (u.ratePlanId ?? null) === ((v as RateChange).ratePlanId ?? null);
+}
+
+function describe(u: Unmapped): string {
+  return u.ratePlanId ? `${u.ratePlanId}@${u.unitTypeId ?? '?'}` : String(u.unitTypeId);
 }
 
 /**
@@ -303,7 +377,7 @@ async function flushLane<T extends AvailabilityChange | RateChange>(
  * дзеркало читаються в його межах.
  */
 export async function flushOutbox(deps: FlushDeps): Promise<FlushReport> {
-  const report: FlushReport = { sent: 0, failed: 0, retired: 0, calls: 0, errors: [] };
+  const report: FlushReport = { sent: 0, failed: 0, retired: 0, needsAttention: 0, calls: 0, errors: [] };
 
   // Вимкнене зʼєднання не шле нічого — і черги не втрачає. Це не провал,
   // тож ні `failed`, ні алерту з нього бути не має.
@@ -326,31 +400,49 @@ export async function flushOutbox(deps: FlushDeps): Promise<FlushReport> {
     return claimed.filter((c) => c.date >= today);
   };
 
+  /**
+   * Координата, якій бракує половини адреси, не поїде НІКОЛИ: наявність без
+   * типу нема на що покласти, ціну без типу або тарифу — нема чим ні
+   * цінувати, ні адресувати (пара, Ц10). Черга таких не приймає; якщо рядок
+   * усе ж є, він знімається з названою причиною й рахується — «не слати»
+   * серед відповідей не існує.
+   */
+  const addressed = async (claimed: ClaimedCoordinate[], what: string): Promise<ClaimedCoordinate[]> => {
+    const half = claimed.filter((c) => !c.unitTypeId || (c.kind === 'rate' && !c.ratePlanId));
+    if (half.length) {
+      await deps.retire(half.map((c) => c.id), `${what} coordinate without unit type or rate plan — cannot be addressed`);
+      report.retired += half.length;
+    }
+    return claimed.filter((c) => !half.includes(c));
+  };
+
   // ── Наявність ────────────────────────────────────────────────────────
-  const availability = await alive(await deps.claim('availability'));
+  const availability = await addressed(await alive(await deps.claim('availability')), 'availability');
   const resolvedAvailability: Resolved<AvailabilityChange>[] = [];
   for (const c of availability) {
     if (!c.unitTypeId) continue;
     const free = await deps.availabilityAt(c.unitTypeId, c.date);
     resolvedAvailability.push({
       ids: [c.id],
+      attempts: c.attempts ?? 0,
       value: { unitTypeId: c.unitTypeId, date: c.date, free: free ?? 0 },
     });
   }
   await flushLane('availability', resolvedAvailability, deps, report);
 
   // ── Ціни й обмеження ─────────────────────────────────────────────────
-  const rates = await alive(await deps.claim('rate'));
+  const rates = await addressed(await alive(await deps.claim('rate')), 'rate');
   const resolvedRates: Resolved<RateChange>[] = [];
   for (const c of rates) {
-    if (!c.ratePlanId) continue;
-    const base = await deps.pricesAt(c.ratePlanId, c.date);
+    if (!c.unitTypeId || !c.ratePlanId) continue;
+    const base = await deps.pricesAt(c.unitTypeId, c.ratePlanId, c.date);
     const prices = shift(base, deps.priceModifierPercent ?? 0);
     // Правило 2 з шапки, і воно тут ціле в двох рядках: або ціни та явне
     // відкриття, або закриття. Третього — «не слати» — немає.
+    const at = { ratePlanId: c.ratePlanId, unitTypeId: c.unitTypeId, date: c.date };
     resolvedRates.push(prices && prices.length
-      ? { ids: [c.id], value: { ratePlanId: c.ratePlanId, date: c.date, prices, closed: false } }
-      : { ids: [c.id], value: { ratePlanId: c.ratePlanId, date: c.date, closed: true } });
+      ? { ids: [c.id], attempts: c.attempts ?? 0, value: { ...at, prices, closed: false } }
+      : { ids: [c.id], attempts: c.attempts ?? 0, value: { ...at, closed: true } });
   }
   await flushLane('rate', resolvedRates, deps, report);
 

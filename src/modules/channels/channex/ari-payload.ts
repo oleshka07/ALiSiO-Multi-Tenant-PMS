@@ -23,12 +23,22 @@
  * Порожнє поле означало б «скинь», і канал перестав би продавати за
  * умовами, яких ніхто не міняв.
  */
-import type { AvailabilityChange, RateChange, DateStr } from '../port';
+import type { AvailabilityChange, RateChange, DateStr, Unmapped } from '../port';
 
 /** Що адаптер уміє перекласти в чужі ідентифікатори. */
 export interface IdMap {
   /** Наш ідентифікатор → ідентифікатор на боці Channex. */
   get(localId: string): string | undefined;
+}
+
+/**
+ * Дзеркало ПАР «наш тариф × наш тип номера → тариф Channex».
+ *
+ * Не `IdMap` за тарифом: один наш тариф на чотирьох типах — чотири їхні
+ * (Ц10, дзеркало 0056), і сам `ratePlanId` не називає жодного з них.
+ */
+export interface PairMap {
+  get(ratePlanId: string, unitTypeId: string): string | undefined;
 }
 
 /** Ціна однієї заселеності в тілі повідомлення. */
@@ -104,11 +114,11 @@ export function availabilityValues(
   remotePropertyId: string,
   changes: AvailabilityChange[],
   unitTypes: IdMap,
-): { values: AriValue[]; unmapped: string[] } {
-  const unmapped = new Set<string>();
+): { values: AriValue[]; unmapped: Unmapped[] } {
+  const unmapped = new Map<string, Unmapped>();
   const mapped = changes.filter((c) => {
     const remote = unitTypes.get(c.unitTypeId);
-    if (!remote) unmapped.add(c.unitTypeId);
+    if (!remote) unmapped.set(c.unitTypeId, { unitTypeId: c.unitTypeId });
     return Boolean(remote);
   });
 
@@ -126,7 +136,7 @@ export function availabilityValues(
     },
   );
 
-  return { values, unmapped: [...unmapped] };
+  return { values, unmapped: [...unmapped.values()] };
 }
 
 /**
@@ -151,12 +161,14 @@ export function availabilityValues(
 export function rateValues(
   remotePropertyId: string,
   changes: RateChange[],
-  ratePlans: IdMap,
-): { values: AriValue[]; unmapped: string[] } {
-  const unmapped = new Set<string>();
+  ratePlans: PairMap,
+): { values: AriValue[]; unmapped: Unmapped[] } {
+  // Незмаплена — ПАРА, і названа парою: сам тариф на сусідньому типі може
+  // бути змаплений, тож «тариф rp не змаплений» оператору збрехало б.
+  const unmapped = new Map<string, Unmapped>();
   const mapped = changes.filter((c) => {
-    const remote = ratePlans.get(c.ratePlanId);
-    if (!remote) unmapped.add(c.ratePlanId);
+    const remote = ratePlans.get(c.ratePlanId, c.unitTypeId);
+    if (!remote) unmapped.set(`${c.ratePlanId}|${c.unitTypeId}`, { ratePlanId: c.ratePlanId, unitTypeId: c.unitTypeId });
     return Boolean(remote);
   });
 
@@ -170,12 +182,14 @@ export function rateValues(
 
   const values = compress(
     mapped,
-    (c) => c.ratePlanId,
+    // Потік — пара, не тариф: той самий наш тариф на двох типах це два їхні
+    // тарифи з різними цінами, і склеїти їх в один діапазон не можна.
+    (c) => `${c.ratePlanId}|${c.unitTypeId}`,
     shapeOf,
     (sample, from, to) => {
       const v: AriValue = {
         property_id: remotePropertyId,
-        rate_plan_id: ratePlans.get(sample.ratePlanId)!,
+        rate_plan_id: ratePlans.get(sample.ratePlanId, sample.unitTypeId)!,
       };
       // `rates[]`, ніколи голий ключ ціни — И12. Порожній набір означає
       // «ціни не міняли», і тоді поля немає взагалі: порожнє поле Channex
@@ -194,7 +208,7 @@ export function rateValues(
     },
   );
 
-  return { values, unmapped: [...unmapped] };
+  return { values, unmapped: [...unmapped.values()] };
 }
 
 /**
