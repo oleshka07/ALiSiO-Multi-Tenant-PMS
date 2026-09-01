@@ -4049,7 +4049,52 @@ function runMigrations(database: any) {
   database.exec('CREATE INDEX IF NOT EXISTS idx_cm_mappings_org ON cm_mappings(organization_id)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_cm_mappings_lookup ON cm_mappings(connection_id, entity_type, remote_id)');
 
-  console.log('[DB] cm_connections + cm_inbound_bookings + cm_mappings ready');
+  // Черга вихідних змін. Тримає КООРДИНАТУ, а не значення: колонки під
+  // число тут немає навмисно. Поточну наявність батчер читає через
+  // availabilityByDay(), ціну через priceNights() — інакше два записи за
+  // 40 секунд дали б дві відправки з різними числами, і в канал поїхало б
+  // застаріле, виглядаючи як успіх.
+  //
+  // Дві смуги, бо менеджер каналів обробляє наявність окремим швидшим
+  // шляхом; змішати їх означає сповільнити найтерміновіше.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS cm_outbox (
+      id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      connection_id   TEXT NOT NULL REFERENCES cm_connections(id) ON DELETE CASCADE,
+      kind            TEXT NOT NULL CHECK (kind IN ('availability', 'rate')),
+      unit_type_id    TEXT,
+      rate_plan_id    TEXT,
+      stay_date       TEXT NOT NULL,
+      claimed_at      TEXT,
+      sent_at         TEXT,
+      attempts        INTEGER NOT NULL DEFAULT 0,
+      last_error      TEXT,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_cm_outbox_org ON cm_outbox(organization_id)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_cm_outbox_pending ON cm_outbox(connection_id, kind) WHERE sent_at IS NULL AND claimed_at IS NULL');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_cm_outbox_claimed ON cm_outbox(connection_id) WHERE claimed_at IS NOT NULL AND sent_at IS NULL');
+
+  // Сирі вхідні події. Вебхук кладе рядок і відповідає 200 — жодного запиту
+  // до менеджера каналів і жодної доменної роботи в ньому: повільна
+  // відповідь стає причиною повторної доставки, а та — ще однієї повільної.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS cm_events (
+      id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      connection_id   TEXT NOT NULL REFERENCES cm_connections(id) ON DELETE CASCADE,
+      event_type      TEXT NOT NULL,
+      payload         TEXT NOT NULL,
+      received_at     TEXT NOT NULL DEFAULT (datetime('now')),
+      processed_at    TEXT
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_cm_events_org ON cm_events(organization_id)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_cm_events_unprocessed ON cm_events(connection_id) WHERE processed_at IS NULL');
+
+  console.log('[DB] cm_connections + cm_inbound_bookings + cm_mappings + cm_outbox + cm_events ready');
 
   // --- Migration: gift_card_templates ---
   //

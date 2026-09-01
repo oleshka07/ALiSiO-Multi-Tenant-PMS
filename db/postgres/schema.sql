@@ -352,6 +352,17 @@ CREATE TABLE "cm_connections" (
   CHECK (environment IN ('staging', 'production'))
 );
 
+CREATE TABLE "cm_events" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "connection_id" TEXT NOT NULL,
+  "event_type" TEXT NOT NULL,
+  "payload" JSONB NOT NULL,
+  "received_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "processed_at" TIMESTAMPTZ,
+  PRIMARY KEY ("id")
+);
+
 CREATE TABLE "cm_inbound_bookings" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
@@ -389,6 +400,23 @@ CREATE TABLE "cm_mappings" (
   UNIQUE ("connection_id", "entity_type", "local_id", "occupancy"),
   CHECK (entity_type IN ('property', 'unit_type', 'rate_plan', 'rate_plan_option')),
   CHECK (occupancy >= 0)
+);
+
+CREATE TABLE "cm_outbox" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "connection_id" TEXT NOT NULL,
+  "kind" TEXT NOT NULL,
+  "unit_type_id" TEXT,
+  "rate_plan_id" TEXT,
+  "stay_date" DATE NOT NULL,
+  "claimed_at" TIMESTAMPTZ,
+  "sent_at" TIMESTAMPTZ,
+  "attempts" BIGINT DEFAULT 0 NOT NULL,
+  "last_error" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  CHECK (kind IN ('availability', 'rate'))
 );
 
 CREATE TABLE "content_translations" (
@@ -1997,6 +2025,10 @@ ALTER TABLE "cm_connections" ADD CONSTRAINT "fk_cm_connections_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "cm_connections" ADD CONSTRAINT "fk_cm_connections_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "cm_events" ADD CONSTRAINT "fk_cm_events_connection_id_1"
+  FOREIGN KEY ("connection_id") REFERENCES "cm_connections" ("id") ON DELETE CASCADE;
+ALTER TABLE "cm_events" ADD CONSTRAINT "fk_cm_events_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "cm_inbound_bookings" ADD CONSTRAINT "fk_cm_inbound_bookings_reservation_id_1"
   FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE SET NULL;
 ALTER TABLE "cm_inbound_bookings" ADD CONSTRAINT "fk_cm_inbound_bookings_connection_id_2"
@@ -2006,6 +2038,10 @@ ALTER TABLE "cm_inbound_bookings" ADD CONSTRAINT "fk_cm_inbound_bookings_organiz
 ALTER TABLE "cm_mappings" ADD CONSTRAINT "fk_cm_mappings_connection_id_1"
   FOREIGN KEY ("connection_id") REFERENCES "cm_connections" ("id") ON DELETE CASCADE;
 ALTER TABLE "cm_mappings" ADD CONSTRAINT "fk_cm_mappings_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "cm_outbox" ADD CONSTRAINT "fk_cm_outbox_connection_id_1"
+  FOREIGN KEY ("connection_id") REFERENCES "cm_connections" ("id") ON DELETE CASCADE;
+ALTER TABLE "cm_outbox" ADD CONSTRAINT "fk_cm_outbox_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "coupons" ADD CONSTRAINT "fk_coupons_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
@@ -2361,11 +2397,16 @@ CREATE INDEX "idx_cart_events_type" ON "cart_events" ("event_type", "abandon_not
 CREATE UNIQUE INDEX "idx_channel_rate_rules_row" ON "channel_rate_rules" (organization_id, property_id, (COALESCE(channel, '')));
 CREATE INDEX "idx_cm_connections_org" ON "cm_connections" ("organization_id");
 CREATE UNIQUE INDEX "idx_cm_connections_token" ON "cm_connections" ("webhook_token");
+CREATE INDEX "idx_cm_events_org" ON "cm_events" ("organization_id");
+CREATE INDEX "idx_cm_events_unprocessed" ON "cm_events" ("connection_id") WHERE processed_at IS NULL;
 CREATE INDEX "idx_cm_inbound_booking" ON "cm_inbound_bookings" ("connection_id", "remote_booking_id");
 CREATE INDEX "idx_cm_inbound_org" ON "cm_inbound_bookings" ("organization_id");
 CREATE INDEX "idx_cm_inbound_unconfirmed" ON "cm_inbound_bookings" ("connection_id") WHERE confirmed_at IS NULL;
 CREATE INDEX "idx_cm_mappings_lookup" ON "cm_mappings" ("connection_id", "entity_type", "remote_id");
 CREATE INDEX "idx_cm_mappings_org" ON "cm_mappings" ("organization_id");
+CREATE INDEX "idx_cm_outbox_claimed" ON "cm_outbox" ("connection_id") WHERE claimed_at IS NOT NULL AND sent_at IS NULL;
+CREATE INDEX "idx_cm_outbox_org" ON "cm_outbox" ("organization_id");
+CREATE INDEX "idx_cm_outbox_pending" ON "cm_outbox" ("connection_id", "kind") WHERE sent_at IS NULL AND claimed_at IS NULL;
 CREATE INDEX "idx_ct_hash" ON "content_translations" ("text_hash");
 CREATE INDEX "idx_ct_lang" ON "content_translations" ("text_hash", "lang");
 CREATE INDEX "idx_coupons_org" ON "coupons" ("organization_id");
@@ -2513,8 +2554,10 @@ CREATE INDEX IF NOT EXISTS "idx_capex_items_org" ON "capex_items" ("organization
 CREATE INDEX IF NOT EXISTS "idx_channel_credentials_org" ON "channel_credentials" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_channel_rate_rules_org" ON "channel_rate_rules" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cm_connections_org" ON "cm_connections" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_cm_events_org" ON "cm_events" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cm_inbound_bookings_org" ON "cm_inbound_bookings" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cm_mappings_org" ON "cm_mappings" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_cm_outbox_org" ON "cm_outbox" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_coupons_org" ON "coupons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_event_addons_org" ON "event_addons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_event_bookings_org" ON "event_bookings" ("organization_id");
@@ -2597,9 +2640,13 @@ ALTER TABLE "channel_rate_rules" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "cm_connections" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "cm_events" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "cm_inbound_bookings" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "cm_mappings" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "cm_outbox" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "coupons" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2813,6 +2860,12 @@ CREATE POLICY "cm_connections_tenant" ON "cm_connections"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
+ALTER TABLE "cm_events" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "cm_events" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "cm_events_tenant" ON "cm_events"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
 ALTER TABLE "cm_inbound_bookings" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "cm_inbound_bookings" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "cm_inbound_bookings_tenant" ON "cm_inbound_bookings"
@@ -2822,6 +2875,12 @@ CREATE POLICY "cm_inbound_bookings_tenant" ON "cm_inbound_bookings"
 ALTER TABLE "cm_mappings" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "cm_mappings" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "cm_mappings_tenant" ON "cm_mappings"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "cm_outbox" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "cm_outbox" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "cm_outbox_tenant" ON "cm_outbox"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
