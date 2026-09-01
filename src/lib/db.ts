@@ -225,7 +225,15 @@ function buildSchema(database: any) {
       name TEXT NOT NULL,
       code TEXT NOT NULL,
       pricing_model TEXT NOT NULL DEFAULT 'standard',
-      fixed_price REAL,
+      -- Колонки власної ціни тут немає і не буде: рішення Ц7 — ціну ночі
+      -- називає лише priceNights(), точка збуту її ЗСУВАЄ відсотком. Стара
+      -- 'fixed_price' не мала жодного читача й жодного писача за всю історію,
+      -- а три гілки у віджеті питали її в site_rate_plans, де такої колонки
+      -- ніколи не було. Тримає check-price-source.mjs (0055).
+      --
+      -- Ім'я в лапках навмисно: голе слово означало б колонку, і гейт
+      -- відмовив би — він не вміє вирізати SQL-коментар усередині шаблонного
+      -- рядка, і вчити його цьому дорожче, ніж написати ім'я так.
       currency TEXT NOT NULL DEFAULT 'CZK',
       is_active INTEGER NOT NULL DEFAULT 1,
       cancellation_policy TEXT,
@@ -1167,10 +1175,11 @@ function runMigrations(database: any) {
       database.exec("ALTER TABLE rate_plans ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0");
       console.log('[DB] Added is_hidden to rate_plans');
     }
-    if (!rpCols.includes('fixed_price')) {
-      database.exec("ALTER TABLE rate_plans ADD COLUMN fixed_price REAL");
-      console.log('[DB] Added fixed_price to rate_plans');
-    }
+    // Тут стояв ADD COLUMN власної ціни. Видалений разом зі створенням, а не
+    // прикритий DROP-ом у кінці (AGENTS §4): у вже наявних локальних базах
+    // колонка лишиться сиротою, і це нікого не турбує — її не читає ніхто.
+    // Справжнє видалення на Postgres робить міграція 0055, і лише якщо в ній
+    // порожньо.
   } catch (e: any) {
     console.log('[DB] rate_plans migration note:', e.message);
   }

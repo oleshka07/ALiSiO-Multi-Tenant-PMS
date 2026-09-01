@@ -24,6 +24,26 @@
  * entry says what diverges and what the fix is. New entries are not added —
  * new code goes through `@pricing`. An entry whose file no longer queries the
  * tables is stale and fails --strict, so the list can only shrink.
+ *
+ * ── Друге правило: точка збуту не називає власної ціни (Ц7) ────────────────
+ *
+ * `rate_plans.fixed_price` існувала з першого дня і не мала ЖОДНОГО читача й
+ * жодного писача за всю історію `src/` — але три гілки у віджеті питали
+ * `fixed_price` в обʼєкта із `site_rate_plans`, де такої колонки немає. Мертвий
+ * код над мертвою колонкою: гість бачив базову ціну там, де мав побачити
+ * фіксовану, і жодного сліду в логах.
+ *
+ * Рішення Ц7 зробило це не недоглядом, а забороною: ціну ночі називає лише
+ * `priceNights()`, точка збуту її ЗСУВАЄ. Колонка, у якій тариф може написати
+ * власне число, — це заряджена рушниця, і `audit-dead-data.mjs` її не бачить
+ * за означенням: слово `fixed_price` живе в коді як значення `discount_type`
+ * у знижках, тож колонка виглядає використаною.
+ *
+ * Звідси форма правила: `fixed_price` дозволене ЛИШЕ в лапках (рядкове
+ * значення знижки). Голий ідентифікатор — `fixed_price REAL`, `r.fixed_price`,
+ * `SELECT fixed_price` — це колонка, і це відмова. Правило ловить нового читача
+ * САМОЇ КОЛОНКИ, а не лише повернення поля в хелпер `ratePlanNightPrice()`:
+ * перевернутий контракт у `rate-plan.check.ts` тримає другу половину.
  */
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +58,59 @@ const SRC = path.join(ROOT, 'src');
 // SQL that reads or writes a price table. INSERT INTO / DELETE FROM are
 // covered by INTO / FROM; UPDATE stands on its own.
 const QUERY = /\b(?:FROM|JOIN|INTO|UPDATE)\s+["'`]?price_(?:calendar|occupancy|los_tiers)\b/i;
+
+// Голий `fixed_price` — тобто колонка, а не значення `discount_type` у лапках.
+// Лапка будь-якого з трьох видів безпосередньо перед словом або після нього
+// знімає підозру; усе інше — ідентифікатор.
+const OWN_PRICE = /(?<!['"`])\bfixed_price\b(?!['"`])/;
+
+/**
+ * Коментарі геть — інакше перевірка рахує власну документацію.
+ *
+ * AGENTS §4: тричі за одну сесію гейт ловив свій же приклад того, що вже
+ * виправлено. Пояснення, ЧОМУ колонки більше немає, живуть у коментарях —
+ * і мають там жити, не валячи збірку.
+ *
+ * Переводи рядків при цьому ЗБЕРІГАЮТЬСЯ. Перша версія стискала блоковий
+ * коментар у пробіл, і гейт показав `db.ts:388` замість 228 — на 160 рядків
+ * повз. Повідомлення, яке вказує не туди, гірше за відсутнє: за ним ідуть
+ * дивитись і не знаходять.
+ *
+ * І це СКАНЕР, а не пара `replace`. Двома регулярками не виходить: у db.ts
+ * рядковий коментар містить `scripts/*.mjs`, і `/*` усередині нього відкрив
+ * блок на 780 рядків — разом із `fixed_price REAL` на 228-му. Гейт після цього
+ * доповідав про геть інше місце, і був би зеленим, якби порушення лишилось
+ * тільки там. Зворотний порядок (спершу рядкові) ламається дзеркально: подвійна
+ * скісна риска всередині блокового коментаря зʼїдає його термінатор, якщо той
+ * стоїть наприкінці того ж рядка.
+ */
+function stripComments(text) {
+  let out = '';
+  let i = 0;
+  const n = text.length;
+  // Стани: код, рядковий коментар, блоковий, три види лапок. Із рядка виходимо
+  // по тій самій лапці, з якої зайшли; `\` пропускає наступний символ.
+  while (i < n) {
+    const c = text[i];
+    const d = text[i + 1];
+    if (c === '/' && d === '/') {
+      while (i < n && text[i] !== '\n') { out += ' '; i++; }
+    } else if (c === '/' && d === '*') {
+      while (i < n && !(text[i] === '*' && text[i + 1] === '/')) { out += text[i] === '\n' ? '\n' : ' '; i++; }
+      out += '  '; i += 2;
+    } else if (c === '"' || c === "'" || c === '`') {
+      out += c; i++;
+      while (i < n && text[i] !== c) {
+        if (text[i] === '\\') { out += text[i]; i++; if (i < n) { out += text[i]; i++; } continue; }
+        out += text[i]; i++;
+      }
+      if (i < n) { out += text[i]; i++; }
+    } else {
+      out += c; i++;
+    }
+  }
+  return out;
+}
 
 // The debt as of 2026-08-24 — see docs/AUDIT.md §2 for the full stories.
 //
@@ -59,6 +132,7 @@ const LEGACY = new Map([
 ]);
 
 const offenders = [];   // new violations
+const ownPrice = [];    // «тариф називає власну ціну» — Ц7
 const covered = new Set(); // legacy entries that still match
 
 function walk(dir) {
@@ -72,6 +146,14 @@ function walk(dir) {
     if (!/\.(ts|tsx|mts)$/.test(e.name)) continue;
 
     const rel = path.relative(ROOT, p).replaceAll(path.sep, '/');
+
+    // Друге правило — БЕЗ винятків за текою: колонка народжується саме в
+    // `src/lib/db.ts`, і модуль цін має підкорятись йому найперше.
+    {
+      const bare = stripComments(fs.readFileSync(p, 'utf8'));
+      const at = bare.search(OWN_PRICE);
+      if (at >= 0) ownPrice.push({ rel, line: bare.slice(0, at).split('\n').length });
+    }
     // The module that owns the tables, and the schema that creates them.
     if (rel.startsWith('src/modules/pricing/')) continue;
     if (rel === 'src/lib/db.ts') continue;
@@ -103,6 +185,15 @@ if (offenders.length) {
   console.error('  answers "from" figures. A direct query is how the four loops happened.');
 }
 
+if (ownPrice.length) {
+  failed = true;
+  console.error('\n✗ `fixed_price` голим ідентифікатором — точка збуту називає власну ціну (Ц7):\n');
+  for (const o of ownPrice) console.error(`  ${o.rel}:${o.line}`);
+  console.error('\n  Ціна ночі одна — `priceNights()`. Точка збуту лише ЗСУВАЄ її');
+  console.error('  через `pricing_modifier_percent`; власного числа вона не називає.');
+  console.error('  Значення знижки пишеться в лапках (\'fixed_price\'), колонка — ні.');
+}
+
 if (stale.length || gone.length) {
   for (const f of [...stale, ...gone]) {
     console.error(`\n✗ LEGACY entry no longer matches: ${f}`);
@@ -115,6 +206,7 @@ if (stale.length || gone.length) {
 if (!failed) {
   const n = covered.size;
   console.log(`✓ price source: no new readers outside modules/pricing (${n} known legacy, see docs/AUDIT.md §2)`);
+  console.log('✓ own price: жоден тариф не називає власного числа — `fixed_price` лише як значення знижки (Ц7)');
 }
 
 if (failed && strict) process.exit(1);
