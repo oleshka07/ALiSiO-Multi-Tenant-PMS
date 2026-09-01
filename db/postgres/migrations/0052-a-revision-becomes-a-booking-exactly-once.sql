@@ -90,27 +90,56 @@ CREATE TABLE IF NOT EXISTS cm_inbound_bookings (
 
 -- Зовнішні ключі окремо: `ADD CONSTRAINT IF NOT EXISTS` у Postgres немає,
 -- тож повторний накат ловиться через каталог.
+--
+-- І ловиться за ОЗНАЧЕННЯМ, а не за іменем. Ім'я тут наше й довільне, а на
+-- свіжій базі ці ж ключі вже створив `schema.sql` — під СВОЇМИ іменами, бо
+-- генератор нумерує їх у своєму порядку. Сторож за іменем не знаходить
+-- нічого і додає ДРУГИЙ такий самий ключ: новий клієнт отримує не «без
+-- констрейнта», а дубльований констрейнт під двома іменами. Знайшов
+-- `check-schema-drift` на справжньому Postgres.
+--
+-- Той самий прийом уже стоїть у 0050 для CHECK — з тієї ж причини.
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_cm_connections_organization_id_1') THEN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'cm_connections'::regclass AND contype = 'f'
+       AND pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (organization_id) REFERENCES%'
+  ) THEN
     ALTER TABLE cm_connections ADD CONSTRAINT fk_cm_connections_organization_id_1
       FOREIGN KEY (organization_id) REFERENCES organizations (id) ON DELETE CASCADE;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_cm_connections_property_id_2') THEN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'cm_connections'::regclass AND contype = 'f'
+       AND pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (property_id) REFERENCES%'
+  ) THEN
     ALTER TABLE cm_connections ADD CONSTRAINT fk_cm_connections_property_id_2
       FOREIGN KEY (property_id) REFERENCES properties (id) ON DELETE CASCADE;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_cm_inbound_bookings_organization_id_1') THEN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'cm_inbound_bookings'::regclass AND contype = 'f'
+       AND pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (organization_id) REFERENCES%'
+  ) THEN
     ALTER TABLE cm_inbound_bookings ADD CONSTRAINT fk_cm_inbound_bookings_organization_id_1
       FOREIGN KEY (organization_id) REFERENCES organizations (id) ON DELETE CASCADE;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_cm_inbound_bookings_connection_id_2') THEN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'cm_inbound_bookings'::regclass AND contype = 'f'
+       AND pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (connection_id) REFERENCES%'
+  ) THEN
     ALTER TABLE cm_inbound_bookings ADD CONSTRAINT fk_cm_inbound_bookings_connection_id_2
       FOREIGN KEY (connection_id) REFERENCES cm_connections (id) ON DELETE CASCADE;
   END IF;
   -- Бронь можуть видалити руками; журнал ревізій від цього не зникає, він
   -- лише перестає на неї вказувати.
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_cm_inbound_bookings_reservation_id_3') THEN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'cm_inbound_bookings'::regclass AND contype = 'f'
+       AND pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (reservation_id) REFERENCES%'
+  ) THEN
     ALTER TABLE cm_inbound_bookings ADD CONSTRAINT fk_cm_inbound_bookings_reservation_id_3
       FOREIGN KEY (reservation_id) REFERENCES reservations (id) ON DELETE SET NULL;
   END IF;

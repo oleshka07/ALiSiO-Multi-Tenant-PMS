@@ -64,14 +64,24 @@ CREATE TABLE IF NOT EXISTS cm_mappings (
 );
 
 -- Зовнішні ключі окремо: `ADD CONSTRAINT IF NOT EXISTS` у Postgres немає,
--- тож повторний накат ловиться через каталог.
+-- тож повторний накат ловиться через каталог — за ОЗНАЧЕННЯМ, не за іменем.
+-- На свіжій базі ці ключі вже створив `schema.sql` під своїми іменами, і
+-- сторож за іменем додав би другий такий самий (див. 0052).
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_cm_mappings_organization_id_1') THEN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'cm_mappings'::regclass AND contype = 'f'
+       AND pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (organization_id) REFERENCES%'
+  ) THEN
     ALTER TABLE cm_mappings ADD CONSTRAINT fk_cm_mappings_organization_id_1
       FOREIGN KEY (organization_id) REFERENCES organizations (id) ON DELETE CASCADE;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_cm_mappings_connection_id_2') THEN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'cm_mappings'::regclass AND contype = 'f'
+       AND pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (connection_id) REFERENCES%'
+  ) THEN
     ALTER TABLE cm_mappings ADD CONSTRAINT fk_cm_mappings_connection_id_2
       FOREIGN KEY (connection_id) REFERENCES cm_connections (id) ON DELETE CASCADE;
   END IF;

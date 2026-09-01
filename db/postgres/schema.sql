@@ -2476,6 +2476,7 @@ CREATE INDEX "idx_reservations_org" ON "reservations" ("organization_id");
 CREATE INDEX "idx_reservations_parent" ON "reservations" ("parent_id");
 CREATE INDEX "idx_reservations_property" ON "reservations" ("property_id");
 CREATE INDEX "idx_reservations_status" ON "reservations" ("status");
+CREATE INDEX "idx_reservations_unassigned" ON "reservations" ("property_id", "check_in") WHERE unit_id IS NULL;
 CREATE INDEX "idx_reservations_unit" ON "reservations" ("unit_id");
 CREATE INDEX "idx_reservations_unit_type" ON "reservations" ("unit_type_id");
 CREATE INDEX "idx_incoming_leads_site" ON "site_incoming_leads" ("site_id");

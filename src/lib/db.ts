@@ -5088,6 +5088,19 @@ function runMigrations(database: any) {
       }
       console.log(`[DB] reservations.unit_id is nullable now (${restored} indexes intact) — a booking may arrive without a room`);
     }
+
+    // Частковий індекс під непризначені броні. ПОЗА блоком перебудови, бо
+    // потрібен він і тим базам, де колонка вже nullable і перебудова не
+    // вмикається.
+    //
+    // Стояв був ЛИШЕ в міграції 0051 — тобто мігроване середовище його мало,
+    // а новий клієнт ні. Спіймав `check-schema-drift` на справжньому
+    // Postgres; `check-fresh-schema` цього не бачить за означенням: він
+    // звіряє SQLite із SQLite, а там його бракувало однаково з обох боків.
+    // Те саме правило, що для колонок (AGENTS §4), тільки для індексів.
+    database.exec(
+      'CREATE INDEX IF NOT EXISTS idx_reservations_unassigned ON reservations(property_id, check_in) WHERE unit_id IS NULL',
+    );
   } catch (e: any) {
     console.error('[DB] reservations.unit_id nullable migration:', e.message);
   }

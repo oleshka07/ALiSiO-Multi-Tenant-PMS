@@ -117,11 +117,25 @@ CREATE INDEX IF NOT EXISTS "idx_reservations_unit_type"
 -- перевірку каталогу: міграція мусить лишатись перезапускною.
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_price_calendar_rate_plan_id_1') THEN
+  -- За ОЗНАЧЕННЯМ, не за іменем: на свіжій базі цей ключ уже створив
+  -- `schema.sql` під СВОЇМ іменем (генератор нумерує у своєму порядку),
+  -- і сторож за іменем додав би другий такий самий.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'price_calendar'::regclass AND contype = 'f'
+       AND pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (rate_plan_id) REFERENCES%'
+  ) THEN
     ALTER TABLE "price_calendar" ADD CONSTRAINT "fk_price_calendar_rate_plan_id_1"
       FOREIGN KEY ("rate_plan_id") REFERENCES "rate_plans" ("id");
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_reservations_unit_type_id_1') THEN
+  -- За ОЗНАЧЕННЯМ, не за іменем: на свіжій базі цей ключ уже створив
+  -- `schema.sql` під СВОЇМ іменем (генератор нумерує у своєму порядку),
+  -- і сторож за іменем додав би другий такий самий.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'reservations'::regclass AND contype = 'f'
+       AND pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (unit_type_id) REFERENCES%'
+  ) THEN
     ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_unit_type_id_1"
       FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id");
   END IF;
