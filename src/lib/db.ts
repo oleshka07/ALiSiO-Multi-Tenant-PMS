@@ -4073,6 +4073,17 @@ function runMigrations(database: any) {
       created_at      TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+  // Злиття тримає СХЕМА, а не порядок викликів: «спитати й вставити» лишає
+  // вікно між двома кроками, і злиття існує доти, доки писач один.
+  // COALESCE обовʼязково — UNIQUE не обмежує NULL на жодному двигуні, а
+  // rate_plan_id порожній у кожного рядка наявності (пастка price_occupancy).
+  // Предикат claimed_at IS NULL — суть, а не оптимізація: захоплений рядок
+  // уже в польоті, і нова зміна мусить стати ОКРЕМИМ рядком.
+  database.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_cm_outbox_coord
+      ON cm_outbox(connection_id, kind, (COALESCE(unit_type_id, '')), (COALESCE(rate_plan_id, '')), stay_date)
+      WHERE claimed_at IS NULL AND sent_at IS NULL
+  `);
   database.exec('CREATE INDEX IF NOT EXISTS idx_cm_outbox_org ON cm_outbox(organization_id)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_cm_outbox_pending ON cm_outbox(connection_id, kind) WHERE sent_at IS NULL AND claimed_at IS NULL');
   database.exec('CREATE INDEX IF NOT EXISTS idx_cm_outbox_claimed ON cm_outbox(connection_id) WHERE claimed_at IS NOT NULL AND sent_at IS NULL');

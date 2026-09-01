@@ -115,6 +115,27 @@ BEGIN
   END IF;
 END $$;
 
+-- ── Злиття тримає СХЕМА, а не порядок викликів ────────────────────────────
+--
+-- Частковий унікальний індекс на координату серед НЕЗАХОПЛЕНИХ рядків.
+-- Перша версія репозиторію робила «спитати, чи є такий рядок, потім
+-- вставити» — між цими двома кроками вміщається другий писач, і злиття
+-- існує рівно доти, доки писач один. Та сама пастка, від якої застерігає
+-- коментар у `cm_inbound_bookings` (0052).
+--
+-- `COALESCE(…, '')` обовʼязково: `UNIQUE` не обмежує `NULL` ні в Postgres,
+-- ні в SQLite, а `rate_plan_id` порожній у кожного рядка наявності — без
+-- COALESCE індекс пропустив би їх скільки завгодно. Це рівно та пастка, на
+-- якій уже обпікся `price_occupancy`, і той самий прийом, що в
+-- `idx_price_calendar_row`.
+--
+-- Предикат `claimed_at IS NULL` — не оптимізація, а суть: захоплений рядок
+-- уже в польоті зі старим числом, і нова зміна МУСИТЬ стати окремим рядком.
+-- Злити її в захоплений означає, що вона не поїде ніколи.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cm_outbox_coord
+  ON cm_outbox (connection_id, kind, (COALESCE(unit_type_id, '')), (COALESCE(rate_plan_id, '')), stay_date)
+  WHERE claimed_at IS NULL AND sent_at IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_cm_outbox_org ON cm_outbox (organization_id);
 CREATE INDEX IF NOT EXISTS idx_cm_events_org ON cm_events (organization_id);
 -- Головний запит батчера: «що чекає у цій смузі цього зʼєднання».

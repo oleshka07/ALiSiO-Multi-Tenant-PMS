@@ -2405,6 +2405,7 @@ CREATE INDEX "idx_cm_inbound_unconfirmed" ON "cm_inbound_bookings" ("connection_
 CREATE INDEX "idx_cm_mappings_lookup" ON "cm_mappings" ("connection_id", "entity_type", "remote_id");
 CREATE INDEX "idx_cm_mappings_org" ON "cm_mappings" ("organization_id");
 CREATE INDEX "idx_cm_outbox_claimed" ON "cm_outbox" ("connection_id") WHERE claimed_at IS NOT NULL AND sent_at IS NULL;
+CREATE UNIQUE INDEX "idx_cm_outbox_coord" ON "cm_outbox" (connection_id, kind, (COALESCE(unit_type_id, '')), (COALESCE(rate_plan_id, '')), stay_date) WHERE claimed_at IS NULL AND sent_at IS NULL ;
 CREATE INDEX "idx_cm_outbox_org" ON "cm_outbox" ("organization_id");
 CREATE INDEX "idx_cm_outbox_pending" ON "cm_outbox" ("connection_id", "kind") WHERE sent_at IS NULL AND claimed_at IS NULL;
 CREATE INDEX "idx_ct_hash" ON "content_translations" ("text_hash");
@@ -2501,11 +2502,9 @@ CREATE INDEX "idx_price_cal_ut" ON "price_calendar" ("unit_type_id");
 CREATE INDEX "idx_price_cal_ut_date" ON "price_calendar" ("unit_type_id", "date");
 CREATE UNIQUE INDEX "idx_price_calendar_row" ON "price_calendar" (unit_type_id, (COALESCE(rate_plan_id, '')), date);
 CREATE INDEX "idx_price_los_tiers_lookup" ON "price_los_tiers" ("organization_id", "property_id", "unit_type_id");
-CREATE UNIQUE INDEX "idx_price_los_tiers_row" ON "price_los_tiers" (organization_id, property_id, (COALESCE(unit_type_id, '')),
-                           min_nights, (COALESCE(persons, -1)));
+CREATE UNIQUE INDEX "idx_price_los_tiers_row" ON "price_los_tiers" (organization_id, property_id, (COALESCE(unit_type_id, '')), min_nights, (COALESCE(persons, -1)));
 CREATE INDEX "idx_price_occupancy_lookup" ON "price_occupancy" ("organization_id", "property_id", "unit_type_id", "persons");
-CREATE UNIQUE INDEX "idx_price_occupancy_row" ON "price_occupancy" (organization_id, property_id, (COALESCE(unit_type_id, '')),
-                           persons, (COALESCE(valid_from, '0001-01-01')), (COALESCE(valid_to, '9999-12-31')));
+CREATE UNIQUE INDEX "idx_price_occupancy_row" ON "price_occupancy" (organization_id, property_id, (COALESCE(unit_type_id, '')), persons, (COALESCE(valid_from, '0001-01-01')), (COALESCE(valid_to, '9999-12-31')));
 CREATE INDEX "idx_line_items_sub" ON "reservation_line_items" ("sub_booking_id");
 CREATE INDEX "idx_sub_bookings_res" ON "reservation_sub_bookings" ("reservation_id");
 CREATE INDEX "idx_reservations_dates" ON "reservations" ("check_in", "check_out");

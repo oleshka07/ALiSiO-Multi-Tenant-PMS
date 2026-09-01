@@ -73,24 +73,23 @@ export async function enqueueChange(connectionId: string, change: Change): Promi
   const unitTypeId = change.unitTypeId ?? null;
   const ratePlanId = change.ratePlanId ?? null;
 
-  // `IS ?` не буває, а `= ?` не збігається з NULL на жодному двигуні — тому
-  // порівняння через COALESCE: координата з порожнім тарифом (наявність) має
-  // впізнаватися так само надійно, як із заповненим.
-  const existing = await sql.row<any>(
-    `SELECT id FROM cm_outbox
-      WHERE connection_id = ? AND organization_id = ? AND kind = ?
-        AND COALESCE(unit_type_id, '') = COALESCE(?, '')
-        AND COALESCE(rate_plan_id, '') = COALESCE(?, '')
-        AND stay_date = ?
-        AND sent_at IS NULL AND claimed_at IS NULL`,
-    [connectionId, conn.organizationId, change.kind, unitTypeId, ratePlanId, change.date],
-  ) as { id: string } | undefined;
-  if (existing) return;
-
+  // Злиття тримає ІНДЕКС, а не цей код. Перша версія робила «спитати, чи є
+  // такий рядок, потім вставити» — між цими двома кроками вміщається другий
+  // писач, і злиття існує рівно доти, доки писач один. Та сама пастка, від
+  // якої застерігає коментар у `inbound-bookings.repo.ts`, і я потрапив у неї
+  // тут-таки, через файл.
+  //
+  // Ціль конфлікту мусить дослівно повторювати вираз індексу — `ON CONFLICT`
+  // збігається з ІНДЕКСОМ, а не з наміром: розбіжність дає «does not match any
+  // PRIMARY KEY or UNIQUE constraint» на першій же зміні ціни, на обох
+  // двигунах. Той самий прийом, що в `price-calendar.repo.ts`.
   await sql.run(
     `INSERT INTO cm_outbox
        (id, organization_id, connection_id, kind, unit_type_id, rate_plan_id, stay_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (connection_id, kind, (COALESCE(unit_type_id, '')), (COALESCE(rate_plan_id, '')), stay_date)
+       WHERE claimed_at IS NULL AND sent_at IS NULL
+       DO NOTHING`,
     [crypto.randomUUID(), conn.organizationId, connectionId,
       change.kind, unitTypeId, ratePlanId, change.date],
   );

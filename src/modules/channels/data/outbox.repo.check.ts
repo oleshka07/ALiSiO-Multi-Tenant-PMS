@@ -93,6 +93,42 @@ try {
     console.log('  ok  повторна зміна тієї самої координати не двоїть чергу');
   });
 
+  // ── Дедуплікацію тримає СХЕМА, а не порядок викликів ──────────────────
+  //
+  // `enqueueChange` спершу питав «чи є такий рядок», потім вставляв. Між цими
+  // двома кроками вміщається другий писач — і дедуплікація існує рівно доти,
+  // доки писач один. Це та сама пастка, від якої застерігає коментар у
+  // `inbound-bookings.repo.ts`, і я потрапив у неї в сусідньому файлі.
+  //
+  // Тому вставляємо ПОВЗ функцію, двома прямими INSERT: якщо друга координата
+  // лягла, тримає не схема, а везіння.
+  await runWithOrganization(A, async () => {
+    const direct = (id: string) => sql.run(
+      `INSERT INTO cm_outbox (id, organization_id, connection_id, kind, unit_type_id, rate_plan_id, stay_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, A, CONN, 'rate', 'ut_race', 'rp_race', '2026-11-11'],
+    );
+    await direct('__race_1');
+    await assert.rejects(() => direct('__race_2'),
+      'друга однакова координата лягла — дедуплікацію тримає не схема, а те, що писач один');
+    console.log('  ok  повтор координати відхиляє САМА база, а не порядок викликів');
+
+    // І та сама координата з порожнім тарифом — теж одна. `UNIQUE` не
+    // обмежує NULL на жодному двигуні (пастка `price_occupancy`), тож без
+    // COALESCE індекс пропустив би скільки завгодно рядків наявності.
+    const nullPlan = (id: string) => sql.run(
+      `INSERT INTO cm_outbox (id, organization_id, connection_id, kind, unit_type_id, stay_date)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, A, CONN, 'availability', 'ut_race', '2026-11-11'],
+    );
+    await nullPlan('__race_3');
+    await assert.rejects(() => nullPlan('__race_4'),
+      'координата з ПОРОЖНІМ тарифом продублювалась — UNIQUE не обмежує NULL');
+    console.log('  ok  порожній тариф у ключі не робить дірку в унікальності');
+
+    await sql.run("DELETE FROM cm_outbox WHERE id LIKE '__race_%'", []);
+  });
+
   // ── Наявність і ціна — різні смуги ────────────────────────────────────
   await runWithOrganization(A, async () => {
     await enqueueChange(CONN, { kind: 'availability', unitTypeId: 'ut1', date: '2026-10-10' });

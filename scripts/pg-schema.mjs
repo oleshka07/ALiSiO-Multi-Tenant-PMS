@@ -543,22 +543,61 @@ w();
 
 w('-- ── Indexes ─────────────────────────────────────────────────────────────');
 w();
+/**
+ * Предикат часткового індексу — з вихідного DDL, або гучна відмова.
+ *
+ * Розділяємо ПО СЛОВУ `WHERE`, а не регуляркою по дужках: предикат сам може
+ * містити дужки (`WHERE (a IS NULL)`), і жадібне `\(([^;]*)\)` тоді
+ * захопило б половину предиката в список колонок.
+ *
+ * Дати вирізаються навмисно: `datetime()`/`date()`/`strftime()` у предикаті —
+ * це SQLite, і Postgres такий індекс не створить. Але це ЄДИНИЙ випадок,
+ * коли предикат можна втратити, і він лишає примітку.
+ */
+function splitIndexDdl(sql) {
+  const m = sql.match(/\bWHERE\b/i);
+  if (!m) return { head: sql, where: null };
+  return { head: sql.slice(0, m.index), where: sql.slice(m.index + 5) };
+}
+
 for (const ix of indexes) {
   if (ix.name.startsWith('sqlite_')) continue;
   const cols = db.prepare(`PRAGMA index_info("${ix.name}")`).all();
+  const { head, where } = splitIndexDdl(ix.sql);
+  const dateBound = where && /datetime\(|date\(|strftime\(/i.test(where);
+  const partial = where && !dateBound ? ` WHERE${where.replace(/\s+/g, ' ').replace(/;$/, '')}` : '';
+  if (dateBound) notes.push(`index ${ix.name}: partial WHERE uses a date function — dropped`);
+
+  // ЧАСТКОВИЙ УНІКАЛЬНИЙ ІНДЕКС БЕЗ ПРЕДИКАТА — це не «трохи інший індекс»,
+  // це ІНШЕ ОБМЕЖЕННЯ, і суворіше. `cm_outbox` втратив свій предикат саме
+  // так: `CREATE UNIQUE … WHERE claimed_at IS NULL` став тотальним, і на
+  // Postgres нова зміна після захоплення не вставлялась НІКОЛИ. Мовчки: гілка
+  // для індексів із виразами губила `WHERE` і навіть не лишала примітки.
+  //
+  // Гейти цього не бачили за означенням: `check-fresh-schema` звіряє SQLite
+  // із SQLite (предикат є з обох боків), а `check-schema-drift` — schema.sql
+  // проти міграцій, де `CREATE … IF NOT EXISTS <ім'я>` пропускається, бо ім'я
+  // вже зайняте тотальним індексом. Той самий обхід за іменем, що з
+  // констрейнтами (AGENTS §4), тільки поверхом вище.
+  if (dateBound && /CREATE\s+UNIQUE\s+INDEX/i.test(ix.sql)) {
+    console.error(`\n✗ ${ix.name}: частковий УНІКАЛЬНИЙ індекс із датою в предикаті.`);
+    console.error('  Без предиката він став би іншим — і суворішим — обмеженням.');
+    console.error('  Перепишіть предикат без date-функцій або зробіть індекс не-унікальним.');
+    process.exit(1);
+  }
+
+  const uniq = /CREATE\s+UNIQUE\s+INDEX/i.test(ix.sql) ? 'UNIQUE ' : '';
+
   if (cols.some((c) => c.name == null)) {
-    // An expression index. Postgres understands the same expression, so the
-    // column list is taken from the original DDL rather than the pragma.
-    const inner = (ix.sql.match(/\(([^;]*)\)\s*(WHERE[\s\S]*)?$/i) || [])[1];
+    // Індекс за виразом. Postgres розуміє той самий вираз, тож список колонок
+    // беремо з вихідного DDL, а не з прагми — але предикат при цьому НЕ
+    // губимо, на відміну від першої версії цього коду.
+    const inner = (head.match(/\(([\s\S]*)\)\s*$/) || [])[1];
     if (!inner) { notes.push(`index ${ix.name}: expression index — not generated`); continue; }
-    const uniqE = /CREATE\s+UNIQUE\s+INDEX/i.test(ix.sql) ? 'UNIQUE ' : '';
-    w(`CREATE ${uniqE}INDEX ${q(ix.name)} ON ${q(ix.tbl_name)} (${inner.trim()});`);
+    w(`CREATE ${uniq}INDEX ${q(ix.name)} ON ${q(ix.tbl_name)} (${inner.trim().replace(/\s+/g, ' ')})${partial};`);
     continue;
   }
-  const uniq = /CREATE\s+UNIQUE\s+INDEX/i.test(ix.sql) ? 'UNIQUE ' : '';
-  const where = (ix.sql.match(/\bWHERE\b(.+)$/is) || [])[1];
-  const partial = where && !/datetime\(|date\(|strftime\(/i.test(where) ? ` WHERE${where.replace(/\s+/g, ' ').replace(/;$/, '')}` : '';
-  if (where && !partial) notes.push(`index ${ix.name}: partial WHERE uses a date function — dropped`);
+
   w(`CREATE ${uniq}INDEX ${q(ix.name)} ON ${q(ix.tbl_name)} (${cols.map((c) => q(c.name)).join(', ')})${partial};`);
 }
 w();
