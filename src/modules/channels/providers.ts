@@ -1,5 +1,7 @@
 import { pullConnection as channexPull } from './channex/pull-adapter';
+import { catalogSync as channexCatalog } from './channex/catalog-adapter';
 import type { PullReport } from './data/pull-bookings';
+import type { CatalogReport } from './domain/catalog.ts';
 
 /**
  * Шов композиції: рядок провайдера → модуль адаптера. Більше нічого.
@@ -16,16 +18,26 @@ import type { PullReport } from './data/pull-bookings';
  * сюди переповзе логіка — розгалуження поведінки, чуже поле, URL — гейт
  * упаде так само, як упав би на будь-якому доменному файлі.
  *
- * Ознака, що шов перестав бути швом: у ньому більше десятка рядків.
+ * Ознака, що шов перестав бути швом: у ньому більше десятка рядків. Два
+ * записи на провайдера (стрічка і каталог) — це все ще відповідність, а не
+ * логіка: обидва мають одну форму `(connectionId, apiKey) => звіт`, і жодної
+ * умови на поведінку тут немає.
  */
 
 /** Прочитати стрічку одного зʼєднання і завести з неї броні. */
 export type Puller = (connectionId: string, apiKey: string) => Promise<PullReport>;
 
+/** Завести каталог одного зʼєднання в менеджері каналів. */
+export type CatalogSyncer = (connectionId: string, apiKey: string) => Promise<CatalogReport>;
+
 // Ключі — це ЗНАЧЕННЯ з `cm_connections.provider`, тому вони в лапках: це
 // дані з бази, а не імена в коді.
 const PULLERS: Record<string, Puller> = {
   'channex': channexPull,
+};
+
+const CATALOG_SYNCERS: Record<string, CatalogSyncer> = {
+  'channex': channexCatalog,
 };
 
 /**
@@ -37,4 +49,9 @@ const PULLERS: Record<string, Puller> = {
  */
 export function pullerFor(provider: string): Puller | null {
   return PULLERS[provider] ?? null;
+}
+
+/** Хто заводить каталог цього провайдера. Невідомий — `null`, не виняток. */
+export function catalogSyncerFor(provider: string): CatalogSyncer | null {
+  return CATALOG_SYNCERS[provider] ?? null;
 }

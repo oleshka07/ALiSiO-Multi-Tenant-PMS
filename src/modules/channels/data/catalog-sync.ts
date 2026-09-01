@@ -1,6 +1,6 @@
 import { catalogProperty, catalogUnitTypes } from '@properties';
 import { propertyRatePlans } from '@pricing';
-import { connectionInTenant } from './connections.repo';
+import { connectionInTenant, rememberRemoteProperty } from './connections.repo';
 import { putMapping, remoteIdOf } from './mappings.repo';
 import {
   syncCatalog as runSyncCatalog,
@@ -124,5 +124,14 @@ export async function syncConnectionCatalog(
     throw new Error('catalog: property has no rate plan to take the currency from');
   }
 
-  return runSyncCatalog(args);
+  const report = await runSyncCatalog(args);
+
+  // Шов до фази 5, який довго був порожній. Каталог заводиться бездоганно, а
+  // стрічка броней починається з `if (!conn.remotePropertyId) throw` — тобто
+  // без цього рядка броні з каналів не приїжджають НІКОЛИ, і виглядає це як
+  // несправність стрічки, а не як незаписана колонка. Знайдено прогоном
+  // проти живого staging; тримає `catalog-sync.check.ts`.
+  await rememberRemoteProperty(connectionId, report.remotePropertyId);
+
+  return report;
 }

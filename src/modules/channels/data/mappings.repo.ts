@@ -148,3 +148,47 @@ export async function remoteIdOf(
 
   return row?.remote_id ?? null;
 }
+
+/** Один рядок дзеркала, як його читає звірка. */
+export interface MirrorRow {
+  entityType: MappedEntity;
+  localId: string;
+  /** Другий бік ПАРИ. Порожньо для обʼєкта й типу номера. */
+  unitTypeId: string;
+  /** 0 — сама сутність, не опція заселеності. */
+  occupancy: number;
+  remoteId: string;
+}
+
+/**
+ * Усе дзеркало зʼєднання — для звірки, а не для перекладу.
+ *
+ * `mappingMirror()` віддає мапу «чужий → наш» одного роду: цього досить, щоб
+ * перекласти бронь, і НЕ досить, щоб звірити каталог. Звірка питає інше — чи
+ * кожна наша пара «тип × тариф» стала окремим тарифом на тому боці (Ц10) і
+ * чи всі опції заселеності на місці (И13), — а для цього потрібні саме ті
+ * колонки, які мапа відкидає: `unit_type_id` і `occupancy`.
+ *
+ * Порожній список — нормальний стан незаведеного каталогу, не помилка.
+ */
+export async function connectionMirror(connectionId: string): Promise<MirrorRow[]> {
+  const organizationId = currentOrganizationId();
+  if (!organizationId) throw new Error('cm_mappings: read without a tenant');
+
+  const sql = getSql();
+  const rows = await sql.rows<any>(
+    `SELECT entity_type, local_id, unit_type_id, occupancy, remote_id
+       FROM cm_mappings
+      WHERE connection_id = ? AND organization_id = ?
+      ORDER BY entity_type, local_id, unit_type_id, occupancy`,
+    [connectionId, organizationId],
+  ) as Record<string, unknown>[];
+
+  return rows.map((r) => ({
+    entityType: String(r.entity_type) as MappedEntity,
+    localId: String(r.local_id),
+    unitTypeId: String(r.unit_type_id ?? ''),
+    occupancy: Number(r.occupancy) || 0,
+    remoteId: String(r.remote_id),
+  }));
+}

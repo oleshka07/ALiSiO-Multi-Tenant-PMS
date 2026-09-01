@@ -59,3 +59,45 @@ export async function connectionInTenant(connectionId: string): Promise<Connecti
     isEnabled: Boolean(Number(row.is_enabled)),
   };
 }
+
+/**
+ * Запамʼятати, під яким ідентифікатором наш обʼєкт живе на тому боці.
+ *
+ * ── Навіщо окрема колонка, коли є дзеркало ──────────────────────────────
+ *
+ * `cm_mappings` тримає ту саму відповідність рядком `entity_type='property'`.
+ * Колонка на зʼєднанні — не дубль заради дубля, а гаряча координата: її
+ * читає КОЖНЕ опитування стрічки (`filter[property_id]` обовʼязковий, И11), і
+ * ходити за нею в дзеркало на кожен прохід крона означало б зайвий запит по
+ * рядок, який не змінюється ніколи.
+ *
+ * ── Чому це не «UPDATE … SET» і все ─────────────────────────────────────
+ *
+ * Зʼєднання, яке вже вказує на ІНШИЙ обʼєкт, — це не привід тихо
+ * переприсвоїти. Це означає, що або дзеркало перебудували, або зʼєднання
+ * перецілили руками; у будь-якому разі наступний синк ARI поїхав би в чужий
+ * обʼєкт. Тому розбіжність — відмова (інваріант 13), а не перезапис.
+ */
+export async function rememberRemoteProperty(
+  connectionId: string,
+  remotePropertyId: string,
+): Promise<void> {
+  const organizationId = currentOrganizationId();
+  if (!organizationId) throw new Error('cm: connection update without a tenant');
+  if (!remotePropertyId) throw new Error('cm: refusing to store an empty remote property');
+
+  const sql = getSql();
+  const current = await connectionInTenant(connectionId);
+  if (!current) throw new Error('cm: connection not found');
+  if (current.remotePropertyId === remotePropertyId) return;
+  if (current.remotePropertyId) {
+    throw new Error('cm: connection already points at a different remote property');
+  }
+
+  await sql.run(
+    `UPDATE cm_connections
+        SET remote_property_id = ?, updated_at = ?
+      WHERE id = ? AND organization_id = ?`,
+    [remotePropertyId, new Date().toISOString(), connectionId, organizationId],
+  );
+}

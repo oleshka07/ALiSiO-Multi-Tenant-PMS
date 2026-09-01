@@ -66,8 +66,30 @@ function fromAlias(spec) {
   return null;
 }
 
+/**
+ * `next/<something>` -> `next/<something>.js`.
+ *
+ * A module facade (`@properties`, `@pricing`) pulls in the module's API
+ * handlers and the session, and those import `next/server` and `next/headers`.
+ * The bundler resolves them; node does not — `next` has no exports entry for
+ * either, only files on disk. Same "bundler knows, node does not" gap as the
+ * aliases above, so it is fixed in the same place.
+ *
+ * A rule, not a list: enumerating the two known names would need extending on
+ * every further facade, and each time the failure reads as a broken feature
+ * rather than a broken launch. When the file is absent the specifier goes
+ * through untouched, so a genuine typo stays an error.
+ */
+function nextGap(spec) {
+  if (!spec.startsWith('next/') || spec.endsWith('.js')) return null;
+  const file = path.join(ROOT, 'node_modules', `${spec}.js`);
+  return fs.existsSync(file) ? pathToFileURL(file).href : null;
+}
+
 registerHooks({
   resolve(spec, ctx, next) {
+    const gap = nextGap(spec);
+    if (gap) return { url: gap, shortCircuit: true };
     const mapped = fromAlias(spec);
     if (mapped) {
       const file = onDisk(mapped);
