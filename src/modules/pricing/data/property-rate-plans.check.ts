@@ -83,6 +83,16 @@ async function seed(org: string) {
        VALUES (?, ?, ?, ?, ?, 3, 3, 2)`,
       [`${org}_tri`, prop, `${org}_cat`, 'Triple', 'TRI'],
     );
+    // СІМЕЙНИЙ: два дорослих, двоє дітей, усього чотири місця. Єдиний тип, у
+    // якого `max_adults` і `max_occupancy` РОЗХОДЯТЬСЯ — і саме тому він тут.
+    // Поки їх не було, твердження про обрізання не розрізняло двох правил і
+    // лишалось зеленим при будь-якому з них.
+    await sql.run(
+      `INSERT INTO unit_types (id, property_id, category_id, name, code,
+                               max_adults, max_children, max_occupancy, base_occupancy)
+       VALUES (?, ?, ?, ?, ?, 2, 2, 4, 2)`,
+      [`${org}_fam`, prop, `${org}_cat`, 'Family', 'FAM'],
+    );
     // Три тарифи: звичайний, вимкнений і той, під який ніхто не поставив ціни.
     for (const [id, code, name, active] of [
       [`${org}_bar`, 'BAR', 'Best Available', 1],
@@ -98,7 +108,7 @@ async function seed(org: string) {
     // Ціни: BAR має ціни на обидва типи; OFF — теж (щоб довести, що відсіює
     // саме вимкненість, а не відсутність цін); NOP — жодної.
     for (const plan of [`${org}_bar`, `${org}_off`]) {
-      for (const ut of [`${org}_dbl`, `${org}_tri`]) {
+      for (const ut of [`${org}_dbl`, `${org}_tri`, `${org}_fam`]) {
         await sql.run(
           `INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price)
            VALUES (?, ?, ?, ?, ?)`,
@@ -112,6 +122,9 @@ async function seed(org: string) {
       [`${org}_dbl`, 1], [`${org}_dbl`, 2],
       [`${org}_tri`, 1], [`${org}_tri`, 2], [`${org}_tri`, 3],
       [`${org}_tri`, 4],
+      // Сімейний оцінено на 1–4 особи: буденна форма, бо четверо в ньому
+      // справді сплять. Дорослих місць при цьому два.
+      [`${org}_fam`, 1], [`${org}_fam`, 2], [`${org}_fam`, 3], [`${org}_fam`, 4],
     ] as const;
     for (const [ut, persons] of occ) {
       await sql.run(
@@ -162,7 +175,7 @@ try {
     // ── Типи номерів беруться звідти, де СПРАВДІ є ціни ──────────────────
     assert.deepStrictEqual(
       bar.unitTypes.map((u) => u.code).sort(),
-      ['DBL', 'TRI'],
+      ['DBL', 'FAM', 'TRI'],
       'типи номерів тарифу взяті не з цінової таблиці');
     console.log('  ok  типи номерів тарифу — це ті, на які є ціна');
 
@@ -174,10 +187,34 @@ try {
     // помилка валить синк усього каталогу.
     const dbl = bar.unitTypes.find((u) => u.code === 'DBL')!;
     const tri = bar.unitTypes.find((u) => u.code === 'TRI')!;
+    const fam = bar.unitTypes.find((u) => u.code === 'FAM')!;
     assert.deepStrictEqual(dbl.occupancies, [1, 2], 'вісь заселеності двомісного номера');
     assert.deepStrictEqual(tri.occupancies, [1, 2, 3],
       'заселеність на 4 особи пройшла в тримісний номер — синк каталогу впаде цілком');
-    console.log('  ok  заселеність обрізається місткістю типу, а не приймається як є');
+
+    // ── Обрізає ДОРОСЛА місткість, а не загальна ─────────────────────────
+    //
+    // Це єдине твердження, яке розрізняє два правила, і саме тому воно тут.
+    // У DBL і TRI `max_adults` дорівнює `max_occupancy`, тож із ними гейт
+    // лишався зеленим при будь-якому з двох — і був зеленим, поки шов різав
+    // по загальній місткості.
+    //
+    // Правильна межа — доросла, бо опція заселеності в менеджера каналів за
+    // ОЗНАЧЕННЯМ про дорослих: «For Per Person Rate Plan you should pass
+    // Occupancy Option for each possible count of ADULT guests»
+    // (`rate-plans-collection.md:668`). Виміряно на живому API 01.09.2026:
+    // тип 2+2 з опціями 1..4 дає 422 «occupancy 3, 4 exceeds the room type's
+    // max adults occupancy of 2», а 422 валить УВЕСЬ прохід каталогу.
+    //
+    // Сімʼя при цьому нічого не втрачає: вона як бронювала номер, так і
+    // бронюватиме, просто опція буде 2 — і це правильна опція. Чого вона НЕ
+    // покриває, так це грошей за дітей: сьогодні `persons` складає дорослих
+    // і дітей, тож ціна на 4 осіб зникає разом із опцією 4. Це вже інше
+    // питання (скільки коштує дитина), і воно відкрите — див. журнал рішень.
+    assert.deepStrictEqual(fam.occupancies, [1, 2],
+      'сімейний номер 2 дорослих + 2 дітей віддав заселеності понад ДОРОСЛУ місткість — '
+      + 'на живому API це 422, і воно валить синк усього каталогу');
+    console.log('  ok  заселеність обрізається ДОРОСЛОЮ місткістю типу');
 
     // ── Валюта — з тарифу, не вгадана ────────────────────────────────────
     assert.strictEqual(bar.currency, 'EUR', 'валюта тарифу підмінена');
