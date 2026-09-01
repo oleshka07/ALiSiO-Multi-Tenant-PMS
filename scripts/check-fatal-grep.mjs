@@ -29,6 +29,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const ROOTS = ['deploy', '.claude/hooks'];
 
@@ -72,9 +73,32 @@ for (const file of files) {
 }
 
 if (problems.length === 0) {
+  // ── І синтаксис: скрипт, який не парситься, теж мовчить ───────────────
+  //
+  // Той самий клас, що й порожній grep, і навіть дешевший: `bash -n` читає
+  // файл, не виконуючи його. Додано 01.09.2026, коли одна зайва лапка в
+  // `echo\"` зробила deploy/measure-price-modifier.sh таким, що він падає
+  // ДО першого рядка виводу — тобто оператор побачив би тишу замість числа,
+  // яким ухвалюють рішення про чужі ціни.
+  //
+  // Ловилося це лише тим, що я набрав `bash -n` руками. Гейт, який залежить
+  // від того, чи хтось згадав, — це не гейт (AGENTS §4).
+  const broken = [];
+  for (const file of files) {
+    const r = spawnSync('bash', ['-n', file], { encoding: 'utf8' });
+    if (r.status !== 0) broken.push({ file, why: (r.stderr || '').trim().split('\n')[0] });
+  }
+  if (broken.length) {
+    console.log('check-fatal-grep: скрипт не парситься — він помре до першого рядка виводу');
+    console.log('');
+    for (const b of broken) console.log(`  ${b.file}\n    ${b.why}`);
+    console.log('');
+    process.exit(1);
+  }
+
   console.log('check-fatal-grep');
   console.log(
-    `  чисто — ${guarded} скриптів під set -e, жоден порожній grep не вбиває мовчки`
+    `  чисто — ${guarded} скриптів: усі парсяться, жоден порожній grep не вбиває мовчки`
   );
   console.log('');
   process.exit(0);

@@ -67,6 +67,16 @@ export interface NightlyPrices {
    * per-extra-guest surcharge would charge for the same guest twice.
    */
   occupancyPriced: boolean;
+  /**
+   * Партія не вміщається в тип номера — і тоді всі ночі в `missing`.
+   *
+   * До Ц12 це ловилося ВИПАДКОВО: `persons` складав дорослих із дітьми, тож
+   * сімʼя на сім осіб просто не знаходила рядка матриці. Після розділу осі
+   * дорослих двоє, рядок на двох є, і питати «а куди подіти пʼятьох дітей»
+   * стало нікому. Прапорець окремий від `missing`, бо причина інша: ціни не
+   * бракує, бракує ліжок, і повідомлення гостю має бути іншим.
+   */
+  overCapacity?: boolean;
 }
 
 /**
@@ -115,10 +125,31 @@ export async function priceNights(input: {
   // price is quoted at — the same baseline `extra_person_charge` counts extra
   // guests from, and the same one Channex calls the primary occupancy option.
   const owner = await sql.row<any>(
-    `SELECT p.id AS property_id, p.organization_id, ut.base_occupancy
+    `SELECT p.id AS property_id, p.organization_id, ut.base_occupancy,
+            ut.max_adults, ut.max_children, ut.max_occupancy
        FROM unit_types ut JOIN properties p ON p.id = ut.property_id WHERE ut.id = ?`,
     [unitTypeId],
   );
+
+  // ── Місткість: три межі, і жодна з них не випадкова ────────────────────
+  //
+  // Дорослі впираються в `max_adults` — це та сама межа, якою шов обрізає
+  // заселеності для каналу. Діти — в `max_children`. Разом — у
+  // `max_occupancy`, бо номер 2+2 не вміщає чотирьох дорослих і двох дітей
+  // навіть тоді, коли кожна межа окремо дотримана.
+  //
+  // Порожній тип (`owner` немає) сюди не потрапляє: нижче він і так дає
+  // порожнє котирування.
+  if (owner) {
+    const maxAdults = Math.max(1, Number(owner.max_adults) || 1);
+    const maxChildren = Math.max(0, Number(owner.max_children) || 0);
+    const maxOccupancy = Math.max(maxAdults, Number(owner.max_occupancy) || maxAdults);
+    if (adults > maxAdults || children > maxChildren || adults + children > maxOccupancy) {
+      const all: string[] = [];
+      for (let i = 0; i < nights; i++) all.push(addDays(checkIn, i));
+      return { nights: [], missing: all, total: 0, occupancyPriced: false, overCapacity: true };
+    }
+  }
 
   const matrix = owner ? await loadMatrixRows(owner.organization_id, owner.property_id) : [];
 

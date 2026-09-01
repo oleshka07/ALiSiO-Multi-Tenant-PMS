@@ -64,6 +64,46 @@ docker inspect "$PGC" >/dev/null 2>&1 || { echo "контейнера $PGC не�
 docker exec -i "$PGC" psql -U "$PG_SUPERUSER" -d "$PG_DATABASE" -v ON_ERROR_STOP=1 <<'SQL'
 SET row_security = off;
 
+-- ── ХТО ПИТАЄ, І ЧИ ВІДПОВІДЬ ВЗАГАЛІ МОЖЕ БУТИ ЧЕСНОЮ ────────────────────
+--
+-- Нуль, отриманий роллю, яку фільтрує RLS, виглядає РІВНО так само, як
+-- чесний нуль. І читається так само — «переносимо вільно», тобто найгірший
+-- можливий неправдивий результат: ним ухвалюють рішення переписати чужі
+-- ціни. Тому роль друкується у вивід, а не лишається в шапці файла: через
+-- півроку шапку не відкриють, а число прочитають.
+--
+-- І перевіряється, а не друкується для краси: якщо роль не обходить RLS,
+-- скрипт ВІДМОВЛЯЄ (інваріант 13 — перевірка, яка не знайшла очікуваного,
+-- відмовляє, а не дозволяє).
+\echo '── Хто питає ───────────────────────────────────────────────────────'
+SELECT current_user                        AS роль,
+       current_setting('row_security')     AS row_security,
+       (SELECT rolsuper  FROM pg_roles WHERE rolname = current_user) AS суперкористувач,
+       (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS обходить_rls,
+       pg_get_userbyid(datdba) = current_user AS власник_бази
+  FROM pg_database WHERE datname = current_database();
+
+DO $$
+DECLARE ok boolean;
+BEGIN
+  SELECT rolsuper OR rolbypassrls
+       OR current_user = (SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = current_database())
+    INTO ok FROM pg_roles WHERE rolname = current_user;
+  IF NOT ok THEN
+    RAISE EXCEPTION 'роль % не обходить RLS — будь-який нуль тут нічого не означає, і найменше за все означає «даних немає»', current_user;
+  END IF;
+END $$;
+
+-- Контрольні лічильники: нуль у порожній базі й нуль, схований політикою,
+-- відрізняються саме тут. Якщо готелі є, а сайтів нема — нуль чесний.
+-- Якщо не видно навіть готелів, значить видно взагалі нічого.
+\echo
+\echo '── Контроль: чи видно базу взагалі ──────────────────────────────────'
+SELECT (SELECT count(*) FROM organizations) AS готелів,
+       (SELECT count(*) FROM properties)    AS обʼєктів,
+       (SELECT count(*) FROM booking_sites) AS сайтів,
+       (SELECT count(*) FROM rate_plans)    AS тарифів;
+
 -- Колонки може не бути: на базі, старшій за міграцію 0016, або якщо хтось
 -- уже почав перенесення. Питаємо каталог, а не вгадуємо — інакше скрипт
 -- впаде з «column does not exist» і це прочитається як «нуль».
@@ -117,6 +157,12 @@ SQL
 
 echo
 echo "── Як це читати ────────────────────────────────────────────────────"
+echo "СПЕРШУ подивіться блок «Хто питає»: row_security має бути off, а роль —"
+echo "обходити RLS. Скрипт на цьому відмовляє сам, але число читають окремо"
+echo "від скрипта, тож воно має нести доказ поруч із собою."
+echo "Далі «Контроль»: нуль сайтів при нулі ГОТЕЛІВ — це не «даних немає»,"
+echo "це «нічого не видно»."
+echo
 echo "modifier_nonzero = 0  →  перенесення колонки на точку збуту (Ц7) —"
 echo "                        рух схеми, можна одним комітом із батчером."
 echo "modifier_nonzero > 0  →  це МІГРАЦІЯ ЖИВИХ ДАНИХ. Зупинитись і"

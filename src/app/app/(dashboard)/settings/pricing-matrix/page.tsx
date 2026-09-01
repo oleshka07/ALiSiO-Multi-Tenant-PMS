@@ -7,9 +7,10 @@
  *
  *   ЗАСЕЛЕНІСТЬ МІНЯЄ ЦІНУ, А НЕ КАТЕГОРІЮ.
  *
- * Один і той самий двомісний номер продається одній особі за одну ціну, двом —
- * за іншу. Це та сама категорія, той самий номер, те саме ліжко. Тому таблиця
- * має рядок на категорію і стовпчик на кількість осіб, а не окрему категорію
+ * Один і той самий двомісний номер продається одному дорослому за одну ціну,
+ * двом — за іншу. Це та сама категорія, той самий номер, те саме ліжко. Тому
+ * таблиця має рядок на категорію і стовпчик на кількість ДОРОСЛИХ (рішення
+ * Ц12: діти йдуть окремою надбавкою тарифу), а не окрему категорію
  * «одномісний»: інакше готель веде два списки номерів на один набір кімнат, і
  * доступність ламається на першому ж бронюванні.
  *
@@ -124,7 +125,7 @@ export default function PricingMatrixPage() {
   const [tierModal, setTierModal] = useState(false);
   const [tierForm, setTierForm] = useState({ unit_type_id: '', min_nights: '', adjustment_gross: '', persons: '', label: '' });
 
-  const [quoteForm, setQuoteForm] = useState({ unit_type_id: '', check_in: '', nights: '3', persons: '2' });
+  const [quoteForm, setQuoteForm] = useState({ unit_type_id: '', check_in: '', nights: '3', adults: '2', children: '0', child_extra_gross: '' });
   const [quote, setQuote] = useState<any>(null);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500); };
@@ -263,7 +264,11 @@ export default function PricingMatrixPage() {
   const runQuote = async () => {
     const p = new URLSearchParams({
       unit_type_id: quoteForm.unit_type_id, check_in: quoteForm.check_in,
-      nights: quoteForm.nights, persons: quoteForm.persons,
+      nights: quoteForm.nights, adults: quoteForm.adults,
+      children: quoteForm.children || '0',
+      // Ціна дитини тут приміряється, а не береться з тарифу: сенс екрана —
+      // побачити, у що виллється число, ДО того, як його записати.
+      ...(quoteForm.child_extra_gross === '' ? {} : { child_extra_gross: quoteForm.child_extra_gross }),
     });
     const res = await fetch(`/api/pricing/occupancy-quote?${p}`);
     const data = await res.json();
@@ -303,7 +308,7 @@ export default function PricingMatrixPage() {
         ) : (
           <>
             <div style={{ fontSize: 12.5, color: 'var(--text-tertiary)', marginBottom: 16, maxWidth: '80ch' }}>
-              {t('Заселеність міняє ціну, а не категорію: той самий номер для однієї особи і для двох — це один рядок номерного фонду і дві ціни. Порожня комірка означає, що ціни немає: такі ночі система назве окремо, а не продасть за нуль.')}
+              {t('Заселеність міняє ціну, а не категорію: той самий номер для одного дорослого і для двох — це один рядок номерного фонду і дві ціни. Стовпчики рахують ДОРОСЛИХ: ціна дитини задається окремо на тарифі, тож «ціна на 4» тут означає чотирьох дорослих, а не сімʼю. Порожня комірка означає, що ціни немає: такі ночі система назве окремо, а не продасть за нуль.')}
             </div>
 
             {/* ── Періоди ────────────────────────────────────────────────── */}
@@ -338,6 +343,7 @@ export default function PricingMatrixPage() {
                     {Array.from({ length: maxPersons }, (_, i) => (
                       <th key={i} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <Users size={12} style={{ verticalAlign: -1 }} /> {i + 1}
+                        <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}> {t('дор.')}</span>
                       </th>
                     ))}
                   </tr>
@@ -476,9 +482,20 @@ export default function PricingMatrixPage() {
                   onChange={(e) => setQuoteForm({ ...quoteForm, nights: e.target.value })} />
               </div>
               <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">{t('Гостей')}</label>
-                <input className="input" type="number" min={1} style={{ width: 90 }} value={quoteForm.persons}
-                  onChange={(e) => setQuoteForm({ ...quoteForm, persons: e.target.value })} />
+                <label className="form-label">{t('Дорослих')}</label>
+                <input className="input" type="number" min={1} style={{ width: 90 }} value={quoteForm.adults}
+                  onChange={(e) => setQuoteForm({ ...quoteForm, adults: e.target.value })} />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">{t('Дітей')}</label>
+                <input className="input" type="number" min={0} style={{ width: 90 }} value={quoteForm.children}
+                  onChange={(e) => setQuoteForm({ ...quoteForm, children: e.target.value })} />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label">{t('Ціна дитини за ніч')}</label>
+                <input className="input" type="number" min={0} style={{ width: 130 }}
+                  placeholder={t('не названо')} value={quoteForm.child_extra_gross}
+                  onChange={(e) => setQuoteForm({ ...quoteForm, child_extra_gross: e.target.value })} />
               </div>
               <button className="btn btn-secondary" onClick={runQuote}>{t('Порахувати')}</button>
             </div>
@@ -587,7 +604,7 @@ export default function PricingMatrixPage() {
             </select>
           </div>
           <div className="form-group">
-            <label className="form-label">{t('Заселеність')}</label>
+            <label className="form-label">{t('Заселеність (дорослих)')}</label>
             <input className="input" type="number" min={1} placeholder={t('будь-яка')} value={tierForm.persons}
               onChange={(e) => setTierForm({ ...tierForm, persons: e.target.value })} />
             <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>

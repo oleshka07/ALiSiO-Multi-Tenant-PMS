@@ -53,7 +53,15 @@ await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [OR
 await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [PROP, ORG, 'Nightly', ORG]);
 await sql.run('INSERT INTO categories (id, property_id, name, type) VALUES (?, ?, ?, ?)', [CAT, PROP, 'Rooms', 'room']);
 await sql.run(
-  'INSERT INTO unit_types (id, property_id, category_id, name, code, base_occupancy) VALUES (?, ?, ?, ?, ?, ?)',
+  // Місткість названа явно: чотири дорослих, двоє дітей, усього шість. Без
+  // цього тип брав дефолти (2/2/4), і твердження нижче котирували ТРЬОХ і
+  // ЧОТИРЬОХ дорослих у двомісний номер — заселеність, якої він не вміщає.
+  // Поки запобіжника місткості не було, цього ніхто не помічав; тепер це
+  // видно, і числа тут навмисно не тісні: ці твердження про НАДБАВКУ тарифу,
+  // а не про місткість, і впиратися в неї вони не мають.
+  `INSERT INTO unit_types (id, property_id, category_id, name, code,
+                           base_occupancy, max_adults, max_children, max_occupancy)
+   VALUES (?, ?, ?, ?, ?, ?, 4, 2, 6)`,
   [TYPE, PROP, CAT, 'Double', 'DBL', 2],
 );
 for (const [id, name, code] of [[BAR, 'Best Available Rate', 'BAR'], [BNB, 'Bed & Breakfast', 'BNB']] as const) {
@@ -195,6 +203,24 @@ await assert.rejects(
   () => cal(BAR, '2026-11-10', 999),
   'другий рядок того самого тарифу на ту саму добу мав бути відхилений',
 );
+
+// ── Місткість: діти мусять у щось упиратися ──────────────────────────────
+//
+// До Ц12 це ловилось ВИПАДКОВО: `persons` складав дорослих із дітьми, і
+// сімʼя на сім осіб просто не знаходила рядка матриці — ніч ставала
+// `missing`, бронювання відхилялось. Після розділу осі дорослих двоє, рядок
+// на двох є, і ніщо більше не питає, куди подіти пʼятьох дітей.
+//
+// Тип номера тут заведено з дефолтами: max_adults 2, max_children 2,
+// max_occupancy 4.
+const overCapacity = await priceNights({
+  unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 2, children: 5,
+  ratePlanId: BAR,
+});
+assert.ok(overCapacity.missing.length > 0,
+  'дві дорослі й пʼятеро дітей у номер 2+2 — це продано понад місткість');
+assert.strictEqual(overCapacity.total, 0, 'проживання понад місткість не має суми');
+console.log('  ok  партія понад місткість типу не котирується');
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('nightly-price: all checks passed');
