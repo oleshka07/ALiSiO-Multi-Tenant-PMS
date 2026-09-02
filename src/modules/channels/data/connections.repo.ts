@@ -30,6 +30,8 @@ export interface Connection {
   provider: string;
   environment: string;
   remotePropertyId: string | null;
+  /** Вебхук у вендора, якщо зареєстрований (Р8.1). Без секретів: ті йдуть окремою дорогою. */
+  remoteWebhookId: string | null;
   isEnabled: boolean;
   /**
    * Зсув цієї точки збуту у відсотках (Ц7). Знакове: `-10` дешевше, `+10`
@@ -51,6 +53,7 @@ function toConnection(row: Record<string, any>): Connection {
     provider: String(row.provider),
     environment: String(row.environment),
     remotePropertyId: row.remote_property_id == null ? null : String(row.remote_property_id),
+    remoteWebhookId: row.remote_webhook_id == null ? null : String(row.remote_webhook_id),
     isEnabled: Boolean(Number(row.is_enabled)),
     pricingModifierPercent: Number(row.pricing_modifier_percent) || 0,
   };
@@ -63,7 +66,7 @@ export async function connectionInTenant(connectionId: string): Promise<Connecti
   const sql = getSql();
   const row = await sql.row<any>(
     `SELECT id, organization_id, property_id, provider, environment,
-            remote_property_id, is_enabled, pricing_modifier_percent
+            remote_property_id, remote_webhook_id, is_enabled, pricing_modifier_percent
        FROM cm_connections
       WHERE id = ? AND organization_id = ?`,
     [connectionId, organizationId],
@@ -138,7 +141,7 @@ export async function connectionsForProperty(propertyId: string): Promise<Connec
   const sql = getSql();
   const rows = await sql.rows<any>(
     `SELECT id, organization_id, property_id, provider, environment,
-            remote_property_id, is_enabled, pricing_modifier_percent
+            remote_property_id, remote_webhook_id, is_enabled, pricing_modifier_percent
        FROM cm_connections
       WHERE property_id = ? AND organization_id = ?
       ORDER BY id`,
@@ -155,11 +158,102 @@ export async function connectionsInTenant(): Promise<Connection[]> {
   const sql = getSql();
   const rows = await sql.rows<any>(
     `SELECT id, organization_id, property_id, provider, environment,
-            remote_property_id, is_enabled, pricing_modifier_percent
+            remote_property_id, remote_webhook_id, is_enabled, pricing_modifier_percent
        FROM cm_connections
       WHERE organization_id = ?
       ORDER BY property_id, id`,
     [organizationId],
   ) as Record<string, unknown>[];
   return rows.map(toConnection);
+}
+
+// ── Вебхук: токен відкриває рядок, секрет відкриває двері ────────────────
+
+/** Те, що знають лише двері вебхука. Секрет тут — і більше ніде не виходить. */
+export interface WebhookGate {
+  id: string;
+  organizationId: string;
+  provider: string;
+  webhookSecret: string;
+}
+
+/**
+ * Зʼєднання за токеном з адреси вебхука — ДО того, як орендар відомий.
+ *
+ * Це єдиний запит модуля без `organization_id` у WHERE, і він навмисно
+ * такий: орендар тут і є те, що шукають. На Postgres рядок відкриває
+ * політика за `app.public_token` (міграція 0060) — тому викликач ставить
+ * токен на зʼєднання (`runWithPublicToken`), а не просто питає. Токен
+ * коротший за 16 знаків не шукається взагалі: це не токен, це здогадка.
+ */
+export async function connectionByWebhookToken(token: string): Promise<WebhookGate | null> {
+  if (!token || token.length < 16) return null;
+  const row = await getSql().row<any>(
+    'SELECT id, organization_id, provider, webhook_secret FROM cm_connections WHERE webhook_token = ?',
+    [token],
+  );
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    organizationId: String(row.organization_id),
+    provider: String(row.provider),
+    webhookSecret: String(row.webhook_secret ?? ''),
+  };
+}
+
+/** Що потрібно адаптеру, щоб зареєструвати вебхук у вендора. В межах орендаря. */
+export interface WebhookRegistration {
+  connectionId: string;
+  environment: string;
+  remotePropertyId: string | null;
+  remoteWebhookId: string | null;
+  token: string;
+  secret: string;
+}
+
+export async function webhookRegistration(connectionId: string): Promise<WebhookRegistration | null> {
+  const organizationId = currentOrganizationId();
+  if (!organizationId) throw new Error('cm: webhook registration read without a tenant');
+  const row = await getSql().row<any>(
+    `SELECT id, environment, remote_property_id, remote_webhook_id, webhook_token, webhook_secret
+       FROM cm_connections
+      WHERE id = ? AND organization_id = ?`,
+    [connectionId, organizationId],
+  );
+  if (!row) return null;
+  return {
+    connectionId: String(row.id),
+    environment: String(row.environment),
+    remotePropertyId: row.remote_property_id == null ? null : String(row.remote_property_id),
+    remoteWebhookId: row.remote_webhook_id == null ? null : String(row.remote_webhook_id),
+    token: String(row.webhook_token),
+    secret: String(row.webhook_secret),
+  };
+}
+
+/** Запамʼятати (або стерти — `null`) ідентифікатор вебхука на тому боці. */
+export async function rememberRemoteWebhook(connectionId: string, remoteWebhookId: string | null): Promise<void> {
+  const organizationId = currentOrganizationId();
+  if (!organizationId) throw new Error('cm: connection update without a tenant');
+  const result = await getSql().run(
+    `UPDATE cm_connections SET remote_webhook_id = ?, updated_at = ? WHERE id = ? AND organization_id = ?`,
+    [remoteWebhookId, new Date().toISOString(), connectionId, organizationId],
+  );
+  if (!result.changes) throw new Error('cm: connection not found');
+}
+
+/**
+ * Новий секрет вебхука — ПІСЛЯ того, як вендор його прийняв. У зворотному
+ * порядку база була б упевнена в секреті, якого вендор не знає, і кожна
+ * доставка діставала б 401 без жодного сліду на тому боці.
+ */
+export async function storeWebhookSecret(connectionId: string, secret: string): Promise<void> {
+  const organizationId = currentOrganizationId();
+  if (!organizationId) throw new Error('cm: connection update without a tenant');
+  if (!secret || secret.length < 32) throw new Error('cm: refusing a short webhook secret');
+  const result = await getSql().run(
+    `UPDATE cm_connections SET webhook_secret = ?, updated_at = ? WHERE id = ? AND organization_id = ?`,
+    [secret, new Date().toISOString(), connectionId, organizationId],
+  );
+  if (!result.changes) throw new Error('cm: connection not found');
 }

@@ -36,7 +36,7 @@ async function moduleOff(actor: Actor): Promise<NextResponse | null> {
   return NextResponse.json({ error: 'module_disabled' }, { status: 409 });
 }
 
-async function apiKeyOf(organizationId: string): Promise<string | null> {
+export async function apiKeyOf(organizationId: string): Promise<string | null> {
   const creds = await integrationCredentials('channel_manager', organizationId);
   return creds?.accessToken ?? null;
 }
@@ -206,11 +206,50 @@ export const setChannelConnectionEnabled = withPermission('manage_properties', a
     if (!current) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     // Увімкнути можна лише те, що є куди слати: обʼєкт на тому боці заведено.
     if (body.enabled && !current.remotePropertyId) return NextResponse.json({ error: 'catalog_not_synced' }, { status: 409 });
-    return NextResponse.json(await setConnectionEnabled(id, body.enabled));
+    const connection = await setConnectionEnabled(id, body.enabled);
+    if (!body.enabled) return NextResponse.json({ ...connection, webhook: null });
+
+    // Вебхук — частина «увімкнено»: без нього бронь з OTA чекає на крон, а
+    // інтервал крона — це вікно овербукінгу (Ц20). Але НЕ умова: локальна
+    // розробка вебхуків не отримує, вендор буває лежить — зʼєднання
+    // вмикається, а стан вебхука повертається назвою, щоб екран показав його
+    // і дав кнопку «зареєструвати ще раз». Крон тим часом працює.
+    const webhook = await registerWebhookSoftly(id, current.provider, actor.organizationId);
+    return NextResponse.json({ ...connection, webhook });
   } catch (error: unknown) {
     return serverError('modules/channels/api/connect setChannelConnectionEnabled', error);
   }
 });
+
+/** Стан вебхука після спроби зареєструвати — ніколи не виняток. */
+export type WebhookAttempt =
+  | { registered: true; created: boolean; callbackUrl: string }
+  | { registered: false; error: 'app_url_not_configured' | 'webhook_inactive' | 'catalog_not_synced' | 'unknown_provider' | 'no_key' | 'vendor_unavailable' };
+
+export function webhookErrorCode(error: unknown): Extract<WebhookAttempt, { registered: false }>['error'] {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/app url/i.test(message)) return 'app_url_not_configured';
+  if (/inactive/i.test(message)) return 'webhook_inactive';
+  if (/catalog not synced/i.test(message)) return 'catalog_not_synced';
+  return 'vendor_unavailable';
+}
+
+export async function registerWebhookSoftly(connectionId: string, provider: string, organizationId: string): Promise<WebhookAttempt> {
+  const adapter = adapterFor(provider);
+  if (!adapter) return { registered: false, error: 'unknown_provider' };
+  const apiKey = await apiKeyOf(organizationId);
+  if (!apiKey) return { registered: false, error: 'no_key' };
+  try {
+    const state = await adapter.ensureWebhook(connectionId, apiKey);
+    return { registered: true, created: state.created, callbackUrl: state.callbackUrl };
+  } catch (error: unknown) {
+    const code = webhookErrorCode(error);
+    if (code === 'vendor_unavailable' || code === 'webhook_inactive') {
+      console.error('[channels] webhook registration failed', error instanceof Error ? error.message : error);
+    }
+    return { registered: false, error: code };
+  }
+}
 
 // ── Двері без HTTP — для інструментів оператора й живого прогону ──────────
 //

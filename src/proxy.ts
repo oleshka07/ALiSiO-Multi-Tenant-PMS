@@ -10,6 +10,13 @@ const PUBLIC_PREFIXES = [
   '/api/ical-sync/', // iCal cron sync (own ?secret= auth)
   '/api/booking/', // guest self-registration, payments
   '/api/cron/', // cron jobs (own secret-header auth)
+  // The channel manager's webhook. No session by definition: the token in
+  // the URL names the connection (the policy opens that one row, migration
+  // 0060) and the header secret opens the door — unknown token 404, wrong
+  // secret 401, and nothing is done before the answer. Only the event name
+  // is read from the body: the signal wakes a feed pull, the feed is the
+  // truth (modules/channels/api/webhook.handlers.ts, DECISIONS Ц20).
+  '/api/webhooks/',
   '/api/widget', // widget-* endpoints (public embed)
   // '/api/file-upload' is deliberately absent. It was public for the retired
   // /book wizard; every caller is now a dashboard screen, and an open upload

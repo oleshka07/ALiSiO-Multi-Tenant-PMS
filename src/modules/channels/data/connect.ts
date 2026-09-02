@@ -38,6 +38,8 @@ export interface SetupState {
   /** Натяк на значення від облікових даних — ніколи саме значення. */
   keyHint: string | null;
   connection: Connection | null;
+  /** Вебхук у вендора зареєстровано (`remote_webhook_id`). Без нього бронь чекає на крон (Ц20). */
+  webhookRegistered: boolean;
   step: SetupStep;
 }
 
@@ -51,7 +53,7 @@ export async function setupState(propertyId: string): Promise<SetupState> {
   const property = await sql.row<any>(
     'SELECT id, name FROM properties WHERE id = ? AND organization_id = ?', [propertyId, organizationId],
   );
-  if (!property) return { property: null, hasKey: false, keyHint: null, connection: null, step: 'key' };
+  if (!property) return { property: null, hasKey: false, keyHint: null, connection: null, webhookRegistered: false, step: 'key' };
 
   const status = await integrationStatus('channel_manager', organizationId);
   const hasKey = status.configured;
@@ -66,7 +68,7 @@ export async function setupState(propertyId: string): Promise<SetupState> {
   if (hasKey && connection) step = connection.remotePropertyId ? 'mapping' : 'catalog';
   if (hasKey && connection?.remotePropertyId && connection.isEnabled) step = 'done';
 
-  return { property: { id: String(property.id), name: String(property.name) }, hasKey, keyHint, connection, step };
+  return { property: { id: String(property.id), name: String(property.name) }, hasKey, keyHint, connection, webhookRegistered: !!connection?.remoteWebhookId, step };
 }
 
 /**

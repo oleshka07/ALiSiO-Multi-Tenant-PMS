@@ -3,6 +3,8 @@ import { withPermission } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
 import { connectionInTenant, connectionsInTenant } from '../data/connections.repo';
 import { pendingCount, stuckChanges, retryStuck } from '../data/outbox.repo';
+import { unprocessedEvents } from '../data/events.repo';
+import { adapterFor } from '../providers';
 import { catalogUnitTypes } from '@properties';
 import { propertyRatePlans } from '@pricing';
 
@@ -28,6 +30,13 @@ export const listChannelConnections = withPermission('manage_properties', async 
         unitTypeCode: row.unitTypeId ? (unitTypes.get(row.unitTypeId) ?? row.unitTypeId) : null,
         ratePlanCode: row.ratePlanId ? (ratePlans.get(row.ratePlanId) ?? row.ratePlanId) : null,
       }));
+      // Події вендора, які чекають ока оператора: мапінг, підтвердження,
+      // синк, канали. Бронь-події зняв прохід стрічки; луну ніхто не бачить.
+      // Що є чим — каже адаптер; невідомий провайдер показує все.
+      const adapter = adapterFor(c.provider);
+      const attention = (await unprocessedEvents(c.id))
+        .filter((e) => !adapter || adapter.classifyEvent(e.eventType) === 'attention' || adapter.classifyEvent(e.eventType) === 'message')
+        .map((e) => ({ id: e.id, eventType: e.eventType, receivedAt: e.receivedAt }));
       out.push({
         id: c.id,
         propertyId: c.propertyId,
@@ -35,9 +44,11 @@ export const listChannelConnections = withPermission('manage_properties', async 
         environment: c.environment,
         isEnabled: c.isEnabled,
         remotePropertyId: c.remotePropertyId,
+        webhookRegistered: !!c.remoteWebhookId,
         pricingModifierPercent: c.pricingModifierPercent,
         pending: await pendingCount(c.id),
         stuck,
+        attention,
       });
     }
     return NextResponse.json(out);

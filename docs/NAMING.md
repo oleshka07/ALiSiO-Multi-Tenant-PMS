@@ -137,6 +137,9 @@ Historично співіснують `r001`, `u_dlx1`, `org_demo` (сіди) т
   в `check-isolation.mjs`.
 - Хендлери називаються дією: `listReservations`, `createWidgetReservation`,
   `updateOrgFeature`. Опції CORS — `<назва>Options`.
+- Вебхуки ззовні — `/api/webhooks/<хто-стукає>/[token]`, і «хто стукає» —
+  роль, не вендор: `channel-manager`, не імʼя фірми. Провайдера називає
+  рядок, знайдений за токеном; заголовок секрету — `X-Webhook-Secret`.
 
 ## 7. Фічі реєстру
 

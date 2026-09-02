@@ -34,6 +34,7 @@ interface Setup {
     hasKey: boolean;
     keyHint: string | null;
     connection: { id: string; provider: string; environment: string; remotePropertyId: string | null; isEnabled: boolean } | null;
+  webhookRegistered: boolean;
     step: Step;
   } | null;
 }
@@ -63,6 +64,8 @@ export default function ConnectChannelManagerPage() {
   const [catalogReport, setCatalogReport] = useState<any>(null);
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
   const [reconciliation, setReconciliation] = useState<Reconciliation | null>(null);
+  const [webhookAttempt, setWebhookAttempt] = useState<{ registered: boolean; error?: string } | null>(null);
+  const [webhookTest, setWebhookTest] = useState<{ statusCode: number; body: string } | null>(null);
 
   const ERRORS: Record<string, string> = {
     module_disabled: tUi('Модуль каналів вимкнено для цього готелю'),
@@ -71,6 +74,10 @@ export default function ConnectChannelManagerPage() {
     no_key: tUi('Спочатку збережіть ключ'),
     catalog_not_synced: tUi('Спочатку заведіть каталог'),
     key_required: tUi('Вставте ключ'),
+    app_url_not_configured: tUi('Адресу сервера не налаштовано (APP_URL): вебхук зареєструвати нема куди'),
+    webhook_inactive: tUi('Менеджер каналів тримає вебхук вимкненим'),
+    webhook_not_registered: tUi('Спочатку зареєструйте вебхук'),
+    unknown_provider: tUi('Невідомий провайдер зʼєднання'),
   };
   const explain = (code: string | undefined) => (code && ERRORS[code]) || tUi('Не вдалося. Спробуйте ще раз');
 
@@ -134,7 +141,32 @@ export default function ConnectChannelManagerPage() {
 
   const setEnabled = (enabled: boolean) => state?.connection && call('enabled', `/api/channels/connections/${state.connection.id}/enabled`, {
     method: 'POST', body: JSON.stringify({ enabled }),
-  }, async () => { setNotice({ kind: 'ok', text: enabled ? tUi('Розсилку ввімкнено') : tUi('Розсилку вимкнено') }); await load(propertyId); });
+  }, async (body) => { setWebhookAttempt(body?.webhook ?? null); setNotice({ kind: 'ok', text: enabled ? tUi('Розсилку ввімкнено') : tUi('Розсилку вимкнено') }); await load(propertyId); });
+
+  // ── Вебхук: сигнал, не дані (Ц20) ──
+  const ensureWebhook = () => state?.connection && call('webhook', `/api/channels/connections/${state.connection.id}/webhook`, {
+    method: 'POST',
+  }, async (body) => {
+    setWebhookAttempt(body);
+    setNotice(body?.registered ? { kind: 'ok', text: tUi('Вебхук зареєстровано') } : { kind: 'error', text: explain(body?.error) });
+    await load(propertyId);
+  });
+  const testWebhook = () => state?.connection && call('webhook-test', `/api/channels/connections/${state.connection.id}/webhook/test`, {
+    method: 'POST',
+  }, (body) => { setWebhookTest(body); });
+  const rotateSecret = () => state?.connection && call('webhook-rotate', `/api/channels/connections/${state.connection.id}/webhook/rotate`, {
+    method: 'POST',
+  }, () => { setNotice({ kind: 'ok', text: tUi('Секрет замінено') }); });
+  const disconnect = () => {
+    if (!state?.connection) return;
+    if (!window.confirm(tUi('Відʼєднати: вебхук у менеджера каналів буде прибрано, розсилку вимкнено. Прийняті броні лишаються.'))) return;
+    void call('disconnect', `/api/channels/connections/${state.connection.id}/disconnect`, { method: 'POST' }, async () => {
+      setWebhookAttempt(null);
+      setWebhookTest(null);
+      setNotice({ kind: 'ok', text: tUi('Відʼєднано') });
+      await load(propertyId);
+    });
+  };
 
   const StepHeader = ({ step, n, title }: { step: Step; n: number; title: string }) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
@@ -288,6 +320,32 @@ export default function ConnectChannelManagerPage() {
                 )}
                 <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
                   {tUi('Розсилка наявності й цін іде щохвилини лише для ввімкненого зʼєднання. Тариф, не змаплений на канал, нікуди не продається')}
+                </span>
+              </div>
+
+              {/* ── Вебхук: сигнал, не дані (Ц20). Без нього бронь з каналу чекає на плановий прохід, а це вікно овербукінгу. ── */}
+              <div style={{ marginTop: 14, borderTop: '1px solid var(--border-color)', paddingTop: 10, fontSize: 13 }}>
+                <div style={{ fontWeight: 600, color: state?.webhookRegistered ? 'var(--accent-success)' : 'var(--accent-warning)' }}>
+                  {state?.webhookRegistered
+                    ? tUi('Вебхук зареєстровано: бронь з каналу будить опитування одразу')
+                    : tUi('Вебхук не зареєстровано: бронь з каналу чекає на плановий прохід')}
+                </div>
+                {webhookAttempt && !webhookAttempt.registered && (
+                  <div style={{ color: 'var(--accent-warning)' }}>{explain(webhookAttempt.error)}</div>
+                )}
+                {webhookTest && (
+                  <div>{tUi('Пробна доставка')}: {tUi('менеджер каналів отримав від нашого сервера код')} <strong>{webhookTest.statusCode}</strong></div>
+                )}
+                <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="btn btn-sm" disabled={!state?.connection?.remotePropertyId || busy === 'webhook'} onClick={ensureWebhook}>
+                    {state?.webhookRegistered ? tUi('Перевірити реєстрацію') : tUi('Зареєструвати вебхук')}
+                  </button>
+                  <button className="btn btn-sm" disabled={!state?.webhookRegistered || busy === 'webhook-test'} onClick={testWebhook}>{tUi('Пробна доставка')}</button>
+                  <button className="btn btn-sm" disabled={!state?.webhookRegistered || busy === 'webhook-rotate'} onClick={rotateSecret}>{tUi('Замінити секрет')}</button>
+                  <button className="btn btn-sm" disabled={!state?.connection || busy === 'disconnect'} onClick={disconnect}>{tUi('Відʼєднати')}</button>
+                </div>
+                <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                  {tUi('Вебхук — сигнал, не дані: він лише каже «опитай стрічку зараз». Плановий прохід стрічки не вимикається')}
                 </span>
               </div>
             </div>

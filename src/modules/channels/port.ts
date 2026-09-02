@@ -216,3 +216,22 @@ export interface ChannelManagerPort {
   /** Створити або оновити об'єкт, типи номерів і тарифи; повернути мапінг. */
   syncCatalog(propertyId: PropertyId): Promise<CatalogMapping>;
 }
+
+/**
+ * Що означає подія менеджера каналів для домену.
+ *
+ * Імена подій — справа адаптера (И1); домен знає лише, ЩО з подією робити:
+ * бронь будить прохід стрічки, увага йде оператору, повідомлення — у
+ * листування (фаза 6), луна власних відправок — нікому.
+ */
+export type ChannelEventKind = 'booking' | 'attention' | 'message' | 'ignore';
+
+/** Стан вебхука на обʼєкті — ПРОЧИТАНИЙ НАЗАД від менеджера каналів, не з відповіді на створення. */
+export interface WebhookState {
+  remoteWebhookId: string;
+  callbackUrl: string;
+  isActive: boolean;
+  sendData: boolean;
+  /** Цей виклик створив вебхук; `false` — уже був, лише перевірено. */
+  created: boolean;
+}

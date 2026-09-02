@@ -3,6 +3,7 @@ import type { PullReport } from './data/pull-bookings';
 import type { CatalogReport } from './domain/catalog.ts';
 import type { FlushReport } from './domain/ari-batch.ts';
 import type { CatalogReconciliation } from './domain/reconcile.ts';
+import type { ChannelEventKind, WebhookState } from './port';
 
 /**
  * Шов композиції: рядок провайдера → модуль адаптера. Більше нічого.
@@ -38,6 +39,16 @@ export interface ProviderAdapter {
   frameUrl(connectionId: string, apiKey: string, options: { username: string; lng?: string }): Promise<string>;
   /** Звірка Ц8: створене — ще не продане. */
   reconcile(connectionId: string, apiKey: string): Promise<CatalogReconciliation>;
+  /** Вебхук на обʼєкт — ідемпотентно, з читанням назад (Ц20). */
+  ensureWebhook(connectionId: string, apiKey: string): Promise<WebhookState>;
+  /** Новий секрет: спершу вендор, потім база. */
+  rotateWebhookSecret(connectionId: string, apiKey: string): Promise<void>;
+  /** Прибрати вебхук у вендора; зниклий — не помилка. */
+  removeWebhook(connectionId: string, apiKey: string): Promise<{ existed: boolean }>;
+  /** Вендор сам стукає в наші двері і віддає наш код і тіло (И27). */
+  testWebhook(connectionId: string, apiKey: string): Promise<{ statusCode: number; body: string }>;
+  /** Що це за подія для домену. Імена подій — лише в адаптері. */
+  classifyEvent(eventType: string): ChannelEventKind;
 }
 
 /** Прочитати стрічку одного зʼєднання і завести з неї броні. */

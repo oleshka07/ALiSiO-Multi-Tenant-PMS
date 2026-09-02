@@ -33,6 +33,8 @@ import type { ChannexRevision } from './revision-map';
 
 export type ChannexEnvironment = 'staging' | 'production';
 
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+
 const BASE_URL: Record<ChannexEnvironment, string> = {
   staging: 'https://staging.channex.io/api/v1',
   production: 'https://app.channex.io/api/v1',
@@ -250,6 +252,62 @@ export class ChannexClient {
     }));
   }
 
+  // ── Вебхуки обʼєкта (webhook-collection.md) ─────────────────────────────
+  //
+  // Усі ходять через `call(key, …)`: бюджет обʼєкта один (И10), а реєстрація
+  // у вендора — той самий рахунок, що й ARI. `model` — Models.WebhookWriteModel
+  // дослівно: `property_id`, `callback_url`, `event_mask`, `headers`,
+  // `is_active`, `send_data`. Два останні за замовчуванням `false` — вебхук
+  // без явного `is_active: true` існує і мовчить.
+
+  async createWebhook(key: string, model: Record<string, unknown>): Promise<{ id: string; attributes: Record<string, unknown> }> {
+    const payload = await this.call(key, 'POST', '/webhooks', { webhook: model });
+    const data = payload.data as { id?: unknown; attributes?: Record<string, unknown> } | undefined;
+    if (!data || typeof data.id !== 'string' || !data.id) {
+      throw new ChannexError(502, 'no_webhook_id', 'Webhook id missing in the response');
+    }
+    return { id: data.id, attributes: data.attributes ?? {} };
+  }
+
+  /** Атрибути вебхука, прочитані назад. `null` — вендор його не має (404). */
+  async getWebhook(key: string, webhookId: string): Promise<Record<string, unknown> | null> {
+    try {
+      const payload = await this.call(key, 'GET', `/webhooks/${encodeURIComponent(webhookId)}`);
+      const data = payload.data as { attributes?: Record<string, unknown> } | undefined;
+      return data?.attributes ?? null;
+    } catch (e) {
+      if (e instanceof ChannexError && e.status === 404) return null;
+      throw e;
+    }
+  }
+
+  async updateWebhook(key: string, webhookId: string, model: Record<string, unknown>): Promise<void> {
+    await this.call(key, 'PUT', `/webhooks/${encodeURIComponent(webhookId)}`, { webhook: model });
+  }
+
+  /** `true` — був і видалений; `false` — вендор уже не мав (404), і це не помилка. */
+  async deleteWebhook(key: string, webhookId: string): Promise<boolean> {
+    try {
+      await this.call(key, 'DELETE', `/webhooks/${encodeURIComponent(webhookId)}`);
+      return true;
+    } catch (e) {
+      if (e instanceof ChannexError && e.status === 404) return false;
+      throw e;
+    }
+  }
+
+  /**
+   * `POST /webhooks/test`: вендор сам стукає в `callback_url` і повертає код
+   * і тіло, які побачив. Читання назад для И27 без справжньої броні.
+   */
+  async testWebhook(key: string, model: Record<string, unknown>): Promise<{ statusCode: number; body: string }> {
+    const payload = await this.call(key, 'POST', '/webhooks/test', { webhook: model });
+    // Живий API віддає `status`, документація обіцяє `status_code` (виміряно
+    // 02.09.2026, §15 ТЗ). Читаємо обидва: перший — правда, другий — на
+    // випадок, якщо вендор колись дожене власну документацію.
+    return { statusCode: Number(payload.status ?? payload.status_code ?? 0), body: String(payload.body ?? '') };
+  }
+
   /**
    * Один виклик ЧУЖИМ ключем — не тим, з яким збудовано клієнт.
    *
@@ -259,7 +317,7 @@ export class ChannexClient {
    */
   private async requestAs(
     apiKey: string,
-    method: 'GET' | 'POST',
+    method: HttpMethod,
     path: string,
     body?: unknown,
   ): Promise<Record<string, unknown>> {
@@ -443,7 +501,7 @@ export class ChannexClient {
 
   private async call(
     key: string,
-    method: 'GET' | 'POST',
+    method: HttpMethod,
     path: string,
     body?: unknown,
   ): Promise<Record<string, unknown>> {
@@ -552,7 +610,7 @@ export class ChannexClient {
    * читають ЗАВЖДИ, а не там, де про нього згадали.
    */
   private async request(
-    method: 'GET' | 'POST',
+    method: HttpMethod,
     path: string,
     body?: unknown,
     apiKey: string = this.apiKey,

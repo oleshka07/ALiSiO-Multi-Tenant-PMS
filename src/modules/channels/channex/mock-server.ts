@@ -51,6 +51,12 @@ export type Reply =
   | { kind: 'unauthorized' }
   | { kind: 'notFound' }
   | { kind: 'serverError' }
+  // Вебхук: POST і PUT відбивають надіслані атрибути назад під `data.attributes`.
+  | { kind: 'webhook'; id: string }
+  // Один ресурс у конверті JSON:API — читання назад: `{ data: { id, type, attributes } }`.
+  | { kind: 'record'; data: unknown }
+  // Відповідь `POST /webhooks/test`: наш код і тіло, як їх побачив вендор.
+  | { kind: 'testResult'; statusCode: number; body: string }
   | { kind: 'garbage' };
 
 export interface MockChannex {
@@ -138,6 +144,17 @@ function render(reply: Reply, request?: Record<string, unknown>): { status: numb
       return { status: 401, body: { errors: { code: 'unauthorized', title: 'Unauthorized' } } };
     case 'serverError':
       return { status: 500, body: { errors: { code: 'internal_error', title: 'Internal Server Error' } } };
+    case 'webhook':
+      return {
+        status: 201,
+        body: { data: { id: reply.id, type: 'webhook', attributes: { ...((request?.webhook as Record<string, unknown> | undefined) ?? {}), id: reply.id } } },
+      };
+    case 'record':
+      return { status: 200, body: { data: reply.data } };
+    case 'testResult':
+      // Форма ЖИВОГО API (02.09.2026): `status`, `body`, `headers` — не
+      // `status_code`, як у документації. Мок віддає те, що віддає вендор.
+      return { status: 200, body: { status: reply.statusCode, body: reply.body, headers: {} } };
     case 'garbage':
       return { status: 502, body: null };
   }

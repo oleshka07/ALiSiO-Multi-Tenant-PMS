@@ -362,6 +362,11 @@ const PUBLIC_TOKEN_READ = new Map([
   // entry the feed read nothing on Postgres and answered with an empty
   // calendar — every date free, the room sellable twice (migration 0035).
   ['ical_channels', 'export_token'],
+  // The channel manager's webhook arrives with no session: the token in the
+  // URL is the only thing that names the connection, and the row has to be
+  // read before the tenant is known (migration 0060). The header secret is
+  // checked by code after the read; the token opens a row, never the door.
+  ['cm_connections', 'webhook_token'],
 ]);
 
 const REFERENCE = new Set([

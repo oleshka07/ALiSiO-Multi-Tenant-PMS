@@ -2859,7 +2859,7 @@ CREATE POLICY "channel_rate_rules_tenant" ON "channel_rate_rules"
 ALTER TABLE "cm_connections" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "cm_connections" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "cm_connections_tenant" ON "cm_connections"
-  USING ("organization_id" = current_setting('app.organization_id'))
+  USING ("organization_id" = current_setting('app.organization_id') OR "webhook_token" = NULLIF(current_setting('app.public_token', true), ''))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "cm_events" ENABLE ROW LEVEL SECURITY;

@@ -22,3 +22,10 @@ export {
   probeChannelKeyFor, channelFrameUrlFor, reconcileConnectionCatalogFor,
   channelSetupState, ensureChannelConnection,
 } from './connect.handlers';
+export { receiveChannelWebhook } from './webhook.handlers';
+export { pullConnectionNow } from './pull-cron.handlers';
+export {
+  ensureChannelWebhook, removeChannelWebhook, testChannelWebhook, rotateChannelWebhookSecret,
+  dismissChannelEvents, disconnectChannelConnection,
+  ensureConnectionWebhookFor, removeConnectionWebhookFor, testConnectionWebhookFor,
+} from './webhook-admin.handlers';

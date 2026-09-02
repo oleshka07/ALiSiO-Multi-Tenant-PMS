@@ -64,8 +64,11 @@ interface CmConnection {
   environment: string;
   isEnabled: boolean;
   remotePropertyId: string | null;
+  webhookRegistered: boolean;
   pending: number;
   stuck: CmStuck[];
+  /** Події вендора, що чекають ока оператора: мапінг, підтвердження, синк, канали. */
+  attention: { id: string; eventType: string; receivedAt: string }[];
 }
 
 interface BookingSource {
@@ -123,6 +126,7 @@ export default function ChannelManagerPage() {
   const [copiedToken, setCopiedToken] = useState('');
   const [cmConnections, setCmConnections] = useState<CmConnection[]>([]);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [dismissing, setDismissing] = useState<string | null>(null);
 
   const [icalForm, setICalForm] = useState({
     channel_type: 'unit' as const,
@@ -147,6 +151,23 @@ export default function ChannelManagerPage() {
     } finally {
       setRetrying(null);
       setTimeout(() => setToast(''), 4000);
+    }
+  };
+
+  const dismissEvents = async (connectionId: string, ids: string[]) => {
+    setDismissing(connectionId);
+    try {
+      const res = await fetch(`/api/channels/connections/${connectionId}/events/dismiss`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error || 'dismiss failed');
+      await fetchData();
+    } catch {
+      setToast(`❌ ${tUi('Не вдалося позначити прочитаним')}`);
+      setTimeout(() => setToast(''), 4000);
+    } finally {
+      setDismissing(null);
     }
   };
 
@@ -318,6 +339,7 @@ export default function ChannelManagerPage() {
                     {!c.remotePropertyId && <span style={{ color: 'var(--accent-warning)' }}> · {tUi('каталог ще не заведено')}</span>}
                     <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
                       {tUi('Чекає відправлення')}: {c.pending} · {tUi('Потребує уваги')}: {c.stuck.length}
+                      {' · '}{c.webhookRegistered ? tUi('вебхук зареєстровано') : tUi('вебхука немає — бронь чекає на плановий прохід')}
                     </div>
                   </div>
                   {c.stuck.length > 0 && (
@@ -352,6 +374,21 @@ export default function ChannelManagerPage() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+                {(c.attention?.length ?? 0) > 0 && (
+                  <div style={{ marginTop: 8, fontSize: 12 }}>
+                    <div style={{ fontWeight: 600, color: 'var(--accent-warning)' }}>
+                      {tUi('Повідомлення від менеджера каналів')}: {c.attention.length}
+                    </div>
+                    <ul style={{ margin: '4px 0 6px 18px' }}>
+                      {c.attention.map((e) => (
+                        <li key={e.id}><code>{e.eventType}</code> · {new Date(e.receivedAt).toLocaleString()}</li>
+                      ))}
+                    </ul>
+                    <button className="btn btn-sm" disabled={dismissing === c.id} onClick={() => dismissEvents(c.id, c.attention.map((e) => e.id))}>
+                      {dismissing === c.id ? <Loader2 size={14} className="animate-pulse" /> : null} {tUi('Прочитано')}
+                    </button>
                   </div>
                 )}
               </div>
