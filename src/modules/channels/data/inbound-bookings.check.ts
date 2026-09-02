@@ -35,13 +35,20 @@ const CONN = '__cm_check__conn';
 const OTHER = '__cm_check__other';
 
 async function cleanup() {
-  await sql.run('DELETE FROM cm_inbound_bookings WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM reservations WHERE organization_id = ?', [ORG]);
-  await sql.run("DELETE FROM unit_types WHERE id LIKE '__cm_check__%'", []);
-  await sql.run("DELETE FROM categories WHERE id LIKE '__cm_check__%'", []);
-  await sql.run("DELETE FROM guests WHERE id LIKE '__cm_check__%'", []);
-  await sql.run("DELETE FROM properties WHERE id LIKE '__cm_check__%'", []);
+  // Тенантні таблиці прибираються В КОНТЕКСТІ орендаря: під FORCE RLS
+  // `DELETE … WHERE organization_id = ?` без `app.organization_id` мовчки
+  // зачіпає нуль рядків, і наступний `DELETE FROM organizations` падає на
+  // зовнішньому ключі. Не показувалось, бо `check:pg` у CI бігав
+  // суперкористувачем, для якого політик не існує (INC-014).
+  await runWithOrganization(ORG, async () => {
+    await sql.run('DELETE FROM cm_inbound_bookings WHERE organization_id = ?', [ORG]);
+    await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
+    await sql.run('DELETE FROM reservations WHERE organization_id = ?', [ORG]);
+    await sql.run("DELETE FROM unit_types WHERE id LIKE '__cm_check__%'", []);
+    await sql.run("DELETE FROM categories WHERE id LIKE '__cm_check__%'", []);
+    await sql.run("DELETE FROM guests WHERE id LIKE '__cm_check__%'", []);
+    await sql.run("DELETE FROM properties WHERE id LIKE '__cm_check__%'", []);
+  });
   await sql.run('DELETE FROM organizations WHERE id = ?', [ORG]);
   await sql.run('DELETE FROM organizations WHERE id = ?', [OTHER]);
 }

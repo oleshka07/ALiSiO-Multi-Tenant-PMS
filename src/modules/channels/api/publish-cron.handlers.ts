@@ -25,7 +25,11 @@ export async function runChannelPublishCron(): Promise<PublishAllReport> {
     organizations: async () =>
       (await sql.rows<{ id: string }>('SELECT id FROM organizations')).map((o) => o.id),
 
-    hasChannels: (organizationId) => hasFeature(organizationId, 'channels'),
+    // У контексті названої організації: прапорець прикритий політикою, а
+    // цикл питає його ДО входу в орендаря — і на Postgres читав дефолт,
+    // пропускаючи готель із повною чергою (INC-014). `hasFeature()` тепер
+    // робить це сам; тут — явно, бо саме цей виклик мовчав.
+    hasChannels: (organizationId) => runWithOrganization(organizationId, () => hasFeature(organizationId, 'channels')),
 
     withOrganization: (organizationId, fn) => runWithOrganization(organizationId, fn),
 

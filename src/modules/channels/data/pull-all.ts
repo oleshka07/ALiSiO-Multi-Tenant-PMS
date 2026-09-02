@@ -96,7 +96,9 @@ export async function pullAllConnections<P>(deps: PullAllDeps<P>): Promise<PullA
   };
 
   for (const organizationId of await deps.organizations()) {
-    // Модуля немає — готель його не купував. Тихо далі.
+    // Модуля немає — готель його не купував. Тихо далі, НЕ відкриваючи
+    // орендаря. Прапорець читається правильно й без контексту: `hasFeature()`
+    // сам входить у контекст названої організації (INC-014).
     if (!await deps.hasChannels(organizationId)) {
       report.skippedOrganizations++;
       continue;

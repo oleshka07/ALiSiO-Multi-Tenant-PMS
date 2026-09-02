@@ -89,7 +89,11 @@ export async function publishAllConnections<P>(deps: PublishAllDeps<P>): Promise
   };
 
   for (const organizationId of await deps.organizations()) {
-    // Модуля немає — готель його не купував. Тихо далі.
+    // Модуля немає — готель його не купував. Тихо далі, НЕ відкриваючи
+    // орендаря. Відповідь мусить бути правильною й без контексту орендаря:
+    // на Postgres рядок прапорця прикритий політикою, і `hasFeature()` сам
+    // читає його в контексті названої організації (INC-014) — крон, який
+    // питав «до входу», пропускав готель із повною чергою.
     if (!await deps.hasChannels(organizationId)) {
       report.skippedOrganizations++;
       continue;

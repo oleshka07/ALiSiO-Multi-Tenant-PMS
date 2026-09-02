@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql, type Sql } from './db/async.ts';
+import { currentOrganizationId, runWithOrganization } from './auth/tenant-context.ts';
 
 /**
  * The feature registry: which parts of the product this organization has.
@@ -167,7 +168,21 @@ export function featureDefault(feature: FeatureKey): boolean {
 
 export async function hasFeature(organizationId: string, feature: FeatureKey): Promise<boolean> {
   const sql = getSql();
-  const row = await sql.row<any>('SELECT enabled FROM organization_features WHERE organization_id = ? AND feature = ?', [organizationId, feature]) as { enabled: number } | undefined;
+  const read = () => sql.row<any>(
+    'SELECT enabled FROM organization_features WHERE organization_id = ? AND feature = ?',
+    [organizationId, feature],
+  ) as Promise<{ enabled: number } | undefined>;
+  // Питання називає організацію, тож відповідь не залежить від того, чи вже
+  // стоїть орендар на зʼєднанні. Без нього — крон перед входом у контекст,
+  // вебхук за токеном, публічний віджет за ключем сайту — на Postgres
+  // політика `organization_features_tenant` ховала рядок, і «рядка немає»
+  // читалось як дефолт: модуль, увімкнений готелем, виглядав вимкненим, і
+  // крон розсилки каналів мовчки пропускав орендаря з повною чергою
+  // (INC-014, 02.09.2026). SQLite політик не має, тож локально й у гейтах
+  // це було зелене. Без орендаря читаємо в контексті тієї організації, про
+  // яку питають; з орендарем — як є: чужу організацію так однаково не
+  // побачити, і це правильно.
+  const row = currentOrganizationId() ? await read() : await runWithOrganization(organizationId, read);
   // Рядок сильніший за дефолт — і `enabled = 0` теж рядок. Інакше вимкнути
   // модуль, який стоїть за замовчуванням, було б неможливо.
   if (row) return row.enabled === 1;

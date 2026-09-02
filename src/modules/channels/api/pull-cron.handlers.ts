@@ -35,7 +35,8 @@ export async function runChannelPullCron(): Promise<PullAllReport> {
     organizations: async () =>
       (await sql.rows<{ id: string }>('SELECT id FROM organizations')).map((o) => o.id),
 
-    hasChannels: (organizationId) => hasFeature(organizationId, 'channels'),
+    // У контексті названої організації — див. publish-cron (INC-014).
+    hasChannels: (organizationId) => runWithOrganization(organizationId, () => hasFeature(organizationId, 'channels')),
 
     withOrganization: (organizationId, fn) => runWithOrganization(organizationId, fn),
 
