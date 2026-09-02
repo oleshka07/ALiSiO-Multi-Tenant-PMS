@@ -1,14 +1,41 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { noteRatesChanged } from '@channels/outbox';
 import crypto from 'crypto';
-import { getSql } from '@core/db/async';
+import { getSql, type Sql } from '@core/db/async';
+import { currentOrganizationId } from '@core/auth/tenant-context';
 import type { DayPrice, PriceUpsertInput } from '../domain/types';
 
 // The id used to be defaulted by a SQLite-only blob function inside the
 // INSERT. Same 32 lowercase hex chars, generated where both engines can.
 const newId = () => crypto.randomBytes(16).toString('hex');
 
-export async function getPriceMonth(unitTypeId: string, month: number, year: number): Promise<{ unitTypeId: string; month: number; year: number; days: DayPrice[] }> {
+/**
+ * Тариф, який справді належить обʼєкту цього типу — і цьому орендарю.
+ *
+ * `rate_plan_id` приходить з екрана; без цієї звірки ціну можна було б
+ * записати під тариф іншого готелю (INC-010 — клас «id з URL без орендаря»).
+ */
+async function ownedRatePlanFor(t: Sql, unitTypeId: string, ratePlanId: string): Promise<{ propertyId: string }> {
+  const organizationId = currentOrganizationId();
+  if (!organizationId) throw new Error('price calendar: write without a tenant');
+  const row = await t.row<any>(
+    `SELECT rp.property_id
+       FROM rate_plans rp
+       JOIN unit_types ut ON ut.property_id = rp.property_id
+       JOIN properties p ON p.id = rp.property_id
+      WHERE rp.id = ? AND ut.id = ? AND p.organization_id = ?`,
+    [ratePlanId, unitTypeId, organizationId],
+  );
+  if (!row) throw new Error('price calendar: rate plan not found');
+  return { propertyId: String(row.property_id) };
+}
+
+export interface PriceCalendarOptions {
+  /** Ціна ТАРИФУ на дату (П2): рядок з `rate_plan_id`, не базовий. */
+  ratePlanId?: string;
+}
+
+export async function getPriceMonth(unitTypeId: string, month: number, year: number, ratePlanId?: string): Promise<{ unitTypeId: string; ratePlanId: string | null; month: number; year: number; days: DayPrice[] }> {
   const sql = getSql();
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
   const lastDay = new Date(year, month, 0).getDate();
@@ -27,12 +54,26 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
   const priceMap = new Map<string, any>();
   for (const row of rows as any[]) priceMap.set(row.date, row);
 
+  // Сітка ТАРИФУ: власний рядок тарифу поверх базового. Де власного немає —
+  // показуємо базу і кажемо, що вона успадкована: інакше оператор бачить
+  // число і не знає, чиє воно.
+  const own = new Map<string, any>();
+  if (ratePlanId) {
+    const planRows = await sql.rows<any>(`
+      SELECT * FROM price_calendar
+      WHERE unit_type_id = ? AND date >= ? AND date <= ? AND rate_plan_id = ?
+      ORDER BY date ASC
+    `, [unitTypeId, startDate, endDate, ratePlanId]);
+    for (const row of planRows as any[]) own.set(row.date, row);
+  }
+
   const days: DayPrice[] = [];
   for (let d = 1; d <= lastDay; d++) {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const dayOfWeek = new Date(year, month - 1, d).getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6;
-    const existing = priceMap.get(dateStr);
+    const ownRow = own.get(dateStr);
+    const existing = ownRow ?? priceMap.get(dateStr);
 
     if (existing) {
       days.push({
@@ -46,13 +87,14 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
         cta: existing.cta,
         ctd: existing.ctd,
         hasData: true,
+        ...(ratePlanId ? { inherited: !ownRow } : {}),
       });
     } else {
       days.push({ date: dateStr, day: d, dayOfWeek, isWeekend, base_price: 0, weekend_price: null, effective_price: 0, min_stay: 1, max_stay: null, closed: 0, cta: 0, ctd: 0, hasData: false });
     }
   }
 
-  return { unitTypeId, month, year, days };
+  return { unitTypeId, ratePlanId: ratePlanId ?? null, month, year, days };
 }
 
 /**
@@ -71,23 +113,27 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
  */
 const ON_CONFLICT_ROW = `ON CONFLICT(unit_type_id, (COALESCE(rate_plan_id, '')), date)`;
 
-export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[]): Promise<number> {
+export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[], options: PriceCalendarOptions = {}): Promise<number> {
   const sql = getSql();
+  const ratePlanId = options.ratePlanId ?? null;
   await sql.tx(async (t) => {
     // Канали дізнаються В ТІЙ САМІЙ транзакції: черга, що поповнюється
     // окремим кроком, розходиться зі станом при першому ж падінні між ними.
     // Одним діапазоном від першої до останньої дати: базова ціна типу
     // міняє КОЖЕН тариф на ньому, і незмінені дні між ними коштують лише
-    // повторного читання того самого числа (Ц13).
-    const owner = await t.row<any>('SELECT property_id FROM unit_types WHERE id = ?', [unitTypeId]);
+    // повторного читання того самого числа (Ц13). Ціна ТАРИФУ міняє лише
+    // його пару — двері фільтрують за `ratePlanId` (Ц10).
+    const owner = ratePlanId
+      ? { property_id: (await ownedRatePlanFor(t, unitTypeId, ratePlanId)).propertyId }
+      : await t.row<any>('SELECT property_id FROM unit_types WHERE id = ?', [unitTypeId]);
     const dates = prices.map((p) => p.date).sort();
     if (owner && dates.length) {
-      await noteRatesChanged(t, { propertyId: String(owner.property_id), unitTypeId, from: dates[0], to: dates[dates.length - 1] });
+      await noteRatesChanged(t, { propertyId: String(owner.property_id), unitTypeId, ratePlanId: ratePlanId ?? undefined, from: dates[0], to: dates[dates.length - 1] });
     }
     for (const p of prices) {
       await t.run(`
-      INSERT INTO price_calendar (id, unit_type_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ${ON_CONFLICT_ROW} DO UPDATE SET
         base_price = excluded.base_price,
         weekend_price = excluded.weekend_price,
@@ -97,7 +143,7 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
         cta = excluded.cta,
         ctd = excluded.ctd,
         updated_at = CURRENT_TIMESTAMP
-      `, [newId(), unitTypeId, p.date, p.base_price ?? 0, p.weekend_price ?? null, p.min_stay ?? 1, p.max_stay ?? null, p.closed ? 1 : 0, p.cta ? 1 : 0, p.ctd ? 1 : 0]);
+      `, [newId(), unitTypeId, ratePlanId, p.date, p.base_price ?? 0, p.weekend_price ?? null, p.min_stay ?? 1, p.max_stay ?? null, p.closed ? 1 : 0, p.cta ? 1 : 0, p.ctd ? 1 : 0]);
     }
   });
 
@@ -133,11 +179,14 @@ export interface BulkUpdateInput {
   closed?: boolean;
   cta?: boolean;
   ctd?: boolean;
+  /** Ціна ТАРИФУ на діапазон (П2); без нього — базова ціна типу. */
+  ratePlanId?: string;
 }
 
 export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> {
   const sql = getSql();
   const { unitTypeId, dateFrom, dateTo, applyTo = 'all' } = input;
+  const ratePlanId = input.ratePlanId ?? null;
 
   let count = 0;
   const start = new Date(dateFrom);
@@ -145,8 +194,10 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
 
   await sql.tx(async (t) => {
     // Канали — в тій самій транзакції, одним діапазоном (див. upsertPrices).
-    const owner = await t.row<any>('SELECT property_id FROM unit_types WHERE id = ?', [unitTypeId]);
-    if (owner) await noteRatesChanged(t, { propertyId: String(owner.property_id), unitTypeId, from: dateFrom, to: dateTo });
+    const owner = ratePlanId
+      ? { property_id: (await ownedRatePlanFor(t, unitTypeId, ratePlanId)).propertyId }
+      : await t.row<any>('SELECT property_id FROM unit_types WHERE id = ?', [unitTypeId]);
+    if (owner) await noteRatesChanged(t, { propertyId: String(owner.property_id), unitTypeId, ratePlanId: ratePlanId ?? undefined, from: dateFrom, to: dateTo });
 
     const current = new Date(start);
     while (current <= end) {
@@ -161,10 +212,9 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
       // edits. Without it the day's rate-plan row could answer instead, and
       // "keep the current price" would carry a rate plan's number into the
       // base price.
-      const existing = await t.row<any>(
-        'SELECT * FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL',
-        [unitTypeId, dateStr],
-      );
+      const existing = ratePlanId
+        ? await t.row<any>('SELECT * FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id = ?', [unitTypeId, dateStr, ratePlanId])
+        : await t.row<any>('SELECT * FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [unitTypeId, dateStr]);
 
       // A day the hotel has never priced stays unpriced. The form's price field
       // says «Не змінювати» when left empty, so `base_price` is undefined
@@ -186,8 +236,8 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
       const ctd = input.ctd !== undefined ? (input.ctd ? 1 : 0) : (existing?.ctd ?? 0);
 
       await t.run(`
-      INSERT INTO price_calendar (id, unit_type_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ${ON_CONFLICT_ROW} DO UPDATE SET
         base_price = excluded.base_price,
         weekend_price = excluded.weekend_price,
@@ -197,7 +247,7 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
         cta = excluded.cta,
         ctd = excluded.ctd,
         updated_at = CURRENT_TIMESTAMP
-      `, [newId(), unitTypeId, dateStr, basePrice, weekendPrice, minStay, maxStay, closed, cta, ctd]);
+      `, [newId(), unitTypeId, ratePlanId, dateStr, basePrice, weekendPrice, minStay, maxStay, closed, cta, ctd]);
       count++;
       current.setDate(current.getDate() + 1);
     }
@@ -205,3 +255,4 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
 
   return count;
 }
+

@@ -25,7 +25,7 @@ export function listUnitTypes(organizationId: string, filters: { category?: stri
   const sql = getSql();
   let query = `
     SELECT
-      ut.id, ut.name, ut.code, ut.max_adults, ut.max_children, ut.max_occupancy, ut.base_occupancy,
+      ut.id, ut.property_id, ut.name, ut.code, ut.max_adults, ut.max_children, ut.max_occupancy, ut.base_occupancy,
       ut.beds_single, ut.beds_double, ut.photos, ut.sort_order,
       c.id as category_id, c.name as category_name, c.type as category_type,
       COUNT(u.id) as unit_count

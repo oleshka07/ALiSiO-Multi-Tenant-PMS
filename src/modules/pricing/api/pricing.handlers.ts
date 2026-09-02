@@ -20,7 +20,8 @@ export const getPricing = withActor(async (request: NextRequest, _ctx, actor: Ac
       return NextResponse.json({ error: 'Unit type not found' }, { status: 404 });
     }
 
-    return NextResponse.json(await getPriceMonth(unitTypeId, month, year));
+    const ratePlanId = searchParams.get('ratePlanId') || undefined;
+    return NextResponse.json(await getPriceMonth(unitTypeId, month, year, ratePlanId));
   } catch (error: any) {
     console.error('GET /api/pricing error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to fetch pricing' }, { status: 500 });
@@ -40,7 +41,14 @@ export const updatePricing = withPermission('manage_pricing', async (request: Ne
       return NextResponse.json({ error: 'Unit type not found' }, { status: 404 });
     }
 
-    const updated = await upsertPrices(unitTypeId, prices);
+    const ratePlanId = typeof body.ratePlanId === 'string' && body.ratePlanId ? body.ratePlanId : undefined;
+    let updated: number;
+    try {
+      updated = await upsertPrices(unitTypeId, prices, { ratePlanId });
+    } catch (e) {
+      if (e instanceof Error && /rate plan not found/i.test(e.message)) return NextResponse.json({ error: 'Rate plan not found' }, { status: 404 });
+      throw e;
+    }
 
     // A price change used to enqueue an ARI push here, wrapped in a try/catch
     // that swallowed the error — which is how nobody noticed the queue was

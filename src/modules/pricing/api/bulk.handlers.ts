@@ -34,7 +34,13 @@ export const updateBulkPricing = withPermission('manage_pricing', async (request
       return NextResponse.json({ error: 'Unit type not found' }, { status: 404 });
     }
 
-    const updated = await bulkUpdatePrices({ unitTypeId, dateFrom, dateTo, applyTo, ...body });
+    let updated: number;
+    try {
+      updated = await bulkUpdatePrices({ unitTypeId, dateFrom, dateTo, applyTo, ...body, ratePlanId: typeof body.ratePlanId === 'string' && body.ratePlanId ? body.ratePlanId : undefined });
+    } catch (e) {
+      if (e instanceof Error && /rate plan not found/i.test(e.message)) return NextResponse.json({ error: 'Rate plan not found' }, { status: 404 });
+      throw e;
+    }
     return NextResponse.json({ success: true, updated });
   } catch (error: any) {
     console.error('PUT /api/pricing/bulk error:', error?.message || error);

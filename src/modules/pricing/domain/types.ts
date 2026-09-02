@@ -25,6 +25,8 @@ export interface DayPrice {
   cta: number;
   ctd: number;
   hasData: boolean;
+  /** Сітка ТАРИФУ: число взяте з базового рядка типу, власного рядка тарифу на цей день немає. */
+  inherited?: boolean;
 }
 
 export interface PriceUpsertInput {

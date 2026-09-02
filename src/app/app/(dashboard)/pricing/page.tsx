@@ -45,6 +45,8 @@ interface PriceDay {
   cta: number;
   ctd: number;
   hasData: boolean;
+  /** Сітка тарифу: число успадковане від типу — власного рядка тарифу на цей день немає. */
+  inherited?: boolean;
 }
 
 interface QuoteResult {
@@ -373,6 +375,10 @@ export default function PricingPage() {
   // State
   const [unitTypes, setUnitTypes] = useState<UnitType[]>([]);
   const [selectedUnitType, setSelectedUnitType] = useState('');
+  // Ціна ТАРИФУ на дату (П2): '' — базова ціна типу, інакше id тарифу.
+  // Тарифи — обʼєкта вибраного типу; без вибраного типу списку немає.
+  const [ratePlanId, setRatePlanId] = useState('');
+  const [ratePlans, setRatePlans] = useState<{ id: string; code: string; name: string }[]>([]);
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [year, setYear] = useState(today.getFullYear());
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
@@ -408,17 +414,28 @@ export default function PricingPage() {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Тарифи обʼєкта вибраного типу — для вибору «чию ціну редагуємо».
+  useEffect(() => {
+    const ut = unitTypes.find((u) => u.id === selectedUnitType) as { property_id?: string } | undefined;
+    if (!ut?.property_id) { setRatePlans([]); setRatePlanId(''); return; }
+    fetch(`/api/pricing/rate-plans?property_id=${encodeURIComponent(ut.property_id)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list) => setRatePlans(Array.isArray(list) ? list.map((p: any) => ({ id: p.id, code: p.code, name: p.name })) : []))
+      .catch(() => setRatePlans([]));
+    setRatePlanId('');
+  }, [selectedUnitType, unitTypes]);
+
   // Fetch prices
   const fetchPrices = useCallback(async () => {
     if (!selectedUnitType) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/pricing?unitTypeId=${selectedUnitType}&month=${month}&year=${year}`);
+      const res = await fetch(`/api/pricing?unitTypeId=${selectedUnitType}&month=${month}&year=${year}${ratePlanId ? `&ratePlanId=${encodeURIComponent(ratePlanId)}` : ''}`);
       const data = await res.json();
       if (data.days) setPriceData(data.days);
     } catch (e) { console.error(e); }
     setLoading(false);
-  }, [selectedUnitType, month, year]);
+  }, [selectedUnitType, month, year, ratePlanId]);
 
   useEffect(() => { fetchPrices(); }, [fetchPrices]);
 
@@ -459,6 +476,7 @@ export default function PricingPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           unitTypeId: selectedUnitType,
+          ratePlanId: ratePlanId || undefined,
           prices: [{ date: editDay.date, ...data }],
         }),
       });
@@ -476,7 +494,7 @@ export default function PricingPage() {
       const res = await fetch('/api/pricing/bulk', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ unitTypeId: selectedUnitType, ...data }),
+        body: JSON.stringify({ unitTypeId: selectedUnitType, ratePlanId: ratePlanId || undefined, ...data }),
       });
       const result = await res.json();
       if (res.ok) {
@@ -564,6 +582,17 @@ export default function PricingPage() {
                 ))}
               </select>
             </div>
+            <div className="form-group" style={{ flex: 2 }}>
+              <label className="form-label">{t('Чия ціна')}</label>
+              {/* Базова ціна типу — її успадковує кожен тариф без власного
+                  рядка. Ціна тарифу на дату — лише його (П2, Ц10). */}
+              <select className="form-select" value={ratePlanId} onChange={e => setRatePlanId(e.target.value)}>
+                <option value="">{t('Базова ціна типу')}</option>
+                {ratePlans.map(rp => (
+                  <option key={rp.id} value={rp.id}>{rp.code} — {rp.name}</option>
+                ))}
+              </select>
+            </div>
             <div className="form-group">
               <label className="form-label">{t('Режим')}</label>
               <div className="flex gap-2">
@@ -628,6 +657,7 @@ export default function PricingPage() {
                     {day ? (
                       <div
                         className={`pricing-cell ${day.closed ? 'closed' : ''} ${!day.hasData ? 'no-data' : ''}`}
+                        title={day.inherited ? t('Успадковано від типу: власної ціни тарифу на цей день немає') : undefined}
                         onClick={() => setEditDay(day)}
                         style={{ cursor: 'pointer' }}
                       >
@@ -638,7 +668,7 @@ export default function PricingPage() {
                           color: !day.hasData ? 'var(--text-tertiary)' : day.isWeekend ? '#f59e0b' : undefined,
                           fontSize: day.hasData ? 15 : 13,
                         }}>
-                          {day.hasData ? `${day.effective_price.toLocaleString()}` : '—'}
+                          {day.hasData ? `${day.effective_price.toLocaleString()}` : '—'}{day.inherited ? <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 3 }}>↑</span> : null}
                         </div>
                         {day.hasData && day.isWeekend && day.weekend_price != null && day.weekend_price !== day.base_price && (
                           <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>

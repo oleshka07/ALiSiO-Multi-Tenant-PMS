@@ -2910,5 +2910,8 @@
   "напівпансіон": "polopenze",
   "не вказано": "neuvedeno",
   "немає — не продається": "žádná — neprodává se",
-  "повний пансіон": "plná penze"
+  "повний пансіон": "plná penze",
+  "Чия ціна": "Čí cena",
+  "Базова ціна типу": "Základní cena typu",
+  "Успадковано від типу: власної ціни тарифу на цей день немає": "Zděděno od typu: vlastní cena sazby pro tento den není"
 }

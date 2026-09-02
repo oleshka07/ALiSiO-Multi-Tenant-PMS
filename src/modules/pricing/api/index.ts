@@ -21,6 +21,12 @@ export { priceNights, cheapestByDay } from '../data/nightly-price';
 // каналів. Іменується `PropertyRatePlan`, бо `RatePlan` у цьому ж фасаді вже
 // зайнятий іншим — тарифом у розумінні екрана цін.
 export { propertyRatePlans } from '../data/property-rate-plans';
+
+// Писачі календаря — двері для скриптів засіву та гейтів інших модулів
+// (гейт дверей каналів доводить через них, що ціна тарифу кладе координату
+// лише на його пару). Орендар — із контексту, тариф звіряється з обʼєктом.
+export { upsertPrices, bulkUpdatePrices, getPriceMonth } from '../data/price-calendar.repo';
+export type { BulkUpdateInput, PriceCalendarOptions } from '../data/price-calendar.repo';
 export type {
   RatePlan as PropertyRatePlan,
   RatePlanUnitType as PropertyRatePlanUnitType,

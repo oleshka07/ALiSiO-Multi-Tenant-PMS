@@ -2878,5 +2878,8 @@
   "напівпансіон": "Halbpension",
   "не вказано": "nicht angegeben",
   "немає — не продається": "keiner — wird nicht verkauft",
-  "повний пансіон": "Vollpension"
+  "повний пансіон": "Vollpension",
+  "Чия ціна": "Wessen Preis",
+  "Базова ціна типу": "Basispreis des Typs",
+  "Успадковано від типу: власної ціни тарифу на цей день немає": "Vom Typ geerbt: kein eigener Tarifpreis für diesen Tag"
 }

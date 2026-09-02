@@ -122,6 +122,17 @@ try {
     assert.strictEqual(await noteAvailabilityChanged(sql, { propertyId: PROP, unitTypeId: 'UT2', from: '2026-11-10', to: '2026-11-12' }, TODAY), 0);
     console.log('  ok  незмаплений тип не отримує координати');
 
+    // ── Ціна ТАРИФУ на дату — лише його пара (Ц10, П2 карти сертифікації) ──
+    //
+    // Писач календаря передає `ratePlanId`; двері мають покласти координату
+    // на пару саме цього тарифу і жодну іншу — інакше ціна B&B поїхала б і
+    // на BAR. Діапазон інший, ніж вище, щоб не злитись із наявним рядком.
+    const only = await noteRatesChanged(sql, { propertyId: PROP, unitTypeId: 'UT1', ratePlanId: 'RP2', from: '2026-11-20', to: '2026-11-21' }, TODAY);
+    assert.strictEqual(only, 1, 'RP2×UT1 є лише на першому зʼєднанні — одна координата');
+    const scoped = (await queuedChanges(C1)).filter((r) => r.date === '2026-11-20');
+    assert.deepStrictEqual(scoped.map((r) => `${r.ratePlanId}×${r.unitTypeId}`), ['RP2×UT1'], 'ціна тарифу — координата ЛИШЕ його пари, не сусіднього тарифу');
+    console.log('  ok  ціна тарифу на дату → координата лише його пари');
+
     // ── Без типу — усі пари; без кінця — до горизонту ─────────────────────
     const all = await noteRatesChanged(sql, { propertyId: PROP, from: '2027-01-01', to: null }, TODAY);
     assert.strictEqual(all, 3, 'матриця без типу — це всі пари обʼєкта');
