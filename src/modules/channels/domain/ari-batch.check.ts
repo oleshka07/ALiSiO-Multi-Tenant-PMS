@@ -635,3 +635,43 @@ console.log('  ok  обмеження й «закрито» з календар�
   assert.strictEqual(receipts.find((r) => r.ids.includes('wide'))?.receipt, 'task-1', 'одна пачка — одна розписка, не по одній на ніч');
 }
 console.log('  ok  розписка вендора лягає на відправлену координату, діапазон — усі свої, і лише різні');
+
+// ── П5: повний синк — 500 ночей, різне число щодня, рівно ДВА виклики ─────
+//
+// Вендор: «a full sync would be 2 API calls» (rate-limits.md). Повний синк —
+// це один діапазон на тип і на пару (Ц15), а батчер розкладає по ночах,
+// читає числа й стискає в діапазони; тіло вміщає все (10 МБ), тож смуга —
+// один виклик, хоч би скільки різних значень у ній було. Ціна щодня інша
+// (парна/непарна ніч) — стиснення НЕ склеює ночей, і виклик усе одно один.
+{
+  const FROM = '2027-06-01';
+  const addDays = (iso: string, n: number) => { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+  const TO = addDays(FROM, 499); // 500 ночей включно
+  const calls: { kind: string; values: number }[] = [];
+  const q = queue([
+    { id: 'a-dbl', kind: 'availability', unitTypeId: 'DBL', date: FROM, dateTo: TO },
+    { id: 'a-sgl', kind: 'availability', unitTypeId: 'SGL', date: FROM, dateTo: TO },
+    { id: 'r-bar-dbl', kind: 'rate', unitTypeId: 'DBL', ratePlanId: 'BAR', date: FROM, dateTo: TO },
+    { id: 'r-bb-dbl', kind: 'rate', unitTypeId: 'DBL', ratePlanId: 'BB', date: FROM, dateTo: TO },
+  ]);
+  const parity = (date: string) => Number(date.slice(-2)) % 2;
+  const report = await flushOutbox(base({
+    ...q.deps,
+    today: FROM,
+    availabilityAt: async (_ut, date) => 3 + parity(date),
+    pricesAt: async (_ut, _rp, date) => [{ occupancy: 2, priceMinor: 11000 + 1000 * parity(date) }],
+    send: async (kind, values) => { calls.push({ kind, values: values.length }); return { warnings: [], receipt: `task-${calls.length}` }; },
+  }));
+  assert.strictEqual(report.sent, 4, 'усі чотири діапазони поїхали');
+  assert.strictEqual(report.calls, 2, `500 ночей × (2 типи + 2 пари) — рівно два виклики, а не ${report.calls}`);
+  assert.deepStrictEqual(calls.map((c) => c.kind).sort(), ['availability', 'rate'], 'по одному на смугу');
+  // Домен віддає адаптеру по значенню на ніч — 500 × 2 пари; у діапазони їх
+  // стискає адаптер (`ari-payload.ts`), і це доведено на моку. Тут головне:
+  // тисяча різних значень у смузі — і все одно ОДИН виклик, бо тіло вміщає.
+  const rate = calls.find((c) => c.kind === 'rate')!;
+  assert.strictEqual(rate.values, 1000, 'ціна щодня інша — 500 значень на кожну пару в одному виклику');
+  assert.strictEqual(calls.find((c) => c.kind === 'availability')!.values, 1000, 'те саме для наявності на два типи');
+  assert.deepStrictEqual(q.free(), [], 'черга порожня');
+}
+console.log('  ok  повний синк: 500 ночей із різним числом щодня — рівно два виклики (П5)');
+

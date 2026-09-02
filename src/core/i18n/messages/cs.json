@@ -2932,5 +2932,20 @@
   "не звірено": "neporovnáno",
   "Поле": "Pole",
   "У нас": "U nás",
-  "У каналі": "V kanálu"
+  "У каналі": "V kanálu",
+  "Повний синк": "Plná synchronizace",
+  "ще не робився": "ještě neproběhla",
+  "Повний синк (500 ночей)": "Plná synchronizace (500 nocí)",
+  "Весь стан на 500 ночей уперед — наявність, ціни й обмеження — двома викликами, по одному на смугу. Робиться при ввімкненні розсилки й цією кнопкою; за таймером — ніколи": "Celý stav na 500 nocí dopředu — dostupnost, ceny a omezení — dvěma voláními, jedno na pruh. Provádí se při zapnutí odesílání a tímto tlačítkem; podle časovače nikdy",
+  "у чергу": "do fronty",
+  "типів": "typů",
+  "пар тип × тариф": "párů typ × sazba",
+  "викликів": "volání",
+  "відправлено": "odesláno",
+  "повернуто": "vráceno",
+  "завершено": "dokončeno",
+  "не завершено: щось повернулось у чергу": "nedokončeno: něco se vrátilo do fronty",
+  "Повний синк відправлено": "Plná synchronizace odeslána",
+  "Спочатку ввімкніть розсилку": "Nejprve zapněte odesílání",
+  "Повний синк не вдався: координати повернулись у чергу, наступний прохід їх дошле": "Plná synchronizace se nezdařila: souřadnice se vrátily do fronty, další průchod je dopošle"
 }

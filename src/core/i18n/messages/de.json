@@ -2900,5 +2900,20 @@
   "не звірено": "nicht abgeglichen",
   "Поле": "Feld",
   "У нас": "Bei uns",
-  "У каналі": "Im Kanal"
+  "У каналі": "Im Kanal",
+  "Повний синк": "Vollsynchronisation",
+  "ще не робився": "noch nicht durchgeführt",
+  "Повний синк (500 ночей)": "Vollsynchronisation (500 Nächte)",
+  "Весь стан на 500 ночей уперед — наявність, ціни й обмеження — двома викликами, по одному на смугу. Робиться при ввімкненні розсилки й цією кнопкою; за таймером — ніколи": "Der gesamte Stand für 500 Nächte im Voraus — Verfügbarkeit, Preise und Einschränkungen — mit zwei Aufrufen, einer je Spur. Läuft beim Einschalten des Versands und über diese Schaltfläche; per Timer nie",
+  "у чергу": "in die Warteschlange",
+  "типів": "Typen",
+  "пар тип × тариф": "Paare Typ × Rate",
+  "викликів": "Aufrufe",
+  "відправлено": "gesendet",
+  "повернуто": "zurückgelegt",
+  "завершено": "abgeschlossen",
+  "не завершено: щось повернулось у чергу": "nicht abgeschlossen: etwas kam in die Warteschlange zurück",
+  "Повний синк відправлено": "Vollsynchronisation gesendet",
+  "Спочатку ввімкніть розсилку": "Zuerst den Versand einschalten",
+  "Повний синк не вдався: координати повернулись у чергу, наступний прохід їх дошле": "Vollsynchronisation fehlgeschlagen: Koordinaten kamen in die Warteschlange zurück, der nächste Durchlauf sendet sie nach"
 }

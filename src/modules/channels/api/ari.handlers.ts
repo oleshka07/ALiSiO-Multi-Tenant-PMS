@@ -2,6 +2,7 @@ import { integrationCredentials } from '@core/integration-credentials';
 import { currentOrganizationId } from '@core/auth/tenant-context';
 import { connectionInTenant } from '../data/connections.repo';
 import { recentSends } from '../data/outbox.repo';
+import { runFullSync, type FullSyncReport } from '../data/full-sync';
 import { ariPublisherFor, adapterFor } from '../providers';
 import type { FlushReport } from '../domain/ari-batch.ts';
 
@@ -55,6 +56,19 @@ export {
 export type { ClaimedChange as ChannelChange } from '../data/outbox.repo';
 export type { FlushReport } from '../domain/ari-batch.ts';
 export type { SendsVerification, Mismatch as SendMismatch } from '../domain/verify.ts';
+export type { FullSyncReport, FullSyncPlan } from '../data/full-sync';
+
+/**
+ * Повний синк (П5): весь стан зʼєднання одним діапазоном на адресата → один
+ * прохід → рівно два виклики. Кличуть кнопка в майстрі й увімкнення розсилки;
+ * таймера тут немає і не буде (И6, `check-no-timer-fullsync.mjs`).
+ */
+export async function fullSyncConnectionFor(
+  connectionId: string,
+  options: { today?: string } = {},
+): Promise<FullSyncReport> {
+  return runFullSync(connectionId, (id) => flushConnectionOutboxFor(id, { today: options.today }), options.today);
+}
 
 /**
  * Звірка П6: останні відправлення проти календаря менеджера каналів.

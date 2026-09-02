@@ -10,6 +10,8 @@ import { adapterFor, knownProviders } from '../providers';
 import { connectionInTenant } from '../data/connections.repo';
 import { ensureConnection, propertiesInTenant, setConnectionEnabled, setupState } from '../data/connect';
 import { syncConnectionCatalogFor } from './catalog.handlers';
+import { fullSyncConnectionFor } from './ari.handlers';
+import type { FullSyncReport } from '../data/full-sync';
 
 /**
  * Майстер підключення менеджера каналів — з боку модуля.
@@ -215,9 +217,54 @@ export const setChannelConnectionEnabled = withPermission('manage_properties', a
     // вмикається, а стан вебхука повертається назвою, щоб екран показав його
     // і дав кнопку «зареєструвати ще раз». Крон тим часом працює.
     const webhook = await registerWebhookSoftly(id, current.provider, actor.organizationId);
-    return NextResponse.json({ ...connection, webhook });
+    // Повний синк — теж частина «увімкнено» (П5, Ц23): канал має отримати
+    // ПОТОЧНИЙ стан на 500 ночей, а не чекати, поки щось зміниться. І так само
+    // не умова: вендор лежить — зʼєднання ввімкнене, стан лишається в черзі й
+    // поїде наступним проходом, а результат повертається назвою.
+    const fullSync = await fullSyncSoftly(id);
+    return NextResponse.json({ ...connection, webhook, fullSync });
   } catch (error: unknown) {
     return serverError('modules/channels/api/connect setChannelConnectionEnabled', error);
+  }
+});
+
+/** Результат повного синку після спроби — ніколи не виняток. */
+export type FullSyncAttempt =
+  | { ok: true; report: FullSyncReport }
+  | { ok: false; error: 'catalog_not_synced' | 'full_sync_failed' };
+
+export async function fullSyncSoftly(connectionId: string): Promise<FullSyncAttempt> {
+  try {
+    return { ok: true, report: await fullSyncConnectionFor(connectionId) };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/catalog not synced/i.test(message)) return { ok: false, error: 'catalog_not_synced' };
+    console.error('[channels] full sync failed', message);
+    return { ok: false, error: 'full_sync_failed' };
+  }
+}
+
+/**
+ * POST /api/channels/connections/[id]/full-sync — рукою оператора (П5).
+ *
+ * Увесь стан на 500 ночей двома викликами; розписки й дата завершення — у
+ * відповіді. Вимкнене зʼєднання не шле (батчер), тож кнопка є лише для
+ * ввімкненого — а тут це 409, не мовчазна черга без відправлення.
+ */
+export const fullSyncChannelConnection = withPermission('manage_properties', async (_request: NextRequest, { params }: IdParams, actor: Actor) => {
+  try {
+    const off = await moduleOff(actor);
+    if (off) return off;
+    const { id } = await params;
+    const connection = await connectionInTenant(id);
+    if (!connection) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (!connection.remotePropertyId) return NextResponse.json({ error: 'catalog_not_synced' }, { status: 409 });
+    if (!connection.isEnabled) return NextResponse.json({ error: 'connection_disabled' }, { status: 409 });
+    if (!await apiKeyOf(actor.organizationId)) return NextResponse.json({ error: 'no_key' }, { status: 409 });
+    const report = await fullSyncConnectionFor(id);
+    return NextResponse.json(report);
+  } catch (error: unknown) {
+    return serverError('modules/channels/api/connect fullSyncChannelConnection', error);
   }
 });
 

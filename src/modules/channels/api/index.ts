@@ -9,15 +9,15 @@ export { syncConnectionCatalogFor, channelConnection, connectionMirror } from '.
 export {
   flushConnectionOutboxFor, enqueueChannelChange, pendingChannelChanges,
   queuedChannelChanges, stuckChannelChanges, retryStuckChannelChanges, recentChannelSends,
-  verifyConnectionSendsFor,
+  verifyConnectionSendsFor, fullSyncConnectionFor,
 } from './ari.handlers';
-export type { ChannelChange, FlushReport, SendsVerification, SendMismatch } from './ari.handlers';
+export type { ChannelChange, FlushReport, SendsVerification, SendMismatch, FullSyncReport, FullSyncPlan } from './ari.handlers';
 export { noteAvailabilityChanged, noteRatesChanged, lastNight } from './outbox';
 export type { AvailabilityNote, RateNote } from './outbox';
 export { listChannelConnections, retryChannelOutbox, verifyChannelSends } from './outbox-state.handlers';
 export {
   getChannelSetup, saveChannelKey, createChannelConnection, syncChannelCatalog,
-  channelFrame, reconcileChannelCatalog, setChannelConnectionEnabled,
+  channelFrame, reconcileChannelCatalog, setChannelConnectionEnabled, fullSyncChannelConnection,
 } from './connect.handlers';
 export {
   probeChannelKeyFor, channelFrameUrlFor, reconcileConnectionCatalogFor,

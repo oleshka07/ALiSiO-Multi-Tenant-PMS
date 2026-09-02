@@ -42,7 +42,32 @@ export interface Connection {
    * визначення «прямо дешевше».
    */
   pricingModifierPercent: number;
+  /** Коли останній повний синк ЗАВЕРШИВСЯ (усе поїхало); `null` — ще не робився (П5). */
+  lastFullSyncAt: string | null;
 }
+
+/**
+ * Мітка часу назовні — завжди ISO з секундною точністю в UTC.
+ *
+ * SQLite віддає рядок як записано; драйвер Postgres форматує TIMESTAMPTZ у
+ * `YYYY-MM-DD HH:MM:SS` без зони (і без часток секунди). Без нормалізації
+ * той самий рядок читався б двома різними текстами залежно від двигуна, а
+ * екран здогадувався б про зону. Записуємо секундами (`nowStamp`) — тоді
+ * прочитане дорівнює записаному на обох двигунах.
+ */
+export function isoStamp(value: unknown): string | null {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) return value.toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const s = String(value);
+  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/.exec(s);
+  if (!m) return s;
+  const zone = m[3];
+  if (!zone || zone === 'Z' || /^[+-]00:?00$/.test(zone)) return `${m[1]}T${m[2]}Z`;
+  return new Date(`${m[1]}T${m[2]}${zone}`).toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+/** Зараз — ISO з секундною точністю: те, що `isoStamp` прочитає назад без змін. */
+export const nowStamp = (): string => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 
 /** Зʼєднання, якщо воно НАШЕ. Чуже й неіснуюче однаково дають `null`. */
 function toConnection(row: Record<string, any>): Connection {
@@ -56,6 +81,7 @@ function toConnection(row: Record<string, any>): Connection {
     remoteWebhookId: row.remote_webhook_id == null ? null : String(row.remote_webhook_id),
     isEnabled: Boolean(Number(row.is_enabled)),
     pricingModifierPercent: Number(row.pricing_modifier_percent) || 0,
+    lastFullSyncAt: isoStamp(row.last_full_sync_at),
   };
 }
 
@@ -66,7 +92,7 @@ export async function connectionInTenant(connectionId: string): Promise<Connecti
   const sql = getSql();
   const row = await sql.row<any>(
     `SELECT id, organization_id, property_id, provider, environment,
-            remote_property_id, remote_webhook_id, is_enabled, pricing_modifier_percent
+            remote_property_id, remote_webhook_id, is_enabled, pricing_modifier_percent, last_full_sync_at
        FROM cm_connections
       WHERE id = ? AND organization_id = ?`,
     [connectionId, organizationId],
@@ -120,6 +146,30 @@ export async function rememberRemoteProperty(
 }
 
 /**
+ * Повний синк завершився — усе поїхало (П5). Повертає записану мітку.
+ *
+ * Ставиться лише проходом, який нічого не повернув у чергу: половина стану —
+ * не повний синк, і дата збрехала б оператору. Мітка — ISO-рядок: той самий
+ * формат, що в `updated_at`, і його читає екран без здогадок про зону.
+ */
+export async function rememberFullSync(connectionId: string, at: string = nowStamp()): Promise<string> {
+  const organizationId = currentOrganizationId();
+  if (!organizationId) throw new Error('cm: connection update without a tenant');
+
+  const sql = getSql();
+  const current = await connectionInTenant(connectionId);
+  if (!current) throw new Error('cm: connection not found');
+
+  await sql.run(
+    `UPDATE cm_connections
+        SET last_full_sync_at = ?, updated_at = ?
+      WHERE id = ? AND organization_id = ?`,
+    [at, new Date().toISOString(), connectionId, organizationId],
+  );
+  return at;
+}
+
+/**
  * Усі зʼєднання обʼєкта — для писачів черги: бронь, ціна, блокування кажуть
  * «змінилось» кожному менеджеру каналів цього обʼєкта.
  *
@@ -141,7 +191,7 @@ export async function connectionsForProperty(propertyId: string): Promise<Connec
   const sql = getSql();
   const rows = await sql.rows<any>(
     `SELECT id, organization_id, property_id, provider, environment,
-            remote_property_id, remote_webhook_id, is_enabled, pricing_modifier_percent
+            remote_property_id, remote_webhook_id, is_enabled, pricing_modifier_percent, last_full_sync_at
        FROM cm_connections
       WHERE property_id = ? AND organization_id = ?
       ORDER BY id`,
@@ -158,7 +208,7 @@ export async function connectionsInTenant(): Promise<Connection[]> {
   const sql = getSql();
   const rows = await sql.rows<any>(
     `SELECT id, organization_id, property_id, provider, environment,
-            remote_property_id, remote_webhook_id, is_enabled, pricing_modifier_percent
+            remote_property_id, remote_webhook_id, is_enabled, pricing_modifier_percent, last_full_sync_at
        FROM cm_connections
       WHERE organization_id = ?
       ORDER BY property_id, id`,

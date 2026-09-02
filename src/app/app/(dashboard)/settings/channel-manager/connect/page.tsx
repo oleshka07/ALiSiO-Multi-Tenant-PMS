@@ -33,7 +33,7 @@ interface Setup {
     property: { id: string; name: string } | null;
     hasKey: boolean;
     keyHint: string | null;
-    connection: { id: string; provider: string; environment: string; remotePropertyId: string | null; isEnabled: boolean } | null;
+    connection: { id: string; provider: string; environment: string; remotePropertyId: string | null; isEnabled: boolean; lastFullSyncAt: string | null } | null;
   webhookRegistered: boolean;
     step: Step;
   } | null;
@@ -66,6 +66,13 @@ export default function ConnectChannelManagerPage() {
   const [reconciliation, setReconciliation] = useState<Reconciliation | null>(null);
   const [webhookAttempt, setWebhookAttempt] = useState<{ registered: boolean; error?: string } | null>(null);
   const [webhookTest, setWebhookTest] = useState<{ statusCode: number; body: string } | null>(null);
+  /** Повний синк (П5): план, прохід, розписки — з відповіді кнопки або ввімкнення. */
+  const [fullSync, setFullSync] = useState<{
+    plan: { from: string; to: string; unitTypes: number; pairs: number };
+    flush: { sent: number; failed: number; calls: number; needsAttention: number };
+    receipts: string[];
+    completedAt: string | null;
+  } | null>(null);
 
   const ERRORS: Record<string, string> = {
     module_disabled: tUi('Модуль каналів вимкнено для цього готелю'),
@@ -78,6 +85,8 @@ export default function ConnectChannelManagerPage() {
     webhook_inactive: tUi('Менеджер каналів тримає вебхук вимкненим'),
     webhook_not_registered: tUi('Спочатку зареєструйте вебхук'),
     unknown_provider: tUi('Невідомий провайдер зʼєднання'),
+    connection_disabled: tUi('Спочатку ввімкніть розсилку'),
+    full_sync_failed: tUi('Повний синк не вдався: координати повернулись у чергу, наступний прохід їх дошле'),
   };
   const explain = (code: string | undefined) => (code && ERRORS[code]) || tUi('Не вдалося. Спробуйте ще раз');
 
@@ -141,7 +150,23 @@ export default function ConnectChannelManagerPage() {
 
   const setEnabled = (enabled: boolean) => state?.connection && call('enabled', `/api/channels/connections/${state.connection.id}/enabled`, {
     method: 'POST', body: JSON.stringify({ enabled }),
-  }, async (body) => { setWebhookAttempt(body?.webhook ?? null); setNotice({ kind: 'ok', text: enabled ? tUi('Розсилку ввімкнено') : tUi('Розсилку вимкнено') }); await load(propertyId); });
+  }, async (body) => {
+    setWebhookAttempt(body?.webhook ?? null);
+    setFullSync(body?.fullSync?.ok ? body.fullSync.report : null);
+    setNotice(body?.fullSync && !body.fullSync.ok
+      ? { kind: 'error', text: explain(body.fullSync.error) }
+      : { kind: 'ok', text: enabled ? tUi('Розсилку ввімкнено') : tUi('Розсилку вимкнено') });
+    await load(propertyId);
+  });
+
+  // ── Повний синк (П5): весь стан на 500 ночей двома викликами — рукою, ніколи за таймером ──
+  const runFullSync = () => state?.connection && call('full-sync', `/api/channels/connections/${state.connection.id}/full-sync`, {
+    method: 'POST',
+  }, async (body) => {
+    setFullSync(body);
+    setNotice(body?.completedAt ? { kind: 'ok', text: tUi('Повний синк відправлено') } : { kind: 'error', text: explain('full_sync_failed') });
+    await load(propertyId);
+  });
 
   // ── Вебхук: сигнал, не дані (Ц20) ──
   const ensureWebhook = () => state?.connection && call('webhook', `/api/channels/connections/${state.connection.id}/webhook`, {
@@ -321,6 +346,29 @@ export default function ConnectChannelManagerPage() {
                 <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
                   {tUi('Розсилка наявності й цін іде щохвилини лише для ввімкненого зʼєднання. Тариф, не змаплений на канал, нікуди не продається')}
                 </span>
+              </div>
+
+              {/* ── Повний синк (П5): весь стан на 500 ночей двома викликами — рукою або при ввімкненні, ніколи за таймером (И6, Ц23). ── */}
+              <div style={{ marginTop: 14, borderTop: '1px solid var(--border-color)', paddingTop: 10, fontSize: 13 }}>
+                <div style={{ fontWeight: 600 }}>
+                  {tUi('Повний синк')}: {state?.connection?.lastFullSyncAt ? new Date(state.connection.lastFullSyncAt).toLocaleString() : tUi('ще не робився')}
+                </div>
+                <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button className="btn btn-sm" disabled={!state?.connection?.isEnabled || busy === 'full-sync'} onClick={runFullSync}>
+                    {busy === 'full-sync' ? <Loader2 size={14} className="animate-pulse" /> : <RefreshCw size={14} />} {tUi('Повний синк (500 ночей)')}
+                  </button>
+                  <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                    {tUi('Весь стан на 500 ночей уперед — наявність, ціни й обмеження — двома викликами, по одному на смугу. Робиться при ввімкненні розсилки й цією кнопкою; за таймером — ніколи')}
+                  </span>
+                </div>
+                {fullSync && (
+                  <div style={{ marginTop: 6, fontSize: 12 }}>
+                    {tUi('у чергу')}: {fullSync.plan.unitTypes} {tUi('типів')} · {fullSync.plan.pairs} {tUi('пар тип × тариф')} · {fullSync.plan.from} – {fullSync.plan.to}
+                    {' · '}{tUi('викликів')}: {fullSync.flush.calls} · {tUi('відправлено')}: {fullSync.flush.sent} · {tUi('повернуто')}: {fullSync.flush.failed}
+                    {' · '}task id: <code style={{ userSelect: 'all' }}>{fullSync.receipts.join(', ') || '—'}</code>
+                    {' · '}{fullSync.completedAt ? tUi('завершено') : tUi('не завершено: щось повернулось у чергу')}
+                  </div>
+                )}
               </div>
 
               {/* ── Вебхук: сигнал, не дані (Ц20). Без нього бронь з каналу чекає на плановий прохід, а це вікно овербукінгу. ── */}

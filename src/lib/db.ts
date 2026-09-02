@@ -4273,6 +4273,12 @@ function runMigrations(database: any) {
       database.exec('ALTER TABLE cm_connections ADD COLUMN pricing_modifier_percent REAL NOT NULL DEFAULT 0');
       console.log('[DB] Added pricing_modifier_percent to cm_connections');
     }
+    // П5: мітка завершеного повного синку. У CREATE є від 0052; база, створена
+    // до того, її не має — і без цієї варти читалась би як «колонки немає».
+    if (!cmCols.includes('last_full_sync_at')) {
+      database.exec('ALTER TABLE cm_connections ADD COLUMN last_full_sync_at TEXT');
+      console.log('[DB] Added last_full_sync_at to cm_connections');
+    }
   } catch (e: any) {
     console.error('[DB] cm_connections pricing_modifier_percent:', e.message);
   }
