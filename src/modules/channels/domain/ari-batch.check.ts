@@ -27,6 +27,7 @@
  */
 import assert from 'node:assert';
 import { flushOutbox, type FlushDeps } from './ari-batch.ts';
+import type { RateChange } from '../port.ts';
 
 const DAY = '2026-11-10';
 
@@ -552,3 +553,39 @@ console.log('  ok  діапазон розкладається по датах, 
 console.log('  ok  транспортна невдача не рахує спроби; відмова вендора рахує');
 
 console.log('ari-batch: помилка звільняє чергу, ніч без ціни закривається, пачка ріжеться за розміром');
+
+// ── Д1/Д2: обмеження й «закрито» їдуть у канал разом із ціною ────────────
+//
+// До 02.09 батчер знав лише ціну: `closed` означало «ціни немає». Тепер
+// «закрито» з календаря — це `closed: true` ПРИ наявній ціні (И14: заборона
+// продажу у вендора липка, ціна її не знімає, тож і ми шлемо обидва), а мінімум,
+// максимум, заборони заїзду й виїзду — поля значення. Дві дати з РІЗНИМ
+// мінімумом і відкрита поруч із закритою (інваріант 26).
+{
+  const q = queue([
+    { id: 'a', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: '2026-11-10', dateTo: '2026-11-12' },
+  ]);
+  const sent: RateChange[] = [];
+  const byDate: Record<string, { minStay: number; maxStay: number | null; noArrival: boolean; noDeparture: boolean; closed: boolean }> = {
+    '2026-11-10': { minStay: 2, maxStay: null, noArrival: true, noDeparture: false, closed: false },
+    '2026-11-11': { minStay: 3, maxStay: 7, noArrival: false, noDeparture: true, closed: true },
+    '2026-11-12': { minStay: 1, maxStay: null, noArrival: false, noDeparture: false, closed: false },
+  };
+  await flushOutbox(base({
+    ...q.deps,
+    restrictionsAt: async (_ut: string, date: string) => byDate[date],
+    send: async (_kind, values) => { sent.push(...(values as RateChange[])); return { warnings: [] }; },
+  }));
+  const at = (d: string) => sent.find((v) => v.date === d)!;
+  assert.strictEqual(at('2026-11-10').minStay, 2, 'мінімум ночі заїзду їде як min_stay');
+  assert.strictEqual(at('2026-11-11').minStay, 3, 'і сусідній день — своє число, не скопійоване');
+  assert.strictEqual(at('2026-11-10').noArrival, true);
+  assert.strictEqual(at('2026-11-11').noDeparture, true);
+  assert.strictEqual(at('2026-11-11').maxStay, 7);
+  assert.strictEqual(at('2026-11-11').closed, true, '«закрито» в календарі — заборона продажу, навіть коли ціна є');
+  assert.ok(Array.isArray(at('2026-11-11').prices) && at('2026-11-11').prices!.length > 0, 'ціна при закритті ЛИШАЄТЬСЯ: липка заборона продажу знімається наступним відкриттям разом із ціною (И14)');
+  assert.strictEqual(at('2026-11-10').closed, false);
+  assert.strictEqual(at('2026-11-12').closed, false);
+  assert.strictEqual(at('2026-11-12').minStay, 1);
+}
+console.log('  ok  обмеження й «закрито» з календаря їдуть у канал разом із ціною (Д1/Д2)');

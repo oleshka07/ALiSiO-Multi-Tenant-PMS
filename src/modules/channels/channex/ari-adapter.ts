@@ -40,7 +40,7 @@ import { claimBatch, markSent, releaseFailed, retireChanges } from '../data/outb
 import { DEFAULT_MAX_ATTEMPTS, flushOutbox, type FlushDeps, type FlushReport } from '../domain/ari-batch.ts';
 import type { AvailabilityChange, RateChange } from '../port';
 import { availabilityByDay } from '@properties';
-import { priceNights } from '@pricing';
+import { priceNights, dayRestrictions, type DayRestrictions } from '@pricing';
 import { money } from '@core/money';
 
 /**
@@ -107,6 +107,7 @@ export async function ariFlush(
   const unitTypes: IdMap = new Map(
     mirror.filter((m) => m.entityType === 'unit_type').map((m) => [m.localId, m.remoteId]),
   );
+  const mirroredUnitTypeIds = [...new Set(mirror.filter((m) => m.entityType === 'unit_type').map((m) => m.localId))];
   const pairKey = (ratePlanId: string, unitTypeId: string) => `${ratePlanId}|${unitTypeId}`;
   const pairs = new Map(
     mirror.filter((m) => m.entityType === 'rate_plan').map((m) => [pairKey(m.localId, m.unitTypeId), m.remoteId]),
@@ -130,6 +131,7 @@ export async function ariFlush(
   // ── Наявність — один запит на весь проміжок захоплених дат ────────────
   let span: { from: string; to: string } | null = null;
   let freeByType: Map<string, Map<string, number>> | null = null;
+  let restrictionsByDay: Map<string, DayRestrictions> | null = null;
 
   const deps: FlushDeps = {
     isEnabled: async () => connection.isEnabled,
@@ -165,6 +167,16 @@ export async function ariFlush(
       const byDay = freeByType.get(unitTypeId);
       if (!byDay) return null;
       return byDay.get(date) ?? 0;
+    },
+
+    // Обмеження дня — одним читанням на прохід, для всіх типів дзеркала (Д1/Д2).
+    restrictionsAt: async (unitTypeId, date) => {
+      if (!restrictionsByDay) {
+        restrictionsByDay = span
+          ? await dayRestrictions(mirroredUnitTypeIds, span.from, span.to)
+          : new Map();
+      }
+      return restrictionsByDay.get(`${unitTypeId}|${date}`) ?? null;
     },
 
     pricesAt: async (unitTypeId, ratePlanId, date) => {

@@ -256,3 +256,39 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
   return count;
 }
 
+/** Обмеження одного дня з базового рядка типу — для батчера каналів (Д1/Д2). */
+export interface DayRestrictions {
+  minStay: number;
+  maxStay: number | null;
+  noArrival: boolean;
+  noDeparture: boolean;
+  closed: boolean;
+}
+
+/**
+ * Обмеження по днях для кількох типів — базові рядки, ключ `unitTypeId|date`.
+ *
+ * День без рядка не повертається: батчер читає його як «без обмежень», і це
+ * правильно — обмеження, якого готель не називав, не існує. Ціна при цьому
+ * читається окремо, котируванням (інваріант 16).
+ */
+export async function dayRestrictions(unitTypeIds: string[], from: string, to: string): Promise<Map<string, DayRestrictions>> {
+  const out = new Map<string, DayRestrictions>();
+  if (unitTypeIds.length === 0) return out;
+  const rows = await getSql().rows<any>(
+    `SELECT unit_type_id, date, min_stay, max_stay, closed, cta, ctd
+       FROM price_calendar
+      WHERE unit_type_id IN (${unitTypeIds.map(() => '?').join(', ')}) AND rate_plan_id IS NULL AND date >= ? AND date <= ?`,
+    [...unitTypeIds, from, to],
+  );
+  for (const r of rows) {
+    out.set(`${r.unit_type_id}|${String(r.date).slice(0, 10)}`, {
+      minStay: Math.max(1, Number(r.min_stay ?? 1) || 1),
+      maxStay: r.max_stay == null ? null : Number(r.max_stay),
+      noArrival: Number(r.cta ?? 0) === 1,
+      noDeparture: Number(r.ctd ?? 0) === 1,
+      closed: Number(r.closed ?? 0) === 1,
+    });
+  }
+  return out;
+}

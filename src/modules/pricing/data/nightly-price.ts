@@ -37,6 +37,7 @@
  */
 import { getSql } from '@core/db/async';
 import { quoteStay, matrixPriceFor, type PriceRow, type LosTier } from '../domain/occupancy-price';
+import { OPEN_STAY, type StayRestrictions } from '../domain/restrictions';
 import { money } from '@core/money';
 
 export interface NightlyPrice {
@@ -77,6 +78,18 @@ export interface NightlyPrices {
    * бракує, бракує ліжок, і повідомлення гостю має бути іншим.
    */
   overCapacity?: boolean;
+  /**
+   * Ночі, які готель ЗАКРИВ у календарі (Д2, INC-012). Кожна з них є і в
+   * `missing`: закрита ніч не продається так само, як неоцінена (інваріант
+   * 17), — але гість має почути «закрито», а не «немає ціни».
+   */
+  closed: string[];
+  /**
+   * Обмеження перебування з БАЗОВОГО рядка типу (Д1, INC-012): мінімум і
+   * максимум ночей та заборона заїзду — з ночі заїзду, заборона виїзду — з
+   * дати виїзду. Читає `stayRefusal()`; на тариф не дивимось (П7).
+   */
+  restrictions: StayRestrictions;
 }
 
 /**
@@ -113,7 +126,7 @@ export async function priceNights(input: {
 }): Promise<NightlyPrices> {
   const sql = getSql();
   const { unitTypeId, checkIn, nights, adults, children = 0, ratePlanId = null } = input;
-  if (nights <= 0) return { nights: [], missing: [], total: 0, occupancyPriced: false };
+  if (nights <= 0) return { nights: [], missing: [], total: 0, occupancyPriced: false, closed: [], restrictions: OPEN_STAY };
 
   const checkOut = addDays(checkIn, nights);
 
@@ -147,7 +160,7 @@ export async function priceNights(input: {
     if (adults > maxAdults || children > maxChildren || adults + children > maxOccupancy) {
       const all: string[] = [];
       for (let i = 0; i < nights; i++) all.push(addDays(checkIn, i));
-      return { nights: [], missing: all, total: 0, occupancyPriced: false, overCapacity: true };
+      return { nights: [], missing: all, total: 0, occupancyPriced: false, overCapacity: true, closed: [], restrictions: OPEN_STAY };
     }
   }
 
@@ -176,15 +189,35 @@ export async function priceNights(input: {
   // Both kinds of row in one query: the base rows (`rate_plan_id IS NULL`) and,
   // when a rate plan was asked for, that plan's own. Two queries would be two
   // round trips for one answer.
+  // Дата виїзду теж читається (`<=`): на ній живе заборона виїзду (CTD).
+  // Ціни вона не має — цикл по ночах до неї не доходить.
   const days = await sql.rows<any>(
-    `SELECT date, rate_plan_id, base_price, weekend_price FROM price_calendar
-      WHERE unit_type_id = ? AND date >= ? AND date < ?
+    `SELECT date, rate_plan_id, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd FROM price_calendar
+      WHERE unit_type_id = ? AND date >= ? AND date <= ?
         AND (rate_plan_id IS NULL${ratePlanId ? ' OR rate_plan_id = ?' : ''})
       ORDER BY date`,
     ratePlanId ? [unitTypeId, checkIn, checkOut, ratePlanId] : [unitTypeId, checkIn, checkOut],
   );
-  const fromCalendar = new Map(days.filter((d) => d.rate_plan_id == null).map((d) => [day(d.date), d]));
-  const fromRatePlan = new Map(days.filter((d) => d.rate_plan_id != null).map((d) => [day(d.date), d]));
+  const fromCalendar = new Map(days.filter((d) => d.rate_plan_id == null && String(day(d.date)) < checkOut).map((d) => [day(d.date), d]));
+  const fromRatePlan = new Map(days.filter((d) => d.rate_plan_id != null && String(day(d.date)) < checkOut).map((d) => [day(d.date), d]));
+  const baseRow = (date: string) => days.find((d) => d.rate_plan_id == null && day(d.date) === date);
+
+  // Обмеження — лише з базового рядка типу (Д1; П7): рядок тарифу їх не має.
+  const arrival = baseRow(checkIn);
+  const departure = baseRow(checkOut);
+  const closedNights: string[] = [];
+  for (let i = 0; i < nights; i++) {
+    const date = addDays(checkIn, i);
+    if (Number(baseRow(date)?.closed ?? 0) === 1) closedNights.push(date);
+  }
+  const maxStayRaw = arrival?.max_stay;
+  const restrictions: StayRestrictions = {
+    minStay: Math.max(1, Number(arrival?.min_stay ?? 1) || 1),
+    maxStay: maxStayRaw == null ? null : Number(maxStayRaw),
+    noArrival: Number(arrival?.cta ?? 0) === 1,
+    noDeparture: Number(departure?.ctd ?? 0) === 1,
+    closedNights,
+  };
 
   const baseOccupancy = Number(owner?.base_occupancy) || 2;
 
@@ -220,6 +253,13 @@ export async function priceNights(input: {
   for (let i = 0; i < nights; i++) {
     const date = addDays(checkIn, i);
 
+    // Закрита ніч не продається жодним джерелом (Д2): ані тарифом, ані
+    // матрицею, ані базою. Вона в `missing` — і названа в `closed`.
+    if (closedNights.includes(date)) {
+      missing.push(date);
+      continue;
+    }
+
     // The rate plan's price for this day beats the unit type's, which is the
     // whole point of putting it in the calendar: two rate plans of one room
     // type carry independent prices for the same date.
@@ -253,7 +293,7 @@ export async function priceNights(input: {
     missing.push(date);
   }
 
-  return { nights: out, missing, total: money(out.reduce((s, n) => s + n.price, 0)), occupancyPriced };
+  return { nights: out, missing, total: money(out.reduce((s, n) => s + n.price, 0)), occupancyPriced, closed: closedNights, restrictions };
 }
 
 /**

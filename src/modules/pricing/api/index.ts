@@ -26,6 +26,11 @@ export { propertyRatePlans } from '../data/property-rate-plans';
 // (гейт дверей каналів доводить через них, що ціна тарифу кладе координату
 // лише на його пару). Орендар — із контексту, тариф звіряється з обʼєктом.
 export { upsertPrices, bulkUpdatePrices, getPriceMonth } from '../data/price-calendar.repo';
+export { dayRestrictions } from '../data/price-calendar.repo';
+export type { DayRestrictions } from '../data/price-calendar.repo';
+// Обмеження перебування — одне правило для віджета, бронювання й каналу (Д1/Д2).
+export { stayRefusal, OPEN_STAY } from '../domain/restrictions';
+export type { StayRestrictions, StayRefusal } from '../domain/restrictions';
 export type { BulkUpdateInput, PriceCalendarOptions } from '../data/price-calendar.repo';
 export type {
   RatePlan as PropertyRatePlan,

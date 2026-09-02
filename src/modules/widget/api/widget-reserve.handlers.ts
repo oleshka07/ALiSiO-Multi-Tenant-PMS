@@ -14,7 +14,7 @@ import { siteAllowsHost, type SiteRow } from '../data/site.repo';
 import { quoteCertificate, claimCertificate } from '../data/certificate.repo';
 import { couponApplies, packageApplies } from '../domain/coupon-eligibility';
 import { ratePlanNightPrice } from '../domain/rate-plan';
-import { priceNights } from '@pricing';
+import { priceNights, stayRefusal, OPEN_STAY } from '@pricing';
 
 // Fallback to guarantee event subscribers are registered in Serverless (Vercel) isolated functions
 const ensureSubscribers = async () => {
@@ -296,6 +296,19 @@ export async function createWidgetReservation(request: NextRequest) {
       ? await sql.row<any>('SELECT * FROM site_rate_plans WHERE id = ? AND site_id = ?', [String(ratePlanId), siteId]) as any
       : null;
 
+    // Д1/Д2 (INC-012): обмеження календаря читаються ДО ціни і незалежно від
+    // неї — закриту ніч не продає навіть ціна, виставлена рукою оператора.
+    if (hasPriceCalendar) {
+      const limits = await priceNights({ unitTypeId: unit.unit_type_id, checkIn, nights, adults, children });
+      const refusal = stayRefusal(limits.restrictions, nights);
+      if (refusal) {
+        return NextResponse.json(
+          { error: 'These dates cannot be booked', refusal, closed: limits.closed },
+          { status: 409, headers: CORS_HEADERS },
+        );
+      }
+    }
+
     if (priceOverride != null) {
       // An operator-set price per night: no source is consulted, and that is
       // the point of an override.
@@ -307,7 +320,7 @@ export async function createWidgetReservation(request: NextRequest) {
 
       priced = hasPriceCalendar
         ? await priceNights({ unitTypeId: unit.unit_type_id, checkIn, nights, adults, children })
-        : { nights: [], missing: [checkIn], total: 0, occupancyPriced: false };
+        : { nights: [], missing: [checkIn], total: 0, occupancyPriced: false, closed: [], restrictions: OPEN_STAY };
       if (priced.missing.length > 0) {
         // Refusing is the only honest answer: the hotel has not said what this
         // night costs, and a booking confirmed at an invented number is a

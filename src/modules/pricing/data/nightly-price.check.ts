@@ -224,3 +224,55 @@ console.log('  ok  партія понад місткість типу не ко
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('nightly-price: all checks passed');
+
+// ── Д1/Д2 (INC-012): обмеження й «закрито» читаються котируванням ────────
+//
+// Пʼять днів у грудні, кожен зі своїм обмеженням, і два РІЗНІ мінімуми
+// (інваріант 26): 20 — мін. 2 і заборона заїзду; 21 — мін. 3; 22 — закрито;
+// 23 — заборона виїзду (дата ВИЇЗДУ); 24 — відкритий. Рядок ТАРИФУ на 20-те
+// має власне «закрито» — і його ніхто не читає: обмеження живуть на типі (П7).
+{
+  const { stayRefusal } = await import('../domain/restrictions.ts');
+  const dec = async (date: string, over: Record<string, unknown>) => {
+    const cols = ['id', 'unit_type_id', 'date', 'base_price', ...Object.keys(over)];
+    const vals = [`pc_r_${date}`, TYPE, date, 200, ...Object.values(over)];
+    await sql.run(`INSERT INTO price_calendar (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, vals);
+  };
+  await dec('2026-12-20', { min_stay: 2, cta: 1 });
+  await dec('2026-12-21', { min_stay: 3 });
+  await dec('2026-12-22', { closed: 1 });
+  await dec('2026-12-23', { ctd: 1 });
+  await dec('2026-12-24', {});
+  await sql.run('INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, closed) VALUES (?, ?, ?, ?, ?, 1)',
+    ['pc_r_bar_20', TYPE, BAR, '2026-12-20', 250]);
+
+  const closedNight = await priceNights({ unitTypeId: TYPE, checkIn: '2026-12-22', nights: 1, adults: 2 });
+  assert.deepStrictEqual(closedNight.missing, ['2026-12-22'], 'закрита ніч не продається — вона в missing (інваріант 17)');
+  assert.deepStrictEqual(closedNight.closed, ['2026-12-22'], 'і названа закритою, а не «неоціненою»');
+  assert.strictEqual(stayRefusal(closedNight.restrictions, 1), 'closed');
+
+  const span = await priceNights({ unitTypeId: TYPE, checkIn: '2026-12-21', nights: 3, adults: 2 });
+  assert.deepStrictEqual(span.closed, ['2026-12-22'], 'закрита ніч усередині перебування названа');
+  assert.strictEqual(span.nights.length, 2, 'дві відкриті ночі оцінені, закрита — ні');
+
+  const arr20 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-12-20', nights: 2, adults: 2 });
+  assert.strictEqual(arr20.restrictions.minStay, 2, 'мінімум — з ночі заїзду');
+  assert.strictEqual(arr20.restrictions.noArrival, true, 'заборона заїзду — з ночі заїзду');
+  assert.strictEqual(stayRefusal(arr20.restrictions, 2), 'no_arrival');
+
+  const arr21 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-12-21', nights: 1, adults: 2 });
+  assert.strictEqual(arr21.restrictions.minStay, 3, 'сусідній день має СВІЙ мінімум, не скопійований');
+  assert.strictEqual(stayRefusal(arr21.restrictions, 1), 'min_stay', 'одна ніч там, де вимагали трьох, — відмова');
+
+  const dep23 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-12-21', nights: 2, adults: 2 });
+  assert.strictEqual(dep23.restrictions.noDeparture, true, 'заборона виїзду — з ДАТИ виїзду (23-го), не з ночі');
+  const dep24 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-12-23', nights: 1, adults: 2 });
+  assert.strictEqual(dep24.restrictions.noDeparture, false, 'виїзд 24-го дозволений');
+  assert.strictEqual(dep24.restrictions.minStay, 1);
+
+  const barClosedRow = await priceNights({ unitTypeId: TYPE, checkIn: '2026-12-20', nights: 1, adults: 2, ratePlanId: BAR });
+  assert.deepStrictEqual(barClosedRow.closed, [], '«закрито» на рядку ТАРИФУ не читається: обмеження — на типі (П7)');
+  assert.strictEqual(barClosedRow.nights[0]?.price, 250, 'ціна тарифу при цьому своя');
+  console.log('  ok  Д1/Д2: закрита ніч не продається й названа; мінімум, максимум, заїзд, виїзд — з базового рядка типу');
+}
+

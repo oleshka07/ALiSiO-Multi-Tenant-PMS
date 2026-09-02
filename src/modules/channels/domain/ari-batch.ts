@@ -244,6 +244,14 @@ export interface FlushDeps {
    * застосований зсув і забутий зсув дають однакову відповідь, і гейт був
    * би зеленим в обох світах.
    */
+  /**
+   * Обмеження дня з календаря типу (Д1/Д2): мінімум і максимум ночей,
+   * заборони заїзду й виїзду, «закрито». Необовʼязкове — без нього батчер
+   * шле лише ціну, як до 02.09; день без рядка — без обмежень.
+   */
+  restrictionsAt?(unitTypeId: string, date: string): Promise<
+    { minStay: number; maxStay: number | null; noArrival: boolean; noDeparture: boolean; closed: boolean } | undefined | null
+  >;
   priceModifierPercent?: number;
   /**
    * Межа спроб — див. `DEFAULT_MAX_ATTEMPTS`. Те саме число, за яким черга
@@ -510,9 +518,20 @@ export async function flushOutbox(deps: FlushDeps): Promise<FlushReport> {
       // Правило 2 з шапки, і воно тут ціле в двох рядках: або ціни та явне
       // відкриття, або закриття. Третього — «не слати» — немає.
       const at = { ratePlanId: c.ratePlanId, unitTypeId: c.unitTypeId, date };
+      // Обмеження — з базового рядка типу (Д1), на кожен тариф типу (П7).
+      // «Закрито» в календарі — це `closed: true` ПРИ ціні (Д2): stop_sell у
+      // вендора липкий (И14), ціна його не знімає, тож обидва їдуть разом, а
+      // наступне відкриття шле `closed: false` знову з ціною.
+      const r = (await deps.restrictionsAt?.(c.unitTypeId, date)) ?? null;
+      const limits = r ? {
+        minStay: r.minStay,
+        ...(r.maxStay != null ? { maxStay: r.maxStay } : {}),
+        noArrival: r.noArrival,
+        noDeparture: r.noDeparture,
+      } : {};
       resolvedRates.push(prices && prices.length
-        ? { ids: [c.id], attempts: c.attempts ?? 0, value: { ...at, prices, closed: false } }
-        : { ids: [c.id], attempts: c.attempts ?? 0, value: { ...at, closed: true } });
+        ? { ids: [c.id], attempts: c.attempts ?? 0, value: { ...at, prices, closed: r?.closed === true, ...limits } }
+        : { ids: [c.id], attempts: c.attempts ?? 0, value: { ...at, closed: true, ...limits } });
     }
   }
   await flushLane('rate', resolvedRates, deps, report);

@@ -7,7 +7,7 @@ import { quoteCertificate } from '../data/certificate.repo';
 import { couponApplies } from '../domain/coupon-eligibility';
 import { shiftDays } from '@core/hotel-day';
 import { ratePlanNightPrice } from '../domain/rate-plan';
-import { priceNights } from '@pricing';
+import { priceNights, stayRefusal, type StayRefusal } from '@pricing';
 import { freeUnitsForRange } from '@properties';
 
 const CORS_HEADERS = {
@@ -249,6 +249,7 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
       const breakdown: { date: string; dayName: string; price: number; isWeekend: boolean }[] = [];
       let totalPrice = 0;
       let hasPricing = false;
+      let refusal: StayRefusal | null = null;
 
       if (hasDates && ciDate) {
         if (activeBundle && activeBundle.is_active) {
@@ -284,6 +285,10 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
             })
             : null;
           const byDate = new Map((priced?.nights ?? []).map((n) => [n.date, n]));
+          // Д1/Д2 (INC-012): закрита ніч, замалий або завеликий заїзд,
+          // заборонений день заїзду чи виїзду — номер не продається, і
+          // причина названа. До 02.09 календар це писав, а тут ніхто не читав.
+          refusal = priced ? stayRefusal(priced.restrictions, nights) : null;
 
           let dateStr = checkIn!;
           for (let i = 0; i < nights; i++) {
@@ -315,6 +320,8 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
         }
       }
 
+      // Відмова важливіша за ціну: номер із закритою ніччю не «має ціну».
+      if (refusal) { hasPricing = false; totalPrice = 0; }
       const avgPricePerNight = nights > 0 ? Math.round(totalPrice / nights) : 0;
 
       let isAllowedByBundle = true;
@@ -354,6 +361,8 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
         bedsDouble: unit.beds_double,
         bedsSofa: unit.beds_sofa,
         hasPricing,
+        /** Чому не продається: closed | min_stay | max_stay | no_arrival | no_departure — або null. */
+        refusal,
         avgPricePerNight,
         totalPrice,
         breakdown,
