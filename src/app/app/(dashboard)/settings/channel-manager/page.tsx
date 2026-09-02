@@ -298,6 +298,9 @@ export default function ChannelManagerPage() {
             <h2 className="page-title">{tUi('Канал-менеджер')}</h2>
             <div className="page-subtitle">{tUi('iCal синхронізація з OTA')}</div>
           </div>
+          <Link href="/app/settings/channel-manager/connect" className="btn btn-primary">
+            {tUi('Підключити менеджер каналів')}
+          </Link>
         </div>
 
         {/* ── Менеджер каналів: черга наявності й цін ──

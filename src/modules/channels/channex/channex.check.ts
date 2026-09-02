@@ -523,5 +523,59 @@ function reset() {
   });
 }
 
+// ── 24. Майстер підключення: ключ, разовий токен, канали ─────────────────
+//
+// Ключ перевіряється одним GET одразу після вставки: помилковий мусить
+// впасти в полі вводу, а не тихо через добу на першому проході крона.
+// Разовий токен кується на сервері, і ключ у браузер не потрапляє —
+// адреса вікна складається тут, з відповіді вендора, а не на клієнті.
+{
+  reset();
+  const { client } = makeClient();
+  mock.queue.push({ kind: 'list', data: [{ id: 'p1', type: 'property', attributes: { title: 'X' } }] });
+  assert.strictEqual(await client.probeKey('test-key'), true, 'справжній ключ — один GET, і відповідь «так»');
+  const probe = mock.calls.at(-1)!;
+  assert.strictEqual(probe.method, 'GET');
+  assert.ok(probe.path.startsWith('/properties'), 'перевірка ключа — найдешевше читання, список обʼєктів');
+
+  mock.queue.push({ kind: 'unauthorized' });
+  assert.strictEqual(await client.probeKey('wrong-key'), false, 'чужий ключ — «ні», а не виняток і не тиша');
+
+  mock.queue.push({ kind: 'serverError' }, { kind: 'serverError' }, { kind: 'serverError' });
+  await assert.rejects(() => client.probeKey('test-key'), 'простій вендора — це не «ключ неправильний»: виняток, не false');
+}
+{
+  reset();
+  const { client } = makeClient();
+  mock.queue.push({ kind: 'token', token: 'one-time-abc' });
+  const url = await client.channelsFrameUrl('test-key', 'prop-remote', { username: 'owner@hotel.test', lng: 'de' });
+  const call = mock.calls.at(-1)!;
+  assert.strictEqual(call.method, 'POST');
+  assert.strictEqual(call.path, '/auth/one_time_token');
+  assert.deepStrictEqual(call.body, { one_time_token: { property_id: 'prop-remote', username: 'owner@hotel.test' } },
+    'тіло токена — обʼєкт і імʼя користувача, дослівно з документації');
+  assert.ok(url.startsWith(`${mock.url.replace(/\/api\/v1$/, '')}/auth/exchange?oauth_session_key=one-time-abc`),
+    `адреса вікна складається з токена на СЕРВЕРІ вендора, не з /api/v1: ${url}`);
+  assert.ok(url.includes('app_mode=headless') && url.includes('redirect_to=%2Fchannels') && url.includes('property_id=prop-remote') && url.includes('lng=de'),
+    'вбудований режим, екран каналів, обʼєкт і мова — усі в адресі');
+  assert.ok(!url.includes('test-key'), 'ключ API в адресі вікна — тихий витік');
+}
+{
+  reset();
+  const { client } = makeClient();
+  mock.queue.push({ kind: 'list', data: [
+    { id: 'c1', type: 'channel', attributes: { title: 'Booking', channel: 'BDC', is_active: true, rate_plans: [{ id: 'm1', rate_plan_id: 'r-1' }] } },
+    { id: 'c2', type: 'channel', attributes: { title: 'Expedia', channel: 'EXP', is_active: false, rate_plans: [] } },
+  ] });
+  const channels = await client.listChannels('test-key', 'prop-remote');
+  assert.ok(mock.calls.at(-1)!.path.includes('filter[property_id]=prop-remote'), 'канали — ЛИШЕ цього обʼєкта (И11)');
+  assert.deepStrictEqual(channels, [
+    { id: 'c1', title: 'Booking', isActive: true, remoteRatePlanIds: ['r-1'] },
+    { id: 'c2', title: 'Expedia', isActive: false, remoteRatePlanIds: [] },
+  ]);
+}
+console.log('  ok  ключ перевіряється одним GET, токен кується на сервері, канали читаються по обʼєкту');
+
+
 await mock.close();
 console.log('channex: all checks passed');

@@ -14,3 +14,11 @@ export type { ChannelChange, FlushReport } from './ari.handlers';
 export { noteAvailabilityChanged, noteRatesChanged, lastNight } from './outbox';
 export type { AvailabilityNote, RateNote } from './outbox';
 export { listChannelConnections, retryChannelOutbox } from './outbox-state.handlers';
+export {
+  getChannelSetup, saveChannelKey, createChannelConnection, syncChannelCatalog,
+  channelFrame, reconcileChannelCatalog, setChannelConnectionEnabled,
+} from './connect.handlers';
+export {
+  probeChannelKeyFor, channelFrameUrlFor, reconcileConnectionCatalogFor,
+  channelSetupState, ensureChannelConnection,
+} from './connect.handlers';

@@ -1,9 +1,8 @@
-import { pullConnection as channexPull } from './channex/pull-adapter';
-import { catalogSync as channexCatalog } from './channex/catalog-adapter';
-import { ariFlush as channexAri } from './channex/ari-adapter';
+import { channexAdapter } from './channex/adapter';
 import type { PullReport } from './data/pull-bookings';
 import type { CatalogReport } from './domain/catalog.ts';
 import type { FlushReport } from './domain/ari-batch.ts';
+import type { CatalogReconciliation } from './domain/reconcile.ts';
 
 /**
  * Шов композиції: рядок провайдера → модуль адаптера. Більше нічого.
@@ -16,15 +15,30 @@ import type { FlushReport } from './domain/ari-batch.ts';
  * обслуговує.
  *
  * Гейт `check-vendor-isolation` знає про цей файл окремим, ВУЖЧИМ правилом
- * (не винятком): ім'я вендора дозволене тут лише в рядку `import`. Щойно
- * сюди переповзе логіка — розгалуження поведінки, чуже поле, URL — гейт
- * упаде так само, як упав би на будь-якому доменному файлі.
+ * (не винятком): ім'я вендора дозволене тут лише в рядку `import` і як ключ
+ * відповідності. Щойно сюди переповзе логіка — розгалуження поведінки, чуже
+ * поле, URL — гейт упаде так само, як упав би на будь-якому доменному файлі.
  *
- * Ознака, що шов перестав бути швом: у ньому більше десятка рядків. Три
- * записи на провайдера (стрічка, каталог, розсилка ARI) — це все ще
- * відповідність, а не логіка: усі мають одну форму
- * `(connectionId, apiKey) => звіт`, і жодної умови на поведінку тут немає.
+ * Один запис на провайдера, не шість функцій: коли вмінь стало шість
+ * (стрічка, каталог, розсилка, ключ, вікно, звірка), шість таблиць
+ * відповідності перестали б бути швом. Запис збирає сам адаптер у своїй
+ * теці; тут лише відповідність.
  */
+
+/** Усе, що модуль каналів просить від одного менеджера каналів. */
+export interface ProviderAdapter {
+  /** Як показати провайдера людині. Дані адаптера, не ядра. */
+  label: string;
+  pull: Puller;
+  catalog: CatalogSyncer;
+  publish: AriPublisher;
+  /** Чи справжній ключ — одним читанням, до збереження. */
+  probeKey(apiKey: string, environment: string): Promise<boolean>;
+  /** Адреса вбудованого вікна мапінгу з разовим токеном, скутим на сервері. */
+  frameUrl(connectionId: string, apiKey: string, options: { username: string; lng?: string }): Promise<string>;
+  /** Звірка Ц8: створене — ще не продане. */
+  reconcile(connectionId: string, apiKey: string): Promise<CatalogReconciliation>;
+}
 
 /** Прочитати стрічку одного зʼєднання і завести з неї броні. */
 export type Puller = (connectionId: string, apiKey: string) => Promise<PullReport>;
@@ -41,17 +55,19 @@ export type AriPublisher = (
 
 // Ключі — це ЗНАЧЕННЯ з `cm_connections.provider`, тому вони в лапках: це
 // дані з бази, а не імена в коді.
-const PULLERS: Record<string, Puller> = {
-  'channex': channexPull,
+const ADAPTERS: Record<string, ProviderAdapter> = {
+  'channex': channexAdapter,
 };
 
-const CATALOG_SYNCERS: Record<string, CatalogSyncer> = {
-  'channex': channexCatalog,
-};
+/** Адаптер цього провайдера цілком. Невідомий — `null`, не виняток. */
+export function adapterFor(provider: string): ProviderAdapter | null {
+  return ADAPTERS[provider] ?? null;
+}
 
-const ARI_PUBLISHERS: Record<string, AriPublisher> = {
-  'channex': channexAri,
-};
+/** Провайдери, яких код знає, — для екрана, як дані. */
+export function knownProviders(): { id: string; label: string }[] {
+  return Object.entries(ADAPTERS).map(([id, a]) => ({ id, label: a.label }));
+}
 
 /**
  * Хто обслуговує цього провайдера.
@@ -61,15 +77,15 @@ const ARI_PUBLISHERS: Record<string, AriPublisher> = {
  * (`unknown_provider` у звіті крона), а не наступний розробник.
  */
 export function pullerFor(provider: string): Puller | null {
-  return PULLERS[provider] ?? null;
+  return adapterFor(provider)?.pull ?? null;
 }
 
 /** Хто заводить каталог цього провайдера. Невідомий — `null`, не виняток. */
 export function catalogSyncerFor(provider: string): CatalogSyncer | null {
-  return CATALOG_SYNCERS[provider] ?? null;
+  return adapterFor(provider)?.catalog ?? null;
 }
 
 /** Хто розсилає ARI цього провайдера. Невідомий — `null`, не виняток. */
 export function ariPublisherFor(provider: string): AriPublisher | null {
-  return ARI_PUBLISHERS[provider] ?? null;
+  return adapterFor(provider)?.publish ?? null;
 }

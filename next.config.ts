@@ -63,7 +63,19 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: "/((?!w/|guest/).*)",
+        // The one screen that embeds a foreign origin: the channel manager's
+        // mapping window, opened with a one-time token minted on the server.
+        // Named explicitly rather than left to the browser default, and only
+        // these two hosts — a page that could frame anything is a page that
+        // could frame a phishing copy of the vendor's login.
+        source: "/app/settings/channel-manager/connect",
+        headers: [
+          ...securityHeaders,
+          { key: "Content-Security-Policy", value: "frame-src https://staging.channex.io https://app.channex.io" },
+        ],
+      },
+      {
+        source: "/((?!w/|guest/|app/settings/channel-manager/connect).*)",
         headers: securityHeaders,
       },
     ];

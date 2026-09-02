@@ -1,0 +1,299 @@
+'use client';
+
+import { useT } from '@core/i18n/client';
+import { useCallback, useEffect, useState } from 'react';
+import Header from '@/components/layout/Header';
+import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { ArrowLeft, Check, Loader2, RefreshCw, ExternalLink } from 'lucide-react';
+import Link from 'next/link';
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+/**
+ * Майстер підключення менеджера каналів.
+ *
+ * Стан кроку не живе тут: сторінка щоразу питає сервер, на якому кроці
+ * майстер, і той виводить крок з того, що вже записано (ключ, зʼєднання,
+ * обʼєкт на тому боці, увімкнення). Закрита вкладка посеред процесу — норма:
+ * повторний вхід продовжує і не створює других сутностей у чужому акаунті.
+ *
+ * Ключ API ніколи не потрапляє в браузер назад: сервер віддає лише натяк
+ * (`••••IqQq`). Адреса вбудованого вікна приходить із сервера з разовим
+ * токеном, скутим там же; ця сторінка її не складає й не зберігає.
+ *
+ * Фініш — не «готово», а звірка: «N з N тарифів не змаплені на жоден канал».
+ */
+
+type Step = 'key' | 'connection' | 'catalog' | 'mapping' | 'done';
+
+interface Setup {
+  properties: { id: string; name: string }[];
+  providers: { id: string; label: string }[];
+  state: {
+    property: { id: string; name: string } | null;
+    hasKey: boolean;
+    keyHint: string | null;
+    connection: { id: string; provider: string; environment: string; remotePropertyId: string | null; isEnabled: boolean } | null;
+    step: Step;
+  } | null;
+}
+
+interface Reconciliation {
+  total: number;
+  channels: number;
+  unmapped: { unitTypeCode: string; ratePlanCode: string }[];
+  onlyInactive: { unitTypeCode: string; ratePlanCode: string }[];
+  sellable: boolean;
+}
+
+const STEPS: Step[] = ['key', 'connection', 'catalog', 'mapping', 'done'];
+
+export default function ConnectChannelManagerPage() {
+  const tUi = useT();
+  const onMenuClick = useMobileMenu();
+
+  const [setup, setSetup] = useState<Setup | null>(null);
+  const [propertyId, setPropertyId] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+
+  const [apiKey, setApiKey] = useState('');
+  const [environment, setEnvironment] = useState<'production' | 'staging'>('production');
+  const [catalogReport, setCatalogReport] = useState<any>(null);
+  const [frameUrl, setFrameUrl] = useState<string | null>(null);
+  const [reconciliation, setReconciliation] = useState<Reconciliation | null>(null);
+
+  const ERRORS: Record<string, string> = {
+    module_disabled: tUi('Модуль каналів вимкнено для цього готелю'),
+    invalid_key: tUi('Ключ не прийнято: менеджер каналів відповів «не авторизовано»'),
+    vendor_unavailable: tUi('Менеджер каналів недоступний, спробуйте пізніше'),
+    no_key: tUi('Спочатку збережіть ключ'),
+    catalog_not_synced: tUi('Спочатку заведіть каталог'),
+    key_required: tUi('Вставте ключ'),
+  };
+  const explain = (code: string | undefined) => (code && ERRORS[code]) || tUi('Не вдалося. Спробуйте ще раз');
+
+  const load = useCallback(async (pid: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/channels/setup${pid ? `?property_id=${encodeURIComponent(pid)}` : ''}`);
+      const body = await res.json();
+      if (!res.ok) { setNotice({ kind: 'error', text: explain(body?.error) }); return; }
+      setSetup(body);
+      if (!pid && body.properties?.[0]) setPropertyId(body.properties[0].id);
+      if (body.state?.connection?.environment) setEnvironment(body.state.connection.environment);
+    } finally {
+      setLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => { load(propertyId); }, [propertyId, load]);
+
+  const call = async (label: string, url: string, init: RequestInit, onOk: (body: any) => void | Promise<void>) => {
+    setBusy(label);
+    setNotice(null);
+    try {
+      const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...init });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { setNotice({ kind: 'error', text: explain(body?.error) }); return; }
+      await onOk(body);
+    } catch {
+      setNotice({ kind: 'error', text: explain(undefined) });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const state = setup?.state ?? null;
+  const provider = setup?.providers?.[0];
+  const stepIndex = state ? STEPS.indexOf(state.step) : 0;
+  const done = (s: Step) => STEPS.indexOf(s) < stepIndex;
+  const active = (s: Step) => state?.step === s;
+
+  const saveKey = () => call('key', '/api/channels/setup/key', {
+    method: 'POST', body: JSON.stringify({ apiKey, provider: provider?.id, environment }),
+  }, async () => { setApiKey(''); setNotice({ kind: 'ok', text: tUi('Ключ прийнято і збережено') }); await load(propertyId); });
+
+  const createConnection = () => call('connection', '/api/channels/setup/connection', {
+    method: 'POST', body: JSON.stringify({ propertyId, provider: provider?.id, environment }),
+  }, async () => { setNotice({ kind: 'ok', text: tUi('Зʼєднання створено') }); await load(propertyId); });
+
+  const syncCatalog = () => state?.connection && call('catalog', `/api/channels/connections/${state.connection.id}/catalog`, {
+    method: 'POST',
+  }, async (body) => { setCatalogReport(body); setNotice({ kind: 'ok', text: tUi('Каталог заведено') }); await load(propertyId); });
+
+  const openFrame = () => state?.connection && call('frame', `/api/channels/connections/${state.connection.id}/frame?lng=${encodeURIComponent(document.documentElement.lang || 'en')}`, {
+    method: 'GET',
+  }, (body) => { setFrameUrl(body.url); });
+
+  const reconcile = () => state?.connection && call('reconcile', `/api/channels/connections/${state.connection.id}/reconcile`, {
+    method: 'GET',
+  }, (body) => { setReconciliation(body); });
+
+  const setEnabled = (enabled: boolean) => state?.connection && call('enabled', `/api/channels/connections/${state.connection.id}/enabled`, {
+    method: 'POST', body: JSON.stringify({ enabled }),
+  }, async () => { setNotice({ kind: 'ok', text: enabled ? tUi('Розсилку ввімкнено') : tUi('Розсилку вимкнено') }); await load(propertyId); });
+
+  const StepHeader = ({ step, n, title }: { step: Step; n: number; title: string }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+      <span style={{
+        width: 26, height: 26, borderRadius: 13, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        background: done(step) ? 'var(--accent-success)' : active(step) ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+        color: done(step) || active(step) ? '#fff' : 'var(--text-tertiary)', fontSize: 13, fontWeight: 700,
+      }}>{done(step) ? <Check size={14} /> : n}</span>
+      <h3 style={{ margin: 0 }}>{title}</h3>
+    </div>
+  );
+
+  return (
+    <>
+      <Header title={tUi('Підключення менеджера каналів')} onMenuClick={onMenuClick} />
+      <div className="app-content">
+        <div className="page-header">
+          <div>
+            <Link href="/app/settings/channel-manager" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--text-tertiary)', fontSize: 12, marginBottom: 4, textDecoration: 'none' }}>
+              <ArrowLeft size={14} /> {tUi('Канал-менеджер')}
+            </Link>
+            <h2 className="page-title">{tUi('Підключення менеджера каналів')}</h2>
+            <div className="page-subtitle">{tUi('Пʼять кроків. Закрили вкладку — повернулись і продовжили з того ж місця')}</div>
+          </div>
+        </div>
+
+        {notice && (
+          <div className="card" style={{ marginBottom: 16, borderLeft: `4px solid ${notice.kind === 'ok' ? 'var(--accent-success)' : 'var(--accent-danger)'}` }}>
+            {notice.text}
+          </div>
+        )}
+
+        {loading && !setup ? (
+          <div style={{ textAlign: 'center', padding: 64 }}><Loader2 size={24} className="animate-pulse" style={{ display: 'inline-block' }} /></div>
+        ) : !setup ? null : (
+          <>
+            {/* ── Обʼєкт ── */}
+            <div className="card" style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 4 }}>{tUi('Обʼєкт')}</label>
+              <select className="input" value={propertyId} onChange={(e) => { setFrameUrl(null); setReconciliation(null); setCatalogReport(null); setPropertyId(e.target.value); }}>
+                {setup.properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              {provider && <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 6 }}>{tUi('Провайдер')}: {provider.label}</div>}
+            </div>
+
+            {/* ── 1. Ключ ── */}
+            <div className="card" style={{ marginBottom: 16 }}>
+              <StepHeader step="key" n={1} title={tUi('Ключ API менеджера каналів')} />
+              {state?.hasKey ? (
+                <div style={{ fontSize: 13 }}>{tUi('Ключ збережено')}: <code>{state.keyHint}</code></div>
+              ) : (
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8 }}>
+                  {tUi('Ключ належить вашому готелю: кабінет менеджера каналів → Profile → API key. Він перевіряється одним запитом одразу після вставки')}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                <input className="input" type="password" autoComplete="off" placeholder={state?.hasKey ? tUi('Замінити ключ') : tUi('Вставте ключ')}
+                  value={apiKey} onChange={(e) => setApiKey(e.target.value)} style={{ flex: 1, minWidth: 240 }} />
+                <select className="input" value={environment} onChange={(e) => setEnvironment(e.target.value as 'production' | 'staging')} style={{ width: 200 }}
+                  disabled={Boolean(state?.connection)}>
+                  <option value="production">{tUi('бойове середовище')}</option>
+                  <option value="staging">{tUi('тестове середовище (staging)')}</option>
+                </select>
+                <button className="btn btn-primary" disabled={!apiKey || busy === 'key'} onClick={saveKey}>
+                  {busy === 'key' ? <Loader2 size={14} className="animate-pulse" /> : null} {tUi('Перевірити й зберегти')}
+                </button>
+              </div>
+            </div>
+
+            {/* ── 2. Зʼєднання ── */}
+            <div className="card" style={{ marginBottom: 16, opacity: state?.hasKey ? 1 : 0.5 }}>
+              <StepHeader step="connection" n={2} title={tUi('Зʼєднання обʼєкта')} />
+              {state?.connection ? (
+                <div style={{ fontSize: 13 }}>
+                  {state.connection.provider} · {state.connection.environment} · {state.connection.isEnabled ? tUi('увімкнено') : tUi('вимкнено')}
+                </div>
+              ) : (
+                <button className="btn btn-primary" disabled={!state?.hasKey || busy === 'connection'} onClick={createConnection}>
+                  {tUi('Створити зʼєднання')}
+                </button>
+              )}
+            </div>
+
+            {/* ── 3. Каталог ── */}
+            <div className="card" style={{ marginBottom: 16, opacity: state?.connection ? 1 : 0.5 }}>
+              <StepHeader step="catalog" n={3} title={tUi('Каталог: типи номерів і тарифи')} />
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8 }}>
+                {tUi('Заводить у менеджері каналів лише те, чого там ще немає. Тарифи створюються закритими: продаж відкриє перша розсилка цін')}
+              </div>
+              <button className="btn btn-primary" disabled={!state?.connection || busy === 'catalog'} onClick={syncCatalog}>
+                {busy === 'catalog' ? <Loader2 size={14} className="animate-pulse" /> : <RefreshCw size={14} />} {state?.connection?.remotePropertyId ? tUi('Оновити каталог') : tUi('Завести каталог')}
+              </button>
+              {catalogReport && (
+                <div style={{ fontSize: 12, marginTop: 8 }}>
+                  {tUi('створено')}: {catalogReport.created?.unitTypes} / {catalogReport.created?.ratePlans} · {tUi('вже було')}: {catalogReport.existing?.unitTypes} / {catalogReport.existing?.ratePlans}
+                  {catalogReport.skipped?.length > 0 && <> · {tUi('пропущено')}: {catalogReport.skipped.map((s: any) => `${s.localId} (${s.reason})`).join(', ')}</>}
+                </div>
+              )}
+            </div>
+
+            {/* ── 4. Мапінг у вікні вендора ── */}
+            <div className="card" style={{ marginBottom: 16, opacity: state?.connection?.remotePropertyId ? 1 : 0.5 }}>
+              <StepHeader step="mapping" n={4} title={tUi('Мапінг на канали')} />
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8 }}>
+                {tUi('Підключення до Booking.com, Airbnb та інших і мапінг тарифів робляться у вікні менеджера каналів. Вікно відкривається разовим ключем на 15 хвилин; мова вікна — англійська або німецька')}
+              </div>
+              <button className="btn" disabled={!state?.connection?.remotePropertyId || busy === 'frame'} onClick={openFrame}>
+                <ExternalLink size={14} /> {frameUrl ? tUi('Відкрити знову') : tUi('Відкрити вікно мапінгу')}
+              </button>
+              {frameUrl && (
+                <iframe
+                  key={frameUrl}
+                  src={frameUrl}
+                  title={tUi('Мапінг на канали')}
+                  referrerPolicy="no-referrer"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals"
+                  style={{ width: '100%', height: '78vh', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', marginTop: 12, background: '#fff' }}
+                />
+              )}
+            </div>
+
+            {/* ── 5. Звірка і ввімкнення ── */}
+            <div className="card" style={{ marginBottom: 16, opacity: state?.connection?.remotePropertyId ? 1 : 0.5 }}>
+              <StepHeader step="done" n={5} title={tUi('Звірка: що справді продається')} />
+              <button className="btn" disabled={!state?.connection?.remotePropertyId || busy === 'reconcile'} onClick={reconcile}>
+                {busy === 'reconcile' ? <Loader2 size={14} className="animate-pulse" /> : <RefreshCw size={14} />} {tUi('Звірити з менеджером каналів')}
+              </button>
+              {reconciliation && (
+                <div style={{ marginTop: 10, fontSize: 13 }}>
+                  <div style={{ fontWeight: 600, color: reconciliation.unmapped.length ? 'var(--accent-warning)' : 'var(--accent-success)' }}>
+                    {reconciliation.unmapped.length} {tUi('з')} {reconciliation.total} {tUi('тарифів не змаплені на жоден канал')}
+                  </div>
+                  <div style={{ color: 'var(--text-tertiary)' }}>{tUi('Каналів у обʼєкта')}: {reconciliation.channels}</div>
+                  {reconciliation.unmapped.length > 0 && (
+                    <ul style={{ margin: '6px 0 0 18px' }}>
+                      {reconciliation.unmapped.map((p, i) => <li key={i}>{p.ratePlanCode} × {p.unitTypeCode}</li>)}
+                    </ul>
+                  )}
+                  {reconciliation.onlyInactive.length > 0 && (
+                    <div style={{ marginTop: 6, color: 'var(--accent-warning)' }}>
+                      {reconciliation.onlyInactive.length} {tUi('лише на вимкнених каналах')}: {reconciliation.onlyInactive.map((p) => `${p.ratePlanCode} × ${p.unitTypeCode}`).join(', ')}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                {state?.connection?.isEnabled ? (
+                  <button className="btn" disabled={busy === 'enabled'} onClick={() => setEnabled(false)}>{tUi('Вимкнути розсилку')}</button>
+                ) : (
+                  <button className="btn btn-primary" disabled={!state?.connection?.remotePropertyId || busy === 'enabled'} onClick={() => setEnabled(true)}>{tUi('Увімкнути розсилку')}</button>
+                )}
+                <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                  {tUi('Розсилка наявності й цін іде щохвилини лише для ввімкненого зʼєднання. Тариф, не змаплений на канал, нікуди не продається')}
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+}

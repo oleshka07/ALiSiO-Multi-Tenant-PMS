@@ -43,6 +43,10 @@ export type Reply =
   // просили. Так виглядає тариф, створений наполовину: помилки немає, опції
   // просто менше, і ціну тієї заселеності потім нема куди покласти.
   | { kind: 'created'; id: string; omitOccupancies?: number[] }
+  // Разовий токен для вбудованого вікна: `{ data: { token } }` дослівно з channel-iframe.md.
+  | { kind: 'token'; token: string }
+  // Список у конверті JSON:API — обʼєкти, канали: `{ data: [{ id, type, attributes }] }`.
+  | { kind: 'list'; data: unknown[] }
   | { kind: 'rateLimited' }
   | { kind: 'unauthorized' }
   | { kind: 'notFound' }
@@ -120,6 +124,10 @@ function render(reply: Reply, request?: Record<string, unknown>): { status: numb
         },
       };
     }
+    case 'token':
+      return { status: 200, body: { data: { token: reply.token }, meta: { message: 'You are successfully received one-time token! Use it for exchange to JWT' } } };
+    case 'list':
+      return { status: 200, body: { data: reply.data, meta: { total: reply.data.length } } };
     case 'ackOk':
       return { status: 200, body: { meta: { message: 'Success' } } };
     case 'rateLimited':

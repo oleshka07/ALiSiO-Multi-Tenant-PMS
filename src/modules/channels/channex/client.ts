@@ -178,6 +178,108 @@ export class ChannexClient {
   }
 
   /**
+   * Чи справжній ключ — одним найдешевшим читанням, одразу після вставки.
+   *
+   * `true`/`false` — відповідь вендора про КЛЮЧ (`401`). Усе інше (простій,
+   * мережа, 5xx після повторів) кидає: «вендор лежить» не можна показати
+   * готельєру як «ключ неправильний» — він піде шукати помилку у власному
+   * кабінеті. Список обʼєктів акаунта — дозволене читання (інваріант 25).
+   */
+  async probeKey(apiKey: string): Promise<boolean> {
+    try {
+      await this.requestAs(apiKey, 'GET', '/properties?pagination[limit]=1');
+      return true;
+    } catch (e) {
+      if (e instanceof ChannexError && (e.status === 401 || e.status === 403)) return false;
+      throw e;
+    }
+  }
+
+  /**
+   * Адреса вбудованого вікна `/channels` — з разовим токеном, скутим ТУТ.
+   *
+   * Ключ API у браузер не потрапляє: токен просить сервер, і лише токен іде
+   * в адресу. Токен живе 15 хвилин, спалюється при першому використанні, у
+   * базу не пишеться і в журнал не потрапляє (`channel-iframe.md`).
+   * `username` — хто з нашого боку відкрив вікно; вендор пише його в свій
+   * журнал, а працює користувач під тим, ЧИЙ ключ (обмеження документації).
+   */
+  async channelsFrameUrl(
+    apiKey: string,
+    remotePropertyId: string,
+    options: { username: string; lng?: string },
+  ): Promise<string> {
+    const payload = await this.requestAs(apiKey, 'POST', '/auth/one_time_token', {
+      one_time_token: { property_id: remotePropertyId, username: options.username },
+    });
+    const token = (payload.data as { token?: unknown } | undefined)?.token;
+    if (typeof token !== 'string' || !token) {
+      throw new ChannexError(502, 'no_token', 'One-time token missing in the response');
+    }
+    const server = this.baseUrl.replace(/\/api\/v1$/, '');
+    const query = new URLSearchParams({
+      oauth_session_key: token,
+      app_mode: 'headless',
+      redirect_to: '/channels',
+      property_id: remotePropertyId,
+    });
+    if (options.lng) query.set('lng', options.lng);
+    return `${server}/auth/exchange?${query.toString()}`;
+  }
+
+  /**
+   * Канали обʼєкта разом із тим, які тарифи на них змаплені — звірка Ц8.
+   *
+   * `filter[property_id]` обовʼязковий: без нього список іде по ВСЬОМУ
+   * акаунту (И11). `rate_plans` — мапінг-айтеми `{id, rate_plan_id}`,
+   * порожні, поки зʼєднання не змаплене; `is_active` — «Disabled
+   * connections do not send updates to the channel».
+   */
+  async listChannels(
+    apiKey: string,
+    remotePropertyId: string,
+  ): Promise<{ id: string; title: string; isActive: boolean; remoteRatePlanIds: string[] }[]> {
+    const payload = await this.requestAs(apiKey, 'GET', `/channels?filter[property_id]=${encodeURIComponent(remotePropertyId)}`);
+    const data = Array.isArray(payload.data) ? (payload.data as Record<string, any>[]) : [];
+    return data.map((row) => ({
+      id: String(row.id),
+      title: String(row.attributes?.title ?? ''),
+      isActive: Boolean(row.attributes?.is_active),
+      remoteRatePlanIds: (Array.isArray(row.attributes?.rate_plans) ? row.attributes.rate_plans : [])
+        .map((m: { rate_plan_id?: unknown }) => String(m.rate_plan_id ?? '')).filter(Boolean),
+    }));
+  }
+
+  /**
+   * Один виклик ЧУЖИМ ключем — не тим, з яким збудовано клієнт.
+   *
+   * Майстер перевіряє ключ, якого ще не збережено, і кує токен ключем
+   * готелю; будувати окремий клієнт на кожен — зайве. Повтори ті самі, що
+   * в `call`, паузи по обʼєкту немає: обʼєкт тут ще не відомий.
+   */
+  private async requestAs(
+    apiKey: string,
+    method: 'GET' | 'POST',
+    path: string,
+    body?: unknown,
+  ): Promise<Record<string, unknown>> {
+    for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
+      try {
+        return await this.request(method, path, body, apiKey);
+      } catch (e) {
+        const isChannex = e instanceof ChannexError;
+        const transient = !isChannex || e.retryable;
+        if (transient && attempt < this.maxAttempts) {
+          await this.sleep(1000 * 2 ** (attempt - 1));
+          continue;
+        }
+        throw e;
+      }
+    }
+    throw new Error('channex: unreachable');
+  }
+
+  /**
    * Одна сторінка стрічки непідтверджених ревізій.
    *
    * ДВІ ДРІБНИЦІ В РЯДКУ ЗАПИТУ, КОЖНА З ЦІНОЮ.
@@ -453,13 +555,14 @@ export class ChannexClient {
     method: 'GET' | 'POST',
     path: string,
     body?: unknown,
+    apiKey: string = this.apiKey,
   ): Promise<Record<string, unknown>> {
     const response = await this.doFetch(`${this.baseUrl}${path}`, {
       method,
       headers: {
         'Content-Type': 'application/json',
         // Саме так, малими літерами й через дефіс — як в API Reference.
-        'user-api-key': this.apiKey,
+        'user-api-key': apiKey,
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
