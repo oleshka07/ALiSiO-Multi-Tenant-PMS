@@ -31,6 +31,7 @@ import Link from 'next/link';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+interface Property { id: string; name: string }
 interface Price {
   id: string;
   unit_type_id: string | null;
@@ -52,6 +53,7 @@ interface Tier {
 
 interface UnitType {
   id: string;
+  property_id?: string | null;
   name: string;
   /** Скільки людей категорія вміщає — так це поле зветься в /api/unit-types. */
   max_occupancy?: number | null;
@@ -114,6 +116,8 @@ export default function PricingMatrixPage() {
   const [prices, setPrices] = useState<Price[]>([]);
   const [tiers, setTiers] = useState<Tier[]>([]);
   const [types, setTypes] = useState<UnitType[]>([]);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [propertyId, setPropertyId] = useState('');
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState('');
   const [saving, setSaving] = useState(false);
@@ -130,23 +134,41 @@ export default function PricingMatrixPage() {
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500); };
 
-  const fetchAll = useCallback(async () => {
+  /**
+   * Обʼєкт — явно. 02.09.2026: в організації з двома обʼєктами цей екран не
+   * міг ні прочитати, ні записати жодної ціни — без `property_id`
+   * `requirePropertyId` відмовляє, і відмова правильна (AGENTS, інваріант 1):
+   * вгадати обʼєкт означало б покласти ціну не тому готелю. Спершу список
+   * обʼєктів, потім матриця обраного.
+   */
+  const fetchAll = useCallback(async (pid: string) => {
     setLoading(true);
     try {
+      if (!pid) {
+        const res = await fetch('/api/properties');
+        const list = await res.json();
+        const arr: Property[] = Array.isArray(list) ? list : (list?.properties ?? []);
+        setProperties(arr);
+        if (arr[0]) setPropertyId(arr[0].id);
+        return;
+      }
       const [m, u] = await Promise.all([
-        fetch('/api/pricing/occupancy').then((x) => x.json()),
+        fetch(`/api/pricing/occupancy?property_id=${encodeURIComponent(pid)}`).then((x) => x.json()),
         fetch('/api/unit-types').then((x) => x.json()),
       ]);
       setPrices(m.prices || []);
       setTiers(m.tiers || []);
       // Ендпоїнт віддає або масив, або {unitTypes}. Обидва бачив на різних
       // екранах — тут не місце зʼясовувати, який із них «правильний».
-      setTypes(Array.isArray(u) ? u : (u.unitTypes || u.unit_types || []));
+      const all: UnitType[] = Array.isArray(u) ? u : (u.unitTypes || u.unit_types || []);
+      // Лише типи ЦЬОГО обʼєкта: матриця ключується типом, і рядок чужого
+      // обʼєкта в цій таблиці — це ціна, якої не запишеш і не прочитаєш.
+      setTypes(all.filter((ut) => !ut.property_id || ut.property_id === pid));
     } catch (e) { console.error(e); }
-    setLoading(false);
+    finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => { fetchAll(propertyId); }, [propertyId, fetchAll]);
 
   // ── Періоди: базовий завжди є, решта — з самих рядків ─────────────────────
   const seasons: Season[] = useMemo(() => {
@@ -193,7 +215,7 @@ export default function PricingMatrixPage() {
     if (text === '') {
       if (!existing) return;
       const res = await fetch(`/api/pricing/occupancy/${existing.id}`, { method: 'DELETE' });
-      if (!res.ok) showToast(`❌ ${t((await res.json()).error)}`); else fetchAll();
+      if (!res.ok) showToast(`❌ ${t((await res.json()).error)}`); else fetchAll(propertyId);
       return;
     }
 
@@ -209,11 +231,12 @@ export default function PricingMatrixPage() {
       : await fetch('/api/pricing/occupancy', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          property_id: propertyId,
           unit_type_id: unitTypeId, persons, price_gross: value,
           valid_from: current.from, valid_to: current.to, label: current.label,
         }),
       });
-    if (!res.ok) showToast(`❌ ${t((await res.json()).error)}`); else fetchAll();
+    if (!res.ok) showToast(`❌ ${t((await res.json()).error)}`); else fetchAll(propertyId);
   };
 
   const addSeason = () => {
@@ -241,6 +264,7 @@ export default function PricingMatrixPage() {
       const res = await fetch('/api/pricing/los-tiers', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          property_id: propertyId,
           unit_type_id: tierForm.unit_type_id || null,
           min_nights: Number(tierForm.min_nights),
           adjustment_gross: Number(String(tierForm.adjustment_gross).replace(',', '.')),
@@ -251,18 +275,19 @@ export default function PricingMatrixPage() {
       const data = await res.json();
       if (!res.ok) { showToast(`❌ ${t(data.error)}`); return; }
       setTierModal(false);
-      fetchAll();
+      fetchAll(propertyId);
     } catch (e: any) { showToast(`❌ ${t(e.message)}`); } finally { setSaving(false); }
   };
 
   const removeTier = async (tier: Tier) => {
     if (!window.confirm(t('Прибрати цю знижку за довжину?'))) return;
     const res = await fetch(`/api/pricing/los-tiers/${tier.id}`, { method: 'DELETE' });
-    if (!res.ok) showToast(`❌ ${t((await res.json()).error)}`); else fetchAll();
+    if (!res.ok) showToast(`❌ ${t((await res.json()).error)}`); else fetchAll(propertyId);
   };
 
   const runQuote = async () => {
     const p = new URLSearchParams({
+      property_id: propertyId,
       unit_type_id: quoteForm.unit_type_id, check_in: quoteForm.check_in,
       nights: quoteForm.nights, adults: quoteForm.adults,
       children: quoteForm.children || '0',
@@ -299,6 +324,14 @@ export default function PricingMatrixPage() {
             <h2 className="page-title">{t('Ціни за заселеністю')}</h2>
             <div className="page-subtitle">{t('Скільки коштує ніч залежно від кількості гостей — і що знімає довше проживання')}</div>
           </div>
+          {properties.length > 1 && (
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--text-tertiary)' }}>
+              {t('Обʼєкт')}
+              <select className="form-select" value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+                {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+          )}
         </div>
 
         {loading ? (

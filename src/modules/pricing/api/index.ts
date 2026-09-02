@@ -3,7 +3,7 @@
 
 export { getPricing, updatePricing } from './pricing.handlers';
 export { getBulkPricing, updateBulkPricing } from './bulk.handlers';
-export { listRatePlanSettings, createRatePlanSetting, updateRatePlanSetting } from './rate-plans.handlers';
+export { listRatePlanSettings, createRatePlanSetting, updateRatePlanSetting, deleteRatePlanSetting } from './rate-plans.handlers';
 export { getQuote } from './quote.handlers';
 
 // The price matrix: occupancy changes the price, never the category.

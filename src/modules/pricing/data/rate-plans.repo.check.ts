@@ -20,7 +20,7 @@ import '../../../../scripts/lib/module-aliases.mjs';
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
-const { createRatePlan, updateRatePlan, listRatePlans } = await import('./rate-plans.repo.ts');
+const { createRatePlan, updateRatePlan, listRatePlans, deleteRatePlan } = await import('./rate-plans.repo.ts');
 const { propertyRatePlans } = await import('./property-rate-plans.ts');
 
 const sql = getSql();
@@ -30,6 +30,9 @@ const PROP = (org: string) => `${org}_prop`;
 const UT = (org: string) => `${org}_ut`;
 
 async function cleanup() {
+  await sql.run("DELETE FROM cm_outbox WHERE connection_id = '__rpw_conn'");
+  await sql.run("DELETE FROM cm_mappings WHERE connection_id = '__rpw_conn'");
+  await sql.run("DELETE FROM cm_connections WHERE id = '__rpw_conn'");
   for (const org of [A, B]) {
     await sql.run('DELETE FROM price_calendar WHERE unit_type_id = ?', [UT(org)]);
     await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP(org)]);
@@ -123,7 +126,47 @@ try {
   assert.strictEqual(same.name, 'B&B', 'та сама валюта в запиті — не зміна, назва міняється');
   console.log('  ok  валюта вільна без цін і замкнена з цінами');
 
-  console.log('rate-plans: тариф свого обʼєкта, код унікальний на обʼєкті, валюта замкнена ціною');
+  // ── 6. Видалення: лише чистий тариф, лише свій ────────────────────────
+  //
+  // 02.09.2026: на беті тариф ліг не на той обʼєкт (селектор обʼєкта на
+  // екрані «Тарифи» без підпису, дефолт — перший за датою створення), а
+  // прибрати його не було чим. Видаляти можна те, на що ніхто не спирається:
+  // є ціни → `has_prices`, заведено у вендора → `mapped`, є бронювання →
+  // `in_use`. Кожна відмова названа, бо мовчазне «не вийшло» тут — це
+  // тариф-привид, який канал далі бачить продаваним.
+  await runWithOrganization(A, () => assert.rejects(() => deleteRatePlan(bb.id), /has_prices/,
+    'під тарифом є ціна — не видаляється, і причина названа'));
+  await runWithOrganization(B, () => assert.rejects(() => deleteRatePlan(bar.id), /not found/i,
+    'чужий орендар не видаляє — «not found», не 403'));
+  assert.strictEqual((await sql.rows('SELECT id FROM rate_plans WHERE id = ?', [bar.id])).length, 1, 'BAR на місці після чужої спроби');
+
+  await sql.run(
+    `INSERT INTO cm_connections (id, organization_id, property_id, provider, webhook_token, webhook_secret)
+     VALUES ('__rpw_conn', ?, ?, 'test', '__rpw_wt', '__rpw_ws')`,
+    [A, PROP(A)],
+  );
+  await sql.run(
+    `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, remote_id)
+     VALUES ('__rpw_map', ?, '__rpw_conn', 'rate_plan', ?, ?, 'remote-bar')`,
+    [A, bar.id, UT(A)],
+  );
+  await runWithOrganization(A, () => assert.rejects(() => deleteRatePlan(bar.id), /mapped/,
+    'тариф заведено у вендора — не видаляється: дзеркало лишилось би без оригіналу'));
+  await sql.run('DELETE FROM cm_mappings WHERE id = ?', ['__rpw_map']);
+
+  await sql.run(
+    `INSERT INTO cm_outbox (id, organization_id, connection_id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to)
+     VALUES ('__rpw_out', ?, '__rpw_conn', 'rate', ?, ?, '2026-11-22', '2026-11-22')`,
+    [A, UT(A), bar.id],
+  );
+  await runWithOrganization(A, () => deleteRatePlan(bar.id));
+  assert.strictEqual((await sql.rows('SELECT id FROM rate_plans WHERE id = ?', [bar.id])).length, 0, 'чистий тариф видалено');
+  assert.strictEqual((await sql.rows('SELECT id FROM cm_outbox WHERE rate_plan_id = ?', [bar.id])).length, 0,
+    'координати черги видаленого тарифу прибрано разом із ним — батчер не шукатиме тариф, якого немає');
+  assert.deepStrictEqual((await runWithOrganization(A, () => listRatePlans(PROP(A)))).map((p) => p.code), ['BB'], 'у списку лишився лише BB');
+  console.log('  ok  видалення: чистий свій тариф — так; з цінами, заведений у вендора, чужий — названа відмова');
+
+  console.log('rate-plans: тариф свого обʼєкта, код унікальний на обʼєкті, валюта замкнена ціною, видалення лише чистого');
 } finally {
   await cleanup();
 }

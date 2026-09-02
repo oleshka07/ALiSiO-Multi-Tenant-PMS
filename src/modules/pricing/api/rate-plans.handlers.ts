@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { withPermission, type Actor } from '@core/auth/session';
 import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 import { serverError } from '@core/http/errors';
-import { listRatePlans, createRatePlan, updateRatePlan } from '../data/rate-plans.repo';
+import { listRatePlans, createRatePlan, updateRatePlan, deleteRatePlan } from '../data/rate-plans.repo';
 
 /**
  * Екран «Тарифи» — з боку HTTP. Форма — звичайна акуратність (інваріант 29);
@@ -10,7 +10,7 @@ import { listRatePlans, createRatePlan, updateRatePlan } from '../data/rate-plan
  */
 
 const NAMED: Record<string, number> = {
-  code_taken: 409, currency_locked: 409,
+  code_taken: 409, currency_locked: 409, has_prices: 409, mapped: 409, in_use: 409,
   code_invalid: 400, currency_invalid: 400, name_required: 400, child_price_invalid: 400,
 };
 
@@ -82,5 +82,26 @@ export const updateRatePlanSetting = withPermission('manage_pricing', async (req
     }
   } catch (error: unknown) {
     return serverError('modules/pricing/api/rate-plans updateRatePlanSetting', error);
+  }
+});
+
+/**
+ * DELETE /api/pricing/rate-plans/[id]
+ *
+ * Лише чистий тариф: з цінами — `has_prices`, заведений у вендора — `mapped`,
+ * з бронюваннями — `in_use` (усі 409, названі). Чужий — 404, не 403
+ * (інваріант 5).
+ */
+export const deleteRatePlanSetting = withPermission('manage_pricing', async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, _actor: Actor) => {
+  try {
+    const { id } = await params;
+    try {
+      await deleteRatePlan(id);
+      return NextResponse.json({ ok: true });
+    } catch (error: unknown) {
+      return named(error) ?? serverError('modules/pricing/api/rate-plans deleteRatePlanSetting', error);
+    }
+  } catch (error: unknown) {
+    return serverError('modules/pricing/api/rate-plans deleteRatePlanSetting', error);
   }
 });

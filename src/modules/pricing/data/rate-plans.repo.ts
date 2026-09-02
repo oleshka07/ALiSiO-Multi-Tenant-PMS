@@ -218,6 +218,41 @@ export async function updateRatePlan(id: string, patch: UpdateRatePlanInput): Pr
   });
 }
 
+/**
+ * Прибрати тариф, на який ніхто не спирається.
+ *
+ * 02.09.2026: на беті тариф ліг не на той обʼєкт (селектор обʼєкта на
+ * екрані «Тарифи» був без підпису, дефолт — перший за датою створення), а
+ * прибрати його не було чим. Видаляється лише ЧИСТИЙ тариф — і кожна відмова
+ * названа, бо мовчазне «не вийшло» тут — це тариф-привид, який канал далі
+ * бачить продаваним:
+ *
+ *   `has_prices` — під ним є ціни (`price_calendar.rate_plan_id`);
+ *   `mapped`     — його заведено у вендора (`cm_mappings`): дзеркало без
+ *                  оригіналу — це ціна, яку батчер не зможе ні порахувати, ні
+ *                  закрити;
+ *   `in_use`     — на нього є бронювання.
+ *
+ * Координати черги (`cm_outbox`) цього тарифу йдуть разом із ним: інакше
+ * батчер шукатиме тариф, якого немає, і кластиме рядок у «потребує уваги».
+ */
+export async function deleteRatePlan(id: string): Promise<void> {
+  await getSql().tx(async (t) => {
+    await ownedPlan(t, id);
+    const priced = await pricedUnitTypesOf(t, [id]);
+    if ((priced.get(id) ?? []).length > 0) throw new Error('has_prices');
+    const mapped = await t.row<any>(
+      "SELECT id FROM cm_mappings WHERE entity_type = 'rate_plan' AND local_id = ? LIMIT 1", [id],
+    );
+    if (mapped) throw new Error('mapped');
+    const booked = await t.row<any>('SELECT id FROM reservations WHERE rate_plan_id = ? LIMIT 1', [id]);
+    if (booked) throw new Error('in_use');
+
+    await t.run('DELETE FROM cm_outbox WHERE rate_plan_id = ?', [id]);
+    await t.run('DELETE FROM rate_plans WHERE id = ?', [id]);
+  });
+}
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }

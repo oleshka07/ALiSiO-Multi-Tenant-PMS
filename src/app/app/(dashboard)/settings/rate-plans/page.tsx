@@ -47,6 +47,9 @@ export default function RatePlansSettingsPage() {
     currency_invalid: tUi('Валюта — три латинські літери, як EUR'),
     name_required: tUi('Вкажіть назву'),
     child_price_invalid: tUi('Ціна дитини — невідʼємне число'),
+    has_prices: tUi('Під тарифом є ціни — спершу приберіть їх у календарі «Ціни»'),
+    mapped: tUi('Тариф уже заведено в менеджері каналів — видалити не можна'),
+    in_use: tUi('На тариф є бронювання — видалити не можна'),
   };
   const explain = (code: string | undefined) => (code && ERRORS[code]) || tUi('Не вдалося. Спробуйте ще раз');
 
@@ -104,6 +107,24 @@ export default function RatePlansSettingsPage() {
     }
   };
 
+  // Видаляється лише чистий тариф; кожна відмова названа (`ERRORS`).
+  // 02.09.2026: тариф ліг не на той обʼєкт, а прибрати його не було чим.
+  const remove = async (p: RatePlan) => {
+    if (!window.confirm(`${tUi('Видалити тариф')} ${p.code} — ${p.name}?`)) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/pricing/rate-plans/${p.id}`, { method: 'DELETE' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { setNotice({ kind: 'error', text: explain(body?.error) }); return; }
+      setNotice({ kind: 'ok', text: tUi('Тариф видалено') });
+      await load(propertyId);
+    } catch {
+      setNotice({ kind: 'error', text: explain(undefined) });
+    } finally {
+      setBusy(false);
+    }
+  };
   const mealLabel = (m: string) => ({
     '': tUi('не вказано'), room_only: tUi('без харчування'), breakfast: tUi('сніданок'),
     half_board: tUi('напівпансіон'), full_board: tUi('повний пансіон'), all_inclusive: tUi('все включено'),
@@ -122,12 +143,16 @@ export default function RatePlansSettingsPage() {
           <button className="btn btn-primary" disabled={!propertyId} onClick={() => startEdit(null)}><Plus size={14} /> {tUi('Додати тариф')}</button>
         </div>
 
+        {/* Обʼєкт — підписаний і на видноті: без підпису тарифи лягали на
+            перший обʼєкт за датою створення, і ніхто цього не помічав
+            (02.09.2026). */}
         {properties.length > 1 && (
-          <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', marginBottom: 12, fontSize: 12, color: 'var(--text-tertiary)' }}>
+            {tUi('Обʼєкт')}
             <select className="form-select" value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
               {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
-          </div>
+          </label>
         )}
 
         {notice && (
@@ -185,7 +210,11 @@ export default function RatePlansSettingsPage() {
                     <td>{mealLabel(p.mealPlan ?? '')}</td>
                     <td>{p.childExtraGross == null ? '—' : p.childExtraGross}</td>
                     <td>{p.pricedUnitTypes.length ? p.pricedUnitTypes.join(', ') : <span style={{ color: 'var(--accent-warning)' }}>{tUi('немає — не продається')}</span>}</td>
-                    <td><button className="btn btn-sm" onClick={() => startEdit(p)}>{tUi('Змінити')}</button></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-sm" disabled={busy} onClick={() => startEdit(p)}>{tUi('Змінити')}</button>
+                      {' '}
+                      <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => remove(p)}>{tUi('Видалити')}</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
