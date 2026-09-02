@@ -1002,6 +1002,7 @@ endpoints, use `GET api/v1/booking_revisions...` instead**».
 | 20 | поля відповідей | — | не описані: `property_category`, `location_precision`, `is_active`, `acc_channels_count`, `expected_removal_date`, `position` і `codes` у типі номера, `rate_category_id` і `ui_read_only` у тарифі, `unavailable_reasons` у календарі |
 | 21 | межі частоти (`rate-limits.md`) | 10 цін + 10 наявності на хвилину на обʼєкт, `429` | **на staging не діє**: 27 викликів за 8 с на один обʼєкт у двох смугах (12 + 15), кожен окремим клієнтом — жодного `429` (01.09.2026, `channex-ari-live.mjs --probe-429`) |
 | 22 | `stop_sell: true` без `rates` у `POST /restrictions` | не описано, що з ціною | ціна в календарі ЛИШАЄТЬСЯ останньою (`1650.00` поруч із `stop_sell: true`); «закрито» означає «не продавати», а не «ціни немає» |
+| 23 | `POST /webhooks/test`, відповідь | `{ status_code, body }` (OpenAPI на сторінці) | **`{ status, body, headers }`** — поле зветься `status` (02.09.2026). Клієнт читав документоване `status_code`, діставав 0 і не падав; звідси інваріант 28 і реєстр `live-fields.json` проти зразків у `live/` |
 
 ### 14.3 Підтверджене, не спростоване 🟢
 

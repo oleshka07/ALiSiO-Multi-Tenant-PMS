@@ -1,0 +1,15 @@
+{
+  "endpoint": "GET /channels",
+  "status": 200,
+  "captured_at": "2026-09-02",
+  "payload": {
+    "data": [],
+    "meta": {
+      "total": 0,
+      "limit": 10,
+      "order_by": "title",
+      "page": 1,
+      "order_direction": "asc"
+    }
+  }
+}

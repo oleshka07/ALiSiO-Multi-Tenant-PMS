@@ -1,0 +1,11 @@
+{
+  "endpoint": "GET /properties",
+  "status": 401,
+  "captured_at": "2026-09-02",
+  "payload": {
+    "errors": {
+      "code": "unauthorized",
+      "title": "Unauthorized"
+    }
+  }
+}

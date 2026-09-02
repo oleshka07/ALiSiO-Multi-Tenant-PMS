@@ -1,0 +1,16 @@
+{
+  "endpoint": "POST /availability",
+  "status": 200,
+  "captured_at": "2026-09-02",
+  "payload": {
+    "data": [
+      {
+        "id": "935439b1-7814-45e5-b626-ddb5b4e302bc",
+        "type": "task"
+      }
+    ],
+    "meta": {
+      "message": "Success"
+    }
+  }
+}

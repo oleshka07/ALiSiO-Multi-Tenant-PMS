@@ -1,0 +1,15 @@
+{
+  "endpoint": "GET /booking_revisions/feed",
+  "status": 200,
+  "captured_at": "2026-09-02",
+  "payload": {
+    "data": [],
+    "meta": {
+      "total": 0,
+      "limit": 100,
+      "order_by": "inserted_at",
+      "page": 1,
+      "order_direction": "asc"
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "endpoint": "POST /webhooks",
+  "status": 201,
+  "captured_at": "2026-09-02",
+  "payload": {
+    "data": {
+      "attributes": {
+        "id": "bb1e0ac5-82cf-424a-9a0e-97b1df959a63",
+        "protected": false,
+        "send_data": false,
+        "headers": {
+          "X-Webhook-Secret": "<redacted>"
+        },
+        "is_active": true,
+        "callback_url": "https://beta.alisio.rozum.one/api/webhooks/channel-manager/5a7f73c900d978ebfeaa6e715a0eed33",
+        "event_mask": "booking;booking_unmapped_room;booking_unmapped_rate;non_acked_booking;sync_error;rate_error;disconnect_channel;deactivate_channel;channel_removal_warning;property_removal_warning;message;message_thread_booking_assigned;inquiry",
+        "is_signed": false,
+        "request_params": null,
+        "signing_key_id": null,
+        "is_global": false
+      },
+      "id": "bb1e0ac5-82cf-424a-9a0e-97b1df959a63",
+      "type": "webhook",
+      "relationships": {
+        "property": {
+          "data": {
+            "id": "65dea8cf-5e61-4c9a-ae8e-cae9d24857c5",
+            "type": "property"
+          }
+        },
+        "billing_account": {
+          "data": {
+            "id": "372dfc3b-f31c-42ee-a95d-a99940056c8f",
+            "type": "billing_account"
+          }
+        },
+        "organization": {
+          "data": {
+            "id": "372dfc3b-f31c-42ee-a95d-a99940056c8f",
+            "type": "organization"
+          }
+        }
+      }
+    }
+  }
+}

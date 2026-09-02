@@ -29,3 +29,5 @@ export {
   dismissChannelEvents, disconnectChannelConnection,
   ensureConnectionWebhookFor, removeConnectionWebhookFor, testConnectionWebhookFor,
 } from './webhook-admin.handlers';
+export { recordVendorResponses } from '../providers';
+export type { VendorResponseSample } from '../providers';

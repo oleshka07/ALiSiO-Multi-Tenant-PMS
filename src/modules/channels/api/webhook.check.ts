@@ -153,10 +153,37 @@ try {
   }
   console.log('  ok  усе на місці → 200 одразу, рядок під орендарем, прохід стрічки після відповіді');
 
+  // ── 4а. Дані гостя в тілі — у журнал не потрапляють ──────────────────
+  //
+  // `send_data: false` — наше налаштування в ЧУЖІЙ панелі. Двері на нього не
+  // покладаються: зберігається лише конверт сигналу, а те, що вендор прислав
+  // понад нього, відкидається і називається.
+  {
+    const res = await post(TOKEN(A), { secret: SECRET(A), body: {
+      ...AUTHENTIC,
+      payload: { booking_id: 'b-1', customer: { name: 'Olena Guest', mail: 'olena.guest@example.test', phone: '+420000000000' } },
+    } });
+    assert.strictEqual(res.status, 200);
+    // Не `.at(-1)`: два рядки в одну секунду впорядковані лише за випадковим id.
+    // Шукається рядок, у якому відкинуте названо, — і перевіряються ВСІ рядки.
+    const all = await eventsUnder(A, CONN(A));
+    const stripped = all.find((e) => e.payload.includes('dropped_fields'));
+    assert.ok(stripped, 'відкинуте названо — видно, що вендор шле більше, ніж просили');
+    assert.ok(stripped.payload.includes('"payload"'), 'названо саме те поле, яке відкинуто');
+    for (const e of all) {
+      for (const pii of ['Olena', 'olena.guest@example.test', '+420000000000', 'b-1']) {
+        assert.ok(!e.payload.includes(pii), `у журналі не має бути «${pii}»: конверт сигналу — і нічого поза ним`);
+      }
+    }
+    assert.ok(stripped.payload.includes('remote-a') && stripped.payload.includes('"event":"booking"'), 'конверт лишився');
+    await deferred.shift()!();
+  }
+  console.log('  ok  дані гостя в тілі відкидаються і називаються; журнал тримає лише конверт');
+
   // ── 5. Повторна доставка — другий рядок: журнал сирий, дедуплікація — у стрічці
   {
     await post(TOKEN(A), { secret: SECRET(A) });
-    assert.strictEqual((await eventsUnder(A, CONN(A))).length, 2, 'повтор доставки — ще один сирий рядок, не помилка');
+    assert.strictEqual((await eventsUnder(A, CONN(A))).length, 3, 'повтор доставки — ще один сирий рядок, не помилка');
     await deferred.shift()!();
   }
   console.log('  ok  повторна доставка лягає другим сирим рядком');
@@ -167,7 +194,7 @@ try {
     assert.strictEqual(res.status, 200);
     const underB = await eventsUnder(B, CONN(B));
     assert.strictEqual(underB.length, 1, 'рядок Б під орендарем Б');
-    assert.strictEqual((await eventsUnder(A, CONN(A))).length, 2, 'у А як було');
+    assert.strictEqual((await eventsUnder(A, CONN(A))).length, 3, 'у А як було');
     // Чужий id зʼєднання під чужим орендарем не читається взагалі.
     assert.strictEqual((await eventsUnder(B, CONN(A))).length, 0, 'події А під орендарем Б — порожньо');
     assert.strictEqual((await eventsUnder(A, CONN(B))).length, 0, 'події Б під орендарем А — порожньо');

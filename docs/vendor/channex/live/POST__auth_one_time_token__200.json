@@ -1,0 +1,13 @@
+{
+  "endpoint": "POST /auth/one_time_token",
+  "status": 200,
+  "captured_at": "2026-09-02",
+  "payload": {
+    "data": {
+      "token": "<redacted>"
+    },
+    "meta": {
+      "message": "You have successfully received a one-time token! Use it to exchange to a JWT"
+    }
+  }
+}

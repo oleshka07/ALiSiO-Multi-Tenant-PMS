@@ -35,6 +35,30 @@ export type ChannexEnvironment = 'staging' | 'production';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
+/**
+ * Спостерігач відповідей — для живих скриптів, що зберігають зразки.
+ *
+ * Інваріант 28 (AGENTS §3): поле чужої відповіді, від якого залежить код,
+ * має бути побачене в живій відповіді хоч раз. Живий прохід ставить сюди
+ * записувач (`scripts/lib/channex-samples.mjs`), і кожна відповідь вендора —
+ * успішна чи ні — лягає зразком у `docs/vendor/channex/live/`; реєстр полів
+ * `live-fields.json` звіряється з ними гейтом `check-live-fields`.
+ * У застосунку сюди ніхто не ставить нічого: відповіді не журналюються.
+ */
+export interface ChannexResponseSample {
+  method: HttpMethod;
+  path: string;
+  status: number;
+  payload: unknown;
+}
+export type ChannexResponseSink = (sample: ChannexResponseSample) => void;
+
+let responseSink: ChannexResponseSink | null = null;
+
+export function setChannexResponseSink(sink: ChannexResponseSink | null): void {
+  responseSink = sink;
+}
+
 const BASE_URL: Record<ChannexEnvironment, string> = {
   staging: 'https://staging.channex.io/api/v1',
   production: 'https://app.channex.io/api/v1',
@@ -302,10 +326,10 @@ export class ChannexClient {
    */
   async testWebhook(key: string, model: Record<string, unknown>): Promise<{ statusCode: number; body: string }> {
     const payload = await this.call(key, 'POST', '/webhooks/test', { webhook: model });
-    // Живий API віддає `status`, документація обіцяє `status_code` (виміряно
-    // 02.09.2026, §15 ТЗ). Читаємо обидва: перший — правда, другий — на
-    // випадок, якщо вендор колись дожене власну документацію.
-    return { statusCode: Number(payload.status ?? payload.status_code ?? 0), body: String(payload.body ?? '') };
+    // Живий API віддає `status`; документація обіцяє `status_code` (виміряно
+    // 02.09.2026, §15 ТЗ). Читається лише бачене живим (інваріант 28) — поле
+    // з документації, якого вендор не віддає, дало б 0 і не впало б.
+    return { statusCode: Number(payload.status ?? 0), body: String(payload.body ?? '') };
   }
 
   /**
@@ -629,6 +653,7 @@ export class ChannexClient {
     let payload: Record<string, unknown>;
     try {
       payload = text ? JSON.parse(text) : {};
+      responseSink?.({ method, path, status: response.status, payload });
     } catch {
       // Не JSON — це не відповідь API, а щось перед ним: балансувальник,
       // сторінка помилки, проксі. Текст у журнал, назовні — загальне.

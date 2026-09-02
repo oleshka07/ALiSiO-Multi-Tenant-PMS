@@ -20,6 +20,7 @@
  * прапорцем `--keep`: так робить оператор на беті, коли адреса справжня.
  */
 import './lib/module-aliases.mjs';
+import { sampleRecorder } from './lib/channex-samples.mjs';
 
 const argv = process.argv.slice(2);
 let organizationId = null;
@@ -38,6 +39,9 @@ if (!organizationId || !connectionId || !process.env.APP_URL) {
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { integrationCredentials } = await import('@core/integration-credentials');
 const { channelConnection, ensureConnectionWebhookFor, testConnectionWebhookFor, removeConnectionWebhookFor } = await import('@channels');
+// Інваріант 28: кожна жива відповідь лягає зразком у docs/vendor/channex/live/.
+const { recordVendorResponses } = await import('@channels');
+recordVendorResponses(sampleRecorder());
 
 const BASE = { staging: 'https://staging.channex.io/api/v1', production: 'https://app.channex.io/api/v1' };
 

@@ -94,8 +94,25 @@ function clientFor(reg: WebhookRegistration, apiKey: string, options: WebhookAda
   return new ChannexClient({ apiKey, environment: reg.environment as ChannexEnvironment, ...(options.client ?? {}) });
 }
 
-function silent(attributes: Record<string, unknown>): boolean {
-  return attributes.is_active !== true || attributes.send_data !== false;
+/** Неактивний вебхук існує і мовчить — наш власний дефолт, лагодиться PUT-ом. */
+function inactive(attributes: Record<string, unknown>): boolean {
+  return attributes.is_active !== true;
+}
+
+/**
+ * `send_data: true` — відмова з назвою, НЕ лагодження.
+ *
+ * `cm_events` тримає сирий рядок. Якби хтось — оператор у панелі вендора або
+ * наш же код — увімкнув `send_data`, у журнал посипались би ПІБ, пошта й
+ * телефони гостей повз усю ретенцію GDPR. Полагодити мовчки означало б
+ * сховати, що це сталося; тому прочитане назад `send_data: true` — відмова,
+ * і людина йде дивитись, хто й навіщо це ввімкнув. Двері при цьому все одно
+ * не зберігають нічого поза конвертом сигналу (`api/webhook.handlers.ts`).
+ */
+function refuseDataWebhook(attributes: Record<string, unknown>): void {
+  if (attributes.send_data !== false) {
+    throw new Error('webhook sends data: send_data must be false — the signal must carry no booking, or guest data would land in cm_events past GDPR retention');
+  }
 }
 
 /**
@@ -103,8 +120,9 @@ function silent(attributes: Record<string, unknown>): boolean {
  *
  * Спершу `remote_webhook_id`: є — читаємо назад; вендор його не має (404) —
  * створюємо заново; немає id — створюємо. Після створення — читання назад.
- * Мовчазний (неактивний або з даними) — PUT і ще одне читання; мовчить і
- * після цього — відмова з назвою, не «зареєстровано».
+ * Неактивний — PUT і ще одне читання; мовчить і після цього — відмова з
+ * назвою, не «зареєстровано». `send_data: true` — відмова одразу, без
+ * лагодження (див. `refuseDataWebhook`).
  */
 export async function ensureWebhook(connectionId: string, apiKey: string, options: WebhookAdapterOptions = {}): Promise<WebhookState> {
   const reg = await registrationOf(connectionId);
@@ -125,14 +143,17 @@ export async function ensureWebhook(connectionId: string, apiKey: string, option
     if (!attributes) throw new Error('webhook vanished right after creation');
   }
 
-  if (silent(attributes) || attributes.callback_url !== callbackUrl) {
+  refuseDataWebhook(attributes);
+
+  if (inactive(attributes) || attributes.callback_url !== callbackUrl) {
     await client.updateWebhook(connectionId, id!, model);
     attributes = await client.getWebhook(connectionId, id!);
     if (!attributes) throw new Error('webhook vanished right after repair');
+    refuseDataWebhook(attributes);
   }
 
-  if (silent(attributes)) {
-    throw new Error('webhook inactive after repair: the vendor keeps it silent (is_active must be true, send_data false)');
+  if (inactive(attributes)) {
+    throw new Error('webhook inactive after repair: the vendor keeps it silent (is_active must be true)');
   }
 
   return { remoteWebhookId: id!, callbackUrl, isActive: true, sendData: false, created };

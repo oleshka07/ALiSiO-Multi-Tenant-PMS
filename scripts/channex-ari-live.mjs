@@ -44,6 +44,7 @@
  * чекає хвилину й доганяє чергу, щоб не лишити координату висіти.
  */
 import './lib/module-aliases.mjs';
+import { sampleRecorder } from './lib/channex-samples.mjs';
 
 const argv = process.argv.slice(2);
 const CONFIRM = argv.includes('--confirm');
@@ -91,6 +92,9 @@ const {
   channelConnection, connectionMirror, flushConnectionOutboxFor,
   enqueueChannelChange, pendingChannelChanges, queuedChannelChanges, stuckChannelChanges,
 } = await import('@channels');
+// Інваріант 28: кожна жива відповідь лягає зразком у docs/vendor/channex/live/.
+const { recordVendorResponses } = await import('@channels');
+recordVendorResponses(sampleRecorder());
 const { availabilityByDay, catalogUnitTypes } = await import('@properties');
 const { priceNights } = await import('@pricing');
 

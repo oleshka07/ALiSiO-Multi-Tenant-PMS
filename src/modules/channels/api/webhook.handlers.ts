@@ -35,6 +35,11 @@ import { pullConnectionNow } from './pull-cron.handlers';
  * И7: до відповіді — жодної мережі. Пробудження йде через `after()` — після
  * того, як відповідь пішла, — і через засувку (`data/wake.ts`): один прохід
  * на зʼєднання за раз, пачка сигналів — один додатковий.
+ *
+ * `after()` — НЕ гарантія. Смерть процесу між відповіддю і проходом (деплой,
+ * масштабування, OOM) губить сигнал безслідно; ловить крон стрічки, який
+ * для цього й не вимикається. Вебхук пришвидшує, стрічка гарантує — і лише
+ * так це треба читати: не «after() доробить».
  */
 
 export interface WebhookReceiverDeps {
@@ -45,6 +50,29 @@ export interface WebhookReceiverDeps {
 }
 
 type TokenParams = { params: Promise<{ token: string }> };
+
+/**
+ * Конверт сигналу — і НІЧОГО поза ним.
+ *
+ * `send_data: false` означає, що в тілі лише `event`, `user_id`,
+ * `property_id`, `timestamp`. Але двері не покладаються на налаштування в
+ * чужій панелі: якби хтось увімкнув `send_data`, у `cm_events` посипались би
+ * ПІБ, пошта й телефони гостей повз усю ретенцію GDPR. Тому зберігається
+ * білий список полів; усе інше відкидається, і сам факт відкидання
+ * записується — щоб було видно, що вендор шле більше, ніж просили.
+ */
+const SIGNAL_FIELDS = ['event', 'property_id', 'user_id', 'timestamp'] as const;
+
+function signalEnvelope(body: Record<string, unknown>): Record<string, unknown> {
+  const envelope: Record<string, unknown> = {};
+  for (const field of SIGNAL_FIELDS) {
+    const value = body[field];
+    if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) envelope[field] = value;
+  }
+  const dropped = Object.keys(body).filter((k) => !(SIGNAL_FIELDS as readonly string[]).includes(k));
+  if (dropped.length) envelope.dropped_fields = dropped;
+  return envelope;
+}
 
 function sameSecret(given: string, expected: string): boolean {
   const a = Buffer.from(given, 'utf8');
@@ -74,10 +102,11 @@ export function makeWebhookReceiver(deps: WebhookReceiverDeps) {
     if (typeof event !== 'string' || !event) {
       return Response.json({ error: 'event_required' }, { status: 400 });
     }
+    const envelope = signalEnvelope(body as Record<string, unknown>);
 
     try {
       await runWithOrganization(connection.organizationId, () =>
-        recordEvent({ connectionId: connection.id, organizationId: connection.organizationId, eventType: event, payload: body }));
+        recordEvent({ connectionId: connection.id, organizationId: connection.organizationId, eventType: event, payload: envelope }));
     } catch (error: unknown) {
       // 5xx навмисно: вендор повторить, і подія не загубиться.
       console.error('[channels] webhook: could not record the event', error instanceof Error ? error.message : error);

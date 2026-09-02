@@ -1,0 +1,24 @@
+{
+  "endpoint": "POST /webhooks/test",
+  "status": 200,
+  "captured_at": "2026-09-02",
+  "payload": {
+    "status": 401,
+    "body": "{\"error\":\"Unauthorized — session required\"}",
+    "headers": {
+      "connection": "keep-alive",
+      "content-type": "application/json",
+      "date": "Wed, 02 Sep 2026 07:28:59 GMT",
+      "permissions-policy": "camera=(), microphone=(), geolocation=()",
+      "referrer-policy": "strict-origin-when-cross-origin",
+      "server": "nginx/1.28.3 (Ubuntu)",
+      "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+      "transfer-encoding": "chunked",
+      "vary": "Accept-Encoding",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "on",
+      "x-frame-options": "DENY"
+    },
+    "request_url": "https://beta.alisio.rozum.one/api/webhooks/channel-manager/5a7f73c900d978ebfeaa6e715a0eed33"
+  }
+}

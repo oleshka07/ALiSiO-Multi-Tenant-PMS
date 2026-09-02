@@ -1,0 +1,10 @@
+{
+  "endpoint": "DELETE /webhooks/:id",
+  "status": 200,
+  "captured_at": "2026-09-02",
+  "payload": {
+    "meta": {
+      "message": "Success"
+    }
+  }
+}

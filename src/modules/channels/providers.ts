@@ -1,4 +1,5 @@
 import { channexAdapter } from './channex/adapter';
+import { setChannexResponseSink, type ChannexResponseSample } from './channex/client';
 import type { PullReport } from './data/pull-bookings';
 import type { CatalogReport } from './domain/catalog.ts';
 import type { FlushReport } from './domain/ari-batch.ts';
@@ -63,6 +64,13 @@ export type AriPublisher = (
   apiKey: string,
   options?: { today?: string },
 ) => Promise<FlushReport>;
+
+/**
+ * Записувач живих відповідей — для живих скриптів (інваріант 28). Сюди він
+ * потрапляє через шов, бо це єдине місце, де імʼя модуля вендора дозволене.
+ */
+export const recordVendorResponses = setChannexResponseSink;
+export type VendorResponseSample = ChannexResponseSample;
 
 // Ключі — це ЗНАЧЕННЯ з `cm_connections.provider`, тому вони в лапках: це
 // дані з бази, а не імена в коді.

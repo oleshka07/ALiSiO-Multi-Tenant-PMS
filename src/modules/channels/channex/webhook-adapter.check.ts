@@ -136,10 +136,10 @@ try {
   // ── 3. Мовчазний вебхук: прочитано назад «неактивний» → полагоджено PUT-ом і перечитано
   {
     reset();
-    mock.queue.push(record('wh-1', { is_active: false, send_data: true }), { kind: 'webhook', id: 'wh-1' }, record('wh-1'));
+    mock.queue.push(record('wh-1', { is_active: false }), { kind: 'webhook', id: 'wh-1' }, record('wh-1'));
     const state = await runWithOrganization(A, () => ensureWebhook(CONN, KEY, { client }));
     assert.deepStrictEqual(mock.calls.map((c) => `${c.method} ${c.path}`), ['GET /webhooks/wh-1', 'PUT /webhooks/wh-1', 'GET /webhooks/wh-1'],
-      'неактивний або з даними — лагодиться PUT-ом і перечитується');
+      'неактивний — лагодиться PUT-ом і перечитується');
     const put = mock.calls[1].body.webhook as Record<string, unknown>;
     assert.strictEqual(put.is_active, true);
     assert.strictEqual(put.send_data, false);
@@ -153,6 +153,24 @@ try {
       'якщо й після лагодження вендор віддає неактивний — відмова, а не «зареєстровано»'));
   }
   console.log('  ok  прочитане назад «мовчить» лагодиться, а невиліковне — відмова');
+
+  // ── 3а. send_data: true — відмова з назвою, без лагодження ──────────────
+  //
+  // Увімкнене кимось `send_data` означає ПІБ і пошту гостей у `cm_events`
+  // повз ретенцію GDPR. Полагодити мовчки — сховати, що це сталося.
+  {
+    reset();
+    mock.queue.push(record('wh-1', { send_data: true }));
+    await runWithOrganization(A, () => assert.rejects(() => ensureWebhook(CONN, KEY, { client }), /send_data|sends data/i,
+      'прочитане назад send_data: true — відмова з назвою'));
+    assert.deepStrictEqual(mock.calls.map((c) => `${c.method} ${c.path}`), ['GET /webhooks/wh-1'], 'без PUT: лагодити мовчки не можна');
+
+    reset();
+    mock.queue.push(record('wh-1', { is_active: false }), { kind: 'webhook', id: 'wh-1' }, record('wh-1', { send_data: true }));
+    await runWithOrganization(A, () => assert.rejects(() => ensureWebhook(CONN, KEY, { client }), /send_data|sends data/i,
+      'і після лагодження неактивного — перечитане send_data: true теж відмова'));
+  }
+  console.log('  ok  send_data: true — відмова з назвою, ніколи не лагодиться мовчки');
 
   // ── 4. Застарілий id: вендор каже 404 → створити заново, id оновити ─────
   {

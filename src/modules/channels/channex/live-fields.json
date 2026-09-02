@@ -1,0 +1,139 @@
+{
+  "GET /properties": {
+    "why": "перевірка ключа (probeKey) і конверт помилки 401 — єдине місце, де код читає errors.*",
+    "fields": [
+      "data[].id",
+      "errors.code",
+      "errors.title"
+    ]
+  },
+  "POST /auth/one_time_token": {
+    "why": "разовий токен вбудованого вікна",
+    "fields": [
+      "data.token"
+    ]
+  },
+  "GET /channels": {
+    "why": "звірка Ц8: канали обʼєкта і змаплені на них тарифи",
+    "fields": [
+      "data[].id",
+      "data[].attributes.title",
+      "data[].attributes.is_active",
+      "data[].attributes.rate_plans[].rate_plan_id"
+    ],
+    "awaiting_fields": {
+      "data[].id": "канал у тестового обʼєкта — зʼявиться після мапінгу у вікні вендора (Alpine не має жодного каналу)",
+      "data[].attributes.title": "те саме",
+      "data[].attributes.is_active": "те саме",
+      "data[].attributes.rate_plans[].rate_plan_id": "те саме"
+    }
+  },
+  "POST /webhooks": {
+    "why": "реєстрація вебхука",
+    "fields": [
+      "data.id",
+      "data.attributes"
+    ]
+  },
+  "GET /webhooks/:id": {
+    "why": "читання назад: активний, без даних, наша адреса",
+    "fields": [
+      "data.attributes.is_active",
+      "data.attributes.send_data",
+      "data.attributes.callback_url",
+      "data.attributes.event_mask",
+      "data.attributes.headers"
+    ]
+  },
+  "POST /webhooks/test": {
+    "why": "проба доставки — код і тіло, які вендор побачив у наших дверях",
+    "fields": [
+      "status",
+      "body"
+    ]
+  },
+  "POST /availability": {
+    "why": "розписка батчера — task id; попередження при відхилених значеннях (И4)",
+    "fields": [
+      "data[].id",
+      "meta.message",
+      "meta.warnings"
+    ],
+    "awaiting_fields": {
+      "meta.warnings": "відповідь з попередженнями (валідація) — форма з §14.2 INVENTORY (31.08); зразок ляже з першого справжнього попередження на живому"
+    }
+  },
+  "POST /restrictions": {
+    "why": "те саме для смуги цін і обмежень",
+    "fields": [
+      "data[].id",
+      "meta.message",
+      "meta.warnings",
+      "meta.warnings[].rate_plan_id",
+      "meta.warnings[].date",
+      "meta.warnings[].date_from",
+      "meta.warnings[].date_to",
+      "meta.warnings[].warning"
+    ],
+    "awaiting_fields": {
+      "meta.warnings": "відповідь з попередженнями — як у POST /availability",
+      "meta.warnings[].rate_plan_id": "те саме",
+      "meta.warnings[].date": "те саме",
+      "meta.warnings[].date_from": "те саме",
+      "meta.warnings[].date_to": "те саме",
+      "meta.warnings[].warning": "те саме"
+    }
+  },
+  "GET /booking_revisions/feed": {
+    "why": "стрічка непідтверджених ревізій і поля, які читає revision-map.ts",
+    "fields": [
+      "data[].attributes",
+      "meta.total",
+      "meta.page",
+      "meta.limit",
+      "data[].attributes.id",
+      "data[].attributes.booking_id",
+      "data[].attributes.system_id",
+      "data[].attributes.status",
+      "data[].attributes.ota_name",
+      "data[].attributes.ota_reservation_code",
+      "data[].attributes.currency",
+      "data[].attributes.amount",
+      "data[].attributes.arrival_date",
+      "data[].attributes.departure_date",
+      "data[].attributes.occupancy",
+      "data[].attributes.customer",
+      "data[].attributes.rooms[].room_type_id",
+      "data[].attributes.rooms[].checkin_date",
+      "data[].attributes.rooms[].checkout_date",
+      "data[].attributes.rooms[].occupancy",
+      "data[].attributes.rooms[].amount"
+    ],
+    "awaiting_fields": {
+      "*": "тестова бронь (§10.3 ТЗ / Booking CRS у панелі вендора): стрічка staging порожня, доки броні немає"
+    }
+  },
+  "POST /properties": {
+    "why": "заведення обʼєкта — id",
+    "fields": [
+      "data.id"
+    ],
+    "awaiting": "наступне заведення каталогу на НОВОМУ обʼєкті (channex-catalog-live на порожньому зʼєднанні); на наявних зʼєднаннях створення не повторюється"
+  },
+  "POST /room_types": {
+    "why": "заведення типу номера — id",
+    "fields": [
+      "data.id"
+    ],
+    "awaiting": "те саме, що POST /properties"
+  },
+  "POST /rate_plans": {
+    "why": "заведення тарифу — id і опції заселеності з їхніми id (§14.2 №2, №5)",
+    "fields": [
+      "data.id",
+      "data.attributes.options[].occupancy",
+      "data.attributes.options[].id"
+    ],
+    "awaiting": "те саме, що POST /properties"
+  }
+}

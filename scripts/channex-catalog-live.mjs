@@ -62,6 +62,7 @@
 // тут не треба: цей скрипт запускають усередині репозиторію, а не на сервері
 // під час деплою (саме тому свою копію тримає apply-hotel.mjs, і лише він).
 import './lib/module-aliases.mjs';
+import { sampleRecorder } from './lib/channex-samples.mjs';
 
 const argv = process.argv.slice(2);
 const CONFIRM = argv.includes('--confirm');
@@ -100,6 +101,9 @@ const environment = process.env.CHANNEX_ENV === 'production' ? 'production' : 's
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { syncConnectionCatalogFor, channelConnection, connectionMirror } = await import('@channels');
+// Інваріант 28: кожна жива відповідь лягає зразком у docs/vendor/channex/live/.
+const { recordVendorResponses } = await import('@channels');
+recordVendorResponses(sampleRecorder());
 const { catalogProperty, catalogUnitTypes } = await import('@properties');
 const { propertyRatePlans } = await import('@pricing');
 
