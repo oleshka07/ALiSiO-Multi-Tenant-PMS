@@ -58,6 +58,11 @@ esac
 # `cm_connections` з `is_enabled`. Готель без модуля не опитується взагалі:
 # розкладка «пропущено / зламано / порожньо» в `pullAllConnections()`.
 #
+# Розсилка наявності й цін (`channels-publish`) — щохвилини: вендор просить
+# збирати зміни пачками по 30–60 с і після помилки не чіпати обʼєкт хвилину;
+# крон раз на хвилину і є та пауза (обмежувач один на процес, ключ —
+# зʼєднання). Застрягле крон доповідає, але не червоніє — це екран оператора.
+#
 # Ставиться тут, поруч із бекапами, з тієї ж причини, що й ретенція: розклад
 # має братися з того, що середовище живе, а не з того, що хтось згадав. Крон,
 # який ніхто не смикає, — це не «поки не налаштовано», це готель, який тиждень
@@ -67,6 +72,7 @@ ${DUMP_AT} cd ${ROOT} && ./deploy/backup.sh ${ENV_NAME} >> ${LOG} 2>&1 ${MARK}
 0 9 * * * cd ${ROOT} && ./deploy/check-backup-age.sh ${ENV_NAME} >> ${LOG} 2>&1 ${MARK}
 40 4 * * * cd ${ROOT} && ./deploy/run-cron.sh ${ENV_NAME} /api/cron/gdpr-retention >> ${LOG} 2>&1 ${MARK}
 */5 * * * * cd ${ROOT} && ./deploy/run-cron.sh ${ENV_NAME} /api/cron/channels-pull >> ${LOG} 2>&1 ${MARK}
+* * * * * cd ${ROOT} && ./deploy/run-cron.sh ${ENV_NAME} /api/cron/channels-publish >> ${LOG} 2>&1 ${MARK}
 LINES
 )"
 # The weekly restore drill runs once, against prod's dumps — beta's data is

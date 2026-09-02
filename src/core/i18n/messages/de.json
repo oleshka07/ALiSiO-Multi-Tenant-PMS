@@ -2771,5 +2771,22 @@
   "Як рахувати": "Berechnungsart",
   "Без номера": "Ohne Zimmer",
   "Номер не призначено — натисніть, щоб обрати": "Zimmer nicht zugewiesen — zum Auswählen klicken",
-  "Призначити номер": "Zimmer zuweisen"
+  "Призначити номер": "Zimmer zuweisen",
+  "Повернуто в чергу": "In die Warteschlange zurückgelegt",
+  "Не вдалося повернути в чергу": "Zurücklegen in die Warteschlange fehlgeschlagen",
+  "Черга менеджера каналів": "Warteschlange des Channel-Managers",
+  "Наявність і ціни, які чекають відправлення, і те, що застрягло": "Verfügbarkeit und Preise, die auf den Versand warten, und was hängen geblieben ist",
+  "увімкнено": "aktiviert",
+  "вимкнено": "deaktiviert",
+  "каталог ще не заведено": "Katalog noch nicht angelegt",
+  "Чекає відправлення": "Wartet auf Versand",
+  "Потребує уваги": "Braucht Aufmerksamkeit",
+  "Повернути в чергу": "In die Warteschlange zurücklegen",
+  "Що": "Was",
+  "Тариф": "Tarif",
+  "Ночі": "Nächte",
+  "Спроб": "Versuche",
+  "Остання причина": "Letzter Grund",
+  "наявність": "Verfügbarkeit",
+  "ціна": "Preis"
 }

@@ -146,3 +146,20 @@ export async function connectionsForProperty(propertyId: string): Promise<Connec
   ) as Record<string, unknown>[];
   return rows.map(toConnection);
 }
+
+/** Усі зʼєднання орендаря — для екрана «Канал-менеджер». Орендар — із сесії. */
+export async function connectionsInTenant(): Promise<Connection[]> {
+  const organizationId = currentOrganizationId();
+  if (!organizationId) throw new Error('cm: connection lookup without a tenant');
+
+  const sql = getSql();
+  const rows = await sql.rows<any>(
+    `SELECT id, organization_id, property_id, provider, environment,
+            remote_property_id, is_enabled, pricing_modifier_percent
+       FROM cm_connections
+      WHERE organization_id = ?
+      ORDER BY property_id, id`,
+    [organizationId],
+  ) as Record<string, unknown>[];
+  return rows.map(toConnection);
+}

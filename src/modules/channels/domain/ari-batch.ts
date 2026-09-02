@@ -205,7 +205,15 @@ export interface FlushDeps {
     values: (AvailabilityChange | RateChange)[],
   ): Promise<{ warnings: unknown[]; unmapped?: Unmapped[] }>;
   markSent(ids: string[]): Promise<void>;
-  release(ids: string[], reason: string): Promise<void>;
+  /**
+   * Повернути в чергу. `transient` — невдача ПРОХОДУ, не рядка: простій
+   * вендора, 429, власна пауза обмежувача, мережа. Черга тоді не рахує
+   * спроби: інакше крон раз на хвилину зʼїв би десять спроб за десять
+   * хвилин звичайного простою і поставив би всю чергу в «потребує уваги» —
+   * той самий шум, від якого межа спроб мала рятувати. Причина все одно
+   * лягає на рядок: оператор бачить, ЧОМУ стоїть.
+   */
+  release(ids: string[], reason: string, transient?: boolean): Promise<void>;
   /**
    * Зняти координату з черги без відправлення.
    *
@@ -337,11 +345,17 @@ async function flushLane<T extends AvailabilityChange | RateChange>(
   // ніколи, а журнал казатиме «слали».
   const attemptsOf = new Map<string, number>();
   const delivered = new Set<string>();
-  const failedFor = new Map<string, string>();
+  const failedFor = new Map<string, { reason: string; transient: boolean }>();
   for (const r of resolved) for (const id of r.ids) attemptsOf.set(id, Math.max(attemptsOf.get(id) ?? 0, r.attempts));
 
-  const fail = (items: Resolved<T>[], reason: string): void => {
-    for (const r of items) for (const id of r.ids) failedFor.set(id, reason);
+  // Невдача рядка перекриває невдачу проходу: якщо одна пачка рядка впала
+  // на мережі, а інша відхилена вендором, рахується відхилення.
+  const fail = (items: Resolved<T>[], reason: string, transient = false): void => {
+    for (const r of items) for (const id of r.ids) {
+      const prior = failedFor.get(id);
+      if (prior && !prior.transient && transient) continue;
+      failedFor.set(id, { reason, transient });
+    }
   };
 
   for (const batch of intoBatches(resolved, max, sizeOf as (v: T) => number)) {
@@ -368,7 +382,9 @@ async function flushLane<T extends AvailabilityChange | RateChange>(
       }
     } catch (e: any) {
       // Найважливіший рядок у всьому файлі — див. правило 1 у шапці.
-      fail(batch, String(e?.message ?? e));
+      // `transient` ставить адаптер: він один знає, що 429 і пауза — про
+      // прохід, а 422 — про значення.
+      fail(batch, String(e?.message ?? e), e?.transient === true);
     }
     report.calls++;
   }
@@ -382,14 +398,22 @@ async function flushLane<T extends AvailabilityChange | RateChange>(
   // Звільнення — один раз на рядок, по одній причині на групу. Стається
   // ЗАВЖДИ, навіть для вичерпаних: саме воно робить рядок видимим як
   // застряглий (черга перестає роздавати за лічильником, не за захопленням).
-  const byReason = new Map<string, string[]>();
-  for (const [id, reason] of failedFor) byReason.set(reason, [...(byReason.get(reason) ?? []), id]);
-  for (const [reason, ids] of byReason) {
-    await deps.release(ids, reason);
+  const byReason = new Map<string, { reason: string; transient: boolean; ids: string[] }>();
+  for (const [id, f] of failedFor) {
+    const key = `${f.transient ? 't' : 'r'}|${f.reason}`;
+    const group = byReason.get(key) ?? { reason: f.reason, transient: f.transient, ids: [] };
+    group.ids.push(id);
+    byReason.set(key, group);
+  }
+  for (const { reason, transient, ids } of byReason.values()) {
+    await deps.release(ids, reason, transient);
     report.failed += ids.length;
     report.errors.push(`${kind}: ${reason}`);
   }
-  const exhausted = [...failedFor.keys()].filter((id) => (attemptsOf.get(id) ?? 0) + 1 >= maxAttempts);
+  // «Потребує уваги» — лише за невдачі САМОГО рядка: транспортна не рахує спроб.
+  const exhausted = [...failedFor]
+    .filter(([id, f]) => !f.transient && (attemptsOf.get(id) ?? 0) + 1 >= maxAttempts)
+    .map(([id]) => id);
   if (exhausted.length) {
     report.needsAttention += exhausted.length;
     report.errors.push(

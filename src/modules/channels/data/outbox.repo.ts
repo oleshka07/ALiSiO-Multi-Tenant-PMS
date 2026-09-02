@@ -336,18 +336,21 @@ export async function markSent(ids: string[]): Promise<void> {
  * не поїде, черга виглядає порожньою, і ніхто про це не дізнається. Лічильник
  * спроб — щоб вічний цикл було видно числом, а не здогадом.
  */
-export async function releaseFailed(ids: string[], reason: string): Promise<void> {
+export async function releaseFailed(ids: string[], reason: string, transient = false): Promise<void> {
   if (ids.length === 0) return;
   const organizationId = currentOrganizationId();
   if (!organizationId) throw new Error('cm_outbox: write without a tenant');
 
+  // Транспортна невдача (простій, 429, пауза) — причина проходу, не рядка:
+  // лічильник стоїть, інакше десять хвилин простою ставлять чергу в «потребує
+  // уваги». Причина лягає однаково — оператор бачить, чому стоїть.
   const sql = getSql();
   const holes = ids.map(() => '?').join(', ');
   await sql.run(
     `UPDATE cm_outbox
-        SET claimed_at = NULL, attempts = attempts + 1, last_error = ?
+        SET claimed_at = NULL, attempts = attempts + ?, last_error = ?
       WHERE id IN (${holes}) AND organization_id = ? AND sent_at IS NULL`,
-    [reason.slice(0, 500), ...ids, organizationId],
+    [transient ? 0 : 1, reason.slice(0, 500), ...ids, organizationId],
   );
 }
 

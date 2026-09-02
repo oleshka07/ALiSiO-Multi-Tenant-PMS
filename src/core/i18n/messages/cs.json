@@ -2803,5 +2803,22 @@
   "Як рахувати": "Jak počítat",
   "Без номера": "Bez pokoje",
   "Номер не призначено — натисніть, щоб обрати": "Pokoj není přidělen — klikněte pro výběr",
-  "Призначити номер": "Přidělit pokoj"
+  "Призначити номер": "Přidělit pokoj",
+  "Повернуто в чергу": "Vráceno do fronty",
+  "Не вдалося повернути в чергу": "Nepodařilo se vrátit do fronty",
+  "Черга менеджера каналів": "Fronta channel manageru",
+  "Наявність і ціни, які чекають відправлення, і те, що застрягло": "Dostupnost a ceny čekající na odeslání a to, co uvízlo",
+  "увімкнено": "zapnuto",
+  "вимкнено": "vypnuto",
+  "каталог ще не заведено": "katalog ještě nebyl založen",
+  "Чекає відправлення": "Čeká na odeslání",
+  "Потребує уваги": "Vyžaduje pozornost",
+  "Повернути в чергу": "Vrátit do fronty",
+  "Що": "Co",
+  "Тариф": "Tarif",
+  "Ночі": "Noci",
+  "Спроб": "Pokusů",
+  "Остання причина": "Poslední důvod",
+  "наявність": "dostupnost",
+  "ціна": "cena"
 }

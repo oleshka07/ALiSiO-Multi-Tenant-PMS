@@ -224,6 +224,15 @@ jobs:
           GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO alisio_app;
           SQL
 
+      - name: queue and transaction checks on the pool
+        # Two breaks were green on SQLite and red only here (INC-011): a text
+        # mark written into a TIMESTAMPTZ, and a write that slipped past the
+        # transaction's connection. SQLite has one connection and no types;
+        # the pool is the axis. Superuser, because the checks seed tenants.
+        env:
+          DATABASE_URL: postgres://alisio:ci@127.0.0.1:5432/alisio
+        run: npm run check:pg
+
       - name: a customer can be created
         # The static checks cannot see this one: the missing await was a plain
         # assignment whose result is read three lines later, and the import is

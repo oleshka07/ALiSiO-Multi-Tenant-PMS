@@ -45,7 +45,12 @@ const PROP = `${ORG}_prop`;
 const UT = `${ORG}_ut`;
 const RP = `${ORG}_rp`;
 const CONN = `${ORG}_conn`;
+const CONN2 = `${ORG}_conn2`;
 const DAY = '2027-03-10';
+const addDays = (iso: string, n: number) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+};
 
 async function cleanup() {
   await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
@@ -87,17 +92,27 @@ async function seed() {
        VALUES (?, ?, ?, 'channex', 'staging', ?, ?, TRUE, ?)`,
       [CONN, ORG, PROP, `tok_${ORG}`, `sec_${ORG}`, 'remote-prop'],
     );
+    // Друге зʼєднання того ж обʼєкта — для сцени про бюджет: ліміт ключується
+    // зʼєднанням, і вичерпаний бюджет першого не має зачепити решту сцен.
+    await sql.run(
+      `INSERT INTO cm_connections (id, organization_id, property_id, provider, environment,
+                                   webhook_token, webhook_secret, is_enabled, remote_property_id)
+       VALUES (?, ?, ?, 'channex', 'production', ?, ?, TRUE, ?)`,
+      [CONN2, ORG, PROP, `tok2_${ORG}`, `sec2_${ORG}`, 'remote-prop'],
+    );
     const mirror = [
       ['unit_type', UT, '', 0, 'remote-ut'],
       ['rate_plan', RP, UT, 0, 'remote-rp'],
       ['rate_plan_option', RP, UT, 2, 'remote-rp'],
     ];
-    for (const [entityType, localId, unitTypeId, occupancy, remoteId] of mirror) {
-      await sql.run(
-        `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, occupancy, remote_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [`${ORG}_m_${entityType}_${occupancy}`, ORG, CONN, entityType, localId, unitTypeId, occupancy, remoteId],
-      );
+    for (const conn of [CONN, CONN2]) {
+      for (const [entityType, localId, unitTypeId, occupancy, remoteId] of mirror) {
+        await sql.run(
+          `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, occupancy, remote_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [`${conn}_m_${entityType}_${occupancy}`, ORG, conn, entityType, localId, unitTypeId, occupancy, remoteId],
+        );
+      }
     }
   });
 }
@@ -145,7 +160,7 @@ try {
 
       const back = await queuedChanges(CONN);
       assert.strictEqual(back.length, 1, 'координата не повернулась у чергу — вона не поїде НІКОЛИ');
-      assert.strictEqual(back[0].attempts, 1, 'спроба не порахована — вічне коло не видно числом');
+      assert.strictEqual(back[0].attempts, 0, '429 — причина проходу, не рядка: спроба НЕ рахується, інакше простій вендора ставить чергу в «потребує уваги»');
       assert.match(String(back[0].lastError), /429/, 'причина мусить бути поруч із рядком, а не в журналі сервера');
       assert.match(String(back[0].lastError), /http_too_many_requests/,
         'код вендора мав дійти до рядка: саме він відрізняє «забагато» від «впав»');
@@ -163,7 +178,7 @@ try {
       assert.strictEqual(report.failed, 1, 'відмова обмежувача — це теж «не поїхало», а не тиша');
       const back = await queuedChanges(CONN);
       assert.strictEqual(back.length, 1);
-      assert.strictEqual(back[0].attempts, 2, 'відмова обмежувача теж рахується — інакше пауза стає вічністю без лічильника');
+      assert.strictEqual(back[0].attempts, 0, 'відмова власного обмежувача — теж причина проходу: лічильник стоїть, причина на рядку');
       console.log('  ok  обʼєкт на паузі: у мережу не йде, координата лишається й рахує спробу');
     }
 
@@ -176,6 +191,7 @@ try {
       const back = await queuedChanges(CONN);
       assert.strictEqual(back.length, 1, 'після 200 з warnings координата мала лишитись у черзі');
       assert.match(String(back[0].lastError), /claim|must be greater/, 'претензія вендора мала дійти до рядка');
+      assert.strictEqual(back[0].attempts, 1, 'претензія до ЗНАЧЕННЯ — це спроба рядка, вона рахується');
       console.log('  ok  200 OK з warnings — координата назад, претензія на рядку (И4)');
     }
 
@@ -213,6 +229,35 @@ try {
       assert.strictEqual(rates.body.values[0].stop_sell, true, 'ціни немає — ніч закрита, не пропущена (И2)');
       assert.ok(!('rates' in rates.body.values[0]), 'у закриту ніч ціна не пишеться — навіть нуль');
       console.log('  ok  чистий 200: обидві смуги поїхали, тіла адресовані дзеркалом, черга порожня');
+    }
+
+    // ── 6. Бюджетом обʼєкта володіє ОБʼЄКТ, не прохід ──────────────────────
+    //
+    // Рецензія 01.09.2026: обмежувач жив у клієнті одного проходу, тож
+    // ручний «повторити» і черговий прохід крона в одну хвилину зʼїли б
+    // бюджет обʼєкта разом і не помітили б. Тому обмежувач — один на процес,
+    // ключований зʼєднанням: одинадцятий виклик за хвилину відмовляється
+    // незалежно від того, котрий прохід його зробив. Транспорт тут відповідає
+    // лише успіхом — відмовити має НАШ обмежувач, а не вендор.
+    {
+      const t = transport([]);
+      let sent = 0;
+      let refused = 0;
+      for (let i = 1; i <= 11; i++) {
+        await enqueueChange(sql, CONN2, { kind: 'availability', unitTypeId: UT, date: addDays(DAY, 30 + i) });
+        const report = await ariFlush(CONN2, 'key', { client: { fetch: t.fetch } });
+        sent += report.sent;
+        refused += report.failed;
+      }
+      assert.strictEqual(t.calls.length, 10,
+        `одинадцять проходів за хвилину зробили ${t.calls.length} викликів — бюджет обʼєкта рахується на прохід, а не на обʼєкт`);
+      assert.strictEqual(sent, 10);
+      assert.strictEqual(refused, 1, 'одинадцятий прохід мав відмовитись сам, до мережі');
+      const left = await queuedChanges(CONN2);
+      assert.strictEqual(left.length, 1, 'відмовлена координата чекає наступної хвилини');
+      assert.match(String(left[0].lastError), /throttled|window/, 'причина — вікно обмежувача, і вона на рядку');
+      assert.strictEqual(left[0].attempts, 0, 'відмова обмежувача не рахує спроби');
+      console.log('  ok  бюджет обʼєкта один на всі проходи: одинадцятий виклик за хвилину відмовляється');
     }
   });
 } finally {

@@ -47,6 +47,27 @@ interface ICalChannel {
   } | null;
 }
 
+/** Зʼєднання з менеджером каналів і його черга — з /api/channels/connections. */
+interface CmStuck {
+  id: string;
+  kind: 'availability' | 'rate';
+  unitTypeCode: string | null;
+  ratePlanCode: string | null;
+  date: string;
+  dateTo: string | null;
+  attempts: number;
+  lastError: string | null;
+}
+interface CmConnection {
+  id: string;
+  provider: string;
+  environment: string;
+  isEnabled: boolean;
+  remotePropertyId: string | null;
+  pending: number;
+  stuck: CmStuck[];
+}
+
 interface BookingSource {
   id: string;
   name: string;
@@ -100,6 +121,8 @@ export default function ChannelManagerPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
   const [copiedToken, setCopiedToken] = useState('');
+  const [cmConnections, setCmConnections] = useState<CmConnection[]>([]);
+  const [retrying, setRetrying] = useState<string | null>(null);
 
   const [icalForm, setICalForm] = useState({
     channel_type: 'unit' as const,
@@ -109,19 +132,40 @@ export default function ChannelManagerPage() {
     sync_interval_minutes: 15,
   });
 
+  // ── Черга менеджера каналів ──
+
+  const retryOutbox = async (connectionId: string) => {
+    setRetrying(connectionId);
+    try {
+      const res = await fetch(`/api/channels/connections/${connectionId}/outbox`, { method: 'POST' });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error || 'retry failed');
+      setToast(`✅ ${tUi('Повернуто в чергу')}`);
+      await fetchData();
+    } catch {
+      setToast(`❌ ${tUi('Не вдалося повернути в чергу')}`);
+    } finally {
+      setRetrying(null);
+      setTimeout(() => setToast(''), 4000);
+    }
+  };
+
   // ── Data fetching ──
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [chRes, srcRes, unitRes] = await Promise.all([
+      const [chRes, srcRes, unitRes, cmRes] = await Promise.all([
         fetch('/api/ical-sync/channels'),
         fetch('/api/booking-sources'),
         fetch('/api/units'),
+        fetch('/api/channels/connections'),
       ]);
       const ch = await chRes.json();
       const src = await srcRes.json();
       const units = await unitRes.json();
+      const cm = await cmRes.json();
+      if (Array.isArray(cm)) setCmConnections(cm);
 
       if (Array.isArray(ch)) setChannels(ch);
       if (Array.isArray(src)) setSources(src);
@@ -255,6 +299,62 @@ export default function ChannelManagerPage() {
             <div className="page-subtitle">{tUi('iCal синхронізація з OTA')}</div>
           </div>
         </div>
+
+        {/* ── Менеджер каналів: черга наявності й цін ──
+            Крон розсилає щохвилини і від застряглого не червоніє (Ц14):
+            це ЄДИНЕ місце, де застрягле видно й звідки його повертають. */}
+        {cmConnections.length > 0 && (
+          <div className="card" style={{ marginBottom: 24 }}>
+            <h3 style={{ marginTop: 0, marginBottom: 4 }}>{tUi('Черга менеджера каналів')}</h3>
+            <div className="page-subtitle" style={{ marginBottom: 8 }}>{tUi('Наявність і ціни, які чекають відправлення, і те, що застрягло')}</div>
+            {cmConnections.map((c) => (
+              <div key={c.id} style={{ borderTop: '1px solid var(--border-color)', paddingTop: 12, marginTop: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div>
+                    <strong>{c.provider}</strong> · {c.environment} · {c.isEnabled ? tUi('увімкнено') : tUi('вимкнено')}
+                    {!c.remotePropertyId && <span style={{ color: 'var(--accent-warning)' }}> · {tUi('каталог ще не заведено')}</span>}
+                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                      {tUi('Чекає відправлення')}: {c.pending} · {tUi('Потребує уваги')}: {c.stuck.length}
+                    </div>
+                  </div>
+                  {c.stuck.length > 0 && (
+                    <button className="btn btn-sm" disabled={retrying === c.id} onClick={() => retryOutbox(c.id)}>
+                      {retrying === c.id ? <Loader2 size={14} className="animate-pulse" /> : <RefreshCw size={14} />} {tUi('Повернути в чергу')}
+                    </button>
+                  )}
+                </div>
+                {c.stuck.length > 0 && (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="table" style={{ marginTop: 8, fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          <th>{tUi('Що')}</th>
+                          <th>{tUi('Тип номера')}</th>
+                          <th>{tUi('Тариф')}</th>
+                          <th>{tUi('Ночі')}</th>
+                          <th>{tUi('Спроб')}</th>
+                          <th>{tUi('Остання причина')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {c.stuck.map((row) => (
+                          <tr key={row.id}>
+                            <td>{row.kind === 'availability' ? tUi('наявність') : tUi('ціна')}</td>
+                            <td>{row.unitTypeCode ?? '—'}</td>
+                            <td>{row.ratePlanCode ?? '—'}</td>
+                            <td>{row.date}{row.dateTo ? ` – ${row.dateTo}` : ''}</td>
+                            <td>{row.attempts}</td>
+                            <td style={{ maxWidth: 420, wordBreak: 'break-word' }}>{row.lastError ?? '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 64 }}>

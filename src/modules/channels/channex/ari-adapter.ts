@@ -32,7 +32,7 @@
  * а перше питання завантажує весь проміжок разом. Це деталь адаптера, і
  * контракт домену від неї не залежить.
  */
-import { ChannexClient, type ChannexClientOptions, type ChannexEnvironment } from './client';
+import { ChannexClient, ChannexError, ChannexPaused, type ChannexClientOptions, type ChannexEnvironment } from './client';
 import { availabilityValues, rateValues, type IdMap, type PairMap } from './ari-payload';
 import { connectionInTenant } from '../data/connections.repo';
 import { connectionMirror } from '../data/mappings.repo';
@@ -65,6 +65,17 @@ export interface AriFlushOptions {
    * без жодного виклику до вендора. У бойовому шляху не передається.
    */
   client?: Pick<ChannexClientOptions, 'fetch' | 'baseUrl' | 'limiter' | 'sleep' | 'now' | 'maxAttempts'>;
+}
+
+/**
+ * Невдача проходу чи рядка? Домен не знає вендора, тож каже адаптер: 429,
+ * 5xx, власна пауза обмежувача і мережа — про прохід (спроба рядка не
+ * рахується); 4xx з відмовою — про значення, і рахується.
+ */
+function markTransient(e: unknown): unknown {
+  const transient = e instanceof ChannexPaused || !(e instanceof ChannexError) || e.retryable;
+  if (e && typeof e === 'object') (e as { transient?: boolean }).transient = transient;
+  return e;
 }
 
 /** Ціле в мінорних одиницях, без `* 100`: `1.005 * 100` це 100.49999999999999. */
@@ -171,18 +182,22 @@ export async function ariFlush(
     },
 
     send: async (kind, values) => {
-      if (kind === 'availability') {
-        const body = availabilityValues(remotePropertyId, values as AvailabilityChange[], unitTypes);
-        const answer = await client.publishAvailability(connectionId, body.values);
+      try {
+        if (kind === 'availability') {
+          const body = availabilityValues(remotePropertyId, values as AvailabilityChange[], unitTypes);
+          const answer = await client.publishAvailability(connectionId, body.values);
+          return { warnings: answer.warnings, unmapped: body.unmapped };
+        }
+        const body = rateValues(remotePropertyId, values as RateChange[], ratePlans);
+        const answer = await client.publishRestrictions(connectionId, body.values);
         return { warnings: answer.warnings, unmapped: body.unmapped };
+      } catch (e) {
+        throw markTransient(e);
       }
-      const body = rateValues(remotePropertyId, values as RateChange[], ratePlans);
-      const answer = await client.publishRestrictions(connectionId, body.values);
-      return { warnings: answer.warnings, unmapped: body.unmapped };
     },
 
     markSent: (ids) => markSent(ids),
-    release: (ids, reason) => releaseFailed(ids, reason),
+    release: (ids, reason, transient) => releaseFailed(ids, reason, transient),
     retire: (ids, reason) => retireChanges(ids, reason),
   };
 

@@ -43,7 +43,7 @@ import '../../../../scripts/lib/module-aliases.mjs';
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
-const { enqueueChange, claimBatch, markSent, releaseFailed, pendingCount, stuckChanges, retryStuck, retireChanges } =
+const { enqueueChange, claimBatch, markSent, releaseFailed, pendingCount, queuedChanges, stuckChanges, retryStuck, retireChanges } =
   await import('./outbox.repo.ts');
 
 const sql = getSql();
@@ -172,10 +172,15 @@ try {
     assert.strictEqual(batch.length, 1);
     await releaseFailed(batch.map((r) => r.id), 'канал відповів 500');
 
+    // Причина видна, поки рядок чекає; захоплення її стирає (рядок у польоті).
+    // Перша версія перевіряла `String(again[0].lastError).length > 0` ПІСЛЯ
+    // захоплення — і була зеленою на `String(null)`: вироджене твердження.
+    const waiting = (await queuedChanges(CONN)).find((r) => r.kind === 'availability');
+    assert.match(String(waiting?.lastError), /500/, 'причина невдачі не названа');
     const again = await claimBatch(CONN, 'availability', 50);
     assert.strictEqual(again.length, 1, 'невдалий рядок не повернувся в чергу — зміна загублена');
     assert.strictEqual(Number(again[0].attempts), 1, 'спроби не рахуються — вічний цикл не видно');
-    assert.ok(String(again[0].lastError).length > 0, 'причина невдачі не названа');
+    assert.strictEqual(again[0].lastError, null, 'захоплений рядок причини не несе — вона належала минулій спробі');
     console.log('  ok  невдала відправка повертає рядок і рахує спробу');
   });
 
@@ -311,6 +316,25 @@ try {
       () => enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'utR', ratePlanId: 'rpR', date: '2027-02-01', dateTo: '2027-01-01' }),
       'кінець раніше за початок ліг у чергу — такий рядок не розкладеться на жодну дату й не поїде ніколи');
     console.log('  ok  діапазон — один рядок, кінець доходить до батчера, навиворіт не лягає');
+  });
+
+  // ── Транспортна невдача не рахує спроби ────────────────────────────────
+  await runWithOrganization(A, async () => {
+    await enqueueChange(sql, CONN, { kind: 'availability', unitTypeId: 'utT', date: '2027-04-01' });
+    const b = await claimBatch(CONN, 'availability', 50);
+    await releaseFailed(b.map((r) => r.id), 'throttled: window', true);
+    // Причина читається, поки рядок ЧЕКАЄ: захоплення її стирає, бо рядок
+    // уже в польоті з новою спробою.
+    const waiting = (await queuedChanges(CONN)).find((r) => r.unitTypeId === 'utT');
+    assert.match(String(waiting?.lastError), /throttled/, 'а причина все одно лягає на рядок — оператор бачить, ЧОМУ стоїть');
+    const again = await claimBatch(CONN, 'availability', 50);
+    assert.strictEqual(again.length, 1);
+    assert.strictEqual(again[0].attempts, 0, 'простій чи пауза — причина проходу, не рядка: лічильник не рухається');
+    await releaseFailed(again.map((r) => r.id), 'validation: rate must be > 0');
+    const third = await claimBatch(CONN, 'availability', 50);
+    assert.strictEqual(third[0].attempts, 1, 'відповідь вендора про значення — спроба рядка');
+    await markSent(third.map((r) => r.id));
+    console.log('  ok  транспортна невдача лишає лічильник, претензія вендора рахує');
   });
 } finally {
   await cleanup();

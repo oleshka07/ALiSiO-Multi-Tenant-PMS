@@ -34,7 +34,7 @@ const DAY = '2026-11-10';
 function queue(rows: { id: string; kind: 'availability' | 'rate'; unitTypeId?: string; ratePlanId?: string; date: string; dateTo?: string; attempts?: number }[]) {
   const claimed = new Set<string>();
   const sent = new Set<string>();
-  const released: { ids: string[]; reason: string }[] = [];
+  const released: { ids: string[]; reason: string; transient: boolean }[] = [];
   return {
     released,
     /** Координата вільна, якщо вона не відправлена і не захоплена. */
@@ -47,9 +47,9 @@ function queue(rows: { id: string; kind: 'availability' | 'rate'; unitTypeId?: s
         return take.map((r) => ({ ...r }));
       },
       markSent: async (ids: string[]) => { for (const id of ids) sent.add(id); },
-      release: async (ids: string[], reason: string) => {
+      release: async (ids: string[], reason: string, transient = false) => {
         for (const id of ids) claimed.delete(id);
-        released.push({ ids, reason });
+        released.push({ ids, reason, transient });
       },
     },
   };
@@ -515,5 +515,40 @@ console.log('  ok  вісь пари: один тариф на двох типа
   assert.strictEqual(q.released.length, 1, 'звільнення — один раз на рядок, не на пачку');
 }
 console.log('  ok  діапазон розкладається по датах, обрізається сьогоднішнім днем, і їде лише цілим');
+
+// ── 13. Транспортна невдача — про прохід, не про рядок: спроба не рахується ──
+//
+// Межа спроб (Ц14) існує, щоб координата, яка падає СВОЄЮ причиною
+// (незмаплена, відхилена вендором), стала видимою. Простій вендора, 429 і
+// власна пауза обмежувача — причини проходу: крон раз на хвилину зʼїв би
+// десять спроб за десять хвилин звичайного простою і поставив би ВСЮ чергу
+// в «потребує уваги» — той самий шум, від якого межа мала рятувати. Тому
+// адаптер позначає такі помилки `transient`, домен звільняє рядок без
+// лічильника, і «уваги» з них не буває.
+{
+  const q = queue([{ id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: DAY, attempts: 9 }]);
+  const report = await flushOutbox(base({
+    ...q.deps,
+    maxAttempts: 10,
+    send: async () => { throw Object.assign(new Error('vendor 429 too many requests'), { transient: true }); },
+  }));
+  assert.deepStrictEqual(q.free(), ['r1'], 'координата має повернутись у чергу');
+  assert.strictEqual(q.released[0]?.transient, true, 'звільнення мусить сказати черзі, що спробу НЕ рахувати');
+  assert.strictEqual(report.needsAttention, 0,
+    'простій вендора не робить координату «потребує уваги» — межа спроб про рядок, а не про прохід');
+  assert.strictEqual(report.failed, 1, 'але це й далі «не поїхало», а не тиша');
+}
+{
+  // А відповідь ВЕНДОРА про координату — рахується, як і раніше.
+  const q = queue([{ id: 'r1', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: DAY, attempts: 9 }]);
+  const report = await flushOutbox(base({
+    ...q.deps,
+    maxAttempts: 10,
+    send: async () => ({ warnings: [{ warning: { rate: ['must be greater than 0'] } }] }),
+  }));
+  assert.strictEqual(q.released[0]?.transient, false, 'претензія вендора до значення — спроба рядка');
+  assert.strictEqual(report.needsAttention, 1, 'десята відмова вендора — «потребує уваги»');
+}
+console.log('  ok  транспортна невдача не рахує спроби; відмова вендора рахує');
 
 console.log('ari-batch: помилка звільняє чергу, ніч без ціни закривається, пачка ріжеться за розміром');

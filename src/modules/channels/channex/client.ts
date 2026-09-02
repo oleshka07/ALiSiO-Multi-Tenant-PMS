@@ -27,7 +27,7 @@
  * `fetch`, годинник і сон передаються ззовні: перевірка мусить ганяти цей
  * клієнт по-справжньому, але не спати хвилинами.
  */
-import { ChannexRateLimiter, type Lane } from './limiter';
+import { ChannexRateLimiter, sharedChannexLimiter, type Lane } from './limiter';
 import type { AriValue } from './ari-payload';
 import type { ChannexRevision } from './revision-map';
 
@@ -154,7 +154,10 @@ export class ChannexClient {
     this.apiKey = options.apiKey;
     this.baseUrl = (options.baseUrl ?? BASE_URL[options.environment ?? 'staging']).replace(/\/$/, '');
     this.doFetch = options.fetch ?? globalThis.fetch;
-    this.limiter = options.limiter ?? new ChannexRateLimiter({ now: options.now });
+    // Спільний на процес, бо бюджет належить обʼєкту, не проходу. Власний
+    // годинник (перевірки) означає власний обмежувач — інакше він не тікав би.
+    this.limiter = options.limiter
+      ?? (options.now ? new ChannexRateLimiter({ now: options.now }) : sharedChannexLimiter());
     this.sleep = options.sleep ?? defaultSleep;
     this.maxAttempts = options.maxAttempts ?? 3;
   }
