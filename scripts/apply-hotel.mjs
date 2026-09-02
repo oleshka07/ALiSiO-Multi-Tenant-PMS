@@ -862,7 +862,11 @@ async function applyStructure(organizationId, plan) {
       const expect = Number(f(q, 'expectTotal', 'expect_total', 'expect'));
       const label = `${typeCode} ×${persons} ${checkIn} на ${nights} ноч. → чекаємо ${expect}`;
       if (!ut) { say.refused(label, 'типу немає'); continue; }
-      const quote = await priceNights({ unitTypeId: ut.id, checkIn, nights, persons });
+      // Матрицю адресують ДОРОСЛІ (Ц12); `persons` у приймальній перевірці файлу
+      // — це вони й є: дітей у цих котируваннях немає. Ключ `persons` тут
+      // пережив перейменування параметра й три тижні давав «неоцінені ночі»
+      // на кожному пуші — бачила це лише задача CI на Postgres.
+      const quote = await priceNights({ unitTypeId: ut.id, checkIn, nights, adults: persons });
       if (quote.missing.length) {
         say.refused(label, `неоцінені ночі: ${quote.missing.join(', ')}`);
         continue;

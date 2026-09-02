@@ -126,6 +126,13 @@ export async function priceNights(input: {
 }): Promise<NightlyPrices> {
   const sql = getSql();
   const { unitTypeId, checkIn, nights, adults, children = 0, ratePlanId = null } = input;
+  // Без `adults` матрицю нема чим адресувати — і це відмова з назвою, не тихе
+  // «неоцінені ночі». Викликач на JavaScript (скрипт заведення готелю) після
+  // перейменування `persons` → `adults` (Ц12) три тижні передавав старий ключ,
+  // і котирування мовчки віддавало кожну ніч як `missing` (02.09.2026).
+  if (typeof adults !== 'number' || Number.isNaN(adults)) {
+    throw new Error('priceNights: adults is required — the matrix is addressed by adults (Ц12)');
+  }
   if (nights <= 0) return { nights: [], missing: [], total: 0, occupancyPriced: false, closed: [], restrictions: OPEN_STAY };
 
   const checkOut = addDays(checkIn, nights);

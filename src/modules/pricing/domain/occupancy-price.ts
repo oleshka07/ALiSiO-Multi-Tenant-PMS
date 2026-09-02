@@ -117,6 +117,12 @@ export function quoteStay(input: {
   matrix: readonly PriceRow[];
   losTiers?: readonly LosTier[];
 }): Quote {
+  // Без `adults` матрицю нема чим адресувати — відмова з назвою, не тихий
+  // `missing` на кожну ніч: JS-викликачі (скрипти) після перейменування
+  // `persons` → `adults` (Ц12) три тижні передавали старий ключ (02.09.2026).
+  if (typeof input.adults !== 'number' || Number.isNaN(input.adults)) {
+    throw new Error('quoteStay: adults is required — the matrix is addressed by adults (Ц12)');
+  }
   const nights: NightPrice[] = [];
   const missing: string[] = [];
   const children = Math.max(0, Math.trunc(input.children ?? 0));

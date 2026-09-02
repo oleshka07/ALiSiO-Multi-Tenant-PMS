@@ -256,8 +256,11 @@ async function seedOne(plan) {
         const pool = typeQueue[(cursor + step) % typeQueue.length];
         const type = pool[0];
         if (Number(type.max_occupancy) < slot.persons) continue;
+        // `persons` слота — це дорослі: матрицю адресують вони (Ц12). Старий
+        // ключ тут три тижні давав `missing` на кожен слот, і бета лишалась без
+        // жодного демо-проживання — деплой про це лише попереджав (02.09.2026).
         const q = quoteStay({
-          checkIn, nights: slot.nights, persons: slot.persons,
+          checkIn, nights: slot.nights, adults: slot.persons,
           unitTypeId: type.unit_type_id, matrix: matrix.prices, losTiers: matrix.tiers,
         });
         if (q.missing.length > 0) continue;

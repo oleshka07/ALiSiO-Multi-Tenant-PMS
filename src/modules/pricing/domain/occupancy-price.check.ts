@@ -292,3 +292,17 @@ assert.strictEqual(
 console.log('  ok  знижка за тривалість тримається дорослих, а не голів');
 
 console.log('occupancy-price: заселеність міняє ціну, ніколи не категорію');
+
+// ── Викликач без `adults` — відмова з назвою, не порожнє котирування ─────
+//
+// 02.09.2026: два скрипти на JavaScript (`apply-hotel.mjs`, `seed-demo-stays.mjs`)
+// після перейменування `persons` → `adults` (Ц12) три тижні передавали старий
+// ключ; `quoteStay` мовчки віддавав кожну ніч як `missing`. Компілятор JS не
+// читає, тож відмовляти мусить сама функція (інваріант 13).
+assert.throws(
+  () => quoteStay({ checkIn: '2026-06-01', nights: 1, persons: 2, unitTypeId: 'x', matrix: [], losTiers: [] } as any),
+  /adults/,
+  'без `adults` котирування мусить відмовити, назвавши поле',
+);
+console.log('  ok  виклик без adults відмовляє з назвою поля');
+
