@@ -276,6 +276,37 @@ export class ChannexClient {
     }));
   }
 
+  /**
+   * Календар обʼєкта назад — для звірки (П6, ari.md «Get Availability Or
+   * Restrictions Per Rate Plan»).
+   *
+   * Ключ верхнього рівня — ідентифікатор ОПЦІЇ ЗАСЕЛЕНОСТІ, не тарифу
+   * (INVENTORY §4.5, И13); ідентифікатор тарифу адресує лише основну
+   * заселеність. Наявність лежить у тій самій відповіді, спільна для всіх
+   * опцій типу. `filter[property_id]` обовʼязковий — це межа орендаря в
+   * рядку запиту, як у стрічки (И11). Читання не витрачає бюджет ARI:
+   * ліміт вендора — на повідомлення, і `take` тут не кличеться.
+   *
+   * Повертається сира мапа `data[option][date] = { … }`: чужі імена полів
+   * тлумачить адаптер, і лише він (И1).
+   */
+  async readRestrictions(
+    apiKey: string,
+    remotePropertyId: string,
+    from: string,
+    to: string,
+  ): Promise<Record<string, Record<string, Record<string, unknown>>>> {
+    const fields = 'availability,rate,stop_sell,min_stay_arrival,min_stay_through,max_stay,closed_to_arrival,closed_to_departure';
+    const payload = await this.requestAs(apiKey, 'GET',
+      `/restrictions?filter[property_id]=${encodeURIComponent(remotePropertyId)}`
+      + `&filter[date][gte]=${encodeURIComponent(from)}&filter[date][lte]=${encodeURIComponent(to)}`
+      + `&filter[restrictions]=${fields}`);
+    const data = payload.data;
+    return data && typeof data === 'object' && !Array.isArray(data)
+      ? (data as Record<string, Record<string, Record<string, unknown>>>)
+      : {};
+  }
+
   // ── Вебхуки обʼєкта (webhook-collection.md) ─────────────────────────────
   //
   // Усі ходять через `call(key, …)`: бюджет обʼєкта один (И10), а реєстрація

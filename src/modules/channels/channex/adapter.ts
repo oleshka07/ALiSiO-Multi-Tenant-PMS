@@ -4,6 +4,7 @@ import { catalogSync } from './catalog-adapter';
 import { ariFlush } from './ari-adapter';
 import { probeKey, frameUrl, reconcile } from './connect-adapter';
 import { ensureWebhook, rotateWebhookSecret, removeWebhook, testWebhook, classifyEvent } from './webhook-adapter';
+import { verifySends } from './verify-adapter';
 
 /**
  * Усе, що цей вендор уміє, — одним записом для шва композиції.
@@ -25,4 +26,5 @@ export const channexAdapter: ProviderAdapter = {
   removeWebhook: (connectionId, apiKey) => removeWebhook(connectionId, apiKey),
   testWebhook: (connectionId, apiKey) => testWebhook(connectionId, apiKey),
   classifyEvent,
+  verify: (connectionId, apiKey, options) => verifySends(connectionId, apiKey, options),
 };

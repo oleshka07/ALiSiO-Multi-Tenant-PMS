@@ -90,7 +90,8 @@ const sql = getSql();
 const { percentOf } = await import('@core/money');
 const {
   channelConnection, connectionMirror, flushConnectionOutboxFor,
-  enqueueChannelChange, pendingChannelChanges, queuedChannelChanges, stuckChannelChanges, recentChannelSends } = await import('@channels');
+  enqueueChannelChange, pendingChannelChanges, queuedChannelChanges, stuckChannelChanges, recentChannelSends,
+  verifyConnectionSendsFor } = await import('@channels');
 // Інваріант 28: кожна жива відповідь лягає зразком у docs/vendor/channex/live/.
 const { recordVendorResponses } = await import('@channels');
 recordVendorResponses(sampleRecorder());
@@ -239,6 +240,44 @@ await runWithOrganization(organizationId, async () => {
     console.log(`\nРОЗПИСКИ (цей прохід ${thisPass.length}): ${thisPass.filter((r) => r.receipt).length} з розпискою`);
     for (const r of sent.slice(0, 6)) console.log(`  ${String(r.sentAt).slice(0, 19)} ${r.kind} ${r.date}${r.dateTo ? '–' + r.dateTo : ''} → ${r.receipt ?? '—'}`);
     if (thisPass.some((r) => !r.receipt)) { console.log('  ! відправлене без розписки — задачу вендора нема чим назвати'); process.exitCode = 1; }
+
+    // П6 частина 2: звірка ДВЕРИМА модуля — те саме, що робить кнопка «Звірити
+    // з каналом». Без вікна застосування: прохід вище вже дочекався збігу сам.
+    // Читання йде через клієнт, тож зразок `GET /restrictions` лягає в
+    // docs/vendor/channex/live/ (інваріант 28); сира звірка вище лишається —
+    // вона бачить відповідь, а не наше тлумачення.
+    const showVerification = (v, label) => {
+      const unverified = v.unverified.map((u) => `${u.field}×${u.count}`).join(', ') || '—';
+      console.log(`\n${label} (${v.window ? `${v.window.from}…${v.window.to}` : 'нема чого'}): порівняно ${v.checked}, `
+        + `збігається ${v.matched}, розбіжностей ${v.mismatches.length}, повернуто в чергу ${v.requeued}, не звірено ${unverified}`);
+      for (const m of v.mismatches.slice(0, 8)) {
+        console.log(`  ! ${m.date} ${m.ratePlanId ?? ''}×${codeOf.get(m.unitTypeId) ?? m.unitTypeId} occ${m.occupancy ?? '-'} ${m.field}: ${m.ours} ≠ ${m.theirs}`);
+      }
+    };
+    const inPass = (m) => m.date >= FROM && m.date <= TO;
+    let v = await verifyConnectionSendsFor(connectionId, { minAgeSeconds: 0 });
+    showVerification(v, 'ЗВІРКА ДВЕРИМА');
+    // Вікно ЦЬОГО проходу мусить збігтись — сира звірка вище щойно це бачила.
+    if (v.checked === 0 || v.mismatches.some(inPass)) { console.log('  ! звірка дверима розійшлась із сирою у вікні проходу'); process.exitCode = 1; }
+    // Поза вікном — дрейф давніших відправлень (проба 429 слала на місяць
+    // уперед, зсув і ціни відтоді змінились). Це не провал проходу, а те, для
+    // чого звірка існує: координати вже повернуто в чергу — доганяємо їх ще
+    // одним проходом і перезвіряємо. Коло має замкнутись: розбіжність → черга
+    // → відправлення → збіг.
+    // Два кола, не одне: нуль наявності на тому боці панує над прапорцем
+    // (живе 02.09.2026), тож перше коло везе наявність, друге — прапорець.
+    for (let round = 1; v.requeued > 0 && round <= 2; round++) {
+      const again = await flushConnectionOutboxFor(connectionId);
+      console.log(`\nДОГАНЯЮЧИЙ ПРОХІД ${round}: відправлено ${again.sent}, повернуто ${again.failed}, викликів ${again.calls}${again.errors.length ? `  → ${again.errors.join(' | ').slice(0, 160)}` : ''}`);
+      for (let attempt = 0; attempt < 12; attempt++) {
+        await sleep(attempt === 0 ? 1500 : 2500);
+        v = await verifyConnectionSendsFor(connectionId, { minAgeSeconds: 0 });
+        if (v.mismatches.length === 0) break;
+      }
+      showVerification(v, `ПЕРЕЗВІРКА ${round}`);
+      if (v.mismatches.length === 0 && v.requeued === 0) { console.log('  ✓ коло замкнулось: розбіжність → черга → відправлення → збіг'); break; }
+      if (round === 2) { console.log('  ! коло не замкнулось: після двох доганяючих проходів лишились розбіжності'); process.exitCode = 1; }
+    }
     console.log('\nВЕРДИКТ:');
     console.log(`  1. ціна лягла:        ${verdict.rateOk} з ${verdict.rateAll}${verdict.rateMiss ? '   ← РОЗБІЖНІСТЬ' : ''}`);
     console.log(`  2. stop_sell знявся:  ${verdict.openOk} з ${verdict.openAll}${verdict.openMiss ? '   ← ЛИПКИЙ ПРАПОРЕЦЬ (И14)' : ''}`);

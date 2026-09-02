@@ -37,7 +37,7 @@ import { availabilityValues, rateValues, type IdMap, type PairMap } from './ari-
 import { connectionInTenant } from '../data/connections.repo';
 import { connectionMirror } from '../data/mappings.repo';
 import { claimBatch, markSent, releaseFailed, retireChanges } from '../data/outbox.repo';
-import { DEFAULT_MAX_ATTEMPTS, flushOutbox, type FlushDeps, type FlushReport } from '../domain/ari-batch.ts';
+import { DEFAULT_MAX_ATTEMPTS, flushOutbox, type FlushDeps, type FlushReport, type NightSources } from '../domain/ari-batch.ts';
 import type { AvailabilityChange, RateChange } from '../port';
 import { availabilityByDay } from '@properties';
 import { priceNights, dayRestrictions, type DayRestrictions } from '@pricing';
@@ -79,7 +79,7 @@ function markTransient(e: unknown): unknown {
 }
 
 /** Ціле в мінорних одиницях, без `* 100`: `1.005 * 100` це 100.49999999999999. */
-function minorOf(major: number): number {
+export function minorOf(major: number): number {
   return money(Number(`${money(major)}e2`), 0);
 }
 
@@ -88,19 +88,35 @@ function nextDay(date: string): string {
   return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
 }
 
-export async function ariFlush(
-  connectionId: string,
-  apiKey: string,
-  options: AriFlushOptions = {},
-): Promise<FlushReport> {
+export const pairKey = (ratePlanId: string, unitTypeId: string) => `${ratePlanId}|${unitTypeId}`;
+
+/**
+ * Дзеркало одного зʼєднання, прочитане для роботи: адресати обох смуг і
+ * заселеності, які існують на тому боці. Спільне для розсилки й звірки (П6):
+ * звірка мусить бачити ті самі опції, що й відправлення, — інакше вона
+ * порівнювала б із тим, чого ніхто не слав.
+ */
+export interface MirrorContext {
+  connection: NonNullable<Awaited<ReturnType<typeof connectionInTenant>>>;
+  remotePropertyId: string;
+  propertyId: string;
+  /** Наш тип → їхній. */
+  unitTypes: IdMap;
+  mirroredUnitTypeIds: string[];
+  /** Наша пара тип × тариф → їхній тариф (Ц10). */
+  ratePlans: PairMap;
+  /** Пара → заселеності, які існують на тому боці (И13). */
+  occupancies: Map<string, number[]>;
+  /** Опції заселеності того боку — ключі їхнього календаря (И13). */
+  options: { remoteId: string; ratePlanId: string; unitTypeId: string; occupancy: number }[];
+}
+
+export async function mirrorContext(connectionId: string): Promise<MirrorContext> {
   const connection = await connectionInTenant(connectionId);
   if (!connection) throw new Error('connection not found');
   // Без обʼєкта на тому боці адресувати нема куди — це шов із фазою 3, який
   // уже раз був порожнім (див. catalog-sync.check.ts), тому відмова, не пропуск.
   if (!connection.remotePropertyId) throw new Error('catalog not synced: the connection has no remote property yet');
-  const remotePropertyId = connection.remotePropertyId;
-  const propertyId = connection.propertyId;
-  const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
 
   // ── Дзеркало: наше → їхнє ──────────────────────────────────────────────
   const mirror = await connectionMirror(connectionId);
@@ -108,7 +124,6 @@ export async function ariFlush(
     mirror.filter((m) => m.entityType === 'unit_type').map((m) => [m.localId, m.remoteId]),
   );
   const mirroredUnitTypeIds = [...new Set(mirror.filter((m) => m.entityType === 'unit_type').map((m) => m.localId))];
-  const pairKey = (ratePlanId: string, unitTypeId: string) => `${ratePlanId}|${unitTypeId}`;
   const pairs = new Map(
     mirror.filter((m) => m.entityType === 'rate_plan').map((m) => [pairKey(m.localId, m.unitTypeId), m.remoteId]),
   );
@@ -116,49 +131,35 @@ export async function ariFlush(
   // Заселеності, які ІСНУЮТЬ на тому боці (И13): саме їх і цінуємо. Опція, якої
   // там немає, ціни не отримає; ціна, якої там не чекають, лягла б у нікуди.
   const occupancies = new Map<string, number[]>();
+  const options: MirrorContext['options'] = [];
   for (const m of mirror) {
     if (m.entityType !== 'rate_plan_option' || m.occupancy <= 0) continue;
     const key = pairKey(m.localId, m.unitTypeId);
     occupancies.set(key, [...(occupancies.get(key) ?? []), m.occupancy]);
+    options.push({ remoteId: m.remoteId, ratePlanId: m.localId, unitTypeId: m.unitTypeId, occupancy: m.occupancy });
   }
+  return {
+    connection, remotePropertyId: connection.remotePropertyId, propertyId: connection.propertyId,
+    unitTypes, mirroredUnitTypeIds, ratePlans, occupancies, options,
+  };
+}
 
-  const client = new ChannexClient({
-    apiKey,
-    environment: connection.environment as ChannexEnvironment,
-    ...(options.client ?? {}),
-  });
-
-  // ── Наявність — один запит на весь проміжок захоплених дат ────────────
-  let span: { from: string; to: string } | null = null;
+/**
+ * Джерела значень ночі — наявність, ціни по заселеностях, обмеження дня — з
+ * одним читанням на проміжок. `spanOf` каже, який проміжок читати, коли
+ * перше питання прийде: розсилка знає його після захоплення, звірка — одразу.
+ */
+export function nightSources(ctx: MirrorContext, spanOf: () => { from: string; to: string } | null): NightSources {
+  const { propertyId, occupancies, mirroredUnitTypeIds } = ctx;
   let freeByType: Map<string, Map<string, number>> | null = null;
   let restrictionsByDay: Map<string, DayRestrictions> | null = null;
 
-  const deps: FlushDeps = {
-    isEnabled: async () => connection.isEnabled,
-    today: options.today,
-    maxAttempts,
-    priceModifierPercent: connection.pricingModifierPercent,
-
-    claim: async (kind) => {
-      const rows = await claimBatch(connectionId, kind, CLAIM_LIMIT, maxAttempts);
-      if (kind === 'availability' && rows.length) {
-        const starts = rows.map((r) => r.date).sort();
-        const ends = rows.map((r) => r.dateTo ?? r.date).sort();
-        span = { from: starts[0], to: ends[ends.length - 1] };
-      }
-      return rows.map((r) => ({
-        id: r.id,
-        kind: r.kind,
-        unitTypeId: r.unitTypeId ?? undefined,
-        ratePlanId: r.ratePlanId ?? undefined,
-        date: r.date,
-        dateTo: r.dateTo ?? undefined,
-        attempts: r.attempts,
-      }));
-    },
+  return {
+    priceModifierPercent: ctx.connection.pricingModifierPercent,
 
     availabilityAt: async (unitTypeId, date) => {
       if (!freeByType) {
+        const span = spanOf();
         freeByType = span
           ? await availabilityByDay(propertyId, span.from, nextDay(span.to))
           : new Map();
@@ -172,6 +173,7 @@ export async function ariFlush(
     // Обмеження дня — одним читанням на прохід, для всіх типів дзеркала (Д1/Д2).
     restrictionsAt: async (unitTypeId, date) => {
       if (!restrictionsByDay) {
+        const span = spanOf();
         restrictionsByDay = span
           ? await dayRestrictions(mirroredUnitTypeIds, span.from, span.to)
           : new Map();
@@ -191,6 +193,51 @@ export async function ariFlush(
         out.push({ occupancy: adults, priceMinor: minorOf(night.price) });
       }
       return out;
+    },
+  };
+}
+
+export async function ariFlush(
+  connectionId: string,
+  apiKey: string,
+  options: AriFlushOptions = {},
+): Promise<FlushReport> {
+  const ctx = await mirrorContext(connectionId);
+  const { connection, remotePropertyId, unitTypes, ratePlans } = ctx;
+  const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+
+  const client = new ChannexClient({
+    apiKey,
+    environment: connection.environment as ChannexEnvironment,
+    ...(options.client ?? {}),
+  });
+
+  // ── Наявність — один запит на весь проміжок захоплених дат ────────────
+  let span: { from: string; to: string } | null = null;
+  const sources = nightSources(ctx, () => span);
+
+  const deps: FlushDeps = {
+    isEnabled: async () => connection.isEnabled,
+    today: options.today,
+    maxAttempts,
+    ...sources,
+
+    claim: async (kind) => {
+      const rows = await claimBatch(connectionId, kind, CLAIM_LIMIT, maxAttempts);
+      if (kind === 'availability' && rows.length) {
+        const starts = rows.map((r) => r.date).sort();
+        const ends = rows.map((r) => r.dateTo ?? r.date).sort();
+        span = { from: starts[0], to: ends[ends.length - 1] };
+      }
+      return rows.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        unitTypeId: r.unitTypeId ?? undefined,
+        ratePlanId: r.ratePlanId ?? undefined,
+        date: r.date,
+        dateTo: r.dateTo ?? undefined,
+        attempts: r.attempts,
+      }));
     },
 
     send: async (kind, values) => {

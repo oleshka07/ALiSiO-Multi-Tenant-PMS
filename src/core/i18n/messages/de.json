@@ -2888,5 +2888,17 @@
   "Заборонено": "Verboten",
   "Останні відправлення": "Letzte Sendungen",
   "task id — розписка менеджера каналів": "task id — Quittung des Channel-Managers",
-  "Коли": "Wann"
+  "Коли": "Wann",
+  "Звірити з каналом": "Mit Kanal abgleichen",
+  "Не вдалося звірити з каналом": "Abgleich mit Kanal fehlgeschlagen",
+  "Звірка з каналом": "Abgleich mit Kanal",
+  "порівняно": "verglichen",
+  "збігається": "stimmt überein",
+  "розбіжностей": "Abweichungen",
+  "повернуто в чергу": "in die Warteschlange zurückgelegt",
+  "ще застосовуються": "werden noch übernommen",
+  "не звірено": "nicht abgeglichen",
+  "Поле": "Feld",
+  "У нас": "Bei uns",
+  "У каналі": "Im Kanal"
 }

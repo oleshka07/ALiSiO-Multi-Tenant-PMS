@@ -2,7 +2,7 @@ import { integrationCredentials } from '@core/integration-credentials';
 import { currentOrganizationId } from '@core/auth/tenant-context';
 import { connectionInTenant } from '../data/connections.repo';
 import { recentSends } from '../data/outbox.repo';
-import { ariPublisherFor } from '../providers';
+import { ariPublisherFor, adapterFor } from '../providers';
 import type { FlushReport } from '../domain/ari-batch.ts';
 
 /**
@@ -54,6 +54,33 @@ export {
 } from '../data/outbox.repo';
 export type { ClaimedChange as ChannelChange } from '../data/outbox.repo';
 export type { FlushReport } from '../domain/ari-batch.ts';
+export type { SendsVerification, Mismatch as SendMismatch } from '../domain/verify.ts';
+
+/**
+ * Звірка П6: останні відправлення проти календаря менеджера каналів.
+ *
+ * Розписка каже «взяв», не «застосував», а ендпоінта стану задачі у вендора
+ * немає — «доїхало» доводить лише читання назад. Розбіжне повертається в
+ * чергу з причиною і поїде наступним проходом; не віддане названо окремо.
+ * Кличуть кнопка «Звірити з каналом» і живий прохід; таймера тут немає і
+ * не буде — звірка читає календар, і пів року щохвилини це не звірка, а
+ * навантаження.
+ */
+export async function verifyConnectionSendsFor(
+  connectionId: string,
+  options: { limit?: number; minAgeSeconds?: number; today?: string } = {},
+) {
+  const organizationId = currentOrganizationId();
+  if (!organizationId) throw new Error('ari: verify without a tenant');
+  const connection = await connectionInTenant(connectionId);
+  if (!connection) throw new Error('ari: connection not found');
+  const adapter = adapterFor(connection.provider);
+  if (!adapter) throw new Error(`ari: unknown provider ${connection.provider}`);
+  const credentials = await integrationCredentials('channel_manager', organizationId);
+  const apiKey = credentials?.accessToken;
+  if (!apiKey) throw new Error('ari: no channel manager key for this organization');
+  return adapter.verify(connectionId, apiKey, options);
+}
 
 /** Останні відправлені координати зʼєднання з розписками вендора (П6) — для екрана, форми й живого прогону. */
 export async function recentChannelSends(connectionId: string, limit = 50) {

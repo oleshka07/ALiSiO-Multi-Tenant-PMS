@@ -37,6 +37,25 @@ function redact(value, keyName = '') {
 }
 
 const ID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{24,}/gi;
+const KEY_ID_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{4}-\d{2}-\d{2})$/i;
+const KEEP_KEYS = 3;
+
+/**
+ * Зразок — це форма, не дані: мапа, індексована ідентифікаторами або
+ * датами (календар `GET /restrictions` — опції × дні), обрізається до
+ * перших трьох ключів із позначкою, скільки прибрано. Інакше один прохід на
+ * два місяці кладе в документацію 130 КБ однакових клітинок.
+ */
+function trim(value) {
+  if (Array.isArray(value)) return value.map(trim);
+  if (!value || typeof value !== 'object') return value;
+  const keys = Object.keys(value);
+  const indexed = keys.length > KEEP_KEYS && keys.every((k) => KEY_ID_RE.test(k));
+  const out = {};
+  for (const k of indexed ? keys.slice(0, KEEP_KEYS) : keys) out[k] = trim(value[k]);
+  if (indexed) out['…'] = `${keys.length - KEEP_KEYS} more keys trimmed (sample keeps the shape, not the data)`;
+  return out;
+}
 
 /** `/webhooks/5d39…?x=1` → `/webhooks/:id`. */
 export function pathTemplate(p) {
@@ -59,7 +78,7 @@ export function sampleRecorder({ dir = SAMPLES_DIR, log = () => {} } = {}) {
       endpoint: `${method} ${template}`,
       status,
       captured_at: new Date().toISOString().slice(0, 10),
-      payload: redact(payload),
+      payload: trim(redact(payload)),
     };
     fs.writeFileSync(file, JSON.stringify(sample, null, 2) + '\n');
     written.add(file);

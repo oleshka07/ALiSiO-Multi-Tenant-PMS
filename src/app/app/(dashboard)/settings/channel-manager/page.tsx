@@ -72,6 +72,18 @@ interface CmConnection {
   /** Останні відправлення з розписками вендора (task id) — те, що йде у форму сертифікації. */
   sent: { id: string; kind: 'availability' | 'rate'; date: string; dateTo: string | null; sentAt: string; receipt: string | null; unitTypeCode: string | null; ratePlanCode: string | null }[];
 }
+/** Звірка П6: відправлене проти календаря каналу — з /api/channels/connections/[id]/verify. */
+interface CmVerification {
+  checked: number;
+  matched: number;
+  mismatches: { kind: 'availability' | 'rate'; date: string; occupancy?: number; field: string; ours: string; theirs: string; unitTypeCode: string; ratePlanCode: string | null }[];
+  unverified: { field: string; count: number }[];
+  sends: number;
+  fresh: number;
+  beyond: number;
+  requeued: number;
+  window: { from: string; to: string } | null;
+}
 
 interface BookingSource {
   id: string;
@@ -128,6 +140,8 @@ export default function ChannelManagerPage() {
   const [copiedToken, setCopiedToken] = useState('');
   const [cmConnections, setCmConnections] = useState<CmConnection[]>([]);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState<string | null>(null);
+  const [verified, setVerified] = useState<Record<string, CmVerification>>({});
   const [dismissing, setDismissing] = useState<string | null>(null);
 
   const [icalForm, setICalForm] = useState({
@@ -153,6 +167,24 @@ export default function ChannelManagerPage() {
     } finally {
       setRetrying(null);
       setTimeout(() => setToast(''), 4000);
+    }
+  };
+
+  // Звірка П6: розписка каже «взяв», не «застосував» — «доїхало» доводить лише
+  // читання календаря назад. Розбіжне повертається в чергу з причиною.
+  const verifySends = async (connectionId: string) => {
+    setVerifying(connectionId);
+    try {
+      const res = await fetch(`/api/channels/connections/${connectionId}/verify`, { method: 'POST' });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error || 'verify failed');
+      setVerified((v) => ({ ...v, [connectionId]: body }));
+      if (body.requeued > 0) await fetchData();
+    } catch {
+      setToast(`❌ ${tUi('Не вдалося звірити з каналом')}`);
+      setTimeout(() => setToast(''), 4000);
+    } finally {
+      setVerifying(null);
     }
   };
 
@@ -344,11 +376,18 @@ export default function ChannelManagerPage() {
                       {' · '}{c.webhookRegistered ? tUi('вебхук зареєстровано') : tUi('вебхука немає — бронь чекає на плановий прохід')}
                     </div>
                   </div>
-                  {c.stuck.length > 0 && (
-                    <button className="btn btn-sm" disabled={retrying === c.id} onClick={() => retryOutbox(c.id)}>
-                      {retrying === c.id ? <Loader2 size={14} className="animate-pulse" /> : <RefreshCw size={14} />} {tUi('Повернути в чергу')}
-                    </button>
-                  )}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {c.stuck.length > 0 && (
+                      <button className="btn btn-sm" disabled={retrying === c.id} onClick={() => retryOutbox(c.id)}>
+                        {retrying === c.id ? <Loader2 size={14} className="animate-pulse" /> : <RefreshCw size={14} />} {tUi('Повернути в чергу')}
+                      </button>
+                    )}
+                    {c.remotePropertyId && (c.sent?.length ?? 0) > 0 && (
+                      <button className="btn btn-sm" disabled={verifying === c.id} onClick={() => verifySends(c.id)}>
+                        {verifying === c.id ? <Loader2 size={14} className="animate-pulse" /> : <RefreshCw size={14} />} {tUi('Звірити з каналом')}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {c.stuck.length > 0 && (
                   <div style={{ overflowX: 'auto' }}>
@@ -401,6 +440,39 @@ export default function ChannelManagerPage() {
                       </table>
                     </div>
                   </details>
+                )}
+                {verified[c.id] && (
+                  <div style={{ marginTop: 8, fontSize: 12 }}>
+                    <div style={{ fontWeight: 600, color: verified[c.id].mismatches.length ? 'var(--accent-warning)' : undefined }}>
+                      {tUi('Звірка з каналом')}: {tUi('порівняно')} {verified[c.id].checked} · {tUi('збігається')} {verified[c.id].matched} · {tUi('розбіжностей')} {verified[c.id].mismatches.length}
+                      {verified[c.id].requeued > 0 && <> · {tUi('повернуто в чергу')} {verified[c.id].requeued}</>}
+                      {verified[c.id].fresh > 0 && <> · {tUi('ще застосовуються')} {verified[c.id].fresh}</>}
+                      {verified[c.id].unverified.length > 0 && <> · {tUi('не звірено')}: {verified[c.id].unverified.map((u) => `${u.field} ${u.count}`).join(', ')}</>}
+                      {verified[c.id].window && <> · {verified[c.id].window!.from} – {verified[c.id].window!.to}</>}
+                    </div>
+                    {verified[c.id].mismatches.length > 0 && (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table className="table" style={{ marginTop: 6, fontSize: 12 }}>
+                          <thead>
+                            <tr><th>{tUi('Ночі')}</th><th>{tUi('Тип номера')}</th><th>{tUi('Тариф')}</th><th>{tUi('Заселеність')}</th><th>{tUi('Поле')}</th><th>{tUi('У нас')}</th><th>{tUi('У каналі')}</th></tr>
+                          </thead>
+                          <tbody>
+                            {verified[c.id].mismatches.map((m, i) => (
+                              <tr key={i}>
+                                <td>{m.date}</td>
+                                <td>{m.unitTypeCode}</td>
+                                <td>{m.ratePlanCode ?? '—'}</td>
+                                <td>{m.occupancy ?? '—'}</td>
+                                <td><code>{m.field}</code></td>
+                                <td>{m.ours}</td>
+                                <td>{m.theirs}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 )}
                 {(c.attention?.length ?? 0) > 0 && (
                   <div style={{ marginTop: 8, fontSize: 12 }}>

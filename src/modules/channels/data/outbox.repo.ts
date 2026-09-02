@@ -101,7 +101,7 @@ export const OUTBOX_HORIZON_DAYS = 500;
  * зайвий виклик із ліміту 10 на хвилину. Але щойно рядок захоплено, нова
  * зміна створює НОВИЙ — див. шапку.
  */
-export async function enqueueChange(t: Sql, connectionId: string, change: Change): Promise<void> {
+export async function enqueueChange(t: Sql, connectionId: string, change: Change, reason?: string): Promise<void> {
   const conn = await connectionInTenant(connectionId);
   if (!conn) throw new Error('cm_outbox: connection not found');
 
@@ -140,6 +140,21 @@ export async function enqueueChange(t: Sql, connectionId: string, change: Change
     [crypto.randomUUID(), conn.organizationId, connectionId,
       change.kind, unitTypeId, ratePlanId, change.date, dateTo],
   );
+
+  // Координата, повернута звіркою (П6), несе причину — оператор бачить, ЧОМУ
+  // вона знову в черзі. Лягає на рядок, що ЧЕКАЄ (свій або вже наявний);
+  // захоплений чи відправлений не чіпається — це вже інша історія.
+  if (reason) {
+    await sql.run(
+      `UPDATE cm_outbox SET last_error = ?
+        WHERE connection_id = ? AND organization_id = ? AND kind = ?
+          AND COALESCE(unit_type_id, '') = ? AND COALESCE(rate_plan_id, '') = ?
+          AND stay_date = ? AND COALESCE(stay_date_to, stay_date) = ?
+          AND claimed_at IS NULL AND sent_at IS NULL`,
+      [reason.slice(0, 500), connectionId, conn.organizationId, change.kind,
+        unitTypeId ?? '', ratePlanId ?? '', change.date, dateTo ?? change.date],
+    );
+  }
 }
 
 /**

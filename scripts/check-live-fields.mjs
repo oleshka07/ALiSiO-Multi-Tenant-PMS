@@ -44,6 +44,12 @@ function present(value, segments) {
     const arr = value?.[head.slice(0, -2)];
     return Array.isArray(arr) && arr.some((el) => present(el, rest));
   }
+  // `{}` — будь-який ключ обʼєкта: календар вендора індексований
+  // ідентифікаторами опцій і датами (`data{}.{}.rate`), а не сталими іменами.
+  if (head.endsWith('{}')) {
+    const obj = head === '{}' ? value : value?.[head.slice(0, -2)];
+    return !!obj && typeof obj === 'object' && !Array.isArray(obj) && Object.values(obj).some((el) => present(el, rest));
+  }
   if (value === null || typeof value !== 'object') return false;
   return present(value[head], rest);
 }
@@ -77,7 +83,7 @@ for (const [endpoint, entry] of Object.entries(registry)) {
 const src = fs.readFileSync(CLIENT, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 // Зареєстровані — УСІ сегменти шляхів, не лише останні: `rate_plans[].rate_plan_id`
 // реєструє і `rate_plans`, бо клієнт читає його як масив дорогою до листка.
-const registered = new Set(Object.values(registry).flatMap((e) => (e.fields ?? []).flatMap((f) => f.split('.').map((seg) => seg.replace('[]', '')))));
+const registered = new Set(Object.values(registry).flatMap((e) => (e.fields ?? []).flatMap((f) => f.split('.').map((seg) => seg.replace('[]', '').replace('{}', '')))));
 // Конверт JSON:API і наші власні поля обгортки — не поля даних.
 const ENVELOPE = new Set(['data', 'meta', 'errors', 'attributes', 'code', 'title', 'details', 'id', 'type']);
 // Члени масиву й рядка JS, а не поля відповіді.

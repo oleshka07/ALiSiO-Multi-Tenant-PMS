@@ -2920,5 +2920,17 @@
   "Заборонено": "Zakázáno",
   "Останні відправлення": "Poslední odeslání",
   "task id — розписка менеджера каналів": "task id — potvrzení channel manageru",
-  "Коли": "Kdy"
+  "Коли": "Kdy",
+  "Звірити з каналом": "Porovnat s kanálem",
+  "Не вдалося звірити з каналом": "Porovnání s kanálem se nezdařilo",
+  "Звірка з каналом": "Porovnání s kanálem",
+  "порівняно": "porovnáno",
+  "збігається": "shoduje se",
+  "розбіжностей": "rozdílů",
+  "повернуто в чергу": "vráceno do fronty",
+  "ще застосовуються": "ještě se zpracovávají",
+  "не звірено": "neporovnáno",
+  "Поле": "Pole",
+  "У нас": "U nás",
+  "У каналі": "V kanálu"
 }

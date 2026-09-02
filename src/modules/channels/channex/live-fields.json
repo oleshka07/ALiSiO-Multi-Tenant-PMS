@@ -84,6 +84,19 @@
       "meta.warnings[].warning": "те саме"
     }
   },
+  "GET /restrictions": {
+    "why": "звірка П6 читає календар назад: ключ — опція заселеності (И13), ціна рядком, stop-прапорець, наявність спільна для опцій типу. Живе 02.09.2026: ніч без ціни — `rate: \"0.00\"` при `stop_sell: true`; `max_stay: 0` означає «без межі»; `min_stay` на записі повертається як `min_stay_arrival` і `min_stay_through`; поруч недокументоване `unavailable_reasons: []`",
+    "fields": [
+      "data{}.{}.rate",
+      "data{}.{}.stop_sell",
+      "data{}.{}.availability",
+      "data{}.{}.min_stay_arrival",
+      "data{}.{}.min_stay_through",
+      "data{}.{}.max_stay",
+      "data{}.{}.closed_to_arrival",
+      "data{}.{}.closed_to_departure"
+    ]
+  },
   "GET /booking_revisions/feed": {
     "why": "стрічка непідтверджених ревізій і поля, які читає revision-map.ts",
     "fields": [

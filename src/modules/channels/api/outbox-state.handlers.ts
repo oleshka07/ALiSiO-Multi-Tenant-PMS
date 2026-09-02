@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { withPermission } from '@core/auth/session';
+import { withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
 import { connectionInTenant, connectionsInTenant } from '../data/connections.repo';
 import { pendingCount, stuckChanges, retryStuck, recentSends } from '../data/outbox.repo';
 import { unprocessedEvents } from '../data/events.repo';
 import { adapterFor } from '../providers';
+import { apiKeyOf } from './connect.handlers';
 import { catalogUnitTypes } from '@properties';
 import { propertyRatePlans } from '@pricing';
 
@@ -62,6 +63,45 @@ export const listChannelConnections = withPermission('manage_properties', async 
     return NextResponse.json(out);
   } catch (error: unknown) {
     return serverError('modules/channels/api/outbox-state listChannelConnections', error);
+  }
+});
+
+/**
+ * POST /api/channels/connections/[id]/verify — звірка П6 рукою оператора.
+ *
+ * Читає календар того боку для останніх відправлень і порівнює з нашими
+ * джерелами; розбіжне повертає в чергу з причиною. Відповідь — кодами типів
+ * і тарифів, не ідентифікаторами: оператор читає «DBL × BAR», а помилки —
+ * кодами, які екран перекладає сам.
+ */
+export const verifyChannelSends = withPermission('manage_properties', async (
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+  actor: Actor,
+) => {
+  try {
+    const { id } = await params;
+    const connection = await connectionInTenant(id);
+    if (!connection) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (!connection.remotePropertyId) return NextResponse.json({ error: 'catalog_not_synced' }, { status: 409 });
+    const adapter = adapterFor(connection.provider);
+    if (!adapter) return NextResponse.json({ error: 'unknown_provider' }, { status: 409 });
+    const apiKey = await apiKeyOf(actor.organizationId);
+    if (!apiKey) return NextResponse.json({ error: 'no_key' }, { status: 409 });
+
+    const report = await adapter.verify(id, apiKey);
+    const unitTypes = new Map((await catalogUnitTypes(connection.propertyId)).map((u) => [u.id, u.code]));
+    const ratePlans = new Map((await propertyRatePlans(connection.propertyId)).map((r) => [r.id, r.code]));
+    return NextResponse.json({
+      ...report,
+      mismatches: report.mismatches.map((m) => ({
+        ...m,
+        unitTypeCode: unitTypes.get(m.unitTypeId) ?? m.unitTypeId,
+        ratePlanCode: m.ratePlanId ? (ratePlans.get(m.ratePlanId) ?? m.ratePlanId) : null,
+      })),
+    });
+  } catch (error: unknown) {
+    return serverError('modules/channels/api/outbox-state verifyChannelSends', error);
   }
 });
 

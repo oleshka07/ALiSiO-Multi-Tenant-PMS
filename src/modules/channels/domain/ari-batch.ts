@@ -119,7 +119,7 @@ function nextDay(date: string): string {
 }
 
 /** Усі ночі координати від `from` до кінця включно. */
-function nightsOf(from: string, to: string): string[] {
+export function nightsOf(from: string, to: string): string[] {
   const out: string[] = [];
   for (let d = from; d <= to; d = nextDay(d)) out.push(d);
   return out;
@@ -300,6 +300,47 @@ function shift(
     occupancy: p.occupancy,
     priceMinor: p.priceMinor + percentOf(p.priceMinor, percent, 0),
   }));
+}
+
+/**
+ * Джерела значень однієї ночі — та частина `FlushDeps`, з якої координата
+ * стає числом. Винесена окремо, бо звірка (П6) мусить рахувати очікуване
+ * ТИМ САМИМ кодом, що й відправлення: друга копія правил «закрито при
+ * браку ціни» чи «обмеження з базового рядка» розійшлась би з першою мовчки,
+ * і звірка доповідала б про розбіжність, якої в каналі немає, — або навпаки.
+ */
+export type NightSources = Pick<FlushDeps, 'availabilityAt' | 'pricesAt' | 'restrictionsAt' | 'priceModifierPercent'>;
+
+/** Наявність типу на ніч, як вона поїде в канал: тип без номерів — нуль. */
+export async function resolveAvailabilityNight(deps: NightSources, unitTypeId: string, date: string): Promise<AvailabilityChange> {
+  const free = await deps.availabilityAt(unitTypeId, date);
+  return { unitTypeId, date, free: free ?? 0 };
+}
+
+/**
+ * Ціна й умови пари на ніч, як вони поїдуть у канал.
+ *
+ * Правило 2 з шапки, і воно тут ціле: або ціни та явне відкриття, або
+ * закриття. Третього — «не слати» — немає. Обмеження — з базового рядка
+ * типу (Д1), на кожен тариф типу (П7). «Закрито» в календарі — це
+ * `closed: true` ПРИ ціні (Д2): stop-прапорець у вендора липкий (И14), ціна
+ * його не знімає, тож обидва їдуть разом, а наступне відкриття шле
+ * `closed: false` знову з ціною.
+ */
+export async function resolveRateNight(deps: NightSources, unitTypeId: string, ratePlanId: string, date: string): Promise<RateChange> {
+  const base = await deps.pricesAt(unitTypeId, ratePlanId, date);
+  const prices = shift(base, deps.priceModifierPercent ?? 0);
+  const at = { ratePlanId, unitTypeId, date };
+  const r = (await deps.restrictionsAt?.(unitTypeId, date)) ?? null;
+  const limits = r ? {
+    minStay: r.minStay,
+    ...(r.maxStay != null ? { maxStay: r.maxStay } : {}),
+    noArrival: r.noArrival,
+    noDeparture: r.noDeparture,
+  } : {};
+  return prices && prices.length
+    ? { ...at, prices, closed: r?.closed === true, ...limits }
+    : { ...at, closed: true, ...limits };
 }
 
 /** 10 МБ вендора мінус запас на конверт і на різницю доменного й чужого тіла. */
@@ -514,11 +555,10 @@ export async function flushOutbox(deps: FlushDeps): Promise<FlushReport> {
   for (const c of availability) {
     if (!c.unitTypeId) continue;
     for (const date of nightsOf(c.date, c.dateTo ?? c.date)) {
-      const free = await deps.availabilityAt(c.unitTypeId, date);
       resolvedAvailability.push({
         ids: [c.id],
         attempts: c.attempts ?? 0,
-        value: { unitTypeId: c.unitTypeId, date, free: free ?? 0 },
+        value: await resolveAvailabilityNight(deps, c.unitTypeId, date),
       });
     }
   }
@@ -530,25 +570,8 @@ export async function flushOutbox(deps: FlushDeps): Promise<FlushReport> {
   for (const c of rates) {
     if (!c.unitTypeId || !c.ratePlanId) continue;
     for (const date of nightsOf(c.date, c.dateTo ?? c.date)) {
-      const base = await deps.pricesAt(c.unitTypeId, c.ratePlanId, date);
-      const prices = shift(base, deps.priceModifierPercent ?? 0);
-      // Правило 2 з шапки, і воно тут ціле в двох рядках: або ціни та явне
-      // відкриття, або закриття. Третього — «не слати» — немає.
-      const at = { ratePlanId: c.ratePlanId, unitTypeId: c.unitTypeId, date };
-      // Обмеження — з базового рядка типу (Д1), на кожен тариф типу (П7).
-      // «Закрито» в календарі — це `closed: true` ПРИ ціні (Д2): stop_sell у
-      // вендора липкий (И14), ціна його не знімає, тож обидва їдуть разом, а
-      // наступне відкриття шле `closed: false` знову з ціною.
-      const r = (await deps.restrictionsAt?.(c.unitTypeId, date)) ?? null;
-      const limits = r ? {
-        minStay: r.minStay,
-        ...(r.maxStay != null ? { maxStay: r.maxStay } : {}),
-        noArrival: r.noArrival,
-        noDeparture: r.noDeparture,
-      } : {};
-      resolvedRates.push(prices && prices.length
-        ? { ids: [c.id], attempts: c.attempts ?? 0, value: { ...at, prices, closed: r?.closed === true, ...limits } }
-        : { ids: [c.id], attempts: c.attempts ?? 0, value: { ...at, closed: true, ...limits } });
+      // Розвʼязання винесене в `resolveRateNight` — ним же рахує звірка (П6).
+      resolvedRates.push({ ids: [c.id], attempts: c.attempts ?? 0, value: await resolveRateNight(deps, c.unitTypeId, c.ratePlanId, date) });
     }
   }
   await flushLane('rate', resolvedRates, deps, report);

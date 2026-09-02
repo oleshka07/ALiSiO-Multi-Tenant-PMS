@@ -145,6 +145,23 @@ const AXES = [
     axis: 'ночей у котируванні',
     some: { pattern: /\bnights:\s*(\d+)/g, test: (v) => Number(v) > 1, why: 'потрібна хоч одна ніч > 1' },
   },
+  // Звірка П6: з однією ціною «збіг» і «розбіжність» невідрізнювані — те
+  // саме для наявності і для прапорця «закрито» на тому боці.
+  {
+    file: 'src/modules/channels/domain/verify.check.ts',
+    axis: 'ціна очікувана і прочитана (збіг ≠ розбіжність)',
+    distinct: /rateMinor: (\d+)/g, min: 2,
+  },
+  {
+    file: 'src/modules/channels/domain/verify.check.ts',
+    axis: 'наявність очікувана і прочитана',
+    distinct: /free: (\d+)/g, min: 2,
+  },
+  {
+    file: 'src/modules/channels/channex/verify-adapter.check.ts',
+    axis: 'прапорець «закрито» на тому боці (збіг ≠ розбіжність)',
+    distinct: /cell\('[\d.]+', (true|false), \d+\)/g, min: 2,
+  },
 ];
 
 /** Коментарі геть — блокові й рядкові; `://` у рядках лишається. */

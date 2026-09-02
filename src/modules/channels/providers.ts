@@ -4,6 +4,7 @@ import type { PullReport } from './data/pull-bookings';
 import type { CatalogReport } from './domain/catalog.ts';
 import type { FlushReport } from './domain/ari-batch.ts';
 import type { CatalogReconciliation } from './domain/reconcile.ts';
+import type { SendsVerification } from './domain/verify.ts';
 import type { ChannelEventKind, WebhookState } from './port';
 
 /**
@@ -50,7 +51,16 @@ export interface ProviderAdapter {
   testWebhook(connectionId: string, apiKey: string): Promise<{ statusCode: number; body: string }>;
   /** Що це за подія для домену. Імена подій — лише в адаптері. */
   classifyEvent(eventType: string): ChannelEventKind;
+  /** Звірка П6: відправлене проти календаря того боку; розбіжне — назад у чергу з причиною. */
+  verify: SendsVerifier;
 }
+
+/** Звірити останні відправлення одного зʼєднання з календарем менеджера каналів. */
+export type SendsVerifier = (
+  connectionId: string,
+  apiKey: string,
+  options?: { limit?: number; minAgeSeconds?: number; today?: string },
+) => Promise<SendsVerification>;
 
 /** Прочитати стрічку одного зʼєднання і завести з неї броні. */
 export type Puller = (connectionId: string, apiKey: string) => Promise<PullReport>;
