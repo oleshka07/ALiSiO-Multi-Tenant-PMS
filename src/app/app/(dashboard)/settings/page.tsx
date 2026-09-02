@@ -17,7 +17,7 @@ import {
   Sparkles,
   Receipt,
   Users2,
-  Coffee, CreditCard } from 'lucide-react';
+  Coffee, CreditCard, Tag } from 'lucide-react';
 
 const settingsItems = [
   {
@@ -40,6 +40,13 @@ const settingsItems = [
     icon: <Users size={22} />,
     href: '/app/settings/users',
     color: 'purple',
+  },
+  {
+    title: 'Тарифи',
+    desc: 'BAR, B&B — назва, код, валюта, ціна дитини; ціни на дати — в календарі',
+    icon: <Tag size={22} />,
+    href: '/app/settings/rate-plans',
+    color: 'green',
   },
   {
     title: 'Ціни за заселеністю',
