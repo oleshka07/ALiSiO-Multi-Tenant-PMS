@@ -69,6 +69,8 @@ interface CmConnection {
   stuck: CmStuck[];
   /** Події вендора, що чекають ока оператора: мапінг, підтвердження, синк, канали. */
   attention: { id: string; eventType: string; receivedAt: string }[];
+  /** Останні відправлення з розписками вендора (task id) — те, що йде у форму сертифікації. */
+  sent: { id: string; kind: 'availability' | 'rate'; date: string; dateTo: string | null; sentAt: string; receipt: string | null; unitTypeCode: string | null; ratePlanCode: string | null }[];
 }
 
 interface BookingSource {
@@ -375,6 +377,30 @@ export default function ChannelManagerPage() {
                       </tbody>
                     </table>
                   </div>
+                )}
+                {(c.sent?.length ?? 0) > 0 && (
+                  <details style={{ marginTop: 8, fontSize: 12 }}>
+                    <summary style={{ cursor: 'pointer' }}>{tUi('Останні відправлення')}: {c.sent.length} · {tUi('task id — розписка менеджера каналів')}</summary>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="table" style={{ marginTop: 6, fontSize: 12 }}>
+                        <thead>
+                          <tr><th>{tUi('Коли')}</th><th>{tUi('Що')}</th><th>{tUi('Тип номера')}</th><th>{tUi('Тариф')}</th><th>{tUi('Ночі')}</th><th>task id</th></tr>
+                        </thead>
+                        <tbody>
+                          {c.sent.map((row) => (
+                            <tr key={row.id}>
+                              <td>{new Date(row.sentAt).toLocaleString()}</td>
+                              <td>{row.kind === 'availability' ? tUi('наявність') : tUi('ціна')}</td>
+                              <td>{row.unitTypeCode ?? '—'}</td>
+                              <td>{row.ratePlanCode ?? '—'}</td>
+                              <td>{row.date}{row.dateTo ? ` – ${row.dateTo}` : ''}</td>
+                              <td><code style={{ userSelect: 'all' }}>{row.receipt ?? '—'}</code></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </details>
                 )}
                 {(c.attention?.length ?? 0) > 0 && (
                   <div style={{ marginTop: 8, fontSize: 12 }}>

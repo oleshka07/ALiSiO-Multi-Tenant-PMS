@@ -314,8 +314,13 @@ export async function claimBatch(
   return rows.map(toClaimed);
 }
 
-/** Пачка доїхала. Рядок лишається — він доказ у суперечці «ми це слали». */
-export async function markSent(ids: string[]): Promise<void> {
+/**
+ * Пачка доїхала. Рядок лишається — він доказ у суперечці «ми це слали», а
+ * розписка вендора (task id) на ньому — доказ, ЧИМ саме (П6). Вендор
+ * приймає ціну як задачу, тож розписка — не звітність, а єдина нитка від
+ * нашої координати до їхньої обробки; стан доводить читання назад.
+ */
+export async function markSent(ids: string[], receipt: string | null = null): Promise<void> {
   if (ids.length === 0) return;
   const organizationId = currentOrganizationId();
   if (!organizationId) throw new Error('cm_outbox: write without a tenant');
@@ -323,10 +328,40 @@ export async function markSent(ids: string[]): Promise<void> {
   const sql = getSql();
   const holes = ids.map(() => '?').join(', ');
   await sql.run(
-    `UPDATE cm_outbox SET sent_at = CURRENT_TIMESTAMP
+    `UPDATE cm_outbox SET sent_at = CURRENT_TIMESTAMP, receipt = ?
       WHERE id IN (${holes}) AND organization_id = ?`,
-    [...ids, organizationId],
+    [receipt, ...ids, organizationId],
   );
+}
+
+export interface SentChange extends ClaimedChange {
+  sentAt: string;
+  /** Розписка вендора (task id); кілька — через кому. */
+  receipt: string | null;
+}
+
+/**
+ * Останні ВІДПРАВЛЕНІ координати зʼєднання — з розписками, для екрана й для
+ * форми сертифікації. Зняті (`retired:`) не показуються: про них нічого не
+ * пішло. Чуже зʼєднання — порожньо.
+ */
+export async function recentSends(connectionId: string, limit = 50): Promise<SentChange[]> {
+  const organizationId = currentOrganizationId();
+  if (!organizationId) throw new Error('cm_outbox: read without a tenant');
+  const rows = await getSql().rows<any>(
+    `SELECT id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to, attempts, last_error, sent_at, receipt
+       FROM cm_outbox
+      WHERE connection_id = ? AND organization_id = ? AND sent_at IS NOT NULL
+        AND (last_error IS NULL OR last_error NOT LIKE 'retired:%')
+      ORDER BY sent_at DESC, id DESC
+      LIMIT ?`,
+    [connectionId, organizationId, Math.max(1, Math.min(500, limit))],
+  );
+  return rows.map((r) => ({
+    ...toClaimed(r),
+    sentAt: r.sent_at instanceof Date ? r.sent_at.toISOString() : String(r.sent_at),
+    receipt: r.receipt == null ? null : String(r.receipt),
+  }));
 }
 
 /**

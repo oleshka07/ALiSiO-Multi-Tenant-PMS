@@ -43,7 +43,7 @@ import '../../../../scripts/lib/module-aliases.mjs';
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
-const { enqueueChange, claimBatch, markSent, releaseFailed, pendingCount, queuedChanges, stuckChanges, retryStuck, retireChanges } =
+const { enqueueChange, claimBatch, markSent, releaseFailed, pendingCount, queuedChanges, stuckChanges, retryStuck, retireChanges, recentSends } =
   await import('./outbox.repo.ts');
 
 const sql = getSql();
@@ -336,6 +336,33 @@ try {
     await markSent(third.map((r) => r.id));
     console.log('  ok  транспортна невдача лишає лічильник, претензія вендора рахує');
   });
+
+  // ── П6: розписка вендора на відправленому, і лише свого зʼєднання ──────
+  //
+  // Вендор приймає ціну як задачу: без розписки асинхронний провал невидимий.
+  // Відправлене з розпискою читається назад найновішим першим; зняте
+  // (`retired:`) не показується — про нього нічого не пішло; чужий орендар
+  // не бачить нічого.
+  await runWithOrganization(A, async () => {
+    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [A]);
+    await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'ut1', ratePlanId: 'rp1', date: '2026-10-20', dateTo: '2026-10-22' });
+    await enqueueChange(sql, CONN, { kind: 'availability', unitTypeId: 'ut1', date: '2026-10-21' });
+    await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'ut1', ratePlanId: 'rp1', date: '2026-10-25' });
+    const [rateRow, availRow, retiredRow] = [...await claimBatch(CONN, 'rate', 50), ...await claimBatch(CONN, 'availability', 50)]
+      .sort((a, b) => a.date.localeCompare(b.date));
+    await markSent([rateRow.id], 'task-rate-1,task-rate-2');
+    await markSent([availRow.id], 'task-av-1');
+    await retireChanges([retiredRow.id], 'unmapped');
+    const sent = await recentSends(CONN);
+    assert.deepStrictEqual(sent.map((r) => [r.kind, r.date, r.dateTo, r.receipt]).sort(), [
+      ['availability', '2026-10-21', null, 'task-av-1'],
+      ['rate', '2026-10-20', '2026-10-22', 'task-rate-1,task-rate-2'],
+    ], 'відправлене — з розпискою, діапазон — з усіма своїми; зняте не показується');
+    assert.ok(sent.every((r) => r.sentAt), 'час відправлення є');
+    assert.strictEqual((await recentSends(CONN, 1)).length, 1, 'стеля поважається');
+  });
+  assert.strictEqual((await runWithOrganization(B, () => recentSends(CONN))).length, 0, 'чужий орендар не бачить чужих відправлень');
+  console.log('  ok  розписка вендора на відправленому; зняте не показується; чуже не читається');
 } finally {
   await cleanup();
 }

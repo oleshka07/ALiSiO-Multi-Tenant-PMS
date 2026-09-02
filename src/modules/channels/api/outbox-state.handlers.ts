@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { withPermission } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
 import { connectionInTenant, connectionsInTenant } from '../data/connections.repo';
-import { pendingCount, stuckChanges, retryStuck } from '../data/outbox.repo';
+import { pendingCount, stuckChanges, retryStuck, recentSends } from '../data/outbox.repo';
 import { unprocessedEvents } from '../data/events.repo';
 import { adapterFor } from '../providers';
 import { catalogUnitTypes } from '@properties';
@@ -37,6 +37,13 @@ export const listChannelConnections = withPermission('manage_properties', async 
       const attention = (await unprocessedEvents(c.id))
         .filter((e) => !adapter || adapter.classifyEvent(e.eventType) === 'attention' || adapter.classifyEvent(e.eventType) === 'message')
         .map((e) => ({ id: e.id, eventType: e.eventType, receivedAt: e.receivedAt }));
+      // Останні відправлення з розписками вендора (П6): це те, що йде у форму
+      // сертифікації, і єдина нитка від нашої координати до їхньої задачі.
+      const sent = (await recentSends(c.id, 20)).map((row) => ({
+        id: row.id, kind: row.kind, date: row.date, dateTo: row.dateTo, sentAt: row.sentAt, receipt: row.receipt,
+        unitTypeCode: row.unitTypeId ? (unitTypes.get(row.unitTypeId) ?? row.unitTypeId) : null,
+        ratePlanCode: row.ratePlanId ? (ratePlans.get(row.ratePlanId) ?? row.ratePlanId) : null,
+      }));
       out.push({
         id: c.id,
         propertyId: c.propertyId,
@@ -49,6 +56,7 @@ export const listChannelConnections = withPermission('manage_properties', async 
         pending: await pendingCount(c.id),
         stuck,
         attention,
+        sent,
       });
     }
     return NextResponse.json(out);

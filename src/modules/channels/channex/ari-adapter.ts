@@ -198,17 +198,17 @@ export async function ariFlush(
         if (kind === 'availability') {
           const body = availabilityValues(remotePropertyId, values as AvailabilityChange[], unitTypes);
           const answer = await client.publishAvailability(connectionId, body.values);
-          return { warnings: answer.warnings, unmapped: body.unmapped };
+          return { warnings: answer.warnings, unmapped: body.unmapped, receipt: answer.taskIds.join(',') || undefined };
         }
         const body = rateValues(remotePropertyId, values as RateChange[], ratePlans);
         const answer = await client.publishRestrictions(connectionId, body.values);
-        return { warnings: answer.warnings, unmapped: body.unmapped };
+        return { warnings: answer.warnings, unmapped: body.unmapped, receipt: answer.taskIds.join(',') || undefined };
       } catch (e) {
         throw markTransient(e);
       }
     },
 
-    markSent: (ids) => markSent(ids),
+    markSent: (ids, receipt) => markSent(ids, receipt ?? null),
     release: (ids, reason, transient) => releaseFailed(ids, reason, transient),
     retire: (ids, reason) => retireChanges(ids, reason),
   };

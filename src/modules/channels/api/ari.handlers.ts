@@ -1,6 +1,7 @@
 import { integrationCredentials } from '@core/integration-credentials';
 import { currentOrganizationId } from '@core/auth/tenant-context';
 import { connectionInTenant } from '../data/connections.repo';
+import { recentSends } from '../data/outbox.repo';
 import { ariPublisherFor } from '../providers';
 import type { FlushReport } from '../domain/ari-batch.ts';
 
@@ -53,3 +54,10 @@ export {
 } from '../data/outbox.repo';
 export type { ClaimedChange as ChannelChange } from '../data/outbox.repo';
 export type { FlushReport } from '../domain/ari-batch.ts';
+
+/** Останні відправлені координати зʼєднання з розписками вендора (П6) — для екрана, форми й живого прогону. */
+export async function recentChannelSends(connectionId: string, limit = 50) {
+  const connection = await connectionInTenant(connectionId);
+  if (!connection) throw new Error('cm: connection not found');
+  return recentSends(connectionId, limit);
+}

@@ -90,8 +90,7 @@ const sql = getSql();
 const { percentOf } = await import('@core/money');
 const {
   channelConnection, connectionMirror, flushConnectionOutboxFor,
-  enqueueChannelChange, pendingChannelChanges, queuedChannelChanges, stuckChannelChanges,
-} = await import('@channels');
+  enqueueChannelChange, pendingChannelChanges, queuedChannelChanges, stuckChannelChanges, recentChannelSends } = await import('@channels');
 // Інваріант 28: кожна жива відповідь лягає зразком у docs/vendor/channex/live/.
 const { recordVendorResponses } = await import('@channels');
 recordVendorResponses(sampleRecorder());
@@ -232,6 +231,14 @@ await runWithOrganization(organizationId, async () => {
       if (verdict.rateMiss === 0 && verdict.openMiss === 0 && verdict.availMiss === 0) break;
     }
     show(after, 'ПІСЛЯ (живий календар вендора)');
+    // П6: розписки вендора на відправлених координатах — те, що йде у форму.
+    // Судяться лише рядки ЦЬОГО проходу (найновіші `report.sent`): відправлене
+    // до появи колонки розписки не має і мати не може.
+    const sent = await recentChannelSends(connectionId, Math.max(10, report.sent));
+    const thisPass = sent.slice(0, report.sent);
+    console.log(`\nРОЗПИСКИ (цей прохід ${thisPass.length}): ${thisPass.filter((r) => r.receipt).length} з розпискою`);
+    for (const r of sent.slice(0, 6)) console.log(`  ${String(r.sentAt).slice(0, 19)} ${r.kind} ${r.date}${r.dateTo ? '–' + r.dateTo : ''} → ${r.receipt ?? '—'}`);
+    if (thisPass.some((r) => !r.receipt)) { console.log('  ! відправлене без розписки — задачу вендора нема чим назвати'); process.exitCode = 1; }
     console.log('\nВЕРДИКТ:');
     console.log(`  1. ціна лягла:        ${verdict.rateOk} з ${verdict.rateAll}${verdict.rateMiss ? '   ← РОЗБІЖНІСТЬ' : ''}`);
     console.log(`  2. stop_sell знявся:  ${verdict.openOk} з ${verdict.openAll}${verdict.openMiss ? '   ← ЛИПКИЙ ПРАПОРЕЦЬ (И14)' : ''}`);

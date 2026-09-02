@@ -8,7 +8,7 @@ export { runChannelPublishCron } from './publish-cron.handlers';
 export { syncConnectionCatalogFor, channelConnection, connectionMirror } from './catalog.handlers';
 export {
   flushConnectionOutboxFor, enqueueChannelChange, pendingChannelChanges,
-  queuedChannelChanges, stuckChannelChanges, retryStuckChannelChanges,
+  queuedChannelChanges, stuckChannelChanges, retryStuckChannelChanges, recentChannelSends,
 } from './ari.handlers';
 export type { ChannelChange, FlushReport } from './ari.handlers';
 export { noteAvailabilityChanged, noteRatesChanged, lastNight } from './outbox';

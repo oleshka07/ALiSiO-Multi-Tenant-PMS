@@ -589,3 +589,49 @@ console.log('ari-batch: помилка звільняє чергу, ніч бе�
   assert.strictEqual(at('2026-11-12').minStay, 1);
 }
 console.log('  ok  обмеження й «закрито» з календаря їдуть у канал разом із ціною (Д1/Д2)');
+
+// ── П6: розписка вендора лягає на відправлену координату ─────────────────
+//
+// Channex приймає ціну як ЗАДАЧУ: `200` і task id не означають «застосовано».
+// Без збереженої розписки асинхронний провал невидимий. Тому `send` віддає
+// розписку, а `markSent` отримує її разом із рядками — по одній на пачку;
+// рядок-діапазон, що поїхав двома пачками, несе ОБИДВІ, через кому.
+{
+  const receipts: { ids: string[]; receipt: string | null }[] = [];
+  let n = 0;
+  const q = queue([
+    { id: 'small', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: '2026-11-10' },
+    { id: 'wide', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: '2026-11-11', dateTo: '2026-11-13' },
+  ]);
+  await flushOutbox(base({
+    ...q.deps,
+    markSent: async (ids: string[], receipt?: string | null) => { await q.deps.markSent(ids); receipts.push({ ids: [...ids].sort(), receipt: receipt ?? null }); },
+    // Одне значення на пачку: діапазон з трьох ночей їде трьома пачками.
+    sizeOf: () => 1,
+    maxBodyBytes: 1,
+    send: async () => ({ warnings: [], receipt: `task-${++n}` }),
+  }));
+  assert.deepStrictEqual(q.free(), [], 'усе поїхало');
+  const forSmall = receipts.find((r) => r.ids.includes('small'))!;
+  assert.strictEqual(forSmall.receipt, 'task-1', 'одна пачка — одна розписка на рядок');
+  const forWide = receipts.find((r) => r.ids.includes('wide'))!;
+  assert.strictEqual(forWide.receipt, 'task-2,task-3,task-4', 'рядок-діапазон із трьох пачок несе всі три розписки');
+  assert.ok(!receipts.some((r) => r.ids.includes('small') && r.ids.includes('wide')), 'різні розписки — різні виклики markSent');
+}
+// Друга вісь: діапазон, що поїхав ОДНІЄЮ пачкою, несе одну розписку, а не
+// по одній на ніч — живий прохід 02.09 показав `id,id,id` на три ночі.
+{
+  const receipts: { ids: string[]; receipt: string | null }[] = [];
+  let n = 0;
+  const q = queue([
+    { id: 'wide', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: '2026-11-11', dateTo: '2026-11-13' },
+  ]);
+  await flushOutbox(base({
+    ...q.deps,
+    markSent: async (ids: string[], receipt?: string | null) => { await q.deps.markSent(ids); receipts.push({ ids: [...ids].sort(), receipt: receipt ?? null }); },
+    send: async () => ({ warnings: [], receipt: `task-${++n}` }),
+  }));
+  assert.strictEqual(n, 1, 'три ночі однієї пари — одна пачка, один виклик');
+  assert.strictEqual(receipts.find((r) => r.ids.includes('wide'))?.receipt, 'task-1', 'одна пачка — одна розписка, не по одній на ніч');
+}
+console.log('  ok  розписка вендора лягає на відправлену координату, діапазон — усі свої, і лише різні');

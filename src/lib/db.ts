@@ -4194,6 +4194,7 @@ function runMigrations(database: any) {
       sent_at         TEXT,
       attempts        INTEGER NOT NULL DEFAULT 0,
       last_error      TEXT,
+      receipt         TEXT,
       created_at      TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
@@ -4207,6 +4208,13 @@ function runMigrations(database: any) {
     if (!obCols.includes('stay_date_to')) {
       database.exec('ALTER TABLE cm_outbox ADD COLUMN stay_date_to TEXT');
       console.log('[DB] Added stay_date_to to cm_outbox');
+    }
+    // П6: розписка вендора (task id) на відправленій координаті. Вендор
+    // приймає ціну як задачу — без розписки асинхронний провал невидимий, а
+    // форма сертифікації просить саме її. І в CREATE, і тут (AGENTS §4).
+    if (!obCols.includes('receipt')) {
+      database.exec('ALTER TABLE cm_outbox ADD COLUMN receipt TEXT');
+      console.log('[DB] Added receipt to cm_outbox');
     }
   } catch (e: any) {
     console.error('[DB] cm_outbox stay_date_to:', e.message);

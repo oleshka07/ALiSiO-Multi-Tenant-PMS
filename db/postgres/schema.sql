@@ -418,6 +418,7 @@ CREATE TABLE "cm_outbox" (
   "last_error" TEXT,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "stay_date_to" DATE,
+  "receipt" TEXT,
   PRIMARY KEY ("id"),
   CHECK (kind IN ('availability', 'rate'))
 );

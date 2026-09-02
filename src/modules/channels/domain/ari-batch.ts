@@ -203,8 +203,12 @@ export interface FlushDeps {
   send(
     kind: 'availability' | 'rate',
     values: (AvailabilityChange | RateChange)[],
-  ): Promise<{ warnings: unknown[]; unmapped?: Unmapped[] }>;
-  markSent(ids: string[]): Promise<void>;
+  ): Promise<{ warnings: unknown[]; unmapped?: Unmapped[]; receipt?: string }>;
+  /**
+   * Пачка доїхала — з розпискою вендора (П6). Одна пачка — одна розписка;
+   * рядок, що поїхав кількома пачками, отримує всі свої через кому.
+   */
+  markSent(ids: string[], receipt?: string | null): Promise<void>;
   /**
    * Повернути в чергу. `transient` — невдача ПРОХОДУ, не рядка: простій
    * вендора, 429, власна пауза обмежувача, мережа. Черга тоді не рахує
@@ -353,6 +357,7 @@ async function flushLane<T extends AvailabilityChange | RateChange>(
   // ніколи, а журнал казатиме «слали».
   const attemptsOf = new Map<string, number>();
   const delivered = new Set<string>();
+  const receiptsOf = new Map<string, string[]>();
   const failedFor = new Map<string, { reason: string; transient: boolean }>();
   for (const r of resolved) for (const id of r.ids) attemptsOf.set(id, Math.max(attemptsOf.get(id) ?? 0, r.attempts));
 
@@ -386,7 +391,13 @@ async function flushLane<T extends AvailabilityChange | RateChange>(
       if (answer.warnings && answer.warnings.length > 0) {
         fail(rest, `${answer.warnings.length} claim(s): ${JSON.stringify(answer.warnings).slice(0, 300)}`);
       } else {
-        for (const r of rest) for (const id of r.ids) delivered.add(id);
+        for (const r of rest) for (const id of r.ids) {
+          delivered.add(id);
+          // Одна пачка — одна розписка на рядок: діапазон із трьох ночей у тій
+          // самій пачці не носить її тричі; різні пачки — різні, через кому.
+          const had = receiptsOf.get(id) ?? [];
+          if (answer.receipt && !had.includes(answer.receipt)) receiptsOf.set(id, [...had, answer.receipt]);
+        }
       }
     } catch (e: any) {
       // Найважливіший рядок у всьому файлі — див. правило 1 у шапці.
@@ -399,7 +410,13 @@ async function flushLane<T extends AvailabilityChange | RateChange>(
 
   const sentIds = [...delivered].filter((id) => !failedFor.has(id));
   if (sentIds.length) {
-    await deps.markSent(sentIds);
+    // Групами за розпискою: рядки однієї пачки — один виклик, один task id.
+    const byReceipt = new Map<string, string[]>();
+    for (const id of sentIds) {
+      const key = (receiptsOf.get(id) ?? []).join(',');
+      byReceipt.set(key, [...(byReceipt.get(key) ?? []), id]);
+    }
+    for (const [receipt, ids] of byReceipt) await deps.markSent(ids, receipt || null);
     report.sent += sentIds.length;
   }
 
