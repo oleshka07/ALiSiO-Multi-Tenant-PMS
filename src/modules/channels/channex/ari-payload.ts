@@ -200,7 +200,12 @@ export function rateValues(
           .map((r) => ({ occupancy: r.occupancy, rate: r.priceMinor }));
       }
       put(v, 'stop_sell', sample.closed);
-      put(v, 'min_stay', sample.minStay);
+      // Явне поле заїзду, не «віртуальне» `min_stay`: вендор застосовує
+      // віртуальне лише при `min_stay_type ≠ both`, а обʼєкт, заведений
+      // нашим майстром, має саме `both` — і `min_stay: 2` пройшов повз
+      // (живе 02.09.2026, INC-015). Семантика наша — мінімум для стану, що
+      // заїжджає в цю дату: так само його читає котирування.
+      put(v, 'min_stay_arrival', sample.minStay);
       put(v, 'max_stay', sample.maxStay);
       put(v, 'closed_to_arrival', sample.noArrival);
       put(v, 'closed_to_departure', sample.noDeparture);

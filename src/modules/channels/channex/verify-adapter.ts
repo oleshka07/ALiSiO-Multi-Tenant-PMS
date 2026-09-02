@@ -96,10 +96,12 @@ export function readCell(cell: Record<string, unknown>): RemoteNight {
   }
   const closed = bool(cell.stop_sell);
   if (closed !== undefined) out.closed = closed;
-  // `min_stay` на записі — «віртуальна опція», вендор перекладає її в
-  // `min_stay_through`/`min_stay_arrival` за налаштуванням обʼєкта (ari.md);
-  // назад читаємо те, що він віддав, — перше з двох.
-  const minStay = num(cell.min_stay_through) ?? num(cell.min_stay_arrival) ?? num(cell.min_stay);
+  // Шлемо `min_stay_arrival` явно (INC-015: віртуальне `min_stay` обʼєкт із
+  // `min_stay_type = both` ігнорує — а такими наш майстер обʼєкти й
+  // заводить), тож і назад читаємо поле заїзду. `min_stay_through` — інше
+  // обмеження, його ми не стверджуємо; читати його першим означало б
+  // вічно повертати в чергу координату, яка вже доїхала.
+  const minStay = num(cell.min_stay_arrival) ?? num(cell.min_stay);
   if (minStay !== undefined) out.minStay = minStay;
   const maxStay = num(cell.max_stay);
   if (maxStay !== undefined) out.maxStay = maxStay;

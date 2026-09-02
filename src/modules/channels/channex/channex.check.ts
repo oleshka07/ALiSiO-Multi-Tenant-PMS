@@ -236,7 +236,11 @@ function reset() {
   assert.strictEqual(values.length, 2, 'та сама ціна з іншим min_stay мала лишитись окремим діапазоном');
   assert.strictEqual(values[0].date_to, '2026-11-02');
   assert.strictEqual(values[1].date, '2026-11-03', 'одиночна дата мала піти як date, не date_from/date_to');
-  assert.strictEqual(values[1].min_stay, 3);
+  // Явне поле, не «віртуальне» `min_stay`: вендор ігнорує віртуальне, коли
+  // `min_stay_type` обʼєкта = `both` — а саме такими наш майстер обʼєкти й
+  // заводить (живе 02.09.2026, Test Property: слали 2, назад 1/1).
+  assert.strictEqual(values[1].min_stay_arrival, 3, 'мінімум ночей їде явним полем min_stay_arrival');
+  assert.ok(!('min_stay' in values[1]), 'віртуального min_stay в тілі немає — на обʼєкті з min_stay_type=both воно мовчки ігнорується');
 }
 
 // ── 11. Розрив у датах не склеюється ─────────────────────────────────────
@@ -270,7 +274,7 @@ function reset() {
   const { values } = rateValues(PROP, [{ ratePlanId: 'rp', unitTypeId: 'ut', date: '2026-11-01', closed: true }], ids);
   assert.strictEqual(values[0].stop_sell, true);
   assert.ok(!('rates' in values[0]), 'ціна, якої не міняли, поїхала полем — Channex відповів би претензією');
-  assert.ok(!('min_stay' in values[0]), 'обмеження, якого не міняли, поїхало полем');
+  assert.ok(!('min_stay_arrival' in values[0]) && !('min_stay' in values[0]), 'обмеження, якого не міняли, поїхало полем');
 }
 
 // ── 13.1 И12: ціна їде через `rates[]`, ніколи голим `rate` ──────────────

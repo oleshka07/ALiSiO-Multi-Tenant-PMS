@@ -19,7 +19,9 @@
  *
  * Без цін і без цінових таблиць навмисно (інваріант 16): координата ціни
  * без джерела розвʼязується в «закрито», тож звірка тут порівнює «закрито»
- * і наявність — обидві осі мають по два значення (інваріант 26).
+ * і наявність — обидві осі мають по два значення (інваріант 26). Єдиний
+ * виняток — остання сцена (мінімум ночей): базовий рядок сіється ДВЕРИМА
+ * `@pricing`, не SQL, і лишається до `cleanup()`.
  *
  * Перевірка була ЧЕРВОНОЮ — зламом мапи опцій (наявність і ціна читались
  * за ідентифікатором тарифу): неосновна опція стала «немає ночі». Інваріант 24.
@@ -31,6 +33,9 @@ const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
 const { verifySends } = await import('./verify-adapter.ts');
 const { queuedChanges } = await import('../data/outbox.repo.ts');
+// Ціна й обмеження сіються ДВЕРИМА модуля цін, не рядком у таблицю: інваріант
+// 16 тримає гейт `check-price-source` і для перевірок.
+const { bulkUpdatePrices } = await import('@pricing');
 
 const sql = getSql();
 const ORG = '__verify_adapter__';
@@ -260,6 +265,57 @@ try {
     );
     assert.strictEqual(t.calls.length, 0);
     console.log('  ok  чужий орендар — «немає такого», без жодного виклику');
+
+  });
+
+  // ── 9. Мінімум ночей звіряється полем ЗАЇЗДУ, не «наскрізним» ───────
+  // Остання сцена навмисно: базовий рядок ціни на DAY лишається до кінця
+  // (SQL до цінових таблиць звідси не пишеться — інваріант 16; його
+  // прибирає каскад від unit_types у cleanup()).
+  // Живе 02.09.2026 (INC-015): обʼєкт із `min_stay_type = both` ігнорує
+  // віртуальне `min_stay`, тому шлемо `min_stay_arrival` — і назад
+  // читаємо його ж. Дві осі (інваріант 26): клітинка з arrival 2 /
+  // through 1 збігається з нашими 2, клітинка з arrival 1 / through 2 —
+  // ні. Звірка, що читає through першим, провалює обидві.
+  // Власний контекст орендаря: сцена стоїть після блоку «чуже», що бігає
+  // під іншою організацією.
+  await runWithOrganization(ORG, async () => {
+    // Своя черга: попередні сцени її переписали. Одне старе відправлення
+    // ціни на DAY — рівно та ніч, про яку йдеться.
+    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+    await sent('r9', 'rate', DAY, null, OLD);
+    // Базовий рядок типу на DAY: ціна 150, мінімум 2 ночі. Писач кладе
+    // координату в чергу (Ц16) — вона тут не потрібна, прибирається.
+    await bulkUpdatePrices({ unitTypeId: UT, dateFrom: DAY, dateTo: DAY, applyTo: 'all', base_price: 150, min_stay: 2 });
+    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
+    const open = (arrival: number, through: number) => ({
+      ...cell('150.00', false, 2), min_stay_arrival: arrival, min_stay_through: through,
+    });
+    const agree = transport({
+      data: {
+        'remote-rp': { [DAY]: open(2, 1), [DAY2]: cell('150.00', true, 2) },
+        'remote-rp-occ1': { [DAY]: open(2, 1), [DAY2]: cell('120.00', true, 2) },
+      },
+    });
+    const a = await verifySends(CONN, 'key', { today: TODAY, now: () => NOW, client: { fetch: agree.fetch } });
+    assert.deepStrictEqual(a.mismatches.filter((m) => m.field === 'minStay'), [],
+      'arrival 2 / through 1 при наших 2 — збіг: читається поле заїзду');
+    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
+
+    const differ = transport({
+      data: {
+        'remote-rp': { [DAY]: open(1, 2), [DAY2]: cell('150.00', true, 2) },
+        'remote-rp-occ1': { [DAY]: open(1, 2), [DAY2]: cell('120.00', true, 2) },
+      },
+    });
+    const d = await verifySends(CONN, 'key', { today: TODAY, now: () => NOW, client: { fetch: differ.fetch } });
+    assert.deepStrictEqual(
+      d.mismatches.filter((m) => m.field === 'minStay').map((m) => [m.date, m.occupancy, m.ours, m.theirs]).sort(),
+      [[DAY, 1, '2', '1'], [DAY, 2, '2', '1']],
+      'arrival 1 / through 2 при наших 2 — розбіжність на кожній опції: through не рятує',
+    );
+    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
+    console.log('  ok  мінімум ночей звіряється полем заїзду по обох осях');
   });
 } finally {
   await cleanup();
