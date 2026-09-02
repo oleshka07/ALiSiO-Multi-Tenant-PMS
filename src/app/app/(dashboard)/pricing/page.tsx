@@ -156,7 +156,10 @@ function BulkEditModal({ onSave, onClose }: {
   const [basePrice, setBasePrice] = useState('');
   const [weekendPrice, setWeekendPrice] = useState('');
   const [minStay, setMinStay] = useState('');
+  const [maxStay, setMaxStay] = useState('');
   const [closed, setClosed] = useState<boolean | undefined>(undefined);
+  const [cta, setCta] = useState<boolean | undefined>(undefined);
+  const [ctd, setCtd] = useState<boolean | undefined>(undefined);
   const [applyTo, setApplyTo] = useState<'all' | 'weekdays' | 'weekends'>('all');
   const [saving, setSaving] = useState(false);
 
@@ -168,7 +171,10 @@ function BulkEditModal({ onSave, onClose }: {
       base_price: basePrice !== '' ? Number(basePrice) : undefined,
       weekend_price: weekendPrice !== '' ? Number(weekendPrice) : undefined,
       min_stay: minStay !== '' ? Number(minStay) : undefined,
+      max_stay: maxStay !== '' ? Number(maxStay) : undefined,
       closed: closed,
+      cta: cta,
+      ctd: ctd,
     });
     setSaving(false);
   };
@@ -221,6 +227,33 @@ function BulkEditModal({ onSave, onClose }: {
                 <option value="">{t('Не змінювати')}</option>
                 <option value="open">{t('Відкрито')}</option>
                 <option value="closed">{t('Закрито')}</option>
+              </select>
+            </div>
+          </div>
+          {/* Тест 7 сертифікації — кілька обмежень одним рухом: максимум ночей,
+              заборона заїзду (CTA) і виїзду (CTD) на діапазон. Обмеження — на
+              тип номера, для всіх його тарифів (П7). */}
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">{t('Макс. ночей')}</label>
+              <input className="form-input" type="number" min={1} placeholder={t('Не змінювати')} value={maxStay} onChange={e => setMaxStay(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">{t('Заїзд у ці дні')}</label>
+              <select className="form-select" value={cta === undefined ? '' : cta ? 'yes' : 'no'}
+                onChange={e => setCta(e.target.value === '' ? undefined : e.target.value === 'yes')}>
+                <option value="">{t('Не змінювати')}</option>
+                <option value="no">{t('Дозволено')}</option>
+                <option value="yes">{t('Заборонено')}</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">{t('Виїзд у ці дні')}</label>
+              <select className="form-select" value={ctd === undefined ? '' : ctd ? 'yes' : 'no'}
+                onChange={e => setCtd(e.target.value === '' ? undefined : e.target.value === 'yes')}>
+                <option value="">{t('Не змінювати')}</option>
+                <option value="no">{t('Дозволено')}</option>
+                <option value="yes">{t('Заборонено')}</option>
               </select>
             </div>
           </div>

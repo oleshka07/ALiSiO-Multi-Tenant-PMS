@@ -2913,5 +2913,9 @@
   "повний пансіон": "plná penze",
   "Чия ціна": "Čí cena",
   "Базова ціна типу": "Základní cena typu",
-  "Успадковано від типу: власної ціни тарифу на цей день немає": "Zděděno od typu: vlastní cena sazby pro tento den není"
+  "Успадковано від типу: власної ціни тарифу на цей день немає": "Zděděno od typu: vlastní cena sazby pro tento den není",
+  "Заїзд у ці дні": "Příjezd v tyto dny",
+  "Виїзд у ці дні": "Odjezd v tyto dny",
+  "Дозволено": "Povoleno",
+  "Заборонено": "Zakázáno"
 }

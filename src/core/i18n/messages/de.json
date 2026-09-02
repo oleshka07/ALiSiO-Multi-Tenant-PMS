@@ -2881,5 +2881,9 @@
   "повний пансіон": "Vollpension",
   "Чия ціна": "Wessen Preis",
   "Базова ціна типу": "Basispreis des Typs",
-  "Успадковано від типу: власної ціни тарифу на цей день немає": "Vom Typ geerbt: kein eigener Tarifpreis für diesen Tag"
+  "Успадковано від типу: власної ціни тарифу на цей день немає": "Vom Typ geerbt: kein eigener Tarifpreis für diesen Tag",
+  "Заїзд у ці дні": "Anreise an diesen Tagen",
+  "Виїзд у ці дні": "Abreise an diesen Tagen",
+  "Дозволено": "Erlaubt",
+  "Заборонено": "Verboten"
 }
