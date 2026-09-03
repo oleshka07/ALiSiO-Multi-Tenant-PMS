@@ -193,6 +193,30 @@ export async function applyRevision(
       [rev.checkIn ?? null, rev.checkOut ?? null, rev.adults ?? null, rev.children ?? null,
         rev.totalPrice ?? null, rev.unitTypeId ?? null, reservationId],
     );
+    // Ночі — ЗБЕРЕЖЕНА колонка: картка, список і турзбір читають її, а не
+    // рахують. Перераховується з того, що тепер у рядку, а не з ревізії:
+    // ревізія могла принести лише одну з дат. Живе 03.09.2026 (Д8): зміна з
+    // каналу 21→24.12 показувала «2 н.» на трьох ночах.
+    const dates = await sql.row<any>('SELECT check_in, check_out FROM reservations WHERE id = ?', [reservationId]);
+    if (dates) {
+      await sql.run('UPDATE reservations SET nights = ? WHERE id = ?',
+        [nightsBetween(isoDay(dates.check_in), isoDay(dates.check_out)), reservationId]);
+    }
+    // Гість цієї броні — окремий рядок на канальну бронь (див. guestFor), тож
+    // перейменування в каналі оновлює САМЕ ЙОГО, а не шукає збігів. Порожнє
+    // поле ревізії — «не міняли», як і вище. Те саме живе 03.09.2026: імʼя,
+    // змінене в каналі, у картці лишалось старим.
+    if (rev.guestFirstName !== undefined || rev.guestLastName !== undefined || rev.guestEmail !== undefined) {
+      await sql.run(
+        `UPDATE guests
+            SET first_name = COALESCE(?, first_name),
+                last_name = COALESCE(?, last_name),
+                email = COALESCE(?, email),
+                updated_at = CURRENT_TIMESTAMP
+          WHERE id = (SELECT guest_id FROM reservations WHERE id = ?)`,
+        [rev.guestFirstName ?? null, rev.guestLastName ?? null, rev.guestEmail ?? null, reservationId],
+      );
+    }
   } else {
     // Нова бронь. `unit_id` — NULL: канал про кімнати не знає, він адресує
     // ТИП номера (CP3). Рецепція призначить кімнату зі смуги «Без номера».
@@ -226,6 +250,13 @@ export async function applyRevision(
 }
 
 /** Ночі між датами. Нуль або менше — одна ніч: бронь на нуль ночей не буває. */
+/** Дата з рядка бази як `YYYY-MM-DD`: Postgres може віддати Date, SQLite — рядок. */
+function isoDay(value: unknown): string | undefined {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === 'string' && value.length >= 10) return value.slice(0, 10);
+  return undefined;
+}
+
 function nightsBetween(from?: string, to?: string): number {
   if (!from || !to) return 1;
   const ms = Date.parse(`${to.slice(0, 10)}T00:00:00Z`) - Date.parse(`${from.slice(0, 10)}T00:00:00Z`);

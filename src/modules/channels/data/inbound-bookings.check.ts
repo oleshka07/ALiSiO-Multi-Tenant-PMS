@@ -123,8 +123,13 @@ try {
     console.log('  ok  дубль упізнається за id ревізії, а не за вмістом');
 
     // ── Наступна ревізія ТІЄЇ САМОЇ броні — зміна, не нова бронь ─────────
+    // Зміна несе нові дати, суму і гостя: ночей стає 4 (було 2), а гість
+    // перейменований. Обидва — живе 03.09.2026 (Д8): картка після зміни з
+    // каналу показувала старі «2 н.» на трьох ночах, бо `nights` — колонка,
+    // і імʼя лишалось старим, бо гість не оновлювався.
     const modified = await applyRevision(sql, CONN, rev({
       remoteRevisionId: 'rev-2', status: 'modified', checkOut: '2026-10-14', totalPrice: 450,
+      guestFirstName: 'Anna', guestLastName: 'Nova', guestEmail: 'anna@example.test',
     }));
     assert.strictEqual(modified.result, 'applied');
     assert.strictEqual(await countReservations(), 1,
@@ -134,10 +139,16 @@ try {
       'друга ревізія тієї самої броні не мала СТВОРЮВАТИ бронь');
 
     const after = await sql.row<any>(
-      'SELECT check_out, total_price FROM reservations WHERE organization_id = ?', [ORG]) as any;
+      `SELECT r.check_out, r.total_price, r.nights, g.first_name, g.last_name, g.email
+         FROM reservations r JOIN guests g ON g.id = r.guest_id
+        WHERE r.organization_id = ?`, [ORG]) as any;
     assert.strictEqual(String(after.check_out).slice(0, 10), '2026-10-14',
       'зміна дат не доїхала до броні');
     assert.strictEqual(Number(after.total_price), 450, 'зміна суми не доїхала до броні');
+    assert.strictEqual(Number(after.nights), 4,
+      `ночі після зміни дат мали перерахуватись: 10.10 → 14.10 це 4, а колонка каже ${after.nights} (Д8)`);
+    assert.deepStrictEqual([after.first_name, after.last_name, after.email], ['Anna', 'Nova', 'anna@example.test'],
+      'гість із ревізії-зміни мав оновити картку гостя цієї броні (Д8)');
     console.log('  ok  наступна ревізія змінює ТУ САМУ бронь, а не створює нову');
 
     // ── Скасування ───────────────────────────────────────────────────────
