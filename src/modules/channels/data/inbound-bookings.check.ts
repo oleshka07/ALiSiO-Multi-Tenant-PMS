@@ -44,6 +44,7 @@ async function cleanup() {
   // суперкористувачем, для якого політик не існує (INC-014).
   await runWithOrganization(ORG, async () => {
     await sql.run('DELETE FROM cm_inbound_bookings WHERE organization_id = ?', [ORG]);
+    await sql.run('DELETE FROM booking_activity_log WHERE organization_id = ?', [ORG]);
     await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
     await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [ORG]);
     await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
@@ -183,6 +184,30 @@ try {
       'SELECT status FROM reservations WHERE organization_id = ?', [ORG]) as any;
     assert.strictEqual(st.status, 'cancelled', 'скасована ревізія не скасувала бронь');
     console.log('  ok  скасування міняє статус, а не стирає бронь');
+
+    // ── Кожна ревізія лишає запис в історії броні (задача 1, 03.09.2026) ──
+    //
+    // Історія змін на картці — те, що рецепція читає щодня і що йде
+    // скріншотом рецензенту: хто, коли, що змінив. Ревізія з каналу — теж
+    // «хто»: назва OTA і код броні, а не «Система». Три ревізії вище — нова,
+    // зміна, скасування — мусять лишити три записи, кожен зі своєю дією і
+    // з кодом броні в тексті.
+    {
+      const rows = await sql.rows<any>(
+        `SELECT action, details, user_name FROM booking_activity_log
+          WHERE organization_id = ? AND reservation_id = (SELECT id FROM reservations WHERE organization_id = ? AND external_uid = 'BDC-777')
+          ORDER BY created_at ASC, id ASC`,
+        [ORG, ORG]) as any[];
+      assert.deepStrictEqual(rows.map((r) => r.action), ['channel_created', 'channel_modified', 'channel_cancelled'],
+        `три ревізії — три записи історії, а є: ${JSON.stringify(rows.map((r) => r.action))}`);
+      for (const r of rows) {
+        assert.ok(String(r.user_name).includes('Booking.com'), `автор запису — назва OTA, а не «${r.user_name}»`);
+        assert.ok(String(r.details).includes('BDC-777'), `код броні в тексті запису: ${r.details}`);
+      }
+      assert.ok(/2026-10-12.*2026-10-14|12\.10.*14\.10/.test(rows[1].details),
+        `запис про зміну називає, що змінилось (виїзд 12 → 14): ${rows[1].details}`);
+      console.log('  ok  кожна ревізія з каналу лишає запис в історії броні: хто, що, з кодом');
+    }
 
     // ── Бронь лягає БЕЗ номера (CP3) ─────────────────────────────────────
     const placed = await sql.row<any>(

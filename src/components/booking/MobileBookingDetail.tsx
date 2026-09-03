@@ -1,6 +1,8 @@
 'use client';
 
 import { useT, usePlural } from '@core/i18n/client';
+import { describeChanges } from '@bookings/history';
+import { HISTORY_ROLES, HISTORY_ICONS, HISTORY_COLORS, formatHistoryTime } from './booking-history-ui';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
@@ -118,12 +120,12 @@ export default function MobileBookingDetail({
   const [ocrScanning, setOcrScanning] = useState(false);
   const ocrFileRef = useRef<HTMLInputElement>(null);
 
-  // Owner-only audit tab
-  const [isOwner, setIsOwner] = useState(false);
+  // Історія змін — власнику, директору й менеджеру (як у GET /api/audit/bookings).
+  const [canSeeHistory, setCanSeeHistory] = useState(false);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(data => {
-      if (data.user?.role === 'owner' || data.role === 'owner') setIsOwner(true);
+      if (HISTORY_ROLES.has(data.user?.role ?? data.role)) setCanSeeHistory(true);
     }).catch(() => {});
   }, []);
   useEffect(() => {
@@ -452,6 +454,11 @@ export default function MobileBookingDetail({
                 <span style={{ padding: '2px 7px', background: `${sourceInfo.color}26`, borderRadius: 4, fontSize: 10.5, fontWeight: 600, color: sourceInfo.color, fontFamily: 'ui-monospace, monospace' }}>
                   {sourceInfo.label}
                 </span>
+                {(b.external_uid || b.hostex_reservation_code) && (
+                  <span style={{ padding: '2px 7px', background: 'var(--bg-tertiary)', borderRadius: 4, fontSize: 10.5, fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'ui-monospace, monospace', userSelect: 'all' }}>
+                    {b.external_uid || b.hostex_reservation_code}
+                  </span>
+                )}
                 <span style={{ width: 3, height: 3, background: 'var(--text-tertiary)', borderRadius: '50%' }} />
                 <span>{b.nights} {tUi(nightsLabel(b.nights))}</span>
                 <span style={{ width: 3, height: 3, background: 'var(--text-tertiary)', borderRadius: '50%' }} />
@@ -557,7 +564,7 @@ export default function MobileBookingDetail({
               { k: 'payment' as const, l: tUi('Оплата'), Icon: CreditCard, badge: !isPaid && total > 0 ? `${pct}%` : undefined },
               { k: 'registration' as const, l: tUi('Реєстрація'), Icon: FileText, badge: !isRegistered ? regBadge : undefined },
               { k: 'groups' as const, l: tUi('Групи'), Icon: Users, badge: subBookings.length > 0 ? String(subBookings.length) : undefined },
-              ...(isOwner ? [{ k: 'audit' as const, l: tUi('🕐 Історія'), Icon: Clock, badge: undefined as string | undefined }] : []),
+              ...(canSeeHistory ? [{ k: 'audit' as const, l: tUi('Історія'), Icon: Clock, badge: undefined as string | undefined }] : []),
             ]).map(t => (
               <button key={t.k} onClick={() => setTab(t.k)}
                 style={{
@@ -884,44 +891,26 @@ export default function MobileBookingDetail({
                 </div>
               ) : (
                 auditLogs.map((log: any) => {
-                  const date = new Date(log.created_at + 'Z');
-                  const timeStr = date.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' }) + ' ' + date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
-                  const actionColors: Record<string, string> = {
-                    created: '#4ADE80',
-                    deleted: '#F26B6B',
-                    status_change: '#5B7CFF',
-                    payment_status_change: '#F5B847',
-                    price_change: '#F5B847',
-                    unit_change: '#A78BFA',
-                    dates_change: '#A78BFA',
-                    registration_change: '#5B7CFF',
-                    notes_change: 'var(--text-tertiary)',
-                    internal_notes_change: 'var(--text-tertiary)',
-                  };
-                  const actionIcons: Record<string, string> = {
-                    created: '✨', deleted: '🗑️', status_change: '🔄', payment_status_change: '💰',
-                    price_change: '💲', unit_change: '🏠', dates_change: '📅',
-                    registration_change: '📋', notes_change: '📝', internal_notes_change: '📝',
-                  };
+                  const parse = (v: unknown) => { if (!v) return null; if (typeof v === 'object') return v as any; try { return JSON.parse(String(v)); } catch { return null; } };
+                  const fromChannel = String(log.action || '').startsWith('channel_');
+                  const lines = fromChannel ? [] : describeChanges(parse(log.before_json), parse(log.after_json));
                   return (
-                    <div key={log.id} style={{
-                      padding: '10px 14px', borderBottom: '1px solid var(--border-primary)',
-                      display: 'flex', gap: 10, alignItems: 'flex-start',
-                    }}>
-                      <div style={{ fontSize: 18, flexShrink: 0, marginTop: 2 }}>
-                        {actionIcons[log.action] || '📌'}
-                      </div>
+                    <div key={log.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border-primary)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <div style={{ fontSize: 18, flexShrink: 0, marginTop: 2 }}>{HISTORY_ICONS[log.action] || '📌'}</div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: actionColors[log.action] || 'var(--text-primary)' }}>
-                            {log.details}
+                        <div style={{ fontSize: 13, fontWeight: 600, color: HISTORY_COLORS[log.action] || 'var(--text-primary)' }}>{log.details}</div>
+                        {lines.length > 0 && (
+                          <div style={{ marginTop: 4, display: 'grid', gap: 2 }}>
+                            {lines.map((l) => (
+                              <div key={l.field} style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                                <span style={{ color: 'var(--text-tertiary)' }}>{tUi(l.label)}:</span> {l.from || '—'} → {l.to || '—'}
+                              </div>
+                            ))}
                           </div>
-                          <div style={{ fontSize: 10, color: 'var(--text-tertiary)', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, monospace' }}>
-                            {timeStr}
-                          </div>
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                          {log.user_name || tUi('Система')}
+                        )}
+                        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 3 }}>
+                          {fromChannel ? `${tUi('Канал')}: ${log.user_name}` : (log.user_name || tUi('Система'))}
+                          <span style={{ color: 'var(--text-tertiary)' }}> · {formatHistoryTime(log.created_at)}</span>
                         </div>
                       </div>
                     </div>

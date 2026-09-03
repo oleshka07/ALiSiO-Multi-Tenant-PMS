@@ -22,3 +22,11 @@ export { registerBookingsSubscribers } from '../events/subscribers';
 
 // Загальний пошук питає модуль, а не таблицю. Див. core/search-types.ts.
 export { searchBookings } from '../data/booking-search';
+
+// Історія змін броні — одні двері на всіх писачів (обробники, платежі,
+// ревізії з каналу). Знімок і опис різниці — щоб канал писав те саме, що
+// й людина.
+export { recordBookingChange, bookingSnapshot, HISTORY_ACTIONS } from '../data/booking-history.repo';
+export type { BookingChange, HistoryActor } from '../data/booking-history.repo';
+export { describeChanges, changesToText } from '../domain/booking-history';
+export type { ChangeLine, BookingSnapshot } from '../domain/booking-history';

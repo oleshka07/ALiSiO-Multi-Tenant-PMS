@@ -6,6 +6,10 @@ import { getSessionUser } from '@core/auth';
 import { withActor, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
 import { ownedReservation } from '../data/owned.repo';
+import { recordBookingChange, bookingLabel } from '../data/booking-history.repo';
+
+/** Ролі, яким видно історію змін броні. Те саме правило — на картці (`canSeeHistory`). */
+export const HISTORY_ROLES = new Set(['owner', 'director', 'manager']);
 
 /** Actor helper — same pattern as finance module's getOptionalActor */
 export async function getBookingActor(): Promise<{ id: string; name: string } | null> {
@@ -20,22 +24,10 @@ export async function getBookingActor(): Promise<{ id: string; name: string } | 
 
 /** Build a human-readable label for a booking that survives deletion */
 export async function buildBookingLabel(reservationId: string): Promise<string> {
-  const sql = getSql();
-  try {
-    const row = await sql.row<any>(`
-      SELECT r.check_in, r.check_out, r.source, u.code as unit_code,
-             g.first_name, g.last_name
-      FROM reservations r
-      LEFT JOIN guests g ON r.guest_id = g.id
-      LEFT JOIN units u ON r.unit_id = u.id
-      WHERE r.id = ?
-    `, [reservationId]) as any;
-    if (!row) return reservationId;
-    return `${row.first_name || ''} ${row.last_name || ''} · ${row.unit_code || ''} · ${row.check_in}–${row.check_out}`.trim();
-  } catch { return reservationId; }
+  return bookingLabel(getSql(), reservationId);
 }
 
-/** Write an audit entry to booking_activity_log */
+/** Write an audit entry to booking_activity_log — through the module door. */
 export async function writeBookingAudit(
   reservationId: string,
   action: string,
@@ -45,25 +37,12 @@ export async function writeBookingAudit(
   afterRow: any,
   bookingLabel?: string,
 ): Promise<void> {
-  const sql = getSql();
-  const id = `bal_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  try {
-    const label = bookingLabel || await buildBookingLabel(reservationId);
-    await sql.run(`
-      -- organization_id, from the reservation this entry is about. Left to
-      -- the column DEFAULT it was NULL on SQLite, and an audit entry no tenant
-      -- can read is an audit entry that does not exist.
-      INSERT INTO booking_activity_log
-        (id, organization_id, reservation_id, action, details, user_id, user_name, before_json, after_json, booking_label)
-      VALUES (?, (SELECT organization_id FROM reservations WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [id, reservationId, reservationId, action, details,
-      actor?.id || null, actor?.name || null,
-      beforeRow ? JSON.stringify(beforeRow) : null,
-      afterRow ? JSON.stringify(afterRow) : null,
-      label]);
-  } catch (e: any) {
-    console.error('[booking_activity_log] write failed (non-fatal):', e?.message);
-  }
+  await recordBookingChange(getSql(), {
+    reservationId, action, details,
+    actor: actor ? { id: actor.id, name: actor.name } : null,
+    before: beforeRow ?? undefined, after: afterRow ?? undefined,
+    bookingLabel,
+  });
 }
 
 /**
@@ -82,11 +61,13 @@ export async function writeBookingAudit(
  */
 export const listBookingAudit = withActor(async (request: NextRequest, _ctx: unknown, actor: Actor): Promise<NextResponse> => {
   try {
-    // Auth check: owner only
+    // Історію читає адміністрація готелю: власник, директор, менеджер.
+    // Була лише власнику — а користується нею рецепція старшої зміни
+    // («хто пересунув заїзд?») і саме її показують рецензенту каналу.
     const store = await cookies();
     const sessionId = store.get('session_id')?.value;
     const user = await getSessionUser(sessionId);
-    if (!user || user.role !== 'owner') {
+    if (!user || !HISTORY_ROLES.has(user.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

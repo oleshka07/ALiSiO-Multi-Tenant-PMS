@@ -40,7 +40,7 @@ export function BookingsTab({ siteId }: BookingsTabProps) {
   });
 
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
-  const [modalData, setModalData] = useState<any>({ payments: [], registrations: [], activityLog: [] });
+  const [modalData, setModalData] = useState<any>({ payments: [], registrations: [] });
 
   const fetchBookings = useCallback(async () => {
     setLoading(true);
@@ -83,7 +83,6 @@ export function BookingsTab({ siteId }: BookingsTabProps) {
       setModalData({
         payments: Array.isArray(payData) ? payData : [],
         registrations: Array.isArray(regData) ? regData : [],
-        activityLog: []
       });
       setSelectedBooking(fullBooking);
     } catch (e) {
@@ -292,7 +291,6 @@ export function BookingsTab({ siteId }: BookingsTabProps) {
           booking={selectedBooking}
           payments={modalData.payments}
           registrations={modalData.registrations}
-          activityLog={modalData.activityLog}
           sourceMap={{
             direct: { label: 'Пряме', color: '#64748b' },
             widget: { label: 'Віджет', color: '#6366f1' },

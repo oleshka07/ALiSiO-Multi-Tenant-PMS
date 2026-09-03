@@ -2,10 +2,11 @@ import { getSql } from '@core/db/async';
 import { likePattern, SEARCH_LIMIT, type SearchHit } from '@core/search-types';
 
 /**
- * Знайти бронь: за іменем гостя, номером кімнати або ідентифікатором.
+ * Знайти бронь: за іменем гостя, номером кімнати, нашим ідентифікатором або
+ * кодом броні на боці каналу (`external_uid`, як BDC-6654654654).
  *
- * Ідентифікатор у списку навмисно: половина запитів на рецепції починається з
- * того, що гість читає код із листа, а не називає прізвище.
+ * Ідентифікатори в списку навмисно: половина запитів на рецепції починається
+ * з того, що гість читає код із листа Booking, а не називає прізвище.
  *
  * Скасовані й неявки не ховаються. Саме їх шукають найчастіше — «а що там
  * було з тією бронню» — і якщо пошук їх не показує, людина йде дивитись
@@ -17,7 +18,7 @@ export async function searchBookings(term: string, organizationId: string): Prom
   const like = sql.dialect.ilike;
 
   const rows = await sql.rows<any>(`
-    SELECT r.id, r.check_in, r.check_out, r.status, r.total_price, r.currency,
+    SELECT r.id, r.check_in, r.check_out, r.status, r.total_price, r.currency, r.external_uid,
            g.first_name, g.last_name,
            u.name AS unit_name
     FROM reservations r
@@ -30,15 +31,17 @@ export async function searchBookings(term: string, organizationId: string): Prom
         OR ${like("COALESCE(g.first_name, '') || ' ' || COALESCE(g.last_name, '')")}
         OR ${like('u.name')}
         OR ${like('r.id')}
+        OR ${like('r.external_uid')}
       )
     ORDER BY r.check_in DESC
     LIMIT ${SEARCH_LIMIT}
-  `, [organizationId, p, p, p, p, p]);
+  `, [organizationId, p, p, p, p, p, p]);
 
   return rows.map((r: any) => ({
     id: String(r.id),
     title: [r.first_name, r.last_name].filter(Boolean).join(' ') || String(r.id),
     subtitle: [
+      r.external_uid,
       r.unit_name,
       `${isoDay(r.check_in)} → ${isoDay(r.check_out)}`,
       r.status,

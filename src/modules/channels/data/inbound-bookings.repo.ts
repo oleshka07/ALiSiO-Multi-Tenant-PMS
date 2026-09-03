@@ -1,6 +1,7 @@
 import type { Sql } from '@core/db/async';
 import { connectionInTenant } from './connections.repo';
 import { noteAvailabilityChanged, lastNight } from './outbox-notes';
+import { recordBookingChange, bookingSnapshot, describeChanges, changesToText } from '@bookings/history';
 
 /**
  * Ревізія бронювання з менеджера каналів стає бронню — рівно один раз.
@@ -171,6 +172,8 @@ export async function applyRevision(
     }
   };
   const before = reservationId ? await stayOf(reservationId) : null;
+  // Знімок для історії броні — з назвами, як його прочитає картка.
+  const snapshotBefore = reservationId ? await bookingSnapshot(sql, reservationId) : null;
 
   if (rev.status === 'cancelled') {
     // Скасування не стирає бронь: вона була, гість про неї знає, і в звітах
@@ -251,6 +254,38 @@ export async function applyRevision(
   await noteStay(before);
   if (reservationId && rev.status !== 'cancelled') await noteStay(await stayOf(reservationId));
 
+  // Історія броні: ревізія з каналу — теж «хто». Автор — назва OTA, текст
+  // називає код броні, що змінилось і ревізію, за якою це можна знайти в
+  // панелі вендора. Без цього рецепція бачила нові дати і не знала, звідки.
+  if (reservationId) {
+    const snapshotAfter = await bookingSnapshot(sql, reservationId);
+    const code = rev.otaReservationCode ?? rev.remoteBookingId;
+    const who = `${rev.otaName ?? 'OTA'} · ${conn.provider}`;
+    const revisionTag = `ревізія ${rev.remoteRevisionId.slice(0, 8)}`;
+    let action: 'channel_created' | 'channel_modified' | 'channel_cancelled';
+    let details: string;
+    if (rev.status === 'cancelled') {
+      action = 'channel_cancelled';
+      details = `Канал скасував бронь ${code} (${revisionTag})`;
+    } else if (created) {
+      action = 'channel_created';
+      const s = snapshotAfter ?? {};
+      details = `Нова бронь із каналу ${code}: ${[
+        s.unit_type_name, `${day(s.check_in)} → ${day(s.check_out)}`, s.nights != null ? `${s.nights} н.` : '',
+        s.total_price != null ? `${s.total_price} ${s.currency ?? ''}`.trim() : '',
+      ].filter(Boolean).join(' · ')} (${revisionTag})`;
+    } else {
+      action = 'channel_modified';
+      const diff = changesToText(describeChanges(snapshotBefore ?? {}, snapshotAfter ?? {}));
+      details = `Канал змінив бронь ${code}: ${diff || 'без видимих змін'} (${revisionTag})`;
+    }
+    await recordBookingChange(sql, {
+      reservationId, action, details,
+      actor: { id: null, name: who },
+      before: snapshotBefore ?? undefined, after: snapshotAfter ?? undefined,
+    });
+  }
+
   await sql.run(
     `UPDATE cm_inbound_bookings
         SET reservation_id = ?, applied_at = CURRENT_TIMESTAMP
@@ -261,7 +296,11 @@ export async function applyRevision(
   return { result: 'applied', reservationId, created };
 }
 
-/** Ночі між датами. Нуль або менше — одна ніч: бронь на нуль ночей не буває. */
+/** Дата для тексту історії — `YYYY-MM-DD`, звідки б не приїхала. */
+function day(value: unknown): string {
+  return isoDay(value) ?? '';
+}
+
 /** Дата з рядка бази як `YYYY-MM-DD`: Postgres може віддати Date, SQLite — рядок. */
 function isoDay(value: unknown): string | undefined {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -269,6 +308,7 @@ function isoDay(value: unknown): string | undefined {
   return undefined;
 }
 
+/** Ночі між датами. Нуль або менше — одна ніч: бронь на нуль ночей не буває. */
 function nightsBetween(from?: string, to?: string): number {
   if (!from || !to) return 1;
   const ms = Date.parse(`${to.slice(0, 10)}T00:00:00Z`) - Date.parse(`${from.slice(0, 10)}T00:00:00Z`);

@@ -215,7 +215,6 @@ function CalendarDesktop() {
   const [editBooking, setEditBooking] = useState<BookingRow | null>(null);
   const [calPayments, setCalPayments] = useState<any[]>([]);
   const [calRegistrations, setCalRegistrations] = useState<any[]>([]);
-  const [calActivityLog, setCalActivityLog] = useState<any[]>([]);
   const [bookingSources, setBookingSources] = useState<any[]>([]);
   const [blocks, setBlocks] = useState<{ id: string; unit_id: string; date_from: string; date_to: string; notes: string }[]>([]);
   const [toast, setToast] = useState('');
@@ -598,11 +597,10 @@ function CalendarDesktop() {
 
   const openBookingDetails = async (bookingId: string) => {
     try {
-      const [bookRes, payRes, regRes, actRes] = await Promise.all([
+      const [bookRes, payRes, regRes] = await Promise.all([
         fetch(`/api/bookings/${bookingId}`),
         fetch(`/api/payments?reservation_id=${bookingId}`),
         fetch(`/api/bookings/${bookingId}/registrations`),
-        fetch(`/api/bookings/${bookingId}/activity`),
       ]);
       if (bookRes.ok) {
         const data = await bookRes.json();
@@ -613,8 +611,6 @@ function CalendarDesktop() {
       if (Array.isArray(payData)) setCalPayments(payData);
       const regData = await regRes.json().catch(() => []);
       if (Array.isArray(regData)) setCalRegistrations(regData);
-      const actData = await actRes.json().catch(() => []);
-      if (Array.isArray(actData)) setCalActivityLog(actData);
     } catch (e) { console.error(e); }
   };
 
@@ -1302,7 +1298,6 @@ function CalendarDesktop() {
           booking={viewBooking}
           payments={calPayments}
           registrations={calRegistrations}
-          activityLog={calActivityLog}
           sourceMap={sourceMap}
           onClose={() => setViewBooking(null)}
           onEdit={() => openEditBooking(viewBooking)}

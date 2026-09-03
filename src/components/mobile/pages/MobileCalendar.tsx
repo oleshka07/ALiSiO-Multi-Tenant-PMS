@@ -284,7 +284,6 @@ export default function MobileCalendar() {
   const [editBooking, setEditBooking] = useState<BookingRow | null>(null);
   const [payments, setPayments] = useState<unknown[]>([]);
   const [registrations, setRegistrations] = useState<unknown[]>([]);
-  const [activityLog, setActivityLog] = useState<unknown[]>([]);
 
   const [rangeStart, setRangeStart] = useState<{ unitId: string; date: string } | null>(null);
   const [showCreateSheet, setShowCreateSheet] = useState(false);
@@ -503,16 +502,14 @@ export default function MobileCalendar() {
   // Booking view modal flow
   const openBookingDetails = async (bookingId: string) => {
     try {
-      const [bRes, pRes, rRes, aRes] = await Promise.all([
+      const [bRes, pRes, rRes] = await Promise.all([
         fetch(`/api/bookings/${bookingId}`),
         fetch(`/api/payments?reservation_id=${bookingId}`),
         fetch(`/api/bookings/${bookingId}/registrations`),
-        fetch(`/api/bookings/${bookingId}/activity`),
       ]);
       if (bRes.ok) setViewBooking(await bRes.json());
       if (pRes.ok) setPayments(await pRes.json());
       if (rRes.ok) setRegistrations(await rRes.json());
-      if (aRes.ok) { const d = await aRes.json(); setActivityLog(d.activities || d); }
     } catch (e) { console.error(e); }
   };
 

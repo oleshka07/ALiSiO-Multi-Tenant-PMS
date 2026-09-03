@@ -26,7 +26,7 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
         r.status, r.payment_status, r.source, r.total_price, r.currency, r.notes, r.internal_notes, r.created_at, r.guest_page_token,
         r.parent_id, r.commission_amount,
         r.city_tax_amount, r.city_tax_included, r.city_tax_paid,
-        r.registration_status, r.hostex_channel_type, r.hostex_reservation_code,
+        r.registration_status, r.hostex_channel_type, r.hostex_reservation_code, r.external_uid,
         r.is_multi_room, r.multi_room_marker,
         r.utm_source, r.utm_medium, r.utm_campaign, r.utm_term, r.utm_content,
         -- Знижка їде списком, а не тільки детальним запитом: модалка бронювання
@@ -77,13 +77,15 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
     }
 
     if (search) {
+      // Код броні на боці каналу (BDC-…) — теж ключ пошуку: гість читає
+      // його з листа Booking, а не називає прізвище.
       query += ` AND (
         g.first_name LIKE ? OR g.last_name LIKE ? OR
         (g.first_name || ' ' || g.last_name) LIKE ? OR
-        u.name LIKE ? OR u.code LIKE ? OR r.id LIKE ?
+        u.name LIKE ? OR u.code LIKE ? OR r.id LIKE ? OR r.external_uid LIKE ?
       )`;
       const like = `%${search}%`;
-      params.push(like, like, like, like, like, like);
+      params.push(like, like, like, like, like, like, like);
     }
 
     const paymentStatus = searchParams.get('payment_status') || '';

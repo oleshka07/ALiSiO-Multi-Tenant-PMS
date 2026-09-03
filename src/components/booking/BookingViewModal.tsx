@@ -1,6 +1,8 @@
 'use client';
 
 import { useT, usePlural } from '@core/i18n/client';
+import { describeChanges } from '@bookings/history';
+import { HISTORY_ROLES, HISTORY_ICONS, HISTORY_COLORS, formatHistoryTime } from './booking-history-ui';
 import React, { useState, useEffect } from 'react';
 import { readQuote } from './quote-prefill';
 import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
@@ -67,7 +69,6 @@ interface Props {
   booking: any;
   payments: any[];
   registrations: any[];
-  activityLog: any[];
   sourceMap: Record<string, { label: string; color: string }>;
   onClose: () => void;
   onEdit: () => void;
@@ -79,8 +80,44 @@ interface Props {
   setBooking: (b: any) => void;
 }
 
+
+/**
+ * Один запис історії: хто, коли, що. Рядки різниці — з тих самих знімків,
+ * що й текст запису каналу, тож людська правка і ревізія з каналу
+ * виглядають однаково. Для записів каналу різниця вже в тексті — не двоїмо.
+ */
+function HistoryEntry({ log }: { log: any }) {
+  const tUi = useT();
+  const parse = (v: unknown) => { if (!v) return null; if (typeof v === 'object') return v as any; try { return JSON.parse(String(v)); } catch { return null; } };
+  const fromChannel = String(log.action || '').startsWith('channel_');
+  const lines = fromChannel ? [] : describeChanges(parse(log.before_json), parse(log.after_json));
+  return (
+    <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-primary)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <div style={{ fontSize: 18, flexShrink: 0, marginTop: 2 }}>{HISTORY_ICONS[log.action] || '📌'}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: HISTORY_COLORS[log.action] || 'var(--text-primary)' }}>{log.details}</div>
+          <div style={{ fontSize: 10, color: 'var(--text-tertiary)', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, monospace' }}>{formatHistoryTime(log.created_at)}</div>
+        </div>
+        {lines.length > 0 && (
+          <div style={{ marginTop: 4, display: 'grid', gap: 2 }}>
+            {lines.map((l) => (
+              <div key={l.field} style={{ fontSize: 12, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ color: 'var(--text-tertiary)' }}>{tUi(l.label)}:</span> {l.from || '—'} <span style={{ color: 'var(--text-tertiary)' }}>→</span> {l.to || '—'}
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 3 }}>
+          {fromChannel ? `${tUi('Канал')}: ${log.user_name}` : (log.user_name || tUi('Система'))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function BookingViewModal({
-  booking: b, payments, registrations, activityLog, sourceMap,
+  booking: b, payments, registrations, sourceMap,
   onClose, onEdit, onChangeStatus, onFetchPayments, onFetchBookings, onFetchRegistrations,
   showToast, setBooking,
 }: Props) {
@@ -91,7 +128,7 @@ export default function BookingViewModal({
   // готелю», а не «як у першого клієнта». Сума в євро з підписом CZK — це
   // інші гроші, інше зобовʼязання і інший податок на фактурі.
   const hotelCurrency = useHotelCurrency();
-  const [viewTab, setViewTab] = useState<'payment' | 'registration' | 'groups' | 'tax' | 'notes' | 'history' | 'audit'>('payment');
+  const [viewTab, setViewTab] = useState<'payment' | 'registration' | 'groups' | 'tax' | 'notes' | 'audit'>('payment');
   const [showPayForm, setShowPayForm] = useState(false);
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', type: 'partial', notes: '' });
   const [regForm, setRegForm] = useState({ firstName: '', lastName: '', dateOfBirth: '', documentType: 'ID_CARD', documentNumber: '', nationality: '', country: '', address: '' });
@@ -109,15 +146,17 @@ export default function BookingViewModal({
   const [ocrScanning, setOcrScanning] = useState(false);
   const ocrFileRef = React.useRef<HTMLInputElement>(null);
 
-  // Owner-only audit tab
-  const [isOwner, setIsOwner] = useState(false);
+  // Історія змін — власнику, директору й менеджеру (те саме правило, що
+  // в GET /api/audit/bookings). Одна вкладка замість двох: раніше «📊» і
+  // «🕐» читали ту саму таблицю, лише перша — без автора.
+  const [canSeeHistory, setCanSeeHistory] = useState(false);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   // Валюта організації — запасний підпис суми, коли в броні валюти немає.
   // Їде тим самим запитом /api/auth/me, що й роль, — без окремого фетча.
   const [orgCurrency, setOrgCurrency] = useState('');
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(data => {
-      if (data.user?.role === 'owner' || data.role === 'owner') setIsOwner(true);
+      if (HISTORY_ROLES.has(data.user?.role ?? data.role)) setCanSeeHistory(true);
       if (data.organization?.currency) setOrgCurrency(data.organization.currency);
     }).catch(() => {});
   }, []);
@@ -510,6 +549,12 @@ export default function BookingViewModal({
                 )}
               </div>
               <span style={{ padding: '2px 7px', background: ((sourceMap[b.source]?.color || (b.source === 'widget' || b.source?.startsWith('widget:') ? '#6366f1' : '#6c7086')) + '26'), borderRadius: 4, fontSize: 10.5, fontWeight: 600, color: sourceMap[b.source]?.color || (b.source === 'widget' || b.source?.startsWith('widget:') ? '#6366f1' : '#6c7086'), fontFamily: 'ui-monospace, monospace' }}>{sourceMap[b.source]?.label || (b.source === 'widget' || b.source?.startsWith('widget:') ? tUi('🌐 Віджет') : b.source)}</span>
+              {(b.external_uid || b.hostex_reservation_code) && (
+                <span title={tUi('Номер броні на боці каналу')}
+                  style={{ padding: '2px 7px', background: 'var(--bg-tertiary)', borderRadius: 4, fontSize: 10.5, fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'ui-monospace, monospace', userSelect: 'all' }}>
+                  {b.external_uid || b.hostex_reservation_code}
+                </span>
+              )}
               <span style={{ width: 3, height: 3, background: 'var(--text-tertiary)', borderRadius: '50%' }} />
               {/* Dates — inline edit */}
               {!datesEditOpen ? (
@@ -878,8 +923,7 @@ export default function BookingViewModal({
             { key: 'groups' as const, label: tUi('👥 Групи'), badge: subBookings.length > 0 ? String(subBookings.length) : undefined },
             ...(showTaxTab ? [{ key: 'tax' as const, label: tUi('🏛️ Збір'), badge: undefined as string | undefined }] : []),
             { key: 'notes' as const, label: tUi('📝 Примітки'), badge: undefined as string | undefined },
-            { key: 'history' as const, label: tUi('📊 Історія'), badge: undefined as string | undefined },
-            ...(isOwner ? [{ key: 'audit' as const, label: tUi('🕐 Історія'), badge: undefined as string | undefined }] : []),
+            ...(canSeeHistory ? [{ key: 'audit' as const, label: tUi('🕐 Історія змін'), badge: undefined as string | undefined }] : []),
           ]).map(tab => (
             <button key={tab.key} onClick={() => setViewTab(tab.key)}
               style={{
@@ -1804,24 +1848,6 @@ export default function BookingViewModal({
             </div>
           )}
 
-          {viewTab === 'history' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-              {activityLog.length === 0 && <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>{tUi('Немає записів')}</div>}
-              {activityLog.map((log: any) => {
-                const icons: Record<string, string> = { status_change: '🔄', payment_status_change: '💳', price_change: '💰', note: '📝', created: '➕' };
-                return (
-                  <div key={log.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border-primary)' }}>
-                    <span style={{ fontSize: 16 }}>{icons[log.action] || '•'}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13 }}>{log.details}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{log.created_at}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
           {viewTab === 'audit' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
               {auditLogs.length === 0 ? (
@@ -1829,50 +1855,7 @@ export default function BookingViewModal({
                   {tUi('Немає записів')}
                 </div>
               ) : (
-                auditLogs.map((log: any) => {
-                  const date = new Date(log.created_at + 'Z');
-                  const timeStr = date.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' }) + ' ' + date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
-                  const actionColors: Record<string, string> = {
-                    created: '#4ADE80',
-                    deleted: '#F26B6B',
-                    status_change: '#5B7CFF',
-                    payment_status_change: '#F5B847',
-                    price_change: '#F5B847',
-                    unit_change: '#A78BFA',
-                    dates_change: '#A78BFA',
-                    registration_change: '#5B7CFF',
-                    notes_change: 'var(--text-tertiary)',
-                    internal_notes_change: 'var(--text-tertiary)',
-                  };
-                  const actionIcons: Record<string, string> = {
-                    created: '✨', deleted: '🗑️', status_change: '🔄', payment_status_change: '💰',
-                    price_change: '💲', unit_change: '🏠', dates_change: '📅',
-                    registration_change: '📋', notes_change: '📝', internal_notes_change: '📝',
-                  };
-                  return (
-                    <div key={log.id} style={{
-                      padding: '10px 14px', borderBottom: '1px solid var(--border-primary)',
-                      display: 'flex', gap: 10, alignItems: 'flex-start',
-                    }}>
-                      <div style={{ fontSize: 18, flexShrink: 0, marginTop: 2 }}>
-                        {actionIcons[log.action] || '📌'}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: actionColors[log.action] || 'var(--text-primary)' }}>
-                            {log.details}
-                          </div>
-                          <div style={{ fontSize: 10, color: 'var(--text-tertiary)', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, monospace' }}>
-                            {timeStr}
-                          </div>
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                          {log.user_name || tUi('Система')}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
+                auditLogs.map((log: any) => <HistoryEntry key={log.id} log={log} />)
               )}
             </div>
           )}

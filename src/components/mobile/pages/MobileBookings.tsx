@@ -126,7 +126,6 @@ export default function MobileBookings({ openNew, initialSearch }: MobileBooking
   const [editBooking, setEditBooking] = useState<BookingRow | null>(null);
   const [payments, setPayments] = useState<unknown[]>([]);
   const [registrations, setRegistrations] = useState<unknown[]>([]);
-  const [activityLog, setActivityLog] = useState<unknown[]>([]);
   const [bookingSources, setBookingSources] = useState<BFBookingSourceRow[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const [showNewBooking, setShowNewBooking] = useState(openNew ?? false);
@@ -194,14 +193,12 @@ export default function MobileBookings({ openNew, initialSearch }: MobileBooking
   const openBooking = async (booking: BookingRow) => {
     setViewBooking(booking);
     try {
-      const [pRes, rRes, aRes] = await Promise.all([
+      const [pRes, rRes] = await Promise.all([
         fetch(`/api/payments?reservation_id=${booking.id}`),
         fetch(`/api/bookings/${booking.id}/registrations`),
-        fetch(`/api/bookings/${booking.id}/activity`),
       ]);
       if (pRes.ok) setPayments(await pRes.json());
       if (rRes.ok) setRegistrations(await rRes.json());
-      if (aRes.ok) { const d = await aRes.json(); setActivityLog(d.activities || d); }
     } catch (e) { console.error(e); }
   };
 

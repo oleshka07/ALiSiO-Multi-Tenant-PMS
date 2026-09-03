@@ -40,6 +40,8 @@ import {
    Types
    ================================================================ */
 interface BookingRow {
+  /** Код броні на боці каналу (BDC-…) — те, що гість читає з листа. */
+  external_uid?: string | null;
   id: string;
   check_in: string;
   check_out: string;
@@ -271,7 +273,6 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
   const [payments, setPayments] = useState<any[]>([]);
   const [showPayForm, setShowPayForm] = useState(false);
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', type: 'partial', notes: '' });
-  const [activityLog, setActivityLog] = useState<any[]>([]);
   const [registrations, setRegistrations] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<any[]>([]);
   const onMenuClick = useMobileMenu();
@@ -308,14 +309,6 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
     } catch (e) { console.error('Failed to fetch payments', e); }
   }, []);
 
-  const fetchActivity = useCallback(async (resId: string) => {
-    try {
-      const res = await fetch(`/api/bookings/${resId}/activity`);
-      const data = await res.json();
-      if (Array.isArray(data)) setActivityLog(data);
-    } catch { setActivityLog([]); }
-  }, []);
-
   const fetchRegistrations = useCallback(async (resId: string) => {
     try {
       const res = await fetch(`/api/bookings/${resId}/registrations`);
@@ -335,10 +328,9 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
   const openViewBooking = useCallback((b: BookingRow) => {
     setViewBooking(b);
     fetchPayments(b.id);
-    fetchActivity(b.id);
     fetchRegistrations(b.id);
     setShowPayForm(false);
-  }, [fetchPayments, fetchActivity, fetchRegistrations]);
+  }, [fetchPayments, fetchRegistrations]);
 
   /* ── fetch bookings ───────────────────────────────── */
   const fetchBookings = useCallback(async () => {
@@ -703,6 +695,9 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
                     <td>
                       <span className="badge" style={{ background: (sourceMap[b.source]?.color || '#6c7086') + '22', color: sourceMap[b.source]?.color || '#6c7086' }}>{sourceMap[b.source]?.label || b.source}</span>
                       {b.hostex_channel_type && <span style={{ marginLeft: 4 }} title={`Hostex: ${b.hostex_channel_type}`}>🌐</span>}
+                      {(b.external_uid || b.hostex_reservation_code) && (
+                        <div style={{ fontSize: 10.5, color: 'var(--text-tertiary)', fontFamily: 'ui-monospace, monospace', marginTop: 2 }}>{b.external_uid || b.hostex_reservation_code}</div>
+                      )}
                     </td>
                     <td><div style={{ fontWeight: 700 }}>{(b.total_price || 0).toLocaleString()} {b.currency || hotelCurrency}</div>{(b.commission_amount || 0) > 0 && <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 2 }}>{t('Комісія')} {(b.commission_amount || 0).toLocaleString()}</div>}</td>
                     <td><div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
@@ -798,7 +793,6 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
             booking={viewBooking}
             payments={payments}
             registrations={registrations}
-            activityLog={activityLog}
             sourceMap={sourceMap}
             onClose={() => setViewBooking(null)}
             onEdit={() => { openEditBooking(viewBooking); setViewBooking(null); }}
