@@ -25,12 +25,21 @@
  * закриває всю ніч цього тарифу на цьому типі. Строго — і навмисно: тиха
  * стара ціна гірша за закриту ніч.
  *
- * ── Наявність читається ОДНИМ запитом на прохід ─────────────────────────
+ * ── Наявність і обмеження читаються ОДНИМ запитом на смугу ─────────────
  *
  * Домен питає по координаті; читати `availabilityByDay()` на кожну означало
  * б тисячу запитів на повний синк. Тому захоплення запамʼятовує межі дат,
  * а перше питання завантажує весь проміжок разом. Це деталь адаптера, і
  * контракт домену від неї не залежить.
+ *
+ * Проміжків ДВА — по одному на смугу, і кожен із захоплення СВОЄЇ смуги.
+ * Один спільний, узятий із захоплення наявності, коштував INC-016
+ * (03.09.2026): пачка з самих цінових координат — саме така, яку повертає
+ * звірка або кладе правка мінімуму ночей у календарі, — читала обмеження
+ * дня з порожнього проміжку, і `min_stay_arrival`, CTA/CTD, «закрито» не
+ * потрапляли в тіло ніколи; коли ж наявність у пачці була, її проміжок
+ * не покривав дат цін. Звірка при цьому рахувала очікуване зі своїм вікном
+ * і чекала обмежень вічно.
  */
 import { ChannexClient, ChannexError, ChannexPaused, type ChannexClientOptions, type ChannexEnvironment } from './client';
 import { availabilityValues, rateValues, type IdMap, type PairMap } from './ari-payload';
@@ -144,12 +153,16 @@ export async function mirrorContext(connectionId: string): Promise<MirrorContext
   };
 }
 
+/** Смуга черги: наявність і ціни захоплюються, читаються й шлються окремо. */
+export type Lane = 'availability' | 'rate';
+
 /**
  * Джерела значень ночі — наявність, ціни по заселеностях, обмеження дня — з
- * одним читанням на проміжок. `spanOf` каже, який проміжок читати, коли
- * перше питання прийде: розсилка знає його після захоплення, звірка — одразу.
+ * одним читанням на проміжок. `spanOf(lane)` каже, який проміжок читати,
+ * коли перше питання прийде: розсилка знає його після захоплення ЦІЄЇ смуги
+ * (INC-016 — не сусідньої), звірка — одразу, один на обидві.
  */
-export function nightSources(ctx: MirrorContext, spanOf: () => { from: string; to: string } | null): NightSources {
+export function nightSources(ctx: MirrorContext, spanOf: (lane: Lane) => { from: string; to: string } | null): NightSources {
   const { propertyId, occupancies, mirroredUnitTypeIds } = ctx;
   let freeByType: Map<string, Map<string, number>> | null = null;
   let restrictionsByDay: Map<string, DayRestrictions> | null = null;
@@ -159,7 +172,7 @@ export function nightSources(ctx: MirrorContext, spanOf: () => { from: string; t
 
     availabilityAt: async (unitTypeId, date) => {
       if (!freeByType) {
-        const span = spanOf();
+        const span = spanOf('availability');
         freeByType = span
           ? await availabilityByDay(propertyId, span.from, nextDay(span.to))
           : new Map();
@@ -170,10 +183,11 @@ export function nightSources(ctx: MirrorContext, spanOf: () => { from: string; t
       return byDay.get(date) ?? 0;
     },
 
-    // Обмеження дня — одним читанням на прохід, для всіх типів дзеркала (Д1/Д2).
+    // Обмеження дня — одним читанням на прохід, для всіх типів дзеркала
+    // (Д1/Д2), у проміжку ЦІНОВОЇ смуги: саме її координати їх везуть.
     restrictionsAt: async (unitTypeId, date) => {
       if (!restrictionsByDay) {
-        const span = spanOf();
+        const span = spanOf('rate');
         restrictionsByDay = span
           ? await dayRestrictions(mirroredUnitTypeIds, span.from, span.to)
           : new Map();
@@ -212,9 +226,12 @@ export async function ariFlush(
     ...(options.client ?? {}),
   });
 
-  // ── Наявність — один запит на весь проміжок захоплених дат ────────────
-  let span: { from: string; to: string } | null = null;
-  const sources = nightSources(ctx, () => span);
+  // ── Один запит на весь проміжок захоплених дат — на КОЖНУ смугу свій ──
+  //
+  // Наявність читається в проміжку наявності, обмеження дня — в проміжку
+  // цін. Спільний проміжок від наявності лишав ціни без обмежень (INC-016).
+  const spans: Record<Lane, { from: string; to: string } | null> = { availability: null, rate: null };
+  const sources = nightSources(ctx, (lane) => spans[lane]);
 
   const deps: FlushDeps = {
     isEnabled: async () => connection.isEnabled,
@@ -224,10 +241,10 @@ export async function ariFlush(
 
     claim: async (kind) => {
       const rows = await claimBatch(connectionId, kind, CLAIM_LIMIT, maxAttempts);
-      if (kind === 'availability' && rows.length) {
+      if (rows.length) {
         const starts = rows.map((r) => r.date).sort();
         const ends = rows.map((r) => r.dateTo ?? r.date).sort();
-        span = { from: starts[0], to: ends[ends.length - 1] };
+        spans[kind] = { from: starts[0], to: ends[ends.length - 1] };
       }
       return rows.map((r) => ({
         id: r.id,

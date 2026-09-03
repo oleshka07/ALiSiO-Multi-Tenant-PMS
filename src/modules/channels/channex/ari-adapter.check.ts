@@ -23,12 +23,18 @@
  *   200 чистий з задачею → відправлено, черга порожня;
  *   500 → повтори з наростанням усередині клієнта, потім пауза й назад.
  *
- * Без цін і без цінових таблиць навмисно (інваріант 16, `check-price-source`):
- * координата ціни без джерела розвʼязується в «закрито» і їде як
- * `stop_sell: true` — тобто смуга цін тут теж ходить, лише без числа.
+ * Сцени 1–6 без цін і без цінових таблиць навмисно (інваріант 16,
+ * `check-price-source`): координата ціни без джерела розвʼязується в
+ * «закрито» і їде як `stop_sell: true` — тобто смуга цін тут теж ходить,
+ * лише без числа.
  *
  * Перевірка була ЧЕРВОНОЮ — зламом адаптера (`release` → `markSent`): рядок
  * зник із черги замість повернутись. Інваріант 24.
+ *
+ * Сцена 7 (INC-016) червоніла на самому коді: пачка з самих цінових
+ * координат їхала без `min_stay_arrival`, бо проміжок для читання
+ * обмежень знав лише захоплення наявності. Ціни тут Є — базовим рядком
+ * через двері `@pricing`, без SQL до цінових таблиць (інваріант 16).
  */
 import assert from 'node:assert';
 import '../../../../scripts/lib/module-aliases.mjs';
@@ -38,6 +44,7 @@ const { getSql } = await import('@core/db/async');
 const { ariFlush } = await import('./ari-adapter.ts');
 const { ChannexRateLimiter } = await import('./limiter.ts');
 const { enqueueChange, queuedChanges, pendingCount, stuckChanges } = await import('../data/outbox.repo.ts');
+const { bulkUpdatePrices } = await import('@pricing');
 
 const sql = getSql();
 const ORG = '__ari_adapter__';
@@ -258,6 +265,69 @@ try {
       assert.match(String(left[0].lastError), /throttled|window/, 'причина — вікно обмежувача, і вона на рядку');
       assert.strictEqual(left[0].attempts, 0, 'відмова обмежувача не рахує спроби');
       console.log('  ok  бюджет обʼєкта один на всі проходи: одинадцятий виклик за хвилину відмовляється');
+    }
+
+    // ── 7. Обмеження дня їдуть у пачці БЕЗ наявності — і повз її проміжок ──
+    //
+    // Живе 03.09.2026 (INC-016): звірка повертала в чергу лише цінові
+    // координати, крон слав їх — і `min_stay_arrival` у тілі не було, бо
+    // проміжок дат для читання обмежень запамʼятовувався лише при захопленні
+    // НАЯВНОСТІ. Пачка з самих цін читала обмеження з порожнього проміжку,
+    // і мінімум ночей, CTA/CTD, «закрито» з календаря не доїжджали ніколи;
+    // звірка ж рахувала очікуване зі своїм вікном і чекала їх вічно.
+    //
+    // Дві осі (інваріант 26): два дні з РІЗНИМ мінімумом (3 і 2, другий ще
+    // й із забороною заїзду) — інакше константа пройшла б; і наявність у
+    // тій самій пачці на ІНШИЙ день, проміжок якої обмеження не покриває.
+    // Базові рядки — дверима @pricing (інваріант 16); координати, які кладе
+    // сам писач (Ц16), тут прибираються, черга складається явно.
+    {
+      const D3 = addDays(DAY, 60);
+      const D4 = addDays(DAY, 61);
+      const D5 = addDays(DAY, 65);
+      const rateOn = (calls: { path: string; body: any }[], date: string) => {
+        const rates = calls.find((c) => c.path.endsWith('/restrictions'));
+        assert.ok(rates, 'смуга цін мала поїхати');
+        const v = rates!.body.values.find((x: any) => x.date === date || (x.date_from <= date && date <= x.date_to));
+        assert.ok(v, `у тілі цін немає ночі ${date}: ${JSON.stringify(rates!.body.values)}`);
+        return v;
+      };
+
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      await bulkUpdatePrices({ unitTypeId: UT, dateFrom: D3, dateTo: D3, applyTo: 'all', base_price: 150, min_stay: 3 });
+      await bulkUpdatePrices({ unitTypeId: UT, dateFrom: D4, dateTo: D4, applyTo: 'all', base_price: 150, min_stay: 2, cta: true });
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+
+      // Вісь 1: у пачці лише ціни — жодного рядка наявності.
+      await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT, ratePlanId: RP, date: D3 });
+      await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT, ratePlanId: RP, date: D4 });
+      const only = transport([]);
+      const r1 = await ariFlush(CONN, 'key', { client: { fetch: only.fetch } });
+      assert.strictEqual(r1.failed, 0, r1.errors.join(' | '));
+      assert.strictEqual(only.calls.length, 1, 'лише ціни — одне повідомлення');
+      const d3 = rateOn(only.calls, D3);
+      const d4 = rateOn(only.calls, D4);
+      assert.strictEqual(d3.min_stay_arrival, 3, `пачка без наявності: мінімум ночей D3 не доїхав — ${JSON.stringify(d3)}`);
+      assert.strictEqual(d4.min_stay_arrival, 2, `пачка без наявності: мінімум ночей D4 не доїхав — ${JSON.stringify(d4)}`);
+      assert.strictEqual(d4.closed_to_arrival, true, 'заборона заїзду з базового рядка D4 мала поїхати');
+      assert.strictEqual(d3.closed_to_arrival, false, 'D3 заборони не має — і це явне false з рядка, не відсутність поля');
+      assert.strictEqual(d3.stop_sell, false, 'ціна є — ніч відкрита явно (Д2)');
+      assert.deepStrictEqual(d3.rates, [{ occupancy: 2, rate: 15000 }], 'ціна базового рядка через priceNights, у мінорних');
+
+      // Вісь 2: наявність у тій самій пачці, але на D5 — її проміжок D3 не покриває.
+      await enqueueChange(sql, CONN, { kind: 'availability', unitTypeId: UT, date: D5 });
+      await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT, ratePlanId: RP, date: D3 });
+      const both = transport([]);
+      const r2 = await ariFlush(CONN, 'key', { client: { fetch: both.fetch } });
+      assert.strictEqual(r2.failed, 0, r2.errors.join(' | '));
+      assert.strictEqual(both.calls.length, 2, 'наявність і ціни — два повідомлення');
+      const availability = both.calls.find((c) => c.path.endsWith('/availability'))!;
+      assert.strictEqual(availability.body.values[0].date, D5);
+      assert.strictEqual(availability.body.values[0].availability, 1, 'наявність D5 — з її власного проміжку');
+      assert.strictEqual(rateOn(both.calls, D3).min_stay_arrival, 3,
+        'наявність на інший день у тій самій пачці не має красти проміжок обмежень у цін');
+      assert.strictEqual(await pendingCount(CONN), 0);
+      console.log('  ok  обмеження дня їдуть і без наявності в пачці, і повз її проміжок (INC-016)');
     }
   });
 } finally {
