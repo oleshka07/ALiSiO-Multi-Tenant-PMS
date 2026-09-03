@@ -31,6 +31,8 @@ const CAT = '__cm_check__cat';
 const TYPE = '__cm_check__type';
 const GUEST = '__cm_check__guest';
 const CONN = '__cm_check__conn';
+const TYPE2 = '__cm_check__type2';
+const UNIT = '__cm_check__unit';
 /** Другий орендар: один не доводить нічого. */
 const OTHER = '__cm_check__other';
 
@@ -42,8 +44,11 @@ async function cleanup() {
   // суперкористувачем, для якого політик не існує (INC-014).
   await runWithOrganization(ORG, async () => {
     await sql.run('DELETE FROM cm_inbound_bookings WHERE organization_id = ?', [ORG]);
+    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+    await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [ORG]);
     await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
     await sql.run('DELETE FROM reservations WHERE organization_id = ?', [ORG]);
+    await sql.run("DELETE FROM units WHERE id LIKE '__cm_check__%'", []);
     await sql.run("DELETE FROM unit_types WHERE id LIKE '__cm_check__%'", []);
     await sql.run("DELETE FROM categories WHERE id LIKE '__cm_check__%'", []);
     await sql.run("DELETE FROM guests WHERE id LIKE '__cm_check__%'", []);
@@ -65,6 +70,15 @@ try {
       [CAT, PROP, 'Rooms', 'room']);
     await sql.run('INSERT INTO unit_types (id, property_id, category_id, name, code) VALUES (?, ?, ?, ?, ?)',
       [TYPE, PROP, CAT, 'DZ', 'DZ']);
+    // Другий тип і номер першого типу — для сцени про зміну ТИПУ з каналу
+    // (Д9): без другого типу «тип змінився» і «тип той самий» невідрізнювані.
+    await sql.run('INSERT INTO unit_types (id, property_id, category_id, name, code) VALUES (?, ?, ?, ?, ?)',
+      [TYPE2, PROP, CAT, 'TW', 'TW']);
+    await sql.run(
+      `INSERT INTO units (id, property_id, unit_type_id, category_id, name, code, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, TRUE)`,
+      [UNIT, PROP, TYPE, CAT, '101', '101'],
+    );
     await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
       [GUEST, ORG, 'Chan', 'Nel']);
     // `provider` називається ЯВНО: DEFAULT у схемі немає навмисно — імені
@@ -76,6 +90,14 @@ try {
        VALUES (?, ?, ?, ?, ?, ?, TRUE)`,
       [CONN, ORG, PROP, 'probe', 'tok_check', 'sec_check'],
     );
+    // Обидва типи змаплені: писач наявності шле лише змапленим (outbox.check).
+    for (const [t, remote] of [[TYPE, 'remote-dz'], [TYPE2, 'remote-tw']]) {
+      await sql.run(
+        `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, occupancy, remote_id)
+         VALUES (?, ?, ?, 'unit_type', ?, '', 0, ?)`,
+        [`${CONN}_m_${remote}`, ORG, CONN, t, remote],
+      );
+    }
 
     const rev = (over: Record<string, unknown> = {}) => ({
       remoteRevisionId: 'rev-1',
@@ -169,6 +191,49 @@ try {
       'канал не знає про кімнати — бронь мала лягти без призначеного номера');
     assert.strictEqual(placed.unit_type_id, TYPE, 'тип номера мав зберегтися');
     console.log('  ok  бронь із каналу лягає на ТИП номера, без кімнати');
+
+    // ── Канал змінив ТИП номера броні, яка вже стоїть у кімнаті (Д9) ─────
+    //
+    // Живе 03.09.2026 (тест 11): Booking CRS перевів бронь із Twin на Double,
+    // а в нас вона лишилась у кімнаті T2 типу Twin з `unit_type_id = Double`.
+    // Наявність рахує зайнятою КІМНАТУ (Twin), а канал отримав координату
+    // Double — Double у каналі не зменшився, Twin не було чим оновити.
+    // Кімната старого типу не вміщає новий тип: бронь повертається у смугу
+    // «Без номера» нового типу, а в чергу лягають ОБИДВА типи — старий
+    // (кімната звільнилась) і новий (тип зайнятий).
+    {
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      const fresh = await applyRevision(sql, CONN, rev({
+        remoteRevisionId: 'rev-20', remoteBookingId: 'bkg-2', otaReservationCode: 'BDC-778',
+        checkIn: '2026-11-03', checkOut: '2026-11-05',
+      }));
+      assert.strictEqual(fresh.result, 'applied');
+      const id = (await sql.row<any>(
+        'SELECT id FROM reservations WHERE organization_id = ? AND external_uid = ?', [ORG, 'BDC-778']) as any).id;
+      // Рецепція поставила бронь у кімнату першого типу.
+      await sql.run('UPDATE reservations SET unit_id = ? WHERE id = ?', [UNIT, id]);
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+
+      const retyped = await applyRevision(sql, CONN, rev({
+        remoteRevisionId: 'rev-21', remoteBookingId: 'bkg-2', otaReservationCode: 'BDC-778', status: 'modified',
+        checkIn: '2026-11-03', checkOut: '2026-11-05', unitTypeId: TYPE2,
+      }));
+      assert.strictEqual(retyped.result, 'applied');
+      const row = await sql.row<any>('SELECT unit_id, unit_type_id FROM reservations WHERE id = ?', [id]) as any;
+      assert.strictEqual(String(row.unit_type_id), TYPE2, 'новий тип із ревізії не доїхав');
+      assert.strictEqual(row.unit_id ?? null, null,
+        'кімната СТАРОГО типу лишилась на броні НОВОГО типу: наявність рахує Twin, канал отримує Double');
+      const noted = (await sql.rows<any>(
+        "SELECT DISTINCT unit_type_id FROM cm_outbox WHERE organization_id = ? AND kind = 'availability' AND sent_at IS NULL",
+        [ORG]) as any[]).map((r) => String(r.unit_type_id)).sort();
+      assert.deepStrictEqual(noted, [TYPE, TYPE2].sort(),
+        `у чергу мали лягти ОБИДВА типи — звільнена кімната і зайнятий тип, а лягли: ${noted.join(', ') || 'нічого'}`);
+      console.log('  ok  зміна типу з каналу знімає кімнату старого типу і кладе в чергу обидва типи (Д9)');
+      // Прибрати за собою: наступні сцени рахують брони й журнал ORG.
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      await sql.run("DELETE FROM cm_inbound_bookings WHERE organization_id = ? AND remote_booking_id = 'bkg-2'", [ORG]);
+      await sql.run('DELETE FROM reservations WHERE id = ?', [id]);
+    }
 
     // ── Неіснуюче зʼєднання ──────────────────────────────────────────────
     const nowhere = await applyRevision(sql, '__no_such_connection__', rev({ remoteRevisionId: 'rev-9' }));

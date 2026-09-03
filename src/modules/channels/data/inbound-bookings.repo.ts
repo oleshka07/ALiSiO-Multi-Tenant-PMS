@@ -154,16 +154,21 @@ export async function applyRevision(
     'SELECT property_id, unit_type_id, unit_id, check_in, check_out FROM reservations WHERE id = ?', [id]);
   const noteStay = async (stay: any) => {
     if (!stay?.check_in || !stay?.check_out) return;
-    let unitTypeId = stay.unit_type_id ? String(stay.unit_type_id) : null;
-    if (!unitTypeId && stay.unit_id) {
+    const types = new Set<string>();
+    if (stay.unit_type_id) types.add(String(stay.unit_type_id));
+    // Кімната, в якій бронь стоїть, може бути ІНШОГО типу, ніж тип броні
+    // (канал змінив тип — Д9). Наявність рахує зайнятою кімнату, тож і її
+    // тип має дізнатись, що вона звільнилась чи зайнялась.
+    if (stay.unit_id) {
       const u = await sql.row<any>('SELECT unit_type_id FROM units WHERE id = ?', [stay.unit_id]);
-      unitTypeId = u?.unit_type_id ? String(u.unit_type_id) : null;
+      if (u?.unit_type_id) types.add(String(u.unit_type_id));
     }
-    if (!unitTypeId) return;
-    await noteAvailabilityChanged(sql, {
-      propertyId: String(stay.property_id ?? conn.propertyId), unitTypeId,
-      from: String(stay.check_in).slice(0, 10), to: lastNight(String(stay.check_out).slice(0, 10)),
-    });
+    for (const unitTypeId of types) {
+      await noteAvailabilityChanged(sql, {
+        propertyId: String(stay.property_id ?? conn.propertyId), unitTypeId,
+        from: String(stay.check_in).slice(0, 10), to: lastNight(String(stay.check_out).slice(0, 10)),
+      });
+    }
   };
   const before = reservationId ? await stayOf(reservationId) : null;
 
@@ -193,6 +198,13 @@ export async function applyRevision(
       [rev.checkIn ?? null, rev.checkOut ?? null, rev.adults ?? null, rev.children ?? null,
         rev.totalPrice ?? null, rev.unitTypeId ?? null, reservationId],
     );
+    // Канал змінив ТИП — кімната старого типу новий не вміщає: бронь
+    // повертається у смугу «Без номера» нового типу, і рецепція ставить її
+    // заново. Живе 03.09.2026 (Д9): бронь із Twin переведена на Double
+    // лишилась у кімнаті Twin, наявність рахувала Twin, канал отримав Double.
+    if (rev.unitTypeId && before?.unit_id && before.unit_type_id && String(before.unit_type_id) !== rev.unitTypeId) {
+      await sql.run('UPDATE reservations SET unit_id = NULL WHERE id = ?', [reservationId]);
+    }
     // Ночі — ЗБЕРЕЖЕНА колонка: картка, список і турзбір читають її, а не
     // рахують. Перераховується з того, що тепер у рядку, а не з ревізії:
     // ревізія могла принести лише одну з дат. Живе 03.09.2026 (Д8): зміна з
