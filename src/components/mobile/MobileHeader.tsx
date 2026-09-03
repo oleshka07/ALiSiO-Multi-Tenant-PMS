@@ -4,6 +4,7 @@ import { useT } from '@core/i18n/client';
 import { usePathname } from 'next/navigation';
 import { ArrowLeft, Bell, Search } from 'lucide-react';
 import { useGlobalSearch } from '@/ui/GlobalSearchContext';
+import PropertySwitcher from '@/components/layout/PropertySwitcher';
 
 interface MobileHeaderProps {
   title?: string;
@@ -43,6 +44,8 @@ export default function MobileHeader({ title, onBack, rightAction, showSearch, o
       </div>
       <h1 className="m-header-title">{pageTitle}</h1>
       <div className="m-header-right">
+        {/* Область обʼєкта — та сама, що в шапці десктопа; лише коли є з чого обирати. */}
+        <PropertySwitcher compact />
         {/*
           Лупа тепер є завжди. Раніше вона зʼявлялась лише там, де екран
           передав `showSearch`, тобто майже ніде — і на телефоні знайти

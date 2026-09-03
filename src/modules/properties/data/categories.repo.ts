@@ -30,7 +30,7 @@ export async function listCategories(organizationId: string) {
   const sql = getSql();
   return await sql.rows<any>(`
     SELECT
-      c.id, c.name, c.type, c.icon, c.color, c.sort_order, c.description,
+      c.id, c.property_id, c.name, c.type, c.icon, c.color, c.sort_order, c.description,
       c.show_in_tasks, c.show_in_finance, c.show_in_booking,
       COUNT(u.id) as unit_count
     FROM categories c

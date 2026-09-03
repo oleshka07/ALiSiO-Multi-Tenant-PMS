@@ -4,6 +4,8 @@ import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
+import PropertyRequired from '@/components/layout/PropertyRequired';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Save, Loader2, Tag } from 'lucide-react';
 
@@ -18,7 +20,6 @@ import { ArrowLeft, Plus, Save, Loader2, Tag } from 'lucide-react';
  * (інваріант 29); строгість — у писачі.
  */
 
-interface Property { id: string; name: string }
 interface RatePlan {
   id: string; propertyId: string; name: string; code: string; currency: string;
   mealPlan: string | null; childExtraGross: number | null; isActive: boolean; pricedUnitTypes: string[];
@@ -30,8 +31,8 @@ export default function RatePlansSettingsPage() {
   const tUi = useT();
   const onMenuClick = useMobileMenu();
 
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [propertyId, setPropertyId] = useState('');
+  // Обʼєкт — з області в шапці, не з власного стану (check-property-scope).
+  const { propertyId } = usePropertyScope();
   const [plans, setPlans] = useState<RatePlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -53,17 +54,10 @@ export default function RatePlansSettingsPage() {
   };
   const explain = (code: string | undefined) => (code && ERRORS[code]) || tUi('Не вдалося. Спробуйте ще раз');
 
-  const load = useCallback(async (pid: string) => {
+  const load = useCallback(async (pid: string | null) => {
     setLoading(true);
     try {
-      if (!pid) {
-        const res = await fetch('/api/properties');
-        const list = await res.json();
-        const arr: Property[] = Array.isArray(list) ? list : (list?.properties ?? []);
-        setProperties(arr);
-        if (arr[0]) setPropertyId(arr[0].id);
-        return;
-      }
+      if (!pid) { setPlans([]); return; }
       const res = await fetch(`/api/pricing/rate-plans?property_id=${encodeURIComponent(pid)}`);
       const body = await res.json();
       if (!res.ok) { setNotice({ kind: 'error', text: explain(body?.error) }); return; }
@@ -143,18 +137,11 @@ export default function RatePlansSettingsPage() {
           <button className="btn btn-primary" disabled={!propertyId} onClick={() => startEdit(null)}><Plus size={14} /> {tUi('Додати тариф')}</button>
         </div>
 
-        {/* Обʼєкт — підписаний і на видноті: без підпису тарифи лягали на
-            перший обʼєкт за датою створення, і ніхто цього не помічав
-            (02.09.2026). */}
-        {properties.length > 1 && (
-          <label style={{ display: 'block', marginBottom: 12, fontSize: 12, color: 'var(--text-tertiary)' }}>
-            {tUi('Обʼєкт')}
-            <select className="form-select" value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
-              {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </label>
-        )}
-
+        {/* Обʼєкт обирається в шапці (область обʼєкта): без підпису тарифи
+            лягали на перший обʼєкт за датою створення, і ніхто цього не
+            помічав (02.09.2026). Тепер екран без обраного обʼєкта просить
+            обрати, а не бере перший. */}
+        <PropertyRequired>
         {notice && (
           <div className={`alert ${notice.kind === 'ok' ? 'alert-success' : 'alert-error'}`} style={{ marginBottom: 12 }}>{notice.text}</div>
         )}
@@ -221,6 +208,7 @@ export default function RatePlansSettingsPage() {
             </table>
           </div>
         )}
+        </PropertyRequired>
       </div>
     </>
   );

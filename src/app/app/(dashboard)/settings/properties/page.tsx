@@ -4,6 +4,8 @@ import { useT, usePlural } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
+import PropertyRequired from '@/components/layout/PropertyRequired';
 import {
   Building2, Edit3, Trash2, Plus, Save, X, Check, Search,
   ChevronRight, ChevronDown, Tent, TreePine, BedDouble,
@@ -136,7 +138,11 @@ export default function SettingsPropertiesPage() {
   // ── Data ──
   const onMenuClick = useMobileMenu();
   const [properties, setProperties] = useState<PropertyRow[]>([]);
-  const [selectedProperty, setSelectedProperty] = useState<string>('');
+  // Який обʼєкт відкрито — область у шапці, не власний стан
+  // (check-property-scope). Список тут свій, бо картці потрібні поля, яких
+  // оболонка не носить (адреса, часи, турзбір); після створення чи видалення
+  // обʼєкта оболонку перепитуємо через `refresh`.
+  const { propertyId, refresh } = usePropertyScope();
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [unitTypes, setUnitTypes] = useState<UnitTypeRow[]>([]);
   const [units, setUnits] = useState<UnitRow[]>([]);
@@ -178,21 +184,16 @@ export default function SettingsPropertiesPage() {
     try {
       const res = await fetch('/api/properties');
       const data = await res.json();
-      if (Array.isArray(data)) {
-        setProperties(data);
-        if (data.length > 0 && !selectedProperty) {
-          setSelectedProperty(data[0].id);
-        }
-      }
+      if (Array.isArray(data)) setProperties(data);
     } catch (e) { console.error('Fetch properties error:', e); }
-  }, [selectedProperty]);
+  }, []);
 
   // ── Fetch Property Details ──
   const fetchDetails = useCallback(async () => {
-    if (!selectedProperty) return;
+    if (!propertyId) { setCategories([]); setUnitTypes([]); setUnits([]); setFees([]); setLoading(false); return; }
     setLoading(true);
     try {
-      const res = await fetch(`/api/properties/${selectedProperty}`);
+      const res = await fetch(`/api/properties/${propertyId}`);
       const data = await res.json();
       setCategories(data.categories || []);
       setUnitTypes(data.unitTypes || []);
@@ -204,10 +205,10 @@ export default function SettingsPropertiesPage() {
     try {
       const res = await fetch('/api/fees');
       const data = await res.json();
-      setFees(Array.isArray(data) ? data.filter((f: FeeRow) => f.property_id === selectedProperty) : []);
+      setFees(Array.isArray(data) ? data.filter((f: FeeRow) => f.property_id === propertyId) : []);
     } catch (e) { console.error('Fetch fees error:', e); }
     setLoading(false);
-  }, [selectedProperty]);
+  }, [propertyId]);
 
   useEffect(() => { fetchProperties(); }, [fetchProperties]);
   useEffect(() => { fetchDetails(); }, [fetchDetails]);
@@ -216,7 +217,7 @@ export default function SettingsPropertiesPage() {
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
   const toggle = (key: string) => setCollapsed(p => ({ ...p, [key]: !p[key] }));
 
-  const currentProperty = properties.find(p => p.id === selectedProperty);
+  const currentProperty = properties.find(p => p.id === propertyId);
 
   // ── Filtered Units (search) ──
   const filteredUnits = useMemo(() => {
@@ -276,7 +277,8 @@ export default function SettingsPropertiesPage() {
         });
         const data = await res.json();
         if (res.ok) {
-          setSelectedProperty(data.id);
+          // Оболонка дізнається про новий обʼєкт і відкриває його.
+          await refresh(data.id);
           showToast(tUi('Об\'єкт створено!'));
         } else {
           alert(data.error || 'Помилка створення');
@@ -316,7 +318,7 @@ export default function SettingsPropertiesPage() {
       } else {
         const res = await fetch('/api/categories', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...catForm, property_id: selectedProperty }),
+          body: JSON.stringify({ ...catForm, property_id: propertyId }),
         });
         if (!res.ok) { const d = await res.json(); alert(tUi(d.error)); setSaving(false); return; }
         showToast(tUi('Категорію створено!'));
@@ -363,7 +365,7 @@ export default function SettingsPropertiesPage() {
       } else {
         const res = await fetch('/api/unit-types', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...utForm, property_id: selectedProperty }),
+          body: JSON.stringify({ ...utForm, property_id: propertyId }),
         });
         if (!res.ok) { const d = await res.json(); alert(tUi(d.error)); setSaving(false); return; }
         showToast(tUi('Тип юніта створено!'));
@@ -407,7 +409,7 @@ export default function SettingsPropertiesPage() {
       } else {
         const res = await fetch('/api/units', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...unitForm, property_id: selectedProperty }),
+          body: JSON.stringify({ ...unitForm, property_id: propertyId }),
         });
         if (!res.ok) { const d = await res.json(); alert(tUi(d.error)); setSaving(false); return; }
         showToast(tUi('Юніт створено!'));
@@ -431,7 +433,7 @@ export default function SettingsPropertiesPage() {
     try {
       const res = await fetch('/api/units', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...bulkForm, property_id: selectedProperty, bulk: true }),
+        body: JSON.stringify({ ...bulkForm, property_id: propertyId, bulk: true }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -474,7 +476,7 @@ export default function SettingsPropertiesPage() {
       const res = await fetch(url, {
         method: editId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...feeForm, property_id: selectedProperty }),
+        body: JSON.stringify({ ...feeForm, property_id: propertyId }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -512,7 +514,7 @@ export default function SettingsPropertiesPage() {
         showToast(`${deleteTarget.name} видалено!`);
         setModal('none');
         if (deleteTarget.type === 'property') {
-          setSelectedProperty('');
+          await refresh(null);
           fetchProperties();
         } else {
           fetchDetails();
@@ -563,19 +565,11 @@ export default function SettingsPropertiesPage() {
           </div>
         </div>
 
-        {/* Property Selector (if multiple) */}
-        {properties.length > 1 && (
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div className="flex gap-3 items-center">
-              <label className="form-label" style={{ margin: 0, whiteSpace: 'nowrap' }}>{tUi('Об\'єкт:')}</label>
-              <select className="form-select" style={{ width: 300 }} value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)}>
-                {properties.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        )}
+        {/* Обʼєкт обирається в шапці (область обʼєкта). «Усі обʼєкти» тут
+            не має сенсу — картка нижче показує один; без вибору просимо
+            обрати, а не беремо перший. Порожній список лишає лише кнопку
+            «Додати обʼєкт» у заголовку. */}
+        {!propertyId && properties.length > 0 && <PropertyRequired>{null}</PropertyRequired>}
 
         {/* Property Card */}
         {currentProperty && (

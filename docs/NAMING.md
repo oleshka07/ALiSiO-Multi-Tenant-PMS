@@ -157,6 +157,7 @@ Historично співіснують `r001`, `u_dlx1`, `org_demo` (сіди) т
 | `source` | канал продажу броні (`booking_sources`) | `utm_source` — маркетинг |
 | `activate` (gift card) | погашено і прив'язано до броні | `active` — ще не використано |
 | `organization` | тенант, платить нам | `property` — його об'єкт |
+| `property scope` (область обʼєкта) | який обʼєкт організації зараз на екрані: `?property=<id\|all>`, кука `property_scope`, `usePropertyScope()` | орендар — той на сесії й зʼєднанні; область його не заміняє |
 
 ## 9. Заборонене
 

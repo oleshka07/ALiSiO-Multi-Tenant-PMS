@@ -33,7 +33,24 @@ export const SUPPORTED_CURRENCIES = ['CZK', 'EUR', 'USD', 'PLN', 'GBP', 'UAH'] a
  * authenticated, and does not typecheck either: a guard takes
  * (request, context) and this needs neither.
  */
-async function readGeneralSettings(): Promise<NextResponse> {
+/**
+ * Який обʼєкт віддавати. Названий — його, звірений з організацією (чужий —
+ * як неіснуючий, `null`). Не названий: єдиний обʼєкт організації — він;
+ * кілька — `null`, і екран просить обрати в шапці. Тут стояло
+ * `ORDER BY created_at LIMIT 1` — «головний обʼєкт», тобто перший: у
+ * готелю з двома цей екран мовчки редагував адресу й часи не того.
+ */
+async function propertyFor(organizationId: string, propertyId: string | null) {
+  const sql = getSql();
+  const cols = 'id, name, slug, address, city, country, phone, email, check_in_time, check_out_time';
+  if (propertyId) {
+    return await sql.row<any>(`SELECT ${cols} FROM properties WHERE organization_id = ? AND id = ?`, [organizationId, propertyId]) ?? null;
+  }
+  const rows = await sql.rows<any>(`SELECT ${cols} FROM properties WHERE organization_id = ? ORDER BY created_at LIMIT 2`, [organizationId]);
+  return rows.length === 1 ? rows[0] : null;
+}
+
+async function readGeneralSettings(propertyId: string | null): Promise<NextResponse> {
   const user = await currentUser();
   if (!user) return unauthorized();
   try {
@@ -42,7 +59,7 @@ async function readGeneralSettings(): Promise<NextResponse> {
                 legal_name, registration_no, vat_no, is_vat_payer, legal_address,
                 bank_name, bank_account, iban, swift, invoice_email, website, ocr_cloud_fallback
          FROM organizations WHERE id = ?`, [user.organization_id]);
-    const property = await sql.row<any>('SELECT id, name, slug, address, city, country, phone, email, check_in_time, check_out_time FROM properties WHERE organization_id = ? ORDER BY created_at LIMIT 1', [user.organization_id]);
+    const property = await propertyFor(user.organization_id, propertyId);
     return NextResponse.json({
       organization: org ?? null,
       property: property ?? null,
@@ -55,7 +72,11 @@ async function readGeneralSettings(): Promise<NextResponse> {
   }
 }
 
-export const getGeneralSettings = withActor(readGeneralSettings);
+/** GET /api/settings/general?property_id=… — організація і названий обʼєкт. */
+export const getGeneralSettings = withActor(async (request: NextRequest) => {
+  const propertyId = new URL(request.url).searchParams.get('property_id') || null;
+  return readGeneralSettings(propertyId);
+});
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -175,7 +196,7 @@ export const saveGeneralSettings = withPermission('manage_properties', async (re
         user.organization_id]);
     }
 
-    return readGeneralSettings();
+    return readGeneralSettings(prop.id ? String(prop.id) : null);
   } catch (e: any) {
     console.error('PUT /api/settings/general error:', e);
     return serverError('modules/properties/api/general-settings saveGeneralSettings', e, 'Не вдалося зберегти');

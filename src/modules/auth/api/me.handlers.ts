@@ -4,6 +4,7 @@ import { runWithOrganization } from '@core/auth/tenant-context';
 import { getSql } from '@core/db/async';
 import { listFeatures } from '@core/features';
 import { LANGUAGES, LANGUAGE_CODES } from '@core/i18n/languages';
+import { rememberedPropertyId } from '@core/auth/property-scope';
 
 /**
  * Хто я, що вміє мій готель — і чому це читається В КОНТЕКСТІ ОРЕНДАРЯ.
@@ -53,6 +54,12 @@ export async function getMe() {
     // однакові налаштування, а забутий третій блок — знову тиху порожнечу.
     let features: Record<string, boolean> = {};
     let organization: { currency: string; countries: string[] } | null = null;
+    // Обʼєкти організації і запамʼятований вибір — для області обʼєкта в
+    // оболонці (`PropertyScopeProvider`). Список іде звідси, а не з
+    // `/api/properties`, щоб оболонка дізнавалась і особу, і обʼєкти одним
+    // запитом; кука лише звіряється зі списком (core/auth/property-scope.ts).
+    let properties: { id: string; name: string; city_tax_per_night: number | null }[] = [];
+    let property: string | null = null;
 
     if (user.organization_id) {
       await runWithOrganization(user.organization_id, async () => {
@@ -67,7 +74,7 @@ export async function getMe() {
         const org = await sql.row<any>(
           'SELECT default_currency FROM organizations WHERE id = ?', [user.organization_id]);
         const props = await sql.rows<any>(
-          'SELECT DISTINCT country FROM properties WHERE organization_id = ? AND country IS NOT NULL',
+          'SELECT id, name, country, city_tax_per_night FROM properties WHERE organization_id = ? ORDER BY created_at',
           [user.organization_id]);
         organization = {
           // `organizations.default_currency` — NOT NULL, тож рядок організації
@@ -76,8 +83,14 @@ export async function getMe() {
           // здогадку. Тут стояло `|| 'EUR'`, тоді як решта коду вгадувала
           // 'CZK': два різні припущення про одного клієнта в одній системі.
           currency: org?.default_currency ? String(org.default_currency) : '',
-          countries: props.map((p) => String(p.country).toUpperCase()).filter(Boolean),
+          countries: [...new Set(props.map((p) => (p.country ? String(p.country).toUpperCase() : '')).filter(Boolean))],
         };
+        properties = props.map((p) => ({
+          id: String(p.id),
+          name: String(p.name),
+          city_tax_per_night: p.city_tax_per_night == null ? null : Number(p.city_tax_per_night),
+        }));
+        property = await rememberedPropertyId(properties.map((p) => p.id));
       });
     }
 
@@ -88,6 +101,9 @@ export async function getMe() {
       user,
       features,
       organization,
+      properties,
+      // Запамʼятований обʼєкт або null; адреса вкладки переважає його на клієнті.
+      property,
       language: user.language,
       languages: LANGUAGE_CODES.map((code) => ({ code, native: LANGUAGES[code].native })),
       // Present only for the supplier working inside a customer. The screen

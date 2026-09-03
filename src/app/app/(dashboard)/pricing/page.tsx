@@ -5,6 +5,7 @@ import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import {
   ChevronLeft,
   ChevronRight,
@@ -437,15 +438,18 @@ export default function PricingPage() {
       .catch(() => {});
   }, []);
 
-  // Fetch unit types
+  // Типи номерів — лише обраного в шапці обʼєкта; «Усі обʼєкти» показує всі,
+  // і тоді тип називає свій обʼєкт сам (`property_id` у рядку).
+  const { propertyId } = usePropertyScope();
   useEffect(() => {
     fetch('/api/unit-types').then(r => r.json()).then(data => {
       if (Array.isArray(data)) {
-        setUnitTypes(data);
-        if (data.length > 0 && !selectedUnitType) setSelectedUnitType(data[0].id);
+        const scoped = data.filter((ut: { property_id?: string }) => !propertyId || ut.property_id === propertyId);
+        setUnitTypes(scoped);
+        setSelectedUnitType((cur) => (cur && scoped.some((ut: UnitType) => ut.id === cur) ? cur : (scoped[0]?.id ?? '')));
       }
     });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [propertyId]);
 
   // Тарифи обʼєкта вибраного типу — для вибору «чию ціну редагуємо».
   useEffect(() => {

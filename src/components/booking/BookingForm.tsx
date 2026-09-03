@@ -4,6 +4,7 @@ import { useT } from '@core/i18n/client';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Loader2, Save, Plus } from 'lucide-react';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import { shouldAskQuote, readQuote, type QuoteResponse } from './quote-prefill';
 import { percentOf } from '@core/money';
 
@@ -178,28 +179,17 @@ export default function BookingForm({
   // used to sit here was the first customer's Kurtaxe in the first
   // customer's currency, prefilled into every hotel's bookings. 0 until the
   // property says otherwise — the operator can always type the amount.
+  //
+  // Ставка — ОБРАНОГО в шапці обʼєкта (область обʼєкта). `props[0]`, що
+  // стояло тут, означало ставку ПЕРШОГО обʼєкта в кожній броні організації
+  // з двома — мовчки, і курортний збір потрапляв у бронь чужого обʼєкта.
+  // Обрано «Усі обʼєкти» — ставки немає: поле лишається порожнім, портьє
+  // вводить суму сам, як і для готелю без збору. Нуль тут не помилка.
+  const { property: scopedProperty } = usePropertyScope();
   const [cityTaxRate, setCityTaxRate] = useState(0);
   useEffect(() => {
-    fetch('/api/properties')
-      .then(r => (r.ok ? r.json() : []))
-      .then((props) => {
-        if (!Array.isArray(props) || props.length === 0) return;
-        // `props[0]` беззастережно означало, що в організації з двома
-        // обʼєктами кожна бронь діставала ставку ПЕРШОГО з них — мовчки, і
-        // курортний збір потрапляв у бронь чужого обʼєкта. Сусідній
-        // BookingViewModal уже шукає обʼєкт броні; тут броні ще немає, тож
-        // єдина чесна відповідь при кількох обʼєктах — жодної.
-        //
-        // Нуль тут не помилка: поле лишається порожнім, портьє вводить суму
-        // сам. Це рівно те, що робить решта цього блоку для готелю, який
-        // збору не має.
-        if (props.length > 1) return;
-        if (props[0]?.city_tax_per_night != null) {
-          setCityTaxRate(Number(props[0].city_tax_per_night) || 0);
-        }
-      })
-      .catch(() => {});
-  }, []);
+    setCityTaxRate(Number(scopedProperty?.city_tax_per_night) || 0);
+  }, [scopedProperty]);
   // The organization's currency, never a hardcoded one: 'CZK' here labelled
   // every hotel's money with the first customer's currency.
   const { organization } = useCurrentUser();

@@ -1,7 +1,7 @@
 'use client';
 
 import { useT, usePlural } from '@core/i18n/client';
-import { describeChanges } from '@bookings/history';
+import { describeChanges } from '@/modules/bookings/ui/booking-history';
 import { HISTORY_ROLES, HISTORY_ICONS, HISTORY_COLORS, formatHistoryTime } from './booking-history-ui';
 import React, { useState, useEffect } from 'react';
 import { readQuote } from './quote-prefill';
@@ -393,7 +393,9 @@ export default function BookingViewModal({
       .then(r => (r.ok ? r.json() : []))
       .then((props) => {
         if (!Array.isArray(props)) return;
-        const prop = props.find((p: any) => p.id === (b as any).property_id) || props[0];
+        // Обʼєкт САМОЇ броні, без запасного «першого»: бронь без обʼєкта не
+        // має ставки, а не ставку чужого готелю (check-property-scope).
+        const prop = props.find((p: any) => p.id === (b as any).property_id);
         if (prop?.city_tax_per_night != null) setCityTaxRate(Number(prop.city_tax_per_night) || 0);
       })
       .catch(() => {});

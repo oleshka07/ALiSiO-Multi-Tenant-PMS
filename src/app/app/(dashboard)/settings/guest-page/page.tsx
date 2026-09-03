@@ -5,6 +5,8 @@ import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
+import PropertyRequired from '@/components/layout/PropertyRequired';
 import { Save, Check, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { ImageUploadField } from '@/components/ui/ImageUploadField';
@@ -91,8 +93,10 @@ export default function GuestPageSettingsPage() {
   };
 
   // ═══ PROPERTY STATE ═══
-  const [properties, setProperties] = useState<any[]>([]);
-  const [selectedProperty, setSelectedProperty] = useState('');
+  // Обʼєкт — з області в шапці (check-property-scope). Цей екран НІКОЛИ не
+  // мав селектора: він мовчки брав перший обʼєкт і перший конфіг, тож у
+  // готелю з двома гостьова сторінка другого не редагувалась узагалі.
+  const { propertyId } = usePropertyScope();
   const [propConfig, setPropConfig] = useState<any>(null);
   // Property form fields
   const [pWifi, setPWifi] = useState('');
@@ -134,20 +138,20 @@ export default function GuestPageSettingsPage() {
   const [previewNonce, setPreviewNonce] = useState(0);
   const [sectionsBusy, setSectionsBusy] = useState(false);
 
-  // stale?: дві зміни selectedProperty поспіль = два запити в польоті, і
+  // stale?: дві зміни propertyId поспіль = два запити в польоті, і
   // повільніший ПЕРШИЙ приходив останнім — превʼю показувало «немає броні»
   // для обʼєкта, якого вже не вибрано. Відповідь застосовується лише якщо
   // ефект, що її замовив, ще чинний.
-  const fetchSections = useCallback(async (propertyId: string, stale?: () => boolean) => {
-    if (!propertyId) return;
+  const fetchSections = useCallback(async (pid: string | null, stale?: () => boolean) => {
+    if (!pid) return;
     try {
-      const res = await fetch(`/api/settings/guest-page-sections?property_id=${propertyId}`);
+      const res = await fetch(`/api/settings/guest-page-sections?property_id=${pid}`);
       const data = await res.json();
       if (stale?.()) return;
       if (Array.isArray(data.sections)) setPageSections(data.sections);
     } catch { /* залишаємо попередній стан */ }
     try {
-      const res = await fetch(`/api/settings/guest-page-preview?property_id=${propertyId}`);
+      const res = await fetch(`/api/settings/guest-page-preview?property_id=${pid}`);
       const data = await res.json();
       if (stale?.()) return;
       setPreviewToken(data.token ?? null);
@@ -157,12 +161,12 @@ export default function GuestPageSettingsPage() {
   // Зміни зберігаються одразу — перемикач без кнопки «Зберегти», бо превʼю
   // поруч має показувати наслідок того самого кліку.
   const pushSections = async (changes: Array<{ section: string; enabled?: boolean; sort_order?: number }>) => {
-    if (!selectedProperty) return;
+    if (!propertyId) return;
     setSectionsBusy(true);
     try {
       const res = await fetch('/api/settings/guest-page-sections', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ property_id: selectedProperty, sections: changes }),
+        body: JSON.stringify({ property_id: propertyId, sections: changes }),
       });
       const data = await res.json();
       if (res.ok && Array.isArray(data.sections)) {
@@ -189,26 +193,15 @@ export default function GuestPageSettingsPage() {
 
   // ─── Fetch ─────────────────────────────────────
   const fetchAll = useCallback(async () => {
+    if (!propertyId) { setLoading(false); return; }
     setLoading(true);
     try {
-      // Fetch properties
-      const propRes = await fetch('/api/properties');
-      const propData = await propRes.json();
-      if (Array.isArray(propData)) {
-        setProperties(propData);
-        if (!selectedProperty && propData.length > 0) {
-          setSelectedProperty(propData[0].id);
-        }
-      }
-
-      // Fetch property guest configs
+      // Конфіг обʼєкта — саме ОБРАНОГО, не перший у списку.
       const pgcRes = await fetch('/api/property-guest-config');
       const pgcData = await pgcRes.json();
-      if (Array.isArray(pgcData) && pgcData.length > 0) {
-        setPropConfig(pgcData[0]);
-        loadPropertyConfig(pgcData[0]);
-        if (!selectedProperty) setSelectedProperty(pgcData[0].property_id);
-      }
+      const own = Array.isArray(pgcData) ? pgcData.find((c: any) => c.property_id === propertyId) : null;
+      setPropConfig(own ?? null);
+      loadPropertyConfig(own ?? {});
 
       // Fetch unit type configs
       const utRes = await fetch('/api/guest-page-config');
@@ -222,14 +215,14 @@ export default function GuestPageSettingsPage() {
       }
     } catch (e) { console.error(e); }
     setLoading(false);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [propertyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
   useEffect(() => {
     let cancelled = false;
-    fetchSections(selectedProperty, () => cancelled);
+    fetchSections(propertyId, () => cancelled);
     return () => { cancelled = true; };
-  }, [selectedProperty, fetchSections]);
+  }, [propertyId, fetchSections]);
 
   // ─── Load property config ─────────────────────
   const loadPropertyConfig = (cfg: any) => {
@@ -277,7 +270,7 @@ export default function GuestPageSettingsPage() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          property_id: selectedProperty || propConfig?.property_id,
+          property_id: propertyId,
           wifi_network: pWifi, wifi_password: pWifiPass,
           restaurant_name: pRestName, restaurant_hours: pRestHours, restaurant_menu_url: pRestMenu || null,
           rules: pRules, faq_items: pFaq, useful_info: pUseful,
@@ -546,6 +539,7 @@ export default function GuestPageSettingsPage() {
           )}
         </div>
 
+        <PropertyRequired>
         {/* ═══ TAB SWITCHER ═══ */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', padding: 4 }}>
           {[
@@ -805,6 +799,7 @@ export default function GuestPageSettingsPage() {
             )}
           </>
         )}
+        </PropertyRequired>
       </div>
     </>
   );

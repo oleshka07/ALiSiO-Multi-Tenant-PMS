@@ -4,6 +4,8 @@ import { useT } from '@core/i18n/client';
 import { useCallback, useEffect, useState } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
+import PropertyRequired from '@/components/layout/PropertyRequired';
 import { ArrowLeft, Check, Loader2, RefreshCw, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 
@@ -54,7 +56,10 @@ export default function ConnectChannelManagerPage() {
   const onMenuClick = useMobileMenu();
 
   const [setup, setSetup] = useState<Setup | null>(null);
-  const [propertyId, setPropertyId] = useState<string>('');
+  // Обʼєкт — з області в шапці, не з власного стану (check-property-scope):
+  // майстер заводить обʼєкт у чужому акаунті, і «перший-ліпший» тут — це
+  // каталог не того готелю на тому боці.
+  const { propertyId } = usePropertyScope();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
@@ -90,14 +95,14 @@ export default function ConnectChannelManagerPage() {
   };
   const explain = (code: string | undefined) => (code && ERRORS[code]) || tUi('Не вдалося. Спробуйте ще раз');
 
-  const load = useCallback(async (pid: string) => {
+  const load = useCallback(async (pid: string | null) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/channels/setup${pid ? `?property_id=${encodeURIComponent(pid)}` : ''}`);
+      if (!pid) { setSetup(null); return; }
+      const res = await fetch(`/api/channels/setup?property_id=${encodeURIComponent(pid)}`);
       const body = await res.json();
       if (!res.ok) { setNotice({ kind: 'error', text: explain(body?.error) }); return; }
       setSetup(body);
-      if (!pid && body.properties?.[0]) setPropertyId(body.properties[0].id);
       if (body.state?.connection?.environment) setEnvironment(body.state.connection.environment);
     } finally {
       setLoading(false);
@@ -105,7 +110,12 @@ export default function ConnectChannelManagerPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { load(propertyId); }, [propertyId, load]);
+  useEffect(() => {
+    // Інший обʼєкт — інший майстер: вікно мапінгу, звірка і звіт каталогу
+    // належали попередньому (так робив селектор, який стояв тут).
+    setFrameUrl(null); setReconciliation(null); setCatalogReport(null);
+    load(propertyId);
+  }, [propertyId, load]);
 
   const call = async (label: string, url: string, init: RequestInit, onOk: (body: any) => void | Promise<void>) => {
     setBusy(label);
@@ -224,16 +234,15 @@ export default function ConnectChannelManagerPage() {
           </div>
         )}
 
+        <PropertyRequired>
         {loading && !setup ? (
           <div style={{ textAlign: 'center', padding: 64 }}><Loader2 size={24} className="animate-pulse" style={{ display: 'inline-block' }} /></div>
         ) : !setup ? null : (
           <>
-            {/* ── Обʼєкт ── */}
+            {/* ── Обʼєкт ── обирається в шапці; тут лише названо, з яким працюємо */}
             <div className="card" style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 4 }}>{tUi('Обʼєкт')}</label>
-              <select className="input" value={propertyId} onChange={(e) => { setFrameUrl(null); setReconciliation(null); setCatalogReport(null); setPropertyId(e.target.value); }}>
-                {setup.properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 4 }}>{tUi('Обʼєкт')}</div>
+              <div style={{ fontWeight: 600 }}>{state?.property?.name ?? setup.properties.find((p) => p.id === propertyId)?.name ?? '—'}</div>
               {provider && <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 6 }}>{tUi('Провайдер')}: {provider.label}</div>}
             </div>
 
@@ -399,6 +408,7 @@ export default function ConnectChannelManagerPage() {
             </div>
           </>
         )}
+        </PropertyRequired>
       </div>
     </>
   );

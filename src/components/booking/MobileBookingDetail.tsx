@@ -1,7 +1,7 @@
 'use client';
 
 import { useT, usePlural } from '@core/i18n/client';
-import { describeChanges } from '@bookings/history';
+import { describeChanges } from '@/modules/bookings/ui/booking-history';
 import { HISTORY_ROLES, HISTORY_ICONS, HISTORY_COLORS, formatHistoryTime } from './booking-history-ui';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';

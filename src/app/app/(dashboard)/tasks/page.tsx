@@ -6,6 +6,7 @@ import { useDevice } from "@/ui/hooks/useDevice";
 import MobileTasks from "@/components/mobile/pages/MobileTasks";
 import Header from "@/components/layout/Header";
 import { useMobileMenu } from "@/ui/MobileMenuContext";
+import { usePropertyScope } from "@/ui/PropertyScopeContext";
 import {
   Plus,
   Search,
@@ -191,6 +192,8 @@ function QuickAdd({
   const [priority, setPriority] = useState("normal");
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Нова задача належить обʼєкту, обраному в шапці; «Усі обʼєкти» — без обʼєкта.
+  const { propertyId: scopedPropertyId } = usePropertyScope();
 
   const handleSubmit = async () => {
     if (!title.trim()) return;
@@ -203,6 +206,7 @@ function QuickAdd({
           title: title.trim(),
           project_id: projectId,
           priority,
+          property_id: scopedPropertyId || null,
         }),
       });
       setTitle("");
@@ -1361,6 +1365,7 @@ function TasksDesktop() {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const onMenuClick = useMobileMenu();
+  const { propertyId: scopedPropertyId } = usePropertyScope();
 
   // ── Table filters ──
   const [filterStatus, setFilterStatus] = useState<string>("active"); // 'all' | 'active' | specific status
@@ -2290,6 +2295,7 @@ function TasksDesktop() {
                                     title,
                                     status: statusKey,
                                     project_id: selectedProject || null,
+                                    property_id: scopedPropertyId || null,
                                   }),
                                 }).then(() => {
                                   fetchTasks();

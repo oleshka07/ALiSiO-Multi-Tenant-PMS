@@ -1,6 +1,7 @@
 export { login } from './login.handlers';
 export { logout } from './logout.handlers';
 export { getMe } from './me.handlers';
+export { setPropertyScope } from './property.handlers';
 export { getOrgFeatures, updateOrgFeature } from './features.handlers';
 export { getAiUsage } from './ai-usage.handlers';
 export { getIntegrationCredentials, updateIntegrationCredentials, getPaymentSettings } from './integration-credentials.handlers';

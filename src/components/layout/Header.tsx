@@ -4,6 +4,7 @@ import { useT } from '@core/i18n/client';
 import { Bell, Search, Menu, ArrowLeft } from 'lucide-react';
 import { useGlobalSearch } from '@/ui/GlobalSearchContext';
 import AccountMenu from './AccountMenu';
+import PropertySwitcher from './PropertySwitcher';
 
 interface HeaderProps {
   title: string;
@@ -45,6 +46,9 @@ export default function Header({ title, onMenuClick, onBack }: HeaderProps) {
       </div>
 
       <div className="header-actions">
+        {/* Область обʼєкта — один елемент на всю оболонку; зʼявляється лише
+            коли обʼєктів два й більше. Див. src/ui/PropertyScopeContext.tsx. */}
+        <PropertySwitcher />
         <button
           className="btn btn-ghost btn-icon"
           aria-label={t('Пошук')}

@@ -2,6 +2,7 @@
 
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import {
   Search, RefreshCw, Plus, X, Check, Calendar, Flag, Tag,
   User, FolderOpen, Loader2, Paperclip, Image, Trash2,
@@ -642,6 +643,8 @@ export default function MobileTasks() {
   const [quickTitle, setQuickTitle] = useState('');
   const [quickSaving, setQuickSaving] = useState(false);
   const quickRef = useRef<HTMLInputElement>(null);
+  // Нова задача належить обʼєкту, обраному в шапці; «Усі обʼєкти» — без обʼєкта.
+  const { propertyId: scopedPropertyId } = usePropertyScope();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -676,7 +679,7 @@ export default function MobileTasks() {
       await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: quickTitle.trim(), project_id: projectFilter || undefined }),
+        body: JSON.stringify({ title: quickTitle.trim(), project_id: projectFilter || undefined, property_id: scopedPropertyId || undefined }),
       });
       setQuickTitle('');
       fetchData();

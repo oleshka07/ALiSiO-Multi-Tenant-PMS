@@ -26,12 +26,13 @@ import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
+import PropertyRequired from '@/components/layout/PropertyRequired';
 import { Plus, Trash2, X, Loader2, ArrowLeft, Users, CalendarRange, Calculator } from 'lucide-react';
 import Link from 'next/link';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-interface Property { id: string; name: string }
 interface Price {
   id: string;
   unit_type_id: string | null;
@@ -116,8 +117,8 @@ export default function PricingMatrixPage() {
   const [prices, setPrices] = useState<Price[]>([]);
   const [tiers, setTiers] = useState<Tier[]>([]);
   const [types, setTypes] = useState<UnitType[]>([]);
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [propertyId, setPropertyId] = useState('');
+  // Обʼєкт — з області в шапці, не з власного стану (check-property-scope).
+  const { propertyId } = usePropertyScope();
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState('');
   const [saving, setSaving] = useState(false);
@@ -138,20 +139,13 @@ export default function PricingMatrixPage() {
    * Обʼєкт — явно. 02.09.2026: в організації з двома обʼєктами цей екран не
    * міг ні прочитати, ні записати жодної ціни — без `property_id`
    * `requirePropertyId` відмовляє, і відмова правильна (AGENTS, інваріант 1):
-   * вгадати обʼєкт означало б покласти ціну не тому готелю. Спершу список
-   * обʼєктів, потім матриця обраного.
+   * вгадати обʼєкт означало б покласти ціну не тому готелю. Обʼєкт називає
+   * область у шапці; без нього екран просить обрати (`PropertyRequired`).
    */
-  const fetchAll = useCallback(async (pid: string) => {
+  const fetchAll = useCallback(async (pid: string | null) => {
     setLoading(true);
     try {
-      if (!pid) {
-        const res = await fetch('/api/properties');
-        const list = await res.json();
-        const arr: Property[] = Array.isArray(list) ? list : (list?.properties ?? []);
-        setProperties(arr);
-        if (arr[0]) setPropertyId(arr[0].id);
-        return;
-      }
+      if (!pid) { setPrices([]); setTiers([]); setTypes([]); return; }
       const [m, u] = await Promise.all([
         fetch(`/api/pricing/occupancy?property_id=${encodeURIComponent(pid)}`).then((x) => x.json()),
         fetch('/api/unit-types').then((x) => x.json()),
@@ -286,6 +280,7 @@ export default function PricingMatrixPage() {
   };
 
   const runQuote = async () => {
+    if (!propertyId) return;
     const p = new URLSearchParams({
       property_id: propertyId,
       unit_type_id: quoteForm.unit_type_id, check_in: quoteForm.check_in,
@@ -324,16 +319,9 @@ export default function PricingMatrixPage() {
             <h2 className="page-title">{t('Ціни за заселеністю')}</h2>
             <div className="page-subtitle">{t('Скільки коштує ніч залежно від кількості гостей — і що знімає довше проживання')}</div>
           </div>
-          {properties.length > 1 && (
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--text-tertiary)' }}>
-              {t('Обʼєкт')}
-              <select className="form-select" value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
-                {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </label>
-          )}
         </div>
 
+        <PropertyRequired>
         {loading ? (
           <div style={{ textAlign: 'center', padding: 64 }}>
             <Loader2 size={24} className="animate-pulse" style={{ display: 'inline-block' }} /> {t('Завантаження...')}
@@ -572,6 +560,7 @@ export default function PricingMatrixPage() {
             )}
           </>
         )}
+        </PropertyRequired>
 
         <Modal
           open={seasonModal}

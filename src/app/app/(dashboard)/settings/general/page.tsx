@@ -7,6 +7,8 @@ import { ArrowLeft, Loader2, Save } from 'lucide-react';
 import Header from '@/components/layout/Header';
 import SecondaryCurrencies from './_components/SecondaryCurrencies';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
+import PropertyRequired from '@/components/layout/PropertyRequired';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -56,7 +58,11 @@ export default function GeneralSettingsPage() {
   const t = useT();
   const onMenuClick = useMobileMenu();
   const [org, setOrg] = useState<Organization | null>(null);
-  const [property, setProperty] = useState<Property | null>(null);
+  // Форма обʼєкта — ОБРАНОГО в шапці (область обʼєкта). Без параметра
+  // сервер віддавав перший за датою створення, і в готелю з двома цей екран
+  // мовчки редагував не той (check-property-scope).
+  const { propertyId } = usePropertyScope();
+  const [propertyForm, setPropertyForm] = useState<Property | null>(null);
   const [currencies, setCurrencies] = useState<string[]>([]);
   const [languages, setLanguages] = useState<{ code: string; native: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,11 +74,11 @@ export default function GeneralSettingsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/settings/general');
+      const res = await fetch(`/api/settings/general${propertyId ? `?property_id=${encodeURIComponent(propertyId)}` : ''}`);
       const data = await res.json();
       if (!res.ok) { showToast(`❌ ${t(data.error)}`); return; }
       setOrg(data.organization);
-      setProperty(data.property);
+      setPropertyForm(data.property);
       setCurrencies(data.currencies ?? []);
       setLanguages(data.languages ?? []);
     } catch (e: any) {
@@ -80,7 +86,8 @@ export default function GeneralSettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propertyId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -91,12 +98,12 @@ export default function GeneralSettingsPage() {
       const res = await fetch('/api/settings/general', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ organization: org, property }),
+        body: JSON.stringify({ organization: org, property: propertyForm }),
       });
       const data = await res.json();
       if (!res.ok) { showToast(`❌ ${t(data.error)}`); return; }
       setOrg(data.organization);
-      setProperty(data.property);
+      setPropertyForm(data.property);
       showToast(t('✅ Збережено'));
     } catch (e: any) {
       showToast(`❌ ${t(e.message)}`);
@@ -106,7 +113,7 @@ export default function GeneralSettingsPage() {
   };
 
   const setOrgField = (k: keyof Organization, v: string | number) => setOrg((p) => (p ? { ...p, [k]: v } : p));
-  const setPropField = (k: keyof Property, v: string) => setProperty((p) => (p ? { ...p, [k]: v } : p));
+  const setPropField = (k: keyof Property, v: string) => setPropertyForm((p) => (p ? { ...p, [k]: v } : p));
 
   return (
     <>
@@ -282,51 +289,54 @@ export default function GeneralSettingsPage() {
               </div>
             </div>
 
-            {property && (
+            {/* Кілька обʼєктів і жодного обраного — просимо обрати в шапці,
+                а не показуємо перший. */}
+            {!propertyForm && <PropertyRequired>{null}</PropertyRequired>}
+            {propertyForm && (
               <div className="card">
                 <div className="card-header"><div className="card-title">{t('Обʼєкт')}</div></div>
                 <div style={{ padding: 20 }}>
                   <div className="form-row">
                     <div className="form-group">
                       <label className="form-label">{t('Назва обʼєкта')}</label>
-                      <input className="form-input" value={property.name ?? ''} onChange={(e) => setPropField('name', e.target.value)} />
+                      <input className="form-input" value={propertyForm.name ?? ''} onChange={(e) => setPropField('name', e.target.value)} />
                     </div>
                     <div className="form-group">
                       <label className="form-label">{t('Місто')}</label>
-                      <input className="form-input" value={property.city ?? ''} onChange={(e) => setPropField('city', e.target.value)} />
+                      <input className="form-input" value={propertyForm.city ?? ''} onChange={(e) => setPropField('city', e.target.value)} />
                     </div>
                   </div>
                   <div className="form-row">
                     <div className="form-group">
                       <label className="form-label">{t('Адреса')}</label>
-                      <input className="form-input" value={property.address ?? ''} onChange={(e) => setPropField('address', e.target.value)} />
+                      <input className="form-input" value={propertyForm.address ?? ''} onChange={(e) => setPropField('address', e.target.value)} />
                     </div>
                     <div className="form-group">
                       <label className="form-label">{t('Країна')}</label>
                       <input className="form-input" maxLength={2} style={{ textTransform: 'uppercase' }}
-                        value={property.country ?? ''} onChange={(e) => setPropField('country', e.target.value.toUpperCase())} />
+                        value={propertyForm.country ?? ''} onChange={(e) => setPropField('country', e.target.value.toUpperCase())} />
                       <div className="form-hint">{t('Двобуквений код, напр. CZ')}</div>
                     </div>
                   </div>
                   <div className="form-row">
                     <div className="form-group">
                       <label className="form-label">{t('Телефон')}</label>
-                      <input className="form-input" value={property.phone ?? ''} onChange={(e) => setPropField('phone', e.target.value)} />
+                      <input className="form-input" value={propertyForm.phone ?? ''} onChange={(e) => setPropField('phone', e.target.value)} />
                       <div className="form-hint">{t('Показується гостям у листах і на гостьовій сторінці.')}</div>
                     </div>
                     <div className="form-group">
                       <label className="form-label">Email</label>
-                      <input className="form-input" type="email" value={property.email ?? ''} onChange={(e) => setPropField('email', e.target.value)} />
+                      <input className="form-input" type="email" value={propertyForm.email ?? ''} onChange={(e) => setPropField('email', e.target.value)} />
                     </div>
                   </div>
                   <div className="form-row">
                     <div className="form-group">
                       <label className="form-label">{t('Час заїзду')}</label>
-                      <input className="form-input" type="time" value={property.check_in_time ?? '15:00'} onChange={(e) => setPropField('check_in_time', e.target.value)} />
+                      <input className="form-input" type="time" value={propertyForm.check_in_time ?? '15:00'} onChange={(e) => setPropField('check_in_time', e.target.value)} />
                     </div>
                     <div className="form-group">
                       <label className="form-label">{t('Час виїзду')}</label>
-                      <input className="form-input" type="time" value={property.check_out_time ?? '11:00'} onChange={(e) => setPropField('check_out_time', e.target.value)} />
+                      <input className="form-input" type="time" value={propertyForm.check_out_time ?? '11:00'} onChange={(e) => setPropField('check_out_time', e.target.value)} />
                     </div>
                   </div>
                 </div>

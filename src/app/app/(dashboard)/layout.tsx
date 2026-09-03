@@ -11,6 +11,7 @@ import GlobalSearch from '@/components/layout/GlobalSearch';
 import ModuleGate from '@/components/layout/ModuleGate';
 import { useDevice } from '@/ui/hooks/useDevice';
 import { I18nProvider, useT } from '@core/i18n/client';
+import { PropertyScopeProvider, type ScopedProperty } from '@/ui/PropertyScopeContext';
 import { DEFAULT_LANGUAGE, type Language, parseLanguage } from '@core/i18n/languages';
 
 export default function DashboardLayout({
@@ -30,6 +31,10 @@ export default function DashboardLayout({
   // screens are the customer's own, so the only thing that must never be in
   // doubt is whose data is on them.
   const [platformEmail, setPlatformEmail] = useState<string | null>(null);
+  // Обʼєкти організації і запамʼятований вибір — з тієї самої відповіді.
+  // Область обʼєкта живе в провайдері нижче, один на всю оболонку
+  // (src/ui/PropertyScopeContext.tsx), а не в кожному екрані окремо.
+  const [scope, setScope] = useState<{ properties: ScopedProperty[]; remembered: string | null }>({ properties: [], remembered: null });
   const router = useRouter();
   const { isMobile } = useDevice();
 
@@ -41,6 +46,10 @@ export default function DashboardLayout({
           const me = await res.json().catch(() => null);
           if (me?.language) setLanguage(parseLanguage(me.language));
           setPlatformEmail(me?.platform?.email ?? null);
+          setScope({
+            properties: Array.isArray(me?.properties) ? me.properties : [],
+            remembered: typeof me?.property === 'string' ? me.property : null,
+          });
           setAuthorized(true);
         } else {
           router.replace('/app/login');
@@ -136,6 +145,7 @@ export default function DashboardLayout({
   if (isMobile) {
     return (
       <I18nProvider language={language}>
+        <PropertyScopeProvider properties={scope.properties} remembered={scope.remembered}>
         <MobileMenuContext.Provider value={() => setMobileMenuOpen(true)}>
           <GlobalSearchContext.Provider value={() => setSearchOpen(true)}>
             {supportBanner}
@@ -145,6 +155,7 @@ export default function DashboardLayout({
             <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
           </GlobalSearchContext.Provider>
         </MobileMenuContext.Provider>
+        </PropertyScopeProvider>
       </I18nProvider>
     );
   }
@@ -152,6 +163,7 @@ export default function DashboardLayout({
   // ─── Desktop Layout ─────────────────────────────
   return (
     <I18nProvider language={language}>
+    <PropertyScopeProvider properties={scope.properties} remembered={scope.remembered}>
     <div className="app-layout">
       {supportBanner && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000 }}>{supportBanner}</div>
@@ -170,6 +182,7 @@ export default function DashboardLayout({
       <BottomNav onMoreClick={() => setMobileMenuOpen(true)} />
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
+    </PropertyScopeProvider>
     </I18nProvider>
   );
 }

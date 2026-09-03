@@ -4,6 +4,8 @@ import { useT, usePlural } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
+import PropertyRequired from '@/components/layout/PropertyRequired';
 import { ImageUploadField } from '@/components/ui/ImageUploadField';
 import {
   ChevronRight,
@@ -174,7 +176,13 @@ export default function SettingsUnitsPage() {
   const [deleteError, setDeleteError] = useState('');
 
   // ─── Fetch data from API ──────────────────────────────────
+  // Обʼєкт — з області в шапці (check-property-scope). Створення нижче
+  // називає його явно: без `property_id` сервер з двома обʼєктами
+  // відмовляє («say which»), а не вгадує — і цей екран у готелю з двома
+  // не міг створити жодного номера.
+  const { propertyId } = usePropertyScope();
   const fetchData = useCallback(async () => {
+    if (!propertyId) { setUnits([]); setUnitTypes([]); setCategories([]); setLoading(false); return; }
     try {
       const [unitsRes, typesRes, catsRes] = await Promise.all([
         fetch('/api/units'),
@@ -186,15 +194,17 @@ export default function SettingsUnitsPage() {
         typesRes.json(),
         catsRes.json(),
       ]);
-      setUnits(Array.isArray(unitsData) ? unitsData : []);
-      setUnitTypes(Array.isArray(typesData) ? typesData : []);
-      setCategories(Array.isArray(catsData) ? catsData : []);
+      // Списки організаційні; на екрані — лише рядки обраного обʼєкта.
+      const own = (rows: unknown) => (Array.isArray(rows) ? rows.filter((r) => r.property_id === propertyId) : []);
+      setUnits(own(unitsData));
+      setUnitTypes(own(typesData));
+      setCategories(own(catsData));
     } catch (e) {
       console.error('Failed to load data:', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [propertyId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -289,12 +299,12 @@ export default function SettingsUnitsPage() {
     setSaving(true);
     setError('');
     try {
-      // No property_id: the server resolves this organization's own.
       const res = await fetch('/api/units', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           bulk: true,
+          property_id: propertyId,
           category_id: bulkForm.category_id,
           unit_type_id: bulkForm.unit_type_id,
           prefix: bulkForm.prefix,
@@ -342,9 +352,9 @@ export default function SettingsUnitsPage() {
       if (!editingUnit) {
         // For creating, need property_id and category_id
         const ut = unitTypes.find(t => t.id === unitForm.unit_type_id);
-        // No property_id: the server resolves the caller's own property.
-        // This used to send 'prop_main_001' — the first customer's seed row —
-        // so every other hotel got "Property not found" from this screen.
+        // Обʼєкт — обраний у шапці. Тут колись стояло 'prop_main_001' (засів
+        // першого клієнта), і кожен інший готель діставав «Property not found».
+        body.property_id = propertyId;
         body.category_id = ut?.category_id || '';
       }
 
@@ -446,9 +456,7 @@ export default function SettingsUnitsPage() {
         // Три стани: '' означає «вирішує правило готелю» і їде як null.
         breakfast_included: typeForm.breakfast_included === '' ? null : Number(typeForm.breakfast_included),
       };
-      if (!editingType) {
-        // See above: the property is the server's to decide, not the form's.
-      }
+      if (!editingType) body.property_id = propertyId;
 
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json();
@@ -510,6 +518,7 @@ export default function SettingsUnitsPage() {
     <>
       <Header title={tUi('Номери / Юніти')} onMenuClick={onMenuClick} />
       <div className="app-content">
+        <PropertyRequired>
         {/* Page header */}
         <div className="page-header">
           <div>
@@ -972,6 +981,7 @@ export default function SettingsUnitsPage() {
             {tUi('Спочатку потрібно видалити або перепризначити всі юніти цього типу.')}
           </p>
         </Modal>
+        </PropertyRequired>
       </div>
     </>
   );
