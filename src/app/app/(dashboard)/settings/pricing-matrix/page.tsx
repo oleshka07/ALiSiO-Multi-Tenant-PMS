@@ -28,6 +28,7 @@ import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
+import { LoadingState } from '@/components/ui/State';
 import { Plus, Trash2, X, Loader2, ArrowLeft, Users, CalendarRange, Calculator } from 'lucide-react';
 import Link from 'next/link';
 
@@ -323,9 +324,7 @@ export default function PricingMatrixPage() {
 
         <PropertyRequired>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 64 }}>
-            <Loader2 size={24} className="animate-pulse" style={{ display: 'inline-block' }} /> {t('Завантаження...')}
-          </div>
+          <LoadingState />
         ) : (
           <>
             <div style={{ fontSize: 12.5, color: 'var(--text-tertiary)', marginBottom: 16, maxWidth: '80ch' }}>

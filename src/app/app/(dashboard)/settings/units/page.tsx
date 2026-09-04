@@ -6,6 +6,7 @@ import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
+import { LoadingState } from '@/components/ui/State';
 import { ImageUploadField } from '@/components/ui/ImageUploadField';
 import {
   ChevronRight,
@@ -507,9 +508,7 @@ export default function SettingsUnitsPage() {
     return (
       <>
         <Header title={tUi('Номери / Юніти')} onMenuClick={onMenuClick} />
-        <div className="app-content" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 300 }}>
-          <Loader2 size={32} className="spin" style={{ color: 'var(--accent-primary)' }} />
-        </div>
+        <div className="app-content"><LoadingState /></div>
       </>
     );
   }

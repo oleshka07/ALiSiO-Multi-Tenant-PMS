@@ -38,7 +38,8 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
         g.id as guest_id, g.first_name, g.last_name, g.email as guest_email, g.phone as guest_phone, g.nationality,
         u.id as unit_id, u.name as unit_name, u.code as unit_code, u.is_pool as unit_is_pool,
         c.id as category_id, c.name as category_name, c.type as category_type,
-        ut.id as unit_type_id, ut.name as unit_type_name
+        ut.id as unit_type_id, ut.name as unit_type_name,
+        r.property_id, p.name as property_name
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
@@ -57,6 +58,15 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
     `;
 
     const params: string[] = [actor.organizationId];
+
+    // Область обʼєкта (BUILD-PLAN, Блок 1): обраний обʼєкт звужує список,
+    // «Усі обʼєкти» показує все з колонкою готелю. Чужий id дає порожньо —
+    // організація вже стоїть у WHERE вище, це не друга перевірка власності.
+    const propertyFilter = searchParams.get('property_id') || '';
+    if (propertyFilter) {
+      query += ' AND r.property_id = ?';
+      params.push(propertyFilter);
+    }
 
     // Hide child reservations on Bookings list page, but show them on Calendar
     if (excludeChildren) {

@@ -4,6 +4,8 @@ import { useT } from '@core/i18n/client';
 import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
+import { EmptyState } from '@/components/ui/State';
 import { useDevice } from '@/ui/hooks/useDevice';
 import MobileDashboard from '@/components/mobile/pages/MobileDashboard';
 import {
@@ -30,10 +32,12 @@ interface DashboardData {
   upcomingArrivals: Array<{
     id: string; check_in: string; check_out: string; nights: number; adults: number; children: number; status: string;
     first_name: string; last_name: string; unit_name: string; unit_code: string;
+    property_id?: string; property_name?: string;
   }>;
   todayDepartures: Array<{
     id: string; check_out: string; status: string;
     first_name: string; last_name: string; unit_name: string; unit_code: string; cleaning_status: string;
+    property_id?: string; property_name?: string;
   }>;
 }
 
@@ -107,16 +111,22 @@ function DashboardDesktop() {
       .catch(console.error);
   };
 
+  // Область обʼєкта з шапки: обраний обʼєкт — його заїзди й завантаженість;
+  // «Усі обʼєкти» — організація цілком, рядки підписані готелем.
+  const { propertyId, properties } = usePropertyScope();
+  const showProperty = !propertyId && properties.length > 1;
   useEffect(() => {
+    setLoading(true);
     Promise.all([
-      fetch('/api/dashboard').then(r => r.json()),
+      fetch(`/api/dashboard${propertyId ? `?property_id=${encodeURIComponent(propertyId)}` : ''}`).then(r => r.json()),
       fetch(`/api/service-orders?date=${soDate}&period=${soPeriod}`).then(r => r.json()).catch(() => ({ orders: [] })),
     ]).then(([dashData, soData]) => {
       setData(dashData);
       setServiceOrders(soData.orders || []);
     }).catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propertyId]);
 
   const handleDateChange = (offset: number) => {
     const d = new Date(soDate);
@@ -328,19 +338,20 @@ function DashboardDesktop() {
               </span>
             </h3>
             {data.upcomingArrivals.length === 0 ? (
-              <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>{t('Немає найближчих заїздів')}</div>
+              <EmptyState compact title={t('Немає найближчих заїздів')} hint={t('Заїзди на три дні вперед зʼявляться тут')} />
             ) : (
               <>
                 {/* Desktop table */}
                 <div className="desktop-only">
                   <table className="table">
                     <thead>
-                      <tr><th>{t('Гість')}</th><th>{t('Юніт')}</th><th>{t('Заїзд')}</th><th>{t('Ночей')}</th><th>{t('Статус')}</th></tr>
+                      <tr><th>{t('Гість')}</th>{showProperty && <th>{t('Обʼєкт')}</th>}<th>{t('Юніт')}</th><th>{t('Заїзд')}</th><th>{t('Ночей')}</th><th>{t('Статус')}</th></tr>
                     </thead>
                     <tbody>
                       {data.upcomingArrivals.map(a => (
                         <tr key={a.id}>
                           <td style={{ fontWeight: 500 }}>{a.first_name} {a.last_name}</td>
+                          {showProperty && <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{a.property_name}</td>}
                           <td><span className="badge badge-primary">{a.unit_code}</span></td>
                           <td>{fmtDate(a.check_in)}</td>
                           <td>{a.nights}</td>
@@ -362,7 +373,7 @@ function DashboardDesktop() {
                           <div className="dashboard-event-card-name">{a.first_name} {a.last_name}</div>
                           <div className="dashboard-event-card-detail">
                             <span className="badge badge-primary" style={{ fontSize: 10, padding: '1px 6px' }}>{a.unit_code}</span>
-                            · {a.nights} {t('ночей')}
+                            · {a.nights} {t('ночей')}{showProperty && a.property_name ? ` · ${a.property_name}` : ''}
                           </div>
                         </div>
                         <div className="dashboard-event-card-right">
@@ -388,19 +399,20 @@ function DashboardDesktop() {
               </span>
             </h3>
             {data.todayDepartures.length === 0 ? (
-              <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>{t('Немає виїздів сьогодні')}</div>
+              <EmptyState compact title={t('Немає виїздів сьогодні')} hint={t('Гості, які виїжджають сьогодні, зʼявляться тут разом зі станом прибирання')} />
             ) : (
               <>
                 {/* Desktop table */}
                 <div className="desktop-only">
                   <table className="table">
                     <thead>
-                      <tr><th>{t('Гість')}</th><th>{t('Юніт')}</th><th>{t('Виїзд')}</th><th>{t('Прибирання')}</th></tr>
+                      <tr><th>{t('Гість')}</th>{showProperty && <th>{t('Обʼєкт')}</th>}<th>{t('Юніт')}</th><th>{t('Виїзд')}</th><th>{t('Прибирання')}</th></tr>
                     </thead>
                     <tbody>
                       {data.todayDepartures.map(d => (
                         <tr key={d.id}>
                           <td style={{ fontWeight: 500 }}>{d.first_name} {d.last_name}</td>
+                          {showProperty && <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{d.property_name}</td>}
                           <td><span className="badge badge-primary">{d.unit_code}</span></td>
                           <td>{fmtDate(d.check_out)}</td>
                           <td><span className={`badge ${CLEAN_MAP[d.cleaning_status]?.badge || 'badge-info'}`}>{t(CLEAN_MAP[d.cleaning_status]?.label || d.cleaning_status)}</span></td>

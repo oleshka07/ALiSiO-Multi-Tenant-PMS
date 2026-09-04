@@ -6,6 +6,7 @@ import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
+import { EmptyState, LoadingState } from '@/components/ui/State';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Save, Loader2, Tag } from 'lucide-react';
 
@@ -127,7 +128,7 @@ export default function RatePlansSettingsPage() {
   return (
     <>
       <Header title={tUi('Тарифи')} onMenuClick={onMenuClick} />
-      <div className="page-content">
+      <div className="app-content">
         <div className="page-header">
           <div>
             <Link href="/app/settings" className="btn btn-sm" style={{ marginBottom: 8 }}><ArrowLeft size={14} /> {tUi('Налаштування')}</Link>
@@ -171,9 +172,13 @@ export default function RatePlansSettingsPage() {
         )}
 
         {loading ? (
-          <div className="card"><Loader2 size={16} className="animate-pulse" /> {tUi('Завантаження...')}</div>
+          <LoadingState />
         ) : plans.length === 0 ? (
-          <div className="card">{tUi('Тарифів ще немає. Створіть перший — наприклад, Best Available Rate з кодом BAR')}</div>
+          <EmptyState
+            title={tUi('Тарифів ще немає')}
+            hint={tUi('Створіть перший — наприклад, Best Available Rate з кодом BAR. Тариф без ціни показується, але не продається')}
+            action={{ label: tUi('Додати тариф'), onClick: () => startEdit(null), icon: <Plus size={14} /> }}
+          />
         ) : (
           <div className="card" style={{ overflowX: 'auto' }}>
             <table className="table">

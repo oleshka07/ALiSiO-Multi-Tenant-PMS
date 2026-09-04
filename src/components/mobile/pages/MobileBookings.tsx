@@ -2,6 +2,7 @@
 
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import { Search, RefreshCw, Phone, Plus, X, LogIn, LogOut, Building2, Pencil, Info, Link, MessageCircle } from 'lucide-react';
 import MobileBookingDetail from '@/components/booking/MobileBookingDetail';
 import BookingForm, { type UnitTypeRow as BFUnitTypeRow, type UnitRow as BFUnitRow, type BookingSourceRow as BFBookingSourceRow } from '@/components/booking/BookingForm';
@@ -12,6 +13,7 @@ interface BookingRow {
   source: string; total_price: number; first_name: string; last_name: string;
   guest_email: string | null; guest_phone: string | null;
   unit_name: string; unit_code: string; category_type: string;
+  property_id?: string; property_name?: string | null;
   unit_type_name: string;
   commission_amount: number; guest_page_token: string | null;
   internal_notes: string | null; city_tax_amount: number;
@@ -148,12 +150,17 @@ export default function MobileBookings({ openNew, initialSearch }: MobileBooking
     return map;
   }, [bookingSources]);
 
+  // Область обʼєкта з шапки: обраний обʼєкт звужує список; за «Усі обʼєкти»
+  // картка підписується готелем.
+  const { propertyId, properties } = usePropertyScope();
+  const showProperty = !propertyId && properties.length > 1;
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ limit: '500' });
       if (categoryFilter) params.set('category', categoryFilter);
       if (!showArchive) params.set('check_out_from', todayISO);
+      if (propertyId) params.set('property_id', propertyId);
       const [bRes, sRes, uRes, utRes] = await Promise.all([
         fetch(`/api/bookings?${params}`),
         fetch('/api/booking-sources'),
@@ -166,7 +173,7 @@ export default function MobileBookings({ openNew, initialSearch }: MobileBooking
       if (utRes.ok) setUnitTypes(await utRes.json());
     } catch (e) { console.error(e); }
     setLoading(false);
-  }, [categoryFilter, showArchive, todayISO]);
+  }, [categoryFilter, showArchive, todayISO, propertyId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -358,7 +365,7 @@ export default function MobileBookings({ openNew, initialSearch }: MobileBooking
                 <div style={{ flex: 1 }}>
                   <div className="m-card-title">{b.first_name} {b.last_name}</div>
                   <div className="m-card-subtitle">
-                    {b.unit_code} · {b.nights} {t('ноч. ·')} {b.check_in} → {b.check_out}
+                    {showProperty && b.property_name ? `${b.property_name} · ` : ''}{b.unit_code} · {b.nights} {t('ноч. ·')} {b.check_in} → {b.check_out}
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>

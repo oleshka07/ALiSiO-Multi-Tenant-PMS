@@ -21,6 +21,12 @@ export async function getReport(request: NextRequest, _ctx: unknown, actor: Acto
     const hotelToday = await todayFor(org);
     const from = searchParams.get('from') || hotelToday;
     const to = searchParams.get('to') || hotelToday;
+    // Область обʼєкта (BUILD-PLAN, Блок 1): звіт за обраним обʼєктом або за
+    // організацією цілком. Оплати не мають property_id — вони йдуть через
+    // бронь, до якої привʼязані.
+    const propertyFilter = searchParams.get('property_id') || '';
+    const scope = (alias = '') => (propertyFilter ? `${OWN(alias)} AND ${alias}property_id = ?` : OWN(alias));
+    const scoped = (...rest: unknown[]) => (propertyFilter ? [org, propertyFilter, ...rest] : [org, ...rest]);
 
     const bookings = await sql.rows<any>(`
       SELECT r.*, u.name as unit_name, c.type as category_type,
@@ -29,10 +35,10 @@ export async function getReport(request: NextRequest, _ctx: unknown, actor: Acto
       LEFT JOIN units u ON r.unit_id = u.id
       LEFT JOIN categories c ON u.category_id = c.id
       JOIN guests g ON r.guest_id = g.id
-      WHERE ${OWN('r.')}
+      WHERE ${scope('r.')}
         AND r.check_in BETWEEN ? AND ?
         AND r.status != 'cancelled'
-    `, [org, from, to]);
+    `, scoped(from, to));
 
     const totalBookings = bookings.length;
     const totalGuests = bookings.reduce((s: number, b: any) => s + b.adults + b.children, 0);
@@ -66,7 +72,8 @@ export async function getReport(request: NextRequest, _ctx: unknown, actor: Acto
       WHERE organization_id = ?
         AND reservation_id IS NOT NULL AND status = 'completed'
         AND paid_at BETWEEN ? AND ?
-    `, [org, from, to]);
+        ${propertyFilter ? 'AND reservation_id IN (SELECT id FROM reservations WHERE property_id = ?)' : ''}
+    `, propertyFilter ? [org, from, to, propertyFilter] : [org, from, to]);
 
     const totalPayments = payments.reduce((s: number, p: any) => {
       const signed = p.op_type === 'expense' && p.payment_subtype === 'refund' ? -p.amount : p.amount;
@@ -90,13 +97,13 @@ export async function getReport(request: NextRequest, _ctx: unknown, actor: Acto
     // продається» і «що зайняте» живе в одному місці, інакше дві копії знову
     // розійдуться. Вікно `check_out > from AND check_in <= to` — не частина
     // формули, а спосіб не тягнути в памʼять усю історію готелю.
-    const unitRows = await sql.rows<any>(`SELECT id, is_active, is_pool FROM units WHERE ${OWN()}`, [org]);
+    const unitRows = await sql.rows<any>(`SELECT id, is_active, is_pool FROM units WHERE ${scope()}`, scoped());
 
     const stayRows = await sql.rows<any>(`
       SELECT unit_id, check_in, check_out, status FROM reservations
-      WHERE ${OWN()}
+      WHERE ${scope()}
         AND check_out > ? AND check_in <= ?
-    `, [org, from, to]);
+    `, scoped(from, to));
 
     const occ = occupancy(unitRows, stayRows, from, to);
     const totalDays = occ.days;

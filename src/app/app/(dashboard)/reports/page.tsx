@@ -5,6 +5,7 @@ import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import { BarChart3, TrendingUp, Calendar, Users, Wallet, RefreshCw, Loader2 } from 'lucide-react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -95,16 +96,18 @@ export default function ReportsPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const onMenuClick = useMobileMenu();
+  // Звіт — за обраним у шапці обʼєктом; «Усі обʼєкти» — організація цілком.
+  const { propertyId } = usePropertyScope();
 
   const fetchReport = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/reports?from=${from}&to=${to}`);
+      const res = await fetch(`/api/reports?from=${from}&to=${to}${propertyId ? `&property_id=${encodeURIComponent(propertyId)}` : ''}`);
       const json = await res.json();
       setData(json);
     } catch (e) { console.error('Report fetch error:', e); }
     setLoading(false);
-  }, [from, to]);
+  }, [from, to, propertyId]);
 
   useEffect(() => { fetchReport(); }, [fetchReport]);
 

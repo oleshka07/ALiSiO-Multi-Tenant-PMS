@@ -5,6 +5,8 @@ import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { usePropertyScope } from '@/ui/PropertyScopeContext';
+import { EmptyState, LoadingState } from '@/components/ui/State';
 import { useDevice } from '@/ui/hooks/useDevice';
 import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 import MobileBookings from '@/components/mobile/pages/MobileBookings';
@@ -42,6 +44,9 @@ import {
 interface BookingRow {
   /** Код броні на боці каналу (BDC-…) — те, що гість читає з листа. */
   external_uid?: string | null;
+  /** Обʼєкт броні — колонка списку за «Усі обʼєкти». */
+  property_id?: string;
+  property_name?: string | null;
   id: string;
   check_in: string;
   check_out: string;
@@ -255,6 +260,10 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
   */
   const [search, setSearch] = useState(initialSearch ?? '');
   const [statusFilter, setStatusFilter] = useState('active'); // 'active' = exclude cancelled
+  // Область обʼєкта з шапки (BUILD-PLAN, Блок 1): обраний обʼєкт звужує
+  // список, «Усі обʼєкти» показує все з колонкою готелю.
+  const { propertyId, properties } = usePropertyScope();
+  const showPropertyColumn = !propertyId && properties.length > 1;
   const [categoryFilter, setCategoryFilter] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('');
   const [dateFrom, setDateFrom] = useState(() => new Date().toISOString().split('T')[0]);
@@ -333,6 +342,9 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
   }, [fetchPayments, fetchRegistrations]);
 
   /* ── fetch bookings ───────────────────────────────── */
+  // Порожній список після фільтра — це «змініть фільтр», а не «броней ще немає».
+  const filtersActive = Boolean(search || (statusFilter && statusFilter !== 'active') || categoryFilter || paymentFilter || dateFrom || dateTo || sourceFilter);
+
   const fetchBookings = useCallback(async () => {
     setLoading(true);
     try {
@@ -349,6 +361,8 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
       if (dateFrom) params.set('date_from', dateFrom);
       if (dateTo) params.set('date_to', dateTo);
       if (sourceFilter) params.set('source', sourceFilter);
+      // Область обʼєкта з шапки: обраний обʼєкт звужує список, «Усі» — ні.
+      if (propertyId) params.set('property_id', propertyId);
 
       const res = await fetch(`/api/bookings?${params}`);
       const data = await res.json();
@@ -358,7 +372,7 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, categoryFilter, paymentFilter, dateFrom, dateTo, sourceFilter]);
+  }, [search, statusFilter, categoryFilter, paymentFilter, dateFrom, dateTo, sourceFilter, propertyId]);
 
   /* ── fetch ref data ───────────────────────────────── */
   useEffect(() => {
@@ -648,12 +662,23 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
 
 
         {/* ── Desktop Table ── */}
-        <div className="table-wrapper desktop-only">
+        <div className="desktop-only">
+        {loading ? (
+          <LoadingState />
+        ) : sortedBookings.length === 0 ? (
+          <EmptyState
+            title={filtersActive ? t('Нічого не знайдено') : t('Бронювань ще немає')}
+            hint={filtersActive ? t('Змініть фільтр, статус або період') : t('Броні зʼявляться тут — з віджета, з каналів або створені вручну')}
+            action={{ label: t('Нове бронювання'), onClick: () => setShowNewBooking(true), icon: <Plus size={14} /> }}
+          />
+        ) : (
+        <div className="table-wrapper">
           <table className="table">
             <thead>
               <tr>
                 {[
                   { key: 'last_name', label: t('Гість') },
+                  ...(showPropertyColumn ? [{ key: 'property_name', label: t('Обʼєкт') }] : []),
                   { key: 'unit_name', label: t('Юніт') },
                   { key: 'check_in', label: t('Заїзд') },
                   { key: 'check_out', label: t('Виїзд') },
@@ -673,20 +698,11 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
               </tr>
             </thead>
             <tbody>
-              {loading && (
-                <tr><td colSpan={11} style={{ textAlign: 'center', padding: 32 }}>
-                  <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> {t('Завантаження...')}
-                </td></tr>
-              )}
-              {!loading && sortedBookings.length === 0 && (
-                <tr><td colSpan={11} style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>
-                  {t('Нічого не знайдено')}
-                </td></tr>
-              )}
               {sortedBookings.map((b, idx) => {
                 return (
                   <tr key={b.id} style={{ cursor: 'pointer' }} onClick={() => openViewBooking(b)}>
                     <td style={{ fontWeight: 500 }}>{b.first_name} {b.last_name}{b.sub_booking_count > 0 && <span style={{ marginLeft: 6, fontSize: 10, padding: '1px 6px', borderRadius: 8, background: 'rgba(99,102,241,0.12)', color: '#6366f1', fontWeight: 700 }}>👥 {b.sub_booking_count}</span>}</td>
+                    {showPropertyColumn && <td style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{b.property_name}</td>}
                     <td><span className="badge badge-primary">{b.unit_name}</span></td>
                     <td>{b.check_in}</td><td>{b.check_out}</td><td>{b.nights}</td>
                     <td><span className="flex items-center gap-2" style={{ fontSize: 12 }}><Users size={12} /> {b.adults}{b.children > 0 && <span style={{ color: 'var(--text-tertiary)' }}>+{b.children}</span>}</span></td>
@@ -714,18 +730,19 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
             </tbody>
           </table>
         </div>
+        )}
+        </div>
 
         {/* ── Mobile Card List (improved Phase 3) ── */}
         <div className="mobile-only">
-          {loading && (
-            <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>
-              <Loader2 size={20} className="animate-pulse" style={{ display: 'inline-block' }} /> {t('Завантаження...')}
-            </div>
-          )}
+          {loading && <LoadingState compact />}
           {!loading && sortedBookings.length === 0 && (
-            <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>
-              {t('Нічого не знайдено')}
-            </div>
+            <EmptyState
+              compact
+              title={filtersActive ? t('Нічого не знайдено') : t('Бронювань ще немає')}
+              hint={filtersActive ? t('Змініть фільтр, статус або період') : t('Броні зʼявляться тут — з віджета, з каналів або створені вручну')}
+              action={{ label: t('Нове бронювання'), onClick: () => setShowNewBooking(true), icon: <Plus size={14} /> }}
+            />
           )}
           <div className="card-list">
             {sortedBookings.map((b, idx) => {

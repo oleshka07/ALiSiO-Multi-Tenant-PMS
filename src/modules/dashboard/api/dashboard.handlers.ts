@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withActor, type Actor } from '@core/auth/session';
 import { todayFor, shiftDays } from '@core/hotel-day';
@@ -21,19 +21,25 @@ import { occupancyOnDay } from '@core/occupancy-rate';
  */
 const OWN = (alias = '') => `${alias}property_id IN (SELECT id FROM properties WHERE organization_id = ?)`;
 
-export const getDashboard = withActor(async (_request, _ctx, actor: Actor) => {
+export const getDashboard = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const sql = getSql();
     const org = actor.organizationId;
+    // Область обʼєкта (BUILD-PLAN, Блок 1): обраний обʼєкт звужує дашборд,
+    // «Усі обʼєкти» рахує організацію цілком і підписує рядки готелем.
+    // Чужий id дає порожньо: організація стоїть у кожному WHERE і без нього.
+    const propertyFilter = new URL(request.url).searchParams.get('property_id') || '';
+    const scope = (alias = '') => (propertyFilter ? `${OWN(alias)} AND ${alias}property_id = ?` : OWN(alias));
+    const scoped = (...rest: unknown[]) => (propertyFilter ? [org, propertyFilter, ...rest] : [org, ...rest]);
     // The hotel's day, not the server's. `toISOString()` is UTC, so between
     // midnight and 01:00–03:00 local a Prague or Kyiv hotel saw yesterday's
     // arrivals, yesterday's departures and yesterday's occupancy — every
     // night, at the exact hour a night receptionist starts their shift.
     const today = await todayFor(org);
 
-    const arrivals = await sql.row<any>(`SELECT COUNT(*) as cnt FROM reservations WHERE ${OWN()} AND check_in = ? AND status IN ('confirmed', 'tentative')`, [org, today]);
+    const arrivals = await sql.row<any>(`SELECT COUNT(*) as cnt FROM reservations WHERE ${scope()} AND check_in = ? AND status IN ('confirmed', 'tentative')`, scoped(today));
 
-    const departures = await sql.row<any>(`SELECT COUNT(*) as cnt FROM reservations WHERE ${OWN()} AND check_out = ? AND status IN ('checked_in')`, [org, today]);
+    const departures = await sql.row<any>(`SELECT COUNT(*) as cnt FROM reservations WHERE ${scope()} AND check_out = ? AND status IN ('checked_in')`, scoped(today));
 
     // Завантаженість рахує `@core/occupancy-rate`, і ці два запити навмисно не
     // фільтрують ані юнітів, ані статусів. Тут стояв власний COUNT з власним
@@ -41,9 +47,9 @@ export const getDashboard = withActor(async (_request, _ctx, actor: Actor) => {
     // бачив за один день два різних відсотки (AUDIT.md §2.9). Щойно фільтр
     // повертається в SQL, повертається й розходження: у чисельнику бракувало
     // `tentative`, тобто номер, який уже не можна продати, показувався вільним.
-    const unitRows = await sql.rows<any>(`SELECT id, is_active, is_pool FROM units WHERE ${OWN()}`, [org]);
+    const unitRows = await sql.rows<any>(`SELECT id, is_active, is_pool FROM units WHERE ${scope()}`, scoped());
 
-    const stayRows = await sql.rows<any>(`SELECT unit_id, check_in, check_out, status FROM reservations WHERE ${OWN()} AND check_in <= ? AND check_out > ?`, [org, today, today]);
+    const stayRows = await sql.rows<any>(`SELECT unit_id, check_in, check_out, status FROM reservations WHERE ${scope()} AND check_in <= ? AND check_out > ?`, scoped(today, today));
 
     const occ = occupancyOnDay(unitRows, stayRows, today);
 
@@ -52,25 +58,29 @@ export const getDashboard = withActor(async (_request, _ctx, actor: Actor) => {
     const upcomingArrivals = (await sql.rows<any>(`
       SELECT r.id, r.check_in, r.check_out, r.nights, r.adults, r.children, r.status,
         g.first_name, g.last_name,
-        u.name as unit_name, u.code as unit_code
+        u.name as unit_name, u.code as unit_code,
+        r.property_id, p.name as property_name
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
-      WHERE ${OWN('r.')} AND r.check_in BETWEEN ? AND ? AND r.status IN ('confirmed', 'tentative')
+      JOIN properties p ON p.id = r.property_id
+      WHERE ${scope('r.')} AND r.check_in BETWEEN ? AND ? AND r.status IN ('confirmed', 'tentative')
       ORDER BY r.check_in
       LIMIT 10
-    `, [org, today, future]));
+    `, scoped(today, future)));
 
     const todayDepartures = (await sql.rows<any>(`
       SELECT r.id, r.check_out, r.status,
         g.first_name, g.last_name,
-        u.name as unit_name, u.code as unit_code, u.cleaning_status
+        u.name as unit_name, u.code as unit_code, u.cleaning_status,
+        r.property_id, p.name as property_name
       FROM reservations r
       JOIN guests g ON r.guest_id = g.id
       LEFT JOIN units u ON r.unit_id = u.id
-      WHERE ${OWN('r.')} AND r.check_out = ? AND r.status IN ('checked_in', 'confirmed')
+      JOIN properties p ON p.id = r.property_id
+      WHERE ${scope('r.')} AND r.check_out = ? AND r.status IN ('checked_in', 'confirmed')
       ORDER BY u.name
-    `, [org, today]));
+    `, scoped(today)));
 
     return NextResponse.json({
       arrivalsToday: arrivals?.cnt || 0,

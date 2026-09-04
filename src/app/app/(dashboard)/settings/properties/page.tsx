@@ -6,6 +6,7 @@ import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import PropertyRequired from '@/components/layout/PropertyRequired';
+import { EmptyState, LoadingState } from '@/components/ui/State';
 import {
   Building2, Edit3, Trash2, Plus, Save, X, Check, Search,
   ChevronRight, ChevronDown, Tent, TreePine, BedDouble,
@@ -570,6 +571,13 @@ export default function SettingsPropertiesPage() {
             обрати, а не беремо перший. Порожній список лишає лише кнопку
             «Додати обʼєкт» у заголовку. */}
         {!propertyId && properties.length > 0 && <PropertyRequired>{null}</PropertyRequired>}
+        {properties.length === 0 && !loading && (
+          <EmptyState
+            title={tUi('Обʼєктів ще немає')}
+            hint={tUi('Заведіть перший обʼєкт: назву, адресу, часи заїзду й виїзду. Далі — категорії, типи номерів і самі номери.')}
+            action={{ label: tUi('Додати об\'єкт'), onClick: () => openPropertyModal(), icon: <Plus size={14} /> }}
+          />
+        )}
 
         {/* Property Card */}
         {currentProperty && (
@@ -732,11 +740,7 @@ export default function SettingsPropertiesPage() {
         </div>
 
         {/* Loading */}
-        {loading && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
-            <Loader2 size={20} className="animate-pulse" /> <span style={{ marginLeft: 8, color: 'var(--text-secondary)' }}>{tUi('Завантаження...')}</span>
-          </div>
-        )}
+        {loading && <LoadingState />}
 
         {/* Tree View */}
         {!loading && (
