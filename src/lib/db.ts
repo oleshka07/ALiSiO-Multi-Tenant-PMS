@@ -2462,10 +2462,26 @@ function runMigrations(database: any) {
       closed INTEGER NOT NULL DEFAULT 0,
       cta INTEGER NOT NULL DEFAULT 0,
       ctd INTEGER NOT NULL DEFAULT 0,
+      -- Звідки ціна цього дня (Блок 2 крок 1, Ц27): season — розгорнута з
+      -- клітинки сезону; manual — редактор дня чи масовий, тобто точкове
+      -- перевизначення, яке перерендер сезону НЕ затирає; import — файл
+      -- готелю. Обмеження джерела не мають — вони живуть на рядку типу.
+      source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('season', 'manual', 'import')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+  // І в CREATE, і тут (AGENTS §4): наявна база дістає колонку ALTER-ом, усі
+  // старі рядки — «manual»: набрані рукою до сезонів і є перевизначеннями.
+  try {
+    const pcCols = (database.prepare('PRAGMA table_info(price_calendar)').all() as any[]).map((c: any) => c.name);
+    if (!pcCols.includes('source')) {
+      database.exec("ALTER TABLE price_calendar ADD COLUMN source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('season', 'manual', 'import'))");
+      console.log('[DB] Added source to price_calendar (0068)');
+    }
+  } catch (e: any) {
+    console.error('[DB] price_calendar source:', e.message);
+  }
 
   // --- Migration: drop the old UNIQUE(unit_type_id, date) from price_calendar ---
   //
@@ -2637,6 +2653,52 @@ function runMigrations(database: any) {
   database.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_price_calendar_row
       ON price_calendar(unit_type_id, (COALESCE(rate_plan_id, '')), date)
+  `);
+
+  // --- Migration 0068: сезони (Блок 2 крок 1, Ц27) ---
+  //
+  // Сезон — сутність обʼєкта з датами (обидві межі включно, NAMING §2), і
+  // клітинка ціни на сезон × тип × тариф. Клітинка НЕ джерело ціни для
+  // котирування: вона РЕНДЕРИТЬСЯ в price_calendar тим самим писачем, що
+  // масовий редактор (двері каналу, маска полів), а котирування читає
+  // календар, як і досі — інваріант 16 цілий, канал і віджет читають те
+  // саме. rate_plan_id NULL у клітинці — базова ціна типу в сезоні.
+  // Сезони одного обʼєкта не перетинаються — тримає писач (гейт
+  // seasons.repo.check), не схема: інтервальне обмеження на SQLite не сказати.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS seasons (
+      id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      property_id     TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+      name            TEXT NOT NULL,
+      date_from       TEXT NOT NULL,
+      date_to         TEXT NOT NULL,
+      sort_order      INTEGER NOT NULL DEFAULT 0,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_seasons_org ON seasons(organization_id)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_seasons_property ON seasons(property_id, date_from)');
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS season_prices (
+      id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      season_id       TEXT NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+      unit_type_id    TEXT NOT NULL REFERENCES unit_types(id) ON DELETE CASCADE,
+      rate_plan_id    TEXT REFERENCES rate_plans(id) ON DELETE CASCADE,
+      price           REAL NOT NULL,
+      weekend_price   REAL,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_season_prices_org ON season_prices(organization_id)');
+  // Одна клітинка на сезон × тип × тариф; COALESCE — бо UNIQUE не обмежує
+  // NULL (та сама пастка, що idx_price_calendar_row).
+  database.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_season_prices_cell
+      ON season_prices(season_id, unit_type_id, (COALESCE(rate_plan_id, '')))
   `);
   database.exec('CREATE INDEX IF NOT EXISTS idx_price_cal_rate_plan ON price_calendar(rate_plan_id)');
 

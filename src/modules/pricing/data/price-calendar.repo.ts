@@ -3,7 +3,7 @@ import { noteRatesChanged, type RateField } from '@channels/outbox';
 import crypto from 'crypto';
 import { getSql, type Sql } from '@core/db/async';
 import { currentOrganizationId } from '@core/auth/tenant-context';
-import type { DayPrice, PriceUpsertInput } from '../domain/types';
+import type { DayPrice, PriceUpsertInput, PriceSource } from '../domain/types';
 
 // The id used to be defaulted by a SQLite-only blob function inside the
 // INSERT. Same 32 lowercase hex chars, generated where both engines can.
@@ -113,6 +113,7 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
         cta: baseRow?.cta ?? 0,
         ctd: baseRow?.ctd ?? 0,
         hasData: true,
+        source: ((priceRow ?? existing).source ?? 'manual') as PriceSource,
         ...(ratePlanId ? { inherited: !ownPriced } : {}),
       });
     } else {
@@ -272,16 +273,19 @@ const restrictionsOf = (row: CalendarRowShape | null): RestrictionShape | null =
  */
 async function writeRatePlanPrice(
   t: Sql, unitTypeId: string, ratePlanId: string, date: string,
-  price: { base_price?: number | null; weekend_price?: number | null }, rowExists: boolean,
+  price: { base_price?: number | null; weekend_price?: number | null; source?: PriceSource }, rowExists: boolean,
 ): Promise<void> {
   if (!rowExists && price.base_price == null && price.weekend_price == null) return;
+  // Джерело (Ц27) міняється лише разом із ціною.
+  const pricedNow = price.base_price !== undefined || price.weekend_price !== undefined;
   await t.run(`
-    INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ${ON_CONFLICT_ROW} DO UPDATE SET
       ${keepOrSet(price, ['base_price', 'weekend_price'])},
+      source = ${pricedNow ? 'excluded.source' : 'price_calendar.source'},
       updated_at = CURRENT_TIMESTAMP
-  `, [newId(), unitTypeId, ratePlanId, date, price.base_price ?? null, price.weekend_price ?? null]);
+  `, [newId(), unitTypeId, ratePlanId, date, price.base_price ?? null, price.weekend_price ?? null, price.source ?? 'manual']);
 }
 
 /**
@@ -384,6 +388,9 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
     for (const p of prices) {
       const base = shapeOf(baseBy.get(p.date));
       const r = resolveRestrictions(p, base);
+      // Джерело (Ц27) міняється лише разом із ціною: збереження обмеження на
+      // рядку сезону не робить його перевизначенням.
+      const pricedNow = p.base_price !== undefined || p.weekend_price !== undefined;
       if (ratePlanId) {
         await writeRatePlanPrice(t, unitTypeId, ratePlanId, p.date, p, planBy.has(p.date));
         await writeBaseRestrictions(t, unitTypeId, p.date, r, p);
@@ -394,12 +401,13 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
       // на день із ціною лишає її, на день без ціни — лишає порожньою; тут
       // стояло `?? 0`, і рядок обмеження ставав ціною нуль), `null` — прибрати.
       await t.run(`
-      INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
-      VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd, source)
+      VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ${ON_CONFLICT_ROW} DO UPDATE SET
         ${keepOrSet(p, ['base_price', 'weekend_price', ...RESTRICTION_COLS])},
+        source = ${pricedNow ? 'excluded.source' : 'price_calendar.source'},
         updated_at = CURRENT_TIMESTAMP
-      `, [newId(), unitTypeId, p.date, p.base_price ?? null, p.weekend_price ?? null, r.min_stay, r.max_stay, r.closed ? 1 : 0, r.cta ? 1 : 0, r.ctd ? 1 : 0]);
+      `, [newId(), unitTypeId, p.date, p.base_price ?? null, p.weekend_price ?? null, r.min_stay, r.max_stay, r.closed ? 1 : 0, r.cta ? 1 : 0, r.ctd ? 1 : 0, p.source ?? 'manual']);
     }
   });
 
@@ -437,6 +445,15 @@ export interface BulkUpdateInput {
   ctd?: boolean;
   /** Ціна ТАРИФУ на діапазон (П2); без нього — базова ціна типу. */
   ratePlanId?: string;
+  /** Джерело ціни (Ц27), коли в запиті є ціна. Дефолт — `manual`; рендер сезону передає `season`. */
+  source?: PriceSource;
+  /**
+   * Не чіпати днів із ціною `manual` — точкових перевизначень. Так рендерить
+   * сезон: його клітинка не затирає числа, яке оператор поставив на дату
+   * рукою (їхній `overridden_from`). «Прибрати перевизначення» — той самий
+   * виклик без цього прапорця.
+   */
+  keepManual?: boolean;
 }
 
 export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> {
@@ -480,6 +497,13 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
         : null;
       const priceRow = ratePlanId ? plan : base;
 
+      // Перевизначення дати (Ц27): рядок із ціною, поставленою рукою, рендер
+      // сезону обходить. Рядок без ціни (лише обмеження) — не перевизначення.
+      if (input.keepManual && priceRow && (priceRow.source ?? 'manual') === 'manual' && priceRow.base_price != null) {
+        current.setDate(current.getDate() + 1);
+        continue;
+      }
+
       // A day the hotel has never priced stays unpriced. The form's price field
       // says «Не змінювати» when left empty, so `base_price` is undefined
       // whenever the operator bulk-edits only min stay or the open/closed flag —
@@ -495,6 +519,9 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
       const closed = input.closed !== undefined ? (input.closed ? 1 : 0) : (base?.closed ?? 0);
       const cta = input.cta !== undefined ? (input.cta ? 1 : 0) : (base?.cta ?? 0);
       const ctd = input.ctd !== undefined ? (input.ctd ? 1 : 0) : (base?.ctd ?? 0);
+      // Джерело міняється лише разом із ціною (Ц27) — і належить рядку ЦІНИ.
+      const pricedNow = input.base_price !== undefined || input.weekend_price !== undefined;
+      const source: PriceSource = pricedNow ? (input.source ?? 'manual') : ((priceRow?.source as PriceSource | undefined) ?? 'manual');
 
       // Маски (Блок 0.5 / 0.6 A1): ціна — різниця ефективної ціни ПАРИ;
       // обмеження — різниця базового рядка ТИПУ.
@@ -510,13 +537,13 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
       for (const f of changedRestrictionFields(restrictionsOf(shapeOf(base)), restrictions)) restrictionChanged.add(f);
 
       if (ratePlanId) {
-        await writeRatePlanPrice(t, unitTypeId, ratePlanId, dateStr, { base_price: num(basePrice), weekend_price: num(weekendPrice) }, Boolean(plan));
+        await writeRatePlanPrice(t, unitTypeId, ratePlanId, dateStr, { base_price: num(basePrice), weekend_price: num(weekendPrice), source }, Boolean(plan));
         // Масовий редактор уже злив «не змінювати» з базовим рядком — усі пʼять полів визначені.
         await writeBaseRestrictions(t, unitTypeId, dateStr, restrictions, restrictions);
       } else {
         await t.run(`
-        INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
-        VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd, source)
+        VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ${ON_CONFLICT_ROW} DO UPDATE SET
           base_price = excluded.base_price,
           weekend_price = excluded.weekend_price,
@@ -525,8 +552,9 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
           closed = excluded.closed,
           cta = excluded.cta,
           ctd = excluded.ctd,
+          source = excluded.source,
           updated_at = CURRENT_TIMESTAMP
-        `, [newId(), unitTypeId, dateStr, basePrice, weekendPrice, minStay, maxStay, closed, cta, ctd]);
+        `, [newId(), unitTypeId, dateStr, basePrice, weekendPrice, minStay, maxStay, closed, cta, ctd, source]);
       }
       count++;
       current.setDate(current.getDate() + 1);

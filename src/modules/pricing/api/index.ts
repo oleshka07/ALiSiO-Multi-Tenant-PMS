@@ -5,6 +5,15 @@ export { getPricing, updatePricing } from './pricing.handlers';
 export { getBulkPricing, updateBulkPricing } from './bulk.handlers';
 export { listRatePlanSettings, createRatePlanSetting, updateRatePlanSetting, deleteRatePlanSetting } from './rate-plans.handlers';
 export { getQuote } from './quote.handlers';
+// Сезони (Блок 2 крок 1, Ц27): правило, яке рендериться в календар писачем
+// масового редактора — другого джерела ціни не зʼявляється.
+export {
+  listSeasonSettings, createSeasonSetting, updateSeasonSetting, deleteSeasonSetting, splitSeasonSetting,
+  listSeasonPriceCells, putSeasonPriceCell, deleteSeasonPriceCell, clearSeasonOverridesSetting,
+} from './seasons.handlers';
+export { listSeasons, createSeason, updateSeason, deleteSeason, splitSeason, seasonPrices, setSeasonPrice, clearSeasonOverrides } from '../data/seasons.repo';
+export type { Season, SeasonPriceCell, SeasonInput, SeasonPriceInput } from '../data/seasons.repo';
+export type { PriceSource } from '../domain/types';
 
 // The price matrix: occupancy changes the price, never the category.
 export {

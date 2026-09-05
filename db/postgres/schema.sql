@@ -1405,7 +1405,9 @@ CREATE TABLE "price_calendar" (
   "ctd" BIGINT DEFAULT 0 NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  PRIMARY KEY ("id")
+  "source" TEXT DEFAULT 'manual' NOT NULL,
+  PRIMARY KEY ("id"),
+  CHECK (source IN ('season', 'manual', 'import'))
 );
 
 CREATE TABLE "price_los_tiers" (
@@ -1652,6 +1654,32 @@ CREATE TABLE "reservations" (
   CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
   CHECK (payment_status IN ('unpaid', 'payment_requested', 'prepaid', 'paid')),
   CONSTRAINT "reservations_lodging_discount_range" CHECK (lodging_discount_percent >= 0 AND lodging_discount_percent <= 100)
+);
+
+CREATE TABLE "season_prices" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "season_id" TEXT NOT NULL,
+  "unit_type_id" TEXT NOT NULL,
+  "rate_plan_id" TEXT,
+  "price" NUMERIC(14,2) NOT NULL,
+  "weekend_price" NUMERIC(14,2),
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
+);
+
+CREATE TABLE "seasons" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "property_id" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "date_from" TEXT NOT NULL,
+  "date_to" TEXT NOT NULL,
+  "sort_order" BIGINT DEFAULT 0 NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
 );
 
 CREATE TABLE "service_addons" (
@@ -2318,6 +2346,18 @@ ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_unit_id_6"
   FOREIGN KEY ("unit_id") REFERENCES "units" ("id");
 ALTER TABLE "reservations" ADD CONSTRAINT "fk_reservations_property_id_7"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "season_prices" ADD CONSTRAINT "fk_season_prices_rate_plan_id_1"
+  FOREIGN KEY ("rate_plan_id") REFERENCES "rate_plans" ("id") ON DELETE CASCADE;
+ALTER TABLE "season_prices" ADD CONSTRAINT "fk_season_prices_unit_type_id_2"
+  FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
+ALTER TABLE "season_prices" ADD CONSTRAINT "fk_season_prices_season_id_3"
+  FOREIGN KEY ("season_id") REFERENCES "seasons" ("id") ON DELETE CASCADE;
+ALTER TABLE "season_prices" ADD CONSTRAINT "fk_season_prices_organization_id_4"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "seasons" ADD CONSTRAINT "fk_seasons_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "seasons" ADD CONSTRAINT "fk_seasons_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "service_addons" ADD CONSTRAINT "fk_service_addons_service_id_1"
   FOREIGN KEY ("service_id") REFERENCES "additional_services" ("id") ON DELETE CASCADE;
 ALTER TABLE "service_orders" ADD CONSTRAINT "fk_service_orders_service_id_1"
@@ -2548,6 +2588,10 @@ CREATE INDEX "idx_reservations_status" ON "reservations" ("status");
 CREATE INDEX "idx_reservations_unassigned" ON "reservations" ("property_id", "check_in") WHERE unit_id IS NULL;
 CREATE INDEX "idx_reservations_unit" ON "reservations" ("unit_id");
 CREATE INDEX "idx_reservations_unit_type" ON "reservations" ("unit_type_id");
+CREATE UNIQUE INDEX "idx_season_prices_cell" ON "season_prices" (season_id, unit_type_id, (COALESCE(rate_plan_id, '')));
+CREATE INDEX "idx_season_prices_org" ON "season_prices" ("organization_id");
+CREATE INDEX "idx_seasons_org" ON "seasons" ("organization_id");
+CREATE INDEX "idx_seasons_property" ON "seasons" ("property_id", "date_from");
 CREATE INDEX "idx_incoming_leads_site" ON "site_incoming_leads" ("site_id");
 CREATE INDEX "idx_incoming_leads_status" ON "site_incoming_leads" ("status");
 CREATE INDEX "idx_site_listings_site" ON "site_listings" ("site_id");
@@ -2632,6 +2676,8 @@ CREATE INDEX IF NOT EXISTS "idx_price_los_tiers_org" ON "price_los_tiers" ("orga
 CREATE INDEX IF NOT EXISTS "idx_price_occupancy_org" ON "price_occupancy" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_properties_org" ON "properties" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_reservations_org" ON "reservations" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_season_prices_org" ON "season_prices" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_seasons_org" ON "seasons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_task_attachments_org" ON "task_attachments" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_task_projects_org" ON "task_projects" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_task_tags_org" ON "task_tags" ("organization_id");
@@ -2768,6 +2814,10 @@ ALTER TABLE "price_occupancy" ALTER COLUMN "organization_id"
 ALTER TABLE "properties" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "reservations" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "season_prices" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "seasons" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "task_attachments" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -3285,6 +3335,18 @@ ALTER TABLE "reservations" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reservations" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "reservations_tenant" ON "reservations"
   USING ("organization_id" = current_setting('app.organization_id') OR "guest_page_token" = NULLIF(current_setting('app.public_token', true), ''))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "season_prices" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "season_prices" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "season_prices_tenant" ON "season_prices"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "seasons" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "seasons" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "seasons_tenant" ON "seasons"
+  USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "service_addons" ENABLE ROW LEVEL SECURITY;

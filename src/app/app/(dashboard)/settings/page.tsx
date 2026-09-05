@@ -18,8 +18,7 @@ import { hasPermission, type Permission } from '@core/auth/permissions';
 import Link from 'next/link';
 import {
   Building2, BedDouble, Users, Settings as SettingsIcon, ChevronRight, Globe, LinkIcon, UserCheck,
-  Code2, Sparkles, Receipt, Users2, Coffee, CreditCard, Tag, Palette, Layers,
-} from 'lucide-react';
+  Code2, Sparkles, Receipt, Users2, Coffee, CreditCard, Tag, Palette, Layers, CalendarRange } from 'lucide-react';
 
 interface SettingsLink {
   title: string;
@@ -50,6 +49,7 @@ const GROUPS: { title: string; desc: string; items: SettingsLink[] }[] = [
     title: 'Ціни',
     desc: 'Що коштує ніч: тарифи, надбавки за заселеність, позначення',
     items: [
+      { title: 'Сезони', desc: 'Періоди року з ціною на кожен тип і тариф — розгортаються в календар', icon: <CalendarRange size={22} />, href: '/app/settings/seasons', color: 'green', permission: 'nav:pricing' },
       { title: 'Тарифи', desc: 'BAR, B&B — назва, код, валюта, режим ціни; ціни на дати — у календарі', icon: <Tag size={22} />, href: '/app/settings/rate-plans', color: 'green', permission: 'nav:pricing' },
       { title: 'Ціни за заселеністю', desc: 'Скільки коштує ніч на одного, двох, трьох — і знижки за довше проживання', icon: <Users2 size={22} />, href: '/app/settings/pricing-matrix', color: 'green', permission: 'nav:pricing' },
       { title: 'Легенда', desc: 'Що означають кольори й статуси броні, оплати, прибирання', icon: <Palette size={22} />, href: '/app/settings/legend', color: 'blue' },

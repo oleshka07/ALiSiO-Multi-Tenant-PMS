@@ -161,12 +161,12 @@
   audit, settings, reports/*), і `settings/*` (14 екранів: general,
   properties, units, services, users, payments, invoicing, features,
   pricing-matrix, booking-sources, booking-widget, guest-page,
-  channel-manager, channel-rules, legend).
+  channel-manager, channel-rules, legend, seasons — Блок 2 крок 1).
 - **`src/modules/`** — 14 модулів. Межі тримає `scripts/check-boundaries.mjs`
   з храповиком.
 - **`scripts/`** — ~25 гейтів у `npm run check`; окремо `npm run check:pg`
   на живому Postgres.
-- **`db/postgres/migrations/`** — 0001…0067 (0062 ціни немає = NULL, 0063 `sell_mode`, 0064 нуль у ціні вихідних → NULL, 0065 дефолти модулів П15, 0066 маска полів `cm_outbox.field_mask` і журнал відправлень `cm_sends`, 0067 досилання стану після 0062 і CHECK на `sell_mode`); `db/postgres/schema.sql`
+- **`db/postgres/migrations/`** — 0001…0068 (0068 сезони `seasons`/`season_prices` і `price_calendar.source`, 0062 ціни немає = NULL, 0063 `sell_mode`, 0064 нуль у ціні вихідних → NULL, 0065 дефолти модулів П15, 0066 маска полів `cm_outbox.field_mask` і журнал відправлень `cm_sends`, 0067 досилання стану після 0062 і CHECK на `sell_mode`); `db/postgres/schema.sql`
   генерується `scripts/pg-schema.mjs`, руками не редагується (інваріант 10).
 - **`hotels/*.json`** — описи готелів; `_example.json` — шаблон.
 

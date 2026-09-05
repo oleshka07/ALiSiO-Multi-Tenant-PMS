@@ -26,6 +26,8 @@ export interface DayPrice {
   cta: number;
   ctd: number;
   hasData: boolean;
+  /** Звідки ціна рядка (Ц27); `manual` у рядку без ціни — лише обмеження. */
+  source?: PriceSource;
   /** Сітка ТАРИФУ: число взяте з базового рядка типу, власного рядка тарифу на цей день немає. */
   inherited?: boolean;
 }
@@ -37,9 +39,17 @@ export interface DayPrice {
  * — записати. Екран редактора дня шле всі поля разом, тож для нього це
  * непомітно; для писача, який шле частину полів, це різниця між «зберіг
  * мінімум» і «скинув усе інше».
+ *
+ * Звідки ціна дня (Блок 2 крок 1, Ц27): `season` — розгорнута з клітинки
+ * сезону; `manual` — редактор дня чи масовий, точкове перевизначення, яке
+ * перерендер сезону не затирає; `import` — файл готелю.
  */
+export type PriceSource = 'season' | 'manual' | 'import';
+
 export interface PriceUpsertInput {
   date: string;
+  /** Джерело ціни, коли в запиті є ціна; без ціни джерело рядка не міняється. Дефолт — `manual`. */
+  source?: PriceSource;
   /** 0 і менше — відмова `price_not_positive`. */
   base_price?: number | null;
   /** 0 і менше — відмова. */
