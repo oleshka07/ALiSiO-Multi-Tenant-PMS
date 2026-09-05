@@ -128,8 +128,18 @@ async function main() {
   // З 0065 (П15) `tasks`, `guest_page` і `sites` — теж OFF за дефолтом, а
   // нижче зондуються задачі, гостьова конфігурація і сайти: вмикаються тут
   // із тієї ж причини.
+  //
+  // `reports` тим самим рішенням теж пішов у OFF, і його сюди не дописали —
+  // від коміту `ff8ed9e` (Блок 0.2) ця перевірка падає на `/api/reports`
+  // з 403 у КОЖНОМУ прогоні гілки робіт. Пропуск неочевидний саме тому, що
+  // маршрут відповідає правильно: модуль не куплений — 403, варта працює.
+  // Ціна не в червоному CI, а в тому, що два твердження про ізоляцію звітів
+  // («B рахує нуль чужих броней», «звіт турзбору не показує чужих гостей»)
+  // від того дня не виконуються ЖОДНОГО разу — а це найгірший рід звіту з
+  // муніципалітетом і чужими іменами. Той самий клас, що беззмістовне
+  // твердження в цьому ж файлі (інваріант 24).
   for (const t of [a, b]) {
-    for (const feature of ['accounting', 'tasks', 'guest_page', 'sites']) {
+    for (const feature of ['accounting', 'tasks', 'guest_page', 'sites', 'reports']) {
       await sql.run(
         `INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)
          ON CONFLICT(organization_id, feature) DO UPDATE SET enabled = TRUE`,
