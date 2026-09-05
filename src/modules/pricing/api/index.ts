@@ -12,6 +12,9 @@ export {
   createLosTier, updateLosTier, deleteLosTier, quoteOccupancy,
 } from './occupancy-price.handlers';
 export { quoteStay, addDays } from '../domain/occupancy-price';
+// Рядок матриці як писач — для перевірок сусідніх модулів (канал), яким до
+// цінових таблиць не можна (інваріант 16, `check-price-source`).
+export { createPrice as createOccupancyRow } from '../data/occupancy-price.repo';
 
 // One resolver for what a night costs, used by the operator quote and by the
 // widget alike — the two used to keep separate copies of the arithmetic.

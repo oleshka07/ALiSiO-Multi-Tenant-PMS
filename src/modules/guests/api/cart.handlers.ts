@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { appBaseUrl } from '@core/app-url';
+import { hasFeature } from '@core/features';
 import * as repo from '../data/guest-actions.repo';
 import { sendEmail } from '@core/mail/email';
 import { serverError } from '@core/http/errors';
@@ -51,6 +52,10 @@ export async function sendAbandonNotifications(
   organizationId?: string | null,
 ): Promise<void> {
   try {
+    // Кошик живе на гостьовій сторінці: без організації нема що питати, без
+    // модуля `guest_page` — нікуди вести (Блок 0.6 B2; інваріант 13 —
+    // відсутність не дозволяє).
+    if (!organizationId || !await hasFeature(organizationId, 'guest_page')) return;
     const event = await repo.getPendingAbandonNotifications(guestToken, 30);
     if (!event) return;
 

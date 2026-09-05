@@ -332,7 +332,7 @@ translations.ts`, модуль у `settings/booking-widget`) — вирізає�
    і деплой проду робить власник після звіту.
 5. `npm run check`, `check:pg`, CI зелені.
 
-**Приймання:** усі гейти зелені; `settings/features` показує 14 ключів із правильними дефолтами;
+**Приймання:** усі гейти зелені; `settings/features` показує 13 ключів із правильними дефолтами;
 новий готель через `provision-org.mjs` не бачить задач, звітів, аркушів, гостьової сторінки, сайтів;
 наявні готелі бачать усе, що бачили; у віджеті немає жодного `svc_sauna`.
 
@@ -373,11 +373,14 @@ translations.ts`, модуль у `settings/booking-widget`) — вирізає�
 6/11); A2 — порожня маска в `enqueueChange` — відмова (`outbox.repo.check`); A3 — `CHANNEX-RETEST-PROTOCOL.md`
 §1 про обмеження на тип з будь-якого екрана.
 
-**B (далі):** B1 опція заселеності без джерела ціни не закриває всю пару; B2 посилання на гостьову
-сторінку в листах — лише з `guest_page`; B3 дзеркало 0065 у SQLite — один раз, з маркером; B4 єдина
-семантика `null` у `upsertPrices`; B5 `deploy/rehearse-merge.sh`; B6 дрібні (карта прав `/app/reports`,
-коментар `navigation.ts`, крок 8 Setup progress без `sites`, приймання Блоку 0, INDEX §9, тег
-`archive/sauna-flow`, список ключів хаба звітів).
+**B (зроблено 05.09):** B1 опція заселеності без джерела ціни не закриває всю пару (INC-023,
+`ari-adapter.check` 13); B2 посилання на гостьову сторінку в листах — лише з `guest_page` (пʼять файлів у
+власниках ключа `features.check`); B3 дзеркала засівів `events`/0065 у SQLite — один раз, маркер — самі
+дані; B4 єдина семантика `null` у `upsertPrices` (`price-calendar.repo.check` 12, `ari-adapter.check` 11);
+B5 `deploy/rehearse-merge.sh` (DEPLOY «Перед злиттям гілки в прод»); B6 дрібні (карта прав без
+`/app/reports`, коментар `navigation.ts`, крок 8 Setup progress без `sites`, приймання Блоку 0 — 13
+ключів, INDEX 0001…0067, тег сауни — лише локальний, гілка `origin/archive/sauna-flow` є; `features.check`
+читає ключі `nav-items.ts` і хаба звітів).
 
 ### Блок 1 — Оболонка за Hoteliera
 

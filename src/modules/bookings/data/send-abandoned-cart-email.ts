@@ -1,6 +1,7 @@
 import { getSql } from '@core/db/async';
 import { organizationCurrency } from '@core/currency';
 import { appBaseUrl } from '@core/app-url';
+import { hasFeature } from '@core/features';
 import { sendEmail } from '@core/mail/email';
 import { reservationLanguage } from '@core/i18n/resolve';
 
@@ -84,15 +85,20 @@ export async function sendAbandonedCartEmail(reservationId: string, origin?: str
   const total = fmtPrice(row.total_price || 0, currency, LOCALE[tLang] || 'en-GB');
   const propertyName = row.property_name || '';
   const appUrl = origin || appBaseUrl();
+  // Куди веде «Завершити бронювання»: на сторінку готелю, якщо лістинг її
+  // назвав, інакше — на гостьову сторінку, і лише готелю з модулем
+  // `guest_page` (Блок 0.6 B2). Лист, у якому нікуди йти завершувати, не
+  // надсилається: це нагадування про дію, а не інформація.
   let guestPageUrl = null;
   if (row.guest_page_token) {
     if (thankYouUrl) {
       const sep = thankYouUrl.includes('?') ? '&' : '?';
       guestPageUrl = `${thankYouUrl}${sep}guest_token=${row.guest_page_token}`;
-    } else {
+    } else if (await hasFeature(row.organization_id, 'guest_page')) {
       guestPageUrl = `${appUrl}/guest/${row.guest_page_token}`;
     }
   }
+  if (!guestPageUrl) return false;
 
   const translations = {
     en: {

@@ -27,6 +27,7 @@
 import { getSql } from '@core/db/async';
 import { organizationCurrency } from '@core/currency';
 import { appBaseUrl } from '@core/app-url';
+import { hasFeature } from '@core/features';
 import { sendEmail } from '@core/mail/email';
 import { reservationLanguage } from '@core/i18n/resolve';
 
@@ -260,8 +261,11 @@ export async function sendBookingConfirmationEmail(reservationId: string, origin
    */
   const currency = row.currency || await organizationCurrency(row.organization_id);
   const total = fmtPrice(row.total_price || 0, currency, locale);
+  // Кнопка на гостьову сторінку — лише готелю з модулем `guest_page` (Блок
+  // 0.6 B2): без нього посилання веде на 404, і гість отримує мертву кнопку.
+  // Лист без кнопки — це все одно підтвердження; кнопка без модуля — ні.
   let guestPageUrl = null;
-  if (row.guest_page_token) {
+  if (row.guest_page_token && await hasFeature(row.organization_id, 'guest_page')) {
     const baseUrl = appBaseUrl();
     guestPageUrl = `${baseUrl}/guest/${row.guest_page_token}`;
   }

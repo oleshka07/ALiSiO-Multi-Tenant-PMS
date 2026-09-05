@@ -210,6 +210,35 @@ try {
   assert.strictEqual(Number(planRow?.min_stay ?? 1), 1, 'рядок тарифу обмеження не несе');
   console.log('  ok  обмеження з екрана тарифу — на тип: котирування, сітка бази й сітка тарифу бачать одне число');
 
+  // ── 12. Одна семантика `null` на всі поля (Блок 0.6 B4) ────────────────
+  //
+  // Було три: `weekend_price` — поля немає → не чіпати, `null` → прибрати;
+  // `base_price` — COALESCE, тобто `null` НЕ прибирав (а маска вже казала
+  // «ціна зникла»); обмеження — завжди перезапис дефолтами, тобто «поля
+  // немає» = «скинь». Тепер одна на всі: поля немає — не чіпати; `null` —
+  // прибрати (дефолт); значення — записати. Осі: явний `null` ціни прибирає
+  // її (рядок NULL, ніч у missing); мінімум 2, якого в запиті немає, лишається
+  // 2, а не стає 1; явний `null` максимуму прибирає його, ціна при цьому ціла.
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, base_price: 100, min_stay: 2, max_stay: 5 }]));
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, base_price: null }]));
+  const nulled = await sql.row<any>('SELECT base_price, min_stay, max_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
+  assert.strictEqual(nulled.base_price, null, `явний null ціни мав прибрати її, а лишилось ${nulled.base_price} — маска каже «зникла», база тримає`);
+  assert.deepStrictEqual((await quote(A, BAR(A), D1)).missing, [D1], 'ніч без ціни — у missing');
+  assert.strictEqual(Number(nulled.min_stay), 2, `мінімум, якого в запиті немає, лишається 2, а не ${nulled.min_stay}`);
+  assert.strictEqual(Number(nulled.max_stay), 5, 'максимум, якого в запиті немає, лишається');
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, base_price: 100, max_stay: null }]));
+  const cleared2 = await sql.row<any>('SELECT base_price, min_stay, max_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
+  assert.strictEqual(cleared2.max_stay, null, 'явний null максимуму прибирає його');
+  assert.strictEqual(Number(cleared2.base_price), 100, 'ціна записана');
+  assert.strictEqual(Number(cleared2.min_stay), 2, 'мінімум не зачеплений');
+  // Те саме з вибраним тарифом: ціна тарифу — у його рядок, `null` прибирає її.
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, base_price: 140 }], { ratePlanId: BB(A) }));
+  assert.strictEqual((await quote(A, BB(A))).nights[0]?.price, 140);
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, base_price: null }], { ratePlanId: BB(A) }));
+  assert.strictEqual((await quote(A, BB(A))).nights[0]?.price, 100, 'null на ціні тарифу прибирає її — тариф знову успадковує базу');
+  assert.strictEqual(Number(cleared2.min_stay), 2);
+  console.log('  ok  null — прибрати, відсутнє — не чіпати, на всіх полях і в обох рядках');
+
   console.log('price-calendar: ціна тарифу на дату — своя, успадкована названа, чуже — відмова; ціни немає — NULL, нуль — відмова');
 } finally {
   await cleanup();

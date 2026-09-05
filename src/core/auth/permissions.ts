@@ -174,7 +174,8 @@ export const NAV_PERMISSION_MAP: Record<string, Permission> = {
   '/app/calendar': 'nav:calendar',
   '/app/bookings': 'nav:bookings',
   '/app/pricing': 'nav:pricing',
-  '/app/reports': 'nav:dashboard',
+  // `/app/reports` — хаб без окремого права (nav-items.ts): сторінка сама
+  // показує лише звіти, на які є право і ключ; підсторінки — нижче.
   '/app/reports/sales': 'nav:reports',
   '/app/reports/city-tax': 'nav:reports',
   '/app/guests': 'nav:guests',

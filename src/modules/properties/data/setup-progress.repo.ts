@@ -3,6 +3,7 @@ import { getSql } from '@core/db/async';
 import { todayFor } from '@core/hotel-day';
 import { pricedDaysAhead, listRatePlans } from '@pricing';
 import { connectionsForProperty } from '@channels';
+import { hasFeature } from '@core/features';
 import { setupProgress, PRICE_COVERAGE_DAYS, type SetupProgress, type SetupSnapshot } from '../domain/setup-progress';
 
 /**
@@ -44,10 +45,14 @@ export async function setupProgressFor(organizationId: string, propertyId: strin
     `SELECT COUNT(*) AS n FROM reservations WHERE property_id = ? AND organization_id = ? AND status <> 'cancelled'`,
     [property.id, organizationId],
   );
-  const sites = await sql.row<any>(
-    `SELECT COUNT(*) AS n FROM booking_sites WHERE property_id = ? AND organization_id = ? AND status = 'active'`,
-    [property.id, organizationId],
-  );
+  // Сайт рахується лише готелю з модулем `sites` (Блок 0.6 B6): рядок
+  // `booking_sites`, що лишився від вимкненого модуля, — не «канал збуту є».
+  const sites = await hasFeature(organizationId, 'sites')
+    ? await sql.row<any>(
+      `SELECT COUNT(*) AS n FROM booking_sites WHERE property_id = ? AND organization_id = ? AND status = 'active'`,
+      [property.id, organizationId],
+    )
+    : { n: 0 };
 
   const snapshot: SetupSnapshot = {
     property: { country: property.country ?? null, checkInTime: property.check_in_time ?? null, checkOutTime: property.check_out_time ?? null },

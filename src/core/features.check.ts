@@ -138,6 +138,19 @@ for (const key of MODULES) {
   assert.ok(catalog.includes(`feature: '${key}'`),
     `модуль «${key}» вмикається в налаштуваннях, але жоден екран каталогу core/navigation.ts не питає фічу — вимкнути його неможливо`);
 }
+
+// Інші списки з ключами модулів — верхнє меню й хаб звітів (Блок 0.6 B6):
+// ключ, якого немає в реєстрі, там ніколи не ховає пункт (`!features[x]` на
+// невідомому ключі — завжди true), а ключ, якого немає в каталозі
+// navigation.ts, — екран без заслінки. Обидва списки читаються тут, щоб
+// третій список не жив поза гейтом.
+for (const file of ['src/components/layout/nav-items.ts', 'src/app/app/(dashboard)/reports/page.tsx']) {
+  const src = fs.readFileSync(file, 'utf8');
+  for (const [, key] of src.matchAll(/feature: '([a-z_]+)'/g)) {
+    assert.ok(key in FEATURE_SPEC, `${file}: ключ «${key}» не існує в реєстрі — пункт ніколи не сховається`);
+    assert.ok(catalog.includes(`feature: '${key}'`), `${file}: ключ «${key}» є в меню, але не в каталозі core/navigation.ts — екран без заслінки`);
+  }
+}
 console.log(`  ok  ${MODULES.length} модулів ховаються з меню і закриваються заслінкою`);
 
 // ── Маршрути справді відмовляють ────────────────────────────────────────
@@ -178,6 +191,14 @@ const OWNERS: Record<Key, string[]> = {
     'src/modules/properties/api/guest-page-configs.handlers.ts',
     'src/modules/properties/api/property-guest-config.handlers.ts',
     'src/modules/guests/api/guest-page-sections.handlers.ts',
+    // Листи з посиланням на гостьову сторінку (Блок 0.6 B2): без модуля кнопка
+    // вела б на 404 — лист іде без неї, а лист ЛИШЕ про гостьову сторінку
+    // (нагадування про реєстрацію, кошик послуг) не іде взагалі.
+    'src/modules/bookings/data/send-confirmation-email.ts',
+    'src/modules/bookings/data/send-abandoned-cart-email.ts',
+    'src/modules/bookings/data/send-guest-reminder-email.ts',
+    'src/modules/widget/api/widget-reserve.handlers.ts',
+    'src/modules/guests/api/cart.handlers.ts',
   ],
   // Сайти: кожен маршрут `booking-sites/[id]/**` проходить через
   // `withOwnedSite`; створення — у списковому маршруті; аналітика — у

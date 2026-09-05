@@ -479,7 +479,7 @@ try {
     // «ціна»; те саме ще раз — координати немає взагалі.
     {
       const D10 = addDays(DAY, 90);
-      const { upsertPrices } = await import('@pricing');
+      const { upsertPrices, getPriceMonth } = await import('@pricing');
       const mask = async () => {
         const rows = (await queuedChanges(CONN)).filter((r) => r.kind === 'rate' && r.date === D10);
         return rows.length === 1 ? rows[0].fields : rows.length === 0 ? 'none' : 'many';
@@ -500,7 +500,16 @@ try {
       await reset();
       await upsertPrices(UT, [{ date: D10, base_price: 160, min_stay: 2, closed: true }]);
       assert.strictEqual(await mask(), 'none', 'нічого не змінилось — координати немає: зайвий виклик із ліміту');
-      console.log('  ok  писач календаря: маска — різниця з рядком, не склад запиту; без зміни — без координати');
+      // Явний `null` ціни (Блок 0.6 B4): маска каже «ціна зникла» — і рядок
+      // мусить казати те саме; до того COALESCE лишав 160, і маска брехала.
+      await reset();
+      await upsertPrices(UT, [{ date: D10, base_price: null }]);
+      assert.deepStrictEqual(await mask(), ['prices', 'closed'], 'ціна прибрана — «ціна» + «закрито» (джерело зникло, Ц34 (б))');
+      const [y10, m10] = [Number(D10.slice(0, 4)), Number(D10.slice(5, 7))];
+      const day10 = (await getPriceMonth(UT, m10, y10)).days.find((d) => d.date === D10)!;
+      assert.strictEqual(day10.effective_price, null, `маска сказала «ціна зникла», а в рядку лишилось ${day10.effective_price} — маска бреше`);
+      assert.strictEqual(day10.min_stay, 2, 'мінімум, якого в запиті не було, не скинувся');
+      console.log('  ok  писач календаря: маска — різниця з рядком, не склад запиту; без зміни — без координати; null прибирає, і рядок каже те саме, що маска');
     }
 
     // ── 12. Обмеження з екрана ТАРИФУ лягають на ТИП і їдуть на кожну пару ─
@@ -613,6 +622,84 @@ try {
       assert.strictEqual((await gridDay(RP)).base_price, 200, 'масовий: ціна тарифу при цьому не зачеплена');
       await reset();
       console.log('  ok  обмеження з екрана тарифу — на тип: базовий рядок, координата на кожну пару; ціна тарифу — лише його пара');
+    }
+
+    // ── 13. Опція без джерела ціни НЕ закриває пару (Блок 0.6 B1) ──────────
+    //
+    // `pricesAt` на одній `missing` заселеності віддавав `null` — і батчер
+    // закривав усю пару `stop_sell: true`. Дзеркало тримає опції 1..max_adults
+    // з часів, коли каталог їх так і заводив; після e29e063 (Ц26 (б)) ніч без
+    // рядка матриці на цю кількість дорослих — без ціни, тож живий `per_person`
+    // тариф із матрицею не на всі кількості після деплою й 0067 закрився б на
+    // всі ночі. Тепер: цінуються ті опції, на які ціна є; опція без джерела в
+    // тіло не входить; пара закривається лише коли ціни немає на ЖОДНУ опцію.
+    //
+    // Осі (інваріант 26): три опції в дзеркалі, ціна на дві (1 і 2 — різні
+    // числа, 120 і 150: «усі однакові» не пройде), третя без рядка матриці;
+    // окремо — ніч без ціни взагалі, яка таки закривається.
+    {
+      const UT3 = `${ORG}_ut3`;
+      const D13 = addDays(DAY, 110);
+      const D14 = addDays(DAY, 111);
+      const { createOccupancyRow, upsertPrices } = await import('@pricing');
+      await sql.run(
+        `INSERT INTO unit_types (id, property_id, category_id, name, code,
+                                 max_adults, max_children, max_occupancy, base_occupancy, is_active, bookable_online)
+         VALUES (?, ?, ?, ?, ?, 3, 0, 3, 2, TRUE, TRUE)`,
+        [UT3, PROP, `${ORG}_cat`, 'Triple', 'TRP'],
+      );
+      await sql.run(
+        `INSERT INTO units (id, property_id, unit_type_id, category_id, name, code, is_active) VALUES (?, ?, ?, ?, ?, ?, TRUE)`,
+        [`${ORG}_u3`, PROP, UT3, `${ORG}_cat`, '301', '301'],
+      );
+      const mirror3: [string, string, string, number, string][] = [
+        ['unit_type', UT3, '', 0, 'remote-ut3'],
+        ['rate_plan', RP, UT3, 0, 'remote-rp-ut3'],
+        // Опції — зі своїми id, як у вендора (первинна + вторинні; дзеркало
+        // тримає UNIQUE на remote_id у межах зʼєднання).
+        ['rate_plan_option', RP, UT3, 1, 'remote-rp-ut3-o1'],
+        ['rate_plan_option', RP, UT3, 2, 'remote-rp-ut3'],
+        ['rate_plan_option', RP, UT3, 3, 'remote-rp-ut3-o3'],
+      ];
+      for (const [entityType, localId, unitTypeId, occupancy, remoteId] of mirror3) {
+        await sql.run(
+          `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, occupancy, remote_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [`${CONN}_m3_${entityType}_${occupancy}`, ORG, CONN, entityType, localId, unitTypeId, occupancy, remoteId],
+        );
+      }
+      await bulkUpdatePrices({ unitTypeId: UT3, dateFrom: D13, dateTo: D13, applyTo: 'all', base_price: 150 });
+      // Ціна ТАРИФУ на дату: саме на ній надбавка йде з матриці, і заселеність
+      // без рядка — без ціни (Ц26 (б)); базовий рядок типу цінує будь-яку
+      // кількість дорослих однаково і цієї осі не має.
+      await upsertPrices(UT3, [{ date: D13, base_price: 150 }], { ratePlanId: RP });
+      await createOccupancyRow(PROP, { unit_type_id: UT3, persons: 2, price_gross: 150 });
+      await createOccupancyRow(PROP, { unit_type_id: UT3, persons: 1, price_gross: 120 });
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+
+      await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT3, ratePlanId: RP, date: D13 });
+      const t13 = transport([]);
+      const r13 = await ariFlush(CONN, 'key', { client: { fetch: t13.fetch, limiter: new ChannexRateLimiter() } });
+      assert.strictEqual(r13.failed, 0, r13.errors.join(' | '));
+      const v13 = t13.calls.find((c) => c.path.endsWith('/restrictions'))?.body.values.find((x: any) => x.rate_plan_id === 'remote-rp-ut3' && x.date === D13);
+      assert.ok(v13, 'ніч пари мала поїхати');
+      assert.strictEqual(v13.stop_sell, false, `дві опції з ціною, одна без — пара НЕ закривається, а поїхало ${JSON.stringify(v13)}`);
+      assert.deepStrictEqual(v13.rates, [{ occupancy: 1, rate: 12000 }, { occupancy: 2, rate: 15000 }],
+        `у тілі — лише опції з ціною, кожна зі своїм числом: ${JSON.stringify(v13.rates)}`);
+
+      // Ніч без ціни на жодну опцію — закривається, як і раніше. Матриця без
+      // дат цінує будь-яку ніч, тож «без ціни взагалі» тут — закритий день:
+      // закриту ніч не цінує жодне джерело (Д2).
+      await bulkUpdatePrices({ unitTypeId: UT3, dateFrom: D14, dateTo: D14, applyTo: 'all', closed: true });
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT3, ratePlanId: RP, date: D14 });
+      const t14 = transport([]);
+      await ariFlush(CONN, 'key', { client: { fetch: t14.fetch, limiter: new ChannexRateLimiter() } });
+      const v14 = t14.calls.find((c) => c.path.endsWith('/restrictions'))?.body.values.find((x: any) => x.rate_plan_id === 'remote-rp-ut3' && x.date === D14);
+      assert.strictEqual(v14?.stop_sell, true, `ціни немає на жодну опцію — ніч закрита: ${JSON.stringify(v14)}`);
+      assert.ok(!('rates' in (v14 ?? {})), 'і без цін');
+      assert.strictEqual(await pendingCount(CONN), 0);
+      console.log('  ok  опція без джерела ціни випадає з тіла, пара лишається відкритою; без ціни на жодну — закрита');
     }
   });
 } finally {

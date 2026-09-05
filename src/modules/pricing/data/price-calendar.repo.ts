@@ -261,27 +261,54 @@ const restrictionsOf = (row: CalendarRowShape | null): RestrictionShape | null =
  * має куди лягти). Порожній рядок тарифу — це сітка, яка каже «власна
  * ціна», показуючи успадковану.
  *
- * `base_price` без значення — ціну НЕ чіпати; ціна вихідних — те саме
- * правило: поля немає — не чіпати, явний `null` — прибрати. Через COALESCE
- * цього не сказати (null і «немає поля» там однакові), тому вибір робиться
- * тут, а не в SQL. До 05.09.2026 стояло `excluded.weekend_price` без умови,
- * і збереження обмеження без поля ціни затирало ціну вихідних NULL: з
- * пʼятниці по неділю продавалась буденна — без жодної помилки.
+ * Одна семантика на кожне поле (Блок 0.6 B4): поля немає в запиті — не
+ * чіпати; явний `null` — прибрати; значення — записати. Через COALESCE цього
+ * не сказати (null і «немає поля» там однакові), тому вибір робиться тут, а
+ * не в SQL — `keepOrSet`. До 05.09.2026 у `base_price` стояв COALESCE, і явний
+ * `null` ціну не прибирав, хоч маска координати вже казала «ціна зникла»; у
+ * `weekend_price` без умови стояло `excluded.weekend_price`, і збереження
+ * обмеження без поля ціни затирало ціну вихідних NULL: з пʼятниці по неділю
+ * продавалась буденна — без жодної помилки.
  */
 async function writeRatePlanPrice(
   t: Sql, unitTypeId: string, ratePlanId: string, date: string,
   price: { base_price?: number | null; weekend_price?: number | null }, rowExists: boolean,
 ): Promise<void> {
   if (!rowExists && price.base_price == null && price.weekend_price == null) return;
-  const weekendSet = price.weekend_price === undefined ? 'price_calendar.weekend_price' : 'excluded.weekend_price';
   await t.run(`
     INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price)
     VALUES (?, ?, ?, ?, ?, ?)
     ${ON_CONFLICT_ROW} DO UPDATE SET
-      base_price = COALESCE(excluded.base_price, price_calendar.base_price),
-      weekend_price = ${weekendSet},
+      ${keepOrSet(price, ['base_price', 'weekend_price'])},
       updated_at = CURRENT_TIMESTAMP
   `, [newId(), unitTypeId, ratePlanId, date, price.base_price ?? null, price.weekend_price ?? null]);
+}
+
+/**
+ * `SET` для upsert-у, поле за полем: поля немає в запиті — лишити те, що в
+ * рядку; є (включно з `null`) — записати з `excluded`. Значення для INSERT
+ * при цьому — вже злиті (`resolveField`), тож новий рядок теж отримує їх.
+ */
+function keepOrSet(input: object, cols: readonly string[]): string {
+  const has = (c: string) => (input as Record<string, unknown>)[c] !== undefined;
+  return cols.map((c) => `${c} = ${has(c) ? `excluded.${c}` : `price_calendar.${c}`}`).join(',\n      ');
+}
+
+/** Значення поля після запису: немає — те, що лежало (або дефолт); `null` — дефолт; інакше — воно. */
+function resolveField<T>(input: T | null | undefined, existing: T | null | undefined, fallback: T): T {
+  if (input === undefined) return existing ?? fallback;
+  return input ?? fallback;
+}
+
+/** Обмеження після запису — злиті з базовим рядком за правилом `resolveField`. */
+function resolveRestrictions(p: PriceUpsertInput, base: CalendarRowShape | null): RestrictionShape {
+  return {
+    min_stay: Number(resolveField(p.min_stay, base?.min_stay, 1)) || 1,
+    max_stay: resolveField(p.max_stay, base?.max_stay, null),
+    closed: Boolean(resolveField(p.closed, base?.closed, false)),
+    cta: Boolean(resolveField(p.cta, base?.cta, false)),
+    ctd: Boolean(resolveField(p.ctd, base?.ctd, false)),
+  };
 }
 
 /**
@@ -289,19 +316,18 @@ async function writeRatePlanPrice(
  * пише екран тарифу: на день без базового рядка заводиться рядок без ціни
  * (NULL, ніч у `missing`, обмеження діє — 0062).
  */
-async function writeBaseRestrictions(t: Sql, unitTypeId: string, date: string, r: RestrictionShape): Promise<void> {
+/** `present` — обʼєкт, чиї визначені поля пишуться; злиті значення (`r`) — для нового рядка. */
+async function writeBaseRestrictions(t: Sql, unitTypeId: string, date: string, r: RestrictionShape, present: object): Promise<void> {
   await t.run(`
     INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
     VALUES (?, ?, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?)
     ${ON_CONFLICT_ROW} DO UPDATE SET
-      min_stay = excluded.min_stay,
-      max_stay = excluded.max_stay,
-      closed = excluded.closed,
-      cta = excluded.cta,
-      ctd = excluded.ctd,
+      ${keepOrSet(present, RESTRICTION_COLS)},
       updated_at = CURRENT_TIMESTAMP
   `, [newId(), unitTypeId, date, r.min_stay, r.max_stay, r.closed ? 1 : 0, r.cta ? 1 : 0, r.ctd ? 1 : 0]);
 }
+
+const RESTRICTION_COLS = ['min_stay', 'max_stay', 'closed', 'cta', 'ctd'] as const;
 
 export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[], options: PriceCalendarOptions = {}): Promise<number> {
   const sql = getSql();
@@ -341,16 +367,13 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
       // інакше успадкована базова.
       const inherited = ratePlanId ? base : null;
       const after: PriceShape = {
-        base_price: (p.base_price === undefined ? own?.base_price ?? null : p.base_price) ?? inherited?.base_price ?? null,
-        weekend_price: (p.weekend_price === undefined ? own?.weekend_price ?? null : p.weekend_price) ?? inherited?.weekend_price ?? null,
+        base_price: resolveField(p.base_price, own?.base_price, null) ?? inherited?.base_price ?? null,
+        weekend_price: resolveField(p.weekend_price, own?.weekend_price, null) ?? inherited?.weekend_price ?? null,
       };
       for (const f of changedPriceFields(effectivePriceBefore(own, inherited), after)) priceChanged.add(f);
-      // Обмеження: базовий рядок до і після — з будь-якого екрана.
-      const restrictions: RestrictionShape = {
-        min_stay: p.min_stay ?? 1, max_stay: p.max_stay ?? null,
-        closed: Boolean(p.closed), cta: Boolean(p.cta), ctd: Boolean(p.ctd),
-      };
-      for (const f of changedRestrictionFields(restrictionsOf(base), restrictions)) restrictionChanged.add(f);
+      // Обмеження: базовий рядок до і після — з будь-якого екрана; поля, яких
+      // у запиті немає, лишаються як були (B4).
+      for (const f of changedRestrictionFields(restrictionsOf(base), resolveRestrictions(p, base))) restrictionChanged.add(f);
     }
     if (owner && dates.length) {
       await noteCalendarChanged(t, {
@@ -359,33 +382,24 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
     }
 
     for (const p of prices) {
+      const base = shapeOf(baseBy.get(p.date));
+      const r = resolveRestrictions(p, base);
       if (ratePlanId) {
         await writeRatePlanPrice(t, unitTypeId, ratePlanId, p.date, p, planBy.has(p.date));
-        await writeBaseRestrictions(t, unitTypeId, p.date, {
-          min_stay: p.min_stay ?? 1, max_stay: p.max_stay ?? null,
-          closed: Boolean(p.closed), cta: Boolean(p.cta), ctd: Boolean(p.ctd),
-        });
+        await writeBaseRestrictions(t, unitTypeId, p.date, r, p);
         continue;
       }
-      // Базовий рядок типу: ціна й обмеження разом. `base_price` без значення
-      // — ціну НЕ чіпати: збереження обмеження на день із ціною лишає її, на
-      // день без ціни — лишає порожньою (NULL). Тут стояло `?? 0`, і рядок
-      // обмеження ставав ціною нуль. Ціна вихідних — те саме правило, і чому
-      // не через COALESCE — у `writeRatePlanPrice`.
-      const weekendSet = p.weekend_price === undefined ? 'price_calendar.weekend_price' : 'excluded.weekend_price';
+      // Базовий рядок типу: ціна й обмеження разом, одна семантика на кожне
+      // поле (`keepOrSet`, B4): поля немає — не чіпати (збереження обмеження
+      // на день із ціною лишає її, на день без ціни — лишає порожньою; тут
+      // стояло `?? 0`, і рядок обмеження ставав ціною нуль), `null` — прибрати.
       await t.run(`
       INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
       VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
       ${ON_CONFLICT_ROW} DO UPDATE SET
-        base_price = COALESCE(excluded.base_price, price_calendar.base_price),
-        weekend_price = ${weekendSet},
-        min_stay = excluded.min_stay,
-        max_stay = excluded.max_stay,
-        closed = excluded.closed,
-        cta = excluded.cta,
-        ctd = excluded.ctd,
+        ${keepOrSet(p, ['base_price', 'weekend_price', ...RESTRICTION_COLS])},
         updated_at = CURRENT_TIMESTAMP
-      `, [newId(), unitTypeId, p.date, p.base_price ?? null, p.weekend_price ?? null, p.min_stay ?? 1, p.max_stay ?? null, p.closed ? 1 : 0, p.cta ? 1 : 0, p.ctd ? 1 : 0]);
+      `, [newId(), unitTypeId, p.date, p.base_price ?? null, p.weekend_price ?? null, r.min_stay, r.max_stay, r.closed ? 1 : 0, r.cta ? 1 : 0, r.ctd ? 1 : 0]);
     }
   });
 
@@ -497,7 +511,8 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
 
       if (ratePlanId) {
         await writeRatePlanPrice(t, unitTypeId, ratePlanId, dateStr, { base_price: num(basePrice), weekend_price: num(weekendPrice) }, Boolean(plan));
-        await writeBaseRestrictions(t, unitTypeId, dateStr, restrictions);
+        // Масовий редактор уже злив «не змінювати» з базовим рядком — усі пʼять полів визначені.
+        await writeBaseRestrictions(t, unitTypeId, dateStr, restrictions, restrictions);
       } else {
         await t.run(`
         INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)

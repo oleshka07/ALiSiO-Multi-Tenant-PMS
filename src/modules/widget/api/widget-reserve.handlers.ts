@@ -687,8 +687,12 @@ export async function createWidgetReservation(request: NextRequest) {
         const unitName = propertyInfo?.unit_name || '';
 
         // ── Build primary CTA URL ─────────────────────────────────────
-        // The email CTA should always lead to the Guest Portal.
-        const guestPortalUrl = `${alisioAppUrl}/guest/${guestPageToken}`;
+        // Кнопка на гостьову сторінку — лише готелю з модулем `guest_page`
+        // (Блок 0.6 B2); без нього ні кнопки, ні попередження «заповніть за
+        // посиланням нижче» — заповнювати немає де.
+        const guestPortalUrl = await hasFeature(unitOrg.organization_id, 'guest_page')
+          ? `${alisioAppUrl}/guest/${guestPageToken}`
+          : null;
 
         let widgetConfig: any = {};
         if (siteId) {
@@ -773,7 +777,7 @@ export async function createWidgetReservation(request: NextRequest) {
         };
         const emailTpl = EMAIL_TEMPLATES[lang] || EMAIL_TEMPLATES.en;
         
-        const needsDocs = !documentNumber;
+        const needsDocs = !documentNumber && Boolean(guestPortalUrl);
         const docWarningHtml = needsDocs ? `<div style="background:#fff3cd;border-left:4px solid #ffc107;padding:12px 16px;margin:16px 0;border-radius:0 8px 8px 0;color:#856404;font-size:14px;font-weight:600;line-height:1.5;">${emailTpl.docWarning}</div>` : '';
 
         const rawSubject = widgetConfig.email_received_subject || emailTpl.subject;
@@ -832,7 +836,7 @@ export async function createWidgetReservation(request: NextRequest) {
       <tr><td style="padding:8px 0;color:#666;">${emailTpl.payment}</td><td style="text-align:right;font-weight:600;color:${paymentMethod === 'reception' ? '#b45309' : '#2E6B4F'};">${paymentMethod === 'reception' ? emailTpl.paymentReception : emailTpl.paymentOnline}</td></tr>
     </table>
     <div style="margin-top:28px;text-align:center;">
-      <a href="${guestPortalUrl}" style="display:inline-block;background:#2E6B4F;color:#fff;text-decoration:none;padding:14px 28px;border-radius:10px;font-weight:700;font-size:15px;">${emailTpl.btnText}</a>
+      ${guestPortalUrl ? `<a href="${guestPortalUrl}" style="display:inline-block;background:#2E6B4F;color:#fff;text-decoration:none;padding:14px 28px;border-radius:10px;font-weight:700;font-size:15px;">${emailTpl.btnText}</a>` : ''}
     </div>
   </div>
 </body></html>`,

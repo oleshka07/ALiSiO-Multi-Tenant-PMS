@@ -1,5 +1,6 @@
 import { getSql } from '@core/db/async';
 import { appBaseUrl } from '@core/app-url';
+import { hasFeature } from '@core/features';
 import { sendEmail } from '@core/mail/email';
 import { reservationLanguage } from '@core/i18n/resolve';
 
@@ -21,6 +22,10 @@ export async function sendGuestReminderEmail(reservationId: string, origin?: str
   if (!row || !row.email || !row.guest_page_token) {
     return false;
   }
+  // Лист просить зареєструватись НА гостьовій сторінці: готелю без модуля
+  // `guest_page` він не надсилається взагалі (Блок 0.6 B2) — кнопка вела б на
+  // 404, а прохання лишилось би без місця, де його виконати.
+  if (!await hasFeature(row.organization_id, 'guest_page')) return false;
 
   // What the guest told us, not what their phone's dialling code suggests.
   // Only four of these letters have a written template, so the rest land on

@@ -5739,20 +5739,31 @@ function runMigrations(database: any) {
     // втратив би розділ «Зали» — рівно те, від чого застерігає коментар про
     // дві родини ключів у core/features.ts. Тому явний `enabled = 1` тим,
     // хто працює зараз; нові організації отримають OFF за дефолтом.
-    database.prepare(`
-      INSERT OR IGNORE INTO organization_features (organization_id, feature, enabled, updated_at)
-      SELECT id, 'events', 1, datetime('now') FROM organizations
-    `).run();
+    //
+    // ОДИН раз, а не на кожному старті (Блок 0.6 B3): міграції тут біжать
+    // при кожному запуску, і `INSERT OR IGNORE … FROM organizations` без
+    // маркера дописував рядок кожній організації, створеній після
+    // попереднього старту — тобто новий готель у SQLite отримував платний
+    // модуль після першого ж рестарту. Маркер — самі дані: ключ, якого ще
+    // немає в жодного орендаря, сіється всім наявним; ключ, який уже має хоч
+    // один рядок, уже сіявся — нові організації лишаються на дефолті.
+    // На Postgres те саме робить міграція (0045, 0065) — один раз за журналом.
+    const seededOnce = (feature: string): void => {
+      const seeded = database
+        .prepare('SELECT 1 FROM organization_features WHERE feature = ? LIMIT 1')
+        .get(feature);
+      if (seeded) return;
+      database.prepare(`
+        INSERT OR IGNORE INTO organization_features (organization_id, feature, enabled, updated_at)
+        SELECT id, ?, 1, datetime('now') FROM organizations
+      `).run(feature);
+    };
+    seededOnce('events');
 
     // ── П15, 05.09.2026 (0065): tasks/reports/day_sheets → OFF, нові ────
     // guest_page і sites — OFF. Наявні організації отримують явний
     // `enabled = 1` на всі пʼять: бачать усе, що бачили; нові — за дефолтом.
-    for (const f of ['tasks', 'reports', 'day_sheets', 'guest_page', 'sites']) {
-      database.prepare(`
-        INSERT OR IGNORE INTO organization_features (organization_id, feature, enabled, updated_at)
-        SELECT id, ?, 1, datetime('now') FROM organizations
-      `).run(f);
-    }
+    for (const f of ['tasks', 'reports', 'day_sheets', 'guest_page', 'sites']) seededOnce(f);
   } catch (e: any) {
     console.error('[DB] organization_features migration:', e.message);
   }

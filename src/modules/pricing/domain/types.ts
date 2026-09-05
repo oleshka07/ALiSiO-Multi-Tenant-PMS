@@ -30,18 +30,25 @@ export interface DayPrice {
   inherited?: boolean;
 }
 
+/**
+ * Одна семантика на КОЖНЕ поле (Блок 0.6 B4): поля немає в запиті — не
+ * чіпати те, що лежить; явний `null` — прибрати (ціна → NULL, ніч у
+ * `missing`; максимум → без межі; мінімум → 1; прапорець → знято); значення
+ * — записати. Екран редактора дня шле всі поля разом, тож для нього це
+ * непомітно; для писача, який шле частину полів, це різниця між «зберіг
+ * мінімум» і «скинув усе інше».
+ */
 export interface PriceUpsertInput {
   date: string;
-  /** Відсутнє — ціну не чіпати (рядок обмеження лишає її порожньою); 0 і менше — відмова `price_not_positive`. */
+  /** 0 і менше — відмова `price_not_positive`. */
   base_price?: number | null;
-  /** Відсутнє — не чіпати; `null` — прибрати ціну вихідних; 0 і менше — відмова. */
+  /** 0 і менше — відмова. */
   weekend_price?: number | null;
-  /** Обмеження без значення пишуться дефолтами (1 / NULL / 0): екран надсилає їх усі разом. */
-  min_stay?: number;
+  min_stay?: number | null;
   max_stay?: number | null;
-  closed?: boolean;
-  cta?: boolean;
-  ctd?: boolean;
+  closed?: boolean | null;
+  cta?: boolean | null;
+  ctd?: boolean | null;
 }
 
 export interface QuoteResult {
