@@ -95,8 +95,22 @@ export interface PriceInput {
   label?: string | null;
 }
 
+/**
+ * Нуль і відʼємне — не ціна (розділ A п.2, 05.09.2026; Ц24, інваріант 17).
+ *
+ * Обробник приймав `>= 0` («безкоштовна ніч партнеру — теж рядок»), і той
+ * самий нуль їхав у канал ціною ночі тим самим шляхом, що нуль у календарі
+ * (INC-017). Безкоштовна ніч — це знижка чи нарахування на фоліо, не ціна
+ * нуль у джерелі, яке читає канал. Відмова з тим самим імʼям, що в
+ * календарі, — екран її вже перекладає.
+ */
+function assertPositivePrice(value: unknown): void {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw new Error('price_not_positive');
+}
+
 /** Add a price. Returns null when an identical row already exists. */
 export async function createPrice(propertyId: string | null | undefined, input: PriceInput): Promise<string | null> {
+  assertPositivePrice(input.price_gross);
   const organizationId = await requireOrganizationId();
   const property = await requirePropertyId(propertyId);
   const sql = getSql();
@@ -185,6 +199,7 @@ async function occupancyRowSpan(t: { row: (q: string, p: unknown[]) => Promise<a
  * the old coordinates.
  */
 export async function updatePrice(id: string, priceGross: number, label?: string | null): Promise<boolean> {
+  assertPositivePrice(priceGross);
   const organizationId = await requireOrganizationId();
   return getSql().tx(async (t) => {
     const span = await occupancyRowSpan(t, 'price_occupancy', id, organizationId);

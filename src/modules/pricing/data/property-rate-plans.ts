@@ -51,11 +51,13 @@ export interface RatePlanUnitType {
    *
    * `per_room` — одна, на максимальну доросла місткість: у вендора «Per Room
    * Rate Plan … pass Occupancy Option for maximum occupancy», ціна однакова
-   * на будь-яку кількість гостей. `per_person` — на КОЖНУ кількість дорослих
-   * від одного до місткості: «pass Occupancy Option for each possible count
-   * of ADULT guests» (`rate-plans-collection.md:668`). Ціну на кожну з них
-   * батчер бере з `priceNights`; без рядка матриці вона дорівнює ціні
-   * тарифу. Матриця більше не задає набір опцій — вона задає лише надбавку.
+   * на будь-яку кількість гостей. `per_person` — на кожну кількість дорослих,
+   * для якої Є ДЖЕРЕЛО ЦІНИ: базова заселеність типу (її цінує сам тариф) і
+   * ті кількості, які знає матриця на цьому типі, — не вище місткості.
+   * До 05.09.2026 опція заводилась на кожну кількість до місткості, а ціну
+   * без рядка матриці `priceNights` брав рівною ціні тарифу — четверо
+   * дешевше за трьох (Ц26 (б), скасовано розділом A п.3). Опція без
+   * джерела в каталог не йде: у вендора вона стояла б закритою назавжди.
    *
    * ── Чому саме дорослою, а не загальною ────────────────────────────────
    *
@@ -138,7 +140,7 @@ export async function propertyRatePlans(propertyId: string): Promise<RatePlan[]>
   // але межа названа явно: ціна — це `> 0`.
   const priced = await sql.rows<any>(
     `SELECT DISTINCT pc.rate_plan_id, ut.id AS unit_type_id, ut.code, ut.name,
-            ut.max_adults, ut.max_occupancy
+            ut.max_adults, ut.max_occupancy, ut.base_occupancy
        FROM price_calendar pc
        JOIN unit_types ut ON ut.id = pc.unit_type_id
       WHERE ut.property_id = ? AND pc.rate_plan_id IS NOT NULL
@@ -149,21 +151,34 @@ export async function propertyRatePlans(propertyId: string): Promise<RatePlan[]>
 
   const modeOf = new Map(plans.map((row) => [String(row.id), (row.sell_mode === 'per_room' ? 'per_room' : 'per_person') as SellMode]));
 
+  // Кількості дорослих, які знає матриця, — по типу; рядок без типу — на всі
+  // типи обʼєкта. Це джерело надбавки для «за особу», тож і межа опцій.
+  const matrixRows = await sql.rows<any>(
+    'SELECT DISTINCT unit_type_id, persons FROM price_occupancy WHERE property_id = ? AND organization_id = ?',
+    [propertyId, organizationId],
+  ) as { unit_type_id: string | null; persons: number }[];
+  const knownAdults = (unitTypeId: string): number[] => matrixRows
+    .filter((r) => r.unit_type_id == null || String(r.unit_type_id) === unitTypeId)
+    .map((r) => Number(r.persons));
+
   const unitTypesOf = new Map<string, RatePlanUnitType[]>();
   for (const row of priced) {
     const planId = String(row.rate_plan_id);
     const unitTypeId = String(row.unit_type_id);
     const maxOccupancy = Number(row.max_occupancy) || 1;
     const maxAdults = Math.max(1, Number(row.max_adults) || 1);
+    const baseOccupancy = Math.min(maxAdults, Math.max(1, Number(row.base_occupancy) || 2));
     const list = unitTypesOf.get(planId) ?? unitTypesOf.set(planId, []).get(planId)!;
+    // Набір опцій задає РЕЖИМ тарифу, межа — ДОРОСЛА місткість (див. поле);
+    // «за особу» — лише кількості з джерелом ціни: базова і ті, що в матриці.
+    const perPerson = [...new Set([baseOccupancy, ...knownAdults(unitTypeId)])]
+      .filter((n) => Number.isInteger(n) && n >= 1 && n <= maxAdults)
+      .sort((a, b) => a - b);
     list.push({
       id: unitTypeId,
       code: String(row.code),
       name: String(row.name),
-      // Набір опцій задає РЕЖИМ тарифу, межа — ДОРОСЛА місткість (див. поле).
-      occupancies: modeOf.get(planId) === 'per_room'
-        ? [maxAdults]
-        : Array.from({ length: maxAdults }, (_, i) => i + 1),
+      occupancies: modeOf.get(planId) === 'per_room' ? [maxAdults] : perPerson,
       maxAdults,
       maxOccupancy,
     });

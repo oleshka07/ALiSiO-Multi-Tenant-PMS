@@ -269,11 +269,11 @@ export async function priceNights(input: {
    * flexible rate and the non-refundable one alike.
    *
    * `null` means the rate card cannot say — it has no row for this occupancy,
-   * or none for the baseline. Then the rate plan's own price stands alone and
-   * `occupancyPriced` stays false, so the caller falls back to
-   * `extra_person_charge` exactly as it does for a plain calendar night. That
-   * is not an invented number: the hotel did set this rate plan's price for
-   * this day, and only the uplift is unknown.
+   * or none for the baseline. Since 05.09.2026 (розділ A п.3) that is a night
+   * WITHOUT a price for this many adults, not the rate plan's price standing
+   * alone: the hotel named what the room costs at the baseline, and nothing
+   * about this occupancy — invariant 17 says a price nobody named does not
+   * exist. The channel closes that option; the widget does not sell it.
    */
   const surcharge = (date: string): number | null => {
     if (quoteAdults === baseOccupancy) return 0;
@@ -304,9 +304,20 @@ export async function priceNights(input: {
     const rpPrice = rp ? dayPrice(rp, date) : null;
     if (rp && rpPrice != null) {
       const extra = surcharge(date);
-      const price = money(Math.max(0, rpPrice + (extra ?? 0)));
-      out.push({ date, price, source: 'rate_plan', adjustment: extra ?? undefined });
-      if (extra != null) occupancyPriced = true;
+      // Заселеність, якої матриця не знає (розділ A п.3, 05.09.2026): тариф
+      // «за особу» цінує лише базову заселеність, надбавку за іншу називає
+      // матриця — і якщо вона мовчить, ціни на цю кількість дорослих НЕМАЄ
+      // (інваріант 17). До 05.09 тут стояло `extra ?? 0`: четверо без рядка
+      // коштували як двоє, тобто дешевше за трьох із рядком. Ніч іде в
+      // `missing`; у каналі така опція закривається. «За номер» сюди не
+      // доходить — там `surcharge` завжди нуль (Ц26).
+      if (extra == null) {
+        missing.push(date);
+        continue;
+      }
+      const price = money(Math.max(0, rpPrice + extra));
+      out.push({ date, price, source: 'rate_plan', adjustment: extra });
+      occupancyPriced = true;
       continue;
     }
 

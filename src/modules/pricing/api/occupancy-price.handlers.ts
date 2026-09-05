@@ -30,6 +30,8 @@ const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{
  */
 function refuse(e: unknown): NextResponse {
   const message = e instanceof Error ? e.message : String(e);
+  // Нуль і відʼємне — названа відмова (розділ A п.2), екран її перекладає.
+  if (message === 'price_not_positive') return NextResponse.json({ error: 'price_not_positive' }, { status: 400 });
   if (/property/i.test(message)) {
     return NextResponse.json({ error: message }, { status: propertyErrorStatus(e) });
   }
@@ -55,9 +57,10 @@ export const createOccupancyPrice = withPermission('manage_pricing', async (requ
     return NextResponse.json({ error: 'persons must be a whole number from 1 to 20' }, { status: 400 });
   }
   const price = Number(body?.price_gross);
-  // 0 is a real price — a free night given to a partner is still a row.
-  if (!Number.isFinite(price) || price < 0) {
-    return NextResponse.json({ error: 'price_gross must be zero or more' }, { status: 400 });
+  // Нуль — не ціна (розділ A п.2, INC-017): тут стояло «0 is a real price — a
+  // free night given to a partner is still a row», і нуль їхав у канал ціною.
+  if (!Number.isFinite(price) || price <= 0) {
+    return NextResponse.json({ error: 'price_not_positive' }, { status: 400 });
   }
   if (body.valid_from != null && body.valid_from !== '' && !isDate(body.valid_from)) {
     return NextResponse.json({ error: 'valid_from must be YYYY-MM-DD or empty' }, { status: 400 });
@@ -96,8 +99,8 @@ export const updateOccupancyPrice = withPermission('manage_pricing', async (
   const { id } = await params;
   const body = await request.json().catch(() => null) as any;
   const price = Number(body?.price_gross);
-  if (!Number.isFinite(price) || price < 0) {
-    return NextResponse.json({ error: 'price_gross must be zero or more' }, { status: 400 });
+  if (!Number.isFinite(price) || price <= 0) {
+    return NextResponse.json({ error: 'price_not_positive' }, { status: 400 });
   }
   try {
     const ok = await updatePrice(id, price, body.label ?? null);

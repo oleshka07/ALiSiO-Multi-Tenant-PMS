@@ -27,7 +27,7 @@ import '../../../../scripts/lib/module-aliases.mjs';
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
-const { createRatePlan, updateRatePlan, listRatePlans, deleteRatePlan } = await import('./rate-plans.repo.ts');
+const { createRatePlan, updateRatePlan, listRatePlans, deleteRatePlan, readSellMode } = await import('./rate-plans.repo.ts');
 const { propertyRatePlans } = await import('./property-rate-plans.ts');
 const { priceNights } = await import('./nightly-price.ts');
 const { clipToHorizon } = await import('@channels/outbox');
@@ -253,6 +253,34 @@ try {
   const sameMode = await runWithOrganization(A, () => updateRatePlan(bb.id, { sellMode: 'per_person', name: 'B&B' }));
   assert.strictEqual(sameMode.sellMode, 'per_person', 'той самий режим у запиті — не зміна, решта полів зберігається');
   console.log('  ok  режим ціни обирає готель; без вибору — за особу; заведений тариф режиму не міняє');
+
+  // ── Чужий рядок не валить екран (розділ A п.4, 05.09.2026) ────────────
+  //
+  // `toSetting` кидав `sell_mode_invalid` на невідомому значенні з бази — один
+  // рядок, записаний повз писача, робив увесь список «Тарифи» помилкою 500.
+  // На читанні невідоме читається як `per_person` (дефолт, яким заводились
+  // усі тарифи) з рядком у серверному журналі; відмова лишається на ЗАПИСІ
+  // (сцена вище), а базу Postgres тримає CHECK (0067).
+  //
+  // Дві осі: читач (без бази) і база. Свіжа SQLite і Postgres після 0067
+  // чужий рядок не приймають узагалі — тоді доводиться CHECK; стара SQLite
+  // без CHECK його прийме — тоді список мусить прочитатись цілим.
+  assert.strictEqual(readSellMode('per_night', 'x'), 'per_person', 'невідомий режим на читанні — per_person, не виняток');
+  assert.strictEqual(readSellMode('per_room', 'x'), 'per_room', 'відомий режим читається як є');
+  assert.strictEqual(readSellMode(null, 'x'), 'per_person', 'порожній — дефолт');
+  const refused = await sql.run(
+    `INSERT INTO rate_plans (id, property_id, name, code, currency, sell_mode) VALUES (?, ?, 'Stray', 'STRAY', 'USD', 'per_night')`,
+    [`${A}_stray`, PROP(A)],
+  ).then(() => false, (e: unknown) => /check/i.test(String((e as Error)?.message ?? e)));
+  if (refused) {
+    console.log('  ok  чужий sell_mode не приймає сама база (CHECK 0067); читач невідоме читає як per_person');
+  } else {
+    const withStray = await runWithOrganization(A, () => listRatePlans(PROP(A)));
+    assert.strictEqual(withStray.find((p) => p.id === `${A}_stray`)?.sellMode, 'per_person',
+      'невідомий режим у базі мав прочитатись як per_person, а не впасти');
+    assert.ok(withStray.some((p) => p.id === bb.id), 'решта тарифів на місці — список не впав цілком');
+    console.log('  ok  стара база без CHECK: чужий sell_mode не валить екран, читається як per_person');
+  }
 
   console.log('rate-plans: тариф свого обʼєкта, код унікальний на обʼєкті, валюта замкнена ціною, видалення лише чистого, зняття з продажу закриває канал, режим ціни замкнений заведенням');
 } finally {

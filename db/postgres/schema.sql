@@ -418,8 +418,8 @@ CREATE TABLE "cm_outbox" (
   "attempts" BIGINT DEFAULT 0 NOT NULL,
   "last_error" TEXT,
   "receipt" TEXT,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "field_mask" BIGINT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   CHECK (kind IN ('availability', 'rate'))
 );
@@ -1522,7 +1522,8 @@ CREATE TABLE "rate_plans" (
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
-  UNIQUE ("property_id", "code")
+  UNIQUE ("property_id", "code"),
+  CHECK (sell_mode IN ('per_room', 'per_person'))
 );
 
 CREATE TABLE "reservation_guests" (

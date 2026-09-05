@@ -126,6 +126,22 @@ function normalizeSellMode(value: unknown, fallback: SellMode): SellMode {
   return value as SellMode;
 }
 
+/**
+ * Режим із РЯДКА БАЗИ — на читанні не кидає (розділ A п.4, 05.09.2026).
+ *
+ * `toSetting` кидав `sell_mode_invalid`, і один рядок, записаний повз
+ * писача, робив увесь список «Тарифи» помилкою 500. Невідоме читається як
+ * `per_person` — дефолт, яким заводились усі тарифи, — з рядком у
+ * серверному журналі; відмова лишається на ЗАПИСІ (`normalizeSellMode`), а
+ * базу Postgres тримає CHECK (0067) — тож сюди таке потрапить хіба з SQLite.
+ */
+export function readSellMode(value: unknown, id: unknown): SellMode {
+  if (value === null || value === undefined || value === '') return 'per_person';
+  if (SELL_MODES.includes(value as SellMode)) return value as SellMode;
+  console.error(`rate_plans.sell_mode: unknown value ${JSON.stringify(value)} on ${String(id)} — read as per_person`);
+  return 'per_person';
+}
+
 function toSetting(row: Record<string, any>, priced: string[], mapped: boolean): RatePlanSetting {
   return {
     id: String(row.id),
@@ -136,7 +152,7 @@ function toSetting(row: Record<string, any>, priced: string[], mapped: boolean):
     mealPlan: row.meal_plan == null ? null : String(row.meal_plan),
     childExtraGross: row.child_extra_gross == null ? null : Number(row.child_extra_gross),
     isActive: Boolean(Number(row.is_active)),
-    sellMode: normalizeSellMode(row.sell_mode, 'per_person'),
+    sellMode: readSellMode(row.sell_mode, row.id),
     mapped,
     pricedUnitTypes: priced,
   };
@@ -268,8 +284,8 @@ export async function updateRatePlan(id: string, patch: UpdateRatePlanInput): Pr
     if (patch.isActive !== undefined) sets.push(patch.isActive ? 'is_active = TRUE' : 'is_active = FALSE');
     const wasMapped = (await mappedOf(t, [id])).has(id);
     if (patch.sellMode !== undefined) {
-      const mode = normalizeSellMode(patch.sellMode, normalizeSellMode(before.sell_mode, 'per_person'));
-      if (mode !== normalizeSellMode(before.sell_mode, 'per_person')) {
+      const mode = normalizeSellMode(patch.sellMode, readSellMode(before.sell_mode, before.id));
+      if (mode !== readSellMode(before.sell_mode, before.id)) {
         // Набір опцій заселеності у вендора не переробити — режим замкнений.
         if (wasMapped) throw new Error('sell_mode_locked');
         sets.push('sell_mode = ?'); values.push(mode);

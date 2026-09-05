@@ -257,11 +257,13 @@ function buildSchema(database: any) {
       is_active INTEGER NOT NULL DEFAULT 1,
       -- Як тариф рахує гостей (Блок 2.2, рішення Ц26): per_room — одна ціна
       -- на номер на будь-яку кількість гостей, у менеджера каналів одна опція
-      -- заселеності; per_person — своя ціна на кожну кількість дорослих,
-      -- опція на кожну. Словник закритий (docs/NAMING.md), перевіряє писач;
-      -- CHECK не ставиться, бо на SQLite його не додати до наявної таблиці
-      -- (так само 0059). Без вибору — per_person: так заводились усі тарифи.
-      sell_mode TEXT NOT NULL DEFAULT 'per_person',
+      -- заселеності; per_person — своя ціна на кожну кількість дорослих з
+      -- джерелом ціни. Словник закритий (docs/NAMING.md), перевіряє писач;
+      -- CHECK стоїть з 05.09.2026 (0067): у новій базі — тут, у Postgres —
+      -- міграцією; наявна SQLite його не дістане (ALTER ADD CHECK там немає),
+      -- і читач на це готовий — невідоме читає як per_person з рядком у
+      -- журналі. Без вибору — per_person: так заводились усі тарифи.
+      sell_mode TEXT NOT NULL DEFAULT 'per_person' CHECK (sell_mode IN ('per_room', 'per_person')),
       cancellation_policy TEXT,
       meal_plan TEXT,
       priority INTEGER NOT NULL DEFAULT 0,
