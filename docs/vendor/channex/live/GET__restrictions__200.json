@@ -1,58 +1,83 @@
 {
   "endpoint": "GET /restrictions",
   "status": 200,
-  "captured_at": "2026-09-02",
+  "captured_at": "2026-09-05",
   "payload": {
     "data": {
+      "17ef8383-f467-4c01-a358-967bf113f337": {
+        "2026-10-10": {
+          "availability": 4,
+          "closed_to_arrival": false,
+          "closed_to_departure": false,
+          "max_stay": 0,
+          "min_stay_arrival": 1,
+          "min_stay_through": 1,
+          "rate": "2500.00",
+          "stop_sell": false,
+          "unavailable_reasons": []
+        },
+        "2026-09-09": {
+          "availability": 4,
+          "closed_to_arrival": false,
+          "closed_to_departure": false,
+          "max_stay": 0,
+          "min_stay_arrival": 1,
+          "min_stay_through": 1,
+          "rate": "2500.00",
+          "stop_sell": false,
+          "unavailable_reasons": []
+        },
+        "2026-09-23": {
+          "availability": 4,
+          "closed_to_arrival": false,
+          "closed_to_departure": false,
+          "max_stay": 0,
+          "min_stay_arrival": 1,
+          "min_stay_through": 1,
+          "rate": "2500.00",
+          "stop_sell": false,
+          "unavailable_reasons": []
+        },
+        "…": "88 more keys trimmed (sample keeps the shape, not the data)"
+      },
       "28f08170-e338-4b91-b76b-253ab84b60fc": {
-        "2026-10-12": {
-          "availability": 0,
-          "closed_to_arrival": false,
-          "closed_to_departure": false,
-          "max_stay": 0,
-          "min_stay_arrival": 1,
-          "min_stay_through": 1,
-          "rate": "0.00",
-          "stop_sell": true,
-          "unavailable_reasons": []
-        },
-        "2026-10-04": {
+        "2026-10-10": {
           "availability": 4,
           "closed_to_arrival": false,
           "closed_to_departure": false,
           "max_stay": 0,
           "min_stay_arrival": 1,
           "min_stay_through": 1,
-          "rate": "1500.00",
+          "rate": "3000.00",
           "stop_sell": false,
           "unavailable_reasons": []
         },
-        "2026-10-03": {
+        "2026-09-09": {
           "availability": 4,
           "closed_to_arrival": false,
           "closed_to_departure": false,
           "max_stay": 0,
           "min_stay_arrival": 1,
           "min_stay_through": 1,
-          "rate": "1500.00",
+          "rate": "3000.00",
           "stop_sell": false,
           "unavailable_reasons": []
         },
-        "…": "56 more keys trimmed (sample keeps the shape, not the data)"
+        "2026-09-23": {
+          "availability": 4,
+          "closed_to_arrival": false,
+          "closed_to_departure": false,
+          "max_stay": 0,
+          "min_stay_arrival": 1,
+          "min_stay_through": 1,
+          "rate": "3000.00",
+          "stop_sell": false,
+          "unavailable_reasons": []
+        },
+        "…": "88 more keys trimmed (sample keeps the shape, not the data)"
       },
       "388d66d5-91d6-4f3a-afee-66352162fbb8": {
-        "2026-10-12": {
-          "availability": 0,
-          "closed_to_arrival": false,
-          "closed_to_departure": false,
-          "max_stay": 0,
-          "min_stay_arrival": 1,
-          "min_stay_through": 1,
-          "rate": "0.00",
-          "stop_sell": true,
-          "unavailable_reasons": []
-        },
-        "2026-10-04": {
+        "2026-10-10": {
           "availability": 2,
           "closed_to_arrival": false,
           "closed_to_departure": false,
@@ -63,7 +88,7 @@
           "stop_sell": false,
           "unavailable_reasons": []
         },
-        "2026-10-03": {
+        "2026-09-09": {
           "availability": 2,
           "closed_to_arrival": false,
           "closed_to_departure": false,
@@ -74,22 +99,8 @@
           "stop_sell": false,
           "unavailable_reasons": []
         },
-        "…": "56 more keys trimmed (sample keeps the shape, not the data)"
-      },
-      "689ef384-3b59-4adb-95d6-31a0a2ae9e47": {
-        "2026-10-12": {
-          "availability": 0,
-          "closed_to_arrival": false,
-          "closed_to_departure": false,
-          "max_stay": 0,
-          "min_stay_arrival": 1,
-          "min_stay_through": 1,
-          "rate": "0.00",
-          "stop_sell": true,
-          "unavailable_reasons": []
-        },
-        "2026-10-04": {
-          "availability": 4,
+        "2026-09-23": {
+          "availability": 2,
           "closed_to_arrival": false,
           "closed_to_departure": false,
           "max_stay": 0,
@@ -99,20 +110,9 @@
           "stop_sell": false,
           "unavailable_reasons": []
         },
-        "2026-10-03": {
-          "availability": 4,
-          "closed_to_arrival": false,
-          "closed_to_departure": false,
-          "max_stay": 0,
-          "min_stay_arrival": 1,
-          "min_stay_through": 1,
-          "rate": "1500.00",
-          "stop_sell": false,
-          "unavailable_reasons": []
-        },
-        "…": "56 more keys trimmed (sample keeps the shape, not the data)"
+        "…": "88 more keys trimmed (sample keeps the shape, not the data)"
       },
-      "…": "4 more keys trimmed (sample keeps the shape, not the data)"
+      "…": "8 more keys trimmed (sample keeps the shape, not the data)"
     }
   }
 }
