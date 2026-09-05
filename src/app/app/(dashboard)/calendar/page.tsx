@@ -2,7 +2,7 @@
 
 import { useT, usePlural } from '@core/i18n/client';
 import { useRouter } from 'next/navigation';
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback, type MouseEvent, type DragEvent } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { useDevice } from '@/ui/hooks/useDevice';
@@ -12,7 +12,9 @@ import { explainStatusChange } from '@/components/booking/status-change';
 import BookingForm from '@/components/booking/BookingForm';
 import { compareUnitNames } from '@core/unit-order';
 import { bookingsOfUnit, unassignedBookings, freeUnitsOnDate, packLanes } from './lanes';
+import { dropTarget, isSamePlace, localConflict, moveKind, isMovable, shiftDate } from './drag';
 import {
+  Lock,
   Search,
   ChevronDown,
   ChevronRight,
@@ -233,6 +235,14 @@ function CalendarDesktop() {
 
   // Two-click date range selection
   const [rangeStart, setRangeStart] = useState<{ unitId: string; date: string } | null>(null);
+  // Обраний діапазон чекає на дію: швидка бронь або закриття номера
+  // (Блок 4 §2.4, Hoteliera «Quick booking» / «Mark as out of order»).
+  const [rangePick, setRangePick] = useState<{ unitId: string; checkIn: string; checkOut: string; x: number; y: number } | null>(null);
+  const [oooForm, setOooForm] = useState<{ unitId: string; dateFrom: string; dateTo: string; reason: string; notes: string } | null>(null);
+  const [blockMenu, setBlockMenu] = useState<{ id: string; unit_id: string; date_from: string; date_to: string; notes: string | null; reason?: string | null; x: number; y: number } | null>(null);
+  // Перетягування смуги: що тягнемо, за який день узяли, над якою клітинкою.
+  const [drag, setDrag] = useState<{ bookingId: string; grabOffset: number } | null>(null);
+  const [dropHover, setDropHover] = useState<{ unitId: string; date: string } | null>(null);
 
   // Booking form data
   const [unitTypes, setUnitTypes] = useState<any[]>([]);
@@ -562,9 +572,8 @@ function CalendarDesktop() {
   };
 
   // ─── Cell click handler (two-click range) ──────
-  const handleCellClick = (unitId: string, day: Date) => {
+  const handleCellClick = (unitId: string, day: Date, e?: MouseEvent) => {
     const dateStr = fmtDate(day);
-    const unit = units.find(u => u.id === unitId);
     if (!rangeStart || rangeStart.unitId !== unitId) {
       setRangeStart({ unitId, date: dateStr });
     } else {
@@ -576,14 +585,117 @@ function CalendarDesktop() {
         co = fmtDate(nd);
       }
       setRangeStart(null);
-      setNewBookingPrefill({
-        unitId,
-        category: unit?.category_type,
-        unitTypeId: unit?.unit_type_id,
-        checkIn: ci,
-        checkOut: co,
+      // Діапазон обрано — питаємо, що з ним робити: бронь чи закриття.
+      setRangePick({ unitId, checkIn: ci, checkOut: co, x: e?.clientX ?? 400, y: e?.clientY ?? 300 });
+    }
+  };
+
+  const quickBooking = (pick: { unitId: string; checkIn: string; checkOut: string }) => {
+    const unit = units.find(u => u.id === pick.unitId);
+    setRangePick(null);
+    setNewBookingPrefill({
+      unitId: pick.unitId,
+      category: unit?.category_type,
+      unitTypeId: unit?.unit_type_id,
+      checkIn: pick.checkIn,
+      checkOut: pick.checkOut,
+    });
+    setShowNewBooking(true);
+  };
+
+  // ─── Out of order з планера ──────
+  // `date_to` виключний, як `check_out` і як у самих `availability_blocks`.
+  const saveOutOfOrder = async () => {
+    if (!oooForm) return;
+    const res = await fetch('/api/availability-blocks', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ unit_id: oooForm.unitId, date_from: oooForm.dateFrom, date_to: oooForm.dateTo, reason: oooForm.reason, notes: oooForm.notes || null }),
+    });
+    if (!res.ok) { showToast(`❌ ${tUi('Не вдалося закрити номер')}`); return; }
+    setOooForm(null);
+    showToast(tUi('Номер закрито'));
+    fetchData();
+  };
+
+  const removeBlock = async (id: string) => {
+    const res = await fetch(`/api/availability-blocks?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    setBlockMenu(null);
+    if (!res.ok) { showToast(`❌ ${tUi('Не вдалося зняти закриття')}`); return; }
+    showToast(tUi('Закриття знято'));
+    fetchData();
+  };
+
+  // ─── Перетягування броні ──────
+  //
+  // Оптимістично: смуга стає на нове місце одразу, сервер підтверджує PATCH.
+  // Відмова (409 — зайнято чи закрито, 404 — чужий номер) повертає смугу
+  // назад і називає причину. Правила цілі — у `./drag.ts` (`drag.check.ts`).
+  const startDrag = (e: DragEvent, booking: BookingRow) => {
+    if (!isMovable(booking.status)) { e.preventDefault(); return; }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const grabOffset = Math.max(0, Math.floor((e.clientX - rect.left) / DAY_W));
+    setDrag({ bookingId: booking.id, grabOffset });
+    setTooltip(null);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', booking.id);
+  };
+
+  const dayAtPointer = (e: DragEvent): string | null => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const idx = Math.floor((e.clientX - rect.left) / DAY_W);
+    if (idx < 0 || idx >= days.length) return null;
+    return fmtDate(days[idx]);
+  };
+
+  const dragOverRow = (e: DragEvent, unitId: string) => {
+    if (!drag) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const date = dayAtPointer(e);
+    if (date && (dropHover?.unitId !== unitId || dropHover?.date !== date)) setDropHover({ unitId, date });
+  };
+
+  const dropOnRow = async (e: DragEvent, unit: UnitRow) => {
+    e.preventDefault();
+    const current = drag;
+    setDrag(null); setDropHover(null);
+    if (!current) return;
+    const booking = bookings.find(b => b.id === current.bookingId);
+    const date = dayAtPointer(e);
+    if (!booking || !date) return;
+    const target = dropTarget(booking, unit.id, date, current.grabOffset);
+    if (isSamePlace(booking, target)) return;
+
+    const clash = localConflict(filteredBookings, blocks, target, booking.id);
+    if (clash?.kind === 'booking') { showToast(`❌ ${tUi('Кімната зайнята на ці дати іншим бронюванням')}`); return; }
+    if (clash?.kind === 'block') { showToast(`❌ ${tUi('Номер закрито на ці дати')}`); return; }
+
+    const kind = moveKind({ unit_id: booking.unit_id, unit_type_id: booking.unit_type_id || null }, { unit_id: unit.id, unit_type_id: unit.unit_type_id || null });
+    if (kind === 'other_type' && !confirm(`${tUi('Інший тип номера')}: ${unit.unit_type_name || unit.name}. ${tUi('Перенести? Ціна не перераховується автоматично.')}`)) return;
+
+    const before = bookings;
+    setBookings(prev => prev.map(b => (b.id === booking.id
+      ? { ...b, unit_id: unit.id, unit_name: unit.name, unit_code: unit.code, unit_type_id: unit.unit_type_id, unit_type_name: unit.unit_type_name, check_in: target.check_in, check_out: target.check_out, nights: target.nights }
+      : b)));
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unit_id: target.unit_id, check_in: target.check_in, check_out: target.check_out, nights: target.nights }),
       });
-      setShowNewBooking(true);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setBookings(before);
+        const why = data?.code === 'unit_blocked' ? tUi('Номер закрито на ці дати')
+          : data?.code === 'unit_occupied' ? tUi('Кімната зайнята на ці дати іншим бронюванням')
+          : res.status === 404 ? tUi('Номер не знайдено') : tUi('Не вдалося перенести бронь');
+        showToast(`❌ ${why}`);
+        return;
+      }
+      showToast(kind === 'assign' ? tUi('Номер призначено') : tUi('Бронь перенесено'));
+      fetchData();
+    } catch {
+      setBookings(before);
+      showToast(`❌ ${tUi('Не вдалося перенести бронь')}`);
     }
   };
 
@@ -1048,13 +1160,16 @@ function CalendarDesktop() {
                           return (
                             <div
                               key={booking.id}
+                              draggable
+                              onDragStart={e => startDrag(e, booking)}
+                              onDragEnd={() => { setDrag(null); setDropHover(null); }}
                               onClick={() => openBookingDetails(booking.id)}
                               onMouseEnter={e => {
                                 const rect = (e.target as HTMLElement).getBoundingClientRect();
                                 setTooltip({ booking, x: rect.left + rect.width / 2, y: rect.top - 8 });
                               }}
                               onMouseLeave={() => setTooltip(null)}
-                              title={tUi('Номер не призначено — натисніть, щоб обрати')}
+                              title={tUi('Номер не призначено — перетягніть на рядок номера або натисніть, щоб обрати')}
                               style={{
                                 position: 'absolute', top: 4, height: ROW_H - 8,
                                 left: bar.left, width: bar.width,
@@ -1099,26 +1214,33 @@ function CalendarDesktop() {
                     {/* Unit rows */}
                     {!collapsed[group.key] && group.units.map(unit => {
                       const unitBookings = getUnitBookings(unit.id);
+                      const hoverHere = drag && dropHover?.unitId === unit.id ? dropHover.date : null;
                       return (
-                        <div key={unit.id} style={{ height: ROW_H, position: 'relative', display: 'flex', borderBottom: '1px solid var(--border-primary)' }}>
+                        <div key={unit.id}
+                          onDragOver={e => dragOverRow(e, unit.id)}
+                          onDragLeave={() => { if (dropHover?.unitId === unit.id) setDropHover(null); }}
+                          onDrop={e => dropOnRow(e, unit)}
+                          style={{ height: ROW_H, position: 'relative', display: 'flex', borderBottom: '1px solid var(--border-primary)',
+                            outline: hoverHere ? '2px dashed var(--accent-primary)' : 'none', outlineOffset: -2 }}>
                           {/* Day grid cells */}
                           {days.map((day, i) => {
                             const isTd = isToday(day);
                             const isWknd = isWeekend(day);
                             const dateStr = fmtDate(day);
                             const isRangeStart = rangeStart?.unitId === unit.id && rangeStart?.date === dateStr;
+                            const isDropCell = hoverHere === dateStr;
                             return (
                               <div key={i} style={{
                                 width: DAY_W, minWidth: DAY_W, height: ROW_H,
                                 borderRight: '1px solid var(--border-primary)',
                                 borderLeft: isTd ? '2px solid var(--accent-primary)' : 'none',
                                 borderRightColor: isTd ? 'var(--accent-primary)' : 'var(--border-primary)',
-                                background: isRangeStart ? 'rgba(96,165,250,0.25)' : isTd ? 'rgba(96, 165, 250, 0.06)' : isWknd ? 'rgba(255,255,255,0.015)' : 'transparent',
+                                background: isDropCell ? 'var(--accent-primary-light)' : isRangeStart ? 'rgba(96,165,250,0.25)' : isTd ? 'rgba(96, 165, 250, 0.06)' : isWknd ? 'rgba(255,255,255,0.015)' : 'transparent',
                                 cursor: 'pointer',
                                 display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
                                 paddingBottom: 2,
                               }}
-                              onClick={() => handleCellClick(unit.id, day)}
+                              onClick={e => handleCellClick(unit.id, day, e)}
                               >
                                 {/* Show nightly price if no booking occupies this cell */}
                                 {(() => {
@@ -1138,9 +1260,13 @@ function CalendarDesktop() {
                             if (!bar) return null;
                             const srcColor = sourceMap[booking.source]?.color || '#6c7086';
                             const stColor = statusColors[booking.status] || '#6c7086';
+                            const movable = isMovable(booking.status);
                             return (
                               <div
                                 key={booking.id}
+                                draggable={movable}
+                                onDragStart={e => startDrag(e, booking)}
+                                onDragEnd={() => { setDrag(null); setDropHover(null); }}
                                 onClick={() => openBookingDetails(booking.id)}
                                 onMouseEnter={e => {
                                   const rect = (e.target as HTMLElement).getBoundingClientRect();
@@ -1153,7 +1279,8 @@ function CalendarDesktop() {
                                   background: `linear-gradient(135deg, ${srcColor}dd, ${srcColor}99)`,
                                   borderLeft: `3px solid ${stColor}`,
                                   borderRadius: 6, display: 'flex', alignItems: 'center',
-                                  padding: '0 8px', overflow: 'hidden', cursor: 'pointer',
+                                  padding: '0 8px', overflow: 'hidden', cursor: movable ? 'grab' : 'pointer',
+                                  opacity: drag?.bookingId === booking.id ? 0.45 : 1,
                                   gap: 4, zIndex: 2,
                                   boxShadow: `0 1px 4px ${srcColor}44`,
                                   transition: 'transform 0.15s, box-shadow 0.15s',
@@ -1210,7 +1337,8 @@ function CalendarDesktop() {
                               return (
                                 <div
                                   key={blk.id}
-                                  title={`${tUi('🔒 Закрито:')} ${blk.notes || 'Hostex block'}\n${blk.date_from} → ${blk.date_to}`}
+                                  title={`${tUi('🔒 Закрито:')} ${blk.notes || (blk as any).reason || ''}\n${blk.date_from} → ${blk.date_to}`}
+                                  onClick={e => { e.stopPropagation(); setBlockMenu({ ...(blk as any), x: e.clientX, y: e.clientY }); }}
                                   style={{
                                     position: 'absolute', top: 4, height: ROW_H - 8,
                                     left: bar.left, width: bar.width,
@@ -1218,7 +1346,7 @@ function CalendarDesktop() {
                                     border: '1px solid #555',
                                     borderLeft: '3px solid #888',
                                     borderRadius: 6, display: 'flex', alignItems: 'center',
-                                    padding: '0 8px', overflow: 'hidden', cursor: 'default',
+                                    padding: '0 8px', overflow: 'hidden', cursor: 'pointer',
                                     gap: 4, zIndex: 1, opacity: 0.85,
                                   }}
                                 >
@@ -1293,6 +1421,91 @@ function CalendarDesktop() {
           </div>
         );
       })()}
+
+      {/* ─── Діапазон обрано: швидка бронь або закриття номера ───────── */}
+      {rangePick && (() => {
+        const unit = units.find(u => u.id === rangePick.unitId);
+        return (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 1200 }} onClick={() => setRangePick(null)}>
+            <div onClick={e => e.stopPropagation()} style={{
+              position: 'fixed', left: Math.min(rangePick.x, window.innerWidth - 280), top: Math.min(rangePick.y + 8, window.innerHeight - 180),
+              background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-md)',
+              boxShadow: 'var(--shadow-lg)', padding: 10, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 6,
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>{unit?.name} · {rangePick.checkIn} → {rangePick.checkOut}</div>
+              <button className="btn btn-primary btn-sm" onClick={() => quickBooking(rangePick)}>
+                <Plus size={13} /> {tUi('Швидка бронь')}
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => {
+                setOooForm({ unitId: rangePick.unitId, dateFrom: rangePick.checkIn, dateTo: rangePick.checkOut, reason: 'maintenance', notes: '' });
+                setRangePick(null);
+              }}>
+                <Lock size={13} /> {tUi('Позначити out of order')}
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setRangePick(null)}>{tUi('Скасувати')}</button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ─── Закриття номера (out of order) ───────── */}
+      {oooForm && (
+        <div className="modal-overlay" onClick={() => setOooForm(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">{tUi('Закрити номер')} · {units.find(u => u.id === oooForm.unitId)?.name}</h3>
+              <button className="modal-close" onClick={() => setOooForm(null)}><X size={18} /></button>
+            </div>
+            <div className="modal-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label className="form-label">{tUi('З дати')}</label>
+                <input type="date" className="form-input" value={oooForm.dateFrom} onChange={e => setOooForm({ ...oooForm, dateFrom: e.target.value })} />
+              </div>
+              <div>
+                <label className="form-label">{tUi('Відкрити з')}</label>
+                <input type="date" className="form-input" value={oooForm.dateTo} min={shiftDate(oooForm.dateFrom, 1)} onChange={e => setOooForm({ ...oooForm, dateTo: e.target.value })} />
+              </div>
+              <div>
+                <label className="form-label">{tUi('Причина')}</label>
+                <select className="form-input" value={oooForm.reason} onChange={e => setOooForm({ ...oooForm, reason: e.target.value })}>
+                  <option value="maintenance">{tUi('Ремонт / несправність')}</option>
+                  <option value="out_of_order">{tUi('Out of order')}</option>
+                  <option value="owner">{tUi('Власник / службове')}</option>
+                </select>
+              </div>
+              <div style={{ gridColumn: 'span 2' }}>
+                <label className="form-label">{tUi('Примітка')}</label>
+                <input className="form-input" value={oooForm.notes} placeholder={tUi('Що зламалось, хто лагодить')} onChange={e => setOooForm({ ...oooForm, notes: e.target.value })} />
+              </div>
+              <div style={{ gridColumn: 'span 2', fontSize: 11, color: 'var(--text-tertiary)' }}>
+                {tUi('Закритий номер не продається ні в планері, ні в каналах; бронь на нього не перенести.')}
+              </div>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setOooForm(null)}>{tUi('Скасувати')}</button>
+              <button className="btn btn-primary" disabled={!oooForm.dateFrom || !oooForm.dateTo || oooForm.dateTo <= oooForm.dateFrom} onClick={saveOutOfOrder}>
+                <Lock size={14} /> {tUi('Закрити номер')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Меню закриття: зняти ───────── */}
+      {blockMenu && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1200 }} onClick={() => setBlockMenu(null)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            position: 'fixed', left: Math.min(blockMenu.x, window.innerWidth - 280), top: Math.min(blockMenu.y + 8, window.innerHeight - 160),
+            background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-md)',
+            boxShadow: 'var(--shadow-lg)', padding: 10, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 6,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>🔒 {tUi('Закрито')} · {blockMenu.date_from} → {blockMenu.date_to}</div>
+            {(blockMenu.notes || blockMenu.reason) && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{blockMenu.notes || blockMenu.reason}</div>}
+            <button className="btn btn-secondary btn-sm" onClick={() => removeBlock(blockMenu.id)}>{tUi('Зняти закриття')}</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setBlockMenu(null)}>{tUi('Закрити')}</button>
+          </div>
+        </div>
+      )}
 
       {/* ─── View Booking Modal (shared component) ───────── */}
       {viewBooking && (

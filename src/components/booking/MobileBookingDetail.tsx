@@ -16,6 +16,8 @@ import FolioPanel from './card/FolioPanel';
 import FilesPanel from './card/FilesPanel';
 import StatusActions from './card/StatusActions';
 import PayerPicker from './card/PayerPicker';
+import RequotePanel from './card/RequotePanel';
+import { isChannelBooking } from '@/modules/bookings/ui/requote';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -720,6 +722,13 @@ export default function MobileBookingDetail({
               <div style={{ marginBottom: 12 }}>
                 <StatusActions booking={b} onChangeStatus={onChangeStatus} compact />
               </div>
+              {/* Перерахунок за заселеністю — паритет із настільною карткою (рецензія 07.09 п.4); канал не переквотується (п.2). */}
+              {!['cancelled', 'checked_out', 'no_show'].includes(String(b.status)) && !isChannelBooking(b as any) && (
+                <div style={{ marginBottom: 12 }}>
+                  <RequotePanel booking={b} showToast={showToast} unitTypeId={(b as any).unit_type_id || null}
+                    onApplied={(patch) => { setBooking({ ...b, ...patch }); onFetchBookings(); }} />
+                </div>
+              )}
               <div style={{ marginBottom: 12 }}>
                 <PayerPicker booking={b} compact showToast={showToast}
                   onChanged={(patch) => { setBooking({ ...b, ...patch }); onFetchBookings(); }} />

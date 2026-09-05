@@ -68,4 +68,14 @@ const cents = {
 assert.strictEqual(requoteDelta({ currentTotal: 3000, currency: 'CZK' }, cents).after, 3000.6);
 console.log('  ok  копійки звіряються після округлення');
 
-console.log('requote: різниця до/після — з квоти, три ночі різних цін, непокрита ніч не має ціни');
+// ── перерахунок лише для своїх броней (рецензія 07.09 п.2) ────────────────
+const { isChannelBooking } = await import('./requote.ts');
+assert.strictEqual(isChannelBooking({ source: 'direct' }), false, 'пряма — своя ціна');
+assert.strictEqual(isChannelBooking({ source: 'phone' }), false, 'телефон — своя ціна');
+assert.strictEqual(isChannelBooking({ source: 'booking_com' }), true, 'OTA за кодом джерела');
+assert.strictEqual(isChannelBooking({ source: 'direct', hostex_channel_type: 'airbnb' }), true, 'канал за кодом ревізії, попри джерело');
+assert.strictEqual(isChannelBooking({ source: 'direct', external_uid: 'BDC-1' }), true, 'зовнішній ідентифікатор — канал');
+assert.strictEqual(isChannelBooking({}), false, 'без ознак — своя');
+console.log('  ok  бронь із каналу впізнається за ревізією, зовнішнім id або джерелом-OTA');
+
+console.log('requote: різниця до/після — з квоти, три ночі різних цін, непокрита ніч не має ціни; канал не переквотується');

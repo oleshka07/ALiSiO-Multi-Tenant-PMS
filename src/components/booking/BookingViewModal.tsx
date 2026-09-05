@@ -10,6 +10,7 @@ import FilesPanel from './card/FilesPanel';
 import StatusActions from './card/StatusActions';
 import RequotePanel from './card/RequotePanel';
 import PayerPicker from './card/PayerPicker';
+import { isChannelBooking } from '@/modules/bookings/ui/requote';
 import { useHotelCurrency, useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import {
   Edit3, X, Save, Plus, Check, ArrowRight, Copy, ExternalLink,
@@ -1184,11 +1185,16 @@ export default function BookingViewModal({
           {viewTab === 'stay' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <StatusActions booking={b} onChangeStatus={onChangeStatus} />
-              {!['cancelled', 'checked_out', 'no_show'].includes(b.status) && (
+              {!['cancelled', 'checked_out', 'no_show'].includes(b.status) && (isChannelBooking(b as any) ? (
+                // Ціну назвав канал: «Застосувати» переписало б її прямою ціною готелю (рецензія 07.09 п.2).
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                  🌐 {tUi('Бронь із каналу — ціну назвав канал, перерахунок за заселеністю недоступний.')}
+                </div>
+              ) : (
                 <RequotePanel booking={b} showToast={showToast}
                   unitTypeId={(b as any).unit_type_id || availableUnits.find(u => u.id === (b as any).unit_id)?.unit_type_id || null}
                   onApplied={(patch) => { setBooking({ ...b, ...patch }); onFetchBookings(); }} />
-              )}
+              ))}
               <PayerPicker booking={b} showToast={showToast}
                 onChanged={(patch) => { setBooking({ ...b, ...patch }); onFetchBookings(); }} />
               <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700 }}>{tUi('Гості кімнати')}</div>

@@ -35,7 +35,10 @@ export default function HousekeepingPage() {
   const [toast, setToast] = useState('');
   const [filter, setFilter] = useState<'all' | Cleaning | 'out_of_order'>('all');
   const today = new Date().toISOString().slice(0, 10);
-  const [hist, setHist] = useState({ from: today, to: today, unitId: '' });
+  const [hist, setHist] = useState({ from: today, to: today, unitId: '', changedBy: '' });
+  // Люди для фільтра «хто» — з завантаженої історії; при фільтрі за людиною
+  // список не звужується до неї самої (памʼятаємо всіх, кого вже бачили).
+  const [people, setPeople] = useState<{ id: string; name: string }[]>([]);
 
   const scopeQs = propertyId ? `property_id=${propertyId}` : 'property_id=all';
 
@@ -54,9 +57,16 @@ export default function HousekeepingPage() {
       const qs = new URLSearchParams({ from: hist.from, to: hist.to });
       if (propertyId) qs.set('property_id', propertyId);
       if (hist.unitId) qs.set('unit_id', hist.unitId);
+      if (hist.changedBy) qs.set('changed_by', hist.changedBy);
       const res = await fetch(`/api/housekeeping/history?${qs}`);
       if (!res.ok) { setFailed(true); return; }
-      setHistory((await res.json()).rows ?? []);
+      const rows: any[] = (await res.json()).rows ?? [];
+      setHistory(rows);
+      setPeople((prev) => {
+        const m = new Map(prev.map((p) => [p.id, p.name]));
+        for (const r of rows) if (r.changed_by && r.changed_by_name) m.set(String(r.changed_by), String(r.changed_by_name));
+        return [...m.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+      });
       setFailed(false);
     } catch { setFailed(true); }
   }, [propertyId, hist]);
@@ -213,6 +223,13 @@ export default function HousekeepingPage() {
                 <select className="form-select" value={hist.unitId} onChange={(e) => setHist((h) => ({ ...h, unitId: e.target.value }))} style={{ display: 'block', fontSize: 12, minWidth: 120 }}>
                   <option value="">{t('Усі номери')}</option>
                   {units.map((u) => <option key={u.id} value={u.id}>{u.code}</option>)}
+                </select>
+              </label>
+              {/* «Хто» — з тих, хто вже є в журналі за період: окремого списку персоналу борд не тягне. */}
+              <label style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t('Хто')}
+                <select className="form-select" value={hist.changedBy} onChange={(e) => setHist((h) => ({ ...h, changedBy: e.target.value }))} style={{ display: 'block', fontSize: 12, minWidth: 140 }}>
+                  <option value="">{t('Усі')}</option>
+                  {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </label>
             </div>

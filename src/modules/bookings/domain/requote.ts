@@ -17,6 +17,17 @@
  */
 import { money, sumMoney } from '@core/money';
 
+/**
+ * Бронь із каналу: ціну назвав канал, і «Застосувати» переписало б її
+ * прямою ціною готелю (рецензія 07.09 п.2). Ознаки — код ревізії каналу,
+ * зовнішній ідентифікатор або джерело-OTA. Телефон, пошта, сайт — свої.
+ */
+export const CHANNEL_SOURCES = ['booking_com', 'airbnb', 'expedia', 'other_ota', 'channel'] as const;
+export function isChannelBooking(b: { source?: string | null; hostex_channel_type?: string | null; external_uid?: string | null; hostex_reservation_code?: string | null }): boolean {
+  if (b.hostex_channel_type || b.hostex_reservation_code || b.external_uid) return true;
+  return (CHANNEL_SOURCES as readonly string[]).includes(String(b.source ?? ''));
+}
+
 export interface RequoteQuote {
   total?: number;
   currency?: string;

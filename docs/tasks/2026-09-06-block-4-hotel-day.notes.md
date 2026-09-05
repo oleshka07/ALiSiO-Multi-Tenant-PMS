@@ -87,6 +87,45 @@
     `schema.sql` табличний `UNIQUE (coupon_code)`, якого жодна міграція не
     створювала — на проді він є з першого `schema.sql`, і це не шкодить
     (NULL у Postgres не бʼються), але новий стенд його вже не отримає.
+18. **PATCH броні не бачив `availability_blocks`.** Варта перекриття в
+    `reservation.handlers.ts` питала лише інші броні; перенесення гостя в
+    номер, закритий на ремонт, проходило. Виправлено (`conflicts.repo.ts`,
+    Д15). `POST /api/bookings` (створення) — окремий код зі своєю вартою; чи
+    бачить блокування він — не перевіряв, поза 2.4. Кандидат на той самий
+    `findStayConflict`.
+19. **`extract-strings.mjs` на одному файлі теж загортає змінні**: на
+    `calendar/page.tsx` він знову зробив `tUi(outcome.message)` (те саме, що
+    п.7 і п.12 на `--all`). Відкотив рядок руками. Тобто справа не в `--all`, а
+    в правилі кодмоду для аргументів `showToast(...)`.
+
+## Рецензія 07.09 (коміт 4, разом із 2.4)
+
+Виконано з розділу «Сесія 2»:
+
+1. **Подвійний документ.** `PATCH payment_status: paid` з фоліо більше не
+   виписує legacy-фактуру: `payment_method` `folio` / `folio_cash` →
+   `legacyInvoiceWanted()` = false (`bookings/domain/folio-payment.ts`);
+   бронь закривається як оплачена лише з нарахованим проживанням і нульовим
+   боргом (`folioSettlesStay()`). Сцена `folio-payment.check.ts` — червоним
+   до коду (обидві осі). Жива сцена «оплата до issue → після issue один
+   документ» лишається на HTTP-шляху (`check-isolation` цього не питає) —
+   доменне правило перевірено, шлях через PATCH читається очима в
+   `reservation.handlers.ts`.
+2. **Requote лише для своїх броней**: `isChannelBooking()` (ревізія каналу,
+   зовнішній id, джерело-OTA) ховає панель і каже чому; на телефоні
+   `RequotePanel` додано (п.4).
+3. **Реєстрація з картки пише обидві книги** через `addReceptionRegistration`
+   у `@guests` (Д16); зняття — з обох. Картка й далі читає
+   `guest_registrations`. `await` у `updateRegistrationStatus` — коміт 3.
+5. `exclude_cancelled` — коміт 3.
+6. Фільтр «хто» в історії прибирання — зі списку тих, хто вже є в журналі за
+   період (окремого списку персоналу борд не тягне).
+7. `SELECT cleaning_status` з `JOIN properties` і орендарем; keywords
+   «прибирання/housekeeping» повернуто рядку «Задачі»; Д7 переставлено після
+   Д6; обхід `blocking` одним тілом записано в Д2 як свідомий.
+
+## 2.4 Планер (коміт 4)
+
 17. **`node --experimental-strip-types` не приймає параметр-властивості
     конструктора** (`constructor(public readonly reason: …)`) — сцена під
     голим node падає з `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`. У коді, який

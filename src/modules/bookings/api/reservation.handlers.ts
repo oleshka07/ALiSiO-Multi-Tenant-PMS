@@ -14,6 +14,8 @@ import { serverError } from '@core/http/errors';
 import { decideCheckout } from '../data/checkout.repo';
 import type { CheckoutDecision } from '../domain/checkout-balance';
 import { companyPayer } from '@companies/kernel';
+import { findStayConflict } from '../data/conflicts.repo';
+import { legacyInvoiceWanted } from '../domain/folio-payment';
 
 export const getReservation = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
@@ -202,7 +204,11 @@ export const updateReservation = withPermission('manage_bookings', async (reques
     if (body.status === 'checked_in') {
       const targetUnit = body.unit_id ?? beforeSnapshot?.unit_id;
       if (targetUnit) {
-        const u = await sql.row<any>('SELECT cleaning_status FROM units WHERE id = ?', [targetUnit]);
+        // З орендарем у запиті (рецензія 07.09 п.7), хоч власність номера
+        // вже доведена `ownedUnit` вище: правило одне на всі читання.
+        const u = await sql.row<any>(
+          `SELECT u.cleaning_status FROM units u JOIN properties p ON p.id = u.property_id
+            WHERE u.id = ? AND p.organization_id = ?`, [targetUnit, actor.organizationId]);
         if (u && u.cleaning_status !== 'clean') checkinWarning = 'unit_dirty';
       }
     }
@@ -237,25 +243,27 @@ export const updateReservation = withPermission('manage_bookings', async (reques
     // the target unit is free across the (possibly new) dates. POST has
     // this check; PATCH historically did not, so unit reassignment via
     // edit forms or the room-allocation modal could silently double-book.
-    // Staging pool units intentionally hold many bookings at once — skip
-    // the check when the target unit is a pool.
+    // Since Блок 4 §2.4 the same question also sees availability_blocks:
+    // a room closed for maintenance is not free either. `conflicts.repo.ts`
+    // answers both for the edit form, the planner drag and the allocation
+    // modal alike; pool units are skipped there by design.
     if (body.unit_id !== undefined || body.check_in !== undefined || body.check_out !== undefined) {
       const current = await sql.row<any>('SELECT unit_id, check_in, check_out FROM reservations WHERE id = ?', [id]) as { unit_id: string; check_in: string; check_out: string } | undefined;
       if (current) {
         const targetUnit = body.unit_id !== undefined ? body.unit_id : current.unit_id;
         const targetIn  = body.check_in   !== undefined ? body.check_in  : current.check_in;
         const targetOut = body.check_out  !== undefined ? body.check_out : current.check_out;
-        const targetUnitRow = await sql.row<any>('SELECT is_pool FROM units WHERE id = ?', [targetUnit]) as { is_pool?: number } | undefined;
-        if (!targetUnitRow?.is_pool) {
-          const overlap = await sql.row<any>(`
-            SELECT id FROM reservations
-            WHERE unit_id = ? AND id <> ? AND status NOT IN ('cancelled', 'no_show')
-              AND check_in < ? AND check_out > ?
-            LIMIT 1
-          `, [targetUnit, id, targetOut, targetIn]) as { id: string } | undefined;
-          if (overlap) {
+        if (targetUnit) {
+          const conflict = await findStayConflict(sql, { unitId: String(targetUnit), checkIn: targetIn, checkOut: targetOut, excludeReservationId: id });
+          if (conflict?.kind === 'booking') {
             return NextResponse.json(
-              { error: 'Кімната зайнята на ці дати іншим бронюванням', conflictBookingId: overlap.id },
+              { error: 'Кімната зайнята на ці дати іншим бронюванням', code: 'unit_occupied', conflictBookingId: conflict.id },
+              { status: 409 },
+            );
+          }
+          if (conflict?.kind === 'block') {
+            return NextResponse.json(
+              { error: 'Номер закрито на ці дати', code: 'unit_blocked', blockId: conflict.id, reason: conflict.reason, date_from: conflict.date_from, date_to: conflict.date_to },
               { status: 409 },
             );
           }
@@ -374,7 +382,10 @@ export const updateReservation = withPermission('manage_bookings', async (reques
     // Cash marked by the operator counts as confirmed; any other manual "paid"
     // (card/online without a Teya confirmation) stays unconfirmed and is excluded
     // from the monthly ISDOC export until reconciled.
-    if (body.payment_status === 'paid') {
+    // Оплата з фоліо (`payment_method` folio/folio_cash) сюди не потрапляє:
+    // документ виставляє фоліо, і він там один (рецензія 07.09 п.1,
+    // `domain/folio-payment.ts`). Інакше на одну суму виходило два номери.
+    if (legacyInvoiceWanted(body)) {
       const isCash = body.payment_method === 'cash';
       generateInvoiceForReservation(id, isCash ? { confirmed: true, source: 'cash' } : { confirmed: false, source: 'manual' });
     }

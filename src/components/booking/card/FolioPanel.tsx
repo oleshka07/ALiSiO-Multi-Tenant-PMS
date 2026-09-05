@@ -17,6 +17,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useT } from '@core/i18n/client';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { EmptyState, LoadingState, ErrorState } from '@/components/ui/State';
+import { folioSettlesStay } from '@/modules/bookings/ui/folio-payment';
 import { Receipt, Plus, CreditCard, FileText, Loader2, ArrowRight } from 'lucide-react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -171,14 +172,16 @@ export default function FolioPanel({ booking: b, compact, showToast, onBookingCh
     setOpen({ kind: null, folioId: null });
     setPayForm({ amount: '', method: 'cash' });
     // Рахунок закрито — бронь стає оплаченою: саме це слово читає варта
-    // заселення. Готівка — підтверджена оплата; решта — позначка до звірки.
+    // заселення. Лише коли нараховано проживання і боргу нема
+    // (`folioSettlesStay`): оплата за воду до нарахування бронь не закриває.
+    // `payment_method` folio/folio_cash каже серверу НЕ виписувати
+    // legacy-документ — документ виставляє фоліо (рецензія 07.09 п.1).
     try {
       const fresh = await fetch(`/api/finance/folios?reservation_id=${b.id}&summary=1`).then((x) => x.json());
-      const settled = fresh?.totals && Number(fresh.totals.charged) > 0 && Number(fresh.totals.balance) <= 0;
-      if (settled && !['paid', 'prepaid'].includes(b.payment_status)) {
+      if (folioSettlesStay(fresh) && !['paid', 'prepaid'].includes(b.payment_status)) {
         const res = await fetch(`/api/bookings/${b.id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payment_status: 'paid', payment_method: payForm.method === 'cash' ? 'cash' : 'folio' }),
+          body: JSON.stringify({ payment_status: 'paid', payment_method: payForm.method === 'cash' ? 'folio_cash' : 'folio' }),
         });
         if (res.ok) { setBooking?.({ ...b, payment_status: 'paid' }); onBookingChanged?.(); showToast(tUi('✅ Рахунок закрито — бронь оплачена')); }
       }

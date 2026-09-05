@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from '@core/db/async';
+import type { Sql } from '@core/db/async';
 import type { RegisteredGuest } from '../domain/types';
 import { retentionCutoff } from '../domain/retention';
 import { runWithOrganization } from '@core/auth/tenant-context';
@@ -20,6 +21,83 @@ export async function getReservationForRegistration(token: string) {
     LEFT JOIN unit_types ut ON u.unit_type_id = ut.id
     WHERE r.guest_page_token = ?
   `, [token]) as any;
+}
+
+/** Що потрібно від броні, щоб порахувати збір: ночі, дорослі, ставка обʼєкта. */
+async function stayFacts(t: Sql, reservationId: string): Promise<{ adults: number; nights: number; city_tax_per_night: number } | undefined> {
+  return await t.row<any>(`
+      SELECT r.adults, r.nights, p.city_tax_per_night
+      FROM reservations r JOIN properties p ON r.property_id = p.id
+      WHERE r.id = ?
+    `, [reservationId]);
+}
+
+/** Збір за особу: ночі × ставка; дитина до 18 — звільнена (як на порталі). */
+function cityTaxFor(nights: number, perNight: number, dateOfBirth: string | null | undefined): { amount: number; exempt: 0 | 1; reason: string | null } {
+  if (dateOfBirth) {
+    const age = Math.abs(new Date(Date.now() - new Date(dateOfBirth).getTime()).getUTCFullYear() - 1970);
+    if (age < 18) return { amount: 0, exempt: 1, reason: 'Dítě do 18 let' };
+  }
+  return { amount: nights * perNight, exempt: 0, reason: null };
+}
+
+export interface ReceptionGuestSnapshot {
+  firstName: string;
+  lastName: string;
+  dateOfBirth?: string | null;
+  address?: string | null;
+  nationality?: string | null;
+  documentType?: string | null;
+  documentNumber?: string | null;
+}
+
+/**
+ * Реєстрація гостя з картки броні (рецепція) — в ОБИДВІ книги, як портал
+ * (Д16). `guest_registrations` рахує `registration_status` і стереже
+ * заселення; `reservation_guests` читають Meldeschein, Evidenční kniha і
+ * портал. Рецепція писала лише першу — і книга гостей не бачила гостей,
+ * зареєстрованих на стійці (рецензія 07.09 п.3).
+ *
+ * Повертає id рядка `guest_registrations`; той самий гість двічі на одній
+ * броні — `null` (409 у викликача).
+ */
+export async function addReceptionRegistration(input: {
+  reservationId: string;
+  guestId: string;
+  isPrimary: boolean;
+  guest: ReceptionGuestSnapshot;
+}): Promise<string | null> {
+  const sql = getSql();
+  return await sql.tx(async (t) => {
+    const dup = await t.row<any>('SELECT id FROM guest_registrations WHERE reservation_id = ? AND guest_id = ?', [input.reservationId, input.guestId]);
+    if (dup) return null;
+    const facts = await stayFacts(t, input.reservationId);
+    const fee = cityTaxFor(facts?.nights || 0, facts?.city_tax_per_night ?? 0, input.guest.dateOfBirth);
+    const regId = `gr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    await t.run(`
+      INSERT INTO guest_registrations (id, reservation_id, guest_id, is_primary, registered_at)
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `, [regId, input.reservationId, input.guestId, input.isPrimary ? 1 : 0]);
+    await t.run(`
+      INSERT INTO reservation_guests (reservation_id, first_name, last_name, date_of_birth, address, nationality, document_type, document_number, guest_id, fee_amount, fee_exempt, fee_exempt_reason, purpose_of_stay, visa_number)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Tourism', NULL)
+    `, [input.reservationId, input.guest.firstName, input.guest.lastName, input.guest.dateOfBirth ?? null, input.guest.address ?? null,
+      input.guest.nationality ?? null, input.guest.documentType ?? null, input.guest.documentNumber ?? null, input.guestId,
+      fee.amount, fee.exempt, fee.reason]);
+    return regId;
+  });
+}
+
+/** Зняти реєстрацію з картки — з обох книг. `false` — такого рядка на цій броні немає. */
+export async function removeReceptionRegistration(input: { reservationId: string; registrationId: string }): Promise<boolean> {
+  const sql = getSql();
+  return await sql.tx(async (t) => {
+    const row = await t.row<any>('SELECT guest_id FROM guest_registrations WHERE id = ? AND reservation_id = ?', [input.registrationId, input.reservationId]);
+    if (!row) return false;
+    await t.run('DELETE FROM guest_registrations WHERE id = ? AND reservation_id = ?', [input.registrationId, input.reservationId]);
+    if (row.guest_id) await t.run('DELETE FROM reservation_guests WHERE reservation_id = ? AND guest_id = ?', [input.reservationId, row.guest_id]);
+    return true;
+  });
 }
 
 export async function saveRegistrations(reservationId: string, organizationId: string, guests: RegisteredGuest[], clientIp?: string) {
@@ -69,11 +147,7 @@ export async function saveRegistrations(reservationId: string, organizationId: s
 
   await sql.tx(async (t) => {
     // Get reservation nights for fee calculation
-    const reservation = await t.row<any>(`
-      SELECT r.adults, r.nights, p.city_tax_per_night
-      FROM reservations r JOIN properties p ON r.property_id = p.id
-      WHERE r.id = ?
-    `, [reservationId]);
+    const reservation = await stayFacts(t, reservationId);
     const nights = reservation?.nights || 0;
     const cityTaxPerNight = reservation?.city_tax_per_night ?? 0;
     const needed = reservation?.adults || 1;

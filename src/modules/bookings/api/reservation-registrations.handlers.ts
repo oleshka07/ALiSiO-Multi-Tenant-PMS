@@ -6,6 +6,7 @@ import { requireOrganizationId } from '@core/auth/tenant-context';
 import { withActor, type Actor } from '@core/auth/session';
 import { ownedReservation } from '../data/owned.repo';
 import { serverError } from '@core/http/errors';
+import { addReceptionRegistration, removeReceptionRegistration } from '@guests';
 
 export const listRegistrations = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
@@ -68,17 +69,17 @@ export const registerGuest = withActor(async (request: NextRequest, { params }: 
         documentType || null, documentNumber, nationality || null, country || null, address || null]);
     }
 
-    const existingReg = await sql.row<any>('SELECT id FROM guest_registrations WHERE reservation_id = ? AND guest_id = ?', [id, guestId]) as { id: string } | undefined;
-
-    if (existingReg) {
+    // Обидві книги гостей одним писачем `@guests` (Д16): `guest_registrations`
+    // для статусу реєстрації і `reservation_guests` для Meldeschein / книги
+    // гостей — рецепція досі писала лише першу.
+    const regId = await addReceptionRegistration({
+      reservationId: id, guestId, isPrimary: Boolean(isPrimary),
+      guest: { firstName, lastName, dateOfBirth: dateOfBirth || null, documentType: documentType || null,
+        documentNumber, nationality: nationality || null, address: address || null },
+    });
+    if (!regId) {
       return NextResponse.json({ error: 'Guest already registered for this reservation' }, { status: 409 });
     }
-
-    const regId = `gr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    await sql.run(`
-      INSERT INTO guest_registrations (id, reservation_id, guest_id, is_primary, registered_at)
-      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-    `, [regId, id, guestId, isPrimary ? 1 : 0]);
 
     // Дочекатись: 201 без await приходив ДО запису registration_status, і
     // заселення одразу після останньої реєстрації отримувало 422.
@@ -101,9 +102,8 @@ export const removeRegistration = withActor(async (request: NextRequest, { param
     const regId = searchParams.get('reg_id');
     if (!regId) return NextResponse.json({ error: 'reg_id required' }, { status: 400 });
 
-    await sql.run('DELETE FROM guest_registrations WHERE id = ? AND reservation_id = ?', [regId, id]);
-    // Дочекатись: 201 без await приходив ДО запису registration_status, і
-    // заселення одразу після останньої реєстрації отримувало 422.
+    // З обох книг гостей (Д16) — тим самим писачем, що й реєстрація.
+    await removeReceptionRegistration({ reservationId: id, registrationId: regId });
     await updateRegistrationStatus(id);
 
     return NextResponse.json({ success: true });
