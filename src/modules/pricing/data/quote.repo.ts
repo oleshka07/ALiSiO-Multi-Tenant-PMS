@@ -4,7 +4,10 @@ import type { QuoteResult } from '../domain/types';
 import { priceNights } from './nightly-price';
 import { applyFees } from '../domain/fees';
 
-export async function calculateQuote(unitTypeId: string, checkIn: string, checkOut: string, adults = 2, children = 0): Promise<QuoteResult> {
+export async function calculateQuote(
+  unitTypeId: string, checkIn: string, checkOut: string, adults = 2, children = 0,
+  options: { ratePlanId?: string | null; promoCode?: string | null } = {},
+): Promise<QuoteResult> {
   const sql = getSql();
 
   const start = new Date(checkIn);
@@ -15,12 +18,13 @@ export async function calculateQuote(unitTypeId: string, checkIn: string, checkO
   // matrix answers where it has a row for this category and this many guests,
   // the day calendar answers where it does not, and a night neither can price
   // is counted as missing rather than charged at zero.
-  // Дорослі адресують матрицю, діти йдуть надбавкою тарифу (Ц12). Тарифу цей
-  // виклик не називає — тож котирування з дітьми поверне ночі як `missing`
-  // доти, доки не буде названо, скільки коштує дитина. Це видно оператору
-  // списком дат, а не тишею, і це навмисно: інваріант 17.
+  // Дорослі адресують матрицю, діти йдуть надбавкою за правилом (Ц30). Без
+  // правила ніч із дітьми повертається як `missing` — видно оператору списком
+  // дат, а не тишею (інваріант 17). Правила цін і промо (Ц31): оператор рахує
+  // зараз (`bookedAt` сьогодні), канал — `operator`, промокод — коли названо.
   const priced = await priceNights({
     unitTypeId, checkIn, nights: nightsTotal, adults, children,
+    ratePlanId: options.ratePlanId ?? null, channel: 'operator', promoCode: options.promoCode ?? null,
   });
 
   const dayNames = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
@@ -37,6 +41,7 @@ export async function calculateQuote(unitTypeId: string, checkIn: string, checkO
       date: dateStr, dayName: dayNames[dayOfWeek],
       price: night?.price ?? 0, isWeekend,
       source: night?.source,
+      ...(night?.rules?.length ? { priceBeforeRules: night.priceBeforeRules, rules: night.rules.map((r) => ({ name: r.titleForGuest || r.name, delta: r.delta, kind: r.kind })) } : {}),
     });
     current.setDate(current.getDate() + 1);
   }
@@ -75,7 +80,13 @@ export async function calculateQuote(unitTypeId: string, checkIn: string, checkO
   // валюти, ніж не ту валюту, яку гість почує й запамʼятає.
   const currency = await quoteCurrency(sql, unitTypeId);
 
-  return { unitTypeId, checkIn, checkOut, nights: nightsTotal, adults, children, breakdown, accommodationTotal, feeBreakdown, includedFees, feesTotal, total: accommodationTotal + feesTotal, currency, missingDays, hasPricing: missingDays < nightsTotal };
+  // Розклад форми NORTHSTAR CP6: ціна без правил → правила → ціна без зборів → збори → разом.
+  const rules = (priced.rulesApplied ?? []).map((r) => ({ name: r.titleForGuest || r.name, kind: r.kind, total: r.total }));
+  return {
+    unitTypeId, checkIn, checkOut, nights: nightsTotal, adults, children, breakdown,
+    accommodationBeforeRules: priced.totalBeforeRules ?? accommodationTotal, rules,
+    accommodationTotal, feeBreakdown, includedFees, feesTotal, total: accommodationTotal + feesTotal, currency, missingDays, hasPricing: missingDays < nightsTotal,
+  };
 }
 
 /** Валюта організації, якій належить цей тип номера. */

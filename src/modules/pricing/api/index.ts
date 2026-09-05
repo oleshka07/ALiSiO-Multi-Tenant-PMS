@@ -19,6 +19,11 @@ export { listExtraOccupancyRules, createExtraOccupancyRule, updateExtraOccupancy
 export { listRules as listExtraOccupancyRulesOf, createRule as createExtraOccupancyRuleOf, ageBandsOf, normalizeBoundaries } from '../data/extra-occupancy.repo';
 export { bandsFrom, bandIndexFor, nightSurcharges, ADULT_AGE } from '../domain/extra-occupancy';
 export type { OccupancyRule, AgeBand, GuestKind, SurchargeMode } from '../domain/extra-occupancy';
+// Правила цін і промо (Блок 2 крок 4, Ц31): шар після надбавок і до зборів.
+export { listPriceRules, createPriceRule, updatePriceRule, deletePriceRule } from './price-rules.handlers';
+export { redeemPromoCode, rulesForProperty as priceRulesForProperty } from '../data/price-rules.repo';
+export { applyRules, RULE_KINDS, RULE_CONDITIONS, RULE_ACTIONS, RULE_VALUE_KINDS } from '../domain/price-rules';
+export type { PriceRule, RuleDelta, StayContext, SalesChannel, RuleKind, RuleCondition, RuleAction, RuleValueKind } from '../domain/price-rules';
 
 // The price matrix: occupancy changes the price, never the category.
 export {
@@ -28,7 +33,7 @@ export {
 export { quoteStay, addDays } from '../domain/occupancy-price';
 // Рядок матриці як писач — для перевірок сусідніх модулів (канал), яким до
 // цінових таблиць не можна (інваріант 16, `check-price-source`).
-export { createPrice as createOccupancyRow } from '../data/occupancy-price.repo';
+export { createPrice as createOccupancyRow, loadMatrix as occupancyMatrixOf } from '../data/occupancy-price.repo';
 
 // One resolver for what a night costs, used by the operator quote and by the
 // widget alike — the two used to keep separate copies of the arithmetic.

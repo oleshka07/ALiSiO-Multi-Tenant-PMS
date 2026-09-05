@@ -79,6 +79,18 @@ const OVERRIDE = {
   // `unit_types.extra_bed_available`; індекс вилки — маленьке ціле, як у 0070.
   'extra_occupancy_rules.extra_bed': 'BOOLEAN',
   'extra_occupancy_rules.age_band_index': 'INTEGER',
+  // Правила цін (0071): гроші — NUMERIC, лічильники й межі — INTEGER, як у міграції.
+  'price_rules.value': 'NUMERIC(14,2)',
+  'price_rules.min_los': 'INTEGER',
+  'price_rules.max_los': 'INTEGER',
+  'price_rules.booked_days_before_from': 'INTEGER',
+  'price_rules.booked_days_before_to': 'INTEGER',
+  'price_rules.occupancy_from': 'INTEGER',
+  'price_rules.occupancy_to': 'INTEGER',
+  'price_rules.priority': 'INTEGER',
+  'price_rules.max_uses': 'INTEGER',
+  'price_rules.current_uses': 'INTEGER',
+  'price_rules.online_only': 'BOOLEAN',
   'gift_card_automation_rules.discount_type': 'TEXT',
   'gift_cards.value_type': 'TEXT',
   'fin_system_state.value': 'TEXT',

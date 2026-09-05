@@ -194,6 +194,7 @@ export const NAV_PERMISSION_MAP: Record<string, Permission> = {
   '/app/settings/legend': 'nav:settings',
   '/app/settings/seasons': 'nav:pricing',
   '/app/settings/extra-occupancy': 'nav:pricing',
+  '/app/settings/price-rules': 'nav:pricing',
   '/app/settings/users': 'manage_users',
   '/app/sites': 'nav:sites',
   '/app/tasks': 'nav:tasks',

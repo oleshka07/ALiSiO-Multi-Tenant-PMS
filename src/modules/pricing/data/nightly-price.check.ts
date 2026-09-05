@@ -364,6 +364,47 @@ assert.strictEqual(noKidRule.childRuleMissing, true, 'і причина назв
 await sql.run("DELETE FROM extra_occupancy_rules WHERE organization_id = ?", [ORG]);
 console.log('  ok  надбавки правилами: дорослий понад базу за правилом, дитина відсотком від ночі, «за номер» без дорослої, без правила — без ціни');
 
+// ── Правила цін і промо (Блок 2 крок 4, Ц31) ───────────────────────────────
+//
+// Правило діє ПІСЛЯ надбавок за заселеність і ДО зборів: −10 % від 3 ночей на
+// BAR, промо SUMMER −20 сумою лише з кодом, «вихідні +50» лише на ніч
+// пʼятниці/суботи. Канал (без дати бронювання) не бачить правила «за 30 днів».
+// Дві ціни ночі під відсотком (312.66 і 111) — «% від ночі» (інваріант 26).
+await sql.run(
+  `INSERT INTO price_rules (id, organization_id, property_id, name, kind, action, value, value_kind, min_los, priority)
+   VALUES ('__np_rule_los', ?, ?, 'Від 3 ночей', 'rule', 'decrease', 10, 'percent', 3, 10)`, [ORG, PROP]);
+await sql.run(
+  `INSERT INTO price_rules (id, organization_id, property_id, name, kind, code, action, value, value_kind, priority)
+   VALUES ('__np_rule_promo', ?, ?, 'Літо', 'promo', 'SUMMER', 'decrease', 20, 'fixed', 20)`, [ORG, PROP]);
+await sql.run(
+  `INSERT INTO price_rules (id, organization_id, property_id, name, kind, action, value, value_kind, week_days, priority)
+   VALUES ('__np_rule_wknd', ?, ?, 'Вихідні', 'rule', 'increase', 50, 'fixed', '[5,6]', 30)`, [ORG, PROP]);
+await sql.run(
+  `INSERT INTO price_rules (id, organization_id, property_id, name, kind, action, value, value_kind, booked_days_before_from, priority)
+   VALUES ('__np_rule_eb', ?, ?, 'Раннє', 'rule', 'decrease', 5, 'percent', 30, 40)`, [ORG, PROP]);
+// 2026-11-10 — вівторок; три ночі BAR: 10, 11 (312.66), 12 (база 200). Заброньовано за 5 днів — EB не діє.
+const ruled = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 3, adults: 2, ratePlanId: BAR, bookedAt: '2026-11-05', channel: 'operator' });
+assert.strictEqual(ruled.nights[0]?.price, 281.39, `−10 % від 312.66 = 281.39: ${JSON.stringify(ruled.nights)}`);
+assert.strictEqual(ruled.nights[2]?.price, 180, '−10 % від базових 200 — відсоток від ночі, не константа');
+assert.deepStrictEqual(ruled.nights[0]?.rules?.map((r) => [r.ruleId, r.delta]), [['__np_rule_los', -31.27]], 'розклад називає правило і дельту');
+assert.strictEqual(ruled.nights[0]?.priceBeforeRules, 312.66, 'ціна до правил збережена для розкладу');
+const twoNights = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 2, adults: 2, ratePlanId: BAR, bookedAt: '2026-11-05', channel: 'operator' });
+assert.strictEqual(twoNights.nights[0]?.price, 312.66, 'дві ночі — правило «від 3» не діє');
+const withPromo = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 2, ratePlanId: BNB, bookedAt: '2026-11-05', channel: 'direct', promoCode: 'summer' });
+assert.strictEqual(withPromo.nights[0]?.price, 91, 'промо з кодом: 111 − 20 = 91');
+assert.strictEqual((await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 2, ratePlanId: BNB, bookedAt: '2026-11-05', channel: 'direct' })).nights[0]?.price, 111, 'без коду промо не діє');
+const friday = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-13', nights: 1, adults: 2, bookedAt: '2026-11-05', channel: 'operator' });
+assert.strictEqual(friday.nights[0]?.price, 250, 'пʼятниця 13.11 — базова 200 + 50 «вихідні»');
+const early = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-13', nights: 1, adults: 2, bookedAt: '2026-10-01', channel: 'operator' });
+assert.strictEqual(early.nights[0]?.price, 237.5, 'за 43 дні: пріоритет «вихідні» (30) раніше за «раннє» (40): 200 + 50 = 250, потім −5 % = 237.5 — не 240');
+const channel = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-13', nights: 1, adults: 2, bookedAt: null, channel: 'channel' });
+assert.strictEqual(channel.nights[0]?.price, 250, 'канал без дати бронювання: «вихідні» діє, «раннє» — ні');
+assert.strictEqual(ruled.rulesApplied?.find((r) => r.ruleId === '__np_rule_los')?.total, -82.54, `сума правила по поїздці: −31.27 −31.27 −20: ${JSON.stringify(ruled.rulesApplied)}`);
+assert.strictEqual(ruled.totalBeforeRules, 825.32, 'сума до правил збережена: 312.66 + 312.66 + 200');
+assert.strictEqual(ruled.total, 742.78, 'сума після правил');
+await sql.run("DELETE FROM price_rules WHERE organization_id = ?", [ORG]);
+console.log('  ok  правила цін: після надбавок, за пріоритетом, промо лише з кодом, EB/LM не в канал');
+
 // ── Викликач без `adults` — відмова з назвою, не «неоцінені ночі» ─────────
 //
 // 02.09.2026: `scripts/apply-hotel.mjs` після Ц12 передавав `persons`, не

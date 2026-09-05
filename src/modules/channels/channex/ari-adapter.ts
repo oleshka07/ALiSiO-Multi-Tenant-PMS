@@ -240,7 +240,9 @@ export function nightSources(ctx: MirrorContext, spanOf: (lane: Lane) => { from:
       if (wanted.length === 0) return null;
       const out: { occupancy: number; priceMinor: number }[] = [];
       for (const adults of wanted) {
-        const quote = await priceNights({ unitTypeId, checkIn: date, nights: 1, adults, ratePlanId });
+        // Канал (Ц31): без дати бронювання й без промо — правила «за N днів»
+        // і промокоди в канал не їдуть; правила за датою/днем тижня — їдуть.
+        const quote = await priceNights({ unitTypeId, checkIn: date, nights: 1, adults, ratePlanId, channel: 'channel', bookedAt: null });
         const night = quote.nights[0];
         // Опція без джерела ціни випадає з тіла, пара не закривається (Блок
         // 0.6 B1). Див. шапку: закрита ніч — лише коли ціни немає на жодну.

@@ -7,7 +7,7 @@ import { getSql } from '@core/db/async';
 export const getQuote = withActor(async (request: NextRequest, _ctx, actor): Promise<NextResponse> => {
   try {
     const body = await request.json();
-    const { unitTypeId, checkIn, checkOut, adults = 2, children = 0 } = body;
+    const { unitTypeId, checkIn, checkOut, adults = 2, children = 0, ratePlanId = null, promoCode = null } = body;
 
     if (!unitTypeId || !checkIn || !checkOut) {
       return NextResponse.json({ error: 'unitTypeId, checkIn, checkOut required' }, { status: 400 });
@@ -35,7 +35,12 @@ export const getQuote = withActor(async (request: NextRequest, _ctx, actor): Pro
       [unitTypeId, actor.organizationId]);
     if (!owned) return NextResponse.json({ error: 'Unit type not found' }, { status: 404 });
 
-    return NextResponse.json(await calculateQuote(unitTypeId, checkIn, checkOut, adults, children));
+    // Тариф і промокод (Ц31) — за бажанням; тариф чужого обʼєкта котирування
+    // саме відкине (рядок тарифу звіряється з обʼєктом типу).
+    return NextResponse.json(await calculateQuote(unitTypeId, checkIn, checkOut, adults, children, {
+      ratePlanId: typeof ratePlanId === 'string' && ratePlanId ? ratePlanId : null,
+      promoCode: typeof promoCode === 'string' && promoCode.trim() ? promoCode.trim() : null,
+    }));
   } catch (error: any) {
     console.error('POST /api/pricing/quote error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to calculate quote' }, { status: 500 });

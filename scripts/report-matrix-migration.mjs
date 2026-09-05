@@ -31,15 +31,15 @@
  * після його «так» пишеться накат — окремим кроком і зі своїм гейтом.
  *
  * Читає кожну організацію в її контексті (`runWithOrganization`), тож на
- * Postgres із політиками бачить рівно те, що бачить сама організація; будь-якою
- * роллю, що має право читати всі організації (власник схеми — з
- * `row_security = off` не треба: контекст ставиться сам).
+ * Postgres із політиками бачить рівно те, що бачить сама організація. Таблиці
+ * модуля цін читаються через його фасад `@pricing` (межі модулів), не SQL.
  */
 import fs from 'node:fs';
 import './lib/module-aliases.mjs';
 
 const { getSql } = await import('@core/db/async');
 const { runWithOrganization } = await import('@core/auth/tenant-context');
+const { occupancyMatrixOf, listSeasons, listExtraOccupancyRulesOf } = await import('@pricing');
 
 const args = process.argv.slice(2);
 const argOf = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
@@ -51,7 +51,6 @@ const out = [];
 const say = (s = '') => out.push(s);
 const money = (n) => Math.round(Number(n) * 100) / 100;
 const fmt = (n) => (n == null ? '—' : String(money(n)));
-const win = (r) => `${r.valid_from ?? '…'} → ${r.valid_to ?? '…'}`;
 
 const totals = { organizations: 0, properties: 0, matrixRows: 0, seasons: 0, adultRules: 0, warnings: 0 };
 
@@ -69,28 +68,32 @@ const orgs = await sql.rows(
 
 for (const org of orgs) {
   await runWithOrganization(String(org.id), async () => {
-    const matrix = await sql.rows(
-      `SELECT po.id, po.property_id, po.unit_type_id, po.persons, po.price_gross, po.valid_from, po.valid_to, po.label
-         FROM price_occupancy po WHERE po.organization_id = ?
-        ORDER BY po.property_id, po.unit_type_id, po.valid_from, po.persons`,
-      [org.id],
-    );
-    if (matrix.length === 0) return;
-    totals.organizations++;
-    totals.matrixRows += matrix.length;
-    say(`## ${org.name} (\`${org.id}\`) — ${matrix.length} рядків матриці`);
-    say('');
-
     const properties = await sql.rows('SELECT id, name FROM properties WHERE organization_id = ? ORDER BY name', [org.id]);
     const unitTypes = await sql.rows(
       `SELECT ut.id, ut.property_id, ut.code, ut.name, ut.base_occupancy, ut.max_adults FROM unit_types ut
          JOIN properties p ON p.id = ut.property_id WHERE p.organization_id = ?`, [org.id]);
-    const existingSeasons = await sql.rows('SELECT property_id, name, date_from, date_to FROM seasons WHERE organization_id = ? ORDER BY date_from', [org.id]);
-    const existingRules = await sql.rows('SELECT property_id, rate_plan_id, unit_type_id, guest_kind FROM extra_occupancy_rules WHERE organization_id = ?', [org.id]);
-    const tiers = await sql.rows('SELECT property_id, unit_type_id, min_nights, adjustment_gross, persons FROM price_los_tiers WHERE organization_id = ?', [org.id]);
 
+    // Матриця, тіри, сезони й правила — по обʼєкту, через фасад модуля цін.
+    const perProperty = [];
     for (const property of properties) {
-      const rows = matrix.filter((r) => String(r.property_id) === String(property.id));
+      const matrix = await occupancyMatrixOf(String(property.id));
+      if (matrix.prices.length === 0 && matrix.tiers.length === 0) continue;
+      perProperty.push({
+        property,
+        rows: matrix.prices,
+        tiers: matrix.tiers,
+        seasons: await listSeasons(String(property.id), { includePast: true }),
+        rules: await listExtraOccupancyRulesOf(String(property.id)),
+      });
+    }
+    const orgRows = perProperty.reduce((s, p) => s + p.rows.length, 0);
+    if (orgRows === 0) return;
+    totals.organizations++;
+    totals.matrixRows += orgRows;
+    say(`## ${org.name} (\`${org.id}\`) — ${orgRows} рядків матриці`);
+    say('');
+
+    for (const { property, rows, tiers, seasons, rules } of perProperty) {
       if (rows.length === 0) continue;
       totals.properties++;
       say(`### Обʼєкт ${property.name} (\`${property.id}\`)`);
@@ -118,15 +121,13 @@ for (const org of orgs) {
         say(`| ${from || '…'} → ${to || '…'} | ${windows.get(key)} | ${note} |`);
       }
       totals.seasons += sorted.filter((k) => { const [f, t] = k.split('|'); return f && t; }).length;
-      // Перетини між вікнами
       const dated = sorted.map((k) => k.split('|')).filter(([f, t]) => f && t);
       for (let i = 0; i < dated.length; i++) for (let j = i + 1; j < dated.length; j++) {
         const [f1, t1] = dated[i]; const [f2, t2] = dated[j];
         if (f1 <= t2 && f2 <= t1) { say(`- ⚠ вікна ${f1}–${t1} і ${f2}–${t2} перетинаються — сезони обʼєкта не можуть; межі треба вирівняти`); totals.warnings++; }
       }
-      const propSeasons = existingSeasons.filter((s) => String(s.property_id) === String(property.id));
-      if (propSeasons.length) {
-        say(`- уже є сезонів: ${propSeasons.length} (${propSeasons.map((s) => `${s.name} ${s.date_from}–${s.date_to}`).join('; ')}) — нові вікна не мають їх перетинати`);
+      if (seasons.length) {
+        say(`- уже є сезонів: ${seasons.length} (${seasons.map((s) => `${s.name} ${s.dateFrom}–${s.dateTo}`).join('; ')}) — нові вікна не мають їх перетинати`);
       }
       say('');
 
@@ -180,8 +181,7 @@ for (const org of orgs) {
                 }
               }
             }
-            const existingAdult = existingRules.find((r) => String(r.property_id) === String(property.id) && r.guest_kind === 'adult'
-              && (r.unit_type_id == null || String(r.unit_type_id) === typeId) && r.rate_plan_id == null);
+            const existingAdult = rules.find((r) => r.guestKind === 'adult' && (r.unitTypeId == null || String(r.unitTypeId) === typeId) && r.ratePlanId == null);
             if (existingAdult && rule !== '—') notes.push('уже є правило для дорослого на цьому типі/усіх — накат мав би його не дублювати (rule_conflict)');
           }
           totals.warnings += notes.filter((n) => n.startsWith('⚠')).length;
@@ -190,17 +190,12 @@ for (const org of orgs) {
       }
       say('');
 
-      const propTiers = tiers.filter((t) => String(t.property_id) === String(property.id));
-      if (propTiers.length) {
-        say(`- ⚠ знижок за тривалість (\`price_los_tiers\`): ${propTiers.length} — це правила ціни §2.5, не сезон і не надбавка; у цьому кроці не мігруються, котирування читає їх далі`);
+      if (tiers.length) {
+        say(`- ⚠ знижок за тривалість (\`price_los_tiers\`): ${tiers.length} — це правила ціни §2.5, не сезон і не надбавка; у цьому кроці не мігруються, котирування читає їх далі`);
         totals.warnings++;
       }
       say('');
     }
-
-    // Рядки матриці на обʼєкт, якого немає в організації
-    const orphan = matrix.filter((r) => !properties.some((p) => String(p.id) === String(r.property_id)));
-    if (orphan.length) { say(`- ⚠ ${orphan.length} рядків матриці на обʼєкт, якого немає в організації`); totals.warnings++; }
   });
 }
 

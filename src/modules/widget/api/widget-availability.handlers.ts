@@ -5,6 +5,7 @@ import { getSql } from '@core/db/async';
 import { withSite } from '../data/site.repo';
 import { quoteCertificate } from '../data/certificate.repo';
 import { couponApplies } from '../domain/coupon-eligibility';
+import { promoCodeFor } from '../data/legacy-offer-code';
 import { shiftDays } from '@core/hotel-day';
 import { ratePlanNightPrice } from '../domain/rate-plan';
 import { priceNights, stayRefusal, type StayRefusal } from '@pricing';
@@ -231,6 +232,10 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
 
     const results = [];
 
+    // Промокод правил цін (Ц31) — лише коли код не належить старим купонам:
+    // один код — одне джерело знижки.
+    const promoCode = await promoCodeFor(sql, couponCode, siteOrganizationId);
+
     for (const unit of units) {
       if (freeUnits && !freeUnits.has(unit.id)) continue;
 
@@ -282,6 +287,8 @@ async function availabilityFor(request: NextRequest, searchParams: URLSearchPara
               unitTypeId: unit.unit_type_id, checkIn, nights,
               adults: askedAdults > 0 ? askedAdults : (Number(unit.base_occupancy) || 2),
               children: askedChildren,
+              // Форма бронювання (Ц31): промо «лише онлайн» діють, дата бронювання — сьогодні.
+              channel: 'direct', promoCode,
             })
             : null;
           const byDate = new Map((priced?.nights ?? []).map((n) => [n.date, n]));

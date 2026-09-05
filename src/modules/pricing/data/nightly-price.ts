@@ -40,6 +40,8 @@ import { quoteStay, matrixPriceFor, type PriceRow, type LosTier } from '../domai
 import { OPEN_STAY, type StayRestrictions } from '../domain/restrictions';
 import { pickRule, surchargeOf, nightSurcharges, type OccupancyRule, type AgeBand, type SurchargeMissing } from '../domain/extra-occupancy';
 import { rulesForProperty, ageBandsOf } from './extra-occupancy.repo';
+import { applyRules, type PriceRule, type RuleDelta, type SalesChannel } from '../domain/price-rules';
+import { rulesForProperty as priceRulesForProperty } from './price-rules.repo';
 import { money } from '@core/money';
 
 export interface NightlyPrice {
@@ -55,6 +57,22 @@ export interface NightlyPrice {
    * matrix priced this night, the occupancy surcharge when a rate plan did.
    */
   adjustment?: number;
+  /**
+   * Правила цін і промо (Ц31), що спрацювали на цю ніч, — кожне зі своєю
+   * дельтою; `price` уже їх містить, `priceBeforeRules` — ні. Порожньо —
+   * жодне не діяло.
+   */
+  rules?: RuleDelta[];
+  priceBeforeRules?: number;
+}
+
+/** Правило по всій поїздці: сума його дельт по ночах. */
+export interface RuleTotal {
+  ruleId: string;
+  name: string;
+  titleForGuest: string | null;
+  kind: 'rule' | 'promo';
+  total: number;
 }
 
 export interface NightlyPrices {
@@ -118,6 +136,13 @@ export interface NightlyPrices {
    * правило «на всі вилки».
    */
   childAgesRequired?: boolean;
+  /**
+   * Правила цін і промо (Ц31), що спрацювали хоч на одну ніч, із сумою по
+   * поїздці — розклад «ціна без правил → правила → ціна без зборів».
+   */
+  rulesApplied?: RuleTotal[];
+  /** Сума ночей ДО правил; `total` — після. */
+  totalBeforeRules?: number;
 }
 
 /**
@@ -157,6 +182,18 @@ export async function priceNights(input: {
    */
   childrenAges?: readonly number[] | null;
   /**
+   * Правила цін і промо (Ц31) — контекст поїздки. `bookedAt` — дата
+   * бронювання (за скільки днів до заїзду); `null` — невідома, і правила
+   * «раннє бронювання / останній момент» не діють. Без поля — сьогодні:
+   * оператор рахує зараз. `channel` — звідки поїздка: `direct` (форма
+   * бронювання; лише тут діють промо «лише онлайн»), `operator` (за
+   * замовчуванням), `channel` (менеджер каналів: без дати бронювання й без
+   * промо). `promoCode` — код, який назвав гість або оператор.
+   */
+  bookedAt?: string | null;
+  channel?: SalesChannel;
+  promoCode?: string | null;
+  /**
    * Price this rate plan rather than the unit type's own price.
    *
    * Left out — as every caller written before rate plans reached the calendar
@@ -167,7 +204,8 @@ export async function priceNights(input: {
   ratePlanId?: string | null;
 }): Promise<NightlyPrices> {
   const sql = getSql();
-  const { unitTypeId, checkIn, nights, adults, children = 0, childrenAges = null, ratePlanId = null } = input;
+  const { unitTypeId, checkIn, nights, adults, children = 0, childrenAges = null, ratePlanId = null, channel = 'operator', promoCode = null } = input;
+  const bookedAt = input.bookedAt === undefined ? new Date().toISOString().slice(0, 10) : input.bookedAt;
   // Без `adults` матрицю нема чим адресувати — і це відмова з назвою, не тихе
   // «неоцінені ночі». Викликач на JavaScript (скрипт заведення готелю) після
   // перейменування `persons` → `adults` (Ц12) три тижні передавав старий ключ,
@@ -219,6 +257,9 @@ export async function priceNights(input: {
   // Орендар — з обʼєкта, не з сесії: цей шлях ходить і віджет без оператора.
   const rules: OccupancyRule[] = owner ? await rulesForProperty(owner.property_id, owner.organization_id) : [];
   const bands: AgeBand[] = owner && children > 0 ? await ageBandsOf(owner.organization_id) : [];
+  // Правила цін і промо (Ц31) — шар після надбавок і до зборів, накладається
+  // на готову ціну кожної ночі наприкінці.
+  const priceRules: PriceRule[] = owner ? await priceRulesForProperty(owner.property_id, owner.organization_id) : [];
 
   const plan = ratePlanId
     ? await sql.row<any>(
@@ -445,6 +486,30 @@ export async function priceNights(input: {
     missing.push(date);
   }
 
+  // ── Правила цін і промо (Ц31): після надбавок, до зборів ──────────────────
+  //
+  // Кожна ніч уже має ціну за заселеність; правило зсуває її — відсотком від
+  // цієї ціни або сумою — за пріоритетом. Ніч у `missing` правило не рятує:
+  // ціни, якої немає, не можна знизити. Розклад по поїздці — сума дельт кожного
+  // правила, щоб гість бачив «−10 % від 3 ночей: −82.54», а не три рядки.
+  const totalBeforeRules = money(out.reduce((s, n) => s + n.price, 0));
+  const totals = new Map<string, RuleTotal>();
+  if (priceRules.length > 0 && out.length > 0) {
+    const ctx = { checkIn, nights, ratePlanId, unitTypeId, occupancy: adults + children, bookedAt, channel, promoCode };
+    for (const night of out) {
+      const { price, applied } = applyRules(priceRules, ctx, night.date, night.price);
+      if (applied.length === 0) continue;
+      night.priceBeforeRules = night.price;
+      night.price = price;
+      night.rules = applied;
+      for (const a of applied) {
+        const t = totals.get(a.ruleId) ?? { ruleId: a.ruleId, name: a.name, titleForGuest: a.titleForGuest, kind: a.kind, total: 0 };
+        t.total = money(t.total + a.delta);
+        totals.set(a.ruleId, t);
+      }
+    }
+  }
+
   return {
     nights: out, missing, total: money(out.reduce((s, n) => s + n.price, 0)),
     // «За номер»: доплати за гостя не буває — викликач не додає extra_person_charge.
@@ -452,6 +517,7 @@ export async function priceNights(input: {
     ...(perRoom ? { perRoom: true } : {}),
     ...(childRuleMissing ? { childRuleMissing: true } : {}),
     ...(childAgesRequired ? { childAgesRequired: true } : {}),
+    ...(totals.size > 0 ? { rulesApplied: [...totals.values()], totalBeforeRules } : {}),
     closed: closedNights, restrictions,
   };
 }

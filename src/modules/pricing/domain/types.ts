@@ -72,7 +72,16 @@ export interface QuoteResult {
   adults: number;
   children: number;
   /** `source` says which of the three price sources answered — see nightly-price.ts. */
-  breakdown: { date: string; dayName: string; price: number; isWeekend: boolean; source?: 'rate_plan' | 'matrix' | 'calendar' }[];
+  breakdown: {
+    date: string; dayName: string; price: number; isWeekend: boolean; source?: 'rate_plan' | 'matrix' | 'calendar';
+    /** Правила цін і промо на цю ніч (Ц31); `price` їх уже містить. */
+    priceBeforeRules?: number;
+    rules?: { name: string; delta: number; kind: 'rule' | 'promo' }[];
+  }[];
+  /** Сума ночей ДО правил цін (Ц31); `accommodationTotal` — після. */
+  accommodationBeforeRules: number;
+  /** Правила й промо, що спрацювали, із сумою по поїздці — рядки розкладу між ціною й зборами. */
+  rules: { name: string; kind: 'rule' | 'promo'; total: number }[];
   accommodationTotal: number;
   /**
    * `collectedFor` — виручка готелю (`property`) чи збір для громади

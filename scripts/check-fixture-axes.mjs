@@ -94,6 +94,44 @@ const AXES = [
     axis: 'режим продажу в надбавках',
     distinct: /sellMode: '(per_room|per_person)'/g, min: 2,
   },
+  // Правила цін (Ц31): одна ціна ночі не розрізняє «% від ночі» і константу;
+  // одна дія — знижку й надбавку; один вид значення — відсоток і суму; одна
+  // тривалість — «від 3 ночей» діє і не діє; одна дата бронювання — EB діє й ні.
+  {
+    file: 'src/modules/pricing/domain/price-rules.check.ts',
+    axis: 'ціна ночі під відсотковим правилом',
+    distinct: /'2027-07-05', (\d+)\)/g, min: 2,
+  },
+  {
+    file: 'src/modules/pricing/domain/price-rules.check.ts',
+    axis: 'дія правила (decrease/increase)',
+    distinct: /action: '(decrease|increase)'/g, min: 2,
+  },
+  {
+    file: 'src/modules/pricing/domain/price-rules.check.ts',
+    axis: 'вид значення правила (percent/fixed)',
+    distinct: /valueKind: '(percent|fixed)'/g, min: 2,
+  },
+  {
+    file: 'src/modules/pricing/domain/price-rules.check.ts',
+    axis: 'тривалість поїздки проти min_los',
+    distinct: /\bnights: (\d+)/g, min: 2,
+  },
+  {
+    file: 'src/modules/pricing/domain/price-rules.check.ts',
+    axis: 'дата бронювання проти вікна EB/LM',
+    distinct: /bookedAt: '(\d{4}-\d{2}-\d{2})'/g, min: 2,
+  },
+  {
+    file: 'src/modules/pricing/data/price-rules.repo.check.ts',
+    axis: 'рід правила у писача (rule/promo)',
+    distinct: /kind: '(rule|promo)'/g, min: 2,
+  },
+  {
+    file: 'src/modules/pricing/data/price-rules.repo.check.ts',
+    axis: 'дія правила у писача',
+    distinct: /action: '(decrease|increase)'/g, min: 2,
+  },
   // Писач надбавок: один рід гостя не розрізняє «дорослий» і «дитина» у
   // клітинці конфлікту; один режим — «сума» і «відсоток» у перевірці значення.
   {

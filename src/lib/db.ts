@@ -1255,6 +1255,51 @@ function runMigrations(database: any) {
       database.exec('ALTER TABLE rate_plans DROP COLUMN child_extra_gross');
       console.log(`[DB] rate_plans.child_extra_gross → ${moved} extra_occupancy_rules row(s); column dropped (0070)`);
     }
+    // Правила цін і промо (0071, Блок 2 крок 4, Ц31): знижка або надбавка до
+    // ціни ночі ПІСЛЯ надбавок за заселеність і ДО зборів. Умови — період
+    // (проживання по ночах / заїзду / виїзду), дні тижня, тарифи, типи,
+    // тривалість, за скільки днів заброньовано, заселеність; дія — мінус чи
+    // плюс, відсотком або сумою; пріоритет. Промо — те саме правило з кодом
+    // (`kind = 'promo'`): діє лише з названим кодом, лічить використання, може
+    // бути «лише онлайн». Списки — JSON у TEXT (SQLite не має масивів).
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS price_rules (
+        id                      TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id         TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id             TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        name                    TEXT NOT NULL,
+        title_for_guest         TEXT,
+        kind                    TEXT NOT NULL DEFAULT 'rule' CHECK (kind IN ('rule', 'promo')),
+        code                    TEXT,
+        condition_kind          TEXT CHECK (condition_kind IN ('period_of_stay', 'period_of_checkin', 'period_of_checkout')),
+        date_from               TEXT,
+        date_to                 TEXT,
+        week_days               TEXT,
+        rate_plan_ids           TEXT,
+        unit_type_ids           TEXT,
+        min_los                 INTEGER,
+        max_los                 INTEGER,
+        booked_days_before_from INTEGER,
+        booked_days_before_to   INTEGER,
+        occupancy_from          INTEGER,
+        occupancy_to            INTEGER,
+        action                  TEXT NOT NULL CHECK (action IN ('decrease', 'increase')),
+        value                   REAL NOT NULL,
+        value_kind              TEXT NOT NULL CHECK (value_kind IN ('percent', 'fixed')),
+        priority                INTEGER NOT NULL DEFAULT 100,
+        is_active               INTEGER NOT NULL DEFAULT 1,
+        online_only             INTEGER NOT NULL DEFAULT 0,
+        max_uses                INTEGER,
+        current_uses            INTEGER NOT NULL DEFAULT 0,
+        created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at              TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_price_rules_org ON price_rules(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_price_rules_property ON price_rules(property_id, priority)');
+    // Промокод унікальний у межах ОРГАНІЗАЦІЇ (інваріант 3), без регістру; лише
+    // там, де він є. Звичайні правила коду не мають і під індекс не потрапляють.
+    database.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_price_rules_promo_code ON price_rules(organization_id, lower(code)) WHERE code IS NOT NULL");
     // Тут стояв ADD COLUMN власної ціни. Видалений разом зі створенням, а не
     // прикритий DROP-ом у кінці (AGENTS §4): у вже наявних локальних базах
     // колонка лишиться сиротою, і це нікого не турбує — її не читає ніхто.

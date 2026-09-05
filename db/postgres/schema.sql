@@ -1461,6 +1461,43 @@ CREATE TABLE "price_occupancy" (
   PRIMARY KEY ("id")
 );
 
+CREATE TABLE "price_rules" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "property_id" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "title_for_guest" TEXT,
+  "kind" TEXT DEFAULT 'rule' NOT NULL,
+  "code" TEXT,
+  "condition_kind" TEXT,
+  "date_from" TEXT,
+  "date_to" TEXT,
+  "week_days" TEXT,
+  "rate_plan_ids" TEXT,
+  "unit_type_ids" TEXT,
+  "min_los" INTEGER,
+  "max_los" INTEGER,
+  "booked_days_before_from" INTEGER,
+  "booked_days_before_to" INTEGER,
+  "occupancy_from" INTEGER,
+  "occupancy_to" INTEGER,
+  "action" TEXT NOT NULL,
+  "value" NUMERIC(14,2) NOT NULL,
+  "value_kind" TEXT NOT NULL,
+  "priority" INTEGER DEFAULT 100 NOT NULL,
+  "is_active" BOOLEAN DEFAULT true NOT NULL,
+  "online_only" BOOLEAN DEFAULT false NOT NULL,
+  "max_uses" INTEGER,
+  "current_uses" INTEGER DEFAULT 0 NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  CHECK (kind IN ('rule', 'promo')),
+  CHECK (condition_kind IN ('period_of_stay', 'period_of_checkin', 'period_of_checkout')),
+  CHECK (action IN ('decrease', 'increase')),
+  CHECK (value_kind IN ('percent', 'fixed'))
+);
+
 CREATE TABLE "properties" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
@@ -2349,6 +2386,10 @@ ALTER TABLE "price_occupancy" ADD CONSTRAINT "fk_price_occupancy_property_id_2"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "price_occupancy" ADD CONSTRAINT "fk_price_occupancy_organization_id_3"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "price_rules" ADD CONSTRAINT "fk_price_rules_property_id_1"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "price_rules" ADD CONSTRAINT "fk_price_rules_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "properties" ADD CONSTRAINT "fk_properties_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "property_guest_config" ADD CONSTRAINT "fk_property_guest_config_property_id_1"
@@ -2615,6 +2656,9 @@ CREATE INDEX "idx_price_los_tiers_lookup" ON "price_los_tiers" ("organization_id
 CREATE UNIQUE INDEX "idx_price_los_tiers_row" ON "price_los_tiers" (organization_id, property_id, (COALESCE(unit_type_id, '')), min_nights, (COALESCE(persons, -1)));
 CREATE INDEX "idx_price_occupancy_lookup" ON "price_occupancy" ("organization_id", "property_id", "unit_type_id", "persons");
 CREATE UNIQUE INDEX "idx_price_occupancy_row" ON "price_occupancy" (organization_id, property_id, (COALESCE(unit_type_id, '')), persons, (COALESCE(valid_from, '0001-01-01')), (COALESCE(valid_to, '9999-12-31')));
+CREATE INDEX "idx_price_rules_org" ON "price_rules" ("organization_id");
+CREATE UNIQUE INDEX "idx_price_rules_promo_code" ON "price_rules" (organization_id, lower(code)) WHERE code IS NOT NULL;
+CREATE INDEX "idx_price_rules_property" ON "price_rules" ("property_id", "priority");
 CREATE INDEX "idx_line_items_sub" ON "reservation_line_items" ("sub_booking_id");
 CREATE INDEX "idx_sub_bookings_res" ON "reservation_sub_bookings" ("reservation_id");
 CREATE INDEX "idx_reservations_dates" ON "reservations" ("check_in", "check_out");
@@ -2716,6 +2760,7 @@ CREATE INDEX IF NOT EXISTS "idx_partner_reports_org" ON "partner_reports" ("orga
 CREATE INDEX IF NOT EXISTS "idx_platform_audit_org" ON "platform_audit" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_price_los_tiers_org" ON "price_los_tiers" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_price_occupancy_org" ON "price_occupancy" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_price_rules_org" ON "price_rules" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_properties_org" ON "properties" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_reservations_org" ON "reservations" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_season_prices_org" ON "season_prices" ("organization_id");
@@ -2854,6 +2899,8 @@ ALTER TABLE "platform_audit" ALTER COLUMN "organization_id"
 ALTER TABLE "price_los_tiers" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "price_occupancy" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "price_rules" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "properties" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -3336,6 +3383,12 @@ CREATE POLICY "price_los_tiers_tenant" ON "price_los_tiers"
 ALTER TABLE "price_occupancy" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "price_occupancy" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "price_occupancy_tenant" ON "price_occupancy"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "price_rules" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "price_rules" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "price_rules_tenant" ON "price_rules"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

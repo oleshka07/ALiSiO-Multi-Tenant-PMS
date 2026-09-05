@@ -34,6 +34,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TABLES = [
   'reservations', 'availability_blocks', 'units', 'unit_types',
   'price_calendar', 'price_occupancy', 'price_los_tiers', 'rate_plans',
+  // Ц30/Ц31: надбавки й правила міняють ціну, яка їде опціями заселеності.
+  'extra_occupancy_rules', 'price_rules',
 ];
 
 /** Писачі, які торкаються лише колонок, від яких наявність і ціна не залежать. */

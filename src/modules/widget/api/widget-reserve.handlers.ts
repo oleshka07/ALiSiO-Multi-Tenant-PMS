@@ -13,6 +13,8 @@ import { percentOf } from '@core/money';
 import { siteAllowsHost, type SiteRow } from '../data/site.repo';
 import { quoteCertificate, claimCertificate } from '../data/certificate.repo';
 import { couponApplies, packageApplies } from '../domain/coupon-eligibility';
+import { promoCodeFor } from '../data/legacy-offer-code';
+import { redeemPromoCode } from '@pricing';
 import { ratePlanNightPrice } from '../domain/rate-plan';
 import { priceNights, stayRefusal, OPEN_STAY } from '@pricing';
 
@@ -211,6 +213,9 @@ export async function createWidgetReservation(request: NextRequest) {
     // Public endpoint: the organization comes from the unit being booked, and
     // it must have bought the widget for this booking to exist at all.
     const unitOrg = await sql.row<any>('SELECT organization_id FROM properties WHERE id = ?', [unit.property_id]) as { organization_id: string } | undefined;
+    // Промокод правил цін (Ц31): лише коли код не належить старим купонам —
+    // один код, одне джерело знижки. Той самий код, що бачив пошук.
+    const promoCode = await promoCodeFor(sql, couponCode, unitOrg?.organization_id);
     if (!unitOrg || !await hasFeature(unitOrg.organization_id, 'booking_engine')) {
       return featureDisabled('booking_engine', CORS_HEADERS);
     }
@@ -299,7 +304,7 @@ export async function createWidgetReservation(request: NextRequest) {
     // Д1/Д2 (INC-012): обмеження календаря читаються ДО ціни і незалежно від
     // неї — закриту ніч не продає навіть ціна, виставлена рукою оператора.
     if (hasPriceCalendar) {
-      const limits = await priceNights({ unitTypeId: unit.unit_type_id, checkIn, nights, adults, children });
+      const limits = await priceNights({ unitTypeId: unit.unit_type_id, checkIn, nights, adults, children, channel: 'direct', promoCode });
       const refusal = stayRefusal(limits.restrictions, nights);
       if (refusal) {
         return NextResponse.json(
@@ -319,7 +324,8 @@ export async function createWidgetReservation(request: NextRequest) {
       // обʼєкта із `site_rate_plans`, де такої колонки немає.
 
       priced = hasPriceCalendar
-        ? await priceNights({ unitTypeId: unit.unit_type_id, checkIn, nights, adults, children })
+        // Те саме правило й той самий код, що в пошуку (Ц31): що показали — те списують.
+        ? await priceNights({ unitTypeId: unit.unit_type_id, checkIn, nights, adults, children, channel: 'direct', promoCode })
         : { nights: [], missing: [checkIn], total: 0, occupancyPriced: false, closed: [], restrictions: OPEN_STAY };
       if (priced.missing.length > 0) {
         // Refusing is the only honest answer: the hotel has not said what this
@@ -559,6 +565,17 @@ export async function createWidgetReservation(request: NextRequest) {
       if (documentStrategy) notesArr.push(`document_strategy:${documentStrategy}`);
       if (certificateNote) notesArr.push(certificateNote);
       const finalNotes = notesArr.length > 0 ? notesArr.join(' | ') : null;
+
+      // Промо з правил цін (Ц31) — використання лічиться ДО запису броні, у
+      // межах ліміту: між пошуком і бронюванням його міг забрати інший гість,
+      // і тоді чесна відповідь — відмова з назвою, а не сума без знижки, якої
+      // гість не бачив.
+      if (promoCode && unitOrg && priced?.rulesApplied?.some((r) => r.kind === 'promo')) {
+        const redeemed = await runWithOrganization(String(unitOrg.organization_id), () => redeemPromoCode(String(unit.property_id), String(unitOrg.organization_id), promoCode));
+        if (!redeemed) {
+          return NextResponse.json({ error: 'Promo code is no longer available', reason: 'promo_exhausted' }, { status: 409, headers: CORS_HEADERS });
+        }
+      }
 
       await sql.run(`
         -- organization_id, named rather than left to the column DEFAULT: that

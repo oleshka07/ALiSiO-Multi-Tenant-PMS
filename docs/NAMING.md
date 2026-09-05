@@ -99,6 +99,13 @@ Charter описує, ЯК називати. Він не вимагає нега
     `organizations.child_age_bands` (NULL = усі вилки), рахується з нуля.
     Вилка — «band», не «group»: група в Hoteliera — це тариф × типи, тобто
     фільтр екрана, а не сутність
+  - `price_rules.kind`: `rule | promo` — правило діє само, промо — за кодом
+    (Ц31); `condition_kind`: `period_of_stay | period_of_checkin |
+    period_of_checkout` — до чого прикладати дати й дні тижня (NULL з датами
+    = проживання); `action`: `decrease | increase`; `value_kind`: `percent |
+    fixed` — відсоток від поточної ціни ночі або сума за ніч. Промокод —
+    `code`, у верхньому регістрі без пробілів; `booked_days_before_*` — «за
+    скільки днів до заїзду заброньовано», не «lead time»
   - `rate_plans.pricing_type`: `manual | derived` — свої ціни чи від бази
     (Ц28); `adjustment_kind`: `percent | fixed`; `adjustment_direction`:
     `increase | decrease`. Похідний від похідного не буває — тримає писач
