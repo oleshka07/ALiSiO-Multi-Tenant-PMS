@@ -1,0 +1,75 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Price rules
+/
+Add price rule
+Base information
+Name
+Title shown to guests (optional) en
+Fill in only the needed fields, leave the rest empty so they'll be ignored.
+Dependencies
+Period type
+n/a
+Period of stay
+Period of check-in
+Period of check-out
+Week days
+All
+Specific
+The rule applies only to reservations that include this day of the week.
+Room type
+All
+Specific
+The rule applies only to the selected types of rooms. If you add other types of rooms in the future, this rule will not apply to them.
+Meal plans
+All
+Specific
+The rule applies only to the selected meals. If you add other meals in the future, this rule will not apply to them.
+Rate plans
+All
+Specific
+The rule applies only to selected tariff plans. If you add other tariff plans in the future, this rule will not apply to them.
+Occupancy
+is between
+and
+Rooms
+Reservation
+Reservation is made between
+and
+days in advance, or
+-
+Length of stay is between
+and
+nights
+The length of stay cannot be applied to change the minimum number of nights. It will not be saved for this case
+Change of: Pricing
+decrease
+increase
+manual
+with
+%
+CZK
+in the case when , for a certain day we can apply multiple price rules, they arre all applied. ie: if a room costs 100 and we can apply one rule that adds 10% and another one that deacreses the price by 20% we apply them both: 100 * (100 + 10) / 100 * ( 100 - 20 ) / 100 = 100 * 1.1 * 0.8 = 88
+Change of: Min - Max nights
+Min:
+(leave it blank, if you don't want to rewrite the limit for minimum nights)
+Max:
+(leave it blank, if you don't want to rewrite the limit for maximum nights)
+in the case when , for a certain day we can apply multiple rules to modify the min stay value, we apply the most restrictive one. ie: if the value is set to 5 in the seasonality and the rules would change it to 4 nights and 6 night respectively, we would apply the 6 nights min stay. for max stay, one rule would change it to 20 and the other 40, we would apply the 20 as it's the most restrictive.
+Coupon
+Code:
+The coupon can be used on the online reservation system intended for guests, all dependencies will be taken into account and the respective changes will be applied only when the coupon has been inserted
+Back
+Delete
+Save

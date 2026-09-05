@@ -1,0 +1,42 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Companies
+Filters
+Sort by
+Name
+Created at
+Ascending
+Descending
+Country
+Select country
+County
+Select county
+City
+Select city
+Bank name
+Has contact information
+Has bank information
+Has associated guests
+Exclude archived
+Clear filters
+Apply filters
+TestCompany
+ID: rl07xk
+CZ23465567
+Kempi
+«phone»
+«email»
+Czechia
+Dolní Počernice, 03541
+1 Guest
+31.08.2026
+Add company

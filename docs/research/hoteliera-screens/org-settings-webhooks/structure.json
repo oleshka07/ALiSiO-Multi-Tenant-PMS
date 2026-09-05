@@ -1,0 +1,28 @@
+{
+  "controls": [],
+  "sections": [],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Add webhook",
+    "Save"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/org/settings"
+  ]
+}

@@ -1,0 +1,24 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Reservations
+/
+Add
+Period
+Search
+Please select a date range and click the 'Search' button in order to see available rooms.
+Total
+0,00 CZK
+0 rooms
+0 adults
+0 children
+0 nights
+Book

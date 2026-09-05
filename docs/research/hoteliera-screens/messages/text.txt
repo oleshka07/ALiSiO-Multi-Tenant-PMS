@@ -1,0 +1,15 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+Reservations
+
+No reservations
+
+Select a reservation to view and send messages

@@ -1,0 +1,32 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+Notificări
+
+Vizualizează și gestionează toate notificările
+
+Preferințe Notificări
+De la data
+Până la data
+Prioritate
+Toate
+Scăzută
+Normală
+Ridicată
+Status
+Toate
+Noi
+Citite
+Filtrează
+Resetează
+
+Nu există notificări
+
+Încearcă să ajustezi filtrele

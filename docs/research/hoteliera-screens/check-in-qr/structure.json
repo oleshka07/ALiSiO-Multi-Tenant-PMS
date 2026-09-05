@@ -1,0 +1,49 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Search by name or reservation ID",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "Select date",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    }
+  ],
+  "sections": [],
+  "tabs": [],
+  "buttons": [
+    "Sign out"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/org/settings/general"
+  ]
+}

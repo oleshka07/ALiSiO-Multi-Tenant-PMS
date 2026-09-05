@@ -1,0 +1,138 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+General
+Business detail
+Unit name *
+Email
+Phone
+Country
+Czechia (CZ)
+Timezone
+Europe/Prague UTC+01:00
+
+CURRENCY
+
+Currency
+CZK
+
+Used to manage room rates internally. You can choose another currency for each OTA and Invoicing.
+
+Invoicing currency: CZK
+Exchange rate base: CZK
+Manage exchange rates
+Receive a daily email about check-ins and check-outs
+Receive a daily email about check-ins and check-outs even when there are no reservations
+Show assigned room numbers to guests on their reservation page
+Use locations for virtual reservations
+Allow changing reservation location
+Notify staff memebers about reservations with problems
+Last date of the season
+
+Choose whether a season's last day refers to the guest's Check-in or Check-out date. Affects which season's rates apply to bookings that span a season boundary.
+
+Check-in date
+The season ends on the guest's Check-in date
+Check-out date
+The season ends on the guest's Check-out date
+In-house cleaning
+
+Select the frequency for cleaning during multi-day stays. Enter 1 for daily cleaning or 3 if cleaning is done every 3 days.
+
+Occupancy combinations
+
+Defines which adult/children combinations each room type accepts, generated from its capacity limits. Combinations filter reservation options and are used by channels that receive a separate price per occupancy. Fine-tune them on each Room Type page.
+
+Check-out payment policy
+None
+Behaves as before - no balance check at Check-out
+Warning
+Alert shown, Check-out still allowed
+Blocking
+Cannot Check-out until the balance is resolved
+QR Codes
+Reservation details QR
+Show
+Hide
+
+Show a QR code linking to the guest's own reservation page.
+
+Registration form QR
+Show
+Hide
+
+Show a QR code linking to the guest's registration form.
+
+Guest reservation search page
+Show
+Hide
+
+Let guests look up their reservation from a printed QR code.
+
+QAGLAMP
+
+https://guest.hoteliera.com/?o=cz-qaglam&lang=en#/find-reservation
+
+Print
+Dashboard Widgets
+
+Choose which widget groups to display on the dashboard
+
+Room status widgets
+
+Rooms available, arrivals, departures, and in-house counts
+
+Meal plan widgets
+
+Today's meal summary counts for breakfast, lunch, and dinner
+
+Children
+Children are considered persons aged between 0 and 17.99 years. You can ignore this section if children’s age is not relevant for your hotel.
+Adult-only establishment
+Children min. age
+«phone»
+-
+Children max age
+«phone»
+years
+Reset
+Select age breaks used in your children policy:
+1 year
+2 years
+3 years
+4 years
+5 years
+6 years
+7 years
+8 years
+9 years
+10 years
+11 years
+12 years
+13 years
+14 years
+15 years
+16 years
+17 years
+Resulting age criteria available to differentiate occupancy & pricing:
+0 - 17.99 years
+| Alias:
+Baby cot policy
+Children up to and including
+years old can use an available cot for
+CZK
+per night.
+
+Price usage: enter 0 for free, leave empty for unavailable
+
+Save

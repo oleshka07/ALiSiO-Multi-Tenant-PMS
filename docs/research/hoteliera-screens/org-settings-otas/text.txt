@@ -1,0 +1,36 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Channel Manager / OTAs
+
+Hoteliera keeps availability & prices synchronized automatically between multiple OTAs.
+
+Online Travel Agencies (OTAs) & Contracts
+Connected OTAs
+You don’t have any connected OTAs yet. Add one by clicking the “Connect” button next to the OTA you want below.
+In setup progress
+Booking.com
+Details
+AIRBNB
+Details
+Available OTAs
+Agoda.com
+Connect
+Expedia
+Connect
+Contracts
++
+Contract
+Add
+Add contract
+Edit allotments for each OTA in Availability & Rates

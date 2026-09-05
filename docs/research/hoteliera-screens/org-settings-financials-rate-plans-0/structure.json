@@ -1,0 +1,299 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "eg Non-refundable, Flexible",
+      "required": true,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-yqqfyjn4f",
+      "label": "manual",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-yqqfyjn4f",
+      "label": "based on existing rate plan",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": "__BVID__121",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "cnsw",
+          "text": "Standard"
+        }
+      ]
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": "__BVID__124",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "decrease",
+          "text": "decrease"
+        },
+        {
+          "value": "increase",
+          "text": "increase"
+        }
+      ]
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__128",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": "rate-percentage",
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": true,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": true,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": true,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-bn56gkll2",
+      "label": "Standard",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-bn56gkll2",
+      "label": "EB",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-bn56gkll2",
+      "label": "Last Minute",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-bn56gkll2",
+      "label": "Special offers",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-z1lnek8ix",
+      "label": "Very flexible - 1 day\n100% cancellation fee applies 1 day before arrival",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-z1lnek8ix",
+      "label": "Flexible – 7 days\n100% cancellation fee applies 7 days before arrival",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-z1lnek8ix",
+      "label": "Moderate – 14 days\n100% cancellation fee applies 14 days before arrival",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-z1lnek8ix",
+      "label": "Firm – 30 days\n100% cancellation fee applies 30 days before arrival",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-z1lnek8ix",
+      "label": "Strict – 7 days\n50% fee applies when guests book, 100% fee applies 7 days before arrival",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-z1lnek8ix",
+      "label": "Non-refundable\n100% fee applies when guests book",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "private_rate_plan-0",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    }
+  ],
+  "sections": [],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Back",
+    "Delete",
+    "Save"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/org/settings",
+    "#/org/settings/financials/rate-plans",
+    "#/org/settings/extra-occupancy"
+  ]
+}

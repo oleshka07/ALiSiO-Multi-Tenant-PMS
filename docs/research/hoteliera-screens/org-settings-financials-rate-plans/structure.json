@@ -1,0 +1,31 @@
+{
+  "controls": [],
+  "sections": [],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Add Rate plan"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/org/settings",
+    "#/org/settings/financials/price-rules",
+    "#/org/settings/financials/rate-plans/cnsw",
+    "#/org/settings/financials/rate-plans/c679",
+    "#/org/settings/financials/rate-plans/0"
+  ]
+}

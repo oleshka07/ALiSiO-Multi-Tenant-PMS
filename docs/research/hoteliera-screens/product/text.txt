@@ -1,0 +1,23 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Products
+Products
+Collection	Title	Description	Sold by	Taxes	Price	Actions
+
+
+No products
+
+Add product
+Back
+Save

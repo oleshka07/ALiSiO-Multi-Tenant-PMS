@@ -1,0 +1,79 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+7
+14
+28
+AUG 2026 · 31 AUG - 14 SEP 2026
+Room / Period
+MON · AUG
+31
+Today
+0
+TUE · SEP
+01
+5
+WED · SEP
+02
+5
+THU · SEP
+03
+7
+FRI · SEP
+04
+7
+SAT · SEP
+05
+7
+SUN · SEP
+06
+7
+MON · SEP
+07
+7
+TUE · SEP
+08
+7
+WED · SEP
+09
+7
+THU · SEP
+10
+7
+FRI · SEP
+11
+7
+SAT · SEP
+12
+7
+SUN · SEP
+13
+7
+MON · SEP
+14
+7
+dbl
+«phone»
+ythfv
+«phone»
+dbldl
+«phone»
+VIRTUAL
+Virtual Reservations
+Virtual Reservations
+SOLD
+H
+Joni group
+8
+H
+Joni group
+8
+Period
+Conflicts

@@ -1,0 +1,96 @@
+{
+  "controls": [
+    {
+      "tag": "select",
+      "type": null,
+      "name": "__BVID__111",
+      "label": "Month",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "2026-08",
+          "text": "Aug 2026"
+        },
+        {
+          "value": "2026-07",
+          "text": "Jul 2026"
+        },
+        {
+          "value": "2026-06",
+          "text": "Jun 2026"
+        },
+        {
+          "value": "2026-05",
+          "text": "May 2026"
+        },
+        {
+          "value": "2026-04",
+          "text": "Apr 2026"
+        },
+        {
+          "value": "2026-03",
+          "text": "Mar 2026"
+        },
+        {
+          "value": "2026-02",
+          "text": "Feb 2026"
+        },
+        {
+          "value": "2026-01",
+          "text": "Jan 2026"
+        },
+        {
+          "value": "2025-12",
+          "text": "Dec 2025"
+        },
+        {
+          "value": "2025-11",
+          "text": "Nov 2025"
+        },
+        {
+          "value": "2025-10",
+          "text": "Oct 2025"
+        },
+        {
+          "value": "2025-09",
+          "text": "Sep 2025"
+        }
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "tag": "legend",
+      "text": "Month"
+    },
+    {
+      "tag": "div",
+      "text": "Revenue forecast"
+    }
+  ],
+  "tabs": [],
+  "buttons": [
+    "Sign out"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/reports"
+  ]
+}

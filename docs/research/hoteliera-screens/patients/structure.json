@@ -1,0 +1,36 @@
+{
+  "controls": [],
+  "sections": [
+    {
+      "tag": "h1",
+      "text": "404"
+    },
+    {
+      "tag": "h2",
+      "text": "Page not found"
+    }
+  ],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Back",
+    "Dashboard"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support"
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "controls": [],
+  "sections": [],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Add product",
+    "Back",
+    "Save"
+  ],
+  "tables": [
+    {
+      "columns": [
+        "Collection",
+        "Title",
+        "Description",
+        "Sold by",
+        "Taxes",
+        "Price",
+        "Actions"
+      ],
+      "rows": 1
+    }
+  ],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/org/settings"
+  ]
+}

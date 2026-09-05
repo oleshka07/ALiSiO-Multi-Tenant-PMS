@@ -1,0 +1,28 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Rate plans
+Rate plans
+Guests are asked to pick an applicable Rate plan when making reservations.
+Examples: Non-refundable, Refundable (set at +10%)
+Prices can also be adjusted withPrice rules without having to create more rate plans.
+Name
+Pricing type
+Actions
+Standard
+manual
+Edit
+Standard Bonus
+based on rate plan Standard: +10%
+Edit
+Add Rate plan

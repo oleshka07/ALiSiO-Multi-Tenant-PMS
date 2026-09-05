@@ -1,0 +1,215 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Receipt series",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Receipt number",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Enter payment ID",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Enter reservation ID",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "div",
+      "type": "combobox",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Client name",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Invoice number",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Search in payment note",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "From",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "To",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "From",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "To",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "10",
+          "text": "10"
+        },
+        {
+          "value": "25",
+          "text": "25"
+        },
+        {
+          "value": "50",
+          "text": "50"
+        },
+        {
+          "value": "100",
+          "text": "100"
+        }
+      ]
+    }
+  ],
+  "sections": [],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Filters",
+    "Export",
+    "Clear filters",
+    "Apply filters",
+    "1"
+  ],
+  "tables": [
+    {
+      "columns": [
+        "PAYMENT ID",
+        "RECEIPT SERIES",
+        "RECEIPT NUMBER",
+        "PAYMENT METHOD",
+        "CREATED DATE",
+        "PAYMENT DATE",
+        "NOTE",
+        "RESERVATION ID",
+        "CLIENT",
+        "SOURCE",
+        "INVOICE",
+        "ACTIONS"
+      ],
+      "rows": 1
+    }
+  ],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "/api/payment?format=csv",
+    "#/payment/k9nofku8?id=k9nofku8&parent=payments&org_guest_id=hcyf8y&reservation_id=nk7kk5s6&invoice_id=eeh68qiq",
+    "#/reservations/nk7kk5s6",
+    "#/guests/hcyf8y",
+    "#/invoice/eeh68qiq?id=eeh68qiq&parent=payments",
+    "#/invoice/eeh68qiq?id=eeh68qiq&parent=payments&org_guest_id=hcyf8y&reservation_id=nk7kk5s6"
+  ]
+}

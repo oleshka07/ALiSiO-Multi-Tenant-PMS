@@ -1,0 +1,40 @@
+{
+  "controls": [],
+  "sections": [],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Add promotion",
+    "Save"
+  ],
+  "tables": [
+    {
+      "columns": [
+        "Name",
+        "Room types",
+        "Price reduction",
+        "Active"
+      ],
+      "rows": 0
+    }
+  ],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/org/settings",
+    "#/org/settings/financials/price-rules",
+    "#/org/settings/financials/promos/0"
+  ]
+}

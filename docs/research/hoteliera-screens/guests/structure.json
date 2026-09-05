@@ -1,0 +1,158 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": "search",
+      "name": null,
+      "label": null,
+      "placeholder": "Search by ID, name, email, phone or document ID",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "name",
+          "text": "Name"
+        },
+        {
+          "value": "created_at",
+          "text": "Created at"
+        }
+      ]
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "asc",
+          "text": "Ascending"
+        },
+        {
+          "value": "desc",
+          "text": "Descending"
+        }
+      ]
+    },
+    {
+      "tag": "div",
+      "type": "combobox",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Select country",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__121",
+      "label": "Has upcoming reservations",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__122",
+      "label": "Has contact information",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__123",
+      "label": "Has company",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    }
+  ],
+  "sections": [
+    {
+      "tag": "h3",
+      "text": "Oleg Olegovich"
+    },
+    {
+      "tag": "h3",
+      "text": "Reservations"
+    }
+  ],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Filters",
+    "Clear filters",
+    "Apply filters",
+    "Simple export",
+    "Extended export"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/guests/hcyf8y"
+  ]
+}

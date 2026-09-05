@@ -1,0 +1,145 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Unit
+Pricing Policy
+Reservations
+Commerce
+API & WebHooks
+Unit
+(14)
+General settings
+
+Here you can configure the general settings of your organization.
+
+Locations
+
+Here you can manage your locations. You can add, remove, and edit existing locations.
+
+Websites
+
+Manage multi-location websites with shared domains and branding
+
+Room types
+
+Here you can manage your room types. You can add, remove, and edit existing room types.
+
+Meal plans
+
+Here you can set the meal plans you offer (e.g., Room Only, Bed and Breakfast, etc.).
+
+Amenities
+
+Here you can manage amenities for your locations and room types.
+
+About company
+
+Here you can set or update your organization description, describe facilities, add a logo, and upload descriptive images.
+
+Messaging Settings
+
+Control all outgoing communication: emails, SMS and in-app notifications.
+
+Localization
+
+Here you can configure localization settings such as timezone, currency, and supported languages for both the admin dashboard and the guest IBE website.
+
+Taxes & Fees
+
+Here you can set the VAT rates used for invoicing and product charges.
+
+Payment methods
+
+Here you can enable different payment methods (such as bank transfer, Netopia, Revolut, etc.) that guests can use on the IBE website to pay for reservations.
+
+Invoicing
+
+Here you can configure your invoicing settings, such as company identification data, invoice series, numbering, and more.
+
+Staff accounts
+
+Here you can create staff accounts linked to your organization and manage their permissions.
+
+Currencies
+
+Here you can add and manage currencies and update exchange rates.
+
+Pricing Policy
+(6)
+Seasons
+
+Here you can define seasons, which represent the periods when you are open for business.
+
+Rate plans
+
+Here you can set rate prices for your defined room types, minimum and maximum length of stay, meal prices, and more.
+
+Price rules
+
+Here you can create simple rules to update prices throughout the year based on conditions such as early booking, weekends, events, or length of stay.
+
+Full prices
+
+Here you can view all your rate plans in one place to easily edit and compare them.
+
+Extra occupancy
+
+Here you can set prices for items not included in the base room price.
+
+Legend
+
+Here you can view explanations for different statuses in the admin dashboard.
+
+Reservations
+(5)
+Channel manager / OTAs
+
+Here you can manage your Online Travel Agency (OTA) connections, including Airbnb, Booking.com, TravelMinit, Expedia, Bibi Touring, and more.
+
+Internet Booking Engine
+
+Here you can manage settings for the external booking website provided by Hoteliera, update guest email settings, and configure privacy options (e.g., GDPR, terms and conditions).
+
+Check-in/out times
+
+Here you can define the hours during which you accept reservations.
+
+Registration form
+
+Here you can configure the fields that will appear on the accommodation registration form, along with other settings (e.g., signature, ...).
+
+Check-in QR
+
+Here you can look up an arriving reservation and show or print its check-in QR code for the guest to scan.
+
+Commerce
+(2)
+Product categories
+
+Here you can view a list of product categories, each with its associated products for easy access.
+
+All products
+
+Here you can view a list of all added products.
+
+API & WebHooks
+(2)
+WebHooks
+
+Send real-time reservation events to external systems.
+
+Public API
+
+Section for generating and deleting API keys
+
+View history

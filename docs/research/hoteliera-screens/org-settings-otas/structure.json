@@ -1,0 +1,65 @@
+{
+  "controls": [],
+  "sections": [
+    {
+      "tag": "h3",
+      "text": "Connected OTAs"
+    },
+    {
+      "tag": "h3",
+      "text": "In setup progress"
+    },
+    {
+      "tag": "h3",
+      "text": "Booking.com"
+    },
+    {
+      "tag": "h3",
+      "text": "AIRBNB"
+    },
+    {
+      "tag": "h3",
+      "text": "Available OTAs"
+    },
+    {
+      "tag": "h3",
+      "text": "Agoda.com"
+    },
+    {
+      "tag": "h3",
+      "text": "Expedia"
+    },
+    {
+      "tag": "h3",
+      "text": "Contracts"
+    },
+    {
+      "tag": "h3",
+      "text": "Contract"
+    }
+  ],
+  "tabs": [],
+  "buttons": [
+    "Sign out"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/org/settings",
+    "#/org/settings/ota/booking",
+    "#/org/settings/ota/airbnb"
+  ]
+}

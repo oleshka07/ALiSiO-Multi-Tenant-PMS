@@ -1,0 +1,72 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+Settings Promotions
+
+Use Promotions to reduce prices, depending on various conditions such as low season, weekdays, long stays, occupancy or last minute.
+Promotions apply after Price rules and are only for reducing prices. Only one promotion applies per reservation, first in the order below.
+How Room prices are computed
+
+Name	Room types	Price reduction	Active
+
+Error: draggable element must have an item slot
+    at _ (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:21:203847)
+    at $ (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:21:204377)
+    at Proxy.render (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:21:205458)
+    at Nt (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:28065)
+    at De.l [as fn] (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:75870)
+    at De.run (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:13039)
+    at G.e.update (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:76276)
+    at G (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:76302)
+    at H (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:74841)
+    at O (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:74602)
+    at R (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:71552)
+    at E (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:72984)
+    at T (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:72277)
+    at P (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:72096)
+    at R (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:71527)
+    at E (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:72984)
+    at b (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:74349)
+    at R (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:71488)
+    at E (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:72984)
+    at T (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:72277)
+    at P (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:72096)
+    at R (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:71527)
+    at De.l [as fn] (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:75878)
+    at De.run (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:13039)
+    at G.e.update (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:76276)
+    at G (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:76302)
+    at H (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:74841)
+    at O (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:74602)
+    at R (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:71552)
+    at E (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:72984)
+    at T (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:72277)
+    at P (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:72096)
+    at R (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:71527)
+    at De.l [as fn] (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:75878)
+    at De.run (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:13039)
+    at G.e.update (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:76276)
+    at G (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:76302)
+    at H (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:74841)
+    at O (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:74602)
+    at R (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:71552)
+    at E (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:72984)
+    at T (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:72277)
+    at P (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:72096)
+    at R (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:71527)
+    at De.l [as fn] (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:75878)
+    at De.run (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:13039)
+    at G.e.update (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:76276)
+    at G (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:76302)
+    at H (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:74841)
+    at O (https://admin.hoteliera.com/js/chunk-vendors.c0cf590b.js:1:74602)
+ Add promotion
+ Save
+

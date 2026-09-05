@@ -1,0 +1,59 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Meal plans report
+Filters
+Start date
+End date
+Today’s Meals
+0
+Breakfast
+0 Adults / 0 Children
+Mon 31 Aug
+0
+Tue 01 Sep
+0
+Wed 02 Sep
+0
+Thu 03 Sep
+0
+Fri 04 Sep
+0
+Sat 05 Sep
+0
+Sun 06 Sep
+0
+PDF
+Columns
+NAME
+	
+ROOMS
+	
+ADULTS
+	
+CHILDREN
+	
+0-2 YEARS
+	
+2-7 YEARS
+	
+7+ YEARS
+	
+CHECK-IN
+	
+CHECK-OUT
+	
+NIGHTS
+	
+MEAL PLAN
+
+
+No Reservations for This Selection

@@ -1,0 +1,48 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "Check-in - Check-out",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    }
+  ],
+  "sections": [
+    {
+      "tag": "h4",
+      "text": "Guest"
+    }
+  ],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Search",
+    "Book",
+    "Back",
+    "Add",
+    "Add guest",
+    "Save"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support"
+  ]
+}

@@ -1,0 +1,19 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Price rules
+Price rules
+Price rules are an effective way to vary prices across the year, depending on various conditions such as early bird booking, weekends, local events or short stays.
+If multiple promotions (price decrease) match, only the first applies. Drag and Drop rows to set desired priority order.
+No price rules have been added yet. Add price rules to get started.
+Add Price rules

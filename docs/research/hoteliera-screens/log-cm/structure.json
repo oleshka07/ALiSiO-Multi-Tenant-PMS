@@ -1,0 +1,208 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Search settings...",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    }
+  ],
+  "sections": [
+    {
+      "tag": "h2",
+      "text": "Unit\n(14)"
+    },
+    {
+      "tag": "h3",
+      "text": "General settings"
+    },
+    {
+      "tag": "h3",
+      "text": "Locations"
+    },
+    {
+      "tag": "h3",
+      "text": "Websites"
+    },
+    {
+      "tag": "h3",
+      "text": "Room types"
+    },
+    {
+      "tag": "h3",
+      "text": "Meal plans"
+    },
+    {
+      "tag": "h3",
+      "text": "Amenities"
+    },
+    {
+      "tag": "h3",
+      "text": "About company"
+    },
+    {
+      "tag": "h3",
+      "text": "Messaging Settings"
+    },
+    {
+      "tag": "h3",
+      "text": "Localization"
+    },
+    {
+      "tag": "h3",
+      "text": "Taxes & Fees"
+    },
+    {
+      "tag": "h3",
+      "text": "Payment methods"
+    },
+    {
+      "tag": "h3",
+      "text": "Invoicing"
+    },
+    {
+      "tag": "h3",
+      "text": "Staff accounts"
+    },
+    {
+      "tag": "h3",
+      "text": "Currencies"
+    },
+    {
+      "tag": "h2",
+      "text": "Pricing Policy\n(6)"
+    },
+    {
+      "tag": "h3",
+      "text": "Seasons"
+    },
+    {
+      "tag": "h3",
+      "text": "Rate plans"
+    },
+    {
+      "tag": "h3",
+      "text": "Price rules"
+    },
+    {
+      "tag": "h3",
+      "text": "Full prices"
+    },
+    {
+      "tag": "h3",
+      "text": "Extra occupancy"
+    },
+    {
+      "tag": "h3",
+      "text": "Legend"
+    },
+    {
+      "tag": "h2",
+      "text": "Reservations\n(5)"
+    },
+    {
+      "tag": "h3",
+      "text": "Channel manager / OTAs"
+    },
+    {
+      "tag": "h3",
+      "text": "Internet Booking Engine"
+    },
+    {
+      "tag": "h3",
+      "text": "Check-in/out times"
+    },
+    {
+      "tag": "h3",
+      "text": "Registration form"
+    },
+    {
+      "tag": "h3",
+      "text": "Check-in QR"
+    },
+    {
+      "tag": "h2",
+      "text": "Commerce\n(2)"
+    },
+    {
+      "tag": "h3",
+      "text": "Product categories"
+    },
+    {
+      "tag": "h3",
+      "text": "All products"
+    },
+    {
+      "tag": "h2",
+      "text": "API & WebHooks\n(2)"
+    },
+    {
+      "tag": "h3",
+      "text": "WebHooks"
+    },
+    {
+      "tag": "h3",
+      "text": "Public API"
+    }
+  ],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Unit",
+    "Pricing Policy",
+    "Reservations",
+    "Commerce",
+    "API & WebHooks",
+    "View history"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/org/settings/general",
+    "#/org/settings/locations",
+    "#/org/settings/websites",
+    "#/org/settings/room-types",
+    "#/org/settings/meals",
+    "#/org/settings/amenities",
+    "#/org/settings/about",
+    "#/org/settings/messaging-settings",
+    "#/org/settings/localization",
+    "#/org/settings/financials/taxes",
+    "#/org/settings/financials/payment",
+    "#/org/settings/financials/invoicing",
+    "#/org/settings/currencies",
+    "#/org/settings/seasons",
+    "#/org/settings/financials/rate-plans",
+    "#/org/settings/financials/price-rules",
+    "#/org/settings/financials/full-prices",
+    "#/org/settings/extra-occupancy",
+    "#/org/settings/statuses",
+    "#/org/settings/otas",
+    "#/org/settings/reservations/online-bookings",
+    "#/org/settings/reservations/checks",
+    "#/org/settings/reservations/registration-form",
+    "#/check-in-qr",
+    "#/products/categories",
+    "#/product",
+    "#/org/settings/webhooks",
+    "#/org/settings/public-api"
+  ]
+}

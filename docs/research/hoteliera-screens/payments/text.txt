@@ -1,0 +1,62 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Payments
+Filters
+Export
+Receipt series
+Receipt number
+Payment ID
+Reservation ID
+Payment method
+All
+Client name
+Invoice number
+Note
+Created date
+Payment date
+Reservation source
+All sources
+Clear filters
+Apply filters
+PAYMENT ID
+	
+RECEIPT SERIES
+	
+RECEIPT NUMBER
+	
+PAYMENT METHOD
+	
+CREATED DATE
+	
+PAYMENT DATE
+	
+NOTE
+	
+RESERVATION ID
+	
+CLIENT
+	
+SOURCE
+	
+INVOICE
+	
+ACTIONS
+
+k9nofku8	-	-	Cash with fiscal receipt	Monday, 31.08.2026	Monday, 31.08.2026	-	nk7kk5s6	Oleg Olegovich	admin	1	
+EN
+EN
+EN
+Show
+«phone»
+Entries
+Showing 1 to 1 of 1 results.
+1

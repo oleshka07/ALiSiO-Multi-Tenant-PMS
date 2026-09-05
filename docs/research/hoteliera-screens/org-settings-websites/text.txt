@@ -1,0 +1,23 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Websites
+Websites
+Create websites that combine multiple locations under a single domain.
+Name
+Preview website
+Own domain
+Assigned Locations
+No websites configured yet.
+Back
+Add website

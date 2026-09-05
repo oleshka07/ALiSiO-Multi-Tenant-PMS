@@ -1,0 +1,76 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": "date",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "date",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    }
+  ],
+  "sections": [],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Today",
+    "This Week",
+    "Next 7 Days",
+    "Previous day",
+    "Next day",
+    "Search"
+  ],
+  "tables": [
+    {
+      "columns": [
+        "MEAL TYPE/DAY",
+        "MON 31 AUG",
+        "TUE 01 SEP",
+        "WED 02 SEP",
+        "THU 03 SEP",
+        "FRI 04 SEP",
+        "SAT 05 SEP",
+        "SUN 06 SEP"
+      ],
+      "rows": 1
+    }
+  ],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/reservations?sort=-created_at&day_from=2026-08-31&statuses=Confirmed,Checked-in&location_id=qaglam",
+    "#/reservations?sort=-created_at&day_to=2026-08-31&statuses=Checked-in,Checked-out,Confirmed&location_id=qaglam",
+    "#/reservations?sort=-created_at&stay_period_day_from=2026-08-31&stay_period_day_to=2026-08-31&statuses=Checked-in&location_id=qaglam",
+    "#/reservations?sort=-created_at&day_from=2026-08-31&statuses=Confirmed&location_id=qaglam",
+    "#/reservations?sort=-created_at&day_to=2026-08-31&statuses=Checked-in,Confirmed&location_id=qaglam",
+    "#/meal-plans-report?start_date=2026-08-31&end_date=2026-09-06",
+    "#/housekeeping?tab=history",
+    "#/new-reservation"
+  ]
+}

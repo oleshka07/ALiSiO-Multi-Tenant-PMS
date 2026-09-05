@@ -1,0 +1,216 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Invoicing
+Billing settings for reservations from the admin panel.
+➜
+Proforma invoice settings
+Use proforma
+Automatic issuance of the proforma invoice at the time of reservation.
+Auto send proforma invoice after reservation
+Invoice settings
+Fiscal invoicing is disabled until you set a fiscal invoice series.
+Auto issue invoice
+At check-in
+At check-out
+Automatically send invoices via email
+Auto-issue invoice on online payment (MobilPay/PayPal)
+
+When a guest pays online via MobilPay or PayPal, automatically issue a fiscal invoice for the amount paid and attach the payment to it. Works with and without proforma.
+
+Final invoice mode
+Instalment billing, no final invoice
+Each instalment invoices the services it covers, so nothing needs reversing at the end. No consolidating final invoice is offered.
+Separate storno invoices
+Each prior invoice is reversed by its own storno document, then a final invoice is issued for the full amount of the stay.
+Reversals inside the final invoice
+No separate storno documents. The final invoice lists the full amount of the stay plus one negative line per prior invoice, so it shows only what is still owed, or closes at zero when the prior invoices already cover everything.
+Invoice template and texts
+Classic
+Plain
+Manager name
+Website
+Show payment deadline on the invoice
+
+The deadline and instalment schedule derived from the invoice due dates. Applies to both invoice templates.
+
+Opening paragraph
+Payment conditions
+Bussines accounting info
+➜
+Company details
+Bussines name
+Bussines ID - Unique Business code
+Bussines registry number
+VAT number
+With country code
+Without country code
+VAT NUMBER
+-
+Banking
+No bank accounts yet. Add one so it can appear on fiscal invoices and proforma invoices.
+Add bank account
+Document series & numbering
+Fiscal invoice series
+Fiscal Invoice number (next available)
+auto-increment on each invoice
+Proforma Invoice series
+Proforma Invoice number (next available)
+auto-increment on each invoice
+Receipt series
+Receipt number (next available)
+auto-increment on each invoice
+Address
+Country
+Select country
+County
+Select county
+City
+Select city
+Street & Number
+Phone
+Charge & payment term names
+➜
+
+Customize how each initial charge appears on reservations and invoices. Leave a field empty to keep the default wording.
+
+OTA LODGING CHARGE
+
+Used for lodging charges on reservations imported from OTAs (Booking.com, Agoda, etc.) - these don't use installments.
+
+Charge name
+Append to name
+Stay period
+Quantity & room type
+Adults & children
+Reservation ID
+PREVIEW
+EN
+RO
+ES
+IT
+FR
+MK
+HU
+DE
+NL
+
+Lodging
+
+No custom text - default wording will be used.
+
+FINAL INVOICE LINE
+
+Name of the single line the final invoice combines its charges into. Doesn't affect the underlying charges.
+
+Charge name
+Append to name
+Stay period
+Quantity & room type
+Adults & children
+Reservation ID
+PREVIEW
+EN
+RO
+ES
+IT
+FR
+MK
+HU
+DE
+NL
+
+Lodging
+
+No custom text - default wording will be used.
+
+AT RESERVATION
+DEPOSIT
+
+Shown when a deposit is taken at booking time.
+
+Charge name
+Append to name
+Stay period
+Quantity & room type
+Adults & children
+Reservation ID
+PREVIEW
+EN
+RO
+ES
+IT
+FR
+MK
+HU
+DE
+NL
+
+At reservation
+
+No custom text - default wording will be used.
+
+BEFORE ARRIVAL
+
+Shown for installments collected a few days before check-in.
+
+Charge name
+Append to name
+Stay period
+Quantity & room type
+Adults & children
+Reservation ID
+PREVIEW
+EN
+RO
+ES
+IT
+FR
+MK
+HU
+DE
+NL
+
+Before arrival
+
+No custom text - default wording will be used.
+
+ON ARRIVAL
+
+Shown for the remaining amount collected at check-in.
+
+Charge name
+Append to name
+Stay period
+Quantity & room type
+Adults & children
+Reservation ID
+PREVIEW
+EN
+RO
+ES
+IT
+FR
+MK
+HU
+DE
+NL
+
+On arrival
+
+No custom text - default wording will be used.
+
+Let us know what else would be useful for your invoicing needs.
+
+Back
+Save

@@ -1,0 +1,30 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Staff accounts
+Staff accounts
+Name
+Email
+Permisssions
+Allowed locations
+Last signin
+Oleg Stepeniev
+«email»
+Management
+Front desk
+Housekeeping
+Room service
+All locations
+31.08.2026
+Back
+Add staff account

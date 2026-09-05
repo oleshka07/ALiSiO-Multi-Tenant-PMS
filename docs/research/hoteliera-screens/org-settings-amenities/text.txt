@@ -1,0 +1,391 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Amenities
+Amenity Catalog
+Assign to Locations & Room Types
+7/155 amenities
+Add category
+Add amenity
+GENERAL
+(2/7)
+Select all
+Air conditioning
+L+R
+Heating
+L+R
+Elevator
+L
+Non-smoking rooms
+L+R
+Family rooms
+L+R
+Soundproof rooms
+L+R
+Facilities for disabled guests
+L+R
+ROOM AMENITIES
+(1/22)
+Select all
+Wi-Fi
+R
+TV
+R
+Satellite TV
+R
+Telephone
+R
+Minibar
+R
+Safe
+R
+Desk
+R
+Wardrobe
+R
+Iron
+R
+Coffee maker
+R
+Electric kettle
+R
+Balcony
+R
+Terrace
+R
+Kitchenette
+R
+Washing machine
+R
+Sofa
+R
+Carpeted floor
+R
+Hardwood floor
+R
+Mosquito net
+R
+Blackout curtains
+R
+Alarm clock
+R
+Clothes rack
+R
+BATHROOM
+(0/10)
+Select all
+Private bathroom
+R
+Shared bathroom
+R
+Bathtub
+R
+Shower
+R
+Hair dryer
+R
+Toiletries
+R
+Towels
+R
+Bathrobe
+R
+Slippers
+R
+Bidet
+R
+FOOD & DRINK
+(1/11)
+Select all
+Restaurant
+L
+Bar
+L
+Breakfast in room
+L+R
+Room service
+L+R
+BBQ facilities
+L
+Packed lunches
+L
+Snack bar
+L
+Special diet meals
+L
+Vending machine
+L
+Shared kitchen
+L
+Wine/Champagne
+L+R
+INTERNET
+(0/4)
+Select all
+Free WiFi
+L+R
+WiFi in rooms
+R
+WiFi in public areas
+L
+Wired internet
+R
+PARKING
+(0/6)
+Select all
+Free parking
+L
+Paid parking
+L
+On-site parking
+L
+Street parking
+L
+Garage
+L
+EV charging station
+L
+SERVICES
+(0/12)
+Select all
+Daily housekeeping
+L+R
+Laundry
+L+R
+Dry cleaning
+L+R
+Ironing service
+L+R
+Shoe polish
+L+R
+Wake-up service
+L+R
+Concierge
+L
+Luggage storage
+L
+Tour desk
+L
+Currency exchange
+L
+Shuttle service
+L
+Airport shuttle
+L
+FRONT DESK SERVICES
+(1/5)
+Select all
+24-hour front desk
+L
+Express check-in/out
+L
+Private check-in/out
+L
+Invoice
+L
+ATM on site
+L
+ENTERTAINMENT & FAMILY
+(1/15)
+Select all
+Swimming pool
+L
+Indoor pool
+L
+Outdoor pool
+L
+Hot tub/Jacuzzi
+L
+Fitness center
+L
+Sauna
+L
+Games room
+L
+Playground
+L
+Library
+L
+Nightclub
+L
+Karaoke
+L
+Live music
+L
+Kids club
+L
+Board games
+L+R
+Babysitting
+L
+CLEANING SERVICES
+(0/3)
+Select all
+Daily maid service
+L+R
+Trouser press
+L+R
+Shoeshine
+L+R
+BUSINESS FACILITIES
+(0/4)
+Select all
+Meeting rooms
+L
+Business center
+L
+Fax/Photocopying
+L
+Conference hall
+L
+SAFETY & SECURITY
+(0/7)
+Select all
+24-hour security
+L
+CCTV
+L
+Fire extinguishers
+L
+Smoke alarm
+L+R
+Key card access
+L+R
+Safe deposit box
+L+R
+First aid kit
+L
+OUTDOORS
+(0/6)
+Select all
+Garden
+L
+Sun terrace
+L
+Outdoor furniture
+L
+Outdoor dining area
+L
+Sun loungers
+L
+Picnic area
+L
+VIEW
+(1/8)
+Select all
+Sea view
+R
+Mountain view
+R
+Garden view
+R
+Pool view
+R
+City view
+R
+Lake view
+R
+River view
+R
+Landmark view
+R
+ACTIVITIES
+(0/11)
+Select all
+Ski storage
+L
+Ski school
+L
+Ski pass vendor
+L
+Bicycle rental
+L
+Hiking
+L
+Fishing
+L
+Horse riding
+L
+Tennis
+L
+Golf course
+L
+Diving
+L
+Water sports
+L
+SPA & WELLNESS
+(0/7)
+Select all
+Spa
+L
+Massage
+L
+Steam room
+L
+Body treatments
+L
+Facial treatments
+L
+Beauty services
+L
+Relaxation area
+L
+PETS
+(0/2)
+Select all
+Pets allowed
+L
+Pets not allowed
+L
+ACCESSIBILITY
+(0/4)
+Select all
+Wheelchair accessible
+L+R
+Accessible parking
+L
+Braille signage
+L
+Auditory guidance
+L
+TRANSPORTATION
+(0/3)
+Select all
+Car rental
+L
+Taxi service
+L
+Bicycle parking
+L
+LANGUAGES SPOKEN
+(0/8)
+Select all
+English
+L
+Romanian
+L
+German
+L
+French
+L
+Spanish
+L
+Italian
+L
+Hungarian
+L
+Russian
+L
+Back
+Save

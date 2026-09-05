@@ -1,0 +1,78 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Rate plans
+/
+Add Rate plan
+General settings
+Name
+*
+Pricing type
+manual
+based on existing rate plan
+Based on rate plan
+Standard
+Price adjustment
+decrease
+increase
+with
+%
+Min stay
+Max stay
+
+Configure per-rate-plan supplements for extra adults and children - lodging and meal pricing for guests above the room's base occupancy. Extra occupancy
+
+Payment terms
+
+Reservations are paid with the following installments schedule:
+
+%
+on reservation
+%
+days before arrival
+%
+on arrival
+Total: 100% / 100%
+Booking period
+
+Set the validity of the rate plan. The rate plan will be offered only for people searching to book during this interval. Otherwise, it will NOT be shown at all. If you do not set a start date, it will be active starting immediately. If you do not set an end date, it will be active indefinitely.
+
+Type of Offer
+Standard
+EB
+Last Minute
+Special offers
+Cancellations
+
+How many days before arrival do cancellation fees apply?
+
+Very flexible - 1 day
+100% cancellation fee applies 1 day before arrival
+Flexible – 7 days
+100% cancellation fee applies 7 days before arrival
+Moderate – 14 days
+100% cancellation fee applies 14 days before arrival
+Firm – 30 days
+100% cancellation fee applies 30 days before arrival
+Strict – 7 days
+50% fee applies when guests book, 100% fee applies 7 days before arrival
+Non-refundable
+100% fee applies when guests book
+Privacy settings
+Hide on IBE Website
+
+When enabled, this rate plan will not be visible to guests on the IBE website and will only be available for admin booking or OTA mapping.
+
+Back
+Delete
+Save

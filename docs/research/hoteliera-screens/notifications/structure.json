@@ -1,0 +1,108 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "Selectați data",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "Selectați data",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "",
+          "text": "Toate"
+        },
+        {
+          "value": "low",
+          "text": "Scăzută"
+        },
+        {
+          "value": "normal",
+          "text": "Normală"
+        },
+        {
+          "value": "high",
+          "text": "Ridicată"
+        }
+      ]
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "",
+          "text": "Toate"
+        },
+        {
+          "value": "new",
+          "text": "Noi"
+        },
+        {
+          "value": "read",
+          "text": "Citite"
+        }
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "tag": "h1",
+      "text": "Notificări"
+    }
+  ],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Preferințe Notificări",
+    "Filtrează",
+    "Resetează"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support"
+  ]
+}

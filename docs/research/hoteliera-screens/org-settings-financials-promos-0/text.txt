@@ -1,0 +1,49 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+Settings
+Promotions
+Add promotion
+Promotion name
+shown to customers
+Applicability
+Fill in only the needed fields, leave the rest empty so they'll be ignored.
+Room types
+All
+Specific
+Period
+n/a
+ — 
+n/a
+Week days
+All
+Specific
+Occupancy
+is between 
+%
+ and 
+%
+Reservation
+Reservation is made between
+ and  days in advance, or
+n/a
+ and 
+n/a
+
+Length of stay is between  and  nights
+Pricing
+Price reduction based on Room type prices with Price rules applied
+%
+CZK
+Set manual price amounts
+Back
+Delete
+Save
+

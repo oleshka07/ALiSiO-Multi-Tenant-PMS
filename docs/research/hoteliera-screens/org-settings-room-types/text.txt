@@ -1,0 +1,45 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Room types
+Room types
+Type
+Short name
+Beds
+Base adults occupancy
+Max occupancy
+Max room capacity
+Total rooms
+Double
+dbl
+2 single · 1 double
+2
+4 adults · 3 children
+4
+3
+test room
+ythfv
+1 double
+2
+2 adults · 2 children
+3
+1
+Double delux
+dbldl
+3 single · 2 double
+4
+4 adults · 3 children
+4
+3
+Locker codes
+Add room type

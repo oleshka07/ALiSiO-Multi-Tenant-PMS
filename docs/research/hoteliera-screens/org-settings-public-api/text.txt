@@ -1,0 +1,19 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Public API
+Public API
+Add one row per API key. Each key is tied to a name and a location (you can create several keys for different locations).
+No API keys yet. Add one to grant external access.
+Add API key
+Back

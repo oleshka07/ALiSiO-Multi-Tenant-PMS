@@ -1,0 +1,50 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Search...",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    }
+  ],
+  "sections": [],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Add another currency",
+    "Back",
+    "Save"
+  ],
+  "tables": [
+    {
+      "columns": [
+        "CURRENCY",
+        "EXCHANGE RATE (FIXED)",
+        "ACTIONS"
+      ],
+      "rows": 1
+    }
+  ],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/org/settings"
+  ]
+}

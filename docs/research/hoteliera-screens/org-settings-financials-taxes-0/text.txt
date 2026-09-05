@@ -1,0 +1,52 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Taxes & Fees
+/
+Add tax
+General data
+Name
+*
+Applicable to
+Lodging
+products / non-lodging charges
+Amount
+%
+CZK
+Applies
+Applies
+per person
+per room
+per reservation
+Period
+per night.
+once per reservation
+Tax options
+Tax type
+VAT
+City tax
+Other
+Included in room/product price
+If enabled, this tax will not increase the reservation total - it is calculated as already included in the nightly rate or product price.
+No
+Yes
+Separate invoice line
+When a tax is both included in the price and listed as a separate invoice line, the tax amount will be extracted from the room price and displayed separately on the invoice. This is commonly used for local tourism taxes (taxa de stațiune / taxa de oraș).
+No
+Yes
+Calculated from the pre-tax value
+This option is only relevant for percentage taxes. If enabled, it is calculated from the pre-tax value.
+No
+Yes
+Back
+Save

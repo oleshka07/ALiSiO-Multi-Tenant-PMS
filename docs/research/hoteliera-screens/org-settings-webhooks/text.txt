@@ -1,0 +1,24 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+WebHooks
+Webhooks reservation
+Send reservation events to an external URL. The receiving system generates an API key; store it here so Hoteliera can authenticate outbound requests.
+URL
+API key
+Events
+ 
+No webhooks yet. Add one to notify external systems.
+Add webhook
+Back
+Save

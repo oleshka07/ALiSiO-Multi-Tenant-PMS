@@ -1,0 +1,755 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": true,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "email",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "tel",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "div",
+      "type": "combobox",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": "bd-search-afkh2uan",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "div",
+      "type": "combobox",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": "bd-search-f3yeyluu",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__122",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__123",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__124",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__125",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__126",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__127",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-n00a6qv33",
+      "label": "Check-in date\nThe season ends on the guest's Check-in date",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-n00a6qv33",
+      "label": "Check-out date\nThe season ends on the guest's Check-out date",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__131",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__136",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-yqezhqkpg",
+      "label": "None\nBehaves as before - no balance check at Check-out",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-yqezhqkpg",
+      "label": "Warning\nAlert shown, Check-out still allowed",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-yqezhqkpg",
+      "label": "Blocking\nCannot Check-out until the balance is resolved",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-nevvj4zmo",
+      "label": "Show",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-nevvj4zmo",
+      "label": "Hide",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-au96lo6sc",
+      "label": "Show",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-au96lo6sc",
+      "label": "Hide",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-yl9l4im7u",
+      "label": "Show",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-yl9l4im7u",
+      "label": "Hide",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__163",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__164",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__169",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": "__BVID__171",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "0",
+          "text": "0"
+        },
+        {
+          "value": "1",
+          "text": "1"
+        },
+        {
+          "value": "2",
+          "text": "2"
+        },
+        {
+          "value": "3",
+          "text": "3"
+        },
+        {
+          "value": "4",
+          "text": "4"
+        },
+        {
+          "value": "5",
+          "text": "5"
+        },
+        {
+          "value": "6",
+          "text": "6"
+        },
+        {
+          "value": "7",
+          "text": "7"
+        },
+        {
+          "value": "8",
+          "text": "8"
+        },
+        {
+          "value": "9",
+          "text": "9"
+        },
+        {
+          "value": "10",
+          "text": "10"
+        },
+        {
+          "value": "11",
+          "text": "11"
+        },
+        {
+          "value": "12",
+          "text": "12"
+        },
+        {
+          "value": "13",
+          "text": "13"
+        },
+        {
+          "value": "14",
+          "text": "14"
+        },
+        {
+          "value": "15",
+          "text": "15"
+        },
+        {
+          "value": "16",
+          "text": "16"
+        },
+        {
+          "value": "17",
+          "text": "17"
+        },
+        {
+          "value": "18",
+          "text": "18"
+        }
+      ]
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": "__BVID__192",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "1",
+          "text": "1"
+        },
+        {
+          "value": "2",
+          "text": "2"
+        },
+        {
+          "value": "3",
+          "text": "3"
+        },
+        {
+          "value": "4",
+          "text": "4"
+        },
+        {
+          "value": "5",
+          "text": "5"
+        },
+        {
+          "value": "6",
+          "text": "6"
+        },
+        {
+          "value": "7",
+          "text": "7"
+        },
+        {
+          "value": "8",
+          "text": "8"
+        },
+        {
+          "value": "9",
+          "text": "9"
+        },
+        {
+          "value": "10",
+          "text": "10"
+        },
+        {
+          "value": "11",
+          "text": "11"
+        },
+        {
+          "value": "12",
+          "text": "12"
+        },
+        {
+          "value": "13",
+          "text": "13"
+        },
+        {
+          "value": "14",
+          "text": "14"
+        },
+        {
+          "value": "15",
+          "text": "15"
+        },
+        {
+          "value": "16",
+          "text": "16"
+        },
+        {
+          "value": "17",
+          "text": "17"
+        },
+        {
+          "value": "18",
+          "text": "18"
+        }
+      ]
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "1 year",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "2 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "3 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "4 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "5 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "6 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "7 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "8 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "9 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "10 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "11 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "12 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "13 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "14 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "15 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "16 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "children_ages",
+      "label": "17 years",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    }
+  ],
+  "sections": [
+    {
+      "tag": "h4",
+      "text": "Select age breaks used in your children policy:"
+    },
+    {
+      "tag": "h4",
+      "text": "Resulting age criteria available to differentiate occupancy & pricing:"
+    },
+    {
+      "tag": "h4",
+      "text": "Baby cot policy"
+    }
+  ],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Print",
+    "Reset",
+    "Save"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/org/settings",
+    "#/org/settings/currencies"
+  ]
+}

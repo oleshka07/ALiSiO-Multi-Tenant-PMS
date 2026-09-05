@@ -1,0 +1,77 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+Daily Overview
+7
+Rooms Available
+0 occupied / 0 out of order · 0% occupancy
+0
+Rooms arrivals today
+0 Adults / 0 Children
+0
+Rooms departures today
+0 Adults / 0 Children
+0
+In-House Guests
+0 total rooms (0 Adults / 0 Children)
+Today Check-in - not arrived
+
+No remaining arrivals for today.
+
+Today Checkout - not checked-out
+
+No remaining departures for today.
+
+Today’s Meals
+Today
+This Week
+Next 7 Days
+Start date
+End date
+Refresh
+0
+Breakfast
+0 Adults / 0 Children
+MEAL TYPE/DAY
+	
+MON 31 AUG
+	
+TUE 01 SEP
+	
+WED 02 SEP
+	
+THU 03 SEP
+	
+FRI 04 SEP
+	
+SAT 05 SEP
+	
+SUN 06 SEP
+
+
+Breakfast
+	
+«phone»
+Housekeeping
+All rooms 7
+Dirty Rooms 0
+DOUBLE
+0/«phone»
+TEST ROOM
+0/1
+101
+DOUBLE DELUX
+0/«phone»
+Recent Cleaning Activity
+View all →
+
+No cleaning changes today
+
+Search

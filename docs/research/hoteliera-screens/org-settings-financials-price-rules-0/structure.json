@@ -1,0 +1,370 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": "text",
+      "name": "__BVID__113",
+      "label": null,
+      "placeholder": null,
+      "required": true,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": "__BVID__116",
+      "label": null,
+      "placeholder": null,
+      "required": true,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__121",
+      "label": "n/a",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__122",
+      "label": "Period of stay",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__123",
+      "label": "Period of check-in",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__124",
+      "label": "Period of check-out",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__125",
+      "label": "All",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__126",
+      "label": "Specific",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__127",
+      "label": "All",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__128",
+      "label": "Specific",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__129",
+      "label": "All",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__130",
+      "label": "Specific",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__131",
+      "label": "All",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__132",
+      "label": "Specific",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__134",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__136",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__140",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__142",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": "",
+      "placeholder": "No date selected",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": "",
+      "placeholder": "No date selected",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__156",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__158",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": "__BVID__163",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "decrease",
+          "text": "decrease"
+        },
+        {
+          "value": "increase",
+          "text": "increase"
+        },
+        {
+          "value": "manual",
+          "text": "manual"
+        }
+      ]
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__169",
+      "label": null,
+      "placeholder": null,
+      "required": true,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": "__BVID__170",
+      "label": null,
+      "placeholder": null,
+      "required": true,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "percent",
+          "text": "%"
+        },
+        {
+          "value": "fixed",
+          "text": "CZK"
+        }
+      ]
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__177",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__179",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": "__BVID__183",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    }
+  ],
+  "sections": [
+    {
+      "tag": "legend",
+      "text": "Name"
+    },
+    {
+      "tag": "legend",
+      "text": "Title shown to guests (optional) en"
+    }
+  ],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Back",
+    "Delete",
+    "Save"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/org/settings",
+    "#/org/settings/financials/price-rules"
+  ]
+}

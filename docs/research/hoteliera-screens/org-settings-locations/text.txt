@@ -1,0 +1,21 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Locations
+Locations
+Each location has its own Room types
+Name
+Address
+QAGLAMP
+Back
+Add location

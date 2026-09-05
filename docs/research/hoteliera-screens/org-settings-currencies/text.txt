@@ -1,0 +1,34 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Currencies
+Currencies
+
+Used to manage room rates internally. You can choose another currency for each OTA and Invoicing.
+
+EXCHANGE RATE BASE
+
+CZK
+Czech Koruna
+
+The base currency cannot be removed.
+
+CURRENCY
+	
+EXCHANGE RATE (FIXED)
+	ACTIONS
+
+No data found
+Add another currency
+Back
+Save

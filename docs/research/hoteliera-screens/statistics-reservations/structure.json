@@ -1,0 +1,46 @@
+{
+  "controls": [],
+  "sections": [
+    {
+      "tag": "div",
+      "text": "Joni group\nPJ\nOleg Olegovich\n2\nH\nDirect > admin\n01/09/2026 - 03/09/2026"
+    },
+    {
+      "tag": "div",
+      "text": "Joni group\nPJ\nOleg Olegovich\n2\nH\nDirect > admin\n01/09/2026 - 03/09/2026"
+    }
+  ],
+  "tabs": [],
+  "buttons": [
+    "Sign out"
+  ],
+  "tables": [
+    {
+      "columns": [],
+      "rows": 0
+    },
+    {
+      "columns": [],
+      "rows": 0
+    }
+  ],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/guests/hcyf8y",
+    "#/companies/rl07xk",
+    "#/reservations/nk7kk5s6"
+  ]
+}

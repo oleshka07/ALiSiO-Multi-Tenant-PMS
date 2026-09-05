@@ -1,0 +1,30 @@
+{
+  "controls": [],
+  "sections": [
+    {
+      "tag": "h2",
+      "text": "Reservations"
+    }
+  ],
+  "tabs": [],
+  "buttons": [
+    "Sign out"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support"
+  ]
+}

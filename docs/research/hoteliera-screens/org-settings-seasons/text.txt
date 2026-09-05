@@ -1,0 +1,24 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Seasons
+Seasons
+
+Define as many seasons as needed. Each season has rates per Room type & Meal plan.
+Leave out periods when your unit is closed.
+
+Period
+Show past seasons
+Tuesday, 01.09.2026 — Sunday, 06.12.2026
+Thursday, 31.12.2026 — Sunday, 07.03.2027
+Add season

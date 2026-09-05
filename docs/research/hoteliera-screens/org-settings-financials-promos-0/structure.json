@@ -1,0 +1,231 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": "text",
+      "name": "__BVID__114",
+      "label": null,
+      "placeholder": null,
+      "required": true,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__125",
+      "label": "All",
+      "placeholder": null,
+      "required": true,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__125",
+      "label": "Specific",
+      "placeholder": null,
+      "required": true,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__158",
+      "label": "All",
+      "placeholder": null,
+      "required": true,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__158",
+      "label": "Specific",
+      "placeholder": null,
+      "required": true,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__167",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__173",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__182",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__184",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__208",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__210",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__217",
+      "label": null,
+      "placeholder": null,
+      "required": true,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": "__BVID__218",
+      "label": "Price reduction based on Room type prices with Price rules applied",
+      "placeholder": null,
+      "required": true,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "percent",
+          "text": "%"
+        },
+        {
+          "value": "fixed",
+          "text": "CZK"
+        }
+      ]
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__221",
+      "label": "Set manual price amounts",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    }
+  ],
+  "sections": [
+    {
+      "tag": "legend",
+      "text": "Promotion name"
+    },
+    {
+      "tag": "div",
+      "text": "Applicability"
+    },
+    {
+      "tag": "legend",
+      "text": "Room types"
+    },
+    {
+      "tag": "legend",
+      "text": "Period"
+    },
+    {
+      "tag": "legend",
+      "text": "Week days"
+    },
+    {
+      "tag": "legend",
+      "text": "Occupancy"
+    },
+    {
+      "tag": "legend",
+      "text": "Reservation"
+    },
+    {
+      "tag": "div",
+      "text": "Pricing"
+    },
+    {
+      "tag": "legend",
+      "text": "Price reduction based on Room type prices with Price rules applied"
+    }
+  ],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Back",
+    "Delete",
+    "Save"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/org/settings",
+    "#/org/settings/financials/promos"
+  ]
+}

@@ -1,0 +1,83 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Extra occupancy
+Pricing rules, modes & examples
+1 group
+Add rate-plan / room-type group
+All rate plans · All room types
+Rate plan
+All
+Room types
+All
+Clone
+GUEST	
+RO
+no food
+	
+BB
+breakfast
+
+
+Adult
+	
+LODGING
+%
+CZK
+%
+MEAL
+Meal supplement cannot be applied.
+GETS EXTRA BED
+No
+Yes
+	
+LODGING
+%
+CZK
+%
+MEAL
+%
+CZK
+%
+GETS EXTRA BED
+No
+Yes
+
+
+Child
+0 - 17.99 years
+	
+LODGING
+%
+CZK
+%
+MEAL
+Meal supplement cannot be applied.
+GETS EXTRA BED
+No
+Yes
+	
+LODGING
+%
+CZK
+%
+MEAL
+%
+CZK
+%
+GETS EXTRA BED
+No
+Yes
+EXTRA OCCUPANCY POLICY
+Back
+Save

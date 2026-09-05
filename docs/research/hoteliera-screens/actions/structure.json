@@ -1,0 +1,191 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "From",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "To",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "div",
+      "type": "combobox",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "div",
+      "type": "combobox",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "From",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "To",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "div",
+      "type": "combobox",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Select an option...",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "25",
+          "text": "25"
+        },
+        {
+          "value": "50",
+          "text": "50"
+        },
+        {
+          "value": "100",
+          "text": "100"
+        }
+      ]
+    }
+  ],
+  "sections": [],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Filters",
+    "Both",
+    "Old data",
+    "New data",
+    "Clear filters",
+    "Apply filters",
+    "1",
+    "2"
+  ],
+  "tables": [
+    {
+      "columns": [
+        "USER",
+        "CATEGORY",
+        "ACTION",
+        "URL",
+        "DATE",
+        "ACTIONS"
+      ],
+      "rows": 25
+    }
+  ],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/org/settings/overview?id=czqaglq1xn&parent=reservation&reservation_id=undefined",
+    "#/reservations/nk7kk5s6?id=undefined&parent=reservation&reservation_id=undefined",
+    "#/reservations/nk7kk5s6?id=nk7kk5s6&parent=reservation&reservation_id=undefined",
+    "#/invoice/eeh68qiq?id=eeh68qiq&parent=reservation&reservation_id=nk7kk5s6",
+    "#/payment/k9nofku8?id=undefined&parent=reservation&reservation_id=undefined",
+    "#/invoice/jt0vgi2u?id=jt0vgi2u&parent=reservation&reservation_id=undefined",
+    "#/invoice/i2m4496d?id=i2m4496d&parent=reservation&reservation_id=nk7kk5s6",
+    "#/payment/k9nofku8?id=k9nofku8&parent=reservation&reservation_id=nk7kk5s6",
+    "#/charge/v3nov1wl?id=v3nov1wl&parent=reservation&reservation_id=nk7kk5s6",
+    "#/reservation-form/nk7kk5s6?id=hcyf8y&parent=reservation&reservation_id=undefined",
+    "#/reservation-form/nk7kk5s6?id=nk7kk5s6&parent=reservation&reservation_id=undefined"
+  ]
+}

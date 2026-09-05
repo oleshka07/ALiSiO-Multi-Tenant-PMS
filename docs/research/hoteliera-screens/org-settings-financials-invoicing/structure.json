@@ -1,0 +1,997 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__110",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__112",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__114",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__119",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": true,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-wtvdyunvp",
+      "label": "At check-in",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-wtvdyunvp",
+      "label": "At check-out",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__124",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": true,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__126",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": true,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-ekkevntl3",
+      "label": "Instalment billing, no final invoice\nEach instalment invoices the services it covers, so nothing needs reversing at the end. No consolidating final invoice is offered.",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-ekkevntl3",
+      "label": "Separate storno invoices\nEach prior invoice is reversed by its own storno document, then a final invoice is issued for the full amount of the stay.",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-ekkevntl3",
+      "label": "Reversals inside the final invoice\nNo separate storno documents. The final invoice lists the full amount of the stay plus one negative line per prior invoice, so it shows only what is still owed, or closes at zero when the prior invoices already cover everything.",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-kv5rxavph",
+      "label": "Classic",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "radio-group-kv5rxavph",
+      "label": "Plain",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__143",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__145",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "__BVID__147",
+      "label": "",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": "__BVID__151",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__154",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": "__BVID__156",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__161",
+      "label": "With country code",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "radio",
+      "name": "__BVID__161",
+      "label": "Without country code",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": "__BVID__173",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__176",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": "__BVID__179",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__182",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": "__BVID__185",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "number",
+      "name": "__BVID__188",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "div",
+      "type": "combobox",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Select country",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "div",
+      "type": "combobox",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Select county",
+      "required": null,
+      "disabled": true,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "div",
+      "type": "combobox",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Select city",
+      "required": null,
+      "disabled": true,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": "__BVID__207",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": "__BVID__209",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "textarea",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "Lodging",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Stay period",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Quantity & room type",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Adults & children",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Reservation ID",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "en",
+          "text": "EN"
+        },
+        {
+          "value": "ro",
+          "text": "RO"
+        },
+        {
+          "value": "es",
+          "text": "ES"
+        },
+        {
+          "value": "it",
+          "text": "IT"
+        },
+        {
+          "value": "fr",
+          "text": "FR"
+        },
+        {
+          "value": "mk",
+          "text": "MK"
+        },
+        {
+          "value": "hu",
+          "text": "HU"
+        },
+        {
+          "value": "de",
+          "text": "DE"
+        },
+        {
+          "value": "nl",
+          "text": "NL"
+        }
+      ]
+    },
+    {
+      "tag": "textarea",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "Lodging",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Stay period",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Quantity & room type",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Adults & children",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Reservation ID",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "en",
+          "text": "EN"
+        },
+        {
+          "value": "ro",
+          "text": "RO"
+        },
+        {
+          "value": "es",
+          "text": "ES"
+        },
+        {
+          "value": "it",
+          "text": "IT"
+        },
+        {
+          "value": "fr",
+          "text": "FR"
+        },
+        {
+          "value": "mk",
+          "text": "MK"
+        },
+        {
+          "value": "hu",
+          "text": "HU"
+        },
+        {
+          "value": "de",
+          "text": "DE"
+        },
+        {
+          "value": "nl",
+          "text": "NL"
+        }
+      ]
+    },
+    {
+      "tag": "textarea",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "At reservation",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Stay period",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Quantity & room type",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Adults & children",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Reservation ID",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "en",
+          "text": "EN"
+        },
+        {
+          "value": "ro",
+          "text": "RO"
+        },
+        {
+          "value": "es",
+          "text": "ES"
+        },
+        {
+          "value": "it",
+          "text": "IT"
+        },
+        {
+          "value": "fr",
+          "text": "FR"
+        },
+        {
+          "value": "mk",
+          "text": "MK"
+        },
+        {
+          "value": "hu",
+          "text": "HU"
+        },
+        {
+          "value": "de",
+          "text": "DE"
+        },
+        {
+          "value": "nl",
+          "text": "NL"
+        }
+      ]
+    },
+    {
+      "tag": "textarea",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "Before arrival",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Stay period",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Quantity & room type",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Adults & children",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Reservation ID",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "en",
+          "text": "EN"
+        },
+        {
+          "value": "ro",
+          "text": "RO"
+        },
+        {
+          "value": "es",
+          "text": "ES"
+        },
+        {
+          "value": "it",
+          "text": "IT"
+        },
+        {
+          "value": "fr",
+          "text": "FR"
+        },
+        {
+          "value": "mk",
+          "text": "MK"
+        },
+        {
+          "value": "hu",
+          "text": "HU"
+        },
+        {
+          "value": "de",
+          "text": "DE"
+        },
+        {
+          "value": "nl",
+          "text": "NL"
+        }
+      ]
+    },
+    {
+      "tag": "textarea",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "On arrival",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Stay period",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Quantity & room type",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Adults & children",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": null,
+      "label": "Reservation ID",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": [
+        {
+          "value": "en",
+          "text": "EN"
+        },
+        {
+          "value": "ro",
+          "text": "RO"
+        },
+        {
+          "value": "es",
+          "text": "ES"
+        },
+        {
+          "value": "it",
+          "text": "IT"
+        },
+        {
+          "value": "fr",
+          "text": "FR"
+        },
+        {
+          "value": "mk",
+          "text": "MK"
+        },
+        {
+          "value": "hu",
+          "text": "HU"
+        },
+        {
+          "value": "de",
+          "text": "DE"
+        },
+        {
+          "value": "nl",
+          "text": "NL"
+        }
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "tag": "legend",
+      "text": "Bussines name"
+    },
+    {
+      "tag": "legend",
+      "text": "Bussines ID - Unique Business code"
+    },
+    {
+      "tag": "legend",
+      "text": "Bussines registry number"
+    },
+    {
+      "tag": "legend",
+      "text": "Fiscal invoice series"
+    },
+    {
+      "tag": "legend",
+      "text": "Fiscal Invoice number (next available)"
+    },
+    {
+      "tag": "legend",
+      "text": "Proforma Invoice series"
+    },
+    {
+      "tag": "legend",
+      "text": "Proforma Invoice number (next available)"
+    },
+    {
+      "tag": "legend",
+      "text": "Receipt series"
+    },
+    {
+      "tag": "legend",
+      "text": "Receipt number (next available)"
+    },
+    {
+      "tag": "legend",
+      "text": "Street & Number"
+    },
+    {
+      "tag": "legend",
+      "text": "Phone"
+    }
+  ],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Add bank account",
+    "Back",
+    "Save"
+  ],
+  "tables": [],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/org/settings"
+  ]
+}

@@ -1,0 +1,61 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Invoices
+Add Balance
+New Invoice
+Filters
+Export excel columns
+Export
+Export eFactura XML
+Invoice series
+Invoice number
+Client
+Invoice type
+Fiscala
+Client type
+Any
+Status eFactura
+Any
+Upload index
+Issue date
+Total amount
+Clear filters
+Apply filters
+SERIES & NUMBER
+	
+ISSUE DATE
+	
+CREATED AT
+	
+AMOUNT
+	
+CLIENT
+	
+RESERVATION
+	
+STATUS
+	
+ACTIONS F
+
+
+1
+	Monday, «phone»:00	590,00 CZK	
+TestCompany
+	nk7kk5s6	Pending	
+EN
+EN
+EN
+Show
+«phone»
+Entries
+Showing 1 to 1 of 1 results.
+1

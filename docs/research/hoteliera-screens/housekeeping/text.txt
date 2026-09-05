@@ -1,0 +1,25 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Housekeeping
+Housekeeping Board
+Housekeeping Report
+Cleaning History
+Housekeeping
+All rooms 7
+Dirty Rooms 0
+DOUBLE
+0/«phone»
+TEST ROOM
+0/1
+101
+DOUBLE DELUX
+0/«phone»

@@ -1,0 +1,356 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": "search",
+      "name": null,
+      "label": null,
+      "placeholder": "Search reservations...",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "DD/MM/YYYY",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "DD/MM/YYYY",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "DD/MM/YYYY",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "DD/MM/YYYY",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "DD/MM/YYYY",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": null,
+      "placeholder": "DD/MM/YYYY",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": "",
+      "placeholder": "DD/MM/YYYY",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": "",
+      "placeholder": "DD/MM/YYYY",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": "",
+      "placeholder": "DD/MM/YYYY",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": null,
+      "name": null,
+      "label": "",
+      "placeholder": "DD/MM/YYYY",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "search",
+      "name": "__BVID__265",
+      "label": null,
+      "placeholder": "Search by text",
+      "required": null,
+      "disabled": null,
+      "testId": "reservations-filter-tourist-name-search",
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "hidden",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "search",
+      "name": "__BVID__267",
+      "label": null,
+      "placeholder": "Search by text",
+      "required": null,
+      "disabled": null,
+      "testId": "reservations-filter-alias-search",
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "search",
+      "name": "__BVID__269",
+      "label": null,
+      "placeholder": "Search by text",
+      "required": null,
+      "disabled": null,
+      "testId": "reservations-filter-tourist-name-search",
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "search",
+      "name": "__BVID__271",
+      "label": null,
+      "placeholder": "Search by text",
+      "required": null,
+      "disabled": null,
+      "testId": "reservations-filter-tourist-name-search",
+      "options": null
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": "__BVID__275",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": "reservations-filter-sort",
+      "options": [
+        {
+          "value": "-created_at",
+          "text": "Created at (newest first)"
+        },
+        {
+          "value": "created_at",
+          "text": "Created at (oldest first)"
+        },
+        {
+          "value": "day_from",
+          "text": "Check-in (earliest first)"
+        },
+        {
+          "value": "-day_from",
+          "text": "Check-in (latest first)"
+        },
+        {
+          "value": "day_to",
+          "text": "Check-out (earliest first)"
+        },
+        {
+          "value": "-day_to",
+          "text": "Check-out (latest first)"
+        }
+      ]
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": "__BVID__282",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": "reservations-filter-reservation-type",
+      "options": [
+        {
+          "value": "All",
+          "text": "All"
+        },
+        {
+          "value": "regular",
+          "text": "Regular"
+        },
+        {
+          "value": "virtual",
+          "text": "Virtual"
+        }
+      ]
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": "__BVID__286",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": "reservations-filter-registration-form",
+      "options": [
+        {
+          "value": "All",
+          "text": "All"
+        },
+        {
+          "value": "yes",
+          "text": "Yes"
+        },
+        {
+          "value": "no",
+          "text": "No"
+        }
+      ]
+    },
+    {
+      "tag": "select",
+      "type": null,
+      "name": "__BVID__290",
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": "reservations-filter-payment-status",
+      "options": [
+        {
+          "value": "All payment statuses",
+          "text": "All payment statuses"
+        },
+        {
+          "value": "paid",
+          "text": "Paid"
+        },
+        {
+          "value": "unpaid",
+          "text": "Unpaid"
+        },
+        {
+          "value": "partially_paid",
+          "text": "Partially paid"
+        }
+      ]
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "is-conflicting-reservations",
+      "label": "Show conficting reservations",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "checkbox",
+      "name": "show-all-reservations",
+      "label": "Reservations canceled by the client",
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    }
+  ],
+  "sections": [
+    {
+      "tag": "div",
+      "text": "Joni group\nPJ\nOleg Olegovich\n2\nH\nDirect > admin\n01/09/2026 - 03/09/2026"
+    }
+  ],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "Previous day",
+    "Next day",
+    "Search",
+    "Filter",
+    "Clear filters",
+    "Apply filters"
+  ],
+  "tables": [
+    {
+      "columns": [],
+      "rows": 0
+    }
+  ],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support",
+    "#/new-reservation",
+    "#/guests/hcyf8y",
+    "#/companies/rl07xk",
+    "#/reservations/nk7kk5s6"
+  ]
+}

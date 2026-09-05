@@ -1,0 +1,49 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Guests
+Filters
+Sort by
+Name
+Created at
+Ascending
+Descending
+Country
+Select country
+Date of Birth
+n/a
+Notes / Source
+Has upcoming reservations
+Has contact information
+Has company
+Clear filters
+Apply filters
+Oleg Olegovich
+ID: hcyf8y
+|
+«phone»
+«email»
+Berovo, Berovo Municipality, Macedonia
+HG«phone»
+Reservations
+1
+Total
+0
+Canceled
+1
+Upcoming
+Next reservation
+01.09.2026
+Created at
+31.08.2026
+Simple export
+Extended export
+Add guest

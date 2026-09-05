@@ -1,0 +1,89 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+Export
+Import
+Overbooking
+440,00 CZK
+590,00 CZK
+1
+8
+2
+Filter
+Dates
+Stay period
+-
+Created from
+-
+Canceled from
+-
+Check-in
+-
+Check-out
+-
+Selection
+Channel
+All channels
+Statuses
+Not canceled
+Room types
+All room types
+Identity
+Guest name
+Alias
+Reservation ID Hoteliera
+Reservation ID OTA
+Other
+Sort by
+Created at (newest first)
+Created at (oldest first)
+Check-in (earliest first)
+Check-in (latest first)
+Check-out (earliest first)
+Check-out (latest first)
+Type
+All
+Regular
+Virtual
+Registration form
+All
+Yes
+No
+Payment Status
+All payment statuses
+Paid
+Unpaid
+Partially paid
+Show conficting reservations
+Reservations canceled by the client
+Clear filters
+Apply filters
+Joni group
+PJ
+Oleg Olegovich
+2
+H
+Direct > admin
+01/09/2026 - 03/09/2026
+Created at: 31/08/2026
+Confirmed
+2 Rooms
+6 Adults
+2 Children
+Paid:	590,00 CZK
+Total:	
+440,00 CZK
+DBL
+:
+301
+,
+302
+QAGLAMP
+Details

@@ -1,0 +1,36 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Collections
+Collections
+Title
+Nr. of products
+Products
+Actions
+Minibar
+0
+-
+Restaurant
+0
+-
+Restaurant > Appetizers
+0
+-
+Restaurant > Drinks
+0
+-
+Shop
+0
+-
+Back
+Add collection

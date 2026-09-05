@@ -1,0 +1,78 @@
+{
+  "controls": [
+    {
+      "tag": "input",
+      "type": "date",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "date",
+      "name": null,
+      "label": null,
+      "placeholder": null,
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    },
+    {
+      "tag": "input",
+      "type": "text",
+      "name": null,
+      "label": null,
+      "placeholder": "Search...",
+      "required": null,
+      "disabled": null,
+      "testId": null,
+      "options": null
+    }
+  ],
+  "sections": [],
+  "tabs": [],
+  "buttons": [
+    "Sign out",
+    "PDF",
+    "Columns"
+  ],
+  "tables": [
+    {
+      "columns": [
+        "NAME",
+        "ROOMS",
+        "ADULTS",
+        "CHILDREN",
+        "0-2 YEARS",
+        "2-7 YEARS",
+        "7+ YEARS",
+        "CHECK-IN",
+        "CHECK-OUT",
+        "NIGHTS",
+        "MEAL PLAN"
+      ],
+      "rows": 1
+    }
+  ],
+  "links": [
+    "#/",
+    "#/org/settings/staff/sextdd6a",
+    "#/org/settings/staff",
+    "#/org/settings/overview",
+    "#/rates/inspector",
+    "#/planner",
+    "#/planner-v2",
+    "#/reservations",
+    "#/messages",
+    "#/guests",
+    "#/companies",
+    "#/invoice",
+    "#/payments",
+    "#/support"
+  ]
+}

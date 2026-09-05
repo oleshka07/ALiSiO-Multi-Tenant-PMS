@@ -1,0 +1,71 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Organisations
+Filters
+Sort by
+Created at
+Name
+Ascending
+Descending
+Country
+Search by country
+Channels active
+All
+Free / No free
+All
+Blocked / No blocked
+No blocked
+Setup progress
+All
+INVOICING
+Bussines name
+Bussines ID - Unique Business code
+Bussines registry number
+Bank IBAN / account number
+Address
+VAT payer (plătitor de TVA)
+All
+eFactura set up
+All
+Clear filters
+Apply filters
+Your organisation
+QAGLAMP
+#czqaglq1xn
+·
+«email»
+ID HOTEL
+	
+NAME
+	
+BUSSINES NAME
+	
+OTAS
+	
+PHONE
+	
+EMAIL
+	
+CREATED AT
+	
+WEBSITE
+	
+COUNTRY
+	
+LOCATION
+	
+SETUP PROGRESS
+	
+ACTIONS
+
+
+No data found

@@ -1,0 +1,38 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Statistics
+Filters
+Stay period
+Created from
+Select status
+Active
+New
+Confirmed
+Select OTA
+All
+Exclude canceled
+Clear filters
+Apply filters
+Export
+Columns
+		ALL CHANNELS
+
+ORGANIZATION
+	
+LOCATION
+	
+TOTAL
+	
+TOTAL PRICE
+
+
+No data found

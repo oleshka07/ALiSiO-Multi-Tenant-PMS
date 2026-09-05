@@ -1,0 +1,36 @@
+EN
+OS
+Oleg Stepeniev
+Dashboard
+Availability & Rates
+Planner
+V2
+Reservations
+Messages
+Reports
+/
+Settings
+/
+Taxes & Fees
+Taxes & Fees
+Name
+Amount
+Tax type
+Actions
+VAT lodging 11%
+11%
+VAT
+included
+Edit
+VAT 11%
+11%
+VAT
+included
+Edit
+VAT 21%
+21%
+VAT
+included
+Edit
+Back
+Add tax
