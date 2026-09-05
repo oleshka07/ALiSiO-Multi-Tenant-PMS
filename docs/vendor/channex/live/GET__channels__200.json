@@ -1,11 +1,75 @@
 {
   "endpoint": "GET /channels",
   "status": 200,
-  "captured_at": "2026-09-02",
+  "captured_at": "2026-09-05",
   "payload": {
-    "data": [],
+    "data": [
+      {
+        "attributes": {
+          "id": "d62cd57f-3d1f-43cb-a63f-a5c1da59cb1e",
+          "title": "ALiSiO probe — delete me",
+          "currency": null,
+          "settings": {
+            "email": "<redacted>",
+            "hotel_id": "00000000",
+            "send_email_notifications": false,
+            "mappingSettings": {
+              "rooms": {
+                "PROBE": "c451b315-0860-4e5f-bf63-50489d497e20"
+              }
+            }
+          },
+          "actions": [
+            "load_future_reservations"
+          ],
+          "channel": "Expedia",
+          "inserted_at": "2026-09-05T21:35:10.105599",
+          "updated_at": "2026-09-05T21:35:10.332251",
+          "properties": [
+            "65dea8cf-5e61-4c9a-ae8e-cae9d24857c5"
+          ],
+          "is_active": false,
+          "rate_plans": [
+            {
+              "id": "160e33fa-9247-498d-8c7a-3f507626350b",
+              "settings": {
+                "readonly": false,
+                "occupancy": 2,
+                "rate_plan_code": "PROBE",
+                "room_type_code": "PROBE",
+                "pricing_setting": {
+                  "min_stay_type": "Arrival"
+                },
+                "pricing_type": "per_room",
+                "primary_occ": true
+              },
+              "rate_plan_id": "28f08170-e338-4b91-b76b-253ab84b60fc"
+            }
+          ],
+          "expected_removal_date": null
+        },
+        "id": "d62cd57f-3d1f-43cb-a63f-a5c1da59cb1e",
+        "type": "channel",
+        "relationships": {
+          "group": {
+            "data": {
+              "id": "70912cf0-5f3b-49a1-b8c7-ccb18169c416",
+              "type": "group"
+            }
+          },
+          "properties": {
+            "data": [
+              {
+                "id": "65dea8cf-5e61-4c9a-ae8e-cae9d24857c5",
+                "type": "property"
+              }
+            ]
+          }
+        }
+      }
+    ],
     "meta": {
-      "total": 0,
+      "total": 1,
       "limit": 10,
       "order_by": "title",
       "page": 1,

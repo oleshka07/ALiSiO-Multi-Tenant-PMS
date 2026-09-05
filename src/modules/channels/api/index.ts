@@ -37,3 +37,6 @@ export {
 } from './webhook-admin.handlers';
 export { recordVendorResponses } from '../providers';
 export type { VendorResponseSample } from '../providers';
+// Рівень OTA (К2) — лише читання; запис мапінгу це ЧЕКПОІНТ рецензента.
+export { listConnectionChannels, refreshConnectionChannels,
+  refreshConnectionChannelsFor, connectionChannelsFor } from './channels.handlers';

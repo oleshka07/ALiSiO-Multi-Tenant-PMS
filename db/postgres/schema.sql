@@ -360,6 +360,23 @@ CREATE TABLE "channel_rate_rules" (
   PRIMARY KEY ("id")
 );
 
+CREATE TABLE "cm_channels" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "connection_id" TEXT NOT NULL,
+  "remote_channel_id" TEXT NOT NULL,
+  "ota_code" TEXT DEFAULT '' NOT NULL,
+  "title" TEXT DEFAULT '' NOT NULL,
+  "is_active" BOOLEAN DEFAULT false NOT NULL,
+  "settings_json" JSONB,
+  "mapped_json" JSONB,
+  "synced_at" TIMESTAMPTZ,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("connection_id", "remote_channel_id")
+);
+
 CREATE TABLE "cm_connections" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
@@ -375,6 +392,7 @@ CREATE TABLE "cm_connections" (
   "last_full_sync_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "channels_synced_at" TIMESTAMPTZ,
   PRIMARY KEY ("id"),
   UNIQUE ("webhook_token"),
   UNIQUE ("organization_id", "property_id", "provider", "environment"),
@@ -2250,6 +2268,10 @@ ALTER TABLE "channel_rate_rules" ADD CONSTRAINT "fk_channel_rate_rules_property_
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "channel_rate_rules" ADD CONSTRAINT "fk_channel_rate_rules_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "cm_channels" ADD CONSTRAINT "fk_cm_channels_connection_id_1"
+  FOREIGN KEY ("connection_id") REFERENCES "cm_connections" ("id") ON DELETE CASCADE;
+ALTER TABLE "cm_channels" ADD CONSTRAINT "fk_cm_channels_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "cm_connections" ADD CONSTRAINT "fk_cm_connections_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "cm_connections" ADD CONSTRAINT "fk_cm_connections_organization_id_2"
@@ -2684,6 +2706,8 @@ CREATE INDEX "idx_capex_org" ON "capex_items" ("organization_id");
 CREATE INDEX "idx_cart_events_token" ON "cart_events" ("guest_token");
 CREATE INDEX "idx_cart_events_type" ON "cart_events" ("event_type", "abandon_notified_at");
 CREATE UNIQUE INDEX "idx_channel_rate_rules_row" ON "channel_rate_rules" (organization_id, property_id, (COALESCE(channel, '')));
+CREATE INDEX "idx_cm_channels_connection" ON "cm_channels" ("connection_id");
+CREATE INDEX "idx_cm_channels_org" ON "cm_channels" ("organization_id");
 CREATE INDEX "idx_cm_connections_org" ON "cm_connections" ("organization_id");
 CREATE UNIQUE INDEX "idx_cm_connections_token" ON "cm_connections" ("webhook_token");
 CREATE INDEX "idx_cm_events_org" ON "cm_events" ("organization_id");
@@ -2866,6 +2890,7 @@ CREATE INDEX IF NOT EXISTS "idx_business_units_org" ON "business_units" ("organi
 CREATE INDEX IF NOT EXISTS "idx_capex_items_org" ON "capex_items" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_channel_credentials_org" ON "channel_credentials" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_channel_rate_rules_org" ON "channel_rate_rules" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_cm_channels_org" ON "cm_channels" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cm_connections_org" ON "cm_connections" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cm_events_org" ON "cm_events" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cm_inbound_bookings_org" ON "cm_inbound_bookings" ("organization_id");
@@ -2964,6 +2989,8 @@ ALTER TABLE "capex_items" ALTER COLUMN "organization_id"
 ALTER TABLE "channel_credentials" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "channel_rate_rules" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "cm_channels" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "cm_connections" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -3210,6 +3237,12 @@ CREATE POLICY "channel_credentials_tenant" ON "channel_credentials"
 ALTER TABLE "channel_rate_rules" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "channel_rate_rules" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "channel_rate_rules_tenant" ON "channel_rate_rules"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "cm_channels" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "cm_channels" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "cm_channels_tenant" ON "cm_channels"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

@@ -14,19 +14,24 @@
     ]
   },
   "GET /channels": {
-    "why": "звірка Ц8: канали обʼєкта і змаплені на них тарифи",
+    "why": "звірка Ц8 і дзеркало рівня OTA (К2): канали обʼєкта, їхній код, стан і змаплені на них тарифи. Живе 06.09.2026 (Блок 3 п. 2.2): до того зразок був із порожньою `data` — на жодному нашому обʼєкті staging каналів не було, і всі поля стояли `awaiting`. Знято `scripts/channex-channels-live.mjs --confirm`: підключення каналу створюється ВИМКНЕНИМ («created disabled and exchanges no data until it is activated» — ні `test_connection`, ні `activate` не викликаються), читається назад і видаляється. `channel` — код адаптера, і він НЕ дорівнює `title`, який готельєр міняє; `rate_plans[]` це мапінг-АЙТЕМИ, у кожного свій `id` поруч із `rate_plan_id` — потрібен другий. Поруч недокументовані `actions`, `expected_removal_date`, `settings.mappingSettings` (вендор сам дописує туди свій розбір кодів кімнат) і `settings.pricing_setting` усередині мапінг-айтема. `POST /channels` з `channel: \"BookingCom\"` на цьому акаунті віддає 500 — проба знята на `Expedia`; форма відповіді від адаптера не залежить",
     "fields": [
       "data[].id",
       "data[].attributes.title",
+      "data[].attributes.channel",
       "data[].attributes.is_active",
+      "data[].attributes.settings",
       "data[].attributes.rate_plans[].rate_plan_id"
-    ],
-    "awaiting_fields": {
-      "data[].id": "канал у тестового обʼєкта — зʼявиться після мапінгу у вікні вендора (Alpine не має жодного каналу)",
-      "data[].attributes.title": "те саме",
-      "data[].attributes.is_active": "те саме",
-      "data[].attributes.rate_plans[].rate_plan_id": "те саме"
-    }
+    ]
+  },
+  "GET /channels/list": {
+    "why": "каталог адаптерів каналів — «доступні OTA» на екрані. Живе 06.09.2026: 57 адаптерів, з них `ota` рівно 2 (Airbnb і ще один), решта `meta`. Не зберігається: перелік належить вендору й росте, а копія протухла б так само, як копія налаштувань каналу (§4.3)",
+    "fields": [
+      "data[].code",
+      "data[].title",
+      "data[].kind",
+      "data[].message_support"
+    ]
   },
   "POST /webhooks": {
     "why": "реєстрація вебхука",

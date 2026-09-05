@@ -5,6 +5,7 @@ import { ariFlush } from './ari-adapter';
 import { probeKey, frameUrl, reconcile } from './connect-adapter';
 import { ensureWebhook, rotateWebhookSecret, removeWebhook, testWebhook, classifyEvent } from './webhook-adapter';
 import { verifySends } from './verify-adapter';
+import { readChannels } from './channels-adapter';
 
 /**
  * Усе, що цей вендор уміє, — одним записом для шва композиції.
@@ -27,4 +28,5 @@ export const channexAdapter: ProviderAdapter = {
   testWebhook: (connectionId, apiKey) => testWebhook(connectionId, apiKey),
   classifyEvent,
   verify: (connectionId, apiKey, options) => verifySends(connectionId, apiKey, options),
+  channels: (connectionId, apiKey) => readChannels(connectionId, apiKey),
 };

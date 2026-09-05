@@ -6,6 +6,7 @@ import type { FlushReport } from './domain/ari-batch.ts';
 import type { CatalogReconciliation } from './domain/reconcile.ts';
 import type { SendsVerification } from './domain/verify.ts';
 import type { ChannelEventKind, WebhookState } from './port';
+import type { ChannelsSnapshot } from './data/channels.repo';
 
 /**
  * Шов композиції: рядок провайдера → модуль адаптера. Більше нічого.
@@ -53,6 +54,8 @@ export interface ProviderAdapter {
   classifyEvent(eventType: string): ChannelEventKind;
   /** Звірка П6: відправлене проти календаря того боку; розбіжне — назад у чергу з причиною. */
   verify: SendsVerifier;
+  /** Рівень OTA (К2): канали обʼєкта і каталог доступних — одним читанням. */
+  channels(connectionId: string, apiKey: string): Promise<ChannelsSnapshot>;
 }
 
 /** Звірити останні відправлення одного зʼєднання з календарем менеджера каналів. */

@@ -1,0 +1,4233 @@
+{
+  "endpoint": "GET /channels/list",
+  "status": 200,
+  "captured_at": "2026-09-05",
+  "payload": {
+    "data": [
+      {
+        "code": "OneHotelRez",
+        "title": "1HotelRez",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Agoda",
+        "title": "Agoda",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_id": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel ID"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "booking_tax_settings": {
+            "default": "Inclusive",
+            "position": 2,
+            "type": "select",
+            "options": [
+              "Inclusive",
+              "Inclusive With Commissions",
+              "Exclusive"
+            ],
+            "title": "Tax Setting For Bookings"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {
+          "mode": "worker",
+          "max_attempts": 0,
+          "health_check_frame": "exp",
+          "read_frame": null,
+          "sync_frame": 10000
+        },
+        "rate_params": {
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "string",
+            "title": "PricingType"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "AirBNB",
+        "title": "Airbnb",
+        "params": {
+          "code": {
+            "position": 0,
+            "type": "hidden",
+            "title": "Token Code"
+          },
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "min_stay_type": {
+            "default": "Arrival",
+            "position": 1,
+            "type": "switch",
+            "options": [
+              "Arrival",
+              "Through"
+            ],
+            "title": "Min Stay Type"
+          },
+          "rate_plans_enabled": {
+            "default": false,
+            "position": 6,
+            "type": "boolean",
+            "title": "Enable Rate Plans"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 2,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "booking_amount_settings": {
+            "default": "Payout Amount",
+            "position": 4,
+            "type": "select",
+            "options": [
+              "Payout Amount",
+              "Total Paid Amount"
+            ],
+            "title": "Booking Amount"
+          },
+          "cohost_payout_calculations": {
+            "default": false,
+            "position": 6,
+            "type": "boolean",
+            "title": "Cohost Payout Calculations"
+          }
+        },
+        "kind": "ota",
+        "actions": [
+          "load_future_reservations"
+        ],
+        "payload": {
+          "scope": "property_management,messages_read,messages_write",
+          "client_id": "vkchvl6nyv02w16ncouipz3y",
+          "redirect_uri": "https://staging.channex.io/api/v1/meta/airbnb/auth_redirect"
+        },
+        "mapping_mode": "listing",
+        "message_support": true,
+        "property_mapping": "multiple",
+        "connection_params": {
+          "mode": "meta",
+          "max_attempts": 0,
+          "health_check_frame": "exp",
+          "read_frame": null,
+          "sync_frame": 10000
+        },
+        "channel_restrictions": {
+          "currency": "USD",
+          "min_price": 1000
+        },
+        "rate_params": {
+          "listing_id": {
+            "position": 0,
+            "type": "integer",
+            "title": "Listing"
+          },
+          "airbnb_rate_plan_id": {
+            "position": 1,
+            "type": "integer",
+            "title": "Rate Plan"
+          }
+        }
+      },
+      {
+        "code": "AscendTravel",
+        "title": "Ascend Travel",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_id": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel ID"
+          },
+          "min_stay_type": {
+            "default": "Arrival",
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Arrival",
+              "Through"
+            ],
+            "title": "Min Stay Type"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "booking_amount_settings": {
+            "default": "With Commission",
+            "position": 4,
+            "type": "select",
+            "options": [
+              "With Commission",
+              "Without Commission"
+            ],
+            "title": "Booking Amount"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "tree",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate Plan"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room Type"
+          }
+        }
+      },
+      {
+        "code": "Avis",
+        "title": "Avis",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "agent_id": {
+            "position": 0,
+            "type": "string",
+            "title": "Agent ID"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 4,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "station_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Station Code"
+          },
+          "brand": {
+            "position": 3,
+            "type": "string",
+            "title": "Brand"
+          },
+          "discount_code": {
+            "position": 2,
+            "type": "string",
+            "title": "Discount Code"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": null,
+        "message_support": false,
+        "property_mapping": null,
+        "connection_params": {},
+        "mapping_is_not_required": true,
+        "rate_params": {}
+      },
+      {
+        "code": "BookDirectOpen",
+        "title": "BookDirectOpen",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "BookingCom",
+        "title": "Booking.com",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_id": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel ID"
+          },
+          "machine_account": {
+            "position": 1,
+            "type": "hidden",
+            "title": "Machine Account"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 2,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "allow_payout_update": {
+            "default": false,
+            "position": 5,
+            "type": "hidden",
+            "title": "Allow Payout Updates"
+          },
+          "allow_vcc_balance": {
+            "default": false,
+            "position": 6,
+            "type": "hidden",
+            "title": "Allow VCC Balance"
+          },
+          "allow_vcc_fees_payout": {
+            "default": false,
+            "position": 7,
+            "type": "hidden",
+            "title": "Allow VCC Fees Payout"
+          },
+          "allow_virtual_credit_card_update": {
+            "default": false,
+            "position": 8,
+            "type": "hidden",
+            "title": "Allow VCC Updates"
+          },
+          "allow_payout_method_update": {
+            "default": false,
+            "position": 4,
+            "type": "hidden",
+            "title": "Allow Payout Method Updates"
+          }
+        },
+        "kind": "meta",
+        "actions": [
+          "load_future_reservations"
+        ],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": true,
+        "property_mapping": "single",
+        "connection_params": {
+          "mode": "meta",
+          "max_attempts": 0,
+          "health_check_frame": 10000,
+          "read_frame": null,
+          "sync_frame": 10000
+        },
+        "channel_restrictions": {
+          "currency": "EUR",
+          "min_price": 500
+        },
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "default": "Standart",
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Budget",
+        "title": "Budget",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "agent_id": {
+            "position": 0,
+            "type": "string",
+            "title": "Agent ID"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 2,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "station_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Station Code"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": null,
+        "message_support": false,
+        "property_mapping": null,
+        "connection_params": {},
+        "mapping_is_not_required": true,
+        "rate_params": {}
+      },
+      {
+        "code": "CakrahubBookingEngine",
+        "title": "Cakrahub Booking Engine",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "api_key": {
+            "position": 1,
+            "type": "password",
+            "title": "API Key"
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 2,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Crewdogs",
+        "title": "Crewdogs",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "DespegarV2",
+        "title": "DespegarV2",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "api_key": {
+            "position": 2,
+            "type": "password",
+            "title": "API Key"
+          },
+          "hotel_id": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel ID"
+          },
+          "min_stay_type": {
+            "default": "Arrival",
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Arrival",
+              "Through"
+            ],
+            "title": "Min Stay Type"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 5,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "provider_id": {
+            "position": 1,
+            "type": "string",
+            "title": "Provider ID"
+          }
+        },
+        "kind": "meta",
+        "actions": [
+          "load_future_reservations"
+        ],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "string",
+            "title": "PricingType"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          },
+          "max_cut_off": {
+            "position": 5,
+            "type": "integer",
+            "title": "Max Cut Off"
+          },
+          "min_cut_off": {
+            "position": 6,
+            "type": "integer",
+            "title": "Min Cut Off"
+          }
+        }
+      },
+      {
+        "code": "DolceBot",
+        "title": "DolceBot",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Ostrovok",
+        "title": "Emerging Travel Group",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_id": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel ID"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "booking_amount_settings": {
+            "default": "Without Commission",
+            "position": 3,
+            "type": "select",
+            "options": [
+              "With Commission",
+              "Without Commission"
+            ],
+            "title": "Booking Amount"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {
+          "mode": "meta"
+        },
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "string",
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Europcar",
+        "title": "EuropeCar",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "agent_id": {
+            "position": 0,
+            "type": "string",
+            "title": "Agent ID"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 4,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "station_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Station Code"
+          },
+          "company_code": {
+            "position": 3,
+            "type": "string",
+            "title": "Company Code"
+          },
+          "customer_code": {
+            "position": 2,
+            "type": "string",
+            "title": "Customer Code"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": null,
+        "message_support": false,
+        "property_mapping": null,
+        "connection_params": {},
+        "mapping_is_not_required": true,
+        "rate_params": {}
+      },
+      {
+        "code": "Expedia",
+        "title": "Expedia",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_id": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel ID"
+          },
+          "min_stay_type": {
+            "default": "Arrival",
+            "position": 1,
+            "type": "select",
+            "options": [
+              "Arrival",
+              "Through"
+            ],
+            "title": "Min Stay Type"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 2,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "booking_amount_settings": {
+            "default": "Collect Amount",
+            "position": 4,
+            "type": "select",
+            "options": [
+              "Collect Amount",
+              "Total Amount",
+              "Total Amount Excluding Tax"
+            ],
+            "title": "Booking Amount"
+          }
+        },
+        "kind": "meta",
+        "actions": [
+          "load_future_reservations"
+        ],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": true,
+        "property_mapping": "single",
+        "connection_params": {
+          "mode": "worker",
+          "max_attempts": 0,
+          "health_check_frame": 10000,
+          "read_frame": null,
+          "sync_frame": 10000
+        },
+        "rate_params": {
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "string",
+            "title": "PricingType"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "GlampingHub",
+        "title": "GlampingHub",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "GoogleHotelARI",
+        "title": "Google Hotel Search",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 4,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "request_credit_card": {
+            "default": true,
+            "position": 6,
+            "type": "boolean",
+            "title": "Request Credit Card",
+            "rules": [
+              {
+                "apply": "hidden",
+                "when": false,
+                "influence_field": "use_built_in_ibe",
+                "with_value": ""
+              }
+            ]
+          },
+          "partner_account": {
+            "default": "Channex ARI",
+            "position": 0,
+            "type": "select",
+            "options": [
+              "Abode Booking",
+              "Ayrton",
+              "Ayrton Hostay",
+              "BookingFactory Channex ARI",
+              "BRIGHT Operations GmbH",
+              "Channex",
+              "Channex ARI",
+              "Clarges",
+              "Digitelia",
+              "Extranetwork",
+              "Hotelgest",
+              "Hotelmeister - Ing. Peter Rainer",
+              "HotelPoint PMS",
+              "Hotelfabrik",
+              "MyHotelShop ARI",
+              "mr.alfred LLC",
+              "OTA Sync by Channex",
+              "ReservationKey ARI",
+              "RoverPass",
+              "SmartIT integrirana softverska rjesenja d.o.o (Hotel)",
+              "SmartIT integrirana softverska rjesenja d.o.o (VR)",
+              "stayforRewards",
+              "Stayntouch Inc",
+              "Vacant.com Inc."
+            ],
+            "title": "Partner Account"
+          },
+          "send_customer_email": {
+            "default": true,
+            "position": 5,
+            "type": "hidden",
+            "title": "Send Customer Email",
+            "rules": [
+              {
+                "apply": "hidden",
+                "when": false,
+                "influence_field": "use_built_in_ibe",
+                "with_value": ""
+              }
+            ]
+          },
+          "exact_match": {
+            "default": false,
+            "position": 10,
+            "type": "boolean",
+            "title": "Use Exact Match",
+            "rules": [
+              {
+                "apply": "hidden",
+                "when": false,
+                "influence_field": "use_built_in_ibe",
+                "with_value": ""
+              }
+            ]
+          },
+          "hide_logo": {
+            "default": false,
+            "position": 7,
+            "type": "boolean",
+            "title": "Hide logo",
+            "rules": [
+              {
+                "apply": "hidden",
+                "when": false,
+                "influence_field": "use_built_in_ibe",
+                "with_value": ""
+              }
+            ]
+          },
+          "hide_title": {
+            "default": false,
+            "position": 8,
+            "type": "boolean",
+            "title": "Hide title",
+            "rules": [
+              {
+                "apply": "hidden",
+                "when": false,
+                "influence_field": "use_built_in_ibe",
+                "with_value": ""
+              }
+            ]
+          },
+          "request_billing_info": {
+            "default": true,
+            "position": 9,
+            "type": "boolean",
+            "title": "Billing Info is required",
+            "rules": [
+              {
+                "apply": "hidden",
+                "when": false,
+                "influence_field": "use_built_in_ibe",
+                "with_value": ""
+              }
+            ]
+          },
+          "account_type": {
+            "default": "Hotel",
+            "position": 11,
+            "type": "hidden"
+          },
+          "bathrooms_count": {
+            "default": 1,
+            "position": 14,
+            "type": "number",
+            "title": "Bathrooms count",
+            "rules": [
+              {
+                "apply": "hidden",
+                "when": "Hotel",
+                "influence_field": "account_type",
+                "with_value": ""
+              }
+            ]
+          },
+          "bedrooms_count": {
+            "default": 1,
+            "position": 13,
+            "type": "number",
+            "title": "Bedrooms count",
+            "rules": [
+              {
+                "apply": "hidden",
+                "when": "Hotel",
+                "influence_field": "account_type",
+                "with_value": ""
+              }
+            ]
+          },
+          "beds_count": {
+            "default": 1,
+            "position": 12,
+            "type": "number",
+            "title": "Beds count",
+            "rules": [
+              {
+                "apply": "hidden",
+                "when": "Hotel",
+                "influence_field": "account_type",
+                "with_value": ""
+              }
+            ]
+          },
+          "booking_link": {
+            "position": 2,
+            "type": "string",
+            "title": "Booking Link",
+            "rules": [
+              {
+                "apply": "hidden",
+                "when": true,
+                "influence_field": "use_built_in_ibe",
+                "with_value": ""
+              }
+            ]
+          },
+          "brand_id": {
+            "default": "Channex",
+            "position": 15,
+            "type": "select",
+            "options": [
+              "Channex",
+              "HipInn"
+            ],
+            "title": "Brand ID",
+            "rules": [
+              {
+                "apply": "hidden",
+                "when": "Hotel",
+                "influence_field": "account_type",
+                "with_value": ""
+              }
+            ]
+          },
+          "use_built_in_ibe": {
+            "default": true,
+            "position": 1,
+            "type": "boolean",
+            "title": "Use built-in IBE"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "direct",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {
+          "mode": "meta"
+        },
+        "rate_params": null
+      },
+      {
+        "code": "Gopaddi",
+        "title": "Gopaddi",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "GrevonAI",
+        "title": "GrevonAI",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "api_key": {
+            "position": 1,
+            "type": "password",
+            "title": "API Key"
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 2,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Guirez",
+        "title": "Guirez",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "GuruHotel",
+        "title": "GuruHotel",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "api_key": {
+            "position": 1,
+            "type": "password",
+            "title": "API Key"
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Hertz",
+        "title": "Hertz",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "agent_id": {
+            "position": 0,
+            "type": "string",
+            "title": "Agent ID"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 3,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "station_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Station Code"
+          },
+          "rate_code": {
+            "position": 2,
+            "type": "string",
+            "title": "Rate Code"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": null,
+        "message_support": false,
+        "property_mapping": null,
+        "connection_params": {},
+        "mapping_is_not_required": true,
+        "rate_params": {}
+      },
+      {
+        "code": "Heytrip",
+        "title": "Heytrip",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Hipcamp",
+        "title": "Hipcamp",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "HLCPlus",
+        "title": "HLC+",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Hopper",
+        "title": "Hopper",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 2,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "max_stay_type": {
+            "default": "Arrival",
+            "position": 3,
+            "type": "switch",
+            "options": [
+              "Arrival",
+              "Through"
+            ],
+            "title": "Max Stay Type"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "direct",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {
+          "mode": "meta"
+        }
+      },
+      {
+        "code": "HopperHomes",
+        "title": "Hopper Homes",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "host_email": {
+            "position": 4,
+            "type": "string",
+            "title": "Verified Host Email"
+          },
+          "host_name": {
+            "position": 5,
+            "type": "string",
+            "title": "Display Host Name"
+          },
+          "min_stay_type": {
+            "default": "Arrival",
+            "position": 1,
+            "type": "switch",
+            "options": [
+              "Arrival",
+              "Through"
+            ],
+            "title": "Min Stay Type"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 2,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "ota",
+        "actions": [],
+        "mapping_mode": "listing",
+        "message_support": false,
+        "property_mapping": "multiple",
+        "connection_params": {},
+        "mapping_is_not_required": true,
+        "channel_restrictions": {
+          "currency": "USD"
+        },
+        "rate_params": {
+          "listing_id": {
+            "position": 0,
+            "type": "integer",
+            "title": "Listing"
+          }
+        }
+      },
+      {
+        "code": "Hostelworld",
+        "title": "Hostelworld",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_id": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel ID"
+          },
+          "min_stay_type": {
+            "default": "Arrival",
+            "position": 1,
+            "type": "select",
+            "options": [
+              "Arrival",
+              "Through"
+            ],
+            "title": "Min Stay Type"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 2,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "booking_amount_settings": {
+            "default": "With Commission",
+            "position": 4,
+            "type": "select",
+            "options": [
+              "With Commission",
+              "Without Commission"
+            ],
+            "title": "Booking Amount"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {
+          "mode": "worker",
+          "max_attempts": 5,
+          "health_check_frame": "exp",
+          "read_frame": null,
+          "sync_frame": 10000
+        },
+        "rate_params": {
+          "type": {
+            "position": 2,
+            "type": "string",
+            "title": "Type"
+          },
+          "occupancy": {
+            "position": 3,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          }
+        }
+      },
+      {
+        "code": "HotelPoint",
+        "title": "Hotel Point",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "request_credit_card": {
+            "default": false,
+            "position": 0,
+            "type": "hidden",
+            "title": "Request Credit Card"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "direct",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {
+          "mode": "meta"
+        },
+        "rate_params": null
+      },
+      {
+        "code": "HotelRez",
+        "title": "HotelREZ",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "HotelTrader",
+        "title": "HotelTrader",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "JoodBooking",
+        "title": "JoodBooking",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "JulianAlpsBooking",
+        "title": "Julian Alps Booking",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "min_stay_type": {
+            "default": "Arrival",
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Arrival",
+              "Through"
+            ],
+            "title": "Min Stay Type"
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Levart",
+        "title": "Levart",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "api_key": {
+            "position": 1,
+            "type": "password",
+            "title": "API Key"
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 2,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Goibibo",
+        "title": "Make My Trip",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_id": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel ID"
+          },
+          "access_token": {
+            "position": 1,
+            "type": "password",
+            "title": "Access Token"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 2,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "booking_amount_settings": {
+            "default": "Payout Amount",
+            "position": 8,
+            "type": "select",
+            "options": [
+              "Payout Amount",
+              "Total Amount"
+            ],
+            "title": "Booking Amount"
+          },
+          "b2b_rate_type_modifier": {
+            "default": 0,
+            "position": 5,
+            "type": "integer",
+            "title": "B2B Rate Type Modifier (%)",
+            "rules": [
+              {
+                "apply": "hidden",
+                "when": false,
+                "influence_field": "sync_b2b_rate_type",
+                "with_value": ""
+              }
+            ]
+          },
+          "my_biz_rate_type_modifier": {
+            "default": 0,
+            "position": 7,
+            "type": "integer",
+            "title": "MyBiz Rate Type Modifier (%)",
+            "rules": [
+              {
+                "apply": "hidden",
+                "when": false,
+                "influence_field": "sync_my_biz_rate_type",
+                "with_value": ""
+              }
+            ]
+          },
+          "sync_b2b_rate_type": {
+            "default": false,
+            "position": 4,
+            "type": "boolean",
+            "title": "Sync B2B Rate Type"
+          },
+          "sync_my_biz_rate_type": {
+            "default": false,
+            "position": 6,
+            "type": "boolean",
+            "title": "Sync MyBiz Rate Type"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {
+          "mode": "meta"
+        },
+        "rate_params": {
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "string",
+            "title": "PricingType"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "MoreCom",
+        "title": "More.com",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "request_credit_card": {
+            "default": false,
+            "position": 0,
+            "type": "hidden",
+            "title": "Request Credit Card"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": null
+      },
+      {
+        "code": "OpenChannel",
+        "title": "Open Channel",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "endpoint": {
+            "position": 0,
+            "type": "string",
+            "title": "API Endpoint"
+          },
+          "api_key": {
+            "position": 1,
+            "type": "password",
+            "title": "API Key"
+          },
+          "hotel_code": {
+            "position": 2,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 3,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "default": "Standard",
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "OpenShopping",
+        "title": "Open Shopping API",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "request_credit_card": {
+            "default": true,
+            "position": 4,
+            "type": "boolean",
+            "title": "Request Credit Card"
+          },
+          "slug": {
+            "position": 0,
+            "type": "slug",
+            "title": "Property Slug"
+          },
+          "exact_match": {
+            "default": false,
+            "position": 8,
+            "type": "boolean",
+            "title": "Use Exact Match"
+          },
+          "hide_logo": {
+            "default": false,
+            "position": 5,
+            "type": "boolean",
+            "title": "Hide logo"
+          },
+          "hide_title": {
+            "default": false,
+            "position": 6,
+            "type": "boolean",
+            "title": "Hide title"
+          },
+          "request_billing_info": {
+            "default": true,
+            "position": 7,
+            "type": "boolean",
+            "title": "Billing Info is required"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "direct",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {
+          "mode": "meta"
+        },
+        "rate_params": null
+      },
+      {
+        "code": "OutReserve",
+        "title": "OutReserve",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Padelbound",
+        "title": "Padelbound",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Payless",
+        "title": "Payless",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "agent_id": {
+            "position": 0,
+            "type": "string",
+            "title": "Agent ID"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 2,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "station_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Station Code"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": null,
+        "message_support": false,
+        "property_mapping": null,
+        "connection_params": {},
+        "mapping_is_not_required": true,
+        "rate_params": {}
+      },
+      {
+        "code": "Reserva",
+        "title": "Reserva",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "agent_id": {
+            "default": null,
+            "position": 2,
+            "type": "string",
+            "title": "Agency ID"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "request_credit_card": {
+            "default": false,
+            "position": 0,
+            "type": "hidden",
+            "title": "Request Credit Card"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "direct",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {
+          "mode": "meta"
+        },
+        "rate_params": null
+      },
+      {
+        "code": "RevChill",
+        "title": "RevChill",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "api_key": {
+            "position": 1,
+            "type": "password",
+            "title": "API Key"
+          },
+          "min_stay_type": {
+            "default": "Arrival",
+            "position": 4,
+            "type": "select",
+            "options": [
+              "Arrival",
+              "Through"
+            ],
+            "title": "Min Stay Type"
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 2,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Revenatium",
+        "title": "Revenatium",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "RoomPanda",
+        "title": "Room Panda",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "min_stay_type": {
+            "default": "Arrival",
+            "position": 3,
+            "type": "switch",
+            "options": [
+              "Arrival",
+              "Through"
+            ],
+            "title": "Min Stay Type"
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "RukiyeZara",
+        "title": "Rukiye Zara",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "SelahComfort",
+        "title": "SELAH COMFORT",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Stayinto",
+        "title": "Stayinto",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Travia",
+        "title": "Travia",
+        "params": {
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "CTrip",
+        "title": "Trip.com (CTrip)",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 2,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "booking_tax_settings": {
+            "default": "Inclusive",
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Inclusive",
+              "Exclusive"
+            ],
+            "title": "Tax Setting For Bookings"
+          }
+        },
+        "kind": "meta",
+        "actions": [
+          "load_future_reservations"
+        ],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {
+          "mode": "meta"
+        },
+        "rate_params": {
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "string",
+            "title": "PricingType"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Tripnera",
+        "title": "Tripnera",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "min_stay_type": {
+            "default": "Arrival",
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Arrival",
+              "Through"
+            ],
+            "title": "Min Stay Type"
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "WebBeds",
+        "title": "WebBeds",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "min_stay_type": {
+            "default": "Arrival",
+            "position": 5,
+            "type": "select",
+            "options": [
+              "Arrival",
+              "Through"
+            ],
+            "title": "Min Stay Type"
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 4,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "WeSpeak",
+        "title": "WeSpeak",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "request_credit_card": {
+            "default": false,
+            "position": 0,
+            "type": "hidden",
+            "title": "Request Credit Card"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": null
+      },
+      {
+        "code": "WeSpeakOpen",
+        "title": "WeSpeakOpen",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "WigwamHolidays",
+        "title": "Wigwam Holidays",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      },
+      {
+        "code": "Yatra",
+        "title": "Yatra",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 1,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          },
+          "ari_amount_settings": {
+            "default": "With Commission",
+            "position": 3,
+            "type": "select",
+            "options": [
+              "With Commission",
+              "Without Commission"
+            ],
+            "title": "ARI Amount"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "tree",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate Plan"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room Type"
+          }
+        }
+      },
+      {
+        "code": "ZenithBookingEngine",
+        "title": "Zenith Booking Engine",
+        "params": {
+          "email": {
+            "position": "<redacted>",
+            "type": "<redacted>",
+            "title": "<redacted>",
+            "rules": [
+              {
+                "apply": "<redacted>",
+                "when": false,
+                "influence_field": "<redacted>",
+                "with_value": "<redacted>"
+              }
+            ]
+          },
+          "api_key": {
+            "position": 1,
+            "type": "password",
+            "title": "API Key"
+          },
+          "hotel_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Hotel Code"
+          },
+          "send_email_notifications": {
+            "default": false,
+            "position": 2,
+            "type": "boolean",
+            "title": "Send Property Notification"
+          }
+        },
+        "kind": "meta",
+        "actions": [],
+        "mapping_mode": "room_rate_multioccupancy",
+        "message_support": false,
+        "property_mapping": "single",
+        "connection_params": {},
+        "rate_params": {
+          "readonly": {
+            "position": 5,
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "occupancy": {
+            "position": 2,
+            "type": "integer",
+            "title": "Occupancy"
+          },
+          "rate_plan_code": {
+            "position": 0,
+            "type": "string",
+            "title": "Rate"
+          },
+          "room_type_code": {
+            "position": 1,
+            "type": "string",
+            "title": "Room"
+          },
+          "pricing_type": {
+            "position": 3,
+            "type": "select",
+            "options": [
+              "Standard",
+              "OBP"
+            ],
+            "title": "Pricing Type"
+          },
+          "primary_occ": {
+            "position": 4,
+            "type": "boolean",
+            "title": "Primary Occupancy"
+          }
+        }
+      }
+    ]
+  }
+}
