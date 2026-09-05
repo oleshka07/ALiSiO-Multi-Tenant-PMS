@@ -1,6 +1,8 @@
 import { getSql } from '@core/db/async';
 import { currentOrganizationId } from '@core/auth/tenant-context';
 import type { SellMode } from '../domain/types';
+import { pickRule } from '../domain/extra-occupancy';
+import { rulesForProperty } from './extra-occupancy.repo';
 
 /**
  * Тарифи обʼєкта — у тому вигляді, у якому їх треба знати модулю каналів.
@@ -52,8 +54,10 @@ export interface RatePlanUnitType {
    * `per_room` — одна, на максимальну доросла місткість: у вендора «Per Room
    * Rate Plan … pass Occupancy Option for maximum occupancy», ціна однакова
    * на будь-яку кількість гостей. `per_person` — на кожну кількість дорослих,
-   * для якої Є ДЖЕРЕЛО ЦІНИ: базова заселеність типу (її цінує сам тариф) і
-   * ті кількості, які знає матриця на цьому типі, — не вище місткості.
+   * для якої Є ДЖЕРЕЛО ЦІНИ: базова заселеність типу (її цінує сам тариф),
+   * ті кількості, які знає матриця на цьому типі, і — коли для тарифу й типу
+   * є правило надбавки за дорослого (Ц30) — кожна кількість понад базу до
+   * місткості, бо правило цінує їх усі. Не вище місткості.
    * До 05.09.2026 опція заводилась на кожну кількість до місткості, а ціну
    * без рядка матриці `priceNights` брав рівною ціні тарифу — четверо
    * дешевше за трьох (Ц26 (б), скасовано розділом A п.3). Опція без
@@ -161,6 +165,17 @@ export async function propertyRatePlans(propertyId: string): Promise<RatePlan[]>
     .filter((r) => r.unit_type_id == null || String(r.unit_type_id) === unitTypeId)
     .map((r) => Number(r.persons));
 
+  // Правила надбавок (Ц30): правило для дорослого на цьому тарифі й типі
+  // цінує КОЖНОГО дорослого понад базу — тож джерело ціни є на всі кількості
+  // від бази до місткості.
+  const rules = await rulesForProperty(propertyId, organizationId);
+  const ruledAdults = (planId: string, unitTypeId: string, baseOccupancy: number, maxAdults: number): number[] => {
+    if (!pickRule(rules, { guestKind: 'adult', ratePlanId: planId, unitTypeId })) return [];
+    const out: number[] = [];
+    for (let n = baseOccupancy + 1; n <= maxAdults; n++) out.push(n);
+    return out;
+  };
+
   const unitTypesOf = new Map<string, RatePlanUnitType[]>();
   for (const row of priced) {
     const planId = String(row.rate_plan_id);
@@ -170,8 +185,9 @@ export async function propertyRatePlans(propertyId: string): Promise<RatePlan[]>
     const baseOccupancy = Math.min(maxAdults, Math.max(1, Number(row.base_occupancy) || 2));
     const list = unitTypesOf.get(planId) ?? unitTypesOf.set(planId, []).get(planId)!;
     // Набір опцій задає РЕЖИМ тарифу, межа — ДОРОСЛА місткість (див. поле);
-    // «за особу» — лише кількості з джерелом ціни: базова і ті, що в матриці.
-    const perPerson = [...new Set([baseOccupancy, ...knownAdults(unitTypeId)])]
+    // «за особу» — лише кількості з джерелом ціни: базова, ті, що в матриці,
+    // і ті, що цінує правило надбавки (Ц30).
+    const perPerson = [...new Set([baseOccupancy, ...knownAdults(unitTypeId), ...ruledAdults(planId, unitTypeId, baseOccupancy, maxAdults)])]
       .filter((n) => Number.isInteger(n) && n >= 1 && n <= maxAdults)
       .sort((a, b) => a - b);
     list.push({

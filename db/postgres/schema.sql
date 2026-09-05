@@ -559,6 +559,27 @@ CREATE TABLE "expense_categories" (
   PRIMARY KEY ("id")
 );
 
+CREATE TABLE "extra_occupancy_rules" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "property_id" TEXT NOT NULL,
+  "rate_plan_id" TEXT,
+  "unit_type_id" TEXT,
+  "guest_kind" TEXT NOT NULL,
+  "age_band_index" INTEGER,
+  "lodging_mode" TEXT,
+  "lodging_value" NUMERIC(14,2),
+  "meal_mode" TEXT,
+  "meal_value" NUMERIC(14,2),
+  "extra_bed" BOOLEAN DEFAULT false NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  CHECK (guest_kind IN ('adult', 'child')),
+  CHECK (lodging_mode IN ('fixed', 'percent')),
+  CHECK (meal_mode IN ('fixed', 'percent'))
+);
+
 CREATE TABLE "fees_taxes" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "property_id" TEXT NOT NULL,
@@ -1336,6 +1357,7 @@ CREATE TABLE "organizations" (
   "invoice_email" TEXT,
   "website" TEXT,
   "ocr_cloud_fallback" BIGINT DEFAULT 0 NOT NULL,
+  "child_age_bands" TEXT DEFAULT '[]' NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("slug")
 );
@@ -1512,7 +1534,6 @@ CREATE TABLE "rate_plans" (
   "code" TEXT NOT NULL,
   "pricing_model" TEXT DEFAULT 'standard' NOT NULL,
   "currency" TEXT DEFAULT 'CZK' NOT NULL,
-  "child_extra_gross" NUMERIC(14,2),
   "is_active" BOOLEAN DEFAULT true NOT NULL,
   "sell_mode" TEXT DEFAULT 'per_person' NOT NULL,
   "cancellation_policy" TEXT,
@@ -2130,6 +2151,14 @@ ALTER TABLE "expense_categories" ADD CONSTRAINT "fk_expense_categories_parent_id
   FOREIGN KEY ("parent_id") REFERENCES "expense_categories" ("id");
 ALTER TABLE "expense_categories" ADD CONSTRAINT "fk_expense_categories_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "extra_occupancy_rules" ADD CONSTRAINT "fk_extra_occupancy_rules_unit_type_id_1"
+  FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
+ALTER TABLE "extra_occupancy_rules" ADD CONSTRAINT "fk_extra_occupancy_rules_rate_plan_id_2"
+  FOREIGN KEY ("rate_plan_id") REFERENCES "rate_plans" ("id") ON DELETE CASCADE;
+ALTER TABLE "extra_occupancy_rules" ADD CONSTRAINT "fk_extra_occupancy_rules_property_id_3"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "extra_occupancy_rules" ADD CONSTRAINT "fk_extra_occupancy_rules_organization_id_4"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "fees_taxes" ADD CONSTRAINT "fk_fees_taxes_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "fin_auto_rule_matches" ADD CONSTRAINT "fk_fin_auto_rule_matches_operation_id_1"
@@ -2494,6 +2523,8 @@ CREATE UNIQUE INDEX "idx_event_addons_row" ON "event_addons" ("property_id", "na
 CREATE INDEX "idx_event_bookings_day" ON "event_bookings" ("property_id", "space_id", "event_date");
 CREATE UNIQUE INDEX "idx_event_spaces_row" ON "event_spaces" ("property_id", "code");
 CREATE INDEX "idx_ec_parent" ON "expense_categories" ("parent_id");
+CREATE INDEX "idx_extra_occupancy_rules_org" ON "extra_occupancy_rules" ("organization_id");
+CREATE INDEX "idx_extra_occupancy_rules_property" ON "extra_occupancy_rules" ("property_id");
 CREATE INDEX "idx_arm_op" ON "fin_auto_rule_matches" ("operation_id");
 CREATE INDEX "idx_arm_rule" ON "fin_auto_rule_matches" ("rule_id");
 CREATE INDEX "idx_ar_active" ON "fin_auto_rules" ("is_active", "sort_order");
@@ -2646,6 +2677,7 @@ CREATE INDEX IF NOT EXISTS "idx_event_addons_org" ON "event_addons" ("organizati
 CREATE INDEX IF NOT EXISTS "idx_event_bookings_org" ON "event_bookings" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_event_spaces_org" ON "event_spaces" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_expense_categories_org" ON "expense_categories" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_extra_occupancy_rules_org" ON "extra_occupancy_rules" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_auto_rules_org" ON "fin_auto_rules" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_budgets_org" ON "fin_budgets" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_fin_cash_closings_org" ON "fin_cash_closings" ("organization_id");
@@ -2744,6 +2776,8 @@ ALTER TABLE "event_bookings" ALTER COLUMN "organization_id"
 ALTER TABLE "event_spaces" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "expense_categories" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "extra_occupancy_rules" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "fin_auto_rules" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -3008,6 +3042,12 @@ CREATE POLICY "event_spaces_tenant" ON "event_spaces"
 ALTER TABLE "expense_categories" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "expense_categories" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "expense_categories_tenant" ON "expense_categories"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "extra_occupancy_rules" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "extra_occupancy_rules" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "extra_occupancy_rules_tenant" ON "extra_occupancy_rules"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

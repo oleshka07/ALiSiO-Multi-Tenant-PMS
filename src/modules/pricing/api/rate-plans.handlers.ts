@@ -12,7 +12,7 @@ import type { SellMode, PricingType, AdjustmentKind, AdjustmentDirection } from 
 
 const NAMED: Record<string, number> = {
   code_taken: 409, currency_locked: 409, has_prices: 409, mapped: 409, in_use: 409, sell_mode_locked: 409, has_dependents: 409,
-  code_invalid: 400, currency_invalid: 400, name_required: 400, child_price_invalid: 400, sell_mode_invalid: 400,
+  code_invalid: 400, currency_invalid: 400, name_required: 400, sell_mode_invalid: 400,
   based_on_required: 400, based_on_invalid: 400, adjustment_invalid: 400,
 };
 
@@ -53,7 +53,7 @@ export const listRatePlanSettings = withPermission('manage_pricing', async (requ
 });
 
 /**
- * POST /api/pricing/rate-plans { property_id?, name, code, currency, meal_plan?, child_extra_gross?, sell_mode?, is_hidden?,
+ * POST /api/pricing/rate-plans { property_id?, name, code, currency, meal_plan?, sell_mode?, is_hidden?,
  *   pricing_type?, based_on_rate_plan_id?, adjustment_kind?, adjustment_value?, adjustment_direction? }
  * Похідний (Ц28): `pricing_type: 'derived'` з базою і коригуванням — рендериться в календар одразу.
  */
@@ -73,7 +73,6 @@ export const createRatePlanSetting = withPermission('manage_pricing', async (req
         code: String(body.code ?? ''),
         currency: String(body.currency ?? ''),
         mealPlan: body.meal_plan ? String(body.meal_plan) : null,
-        childExtraGross: body.child_extra_gross === '' || body.child_extra_gross == null ? null : Number(body.child_extra_gross),
         // Писач звіряє зі словником; тут лише рядок, не вгадування.
         sellMode: body.sell_mode == null || body.sell_mode === '' ? null : (String(body.sell_mode) as SellMode),
         isHidden: typeof body.is_hidden === 'boolean' ? body.is_hidden : undefined,
@@ -89,7 +88,7 @@ export const createRatePlanSetting = withPermission('manage_pricing', async (req
 });
 
 /**
- * PATCH /api/pricing/rate-plans/[id] { name?, code?, currency?, meal_plan?, child_extra_gross?, is_active?, sell_mode? }
+ * PATCH /api/pricing/rate-plans/[id] { name?, code?, currency?, meal_plan?, is_active?, sell_mode?, is_hidden?, pricing_type?, … }
  *
  * `is_active: false` — зняти з продажу (канал закриє ночі до горизонту),
  * `true` — повернути. Лише boolean: рядок «false» тут був би правдою.
@@ -104,7 +103,6 @@ export const updateRatePlanSetting = withPermission('manage_pricing', async (req
     if (typeof body.code === 'string') patch.code = body.code;
     if (typeof body.currency === 'string') patch.currency = body.currency;
     if ('meal_plan' in body) patch.mealPlan = body.meal_plan ? String(body.meal_plan) : null;
-    if ('child_extra_gross' in body) patch.childExtraGross = body.child_extra_gross === '' || body.child_extra_gross == null ? null : Number(body.child_extra_gross);
     if (typeof body.is_active === 'boolean') patch.isActive = body.is_active;
     if (typeof body.sell_mode === 'string') patch.sellMode = body.sell_mode as SellMode;
     if (typeof body.is_hidden === 'boolean') patch.isHidden = body.is_hidden;

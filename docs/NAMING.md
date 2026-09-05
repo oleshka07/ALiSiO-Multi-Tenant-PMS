@@ -92,6 +92,13 @@ Charter описує, ЯК називати. Він не вимагає нега
     точкове перевизначення дати | `import` — файл готелю | `derived` —
     порахований від бази рядок похідного тарифу. Обмеження джерела
     не мають — вони на базовому рядку типу
+  - `extra_occupancy_rules.guest_kind`: `adult | child` — хто доплачує
+    (Ц30): дорослий понад `base_occupancy` або дитина за віковою вилкою;
+    `lodging_mode`, `meal_mode`: `fixed | percent` — сума за ніч або відсоток
+    від ціни ночі за базову заселеність; `age_band_index` — індекс вилки з
+    `organizations.child_age_bands` (NULL = усі вилки), рахується з нуля.
+    Вилка — «band», не «group»: група в Hoteliera — це тариф × типи, тобто
+    фільтр екрана, а не сутність
   - `rate_plans.pricing_type`: `manual | derived` — свої ціни чи від бази
     (Ц28); `adjustment_kind`: `percent | fixed`; `adjustment_direction`:
     `increase | decrease`. Похідний від похідного не буває — тримає писач

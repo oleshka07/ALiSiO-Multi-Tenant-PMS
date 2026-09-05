@@ -78,10 +78,33 @@ const AXES = [
     distinct: /\bnights:\s*(\d+)/g, min: 2,
     some: { pattern: /\bnights:\s*(\d+)/g, test: (v) => Number(v) > 1, why: 'потрібна хоч одна ніч > 1' },
   },
+  // Ц30 (0070): дитина — надбавка за правилом, її сцени — у домені надбавок.
   {
-    file: 'src/modules/pricing/domain/occupancy-price.check.ts',
-    axis: 'дітей у котируванні (Ц12: дитина — не малий дорослий)',
-    some: { pattern: /\bchildren:\s*(\d+)/g, test: (v) => Number(v) > 0, why: 'потрібне хоч одне котирування з дітьми' },
+    file: 'src/modules/pricing/domain/extra-occupancy.check.ts',
+    axis: 'дітей у ночі (дитина — не малий дорослий)',
+    some: { pattern: /\bchildren:\s*(\d+)/g, test: (v) => Number(v) > 0, why: 'потрібна хоч одна ніч із дітьми' },
+  },
+  {
+    file: 'src/modules/pricing/domain/extra-occupancy.check.ts',
+    axis: 'ціна ночі під відсотковою надбавкою («% від ночі» ≠ константа)',
+    distinct: /nightPrice: (\d+)/g, min: 2,
+  },
+  {
+    file: 'src/modules/pricing/domain/extra-occupancy.check.ts',
+    axis: 'режим продажу в надбавках',
+    distinct: /sellMode: '(per_room|per_person)'/g, min: 2,
+  },
+  // Писач надбавок: один рід гостя не розрізняє «дорослий» і «дитина» у
+  // клітинці конфлікту; один режим — «сума» і «відсоток» у перевірці значення.
+  {
+    file: 'src/modules/pricing/data/extra-occupancy.repo.check.ts',
+    axis: 'рід гостя у правилах писача',
+    distinct: /guestKind: '(adult|child)'/g, min: 2,
+  },
+  {
+    file: 'src/modules/pricing/data/extra-occupancy.repo.check.ts',
+    axis: 'режим надбавки у правилах писача',
+    distinct: /(?:lodging|meal)Mode: '(fixed|percent)'/g, min: 2,
   },
   {
     file: 'src/modules/pricing/domain/occupancy-price.check.ts',

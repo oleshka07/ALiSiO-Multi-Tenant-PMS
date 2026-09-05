@@ -31,6 +31,18 @@ interface Organization {
   invoice_email: string | null;
   website: string | null;
   ocr_cloud_fallback: number;
+  /** Вікові межі дітей (Ц30): у формі — «3, 12»; з бази приходить JSON-список. */
+  child_age_bands: string;
+}
+
+/** `[3,12]` з бази → «3, 12» у полі; порожньо — одна вилка 0–17. */
+function bandsText(raw: unknown): string {
+  try {
+    const parsed = Array.isArray(raw) ? raw : JSON.parse(String(raw ?? '[]'));
+    return Array.isArray(parsed) ? parsed.join(', ') : '';
+  } catch {
+    return String(raw ?? '');
+  }
 }
 
 interface Property {
@@ -77,7 +89,7 @@ export default function GeneralSettingsPage() {
       const res = await fetch(`/api/settings/general${propertyId ? `?property_id=${encodeURIComponent(propertyId)}` : ''}`);
       const data = await res.json();
       if (!res.ok) { showToast(`❌ ${t(data.error)}`); return; }
-      setOrg(data.organization);
+      setOrg({ ...data.organization, child_age_bands: bandsText(data.organization?.child_age_bands) });
       setPropertyForm(data.property);
       setCurrencies(data.currencies ?? []);
       setLanguages(data.languages ?? []);
@@ -102,7 +114,7 @@ export default function GeneralSettingsPage() {
       });
       const data = await res.json();
       if (!res.ok) { showToast(`❌ ${t(data.error)}`); return; }
-      setOrg(data.organization);
+      setOrg({ ...data.organization, child_age_bands: bandsText(data.organization?.child_age_bands) });
       setPropertyForm(data.property);
       showToast(t('✅ Збережено'));
     } catch (e: any) {
@@ -286,6 +298,20 @@ export default function GeneralSettingsPage() {
                     </div>
                   </span>
                 </label>
+              </div>
+            </div>
+
+            <div className="card" style={{ marginBottom: 20 }}>
+              <div className="card-header"><div className="card-title">{t('Діти')}</div></div>
+              <div style={{ padding: 20 }}>
+                <div className="form-group" style={{ maxWidth: 360 }}>
+                  <label className="form-label">{t('Вікові межі дітей')}</label>
+                  <input className="form-input" value={org.child_age_bands ?? ''} placeholder="3, 12"
+                    onChange={(e) => setOrgField('child_age_bands', e.target.value)} />
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 6, lineHeight: 1.6 }}>
+                    {t('З якого віку починається наступна вилка: «3, 12» — це 0–2, 3–11 і 12–17 років; порожньо — одна вилка 0–17. Дорослий — від 18. Надбавка за кожну вилку — у Налаштування → Ціни → Надбавки за заселеність.')}
+                  </div>
+                </div>
               </div>
             </div>
 

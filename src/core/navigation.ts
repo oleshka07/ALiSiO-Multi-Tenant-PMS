@@ -80,6 +80,7 @@ export const DESTINATIONS: Destination[] = [
   { label: 'Фактурування', href: '/app/settings/invoicing', section: 'Налаштування', permission: 'nav:settings', feature: 'invoicing', keywords: ['ПДВ', 'ставки податку', 'серії', 'нумерація', 'фактура', 'строк оплати', 'бланк'] },
   { label: 'Оплати', href: '/app/settings/payments', section: 'Налаштування', permission: 'nav:settings', keywords: ['еквайринг', 'термінал', 'картка', 'готівка'] },
   { label: 'Сезони', href: '/app/settings/seasons', section: 'Налаштування', permission: 'nav:pricing', keywords: ['сезон', 'високий сезон', 'низький сезон', 'ціна сезону', 'перевизначення'] },
+  { label: 'Надбавки за заселеність', href: '/app/settings/extra-occupancy', section: 'Налаштування', permission: 'nav:pricing', keywords: ['дитина', 'діти', 'вікові вилки', 'третій дорослий', 'додаткове ліжко', 'харчування', 'надбавка'] },
   { label: 'Ціни за заселеністю', href: '/app/settings/pricing-matrix', section: 'Налаштування', permission: 'nav:pricing', keywords: ['одномісний', 'двомісний', 'матриця', 'знижка за тривалість'] },
   { label: 'Ціни каналів', href: '/app/settings/channel-rules', section: 'Налаштування', permission: 'nav:pricing', keywords: ['націнка', 'комісія', 'сніданок у ціні'] },
   { label: 'Джерела бронювань', href: '/app/settings/booking-sources', section: 'Налаштування', permission: 'nav:settings', keywords: ['звідки прийшов гість', 'канал продажу'] },

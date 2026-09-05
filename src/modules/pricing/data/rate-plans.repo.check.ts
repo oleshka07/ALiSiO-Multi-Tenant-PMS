@@ -70,7 +70,7 @@ await seed(B);
 try {
   // ── 1. Створення — лише на своєму обʼєкті ────────────────────────────
   const bar = await runWithOrganization(A, () => createRatePlan({
-    propertyId: PROP(A), name: 'Best Available Rate', code: 'BAR', currency: 'USD', mealPlan: null, childExtraGross: null,
+    propertyId: PROP(A), name: 'Best Available Rate', code: 'BAR', currency: 'USD', mealPlan: null,
   }));
   assert.ok(bar.id, 'створений тариф має id');
   assert.deepStrictEqual(
@@ -79,7 +79,7 @@ try {
   );
 
   await runWithOrganization(A, () => assert.rejects(
-    () => createRatePlan({ propertyId: PROP(B), name: 'X', code: 'X', currency: 'USD', mealPlan: null, childExtraGross: null }),
+    () => createRatePlan({ propertyId: PROP(B), name: 'X', code: 'X', currency: 'USD', mealPlan: null }),
     /not found/i, 'чужий обʼєкт — «not found», не тариф у чужому готелі',
   ));
   assert.strictEqual((await sql.rows('SELECT id FROM rate_plans WHERE property_id = ?', [PROP(B)])).length, 0, 'у Б нічого не зʼявилось');
@@ -87,22 +87,21 @@ try {
 
   // ── 2. Код унікальний у межах обʼєкта — названо, не 500 ──────────────
   await runWithOrganization(A, () => assert.rejects(
-    () => createRatePlan({ propertyId: PROP(A), name: 'Again', code: 'bar', currency: 'USD', mealPlan: null, childExtraGross: null }),
+    () => createRatePlan({ propertyId: PROP(A), name: 'Again', code: 'bar', currency: 'USD', mealPlan: null }),
     /code_taken/, 'той самий код (без урахування регістру) — відмова з назвою',
   ));
   const barB = await runWithOrganization(B, () => createRatePlan({
-    propertyId: PROP(B), name: 'BAR у Б', code: 'BAR', currency: 'EUR', mealPlan: null, childExtraGross: null,
+    propertyId: PROP(B), name: 'BAR у Б', code: 'BAR', currency: 'EUR', mealPlan: null,
   }));
   assert.ok(barB.id, 'той самий код на іншому обʼєкті — можна');
   console.log('  ok  код унікальний на обʼєкті, не на світі');
 
   // ── 3. Список і читач каналу бачать одне й те саме ────────────────────
   const bb = await runWithOrganization(A, () => createRatePlan({
-    propertyId: PROP(A), name: 'Bed & Breakfast', code: 'BB', currency: 'USD', mealPlan: 'breakfast', childExtraGross: 15,
+    propertyId: PROP(A), name: 'Bed & Breakfast', code: 'BB', currency: 'USD', mealPlan: 'breakfast',
   }));
   const listed = await runWithOrganization(A, () => listRatePlans(PROP(A)));
   assert.deepStrictEqual(listed.map((p) => p.code), ['BAR', 'BB']);
-  assert.strictEqual(listed[1].childExtraGross, 15);
   assert.strictEqual(listed[1].mealPlan, 'breakfast');
   assert.ok(listed.every((p) => p.pricedUnitTypes.length === 0), 'без цін — ні на якому типі; це видно, а не сховано');
   const forChannel = await runWithOrganization(A, () => propertyRatePlans(PROP(A)));
@@ -111,14 +110,14 @@ try {
   assert.strictEqual((await runWithOrganization(B, () => listRatePlans(PROP(A)))).length, 0, 'чужий обʼєкт — порожньо');
   console.log('  ok  список і читач каналу згодні; без ціни тариф є, але не продається');
 
-  // ── 4. Зміна: назва й ціна дитини; код — з тією ж унікальністю ────────
-  const renamed = await runWithOrganization(A, () => updateRatePlan(bb.id, { name: 'Bed and Breakfast', childExtraGross: 20 }));
+  // ── 4. Зміна: назва й харчування; код — з тією ж унікальністю ────────
+  const renamed = await runWithOrganization(A, () => updateRatePlan(bb.id, { name: 'Bed and Breakfast', mealPlan: 'half_board' }));
   assert.strictEqual(renamed.name, 'Bed and Breakfast');
-  assert.strictEqual(renamed.childExtraGross, 20);
+  assert.strictEqual(renamed.mealPlan, 'half_board');
   await runWithOrganization(A, () => assert.rejects(() => updateRatePlan(bb.id, { code: 'BAR' }), /code_taken/));
   await runWithOrganization(B, () => assert.rejects(() => updateRatePlan(bb.id, { name: 'Чужими руками' }), /not found/i, 'чужий орендар не редагує'));
   assert.strictEqual((await runWithOrganization(A, () => listRatePlans(PROP(A))))[1].name, 'Bed and Breakfast');
-  console.log('  ok  зміна назви й ціни дитини; чужий орендар — «not found»');
+  console.log('  ok  зміна назви й харчування; чужий орендар — «not found»');
 
   // ── 5. Валюта: вільна, доки немає цін; замкнена, щойно вони є ─────────
   const eur = await runWithOrganization(A, () => updateRatePlan(bb.id, { currency: 'EUR' }));
@@ -236,7 +235,7 @@ try {
   // тарифи досі. BB заведено у вендора (дзеркало зі сцени 7). Дві осі
   // (інваріант 26): обидва режими в одній сцені.
   const room = await runWithOrganization(A, () => createRatePlan({
-    propertyId: PROP(A), name: 'Room rate', code: 'ROOM', currency: 'USD', mealPlan: null, childExtraGross: null, sellMode: 'per_room',
+    propertyId: PROP(A), name: 'Room rate', code: 'ROOM', currency: 'USD', mealPlan: null, sellMode: 'per_room',
   }));
   assert.strictEqual(room.sellMode, 'per_room', 'режим «за номер» мав зберегтись');
   const listedModes = await runWithOrganization(A, () => listRatePlans(PROP(A)));
@@ -244,7 +243,7 @@ try {
   assert.strictEqual(listedModes.find((p) => p.id === bb.id)?.mapped, true, 'екран має бачити, що тариф заведено у вендора');
   assert.strictEqual(listedModes.find((p) => p.id === room.id)?.mapped, false);
   await runWithOrganization(A, () => assert.rejects(
-    () => createRatePlan({ propertyId: PROP(A), name: 'Bad', code: 'BAD', currency: 'USD', mealPlan: null, childExtraGross: null, sellMode: 'per_night' as never }),
+    () => createRatePlan({ propertyId: PROP(A), name: 'Bad', code: 'BAD', currency: 'USD', mealPlan: null, sellMode: 'per_night' as never }),
     /sell_mode_invalid/, 'невідомий режим — відмова з назвою, не тихий дефолт',
   ));
   const flipped = await runWithOrganization(A, () => updateRatePlan(room.id, { sellMode: 'per_person' }));
@@ -309,22 +308,22 @@ try {
       await bulkUpdatePrices({ unitTypeId: UT(A), dateFrom: D3, dateTo: D3, applyTo: 'all', base_price: 200 });
     });
     const std = await runWithOrganization(A, () => createRatePlan({
-      propertyId: PROP(A), name: 'Standard', code: 'STD', currency: 'USD', mealPlan: null, childExtraGross: null,
+      propertyId: PROP(A), name: 'Standard', code: 'STD', currency: 'USD', mealPlan: null,
     }));
     await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D3, base_price: 180 }], { ratePlanId: std.id }));
 
     // Відмови — названі, до першого рядка.
     await runWithOrganization(A, () => assert.rejects(() => createRatePlan({
-      propertyId: PROP(A), name: 'No base', code: 'NOBASE', currency: 'USD', mealPlan: null, childExtraGross: null,
+      propertyId: PROP(A), name: 'No base', code: 'NOBASE', currency: 'USD', mealPlan: null,
       pricingType: 'derived', adjustmentKind: 'percent', adjustmentValue: 10, adjustmentDirection: 'decrease',
     }), /based_on_required/, 'похідний без бази — відмова з назвою'));
     await runWithOrganization(A, () => assert.rejects(() => createRatePlan({
-      propertyId: PROP(A), name: 'Zero', code: 'ZERO', currency: 'USD', mealPlan: null, childExtraGross: null,
+      propertyId: PROP(A), name: 'Zero', code: 'ZERO', currency: 'USD', mealPlan: null,
       pricingType: 'derived', basedOnRatePlanId: std.id, adjustmentKind: 'percent', adjustmentValue: 0, adjustmentDirection: 'decrease',
     }), /adjustment_invalid/, 'коригування нуль — не коригування'));
 
     const nr = await runWithOrganization(A, () => createRatePlan({
-      propertyId: PROP(A), name: 'Non-refundable', code: 'NR', currency: 'USD', mealPlan: null, childExtraGross: null,
+      propertyId: PROP(A), name: 'Non-refundable', code: 'NR', currency: 'USD', mealPlan: null,
       pricingType: 'derived', basedOnRatePlanId: std.id, adjustmentKind: 'percent', adjustmentValue: 10, adjustmentDirection: 'decrease',
     }));
     assert.strictEqual(nr.pricingType, 'derived');
@@ -339,13 +338,13 @@ try {
     assert.strictEqual(g1.inherited, false, 'це власний рядок тарифу, не успадкована база');
 
     const plus = await runWithOrganization(A, () => createRatePlan({
-      propertyId: PROP(A), name: 'Plus', code: 'PLUS', currency: 'USD', mealPlan: null, childExtraGross: null,
+      propertyId: PROP(A), name: 'Plus', code: 'PLUS', currency: 'USD', mealPlan: null,
       pricingType: 'derived', basedOnRatePlanId: std.id, adjustmentKind: 'fixed', adjustmentValue: 25, adjustmentDirection: 'increase',
     }));
     assert.strictEqual(await price(plus.id, D1), 125, 'PLUS = 100 + 25');
     assert.strictEqual(await price(plus.id, D3), 205, 'PLUS = 180 + 25');
     await runWithOrganization(A, () => assert.rejects(() => createRatePlan({
-      propertyId: PROP(A), name: 'Chain', code: 'CHAIN', currency: 'USD', mealPlan: null, childExtraGross: null,
+      propertyId: PROP(A), name: 'Chain', code: 'CHAIN', currency: 'USD', mealPlan: null,
       pricingType: 'derived', basedOnRatePlanId: nr.id, adjustmentKind: 'percent', adjustmentValue: 5, adjustmentDirection: 'decrease',
     }), /based_on_invalid/, 'похідний від похідного — відмова: ланцюжок правил ніхто не прочитає'));
 
@@ -377,7 +376,7 @@ try {
 
     // Коригування, що зʼїдає ціну, — дня без ціни, не ціна нуль (Ц24).
     const free = await runWithOrganization(A, () => createRatePlan({
-      propertyId: PROP(A), name: 'Free', code: 'FREE', currency: 'USD', mealPlan: null, childExtraGross: null,
+      propertyId: PROP(A), name: 'Free', code: 'FREE', currency: 'USD', mealPlan: null,
       pricingType: 'derived', basedOnRatePlanId: std.id, adjustmentKind: 'fixed', adjustmentValue: 500, adjustmentDirection: 'decrease',
     }));
     assert.deepStrictEqual((await q(free.id, D1)).missing, [D1], '120 − 500 — ціни немає, ніч у missing, не нуль і не відʼємне');

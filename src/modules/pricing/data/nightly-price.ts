@@ -38,6 +38,8 @@
 import { getSql } from '@core/db/async';
 import { quoteStay, matrixPriceFor, type PriceRow, type LosTier } from '../domain/occupancy-price';
 import { OPEN_STAY, type StayRestrictions } from '../domain/restrictions';
+import { pickRule, surchargeOf, nightSurcharges, type OccupancyRule, type AgeBand, type SurchargeMissing } from '../domain/extra-occupancy';
+import { rulesForProperty, ageBandsOf } from './extra-occupancy.repo';
 import { money } from '@core/money';
 
 export interface NightlyPrice {
@@ -105,16 +107,35 @@ export interface NightlyPrices {
    * причина інша — не «ціни немає», а «цього не продають».
    */
   ratePlanRetired?: boolean;
+  /**
+   * Дитина без правила надбавки (Ц30): ніч без ціни, бо «безкоштовно» теж
+   * має назвати готель (інваріант 17). Кожна така ніч і в `missing`.
+   */
+  childRuleMissing?: boolean;
+  /**
+   * Правила дітей у готелі — по вікових вилках, а вік дітей не переданий
+   * (`childrenAges`): вгадувати вилку не можна, ніч без ціни. Рятує лише
+   * правило «на всі вилки».
+   */
+  childAgesRequired?: boolean;
 }
 
 /**
  * Price the nights of a stay.
  *
  * `adults` addresses the price matrix; children are priced separately by the
- * rate plan's own surcharge (decision Ц12, 01.09.2026). Before that the two
- * were added together, so a child cost exactly what an adult cost and a family
- * of 2+2 paid for four adults — while `unit_types` and `reservations` had told
- * adults from children all along.
+ * property's extra-occupancy rules (decision Ц12, 01.09.2026; rules — Ц30,
+ * 05.09.2026). Before that the two were added together, so a child cost
+ * exactly what an adult cost and a family of 2+2 paid for four adults — while
+ * `unit_types` and `reservations` had told adults from children all along.
+ *
+ * НАДБАВКИ ЗА ЗАСЕЛЕНІСТЬ (Ц30). Ціна ночі — за `base_occupancy` дорослих.
+ * Кожен дорослий понад базу — за правилом `extra_occupancy_rules` (тариф × тип
+ * > тариф > тип > усі), відсотком від ціни ночі або сумою; правила немає —
+ * різниця матриці, як і досі (перехід, доки періоди матриці не мігровано в
+ * сезони). Кожна дитина — лише за правилом: без нього ніч без ціни
+ * (`childRuleMissing`). «За номер» — дорослих понад базу не доплачують, діти
+ * доплачують (Ц26).
  */
 export async function priceNights(input: {
   unitTypeId: string;
@@ -124,11 +145,17 @@ export async function priceNights(input: {
   /** ДОРОСЛІ — саме вони адресують матрицю (Ц12). */
   adults: number;
   /**
-   * Діти. Їх ціна — надбавка тарифу, і без тарифу її нема звідки взяти:
-   * котирування з дітьми, але без `ratePlanId`, поверне ночі як `missing`.
+   * Діти. Їх ціна — правило надбавки за заселеність (Ц30), і без правила її
+   * нема звідки взяти: ночі підуть у `missing` із `childRuleMissing`.
    * Це інваріант 17, а не недогляд — «безкоштовно» теж треба назвати.
    */
   children?: number;
+  /**
+   * Вік кожної дитини, коли відомий (довжина — `children`). Без нього діти
+   * оцінюються лише правилом «на всі вилки»; правила по вилках без віку —
+   * `childAgesRequired`, не вгадана вилка.
+   */
+  childrenAges?: readonly number[] | null;
   /**
    * Price this rate plan rather than the unit type's own price.
    *
@@ -140,7 +167,7 @@ export async function priceNights(input: {
   ratePlanId?: string | null;
 }): Promise<NightlyPrices> {
   const sql = getSql();
-  const { unitTypeId, checkIn, nights, adults, children = 0, ratePlanId = null } = input;
+  const { unitTypeId, checkIn, nights, adults, children = 0, childrenAges = null, ratePlanId = null } = input;
   // Без `adults` матрицю нема чим адресувати — і це відмова з назвою, не тихе
   // «неоцінені ночі». Викликач на JavaScript (скрипт заведення готелю) після
   // перейменування `persons` → `adults` (Ц12) три тижні передавав старий ключ,
@@ -188,16 +215,17 @@ export async function priceNights(input: {
 
   const matrix = owner ? await loadMatrixRows(owner.organization_id, owner.property_id) : [];
 
-  // Надбавка за дитину живе на ТАРИФІ (Ц12) — так само, як `children_fee` у
-  // менеджера каналів. Без тарифу її не існує, і тоді ніч із дітьми не
-  // продається: назвати нуль від імені готелю ми не можемо.
+  // Правила надбавок за заселеність обʼєкта (Ц30) і вікові вилки організації.
+  // Орендар — з обʼєкта, не з сесії: цей шлях ходить і віджет без оператора.
+  const rules: OccupancyRule[] = owner ? await rulesForProperty(owner.property_id, owner.organization_id) : [];
+  const bands: AgeBand[] = owner && children > 0 ? await ageBandsOf(owner.organization_id) : [];
+
   const plan = ratePlanId
     ? await sql.row<any>(
-        'SELECT child_extra_gross, is_active, sell_mode, pricing_type FROM rate_plans WHERE id = ? AND property_id = ?',
+        'SELECT is_active, sell_mode, pricing_type FROM rate_plans WHERE id = ? AND property_id = ?',
         [ratePlanId, owner?.property_id ?? ''],
       )
     : null;
-  const childExtraGross = plan?.child_extra_gross ?? null;
   // Тариф «за номер» (Ц26): ціна однакова на будь-яку кількість гостей, тож
   // матриця й надбавка рахуються на БАЗОВУ заселеність, а не на партію.
   // Місткість при цьому перевіряється на справжню партію — вище.
@@ -222,7 +250,7 @@ export async function priceNights(input: {
 
   const quote = owner
     ? quoteStay({
-      checkIn, nights, adults: quoteAdults, children, childExtraGross, unitTypeId,
+      checkIn, nights, adults: quoteAdults, unitTypeId,
       matrix,
       losTiers: await loadTierRows(owner.organization_id, owner.property_id),
     })
@@ -288,9 +316,44 @@ export async function priceNights(input: {
     return money(at - atBase);
   };
 
+  /**
+   * Дорослі понад базу за ПРАВИЛОМ (Ц30) — коли для цього тарифу й типу воно
+   * є; `null` — правило тут нічого не каже, і слово за матрицею (`surcharge`).
+   * Дорослих НЕ БІЛЬШЕ за базу — теж `null`: правило про «понад базу», а
+   * менша заселеність (одинак у двомісному) і далі цінується різницею
+   * матриці, як і до Ц30. Відсоток — від ціни ночі за базову заселеність.
+   * «За номер» сюди не доходить: `quoteAdults` там дорівнює базі.
+   */
+  const ruledAdults = (planId: string | null, nightPrice: number): number | null => {
+    if (quoteAdults <= baseOccupancy) return null;
+    const rule = pickRule(rules, { guestKind: 'adult', ratePlanId: planId, unitTypeId });
+    if (!rule) return null;
+    return money((quoteAdults - baseOccupancy) * surchargeOf(rule, nightPrice));
+  };
+
+  /**
+   * Діти — лише за правилом (Ц30). `adults` тут ставиться на базу, щоб
+   * порахувати САМЕ дитячу частину: доросла вирішується вище — правилом або
+   * матрицею. Без правила — причина названа, ніч без ціни.
+   */
+  const ruledChildren = (planId: string | null, nightPrice: number): { amount: number } | { missing: SurchargeMissing } => {
+    if (children <= 0) return { amount: 0 };
+    const s = nightSurcharges({
+      rules, nightPrice, adults: baseOccupancy, children, childrenAges, sellMode: perRoom ? 'per_room' : 'per_person',
+      ratePlanId: planId, unitTypeId, baseOccupancy, bands,
+    });
+    return s.missing ? { missing: s.missing } : { amount: s.total };
+  };
+
   const out: NightlyPrice[] = [];
   const missing: string[] = [];
   let occupancyPriced = false;
+  let childRuleMissing = false;
+  let childAgesRequired = false;
+  const noteChildMissing = (why: SurchargeMissing) => {
+    if (why === 'child_ages_required') childAgesRequired = true;
+    else childRuleMissing = true;
+  };
 
   for (let i = 0; i < nights; i++) {
     const date = addDays(checkIn, i);
@@ -308,7 +371,8 @@ export async function priceNights(input: {
     const rp = fromRatePlan.get(date);
     const rpPrice = rp ? dayPrice(rp, date) : null;
     if (rp && rpPrice != null) {
-      const extra = surcharge(date);
+      // Дорослі понад базу: правило (Ц30), а без правила — матриця.
+      const extra = ruledAdults(ratePlanId, rpPrice) ?? surcharge(date);
       // Заселеність, якої матриця не знає (розділ A п.3, 05.09.2026): тариф
       // «за особу» цінує лише базову заселеність, надбавку за іншу називає
       // матриця — і якщо вона мовчить, ціни на цю кількість дорослих НЕМАЄ
@@ -321,8 +385,15 @@ export async function priceNights(input: {
         missing.push(date);
         continue;
       }
-      const price = money(Math.max(0, rpPrice + extra));
-      out.push({ date, price, source: 'rate_plan', adjustment: extra });
+      const kids = ruledChildren(ratePlanId, rpPrice);
+      if ('missing' in kids) {
+        noteChildMissing(kids.missing);
+        missing.push(date);
+        continue;
+      }
+      const adjustment = money(extra + kids.amount);
+      const price = money(Math.max(0, rpPrice + adjustment));
+      out.push({ date, price, source: 'rate_plan', adjustment });
       occupancyPriced = true;
       continue;
     }
@@ -338,7 +409,15 @@ export async function priceNights(input: {
     // the certification tests set one for 10–16 November and nothing around it.
     const m = fromMatrix.get(date);
     if (m) {
-      out.push({ date, price: m.price, source: 'matrix', adjustment: m.adjustment });
+      // Матриця вже назвала дорослих; дитячий відсоток — від ціни ночі за
+      // базову заселеність (рядок бази), а без такого рядка — від названої.
+      const kids = ruledChildren(ratePlanId, matrixPriceFor(matrix, unitTypeId, baseOccupancy, date) ?? m.price);
+      if ('missing' in kids) {
+        noteChildMissing(kids.missing);
+        missing.push(date);
+        continue;
+      }
+      out.push({ date, price: money(m.price + kids.amount), source: 'matrix', adjustment: money((m.adjustment ?? 0) + kids.amount) });
       occupancyPriced = true;
       continue;
     }
@@ -346,7 +425,18 @@ export async function priceNights(input: {
     const c = fromCalendar.get(date);
     const cPrice = c ? dayPrice(c, date) : null;
     if (c && cPrice != null) {
-      out.push({ date, price: money(cPrice), source: 'calendar' });
+      // Базовий рядок типу цінує будь-яку заселеність, як і досі; правило
+      // дорослих понад базу (Ц30), коли воно є, додається зверху.
+      const extra = ruledAdults(ratePlanId, cPrice);
+      const kids = ruledChildren(ratePlanId, cPrice);
+      if ('missing' in kids) {
+        noteChildMissing(kids.missing);
+        missing.push(date);
+        continue;
+      }
+      const adjustment = money((extra ?? 0) + kids.amount);
+      out.push({ date, price: money(cPrice + adjustment), source: 'calendar', ...(adjustment ? { adjustment } : {}) });
+      if (extra != null && quoteAdults > baseOccupancy) occupancyPriced = true;
       continue;
     }
 
@@ -360,6 +450,8 @@ export async function priceNights(input: {
     // «За номер»: доплати за гостя не буває — викликач не додає extra_person_charge.
     occupancyPriced: perRoom || occupancyPriced,
     ...(perRoom ? { perRoom: true } : {}),
+    ...(childRuleMissing ? { childRuleMissing: true } : {}),
+    ...(childAgesRequired ? { childAgesRequired: true } : {}),
     closed: closedNights, restrictions,
   };
 }

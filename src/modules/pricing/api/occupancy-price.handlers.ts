@@ -201,11 +201,6 @@ export const quoteOccupancy = withActor(async (request: Request) => {
   const checkIn = p.get('check_in') ?? '';
   const nights = Number(p.get('nights'));
   const adults = Number(p.get('adults'));
-  const children = Number(p.get('children') ?? 0);
-  // Надбавка за дитину приходить параметром, а не з бази: це екран «а скільки
-  // вийде, якщо», і його сенс саме в тому, щоб приміряти число до рішення.
-  const childRaw = p.get('child_extra_gross');
-  const childExtraGross = childRaw == null || childRaw === '' ? null : Number(childRaw);
   const unitTypeId = p.get('unit_type_id') ?? '';
 
   if (!isDate(checkIn)) return NextResponse.json({ error: 'check_in must be YYYY-MM-DD' }, { status: 400 });
@@ -215,18 +210,12 @@ export const quoteOccupancy = withActor(async (request: Request) => {
   if (!Number.isInteger(adults) || adults < 1 || adults > 20) {
     return NextResponse.json({ error: 'adults must be a whole number from 1 to 20' }, { status: 400 });
   }
-  if (!Number.isInteger(children) || children < 0 || children > 20) {
-    return NextResponse.json({ error: 'children must be a whole number from 0 to 20' }, { status: 400 });
-  }
-  if (childExtraGross != null && !(Number.isFinite(childExtraGross) && childExtraGross >= 0)) {
-    return NextResponse.json({ error: 'child_extra_gross must be a number >= 0' }, { status: 400 });
-  }
   if (!unitTypeId) return NextResponse.json({ error: 'unit_type_id is required' }, { status: 400 });
 
   try {
     const matrix = await loadMatrix(p.get('property_id'));
     return NextResponse.json(quoteStay({
-      checkIn, nights, adults, children, childExtraGross, unitTypeId,
+      checkIn, nights, adults, unitTypeId,
       matrix: matrix.prices,
       losTiers: matrix.tiers,
     }));

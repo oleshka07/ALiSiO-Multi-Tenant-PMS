@@ -14,6 +14,11 @@ export {
 export { listSeasons, createSeason, updateSeason, deleteSeason, splitSeason, seasonPrices, setSeasonPrice, clearSeasonOverrides } from '../data/seasons.repo';
 export type { Season, SeasonPriceCell, SeasonInput, SeasonPriceInput } from '../data/seasons.repo';
 export type { PriceSource } from '../domain/types';
+// Надбавки за заселеність (Блок 2 крок 3, Ц30): правило поверх ціни ночі.
+export { listExtraOccupancyRules, createExtraOccupancyRule, updateExtraOccupancyRule, deleteExtraOccupancyRule } from './extra-occupancy.handlers';
+export { listRules as listExtraOccupancyRulesOf, createRule as createExtraOccupancyRuleOf, ageBandsOf, normalizeBoundaries } from '../data/extra-occupancy.repo';
+export { bandsFrom, bandIndexFor, nightSurcharges, ADULT_AGE } from '../domain/extra-occupancy';
+export type { OccupancyRule, AgeBand, GuestKind, SurchargeMode } from '../domain/extra-occupancy';
 
 // The price matrix: occupancy changes the price, never the category.
 export {

@@ -131,7 +131,7 @@ export default function PricingMatrixPage() {
   const [tierModal, setTierModal] = useState(false);
   const [tierForm, setTierForm] = useState({ unit_type_id: '', min_nights: '', adjustment_gross: '', persons: '', label: '' });
 
-  const [quoteForm, setQuoteForm] = useState({ unit_type_id: '', check_in: '', nights: '3', adults: '2', children: '0', child_extra_gross: '' });
+  const [quoteForm, setQuoteForm] = useState({ unit_type_id: '', check_in: '', nights: '3', adults: '2' });
   const [quote, setQuote] = useState<any>(null);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500); };
@@ -286,10 +286,8 @@ export default function PricingMatrixPage() {
       property_id: propertyId,
       unit_type_id: quoteForm.unit_type_id, check_in: quoteForm.check_in,
       nights: quoteForm.nights, adults: quoteForm.adults,
-      children: quoteForm.children || '0',
-      // Ціна дитини тут приміряється, а не береться з тарифу: сенс екрана —
-      // побачити, у що виллється число, ДО того, як його записати.
-      ...(quoteForm.child_extra_gross === '' ? {} : { child_extra_gross: quoteForm.child_extra_gross }),
+      // Дітей тут немає: матриця — про дорослих (Ц12), дитячі надбавки — на
+      // екрані «Надбавки за заселеність» (Ц30).
     });
     const res = await fetch(`/api/pricing/occupancy-quote?${p}`);
     const data = await res.json();
@@ -505,17 +503,6 @@ export default function PricingMatrixPage() {
                 <label className="form-label">{t('Дорослих')}</label>
                 <input className="input" type="number" min={1} style={{ width: 90 }} value={quoteForm.adults}
                   onChange={(e) => setQuoteForm({ ...quoteForm, adults: e.target.value })} />
-              </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">{t('Дітей')}</label>
-                <input className="input" type="number" min={0} style={{ width: 90 }} value={quoteForm.children}
-                  onChange={(e) => setQuoteForm({ ...quoteForm, children: e.target.value })} />
-              </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label">{t('Ціна дитини за ніч')}</label>
-                <input className="input" type="number" min={0} style={{ width: 130 }}
-                  placeholder={t('не названо')} value={quoteForm.child_extra_gross}
-                  onChange={(e) => setQuoteForm({ ...quoteForm, child_extra_gross: e.target.value })} />
               </div>
               <button className="btn btn-secondary" onClick={runQuote}>{t('Порахувати')}</button>
             </div>

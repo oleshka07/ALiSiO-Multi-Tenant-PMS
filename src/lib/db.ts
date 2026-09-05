@@ -122,6 +122,9 @@ function buildSchema(database: any) {
       -- people type content in — so also the source for translating that
       -- content to guests. See core/i18n/languages.ts.
       language TEXT NOT NULL DEFAULT 'uk',
+      -- Вікові вилки дітей (Блок 2 крок 3, Ц30, 0070): JSON-список меж,
+      -- '[3, 12]' → 0–2, 3–11, 12–17; дорослий від 18. '[]' — одна вилка 0–17.
+      child_age_bands TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -235,25 +238,9 @@ function buildSchema(database: any) {
       -- відмовив би — він не вміє вирізати SQL-коментар усередині шаблонного
       -- рядка, і вчити його цьому дорожче, ніж написати ім'я так.
       currency TEXT NOT NULL DEFAULT 'CZK',
-      -- Скільки коштує ДИТИНА за ніч на цьому тарифі (рішення Ц12).
-      --
-      -- ЖОДНИХ ЗВОРОТНИХ ЛАПОК У ЦЬОМУ КОМЕНТАРІ: він усередині шаблонного
-      -- рядка, і одна така лапка закриває його посеред SQL. Сусідній коментар
-      -- про 'fixed_price' стоїть тут із тієї ж причини. tsc це пропускає,
-      -- падає лише запуск.
-      --
-      -- Nullable навмисно, і це не те саме, що нуль: NULL означає «готель
-      -- цього не називав», і тоді ніч із дітьми не продається — домен віддає
-      -- її як відсутню (інваріант 17). Нуль означає «діти безкоштовно» — теж
-      -- ціна, але названа готелем. Підстановка нуля замість NULL коштувала б
-      -- рівно того, чого коштувала в bulkUpdatePrices: бронювання за нуль.
-      --
-      -- На ТАРИФІ, а не на типі номера: так каже Ц12, і так само влаштовано в
-      -- менеджера каналів, де ціна дитини теж атрибут тарифу. Це НЕ те саме,
-      -- що доплата за додаткового дорослого з Ц2 — та спільна для тарифів
-      -- одного типу; звести їх в одну колонку означало б стерти різницю між
-      -- родами гостя, заради якої це рішення й ухвалене.
-      child_extra_gross REAL,
+      -- Ціни дитини тут більше немає (0070, Ц30): дитина — правило в
+      -- extra_occupancy_rules на тарифі, типі або на всіх; колонку
+      -- child_extra_gross (0057) міграція переносить у правило й знімає.
       is_active INTEGER NOT NULL DEFAULT 1,
       -- Як тариф рахує гостей (Блок 2.2, рішення Ц26): per_room — одна ціна
       -- на номер на будь-яку кількість гостей, у менеджера каналів одна опція
@@ -1213,13 +1200,6 @@ function runMigrations(database: any) {
       database.exec("ALTER TABLE rate_plans ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0");
       console.log('[DB] Added is_hidden to rate_plans');
     }
-    // Ц12: ціна дитини. І в CREATE, і тут — інакше новий клієнт отримає базу
-    // без колонки, яку код читає (AGENTS §4). Без DEFAULT: NULL — це «не
-    // названо», і воно мусить лишитися NULL, а не стати нулем.
-    if (!rpCols.includes('child_extra_gross')) {
-      database.exec('ALTER TABLE rate_plans ADD COLUMN child_extra_gross REAL');
-      console.log('[DB] Added child_extra_gross to rate_plans');
-    }
     // Блок 2.2 (0063): режим ціни тарифу. І в CREATE, і тут.
     if (!rpCols.includes('sell_mode')) {
       database.exec("ALTER TABLE rate_plans ADD COLUMN sell_mode TEXT NOT NULL DEFAULT 'per_person'");
@@ -1233,6 +1213,47 @@ function runMigrations(database: any) {
       database.exec('ALTER TABLE rate_plans ADD COLUMN adjustment_value REAL');
       database.exec("ALTER TABLE rate_plans ADD COLUMN adjustment_direction TEXT CHECK (adjustment_direction IN ('increase', 'decrease'))");
       console.log('[DB] Added derived rate plan columns to rate_plans (0069)');
+    }
+
+    // --- Migration 0070: надбавки за заселеність (Блок 2 крок 3, Ц30) ---
+    //
+    // Правило — рядок: тариф (NULL = усі), тип (NULL = усі), гість (дорослий |
+    // дитина з вилкою або на всі вилки), проживання і харчування відсотком
+    // від ціни ночі або сумою, додаткове ліжко. Точніше правило перебиває
+    // загальне; два однакової точності на одну клітинку — відмова писача.
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS extra_occupancy_rules (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id     TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        rate_plan_id    TEXT REFERENCES rate_plans(id) ON DELETE CASCADE,
+        unit_type_id    TEXT REFERENCES unit_types(id) ON DELETE CASCADE,
+        guest_kind      TEXT NOT NULL CHECK (guest_kind IN ('adult', 'child')),
+        age_band_index  INTEGER,
+        lodging_mode    TEXT CHECK (lodging_mode IN ('fixed', 'percent')),
+        lodging_value   REAL,
+        meal_mode       TEXT CHECK (meal_mode IN ('fixed', 'percent')),
+        meal_value      REAL,
+        extra_bed       INTEGER NOT NULL DEFAULT 0,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_extra_occupancy_rules_org ON extra_occupancy_rules(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_extra_occupancy_rules_property ON extra_occupancy_rules(property_id)');
+    // Ціна дитини з тарифу (0057, Ц12) → правило «дитина, усі вилки, сумою»
+    // на цьому тарифі; колонка йде разом із читачами (інваріант 16). Один
+    // раз: після DROP COLUMN колонки немає, і гілка не виконується.
+    if (rpCols.includes('child_extra_gross')) {
+      const moved = database.prepare(`
+        INSERT INTO extra_occupancy_rules (id, organization_id, property_id, rate_plan_id, unit_type_id, guest_kind, age_band_index, lodging_mode, lodging_value, meal_mode, meal_value, extra_bed)
+        SELECT lower(hex(randomblob(16))), p.organization_id, rp.property_id, rp.id, NULL, 'child', NULL, 'fixed', rp.child_extra_gross, NULL, NULL, 0
+          FROM rate_plans rp JOIN properties p ON p.id = rp.property_id
+         WHERE rp.child_extra_gross IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM extra_occupancy_rules r WHERE r.rate_plan_id = rp.id AND r.unit_type_id IS NULL AND r.guest_kind = 'child' AND r.age_band_index IS NULL)
+      `).run().changes;
+      database.exec('ALTER TABLE rate_plans DROP COLUMN child_extra_gross');
+      console.log(`[DB] rate_plans.child_extra_gross → ${moved} extra_occupancy_rules row(s); column dropped (0070)`);
     }
     // Тут стояв ADD COLUMN власної ціни. Видалений разом зі створенням, а не
     // прикритий DROP-ом у кінці (AGENTS §4): у вже наявних локальних базах
@@ -5108,6 +5129,8 @@ function runMigrations(database: any) {
     // EU and has to be the organization's decision, so it defaults to off.
     // Local MRZ reading still runs either way.
     add('ocr_cloud_fallback', 'INTEGER NOT NULL DEFAULT 0');
+    // Ц30 (0070): вікові вилки дітей. І в CREATE, і тут.
+    add('child_age_bands', "TEXT NOT NULL DEFAULT '[]'");
     if (orgCols.length < 18) console.log('[DB] organizations: legal & banking columns ready');
   } catch (e: any) {
     console.log('[DB] organization legal columns migration note:', e.message);

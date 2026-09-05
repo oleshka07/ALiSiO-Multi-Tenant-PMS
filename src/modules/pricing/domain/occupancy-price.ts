@@ -100,19 +100,8 @@ export function quoteStay(input: {
    * не сказав би.
    */
   adults: number;
-  /** Скільки дітей. Вони не входять у `adults` і мають власну ціну. */
-  children?: number;
-  /**
-   * Скільки коштує одна дитина за ніч. `null`/відсутнє — готель цього НЕ
-   * називав.
-   *
-   * І тоді ніч із дітьми — `missing`, а не «діти безкоштовно». Це інваріант
-   * 17 у чистому вигляді, і в цьому файлі вже є його ціна: `?? 0` у
-   * `bulkUpdatePrices` колись перетворив «готель не назвав ціни» на «ніч
-   * коштує нуль», і бронювання пройшло за нуль. Нуль тут — теж ціна, але
-   * названа: `0` означає «діти безкоштовно», і це готель каже сам.
-   */
-  childExtraGross?: number | null;
+  // Дітей тут НЕМАЄ (0070, Ц30): матриця — вісь дорослих; дитина — надбавка
+  // за правилом `extra_occupancy_rules`, яку рахує `priceNights()` поверх.
   unitTypeId: string;
   matrix: readonly PriceRow[];
   losTiers?: readonly LosTier[];
@@ -125,21 +114,12 @@ export function quoteStay(input: {
   }
   const nights: NightPrice[] = [];
   const missing: string[] = [];
-  const children = Math.max(0, Math.trunc(input.children ?? 0));
 
   // Знижка за тривалість дивиться на заселеність дорослими — на ту саму вісь,
   // якою адресована матриця. Інакше «−10 € на двомісному» переставало б діяти
   // від того, що з батьками поїхала дитина.
   const tier = pickTier(input.losTiers ?? [], input.unitTypeId, input.nights, input.adults);
   const adjustment = tier ? money(tier.adjustment_gross) : 0;
-
-  // Ціна дитини — надбавка до ночі, а не окремий рядок матриці: у матриці
-  // вісь одна, і другий рід гостя зробив би її двовимірною. Форма з Hoteliera
-  // («Extra occupancy»: Adult і Child окремими родами) і з Channex
-  // (`children_fee` на тарифі) — обидві кажуть надбавку.
-  const childrenGross = children > 0 && input.childExtraGross != null
-    ? money(children * input.childExtraGross)
-    : 0;
 
   for (let i = 0; i < input.nights; i++) {
     const date = addDays(input.checkIn, i);
@@ -148,13 +128,7 @@ export function quoteStay(input: {
       missing.push(date);
       continue;
     }
-    // Діти є, а ціни на них готель не називав — ніч не продається. Мовчки
-    // взяти нуль означало б поселити дитину безкоштовно від імені готелю.
-    if (children > 0 && input.childExtraGross == null) {
-      missing.push(date);
-      continue;
-    }
-    const base = money(row.price_gross + childrenGross);
+    const base = money(row.price_gross);
     // A discount may not turn a night into money owed to the guest.
     const price = money(Math.max(0, base + adjustment));
     nights.push({ date, base, adjustment: money(price - base), price });

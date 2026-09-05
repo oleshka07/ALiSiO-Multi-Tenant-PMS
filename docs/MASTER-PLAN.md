@@ -225,6 +225,14 @@ NULL)` — одна клітинка на сезон × тип × тариф. **
   тарифу (нове в каталозі й ARI); гейт: пейлоад несе дитячу ціну лише коли правило є.
 - Детектор конфліктів (два правила на одну клітинку) — відмова на записі, як їхній `divergent/duplicate`.
 
+**Стан 05.09.2026 (нічний режим, 0070):** вилки, таблиця правил, писач через двері каналу, екран, `priceNights`
+з правилами, `child_extra_gross` → правило і геть — зроблено. Не зроблено: `children_fee`/`infant_fee` у
+Channex (поле не бачене в живій відповіді, інваріант 28 — заводиться після живого зразка); вік дітей у
+бронях не збирається — правила по вилках без «на всі вилки» дають `childAgesRequired`; «Clone» груп;
+міграція `price_occupancy` — сухий прогін `scripts/report-matrix-migration.mjs` і
+[MATRIX-MIGRATION-REPORT-2026-09-05.md](MATRIX-MIGRATION-REPORT-2026-09-05.md) з питаннями власнику, не накочено.
+Дорослий без правила поки бере різницю матриці.
+
 ### 2.5 Правила цін і промо (`price_rules`, `promotions`) — рішення 13а, джерело: `org-settings-financials-price-rules-0`, `promos-0`
 
 `price_rules(id, organization_id, property_id, name, title_for_guest, condition_kind

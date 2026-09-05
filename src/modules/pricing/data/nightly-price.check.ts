@@ -331,6 +331,39 @@ const room4 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', night
 assert.strictEqual(room4.nights[0]?.price, 312.66, '«за номер» на чотирьох — ціна номера, матриця тут не джерело');
 console.log('  ok  «за особу» без рядка матриці на цю кількість дорослих — ніч без ціни, не ціна тарифу; «за номер» — ціна номера');
 
+// ── Надбавки за заселеність правилами (Блок 2 крок 3, Ц30) ─────────────────
+//
+// Правило перебиває матрицю: третій дорослий на BAR — +40 сумою (правило на
+// тариф), а не 60 з матриці; дитина — 10 % від ціни ночі на будь-якому
+// тарифі; «за номер» — дитяча надбавка є, дорослої немає; тариф без свого
+// правила (B&B) для дорослих понад базу далі бере матрицю (перехід, доки
+// періоди матриці не мігровано в сезони); дитина без правила — ніч без ціни
+// з названою причиною. Дві ціни ночі (312.66 і 111) під відсотком — «% від
+// ночі», не константа (інваріант 26).
+await sql.run(
+  `INSERT INTO extra_occupancy_rules (id, organization_id, property_id, rate_plan_id, unit_type_id, guest_kind, age_band_index, lodging_mode, lodging_value, meal_mode, meal_value, extra_bed)
+   VALUES ('__np_rule_adult', ?, ?, ?, NULL, 'adult', NULL, 'fixed', 40, NULL, NULL, FALSE)`, [ORG, PROP, BAR]);
+await sql.run(
+  `INSERT INTO extra_occupancy_rules (id, organization_id, property_id, rate_plan_id, unit_type_id, guest_kind, age_band_index, lodging_mode, lodging_value, meal_mode, meal_value, extra_bed)
+   VALUES ('__np_rule_child', ?, ?, NULL, NULL, 'child', NULL, 'percent', 10, NULL, NULL, FALSE)`, [ORG, PROP]);
+const ruled3 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 3, ratePlanId: BAR });
+assert.strictEqual(ruled3.nights[0]?.price, 352.66, `третій дорослий на BAR — правило +40, не матриця +60: ${JSON.stringify(ruled3.nights)}`);
+assert.strictEqual(ruled3.occupancyPriced, true, 'доплата за гостя вже в ціні — викликач не додає extra_person_charge');
+const ruledKid = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 2, children: 1, ratePlanId: BAR });
+assert.strictEqual(ruledKid.nights[0]?.price, 343.93, `дитина — 10 % від 312.66 = 31.27: ${JSON.stringify(ruledKid.nights)}`);
+const bnbKid = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 2, children: 1, ratePlanId: BNB });
+assert.strictEqual(bnbKid.nights[0]?.price, 122.1, 'та сама дитина на B&B за 111 — 11.10: відсоток від ночі, не константа');
+const roomKid = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 3, children: 1, ratePlanId: ROOM });
+assert.strictEqual(roomKid.nights[0]?.price, 343.93, '«за номер»: дитина доплачує, третій дорослий — ні');
+const bnb3Ruled = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 3, ratePlanId: BNB });
+assert.strictEqual(bnb3Ruled.nights[0]?.price, 171, 'B&B без свого правила для дорослих — матриця (+60), як і досі');
+await sql.run("DELETE FROM extra_occupancy_rules WHERE id = '__np_rule_child'");
+const noKidRule = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 2, children: 1, ratePlanId: BAR });
+assert.deepStrictEqual(noKidRule.missing, ['2026-11-10'], 'дитина без правила — ніч без ціни, не безкоштовна дитина');
+assert.strictEqual(noKidRule.childRuleMissing, true, 'і причина названа');
+await sql.run("DELETE FROM extra_occupancy_rules WHERE organization_id = ?", [ORG]);
+console.log('  ok  надбавки правилами: дорослий понад базу за правилом, дитина відсотком від ночі, «за номер» без дорослої, без правила — без ціни');
+
 // ── Викликач без `adults` — відмова з назвою, не «неоцінені ночі» ─────────
 //
 // 02.09.2026: `scripts/apply-hotel.mjs` після Ц12 передавав `persons`, не

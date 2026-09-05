@@ -55,6 +55,7 @@ async function cleanup() {
   for (const org of [A, B]) {
     await sql.run("DELETE FROM price_calendar WHERE unit_type_id LIKE ?", [`${org}%`]);
     await sql.run("DELETE FROM price_occupancy WHERE unit_type_id LIKE ?", [`${org}%`]);
+    await sql.run("DELETE FROM extra_occupancy_rules WHERE property_id LIKE ?", [`${org}%`]);
     await sql.run("DELETE FROM rate_plans WHERE property_id LIKE ?", [`${org}%`]);
     await sql.run("DELETE FROM unit_types WHERE property_id LIKE ?", [`${org}%`]);
     await sql.run("DELETE FROM categories WHERE property_id LIKE ?", [`${org}%`]);
@@ -99,6 +100,14 @@ async function seed(org: string) {
       `INSERT INTO unit_types (id, property_id, category_id, name, code, max_adults, max_occupancy, base_occupancy)
        VALUES (?, ?, ?, ?, ?, 2, 2, 2)`,
       [`${org}_stu`, prop, `${org}_cat`, 'Studio', 'STU'],
+    );
+    // ЧЕТВІРКА (Ц30): четверо дорослих, база двоє, матриця знає лише двох.
+    // Джерело ціни на третього й четвертого — ПРАВИЛО надбавки на BAR; PP
+    // правила не має. Розрізняє «опція з правила» від «опція лише з матриці».
+    await sql.run(
+      `INSERT INTO unit_types (id, property_id, category_id, name, code, max_adults, max_occupancy, base_occupancy)
+       VALUES (?, ?, ?, ?, ?, 4, 4, 2)`,
+      [`${org}_quad`, prop, `${org}_cat`, 'Quad', 'QUAD'],
     );
     // Три тарифи: звичайний, вимкнений і той, під який ніхто не поставив ціни.
     for (const [id, code, name, active] of [
@@ -148,7 +157,7 @@ async function seed(org: string) {
        VALUES (?, ?, 'Per person', 'PP', 'EUR', 1, 'per_person')`,
       [`${org}_pp`, prop],
     );
-    for (const [plan, ut] of [[`${org}_room`, `${org}_dbl`], [`${org}_room`, `${org}_fam`], [`${org}_pp`, `${org}_stu`]]) {
+    for (const [plan, ut] of [[`${org}_room`, `${org}_dbl`], [`${org}_room`, `${org}_fam`], [`${org}_pp`, `${org}_stu`], [`${org}_pp`, `${org}_quad`], [`${org}_bar`, `${org}_quad`]]) {
       await sql.run(
         `INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price)
          VALUES (?, ?, ?, ?, ?)`,
@@ -166,6 +175,8 @@ async function seed(org: string) {
       [`${org}_fam`, 1], [`${org}_fam`, 2], [`${org}_fam`, 3], [`${org}_fam`, 4],
       // Студія: лише двоє. Одного матриця не знає — а опція на одного все одно є.
       [`${org}_stu`, 2],
+      // Четвірка: матриця знає лише двох; третій і четвертий — з правила (нижче).
+      [`${org}_quad`, 2],
     ] as const;
     for (const [ut, persons] of occ) {
       await sql.run(
@@ -174,6 +185,12 @@ async function seed(org: string) {
         [`${ut}_${persons}`, org, prop, ut, persons, 50 + persons * 10],
       );
     }
+    // Правило надбавки (Ц30): дорослий понад базу на BAR, на всі типи, +30.
+    await sql.run(
+      `INSERT INTO extra_occupancy_rules (id, organization_id, property_id, rate_plan_id, unit_type_id, guest_kind, age_band_index, lodging_mode, lodging_value, meal_mode, meal_value, extra_bed)
+       VALUES (?, ?, ?, ?, NULL, 'adult', NULL, 'fixed', 30, NULL, NULL, FALSE)`,
+      [`${org}_rule_adult`, org, prop, `${org}_bar`],
+    );
   });
 }
 
@@ -223,7 +240,7 @@ try {
     // ── Типи номерів беруться звідти, де СПРАВДІ є ціни ──────────────────
     assert.deepStrictEqual(
       bar.unitTypes.map((u) => u.code).sort(),
-      ['DBL', 'FAM', 'TRI'],
+      ['DBL', 'FAM', 'QUAD', 'TRI'],
       'типи номерів тарифу взяті не з цінової таблиці');
     console.log('  ok  типи номерів тарифу — це ті, на які є ціна');
 
@@ -288,6 +305,17 @@ try {
     assert.deepStrictEqual(bar.unitTypes.find((u) => u.code === 'DBL')!.occupancies, [1, 2], 'де матриця знає кількість — опція є');
     assert.strictEqual(bar.sellMode, 'per_person', 'тариф, заведений без вибору, — за особу');
     console.log('  ok  режим ціни задає набір опцій: за номер — одна, за особу — на кожну кількість дорослих');
+
+    // ── Правило надбавки — джерело ціни на кожного дорослого понад базу (Ц30) ─
+    //
+    // Четвірка: база двоє, матриця знає лише двох. На BAR є правило «дорослий
+    // понад базу +30» — тож третій і четвертий МАЮТЬ ціну, і опції на них
+    // ідуть у каталог. PP правила не має — лишається лише те, що знає матриця.
+    assert.deepStrictEqual(bar.unitTypes.find((u) => u.code === 'QUAD')!.occupancies, [2, 3, 4],
+      'правило надбавки для дорослих — джерело ціни на кожну кількість понад базу до дорослої місткості');
+    assert.deepStrictEqual(pp.unitTypes.find((u) => u.code === 'QUAD')!.occupancies, [2],
+      'тариф без правила — лише кількості з матриці');
+    console.log('  ok  правило надбавки відкриває опції понад базу; без правила — лише матриця');
 
     // ── Валюта — з тарифу, не вгадана ────────────────────────────────────
     assert.strictEqual(bar.currency, 'EUR', 'валюта тарифу підмінена');

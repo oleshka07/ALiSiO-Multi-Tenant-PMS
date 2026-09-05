@@ -72,6 +72,13 @@ const OVERRIDE = {
   // Коригування похідного тарифу (Ц28): відсоток або сума — обидва з двома
   // знаками; слова «adjustment» шаблон грошей не знає.
   'rate_plans.adjustment_value': 'NUMERIC(14,2)',
+  // Надбавки за заселеність (Ц30): відсоток або сума — обидва з двома знаками.
+  'extra_occupancy_rules.lodging_value': 'NUMERIC(14,2)',
+  'extra_occupancy_rules.meal_value': 'NUMERIC(14,2)',
+  // Прапорець додаткового ліжка не має префікса is_/has_ — назвати явно, як
+  // `unit_types.extra_bed_available`; індекс вилки — маленьке ціле, як у 0070.
+  'extra_occupancy_rules.extra_bed': 'BOOLEAN',
+  'extra_occupancy_rules.age_band_index': 'INTEGER',
   'gift_card_automation_rules.discount_type': 'TEXT',
   'gift_cards.value_type': 'TEXT',
   'fin_system_state.value': 'TEXT',

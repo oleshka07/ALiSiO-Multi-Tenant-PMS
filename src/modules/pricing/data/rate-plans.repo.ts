@@ -65,8 +65,6 @@ export interface RatePlanSetting {
   code: string;
   currency: string;
   mealPlan: string | null;
-  /** Ціна дитини за ніч на цьому тарифі (Ц12). `null` — готель не називав. */
-  childExtraGross: number | null;
   isActive: boolean;
   /** Як рахує гостей: за номер чи за особу (Ц26). Замкнений після заведення у вендора. */
   sellMode: SellMode;
@@ -98,7 +96,6 @@ export interface CreateRatePlanInput extends DerivedInput {
   code: string;
   currency: string;
   mealPlan: string | null;
-  childExtraGross: number | null;
   /** Порожньо — `per_person`. */
   sellMode?: SellMode | null;
   isHidden?: boolean;
@@ -109,7 +106,6 @@ export interface UpdateRatePlanInput extends DerivedInput {
   code?: string;
   currency?: string;
   mealPlan?: string | null;
-  childExtraGross?: number | null;
   /** `false` — зняти з продажу, `true` — повернути. Див. шапку. */
   isActive?: boolean;
   /** Лише доки тариф не заведено у вендора — інакше `sell_mode_locked`. */
@@ -182,13 +178,6 @@ function normalizeName(name: string): string {
   if (!n) throw new Error('name_required');
   return n;
 }
-function normalizeChild(value: number | null | undefined): number | null {
-  if (value === null || value === undefined || value === ('' as unknown)) return null;
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < 0) throw new Error('child_price_invalid');
-  return money(n);
-}
-
 function normalizeSellMode(value: unknown, fallback: SellMode): SellMode {
   if (value === null || value === undefined || value === '') return fallback;
   if (!SELL_MODES.includes(value as SellMode)) throw new Error('sell_mode_invalid');
@@ -219,7 +208,6 @@ function toSetting(row: Record<string, any>, priced: string[], mapped: boolean):
     code: String(row.code),
     currency: String(row.currency),
     mealPlan: row.meal_plan == null ? null : String(row.meal_plan),
-    childExtraGross: row.child_extra_gross == null ? null : Number(row.child_extra_gross),
     isActive: Boolean(Number(row.is_active)),
     sellMode: readSellMode(row.sell_mode, row.id),
     mapped,
@@ -309,7 +297,6 @@ export async function createRatePlan(input: CreateRatePlanInput): Promise<RatePl
   const name = normalizeName(input.name);
   const code = normalizeCode(input.code);
   const currency = normalizeCurrency(input.currency);
-  const child = normalizeChild(input.childExtraGross);
   const meal = input.mealPlan ? String(input.mealPlan) : null;
   const sellMode = normalizeSellMode(input.sellMode, 'per_person');
   const id = `rp_${crypto.randomBytes(8).toString('hex')}`;
@@ -324,10 +311,10 @@ export async function createRatePlan(input: CreateRatePlanInput): Promise<RatePl
       : currency;
     const next = await t.row<any>('SELECT COALESCE(MAX(priority), 0) + 1 AS n FROM rate_plans WHERE property_id = ?', [property.id]);
     await t.run(
-      `INSERT INTO rate_plans (id, property_id, name, code, pricing_model, currency, meal_plan, child_extra_gross, sell_mode, priority, is_hidden,
+      `INSERT INTO rate_plans (id, property_id, name, code, pricing_model, currency, meal_plan, sell_mode, priority, is_hidden,
                                pricing_type, based_on_rate_plan_id, adjustment_kind, adjustment_value, adjustment_direction)
-       VALUES (?, ?, ?, ?, 'standard', ?, ?, ?, ?, ?, ${input.isHidden ? 'TRUE' : 'FALSE'}, ?, ?, ?, ?, ?)`,
-      [id, property.id, name, code, finalCurrency, meal, child, sellMode, Number(next?.n ?? 1),
+       VALUES (?, ?, ?, ?, 'standard', ?, ?, ?, ?, ${input.isHidden ? 'TRUE' : 'FALSE'}, ?, ?, ?, ?, ?)`,
+      [id, property.id, name, code, finalCurrency, meal, sellMode, Number(next?.n ?? 1),
         derived.pricing_type, derived.based_on_rate_plan_id, derived.adjustment_kind, derived.adjustment_value, derived.adjustment_direction],
     );
     // Ц16: новий тариф — нова пара в каналі. Пар ще немає (ціни немає), тож
@@ -395,7 +382,6 @@ export async function updateRatePlan(id: string, patch: UpdateRatePlanInput): Pr
       }
     }
     if (patch.mealPlan !== undefined) { sets.push('meal_plan = ?'); values.push(patch.mealPlan ? String(patch.mealPlan) : null); }
-    if (patch.childExtraGross !== undefined) { sets.push('child_extra_gross = ?'); values.push(normalizeChild(patch.childExtraGross)); }
     // Літералом, не параметром: SQLite не привʼязує boolean, а `1` у колонку
     // BOOLEAN відхиляє Postgres (check-boolean-flags).
     if (patch.isActive !== undefined) sets.push(patch.isActive ? 'is_active = TRUE' : 'is_active = FALSE');

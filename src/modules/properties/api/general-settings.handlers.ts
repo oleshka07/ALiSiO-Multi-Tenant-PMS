@@ -12,6 +12,7 @@ import { getSessionUser } from '@core/auth';
 import { LANGUAGES, LANGUAGE_CODES, isLanguage } from '@core/i18n/languages';
 import { withActor, withPermission } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
+import { normalizeBoundaries } from '@pricing';
 
 async function currentUser() {
   const store = await cookies();
@@ -57,7 +58,7 @@ async function readGeneralSettings(propertyId: string | null): Promise<NextRespo
     const sql = getSql();
     const org = await sql.row<any>(`SELECT id, name, slug, timezone, default_currency, language,
                 legal_name, registration_no, vat_no, is_vat_payer, legal_address,
-                bank_name, bank_account, iban, swift, invoice_email, website, ocr_cloud_fallback
+                bank_name, bank_account, iban, swift, invoice_email, website, ocr_cloud_fallback, child_age_bands
          FROM organizations WHERE id = ?`, [user.organization_id]);
     const property = await propertyFor(user.organization_id, propertyId);
     return NextResponse.json({
@@ -142,15 +143,27 @@ export const saveGeneralSettings = withPermission('manage_properties', async (re
       return NextResponse.json({ error: 'IBAN виглядає некоректно' }, { status: 400 });
     }
 
+    // Вікові вилки дітей (Ц30): межі 1…17, JSON-списком; поле, якого екран не
+    // надіслав, лишається як було. Погана межа — відмова з назвою.
+    let childAgeBands: string | null = null;
+    if (org.child_age_bands !== undefined) {
+      try {
+        childAgeBands = JSON.stringify(normalizeBoundaries(org.child_age_bands));
+      } catch {
+        return NextResponse.json({ error: 'Вікові межі дітей — цілі числа від 1 до 17, через кому' }, { status: 400 });
+      }
+    }
+
     const sql = getSql();
     // What is stored now, so a field the screen did not send keeps its value
     // instead of being reset to a default by omission.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const current: any = await sql.row<any>(
-      'SELECT ocr_cloud_fallback FROM organizations WHERE id = ?', [user.organization_id]) ?? {};
+      'SELECT ocr_cloud_fallback, child_age_bands FROM organizations WHERE id = ?', [user.organization_id]) ?? {};
     await sql.run(`UPDATE organizations SET name = ?, timezone = ?, default_currency = ?, language = ?,
          legal_name = ?, registration_no = ?, vat_no = ?, is_vat_payer = ?, legal_address = ?,
          bank_name = ?, bank_account = ?, iban = ?, swift = ?, invoice_email = ?, website = ?, ocr_cloud_fallback = ?,
+         child_age_bands = ?,
          updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`, [name,
       timezone,
@@ -177,6 +190,7 @@ export const saveGeneralSettings = withPermission('manage_properties', async (re
       org.ocr_cloud_fallback === undefined
         ? (current.ocr_cloud_fallback ? 1 : 0)
         : (org.ocr_cloud_fallback ? 1 : 0),
+      childAgeBands ?? current.child_age_bands ?? '[]',
       user.organization_id]);
 
     if (prop.id) {

@@ -217,79 +217,24 @@ assert.strictEqual(addDays('2026-12-31', 1), '2027-01-01', 'across the new year'
 assert.strictEqual(addDays('2026-03-28', 2), '2026-03-30', 'across the European DST switch');
 console.log('  ok  дати не зсуваються ні на межі місяця, ні на переводі годинника');
 
-// ─── Ц12: дитина не коштує як дорослий ────────────────────────────────────
+// ─── Діти — не тут ─────────────────────────────────────────────────────────
 //
-// Крок «побачити червоним» (інваріант 24). Сімʼя — двоє дорослих і двоє
-// дітей у чотиримісному номері. Сьогодні `persons` складає їх усіх, тож
-// котирування бере рядок на ЧОТИРЬОХ ДОРОСЛИХ (199). Правильно — рядок на
-// двох дорослих (139) плюс надбавка за кожну дитину.
-const family = quoteStay({
-  checkIn: '2026-03-10', nights: 1, adults: 2, children: 2, childExtraGross: 20,
-  unitTypeId: V, matrix: MATRIX,
-});
-assert.strictEqual(family.total, 139 + 2 * 20,
-  'сімʼя 2+2 має коштувати рядок на двох дорослих плюс дві дитячі надбавки');
-// І та сама кімната на чотирьох ДОРОСЛИХ — це інше число й інший рядок.
-assert.strictEqual(
-  quoteStay({ checkIn: '2026-03-10', nights: 1, adults: 4, unitTypeId: V, matrix: MATRIX }).total,
-  199, 'четверо дорослих беруть свій рядок матриці, а не дитячу надбавку');
-console.log('  ok  дитина рахується надбавкою, а не як дорослий');
-
-// ── Надбавка ЗА НІЧ, а не за перебування ──────────────────────────────────
-//
-// Твердження на ОДНІЙ ночі не розрізняє два правила: «20 за дитину за ніч» і
-// «20 за дитину за все перебування» дають там однакове число. Це рівно та
-// сліпота, що була з `max_adults`/`max_occupancy`, поки в засіві не з'явився
-// тип, у якого вони розходяться.
-//
-// Три ночі роблять відповіді арифметично несумісними:
-//   за ніч        3 × (119 + 20) = 417
-//   за перебування 3 × 119 + 20  = 377
-const familyThreeNights = quoteStay({
-  checkIn: '2026-03-10', nights: 3, adults: 2, children: 1, childExtraGross: 20,
-  unitTypeId: DZ, matrix: MATRIX,
-});
-assert.strictEqual(familyThreeNights.total, 3 * (119 + 20),
-  'надбавка за дитину прикладена до перебування, а не до кожної ночі');
-assert.notStrictEqual(familyThreeNights.total, 3 * 119 + 20,
-  'це число означало б надбавку за перебування — інше правило');
-// І кожна ніч несе її окремо, а не одна з трьох.
-assert.deepStrictEqual(familyThreeNights.nights.map((n) => n.price), [139, 139, 139],
-  'надбавка мусить стояти на КОЖНІЙ ночі');
-console.log('  ok  надбавка за дитину — за ніч, і три ночі це доводять');
-
-// ── Ціни, якої готель не називав, не існує — і для дітей теж ───────────────
-//
-// Найспокусливіше місце в усьому рішенні: `?? 0` тут виглядав би нешкідливо і
-// означав би «діти безкоштовно» від імені готелю, який цього не казав. Той
-// самий `?? 0` уже коштував цьому проєкту бронювання за нуль у
-// `bulkUpdatePrices`. Нуль — теж ціна, але її називають.
-const unstated = quoteStay({
-  checkIn: '2026-03-10', nights: 2, adults: 2, children: 1,
-  unitTypeId: V, matrix: MATRIX,
-});
-assert.strictEqual(unstated.total, 0, 'ніч із дітьми без названої ціни не має коштувати нічого');
-assert.deepStrictEqual(unstated.missing, ['2026-03-10', '2026-03-11'],
-  'дитина без ціни мусить давати missing, а не безкоштовну дитину');
-const freeChildren = quoteStay({
-  checkIn: '2026-03-10', nights: 1, adults: 2, children: 3, childExtraGross: 0,
-  unitTypeId: V, matrix: MATRIX,
-});
-assert.strictEqual(freeChildren.total, 139, 'названий нуль — це «діти безкоштовно», і він працює');
-assert.deepStrictEqual(freeChildren.missing, [], 'названий нуль не робить ніч непроданою');
-console.log('  ok  неназвана ціна дитини = missing; названий нуль = безкоштовно');
+// До 0070 тут стояли сцени про дитину-надбавку (`childExtraGross`, Ц12).
+// Дитина тепер — правило `extra_occupancy_rules` поверх ціни ночі (Ц30), і
+// її сцени живуть у `extra-occupancy.check.ts`; матриця лишилась віссю
+// дорослих і про дітей не знає.
 
 // ── Знижка за тривалість дивиться на дорослих ─────────────────────────────
 //
 // Інакше «−10 € на двомісному від трьох ночей» переставало б діяти від того,
 // що з батьками поїхала дитина — знижка зникала б рівно там, де сімʼя.
 assert.strictEqual(
-  quoteStay({
-    checkIn: '2026-03-10', nights: 3, adults: 2, children: 1, childExtraGross: 10,
-    unitTypeId: DZ, matrix: MATRIX, losTiers: TIERS,
-  }).total,
-  3 * (119 + 10 - 10), 'знижка за тривалість зникла через дитину');
-console.log('  ok  знижка за тривалість тримається дорослих, а не голів');
+  quoteStay({ checkIn: '2026-03-10', nights: 3, adults: 2, unitTypeId: DZ, matrix: MATRIX, losTiers: TIERS }).total,
+  3 * (119 - 10), 'знижка за тривалість на двох дорослих від трьох ночей');
+assert.strictEqual(
+  quoteStay({ checkIn: '2026-03-10', nights: 2, adults: 2, unitTypeId: DZ, matrix: MATRIX, losTiers: TIERS }).total,
+  2 * 119, 'дві ночі — знижки ще немає');
+console.log('  ok  знижка за тривалість тримається дорослих і порогу ночей');
 
 console.log('occupancy-price: заселеність міняє ціну, ніколи не категорію');
 
