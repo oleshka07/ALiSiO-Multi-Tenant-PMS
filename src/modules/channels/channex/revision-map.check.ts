@@ -135,6 +135,56 @@ assert.deepStrictEqual(
   'кімнати змапились не поіменно');
 console.log('  ok  дві кімнати лишаються двома, з власними типами й сумами');
 
+// ─── Ідентифікатор кімнати на боці OTA доїжджає як є ────────────────────────
+//
+// Це єдине, чим кімната впізнається в НАСТУПНІЙ редакції (К1): власного `id` у
+// кімнати бронювання немає, а редакція — знімок, що нічого не успадковує.
+// Дає його не кожен OTA («right now only Booking.com supported»), тож порожній
+// рядок і відсутність поля мусять давати одне: «немає» — інакше домен вирішив
+// би, що кімнати іменовані, і побудував би ключі з порожнечі.
+{
+  const named = mapRevision(base({
+    rooms: [
+      { ...base().rooms![0], ota_unique_id: '49' },
+      { ...base().rooms![0], room_type_id: 'remote-rt-2', ota_unique_id: '  ' },
+    ],
+  }), mapping);
+  assert.ok(named.ok);
+  assert.deepStrictEqual(named.revision.rooms.map(r => r.otaUniqueId), ['49', undefined],
+    'ідентифікатор кімнати змапився не як є: порожній рядок мав стати «немає»');
+  console.log('  ok  ідентифікатор кімнати з OTA доїжджає, порожній читається як «немає»');
+}
+
+// ─── Заселеність БРОНЮВАННЯ ≠ заселеність кімнати ───────────────────────────
+//
+// У бронювання на дві кімнати `occupancy` зверху каже, скільки приїде всього,
+// а `rooms[].occupancy` — скільки в кожній. Батьківська бронь групи описує
+// бронювання, тож бере верхнє число; скласти кімнати означало б показати
+// готелю не тих гостей. Фікстура не вироджена: 3 + 1 зверху проти 2 + 0 і
+// 1 + 0 усередині — сума дорослих збігається навмисно, а дітей ні, тож
+// «зверху» і «сума кімнат» дають різні числа (інваріант 26).
+{
+  const both = mapRevision(base({
+    occupancy: { adults: 3, children: 1 },
+    rooms: [
+      { ...base().rooms![0], occupancy: { adults: 2, children: 0 } },
+      { ...base().rooms![0], room_type_id: 'remote-rt-2', occupancy: { adults: 1, children: 0 } },
+    ],
+  }), mapping);
+  assert.ok(both.ok);
+  assert.deepStrictEqual([both.revision.adults, both.revision.children], [3, 1],
+    'заселеність бронювання не доїхала — батьківська бронь групи показала б суму кімнат');
+  assert.deepStrictEqual(both.revision.rooms.map(r => [r.adults, r.children]), [[2, 0], [1, 0]],
+    'кімнати мали лишити свою заселеність');
+
+  // Вендор її не назвав — не вигадуємо: порожньо, і склеїть це вже цикл.
+  const silent = mapRevision(base({ occupancy: undefined, rooms: [base().rooms![0]] }), mapping);
+  assert.ok(silent.ok);
+  assert.deepStrictEqual([silent.revision.adults, silent.revision.children], [undefined, undefined],
+    'заселеності бронювання не було, а мапер її вигадав');
+  console.log('  ok  заселеність бронювання читається окремо від заселеності кімнат');
+}
+
 // ─── Дати: кімната має свої, і вони головніші ───────────────────────────────
 const roomDates = mapRevision(base({
   arrival_date: '2026-10-10', departure_date: '2026-10-12',

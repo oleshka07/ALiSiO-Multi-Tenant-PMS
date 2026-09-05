@@ -39,6 +39,23 @@ import { recordBookingChange, bookingSnapshot, describeChanges, changesToText } 
  * шле підтвердження той, хто керує транзакцією.
  */
 
+/**
+ * Одна кімната ревізії — майбутня ДОЧІРНЯ бронь групи (К1).
+ *
+ * `key` приходить із домену (`groupRoomKeys`) і є єдиним, за чим кімната
+ * впізнається в наступній редакції. Він же лягає в `external_uid` дочірньої
+ * броні — там, де в одиничної броні лежить код броні OTA.
+ */
+export interface RevisionRoom {
+  key: string;
+  unitTypeId?: string | null;
+  checkIn?: string;
+  checkOut?: string;
+  adults?: number;
+  children?: number;
+  amount?: number;
+}
+
 /** Ревізія, приведена до нашого вигляду. Переклад із чужого — справа адаптера. */
 export interface Revision {
   remoteRevisionId: string;
@@ -63,6 +80,14 @@ export interface Revision {
   guestFirstName?: string;
   guestLastName?: string;
   guestEmail?: string;
+
+  /**
+   * Кімнати бронювання. Більше однієї — ГРУПА: батьківська бронь + дочірні.
+   *
+   * Порожньо або одна — усе як було: одна бронь, поля вище описують її саму.
+   * Групу описують поля вище (бронювання цілком) ПЛЮС цей список (кімнати).
+   */
+  rooms?: RevisionRoom[];
 }
 
 export type ApplyOutcome =
@@ -175,7 +200,23 @@ export async function applyRevision(
   // Знімок для історії броні — з назвами, як його прочитає картка.
   const snapshotBefore = reservationId ? await bookingSnapshot(sql, reservationId) : null;
 
-  if (rev.status === 'cancelled') {
+  // ── Група: кілька кімнат — батьківська бронь і по дочірній на кімнату ────
+  //
+  // Один раз група — завжди група: кімнату, яку прибрали, ми СКАСОВУЄМО, а не
+  // стираємо, тож бронювання, що колись мало дві кімнати, лишається групою і
+  // з однією живою. Розгорнути його назад в одиничну бронь означало б
+  // переписати історію: скасована кімната була, і в звіті за минулий місяць
+  // має лишитись.
+  const children = reservationId ? await childrenOf(sql, reservationId) : [];
+  const isGroup = (rev.rooms?.length ?? 0) > 1 || children.length > 0;
+
+  if (isGroup) {
+    if (!reservationId) {
+      reservationId = crypto.randomUUID();
+      created = true;
+    }
+    await applyGroup(sql, conn, rev, reservationId, created, children, noteStay, stayOf);
+  } else if (rev.status === 'cancelled') {
     // Скасування не стирає бронь: вона була, гість про неї знає, і в звітах
     // за минулий місяць вона має лишитись. Міняється лише статус.
     if (reservationId) {
@@ -294,6 +335,199 @@ export async function applyRevision(
   );
 
   return { result: 'applied', reservationId, created };
+}
+
+/**
+ * Дочірні броні групи — у порядку ключа кімнати.
+ *
+ * Читається за `parent_id`, а не за `external_uid LIKE`: батьківська бронь уже
+ * знайдена в межах орендаря (через журнал і `connectionInTenant`), тож
+ * `parent_id` — це вже перевірена межа. `external_uid` дочірньої несе ключ
+ * кімнати, і саме за ним вона впізнається в наступній редакції; читати за ним
+ * НЕ можна — те поле ділиться з iCal-синком, і збіг там був би тихим.
+ */
+async function childrenOf(sql: Sql, parentId: string): Promise<any[]> {
+  return await sql.rows<any>(
+    `SELECT id, external_uid, unit_type_id, unit_id, check_in, check_out, status
+       FROM reservations WHERE parent_id = ? ORDER BY external_uid`,
+    [parentId],
+  ) as any[];
+}
+
+/**
+ * Група: батьківська бронь бронювання і по дочірній на кожну кімнату (К1).
+ *
+ * ── Чому батьківська НЕ має типу номера ─────────────────────────────────
+ *
+ * Бо наявність рахує кожен рядок без номера як зайнятий номер ТИПУ
+ * (`unassignedByTypeDay` у `properties/data/availability.ts`), і батьківська з
+ * типом відняла б третій номер за групу з двох кімнат. Тобто канал отримав би
+ * на одиницю менше, ніж є, — мовчки, без жодної помилки.
+ *
+ * Батьківська описує БРОНЮВАННЯ: проміжок від найранішого заїзду до
+ * найпізнішого виїзду, сума й гості — з ревізії (у бронювання на дві кімнати
+ * своя заселеність поруч із заселеністю кожної кімнати, і вони різні).
+ * Кімнати описують дочірні, кожна своїм типом і без номера (П9).
+ *
+ * ── Що робить зникла кімната ────────────────────────────────────────────
+ *
+ * Скасовується, а не стирається — так само, як скасована одинична бронь: вона
+ * була, гість про неї знає, у звіті за минулий місяць має лишитись. Її ночі
+ * при цьому звільняються й їдуть у канал: інакше номер стояв би зайнятим і
+ * непроданим.
+ *
+ * Кімната, що повернулась під тим самим ключем, оживає — статус береться від
+ * батьківської, як і решта групи.
+ */
+async function applyGroup(
+  sql: Sql,
+  conn: { organizationId: string; propertyId: string },
+  rev: Revision,
+  parentId: string,
+  created: boolean,
+  children: any[],
+  noteStay: (stay: any) => Promise<void>,
+  stayOf: (id: string) => Promise<any>,
+): Promise<void> {
+  const cancelled = rev.status === 'cancelled';
+  const rooms = rev.rooms ?? [];
+
+  // Проміжок групи — по кімнатах ЦІЄЇ редакції. Скасування кімнат не несе,
+  // тож проміжок лишається таким, яким був: скасована бронь не змінює дат.
+  const starts = rooms.map((r) => r.checkIn).filter(Boolean) as string[];
+  const ends = rooms.map((r) => r.checkOut).filter(Boolean) as string[];
+  const spanFrom = starts.length ? starts.slice().sort()[0] : rev.checkIn;
+  const spanTo = ends.length ? ends.slice().sort().at(-1) : rev.checkOut;
+
+  if (created) {
+    await sql.run(
+      `INSERT INTO reservations (id, organization_id, property_id, unit_id, unit_type_id, guest_id,
+                                 check_in, check_out, nights, adults, children,
+                                 status, payment_status, source, total_price, currency, external_uid)
+       VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?, ?, ?)`,
+      [parentId, conn.organizationId, conn.propertyId,
+        await guestFor(sql, conn.organizationId, rev),
+        spanFrom ?? '', spanTo ?? '', nightsBetween(spanFrom, spanTo),
+        rev.adults ?? 1, rev.children ?? 0,
+        cancelled ? 'cancelled' : 'confirmed',
+        sourceOf(rev.otaName), rev.totalPrice ?? 0, rev.currency ?? '',
+        rev.otaReservationCode ?? null],
+    );
+  } else {
+    // Порожнє поле ревізії — «не міняли», а не «скинути»: те саме правило, що
+    // й для одиничної броні.
+    await sql.run(
+      `UPDATE reservations
+          SET check_in = COALESCE(?, check_in),
+              check_out = COALESCE(?, check_out),
+              adults = COALESCE(?, adults),
+              children = COALESCE(?, children),
+              total_price = COALESCE(?, total_price),
+              status = ?,
+              updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?`,
+      [spanFrom ?? null, spanTo ?? null, rev.adults ?? null, rev.children ?? null,
+        rev.totalPrice ?? null, cancelled ? 'cancelled' : 'confirmed', parentId],
+    );
+    const dates = await sql.row<any>('SELECT check_in, check_out FROM reservations WHERE id = ?', [parentId]);
+    if (dates) {
+      await sql.run('UPDATE reservations SET nights = ? WHERE id = ?',
+        [nightsBetween(isoDay(dates.check_in), isoDay(dates.check_out)), parentId]);
+    }
+    if (rev.guestFirstName !== undefined || rev.guestLastName !== undefined || rev.guestEmail !== undefined) {
+      await sql.run(
+        `UPDATE guests
+            SET first_name = COALESCE(?, first_name),
+                last_name = COALESCE(?, last_name),
+                email = COALESCE(?, email),
+                updated_at = CURRENT_TIMESTAMP
+          WHERE id = (SELECT guest_id FROM reservations WHERE id = ?)`,
+        [rev.guestFirstName ?? null, rev.guestLastName ?? null, rev.guestEmail ?? null, parentId],
+      );
+    }
+  }
+
+  const parent = await sql.row<any>(
+    'SELECT guest_id, status, payment_status, source, currency, property_id FROM reservations WHERE id = ?',
+    [parentId]) as any;
+  const byKey = new Map<string, any>(children.map((c) => [uidKey(c.external_uid), c]));
+  const code = rev.otaReservationCode ?? rev.remoteBookingId;
+
+  // Скасування бронювання не перелічує кімнат — воно гасить усю групу.
+  const targets = cancelled ? [] : rooms;
+
+  for (const room of targets) {
+    const existing = byKey.get(room.key);
+    const from = room.checkIn ?? spanFrom;
+    const to = room.checkOut ?? spanTo;
+
+    if (!existing) {
+      const childId = crypto.randomUUID();
+      await sql.run(
+        `INSERT INTO reservations (id, organization_id, property_id, parent_id, unit_id, unit_type_id, guest_id,
+                                   check_in, check_out, nights, adults, children,
+                                   status, payment_status, source, total_price, currency, external_uid)
+         VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [childId, conn.organizationId, conn.propertyId, parentId, room.unitTypeId ?? null,
+          parent.guest_id, from ?? '', to ?? '', nightsBetween(from, to),
+          room.adults ?? 1, room.children ?? 0,
+          parent.status, parent.payment_status, parent.source,
+          room.amount ?? 0, parent.currency ?? '', `${code}#${room.key}`],
+      );
+      await noteStay(await stayOf(childId));
+      continue;
+    }
+
+    const wasStay = await stayOf(existing.id);
+    await sql.run(
+      `UPDATE reservations
+          SET check_in = COALESCE(?, check_in),
+              check_out = COALESCE(?, check_out),
+              unit_type_id = COALESCE(?, unit_type_id),
+              adults = COALESCE(?, adults),
+              children = COALESCE(?, children),
+              total_price = COALESCE(?, total_price),
+              status = ?,
+              payment_status = ?,
+              updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?`,
+      [from ?? null, to ?? null, room.unitTypeId ?? null, room.adults ?? null, room.children ?? null,
+        room.amount ?? null, parent.status, parent.payment_status, existing.id],
+    );
+    // Канал змінив ТИП кімнати, яку рецепція вже поставила в номер: номер
+    // старого типу новий не вміщає (Д9). Те саме правило, що й для одиничної.
+    if (room.unitTypeId && wasStay?.unit_id && wasStay.unit_type_id
+        && String(wasStay.unit_type_id) !== room.unitTypeId) {
+      await sql.run('UPDATE reservations SET unit_id = NULL WHERE id = ?', [existing.id]);
+    }
+    const nights = await sql.row<any>('SELECT check_in, check_out FROM reservations WHERE id = ?', [existing.id]);
+    if (nights) {
+      await sql.run('UPDATE reservations SET nights = ? WHERE id = ?',
+        [nightsBetween(isoDay(nights.check_in), isoDay(nights.check_out)), existing.id]);
+    }
+    await noteStay(wasStay);
+    await noteStay(await stayOf(existing.id));
+  }
+
+  // Кімнати, яких у цій редакції немає, — скасувати. Ночі звільняються, і
+  // канал має про це дізнатись: інакше номер лишиться зайнятим і непроданим.
+  const alive = new Set(targets.map((r) => r.key));
+  for (const child of children) {
+    if (alive.has(uidKey(child.external_uid))) continue;
+    if (String(child.status) === 'cancelled') continue;
+    const wasStay = await stayOf(child.id);
+    await sql.run(
+      "UPDATE reservations SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [child.id]);
+    await noteStay(wasStay);
+  }
+}
+
+/** Ключ кімнати з `external_uid` дочірньої: усе після першої `#`. */
+function uidKey(externalUid: unknown): string {
+  const s = String(externalUid ?? '');
+  const at = s.indexOf('#');
+  return at >= 0 ? s.slice(at + 1) : '';
 }
 
 /** Дата для тексту історії — `YYYY-MM-DD`, звідки б не приїхала. */

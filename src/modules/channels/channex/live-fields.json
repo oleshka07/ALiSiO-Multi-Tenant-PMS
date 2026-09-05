@@ -97,7 +97,7 @@
     ]
   },
   "GET /booking_revisions/feed": {
-    "why": "стрічка непідтверджених ревізій і поля, які читає revision-map.ts",
+    "why": "стрічка непідтверджених ревізій і поля, які читає revision-map.ts. Живе 06.09.2026 (Блок 3, К1): зразок узятий із СПРАВЖНЬОЇ броні на дві кімнати, заведеної через Booking CRS на власному обʼєкті staging. Кімнати приходять окремими `rooms[]`, кожна зі своїм `room_type_id`, `amount`, `occupancy` і розбивкою `days`; заселеність бронювання зверху (`adults: 3`) не дорівнює жодній кімнаті (2 і 1) — саме тому батьківська бронь групи бере верхнє число. `ota_unique_id` у броней Booking CRS = null (документація обіцяє його лише для Booking.com). Поруч — недокументовані `booking_room_id`, `is_cancelled`, `is_crs_revision`, `acknowledge_status`, `secondary_ota`, `agent`, `channel_id`, `raw_message`: `booking_room_id` НЕ стабільний між ревізіями (виміряно чотирма редакціями одного бронювання — чотири різні набори UUID), тож ключем групи він бути не може",
     "fields": [
       "data[].attributes",
       "meta.total",
@@ -119,11 +119,9 @@
       "data[].attributes.rooms[].checkin_date",
       "data[].attributes.rooms[].checkout_date",
       "data[].attributes.rooms[].occupancy",
-      "data[].attributes.rooms[].amount"
-    ],
-    "awaiting_fields": {
-      "*": "тестова бронь (§10.3 ТЗ / Booking CRS у панелі вендора): стрічка staging порожня, доки броні немає"
-    }
+      "data[].attributes.rooms[].amount",
+      "data[].attributes.rooms[].ota_unique_id"
+    ]
   },
   "POST /properties": {
     "why": "заведення обʼєкта — id",
