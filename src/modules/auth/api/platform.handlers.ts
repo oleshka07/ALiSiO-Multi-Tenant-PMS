@@ -9,6 +9,8 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getSql } from '@core/db/async';
+import { runWithOrganization } from '@core/auth/tenant-context';
+import { setupProgressFor } from '@properties';
 import {
   PLATFORM_COOKIE,
   createPlatformSession,
@@ -118,18 +120,46 @@ export async function platformMe() {
 // counts only — never a guest, a booking or a price. `organizations` carries
 // no row-level policy for the same reason `sessions` does not: it is what the
 // request consults before it knows which tenant it belongs to.
+//
+// Лічильники кожної організації читаються В ЇЇ контексті (`runWithOrganization`):
+// `properties`, `cm_connections`, `booking_sites` — тенантні таблиці, і без
+// контексту політика Postgres віддавала б для них нуль, тобто платформа
+// показувала б «0 обʼєктів» кожному готелю. Колонки — за MASTER-PLAN §1.3:
+// країна, валюта, обʼєктів, OTA, сайт, створено, Setup progress по першому
+// обʼєкту. Це постачальник дивиться на свої готелі: назви й числа, і жодного
+// гостя, броні чи ціни.
 export async function platformOrganizations() {
   const session = await sessionFromCookie();
   if (!session) return unauthorized();
 
   const sql = getSql();
-  const rows = await sql.rows<any>(`
-    SELECT o.id, o.name, o.slug, o.language, o.default_currency,
-           (SELECT COUNT(*) FROM properties p WHERE p.organization_id = o.id) AS properties,
-           (SELECT COUNT(*) FROM app_users u WHERE u.organization_id = o.id) AS users
+  const orgs = await sql.rows<any>(`
+    SELECT o.id, o.name, o.slug, o.language, o.default_currency, o.created_at
     FROM organizations o
     ORDER BY o.name
   `);
+  const rows = [];
+  for (const o of orgs) {
+    const detail = await runWithOrganization(String(o.id), async () => {
+      const props = await sql.rows<any>('SELECT id, country FROM properties WHERE organization_id = ? ORDER BY created_at, id', [o.id]);
+      const users = await sql.row<any>('SELECT COUNT(*) AS n FROM app_users WHERE organization_id = ?', [o.id]);
+      const ota = await sql.row<any>('SELECT COUNT(*) AS n FROM cm_connections WHERE organization_id = ? AND is_enabled = TRUE', [o.id]);
+      const site = await sql.row<any>(`SELECT COUNT(*) AS n FROM booking_sites WHERE organization_id = ? AND status = 'active'`, [o.id]);
+      const first = props[0] ? String(props[0].id) : null;
+      const progress = first ? await setupProgressFor(String(o.id), first) : null;
+      const countries = [...new Set(props.map((p: any) => p.country).filter(Boolean))];
+      return {
+        properties: props.length,
+        users: Number(users?.n ?? 0),
+        country: countries.join(', ') || null,
+        ota: Number(ota?.n ?? 0) > 0,
+        site: Number(site?.n ?? 0) > 0,
+        setup_done: progress?.done ?? 0,
+        setup_total: progress?.total ?? 8,
+      };
+    });
+    rows.push({ id: o.id, name: o.name, slug: o.slug, language: o.language, default_currency: o.default_currency, created_at: o.created_at, ...detail });
+  }
   return NextResponse.json(rows);
 }
 

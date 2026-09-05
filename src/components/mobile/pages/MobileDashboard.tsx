@@ -44,7 +44,7 @@ const CLEAN_COLORS: Record<string, { label: string; color: string }> = {
 const QUICK_ACTIONS: { label: string; href: string; icon: typeof BookOpen; color: string; feature?: string }[] = [
   { label: 'Бронювання',  href: '/app/bookings',       icon: BookOpen,     color: '#3b82f6' },
   { label: 'Денна зміна', href: '/app/calendar?view=shift', icon: RefreshCw, color: '#3b82f6' },
-  { label: 'Календар',    href: '/app/calendar',        icon: CalendarDays, color: '#14b8a6' },
+  { label: 'Планер',      href: '/app/calendar',        icon: CalendarDays, color: '#14b8a6' },
   { label: 'Гості',       href: '/app/guests',          icon: Users,        color: '#8b5cf6' },
   { label: 'Журнал',      href: '/app/finance/operations',     icon: List,         color: '#22c55e', feature: 'accounting' },
   { label: 'Фінанси',     href: '/app/finance',         icon: Wallet,       color: '#f59e0b', feature: 'accounting' },

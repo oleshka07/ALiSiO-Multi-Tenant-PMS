@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Sidebar from '@/components/layout/Sidebar';
+import TopNav from '@/components/layout/TopNav';
 import BottomNav from '@/components/layout/BottomNav';
+import MobileMoreSheet from '@/components/mobile/MobileMoreSheet';
 import MobileLayout from '@/components/mobile/MobileLayout';
 import { MobileMenuContext } from '@/ui/MobileMenuContext';
 import { GlobalSearchContext } from '@/ui/GlobalSearchContext';
@@ -168,10 +169,9 @@ export default function DashboardLayout({
       {supportBanner && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000 }}>{supportBanner}</div>
       )}
-      <Sidebar
-        mobileOpen={mobileMenuOpen}
-        onMobileClose={() => setMobileMenuOpen(false)}
-      />
+      {/* Верхнє меню замість бічної панелі (П12). На вузькому вікні пункти
+          ховає CSS, а кнопка меню в шапці екрана відкриває аркуш «Більше». */}
+      <TopNav />
       <main className="app-main">
         <MobileMenuContext.Provider value={() => setMobileMenuOpen(true)}>
           <GlobalSearchContext.Provider value={() => setSearchOpen(true)}>
@@ -180,6 +180,7 @@ export default function DashboardLayout({
         </MobileMenuContext.Provider>
       </main>
       <BottomNav onMoreClick={() => setMobileMenuOpen(true)} />
+      <MobileMoreSheet open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
     </PropertyScopeProvider>

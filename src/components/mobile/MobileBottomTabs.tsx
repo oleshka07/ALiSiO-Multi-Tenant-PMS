@@ -3,29 +3,27 @@
 import { useT } from '@core/i18n/client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  LayoutDashboard,
-  CalendarDays,
-  BookOpen,
-  Users,
-  MoreHorizontal,
-} from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
+import { hasPermission } from '@core/auth/permissions';
+import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
+import { TOP_NAV, visibleNavItems } from '@/components/layout/nav-items';
 
 interface MobileBottomTabsProps {
   onMoreClick?: () => void;
 }
 
-const tabs = [
-  { label: 'Головна',    href: '/app/dashboard', icon: LayoutDashboard },
-  { label: 'Бронювання', href: '/app/bookings',  icon: BookOpen },
-  { label: 'Календар',   href: '/app/calendar',  icon: CalendarDays },
-  { label: 'Гості',      href: '/app/guests',    icon: Users },
-  { label: 'Більше',     href: '__more__',   icon: MoreHorizontal },
-];
-
+// Ті самі чотири основні пункти, що й у верхньому меню (`primary` у
+// nav-items.ts), і «Більше» — один список, одні фільтри.
 export default function MobileBottomTabs({ onMoreClick }: MobileBottomTabsProps) {
   const t = useT();
   const pathname = usePathname();
+  const { user, features, organization } = useCurrentUser();
+  const tabs = [
+    ...(user
+      ? visibleNavItems(TOP_NAV, { permissions: user.permissions, features, countries: organization?.countries }, hasPermission)
+      : TOP_NAV).filter((i) => i.primary).map((i) => ({ label: i.label, href: i.href, icon: i.icon })),
+    { label: 'Більше', href: '__more__', icon: MoreHorizontal },
+  ];
 
   return (
     <nav className="m-bottom-tabs">

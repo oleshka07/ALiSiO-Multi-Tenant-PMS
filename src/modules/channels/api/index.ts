@@ -6,6 +6,9 @@ export { exportIcal } from './ical-export.handlers';
 export { runChannelPullCron } from './pull-cron.handlers';
 export { runChannelPublishCron } from './publish-cron.handlers';
 export { syncConnectionCatalogFor, channelConnection, connectionMirror } from './catalog.handlers';
+// Зʼєднання обʼєкта — для Setup progress (крок 8 «Канал або сайт»): читає
+// модуль обʼєктів через фасад, а не SQL до cm_connections.
+export { connectionsForProperty } from '../data/connections.repo';
 export {
   flushConnectionOutboxFor, enqueueChannelChange, pendingChannelChanges,
   queuedChannelChanges, stuckChannelChanges, retryStuckChannelChanges, recentChannelSends,

@@ -54,6 +54,13 @@ export { getGuestPageConfig, updateGuestPageConfig } from './guest-page-config.h
 export { listPropertyGuestConfigs, updatePropertyGuestConfig } from './property-guest-config.handlers';
 export { uploadPhoto, deletePhoto } from './photos.handlers';
 
+// Setup progress (MASTER-PLAN §1.4): маршрут для дашборда і функція для
+// платформної таблиці (та ходить по організаціях сама, у контексті кожної).
+export { getSetupProgress } from './setup-progress.handlers';
+export { setupProgressFor } from '../data/setup-progress.repo';
+export { setupProgress, PRICE_COVERAGE_DAYS } from '../domain/setup-progress';
+export type { SetupProgress, SetupStep, SetupStepKey, SetupSnapshot } from '../domain/setup-progress';
+
 // Public types
 export type {
   Property,

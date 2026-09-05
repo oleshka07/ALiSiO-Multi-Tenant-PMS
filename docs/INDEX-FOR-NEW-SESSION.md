@@ -150,15 +150,16 @@
 
 ## 9. Код — де що
 
-- **`src/app/app/(dashboard)/`** — ~55 екранів: `calendar`, `bookings`,
+- **Оболонка (Блок 1, 05.09):** `components/layout/TopNav.tsx` + `nav-items.ts` (верхнє меню, бічної панелі немає), `Header.tsx` (назва екрана), теми в `globals.css` + `src/ui/theme.ts`, Setup progress у `modules/properties/domain/setup-progress.ts`.
+- **`src/app/app/(dashboard)/`** — ~57 екранів: `calendar`, `bookings`,
   `bookings/[id]/meldeschein`, `guests`, `guest-registry`, `documents`,
   `day-sheets`, `tasks`, `events`, `audit`, `pricing`, `reports`,
-  `reports/city-tax`, `sites`, `dashboard`, повний блок `finance/*`
+  `reports/sales`, `reports/city-tax`, `sites`, `dashboard`, повний блок `finance/*`
   (pnl, cashflow, capex, expenses, expected-payments, operations, history,
   audit, settings, reports/*), і `settings/*` (14 екранів: general,
   properties, units, services, users, payments, invoicing, features,
   pricing-matrix, booking-sources, booking-widget, guest-page,
-  channel-manager, channel-rules).
+  channel-manager, channel-rules, legend).
 - **`src/modules/`** — 14 модулів. Межі тримає `scripts/check-boundaries.mjs`
   з храповиком.
 - **`scripts/`** — ~25 гейтів у `npm run check`; окремо `npm run check:pg`

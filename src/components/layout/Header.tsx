@@ -1,10 +1,7 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
-import { Bell, Search, Menu, ArrowLeft } from 'lucide-react';
-import { useGlobalSearch } from '@/ui/GlobalSearchContext';
-import AccountMenu from './AccountMenu';
-import PropertySwitcher from './PropertySwitcher';
+import { Menu, ArrowLeft } from 'lucide-react';
 
 interface HeaderProps {
   title: string;
@@ -12,18 +9,19 @@ interface HeaderProps {
   onBack?: () => void;
 }
 
+/**
+ * Шапка екрана: назва і, за потреби, «назад». Обʼєкт, пошук, сповіщення й
+ * акаунт переїхали у верхнє меню (`TopNav`, П12) — вони одні на всю
+ * оболонку, а не на кожному з 77 екранів. Кнопка меню видна лише на телефоні
+ * і відкриває аркуш «Більше».
+ */
 export default function Header({ title, onMenuClick, onBack }: HeaderProps) {
   const t = useT();
-  const openSearch = useGlobalSearch();
   return (
     <header className="header">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         {onMenuClick && (
-          <button
-            className="mobile-menu-btn"
-            onClick={onMenuClick}
-            aria-label="Open menu"
-          >
+          <button className="mobile-menu-btn" onClick={onMenuClick} aria-label={t('Меню')}>
             <Menu size={22} />
           </button>
         )}
@@ -44,36 +42,7 @@ export default function Header({ title, onMenuClick, onBack }: HeaderProps) {
         )}
         <h1 className="header-title">{title}</h1>
       </div>
-
-      <div className="header-actions">
-        {/* Область обʼєкта — один елемент на всю оболонку; зʼявляється лише
-            коли обʼєктів два й більше. Див. src/ui/PropertyScopeContext.tsx. */}
-        <PropertySwitcher />
-        <button
-          className="btn btn-ghost btn-icon"
-          aria-label={t('Пошук')}
-          title={`${t('Пошук')} · Ctrl+K`}
-          onClick={openSearch}
-        >
-          <Search size={18} />
-        </button>
-        {/*
-          Дзвіночок поки без змісту — і саме тому `disabled`.
-          Кнопка, яка виглядає робочою і не робить нічого, читається як
-          поломка: людина натискає її двічі, потім іде питати. Вимкнена
-          каже правду — «сюди щось буде», — і не бреше щодня на 77 екранах.
-        */}
-        <button
-          className="btn btn-ghost btn-icon"
-          aria-label={t('Сповіщення')}
-          title={t('Сповіщення — скоро')}
-          disabled
-          style={{ opacity: .45, cursor: 'default' }}
-        >
-          <Bell size={18} />
-        </button>
-        <AccountMenu />
-      </div>
+      <div className="header-actions" />
     </header>
   );
 }

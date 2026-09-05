@@ -8,6 +8,7 @@ import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import { EmptyState } from '@/components/ui/State';
 import { useDevice } from '@/ui/hooks/useDevice';
 import MobileDashboard from '@/components/mobile/pages/MobileDashboard';
+import SetupProgressCard from '@/components/dashboard/SetupProgressCard';
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -165,6 +166,9 @@ function DashboardDesktop() {
     <>
       <Header title="Dashboard" onMenuClick={onMenuClick} />
       <div className="app-content">
+        {/* Setup progress (MASTER-PLAN §1.4) — поки не 8/8 */}
+        <SetupProgressCard />
+
         {/* Stats cards */}
         <div className="dashboard-stats-grid">
           <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 20 }}>

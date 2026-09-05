@@ -323,3 +323,30 @@ export async function dayRestrictions(unitTypeIds: string[], from: string, to: s
   }
   return out;
 }
+
+/**
+ * Скільки днів із названою ціною має найкраще покритий тип у вікні
+ * [`from`, `from` + `days`) — для Setup progress (MASTER-PLAN §1.4): тимчасове
+ * правило «365 днів без дір» замість сезонів, доки сезонів немає (Блок 2).
+ *
+ * Рахується тут, а не в модулі обʼєктів, бо `price_calendar` читає лише
+ * `modules/pricing` (інваріант 16, `check-price-source`): це не ціна, це
+ * покриття — але таблиця та сама, і друге місце читання її не заводиться.
+ * Рядок без ціни (лише обмеження, 0062) покриттям не є.
+ */
+export async function pricedDaysAhead(unitTypeIds: string[], from: string, days: number): Promise<number> {
+  if (unitTypeIds.length === 0 || days <= 0) return 0;
+  const to = new Date(`${from}T00:00:00Z`);
+  to.setUTCDate(to.getUTCDate() + days - 1);
+  const toIso = to.toISOString().slice(0, 10);
+  const rows = await getSql().rows<any>(
+    `SELECT unit_type_id, COUNT(DISTINCT date) AS n
+       FROM price_calendar
+      WHERE unit_type_id IN (${unitTypeIds.map(() => '?').join(', ')})
+        AND base_price IS NOT NULL AND base_price > 0
+        AND date >= ? AND date <= ?
+      GROUP BY unit_type_id`,
+    [...unitTypeIds, from, toIso],
+  );
+  return rows.reduce((best, r) => Math.max(best, Number(r.n) || 0), 0);
+}

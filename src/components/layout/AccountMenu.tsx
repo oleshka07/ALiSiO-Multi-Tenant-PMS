@@ -23,6 +23,7 @@ import { User, LogOut, ChevronRight } from 'lucide-react';
 import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { hasPermission, ROLE_LABELS } from '@core/auth/permissions';
 import { DESTINATIONS } from '@core/navigation';
+import ThemeToggle from './ThemeToggle';
 
 /**
  * Що саме коригують періодично.
@@ -80,12 +81,12 @@ export default function AccountMenu() {
           role="menu"
           style={{
             position: 'absolute', right: 0, top: 'calc(100% + 8px)', zIndex: 500,
-            minWidth: 260, background: 'var(--bg-elevated, #fff)', borderRadius: 10,
-            border: '1px solid var(--border, rgba(0,0,0,.08))',
-            boxShadow: '0 12px 32px rgba(0,0,0,.18)', overflow: 'hidden',
+            minWidth: 260, background: 'var(--bg-card)', borderRadius: 10,
+            border: '1px solid var(--border-primary)',
+            boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
           }}
         >
-          <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border, rgba(0,0,0,.08))' }}>
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-primary)' }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
               {user?.full_name || user?.email || '—'}
             </div>
@@ -115,13 +116,18 @@ export default function AccountMenu() {
             ))}
           </div>
 
-          <div style={{ borderTop: '1px solid var(--border, rgba(0,0,0,.08))', padding: '4px 0' }}>
+          <div style={{ borderTop: '1px solid var(--border-primary)', padding: '4px 0' }}>
+            {/* Тема (П18): світла за замовчуванням, темна — тут. */}
+            <ThemeToggle />
+          </div>
+
+          <div style={{ borderTop: '1px solid var(--border-primary)', padding: '4px 0' }}>
             <button
               onClick={() => { setOpen(false); logout(); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10, width: '100%',
                 padding: '9px 14px', fontSize: 14, border: 'none', background: 'transparent',
-                cursor: 'pointer', color: 'var(--danger, #b91c1c)', textAlign: 'left',
+                cursor: 'pointer', color: 'var(--accent-danger)', textAlign: 'left',
               }}
             >
               <LogOut size={15} />

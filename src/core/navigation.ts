@@ -43,7 +43,7 @@ export interface Destination {
 export const DESTINATIONS: Destination[] = [
   // ── Основне ──────────────────────────────────────────────────────────
   { label: 'Dashboard', href: '/app/dashboard', section: 'Основне', permission: 'nav:dashboard', feature: 'dashboard', keywords: ['головна', 'огляд', 'зведення'] },
-  { label: 'Календар', href: '/app/calendar', section: 'Основне', permission: 'nav:calendar', keywords: ['шахматка', 'заселення', 'вільні номери'] },
+  { label: 'Планер', href: '/app/calendar', section: 'Основне', permission: 'nav:calendar', keywords: ['календар', 'шахматка', 'заселення', 'вільні номери'] },
   { label: 'Бронювання', href: '/app/bookings', section: 'Основне', permission: 'nav:bookings', keywords: ['броні', 'резервації', 'заїзди', 'виїзди'] },
   { label: 'Гості', href: '/app/guests', section: 'Основне', permission: 'nav:guests', keywords: ['клієнти', 'контакти'] },
   { label: 'Задачі', href: '/app/tasks', section: 'Основне', permission: 'nav:tasks', feature: 'tasks', keywords: ['прибирання', 'housekeeping', 'доручення'] },
@@ -51,8 +51,11 @@ export const DESTINATIONS: Destination[] = [
   { label: 'Зали', href: '/app/events', section: 'Основне', permission: 'nav:bookings', feature: 'events', keywords: ['події', 'банкет', 'конференція'] },
 
   // ── Управління ───────────────────────────────────────────────────────
-  { label: 'Ціноутворення', href: '/app/pricing', section: 'Управління', permission: 'nav:pricing', keywords: ['тарифи', 'ціни', 'сезони'] },
-  { label: 'Аналітика продажів', href: '/app/reports', section: 'Управління', permission: 'nav:reports', feature: 'reports', keywords: ['звіти', 'статистика', 'завантаження'] },
+  { label: 'Ціни та наявність', href: '/app/pricing', section: 'Управління', permission: 'nav:pricing', keywords: ['ціноутворення', 'тарифи', 'ціни', 'сезони', 'календар цін'] },
+  // Звіти — один вхід (Блок 1.4): сторінка-хаб без ключа; кожен звіт — за своїм.
+  { label: 'Звіти', href: '/app/reports', section: 'Управління', permission: 'nav:dashboard', keywords: ['звіти', 'аналітика', 'статистика'] },
+  { label: 'Аналітика продажів', href: '/app/reports/sales', section: 'Звіти', permission: 'nav:reports', feature: 'reports', keywords: ['звіти', 'статистика', 'завантаження', 'ADR', 'виручка'] },
+  { label: 'Туристичний збір', href: '/app/reports/city-tax', section: 'Звіти', permission: 'nav:reports', feature: 'reports', keywords: ['курортний збір', 'громада', 'звіт'] },
   { label: 'Документи', href: '/app/documents', section: 'Управління', permission: 'nav:documents', feature: 'invoicing', keywords: ['фактури', 'інвойси', 'рахунки', 'договори'] },
   { label: 'Evidenční kniha', href: '/app/guest-registry', section: 'Управління', permission: 'nav:guests', keywords: ['книга гостей', 'реєстр', 'поліція'] },
   { label: 'Журнал змін', href: '/app/audit', section: 'Управління', permission: 'nav:settings', keywords: ['хто змінив', 'історія', 'аудит'] },
@@ -79,6 +82,7 @@ export const DESTINATIONS: Destination[] = [
   { label: 'Ціни каналів', href: '/app/settings/channel-rules', section: 'Налаштування', permission: 'nav:pricing', keywords: ['націнка', 'комісія', 'сніданок у ціні'] },
   { label: 'Джерела бронювань', href: '/app/settings/booking-sources', section: 'Налаштування', permission: 'nav:settings', keywords: ['звідки прийшов гість', 'канал продажу'] },
   { label: 'Послуги', href: '/app/settings/services', section: 'Налаштування', permission: 'nav:settings', keywords: ['сауна', 'сніданок', 'трансфер', 'додаткові'] },
+  { label: 'Легенда', href: '/app/settings/legend', section: 'Налаштування', permission: 'nav:settings', keywords: ['кольори', 'статуси', 'позначення', 'що означає'] },
   { label: 'Гостьова сторінка', href: '/app/settings/guest-page', section: 'Налаштування', permission: 'nav:settings', feature: 'guest_page', keywords: ['портал гостя', 'самореєстрація', 'wifi'] },
 ];
 

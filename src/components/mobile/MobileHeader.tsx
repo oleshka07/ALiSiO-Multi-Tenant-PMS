@@ -16,12 +16,12 @@ interface MobileHeaderProps {
 
 const ROUTE_TITLES: Record<string, string> = {
   '/app/dashboard': 'Dashboard',
-  '/app/calendar': 'Календар',
+  '/app/calendar': 'Планер',
   '/app/bookings': 'Бронювання',
   '/app/guests': 'Гості',
   '/app/finance': 'Фінанси',
   '/app/settings': 'Налаштування',
-  '/app/pricing': 'Ціноутворення',
+  '/app/pricing': 'Ціни та наявність',
   '/app/reports': 'Звіти',
 };
 
