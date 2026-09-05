@@ -1379,7 +1379,7 @@ CREATE TABLE "price_calendar" (
   "unit_type_id" TEXT NOT NULL,
   "rate_plan_id" TEXT,
   "date" DATE NOT NULL,
-  "base_price" NUMERIC(14,2) DEFAULT 0 NOT NULL,
+  "base_price" NUMERIC(14,2),
   "weekend_price" NUMERIC(14,2),
   "min_stay" BIGINT DEFAULT 1 NOT NULL,
   "max_stay" BIGINT,

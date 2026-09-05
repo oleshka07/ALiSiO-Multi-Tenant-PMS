@@ -39,6 +39,8 @@ export const updateBulkPricing = withPermission('manage_pricing', async (request
       updated = await bulkUpdatePrices({ unitTypeId, dateFrom, dateTo, applyTo, ...body, ratePlanId: typeof body.ratePlanId === 'string' && body.ratePlanId ? body.ratePlanId : undefined });
     } catch (e) {
       if (e instanceof Error && /rate plan not found/i.test(e.message)) return NextResponse.json({ error: 'Rate plan not found' }, { status: 404 });
+      // Нуль і відʼємне — не ціна (2.0): названа відмова, екран її перекладає.
+      if (e instanceof Error && e.message === 'price_not_positive') return NextResponse.json({ error: 'price_not_positive' }, { status: 400 });
       throw e;
     }
     return NextResponse.json({ success: true, updated });

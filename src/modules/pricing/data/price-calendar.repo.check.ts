@@ -124,7 +124,51 @@ try {
   }
   console.log('  ok  обидва писачі називають тариф дверям каналів');
 
-  console.log('price-calendar: ціна тарифу на дату — своя, успадкована названа, чуже — відмова');
+  // ── 7. Обмеження без ціни — рядок без ціни, а не ціна нуль (2.0) ─────
+  //
+  // 05.09.2026, бета: оператор поставив «мін. 2 ночі» на день без ціни, і
+  // редактор дня записав `base_price = 0`. Нуль — це ціна, не її
+  // відсутність: котирування продало ніч за 0, батчер відправив 0 у канал,
+  // звірка сказала «збігається». Інваріант 17 читається так: ціни немає —
+  // це NULL, ніч у `missing`, обмеження при цьому лишається.
+  const D3 = '2026-11-27';
+  const D4 = '2026-11-28';
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D3, min_stay: 2 }]));
+  const bare = await sql.row<any>('SELECT base_price FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D3]);
+  assert.ok(bare, 'рядок обмеження існує');
+  assert.strictEqual(bare.base_price, null, `ціни немає — NULL, не ${bare.base_price}`);
+  const unpriced = await quote(A, BAR(A), D3);
+  assert.deepStrictEqual(unpriced.missing, [D3], 'ніч без ціни — у missing, не продана за 0');
+  assert.strictEqual(unpriced.restrictions.minStay, 2, 'обмеження при цьому діє');
+  const grid = await runWithOrganization(A, () => getPriceMonth(UT(A), 11, 2026));
+  const g3 = grid.days.find((d) => d.date === D3)!;
+  assert.strictEqual(g3.hasData, true, 'сітка знає про рядок');
+  assert.strictEqual(g3.effective_price, null, 'і показує «ціни немає», а не 0');
+  console.log('  ok  обмеження на день без ціни лишає ціну порожньою, ніч не продається');
+
+  // ── 8. Нуль і відʼємне — відмова з назвою ─────────────────────────────
+  await runWithOrganization(A, () => assert.rejects(() => upsertPrices(UT(A), [{ date: D3, base_price: 0 }]), /price_not_positive/, 'нуль — відмова'));
+  await runWithOrganization(A, () => assert.rejects(() => upsertPrices(UT(A), [{ date: D3, base_price: -5 }]), /price_not_positive/, 'відʼємне — відмова'));
+  await runWithOrganization(A, () => assert.rejects(() => bulkUpdatePrices({ unitTypeId: UT(A), dateFrom: D3, dateTo: D4, base_price: 0 }), /price_not_positive/, 'масово нуль — відмова'));
+  assert.deepStrictEqual((await quote(A, BAR(A), D3)).missing, [D3], 'після відмови ніч так само без ціни');
+  console.log('  ok  нуль і відʼємне не записуються, а відмовляють з назвою');
+
+  // ── 9. Обмеження на день З ціною не стирає ціну ──────────────────────
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, closed: true }]));
+  const closedQuote = await quote(A, BAR(A), D1);
+  assert.deepStrictEqual(closedQuote.closed, [D1], 'день закрито');
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, closed: false }]));
+  assert.strictEqual((await quote(A, BAR(A), D1)).nights[0]?.price, 100, 'ціна 100 пережила два збереження без поля ціни');
+  console.log('  ok  збереження обмеження без поля ціни не чіпає ціну');
+
+  // ── 10. Масово обмеження на діапазон без цін — рядки без ціни ────────
+  await runWithOrganization(A, () => bulkUpdatePrices({ unitTypeId: UT(A), dateFrom: D3, dateTo: D4, min_stay: 3 }));
+  const bulkQuote = await quote(A, BAR(A), D4);
+  assert.deepStrictEqual(bulkQuote.missing, [D4], 'масове обмеження не вигадує ціни');
+  assert.strictEqual(bulkQuote.restrictions.minStay, 3, 'а обмеження записане');
+  console.log('  ok  масове обмеження на діапазон без цін — рядки без ціни');
+
+  console.log('price-calendar: ціна тарифу на дату — своя, успадкована названа, чуже — відмова; ціни немає — NULL, нуль — відмова');
 } finally {
   await cleanup();
 }

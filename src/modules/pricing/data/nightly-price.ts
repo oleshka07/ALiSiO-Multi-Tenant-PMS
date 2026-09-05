@@ -271,9 +271,10 @@ export async function priceNights(input: {
     // whole point of putting it in the calendar: two rate plans of one room
     // type carry independent prices for the same date.
     const rp = fromRatePlan.get(date);
-    if (rp) {
+    const rpPrice = rp ? dayPrice(rp, date) : null;
+    if (rp && rpPrice != null) {
       const extra = surcharge(date);
-      const price = money(Math.max(0, Number(dayPrice(rp, date)) + (extra ?? 0)));
+      const price = money(Math.max(0, rpPrice + (extra ?? 0)));
       out.push({ date, price, source: 'rate_plan', adjustment: extra ?? undefined });
       if (extra != null) occupancyPriced = true;
       continue;
@@ -290,8 +291,9 @@ export async function priceNights(input: {
     }
 
     const c = fromCalendar.get(date);
-    if (c) {
-      out.push({ date, price: money(Number(dayPrice(c, date))), source: 'calendar' });
+    const cPrice = c ? dayPrice(c, date) : null;
+    if (c && cPrice != null) {
+      out.push({ date, price: money(cPrice), source: 'calendar' });
       continue;
     }
 
@@ -358,10 +360,13 @@ export async function cheapestByDay(input: {
  * Friday, Saturday and Sunday take `weekend_price` where one is set. That rule
  * was written three times, identically, in three files; it lives here now.
  */
-function dayPrice(row: any, date: string): number {
+function dayPrice(row: any, date: string): number | null {
   const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
   const isWeekend = dow === 0 || dow === 5 || dow === 6;
-  return isWeekend && row.weekend_price != null ? row.weekend_price : row.base_price;
+  const base = row.base_price == null ? null : Number(row.base_price);
+  const weekend = row.weekend_price == null ? null : Number(row.weekend_price);
+  // Рядок без ціни (лише обмеження, 0062) — `null`: ніч у `missing`, не за 0.
+  return isWeekend && weekend != null ? weekend : base;
 }
 
 async function loadMatrixRows(organizationId: string, propertyId: string): Promise<PriceRow[]> {

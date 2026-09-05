@@ -2770,6 +2770,7 @@
   "Ціна дитини — невідʼємне число": "Kinderpreis — nicht negative Zahl",
   "Ціна дитини за ніч": "Kinderpreis pro Nacht",
   "Ціна за квотою:": "Preis laut Kalkulation:",
+  "Ціна має бути більшою за нуль. Щоб не продавати день, поставте «Закрито»": "Der Preis muss größer als null sein. Soll der Tag nicht verkauft werden, setzen Sie „Geschlossen“",
   "Ціна має бути числом": "Der Preis muss eine Zahl sein",
   "Ціна пакету *": "Preis des Pakets *",
   "Ціна рахується...": "Preis wird berechnet...",

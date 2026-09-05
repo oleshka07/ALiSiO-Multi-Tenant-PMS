@@ -2441,7 +2441,7 @@ function runMigrations(database: any) {
       unit_type_id TEXT NOT NULL REFERENCES unit_types(id) ON DELETE CASCADE,
       rate_plan_id TEXT REFERENCES rate_plans(id),
       date TEXT NOT NULL,
-      base_price REAL NOT NULL DEFAULT 0,
+      base_price REAL,
       weekend_price REAL,
       min_stay INTEGER NOT NULL DEFAULT 1,
       max_stay INTEGER,
@@ -2493,7 +2493,7 @@ function runMigrations(database: any) {
           unit_type_id TEXT NOT NULL REFERENCES unit_types(id) ON DELETE CASCADE,
           rate_plan_id TEXT REFERENCES rate_plans(id),
           date TEXT NOT NULL,
-          base_price REAL NOT NULL DEFAULT 0,
+          base_price REAL,
           weekend_price REAL,
           min_stay INTEGER NOT NULL DEFAULT 1,
           max_stay INTEGER,
@@ -2535,6 +2535,69 @@ function runMigrations(database: any) {
     }
   } catch (e: any) {
     console.log('[DB] price_calendar.rate_plan_id migration note:', e.message);
+  }
+
+  // --- Migration 0062: base_price nullable — ціни немає це NULL, не 0 ---
+  //
+  // 05.09.2026, бета: оператор поставив «мін. 2 ночі» на день без ціни, і
+  // редактор дня записав `base_price = 0`, бо колонка була NOT NULL DEFAULT 0.
+  // Нуль — це ціна: котирування продало б ніч за 0, батчер відправив 0 у
+  // канал, звірка сказала «збігається». Відсутність ціни тепер NULL — ніч у
+  // `missing`, обмеження лишається (інваріант 17). SQLite не вміє зняти NOT
+  // NULL, тож таблиця перебудовується — за правилом AGENTS §4: sql індексів
+  // знімається до підміни, повертається після, лічильник звіряється. Наявні
+  // нулі стають NULL: жоден із них не був названою ціною — редактор дня писав
+  // їх сам за оператора.
+  try {
+    const priceCol = (database.prepare('PRAGMA table_info(price_calendar)').all() as { name: string; notnull: number }[])
+      .find((c) => c.name === 'base_price');
+    if (priceCol && priceCol.notnull === 1) {
+      console.log('[DB] price_calendar: base_price → nullable (0062) — обмеження без ціни більше не записує нуль');
+      const before = (database.prepare('SELECT COUNT(*) AS n FROM price_calendar').get() as { n: number }).n;
+      const indexSql = (database.prepare(
+        "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='price_calendar' AND sql IS NOT NULL",
+      ).all() as { sql: string }[]).map((r) => r.sql);
+      const live = (database.prepare('PRAGMA table_info(price_calendar)').all() as { name: string }[]).map((c) => c.name);
+      const carried = [
+        'id', 'unit_type_id', 'rate_plan_id', 'date', 'base_price', 'weekend_price',
+        'min_stay', 'max_stay', 'closed', 'cta', 'ctd', 'created_at', 'updated_at',
+      ].filter((c) => live.includes(c));
+
+      database.exec('PRAGMA foreign_keys = OFF');
+      database.exec(`
+        CREATE TABLE price_calendar_new (
+          id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+          unit_type_id TEXT NOT NULL REFERENCES unit_types(id) ON DELETE CASCADE,
+          rate_plan_id TEXT REFERENCES rate_plans(id),
+          date TEXT NOT NULL,
+          base_price REAL,
+          weekend_price REAL,
+          min_stay INTEGER NOT NULL DEFAULT 1,
+          max_stay INTEGER,
+          closed INTEGER NOT NULL DEFAULT 0,
+          cta INTEGER NOT NULL DEFAULT 0,
+          ctd INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      database.exec(`INSERT INTO price_calendar_new (${carried.join(', ')}) SELECT ${carried.join(', ')} FROM price_calendar`);
+      database.exec('DROP TABLE price_calendar');
+      database.exec('ALTER TABLE price_calendar_new RENAME TO price_calendar');
+      for (const sql of indexSql) database.exec(sql);
+      database.exec('PRAGMA foreign_keys = ON');
+
+      const after = (database.prepare('SELECT COUNT(*) AS n FROM price_calendar').get() as { n: number }).n;
+      if (after !== before) throw new Error(`price_calendar rebuild lost rows: ${before} -> ${after}`);
+      const restored = (database.prepare(
+        "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='index' AND tbl_name='price_calendar' AND sql IS NOT NULL",
+      ).get() as { n: number }).n;
+      if (restored !== indexSql.length) throw new Error(`price_calendar rebuild lost indexes: ${indexSql.length} -> ${restored}`);
+      const zeroed = database.prepare('UPDATE price_calendar SET base_price = NULL WHERE base_price = 0').run().changes;
+      console.log(`[DB] price_calendar rebuilt with nullable base_price (${after} rows, ${restored} indexes carried, ${zeroed} zero prices → NULL)`);
+    }
+  } catch (e: any) {
+    console.error('[DB] price_calendar base_price nullable migration error:', e.message);
   }
 
   database.exec('CREATE INDEX IF NOT EXISTS idx_price_cal_ut ON price_calendar(unit_type_id)');

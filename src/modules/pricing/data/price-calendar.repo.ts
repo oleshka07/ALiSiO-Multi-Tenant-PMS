@@ -30,6 +30,19 @@ async function ownedRatePlanFor(t: Sql, unitTypeId: string, ratePlanId: string):
   return { propertyId: String(row.property_id) };
 }
 
+/**
+ * Ціна, яку хтось назвав, — додатне число. Нуль і відʼємне — відмова з
+ * назвою: нуль тут уже був «ціною» і поїхав у канал (05.09.2026, бета —
+ * оператор поставив мін. 2 ночі на день без ціни, редактор записав 0, канал
+ * прийняв, звірка сказала «збігається»). Відсутність ціни — NULL у рядку,
+ * ніч у `missing`; «не продавати» — це «Закрито», а не нуль.
+ */
+function assertPositivePrice(value: unknown): void {
+  if (value === undefined || value === null) return;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) throw new Error('price_not_positive');
+}
+
 export interface PriceCalendarOptions {
   /** Ціна ТАРИФУ на дату (П2): рядок з `rate_plan_id`, не базовий. */
   ratePlanId?: string;
@@ -76,11 +89,15 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
     const existing = ownRow ?? priceMap.get(dateStr);
 
     if (existing) {
+      // Рядок без ціни (лише обмеження) — `effective_price` NULL: екран
+      // показує «—», не 0, і редактор дня відкриває порожнє поле.
+      const basePrice = existing.base_price == null ? null : Number(existing.base_price);
+      const weekendPrice = existing.weekend_price == null ? null : Number(existing.weekend_price);
       days.push({
         date: dateStr, day: d, dayOfWeek, isWeekend,
-        base_price: existing.base_price,
-        weekend_price: existing.weekend_price,
-        effective_price: isWeekend && existing.weekend_price != null ? existing.weekend_price : existing.base_price,
+        base_price: basePrice,
+        weekend_price: weekendPrice,
+        effective_price: isWeekend && weekendPrice != null ? weekendPrice : basePrice,
         min_stay: existing.min_stay,
         max_stay: existing.max_stay,
         closed: existing.closed,
@@ -90,7 +107,7 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
         ...(ratePlanId ? { inherited: !ownRow } : {}),
       });
     } else {
-      days.push({ date: dateStr, day: d, dayOfWeek, isWeekend, base_price: 0, weekend_price: null, effective_price: 0, min_stay: 1, max_stay: null, closed: 0, cta: 0, ctd: 0, hasData: false });
+      days.push({ date: dateStr, day: d, dayOfWeek, isWeekend, base_price: null, weekend_price: null, effective_price: null, min_stay: 1, max_stay: null, closed: 0, cta: 0, ctd: 0, hasData: false });
     }
   }
 
@@ -127,15 +144,21 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
       ? { property_id: (await ownedRatePlanFor(t, unitTypeId, ratePlanId)).propertyId }
       : await t.row<any>('SELECT property_id FROM unit_types WHERE id = ?', [unitTypeId]);
     const dates = prices.map((p) => p.date).sort();
+    // Відмова ДО дверей і до першого рядка: нуль не має ні записатись, ні
+    // покласти координату в чергу.
+    for (const p of prices) { assertPositivePrice(p.base_price); assertPositivePrice(p.weekend_price); }
     if (owner && dates.length) {
       await noteRatesChanged(t, { propertyId: String(owner.property_id), unitTypeId, ratePlanId: ratePlanId ?? undefined, from: dates[0], to: dates[dates.length - 1] });
     }
     for (const p of prices) {
+      // `base_price` без значення — ціну НЕ чіпати: збереження обмеження на
+      // день із ціною лишає її, на день без ціни — лишає порожньою (NULL).
+      // Тут стояло `?? 0`, і рядок обмеження ставав ціною нуль.
       await t.run(`
       INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ${ON_CONFLICT_ROW} DO UPDATE SET
-        base_price = excluded.base_price,
+        base_price = COALESCE(excluded.base_price, price_calendar.base_price),
         weekend_price = excluded.weekend_price,
         min_stay = excluded.min_stay,
         max_stay = excluded.max_stay,
@@ -143,7 +166,7 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
         cta = excluded.cta,
         ctd = excluded.ctd,
         updated_at = CURRENT_TIMESTAMP
-      `, [newId(), unitTypeId, ratePlanId, p.date, p.base_price ?? 0, p.weekend_price ?? null, p.min_stay ?? 1, p.max_stay ?? null, p.closed ? 1 : 0, p.cta ? 1 : 0, p.ctd ? 1 : 0]);
+      `, [newId(), unitTypeId, ratePlanId, p.date, p.base_price ?? null, p.weekend_price ?? null, p.min_stay ?? 1, p.max_stay ?? null, p.closed ? 1 : 0, p.cta ? 1 : 0, p.ctd ? 1 : 0]);
     }
   });
 
@@ -192,6 +215,9 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
   const start = new Date(dateFrom);
   const end = new Date(dateTo);
 
+  assertPositivePrice(input.base_price);
+  assertPositivePrice(input.weekend_price);
+
   await sql.tx(async (t) => {
     // Канали — в тій самій транзакції, одним діапазоном (див. upsertPrices).
     const owner = ratePlanId
@@ -219,15 +245,12 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
       // A day the hotel has never priced stays unpriced. The form's price field
       // says «Не змінювати» when left empty, so `base_price` is undefined
       // whenever the operator bulk-edits only min stay or the open/closed flag —
-      // and `?? 0` turned that into a real row worth zero. From there nothing
-      // objected: the quote answered `hasPricing: true, missingDays: 0, total: 0`,
-      // because a row existed, and a confirmed booking was taken for nothing.
-      // AGENTS.md §3 invariant 17: a night no source can price is missing, not free.
-      if (input.base_price === undefined && !existing) {
-        current.setDate(current.getDate() + 1);
-        continue;
-      }
-      const basePrice = input.base_price ?? existing?.base_price ?? 0;
+      // and `?? 0` once turned that into a real row worth zero: the quote
+      // answered `missingDays: 0, total: 0`, and a confirmed booking was taken
+      // for nothing. AGENTS.md §3 invariant 17: a night no source can price is
+      // missing, not free. Since 0062 the row is written with `base_price`
+      // NULL — the restriction is kept, the night stays unsellable.
+      const basePrice = input.base_price ?? existing?.base_price ?? null;
       const weekendPrice = input.weekend_price !== undefined ? input.weekend_price : (existing?.weekend_price ?? null);
       const minStay = input.min_stay ?? existing?.min_stay ?? 1;
       const maxStay = input.max_stay !== undefined ? input.max_stay : (existing?.max_stay ?? null);

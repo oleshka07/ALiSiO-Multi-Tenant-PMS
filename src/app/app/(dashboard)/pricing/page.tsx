@@ -37,9 +37,10 @@ interface PriceDay {
   day: number;
   dayOfWeek: number;
   isWeekend: boolean;
-  base_price: number;
+  /** null — ціни на день немає (лише обмеження): показується «—», ніч не продається. */
+  base_price: number | null;
   weekend_price: number | null;
-  effective_price: number;
+  effective_price: number | null;
   min_stay: number;
   max_stay: number | null;
   closed: number;
@@ -84,7 +85,10 @@ function EditDayModal({ day, onSave, onClose }: {
   onClose: () => void;
 }) {
   const t = useT();
-  const [basePrice, setBasePrice] = useState(day.base_price);
+  // Порожнє поле — «ціну не чіпати»: збереження обмеження на день без ціни
+  // не пише нуль (2.0). Тут стояло `useState(day.base_price)`, і для дня без
+  // рядка це був 0 — його й відправляли в канал як ціну.
+  const [basePrice, setBasePrice] = useState<number | ''>(day.base_price ?? '');
   const [weekendPrice, setWeekendPrice] = useState(day.weekend_price ?? '');
   const [minStay, setMinStay] = useState(day.min_stay);
   const [closed, setClosed] = useState(!!day.closed);
@@ -103,7 +107,7 @@ function EditDayModal({ day, onSave, onClose }: {
         <div className="modal-body">
           <div className="form-group">
             <label className="form-label">{t('Базова ціна')}</label>
-            <input className="form-input" type="number" value={basePrice} onChange={e => setBasePrice(Number(e.target.value))} min={0} />
+            <input className="form-input" type="number" value={basePrice} onChange={e => setBasePrice(e.target.value === '' ? '' : Number(e.target.value))} min={1} placeholder={t('немає — не продається')} />
           </div>
           <div className="form-group">
             <label className="form-label">{t('Ціна вихідних — Пт/Сб/Нд')}</label>
@@ -129,7 +133,7 @@ function EditDayModal({ day, onSave, onClose }: {
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>{t('Скасувати')}</button>
           <button className="btn btn-primary" onClick={() => onSave({
-            base_price: basePrice,
+            ...(basePrice === '' ? {} : { base_price: basePrice }),
             weekend_price: weekendPrice === '' ? null : Number(weekendPrice),
             min_stay: minStay,
             closed: closed ? 1 : 0,
@@ -521,6 +525,11 @@ export default function PricingPage() {
         showToast(t('Ціну збережено'));
         setEditDay(null);
         fetchPrices();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showToast(body?.error === 'price_not_positive'
+          ? t('Ціна має бути більшою за нуль. Щоб не продавати день, поставте «Закрито»')
+          : t('Не вдалося зберегти'));
       }
     } catch (e) { console.error(e); }
   };
@@ -538,6 +547,10 @@ export default function PricingPage() {
         showToast(`Оновлено ${result.updated} днів`);
         setShowBulkEdit(false);
         fetchPrices();
+      } else {
+        showToast(result?.error === 'price_not_positive'
+          ? t('Ціна має бути більшою за нуль. Щоб не продавати день, поставте «Закрито»')
+          : t('Не вдалося зберегти'));
       }
     } catch (e) { console.error(e); }
   };
@@ -546,9 +559,9 @@ export default function PricingPage() {
 
   // Stats
   const stats = useMemo(() => {
-    const withData = priceData.filter(d => d.hasData);
+    const withData = priceData.filter(d => d.effective_price != null);
     const avgPrice = withData.length > 0
-      ? Math.round(withData.reduce((s, d) => s + d.effective_price, 0) / withData.length)
+      ? Math.round(withData.reduce((s, d) => s + (d.effective_price ?? 0), 0) / withData.length)
       : 0;
     const closedDays = priceData.filter(d => d.closed).length;
     return { total: priceData.length, withData: withData.length, avgPrice, closedDays };
@@ -702,12 +715,12 @@ export default function PricingPage() {
                           {day.day} {t(DAY_NAMES[day.dayOfWeek])}
                         </div>
                         <div className="pricing-cell-price" style={{
-                          color: !day.hasData ? 'var(--text-tertiary)' : day.isWeekend ? '#f59e0b' : undefined,
-                          fontSize: day.hasData ? 15 : 13,
+                          color: day.effective_price == null ? 'var(--text-tertiary)' : day.isWeekend ? '#f59e0b' : undefined,
+                          fontSize: day.effective_price != null ? 15 : 13,
                         }}>
-                          {day.hasData ? `${day.effective_price.toLocaleString()}` : '—'}{day.inherited ? <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 3 }}>↑</span> : null}
+                          {day.effective_price != null ? `${day.effective_price.toLocaleString()}` : '—'}{day.inherited ? <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 3 }}>↑</span> : null}
                         </div>
-                        {day.hasData && day.isWeekend && day.weekend_price != null && day.weekend_price !== day.base_price && (
+                        {day.base_price != null && day.isWeekend && day.weekend_price != null && day.weekend_price !== day.base_price && (
                           <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
                             {t('буд.')} {day.base_price}
                           </div>
@@ -755,10 +768,10 @@ export default function PricingPage() {
                         {t(DAY_NAMES[day.dayOfWeek])}
                       </span>
                     </td>
-                    <td style={{ fontWeight: 600 }}>{day.hasData ? day.base_price.toLocaleString() : '—'}</td>
+                    <td style={{ fontWeight: 600 }}>{day.base_price != null ? day.base_price.toLocaleString() : '—'}</td>
                     <td>{day.weekend_price != null ? day.weekend_price.toLocaleString() : '—'}</td>
                     <td style={{ fontWeight: 700, color: day.isWeekend ? '#f59e0b' : 'var(--accent-primary)' }}>
-                      {day.hasData ? day.effective_price.toLocaleString() : '—'}
+                      {day.effective_price != null ? day.effective_price.toLocaleString() : '—'}
                     </td>
                     <td>{day.min_stay}</td>
                     <td>{day.cta ? <Lock size={14} style={{ color: '#ef4444' }} /> : <Unlock size={14} style={{ color: 'var(--text-tertiary)' }} />}</td>

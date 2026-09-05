@@ -16,9 +16,10 @@ export interface DayPrice {
   day: number;
   dayOfWeek: number;
   isWeekend: boolean;
-  base_price: number;
+  /** NULL — ціни на цей день немає (лише обмеження): ніч не продається (інваріант 17). */
+  base_price: number | null;
   weekend_price: number | null;
-  effective_price: number;
+  effective_price: number | null;
   min_stay: number;
   max_stay: number | null;
   closed: number;
@@ -31,7 +32,8 @@ export interface DayPrice {
 
 export interface PriceUpsertInput {
   date: string;
-  base_price?: number;
+  /** Відсутнє — ціну не чіпати (рядок обмеження лишає її порожньою); 0 і менше — відмова `price_not_positive`. */
+  base_price?: number | null;
   weekend_price?: number | null;
   min_stay?: number;
   max_stay?: number | null;

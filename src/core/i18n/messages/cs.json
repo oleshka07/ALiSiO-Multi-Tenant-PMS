@@ -2800,6 +2800,7 @@
   "Ціна дитини — невідʼємне число": "Cena za dítě — nezáporné číslo",
   "Ціна дитини за ніч": "Cena za dítě za noc",
   "Ціна за квотою:": "Cena dle kalkulace:",
+  "Ціна має бути більшою за нуль. Щоб не продавати день, поставте «Закрито»": "Cena musí být větší než nula. Pokud den nechcete prodávat, nastavte „Zavřeno“",
   "Ціна має бути числом": "Cena musí být číslo",
   "Ціна пакету *": "Cena balíčku *",
   "Ціна рахується...": "Počítám cenu...",

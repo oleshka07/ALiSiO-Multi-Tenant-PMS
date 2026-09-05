@@ -46,20 +46,33 @@ const BASELINE = {
   events: 1,
   // 15 → 4: фактурування виїхало в @invoicing, і разом із ним 11 місць, де
   // маршрути документів лізли в нутрощі обліку. Те, що лишилось, — облік і є.
-  finance: 4,
+  // 4 → 13 (05.09.2026, INC-018): не ріст, а зір. Міграції в src/lib/db.ts
+  // пишуть у fin_operations і expense_categories, і гейт рахував схему
+  // співвласником — таблиці «спільні», і маршрути платежів, фактур і
+  // звітів із власним SQL до fin_operations ніколи не були пробоями.
+  // Тепер схема не власник і не співвласник; ці 13 були тут увесь час.
+  finance: 13,
   // Стартова стеля нового модуля. Обидва пробої — SQL до таблиць
   // фактурування ззовні: PDF-маршрут читає fin_folios сам, а аркуші дня
   // рахують ПДВ прямо з fin_invoice_tax_totals. Обидва старші за розділення
   // й обидва лікуються запитом до фасаду, а не переїздом файлу.
-  invoicing: 2,
+  // 2 → 3 (05.09.2026, INC-018): та сама сліпота — бекфіл у db.ts пише в
+  // invoice_periods, і lock-period/route.ts зі своїм SQL до неї не рахувався.
+  invoicing: 3,
   // 8 → 7: обидва GDPR-крони тепер кличуть anonymizeOldRegistrations через
   // фасад @guests, а не з data/ напряму (INC-009 — заодно два маршрути
   // перестали тримати дві копії однієї ретенційної логіки).
-  guests: 7,
-  pricing: 6,
+  // 7 → 5 (05.09.2026, INC-018): два «пробої» були коментарями —
+  // `// … guest screens` і `/* ── update guest ── */`. Пробій — це код.
+  guests: 5,
+  // 6 → 5 (05.09.2026, INC-018): один із шести — рядок доку в
+  // check-price-source.mjs, який пояснює, що він ловить.
+  pricing: 5,
   // 9 → 7: групові броні видалено, і разом із ними два екрани, які лізли в
   // modules/properties повз фасад (GroupBookingModal, GroupViewModal).
-  properties: 5,
+  // 5 → 4 (05.09.2026, INC-018): «SQL до property» у translate.ts — це
+  // «strings from property/unit-type config» у doc-коментарі.
+  properties: 4,
   reports: 0,
   tasks: 1,
   widget: 6,
@@ -93,11 +106,51 @@ const FILES = [];
  * and turn every screen showing a booking into a boundary breach. A shared
  * table is shared vocabulary, and reading one is not reaching into a module.
  */
-/** Prose is not SQL: `// Update tentative → confirmed` named a table for a while. */
-const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+/**
+ * Prose is not SQL: `// Update tentative → confirmed` named a table for a while,
+ * and `invoicing.check.ts` lists the ledger tables in its own doc comment.
+ *
+ * Line-based on purpose. The regex version (`/\/\*[\s\S]*?\*\//`) opened a
+ * "comment" at the string `'/*'` in seed-demo-stays.mjs and swallowed sixty
+ * lines of code — among them the script's real imports of modules/pricing/data
+ * and modules/guests/data, which then counted as nothing. Only a line that
+ * STARTS with `//` or `/*` is prose here; a trailing comment after code stays,
+ * and if it names a table it is reported — a false breach is read once, a
+ * swallowed one is never seen.
+ */
+const stripComments = (s) => {
+  const out = [];
+  let inBlock = false;
+  for (const line of s.split('\n')) {
+    if (inBlock) {
+      const end = line.indexOf('*/');
+      if (end === -1) continue;
+      inBlock = false;
+      out.push(line.slice(end + 2));
+      continue;
+    }
+    const t = line.trimStart();
+    if (t.startsWith('//')) continue;
+    if (t.startsWith('/*')) {
+      const end = t.indexOf('*/', 2);
+      if (end === -1) { inBlock = true; continue; }
+      out.push(t.slice(end + 2));
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join('\n');
+};
 
 const WRITERS = new Map(); // table -> Set<module>, or the marker 'ЗЗОВНІ'
 for (const [f, text] of FILES) {
+  // The schema file backfills and seeds by definition (migration 0062 wrote
+  // `UPDATE price_calendar SET base_price = NULL`), and that is not a second
+  // writer: counting it made price_calendar "shared", and three real breaches
+  // — a route, a widget handler, a script — vanished from the report as
+  // progress, asking to LOWER the ceiling. A gate that goes green from a
+  // migration is a gate that no longer goes red (AGENTS invariant 24).
+  if (f === 'src/lib/db.ts') continue;
   const m = f.match(/^src\/modules\/([^/]+)\//);
   // A write from a route file, a page or a script belongs to no module — and a
   // table written from there is not any module's private property, however it
@@ -135,17 +188,18 @@ for (const mod of MODULES) {
 
     // Front door: '@mod' for server code, 'modules/mod/ui/…' for React.
     const front = new RegExp(`['"](?:@${mod}(?:/[^'"]*)?|[^'"]*modules/${mod}/ui/[^'"]*)['"]`);
+    const body = stripComments(text);
     if (front.test(text)) viaFacade.push(f);
 
     // Past the front door. `import(…)` counts as much as `from …` — a
     // dynamic() import of a module's internals is the same reach, just later.
     const deep = new RegExp(`(?:from|import\\()\\s*['"][^'"]*modules/${mod}/(data|domain|events)/`);
-    if (deep.test(text)) breaches.push(`${f} — імпорт нутрощів`);
+    if (deep.test(body)) breaches.push(`${f} — імпорт нутрощів`);
 
     // Someone else's SQL against a table this module owns.
     for (const t of owned) {
       const sql = new RegExp(`\\b(?:FROM|JOIN|INTO|UPDATE)\\s+["'\`]?${t}\\b`, 'i');
-      if (sql.test(text)) { breaches.push(`${f} — SQL до ${t}`); break; }
+      if (sql.test(body)) { breaches.push(`${f} — SQL до ${t}`); break; }
     }
   }
 
