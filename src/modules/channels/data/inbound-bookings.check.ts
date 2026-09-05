@@ -440,6 +440,64 @@ try {
         console.log('  ok  історія групи пишеться на батьківській броні');
       }
 
+      // 5. Бронювання, яке ПРИЙШЛО одною кімнатою, а стало двома.
+      //
+      //    Тут ховається помилка, якої не видно в сценах вище: наявна бронь
+      //    уже має свій тип номера, і саме вона стає батьківською. Якщо тип
+      //    на ній лишити, `unassignedByTypeDay` порахує батьківську ПЛЮС дві
+      //    дочірні — три номери за групу з двох, — і канал отримає на одиницю
+      //    менше, ніж є. Мовчки: помилки немає ніде.
+      //
+      //    Рецепція до того ж могла поставити цю бронь у номер; кімната тепер
+      //    описана дочірньою, тож номер із батьківської знімається — інакше
+      //    він рахується зайнятим ДВІЧІ.
+      {
+        const GROW = 'BDC-GROW';
+        await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+        const one = await applyRevision(sql, CONN, rev({
+          remoteRevisionId: 'grow-1', remoteBookingId: 'bkg-grow', otaReservationCode: GROW,
+          status: 'new', checkIn: '2026-12-01', checkOut: '2026-12-03', unitTypeId: TYPE,
+        }));
+        assert.strictEqual(one.result, 'applied');
+        const parentId = String(one.result === 'applied' ? one.reservationId : '');
+        // Рецепція призначила номер — і саме це робить сцену несиметричною.
+        await sql.run('UPDATE reservations SET unit_id = ? WHERE id = ?', [UNIT, parentId]);
+        {
+          const solo = await sql.row<any>('SELECT unit_type_id, parent_id FROM reservations WHERE id = ?', [parentId]) as any;
+          assert.strictEqual(String(solo.unit_type_id), TYPE, 'одинична бронь мала лягти зі своїм типом');
+          assert.strictEqual(solo.parent_id ?? null, null, 'одинична бронь не має бути дочірньою');
+        }
+
+        const grown = await applyRevision(sql, CONN, rev({
+          remoteRevisionId: 'grow-2', remoteBookingId: 'bkg-grow', otaReservationCode: GROW,
+          status: 'modified', checkIn: '2026-12-01', checkOut: '2026-12-04',
+          adults: 3, children: 0, totalPrice: 700,
+          rooms: [
+            { key: 'i:0', unitTypeId: TYPE, checkIn: '2026-12-01', checkOut: '2026-12-03', adults: 2, children: 0, amount: 400 },
+            { key: 'i:1', unitTypeId: TYPE2, checkIn: '2026-12-01', checkOut: '2026-12-04', adults: 1, children: 0, amount: 300 },
+          ],
+        }));
+        assert.strictEqual(grown.result, 'applied');
+        const parent = await sql.row<any>('SELECT * FROM reservations WHERE id = ?', [parentId]) as any;
+        const kids = await sql.rows<any>('SELECT * FROM reservations WHERE parent_id = ? ORDER BY external_uid', [parentId]) as any[];
+        assert.strictEqual(kids.length, 2, `друга кімната мала стати дочірньою, а дочірніх ${kids.length}`);
+        assert.strictEqual(parent.unit_type_id ?? null, null,
+          'бронь, що стала групою, лишила свій тип на батьківській — наявність рахує ТРИ номери за групу з двох');
+        assert.strictEqual(parent.unit_id ?? null, null,
+          'номер лишився на батьківській, хоча кімнату тепер описує дочірня — номер зайнято двічі');
+        assert.strictEqual(Number(parent.total_price), 700, 'сума батьківської — за ревізією');
+        assert.deepStrictEqual(kids.map((k) => String(k.unit_type_id)), [TYPE, TYPE2],
+          'дочірні мали лягти кожна на свій тип');
+        console.log('  ok  бронь із однієї кімнати, що стала двома, віддає свій тип дочірній');
+
+        await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+        await sql.run("DELETE FROM booking_activity_log WHERE organization_id = ? AND reservation_id IN (SELECT id FROM reservations WHERE organization_id = ? AND (external_uid = ? OR external_uid LIKE ?))",
+          [ORG, ORG, GROW, `${GROW}#%`]);
+        await sql.run("DELETE FROM cm_inbound_bookings WHERE organization_id = ? AND remote_booking_id = 'bkg-grow'", [ORG]);
+        await sql.run('DELETE FROM reservations WHERE organization_id = ? AND parent_id IS NOT NULL AND external_uid LIKE ?', [ORG, `${GROW}#%`]);
+        await sql.run('DELETE FROM reservations WHERE organization_id = ? AND external_uid = ?', [ORG, GROW]);
+      }
+
       // Прибрати за собою: наступні сцени рахують броні й журнал ORG.
       await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
       await sql.run("DELETE FROM booking_activity_log WHERE organization_id = ? AND reservation_id IN (SELECT id FROM reservations WHERE organization_id = ? AND (external_uid = ? OR external_uid LIKE ?))",
