@@ -28,11 +28,12 @@
 import assert from 'node:assert';
 import { flushOutbox, type FlushDeps } from './ari-batch.ts';
 import type { RateChange } from '../port.ts';
+import type { RateField } from './ari-batch.ts';
 
 const DAY = '2026-11-10';
 
 /** Черга в памʼяті: рівно та поведінка, яку дає `cm_outbox`. */
-function queue(rows: { id: string; kind: 'availability' | 'rate'; unitTypeId?: string; ratePlanId?: string; date: string; dateTo?: string; attempts?: number }[]) {
+function queue(rows: { id: string; kind: 'availability' | 'rate'; unitTypeId?: string; ratePlanId?: string; date: string; dateTo?: string; attempts?: number; fields?: RateField[] }[]) {
   const claimed = new Set<string>();
   const sent = new Set<string>();
   const released: { ids: string[]; reason: string; transient: boolean }[] = [];
@@ -675,3 +676,97 @@ console.log('  ok  розписка вендора лягає на відпра�
 }
 console.log('  ok  повний синк: 500 ночей із різним числом щодня — рівно два виклики (П5)');
 
+
+// ── Блок 0.5: маска змінених полів — у тіло їде лише те, що ЗМІНИЛОСЬ ─────
+//
+// Лист Channex 05.09.2026, Б1: «повідомлення несе весь стан, не дельту».
+// Тест 2 сертифікації чекає в тілі лише `rates`, тест 5 — лише мінімум,
+// тест 7 — лише чотири обмеження. Координата тепер несе МАСКУ полів
+// (`cm_outbox.field_mask`, NULL = усі — повний синк і старі рядки), і
+// `resolveRateNight` віддає лише замасковане.
+//
+// Виняток один, і він з И14: ніч, що ВТРАТИЛА джерело ціни, їде закритою
+// незалежно від маски — «не слати нічого» серед відповідей не існує.
+// Правило контролера (Ц34): «закрито» їде, коли (а) змінився стан «закрито»
+// базового рядка, (б) ніч втратила чи здобула джерело ціни, (в) повний синк.
+// Зміна лише ціни на відкритій ночі «закрито» не несе — вендор тримає свій
+// прапорець, і «ціна не знімає закриття» (И14) далі істинне.
+//
+// Осі (інваріант 26): маска з одного поля, з чотирьох і без маски дають
+// РІЗНІ набори ключів; `maxStay` без межі їде нулем (так читає вендор), а
+// не мовчить — інакше зняте обмеження не доїжджало б ніколи.
+{
+  const { resolveRateNight, packFields, unpackFields, RATE_FIELDS } = await import('./ari-batch.ts');
+  const sources = {
+    availabilityAt: async () => 3,
+    pricesAt: async () => [{ occupancy: 2, priceMinor: 11000 }],
+    restrictionsAt: async () => ({ minStay: 3, maxStay: null, noArrival: true, noDeparture: false, closed: false }),
+  };
+  const keysOf = (v: object) => Object.keys(v).filter((k) => !['ratePlanId', 'unitTypeId', 'date'].includes(k)).sort();
+
+  const all = await resolveRateNight(sources, 'ut', 'rp', DAY);
+  assert.deepStrictEqual(keysOf(all), ['closed', 'maxStay', 'minStay', 'noArrival', 'noDeparture', 'prices'], 'без маски — весь стан');
+  assert.strictEqual(all.maxStay, 0, 'максимум без межі їде нулем, а не мовчить: зняте обмеження мусить доїхати');
+
+  const priceOnly = await resolveRateNight(sources, 'ut', 'rp', DAY, ['prices']);
+  assert.deepStrictEqual(keysOf(priceOnly), ['prices'], `маска «ціна» — у тілі лише ціна (тест 2), а не ${keysOf(priceOnly).join(',')}`);
+  const minOnly = await resolveRateNight(sources, 'ut', 'rp', DAY, ['minStay']);
+  assert.deepStrictEqual(keysOf(minOnly), ['minStay'], 'маска «мінімум» — лише мінімум (тест 5)');
+  assert.strictEqual(minOnly.minStay, 3);
+  const closedOnly = await resolveRateNight(sources, 'ut', 'rp', DAY, ['closed']);
+  assert.deepStrictEqual(keysOf(closedOnly), ['closed'], 'маска «закрито» — лише прапорець (тест 6)');
+  assert.strictEqual(closedOnly.closed, false, 'і він ЯВНИЙ: відкрито — це false, не відсутність поля');
+  const four = await resolveRateNight(sources, 'ut', 'rp', DAY, ['minStay', 'maxStay', 'noArrival', 'noDeparture']);
+  assert.deepStrictEqual(keysOf(four), ['maxStay', 'minStay', 'noArrival', 'noDeparture'], 'чотири обмеження — і нічого іншого (тест 7)');
+  assert.strictEqual(four.maxStay, 0);
+
+  // (б) джерело ціни зникло — закрито їде повз маску
+  const gone = await resolveRateNight({ ...sources, pricesAt: async () => null }, 'ut', 'rp', DAY, ['prices']);
+  assert.strictEqual(gone.closed, true, 'ніч без ціни закривається навіть під маскою «ціна» — «не слати» не існує (И2)');
+  assert.ok(!('prices' in gone), 'і ціни в ній немає');
+
+  // Маска їде з координатою через чергу: батчер передає її розвʼязанню.
+  const sent: RateChange[] = [];
+  const q = queue([{ id: 'm', kind: 'rate', unitTypeId: 'ut', ratePlanId: 'rp', date: DAY, fields: ['prices'] }]);
+  await flushOutbox(base({
+    ...q.deps, ...sources,
+    send: async (_kind, values) => { sent.push(...(values as RateChange[])); return { warnings: [] }; },
+  }));
+  assert.strictEqual(sent.length, 1);
+  assert.deepStrictEqual(keysOf(sent[0]), ['prices'], 'маска з координати черги дійшла до значення');
+
+  // Кодек маски: NULL — усі; порядок — RATE_FIELDS; порожня — жодного.
+  assert.strictEqual(packFields(null), null);
+  assert.strictEqual(unpackFields(null), null);
+  assert.deepStrictEqual(unpackFields(packFields(['minStay', 'prices'])), ['prices', 'minStay'], 'кодек повертає поля в канонічному порядку');
+  assert.deepStrictEqual(unpackFields(packFields([...RATE_FIELDS])), [...RATE_FIELDS]);
+  assert.strictEqual(packFields(['prices'])! | packFields(['closed'])!, packFields(['prices', 'closed']), 'обʼєднання масок — побітове АБО, те саме, що робить індекс злиття в базі');
+}
+console.log('  ok  маска полів: у тіло їде лише замасковане; ніч без ціни закривається повз маску; кодек — АБО');
+
+// ── Блок 0.5 п.2: повний синк без базового рядка несе всі чотири обмеження ─
+//
+// Лист Channex, Б2: 576/576 значень повного синку без `min_stay_arrival`,
+// `max_stay`, `closed_to_arrival`, `closed_to_departure` — у тестового
+// обʼєкта на горизонті не було жодного базового рядка, і `restrictionsAt`
+// віддавав null → жодного обмеження в тілі. Без маски (повний синк) ніч без
+// рядка отримує ЯВНІ дефолти: мінімум 1, максимум без межі (0), заїзд і
+// виїзд дозволені. У дельтах дефолти не вигадуються: маска «ціна» на ночі
+// без рядка обмежень не несе.
+{
+  const { resolveRateNight } = await import('./ari-batch.ts');
+  const bare = {
+    availabilityAt: async () => 3,
+    pricesAt: async () => [{ occupancy: 2, priceMinor: 11000 }],
+    restrictionsAt: async () => null,
+  };
+  const full = await resolveRateNight(bare, 'ut', 'rp', DAY);
+  assert.strictEqual(full.minStay, 1, `повний синк без рядка: мінімум 1 явно, а не ${full.minStay}`);
+  assert.strictEqual(full.maxStay, 0, 'максимум без межі — нуль явно');
+  assert.strictEqual(full.noArrival, false, 'заїзд дозволений — явне false');
+  assert.strictEqual(full.noDeparture, false, 'виїзд дозволений — явне false');
+  assert.strictEqual(full.closed, false);
+  const delta = await resolveRateNight(bare, 'ut', 'rp', DAY, ['prices']);
+  assert.ok(!('minStay' in delta) && !('maxStay' in delta) && !('noArrival' in delta) && !('noDeparture' in delta), 'дельта без рядка дефолтів не вигадує');
+}
+console.log('  ok  повний синк без базового рядка несе чотири обмеження явними дефолтами; дельта — ні');

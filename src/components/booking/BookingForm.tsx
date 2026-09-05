@@ -602,7 +602,7 @@ export default function BookingForm({
           />
         </div>
         <div className="form-group">
-          <label className="form-label">{t('Виїзд *')}</label>
+          <label className="form-label">{t('Виїзд *')} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>{t('(ніч виїзду не входить)')}</span></label>
           <input
             className="form-input"
             type="date"

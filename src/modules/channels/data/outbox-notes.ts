@@ -2,6 +2,8 @@ import type { Sql } from '@core/db/async';
 import { connectionsForProperty } from './connections.repo';
 import { connectionMirror } from './mappings.repo';
 import { enqueueChange, OUTBOX_HORIZON_DAYS } from './outbox.repo';
+import { listRatePlans } from '@pricing';
+import type { RateField } from '../domain/ari-batch.ts';
 
 /**
  * «Змінилось» → координата в черзі кожного зʼєднання обʼєкта.
@@ -28,6 +30,12 @@ export interface RateNote {
   from: string;
   /** Порожньо — до горизонту. */
   to?: string | null;
+  /**
+   * Які поля ціни змінились — маска координати (Блок 0.5). Порожньо — усі.
+   * Писач календаря ставить її з різниці з рядком у базі; матриця й тири —
+   * `['prices']`; зміна тарифу, типу, повний синк — усі.
+   */
+  fields?: readonly RateField[] | null;
 }
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -80,15 +88,29 @@ export async function noteRatesChanged(
   const span = clipToHorizon(note.from, note.to ?? null, today);
   if (!span) return 0;
 
+  // Б3 (лист Channex 05.09): зміна ТИПУ — базова ціна, матриця, місткість —
+  // не розсилається на пари ЗНЯТИХ з продажу тарифів. Дзеркало їх памʼятає
+  // (адресат є, Ц25), але зняття вже закрило їхні ночі; кожна нова
+  // координата лише знову закривала б їх — і тримала б у каталозі вендора
+  // тариф, якого готель не продає. Тариф, названий ЯВНО (`ratePlanId`), не
+  // фільтрується: саме так зняття з продажу і шле своє «закрито». Пара, чий
+  // тариф із таблиці зник, лишається — її ночі батчер закриє, і це безпечніше
+  // за тишу (Ц16); розбіжність дзеркала показує `channex-mappings-live.mjs`.
+  const retired = note.ratePlanId
+    ? new Set<string>()
+    : new Set((await listRatePlans(note.propertyId)).filter((p) => !p.isActive).map((p) => p.id));
+
   let written = 0;
   for (const connection of await connectionsForProperty(note.propertyId)) {
     const pairs = (await connectionMirror(connection.id)).filter((m) =>
       m.entityType === 'rate_plan'
       && (!note.unitTypeId || m.unitTypeId === note.unitTypeId)
-      && (!note.ratePlanId || m.localId === note.ratePlanId));
+      && (!note.ratePlanId || m.localId === note.ratePlanId)
+      && !retired.has(m.localId));
     for (const pair of pairs) {
       await enqueueChange(t, connection.id, {
         kind: 'rate', unitTypeId: pair.unitTypeId, ratePlanId: pair.localId, date: span.from, dateTo: span.to,
+        fields: note.fields ?? null,
       });
       written++;
     }

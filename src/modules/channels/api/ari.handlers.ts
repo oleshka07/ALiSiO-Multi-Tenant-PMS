@@ -2,6 +2,9 @@ import { integrationCredentials } from '@core/integration-credentials';
 import { currentOrganizationId } from '@core/auth/tenant-context';
 import { connectionInTenant } from '../data/connections.repo';
 import { recentSends } from '../data/outbox.repo';
+import { recentSendLog, purgeSendLog, SEND_LOG_RETENTION_DAYS } from '../data/sends.repo';
+import { getSql } from '@core/db/async';
+import { runWithOrganization } from '@core/auth/tenant-context';
 import { runFullSync, type FullSyncReport } from '../data/full-sync';
 import { ariPublisherFor, adapterFor } from '../providers';
 import type { FlushReport } from '../domain/ari-batch.ts';
@@ -101,4 +104,41 @@ export async function recentChannelSends(connectionId: string, limit = 50) {
   const connection = await connectionInTenant(connectionId);
   if (!connection) throw new Error('cm: connection not found');
   return recentSends(connectionId, limit);
+}
+
+/** Журнал відправлень з тілом (Блок 0.5 п.4) одного зʼєднання — найновіший першим. Чуже — «немає такого». */
+export async function recentChannelSendLog(connectionId: string, limit = 50) {
+  const connection = await connectionInTenant(connectionId);
+  if (!connection) throw new Error('cm: connection not found');
+  return recentSendLog(connectionId, limit);
+}
+
+export interface SendLogPurgeReport {
+  organizations: number;
+  deleted: number;
+  failedOrganizations: number;
+}
+
+/**
+ * Ретенція журналу відправлень — по кожній організації в ЇЇ контексті.
+ *
+ * Кличе крон GDPR (`/api/cron/gdpr-retention`) разом із решткою планового
+ * прибирання. Один `DELETE` без орендаря на Postgres не видалив би нічого і
+ * не сказав би про це (клас INC-014); тому цикл, як у кронах каналів.
+ * Падіння однієї організації не спиняє решту і рахується — крон від нього
+ * червоний.
+ */
+export async function purgeChannelSendLogs(days = SEND_LOG_RETENTION_DAYS): Promise<SendLogPurgeReport> {
+  const report: SendLogPurgeReport = { organizations: 0, deleted: 0, failedOrganizations: 0 };
+  const ids = (await getSql().rows<{ id: string }>('SELECT id FROM organizations')).map((o) => o.id);
+  for (const organizationId of ids) {
+    try {
+      report.deleted += await runWithOrganization(organizationId, () => purgeSendLog(days));
+      report.organizations++;
+    } catch (e) {
+      report.failedOrganizations++;
+      console.error(`cm_sends: purge failed for organization ${organizationId}`, e);
+    }
+  }
+  return report;
 }

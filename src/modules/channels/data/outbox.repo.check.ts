@@ -337,6 +337,35 @@ try {
     console.log('  ok  транспортна невдача лишає лічильник, претензія вендора рахує');
   });
 
+  // ── Маска полів: рядки однієї координати зливаються в ОБʼЄДНАННЯ масок ─
+  //
+  // Блок 0.5 (лист Channex 05.09, Б1). Координата несе, ЩО змінилось:
+  // ціна, «закрито», мінімум… NULL — усе (повний синк, старі рядки). Друга
+  // зміна тієї самої координати з іншою маскою не додає рядка і не губить
+  // жодного поля: маски обʼєднуються ТИМ САМИМ `ON CONFLICT`, що й злиття —
+  // інакше «ціна» і «мінімум» за одну хвилину поїхали б без одного з них, і
+  // помилки при цьому не було б. NULL поглинає все: після нього маска
+  // лишається NULL. Захоплення віддає маску батчеру.
+  await runWithOrganization(A, async () => {
+    const NIGHT = '2026-10-12';
+    const mine = async () => (await queuedChanges(CONN)).filter((r) => r.unitTypeId === 'ut9');
+    await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'ut9', ratePlanId: 'rp9', date: NIGHT, fields: ['prices'] });
+    assert.deepStrictEqual((await mine())[0].fields, ['prices'], 'маска «ціна» лягла на рядок');
+    await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'ut9', ratePlanId: 'rp9', date: NIGHT, fields: ['minStay'] });
+    const merged = await mine();
+    assert.strictEqual(merged.length, 1, 'інша маска тієї самої координати додала рядок — злиття зламане');
+    assert.deepStrictEqual(merged[0].fields, ['prices', 'minStay'], `маски мали обʼєднатись, а не перекритись: ${JSON.stringify(merged[0].fields)}`);
+    await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'ut9', ratePlanId: 'rp9', date: NIGHT });
+    assert.strictEqual((await mine())[0].fields, null, 'без маски — усе: NULL поглинає часткові');
+    await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'ut9', ratePlanId: 'rp9', date: NIGHT, fields: ['closed'] });
+    assert.strictEqual((await mine())[0].fields, null, 'після NULL часткова маска нічого не звужує');
+    const claimed = (await claimBatch(CONN, 'rate', 50)).filter((r) => r.unitTypeId === 'ut9');
+    assert.strictEqual(claimed.length, 1);
+    assert.strictEqual(claimed[0].fields, null, 'захоплення віддає маску');
+    await sql.run("DELETE FROM cm_outbox WHERE unit_type_id = 'ut9'", []);
+    console.log('  ok  маски однієї координати обʼєднуються, NULL поглинає, захоплення віддає маску');
+  });
+
   // ── П6: розписка вендора на відправленому, і лише свого зʼєднання ──────
   //
   // Вендор приймає ціну як задачу: без розписки асинхронний провал невидимий.

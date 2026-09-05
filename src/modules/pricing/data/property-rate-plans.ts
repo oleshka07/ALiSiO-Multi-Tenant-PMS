@@ -129,12 +129,20 @@ export async function propertyRatePlans(propertyId: string): Promise<RatePlan[]>
   // Типи номерів, на які тариф СПРАВДІ має ціну. Не декларація звʼязку —
   // її в схемі немає, — а те, що видно в ціновій таблиці. Тариф, під який
   // ніхто не поставив ціни, не продається (інваріант 17).
+  //
+  // «Має ціну» — це число більше за нуль, а не рядок. Рядок з `base_price`
+  // NULL — це обмеження на день (0062), і пари з нього немає: пара, заведена
+  // з такого рядка, стала б у вендора тарифом, якого готель не цінує, і який
+  // батчер міг би лише закривати (Б3 листа Channex 05.09 — зайвий тариф
+  // `505e5d24…` у каталозі тестового обʼєкта). Нуль сюди не потрапляє з 0062,
+  // але межа названа явно: ціна — це `> 0`.
   const priced = await sql.rows<any>(
     `SELECT DISTINCT pc.rate_plan_id, ut.id AS unit_type_id, ut.code, ut.name,
             ut.max_adults, ut.max_occupancy
        FROM price_calendar pc
        JOIN unit_types ut ON ut.id = pc.unit_type_id
       WHERE ut.property_id = ? AND pc.rate_plan_id IS NOT NULL
+        AND pc.base_price IS NOT NULL AND pc.base_price > 0
       ORDER BY ut.code`,
     [propertyId],
   ) as Record<string, unknown>[];

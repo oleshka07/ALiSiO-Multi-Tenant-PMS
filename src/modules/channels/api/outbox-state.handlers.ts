@@ -3,6 +3,7 @@ import { withPermission, type Actor } from '@core/auth/session';
 import { serverError } from '@core/http/errors';
 import { connectionInTenant, connectionsInTenant } from '../data/connections.repo';
 import { pendingCount, stuckChanges, retryStuck, recentSends } from '../data/outbox.repo';
+import { recentSendLog } from '../data/sends.repo';
 import { unprocessedEvents } from '../data/events.repo';
 import { adapterFor } from '../providers';
 import { apiKeyOf } from './connect.handlers';
@@ -42,8 +43,19 @@ export const listChannelConnections = withPermission('manage_properties', async 
       // сертифікації, і єдина нитка від нашої координати до їхньої задачі.
       const sent = (await recentSends(c.id, 20)).map((row) => ({
         id: row.id, kind: row.kind, date: row.date, dateTo: row.dateTo, sentAt: row.sentAt, receipt: row.receipt,
+        fields: row.fields,
         unitTypeCode: row.unitTypeId ? (unitTypes.get(row.unitTypeId) ?? row.unitTypeId) : null,
         ratePlanCode: row.ratePlanId ? (ratePlans.get(row.ratePlanId) ?? row.ratePlanId) : null,
+      }));
+      // Журнал викликів з тілом (Блок 0.5 п.4): на кожен task id — смуга,
+      // тарифи, дати, ЯКІ ПОЛЯ були в тілі, і саме тіло за кнопкою. Це те,
+      // що контролер звіряє з таблицею тесту до подання форми.
+      const sendLog = (await recentSendLog(c.id, 30)).map((row) => ({
+        id: row.id, lane: row.lane, sentAt: row.sentAt, taskId: row.taskId, responseStatus: row.responseStatus,
+        error: row.error, rowsCount: row.rowsCount, fields: row.summary.fields, from: row.summary.from, to: row.summary.to,
+        unitTypeCodes: row.summary.unitTypeIds.map((id) => unitTypes.get(id) ?? id),
+        pairCodes: row.summary.pairs.map((p) => `${unitTypes.get(p.unitTypeId) ?? p.unitTypeId} × ${ratePlans.get(p.ratePlanId) ?? p.ratePlanId}`),
+        requestBody: row.requestBody,
       }));
       out.push({
         id: c.id,
@@ -58,6 +70,7 @@ export const listChannelConnections = withPermission('manage_properties', async 
         stuck,
         attention,
         sent,
+        sendLog,
       });
     }
     return NextResponse.json(out);

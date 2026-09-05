@@ -1,11 +1,11 @@
 {
   "endpoint": "POST /availability",
   "status": 200,
-  "captured_at": "2026-09-02",
+  "captured_at": "2026-09-05",
   "payload": {
     "data": [
       {
-        "id": "935439b1-7814-45e5-b626-ddb5b4e302bc",
+        "id": "5f56aa24-b702-4717-ad1b-4a5e7f42c404",
         "type": "task"
       }
     ],

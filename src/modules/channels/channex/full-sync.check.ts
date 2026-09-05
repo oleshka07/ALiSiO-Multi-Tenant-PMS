@@ -176,6 +176,18 @@ try {
       const rates = t.calls.find((c) => c.path.endsWith('/restrictions'))!.body.values;
       assert.strictEqual(availability.length, 2, 'наявність стала — один діапазон на тип');
       assert.strictEqual(rates.length, 4, 'без джерела ціни всі ночі закриті — один діапазон на пару');
+      // Блок 0.5 п.2 (лист Channex 05.09, Б2): повний синк без базового рядка
+      // мусить нести ВСІ чотири обмеження явними дефолтами — інакше 576/576
+      // значень їдуть без них, і вендор відхиляє тест 1.
+      for (const v of rates) {
+        for (const k of ['min_stay_arrival', 'max_stay', 'closed_to_arrival', 'closed_to_departure']) {
+          assert.ok(k in v, `повний синк без базового рядка не несе ${k}: ${JSON.stringify(v)}`);
+        }
+        assert.strictEqual(v.min_stay_arrival, 1, 'мінімум без рядка — 1 явно');
+        assert.strictEqual(v.max_stay, 0, 'максимум без межі — 0, так читає його вендор (live-fields)');
+        assert.strictEqual(v.closed_to_arrival, false);
+        assert.strictEqual(v.closed_to_departure, false);
+      }
       assert.ok(availability.every((v: any) => v.date_from === TODAY && v.date_to === HORIZON), 'діапазон тіла — весь горизонт');
       assert.strictEqual(report.flush.sent, 6);
       assert.strictEqual(report.flush.failed, 0);

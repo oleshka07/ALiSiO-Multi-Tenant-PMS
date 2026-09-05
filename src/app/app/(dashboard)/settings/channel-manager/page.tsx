@@ -70,7 +70,12 @@ interface CmConnection {
   /** Події вендора, що чекають ока оператора: мапінг, підтвердження, синк, канали. */
   attention: { id: string; eventType: string; receivedAt: string }[];
   /** Останні відправлення з розписками вендора (task id) — те, що йде у форму сертифікації. */
-  sent: { id: string; kind: 'availability' | 'rate'; date: string; dateTo: string | null; sentAt: string; receipt: string | null; unitTypeCode: string | null; ratePlanCode: string | null }[];
+  sent: { id: string; kind: 'availability' | 'rate'; date: string; dateTo: string | null; sentAt: string; receipt: string | null; fields: string[] | null; unitTypeCode: string | null; ratePlanCode: string | null }[];
+  /** Журнал викликів з тілом (Блок 0.5 п.4): на кожен task id — які поля були в тілі, і саме тіло. */
+  sendLog: {
+    id: string; lane: 'availability' | 'rate'; sentAt: string; taskId: string | null; responseStatus: number | null; error: string | null;
+    rowsCount: number; fields: string[]; from: string | null; to: string | null; unitTypeCodes: string[]; pairCodes: string[]; requestBody: unknown;
+  }[];
 }
 /** Звірка П6: відправлене проти календаря каналу — з /api/channels/connections/[id]/verify. */
 interface CmVerification {
@@ -141,6 +146,8 @@ export default function ChannelManagerPage() {
   const [cmConnections, setCmConnections] = useState<CmConnection[]>([]);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [verifying, setVerifying] = useState<string | null>(null);
+  /** Рядок журналу відправлень, тіло якого розгорнуте. */
+  const [shownBody, setShownBody] = useState<string | null>(null);
   const [verified, setVerified] = useState<Record<string, CmVerification>>({});
   const [dismissing, setDismissing] = useState<string | null>(null);
 
@@ -417,13 +424,52 @@ export default function ChannelManagerPage() {
                     </table>
                   </div>
                 )}
-                {(c.sent?.length ?? 0) > 0 && (
-                  <details style={{ marginTop: 8, fontSize: 12 }}>
-                    <summary style={{ cursor: 'pointer' }}>{tUi('Останні відправлення')}: {c.sent.length} · {tUi('task id — розписка менеджера каналів')}</summary>
+                {(c.sendLog?.length ?? 0) > 0 && (
+                  <details style={{ marginTop: 8, fontSize: 12 }} open>
+                    <summary style={{ cursor: 'pointer' }}>{tUi('Останні відправлення')}: {c.sendLog.length} · {tUi('на кожен task id — смуга, тарифи, дати і які поля були в тілі')}</summary>
                     <div style={{ overflowX: 'auto' }}>
                       <table className="table" style={{ marginTop: 6, fontSize: 12 }}>
                         <thead>
-                          <tr><th>{tUi('Коли')}</th><th>{tUi('Що')}</th><th>{tUi('Тип номера')}</th><th>{tUi('Тариф')}</th><th>{tUi('Ночі')}</th><th>task id</th></tr>
+                          <tr>
+                            <th>{tUi('Коли')}</th><th>{tUi('Смуга')}</th><th>{tUi('Тарифи')}</th><th>{tUi('Дати')}</th>
+                            <th>{tUi('Поля в тілі')}</th><th>{tUi('Рядків')}</th><th>{tUi('Статус')}</th><th>task id</th><th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {c.sendLog.map((row) => (
+                            <tr key={row.id} style={row.responseStatus !== 200 ? { color: 'var(--accent-warning)' } : undefined}>
+                              <td style={{ whiteSpace: 'nowrap' }}>{new Date(row.sentAt).toLocaleString()}</td>
+                              <td>{row.lane === 'availability' ? tUi('наявність') : tUi('ціни й обмеження')}</td>
+                              <td>{row.lane === 'availability' ? row.unitTypeCodes.join(', ') : row.pairCodes.join(', ')}</td>
+                              <td style={{ whiteSpace: 'nowrap' }}>{row.from}{row.to && row.to !== row.from ? ` – ${row.to}` : ''}</td>
+                              <td><code>{row.fields.join(', ') || '—'}</code></td>
+                              <td>{row.rowsCount}</td>
+                              <td title={row.error ?? undefined}>{row.responseStatus ?? tUi('без відповіді')}{row.error ? ' · ' + row.error.slice(0, 60) : ''}</td>
+                              <td><code style={{ userSelect: 'all' }}>{row.taskId ?? '—'}</code></td>
+                              <td>
+                                <button className="btn btn-sm btn-ghost" onClick={() => setShownBody(shownBody === row.id ? null : row.id)}>
+                                  {shownBody === row.id ? tUi('сховати тіло') : tUi('показати тіло')}
+                                </button>
+                                {shownBody === row.id && (
+                                  <pre style={{ marginTop: 6, maxWidth: 640, maxHeight: 320, overflow: 'auto', fontSize: 11, background: 'var(--bg-tertiary)', padding: 8, borderRadius: 'var(--radius-sm)' }}>
+                                    {JSON.stringify(row.requestBody, null, 2)}
+                                  </pre>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </details>
+                )}
+                {(c.sent?.length ?? 0) > 0 && (
+                  <details style={{ marginTop: 8, fontSize: 12 }}>
+                    <summary style={{ cursor: 'pointer' }}>{tUi('Відправлені координати')}: {c.sent.length} · {tUi('task id — розписка менеджера каналів')}</summary>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="table" style={{ marginTop: 6, fontSize: 12 }}>
+                        <thead>
+                          <tr><th>{tUi('Коли')}</th><th>{tUi('Що')}</th><th>{tUi('Тип номера')}</th><th>{tUi('Тариф')}</th><th>{tUi('Ночі')}</th><th>{tUi('Змінилось')}</th><th>task id</th></tr>
                         </thead>
                         <tbody>
                           {c.sent.map((row) => (
@@ -433,6 +479,7 @@ export default function ChannelManagerPage() {
                               <td>{row.unitTypeCode ?? '—'}</td>
                               <td>{row.ratePlanCode ?? '—'}</td>
                               <td>{row.date}{row.dateTo ? ` – ${row.dateTo}` : ''}</td>
+                              <td>{row.kind === 'rate' ? (row.fields ? row.fields.join(', ') : tUi('усе')) : '—'}</td>
                               <td><code style={{ userSelect: 'all' }}>{row.receipt ?? '—'}</code></td>
                             </tr>
                           ))}

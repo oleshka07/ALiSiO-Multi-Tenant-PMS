@@ -343,10 +343,10 @@ CREATE TABLE "cm_connections" (
   "webhook_secret" TEXT NOT NULL,
   "remote_webhook_id" TEXT,
   "is_enabled" BOOLEAN DEFAULT false NOT NULL,
+  "pricing_modifier_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
   "last_full_sync_at" TIMESTAMPTZ,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "pricing_modifier_percent" NUMERIC(5,2) DEFAULT 0 NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("webhook_token"),
   UNIQUE ("organization_id", "property_id", "provider", "environment"),
@@ -412,15 +412,32 @@ CREATE TABLE "cm_outbox" (
   "unit_type_id" TEXT,
   "rate_plan_id" TEXT,
   "stay_date" DATE NOT NULL,
+  "stay_date_to" DATE,
   "claimed_at" TIMESTAMPTZ,
   "sent_at" TIMESTAMPTZ,
   "attempts" BIGINT DEFAULT 0 NOT NULL,
   "last_error" TEXT,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "stay_date_to" DATE,
   "receipt" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "field_mask" BIGINT,
   PRIMARY KEY ("id"),
   CHECK (kind IN ('availability', 'rate'))
+);
+
+CREATE TABLE "cm_sends" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "connection_id" TEXT NOT NULL,
+  "lane" TEXT NOT NULL,
+  "sent_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "task_id" TEXT,
+  "request_body" TEXT NOT NULL,
+  "response_status" BIGINT,
+  "error" TEXT,
+  "rows_count" BIGINT DEFAULT 0 NOT NULL,
+  "summary" TEXT,
+  PRIMARY KEY ("id"),
+  CHECK (lane IN ('availability', 'rate'))
 );
 
 CREATE TABLE "content_translations" (
@@ -1493,7 +1510,9 @@ CREATE TABLE "rate_plans" (
   "code" TEXT NOT NULL,
   "pricing_model" TEXT DEFAULT 'standard' NOT NULL,
   "currency" TEXT DEFAULT 'CZK' NOT NULL,
+  "child_extra_gross" NUMERIC(14,2),
   "is_active" BOOLEAN DEFAULT true NOT NULL,
+  "sell_mode" TEXT DEFAULT 'per_person' NOT NULL,
   "cancellation_policy" TEXT,
   "meal_plan" TEXT,
   "priority" BIGINT DEFAULT 0 NOT NULL,
@@ -1502,8 +1521,6 @@ CREATE TABLE "rate_plans" (
   "is_hidden" BOOLEAN DEFAULT false NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "child_extra_gross" NUMERIC(14,2),
-  "sell_mode" TEXT DEFAULT 'per_person' NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("property_id", "code")
 );
@@ -2048,6 +2065,10 @@ ALTER TABLE "cm_outbox" ADD CONSTRAINT "fk_cm_outbox_connection_id_1"
   FOREIGN KEY ("connection_id") REFERENCES "cm_connections" ("id") ON DELETE CASCADE;
 ALTER TABLE "cm_outbox" ADD CONSTRAINT "fk_cm_outbox_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "cm_sends" ADD CONSTRAINT "fk_cm_sends_connection_id_1"
+  FOREIGN KEY ("connection_id") REFERENCES "cm_connections" ("id") ON DELETE CASCADE;
+ALTER TABLE "cm_sends" ADD CONSTRAINT "fk_cm_sends_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "coupons" ADD CONSTRAINT "fk_coupons_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "coupons" ADD CONSTRAINT "fk_coupons_gift_card_rule_id_2"
@@ -2413,6 +2434,8 @@ CREATE INDEX "idx_cm_outbox_claimed" ON "cm_outbox" ("connection_id") WHERE clai
 CREATE UNIQUE INDEX "idx_cm_outbox_coord" ON "cm_outbox" (connection_id, kind, (COALESCE(unit_type_id, '')), (COALESCE(rate_plan_id, '')), stay_date, (COALESCE(stay_date_to, stay_date))) WHERE claimed_at IS NULL AND sent_at IS NULL ;
 CREATE INDEX "idx_cm_outbox_org" ON "cm_outbox" ("organization_id");
 CREATE INDEX "idx_cm_outbox_pending" ON "cm_outbox" ("connection_id", "kind") WHERE sent_at IS NULL AND claimed_at IS NULL;
+CREATE INDEX "idx_cm_sends_connection" ON "cm_sends" ("connection_id", "sent_at");
+CREATE INDEX "idx_cm_sends_org" ON "cm_sends" ("organization_id");
 CREATE INDEX "idx_ct_hash" ON "content_translations" ("text_hash");
 CREATE INDEX "idx_ct_lang" ON "content_translations" ("text_hash", "lang");
 CREATE INDEX "idx_coupons_org" ON "coupons" ("organization_id");
@@ -2562,6 +2585,7 @@ CREATE INDEX IF NOT EXISTS "idx_cm_events_org" ON "cm_events" ("organization_id"
 CREATE INDEX IF NOT EXISTS "idx_cm_inbound_bookings_org" ON "cm_inbound_bookings" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cm_mappings_org" ON "cm_mappings" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_cm_outbox_org" ON "cm_outbox" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_cm_sends_org" ON "cm_sends" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_coupons_org" ON "coupons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_event_addons_org" ON "event_addons" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_event_bookings_org" ON "event_bookings" ("organization_id");
@@ -2651,6 +2675,8 @@ ALTER TABLE "cm_inbound_bookings" ALTER COLUMN "organization_id"
 ALTER TABLE "cm_mappings" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "cm_outbox" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "cm_sends" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "coupons" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2885,6 +2911,12 @@ CREATE POLICY "cm_mappings_tenant" ON "cm_mappings"
 ALTER TABLE "cm_outbox" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "cm_outbox" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "cm_outbox_tenant" ON "cm_outbox"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "cm_sends" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "cm_sends" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "cm_sends_tenant" ON "cm_sends"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

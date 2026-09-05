@@ -78,6 +78,10 @@ Charter описує, ЯК називати. Він не вимагає нега
   - `gift_cards.status`: `draft | active | paid | activated | cancelled |
     expired`
   - `tasks.status`: `todo | in_progress | done | cancelled`
+  - `cm_outbox.kind`, `cm_sends.lane`: `availability | rate` — дві смуги
+    менеджера каналів; `cm_outbox.field_mask` — біти в порядку `RATE_FIELDS`
+    домену (`prices, closed, minStay, maxStay, noArrival, noDeparture`),
+    NULL = усі поля
   - `rate_plans.sell_mode`: `per_room | per_person` — як тариф рахує гостей
     (Ц26): за номер — одна ціна на будь-яку кількість гостей, у вендора одна
     опція заселеності; за особу — своя ціна на кожну кількість дорослих,

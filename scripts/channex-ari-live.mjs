@@ -6,6 +6,7 @@
  *   node scripts/channex-ari-live.mjs --org <orgId> <connId> --probe-429     # довести, що 429 повертає координату в чергу
  *   node scripts/channex-ari-live.mjs --org <orgId> <connId> --retire <rpId> # зняти тариф з продажу дверима, прогнати, прочитати назад: закрито
  *   node scripts/channex-ari-live.mjs --org <orgId> <connId> --restore <rpId># повернути в продаж, прогнати, прочитати назад: ціна знову
+ *   node scripts/channex-ari-live.mjs --org <orgId> <connId> --reprice <rpId>=<ціна>  # Блок 0.5: змінити ціну ТАРИФУ справжнім писачем, прогнати, прочитати назад — і показати, які поля були в тілі
  *   … [--from YYYY-MM-DD] [--days N]                                         # дати (дефолт: +30 днів, 3 доби)
  *
  * ── Навіщо ──────────────────────────────────────────────────────────────
@@ -67,13 +68,24 @@ const opt = (name, fallback) => {
 // Блок 2.1: зняти з продажу / повернути — це завжди прохід із читанням назад.
 const FLIP = opt('--retire', null) ? { id: opt('--retire', null), active: false }
   : opt('--restore', null) ? { id: opt('--restore', null), active: true } : null;
-const CONFIRM = argv.includes('--confirm') || !!FLIP;
+// Блок 0.5: маска полів на живому. Ціна тарифу міняється ТИМ САМИМ писачем,
+// що й масовий редактор (`bulkUpdatePrices` через `@pricing`): він сам ставить
+// маску з різниці й кладе координату; прохід шле лише `rates`; читання назад
+// — нова ціна; журнал `cm_sends` — які ключі були в тілі.
+const REPRICE = (() => {
+  const v = opt('--reprice', null);
+  if (!v) return null;
+  const [id, price] = v.split('=');
+  if (!id || !(Number(price) > 0)) { console.error('--reprice чекає <rpId>=<ціна>, ціна > 0'); process.exit(2); }
+  return { id, price: Number(price) };
+})();
+const CONFIRM = argv.includes('--confirm') || !!FLIP || !!REPRICE;
 
 let organizationId = null;
 let connectionId = null;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--org') { organizationId = argv[++i]; continue; }
-  if (['--from', '--days', '--retire', '--restore'].includes(argv[i])) { i++; continue; }
+  if (['--from', '--days', '--retire', '--restore', '--reprice'].includes(argv[i])) { i++; continue; }
   if (argv[i].startsWith('--')) continue;
   connectionId = argv[i];
 }
@@ -106,12 +118,12 @@ const { percentOf } = await import('@core/money');
 const {
   channelConnection, connectionMirror, flushConnectionOutboxFor,
   enqueueChannelChange, pendingChannelChanges, queuedChannelChanges, stuckChannelChanges, recentChannelSends,
-  verifyConnectionSendsFor } = await import('@channels');
+  recentChannelSendLog, verifyConnectionSendsFor } = await import('@channels');
 // Інваріант 28: кожна жива відповідь лягає зразком у docs/vendor/channex/live/.
 const { recordVendorResponses } = await import('@channels');
 recordVendorResponses(sampleRecorder());
 const { availabilityByDay, catalogUnitTypes } = await import('@properties');
-const { priceNights, updateRatePlan, listRatePlans } = await import('@pricing');
+const { priceNights, updateRatePlan, listRatePlans, bulkUpdatePrices } = await import('@pricing');
 
 /** Сире читання повз наш клієнт: звірка мусить бачити відповідь, а не наше тлумачення. */
 async function get(path) {
@@ -169,6 +181,20 @@ await runWithOrganization(organizationId, async () => {
     console.log(`\nТАРИФ ${plan.code} (${plan.id}): ${plan.isActive ? 'продається' : 'знято з продажу'} → ${FLIP.active ? 'ПОВЕРНУТИ В ПРОДАЖ' : 'ЗНЯТИ З ПРОДАЖУ'}`);
     const flipped = await updateRatePlan(plan.id, { isActive: FLIP.active });
     console.log(`  писач: isActive=${flipped.isActive}; у черзі ціни ${await pendingChannelChanges(connectionId, 'rate')} (координати до горизонту від дверей, Ц16)`);
+  }
+
+  // ── Блок 0.5: ціна тарифу — справжнім писачем, до очікувань ────────────
+  if (REPRICE) {
+    const plan = (await listRatePlans(connection.propertyId)).find((p) => p.id === REPRICE.id);
+    if (!plan) { console.error(`✗ тариф ${REPRICE.id} не на обʼєкті цього зʼєднання`); process.exitCode = 1; return; }
+    const own = pairs.filter((p) => p.localId === plan.id);
+    if (!own.length) { console.error(`✗ тариф ${plan.code} не заведено у вендора`); process.exitCode = 1; return; }
+    console.log(`\nТАРИФ ${plan.code}: ціна ${REPRICE.price} на ${FROM}…${TO} — писачем масового редактора, на кожному типі пари`);
+    for (const p of own) {
+      await bulkUpdatePrices({ unitTypeId: p.unitTypeId, dateFrom: FROM, dateTo: TO, applyTo: 'all', base_price: REPRICE.price, ratePlanId: plan.id });
+    }
+    const queued = (await queuedChannelChanges(connectionId)).filter((q) => q.kind === 'rate' && q.date === FROM);
+    console.log(`  у черзі від писача: ${queued.length} координат, маски: ${[...new Set(queued.map((q) => JSON.stringify(q.fields)))].join(' ')}`);
   }
 
   // ── Очікування — тими самими дверима, що й адаптер, але окремо ────────
@@ -234,11 +260,16 @@ await runWithOrganization(organizationId, async () => {
     // ── Черга: те, що робитиме доменна транзакція ────────────────────────
     // Одним ДІАПАЗОНОМ на тип і на пару (Ц15) — саме так кладуть писачі;
     // батчер розкладе по ночах сам, а стиснення збере назад у тілі.
-    for (const u of unitTypes) {
-      await enqueueChannelChange(sql, connectionId, { kind: 'availability', unitTypeId: u.localId, date: FROM, dateTo: TO });
-    }
-    for (const p of pairs) {
-      await enqueueChannelChange(sql, connectionId, { kind: 'rate', unitTypeId: p.unitTypeId, ratePlanId: p.localId, date: FROM, dateTo: TO });
+    // З --reprice координати вже поклав справжній писач — зі своєю маскою;
+    // класти повні поверх означало б стерти маску (NULL поглинає) і довести
+    // не те, що питаємо.
+    if (!REPRICE) {
+      for (const u of unitTypes) {
+        await enqueueChannelChange(sql, connectionId, { kind: 'availability', unitTypeId: u.localId, date: FROM, dateTo: TO });
+      }
+      for (const p of pairs) {
+        await enqueueChannelChange(sql, connectionId, { kind: 'rate', unitTypeId: p.unitTypeId, ratePlanId: p.localId, date: FROM, dateTo: TO });
+      }
     }
     console.log(`\nУ ЧЕРЗІ: наявність ${await pendingChannelChanges(connectionId, 'availability')}, ціни ${await pendingChannelChanges(connectionId, 'rate')}`);
 
@@ -287,6 +318,20 @@ await runWithOrganization(organizationId, async () => {
     console.log(`\nРОЗПИСКИ (цей прохід ${thisPass.length}): ${thisPass.filter((r) => r.receipt).length} з розпискою`);
     for (const r of sent.slice(0, 6)) console.log(`  ${String(r.sentAt).slice(0, 19)} ${r.kind} ${r.date}${r.dateTo ? '–' + r.dateTo : ''} → ${r.receipt ?? '—'}`);
     if (thisPass.some((r) => !r.receipt)) { console.log('  ! відправлене без розписки — задачу вендора нема чим назвати'); process.exitCode = 1; }
+
+    // Блок 0.5 п.4: журнал відправлень — ЯКІ ПОЛЯ були в тілі кожного виклику.
+    // Це те, що контролер звіряє з таблицею тесту до подання форми.
+    const log = (await recentChannelSendLog(connectionId, Math.max(4, report.calls))).slice(0, report.calls);
+    console.log(`\nЖУРНАЛ ВІДПРАВЛЕНЬ (цей прохід, ${log.length} виклик(ів)):`);
+    for (const l of log) {
+      console.log(`  ${String(l.sentAt).slice(0, 19)} ${l.lane.padEnd(12)} ${l.responseStatus ?? '—'} task ${l.taskId ?? '—'}  значень ${l.rowsCount}  поля: ${l.summary.fields.join(', ')}  ${l.summary.from}…${l.summary.to}`);
+    }
+    if (REPRICE) {
+      const rateCalls = log.filter((l) => l.lane === 'rate');
+      const onlyRates = rateCalls.length > 0 && rateCalls.every((l) => l.summary.fields.join(',') === 'rates');
+      console.log(`\nБЛОК 0.5 — МАСКА: ${onlyRates ? '✓' : '✗'} зміна ціни тарифу поїхала лише полем rates${onlyRates ? '' : ' — у тілі є зайві поля (Б1 листа Channex)'}`);
+      if (!onlyRates) process.exitCode = 1;
+    }
 
     // П6 частина 2: звірка ДВЕРИМА модуля — те саме, що робить кнопка «Звірити
     // з каналом». Без вікна застосування: прохід вище вже дочекався збігу сам.

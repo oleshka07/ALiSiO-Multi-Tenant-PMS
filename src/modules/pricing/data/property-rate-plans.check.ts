@@ -112,6 +112,18 @@ async function seed(org: string) {
         [id, prop, name, code, 'EUR', active],
       );
     }
+    // Блок 0.5, Б3: тариф, у якого на типі є лише РЯДОК без ціни (обмеження,
+    // base_price NULL — 0062). Це не ціна, і пари в каталозі він не робить:
+    // пара, заведена з такого рядка, стала б зайвим тарифом у вендора
+    // (`505e5d24…` у листі 05.09), який батчер міг би лише закривати.
+    await sql.run(
+      `INSERT INTO rate_plans (id, property_id, name, code, currency, is_active) VALUES (?, ?, 'Restriction only', 'RES', 'EUR', 1)`,
+      [`${org}_res`, prop],
+    );
+    await sql.run(
+      `INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, min_stay) VALUES (?, ?, ?, ?, NULL, 2)`,
+      [`${org}_res_dbl`, `${org}_dbl`, `${org}_res`, '2026-10-10'],
+    );
     // Ціни: BAR має ціни на обидва типи; OFF — теж (щоб довести, що відсіює
     // саме вимкненість, а не відсутність цін); NOP — жодної.
     for (const plan of [`${org}_bar`, `${org}_off`]) {
@@ -200,6 +212,13 @@ try {
     assert.strictEqual(nop.sellable, false, 'тариф без жодної ціни оголошено придатним до продажу');
     assert.strictEqual(bar.sellable, true);
     console.log('  ok  тариф без цін названо непридатним, а не викинуто й не продано');
+
+    // ── Рядок без ціни — не ціна: пари з нього немає (Б3) ────────────────
+    const res = plans.find((p) => p.code === 'RES');
+    assert.ok(res, 'тариф з рядком обмежень має бути названий');
+    assert.deepStrictEqual(res.unitTypes, [], `рядок з base_price NULL зробив пару — у вендора зʼявиться тариф, якого готель не цінує: ${JSON.stringify(res.unitTypes.map((u) => u.code))}`);
+    assert.strictEqual(res.sellable, false);
+    console.log('  ok  рядок обмежень без ціни не робить пари в каталозі');
 
     // ── Типи номерів беруться звідти, де СПРАВДІ є ціни ──────────────────
     assert.deepStrictEqual(

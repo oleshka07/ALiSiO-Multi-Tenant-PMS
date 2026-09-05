@@ -12,8 +12,10 @@ export { connectionsForProperty } from '../data/connections.repo';
 export {
   flushConnectionOutboxFor, enqueueChannelChange, pendingChannelChanges,
   queuedChannelChanges, stuckChannelChanges, retryStuckChannelChanges, recentChannelSends,
-  verifyConnectionSendsFor, fullSyncConnectionFor,
+  verifyConnectionSendsFor, fullSyncConnectionFor, recentChannelSendLog, purgeChannelSendLogs,
 } from './ari.handlers';
+export type { SendLogPurgeReport } from './ari.handlers';
+export type { SendLogRow, SendSummary } from '../data/sends.repo';
 export type { ChannelChange, FlushReport, SendsVerification, SendMismatch, FullSyncReport, FullSyncPlan } from './ari.handlers';
 export { noteAvailabilityChanged, noteRatesChanged, lastNight } from './outbox';
 export type { AvailabilityNote, RateNote } from './outbox';

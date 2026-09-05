@@ -147,6 +147,7 @@ export async function createPrice(propertyId: string | null | undefined, input: 
     await noteRatesChanged(t, {
       propertyId: property, unitTypeId: input.unit_type_id ?? null,
       from: input.valid_from ?? todayIso(), to: input.valid_to ?? null,
+      fields: ['prices'],
     });
   });
   return id;
@@ -154,7 +155,12 @@ export async function createPrice(propertyId: string | null | undefined, input: 
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
-/** Координати рядка матриці — ДО зміни чи видалення, бо після нема що читати. */
+/**
+ * Координати рядка матриці — ДО зміни чи видалення, бо після нема що читати.
+ * Матриця й тири міняють лише ЦІНУ ночі — маска координати `['prices']`
+ * (Блок 0.5): обмеження й «закрито» живуть у календарі, і в тіло каналу від
+ * матриці не їдуть.
+ */
 async function occupancyRowSpan(t: { row: (q: string, p: unknown[]) => Promise<any> }, table: 'price_occupancy' | 'price_los_tiers', id: string, organizationId: string) {
   const dated = table === 'price_occupancy';
   const row = await t.row(
@@ -186,7 +192,7 @@ export async function updatePrice(id: string, priceGross: number, label?: string
       'UPDATE price_occupancy SET price_gross = ?, label = ?, updated_at = ? WHERE id = ? AND organization_id = ?',
       [priceGross, label ?? null, nowIso(), id, organizationId],
     );
-    if (res.changes > 0 && span) await noteRatesChanged(t, span);
+    if (res.changes > 0 && span) await noteRatesChanged(t, { ...span, fields: ['prices'] });
     return res.changes > 0;
   });
 }
@@ -199,7 +205,7 @@ export async function deletePrice(id: string): Promise<boolean> {
     const span = await occupancyRowSpan(t, 'price_occupancy', id, organizationId);
     const res = await t.run(
       'DELETE FROM price_occupancy WHERE id = ? AND organization_id = ?', [id, organizationId]);
-    if (res.changes > 0 && span) await noteRatesChanged(t, span);
+    if (res.changes > 0 && span) await noteRatesChanged(t, { ...span, fields: ['prices'] });
     return res.changes > 0;
   });
 }
@@ -245,7 +251,7 @@ export async function createTier(propertyId: string | null | undefined, input: T
        input.adjustment_gross, input.persons ?? null, input.label ?? null],
     );
     // Тир не має вікна дат: це кожна майбутня ніч типу (або всіх типів).
-    await noteRatesChanged(t, { propertyId: property, unitTypeId: input.unit_type_id ?? null, from: todayIso(), to: null });
+    await noteRatesChanged(t, { propertyId: property, unitTypeId: input.unit_type_id ?? null, from: todayIso(), to: null, fields: ['prices'] });
   });
   return id;
 }
@@ -258,7 +264,7 @@ export async function updateTier(id: string, adjustmentGross: number, label?: st
       'UPDATE price_los_tiers SET adjustment_gross = ?, label = ?, updated_at = ? WHERE id = ? AND organization_id = ?',
       [adjustmentGross, label ?? null, nowIso(), id, organizationId],
     );
-    if (res.changes > 0 && span) await noteRatesChanged(t, span);
+    if (res.changes > 0 && span) await noteRatesChanged(t, { ...span, fields: ['prices'] });
     return res.changes > 0;
   });
 }
@@ -269,7 +275,7 @@ export async function deleteTier(id: string): Promise<boolean> {
     const span = await occupancyRowSpan(t, 'price_los_tiers', id, organizationId);
     const res = await t.run(
       'DELETE FROM price_los_tiers WHERE id = ? AND organization_id = ?', [id, organizationId]);
-    if (res.changes > 0 && span) await noteRatesChanged(t, span);
+    if (res.changes > 0 && span) await noteRatesChanged(t, { ...span, fields: ['prices'] });
     return res.changes > 0;
   });
 }

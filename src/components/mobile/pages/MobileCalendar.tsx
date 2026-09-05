@@ -1162,7 +1162,7 @@ export default function MobileCalendar() {
                   {tUi('Юніт:')} {units.find(u => u.id === viewBlock.unit_id)?.code || viewBlock.unit_id}
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
-                  {tUi('Дати закриття:')} <strong>{viewBlock.date_from}</strong> → <strong>{viewBlock.date_to}</strong>
+                  {tUi('Дати закриття:')} <strong>{viewBlock.date_from}</strong> → <strong>{viewBlock.date_to}</strong> <span style={{ color: 'var(--text-tertiary)' }}>{tUi('(виїзд, не входить)')}</span>
                 </div>
                 {viewBlock.notes && (
                   <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 6 }}>

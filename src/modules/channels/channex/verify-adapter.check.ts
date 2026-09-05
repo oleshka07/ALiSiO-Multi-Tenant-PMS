@@ -167,7 +167,11 @@ try {
       assert.deepStrictEqual(r.window, { from: DAY, to: DAY2 });
       // DAY: обидві опції закриті, наявність 2 — збіг. DAY2: основна закрита — збіг, неосновна відкрита — розбіжність;
       // наявність DAY2 не слалась, але ніч ціни звіряє наявність свого типу з тієї самої клітинки — збіг.
-      assert.strictEqual(r.matched, 5, '«закрито» ×2 на DAY, «закрито» основної на DAY2, наявність на DAY і DAY2');
+      // Блок 0.5: без базового рядка очікуване несе ЯВНІ дефолти обмежень
+      // (як повний синк) — заборони заїзду/виїзду false збігаються з живою
+      // клітинкою (+8: дві опції × дві ночі × два прапорці); мінімум і
+      // максимум той бік віддає null — «не звірено», не збіг і не розбіжність.
+      assert.strictEqual(r.matched, 13, '«закрито» ×2 на DAY, «закрито» основної на DAY2, наявність на DAY і DAY2, заборони заїзду/виїзду ×8');
       assert.deepStrictEqual(r.mismatches.map((m) => [m.date, m.occupancy, m.field, m.ours, m.theirs]), [
         [DAY2, 1, 'closed', 'true', 'false'],
       ], 'неосновна опція (заселеність 1) звірена ВЛАСНИМ ключем — И13; за ідентифікатором тарифу її не видно');
@@ -178,10 +182,12 @@ try {
       assert.strictEqual(back[0].date, DAY2);
       assert.strictEqual(back[0].ratePlanId, RP);
       assert.strictEqual(String(back[0].lastError), 'verify: closed@1 true ≠ false', 'причина на рядку — оператор бачить, чому знову в черзі');
-      // Обмежень ми не називали (рядка календаря немає) — то й не звірених
-      // немає: порівнюється лише сказане. Вісь «не віддане» доведена в
-      // `domain/verify.check.ts`, де очікуване називає minStay.
-      assert.deepStrictEqual(r.unverified, [], 'неназване не рахується ні збігом, ні не звіреним');
+      // Рядка календаря немає — очікуване без маски несе дефолти (Блок 0.5,
+      // як повний синк): мінімум 1 і максимум 0 названі, а той бік віддає
+      // null — «не звірено» по 4 (дві опції × дві ночі), не збіг і не
+      // розбіжність. Вісь «не віддане» окремо — `domain/verify.check.ts`.
+      assert.deepStrictEqual(r.unverified, [{ field: 'minStay', count: 4 }, { field: 'maxStay', count: 4 }], 'дефолти названі, той бік мовчить — не звірено, не розбіжність');
+      assert.strictEqual(back[0].fields, null, 'повернуте звіркою їде ВСІМ станом — маски немає');
       console.log('  ok  розбіжність на неосновній опції видима (И13), назад у чергу однією координатою з причиною');
       await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
     }
@@ -196,7 +202,7 @@ try {
       });
       const r = await verifySends(CONN, 'key', { today: TODAY, now: () => NOW, client: { fetch: t.fetch } });
       assert.strictEqual(r.mismatches.length, 0);
-      assert.strictEqual(r.matched, 6, '«закрито» ×2 на дві ночі і наявність на обидві');
+      assert.strictEqual(r.matched, 14, '«закрито» ×2 на дві ночі, наявність на обидві, і заборони заїзду/виїзду ×8 (дефолти без рядка — Блок 0.5)');
       assert.strictEqual(r.requeued, 0);
       assert.strictEqual((await queuedChanges(CONN)).length, 0, 'збіг нічого не кладе в чергу');
       console.log('  ok  збіг — черга порожня');

@@ -56,12 +56,57 @@ import type { AvailabilityChange, RateChange, Unmapped } from '../port';
  * цінах спиняла б наявність, тобто найтерміновіше.
  */
 
+/**
+ * Поля цінової координати, які їдуть у канал, — у канонічному порядку: він
+ * задає біти маски в базі (`cm_outbox.field_mask`) і порядок у журналі.
+ *
+ * ── Маска: координата каже, ЩО змінилось, а не лише ДЕ (Блок 0.5) ───────
+ *
+ * Лист Channex 05.09.2026 (Б1): «повідомлення несе весь стан, не дельту».
+ * Тест 2 сертифікації чекає в тілі лише ціну, тест 5 — лише мінімум ночей,
+ * тест 7 — чотири обмеження і нічого іншого. Черга досі тримала лише
+ * координату, і батчер складав повний стан на кожну ніч. Тепер писач
+ * називає, які поля він змінив; `null` — усі (повний синк, зміна тарифу,
+ * старі рядки). Значення при цьому далі читаються з джерела в момент
+ * відправлення — маска звужує ТІЛО, не джерело (Ц13 цілий).
+ *
+ * `closed` під маскою — уточнення И14 (Ц34): їде, коли (а) змінився стан
+ * «закрито» базового рядка, (б) ніч втратила чи здобула джерело ціни,
+ * (в) повний синк. Зміна лише ціни на відкритій ночі його не несе: вендор
+ * тримає свій прапорець, і «ціна не знімає закриття» далі істинне, бо ми
+ * його не чіпаємо. Пункт (б) у половині «втратила» тримає сам батчер —
+ * ніч без ціни закривається повз будь-яку маску (правило 2 з шапки);
+ * половину «здобула» знає лише писач, і він додає `closed` до маски.
+ */
+export const RATE_FIELDS = ['prices', 'closed', 'minStay', 'maxStay', 'noArrival', 'noDeparture'] as const;
+export type RateField = typeof RATE_FIELDS[number];
+
+/** Маска → ціле для колонки черги. `null` — усі поля. Невідоме поле — відмова, не мовчазний нуль. */
+export function packFields(fields: readonly RateField[] | null | undefined): number | null {
+  if (fields == null) return null;
+  let mask = 0;
+  for (const f of fields) {
+    const i = RATE_FIELDS.indexOf(f);
+    if (i < 0) throw new Error(`cm_outbox: unknown rate field ${String(f)}`);
+    mask |= 1 << i;
+  }
+  return mask;
+}
+
+/** Ціле з колонки → поля в канонічному порядку. `null` — усі. */
+export function unpackFields(mask: number | null | undefined): RateField[] | null {
+  if (mask == null) return null;
+  return RATE_FIELDS.filter((_, i) => (mask & (1 << i)) !== 0);
+}
+
 /** Координата з черги. Значення в ній немає навмисно — див. шапку. */
 export interface ClaimedCoordinate {
   id: string;
   kind: 'availability' | 'rate';
   unitTypeId?: string;
   ratePlanId?: string;
+  /** Які поля ціни змінились (`RATE_FIELDS`). Порожньо або `null` — усі. Для наявності не має значення. */
+  fields?: readonly RateField[] | null;
   date: string;
   /**
    * Остання ніч діапазону, включно (Ц15). Порожньо — одна ніч.
@@ -327,20 +372,41 @@ export async function resolveAvailabilityNight(deps: NightSources, unitTypeId: s
  * його не знімає, тож обидва їдуть разом, а наступне відкриття шле
  * `closed: false` знову з ціною.
  */
-export async function resolveRateNight(deps: NightSources, unitTypeId: string, ratePlanId: string, date: string): Promise<RateChange> {
+export async function resolveRateNight(
+  deps: NightSources,
+  unitTypeId: string,
+  ratePlanId: string,
+  date: string,
+  fields?: readonly RateField[] | null,
+): Promise<RateChange> {
   const base = await deps.pricesAt(unitTypeId, ratePlanId, date);
   const prices = shift(base, deps.priceModifierPercent ?? 0);
-  const at = { ratePlanId, unitTypeId, date };
   const r = (await deps.restrictionsAt?.(unitTypeId, date)) ?? null;
-  const limits = r ? {
-    minStay: r.minStay,
-    ...(r.maxStay != null ? { maxStay: r.maxStay } : {}),
-    noArrival: r.noArrival,
-    noDeparture: r.noDeparture,
-  } : {};
-  return prices && prices.length
-    ? { ...at, prices, closed: r?.closed === true, ...limits }
-    : { ...at, closed: true, ...limits };
+  // Без маски — весь стан (повний синк, старі рядки, зміна тарифу).
+  const all = fields == null;
+  const wants = (f: RateField) => all || fields.includes(f);
+  const priced = Boolean(prices && prices.length);
+
+  const out: RateChange = { ratePlanId, unitTypeId, date };
+  if (priced && wants('prices')) out.prices = prices!;
+  // Правило 2 і Ц34 (б): ніч без джерела ціни закривається ЗАВЖДИ, повз
+  // маску — «не слати нічого» не існує. При ціні «закрито» їде лише коли
+  // писач назвав його: сам прапорець читається з календаря (Д2).
+  if (!priced) out.closed = true;
+  else if (wants('closed')) out.closed = r?.closed === true;
+  // Обмеження — з базового рядка типу (Д1). Ночі без рядка дефолти дістають
+  // лише БЕЗ маски (Ц34 (в)): повний синк мусить нести всі чотири явно —
+  // 576/576 значень без них і були відмовою вендора (Б2). У дельті ніч без
+  // рядка обмежень не несе: дефолт, якого готель не називав, не вигадується.
+  // Максимум без межі — нуль: так його читає й повертає вендор (live-fields);
+  // мовчання тут означало б, що зняте обмеження не доїжджає ніколи.
+  if (r || all) {
+    if (wants('minStay')) out.minStay = r?.minStay ?? 1;
+    if (wants('maxStay')) out.maxStay = r?.maxStay ?? 0;
+    if (wants('noArrival')) out.noArrival = r?.noArrival ?? false;
+    if (wants('noDeparture')) out.noDeparture = r?.noDeparture ?? false;
+  }
+  return out;
 }
 
 /** 10 МБ вендора мінус запас на конверт і на різницю доменного й чужого тіла. */
@@ -571,7 +637,7 @@ export async function flushOutbox(deps: FlushDeps): Promise<FlushReport> {
     if (!c.unitTypeId || !c.ratePlanId) continue;
     for (const date of nightsOf(c.date, c.dateTo ?? c.date)) {
       // Розвʼязання винесене в `resolveRateNight` — ним же рахує звірка (П6).
-      resolvedRates.push({ ids: [c.id], attempts: c.attempts ?? 0, value: await resolveRateNight(deps, c.unitTypeId, c.ratePlanId, date) });
+      resolvedRates.push({ ids: [c.id], attempts: c.attempts ?? 0, value: await resolveRateNight(deps, c.unitTypeId, c.ratePlanId, date, c.fields) });
     }
   }
   await flushLane('rate', resolvedRates, deps, report);

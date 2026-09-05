@@ -1,7 +1,7 @@
 import { getSql, type Sql } from '@core/db/async';
 import { currentOrganizationId } from '@core/auth/tenant-context';
 import { connectionInTenant } from './connections.repo';
-import { DEFAULT_MAX_ATTEMPTS } from '../domain/ari-batch.ts';
+import { DEFAULT_MAX_ATTEMPTS, packFields, unpackFields, type RateField } from '../domain/ari-batch.ts';
 
 /**
  * Черга вихідних змін: що змінилося, а не на що.
@@ -68,6 +68,15 @@ export interface Change {
    * (Ц13). Не раніше за `date` — інакше рядок не розкладеться на жодну ніч.
    */
   dateTo?: string | null;
+  /**
+   * Які поля ціни змінились (`RATE_FIELDS` домену). Порожньо — усі.
+   *
+   * Блок 0.5: у тіло їде лише замасковане (тест 2 сертифікації — лише
+   * ціна). Два рядки однієї координати з різними масками зливаються в
+   * ОБʼЄДНАННЯ тим самим `ON CONFLICT`, що тримає злиття; `null` поглинає
+   * часткові. Для наявності маски немає — там одне число.
+   */
+  fields?: readonly RateField[] | null;
 }
 
 export interface ClaimedChange {
@@ -78,6 +87,8 @@ export interface ClaimedChange {
   date: string;
   /** Остання ніч включно; `null` — та сама, що `date`. */
   dateTo: string | null;
+  /** Маска полів ціни; `null` — усі. */
+  fields: RateField[] | null;
   attempts: number;
   lastError: string | null;
 }
@@ -130,15 +141,25 @@ export async function enqueueChange(t: Sql, connectionId: string, change: Change
   // збігається з ІНДЕКСОМ, а не з наміром: розбіжність дає «does not match any
   // PRIMARY KEY or UNIQUE constraint» на першій же зміні ціни, на обох
   // двигунах. Той самий прийом, що в `price-calendar.repo.ts`.
+  // Маска — лише в ціновій смузі; наявність — одне число, масок не має.
+  const fieldMask = change.kind === 'rate' ? packFields(change.fields) : null;
+
+  // Злиття масок — тим самим `ON CONFLICT`, що й злиття рядків: «ціна» і
+  // «мінімум» за одну хвилину мусять поїхати обома полями, і жодного кроку
+  // «прочитати маску, дописати» між двома писачами тут немає. Побітове АБО
+  // однакове на обох двигунах; NULL (усі поля) поглинає будь-яку часткову.
   await sql.run(
     `INSERT INTO cm_outbox
-       (id, organization_id, connection_id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       (id, organization_id, connection_id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to, field_mask)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (connection_id, kind, (COALESCE(unit_type_id, '')), (COALESCE(rate_plan_id, '')), stay_date, (COALESCE(stay_date_to, stay_date)))
        WHERE claimed_at IS NULL AND sent_at IS NULL
-       DO NOTHING`,
+       DO UPDATE SET field_mask = CASE
+         WHEN cm_outbox.field_mask IS NULL OR excluded.field_mask IS NULL THEN NULL
+         ELSE cm_outbox.field_mask | excluded.field_mask
+       END`,
     [crypto.randomUUID(), conn.organizationId, connectionId,
-      change.kind, unitTypeId, ratePlanId, change.date, dateTo],
+      change.kind, unitTypeId, ratePlanId, change.date, dateTo, fieldMask],
   );
 
   // Координата, повернута звіркою (П6), несе причину — оператор бачить, ЧОМУ
@@ -190,6 +211,7 @@ const toClaimed = (r: Record<string, unknown>): ClaimedChange => ({
   ratePlanId: r.rate_plan_id == null ? null : String(r.rate_plan_id),
   date: String(r.stay_date).slice(0, 10),
   dateTo: r.stay_date_to == null ? null : String(r.stay_date_to).slice(0, 10),
+  fields: unpackFields(r.field_mask == null ? null : Number(r.field_mask)),
   attempts: Number(r.attempts) || 0,
   lastError: r.last_error == null ? null : String(r.last_error),
 });
@@ -208,7 +230,7 @@ export async function queuedChanges(
 
   const sql = getSql();
   const rows = await sql.rows<any>(
-    `SELECT id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to, attempts, last_error
+    `SELECT id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to, field_mask, attempts, last_error
        FROM cm_outbox
       WHERE connection_id = ? AND organization_id = ?
         AND sent_at IS NULL AND claimed_at IS NULL AND attempts < ?
@@ -233,7 +255,7 @@ export async function stuckChanges(
 
   const sql = getSql();
   const rows = await sql.rows<any>(
-    `SELECT id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to, attempts, last_error
+    `SELECT id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to, field_mask, attempts, last_error
        FROM cm_outbox
       WHERE connection_id = ? AND organization_id = ?
         AND sent_at IS NULL AND claimed_at IS NULL AND attempts >= ?
@@ -320,7 +342,7 @@ export async function claimBatch(
   const rows = await sql.rows<any>(
     `UPDATE cm_outbox SET claimed_at = CURRENT_TIMESTAMP, last_error = NULL
       WHERE id IN (${holes}) AND organization_id = ? AND claimed_at IS NULL AND sent_at IS NULL
-      RETURNING id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to, attempts, last_error, created_at`,
+      RETURNING id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to, field_mask, attempts, last_error, created_at`,
     [...candidates.map((c) => c.id), organizationId],
   ) as Record<string, unknown>[];
 
@@ -364,7 +386,7 @@ export async function recentSends(connectionId: string, limit = 50): Promise<Sen
   const organizationId = currentOrganizationId();
   if (!organizationId) throw new Error('cm_outbox: read without a tenant');
   const rows = await getSql().rows<any>(
-    `SELECT id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to, attempts, last_error, sent_at, receipt
+    `SELECT id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to, field_mask, attempts, last_error, sent_at, receipt
        FROM cm_outbox
       WHERE connection_id = ? AND organization_id = ? AND sent_at IS NOT NULL
         AND (last_error IS NULL OR last_error NOT LIKE 'retired:%')

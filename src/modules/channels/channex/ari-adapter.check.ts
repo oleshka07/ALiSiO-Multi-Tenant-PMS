@@ -61,6 +61,7 @@ const addDays = (iso: string, n: number) => {
 
 async function cleanup() {
   await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+  try { await sql.run('DELETE FROM cm_sends WHERE organization_id = ?', [ORG]); } catch { /* таблиці ще немає — гейт червоний нижче */ }
   await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP]);
@@ -369,6 +370,135 @@ try {
       assert.deepStrictEqual(open.rates, [{ occupancy: 2, rate: 15000 }], 'і та сама ціна з календаря знову їде');
       assert.strictEqual(await pendingCount(CONN), 0);
       console.log('  ok  тариф знято з продажу → stop_sell без ціни на ночі пари; повернуто → та сама ціна знову');
+    }
+
+    // ── 9. Маска полів: у тілі лише те, що змінилось (Блок 0.5, лист 05.09) ──
+    //
+    // Б1 листа Channex: «повідомлення несе весь стан, не дельту». Тест 2
+    // чекає в тілі лише `rates`, тест 5 — лише `min_stay_arrival`, тест 6 —
+    // лише `stop_sell`, тест 7 — чотири обмеження і нічого іншого. Координата
+    // з маскою (`fields`) розвʼязується лише в замасковане; стиснення
+    // діапазонів порівнює лише замасковані значення — три сусідні ночі з
+    // РІЗНИМ CTA й однаковою ціною під маскою «ціна» їдуть ОДНИМ
+    // `date_range` (тест 4: «use date_range syntax»). Базові рядки — дверима
+    // `@pricing`; координати самого писача тут прибираються.
+    {
+      const D6 = addDays(DAY, 70);
+      const D7 = addDays(DAY, 71);
+      const D8 = addDays(DAY, 72);
+      const D3 = addDays(DAY, 60); // 150, мінімум 3, зі сцени 7
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      await bulkUpdatePrices({ unitTypeId: UT, dateFrom: D6, dateTo: D6, applyTo: 'all', base_price: 150, cta: true });
+      await bulkUpdatePrices({ unitTypeId: UT, dateFrom: D7, dateTo: D7, applyTo: 'all', base_price: 150, cta: false });
+      await bulkUpdatePrices({ unitTypeId: UT, dateFrom: D8, dateTo: D8, applyTo: 'all', base_price: 150, cta: true });
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+
+      const bodyKeys = (v: Record<string, unknown>) => Object.keys(v).filter((k) => !['property_id', 'rate_plan_id', 'date', 'date_from', 'date_to'].includes(k)).sort();
+
+      // Тест 2 / 4: лише ціна — і один діапазон попри різний CTA.
+      await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT, ratePlanId: RP, date: D6, dateTo: D8, fields: ['prices'] });
+      const t2 = transport([]);
+      const r2 = await ariFlush(CONN, 'key', { client: { fetch: t2.fetch } });
+      assert.strictEqual(r2.failed, 0, r2.errors.join(' | '));
+      const values2 = t2.calls.find((c) => c.path.endsWith('/restrictions'))!.body.values;
+      assert.strictEqual(values2.length, 1, `три ночі з однаковою ціною й різним CTA під маскою «ціна» мали стиснутись в ОДИН date_range, а не ${values2.length}: ${JSON.stringify(values2)}`);
+      assert.strictEqual(values2[0].date_from, D6);
+      assert.strictEqual(values2[0].date_to, D8);
+      assert.deepStrictEqual(bodyKeys(values2[0]), ['rates'], `тест 2: у тілі лише rates, а не ${bodyKeys(values2[0]).join(',')}`);
+
+      // Тест 5: лише мінімум.
+      await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT, ratePlanId: RP, date: D3, fields: ['minStay'] });
+      const t5 = transport([]);
+      await ariFlush(CONN, 'key', { client: { fetch: t5.fetch } });
+      const v5 = rateOn(t5.calls, D3);
+      assert.deepStrictEqual(bodyKeys(v5), ['min_stay_arrival'], `тест 5: лише мінімум, а не ${bodyKeys(v5).join(',')}`);
+      assert.strictEqual(v5.min_stay_arrival, 3);
+
+      // Тест 6: лише «закрито» — і явне false, коли відкрито.
+      await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT, ratePlanId: RP, date: D3, fields: ['closed'] });
+      const t6 = transport([]);
+      await ariFlush(CONN, 'key', { client: { fetch: t6.fetch } });
+      const v6 = rateOn(t6.calls, D3);
+      assert.deepStrictEqual(bodyKeys(v6), ['stop_sell'], `тест 6: лише stop_sell, а не ${bodyKeys(v6).join(',')}`);
+      assert.strictEqual(v6.stop_sell, false);
+
+      // Тест 7: чотири обмеження, без ціни й без stop_sell; max без межі — 0.
+      await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT, ratePlanId: RP, date: D3, fields: ['minStay', 'maxStay', 'noArrival', 'noDeparture'] });
+      const t7 = transport([]);
+      await ariFlush(CONN, 'key', { client: { fetch: t7.fetch } });
+      const v7 = rateOn(t7.calls, D3);
+      assert.deepStrictEqual(bodyKeys(v7), ['closed_to_arrival', 'closed_to_departure', 'max_stay', 'min_stay_arrival'], `тест 7: чотири обмеження і нічого іншого, а не ${bodyKeys(v7).join(',')}`);
+      assert.strictEqual(v7.max_stay, 0, 'максимум без межі їде нулем — зняте обмеження мусить доїхати');
+      assert.strictEqual(await pendingCount(CONN), 0);
+      console.log('  ok  маска полів: rates / min_stay_arrival / stop_sell / чотири обмеження — кожне окремо; один date_range попри різний CTA');
+    }
+
+    // ── 10. Журнал відправлень з тілом (Блок 0.5 п.4, Hoteliera last_sent) ──
+    //
+    // Розписка на координаті каже, ЩО поїхало; вона не каже, З ЯКИМИ ПОЛЯМИ.
+    // Саме цього бракувало, щоб звірити task id до подання: у листі вендор
+    // назвав зайві поля, а ми не мали чим це побачити. Кожен виклик лягає
+    // рядком `cm_sends`: смуга, тіло, статус, task id, скільки значень і які
+    // ключі. Невдалий виклик — теж рядок, зі статусом і без task id: журнал,
+    // у якому видно лише успіхи, — це не журнал.
+    {
+      const { recentSendLog } = await import('../data/sends.repo.ts');
+      const D9 = addDays(DAY, 80);
+      await sql.run('DELETE FROM cm_sends WHERE organization_id = ?', [ORG]);
+      await enqueueChange(sql, CONN, { kind: 'availability', unitTypeId: UT, date: D9 });
+      const bad = transport([{ status: 429, body: BODY_429 }]);
+      await ariFlush(CONN, 'key', { client: { fetch: bad.fetch, limiter: new ChannexRateLimiter(), sleep: async () => {} } });
+      const good = transport([{ status: 200, body: BODY_OK }]);
+      await ariFlush(CONN, 'key', { client: { fetch: good.fetch, limiter: new ChannexRateLimiter() } });
+
+      const log = await recentSendLog(CONN);
+      assert.strictEqual(log.length, 2, `два виклики — два рядки журналу, а не ${log.length}`);
+      const [ok, failed] = log; // найновіший перший
+      assert.strictEqual(failed.responseStatus, 429, 'невдалий виклик — рядок зі статусом 429');
+      assert.strictEqual(failed.taskId, null, 'і без task id');
+      assert.strictEqual(ok.responseStatus, 200);
+      assert.strictEqual(ok.taskId, 'task-1', 'task id з відповіді вендора — на рядку журналу');
+      assert.strictEqual(ok.lane, 'availability');
+      assert.strictEqual(ok.rowsCount, 1);
+      assert.deepStrictEqual(ok.summary.fields, ['availability'], 'ключі тіла названі на рядку — це те, що звіряє контролер');
+      assert.deepStrictEqual(ok.summary.unitTypeIds, [UT], 'наші координати поруч із тілом');
+      assert.strictEqual(ok.summary.from, D9);
+      assert.strictEqual(ok.summary.to, D9);
+      assert.strictEqual(ok.requestBody.values[0].room_type_id, 'remote-ut', 'тіло — дослівно те, що пішло');
+      console.log('  ok  журнал відправлень: кожен виклик рядком з тілом, статусом, task id і ключами');
+    }
+
+    // ── 11. Писач календаря ставить маску з того, що СПРАВДІ змінилось ─────
+    //
+    // Екран редактора дня шле всю форму (мінімум, «закрито», CTA/CTD) щоразу;
+    // маска — це різниця з рядком у базі, а не склад запиту. Осі: ціна на
+    // ніч БЕЗ ціни — «ціна» + «закрито» (джерело зʼявилось, Ц34 (б)); лише
+    // мінімум — «мінімум»; лише «закрито» — «закрито»; лише число ціни —
+    // «ціна»; те саме ще раз — координати немає взагалі.
+    {
+      const D10 = addDays(DAY, 90);
+      const { upsertPrices } = await import('@pricing');
+      const mask = async () => {
+        const rows = (await queuedChanges(CONN)).filter((r) => r.kind === 'rate' && r.date === D10);
+        return rows.length === 1 ? rows[0].fields : rows.length === 0 ? 'none' : 'many';
+      };
+      const reset = () => sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      await reset();
+      await bulkUpdatePrices({ unitTypeId: UT, dateFrom: D10, dateTo: D10, applyTo: 'all', base_price: 150 });
+      assert.deepStrictEqual(await mask(), ['prices', 'closed'], 'ціна на ніч без ціни — джерело зʼявилось: ціна І явне відкриття (И14)');
+      await reset();
+      await bulkUpdatePrices({ unitTypeId: UT, dateFrom: D10, dateTo: D10, applyTo: 'all', min_stay: 2 });
+      assert.deepStrictEqual(await mask(), ['minStay'], 'масово лише мінімум — маска «мінімум»');
+      await reset();
+      await upsertPrices(UT, [{ date: D10, base_price: 150, min_stay: 2, closed: true }]);
+      assert.deepStrictEqual(await mask(), ['closed'], 'форма дня з тією ж ціною й мінімумом, змінилось лише «закрито» — маска «закрито»');
+      await reset();
+      await upsertPrices(UT, [{ date: D10, base_price: 160, min_stay: 2, closed: true }]);
+      assert.deepStrictEqual(await mask(), ['prices'], 'змінилось лише число ціни — маска «ціна», без stop_sell (Ц34)');
+      await reset();
+      await upsertPrices(UT, [{ date: D10, base_price: 160, min_stay: 2, closed: true }]);
+      assert.strictEqual(await mask(), 'none', 'нічого не змінилось — координати немає: зайвий виклик із ліміту');
+      console.log('  ok  писач календаря: маска — різниця з рядком, не склад запиту; без зміни — без координати');
     }
   });
 } finally {

@@ -198,7 +198,7 @@ function BulkEditModal({ onSave, onClose }: {
               <input className="form-input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
             </div>
             <div className="form-group">
-              <label className="form-label">{t('До')}</label>
+              <label className="form-label">{t('До')} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>{t('(остання ніч, входить)')}</span></label>
               <input className="form-input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
             </div>
           </div>

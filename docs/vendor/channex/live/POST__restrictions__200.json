@@ -1,11 +1,11 @@
 {
   "endpoint": "POST /restrictions",
   "status": 200,
-  "captured_at": "2026-09-02",
+  "captured_at": "2026-09-05",
   "payload": {
     "data": [
       {
-        "id": "0962c588-7716-4704-8ab5-9598b63a7074",
+        "id": "b039380d-b78a-4778-b76b-d203eaa39714",
         "type": "task"
       }
     ],

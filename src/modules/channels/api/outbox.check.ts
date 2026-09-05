@@ -48,6 +48,7 @@ async function cleanup() {
     await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [org]);
     await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [org]);
     await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
+    await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [`${org}_prop`]);
     await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
     await sql.run('DELETE FROM organizations WHERE id = ?', [org]);
   }
@@ -63,6 +64,14 @@ async function seed(org: string, connections: { id: string; enabled: boolean; en
   await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org, org, org]);
   await runWithOrganization(org, async () => {
     await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [`${org}_prop`, org, org, `${org}_prop`]);
+    // Блок 0.5, Б3: тариф, ЗНЯТИЙ з продажу, лишається в дзеркалі (адресат
+    // є, Ц25), але координат від змін ТИПУ більше не отримує — інакше правка
+    // базової ціни типу розсилала б на його пару, і в каталозі вендора жив
+    // би зайвий тариф (`505e5d24…` у листі). Пара є лише на першому зʼєднанні.
+    await sql.run(
+      `INSERT INTO rate_plans (id, property_id, name, code, currency, is_active) VALUES (?, ?, 'Retired', 'RET', 'EUR', FALSE)`,
+      [`${org}_ret`, `${org}_prop`],
+    );
     for (const c of connections) {
       // Два зʼєднання одного обʼєкта — у РІЗНИХ середовищах: одна пара
       // «провайдер × середовище» на обʼєкт тримається UNIQUE (0052).
@@ -91,7 +100,7 @@ async function seed(org: string, connections: { id: string; enabled: boolean; en
 
 await cleanup();
 await seed(A, [
-  { id: `${A}_c1`, enabled: true, environment: 'staging', pairs: [['RP1', 'UT1'], ['RP2', 'UT1']] },
+  { id: `${A}_c1`, enabled: true, environment: 'staging', pairs: [['RP1', 'UT1'], ['RP2', 'UT1'], [`${A}_ret`, 'UT1']] },
   { id: `${A}_c2`, enabled: false, environment: 'production', pairs: [['RP1', 'UT1']] },
 ]);
 await seed(B, [{ id: `${B}_c1`, enabled: true, environment: 'staging', pairs: [['RP1', 'UT1']] }]);
@@ -103,9 +112,10 @@ try {
   await runWithOrganization(A, async () => {
     // ── Ціна типу → кожна змаплена пара, на кожному зʼєднанні ─────────────
     const n = await noteRatesChanged(sql, { propertyId: PROP, unitTypeId: 'UT1', from: '2026-11-10', to: '2026-11-12' }, TODAY);
-    assert.strictEqual(n, 3, 'RP1×UT1 і RP2×UT1 на першому, RP1×UT1 на другому — три координати');
+    assert.strictEqual(n, 3, `RP1×UT1 і RP2×UT1 на першому, RP1×UT1 на другому — три координати, а не ${n}: пара знятого тарифу координат від зміни типу не отримує (Б3)`);
     const c1 = await queuedChanges(C1);
-    assert.deepStrictEqual(c1.map((r) => `${r.ratePlanId}×${r.unitTypeId}`).sort(), ['RP1×UT1', 'RP2×UT1']);
+    assert.deepStrictEqual(c1.map((r) => `${r.ratePlanId}×${r.unitTypeId}`).sort(), ['RP1×UT1', 'RP2×UT1'], 'знятий тариф у черзі — базова ціна типу поїхала б на пару, якої в продажу немає');
+    assert.ok(c1.every((r) => r.fields === null), 'зміна без маски — усе (NULL)');
     assert.strictEqual(c1[0].date, '2026-11-10');
     assert.strictEqual(c1[0].dateTo, '2026-11-12', 'три ночі мали лягти одним діапазоном, а не однією ніччю');
     const c2 = await queuedChanges(C2);
@@ -132,6 +142,17 @@ try {
     const scoped = (await queuedChanges(C1)).filter((r) => r.date === '2026-11-20');
     assert.deepStrictEqual(scoped.map((r) => `${r.ratePlanId}×${r.unitTypeId}`), ['RP2×UT1'], 'ціна тарифу — координата ЛИШЕ його пари, не сусіднього тарифу');
     console.log('  ok  ціна тарифу на дату → координата лише його пари');
+
+    // ── Знятий тариф, названий ЯВНО, координату отримує — так їде «закрито» ──
+    //
+    // Зняття з продажу (Ц25) кличе двері з `ratePlanId`: його пара мусить
+    // дістати координату, щоб батчер закрив її ночі. Варта Б3 стосується
+    // лише розсилки від ТИПУ. І маска писача проходить через двері як є.
+    const retired = await noteRatesChanged(sql, { propertyId: PROP, ratePlanId: `${A}_ret`, from: '2026-12-01', to: '2026-12-02', fields: ['closed'] }, TODAY);
+    assert.strictEqual(retired, 1, 'знятий тариф, названий явно, має отримати координату своєї пари — інакше він не закриється в каналі ніколи');
+    const retRow = (await queuedChanges(C1)).find((r) => r.ratePlanId === `${A}_ret`)!;
+    assert.deepStrictEqual(retRow.fields, ['closed'], 'маска писача дійшла до рядка черги через двері');
+    console.log('  ok  знятий тариф названий явно — координата є; маска проходить через двері');
 
     // ── Без типу — усі пари; без кінця — до горизонту ─────────────────────
     const all = await noteRatesChanged(sql, { propertyId: PROP, from: '2027-01-01', to: null }, TODAY);

@@ -46,6 +46,8 @@ import { availabilityValues, rateValues, type IdMap, type PairMap } from './ari-
 import { connectionInTenant } from '../data/connections.repo';
 import { connectionMirror } from '../data/mappings.repo';
 import { claimBatch, markSent, releaseFailed, retireChanges } from '../data/outbox.repo';
+import { recordSend, type SendSummary } from '../data/sends.repo';
+import type { AriValue } from './ari-payload';
 import { DEFAULT_MAX_ATTEMPTS, flushOutbox, type FlushDeps, type FlushReport, type NightSources } from '../domain/ari-batch.ts';
 import type { AvailabilityChange, RateChange } from '../port';
 import { availabilityByDay } from '@properties';
@@ -98,6 +100,35 @@ function nextDay(date: string): string {
 }
 
 export const pairKey = (ratePlanId: string, unitTypeId: string) => `${ratePlanId}|${unitTypeId}`;
+
+/** Ключі тіла, які адресують і датують, — не «поля» в сенсі журналу. */
+const ADDRESS_KEYS = new Set(['property_id', 'room_type_id', 'rate_plan_id', 'date', 'date_from', 'date_to']);
+
+/**
+ * Що було в тілі — для журналу відправлень (Блок 0.5 п.4): ключі значень
+ * (те, що звіряє контролер із таблицею тесту), наші координати й межі дат.
+ * Рахується тут, а не в журналі: імена ключів — вендорські, і читати їх має
+ * право лише адаптер (И1).
+ */
+export function summarizeSend(values: AriValue[], ours: (AvailabilityChange | RateChange)[]): SendSummary {
+  const fields = new Set<string>();
+  let from: string | null = null;
+  let to: string | null = null;
+  for (const v of values) {
+    for (const k of Object.keys(v)) if (!ADDRESS_KEYS.has(k)) fields.add(k);
+    const a = String(v.date_from ?? v.date ?? '');
+    const b = String(v.date_to ?? v.date ?? '');
+    if (a && (from === null || a < from)) from = a;
+    if (b && (to === null || b > to)) to = b;
+  }
+  const unitTypeIds = [...new Set(ours.map((c) => c.unitTypeId))];
+  const pairs = new Map<string, { ratePlanId: string; unitTypeId: string }>();
+  for (const c of ours) {
+    const rp = (c as RateChange).ratePlanId;
+    if (rp) pairs.set(pairKey(rp, c.unitTypeId), { ratePlanId: rp, unitTypeId: c.unitTypeId });
+  }
+  return { fields: [...fields].sort(), unitTypeIds, pairs: [...pairs.values()], from, to };
+}
 
 /**
  * Дзеркало одного зʼєднання, прочитане для роботи: адресати обох смуг і
@@ -253,21 +284,39 @@ export async function ariFlush(
         ratePlanId: r.ratePlanId ?? undefined,
         date: r.date,
         dateTo: r.dateTo ?? undefined,
+        fields: r.fields,
         attempts: r.attempts,
       }));
     },
 
+    // Кожен виклик — рядком журналу з тілом (Блок 0.5 п.4): і успішний із
+    // розпискою, і відхилений зі статусом. Журнал не має права зламати
+    // розсилку: його збій — у серверний лог, координати живуть своїм життям.
     send: async (kind, values) => {
-      try {
-        if (kind === 'availability') {
-          const body = availabilityValues(remotePropertyId, values as AvailabilityChange[], unitTypes);
-          const answer = await client.publishAvailability(connectionId, body.values);
-          return { warnings: answer.warnings, unmapped: body.unmapped, receipt: answer.taskIds.join(',') || undefined };
+      const body = kind === 'availability'
+        ? availabilityValues(remotePropertyId, values as AvailabilityChange[], unitTypes)
+        : rateValues(remotePropertyId, values as RateChange[], ratePlans);
+      const log = async (status: number | null, taskId: string | null, error: string | null) => {
+        if (body.values.length === 0) return; // нічого не пішло — нема що журналити
+        try {
+          await recordSend({
+            connectionId, lane: kind, requestBody: { values: body.values }, responseStatus: status, taskId, error,
+            rowsCount: body.values.length, summary: summarizeSend(body.values, values),
+          });
+        } catch (e) {
+          console.error('cm_sends: failed to record a send', e);
         }
-        const body = rateValues(remotePropertyId, values as RateChange[], ratePlans);
-        const answer = await client.publishRestrictions(connectionId, body.values);
-        return { warnings: answer.warnings, unmapped: body.unmapped, receipt: answer.taskIds.join(',') || undefined };
+      };
+      try {
+        const answer = kind === 'availability'
+          ? await client.publishAvailability(connectionId, body.values)
+          : await client.publishRestrictions(connectionId, body.values);
+        const receipt = answer.taskIds.join(',') || undefined;
+        await log(200, receipt ?? null, answer.warnings.length ? `${answer.warnings.length} claim(s)` : null);
+        return { warnings: answer.warnings, unmapped: body.unmapped, receipt };
       } catch (e) {
+        const status = e instanceof ChannexError ? e.status : null;
+        await log(status, null, String((e as Error)?.message ?? e));
         throw markTransient(e);
       }
     },

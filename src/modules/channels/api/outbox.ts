@@ -49,3 +49,5 @@ export {
   noteAvailabilityChanged, noteRatesChanged, clipToHorizon, lastNight, addDays,
 } from '../data/outbox-notes';
 export type { AvailabilityNote, RateNote } from '../data/outbox-notes';
+export type { RateField } from '../domain/ari-batch.ts';
+export { RATE_FIELDS } from '../domain/ari-batch.ts';

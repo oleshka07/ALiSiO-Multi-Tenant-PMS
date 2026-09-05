@@ -83,8 +83,25 @@ function fromAlias(spec) {
   return null;
 }
 
+/**
+ * `next/<something>` -> `next/<something>.js` — те саме правило, що в
+ * `scripts/lib/module-aliases.mjs`, і з тієї ж причини: фасад модуля
+ * (`@pricing`, `@channels`) тягне обробники, а ті — `next/server`, якого node
+ * без бандлера не знаходить. Цей файл тримає власну копію завантажувача, бо
+ * ходить на сервері поза репозиторієм; 05.09.2026 копії розійшлись саме тут
+ * (двері `@channels/outbox` почали питати `@pricing`), і `check-hotels`
+ * побачив це як «не запускається під голим node». Правило, не список.
+ */
+function nextGap(spec) {
+  if (!spec.startsWith('next/') || spec.endsWith('.js')) return null;
+  const file = path.join(ROOT, 'node_modules', `${spec}.js`);
+  return fs.existsSync(file) ? pathToFileURL(file).href : null;
+}
+
 registerHooks({
   resolve(spec, ctx, next) {
+    const gap = nextGap(spec);
+    if (gap) return { url: gap, shortCircuit: true };
     const mapped = fromAlias(spec);
     if (mapped) {
       const file = onDisk(mapped);

@@ -4283,6 +4283,7 @@ function runMigrations(database: any) {
       attempts        INTEGER NOT NULL DEFAULT 0,
       last_error      TEXT,
       receipt         TEXT,
+      field_mask      INTEGER,
       created_at      TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
@@ -4303,6 +4304,13 @@ function runMigrations(database: any) {
     if (!obCols.includes('receipt')) {
       database.exec('ALTER TABLE cm_outbox ADD COLUMN receipt TEXT');
       console.log('[DB] Added receipt to cm_outbox');
+    }
+    // Блок 0.5 (0066): маска змінених полів — біти в порядку RATE_FIELDS
+    // домену; NULL = усі (повний синк, старі рядки). Лист Channex 05.09:
+    // тіло несло весь стан замість дельти. І в CREATE, і тут (AGENTS §4).
+    if (!obCols.includes('field_mask')) {
+      database.exec('ALTER TABLE cm_outbox ADD COLUMN field_mask INTEGER');
+      console.log('[DB] Added field_mask to cm_outbox');
     }
   } catch (e: any) {
     console.error('[DB] cm_outbox stay_date_to:', e.message);
@@ -4335,6 +4343,30 @@ function runMigrations(database: any) {
   database.exec('CREATE INDEX IF NOT EXISTS idx_cm_outbox_org ON cm_outbox(organization_id)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_cm_outbox_pending ON cm_outbox(connection_id, kind) WHERE sent_at IS NULL AND claimed_at IS NULL');
   database.exec('CREATE INDEX IF NOT EXISTS idx_cm_outbox_claimed ON cm_outbox(connection_id) WHERE claimed_at IS NOT NULL AND sent_at IS NULL');
+
+  // Журнал відправлень з ТІЛОМ (Блок 0.5 п.4, 0066): кожен виклик до
+  // менеджера каналів — рядком: смуга, тіло дослівно, статус, розписка,
+  // скільки значень і які ключі (summary, JSON нашими координатами).
+  // Розписка на координаті каже, ЩО поїхало, і не каже, з якими ПОЛЯМИ — а
+  // саме за поля вендор відхилив сертифікацію 05.09. Невдалий виклик — теж
+  // рядок. Без ПІБ і без секретів, тож ретенція 90 днів кроном GDPR.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS cm_sends (
+      id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      connection_id   TEXT NOT NULL REFERENCES cm_connections(id) ON DELETE CASCADE,
+      lane            TEXT NOT NULL CHECK (lane IN ('availability', 'rate')),
+      sent_at         TEXT NOT NULL DEFAULT (datetime('now')),
+      task_id         TEXT,
+      request_body    TEXT NOT NULL,
+      response_status INTEGER,
+      error           TEXT,
+      rows_count      INTEGER NOT NULL DEFAULT 0,
+      summary         TEXT
+    )
+  `);
+  database.exec('CREATE INDEX IF NOT EXISTS idx_cm_sends_org ON cm_sends(organization_id)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_cm_sends_connection ON cm_sends(connection_id, sent_at)');
 
   // Сирі вхідні події. Вебхук кладе рядок і відповідає 200 — жодного запиту
   // до менеджера каналів і жодної доменної роботи в ньому: повільна
