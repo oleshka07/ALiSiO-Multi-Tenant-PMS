@@ -226,7 +226,35 @@ try {
     'повернення теж кладе координату до горизонту — канал має відкрити ночі, а не чекати наступної ціни');
   console.log('  ok  зняти з продажу: дзеркало лишається, ціна зникає для всіх, координата на пару до горизонту; повернення — назад');
 
-  console.log('rate-plans: тариф свого обʼєкта, код унікальний на обʼєкті, валюта замкнена ціною, видалення лише чистого, зняття з продажу закриває канал');
+  // ── 8. Режим ціни — за номер чи за особу — обирає готель; замок після заведення ─
+  //
+  // Блок 2.2: у вендора режим тарифу задає набір опцій заселеності, а набір
+  // опцій після створення не переробити (виміряно: PUT з options — 422 або
+  // нуль змін). Тому режим обирається при створенні й ЗАМИКАЄТЬСЯ, щойно
+  // тариф заведено (є в дзеркалі); без вибору — «за особу», як заводились усі
+  // тарифи досі. BB заведено у вендора (дзеркало зі сцени 7). Дві осі
+  // (інваріант 26): обидва режими в одній сцені.
+  const room = await runWithOrganization(A, () => createRatePlan({
+    propertyId: PROP(A), name: 'Room rate', code: 'ROOM', currency: 'USD', mealPlan: null, childExtraGross: null, sellMode: 'per_room',
+  }));
+  assert.strictEqual(room.sellMode, 'per_room', 'режим «за номер» мав зберегтись');
+  const listedModes = await runWithOrganization(A, () => listRatePlans(PROP(A)));
+  assert.strictEqual(listedModes.find((p) => p.id === bb.id)?.sellMode, 'per_person', 'без вибору — «за особу»: так заводились усі тарифи досі');
+  assert.strictEqual(listedModes.find((p) => p.id === bb.id)?.mapped, true, 'екран має бачити, що тариф заведено у вендора');
+  assert.strictEqual(listedModes.find((p) => p.id === room.id)?.mapped, false);
+  await runWithOrganization(A, () => assert.rejects(
+    () => createRatePlan({ propertyId: PROP(A), name: 'Bad', code: 'BAD', currency: 'USD', mealPlan: null, childExtraGross: null, sellMode: 'per_night' as never }),
+    /sell_mode_invalid/, 'невідомий режим — відмова з назвою, не тихий дефолт',
+  ));
+  const flipped = await runWithOrganization(A, () => updateRatePlan(room.id, { sellMode: 'per_person' }));
+  assert.strictEqual(flipped.sellMode, 'per_person', 'незаведений тариф міняє режим вільно');
+  await runWithOrganization(A, () => assert.rejects(() => updateRatePlan(bb.id, { sellMode: 'per_room' }), /sell_mode_locked/,
+    'заведений тариф: опції на тому боці не переробити — режим замкнений'));
+  const sameMode = await runWithOrganization(A, () => updateRatePlan(bb.id, { sellMode: 'per_person', name: 'B&B' }));
+  assert.strictEqual(sameMode.sellMode, 'per_person', 'той самий режим у запиті — не зміна, решта полів зберігається');
+  console.log('  ok  режим ціни обирає готель; без вибору — за особу; заведений тариф режиму не міняє');
+
+  console.log('rate-plans: тариф свого обʼєкта, код унікальний на обʼєкті, валюта замкнена ціною, видалення лише чистого, зняття з продажу закриває канал, режим ціни замкнений заведенням');
 } finally {
   await cleanup();
 }

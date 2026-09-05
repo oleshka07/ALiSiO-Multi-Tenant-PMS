@@ -78,6 +78,11 @@ Charter описує, ЯК називати. Він не вимагає нега
   - `gift_cards.status`: `draft | active | paid | activated | cancelled |
     expired`
   - `tasks.status`: `todo | in_progress | done | cancelled`
+  - `rate_plans.sell_mode`: `per_room | per_person` — як тариф рахує гостей
+    (Ц26): за номер — одна ціна на будь-яку кількість гостей, у вендора одна
+    опція заселеності; за особу — своя ціна на кожну кількість дорослих,
+    опція на кожну. Без вибору — `per_person`; замкнений після заведення
+    у вендора. CHECK не ставиться (0059, 0063) — перевіряє писач
   - `fees_taxes.type` (**множник**, як розмазати суму): `per_night |
     per_stay | per_person | per_person_per_night | percentage`
   - `fees_taxes.applies_to` (**кого рахувати**): `all | adults`

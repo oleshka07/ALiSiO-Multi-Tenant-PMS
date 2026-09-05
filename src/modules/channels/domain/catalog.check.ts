@@ -103,7 +103,7 @@ const HOTEL_A: Pick<CatalogDeps, 'property' | 'unitTypes' | 'ratePlans'> = {
   ],
   ratePlans: [
     {
-      id: 'rp_bar', code: 'BAR', title: 'Best Available', currency: 'EUR', mealPlan: 'breakfast',
+      id: 'rp_bar', code: 'BAR', title: 'Best Available', currency: 'EUR', mealPlan: 'breakfast', sellMode: 'per_person',
       // Той самий тариф на ДВОХ типах — саме тут ламається дзеркало на одному ключі.
       on: [
         { unitTypeId: 'ut_std', occupancies: [1, 2] },
@@ -112,7 +112,7 @@ const HOTEL_A: Pick<CatalogDeps, 'property' | 'unitTypes' | 'ratePlans'> = {
       sellable: true,
     },
     {
-      id: 'rp_nr', code: 'NR', title: 'Non-refundable', currency: 'EUR', mealPlan: null,
+      id: 'rp_nr', code: 'NR', title: 'Non-refundable', currency: 'EUR', mealPlan: null, sellMode: 'per_room',
       on: [{ unitTypeId: 'ut_std', occupancies: [2] }],
       sellable: true,
     },
@@ -128,10 +128,10 @@ const HOTEL_B: Pick<CatalogDeps, 'property' | 'unitTypes' | 'ratePlans'> = {
     { id: 'b_draft', code: 'SUITE', title: 'Suite', roomCount: 0, maxAdults: 2, maxChildren: 0, defaultOccupancy: 2 },
   ],
   ratePlans: [
-    { id: 'b_bar', code: 'BAR', title: 'BAR', currency: 'CZK', mealPlan: null, on: [{ unitTypeId: 'b_ut', occupancies: [2] }], sellable: true },
-    { id: 'b_eb', code: 'EB', title: 'Early Bird', currency: 'CZK', mealPlan: null, on: [{ unitTypeId: 'b_ut', occupancies: [1, 2] }], sellable: true },
+    { id: 'b_bar', code: 'BAR', title: 'BAR', currency: 'CZK', mealPlan: null, sellMode: 'per_room', on: [{ unitTypeId: 'b_ut', occupancies: [2] }], sellable: true },
+    { id: 'b_eb', code: 'EB', title: 'Early Bird', currency: 'CZK', mealPlan: null, sellMode: 'per_person', on: [{ unitTypeId: 'b_ut', occupancies: [1, 2] }], sellable: true },
     // Заведений, цін не поставили. Інваріант 17: НАЗВАТИ, не продати.
-    { id: 'b_empty', code: 'EMPTY', title: 'Без цін', currency: 'CZK', mealPlan: null, on: [], sellable: false },
+    { id: 'b_empty', code: 'EMPTY', title: 'Без цін', currency: 'CZK', mealPlan: null, sellMode: 'per_person', on: [], sellable: false },
   ],
 };
 

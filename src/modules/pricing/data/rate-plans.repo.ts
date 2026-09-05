@@ -3,6 +3,7 @@ import { getSql, type Sql } from '@core/db/async';
 import { currentOrganizationId } from '@core/auth/tenant-context';
 import { money } from '@core/money';
 import { noteRatesChanged } from '@channels/outbox';
+import { SELL_MODES, type SellMode } from '../domain/types';
 
 /**
  * Тарифи обʼєкта — створити, змінити, перелічити. Екран «Тарифи».
@@ -42,6 +43,15 @@ import { noteRatesChanged } from '@channels/outbox';
  *
  * Повернення (`is_active = TRUE`) — та сама дорога: координати до горизонту,
  * ціни з календаря знову їдуть. Дзеркало не чіпається в обидва боки.
+ *
+ * ── Режим ціни (Блок 2.2, Ц26) ──────────────────────────────────────────
+ *
+ * `sell_mode` обирає готель при створенні: «за номер» (`per_room`) чи «за
+ * особу» (`per_person`); без вибору — за особу, як заводились усі тарифи
+ * досі. Режим задає набір опцій заселеності у вендора, а набір опцій після
+ * створення не переробити (виміряно: PUT з options — нуль змін або 422), тож
+ * заведений тариф (є в дзеркалі) режиму не міняє — `sell_mode_locked`.
+ * Незаведений міняє вільно.
  */
 
 export interface RatePlanSetting {
@@ -54,6 +64,10 @@ export interface RatePlanSetting {
   /** Ціна дитини за ніч на цьому тарифі (Ц12). `null` — готель не називав. */
   childExtraGross: number | null;
   isActive: boolean;
+  /** Як рахує гостей: за номер чи за особу (Ц26). Замкнений після заведення у вендора. */
+  sellMode: SellMode;
+  /** Заведений у менеджері каналів (є в дзеркалі): не видаляється, режим не міняє. */
+  mapped: boolean;
   /** Коди типів номерів, під якими тариф має хоч одну ціну на дату. Порожньо — не продається. */
   pricedUnitTypes: string[];
 }
@@ -65,6 +79,8 @@ export interface CreateRatePlanInput {
   currency: string;
   mealPlan: string | null;
   childExtraGross: number | null;
+  /** Порожньо — `per_person`. */
+  sellMode?: SellMode | null;
 }
 
 export interface UpdateRatePlanInput {
@@ -75,6 +91,8 @@ export interface UpdateRatePlanInput {
   childExtraGross?: number | null;
   /** `false` — зняти з продажу, `true` — повернути. Див. шапку. */
   isActive?: boolean;
+  /** Лише доки тариф не заведено у вендора — інакше `sell_mode_locked`. */
+  sellMode?: SellMode;
 }
 
 const CODE = /^[A-Z0-9][A-Z0-9_-]{0,19}$/;
@@ -102,7 +120,13 @@ function normalizeChild(value: number | null | undefined): number | null {
   return money(n);
 }
 
-function toSetting(row: Record<string, any>, priced: string[]): RatePlanSetting {
+function normalizeSellMode(value: unknown, fallback: SellMode): SellMode {
+  if (value === null || value === undefined || value === '') return fallback;
+  if (!SELL_MODES.includes(value as SellMode)) throw new Error('sell_mode_invalid');
+  return value as SellMode;
+}
+
+function toSetting(row: Record<string, any>, priced: string[], mapped: boolean): RatePlanSetting {
   return {
     id: String(row.id),
     propertyId: String(row.property_id),
@@ -112,8 +136,21 @@ function toSetting(row: Record<string, any>, priced: string[]): RatePlanSetting 
     mealPlan: row.meal_plan == null ? null : String(row.meal_plan),
     childExtraGross: row.child_extra_gross == null ? null : Number(row.child_extra_gross),
     isActive: Boolean(Number(row.is_active)),
+    sellMode: normalizeSellMode(row.sell_mode, 'per_person'),
+    mapped,
     pricedUnitTypes: priced,
   };
+}
+
+/** Тарифи, заведені у вендора, — ті, що є в дзеркалі хоч на одному зʼєднанні. */
+async function mappedOf(t: Sql, planIds: string[]): Promise<Set<string>> {
+  if (planIds.length === 0) return new Set();
+  const rows = await t.rows<any>(
+    `SELECT DISTINCT local_id FROM cm_mappings
+      WHERE entity_type = 'rate_plan' AND local_id IN (${planIds.map(() => '?').join(', ')})`,
+    planIds,
+  );
+  return new Set(rows.map((r) => String(r.local_id)));
 }
 
 /** Обʼєкт свого орендаря, або «not found». */
@@ -171,8 +208,10 @@ export async function listRatePlans(propertyId: string): Promise<RatePlanSetting
       ORDER BY rp.priority, rp.code`,
     [propertyId, organizationId],
   );
-  const priced = await pricedUnitTypesOf(sql, rows.map((r) => String(r.id)));
-  return rows.map((r) => toSetting(r, priced.get(String(r.id)) ?? []));
+  const ids = rows.map((r) => String(r.id));
+  const priced = await pricedUnitTypesOf(sql, ids);
+  const mapped = await mappedOf(sql, ids);
+  return rows.map((r) => toSetting(r, priced.get(String(r.id)) ?? [], mapped.has(String(r.id))));
 }
 
 export async function createRatePlan(input: CreateRatePlanInput): Promise<RatePlanSetting> {
@@ -181,6 +220,7 @@ export async function createRatePlan(input: CreateRatePlanInput): Promise<RatePl
   const currency = normalizeCurrency(input.currency);
   const child = normalizeChild(input.childExtraGross);
   const meal = input.mealPlan ? String(input.mealPlan) : null;
+  const sellMode = normalizeSellMode(input.sellMode, 'per_person');
   const id = `rp_${crypto.randomBytes(8).toString('hex')}`;
 
   return getSql().tx(async (t) => {
@@ -188,16 +228,16 @@ export async function createRatePlan(input: CreateRatePlanInput): Promise<RatePl
     if (await codeTaken(t, property.id, code, null)) throw new Error('code_taken');
     const next = await t.row<any>('SELECT COALESCE(MAX(priority), 0) + 1 AS n FROM rate_plans WHERE property_id = ?', [property.id]);
     await t.run(
-      `INSERT INTO rate_plans (id, property_id, name, code, pricing_model, currency, meal_plan, child_extra_gross, priority)
-       VALUES (?, ?, ?, ?, 'standard', ?, ?, ?, ?)`,
-      [id, property.id, name, code, currency, meal, child, Number(next?.n ?? 1)],
+      `INSERT INTO rate_plans (id, property_id, name, code, pricing_model, currency, meal_plan, child_extra_gross, sell_mode, priority)
+       VALUES (?, ?, ?, ?, 'standard', ?, ?, ?, ?, ?)`,
+      [id, property.id, name, code, currency, meal, child, sellMode, Number(next?.n ?? 1)],
     );
     // Ц16: новий тариф — нова пара в каналі. Пар ще немає (ціни немає), тож
     // двері напишуть нуль; але писач тарифів проходить через двері завжди —
     // щойно пара зʼявиться, зміни тарифу поїдуть.
     await noteRatesChanged(t, { propertyId: property.id, ratePlanId: id, from: todayIso(), to: null });
     const row = await t.row<any>('SELECT * FROM rate_plans WHERE id = ?', [id]);
-    return toSetting(row, []);
+    return toSetting(row, [], false);
   });
 }
 
@@ -226,6 +266,15 @@ export async function updateRatePlan(id: string, patch: UpdateRatePlanInput): Pr
     // Літералом, не параметром: SQLite не привʼязує boolean, а `1` у колонку
     // BOOLEAN відхиляє Postgres (check-boolean-flags).
     if (patch.isActive !== undefined) sets.push(patch.isActive ? 'is_active = TRUE' : 'is_active = FALSE');
+    const wasMapped = (await mappedOf(t, [id])).has(id);
+    if (patch.sellMode !== undefined) {
+      const mode = normalizeSellMode(patch.sellMode, normalizeSellMode(before.sell_mode, 'per_person'));
+      if (mode !== normalizeSellMode(before.sell_mode, 'per_person')) {
+        // Набір опцій заселеності у вендора не переробити — режим замкнений.
+        if (wasMapped) throw new Error('sell_mode_locked');
+        sets.push('sell_mode = ?'); values.push(mode);
+      }
+    }
 
     if (sets.length) {
       sets.push('updated_at = ?'); values.push(new Date().toISOString());
@@ -237,7 +286,7 @@ export async function updateRatePlan(id: string, patch: UpdateRatePlanInput): Pr
     }
     const row = await t.row<any>('SELECT * FROM rate_plans WHERE id = ?', [id]);
     const priced = await pricedUnitTypesOf(t, [id]);
-    return toSetting(row, priced.get(id) ?? []);
+    return toSetting(row, priced.get(id) ?? [], wasMapped);
   });
 }
 

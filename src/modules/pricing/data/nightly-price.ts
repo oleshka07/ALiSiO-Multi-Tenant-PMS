@@ -69,6 +69,13 @@ export interface NightlyPrices {
    */
   occupancyPriced: boolean;
   /**
+   * Тариф «за номер» (`sell_mode = per_room`, Ц26): ціна не залежить від
+   * кількості гостей — надбавка заселеності не застосовується, матриця
+   * читається на базову заселеність, і `occupancyPriced` стоїть `true`, бо
+   * доплати за гостя тут не буває за означенням.
+   */
+  perRoom?: boolean;
+  /**
    * Партія не вміщається в тип номера — і тоді всі ночі в `missing`.
    *
    * До Ц12 це ловилося ВИПАДКОВО: `persons` складав дорослих із дітьми, тож
@@ -186,11 +193,17 @@ export async function priceNights(input: {
   // продається: назвати нуль від імені готелю ми не можемо.
   const plan = ratePlanId
     ? await sql.row<any>(
-        'SELECT child_extra_gross, is_active FROM rate_plans WHERE id = ? AND property_id = ?',
+        'SELECT child_extra_gross, is_active, sell_mode FROM rate_plans WHERE id = ? AND property_id = ?',
         [ratePlanId, owner?.property_id ?? ''],
       )
     : null;
   const childExtraGross = plan?.child_extra_gross ?? null;
+  // Тариф «за номер» (Ц26): ціна однакова на будь-яку кількість гостей, тож
+  // матриця й надбавка рахуються на БАЗОВУ заселеність, а не на партію.
+  // Місткість при цьому перевіряється на справжню партію — вище.
+  const perRoom = plan?.sell_mode === 'per_room';
+  const baseOccupancy = Number(owner?.base_occupancy) || 2;
+  const quoteAdults = perRoom ? baseOccupancy : adults;
 
   // Тариф знято з продажу (Блок 2.1): жодне джерело не продає його — ні
   // власний рядок, ні матриця, ні база. Рядки в календарі лишаються лежати
@@ -204,7 +217,7 @@ export async function priceNights(input: {
 
   const quote = owner
     ? quoteStay({
-      checkIn, nights, adults, children, childExtraGross, unitTypeId,
+      checkIn, nights, adults: quoteAdults, children, childExtraGross, unitTypeId,
       matrix,
       losTiers: await loadTierRows(owner.organization_id, owner.property_id),
     })
@@ -245,8 +258,6 @@ export async function priceNights(input: {
     closedNights,
   };
 
-  const baseOccupancy = Number(owner?.base_occupancy) || 2;
-
   /**
    * What the extra guests cost on top of a rate plan's price, per the rate card.
    *
@@ -265,8 +276,8 @@ export async function priceNights(input: {
    * this day, and only the uplift is unknown.
    */
   const surcharge = (date: string): number | null => {
-    if (adults === baseOccupancy) return 0;
-    const at = matrixPriceFor(matrix, unitTypeId, adults, date);
+    if (quoteAdults === baseOccupancy) return 0;
+    const at = matrixPriceFor(matrix, unitTypeId, quoteAdults, date);
     const atBase = matrixPriceFor(matrix, unitTypeId, baseOccupancy, date);
     if (at == null || atBase == null) return null;
     return money(at - atBase);
@@ -321,7 +332,13 @@ export async function priceNights(input: {
     missing.push(date);
   }
 
-  return { nights: out, missing, total: money(out.reduce((s, n) => s + n.price, 0)), occupancyPriced, closed: closedNights, restrictions };
+  return {
+    nights: out, missing, total: money(out.reduce((s, n) => s + n.price, 0)),
+    // «За номер»: доплати за гостя не буває — викликач не додає extra_person_charge.
+    occupancyPriced: perRoom || occupancyPriced,
+    ...(perRoom ? { perRoom: true } : {}),
+    closed: closedNights, restrictions,
+  };
 }
 
 /**

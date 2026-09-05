@@ -185,6 +185,33 @@ const AXES = [
     scope: /\/\/ ── 7\. Зняти з продажу[\s\S]*?(?=\n\} finally)/,
     distinct: /isActive: (true|false) \}/g, min: 2,
   },
+  // Блок 2.2: режим ціни тарифу — обидва режими в кожній сцені, що про нього
+  // стверджує: з одним «режим не впливає» і «режим завжди той самий»
+  // невідрізнювані.
+  {
+    file: 'src/modules/pricing/data/rate-plans.repo.check.ts',
+    axis: 'режим ціни (sell_mode) у сцені про вибір і замок режиму',
+    scope: /\/\/ ── 8\. Режим ціни[\s\S]*?(?=\n\} finally)/,
+    distinct: /'(per_room|per_person)'/g, min: 2,
+  },
+  {
+    file: 'src/modules/pricing/data/nightly-price.check.ts',
+    axis: 'режим ціни (sell_mode) у сцені «за номер»',
+    scope: /\/\/ ── Режим «за номер»[\s\S]*?(?=\n\/\/ ── Викликач без)/,
+    distinct: /'(per_room|per_person)'/g, min: 2,
+  },
+  {
+    file: 'src/modules/pricing/data/property-rate-plans.check.ts',
+    axis: 'режим ціни (sell_mode) у фікстурі шва',
+    scope: /async function seed\([\s\S]*?\n\}\n/,
+    distinct: /'(per_room|per_person)'/g, min: 2,
+  },
+  {
+    file: 'src/modules/channels/channex/catalog-target.check.ts',
+    axis: 'режим ціни (sellMode) у тілі тарифу',
+    scope: /[\s\S]+/,
+    distinct: /sellMode: '(per_room|per_person)'/g, min: 2,
+  },
 ];
 
 /** Коментарі геть — блокові й рядкові; `://` у рядках лишається. */

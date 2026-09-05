@@ -29,6 +29,7 @@ import { ArrowLeft, Plus, Save, Loader2, Tag } from 'lucide-react';
 interface RatePlan {
   id: string; propertyId: string; name: string; code: string; currency: string;
   mealPlan: string | null; childExtraGross: number | null; isActive: boolean; pricedUnitTypes: string[];
+  sellMode: 'per_room' | 'per_person'; mapped: boolean;
 }
 
 const MEAL_OPTIONS = ['', 'room_only', 'breakfast', 'half_board', 'full_board', 'all_inclusive'] as const;
@@ -45,7 +46,7 @@ export default function RatePlansSettingsPage() {
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   // Валюти за замовчуванням немає навмисно (`check-currency`): її називає готель.
-  const [form, setForm] = useState({ name: '', code: '', currency: '', meal_plan: '', child_extra_gross: '' });
+  const [form, setForm] = useState({ name: '', code: '', currency: '', meal_plan: '', child_extra_gross: '', sell_mode: 'per_person' });
 
   const ERRORS: Record<string, string> = {
     code_taken: tUi('Такий код уже є на цьому обʼєкті'),
@@ -57,6 +58,8 @@ export default function RatePlansSettingsPage() {
     has_prices: tUi('Під тарифом є ціни — спершу приберіть їх у календарі «Ціни»'),
     mapped: tUi('Тариф уже заведено в менеджері каналів — видалити не можна'),
     in_use: tUi('На тариф є бронювання — видалити не можна'),
+    sell_mode_invalid: tUi('Режим ціни — «за номер» або «за особу»'),
+    sell_mode_locked: tUi('Режим ціни не змінити: тариф уже заведено в менеджері каналів'),
   };
   const explain = (code: string | undefined) => (code && ERRORS[code]) || tUi('Не вдалося. Спробуйте ще раз');
 
@@ -79,8 +82,8 @@ export default function RatePlansSettingsPage() {
   const startEdit = (p: RatePlan | null) => {
     setEditing(p ? p.id : 'new');
     setForm(p
-      ? { name: p.name, code: p.code, currency: p.currency, meal_plan: p.mealPlan ?? '', child_extra_gross: p.childExtraGross == null ? '' : String(p.childExtraGross) }
-      : { name: '', code: '', currency: plans[0]?.currency ?? '', meal_plan: '', child_extra_gross: '' });
+      ? { name: p.name, code: p.code, currency: p.currency, meal_plan: p.mealPlan ?? '', child_extra_gross: p.childExtraGross == null ? '' : String(p.childExtraGross), sell_mode: p.sellMode }
+      : { name: '', code: '', currency: plans[0]?.currency ?? '', meal_plan: '', child_extra_gross: '', sell_mode: 'per_person' });
     setNotice(null);
   };
 
@@ -190,13 +193,28 @@ export default function RatePlansSettingsPage() {
                 </select>
               </label>
               <label>{tUi('Ціна дитини за ніч')}<input className="form-input" type="number" min={0} step="0.01" value={form.child_extra_gross} onChange={(e) => setForm({ ...form, child_extra_gross: e.target.value })} placeholder={tUi('не вказано')} /></label>
+              {/* Режим ціни (Ц26): обирається при створенні; заведений у каналі тариф його не міняє — набір опцій там не переробити. */}
+              <label style={{ minWidth: 0 }}>{tUi('Ціна рахується')}
+                <select
+                  className="form-select"
+                  style={{ width: '100%', minWidth: 0 }}
+                  value={form.sell_mode}
+                  disabled={editing !== 'new' && !!plans.find((p) => p.id === editing)?.mapped}
+                  onChange={(e) => setForm({ ...form, sell_mode: e.target.value })}
+                >
+                  <option value="per_person">{tUi('за особу')}</option>
+                  <option value="per_room">{tUi('за номер')}</option>
+                </select>
+              </label>
             </div>
             <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
               <button className="btn btn-primary" disabled={busy} onClick={save}>{busy ? <Loader2 size={14} className="animate-pulse" /> : <Save size={14} />} {tUi('Зберегти')}</button>
               <button className="btn" disabled={busy} onClick={() => setEditing(null)}>{tUi('Скасувати')}</button>
             </div>
             <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-tertiary)' }}>
-              {tUi('Валюту можна змінити лише доки під тарифом немає цін: у менеджері каналів тариф заведено з нею')}
+              <div>{tUi('Валюту можна змінити лише доки під тарифом немає цін: у менеджері каналів тариф заведено з нею')}</div>
+              <div>{tUi('За особу — своя ціна на кожну кількість дорослих (надбавка з матриці заселеності); за номер — одна ціна на будь-яку кількість гостей, без надбавок')}</div>
+              <div>{tUi('Режим ціни замикається, щойно тариф заведено в менеджері каналів: набір опцій заселеності там не переробити')}</div>
             </div>
           </div>
         )}
@@ -219,6 +237,7 @@ export default function RatePlansSettingsPage() {
                   <th>{tUi('Валюта')}</th>
                   <th>{tUi('Харчування')}</th>
                   <th>{tUi('Ціна дитини за ніч')}</th>
+                  <th>{tUi('Ціна рахується')}</th>
                   <th>{tUi('Є ціна на типах')}</th>
                   <th>{tUi('Стан')}</th>
                   <th></th>
@@ -232,6 +251,7 @@ export default function RatePlansSettingsPage() {
                     <td>{p.currency}</td>
                     <td>{mealLabel(p.mealPlan ?? '')}</td>
                     <td>{p.childExtraGross == null ? '—' : p.childExtraGross}</td>
+                    <td>{p.sellMode === 'per_room' ? tUi('за номер') : tUi('за особу')}</td>
                     <td>{p.pricedUnitTypes.length ? p.pricedUnitTypes.join(', ') : <span style={{ color: 'var(--accent-warning)' }}>{tUi('немає — не продається')}</span>}</td>
                     <td>
                       {p.isActive

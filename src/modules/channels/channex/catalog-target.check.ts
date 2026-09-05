@@ -75,7 +75,7 @@ try {
   // ── Тариф: закритий, без ціни, з опціями на кожну заселеність ─────────
   const plan: CatalogRatePlan = {
     id: 'rp', code: 'BAR', title: 'Best Available', currency: 'EUR',
-    mealPlan: 'breakfast', on: [], sellable: true,
+    mealPlan: 'breakfast', on: [], sellable: true, sellMode: 'per_person',
   };
   mock.queue.push({ kind: 'created', id: 'rp-1' });
   const made = await target.createRatePlan('prop-1', 'rt-1', plan, [1, 2, 3]);
@@ -87,6 +87,10 @@ try {
     'тариф створено ВІДКРИТИМ: між каталогом і фазою 4 його ціною стане нуль (INVENTORY §3.1, інваріант 17)',
   );
   assert.strictEqual(rpBody.meal_type, 'breakfast');
+  // Блок 2.2: режим їде ЯВНО. Без поля вендор ставить per_room, а тариф
+  // per_room з опцією на кожну заселеність суперечить сам собі (HANDOVER §7):
+  // саме так були заведені всі тарифи до 05.09.2026.
+  assert.strictEqual(rpBody.sell_mode, 'per_person', 'режим тарифу не поїхав — вендор мовчки поставить per_room');
 
   const options = rpBody.options as Record<string, unknown>[];
   assert.strictEqual(options.length, 3, 'опція мусить бути на кожну заселеність');
@@ -131,6 +135,14 @@ try {
     'чуже значення харчування поїхало як є — 422 валить створення всього каталогу',
   );
   console.log('  ok  невпізнане харчування не надсилається замість того, щоб завалити каталог');
+
+  // ── «За номер»: режим per_room і одна опція (Блок 2.2) ───────────────
+  mock.queue.push({ kind: 'created', id: 'rp-4' });
+  await target.createRatePlan('prop-1', 'rt-1', { ...plan, code: 'ROOM', sellMode: 'per_room' }, [2]);
+  const roomBody = mock.calls.at(-1)!.body.rate_plan as Record<string, unknown>;
+  assert.strictEqual(roomBody.sell_mode, 'per_room', 'тариф «за номер» мав поїхати як per_room');
+  assert.strictEqual((roomBody.options as unknown[]).length, 1, '«за номер» — одна опція, на максимальну місткість');
+  console.log('  ok  тариф «за номер» їде як per_room з однією опцією');
 } finally {
   await mock.close();
 }

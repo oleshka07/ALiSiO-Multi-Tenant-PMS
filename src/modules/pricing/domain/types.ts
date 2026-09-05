@@ -71,3 +71,16 @@ export interface QuoteResult {
   missingDays: number;
   hasPricing: boolean;
 }
+
+/**
+ * Як тариф рахує гостей (Блок 2.2, Ц26).
+ *
+ * `per_room` — одна ціна на номер на будь-яку кількість гостей: ціна тарифу
+ * на дату, без надбавок заселеності; у менеджера каналів — одна опція.
+ * `per_person` — своя ціна на кожну кількість дорослих (надбавка з матриці
+ * поверх ціни тарифу); опція на кожну кількість дорослих до місткості типу.
+ * Словник закритий — docs/NAMING.md.
+ */
+export type SellMode = 'per_room' | 'per_person';
+export const SELL_MODES: readonly SellMode[] = ['per_room', 'per_person'];
+

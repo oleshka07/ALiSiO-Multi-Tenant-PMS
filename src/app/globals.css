@@ -164,6 +164,13 @@ a:hover {
   transition: margin-left var(--transition-base);
   display: flex;
   flex-direction: column;
+  /* Флекс-елемент за замовчуванням не стискається нижче min-content свого
+     вмісту: широка таблиця (броні, тарифи) розтягувала головну область за
+     вікно, сторінка прокручувалась горизонтально, а кнопка в шапці екрана
+     обрізалась на 1440 px (виміряно 05.09.2026: scrollWidth 1478). З нулем
+     ширина — вікно мінус бічна панель, а широке прокручується у своїй
+     картці (`overflow-x: auto`), як каже docs/UI-LANGUAGE.md. */
+  min-width: 0;
 }
 
 .app-main.sidebar-collapsed {

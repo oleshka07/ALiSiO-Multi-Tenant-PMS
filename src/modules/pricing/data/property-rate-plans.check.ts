@@ -93,6 +93,13 @@ async function seed(org: string) {
        VALUES (?, ?, ?, ?, ?, 2, 2, 4, 2)`,
       [`${org}_fam`, prop, `${org}_cat`, 'Family', 'FAM'],
     );
+    // СТУДІЯ: двоє дорослих, а в матриці — рядок лише на двох. Розрізняє
+    // «опція на кожну кількість дорослих» від «опція на те, що є в матриці».
+    await sql.run(
+      `INSERT INTO unit_types (id, property_id, category_id, name, code, max_adults, max_occupancy, base_occupancy)
+       VALUES (?, ?, ?, ?, ?, 2, 2, 2)`,
+      [`${org}_stu`, prop, `${org}_cat`, 'Studio', 'STU'],
+    );
     // Три тарифи: звичайний, вимкнений і той, під який ніхто не поставив ціни.
     for (const [id, code, name, active] of [
       [`${org}_bar`, 'BAR', 'Best Available', 1],
@@ -116,6 +123,26 @@ async function seed(org: string) {
         );
       }
     }
+    // Блок 2.2: режим ціни. ROOM — «за номер» на DBL і FAM; PP — «за особу»
+    // на студії, де матриця знає лише двох. Обидва режими в одній фікстурі
+    // (інваріант 26).
+    await sql.run(
+      `INSERT INTO rate_plans (id, property_id, name, code, currency, is_active, sell_mode)
+       VALUES (?, ?, 'Room rate', 'ROOM', 'EUR', 1, 'per_room')`,
+      [`${org}_room`, prop],
+    );
+    await sql.run(
+      `INSERT INTO rate_plans (id, property_id, name, code, currency, is_active, sell_mode)
+       VALUES (?, ?, 'Per person', 'PP', 'EUR', 1, 'per_person')`,
+      [`${org}_pp`, prop],
+    );
+    for (const [plan, ut] of [[`${org}_room`, `${org}_dbl`], [`${org}_room`, `${org}_fam`], [`${org}_pp`, `${org}_stu`]]) {
+      await sql.run(
+        `INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price)
+         VALUES (?, ?, ?, ?, ?)`,
+        [`${plan}_${ut}`.slice(0, 60), ut, plan, '2026-10-10', 100],
+      );
+    }
     // Заселеність: у двомісного дві опції, у тримісного три — і ще одна
     // ЗАЙВА на чотирьох, якої тип не вміщає.
     const occ = [
@@ -125,6 +152,8 @@ async function seed(org: string) {
       // Сімейний оцінено на 1–4 особи: буденна форма, бо четверо в ньому
       // справді сплять. Дорослих місць при цьому два.
       [`${org}_fam`, 1], [`${org}_fam`, 2], [`${org}_fam`, 3], [`${org}_fam`, 4],
+      // Студія: лише двоє. Одного матриця не знає — а опція на одного все одно є.
+      [`${org}_stu`, 2],
     ] as const;
     for (const [ut, persons] of occ) {
       await sql.run(
@@ -215,6 +244,26 @@ try {
       'сімейний номер 2 дорослих + 2 дітей віддав заселеності понад ДОРОСЛУ місткість — '
       + 'на живому API це 422, і воно валить синк усього каталогу');
     console.log('  ok  заселеність обрізається ДОРОСЛОЮ місткістю типу');
+
+    // ── Режим ціни задає опції (Блок 2.2) ────────────────────────────────
+    //
+    // Вендор дослівно: per_room — ОДНА опція на максимальну місткість («price
+    // is equal to any count of allowed guests»); per_person — по опції на
+    // кожну кількість ДОРОСЛИХ. Не «на те, що є в матриці»: у вендора набір
+    // опцій задається режимом, а ціну на кожну з них батчер бере з
+    // priceNights — і без рядка матриці вона просто дорівнює ціні тарифу.
+    const room = plans.find((p) => p.code === 'ROOM')!;
+    assert.strictEqual(room.sellMode, 'per_room', 'режим тарифу мав дійти до шва');
+    assert.deepStrictEqual(room.unitTypes.find((u) => u.code === 'DBL')!.occupancies, [2],
+      '«за номер» — одна опція, на дорослу місткість типу');
+    assert.deepStrictEqual(room.unitTypes.find((u) => u.code === 'FAM')!.occupancies, [2],
+      '…і в сімейного — на ДОРОСЛУ місткість, не на загальну');
+    const pp = plans.find((p) => p.code === 'PP')!;
+    assert.strictEqual(pp.sellMode, 'per_person');
+    assert.deepStrictEqual(pp.unitTypes.find((u) => u.code === 'STU')!.occupancies, [1, 2],
+      '«за особу» — опція на КОЖНУ кількість дорослих, а не лише на ті, що є в матриці');
+    assert.strictEqual(bar.sellMode, 'per_person', 'тариф, заведений без вибору, — за особу');
+    console.log('  ok  режим ціни задає набір опцій: за номер — одна, за особу — на кожну кількість дорослих');
 
     // ── Валюта — з тарифу, не вгадана ────────────────────────────────────
     assert.strictEqual(bar.currency, 'EUR', 'валюта тарифу підмінена');

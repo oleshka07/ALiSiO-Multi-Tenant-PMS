@@ -3,6 +3,7 @@ import { withPermission, type Actor } from '@core/auth/session';
 import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 import { serverError } from '@core/http/errors';
 import { listRatePlans, createRatePlan, updateRatePlan, deleteRatePlan } from '../data/rate-plans.repo';
+import type { SellMode } from '../domain/types';
 
 /**
  * Екран «Тарифи» — з боку HTTP. Форма — звичайна акуратність (інваріант 29);
@@ -10,8 +11,8 @@ import { listRatePlans, createRatePlan, updateRatePlan, deleteRatePlan } from '.
  */
 
 const NAMED: Record<string, number> = {
-  code_taken: 409, currency_locked: 409, has_prices: 409, mapped: 409, in_use: 409,
-  code_invalid: 400, currency_invalid: 400, name_required: 400, child_price_invalid: 400,
+  code_taken: 409, currency_locked: 409, has_prices: 409, mapped: 409, in_use: 409, sell_mode_locked: 409,
+  code_invalid: 400, currency_invalid: 400, name_required: 400, child_price_invalid: 400, sell_mode_invalid: 400,
 };
 
 function named(error: unknown): NextResponse | null {
@@ -36,7 +37,7 @@ export const listRatePlanSettings = withPermission('manage_pricing', async (requ
   }
 });
 
-/** POST /api/pricing/rate-plans { property_id?, name, code, currency, meal_plan?, child_extra_gross? } */
+/** POST /api/pricing/rate-plans { property_id?, name, code, currency, meal_plan?, child_extra_gross?, sell_mode? } */
 export const createRatePlanSetting = withPermission('manage_pricing', async (request: NextRequest, _ctx: unknown, _actor: Actor) => {
   try {
     const body = (await request.json().catch(() => ({}))) ?? {};
@@ -54,6 +55,8 @@ export const createRatePlanSetting = withPermission('manage_pricing', async (req
         currency: String(body.currency ?? ''),
         mealPlan: body.meal_plan ? String(body.meal_plan) : null,
         childExtraGross: body.child_extra_gross === '' || body.child_extra_gross == null ? null : Number(body.child_extra_gross),
+        // Писач звіряє зі словником; тут лише рядок, не вгадування.
+        sellMode: body.sell_mode == null || body.sell_mode === '' ? null : (String(body.sell_mode) as SellMode),
       });
       return NextResponse.json(created, { status: 201 });
     } catch (error: unknown) {
@@ -65,10 +68,11 @@ export const createRatePlanSetting = withPermission('manage_pricing', async (req
 });
 
 /**
- * PATCH /api/pricing/rate-plans/[id] { name?, code?, currency?, meal_plan?, child_extra_gross?, is_active? }
+ * PATCH /api/pricing/rate-plans/[id] { name?, code?, currency?, meal_plan?, child_extra_gross?, is_active?, sell_mode? }
  *
  * `is_active: false` — зняти з продажу (канал закриє ночі до горизонту),
  * `true` — повернути. Лише boolean: рядок «false» тут був би правдою.
+ * `sell_mode` — лише доки тариф не заведено у вендора (`sell_mode_locked`).
  */
 export const updateRatePlanSetting = withPermission('manage_pricing', async (request: NextRequest, { params }: { params: Promise<{ id: string }> }, _actor: Actor) => {
   try {
@@ -81,6 +85,7 @@ export const updateRatePlanSetting = withPermission('manage_pricing', async (req
     if ('meal_plan' in body) patch.mealPlan = body.meal_plan ? String(body.meal_plan) : null;
     if ('child_extra_gross' in body) patch.childExtraGross = body.child_extra_gross === '' || body.child_extra_gross == null ? null : Number(body.child_extra_gross);
     if (typeof body.is_active === 'boolean') patch.isActive = body.is_active;
+    if (typeof body.sell_mode === 'string') patch.sellMode = body.sell_mode as SellMode;
     try {
       return NextResponse.json(await updateRatePlan(id, patch));
     } catch (error: unknown) {

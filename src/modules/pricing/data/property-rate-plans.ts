@@ -1,5 +1,6 @@
 import { getSql } from '@core/db/async';
 import { currentOrganizationId } from '@core/auth/tenant-context';
+import type { SellMode } from '../domain/types';
 
 /**
  * Тарифи обʼєкта — у тому вигляді, у якому їх треба знати модулю каналів.
@@ -45,30 +46,25 @@ export interface RatePlanUnitType {
   code: string;
   name: string;
   /**
-   * Заселеності, на які є ціна, — уже обрізані ДОРОСЛОЮ місткістю типу.
+   * Заселеності, які тариф ПРОДАЄ на цьому типі, — за режимом тарифу (Ц26),
+   * і не вище за ДОРОСЛУ місткість типу.
+   *
+   * `per_room` — одна, на максимальну доросла місткість: у вендора «Per Room
+   * Rate Plan … pass Occupancy Option for maximum occupancy», ціна однакова
+   * на будь-яку кількість гостей. `per_person` — на КОЖНУ кількість дорослих
+   * від одного до місткості: «pass Occupancy Option for each possible count
+   * of ADULT guests» (`rate-plans-collection.md:668`). Ціну на кожну з них
+   * батчер бере з `priceNights`; без рядка матриці вона дорівнює ціні
+   * тарифу. Матриця більше не задає набір опцій — вона задає лише надбавку.
    *
    * ── Чому саме дорослою, а не загальною ────────────────────────────────
    *
-   * Бо опція заселеності в менеджера каналів за ОЗНАЧЕННЯМ про дорослих:
-   * «For Per Person Rate Plan you should pass Occupancy Option for each
-   * possible count of ADULT guests» (`rate-plans-collection.md:668`).
+   * Бо опція заселеності в менеджера каналів за ОЗНАЧЕННЯМ про дорослих.
    * Виміряно на живому API 01.09.2026: тип «2 дорослих + 2 дітей» з опціями
    * 1..4 відповідає 422 «occupancy 3, 4 exceeds the room type's max adults
    * occupancy of 2», а 422 при створенні тарифу валить УВЕСЬ прохід
-   * каталогу. Тобто до цього рядка буденний сімейний номер не заводився
-   * взагалі.
-   *
-   * `price_occupancy` дозволяє завести четверту особу двомісному номеру:
-   * база цього не забороняє. Тому обрізаємо тут, а не сподіваємось.
-   *
-   * ── Чого це НЕ вирішує ────────────────────────────────────────────────
-   *
-   * Сімʼя 2+2 як бронювала номер, так і бронюватиме: опція 2 — правильна
-   * опція. Але ціна, яку готель поставив на 4 осіб, разом із опцією 4
-   * зникає, бо сьогодні `price_occupancy.persons` складає дорослих і дітей
-   * (`adults + children` у трьох викликачах). Скільки коштує дитина —
-   * окреме питання і окреме рішення; доти цей шов не можна віддавати в
-   * канал разом із цінами. Див. журнал рішень.
+   * каталогу. Сімʼя 2+2 нічого не втрачає: опція 2 — правильна опція, а
+   * дитина коштує стільки, скільки каже тариф (Ц12).
    */
   occupancies: number[];
   /** Скільки ДОРОСЛИХ уміщає тип. Саме це число обмежує вісь вище. */
@@ -85,6 +81,8 @@ export interface RatePlan {
   currency: string;
   cancellationPolicy: string | null;
   mealPlan: string | null;
+  /** Як рахує гостей (Ц26): задає набір опцій у вендора і те, чи є надбавка за заселеність. */
+  sellMode: SellMode;
   /** Типи номерів, на які цей тариф має ціну. Порожньо — його не продати. */
   unitTypes: RatePlanUnitType[];
   /**
@@ -117,7 +115,7 @@ export async function propertyRatePlans(propertyId: string): Promise<RatePlan[]>
   const sql = getSql();
 
   const plans = await sql.rows<any>(
-    `SELECT rp.id, rp.code, rp.name, rp.currency, rp.cancellation_policy, rp.meal_plan
+    `SELECT rp.id, rp.code, rp.name, rp.currency, rp.cancellation_policy, rp.meal_plan, rp.sell_mode
        FROM rate_plans rp
        JOIN properties p ON p.id = rp.property_id
       WHERE rp.property_id = ? AND p.organization_id = ?
@@ -141,22 +139,7 @@ export async function propertyRatePlans(propertyId: string): Promise<RatePlan[]>
     [propertyId],
   ) as Record<string, unknown>[];
 
-  const occupancies = await sql.rows<any>(
-    `SELECT DISTINCT po.unit_type_id, po.persons
-       FROM price_occupancy po
-       JOIN unit_types ut ON ut.id = po.unit_type_id
-      WHERE ut.property_id = ?
-      ORDER BY po.persons`,
-    [propertyId],
-  ) as Record<string, unknown>[];
-
-  const byUnitType = new Map<string, number[]>();
-  for (const row of occupancies) {
-    const ut = String(row.unit_type_id);
-    const persons = Number(row.persons);
-    if (!Number.isFinite(persons) || persons < 1) continue;
-    (byUnitType.get(ut) ?? byUnitType.set(ut, []).get(ut)!).push(persons);
-  }
+  const modeOf = new Map(plans.map((row) => [String(row.id), (row.sell_mode === 'per_room' ? 'per_room' : 'per_person') as SellMode]));
 
   const unitTypesOf = new Map<string, RatePlanUnitType[]>();
   for (const row of priced) {
@@ -169,10 +152,10 @@ export async function propertyRatePlans(propertyId: string): Promise<RatePlan[]>
       id: unitTypeId,
       code: String(row.code),
       name: String(row.name),
-      // Обрізання саме тут, і саме ДОРОСЛОЮ місткістю — див. коментар на полі.
-      occupancies: (byUnitType.get(unitTypeId) ?? [])
-        .filter((n) => n <= maxAdults)
-        .sort((a, b) => a - b),
+      // Набір опцій задає РЕЖИМ тарифу, межа — ДОРОСЛА місткість (див. поле).
+      occupancies: modeOf.get(planId) === 'per_room'
+        ? [maxAdults]
+        : Array.from({ length: maxAdults }, (_, i) => i + 1),
       maxAdults,
       maxOccupancy,
     });
@@ -188,6 +171,7 @@ export async function propertyRatePlans(propertyId: string): Promise<RatePlan[]>
       currency: String(row.currency),
       cancellationPolicy: row.cancellation_policy == null ? null : String(row.cancellation_policy),
       mealPlan: row.meal_plan == null ? null : String(row.meal_plan),
+      sellMode: modeOf.get(id) ?? 'per_person',
       unitTypes,
       sellable: unitTypes.length > 0,
     };

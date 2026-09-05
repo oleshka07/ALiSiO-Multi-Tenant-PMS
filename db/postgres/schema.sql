@@ -1503,6 +1503,7 @@ CREATE TABLE "rate_plans" (
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "child_extra_gross" NUMERIC(14,2),
+  "sell_mode" TEXT DEFAULT 'per_person' NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("property_id", "code")
 );

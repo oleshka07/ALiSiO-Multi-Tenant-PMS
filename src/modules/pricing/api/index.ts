@@ -56,4 +56,6 @@ export type {
   RatePlan,
   Promotion,
   PromotionType,
+  SellMode,
 } from '../domain/types';
+export { SELL_MODES } from '../domain/types';

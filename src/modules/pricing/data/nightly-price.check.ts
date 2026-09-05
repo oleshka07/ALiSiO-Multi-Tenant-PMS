@@ -276,6 +276,26 @@ console.log('nightly-price: all checks passed');
   console.log('  ok  Д1/Д2: закрита ніч не продається й названа; мінімум, максимум, заїзд, виїзд — з базового рядка типу');
 }
 
+// ── Режим «за номер» (Блок 2.2): ціна не залежить від кількості гостей ──────
+//
+// Той самий рядок ціни 312.66 і та сама матриця (двоє 200, троє 260): тариф
+// «за особу» дає трьом 372.66 (надбавка 60), тариф «за номер» — 312.66 і
+// трьом, і одному. Так каже вендор про per_room: «price is equal to any
+// count of allowed guests». Дві осі (інваріант 26): режим і заселеність —
+// з одним режимом або однією заселеністю надбавка й нуль невідрізнювані.
+const ROOM = '__np_check__rp_room';
+await sql.run("INSERT INTO rate_plans (id, property_id, name, code, sell_mode) VALUES (?, ?, ?, ?, 'per_room')", [ROOM, PROP, 'Room rate', 'ROOM']);
+await sql.run("UPDATE rate_plans SET sell_mode = 'per_person' WHERE id = ?", [BAR]);
+await cal(ROOM, '2026-11-10', 312.66);
+const room3 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 3, ratePlanId: ROOM });
+const room1 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 1, ratePlanId: ROOM });
+const person3 = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-10', nights: 1, adults: 3, ratePlanId: BAR });
+assert.strictEqual(room3.nights[0].price, 312.66, 'тариф «за номер» на трьох мав дати ціну номера без надбавки матриці');
+assert.strictEqual(room1.nights[0].price, 312.66, '…і на одного — ту саму');
+assert.strictEqual(person3.nights[0].price, 372.66, 'тариф «за особу» на трьох — з надбавкою матриці, як і досі');
+assert.strictEqual(room3.occupancyPriced, true, '«за номер»: доплати за гостя не буває — викликач не має додавати extra_person_charge');
+console.log('  ok  режим «за номер»: одна ціна на будь-яку кількість гостей; «за особу» — з надбавкою');
+
 // ── Викликач без `adults` — відмова з назвою, не «неоцінені ночі» ─────────
 //
 // 02.09.2026: `scripts/apply-hotel.mjs` після Ц12 передавав `persons`, не

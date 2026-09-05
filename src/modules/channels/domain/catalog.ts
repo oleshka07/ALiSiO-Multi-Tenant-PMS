@@ -79,7 +79,7 @@ export interface CatalogUnitType {
 /** Тариф на КОНКРЕТНОМУ типі номера — тобто вже пара (Ц6). */
 export interface CatalogRatePlanOnUnitType {
   unitTypeId: string;
-  /** Заселеності, на які є ціна. Уже обрізані місткістю типу. */
+  /** Заселеності, які тариф продає на цьому типі, — за режимом, не вище місткості. */
   occupancies: number[];
 }
 
@@ -90,6 +90,13 @@ export interface CatalogRatePlan {
   title: string;
   currency: string;
   mealPlan: string | null;
+  /**
+   * Як рахує гостей (Ц26): `per_room` — одна ціна на номер і одна опція на
+   * максимальну місткість; `per_person` — своя ціна на кожну кількість
+   * дорослих, опція на кожну. Їде у вендора явно: без поля той ставить
+   * `per_room`, і тариф з опцією на кожну заселеність суперечить сам собі.
+   */
+  sellMode: 'per_room' | 'per_person';
   /** Типи номерів, на яких цей тариф має ціни. Порожньо — його не продати. */
   on: CatalogRatePlanOnUnitType[];
   /** Чи є що продавати. `false` — тариф називається у звіті й не їде. */

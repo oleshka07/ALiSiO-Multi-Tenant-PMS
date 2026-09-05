@@ -107,6 +107,7 @@ export async function syncConnectionCatalog(
     title: plan.name,
     currency: plan.currency,
     mealPlan: plan.mealPlan,
+    sellMode: plan.sellMode,
     on: plan.unitTypes.map((ut) => ({ unitTypeId: ut.id, occupancies: ut.occupancies })),
     sellable: plan.sellable,
   }));
