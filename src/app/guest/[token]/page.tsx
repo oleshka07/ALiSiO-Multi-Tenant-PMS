@@ -111,18 +111,6 @@ export default function GuestPage() {
   const [selectedService, setSelectedService] = useState<any>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [orderingService, setOrderingService] = useState<string | null>(null);
-  // Both halves: which service this is, and which layout it needs.
-  //
-  // This used to hold only the kind — 'sauna' | 'tub' | 'breakfast' — and the
-  // real service id, which the page had in hand, was thrown away. Two places
-  // then reconstructed an id from the kind: the embed mapped 'sauna' to
-  // `svc_sauna` and the sheet title looked for `svc_${kind}`. Both are seed ids
-  // of the pilot customer, so on any other hotel the widget asked for a service
-  // that is not theirs and the title found nothing at all — `svc_tub` was not
-  // even the id the embed used (`svc_pool`), so the hot tub sheet had been
-  // untitled the whole time.
-  const [widgetService, setWidgetService] = useState<{ id: string; kind: 'sauna' | 'tub' | 'breakfast' } | null>(null);
-  const widgetContainerRef = useRef<HTMLDivElement>(null);
   const ocrInputRef = useRef<HTMLInputElement>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
 
@@ -534,50 +522,6 @@ export default function GuestPage() {
     window.open(`https://wa.me/${whatsappNumber}`, '_blank');
   }, [whatsappNumber]);
 
-  // ─── Service widget injection ─────────────────
-  useEffect(() => {
-    if (!widgetService || !widgetContainerRef.current) return;
-    const container = widgetContainerRef.current;
-    container.innerHTML = '';
-
-    const widgetId = 'alisio-service-widget-popup';
-    const widgetDiv = document.createElement('div');
-    widgetDiv.id = widgetId;
-    container.appendChild(widgetDiv);
-
-    // Use a unique nonce so the IIFE can find the right script tag
-    const nonce = 'asw-' + Date.now();
-    const script = document.createElement('script');
-    script.src = '/widget/service-embed.js';
-    // The real service id and the layout it needs. The booking itself goes
-    // through `data-reservation` below, so the guest's token stays out of an
-    // attribute on a public script.
-    script.setAttribute('data-service', widgetService.id);
-    script.setAttribute('data-kind', widgetService.kind);
-    script.setAttribute('data-lang', lang);
-    script.setAttribute('data-color', '#1a1a2e');
-    script.setAttribute('data-container', widgetId);
-    script.setAttribute('data-nonce', nonce);
-    if (r?.id) script.setAttribute('data-reservation', r.id);
-    if (r?.check_in) script.setAttribute('data-checkin', r.check_in);
-    if (r?.check_out) script.setAttribute('data-checkout', r.check_out);
-    container.appendChild(script);
-
-    return () => { container.innerHTML = ''; };
-  }, [widgetService, lang, r?.id]);
-
-  // Helper: detect if a service should open as widget popup
-  const getWidgetType = useCallback((svc: any): 'sauna' | 'tub' | 'breakfast' | null => {
-    if (!svc) return null;
-    // Primary: use service_type + name matching
-    const name = ((svc.name || '') + ' ' + (svc.name_en || '') + ' ' + (svc.id || '')).toLowerCase();
-    if (name.includes('саун') || name.includes('sauna')) return 'sauna';
-    if (name.includes('купіль') || name.includes('чан') || name.includes('tub') || name.includes('pool') || name.includes('plunge') || name.includes('kád') || name.includes('lázeň')) return 'tub';
-    // Fallback: use service_type
-    if (svc.service_type === 'menu_selection') return 'breakfast';
-    return null;
-  }, []);
-
   // Helper: date mode for simple services (no widget)
   // 'breakfast' = show day-after-checkin dates; 'checkin' = auto assign check-in date
   function getServiceDateMode(svc: any): 'breakfast' | 'checkin' {
@@ -948,13 +892,9 @@ export default function GuestPage() {
               </>}
               {phase === 'during' && <>
                 {data.services?.slice(0, 3).map((svc: any, i: number) => {
-                  const wType = getWidgetType(svc);
                   return (
                     <ListRow key={svc.id} icon={svc.icon || '✨'} label={svcField(svc, 'name')}
-                      onClick={() => {
-                        if (wType) { setWidgetService({ id: svc.id, kind: wType }); }
-                        else { setSelectedService(svc); setSheet('service'); }
-                      }}
+                      onClick={() => { setSelectedService(svc); setSheet('service'); }}
                       last={i === Math.min(2, (data.services?.length || 1) - 1)} />
                   );
                 })}
@@ -1120,14 +1060,10 @@ export default function GuestPage() {
 
           {data.services?.length > 0 ? data.services.map((svc: any) => {
             const isOrdered = data.orderedServices?.some((o: any) => o.service_id === svc.id);
-            const wType = getWidgetType(svc);
             return (
               <button key={svc.id}
                 className={svc.photo_url ? 'gp-service-card gp-service-card--photo' : 'gp-service-card'}
-                onClick={() => {
-                  if (wType) { setWidgetService({ id: svc.id, kind: wType }); }
-                  else { setSelectedService(svc); setSheet('service'); }
-                }}>
+                onClick={() => { setSelectedService(svc); setSheet('service'); }}>
                 {svc.photo_url ? (
                   <div className="gp-service-photo">
                     <img src={svc.photo_url} alt={svcField(svc, 'name')} />
@@ -1501,15 +1437,6 @@ export default function GuestPage() {
             </>
           );
         })()}
-      </BottomSheet>
-
-      {/* Service widget popup (sauna / tub / breakfast) */}
-      <BottomSheet open={!!widgetService} onClose={() => setWidgetService(null)}
-        title={(() => {
-          const wsvc = data?.services?.find((s: any) => s.id === widgetService?.id);
-          return wsvc ? svcField(wsvc, 'name') : '';
-        })()}>
-        <div ref={widgetContainerRef} style={{ minHeight: 200 }} />
       </BottomSheet>
 
       {/* Registration required sheet */}

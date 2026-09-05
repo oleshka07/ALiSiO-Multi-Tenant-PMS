@@ -2,15 +2,13 @@
 
 import { useT } from '@core/i18n/client';
 import { useState, useEffect, useCallback } from 'react';
-import { Loader2, ToggleRight, ToggleLeft, Upload, Code2 } from 'lucide-react';
-import { Modal, CopyBtn } from './SiteHelpers';
+import { Loader2, ToggleRight, ToggleLeft, Upload } from 'lucide-react';
 import type { SiteService } from '../_types';
 
 export function ServicesTab({ siteId, siteCurrency }: { siteId: string, siteCurrency: string }) {
   const t = useT();
   const [services, setServices] = useState<SiteService[]>([]);
   const [loading, setLoading] = useState(true);
-  const [embedSvc, setEmbedSvc] = useState<SiteService | null>(null);
 
   const fetchServices = useCallback(async () => {
     setLoading(true);
@@ -37,9 +35,6 @@ export function ServicesTab({ siteId, siteCurrency }: { siteId: string, siteCurr
     });
     fetchServices();
   };
-
-  const embedCode = (svcId: string) =>
-    `<script src="${typeof window !== 'undefined' ? window.location.origin : ''}/widget/service-embed.js"\n  data-service="${svcId}"\n  data-site="${siteId}">\n</script>`;
 
   const updatePrice = async (svc: SiteService, newPrice: number | null) => {
     await fetch(`/api/booking-sites/${siteId}/services`, {
@@ -79,7 +74,7 @@ export function ServicesTab({ siteId, siteCurrency }: { siteId: string, siteCurr
         {t('Оберіть сервіси, що доступні для замовлення на цьому сайті.')}
       </div>
       <table className="data-table">
-        <thead><tr><th>{t('Сервіс')}</th><th>{t('Фото')}</th><th>{t('Ціна')}</th><th>{t('Активний')}</th><th>{t('Embed-код')}</th></tr></thead>
+        <thead><tr><th>{t('Сервіс')}</th><th>{t('Фото')}</th><th>{t('Ціна')}</th><th>{t('Активний')}</th></tr></thead>
         <tbody>
           {services.map(svc => (
             <tr key={svc.id}>
@@ -132,30 +127,12 @@ export function ServicesTab({ siteId, siteCurrency }: { siteId: string, siteCurr
                     : <ToggleLeft size={22} style={{ color: 'var(--text-tertiary)' }} />}
                 </button>
               </td>
-              <td>
-                <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 8px' }} onClick={() => setEmbedSvc(svc)}>
-                  <Code2 size={13} /> {t('Код')}
-                </button>
-              </td>
             </tr>
           ))}
-          {services.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Немає сервісів. Додайте їх у Налаштування → Послуги.')}</td></tr>}
+          {services.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{t('Немає сервісів. Додайте їх у Налаштування → Послуги.')}</td></tr>}
         </tbody>
       </table>
 
-      <Modal open={!!embedSvc} onClose={() => setEmbedSvc(null)} title={`${t('Embed-код:')} ${embedSvc?.name}`} size="lg">
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
-          {t('Вставте цей код на ваш сайт для відображення кнопки замовлення сервісу.')}
-        </div>
-        <div style={{ position: 'relative' }}>
-          <pre style={{ background: 'var(--surface-secondary)', borderRadius: 8, padding: 16, fontSize: 12, overflowX: 'auto', margin: 0 }}>
-            {embedSvc ? embedCode(embedSvc.id) : ''}
-          </pre>
-          <div style={{ position: 'absolute', top: 8, right: 8 }}>
-            <CopyBtn text={embedSvc ? embedCode(embedSvc.id) : ''} />
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

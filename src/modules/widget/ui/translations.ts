@@ -81,24 +81,6 @@ export interface BookingTranslations {
   skipLink: string;
   bookingConfirmedTitle: string;
   bookingConfirmedDesc: string;
-  saunaTitle: string;
-  saunaPersons: string;
-  saunaMinHours: string;
-  saunaDesc: string;
-  saunaPerHour: string;
-  saunaAddToBooking: string;
-  editService: string;
-  removeService: string;
-  saunaDate: string;
-  selectTime: string;
-  saunaHours: string;
-  saunaBroom: string;
-  totalLabel: string;
-  closePopup: string;
-  bookService: string;
-  myDishes: string;
-  tubTitle: string;
-  breakfastTitle: string;
   lateCheckoutTitle: string;
   earlyCheckinTitle: string;
   // Step 5
@@ -145,12 +127,6 @@ export interface BookingTranslations {
   yourHouse: string;
   bookingDetails: string;
   // Step 4 extras
-  breakfastInfo: string;
-  wantButton: string;
-  servicesEmpty: string;
-  tubDesc: string;
-  tubPerHour: string;
-  tubAddToBooking: string;
   lateCheckoutDesc: string;
   earlyCheckinDesc: string;
   skipToThankYou: string;
@@ -244,24 +220,6 @@ const translations: Record<BookingLang, any> = {
     skipLink: 'Пропустити — не треба нічого',
     bookingConfirmedTitle: 'Бронювання підтверджено!',
     bookingConfirmedDesc: 'Ми чекаємо на вас',
-    saunaTitle: 'Сауна',
-    saunaPersons: 'до 6 осіб',
-    saunaMinHours: 'мінімум 2 години',
-    saunaDesc: 'Приватна сауна з панорамним видом',
-    saunaPerHour: 'год',
-    saunaAddToBooking: 'Додати сауну',
-    editService: 'Редагувати',
-    removeService: 'Видалити',
-    saunaDate: 'Дата сауни',
-    selectTime: 'Оберіть час',
-    saunaHours: 'Кількість годин',
-    saunaBroom: 'Віник',
-    totalLabel: 'Разом',
-    closePopup: 'Закрити',
-    bookService: 'Додати',
-    myDishes: 'Меню сніданків',
-    tubTitle: 'Чан',
-    breakfastTitle: 'Сніданок',
     lateCheckoutTitle: 'Пізній виїзд',
     earlyCheckinTitle: 'Ранній заїзд',
     paymentTitle: 'Оплата',
@@ -301,12 +259,6 @@ const translations: Record<BookingLang, any> = {
     yourChoice: 'Ваш вибір',
     yourHouse: 'Ваш будинок',
     bookingDetails: 'Деталі бронювання',
-    breakfastInfo: 'Сніданок включено',
-    wantButton: 'Хочу',
-    servicesEmpty: 'Немає доступних сервісів',
-    tubDesc: 'Дерев\'яний чан з підігрівом на вулиці',
-    tubPerHour: 'год',
-    tubAddToBooking: 'Додати чан',
     lateCheckoutDesc: 'Виїзд до 14:00 замість 11:00',
     earlyCheckinDesc: 'Заїзд з 12:00 замість 15:00',
     skipToThankYou: 'Пропустити і завершити',
@@ -405,24 +357,6 @@ const translations: Record<BookingLang, any> = {
     skipLink: 'Skip — I don\'t need anything',
     bookingConfirmedTitle: 'Booking confirmed!',
     bookingConfirmedDesc: 'We are looking forward to seeing you',
-    saunaTitle: 'Sauna',
-    saunaPersons: 'up to 6 people',
-    saunaMinHours: 'min 2 hours',
-    saunaDesc: 'Private sauna with panoramic view',
-    saunaPerHour: 'hr',
-    saunaAddToBooking: 'Add sauna',
-    editService: 'Edit',
-    removeService: 'Remove',
-    saunaDate: 'Sauna date',
-    selectTime: 'Select time',
-    saunaHours: 'Number of hours',
-    saunaBroom: 'Broom',
-    totalLabel: 'Total',
-    closePopup: 'Close',
-    bookService: 'Add',
-    myDishes: 'Breakfast menu',
-    tubTitle: 'Hot tub',
-    breakfastTitle: 'Breakfast',
     lateCheckoutTitle: 'Late checkout',
     earlyCheckinTitle: 'Early checkin',
     paymentTitle: 'Payment',
@@ -462,12 +396,6 @@ const translations: Record<BookingLang, any> = {
     yourChoice: 'Your choice',
     yourHouse: 'Your house',
     bookingDetails: 'Booking details',
-    breakfastInfo: 'Breakfast included',
-    wantButton: 'I want it',
-    servicesEmpty: 'No services available',
-    tubDesc: 'Outdoor heated wooden hot tub',
-    tubPerHour: 'hr',
-    tubAddToBooking: 'Add hot tub',
     lateCheckoutDesc: 'Check-out by 14:00 instead of 11:00',
     earlyCheckinDesc: 'Check-in from 12:00 instead of 15:00',
     skipToThankYou: 'Skip and finish',
@@ -566,24 +494,6 @@ const translations: Record<BookingLang, any> = {
     skipLink: 'Přeskočit — nic nepotřebuji',
     bookingConfirmedTitle: 'Rezervace potvrzena!',
     bookingConfirmedDesc: 'Těšíme se na vás',
-    saunaTitle: 'Sauna',
-    saunaPersons: 'až 6 osob',
-    saunaMinHours: 'min 2 hodiny',
-    saunaDesc: 'Soukromá sauna s panoramatickým výhledem',
-    saunaPerHour: 'hod',
-    saunaAddToBooking: 'Přidat saunu',
-    editService: 'Upravit',
-    removeService: 'Odstranit',
-    saunaDate: 'Datum sauny',
-    selectTime: 'Vyberte čas',
-    saunaHours: 'Počet hodin',
-    saunaBroom: 'Metlička',
-    totalLabel: 'Celkem',
-    closePopup: 'Zavřít',
-    bookService: 'Přidat',
-    myDishes: 'Snídaňové menu',
-    tubTitle: 'Koupací sud',
-    breakfastTitle: 'Snídaně',
     lateCheckoutTitle: 'Pozdní odjezd',
     earlyCheckinTitle: 'Brzký příjezd',
     paymentTitle: 'Platba',
@@ -623,12 +533,6 @@ const translations: Record<BookingLang, any> = {
     yourChoice: 'Váš výběr',
     yourHouse: 'Váš dům',
     bookingDetails: 'Detaily rezervace',
-    breakfastInfo: 'Snídaně v ceně',
-    wantButton: 'Chci',
-    servicesEmpty: 'Žádné dostupné služby',
-    tubDesc: 'Venkovní vyhřívaný dřevěný koupací sud',
-    tubPerHour: 'hod',
-    tubAddToBooking: 'Přidat koupací sud',
     lateCheckoutDesc: 'Odjezd do 14:00 místo 11:00',
     earlyCheckinDesc: 'Příjezd od 12:00 místo 15:00',
     skipToThankYou: 'Přeskočit a dokončit',
@@ -727,24 +631,6 @@ const translations: Record<BookingLang, any> = {
     skipLink: 'Überspringen — ich brauche nichts',
     bookingConfirmedTitle: 'Buchung bestätigt!',
     bookingConfirmedDesc: 'Wir freuen uns auf Sie',
-    saunaTitle: 'Sauna',
-    saunaPersons: 'bis zu 6 Personen',
-    saunaMinHours: 'min. 2 Stunden',
-    saunaDesc: 'Private Sauna mit Panoramablick',
-    saunaPerHour: 'Std',
-    saunaAddToBooking: 'Sauna hinzufügen',
-    editService: 'Bearbeiten',
-    removeService: 'Entfernen',
-    saunaDate: 'Saunadatum',
-    selectTime: 'Zeit wählen',
-    saunaHours: 'Stundenanzahl',
-    saunaBroom: 'Besen',
-    totalLabel: 'Gesamt',
-    closePopup: 'Schließen',
-    bookService: 'Hinzufügen',
-    myDishes: 'Frühstücksmenü',
-    tubTitle: 'Badezuber',
-    breakfastTitle: 'Frühstück',
     lateCheckoutTitle: 'Später Check-out',
     earlyCheckinTitle: 'Früher Check-in',
     paymentTitle: 'Zahlung',
@@ -784,12 +670,6 @@ const translations: Record<BookingLang, any> = {
     yourChoice: 'Ihre Wahl',
     yourHouse: 'Ihr Haus',
     bookingDetails: 'Buchungsdetails',
-    breakfastInfo: 'Frühstück inklusive',
-    wantButton: 'Ich möchte es',
-    servicesEmpty: 'Keine verfügbaren Leistungen',
-    tubDesc: 'Beheizter Holzbadezuber im Freien',
-    tubPerHour: 'Std',
-    tubAddToBooking: 'Badezuber hinzufügen',
     lateCheckoutDesc: 'Check-out bis 14:00 statt 11:00',
     earlyCheckinDesc: 'Check-in ab 12:00 statt 15:00',
     skipToThankYou: 'Überspringen und abschließen',

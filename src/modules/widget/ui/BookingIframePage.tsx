@@ -180,36 +180,15 @@ export default function BookingPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Step 4 — Services
-  const [saunaDate, setSaunaDate] = useState<string | null>(null);
-  const [saunaStartHour, setSaunaStartHour] = useState(14);
-  const [saunaHours, setSaunaHours] = useState(2);
-  const [saunaBroom, setSaunaBroom] = useState(0);
-  const [saunaAdded, setSaunaAdded] = useState(false);
-  const [breakfastItems, setBreakfastItems] = useState<Record<string, number>>({});
-  const [breakfastAdded, setBreakfastAdded] = useState(false);
+  // Лише перемикачі (пізній виїзд / ранній заїзд): погодинні послуги сауни й
+  // купелі та меню сніданку вирізано 05.09.2026 (П17) — це був флоу одного
+  // клієнта, зашитий у віджет; погодинна послуга готелю — звичайна `services`.
   const [applyingCode, setApplyingCode] = useState(false);
-  const [menuItems, setMenuItems] = useState<any[]>([]);
   const [servicesLoading, setServicesLoading] = useState(false);
-  const [showSaunaPopup, setShowSaunaPopup] = useState(false);
-  // null until the server answers, and null forever if this hotel does not
-  // sell the service. These used to default to the pilot hotel's own prices —
-  // 600 for the sauna, 300 for the broom, 600 for the tub, 500 for the late
-  // checkout — so a hotel whose sauna costs 400 quoted 600 until the fetch
-  // landed, and a hotel with no sauna at all offered one, priced, in a
-  // currency it might not even use. A number invented by the client is a quote
+  // Late checkout / Early checkin. null until the server answers, and null
+  // forever if this hotel does not sell the service: a default here used to be
+  // the pilot hotel's own price — a number invented by the client is a quote
   // the hotel never made.
-  const [saunaPrice, setSaunaPrice] = useState<number | null>(null);
-  const [broomPrice, setBroomPrice] = useState<number | null>(null);
-  const [bookedSlots, setBookedSlots] = useState<any[]>([]);
-  // Tub (Чан)
-  const [showTubPopup, setShowTubPopup] = useState(false);
-  const [tubDate, setTubDate] = useState<string | null>(null);
-  const [tubStartHour, setTubStartHour] = useState(14);
-  const [tubHours, setTubHours] = useState(2);
-  const [tubAdded, setTubAdded] = useState(false);
-  const [tubPrice, setTubPrice] = useState<number | null>(null);
-  const [tubBookedSlots, setTubBookedSlots] = useState<any[]>([]);
-  // Late checkout / Early checkin
   const [lateCheckout, setLateCheckout] = useState(false);
   const [earlyCheckin, setEarlyCheckin] = useState(false);
   const [lateCheckoutPrice, setLateCheckoutPrice] = useState<number | null>(null);
@@ -384,22 +363,6 @@ export default function BookingPage() {
     return availability.units.find(u => u.id === selectedUnit) || null;
   }, [availability, selectedUnit]);
 
-  // Service totals
-  const saunaTotal = useMemo(() => {
-    if (!saunaAdded) return 0;
-    return (saunaPrice ?? 0) * saunaHours + (broomPrice ?? 0) * saunaBroom;
-  }, [saunaAdded, saunaPrice, saunaHours, broomPrice, saunaBroom]);
-
-  const breakfastTotal = useMemo(() => {
-    if (!breakfastAdded) return 0;
-    return menuItems.reduce((sum, item) => sum + (item.price || 0) * (breakfastItems[item.id] || 0), 0);
-  }, [breakfastAdded, menuItems, breakfastItems]);
-
-  const tubTotal = useMemo(() => {
-    if (!tubAdded) return 0;
-    return (tubPrice ?? 0) * tubHours;
-  }, [tubAdded, tubPrice, tubHours]);
-
   const toggleServicesTotal = useMemo(() => {
     return (lateCheckout ? (lateCheckoutPrice ?? 0) : 0) + (earlyCheckin ? (earlyCheckinPrice ?? 0) : 0);
   }, [lateCheckout, lateCheckoutPrice, earlyCheckin, earlyCheckinPrice]);
@@ -416,7 +379,7 @@ export default function BookingPage() {
     return selectedUnitData.petCharge || 0;
   }, [selectedUnitData, cardHasPet]);
 
-  const servicesTotal = useMemo(() => saunaTotal + breakfastTotal + tubTotal + toggleServicesTotal, [saunaTotal, breakfastTotal, tubTotal, toggleServicesTotal]);
+  const servicesTotal = toggleServicesTotal;
 
   const totalWithDiscount = useMemo(() => {
     if (!selectedUnitData) return 0;
@@ -566,29 +529,6 @@ export default function BookingPage() {
 
 
       const siteParam = (window as any).__BOOKING_SITE_ID__ ? `&siteId=${encodeURIComponent((window as any).__BOOKING_SITE_ID__)}` : '';
-      // Fetch breakfast menu items
-      const bRes = await fetch(`${API_BASE}/api/booking/services?serviceId=svc_breakfast&checkIn=${ci}&checkOut=${co}${siteParam}`);
-      if (bRes.ok) {
-        const bData = await bRes.json();
-        setMenuItems(bData.menuItems || []);
-      }
-      // Fetch sauna details + booked slots
-      const sRes = await fetch(`${API_BASE}/api/booking/services?serviceId=svc_sauna&checkIn=${ci}&checkOut=${co}${siteParam}`);
-      if (sRes.ok) {
-        const sData = await sRes.json();
-        setSaunaPrice(typeof sData.price === 'number' ? sData.price : null);
-        setBookedSlots(sData.bookedSlots || []);
-        if (sData.addons?.length) {
-          setBroomPrice(typeof sData.addons[0]?.price === 'number' ? sData.addons[0].price : null);
-        }
-      }
-      // Fetch tub details + booked slots
-      const tRes = await fetch(`${API_BASE}/api/booking/services?serviceId=svc_tub&checkIn=${ci}&checkOut=${co}${siteParam}`);
-      if (tRes.ok) {
-        const tData = await tRes.json();
-        setTubPrice(typeof tData.price === 'number' ? tData.price : null);
-        setTubBookedSlots(tData.bookedSlots || []);
-      }
       // Fetch late checkout price
       const lcRes = await fetch(`${API_BASE}/api/booking/services?serviceId=svc_late_checkout&checkIn=${ci}&checkOut=${co}${siteParam}`);
       if (lcRes.ok) {
@@ -602,9 +542,7 @@ export default function BookingPage() {
       }
     } catch { /* silent */ }
     setServicesLoading(false);
-    if (ci && !saunaDate) setSaunaDate(ci);
-    if (ci && !tubDate) setTubDate(ci);
-  }, [checkIn, checkOut, saunaDate, tubDate, siteId]);
+  }, [checkIn, checkOut, siteId]);
 
   // ─── Submit Booking (Step 3: create reservation, then go to services or payment step) ──────
   const submitBooking = useCallback(async () => {
@@ -706,7 +644,7 @@ export default function BookingPage() {
   const submitServices = useCallback(async () => {
     const resId = reservation?.reservationId;
     if (!resId) return;
-    const nothingPicked = !saunaAdded && !tubAdded && !breakfastAdded && !lateCheckout && !earlyCheckin;
+    const nothingPicked = !lateCheckout && !earlyCheckin;
     if (nothingPicked) { setStep(5); return; }
 
     setSubmitting(true);
@@ -717,44 +655,6 @@ export default function BookingPage() {
         body: JSON.stringify(body),
       });
 
-      if (saunaAdded && saunaDate) {
-        try {
-          await post({
-            action: 'book-slots', serviceId: 'svc_sauna',
-            date: saunaDate, startHour: saunaStartHour, hours: saunaHours,
-            persons: cardAdults, reservationId: resId,
-            addons: saunaBroom > 0 ? [{ id: 'addon_broom', quantity: saunaBroom }] : [],
-          });
-        } catch { /* non-fatal */ }
-      }
-      if (tubAdded && tubDate) {
-        try {
-          await post({
-            action: 'book-slots', serviceId: 'svc_tub',
-            date: tubDate, startHour: tubStartHour, hours: tubHours,
-            persons: cardAdults, reservationId: resId,
-          });
-        } catch { /* non-fatal */ }
-      }
-      if (breakfastAdded) {
-        const items = Object.entries(breakfastItems)
-          .filter(([, qty]) => qty > 0)
-          .map(([menuItemId, quantity]) => ({ menuItemId, quantity }));
-        if (items.length > 0) {
-          try {
-            await post({
-              action: 'book-breakfast', reservationId: resId,
-              items,
-              // Breakfast is served the morning AFTER check-in (guest arrives afternoon)
-              serviceDate: (() => {
-                const d = new Date(checkIn + 'T00:00:00');
-                d.setDate(d.getDate() + 1);
-                return d.toISOString().split('T')[0];
-              })(),
-            });
-          } catch { /* non-fatal */ }
-        }
-      }
       if (lateCheckout) {
         try { await post({ action: 'book-toggle', serviceId: 'svc_late_checkout', reservationId: resId }); } catch { /* */ }
       }
@@ -768,7 +668,7 @@ export default function BookingPage() {
       setError(e?.message || t.errorOccurred);
     }
     setSubmitting(false);
-  }, [reservation, saunaAdded, saunaDate, saunaStartHour, saunaHours, saunaBroom, tubAdded, tubDate, tubStartHour, tubHours, breakfastAdded, breakfastItems, lateCheckout, earlyCheckin, cardAdults, checkIn, t, goToStep]);
+  }, [reservation, lateCheckout, earlyCheckin, t, goToStep]);
 
 
   // ─── Reset ──────
@@ -794,15 +694,6 @@ export default function BookingPage() {
     setCalMonthOffset(0);
     setPurchasedServices([]);
     try { sessionStorage.removeItem('booking-return-ctx'); } catch { /* */ }
-    // Service state
-    setSaunaDate(null);
-    setSaunaStartHour(14);
-    setSaunaHours(2);
-    setSaunaBroom(0);
-    setSaunaAdded(false);
-    setBreakfastItems({});
-    setBreakfastAdded(false);
-    setMenuItems([]);
     // Payment state
     setRedirectingToPayment(false);
     setPaymentStatus(null);
@@ -939,30 +830,6 @@ export default function BookingPage() {
             )}
 
             {/* Services in sidebar */}
-            {saunaAdded && (
-              <div style={{ padding: '8px 12px', background: 'var(--bk-bg)', borderRadius: 'var(--bk-radius-xs)', marginBottom: 6, fontSize: 13 }}>
-                <div style={{ fontWeight: 600, marginBottom: 2 }}>🧖 {t.saunaTitle}</div>
-                <div style={{ color: 'var(--bk-text-muted)' }}>
-                  {saunaDate && formatShortDate(saunaDate, lang)} · {String(saunaStartHour).padStart(2, '0')}:00–{String(saunaStartHour + saunaHours).padStart(2, '0')}:00
-                </div>
-                <div style={{ fontWeight: 600, textAlign: 'right' }}>{formatPrice(saunaTotal)} Kč</div>
-              </div>
-            )}
-            {tubAdded && (
-              <div style={{ padding: '8px 12px', background: 'var(--bk-bg)', borderRadius: 'var(--bk-radius-xs)', marginBottom: 6, fontSize: 13 }}>
-                <div style={{ fontWeight: 600, marginBottom: 2 }}>🛁 {t.tubTitle}</div>
-                <div style={{ color: 'var(--bk-text-muted)' }}>
-                  {tubDate && formatShortDate(tubDate, lang)} · {String(tubStartHour).padStart(2, '0')}:00–{String(tubStartHour + tubHours).padStart(2, '0')}:00
-                </div>
-                <div style={{ fontWeight: 600, textAlign: 'right' }}>{formatPrice(tubTotal)} Kč</div>
-              </div>
-            )}
-            {breakfastAdded && breakfastTotal > 0 && (
-              <div style={{ padding: '8px 12px', background: 'var(--bk-bg)', borderRadius: 'var(--bk-radius-xs)', marginBottom: 6, fontSize: 13 }}>
-                <div style={{ fontWeight: 600, marginBottom: 2 }}>🍳 {t.breakfastTitle}</div>
-                <div style={{ fontWeight: 600, textAlign: 'right' }}>{formatPrice(breakfastTotal)} Kč</div>
-              </div>
-            )}
             {lateCheckout && (
               <div style={{ padding: '6px 12px', background: 'var(--bk-bg)', borderRadius: 'var(--bk-radius-xs)', marginBottom: 6, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
                 <span>🕐 {t.lateCheckoutTitle}</span>
@@ -1543,362 +1410,6 @@ export default function BookingPage() {
                 <div className="booking-loading"><div className="booking-spinner" /></div>
               ) : (
                 <>
-                  {/* ─── SAUNA CARD ─── */}
-                  {/* Shown only when this hotel actually sells it at a price
-                      the server returned. */}
-                  {saunaPrice !== null && (
-                  <div className={`svc-card ${saunaAdded ? 'added' : ''}`}>
-                    <div className="svc-card-photo">🧖</div>
-                    <div className="svc-card-body">
-                      <h3 className="svc-card-title">{t.saunaTitle}</h3>
-                      <div className="svc-card-meta">
-                        <span className="svc-card-meta-item">👥 {t.saunaPersons}</span>
-                        <span className="svc-card-meta-item">⏱ {t.saunaMinHours}</span>
-                      </div>
-                      <p className="svc-card-desc">{t.saunaDesc}</p>
-                      <div className="svc-card-footer">
-                        <div className="svc-card-price">
-                          <span className="svc-card-price-currency">Kč</span>
-                          {formatPrice(saunaPrice)}
-                          <span style={{ fontSize: 14, fontWeight: 400, color: 'var(--bk-text-muted)' }}>/{t.saunaPerHour}</span>
-                        </div>
-                        <button
-                          className={`svc-card-add-btn ${saunaAdded ? 'added' : ''}`}
-                          onClick={() => {
-                            if (saunaAdded) {
-                              setShowSaunaPopup(true);
-                            } else {
-                              setShowSaunaPopup(true);
-                            }
-                          }}
-                          type="button"
-                        >
-                          {saunaAdded ? `✓ ${t.editService}` : `${t.saunaAddToBooking} +`}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  )}
-
-                  {/* Sauna added badge */}
-                  {saunaAdded && saunaDate && (
-                    <div className="svc-added-badge">
-                      <span>🧖</span>
-                      <span>
-                        {formatDisplayDate(saunaDate, lang)}, {String(saunaStartHour).padStart(2, '0')}:00 — {String(saunaStartHour + saunaHours).padStart(2, '0')}:00
-                        {saunaBroom > 0 && ` · 🧹 ×${saunaBroom}`}
-                        · <strong>{formatPrice(saunaTotal)} Kč</strong>
-                      </span>
-                      <button className="svc-added-badge-remove" onClick={() => { setSaunaAdded(false); setSaunaHours(2); setSaunaBroom(0); }} type="button" title={t.removeService}>✕</button>
-                    </div>
-                  )}
-
-                  {/* ─── SAUNA POPUP MODAL ─── */}
-                  {showSaunaPopup && (
-                    <div className="svc-popup-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowSaunaPopup(false); }}>
-                      <div className="svc-popup">
-                        <div className="svc-popup-header">
-                          <h3 className="svc-popup-title">🧖 {t.saunaTitle}</h3>
-                          <button className="svc-popup-close" onClick={() => setShowSaunaPopup(false)} type="button">✕</button>
-                        </div>
-                        <div className="svc-popup-body">
-                          {/* Date selection */}
-                          <div className="svc-popup-section">
-                            <div className="svc-popup-section-label">{t.saunaDate}</div>
-                            <div className="svc-popup-dates">
-                              {checkIn && checkOut && (() => {
-                                const dates: string[] = [];
-                                const start = parseDate(checkIn);
-                                const end = parseDate(checkOut);
-                                for (let d = new Date(start); d < end; d.setDate(d.getDate() + 1)) {
-                                  dates.push(fmtDate(d));
-                                }
-                                return dates.map(ds => (
-                                  <button
-                                    key={ds}
-                                    className={`svc-popup-date ${saunaDate === ds ? 'active' : ''}`}
-                                    onClick={() => setSaunaDate(ds)}
-                                    type="button"
-                                  >
-                                    {formatDisplayDate(ds, lang)}
-                                  </button>
-                                ));
-                              })()}
-                            </div>
-                          </div>
-
-                          {/* Time slot grid */}
-                          <div className="svc-popup-section">
-                            <div className="svc-popup-section-label">{t.selectTime}</div>
-                            <div className="svc-popup-slots">
-                              {Array.from({ length: 12 }, (_, i) => i + 10).map(h => {
-                                const isBooked = bookedSlots.some(
-                                  (s: any) => s.date === saunaDate && s.start_time === `${String(h).padStart(2, '0')}:00`
-                                );
-                                const isSelected = h === saunaStartHour;
-                                const isInRange = h > saunaStartHour && h < saunaStartHour + saunaHours;
-                                return (
-                                  <button
-                                    key={h}
-                                    className={`svc-popup-slot ${isBooked ? 'booked' : ''} ${isSelected ? 'selected' : ''} ${isInRange ? 'in-range' : ''}`}
-                                    onClick={() => { if (!isBooked) setSaunaStartHour(h); }}
-                                    disabled={isBooked}
-                                    type="button"
-                                  >
-                                    {String(h).padStart(2, '0')}:00
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          {/* Hours & Broom counters */}
-                          <div className="svc-popup-section">
-                            <div className="svc-popup-counters">
-                              <div className="svc-popup-counter">
-                                <div className="svc-popup-counter-label">{t.saunaHours}</div>
-                                <div className="booking-guest-btns">
-                                  <button className="booking-counter-btn" onClick={() => setSaunaHours(h => Math.max(2, h - 1))} disabled={saunaHours <= 2} type="button">−</button>
-                                  <span className="booking-counter-value">{saunaHours}</span>
-                                  <button className="booking-counter-btn" onClick={() => setSaunaHours(h => Math.min(6, h + 1))} disabled={saunaHours >= 6} type="button">+</button>
-                                </div>
-                                <div className="svc-popup-counter-sub">{t.saunaMinHours}</div>
-                              </div>
-                              <div className="svc-popup-counter">
-                                <div className="svc-popup-counter-label">{t.saunaBroom} 🧹</div>
-                                <div className="booking-guest-btns">
-                                  <button className="booking-counter-btn" onClick={() => setSaunaBroom(b => Math.max(0, b - 1))} disabled={saunaBroom <= 0} type="button">−</button>
-                                  <span className="booking-counter-value">{saunaBroom}</span>
-                                  <button className="booking-counter-btn" onClick={() => setSaunaBroom(b => Math.min(5, b + 1))} disabled={saunaBroom >= 5} type="button">+</button>
-                                </div>
-                                <div className="svc-popup-counter-sub">{formatPrice(broomPrice ?? 0)} Kč</div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Popup footer */}
-                        <div className="svc-popup-footer">
-                          <div className="svc-popup-total">
-                            <div className="svc-popup-total-label">{t.totalLabel}</div>
-                            <div className="svc-popup-total-amount">
-                              {formatPrice((saunaPrice ?? 0) * saunaHours + (broomPrice ?? 0) * saunaBroom)} Kč
-                            </div>
-                          </div>
-                          <div className="svc-popup-actions">
-                            <button className="svc-popup-btn-close" onClick={() => setShowSaunaPopup(false)} type="button">{t.closePopup}</button>
-                            <button
-                              className="svc-popup-btn-book"
-                              onClick={() => {
-                                setSaunaAdded(true);
-                                setShowSaunaPopup(false);
-                              }}
-                              type="button"
-                            >
-                              {t.bookService}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ─── BREAKFAST SECTION ─── */}
-                  <div className="breakfast-section">
-                    <h3 className="breakfast-section-title">🍳 {t.myDishes}</h3>
-                    <div className="breakfast-info">
-                      <span className="breakfast-info-icon">ℹ️</span>
-                      <span>{t.breakfastInfo}</span>
-                    </div>
-
-                    {menuItems.length > 0 ? (
-                      <div className="breakfast-grid">
-                        {menuItems.map(item => {
-                          const localizedName = lang === 'en' ? item.nameEn : lang === 'cs' ? item.nameCs : lang === 'de' ? item.nameDe : item.name;
-                          const qty = breakfastItems[item.id] || 0;
-                          return (
-                            <div key={item.id} className="breakfast-card">
-                              <div className="breakfast-card-photo">
-                                <div className="breakfast-card-time">08:45 — 12:30</div>
-                                {item.id === 'mi_breakfast_1' ? '🥞' : item.id === 'mi_breakfast_2' ? '🍳' : '🥣'}
-                              </div>
-                              <div className="breakfast-card-body">
-                                <div className="breakfast-card-name">{localizedName || item.name}</div>
-                                <div className="breakfast-card-row">
-                                  <span className="breakfast-card-weight">{item.weight || tUi('350 г')}</span>
-                                  <span className="breakfast-card-price">
-                                    {formatPrice(item.price)}
-                                    <span className="breakfast-card-price-currency"> Kč</span>
-                                  </span>
-                                </div>
-                                {qty === 0 ? (
-                                  <button
-                                    className="breakfast-want-btn"
-                                    onClick={() => {
-                                      setBreakfastItems(prev => ({ ...prev, [item.id]: 1 }));
-                                      setBreakfastAdded(true);
-                                    }}
-                                    type="button"
-                                  >
-                                    {t.wantButton}
-                                  </button>
-                                ) : (
-                                  <div className="breakfast-counter">
-                                    <button
-                                      className="booking-counter-btn"
-                                      onClick={() => {
-                                        const newQty = qty - 1;
-                                        setBreakfastItems(prev => ({ ...prev, [item.id]: newQty }));
-                                        // Check if any items remain
-                                        const remaining = Object.entries({ ...breakfastItems, [item.id]: newQty }).filter(([, v]) => (v as number) > 0);
-                                        if (remaining.length === 0) setBreakfastAdded(false);
-                                      }}
-                                      type="button"
-                                    >−</button>
-                                    <span className="booking-counter-value">{qty}</span>
-                                    <button
-                                      className="booking-counter-btn"
-                                      onClick={() => setBreakfastItems(prev => ({ ...prev, [item.id]: Math.min(20, qty + 1) }))}
-                                      disabled={qty >= 20}
-                                      type="button"
-                                    >+</button>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p style={{ color: 'var(--bk-text-muted)', fontSize: 13 }}>{t.servicesEmpty}</p>
-                    )}
-                  </div>
-
-                  {/* ─── TUB (ЧАН) SECTION ─── */}
-                  {tubPrice !== null && (
-                  <div className="svc-card" style={{ marginTop: 16 }}>
-                    <div className="svc-card-photo">
-                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #e8f5e9, #c8e6c9)', fontSize: 64 }}>
-                        🛁
-                      </div>
-                    </div>
-                    <div className="svc-card-body">
-                      <h3 className="svc-card-title">{t.tubTitle}</h3>
-                      <div className="svc-card-meta">
-                        <span>👥 {t.saunaPersons}</span>
-                        <span>⏱ {t.saunaMinHours}</span>
-                      </div>
-                      <p className="svc-card-desc">{t.tubDesc}</p>
-                      <div className="svc-card-price">
-                        <span className="svc-card-price-currency">Kč</span>
-                        <span className="svc-card-price-amount">{formatPrice(tubPrice ?? 0)}</span>
-                        <span className="svc-card-price-unit">{t.tubPerHour}</span>
-                      </div>
-                      {tubAdded ? (
-                        <div className="svc-added-badge">
-                          <span>✓ {t.tubTitle}</span>
-                          <button className="svc-added-badge-remove" onClick={() => { setTubAdded(false); setTubHours(2); }} type="button">✕</button>
-                        </div>
-                      ) : (
-                        <button className="svc-card-btn" onClick={() => { setShowTubPopup(true); if (checkIn) setTubDate(checkIn); }} type="button">
-                          {t.tubAddToBooking} +
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  )}
-
-                  {/* Tub Popup Modal */}
-                  {showTubPopup && (
-                    <div className="svc-popup-overlay" onClick={() => setShowTubPopup(false)}>
-                      <div className="svc-popup" onClick={e => e.stopPropagation()}>
-                        <button className="svc-popup-close" onClick={() => setShowTubPopup(false)} type="button">✕</button>
-                        <h3 className="svc-popup-title">🛁 {t.tubTitle}</h3>
-
-                        {/* Date pills */}
-                        <div className="svc-popup-section">
-                          <div className="svc-popup-section-title">{t.saunaDate}</div>
-                          <div className="svc-popup-date-pills">
-                            {checkIn && checkOut && (() => {
-                              const dates: string[] = [];
-                              const c = new Date(parseDate(checkIn));
-                              const end = parseDate(checkOut);
-                              while (c < end) { dates.push(fmtDate(c)); c.setDate(c.getDate() + 1); }
-                              return dates.map(d => (
-                                <button
-                                  key={d}
-                                  className={`svc-popup-date-pill ${tubDate === d ? 'active' : ''}`}
-                                  onClick={() => setTubDate(d)}
-                                  type="button"
-                                >
-                                  {formatShortDate(d, lang)}
-                                </button>
-                              ));
-                            })()}
-                          </div>
-                        </div>
-
-                        {/* Time slots */}
-                        <div className="svc-popup-section">
-                          <div className="svc-popup-section-title">{t.selectTime}</div>
-                          <div className="svc-popup-time-grid">
-                            {Array.from({ length: 12 }, (_, i) => 10 + i).map(hour => {
-                              const isBooked = tubBookedSlots.some((s: any) => s.date === tubDate && s.start_time === `${String(hour).padStart(2, '0')}:00`);
-                              const isSelected = hour >= tubStartHour && hour < tubStartHour + tubHours;
-                              return (
-                                <button
-                                  key={hour}
-                                  className={`svc-popup-time-slot ${isSelected ? 'selected' : ''} ${isBooked ? 'booked' : ''}`}
-                                  onClick={() => !isBooked && setTubStartHour(hour)}
-                                  disabled={isBooked}
-                                  type="button"
-                                >
-                                  {String(hour).padStart(2, '0')}:00
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Hours counter */}
-                        <div className="svc-popup-counters">
-                          <div className="svc-popup-counter">
-                            <div className="svc-popup-counter-label">{t.saunaHours}</div>
-                            <div className="svc-popup-counter-controls">
-                              <button className="svc-popup-counter-btn" onClick={() => setTubHours(h => Math.max(2, h - 1))} type="button">−</button>
-                              <span className="svc-popup-counter-value">{tubHours}</span>
-                              <button className="svc-popup-counter-btn" onClick={() => setTubHours(h => Math.min(6, h + 1))} type="button">+</button>
-                            </div>
-                            <div className="svc-popup-counter-note">{t.saunaMinHours}</div>
-                          </div>
-                        </div>
-
-                        {/* Popup footer */}
-                        <div className="svc-popup-footer">
-                          <div className="svc-popup-total">
-                            <div className="svc-popup-total-label">{t.totalLabel}</div>
-                            <div className="svc-popup-total-amount">
-                              {formatPrice((tubPrice ?? 0) * tubHours)} Kč
-                            </div>
-                          </div>
-                          <div className="svc-popup-actions">
-                            <button className="svc-popup-btn-close" onClick={() => setShowTubPopup(false)} type="button">{t.closePopup}</button>
-                            <button
-                              className="svc-popup-btn-book"
-                              onClick={() => {
-                                setTubAdded(true);
-                                setShowTubPopup(false);
-                              }}
-                              type="button"
-                            >
-                              {t.bookService}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
                   {/* ─── LATE CHECKOUT / EARLY CHECKIN ─── */}
                   {lateCheckoutPrice !== null && (
                   <div className={`svc-toggle-card ${lateCheckout ? 'active' : ''}`}>
@@ -1968,7 +1479,7 @@ export default function BookingPage() {
                 <button
                   className="booking-btn-next"
                   onClick={submitServices}
-                  disabled={submitting || (!saunaAdded && !tubAdded && !breakfastAdded && !lateCheckout && !earlyCheckin)}
+                  disabled={submitting || (!lateCheckout && !earlyCheckin)}
                   type="button"
                 >
                   {submitting ? t.processing : `${t.confirmServices} ›`}
