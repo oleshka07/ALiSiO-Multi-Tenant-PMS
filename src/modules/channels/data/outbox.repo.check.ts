@@ -364,6 +364,27 @@ try {
     assert.strictEqual(claimed[0].fields, null, 'захоплення віддає маску');
     await sql.run("DELETE FROM cm_outbox WHERE unit_type_id = 'ut9'", []);
     console.log('  ok  маски однієї координати обʼєднуються, NULL поглинає, захоплення віддає маску');
+
+    // Порожня маска — не координата (Блок 0.6 A2). `[]` пакується в нуль, і
+    // нуль — це рядок у черзі, який поїде ПОРОЖНІМ тілом: жодного поля, але
+    // виклик із ліміту й рядок у журналі. Писач, у якого нічого не змінилось,
+    // не кладе координати взагалі; двері це знають (`changed.size`), а черга
+    // мусить відмовити, якщо хтось забуде. `null`/відсутнє — «усі поля» — це
+    // інше і лишається. Осі: порожній масив відмовляє, одне поле проходить,
+    // відсутнє поле проходить як NULL; після відмови рядка немає.
+    await assert.rejects(
+      () => enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'ut9', ratePlanId: 'rp9', date: NIGHT, fields: [] }),
+      /empty field mask/,
+      'порожня маска мусить відмовляти, а не лягати нулем — тіло без жодного поля',
+    );
+    assert.strictEqual((await mine()).length, 0, 'після відмови рядка в черзі немає');
+    await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: 'ut9', ratePlanId: 'rp9', date: NIGHT, fields: ['maxStay'] });
+    assert.deepStrictEqual((await mine())[0].fields, ['maxStay'], 'одне поле — звичайна координата');
+    await sql.run("DELETE FROM cm_outbox WHERE unit_type_id = 'ut9'", []);
+    await enqueueChange(sql, CONN, { kind: 'availability', unitTypeId: 'ut9', date: NIGHT, fields: [] });
+    assert.strictEqual((await mine())[0].fields, null, 'наявність масок не має — порожній масив там нічого не значить і не відмовляє');
+    await sql.run("DELETE FROM cm_outbox WHERE unit_type_id = 'ut9'", []);
+    console.log('  ok  порожня маска ціни — відмова, не рядок з порожнім тілом');
   });
 
   // ── П6: розписка вендора на відправленому, і лише свого зʼєднання ──────

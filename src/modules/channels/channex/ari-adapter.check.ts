@@ -64,9 +64,11 @@ async function cleanup() {
   try { await sql.run('DELETE FROM cm_sends WHERE organization_id = ?', [ORG]); } catch { /* таблиці ще немає — гейт червоний нижче */ }
   await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP]);
   await sql.run('DELETE FROM units WHERE property_id = ?', [PROP]);
+  // Тип першим: календар цін іде за ним каскадом (до цінових таблиць звідси
+  // не торкаємось — інваріант 16), і лише тоді тарифи, на які він посилався.
   await sql.run('DELETE FROM unit_types WHERE property_id = ?', [PROP]);
+  await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP]);
   await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP]);
   await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM organizations WHERE id = ?', [ORG]);
@@ -499,6 +501,118 @@ try {
       await upsertPrices(UT, [{ date: D10, base_price: 160, min_stay: 2, closed: true }]);
       assert.strictEqual(await mask(), 'none', 'нічого не змінилось — координати немає: зайвий виклик із ліміту');
       console.log('  ok  писач календаря: маска — різниця з рядком, не склад запиту; без зміни — без координати');
+    }
+
+    // ── 12. Обмеження з екрана ТАРИФУ лягають на ТИП і їдуть на кожну пару ─
+    //
+    // Блок 0.6 A1 (рецензія e29e063). Обмеження в нас на тип номера (П7,
+    // Ц32): батчер читає їх з базового рядка (`dayRestrictions`), котирування
+    // — теж. Але редактор дня з вибраним тарифом писав мінімум, «закрито»,
+    // CTA/CTD у рядок ТАРИФУ й клав координату лише на його пару — у канал
+    // їхало значення БАЗОВОГО рядка (1 / відкрито), маска казала «мінімум»,
+    // журнал — «поїхало». На беті 05.09 так «мін 2 на Twin BAR» доїхав
+    // одиницею. Тепер: обмеження з будь-якого екрана — у базовий рядок типу,
+    // координата — на КОЖНУ пару типу з маскою обмежень; рядок тарифу несе
+    // лише ціну, і його координата — лише на його пару.
+    //
+    // Осі (інваріант 26): друга пара на тому ж типі — без неї «на всі пари»
+    // і «на вибрану» нерозрізненні; мінімум 3 проти дефолту 1; «закрито»
+    // окремо від мінімуму; ціна тарифу — лише його пара, щоб «усе на всі
+    // пари» не пройшло; те саме через масовий редактор.
+    {
+      const RP2 = `${ORG}_rp2`;
+      const D12 = addDays(DAY, 100);
+      const { upsertPrices, getPriceMonth } = await import('@pricing');
+      await sql.run(
+        `INSERT INTO rate_plans (id, property_id, name, code, currency, is_active, is_hidden, priority)
+         VALUES (?, ?, ?, ?, 'EUR', TRUE, FALSE, 0)`,
+        [RP2, PROP, 'Bed & Breakfast', 'BB'],
+      );
+      for (const [entityType, occupancy] of [['rate_plan', 0], ['rate_plan_option', 2]] as const) {
+        await sql.run(
+          `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, occupancy, remote_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [`${CONN}_m2_${entityType}_${occupancy}`, ORG, CONN, entityType, RP2, UT, occupancy, 'remote-rp2'],
+        );
+      }
+      const reset = () => sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      const bodyKeys = (v: Record<string, unknown>) => Object.keys(v).filter((k) => !['property_id', 'rate_plan_id', 'date', 'date_from', 'date_to'].includes(k)).sort();
+      const pairOn = (calls: { path: string; body: any }[], remoteRp: string) => {
+        const rates = calls.find((c) => c.path.endsWith('/restrictions'));
+        return rates?.body.values.find((x: any) => x.rate_plan_id === remoteRp && (x.date === D12 || (x.date_from <= D12 && D12 <= x.date_to)));
+      };
+      const queued = async () => (await queuedChanges(CONN)).filter((r) => r.kind === 'rate' && r.date === D12).sort((a, b) => String(a.ratePlanId).localeCompare(String(b.ratePlanId)));
+      // Що лежить у календарі — дверима `@pricing` (інваріант 16): сітка типу
+      // і сітка тарифу; `inherited` — власної ціни тарифу на день немає.
+      const [Y12, M12] = [Number(D12.slice(0, 4)), Number(D12.slice(5, 7))];
+      const gridDay = async (rp?: string) => (await getPriceMonth(UT, M12, Y12, rp)).days.find((d) => d.date === D12)!;
+
+      await reset();
+      await bulkUpdatePrices({ unitTypeId: UT, dateFrom: D12, dateTo: D12, applyTo: 'all', base_price: 150 });
+      await reset();
+
+      // Вісь 1: мінімум 3 з вибраним тарифом → базовий рядок, обидві пари, лише мінімум у тілі.
+      await upsertPrices(UT, [{ date: D12, min_stay: 3 }], { ratePlanId: RP });
+      let rows = await queued();
+      assert.strictEqual(rows.length, 2, `обмеження типу — координата на КОЖНУ пару типу (дві), а не ${rows.length}: ${JSON.stringify(rows.map((r) => [r.ratePlanId, r.fields]))}`);
+      assert.deepStrictEqual(rows.map((r) => r.fields), [['minStay'], ['minStay']], 'маска обох — лише «мінімум»');
+      assert.strictEqual((await gridDay()).min_stay, 3, 'мінімум лягає на БАЗОВИЙ рядок типу — той, що читають батчер і котирування');
+      assert.strictEqual((await gridDay(RP)).inherited, true, 'без ціни тарифу власного рядка тарифу не зʼявилось: обмеження — не його, ціна далі успадкована');
+      assert.strictEqual((await gridDay(RP)).min_stay, 3, 'і сітка тарифу показує той самий мінімум');
+      // Свій лічильник на кожен прохід: спільний бюджет зʼєднання витрачено попередніми сценами.
+      const t1 = transport([]);
+      const r1 = await ariFlush(CONN, 'key', { client: { fetch: t1.fetch, limiter: new ChannexRateLimiter() } });
+      assert.strictEqual(r1.failed, 0, r1.errors.join(' | '));
+      for (const remote of ['remote-rp', 'remote-rp2']) {
+        const v = pairOn(t1.calls, remote);
+        assert.ok(v, `${remote}: ніч ${D12} мала поїхати — мінімум ставився на тип`);
+        assert.strictEqual(v.min_stay_arrival, 3, `${remote}: мінімум 3 з екрана тарифу мав доїхати, поїхало ${JSON.stringify(v)}`);
+        assert.deepStrictEqual(bodyKeys(v), ['min_stay_arrival'], `${remote}: у тілі лише мінімум, а не ${bodyKeys(v).join(',')}`);
+      }
+
+      // Вісь 2: «Закрито» з вибраним тарифом → stop_sell на обох парах.
+      await upsertPrices(UT, [{ date: D12, min_stay: 3, closed: true }], { ratePlanId: RP });
+      rows = await queued();
+      assert.deepStrictEqual(rows.map((r) => r.fields), [['closed'], ['closed']], `«закрито» типу — обидві пари, маска «закрито»: ${JSON.stringify(rows.map((r) => [r.ratePlanId, r.fields]))}`);
+      const t2 = transport([]);
+      await ariFlush(CONN, 'key', { client: { fetch: t2.fetch, limiter: new ChannexRateLimiter() } });
+      for (const remote of ['remote-rp', 'remote-rp2']) {
+        const v = pairOn(t2.calls, remote);
+        assert.ok(v, `${remote}: «закрито» типу мало поїхати й на цю пару`);
+        assert.strictEqual(v.stop_sell, true, `${remote}: stop_sell мав бути true, поїхало ${JSON.stringify(v)}`);
+        assert.deepStrictEqual(bodyKeys(v), ['stop_sell']);
+      }
+
+      // Вісь 3: ціна з вибраним тарифом — лише ЙОГО пара; «відкрито» тим самим
+      // збереженням — знову обидві. Маски однієї координати зливаються: пара
+      // RP несе ціну І відкриття, пара RP2 — лише відкриття, без ціни.
+      // (Закриту ніч жодне джерело не цінує — Д2, тож відкриваємо тут же.)
+      await upsertPrices(UT, [{ date: D12, base_price: 200, min_stay: 3, closed: false }], { ratePlanId: RP });
+      rows = await queued();
+      assert.deepStrictEqual(rows.map((r) => [r.ratePlanId, r.fields]), [[RP, ['prices', 'closed']], [RP2, ['closed']]],
+        `ціна — лише на пару тарифу, «відкрито» — на обидві: ${JSON.stringify(rows.map((r) => [r.ratePlanId, r.fields]))}`);
+      assert.strictEqual((await gridDay(RP)).base_price, 200, 'ціна тарифу — у рядку тарифу');
+      assert.strictEqual((await gridDay(RP)).inherited, false);
+      assert.strictEqual((await gridDay(RP2)).inherited, true, 'другий тариф власної ціни не отримав — успадковує базову');
+      assert.strictEqual((await gridDay(RP2)).base_price, 150);
+      const t3 = transport([]);
+      const r3 = await ariFlush(CONN, 'key', { client: { fetch: t3.fetch, limiter: new ChannexRateLimiter() } });
+      assert.strictEqual(r3.failed, 0, r3.errors.join(' | '));
+      const v3a = pairOn(t3.calls, 'remote-rp');
+      const v3b = pairOn(t3.calls, 'remote-rp2');
+      assert.deepStrictEqual(v3a?.rates, [{ occupancy: 2, rate: 20000 }], `ціна тарифу доїхала на його пару: ${JSON.stringify(v3a)}`);
+      assert.strictEqual(v3a?.stop_sell, false, 'і ніч відкрита явно');
+      assert.deepStrictEqual(bodyKeys(v3b ?? {}), ['stop_sell'], `друга пара — лише відкриття, без ціни чужого тарифу: ${JSON.stringify(v3b)}`);
+      assert.strictEqual(v3b?.stop_sell, false);
+
+      // Вісь 4: масовий редактор з вибраним тарифом — те саме правило.
+      await bulkUpdatePrices({ unitTypeId: UT, dateFrom: D12, dateTo: D12, applyTo: 'all', ratePlanId: RP, min_stay: 4 });
+      rows = await queued();
+      assert.deepStrictEqual(rows.map((r) => r.fields), [['minStay'], ['minStay']], `масовий: мінімум з тарифом — обидві пари: ${JSON.stringify(rows.map((r) => [r.ratePlanId, r.fields]))}`);
+      assert.strictEqual((await gridDay()).min_stay, 4, 'масовий: мінімум — у базовий рядок');
+      assert.strictEqual((await gridDay(RP)).base_price, 200, 'масовий: ціна тарифу при цьому не зачеплена');
+      await reset();
+      console.log('  ok  обмеження з екрана тарифу — на тип: базовий рядок, координата на кожну пару; ціна тарифу — лише його пара');
     }
   });
 } finally {

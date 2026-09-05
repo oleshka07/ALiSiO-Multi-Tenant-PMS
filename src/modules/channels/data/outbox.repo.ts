@@ -69,7 +69,9 @@ export interface Change {
    */
   dateTo?: string | null;
   /**
-   * Які поля ціни змінились (`RATE_FIELDS` домену). Порожньо — усі.
+   * Які поля ціни змінились (`RATE_FIELDS` домену). `null` або відсутнє —
+   * усі. Порожній масив черга НЕ приймає (відмова): «нічого не змінилось» —
+   * це відсутність координати, а не координата без полів.
    *
    * Блок 0.5: у тіло їде лише замасковане (тест 2 сертифікації — лише
    * ціна). Два рядки однієї координати з різними масками зливаються в
@@ -142,6 +144,14 @@ export async function enqueueChange(t: Sql, connectionId: string, change: Change
   // PRIMARY KEY or UNIQUE constraint» на першій же зміні ціни, на обох
   // двигунах. Той самий прийом, що в `price-calendar.repo.ts`.
   // Маска — лише в ціновій смузі; наявність — одне число, масок не має.
+  // Порожня маска — не координата (Блок 0.6 A2): `[]` пакується в нуль, і
+  // такий рядок поїхав би ПОРОЖНІМ тілом — жодного поля, але виклик із
+  // ліміту й рядок у журналі. «Нічого не змінилось» — це відсутність
+  // координати, і писач це знає (`changed.size`); тут — відмова, якщо забуде.
+  // `null`/відсутнє — «усі поля» — інше, і лишається.
+  if (change.kind === 'rate' && change.fields && change.fields.length === 0) {
+    throw new Error('cm_outbox: an empty field mask is not a coordinate — nothing changed, nothing to send');
+  }
   const fieldMask = change.kind === 'rate' ? packFields(change.fields) : null;
 
   // Злиття масок — тим самим `ON CONFLICT`, що й злиття рядків: «ціна» і

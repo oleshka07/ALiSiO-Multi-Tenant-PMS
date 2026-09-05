@@ -67,9 +67,12 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
   const priceMap = new Map<string, any>();
   for (const row of rows as any[]) priceMap.set(row.date, row);
 
-  // Сітка ТАРИФУ: власний рядок тарифу поверх базового. Де власного немає —
-  // показуємо базу і кажемо, що вона успадкована: інакше оператор бачить
-  // число і не знає, чиє воно.
+  // Сітка ТАРИФУ: ЦІНА з власного рядка тарифу поверх базового. Де власної
+  // немає — показуємо базову і кажемо, що вона успадкована: інакше оператор
+  // бачить число і не знає, чиє воно. ОБМЕЖЕННЯ — завжди з базового рядка
+  // типу (П7, Ц32): рядок тарифу їх не несе, і саме базові читають батчер і
+  // котирування (Блок 0.6 A1 — до того сітка тарифу показувала обмеження з
+  // рядка тарифу, яких у каналі не було ніколи).
   const own = new Map<string, any>();
   if (ratePlanId) {
     const planRows = await sql.rows<any>(`
@@ -85,26 +88,32 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const dayOfWeek = new Date(year, month - 1, d).getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6;
+    const baseRow = priceMap.get(dateStr);
     const ownRow = own.get(dateStr);
-    const existing = ownRow ?? priceMap.get(dateStr);
+    // Власна ціна тарифу — рядок тарифу З ціною; порожній рядок тарифу
+    // (лишився від старого писача або від «прибрати ціну вихідних») ціни не
+    // має і не заступає базову.
+    const ownPriced = ownRow && ownRow.base_price != null;
+    const priceRow = ownPriced ? ownRow : baseRow;
+    const existing = priceRow ?? baseRow;
 
     if (existing) {
       // Рядок без ціни (лише обмеження) — `effective_price` NULL: екран
       // показує «—», не 0, і редактор дня відкриває порожнє поле.
-      const basePrice = existing.base_price == null ? null : Number(existing.base_price);
-      const weekendPrice = existing.weekend_price == null ? null : Number(existing.weekend_price);
+      const basePrice = priceRow?.base_price == null ? null : Number(priceRow.base_price);
+      const weekendPrice = priceRow?.weekend_price == null ? null : Number(priceRow.weekend_price);
       days.push({
         date: dateStr, day: d, dayOfWeek, isWeekend,
         base_price: basePrice,
         weekend_price: weekendPrice,
         effective_price: isWeekend && weekendPrice != null ? weekendPrice : basePrice,
-        min_stay: existing.min_stay,
-        max_stay: existing.max_stay,
-        closed: existing.closed,
-        cta: existing.cta,
-        ctd: existing.ctd,
+        min_stay: baseRow?.min_stay ?? 1,
+        max_stay: baseRow?.max_stay ?? null,
+        closed: baseRow?.closed ?? 0,
+        cta: baseRow?.cta ?? 0,
+        ctd: baseRow?.ctd ?? 0,
         hasData: true,
-        ...(ratePlanId ? { inherited: !ownRow } : {}),
+        ...(ratePlanId ? { inherited: !ownPriced } : {}),
       });
     } else {
       days.push({ date: dateStr, day: d, dayOfWeek, isWeekend, base_price: null, weekend_price: null, effective_price: null, min_stay: 1, max_stay: null, closed: 0, cta: 0, ctd: 0, hasData: false });
@@ -154,25 +163,41 @@ function shapeOf(row: any | undefined): CalendarRowShape | null {
   };
 }
 
+/** Ціна пари: `base_price` і `weekend_price` разом. */
+type PriceShape = Pick<CalendarRowShape, 'base_price' | 'weekend_price'>;
+/** Обмеження типу: мінімум, максимум, «закрито», заборона заїзду й виїзду. */
+type RestrictionShape = Pick<CalendarRowShape, 'min_stay' | 'max_stay' | 'closed' | 'cta' | 'ctd'>;
+
 /**
- * Які поля ціни ЗМІНИЛИСЬ — маска координати для каналу (Блок 0.5).
+ * Які поля ЦІНИ змінились — маска координати ПАРИ (Блок 0.5).
  *
- * Порівнюється ефективний стан пари: власний рядок тарифу, а де його немає
+ * Порівнюється ефективна ціна пари: власний рядок тарифу, а де його немає
  * — успадкований базовий (так само її читає котирування). Екран редактора
  * дня шле всю форму щоразу, тож склад запиту про зміну не каже нічого;
- * каже різниця з тим, що лежало. Ціна — це `base_price` і `weekend_price`
- * разом; «здобула джерело» (NULL → число) додає `closed` — липкий
- * прапорець вендора знімається лише явно (И14, Ц34 (б)); «втратила»
- * (число → NULL) — теж, хоч батчер закрив би й сам: маска має казати правду.
- * Порожня маска — нічого не змінилось, координата не кладеться.
+ * каже різниця з тим, що лежало. «Здобула джерело» (NULL → число) додає
+ * `closed` — липкий прапорець вендора знімається лише явно (И14, Ц34 (б));
+ * «втратила» (число → NULL) — теж, хоч батчер закрив би й сам: маска має
+ * казати правду. Порожня маска — нічого не змінилось, координата не кладеться.
  */
-function changedFields(before: CalendarRowShape | null, after: CalendarRowShape): RateField[] {
+function changedPriceFields(before: PriceShape | null, after: PriceShape): RateField[] {
   const out = new Set<RateField>();
   const priceBefore = before ? [before.base_price, before.weekend_price] : [null, null];
   if (priceBefore[0] !== after.base_price || priceBefore[1] !== after.weekend_price) out.add('prices');
   const hadPrice = priceBefore[0] != null;
   const hasPrice = after.base_price != null;
   if (hadPrice !== hasPrice) out.add('closed');
+  return [...out];
+}
+
+/**
+ * Які ОБМЕЖЕННЯ змінились — маска координати на КОЖНУ пару типу (Блок 0.6 A1).
+ *
+ * Обмеження живуть на типі (П7, Ц32) — у базовому рядку, який читають батчер
+ * (`dayRestrictions`) і котирування; тарифу вони не належать. Порівнюється
+ * базовий рядок до і після, незалежно від того, з якого екрана прийшло.
+ */
+function changedRestrictionFields(before: RestrictionShape | null, after: RestrictionShape): RateField[] {
+  const out = new Set<RateField>();
   if ((before?.closed ?? false) !== after.closed) out.add('closed');
   if ((before?.min_stay ?? 1) !== after.min_stay) out.add('minStay');
   if ((before?.max_stay ?? null) !== after.max_stay) out.add('maxStay');
@@ -181,15 +206,101 @@ function changedFields(before: CalendarRowShape | null, after: CalendarRowShape)
   return [...out];
 }
 
-/** Ефективний стан пари ДО запису: власний рядок, інакше успадкований базовий. */
-function effectiveBefore(own: CalendarRowShape | null, inherited: CalendarRowShape | null): CalendarRowShape | null {
+/** Ефективна ціна пари ДО запису: власний рядок, а де в ньому порожньо — успадкований базовий. */
+function effectivePriceBefore(own: PriceShape | null, inherited: PriceShape | null): PriceShape | null {
   if (!own) return inherited;
   if (!inherited) return own;
   return {
-    ...own,
     base_price: own.base_price ?? inherited.base_price,
     weekend_price: own.weekend_price ?? inherited.weekend_price,
   };
+}
+
+/**
+ * Двері каналів для обох писачів календаря — В ТІЙ САМІЙ транзакції, одним
+ * діапазоном від першої до останньої дати (незмінені дні між ними коштують
+ * лише повторного читання того самого числа, Ц13). Дві координати різного
+ * охоплення, і це не деталь:
+ *
+ *   ціна        → пара вибраного тарифу (Ц10); без тарифу — базова ціна
+ *                 типу, її успадковує кожен тариф, тож усі пари типу;
+ *   обмеження   → УСІ пари типу завжди (П7, Ц32): вони лежать у базовому
+ *                 рядку, з якого батчер читає їх для кожного тарифу.
+ *
+ * До 05.09.2026 (Блок 0.6 A1) з екрана тарифу обмеження їхали однією
+ * координатою з ціною — лише на його пару, і батчер читав для неї базовий
+ * рядок, у який ніхто нічого не писав: «мін 2» доїхав одиницею.
+ *
+ * Координата — лише коли щось справді змінилось, і лише з тим, що
+ * змінилось: зайва координата коштує виклик із ліміту, зайве поле —
+ * сертифікацію (лист Channex 05.09, Б1).
+ */
+async function noteCalendarChanged(
+  t: Sql,
+  span: { propertyId: string; unitTypeId: string; ratePlanId: string | null; from: string; to: string },
+  priceFields: Set<RateField>,
+  restrictionFields: Set<RateField>,
+): Promise<void> {
+  const { propertyId, unitTypeId, from, to } = span;
+  if (priceFields.size) {
+    await noteRatesChanged(t, { propertyId, unitTypeId, ratePlanId: span.ratePlanId ?? undefined, from, to, fields: [...priceFields] });
+  }
+  if (restrictionFields.size) {
+    await noteRatesChanged(t, { propertyId, unitTypeId, from, to, fields: [...restrictionFields] });
+  }
+}
+
+const restrictionsOf = (row: CalendarRowShape | null): RestrictionShape | null => row && {
+  min_stay: row.min_stay, max_stay: row.max_stay, closed: row.closed, cta: row.cta, ctd: row.ctd,
+};
+
+/**
+ * Рядок ТАРИФУ несе лише ціну (Блок 0.6 A1): обмеження на ньому не читає
+ * ніхто — ні батчер, ні котирування, ні сітка. Пишеться лише коли є що
+ * нести: назвали ціну, або рядок уже є (тоді «прибрати ціну вихідних» теж
+ * має куди лягти). Порожній рядок тарифу — це сітка, яка каже «власна
+ * ціна», показуючи успадковану.
+ *
+ * `base_price` без значення — ціну НЕ чіпати; ціна вихідних — те саме
+ * правило: поля немає — не чіпати, явний `null` — прибрати. Через COALESCE
+ * цього не сказати (null і «немає поля» там однакові), тому вибір робиться
+ * тут, а не в SQL. До 05.09.2026 стояло `excluded.weekend_price` без умови,
+ * і збереження обмеження без поля ціни затирало ціну вихідних NULL: з
+ * пʼятниці по неділю продавалась буденна — без жодної помилки.
+ */
+async function writeRatePlanPrice(
+  t: Sql, unitTypeId: string, ratePlanId: string, date: string,
+  price: { base_price?: number | null; weekend_price?: number | null }, rowExists: boolean,
+): Promise<void> {
+  if (!rowExists && price.base_price == null && price.weekend_price == null) return;
+  const weekendSet = price.weekend_price === undefined ? 'price_calendar.weekend_price' : 'excluded.weekend_price';
+  await t.run(`
+    INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ${ON_CONFLICT_ROW} DO UPDATE SET
+      base_price = COALESCE(excluded.base_price, price_calendar.base_price),
+      weekend_price = ${weekendSet},
+      updated_at = CURRENT_TIMESTAMP
+  `, [newId(), unitTypeId, ratePlanId, date, price.base_price ?? null, price.weekend_price ?? null]);
+}
+
+/**
+ * Обмеження — у БАЗОВИЙ рядок типу, ціни його не чіпаючи (П7, Ц32). Так
+ * пише екран тарифу: на день без базового рядка заводиться рядок без ціни
+ * (NULL, ніч у `missing`, обмеження діє — 0062).
+ */
+async function writeBaseRestrictions(t: Sql, unitTypeId: string, date: string, r: RestrictionShape): Promise<void> {
+  await t.run(`
+    INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
+    VALUES (?, ?, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?)
+    ${ON_CONFLICT_ROW} DO UPDATE SET
+      min_stay = excluded.min_stay,
+      max_stay = excluded.max_stay,
+      closed = excluded.closed,
+      cta = excluded.cta,
+      ctd = excluded.ctd,
+      updated_at = CURRENT_TIMESTAMP
+  `, [newId(), unitTypeId, date, r.min_stay, r.max_stay, r.closed ? 1 : 0, r.cta ? 1 : 0, r.ctd ? 1 : 0]);
 }
 
 export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[], options: PriceCalendarOptions = {}): Promise<number> {
@@ -198,10 +309,7 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
   await sql.tx(async (t) => {
     // Канали дізнаються В ТІЙ САМІЙ транзакції: черга, що поповнюється
     // окремим кроком, розходиться зі станом при першому ж падінні між ними.
-    // Одним діапазоном від першої до останньої дати: базова ціна типу
-    // міняє КОЖЕН тариф на ньому, і незмінені дні між ними коштують лише
-    // повторного читання того самого числа (Ц13). Ціна ТАРИФУ міняє лише
-    // його пару — двері фільтрують за `ratePlanId` (Ц10).
+    // Охоплення координат — у `noteCalendarChanged`.
     const owner = ratePlanId
       ? { property_id: (await ownedRatePlanFor(t, unitTypeId, ratePlanId)).propertyId }
       : await t.row<any>('SELECT property_id FROM unit_types WHERE id = ?', [unitTypeId]);
@@ -210,55 +318,64 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
     // покласти координату в чергу.
     for (const p of prices) { assertPositivePrice(p.base_price); assertPositivePrice(p.weekend_price); }
 
-    // Що лежало ДО запису — для маски координати (Блок 0.5): власні рядки й,
-    // для тарифу, успадковані базові тих самих дат.
+    // Що лежало ДО запису — для масок (Блок 0.5): базові рядки завжди (там
+    // обмеження, і для тарифу — успадкована ціна) і, для тарифу, його власні.
     const holes = dates.map(() => '?').join(', ');
-    const ownRows = dates.length ? await t.rows<any>(
-      `SELECT * FROM price_calendar WHERE unit_type_id = ? AND ${ratePlanId ? 'rate_plan_id = ?' : 'rate_plan_id IS NULL'} AND date IN (${holes})`,
-      ratePlanId ? [unitTypeId, ratePlanId, ...dates] : [unitTypeId, ...dates],
-    ) : [];
-    const baseRows = ratePlanId && dates.length ? await t.rows<any>(
+    const baseRows = dates.length ? await t.rows<any>(
       `SELECT * FROM price_calendar WHERE unit_type_id = ? AND rate_plan_id IS NULL AND date IN (${holes})`,
       [unitTypeId, ...dates],
     ) : [];
-    const ownBy = new Map(ownRows.map((r) => [String(r.date).slice(0, 10), r]));
+    const planRows = ratePlanId && dates.length ? await t.rows<any>(
+      `SELECT * FROM price_calendar WHERE unit_type_id = ? AND rate_plan_id = ? AND date IN (${holes})`,
+      [unitTypeId, ratePlanId, ...dates],
+    ) : [];
     const baseBy = new Map(baseRows.map((r) => [String(r.date).slice(0, 10), r]));
-    const changed = new Set<RateField>();
+    const planBy = new Map(planRows.map((r) => [String(r.date).slice(0, 10), r]));
+    const priceChanged = new Set<RateField>();
+    const restrictionChanged = new Set<RateField>();
+
     for (const p of prices) {
-      const own = shapeOf(ownBy.get(p.date));
-      const before = effectiveBefore(own, shapeOf(baseBy.get(p.date)));
-      const after: CalendarRowShape = {
-        base_price: (p.base_price === undefined ? own?.base_price ?? null : p.base_price) ?? (ratePlanId ? shapeOf(baseBy.get(p.date))?.base_price ?? null : null),
-        weekend_price: (p.weekend_price === undefined ? own?.weekend_price ?? null : p.weekend_price) ?? (ratePlanId ? shapeOf(baseBy.get(p.date))?.weekend_price ?? null : null),
+      const base = shapeOf(baseBy.get(p.date));
+      const own = ratePlanId ? shapeOf(planBy.get(p.date)) : base;
+      // Ціна: яку пара матиме після запису — власна, де названа або лежала,
+      // інакше успадкована базова.
+      const inherited = ratePlanId ? base : null;
+      const after: PriceShape = {
+        base_price: (p.base_price === undefined ? own?.base_price ?? null : p.base_price) ?? inherited?.base_price ?? null,
+        weekend_price: (p.weekend_price === undefined ? own?.weekend_price ?? null : p.weekend_price) ?? inherited?.weekend_price ?? null,
+      };
+      for (const f of changedPriceFields(effectivePriceBefore(own, inherited), after)) priceChanged.add(f);
+      // Обмеження: базовий рядок до і після — з будь-якого екрана.
+      const restrictions: RestrictionShape = {
         min_stay: p.min_stay ?? 1, max_stay: p.max_stay ?? null,
         closed: Boolean(p.closed), cta: Boolean(p.cta), ctd: Boolean(p.ctd),
       };
-      for (const f of changedFields(before, after)) changed.add(f);
+      for (const f of changedRestrictionFields(restrictionsOf(base), restrictions)) restrictionChanged.add(f);
     }
-    // Координата — лише коли щось справді змінилось, і лише з тим, що
-    // змінилось: зайва координата коштує виклик із ліміту, зайве поле —
-    // сертифікацію (лист Channex 05.09, Б1).
-    if (owner && dates.length && changed.size) {
-      await noteRatesChanged(t, {
-        propertyId: String(owner.property_id), unitTypeId, ratePlanId: ratePlanId ?? undefined,
-        from: dates[0], to: dates[dates.length - 1], fields: [...changed],
-      });
+    if (owner && dates.length) {
+      await noteCalendarChanged(t, {
+        propertyId: String(owner.property_id), unitTypeId, ratePlanId, from: dates[0], to: dates[dates.length - 1],
+      }, priceChanged, restrictionChanged);
     }
+
     for (const p of prices) {
-      // `base_price` без значення — ціну НЕ чіпати: збереження обмеження на
-      // день із ціною лишає її, на день без ціни — лишає порожньою (NULL).
-      // Тут стояло `?? 0`, і рядок обмеження ставав ціною нуль.
-      //
-      // Ціна вихідних — теж ціна, і з тим самим правилом: поля немає — не
-      // чіпати; явний `null` — прибрати. Через COALESCE це не сказати (null
-      // і «немає поля» там однакові), тому вибір робиться тут, а не в SQL.
-      // До 05.09.2026 стояло `excluded.weekend_price` без умови, і
-      // збереження обмеження без поля ціни затирало ціну вихідних NULL:
-      // з пʼятниці по неділю продавалась буденна — без жодної помилки.
+      if (ratePlanId) {
+        await writeRatePlanPrice(t, unitTypeId, ratePlanId, p.date, p, planBy.has(p.date));
+        await writeBaseRestrictions(t, unitTypeId, p.date, {
+          min_stay: p.min_stay ?? 1, max_stay: p.max_stay ?? null,
+          closed: Boolean(p.closed), cta: Boolean(p.cta), ctd: Boolean(p.ctd),
+        });
+        continue;
+      }
+      // Базовий рядок типу: ціна й обмеження разом. `base_price` без значення
+      // — ціну НЕ чіпати: збереження обмеження на день із ціною лишає її, на
+      // день без ціни — лишає порожньою (NULL). Тут стояло `?? 0`, і рядок
+      // обмеження ставав ціною нуль. Ціна вихідних — те саме правило, і чому
+      // не через COALESCE — у `writeRatePlanPrice`.
       const weekendSet = p.weekend_price === undefined ? 'price_calendar.weekend_price' : 'excluded.weekend_price';
       await t.run(`
       INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
       ${ON_CONFLICT_ROW} DO UPDATE SET
         base_price = COALESCE(excluded.base_price, price_calendar.base_price),
         weekend_price = ${weekendSet},
@@ -268,7 +385,7 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
         cta = excluded.cta,
         ctd = excluded.ctd,
         updated_at = CURRENT_TIMESTAMP
-      `, [newId(), unitTypeId, ratePlanId, p.date, p.base_price ?? null, p.weekend_price ?? null, p.min_stay ?? 1, p.max_stay ?? null, p.closed ? 1 : 0, p.cta ? 1 : 0, p.ctd ? 1 : 0]);
+      `, [newId(), unitTypeId, p.date, p.base_price ?? null, p.weekend_price ?? null, p.min_stay ?? 1, p.max_stay ?? null, p.closed ? 1 : 0, p.cta ? 1 : 0, p.ctd ? 1 : 0]);
     }
   });
 
@@ -327,7 +444,8 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
     const owner = ratePlanId
       ? { property_id: (await ownedRatePlanFor(t, unitTypeId, ratePlanId)).propertyId }
       : await t.row<any>('SELECT property_id FROM unit_types WHERE id = ?', [unitTypeId]);
-    const changed = new Set<RateField>();
+    const priceChanged = new Set<RateField>();
+    const restrictionChanged = new Set<RateField>();
 
     const current = new Date(start);
     while (current <= end) {
@@ -338,13 +456,15 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
       if (applyTo === 'weekdays' && isWeekend) { current.setDate(current.getDate() + 1); continue; }
       if (applyTo === 'weekends' && !isWeekend) { current.setDate(current.getDate() + 1); continue; }
 
-      // `rate_plan_id IS NULL` — the base row, which is the one this screen
-      // edits. Without it the day's rate-plan row could answer instead, and
-      // "keep the current price" would carry a rate plan's number into the
-      // base price.
-      const existing = ratePlanId
+      // `rate_plan_id IS NULL` — базовий рядок типу: обмеження завжди його
+      // (П7, Ц32), і ціна теж, коли тариф не вибрано. Без цієї умови на день
+      // відповів би рядок тарифу, і «ціну не міняти» перенесло б число тарифу
+      // в базову ціну. Рядок ТАРИФУ читається лише для його ціни.
+      const base = await t.row<any>('SELECT * FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [unitTypeId, dateStr]);
+      const plan = ratePlanId
         ? await t.row<any>('SELECT * FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id = ?', [unitTypeId, dateStr, ratePlanId])
-        : await t.row<any>('SELECT * FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [unitTypeId, dateStr]);
+        : null;
+      const priceRow = ratePlanId ? plan : base;
 
       // A day the hotel has never priced stays unpriced. The form's price field
       // says «Не змінювати» when left empty, so `base_price` is undefined
@@ -354,47 +474,53 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
       // for nothing. AGENTS.md §3 invariant 17: a night no source can price is
       // missing, not free. Since 0062 the row is written with `base_price`
       // NULL — the restriction is kept, the night stays unsellable.
-      const basePrice = input.base_price ?? existing?.base_price ?? null;
-      const weekendPrice = input.weekend_price !== undefined ? input.weekend_price : (existing?.weekend_price ?? null);
-      const minStay = input.min_stay ?? existing?.min_stay ?? 1;
-      const maxStay = input.max_stay !== undefined ? input.max_stay : (existing?.max_stay ?? null);
-      const closed = input.closed !== undefined ? (input.closed ? 1 : 0) : (existing?.closed ?? 0);
-      const cta = input.cta !== undefined ? (input.cta ? 1 : 0) : (existing?.cta ?? 0);
-      const ctd = input.ctd !== undefined ? (input.ctd ? 1 : 0) : (existing?.ctd ?? 0);
+      const basePrice = input.base_price ?? priceRow?.base_price ?? null;
+      const weekendPrice = input.weekend_price !== undefined ? input.weekend_price : (priceRow?.weekend_price ?? null);
+      const minStay = input.min_stay ?? base?.min_stay ?? 1;
+      const maxStay = input.max_stay !== undefined ? input.max_stay : (base?.max_stay ?? null);
+      const closed = input.closed !== undefined ? (input.closed ? 1 : 0) : (base?.closed ?? 0);
+      const cta = input.cta !== undefined ? (input.cta ? 1 : 0) : (base?.cta ?? 0);
+      const ctd = input.ctd !== undefined ? (input.ctd ? 1 : 0) : (base?.ctd ?? 0);
 
-      // Маска координати (Блок 0.5): різниця ефективного стану пари до і після.
-      const inherited = ratePlanId
-        ? shapeOf(await t.row<any>('SELECT * FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [unitTypeId, dateStr]))
-        : null;
-      const after: CalendarRowShape = {
+      // Маски (Блок 0.5 / 0.6 A1): ціна — різниця ефективної ціни ПАРИ;
+      // обмеження — різниця базового рядка ТИПУ.
+      const inherited = ratePlanId ? shapeOf(base) : null;
+      const afterPrice: PriceShape = {
         base_price: num(basePrice) ?? inherited?.base_price ?? null,
         weekend_price: num(weekendPrice) ?? inherited?.weekend_price ?? null,
+      };
+      for (const f of changedPriceFields(effectivePriceBefore(shapeOf(priceRow), inherited), afterPrice)) priceChanged.add(f);
+      const restrictions: RestrictionShape = {
         min_stay: Number(minStay) || 1, max_stay: num(maxStay), closed: Boolean(closed), cta: Boolean(cta), ctd: Boolean(ctd),
       };
-      for (const f of changedFields(effectiveBefore(shapeOf(existing), inherited), after)) changed.add(f);
+      for (const f of changedRestrictionFields(restrictionsOf(shapeOf(base)), restrictions)) restrictionChanged.add(f);
 
-      await t.run(`
-      INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ${ON_CONFLICT_ROW} DO UPDATE SET
-        base_price = excluded.base_price,
-        weekend_price = excluded.weekend_price,
-        min_stay = excluded.min_stay,
-        max_stay = excluded.max_stay,
-        closed = excluded.closed,
-        cta = excluded.cta,
-        ctd = excluded.ctd,
-        updated_at = CURRENT_TIMESTAMP
-      `, [newId(), unitTypeId, ratePlanId, dateStr, basePrice, weekendPrice, minStay, maxStay, closed, cta, ctd]);
+      if (ratePlanId) {
+        await writeRatePlanPrice(t, unitTypeId, ratePlanId, dateStr, { base_price: num(basePrice), weekend_price: num(weekendPrice) }, Boolean(plan));
+        await writeBaseRestrictions(t, unitTypeId, dateStr, restrictions);
+      } else {
+        await t.run(`
+        INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
+        VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+        ${ON_CONFLICT_ROW} DO UPDATE SET
+          base_price = excluded.base_price,
+          weekend_price = excluded.weekend_price,
+          min_stay = excluded.min_stay,
+          max_stay = excluded.max_stay,
+          closed = excluded.closed,
+          cta = excluded.cta,
+          ctd = excluded.ctd,
+          updated_at = CURRENT_TIMESTAMP
+        `, [newId(), unitTypeId, dateStr, basePrice, weekendPrice, minStay, maxStay, closed, cta, ctd]);
+      }
       count++;
       current.setDate(current.getDate() + 1);
     }
 
-    if (owner && changed.size) {
-      await noteRatesChanged(t, {
-        propertyId: String(owner.property_id), unitTypeId, ratePlanId: ratePlanId ?? undefined,
-        from: dateFrom, to: dateTo, fields: [...changed],
-      });
+    if (owner) {
+      await noteCalendarChanged(t, {
+        propertyId: String(owner.property_id), unitTypeId, ratePlanId, from: dateFrom, to: dateTo,
+      }, priceChanged, restrictionChanged);
     }
   });
 

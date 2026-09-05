@@ -129,6 +129,13 @@ function EditDayModal({ day, onSave, onClose }: {
               <input type="checkbox" checked={ctd} onChange={e => setCtd(e.target.checked)} /> CTD
             </label>
           </div>
+          {/* Обмеження — на тип номера, для всіх його тарифів (П7, Ц32): і з
+              вибраним тарифом вони лягають на базовий рядок типу і їдуть у
+              канал на кожну його пару (Блок 0.6 A1). Ціна ж — того, чия
+              обрана в «Чия ціна». */}
+          <span style={{ display: 'block', marginTop: 8, fontSize: 11, color: 'var(--text-tertiary)' }}>
+            {t('Мін. ночей, «Закрито», CTA і CTD — на тип номера: діють на всі його тарифи')}
+          </span>
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>{t('Скасувати')}</button>

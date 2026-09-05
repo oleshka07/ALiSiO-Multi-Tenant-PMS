@@ -105,7 +105,12 @@ export interface ClaimedCoordinate {
   kind: 'availability' | 'rate';
   unitTypeId?: string;
   ratePlanId?: string;
-  /** Які поля ціни змінились (`RATE_FIELDS`). Порожньо або `null` — усі. Для наявності не має значення. */
+  /**
+   * Які поля ціни змінились (`RATE_FIELDS`). `null` або відсутнє — усі.
+   * Порожнього масиву тут не буває: черга відмовляє на ньому при вставці
+   * (`enqueueChange`), бо координата без полів поїхала б порожнім тілом.
+   * Для наявності не має значення.
+   */
   fields?: readonly RateField[] | null;
   date: string;
   /**

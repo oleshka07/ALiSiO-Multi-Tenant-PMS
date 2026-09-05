@@ -112,17 +112,24 @@ try {
   // ── 6. Писач називає тариф дверям каналів — статично ─────────────────
   //
   // Куди лягає координата, доводить гейт дверей у модулі каналів (його
-  // таблиці). Тут — друга половина: обидва писачі передають `ratePlanId`
-  // у двері, інакше ціна тарифу поїхала б на всі пари типу (Ц10).
+  // таблиці; `ari-adapter.check` сцена 12). Тут — друга половина: обидва
+  // писачі йдуть через одні двері (`noteCalendarChanged`), і там ЦІНА
+  // називає тариф (інакше ціна тарифу поїхала б на всі пари типу, Ц10), а
+  // ОБМЕЖЕННЯ — не називає (вони на типі, П7/Ц32, і мають поїхати на кожну
+  // пару; Блок 0.6 A1).
   {
     const fs = await import('node:fs');
     const src = fs.readFileSync(new URL('./price-calendar.repo.ts', import.meta.url), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     const calls = [...src.matchAll(/noteRatesChanged\(t, \{([^}]*)\}/g)].map((m) => m[1]);
-    assert.strictEqual(calls.length, 2, 'два писачі календаря — два виклики дверей');
-    for (const args of calls) assert.ok(/ratePlanId:/.test(args), `двері кличуться без тарифу: {${args.trim()}}`);
+    assert.strictEqual(calls.length, 2, 'двері каналів — рівно два виклики: ціна пари й обмеження типу');
+    const price = calls.find((a) => /priceFields/.test(a));
+    const restriction = calls.find((a) => /restrictionFields/.test(a));
+    assert.ok(price && /ratePlanId:/.test(price), `координата ціни мусить називати тариф: {${price?.trim()}}`);
+    assert.ok(restriction && !/ratePlanId:/.test(restriction), `координата обмежень НЕ називає тариф — вона на всі пари типу: {${restriction?.trim()}}`);
+    assert.strictEqual([...src.matchAll(/noteCalendarChanged\(t, \{/g)].length, 2, 'обидва писачі календаря йдуть через ті самі двері');
   }
-  console.log('  ok  обидва писачі називають тариф дверям каналів');
+  console.log('  ok  двері каналів: ціна називає тариф, обмеження — тип');
 
   // ── 7. Обмеження без ціни — рядок без ціни, а не ціна нуль (2.0) ─────
   //
@@ -182,6 +189,26 @@ try {
   assert.deepStrictEqual(bulkQuote.missing, [D4], 'масове обмеження не вигадує ціни');
   assert.strictEqual(bulkQuote.restrictions.minStay, 3, 'а обмеження записане');
   console.log('  ok  масове обмеження на діапазон без цін — рядки без ціни');
+
+  // ── 11. Обмеження з екрана ТАРИФУ — на тип: котирування іншого тарифу й обидві сітки бачать його ──
+  //
+  // Блок 0.6 A1. Обмеження живуть у базовому рядку (П7, Ц32); редактор дня з
+  // вибраним тарифом писав їх у рядок тарифу — котирування BAR і канал їх не
+  // бачили, а сітка B&B показувала. Осі: мінімум 3 проти 1; ціна B&B (130)
+  // при цьому лишається своєю, а BAR — базовою (100), тобто «усе на базу»
+  // не пройде.
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D2, min_stay: 3 }], { ratePlanId: BB(A) }));
+  assert.strictEqual((await quote(A, BAR(A), D2)).restrictions.minStay, 3, 'мінімум, поставлений з екрана B&B, діє на BAR — він на типі');
+  assert.strictEqual((await quote(A, BB(A), D2)).nights[0]?.price, 130, 'ціна B&B при цьому не зачеплена');
+  assert.strictEqual((await quote(A, BAR(A), D2)).nights[0]?.price, 100, 'і базова — теж');
+  const baseGrid = await runWithOrganization(A, () => getPriceMonth(UT(A), 11, 2026));
+  const planGrid = await runWithOrganization(A, () => getPriceMonth(UT(A), 11, 2026, BB(A)));
+  assert.strictEqual(baseGrid.days.find((d) => d.date === D2)?.min_stay, 3, 'сітка бази показує мінімум');
+  assert.strictEqual(planGrid.days.find((d) => d.date === D2)?.min_stay, 3, 'сітка тарифу показує той самий мінімум — з базового рядка');
+  assert.strictEqual(planGrid.days.find((d) => d.date === D2)?.base_price, 130, 'а ціну — свою');
+  const planRow = await sql.row<any>('SELECT min_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id = ?', [UT(A), D2, BB(A)]);
+  assert.strictEqual(Number(planRow?.min_stay ?? 1), 1, 'рядок тарифу обмеження не несе');
+  console.log('  ok  обмеження з екрана тарифу — на тип: котирування, сітка бази й сітка тарифу бачать одне число');
 
   console.log('price-calendar: ціна тарифу на дату — своя, успадкована названа, чуже — відмова; ціни немає — NULL, нуль — відмова');
 } finally {
