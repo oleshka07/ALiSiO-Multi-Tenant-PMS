@@ -2612,6 +2612,19 @@ function runMigrations(database: any) {
     console.error('[DB] price_calendar base_price nullable migration error:', e.message);
   }
 
+  // --- Migration 0064: weekend_price 0 → NULL — ціна вихідних нуль теж не ціна ---
+  //
+  // 0062 прибрала нулі лише з `base_price`; нуль у `weekend_price` читався
+  // як ціна пʼятниці–неділі. Читач тепер трактує 0 як «немає» сам
+  // (`nightly-price.ts dayPrice`), а тут прибирається саме число — щоб екран
+  // цін не показував 0 там, де ціни вихідних немає. Ідемпотентно.
+  try {
+    const zeroWeekend = database.prepare('UPDATE price_calendar SET weekend_price = NULL WHERE weekend_price <= 0').run().changes;
+    if (zeroWeekend > 0) console.log(`[DB] price_calendar: ${zeroWeekend} zero weekend prices → NULL (0064)`);
+  } catch (e: any) {
+    console.error('[DB] price_calendar weekend_price zero migration error:', e.message);
+  }
+
   database.exec('CREATE INDEX IF NOT EXISTS idx_price_cal_ut ON price_calendar(unit_type_id)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_price_cal_date ON price_calendar(date)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_price_cal_ut_date ON price_calendar(unit_type_id, date)');

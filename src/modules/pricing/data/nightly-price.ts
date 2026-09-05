@@ -399,9 +399,17 @@ export async function cheapestByDay(input: {
 function dayPrice(row: any, date: string): number | null {
   const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
   const isWeekend = dow === 0 || dow === 5 || dow === 6;
-  const base = row.base_price == null ? null : Number(row.base_price);
-  const weekend = row.weekend_price == null ? null : Number(row.weekend_price);
   // Рядок без ціни (лише обмеження, 0062) — `null`: ніч у `missing`, не за 0.
+  // Нуль і відʼємне читаються так само (Ц24): писачі їх більше не приймають,
+  // але рядок міг лягти повз писача або до відмови — і `weekend_price = 0`
+  // продавав пʼятницю за нуль тим самим шляхом, який 0062 закрила для буднів.
+  const named = (v: unknown): number | null => {
+    if (v == null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const base = named(row.base_price);
+  const weekend = named(row.weekend_price);
   return isWeekend && weekend != null ? weekend : base;
 }
 

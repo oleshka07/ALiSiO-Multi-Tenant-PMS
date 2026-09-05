@@ -159,7 +159,22 @@ try {
   assert.deepStrictEqual(closedQuote.closed, [D1], 'день закрито');
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, closed: false }]));
   assert.strictEqual((await quote(A, BAR(A), D1)).nights[0]?.price, 100, 'ціна 100 пережила два збереження без поля ціни');
-  console.log('  ok  збереження обмеження без поля ціни не чіпає ціну');
+  // Ціна вихідних — теж ціна (рецензія 2.0, 05.09.2026): `base_price` без
+  // поля не чіпалась, а `weekend_price` без поля затиралась NULL — і з
+  // пʼятниці по неділю продавалась буденна ціна без жодної помилки. Дві осі
+  // (інваріант 26): 100 і 130 — різні числа, і після збереження обмеження
+  // без жодного з полів ціни рядок має тримати обидва.
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, base_price: 100, weekend_price: 130 }]));
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, min_stay: 2 }]));
+  const kept = await sql.row<any>('SELECT base_price, weekend_price, min_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
+  assert.strictEqual(Number(kept.base_price), 100, 'базова ціна пережила збереження обмеження');
+  assert.strictEqual(kept.weekend_price == null ? null : Number(kept.weekend_price), 130, `ціна вихідних затерлась збереженням обмеження без поля ціни: ${kept.weekend_price}`);
+  assert.strictEqual(Number(kept.min_stay), 2, 'а обмеження записане');
+  // Явний `null` — це «прибрати ціну вихідних», і його треба вміти сказати.
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, weekend_price: null }]));
+  const cleared = await sql.row<any>('SELECT weekend_price FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
+  assert.strictEqual(cleared.weekend_price, null, 'явний null прибирає ціну вихідних');
+  console.log('  ok  збереження обмеження без поля ціни не чіпає ні базову ціну, ні ціну вихідних; явний null прибирає');
 
   // ── 10. Масово обмеження на діапазон без цін — рядки без ціни ────────
   await runWithOrganization(A, () => bulkUpdatePrices({ unitTypeId: UT(A), dateFrom: D3, dateTo: D4, min_stay: 3 }));

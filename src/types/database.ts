@@ -153,8 +153,9 @@ export interface PriceCalendar {
   id: string;
   unit_type_id: string;
   date: string;
-  base_price: number;
-  weekend_price?: number;
+  /** NULL — ціни на день немає (0062): лише обмеження, ніч не продається. */
+  base_price: number | null;
+  weekend_price?: number | null;
   min_stay?: number;
   max_stay?: number;
   closed: boolean;

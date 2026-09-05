@@ -154,12 +154,20 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
       // `base_price` без значення — ціну НЕ чіпати: збереження обмеження на
       // день із ціною лишає її, на день без ціни — лишає порожньою (NULL).
       // Тут стояло `?? 0`, і рядок обмеження ставав ціною нуль.
+      //
+      // Ціна вихідних — теж ціна, і з тим самим правилом: поля немає — не
+      // чіпати; явний `null` — прибрати. Через COALESCE це не сказати (null
+      // і «немає поля» там однакові), тому вибір робиться тут, а не в SQL.
+      // До 05.09.2026 стояло `excluded.weekend_price` без умови, і
+      // збереження обмеження без поля ціни затирало ціну вихідних NULL:
+      // з пʼятниці по неділю продавалась буденна — без жодної помилки.
+      const weekendSet = p.weekend_price === undefined ? 'price_calendar.weekend_price' : 'excluded.weekend_price';
       await t.run(`
       INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ${ON_CONFLICT_ROW} DO UPDATE SET
         base_price = COALESCE(excluded.base_price, price_calendar.base_price),
-        weekend_price = excluded.weekend_price,
+        weekend_price = ${weekendSet},
         min_stay = excluded.min_stay,
         max_stay = excluded.max_stay,
         closed = excluded.closed,

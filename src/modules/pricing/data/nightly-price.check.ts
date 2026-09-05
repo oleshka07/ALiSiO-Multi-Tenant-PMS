@@ -276,6 +276,23 @@ console.log('nightly-price: all checks passed');
   console.log('  ok  Д1/Д2: закрита ніч не продається й названа; мінімум, максимум, заїзд, виїзд — з базового рядка типу');
 }
 
+// ── Ціна вихідних нуль — це не ціна (рецензія 2.0, 05.09.2026) ─────────────
+//
+// 0062 зробила нулем-що-не-ціна лише `base_price`; `weekend_price = 0`
+// лишався читатися як ціна — і з пʼятниці по неділю ніч продавалась за нуль
+// тим самим шляхом, який INC-017 закрив для буднів. Рядок пишеться повз
+// писача (як міг зʼявитись у базі до відмови `price_not_positive`): пʼятниця
+// 2026-11-20, будень 180, вихідні 0. Дві осі (інваріант 26): 180 і 0 —
+// несумісні числа; з вихідними 130 той самий рядок дає 130.
+await cal(BAR, '2026-11-20', 180);
+await sql.run('UPDATE price_calendar SET weekend_price = 0 WHERE id = ?', [`pc_${BAR}_2026-11-20`]);
+const zeroWeekend = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-20', nights: 1, adults: 2, ratePlanId: BAR });
+assert.strictEqual(zeroWeekend.nights[0]?.price, 180, `ціна вихідних 0 мала читатись як «немає», не як ціна: ${JSON.stringify(zeroWeekend.nights[0])}`);
+await sql.run('UPDATE price_calendar SET weekend_price = 130 WHERE id = ?', [`pc_${BAR}_2026-11-20`]);
+const realWeekend = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-20', nights: 1, adults: 2, ratePlanId: BAR });
+assert.strictEqual(realWeekend.nights[0]?.price, 130, 'а справжня ціна вихідних читається');
+console.log('  ok  ціна вихідних 0 — не ціна: пʼятниця продається за буденну, справжня вихідна читається');
+
 // ── Режим «за номер» (Блок 2.2): ціна не залежить від кількості гостей ──────
 //
 // Той самий рядок ціни 312.66 і та сама матриця (двоє 200, троє 260): тариф

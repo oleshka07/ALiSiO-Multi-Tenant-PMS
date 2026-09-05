@@ -34,7 +34,9 @@ export interface PriceUpsertInput {
   date: string;
   /** Відсутнє — ціну не чіпати (рядок обмеження лишає її порожньою); 0 і менше — відмова `price_not_positive`. */
   base_price?: number | null;
+  /** Відсутнє — не чіпати; `null` — прибрати ціну вихідних; 0 і менше — відмова. */
   weekend_price?: number | null;
+  /** Обмеження без значення пишуться дефолтами (1 / NULL / 0): екран надсилає їх усі разом. */
   min_stay?: number;
   max_stay?: number | null;
   closed?: boolean;
