@@ -5,6 +5,10 @@ import { describeChanges } from '@/modules/bookings/ui/booking-history';
 import { HISTORY_ROLES, HISTORY_ICONS, HISTORY_COLORS, formatHistoryTime } from './booking-history-ui';
 import React, { useState, useEffect } from 'react';
 import { readQuote } from './quote-prefill';
+import FolioPanel from './card/FolioPanel';
+import FilesPanel from './card/FilesPanel';
+import StatusActions from './card/StatusActions';
+import RequotePanel from './card/RequotePanel';
 import { useHotelCurrency, useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import {
   Edit3, X, Save, Plus, Check, ArrowRight, Copy, ExternalLink,
@@ -41,6 +45,7 @@ const STATUS_MAP: Record<string, { label: string; badge: string }> = {
   checked_in: { label: 'Заселено', badge: 'badge-primary' },
   checked_out: { label: 'Виселено', badge: 'badge-info' },
   cancelled: { label: 'Скасовано', badge: 'badge-danger' },
+  no_show: { label: 'Незаїзд', badge: 'badge-danger' },
 };
 
 const METHOD_LABELS: Record<string, string> = {
@@ -131,7 +136,10 @@ export default function BookingViewModal({
   // Посилання на гостьову сторінку — лише в готелю з модулем `guest_page` (П15):
   // без нього портал відповідає 404, і кнопка брехала б.
   const guestPageOn = !!useCurrentUser().features.guest_page;
-  const [viewTab, setViewTab] = useState<'payment' | 'registration' | 'groups' | 'tax' | 'notes' | 'audit'>('payment');
+  // Чотири вкладки за Hoteliera (Блок 4 §2.1): Проживання · Фінанси · Файли ·
+  // Історія змін. «Messages» відкладено (П20) — вкладки не малюємо.
+  const [viewTab, setViewTab] = useState<'stay' | 'finance' | 'files' | 'audit'>('stay');
+  const [filesCount, setFilesCount] = useState<number | null>(null);
   const [showPayForm, setShowPayForm] = useState(false);
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', type: 'partial', notes: '' });
   const [regForm, setRegForm] = useState({ firstName: '', lastName: '', dateOfBirth: '', documentType: 'ID_CARD', documentNumber: '', nationality: '', country: '', address: '' });
@@ -282,82 +290,6 @@ export default function BookingViewModal({
     finally { setSavingBreakfast(false); }
   };
 
-  // Поділ рахунку між платниками одного номера. Йорг: «es müssen bitte mind.
-  // 2 Rechnungen mit fortlaufender RG-Nr. aus einem Zimmer möglich sein».
-  //
-  // Фоліо — це «чий документ»: усі позиції броні лягають на перше, рецепція
-  // перекидає частку другого платника на його фоліо, і кожне фоліо стає
-  // окремим рахунком зі своїм номером. Згорнуто за замовчуванням: для
-  // більшості бронювань платник один і цей блок не потрібен.
-  const [splitOpen, setSplitOpen] = useState(false);
-  const [folios, setFolios] = useState<any[]>([]);
-  const [folioBusy, setFolioBusy] = useState(false);
-  const [newPayer, setNewPayer] = useState('');
-
-  const fetchFolios = async () => {
-    try {
-      const res = await fetch(`/api/finance/folios?reservation_id=${b.id}&overview=1`);
-      const data = await res.json();
-      setFolios(Array.isArray(data.folios) ? data.folios : []);
-    } catch { setFolios([]); }
-  };
-  useEffect(() => { if (splitOpen) fetchFolios(); }, [splitOpen, b?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const folioCall = async (run: () => Promise<Response>, failMsg: string) => {
-    setFolioBusy(true);
-    try {
-      const res = await run();
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        showToast(`❌ ${data.error || failMsg}`);
-        return null;
-      }
-      await fetchFolios();
-      return await res.json().catch(() => ({}));
-    } catch { showToast(`❌ ${failMsg}`); return null; }
-    finally { setFolioBusy(false); }
-  };
-
-  // Перший крок: фоліо головного гостя, на яке конвеєр кладе проживання і
-  // послуги — та сама кнопка, що й «нарахувати», лише з платником.
-  const startFolios = () => folioCall(async () => {
-    const created = await fetch('/api/finance/folios', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        reservation_id: b.id, payer_kind: 'guest',
-        payer_name: `${b.first_name ?? ''} ${b.last_name ?? ''}`.trim() || null,
-      }),
-    });
-    if (!created.ok) return created;
-    const { id } = await created.json();
-    return fetch(`/api/finance/folios/${id}/post-stay`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reservation_id: b.id }),
-    });
-  }, tUi('Не вдалося нарахувати проживання'));
-
-  const addPayer = () => {
-    const name = newPayer.trim();
-    if (!name) return;
-    folioCall(() => fetch('/api/finance/folios', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reservation_id: b.id, payer_kind: 'guest', payer_name: name }),
-    }), tUi('Не вдалося додати платника')).then((r) => { if (r) setNewPayer(''); });
-  };
-
-  const moveItem = (itemId: string, toFolioId: string) =>
-    folioCall(() => fetch(`/api/finance/folios/${toFolioId}/move`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item_ids: [itemId] }),
-    }), tUi('Не вдалося перенести позицію'));
-
-  const issueFolio = (folioId: string) =>
-    folioCall(() => fetch(`/api/finance/folios/${folioId}/issue`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
-    }), tUi('Не вдалося виставити рахунок')).then((r) => {
-      if (r?.invoiceNumber) showToast(`🧾 ${r.invoiceNumber}`);
-    });
-
   // Load current invoice whenever modal opens or booking changes
   useEffect(() => {
     if (!b?.id) return;
@@ -471,10 +403,6 @@ export default function BookingViewModal({
   return (
     <Modal open={true} onClose={onClose} title={tUi('Бронювання')} size="lg" hideTitle={true}
       footer={<>
-        <button className="btn btn-secondary" style={{ color: '#ef4444' }}
-          onClick={() => { if (confirm(tUi('Точно скасувати бронь? Гість буде повідомлений.'))) onChangeStatus(b.id, 'cancelled'); }}>
-          <X size={13} /> {tUi('Скасувати бронь')}
-        </button>
         <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
           <button className="btn btn-secondary" onClick={onClose}>{tUi('Закрити')}</button>
           {guestPageOn && b.guest_page_token && (
@@ -802,7 +730,7 @@ export default function BookingViewModal({
             const chipStyle = isOk ? { bg: 'rgba(34,197,94,0.05)', border: 'rgba(34,197,94,0.2)', dot: '#22c55e' }
               : { bg: 'rgba(245,158,11,0.05)', border: 'rgba(245,158,11,0.25)', dot: '#f59e0b' };
             return (
-              <div onClick={() => setViewTab('payment')} style={{ background: chipStyle.bg, border: `1px solid ${chipStyle.border}`, borderRadius: 10, padding: '10px 12px', cursor: 'pointer' }}>
+              <div onClick={() => setViewTab('finance')} style={{ background: chipStyle.bg, border: `1px solid ${chipStyle.border}`, borderRadius: 10, padding: '10px 12px', cursor: 'pointer' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: chipStyle.dot, boxShadow: `0 0 0 3px ${chipStyle.dot}33`, flexShrink: 0 }} />
                   <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600 }}>{tUi('Оплата')}</span>
@@ -816,7 +744,7 @@ export default function BookingViewModal({
             const chipStyle = isRegistered ? { bg: 'rgba(34,197,94,0.05)', border: 'rgba(34,197,94,0.2)', dot: '#22c55e' }
               : { bg: 'rgba(245,158,11,0.05)', border: 'rgba(245,158,11,0.25)', dot: '#f59e0b' };
             return (
-              <div onClick={() => setViewTab('registration')} style={{ background: chipStyle.bg, border: `1px solid ${chipStyle.border}`, borderRadius: 10, padding: '10px 12px', cursor: 'pointer' }}>
+              <div onClick={() => setViewTab('stay')} style={{ background: chipStyle.bg, border: `1px solid ${chipStyle.border}`, borderRadius: 10, padding: '10px 12px', cursor: 'pointer' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: chipStyle.dot, boxShadow: `0 0 0 3px ${chipStyle.dot}33`, flexShrink: 0 }} />
                   <span style={{ fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600 }}>{tUi('Документи')}</span>
@@ -872,17 +800,17 @@ export default function BookingViewModal({
 
           if (b.status === 'cancelled') { /* no action */ }
           else if (!isPaid && daysUntil <= 2 && daysUntil >= 0) {
-            action = { priority: 'URGENT', label: `${tUi('Прийняти оплату')} ${remaining.toLocaleString()} ${b.currency || hotelCurrency}`, context: daysUntil === 0 ? tUi('гість прибуває сьогодні') : `${tUi('гість прибуває через')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Прийняти'), onClick: () => { setViewTab('payment'); setShowPayForm(true); } };
+            action = { priority: 'URGENT', label: `${tUi('Прийняти оплату')} ${remaining.toLocaleString()} ${b.currency || hotelCurrency}`, context: daysUntil === 0 ? tUi('гість прибуває сьогодні') : `${tUi('гість прибуває через')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Прийняти'), onClick: () => { setViewTab('finance'); setShowPayForm(true); } };
           } else if (!isRegistered && daysUntil <= 1 && daysUntil >= 0) {
-            action = { priority: 'HIGH', label: `${tUi('Зареєструвати гостей (')}${registrations.length}/${regNeeded})`, context: tUi('до заїзду залишилось менше дня'), cta: tUi('Реєстрація'), onClick: () => setViewTab('registration') };
+            action = { priority: 'HIGH', label: `${tUi('Зареєструвати гостей (')}${registrations.length}/${regNeeded})`, context: tUi('до заїзду залишилось менше дня'), cta: tUi('Реєстрація'), onClick: () => setViewTab('stay') };
           } else if (b.status === 'confirmed' && daysUntil === 0) {
             action = { priority: 'HIGH', label: tUi('Гість прибуває сьогодні — заселити'), context: tUi('після 15:00'), cta: tUi('Заселити'), onClick: () => onChangeStatus(b.id, 'checked_in') };
           } else if (b.status === 'checked_in' && daysSince >= 0) {
             action = { priority: 'HIGH', label: tUi('Гість має виїхати — виселити'), context: tUi('після 11:00'), cta: tUi('Виселити'), onClick: () => onChangeStatus(b.id, 'checked_out') };
           } else if (!isPaid && daysUntil > 2) {
-            action = { priority: 'MEDIUM', label: `${tUi('Оплата не прийнята (')}${remaining.toLocaleString()} ${b.currency || hotelCurrency})`, context: `${tUi('до заїзду')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Оплата'), onClick: () => { setViewTab('payment'); setShowPayForm(true); } };
+            action = { priority: 'MEDIUM', label: `${tUi('Оплата не прийнята (')}${remaining.toLocaleString()} ${b.currency || hotelCurrency})`, context: `${tUi('до заїзду')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Оплата'), onClick: () => { setViewTab('finance'); setShowPayForm(true); } };
           } else if (!isRegistered && daysUntil > 1) {
-            action = { priority: 'MEDIUM', label: `${tUi('Документи не заповнені (')}${registrations.length}/${regNeeded})`, context: `${tUi('до заїзду')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Реєстрація'), onClick: () => setViewTab('registration') };
+            action = { priority: 'MEDIUM', label: `${tUi('Документи не заповнені (')}${registrations.length}/${regNeeded})`, context: `${tUi('до заїзду')} ${daysUntil} ${pluralUi(daysUntil, 'дн.')}`, cta: tUi('Реєстрація'), onClick: () => setViewTab('stay') };
           }
           // Тут була ще одна дія — «Запросити відгук» для гостя, що виїхав
           // 1-7 днів тому, з `onClick: () => {}`. Банер називається
@@ -923,12 +851,10 @@ export default function BookingViewModal({
         {/* ── Tab Bar ── */}
         <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border-primary)', overflow: 'auto' }}>
           {([
-            { key: 'payment' as const, label: tUi('💰 Оплата'), badge: isPaid ? undefined : `${pct}%` },
-            { key: 'registration' as const, label: tUi('📋 Реєстрація'), badge: !isRegistered ? `${registrations.length}/${regNeeded}` : undefined },
-            { key: 'groups' as const, label: tUi('👥 Групи'), badge: subBookings.length > 0 ? String(subBookings.length) : undefined },
-            ...(showTaxTab ? [{ key: 'tax' as const, label: tUi('🏛️ Збір'), badge: undefined as string | undefined }] : []),
-            { key: 'notes' as const, label: tUi('📝 Примітки'), badge: undefined as string | undefined },
-            ...(canSeeHistory ? [{ key: 'audit' as const, label: tUi('🕐 Історія змін'), badge: undefined as string | undefined }] : []),
+            { key: 'stay' as const, label: tUi('Проживання'), badge: !isRegistered ? `${registrations.length}/${regNeeded}` : undefined },
+            { key: 'finance' as const, label: tUi('Фінанси'), badge: isPaid ? undefined : `${pct}%` },
+            { key: 'files' as const, label: tUi('Файли'), badge: filesCount ? String(filesCount) : undefined },
+            ...(canSeeHistory ? [{ key: 'audit' as const, label: tUi('Історія змін'), badge: undefined as string | undefined }] : []),
           ]).map(tab => (
             <button key={tab.key} onClick={() => setViewTab(tab.key)}
               style={{
@@ -947,9 +873,11 @@ export default function BookingViewModal({
         {/* ── Tab Content ── */}
         <div style={{ padding: '16px 0', minHeight: 200 }}>
 
-          {/* 💰 PAYMENT TAB */}
-          {viewTab === 'payment' && (
+          {/* ФІНАНСИ: фоліо, доведене до кнопки, і статус оплати броні */}
+          {viewTab === 'finance' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <FolioPanel booking={b} showToast={showToast} onBookingChanged={onFetchBookings} setBooking={setBooking} />
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700, marginTop: 4 }}>{tUi('Статус оплати броні')}</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
                 <div><div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Всього')}</div><div style={{ fontSize: 16, fontWeight: 700, color: 'var(--accent-primary)' }}>{total.toLocaleString()} {b.currency || hotelCurrency}</div></div>
                 <div><div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{tUi('Оплачено')}</div><div style={{ fontSize: 16, fontWeight: 700, color: '#22c55e' }}>{paid.toLocaleString()} {b.currency || hotelCurrency}</div></div>
@@ -1237,94 +1165,19 @@ export default function BookingViewModal({
                 )}
               </div>
 
-              {/* ── Поділ рахунку між платниками ── */}
-              <div style={{ marginTop: 8, padding: '10px 14px', background: 'var(--surface-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <button className="btn btn-sm btn-ghost" style={{ alignSelf: 'flex-start', fontSize: 12, fontWeight: 600, padding: 0 }}
-                  onClick={() => setSplitOpen(!splitOpen)}>
-                  {splitOpen ? '▾' : '▸'} {tUi('🧾 Рахунки по платниках')}
-                </button>
-                {splitOpen && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {folios.length === 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                          {tUi('Позиції ще не нараховані.')}
-                        </span>
-                        <button className="btn btn-sm btn-primary" style={{ fontSize: 11 }} disabled={folioBusy} onClick={startFolios}>
-                          {tUi('Нарахувати проживання і послуги')}
-                        </button>
-                      </div>
-                    )}
-                    {folios.map((f) => (
-                      <div key={f.id} style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 12, fontWeight: 600 }}>
-                            👤 {f.payer_name || tUi('Гість')}
-                            <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}> · {tUi('відкрито:')} {f.openGross.toFixed(2)} {b.currency || hotelCurrency}</span>
-                          </span>
-                          {f.openGross > 0 && (
-                            <button className="btn btn-sm btn-primary" style={{ fontSize: 10, padding: '2px 8px' }} disabled={folioBusy}
-                              onClick={() => issueFolio(f.id)}>
-                              <Receipt size={10} /> {tUi('Виставити рахунок')}
-                            </button>
-                          )}
-                        </div>
-                        {f.openItems.map((it: any) => (
-                          <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
-                            <span style={{ flex: 1 }}>{it.description}{it.guest_name ? ` — ${it.guest_name}` : ''}</span>
-                            <span style={{ color: 'var(--text-tertiary)' }}>{Number(it.total_gross).toFixed(2)}</span>
-                            {folios.length > 1 && (
-                              <select value="" disabled={folioBusy} style={{ fontSize: 10, padding: '1px 4px', border: '1px solid var(--border)', borderRadius: 4 }}
-                                onChange={(e) => { if (e.target.value) moveItem(it.id, e.target.value); }}>
-                                <option value="">{tUi('→ кому')}</option>
-                                {folios.filter((o) => o.id !== f.id).map((o) => (
-                                  <option key={o.id} value={o.id}>{o.payer_name || o.label || '—'}</option>
-                                ))}
-                              </select>
-                            )}
-                          </div>
-                        ))}
-                        {f.invoices.map((inv: any) => (
-                          <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
-                            <Receipt size={11} style={{ color: inv.status === 'issued' ? '#22c55e' : 'var(--text-tertiary)', flexShrink: 0 }} />
-                            <span style={{ fontWeight: 600, color: inv.status === 'issued' ? '#22c55e' : 'var(--text-tertiary)' }}>{inv.invoice_number}</span>
-                            <span style={{ color: 'var(--text-tertiary)' }}>{inv.amount.toFixed(2)} · {inv.status}</span>
-                            <button className="btn btn-sm btn-ghost" style={{ fontSize: 10, padding: '1px 5px' }}
-                              onClick={() => window.open(`/api/invoices/${inv.id}`, '_blank')}>👁</button>
-                            {inv.status === 'issued' && (
-                              <button className="btn btn-sm btn-ghost" style={{ fontSize: 10, padding: '1px 5px', color: '#f59e0b' }} disabled={folioBusy}
-                                onClick={() => folioCall(() => fetch(`/api/finance/invoices/${inv.id}/storno`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }), tUi('Не вдалося зробити сторно'))}>
-                                {tUi('Сторно')}
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                    {folios.length > 0 && (
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <input placeholder={tUi("Ім'я другого платника")} value={newPayer}
-                          onChange={(e) => setNewPayer(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') addPayer(); }}
-                          style={{ flex: 1, padding: '5px 8px', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4 }} />
-                        <button className="btn btn-sm btn-ghost" style={{ fontSize: 11 }} disabled={folioBusy || !newPayer.trim()} onClick={addPayer}>
-                          + {tUi('Платник')}
-                        </button>
-                      </div>
-                    )}
-                    <div style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>
-                      {tUi('Кожен платник отримує окремий рахунок зі своїм номером. Виставлений рахунок виправляється через сторно.')}
-                    </div>
-                  </div>
-                )}
-              </div>
-
             </div>
           )}
 
-          {/* 📋 REGISTRATION TAB */}
-          {viewTab === 'registration' && (
+          {/* ПРОЖИВАННЯ: статуси, заселеність, гості кімнати, кімнати, збір */}
+          {viewTab === 'stay' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <StatusActions booking={b} onChangeStatus={onChangeStatus} />
+              {!['cancelled', 'checked_out', 'no_show'].includes(b.status) && (
+                <RequotePanel booking={b} showToast={showToast}
+                  unitTypeId={(b as any).unit_type_id || availableUnits.find(u => u.id === (b as any).unit_id)?.unit_type_id || null}
+                  onApplied={(patch) => { setBooking({ ...b, ...patch }); onFetchBookings(); }} />
+              )}
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700 }}>{tUi('Гості кімнати')}</div>
               <div style={{
                 padding: '10px 16px', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: 8,
                 background: isRegistered ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
@@ -1480,7 +1333,7 @@ export default function BookingViewModal({
           {/* 🏛️ TAX TAB — лише коли збір існує (ставка об'єкта або сума в броні).
               Ставка і валюта — з даних, не з коду: «дор. × ноч. × 25 CZK» тут
               було ставкою одного клієнта в його валюті для всіх готелів (A4). */}
-          {viewTab === 'tax' && showTaxTab && (() => {
+          {viewTab === 'stay' && showTaxTab && (() => {
             const taxAmt = cityTaxAmt;
             const taxIncluded = !!b.city_tax_included;
             const taxPaid = b.city_tax_paid || 'pending';
@@ -1510,32 +1363,11 @@ export default function BookingViewModal({
             );
           })()}
 
-          {/* 📝 NOTES TAB */}
-          {viewTab === 'notes' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {b.notes && (
-                <div style={{ padding: 16, background: 'rgba(59,130,246,0.08)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(59,130,246,0.2)' }}>
-                  <div style={{ fontSize: 11, color: '#3b82f6', textTransform: 'uppercase', fontWeight: 700, marginBottom: 8 }}>{tUi('📋 Інформація (Hostex)')}</div>
-                  <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{b.notes}</div>
-                </div>
-              )}
-              {b.internal_notes ? (
-                <div style={{ padding: 16, background: 'rgba(250,204,21,0.08)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(250,204,21,0.2)' }}>
-                  <div style={{ fontSize: 11, color: '#facc15', textTransform: 'uppercase', fontWeight: 700, marginBottom: 8 }}>{tUi('📝 Внутрішні примітки')}</div>
-                  <div style={{ fontSize: 14, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{b.internal_notes}</div>
-                </div>
-              ) : (
-                !b.notes && <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>{tUi('Немає приміток')}</div>
-              )}
-              {b.guest_email && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>📧 {b.guest_email}</div>}
-              {b.guest_phone && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}><Phone size={12} style={{ display: 'inline' }} /> {b.guest_phone}</div>}
-            </div>
-          )}
-
           {/* 📊 HISTORY TAB */}
-          {/* 👥 GROUPS / SUB-BOOKINGS TAB */}
-          {viewTab === 'groups' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* КІМНАТИ: дочірні броні однієї групи */}
+          {viewTab === 'stay' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700 }}>{tUi('Кімнати')}</div>
               {subBookings.length === 0 && !showGroupForm && (
                 <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>
                   <div style={{ fontSize: 28, marginBottom: 8 }}>🏠</div>
@@ -1851,6 +1683,10 @@ export default function BookingViewModal({
                 </button>
               )}
             </div>
+          )}
+
+          {viewTab === 'files' && (
+            <FilesPanel bookingId={b.id} showToast={showToast} onCountChange={setFilesCount} />
           )}
 
           {viewTab === 'audit' && (

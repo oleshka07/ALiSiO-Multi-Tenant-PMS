@@ -14,6 +14,8 @@ import { NextResponse } from 'next/server';
 import { withPermission } from '@core/auth/session';
 import * as folios from '../data/folio.repo';
 import * as payments from '../data/folio-payments.repo';
+import { reservationFolioSummary } from '../data/folio-summary.repo';
+import { postCatalogService } from '../data/stay-charges.repo';
 
 /** An error a person should read, and one they should not. */
 function refuse(e: unknown) {
@@ -35,6 +37,11 @@ export const listFolios = withPermission('manage_documents', async (request: Req
   // invoices in one response; everything else keeps the flat list.
   if (reservationId && url.searchParams.get('overview') === '1') {
     return NextResponse.json({ folios: await folios.foliosOverview(reservationId) });
+  }
+  // Вкладка «Фінанси» картки броні (Блок 4): усі рядки, оплати, документи
+  // і залишок кожного фоліо — одним запитом, з підсумком по броні.
+  if (reservationId && url.searchParams.get('summary') === '1') {
+    return NextResponse.json(await reservationFolioSummary(reservationId));
   }
   return NextResponse.json({ folios: await folios.listFolios(reservationId) });
 });
@@ -84,6 +91,26 @@ export const addFolioCharges = withPermission('manage_documents', async (
 ) => {
   const { id } = await params;
   const body = await request.json().catch(() => ({})) as any;
+
+  // Послуга з каталогу (Блок 4, вкладка «Фінанси»): картка називає послугу,
+  // кількість і дату; назву, ціну і ставку ПДВ за датою бере база — ціни в
+  // тілі запиту немає навмисно.
+  if (body.service_id) {
+    const serviceDate = String(body.service_date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)) {
+      return NextResponse.json({ error: 'service_date must be YYYY-MM-DD' }, { status: 400 });
+    }
+    const result = await postCatalogService({
+      folioId: id, reservationId: body.reservation_id ?? null,
+      serviceId: String(body.service_id), quantity: Number(body.quantity ?? 1), serviceDate,
+    });
+    if ('reason' in result) {
+      const status = result.reason === 'no_folio' || result.reason === 'no_service' ? 404 : 409;
+      return NextResponse.json({ error: result.reason, detail: result }, { status });
+    }
+    return NextResponse.json({ added: result.posted, gross: result.gross }, { status: 201 });
+  }
+
   const raw = Array.isArray(body.items) ? body.items : [body];
 
   const charges = raw.map((c: any) => ({

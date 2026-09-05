@@ -13,6 +13,8 @@ export { listWidgetSiteSources } from './booking-source-widgets.handlers';
 export { listAdditionalServices, createAdditionalService, updateAdditionalService, deleteAdditionalService } from './additional-services.handlers';
 export { listAvailabilityBlocks, createAvailabilityBlock, deleteAvailabilityBlock } from './availability-blocks.handlers';
 export { listServiceOrders, updateServiceOrder } from './service-orders.handlers';
+// Вкладення до броні — вкладка «Файли» картки (Блок 4, 0090).
+export { listReservationFiles, uploadReservationFile, deleteReservationFile } from './reservation-files.handlers';
 // Used by the widget module when a booking is completed.
 export { sendBookingConfirmationEmail } from '../data/send-confirmation-email';
 export { registerBookingsSubscribers } from '../events/subscribers';

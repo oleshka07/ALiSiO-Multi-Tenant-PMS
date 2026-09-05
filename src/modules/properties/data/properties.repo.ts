@@ -105,7 +105,13 @@ export async function updateProperty(organizationId: string, id: string, fields:
   const sql = getSql();
   if (!await owns(organizationId, id)) return null;
 
-  const allowed = ['name', 'slug', 'address', 'city', 'country', 'phone', 'email', 'check_in_time', 'check_out_time', 'city_tax_per_night', 'is_active'];
+  const allowed = ['name', 'slug', 'address', 'city', 'country', 'phone', 'email', 'check_in_time', 'check_out_time', 'city_tax_per_night', 'is_active', 'checkout_balance_policy'];
+  // Політика виселення з боргом (0091) — одне з трьох слів. Звіряє писач, а
+  // не лише CHECK бази: на SQLite обмеження до наявної таблиці не додати.
+  if (fields.checkout_balance_policy !== undefined
+      && !['none', 'warning', 'blocking'].includes(String(fields.checkout_balance_policy))) {
+    throw new Error('checkout_balance_policy must be one of none, warning, blocking');
+  }
   const updates: string[] = [];
   const values: unknown[] = [];
 

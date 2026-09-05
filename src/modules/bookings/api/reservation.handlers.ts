@@ -10,6 +10,8 @@ import { getSessionUser } from '@core/auth';
 import { writeBookingAudit, getBookingActor, buildBookingLabel } from './audit-log.handlers';
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
+import { decideCheckout } from '../data/checkout.repo';
+import type { CheckoutDecision } from '../domain/checkout-balance';
 
 export const getReservation = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
@@ -79,7 +81,8 @@ export const updateReservation = withPermission('manage_bookings', async (reques
   try {
     const sql = getSql();
     const { id } = await params;
-    if (!await ownedReservation(actor.organizationId, id)) {
+    const owned = await ownedReservation(actor.organizationId, id);
+    if (!owned) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     const body = await request.json();
@@ -158,6 +161,28 @@ export const updateReservation = withPermission('manage_bookings', async (reques
       }
     }
 
+    // Виселення з боргом — за політикою ОБʼЄКТА (0091, Блок 4): `none` не
+    // дивиться, `warning` виселяє з прапорцем у відповіді, `blocking` — 422 з
+    // назвою причини. Борг — з фоліо броні; без фоліо — зі статусу оплати,
+    // того самого слова, за яким варта заселення пускає гостя в номер.
+    // Домен — `checkout-balance.ts`, обидві осі тримає його перевірка.
+    let checkout: CheckoutDecision | null = null;
+    if (body.status === 'checked_out' && beforeSnapshot?.status !== 'checked_out') {
+      const decision = await decideCheckout(sql, {
+        organizationId: actor.organizationId, propertyId: owned.property_id, reservationId: id,
+        paymentStatus: body.payment_status ?? beforeSnapshot?.payment_status,
+        totalPrice: Number(beforeSnapshot?.total_price) || 0,
+      });
+      // Обʼєкта немає — політики немає — виселення не дозволяється (інваріант 13).
+      if (decision === 'not_found') return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      checkout = decision;
+      if (!checkout.allowed) {
+        return NextResponse.json(
+          { error: 'checkout_balance_blocking', balance: checkout.balance, currency: beforeSnapshot?.currency ?? null },
+          { status: 422 });
+      }
+    }
+
     // Snapshot BEFORE the UPDATE so the activity log can record the
     // previous unit. Reading after the UPDATE would just echo the new
     // value back at us.
@@ -232,17 +257,41 @@ export const updateReservation = withPermission('manage_bookings', async (reques
     const stayBefore = movesStay(body) ? await stayById(sql, id) : undefined;
     const childrenBefore = movesStay(body) ? await staysOfParent(sql, id) : [];
 
+    // Одна транзакція на бронь, її ночі в каналі й дочірні броні (Блок 4):
+    // до того запис ішов окремими викликами, і падіння між ними лишало
+    // головну бронь виселеною, а дочірні — ні. Усе, що має статись РАЗОМ зі
+    // зміною статусу (номер стає брудним після виселення — 2.2), додається
+    // сюди, під ту саму ручку `t`.
     if (sets.length > 0) {
       sets.push("updated_at = CURRENT_TIMESTAMP");
       values.push(id);
       const statement = `UPDATE reservations SET ${sets.join(', ')} WHERE id = ?`;
-      console.log('[PATCH] SQL:', statement, 'values:', values);
-      const result = await sql.run(statement, values);
-      console.log('[PATCH] result:', JSON.stringify(result));
-      if (stayBefore) {
-        await noteStay(sql, stayBefore);
-        await noteStay(sql, await stayById(sql, id));
-      }
+      await sql.tx(async (t) => {
+        await t.run(statement, values);
+        if (stayBefore) {
+          await noteStay(t, stayBefore);
+          await noteStay(t, await stayById(t, id));
+        }
+
+        // ── Cascade to child reservations ──
+        // When master's status or payment_status changes, mirror to all children
+        const cascadeFields: string[] = [];
+        const cascadeValues: any[] = [];
+        if (body.status) { cascadeFields.push('status = ?'); cascadeValues.push(body.status); }
+        if (body.payment_status) { cascadeFields.push('payment_status = ?'); cascadeValues.push(body.payment_status); }
+        if (body.check_in) { cascadeFields.push('check_in = ?'); cascadeValues.push(body.check_in); }
+        if (body.check_out) { cascadeFields.push('check_out = ?'); cascadeValues.push(body.check_out); }
+        if (body.nights) { cascadeFields.push('nights = ?'); cascadeValues.push(body.nights); }
+        if (body.source) { cascadeFields.push('source = ?'); cascadeValues.push(body.source); }
+        if (cascadeFields.length > 0) {
+          cascadeFields.push("updated_at = CURRENT_TIMESTAMP");
+          cascadeValues.push(id);
+          await t.run(`UPDATE reservations SET ${cascadeFields.join(', ')} WHERE parent_id = ?`, [...cascadeValues]);
+          // Дочірні броні рухаються разом із головною — і їхні ночі теж.
+          for (const child of childrenBefore) await noteStay(t, child);
+          for (const child of await staysOfParent(t, id)) await noteStay(t, child);
+        }
+      });
     }
 
     // Emit payment status change event for TG notification editing
@@ -281,7 +330,13 @@ export const updateReservation = withPermission('manage_bookings', async (reques
       const logActions: { action: string; details: string }[] = [];
       if (body.status) logActions.push({ action: 'status_change', details: `Статус → ${body.status}` });
       if (body.payment_status) logActions.push({ action: 'payment_status_change', details: `Оплата → ${body.payment_status}` });
-      if (body.total_price !== undefined) logActions.push({ action: 'price_change', details: `Ціна → ${body.total_price} CZK` });
+      // Валюта — броні, не одного клієнта: «CZK» тут стояло літералом.
+      if (body.total_price !== undefined) logActions.push({ action: 'price_change', details: `Ціна → ${body.total_price} ${beforeSnapshot?.currency || ''}`.trim() });
+      if (body.adults !== undefined || body.children !== undefined) {
+        const was = `${beforeSnapshot?.adults ?? '—'}+${beforeSnapshot?.children ?? 0}`;
+        const now = `${body.adults ?? beforeSnapshot?.adults ?? '—'}+${body.children ?? beforeSnapshot?.children ?? 0}`;
+        logActions.push({ action: 'guests_change', details: `Гості: ${was} → ${now}` });
+      }
       if (body.unit_id !== undefined) {
         const nextRow = await sql.row<any>('SELECT name FROM units WHERE id = ?', [body.unit_id]) as { name?: string } | undefined;
         const before = prevUnitLabel || '—';
@@ -306,30 +361,16 @@ export const updateReservation = withPermission('manage_bookings', async (reques
       generateInvoiceForReservation(id, isCash ? { confirmed: true, source: 'cash' } : { confirmed: false, source: 'manual' });
     }
 
-    // ── Cascade to child reservations ──
-    // When master's status or payment_status changes, mirror to all children
-    try {
-      const cascadeFields: string[] = [];
-      const cascadeValues: any[] = [];
-      if (body.status) { cascadeFields.push('status = ?'); cascadeValues.push(body.status); }
-      if (body.payment_status) { cascadeFields.push('payment_status = ?'); cascadeValues.push(body.payment_status); }
-      if (body.check_in) { cascadeFields.push('check_in = ?'); cascadeValues.push(body.check_in); }
-      if (body.check_out) { cascadeFields.push('check_out = ?'); cascadeValues.push(body.check_out); }
-      if (body.nights) { cascadeFields.push('nights = ?'); cascadeValues.push(body.nights); }
-      if (body.source) { cascadeFields.push('source = ?'); cascadeValues.push(body.source); }
-      if (cascadeFields.length > 0) {
-        cascadeFields.push("updated_at = CURRENT_TIMESTAMP");
-        cascadeValues.push(id);
-        await sql.run(`UPDATE reservations SET ${cascadeFields.join(', ')} WHERE parent_id = ?`, [...cascadeValues]);
-        // Дочірні броні рухаються разом із головною — і їхні ночі теж.
-        for (const child of childrenBefore) await noteStay(sql, child);
-        for (const child of await staysOfParent(sql, id)) await noteStay(sql, child);
-      }
-    } catch (cascErr) { console.error('[PATCH] cascade to children error (non-fatal):', cascErr); }
-
-    // Return updated booking with guest_page_token
+    // Return updated booking with guest_page_token — і прапорець виселення з
+    // боргом під `warning`, щоб рецепція побачила суму, а не лише «готово».
     const updated = await sql.row<any>('SELECT guest_page_token FROM reservations WHERE id = ?', [id]) as any;
-    return NextResponse.json({ success: true, guest_page_token: updated?.guest_page_token || null });
+    return NextResponse.json({
+      success: true,
+      guest_page_token: updated?.guest_page_token || null,
+      ...(checkout?.warning
+        ? { warning: checkout.warning, balance: checkout.balance, currency: beforeSnapshot?.currency ?? null }
+        : {}),
+    });
   } catch (error: any) {
     console.error('PATCH /api/bookings/[id] error:', error?.message || error);
     return serverError('modules/bookings/api/reservation updateReservation', error, 'Failed to update booking');

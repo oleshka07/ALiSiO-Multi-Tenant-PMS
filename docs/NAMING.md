@@ -78,6 +78,11 @@ Charter описує, ЯК називати. Він не вимагає нега
   - `gift_cards.status`: `draft | active | paid | activated | cancelled |
     expired`
   - `tasks.status`: `todo | in_progress | done | cancelled`
+  - `properties.checkout_balance_policy`: `none | warning | blocking` — що
+    робить виселення з несплаченим залишком (0091); дефолт `warning`;
+    невідоме слово читач бере як `blocking`
+  - `reservation_files.kind`: `document | photo | other` — вільний рядок, не
+    CHECK: словник вкладень не має вимагати міграції (0090)
   - `cm_outbox.kind`, `cm_sends.lane`: `availability | rate` — дві смуги
     менеджера каналів; `cm_outbox.field_mask` — біти в порядку `RATE_FIELDS`
     домену (`prices, closed, minStay, maxStay, noArrival, noDeparture`),

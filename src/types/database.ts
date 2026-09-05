@@ -58,6 +58,8 @@ export interface Property {
   email?: string;
   check_in_time: string;
   check_out_time: string;
+  /** Виселення з боргом: `none | warning | blocking` (0091). */
+  checkout_balance_policy?: 'none' | 'warning' | 'blocking';
   is_active: boolean;
   created_at: string;
   updated_at: string;

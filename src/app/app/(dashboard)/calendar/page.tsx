@@ -8,6 +8,7 @@ import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { useDevice } from '@/ui/hooks/useDevice';
 import MobileCalendar from '@/components/mobile/pages/MobileCalendar';
 import BookingViewModal from '@/components/booking/BookingViewModal';
+import { explainStatusChange } from '@/components/booking/status-change';
 import BookingForm from '@/components/booking/BookingForm';
 import { compareUnitNames } from '@core/unit-order';
 import { bookingsOfUnit, unassignedBookings, freeUnitsOnDate, packLanes } from './lanes';
@@ -622,12 +623,14 @@ function CalendarDesktop() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (res.ok) {
+      const data = await res.json().catch(() => ({} as { error?: string }));
+      const outcome = explainStatusChange(res.ok, data, tUi);
+      if (outcome.ok) {
         fetchData();
         if (viewBooking && viewBooking.id === id) {
           setViewBooking({ ...viewBooking, status: newStatus });
         }
-        showToast(tUi('Статус оновлено'));
+        showToast(outcome.warning ? outcome.message : tUi('Статус оновлено'));
       } else {
         // Помилка, яка тут була: `if (res.ok)` без `else`. Заселення без
         // повної оплати або без реєстрації гостей PATCH /api/bookings/[id]
@@ -640,8 +643,7 @@ function CalendarDesktop() {
         // старішою копією і забрала цей `else` разом із нею. Тихий відкат
         // виправлення виглядає точно як саме виправлення, поки хтось не
         // натисне кнопку.
-        const data = await res.json().catch(() => ({} as { error?: string }));
-        showToast(`❌ ${data.error || tUi('Не вдалося змінити статус')}`);
+        showToast(`❌ ${outcome.message}`);
       }
     } catch (e) {
       console.error(e);

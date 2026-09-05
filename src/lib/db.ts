@@ -149,6 +149,12 @@ function buildSchema(database: any) {
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      -- Блок 4 (0091): що робить виселення з несплаченим залишком —
+      -- нічого, попереджає або відмовляє (Hoteliera General settings).
+      -- І тут, і в ALTER нижче (AGENTS §4). CHECK лише тут: SQLite не
+      -- додає обмеження через ALTER; писач звіряє значення сам.
+      checkout_balance_policy TEXT NOT NULL DEFAULT 'warning'
+        CHECK (checkout_balance_policy IN ('none', 'warning', 'blocking')),
       UNIQUE(organization_id, slug)
     );
 
@@ -6919,6 +6925,58 @@ function runMigrations(database: any) {
     database.exec('CREATE INDEX IF NOT EXISTS idx_ai_usage_month ON ai_usage(organization_id, created_at)');
   } catch (e) {
     console.error('[DB] ai_usage migration:', (e as Error).message);
+  }
+
+  // ─── Блок 4 «День готелю» — міграції 0090–0099 (docs/tasks/README.md) ───
+  //
+  // Паралельна сесія дописує СЮДИ, в кінець блоку; сесія 1 — вище. При
+  // rebase конфлікт вирішується збереженням обох у порядку номерів.
+
+  // --- 0091: перевірка балансу при виселенні — налаштування обʼєкта ---
+  //
+  // `none | warning | blocking`, дефолт `warning`: виселення з боргом
+  // проходить, але відповідь несе прапорець; `blocking` — 422 з назвою
+  // причини. І в CREATE, і тут (AGENTS §4): база, народжена до колонки,
+  // інакше лишилась би без неї, і виселення з боргом читалось би як
+  // «політики немає» — тобто `none`, найслабше з трьох.
+  try {
+    const propCols = (database.prepare('PRAGMA table_info(properties)').all() as any[]).map((c: any) => c.name);
+    if (!propCols.includes('checkout_balance_policy')) {
+      database.exec("ALTER TABLE properties ADD COLUMN checkout_balance_policy TEXT NOT NULL DEFAULT 'warning'");
+      console.log('[DB] Added checkout_balance_policy to properties');
+    }
+  } catch (e: any) {
+    console.error('[DB] properties checkout_balance_policy:', e.message);
+  }
+
+  // --- 0090: вкладення до броні ---
+  //
+  // Файл лежить у `data/uploads/<org>/reservations/…` (те саме сховище, що
+  // `api/file-upload`); рядок каже, до якої броні він належить і хто його
+  // поклав. `organization_id` явно (інваріант 12) — і в рядку, і в шляху
+  // файла, бо саме шлях перевіряє `GET /api/uploads`. Ретенція — разом із
+  // бронню (ON DELETE CASCADE); GDPR-цикл знеособлення цю таблицю не чіпає.
+  // `kind` — вільний рядок (`document`, `photo`, `other`): словник вкладень
+  // не має вимагати міграції.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS reservation_files (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        reservation_id  TEXT NOT NULL REFERENCES reservations(id) ON DELETE CASCADE,
+        kind            TEXT NOT NULL DEFAULT 'other',
+        path            TEXT NOT NULL,
+        original_name   TEXT NOT NULL,
+        mime_type       TEXT,
+        size_bytes      INTEGER NOT NULL DEFAULT 0,
+        uploaded_by     TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_reservation_files_org ON reservation_files(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_reservation_files_reservation ON reservation_files(reservation_id, created_at)');
+  } catch (e: any) {
+    console.error('[DB] reservation_files migration:', e.message);
   }
 
   // The last line of runMigrations, and the only reliable signal that the

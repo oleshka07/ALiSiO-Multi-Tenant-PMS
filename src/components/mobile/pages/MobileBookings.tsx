@@ -1,6 +1,7 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { explainStatusChange } from '@/components/booking/status-change';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import { Search, RefreshCw, Phone, Plus, X, LogIn, LogOut, Building2, Pencil, Info, Link, MessageCircle } from 'lucide-react';
@@ -210,7 +211,12 @@ export default function MobileBookings({ openNew, initialSearch }: MobileBooking
   };
 
   const handleChangeStatus = async (id: string, status: string) => {
-    await fetch(`/api/bookings/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    const res = await fetch(`/api/bookings/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    // Відмову сервера (422 без оплати чи з боргом) і попередження треба ПОКАЗАТИ:
+    // мовчазний `await fetch` виглядав як «кнопка не працює».
+    const outcome = explainStatusChange(res.ok, await res.json().catch(() => ({})), t);
+    if (outcome.message) alert(outcome.message);
+    if (!outcome.ok) return;
     fetchData();
   };
 

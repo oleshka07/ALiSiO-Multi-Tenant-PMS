@@ -13,6 +13,7 @@ import MobileBookings from '@/components/mobile/pages/MobileBookings';
 import SourceIcon from '@/components/ui/SourceIcon';
 import MobileFilterBar from '@/components/mobile/MobileFilterBar';
 import BookingViewModal from '@/components/booking/BookingViewModal';
+import { explainStatusChange } from '@/components/booking/status-change';
 import BookingForm, { type WidgetSiteSourceRow } from '@/components/booking/BookingForm';
 import type { DashboardAlert } from '@/modules/dashboard/domain/alerts';
 import {
@@ -442,16 +443,17 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (res.ok) {
-        showToast(`Статус змінено на: ${STATUS_MAP[newStatus]?.label || newStatus}`);
+      const data = await res.json().catch(() => ({}));
+      const outcome = explainStatusChange(res.ok, data, t);
+      if (outcome.ok) {
+        showToast(outcome.warning ? outcome.message : `${t('Статус змінено на:')} ${t(STATUS_MAP[newStatus]?.label || newStatus)}`);
         await fetchBookings();
         fetchAlerts();
         if (viewBooking && viewBooking.id === id) {
           setViewBooking({ ...viewBooking, status: newStatus });
         }
       } else {
-        const data = await res.json();
-        alert(`Помилка зміни статусу: ${data.error || 'Невідома помилка'}`);
+        alert(`${t('Помилка зміни статусу:')} ${outcome.message}`);
       }
     } catch (e) {
       console.error('Status change error:', e);

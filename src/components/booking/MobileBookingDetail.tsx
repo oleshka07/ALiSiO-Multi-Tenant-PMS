@@ -10,8 +10,11 @@ import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 import {
   X, MoreVertical, Phone, Mail, MessageCircle, Check, Clock, Lock,
   Plus, Copy, ExternalLink, Edit3, Loader2, Save, Receipt,
-  CreditCard, FileText, Users, Trash2,
+  CreditCard, FileText, Users, Trash2, Paperclip,
 } from 'lucide-react';
+import FolioPanel from './card/FolioPanel';
+import FilesPanel from './card/FilesPanel';
+import StatusActions from './card/StatusActions';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -37,6 +40,7 @@ const STATUS_LABELS: Record<string, string> = {
   checked_in: 'Заселено',
   checked_out: 'Виселено',
   cancelled: 'Скасовано',
+  no_show: 'Незаїзд',
 };
 
 const METHOD_LABELS: Record<string, string> = {
@@ -106,7 +110,9 @@ export default function MobileBookingDetail({
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
   useBodyScrollLock(Boolean(b));
-  const [tab, setTab] = useState<'payment' | 'registration' | 'groups' | 'audit'>('payment');
+  // Ті самі чотири вкладки, що й на настільній картці (Блок 4 §2.1).
+  const [tab, setTab] = useState<'stay' | 'finance' | 'files' | 'audit'>('stay');
+  const [filesCount, setFilesCount] = useState<number | null>(null);
   const [showPayForm, setShowPayForm] = useState(false);
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', type: 'partial', notes: '' });
   const [showRegForm, setShowRegForm] = useState(false);
@@ -537,14 +543,14 @@ export default function MobileBookingDetail({
               label={tUi('Оплата')}
               sub={isPaid ? '100%' : `${pct}%`}
               status={isPaid ? 'ok' : (b.payment_status === 'payment_requested' ? 'wait' : 'fail')}
-              onClick={() => setTab('payment')}
+              onClick={() => setTab('finance')}
             />
             <PipelineStep
               stepNum={3}
               label={tUi('Реєстрація')}
               sub={regBadge}
               status={isRegistered ? 'ok' : 'fail'}
-              onClick={() => setTab('registration')}
+              onClick={() => setTab('stay')}
             />
             <PipelineStep
               stepNum={4}
@@ -552,7 +558,7 @@ export default function MobileBookingDetail({
               status={['checked_in','checked_out'].includes(b.status) ? 'ok' : 'default'}
               onClick={() => {
                 if (b.status === 'confirmed') onChangeStatus(b.id, 'checked_in');
-                else setTab('payment');
+                else setTab('finance');
               }}
             />
           </div>
@@ -561,9 +567,9 @@ export default function MobileBookingDetail({
           {/* Tabs */}
           <div style={{ display: 'flex', padding: '0 14px', borderBottom: '1px solid var(--border-primary)' }}>
             {([
-              { k: 'payment' as const, l: tUi('Оплата'), Icon: CreditCard, badge: !isPaid && total > 0 ? `${pct}%` : undefined },
-              { k: 'registration' as const, l: tUi('Реєстрація'), Icon: FileText, badge: !isRegistered ? regBadge : undefined },
-              { k: 'groups' as const, l: tUi('Групи'), Icon: Users, badge: subBookings.length > 0 ? String(subBookings.length) : undefined },
+              { k: 'stay' as const, l: tUi('Проживання'), Icon: Users, badge: !isRegistered ? regBadge : undefined },
+              { k: 'finance' as const, l: tUi('Фінанси'), Icon: CreditCard, badge: !isPaid && total > 0 ? `${pct}%` : undefined },
+              { k: 'files' as const, l: tUi('Файли'), Icon: Paperclip, badge: filesCount ? String(filesCount) : undefined },
               ...(canSeeHistory ? [{ k: 'audit' as const, l: tUi('Історія'), Icon: Clock, badge: undefined as string | undefined }] : []),
             ]).map(t => (
               <button key={t.k} onClick={() => setTab(t.k)}
@@ -586,8 +592,12 @@ export default function MobileBookingDetail({
           </div>
 
           {/* Tab content */}
-          {tab === 'payment' && (
+          {tab === 'finance' && (
             <div style={{ padding: '12px 14px' }}>
+              <div style={{ marginBottom: 14 }}>
+                <FolioPanel booking={b} compact showToast={showToast} onBookingChanged={onFetchBookings} setBooking={setBooking} />
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 6 }}>{tUi('Статус оплати броні')}</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
                 <div>
                   <div style={amountLblStyle}>{tUi('Всього')}</div>
@@ -704,8 +714,11 @@ export default function MobileBookingDetail({
             </div>
           )}
 
-          {tab === 'registration' && (
+          {tab === 'stay' && (
             <div style={{ padding: '12px 14px' }}>
+              <div style={{ marginBottom: 12 }}>
+                <StatusActions booking={b} onChangeStatus={onChangeStatus} compact />
+              </div>
               <div style={{
                 padding: '10px 12px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8,
                 background: isRegistered ? 'rgba(74,222,128,0.1)' : 'rgba(242,107,107,0.1)',
@@ -853,10 +866,11 @@ export default function MobileBookingDetail({
             </div>
           )}
 
-          {tab === 'groups' && (
-            <div style={{ padding: '12px 14px' }}>
+          {tab === 'stay' && (
+            <div style={{ padding: '0 14px 12px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 6 }}>{tUi('Кімнати')}</div>
               {subBookings.length === 0 ? (
-                <div style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>
+                <div style={{ padding: '12px 16px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>
                   {tUi('Немає підбронювань')}
                   <div style={{ fontSize: 11, marginTop: 6 }}>
                     {tUi('Створення груп доступне у desktop-версії')}
@@ -880,6 +894,12 @@ export default function MobileBookingDetail({
                   </div>
                 ))
               )}
+            </div>
+          )}
+
+          {tab === 'files' && (
+            <div style={{ padding: '12px 14px' }}>
+              <FilesPanel bookingId={b.id} showToast={showToast} onCountChange={setFilesCount} />
             </div>
           )}
 

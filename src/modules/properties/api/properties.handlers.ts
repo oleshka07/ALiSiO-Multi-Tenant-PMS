@@ -67,6 +67,10 @@ export const updateProperty = withPermission('manage_properties', async (request
     if (!updated) return NextResponse.json({ error: 'Property not found' }, { status: 404 });
     return NextResponse.json(updated);
   } catch (error) {
+    // Слово поза словником політики виселення — помилка ВИКЛИКАЧА, не наша.
+    if (error instanceof Error && error.message.includes('checkout_balance_policy')) {
+      return NextResponse.json({ error: 'invalid_checkout_balance_policy' }, { status: 400 });
+    }
     console.error('PATCH /api/properties/:id error:', error);
     return NextResponse.json({ error: 'Failed to update property' }, { status: 500 });
   }

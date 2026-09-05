@@ -37,6 +37,8 @@ export interface BookingChange {
 export const HISTORY_ACTIONS = [
   'created', 'deleted', 'status_change', 'payment_status_change', 'price_change',
   'unit_change', 'dates_change', 'registration_change', 'notes_change', 'internal_notes_change',
+  // Заселеність змінено рукою (Блок 4, «перерахувати ціну за новою заселеністю»).
+  'guests_change',
   'payment', 'note',
   'channel_created', 'channel_modified', 'channel_cancelled',
 ] as const;
