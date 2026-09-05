@@ -47,7 +47,8 @@ export const DESTINATIONS: Destination[] = [
   { label: 'Планер', href: '/app/calendar', section: 'Основне', permission: 'nav:calendar', keywords: ['календар', 'шахматка', 'заселення', 'вільні номери'] },
   { label: 'Бронювання', href: '/app/bookings', section: 'Основне', permission: 'nav:bookings', keywords: ['броні', 'резервації', 'заїзди', 'виїзди'] },
   { label: 'Гості', href: '/app/guests', section: 'Основне', permission: 'nav:guests', keywords: ['клієнти', 'контакти'] },
-  { label: 'Задачі', href: '/app/tasks', section: 'Основне', permission: 'nav:tasks', feature: 'tasks', keywords: ['прибирання', 'housekeeping', 'доручення'] },
+  { label: 'Задачі', href: '/app/tasks', section: 'Основне', permission: 'nav:tasks', feature: 'tasks', keywords: ['доручення', 'чекліст'] },
+  { label: 'Прибирання', href: '/app/housekeeping', section: 'Основне', permission: 'manage_housekeeping', keywords: ['housekeeping', 'покоївки', 'брудні номери', 'борд', 'історія прибирання'] },
   { label: 'Аркуші дня', href: '/app/day-sheets', section: 'Основне', permission: 'nav:bookings', feature: 'day_sheets', keywords: ['друк', 'зміна', 'рецепція'] },
   { label: 'Зали', href: '/app/events', section: 'Основне', permission: 'nav:bookings', feature: 'events', keywords: ['події', 'банкет', 'конференція'] },
 

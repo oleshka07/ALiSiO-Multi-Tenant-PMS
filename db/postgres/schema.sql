@@ -1941,6 +1941,19 @@ CREATE TABLE "tasks" (
   CHECK (priority IN ('low', 'normal', 'high', 'urgent'))
 );
 
+CREATE TABLE "unit_cleaning_log" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "unit_id" TEXT NOT NULL,
+  "from_status" TEXT NOT NULL,
+  "to_status" TEXT NOT NULL,
+  "source" TEXT DEFAULT 'manual' NOT NULL,
+  "changed_by" TEXT,
+  "changed_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "note" TEXT,
+  PRIMARY KEY ("id")
+);
+
 CREATE TABLE "unit_type_photos" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "unit_type_id" TEXT NOT NULL,
@@ -2494,6 +2507,12 @@ ALTER TABLE "tasks" ADD CONSTRAINT "fk_tasks_project_id_5"
   FOREIGN KEY ("project_id") REFERENCES "task_projects" ("id") ON DELETE SET NULL;
 ALTER TABLE "tasks" ADD CONSTRAINT "fk_tasks_organization_id_6"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "unit_cleaning_log" ADD CONSTRAINT "fk_unit_cleaning_log_changed_by_1"
+  FOREIGN KEY ("changed_by") REFERENCES "app_users" ("id") ON DELETE SET NULL;
+ALTER TABLE "unit_cleaning_log" ADD CONSTRAINT "fk_unit_cleaning_log_unit_id_2"
+  FOREIGN KEY ("unit_id") REFERENCES "units" ("id") ON DELETE CASCADE;
+ALTER TABLE "unit_cleaning_log" ADD CONSTRAINT "fk_unit_cleaning_log_organization_id_3"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "unit_type_photos" ADD CONSTRAINT "fk_unit_type_photos_unit_type_id_1"
   FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
 ALTER TABLE "unit_types" ADD CONSTRAINT "fk_unit_types_category_id_1"
@@ -2688,6 +2707,8 @@ CREATE INDEX "idx_tasks_due" ON "tasks" ("due_date");
 CREATE INDEX "idx_tasks_org" ON "tasks" ("organization_id");
 CREATE INDEX "idx_tasks_project" ON "tasks" ("project_id");
 CREATE INDEX "idx_tasks_status" ON "tasks" ("status");
+CREATE INDEX "idx_unit_cleaning_log_org" ON "unit_cleaning_log" ("organization_id", "changed_at");
+CREATE INDEX "idx_unit_cleaning_log_unit" ON "unit_cleaning_log" ("unit_id", "changed_at");
 CREATE INDEX "idx_units_category" ON "units" ("category_id");
 CREATE INDEX "idx_units_property" ON "units" ("property_id");
 CREATE INDEX "idx_units_unit_type" ON "units" ("unit_type_id");
@@ -2769,6 +2790,7 @@ CREATE INDEX IF NOT EXISTS "idx_task_attachments_org" ON "task_attachments" ("or
 CREATE INDEX IF NOT EXISTS "idx_task_projects_org" ON "task_projects" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_task_tags_org" ON "task_tags" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_tasks_org" ON "tasks" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_unit_cleaning_log_org" ON "unit_cleaning_log" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_widget_handshakes_org" ON "widget_handshakes" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_widget_price_list_org" ON "widget_price_list" ("organization_id");
 
@@ -2917,6 +2939,8 @@ ALTER TABLE "task_projects" ALTER COLUMN "organization_id"
 ALTER TABLE "task_tags" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "tasks" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "unit_cleaning_log" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "widget_handshakes" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -3521,6 +3545,12 @@ CREATE POLICY "task_tags_tenant" ON "task_tags"
 ALTER TABLE "tasks" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "tasks" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "tasks_tenant" ON "tasks"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "unit_cleaning_log" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "unit_cleaning_log" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "unit_cleaning_log_tenant" ON "unit_cleaning_log"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Що сказати рецепції після `PATCH /api/bookings/[id] { status }`.
  *
@@ -23,6 +25,9 @@ export function explainStatusChange(
   if (ok) {
     if (data?.warning === 'unpaid_balance') {
       return { ok: true, warning: true, message: `⚠️ ${tUi('Виселено з несплаченим залишком')}: ${money(data.balance, data.currency)}` };
+    }
+    if (data?.warning === 'unit_dirty') {
+      return { ok: true, warning: true, message: `⚠️ ${tUi('Заселено в номер, який ще не прибрано')}` };
     }
     return { ok: true, warning: false, message: '' };
   }

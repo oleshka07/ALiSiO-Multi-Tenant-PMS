@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { noteStay, movesStay, stayById, staysOfParent } from '../data/stay-notes';
+import { noteStay, movesStay, staysOfParent } from '../data/stay-notes';
+import { writeReservationChange } from '../data/reservation-write.repo';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
@@ -166,6 +167,17 @@ export const updateReservation = withPermission('manage_bookings', async (reques
     // назвою причини. Борг — з фоліо броні; без фоліо — зі статусу оплати,
     // того самого слова, за яким варта заселення пускає гостя в номер.
     // Домен — `checkout-balance.ts`, обидві осі тримає його перевірка.
+    // Заселення в неприбраний номер — попередження, не заборона (Блок 4 §2.2):
+    // рецепція бачить, що номер брудний, і вирішує сама.
+    let checkinWarning: 'unit_dirty' | null = null;
+    if (body.status === 'checked_in') {
+      const targetUnit = body.unit_id ?? beforeSnapshot?.unit_id;
+      if (targetUnit) {
+        const u = await sql.row<any>('SELECT cleaning_status FROM units WHERE id = ?', [targetUnit]);
+        if (u && u.cleaning_status !== 'clean') checkinWarning = 'unit_dirty';
+      }
+    }
+
     let checkout: CheckoutDecision | null = null;
     if (body.status === 'checked_out' && beforeSnapshot?.status !== 'checked_out') {
       const decision = await decideCheckout(sql, {
@@ -253,44 +265,21 @@ export const updateReservation = withPermission('manage_bookings', async (reques
       oldPaymentStatus = oldRes?.payment_status || null;
     }
 
-    // Канали: стан ДО зміни звільняє старі ночі, стан ПІСЛЯ займає нові.
-    const stayBefore = movesStay(body) ? await stayById(sql, id) : undefined;
-    const childrenBefore = movesStay(body) ? await staysOfParent(sql, id) : [];
-
-    // Одна транзакція на бронь, її ночі в каналі й дочірні броні (Блок 4):
-    // до того запис ішов окремими викликами, і падіння між ними лишало
-    // головну бронь виселеною, а дочірні — ні. Усе, що має статись РАЗОМ зі
-    // зміною статусу (номер стає брудним після виселення — 2.2), додається
-    // сюди, під ту саму ручку `t`.
+    // Одна транзакція на бронь, її ночі в каналі, дочірні броні і — при
+    // виселенні — стан прибирання номера (Блок 4, 0092). Тіло транзакції —
+    // `reservation-write.repo.ts`, сцена поруч.
     if (sets.length > 0) {
       sets.push("updated_at = CURRENT_TIMESTAMP");
       values.push(id);
-      const statement = `UPDATE reservations SET ${sets.join(', ')} WHERE id = ?`;
-      await sql.tx(async (t) => {
-        await t.run(statement, values);
-        if (stayBefore) {
-          await noteStay(t, stayBefore);
-          await noteStay(t, await stayById(t, id));
-        }
-
-        // ── Cascade to child reservations ──
-        // When master's status or payment_status changes, mirror to all children
-        const cascadeFields: string[] = [];
-        const cascadeValues: any[] = [];
-        if (body.status) { cascadeFields.push('status = ?'); cascadeValues.push(body.status); }
-        if (body.payment_status) { cascadeFields.push('payment_status = ?'); cascadeValues.push(body.payment_status); }
-        if (body.check_in) { cascadeFields.push('check_in = ?'); cascadeValues.push(body.check_in); }
-        if (body.check_out) { cascadeFields.push('check_out = ?'); cascadeValues.push(body.check_out); }
-        if (body.nights) { cascadeFields.push('nights = ?'); cascadeValues.push(body.nights); }
-        if (body.source) { cascadeFields.push('source = ?'); cascadeValues.push(body.source); }
-        if (cascadeFields.length > 0) {
-          cascadeFields.push("updated_at = CURRENT_TIMESTAMP");
-          cascadeValues.push(id);
-          await t.run(`UPDATE reservations SET ${cascadeFields.join(', ')} WHERE parent_id = ?`, [...cascadeValues]);
-          // Дочірні броні рухаються разом із головною — і їхні ночі теж.
-          for (const child of childrenBefore) await noteStay(t, child);
-          for (const child of await staysOfParent(t, id)) await noteStay(t, child);
-        }
+      await writeReservationChange(sql, {
+        organizationId: actor.organizationId, reservationId: id,
+        statement: `UPDATE reservations SET ${sets.join(', ')} WHERE id = ?`, values,
+        movesStay: movesStay(body),
+        cascade: {
+          status: body.status, payment_status: body.payment_status, check_in: body.check_in,
+          check_out: body.check_out, nights: body.nights, source: body.source,
+        },
+        checkout: checkout ? { changedBy: actor.user.id } : null,
       });
     }
 
@@ -369,7 +358,7 @@ export const updateReservation = withPermission('manage_bookings', async (reques
       guest_page_token: updated?.guest_page_token || null,
       ...(checkout?.warning
         ? { warning: checkout.warning, balance: checkout.balance, currency: beforeSnapshot?.currency ?? null }
-        : {}),
+        : checkinWarning ? { warning: checkinWarning } : {}),
     });
   } catch (error: any) {
     console.error('PATCH /api/bookings/[id] error:', error?.message || error);

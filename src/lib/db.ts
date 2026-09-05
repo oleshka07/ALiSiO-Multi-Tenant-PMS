@@ -6979,6 +6979,34 @@ function runMigrations(database: any) {
     console.error('[DB] reservation_files migration:', e.message);
   }
 
+  // --- 0092: історія прибирання ---
+  //
+  // `units.cleaning_status` міняли мовчки: PATCH номера, чекліст зміни,
+  // тепер — виселення. Хто, коли і з якого стану — не лишалось ніде.
+  // Рядок = одна зміна стану одного номера; `source` каже, звідки прийшла
+  // (`manual` — борд/чекліст, `checkout` — автоматика виселення).
+  // `organization_id` явно (інваріант 12); `changed_by` — FK на app_users:
+  // невідомий автор — це відмова, а не порожній рядок.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS unit_cleaning_log (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        unit_id         TEXT NOT NULL REFERENCES units(id) ON DELETE CASCADE,
+        from_status     TEXT NOT NULL,
+        to_status       TEXT NOT NULL,
+        source          TEXT NOT NULL DEFAULT 'manual',
+        changed_by      TEXT REFERENCES app_users(id) ON DELETE SET NULL,
+        changed_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        note            TEXT
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_unit_cleaning_log_org ON unit_cleaning_log(organization_id, changed_at)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_unit_cleaning_log_unit ON unit_cleaning_log(unit_id, changed_at)');
+  } catch (e: any) {
+    console.error('[DB] unit_cleaning_log migration:', e.message);
+  }
+
   // The last line of runMigrations, and the only reliable signal that the
   // schema has settled. scripts/check-fresh-schema.mjs waits for it: polling
   // the table count said "done" while ALTER TABLE ADD COLUMN was still going,

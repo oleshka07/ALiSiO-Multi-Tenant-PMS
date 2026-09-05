@@ -4,6 +4,7 @@ import { getSql } from '@core/db/async';
 import { withActor, type Actor } from '@core/auth/session';
 import { todayFor, shiftDays } from '@core/hotel-day';
 import { occupancyOnDay } from '@core/occupancy-rate';
+import { housekeepingSummary } from '@properties';
 
 /**
  * The first screen after logging in — arrivals, departures, occupancy.
@@ -82,6 +83,10 @@ export const getDashboard = withActor(async (request: NextRequest, _ctx, actor: 
       ORDER BY u.name
     `, scoped(today)));
 
+    // Прибирання (Блок 4 §2.2; у Hoteliera — «All rooms · Dirty rooms · Recent
+    // Cleaning Activity»): лічильники і сьогоднішні зміни через фасад обʼєкта.
+    const housekeeping = await housekeepingSummary(org, propertyFilter || null);
+
     return NextResponse.json({
       arrivalsToday: arrivals?.cnt || 0,
       departuresToday: departures?.cnt || 0,
@@ -90,6 +95,7 @@ export const getDashboard = withActor(async (request: NextRequest, _ctx, actor: 
       totalUnits: occ.sellableUnits,
       upcomingArrivals,
       todayDepartures,
+      housekeeping,
     });
   } catch (error: any) {
     console.error('GET /api/dashboard error:', error?.message || error);

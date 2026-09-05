@@ -83,6 +83,9 @@ Charter описує, ЯК називати. Він не вимагає нега
     невідоме слово читач бере як `blocking`
   - `reservation_files.kind`: `document | photo | other` — вільний рядок, не
     CHECK: словник вкладень не має вимагати міграції (0090)
+  - `unit_cleaning_log.source`: `manual | checkout` — звідки прийшла зміна
+    стану прибирання (борд/чекліст або автоматика виселення); вільний рядок
+    (0092). Самі стани — `units.cleaning_status`: `clean | dirty | in_progress`
   - `cm_outbox.kind`, `cm_sends.lane`: `availability | rate` — дві смуги
     менеджера каналів; `cm_outbox.field_mask` — біти в порядку `RATE_FIELDS`
     домену (`prices, closed, minStay, maxStay, noArrival, noDeparture`),
