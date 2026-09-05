@@ -30,6 +30,7 @@ const { getSql } = await import('@core/db/async');
 const { createRatePlan, updateRatePlan, listRatePlans, deleteRatePlan, readSellMode } = await import('./rate-plans.repo.ts');
 const { propertyRatePlans } = await import('./property-rate-plans.ts');
 const { priceNights } = await import('./nightly-price.ts');
+const { upsertPrices, bulkUpdatePrices, getPriceMonth } = await import('./price-calendar.repo.ts');
 const { clipToHorizon } = await import('@channels/outbox');
 
 const sql = getSql();
@@ -282,7 +283,115 @@ try {
     console.log('  ok  стара база без CHECK: чужий sell_mode не валить екран, читається як per_person');
   }
 
-  console.log('rate-plans: тариф свого обʼєкта, код унікальний на обʼєкті, валюта замкнена ціною, видалення лише чистого, зняття з продажу закриває канал, режим ціни замкнений заведенням');
+  // ── 10. Похідний тариф: база ± коригування, рендериться в календар (Ц28) ─
+  //
+  // Блок 2 крок 2. Похідний тариф не має власних цін: його ціна доби = ціна
+  // базового тарифу на цю дату (власний рядок бази, а без нього — базовий
+  // рядок типу) ± коригування, і вона РЕНДЕРИТЬСЯ в `price_calendar` рядком
+  // тарифу (`source = 'derived'`) тим самим писачем — щоб канал отримав
+  // число (derived_option Channex не використовуємо, Ц7). Зміна бази
+  // перерендерює похідні; точкове перевизначення дати на похідному живе.
+  //
+  // Осі (інваріант 26): три базові ціни (100/150/200) і власний рядок бази
+  // на одній із дат (180 — «база = ефективна ціна тарифу, не рядок типу»);
+  // відсоток проти суми; зменшення проти збільшення; ціна вихідних окремо
+  // (130 → 117). Числа несумісні з «узяли базу без коригування».
+  {
+    const D1 = '2027-05-10'; // понеділок
+    const D2 = '2027-05-11';
+    const D3 = '2027-05-12';
+    const q = (planId: string, date: string) => runWithOrganization(A, () => priceNights({ unitTypeId: UT(A), checkIn: date, nights: 1, adults: 2, ratePlanId: planId }));
+    const price = async (planId: string, date: string) => (await q(planId, date)).nights[0]?.price ?? null;
+
+    await runWithOrganization(A, async () => {
+      await bulkUpdatePrices({ unitTypeId: UT(A), dateFrom: D1, dateTo: D1, applyTo: 'all', base_price: 100, weekend_price: 130 });
+      await bulkUpdatePrices({ unitTypeId: UT(A), dateFrom: D2, dateTo: D2, applyTo: 'all', base_price: 150 });
+      await bulkUpdatePrices({ unitTypeId: UT(A), dateFrom: D3, dateTo: D3, applyTo: 'all', base_price: 200 });
+    });
+    const std = await runWithOrganization(A, () => createRatePlan({
+      propertyId: PROP(A), name: 'Standard', code: 'STD', currency: 'USD', mealPlan: null, childExtraGross: null,
+    }));
+    await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D3, base_price: 180 }], { ratePlanId: std.id }));
+
+    // Відмови — названі, до першого рядка.
+    await runWithOrganization(A, () => assert.rejects(() => createRatePlan({
+      propertyId: PROP(A), name: 'No base', code: 'NOBASE', currency: 'USD', mealPlan: null, childExtraGross: null,
+      pricingType: 'derived', adjustmentKind: 'percent', adjustmentValue: 10, adjustmentDirection: 'decrease',
+    }), /based_on_required/, 'похідний без бази — відмова з назвою'));
+    await runWithOrganization(A, () => assert.rejects(() => createRatePlan({
+      propertyId: PROP(A), name: 'Zero', code: 'ZERO', currency: 'USD', mealPlan: null, childExtraGross: null,
+      pricingType: 'derived', basedOnRatePlanId: std.id, adjustmentKind: 'percent', adjustmentValue: 0, adjustmentDirection: 'decrease',
+    }), /adjustment_invalid/, 'коригування нуль — не коригування'));
+
+    const nr = await runWithOrganization(A, () => createRatePlan({
+      propertyId: PROP(A), name: 'Non-refundable', code: 'NR', currency: 'USD', mealPlan: null, childExtraGross: null,
+      pricingType: 'derived', basedOnRatePlanId: std.id, adjustmentKind: 'percent', adjustmentValue: 10, adjustmentDirection: 'decrease',
+    }));
+    assert.strictEqual(nr.pricingType, 'derived');
+    assert.strictEqual(nr.basedOnRatePlanId, std.id);
+    assert.strictEqual(await price(nr.id, D1), 90, 'NR = база типу 100 − 10 %');
+    assert.strictEqual(await price(nr.id, D2), 135, 'NR = 150 − 10 %');
+    assert.strictEqual(await price(nr.id, D3), 162, 'NR = ВЛАСНИЙ рядок бази 180 − 10 %, не рядок типу 200');
+    const grid = await runWithOrganization(A, () => getPriceMonth(UT(A), 5, 2027, nr.id));
+    const g1 = grid.days.find((d) => d.date === D1)!;
+    assert.strictEqual(g1.weekend_price, 117, 'ціна вихідних бази 130 − 10 % = 117 — рендериться разом');
+    assert.strictEqual(g1.source, 'derived', 'рядок похідного позначений джерелом «derived»');
+    assert.strictEqual(g1.inherited, false, 'це власний рядок тарифу, не успадкована база');
+
+    const plus = await runWithOrganization(A, () => createRatePlan({
+      propertyId: PROP(A), name: 'Plus', code: 'PLUS', currency: 'USD', mealPlan: null, childExtraGross: null,
+      pricingType: 'derived', basedOnRatePlanId: std.id, adjustmentKind: 'fixed', adjustmentValue: 25, adjustmentDirection: 'increase',
+    }));
+    assert.strictEqual(await price(plus.id, D1), 125, 'PLUS = 100 + 25');
+    assert.strictEqual(await price(plus.id, D3), 205, 'PLUS = 180 + 25');
+    await runWithOrganization(A, () => assert.rejects(() => createRatePlan({
+      propertyId: PROP(A), name: 'Chain', code: 'CHAIN', currency: 'USD', mealPlan: null, childExtraGross: null,
+      pricingType: 'derived', basedOnRatePlanId: nr.id, adjustmentKind: 'percent', adjustmentValue: 5, adjustmentDirection: 'decrease',
+    }), /based_on_invalid/, 'похідний від похідного — відмова: ланцюжок правил ніхто не прочитає'));
+
+    // Зміна бази перерендерює похідні; перевизначення дати на похідному живе.
+    await sql.run("DELETE FROM cm_outbox WHERE connection_id = '__rpw_conn'");
+    await sql.run(
+      `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, remote_id)
+       VALUES ('__rpw_map_nr', ?, '__rpw_conn', 'rate_plan', ?, ?, 'remote-nr')`,
+      [A, nr.id, UT(A)],
+    );
+    await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D2, base_price: 140 }], { ratePlanId: nr.id }));
+    await runWithOrganization(A, () => bulkUpdatePrices({ unitTypeId: UT(A), dateFrom: D1, dateTo: D2, applyTo: 'all', base_price: 120 }));
+    assert.strictEqual(await price(nr.id, D1), 108, 'база типу 100 → 120: NR перерендерено, 108');
+    assert.strictEqual(await price(nr.id, D2), 140, 'перевизначення дати на похідному (140) перерендер не затирає');
+    assert.strictEqual(await price(plus.id, D2), 145, 'PLUS без перевизначення — 120 + 25');
+    await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D3, base_price: 190 }], { ratePlanId: std.id }));
+    assert.strictEqual(await price(nr.id, D3), 171, 'зміна власного рядка бази 180 → 190: NR 171');
+    const nrCoords = await sql.rows<any>("SELECT stay_date, stay_date_to FROM cm_outbox WHERE connection_id = '__rpw_conn' AND rate_plan_id = ?", [nr.id]);
+    assert.ok(nrCoords.length >= 1, 'рендер похідного іде через двері каналу — координата на його пару (Ц16)');
+
+    // Знятий з продажу похідний перерендер не повертає в продаж.
+    await runWithOrganization(A, () => updateRatePlan(nr.id, { isActive: false }));
+    await runWithOrganization(A, () => bulkUpdatePrices({ unitTypeId: UT(A), dateFrom: D3, dateTo: D3, applyTo: 'all', base_price: 210 }));
+    const retired = await q(nr.id, D3);
+    assert.deepStrictEqual(retired.missing, [D3], 'знятий похідний після перерендеру бази лишається без ціни');
+    assert.strictEqual(retired.ratePlanRetired, true);
+    assert.ok(!(await runWithOrganization(A, () => propertyRatePlans(PROP(A)))).some((p) => p.id === nr.id), 'і в каталог не йде');
+    assert.strictEqual(await price(plus.id, D3), 215, 'а живий PLUS перерендерено: власний рядок бази 190 + 25');
+
+    // Коригування, що зʼїдає ціну, — дня без ціни, не ціна нуль (Ц24).
+    const free = await runWithOrganization(A, () => createRatePlan({
+      propertyId: PROP(A), name: 'Free', code: 'FREE', currency: 'USD', mealPlan: null, childExtraGross: null,
+      pricingType: 'derived', basedOnRatePlanId: std.id, adjustmentKind: 'fixed', adjustmentValue: 500, adjustmentDirection: 'decrease',
+    }));
+    assert.deepStrictEqual((await q(free.id, D1)).missing, [D1], '120 − 500 — ціни немає, ніч у missing, не нуль і не відʼємне');
+
+    // Базу з похідними не видалити; похідний видаляється разом зі своїми рядками.
+    await runWithOrganization(A, () => assert.rejects(() => deleteRatePlan(std.id), /has_dependents/, 'на базу спираються похідні — відмова з назвою'));
+    await runWithOrganization(A, () => deleteRatePlan(plus.id));
+    assert.strictEqual((await sql.rows('SELECT id FROM price_calendar WHERE rate_plan_id = ?', [plus.id])).length, 0, 'рядки похідного — його, і йдуть разом із ним');
+    const listedDerived = await runWithOrganization(A, () => listRatePlans(PROP(A)));
+    assert.deepStrictEqual(listedDerived.find((p) => p.id === nr.id)?.adjustment, { kind: 'percent', value: 10, direction: 'decrease' }, 'екран бачить правило похідного');
+    console.log('  ok  похідний тариф: база ± % / сума рендериться в календар, власний рядок бази важить, перерендер при зміні бази, перевизначення живе, знятий не повертається');
+  }
+
+  console.log('rate-plans: тариф свого обʼєкта, код унікальний на обʼєкті, валюта замкнена ціною, видалення лише чистого, зняття з продажу закриває канал, режим ціни замкнений заведенням, похідний рендериться в календар');
 } finally {
   await cleanup();
 }

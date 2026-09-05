@@ -3,7 +3,8 @@ import { noteRatesChanged, type RateField } from '@channels/outbox';
 import crypto from 'crypto';
 import { getSql, type Sql } from '@core/db/async';
 import { currentOrganizationId } from '@core/auth/tenant-context';
-import type { DayPrice, PriceUpsertInput, PriceSource } from '../domain/types';
+import type { DayPrice, PriceUpsertInput, PriceSource, RateAdjustment } from '../domain/types';
+import { derivedPrice } from '../domain/derived-price';
 
 // The id used to be defaulted by a SQLite-only blob function inside the
 // INSERT. Same 32 lowercase hex chars, generated where both engines can.
@@ -46,6 +47,12 @@ function assertPositivePrice(value: unknown): void {
 export interface PriceCalendarOptions {
   /** Ціна ТАРИФУ на дату (П2): рядок з `rate_plan_id`, не базовий. */
   ratePlanId?: string;
+  /**
+   * Не чіпати дат, де рядок тарифу — перевизначення (`manual` з ціною):
+   * так рендерить похідний тариф (Ц28) — правило не затирає того, що
+   * оператор поставив на дату рукою. Лише з `ratePlanId`.
+   */
+  keepManual?: boolean;
 }
 
 export async function getPriceMonth(unitTypeId: string, month: number, year: number, ratePlanId?: string): Promise<{ unitTypeId: string; ratePlanId: string | null; month: number; year: number; days: DayPrice[] }> {
@@ -361,10 +368,16 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
     ) : [];
     const baseBy = new Map(baseRows.map((r) => [String(r.date).slice(0, 10), r]));
     const planBy = new Map(planRows.map((r) => [String(r.date).slice(0, 10), r]));
+    // Перевизначення дати рендер правила обходить (Ц27/Ц28): рядок тарифу з
+    // ціною, поставленою рукою, лишається; рядок без ціни — не перевизначення.
+    const writes = options.keepManual && ratePlanId
+      ? prices.filter((p) => { const own = planBy.get(p.date); return !(own && (own.source ?? 'manual') === 'manual' && own.base_price != null); })
+      : prices;
+    const wdates = writes.map((p) => p.date).sort();
     const priceChanged = new Set<RateField>();
     const restrictionChanged = new Set<RateField>();
 
-    for (const p of prices) {
+    for (const p of writes) {
       const base = shapeOf(baseBy.get(p.date));
       const own = ratePlanId ? shapeOf(planBy.get(p.date)) : base;
       // Ціна: яку пара матиме після запису — власна, де названа або лежала,
@@ -379,13 +392,13 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
       // у запиті немає, лишаються як були (B4).
       for (const f of changedRestrictionFields(restrictionsOf(base), resolveRestrictions(p, base))) restrictionChanged.add(f);
     }
-    if (owner && dates.length) {
+    if (owner && wdates.length) {
       await noteCalendarChanged(t, {
-        propertyId: String(owner.property_id), unitTypeId, ratePlanId, from: dates[0], to: dates[dates.length - 1],
+        propertyId: String(owner.property_id), unitTypeId, ratePlanId, from: wdates[0], to: wdates[wdates.length - 1],
       }, priceChanged, restrictionChanged);
     }
 
-    for (const p of prices) {
+    for (const p of writes) {
       const base = shapeOf(baseBy.get(p.date));
       const r = resolveRestrictions(p, base);
       // Джерело (Ц27) міняється лише разом із ціною: збереження обмеження на
@@ -393,7 +406,12 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
       const pricedNow = p.base_price !== undefined || p.weekend_price !== undefined;
       if (ratePlanId) {
         await writeRatePlanPrice(t, unitTypeId, ratePlanId, p.date, p, planBy.has(p.date));
-        await writeBaseRestrictions(t, unitTypeId, p.date, r, p);
+        // Обмеження — у базовий рядок типу, але лише коли їх назвали: запис
+        // самої ціни тарифу (рендер похідного) не має заводити рядків
+        // обмежень на 500 ночей уперед.
+        if (RESTRICTION_COLS.some((c) => (p as unknown as Record<string, unknown>)[c] !== undefined)) {
+          await writeBaseRestrictions(t, unitTypeId, p.date, r, p);
+        }
         continue;
       }
       // Базовий рядок типу: ціна й обмеження разом, одна семантика на кожне
@@ -411,6 +429,11 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
     }
   });
 
+  // Похідні тарифи, що спираються на змінену ціну, — перерендер тими самими
+  // датами (Ц28). Рядки самого похідного залежних не мають — далі не йде.
+  if (prices.some((p) => p.source !== 'derived')) {
+    await rerenderDependents(unitTypeId, ratePlanId, prices.map((p) => p.date));
+  }
   return prices.length;
 }
 
@@ -462,6 +485,7 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
   const ratePlanId = input.ratePlanId ?? null;
 
   let count = 0;
+  const written: string[] = [];
   const start = new Date(dateFrom);
   const end = new Date(dateTo);
 
@@ -557,6 +581,7 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
         `, [newId(), unitTypeId, dateStr, basePrice, weekendPrice, minStay, maxStay, closed, cta, ctd, source]);
       }
       count++;
+      written.push(dateStr);
       current.setDate(current.getDate() + 1);
     }
 
@@ -567,7 +592,110 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
     }
   });
 
+  if (input.source !== 'derived') await rerenderDependents(unitTypeId, ratePlanId, written);
   return count;
+}
+
+// ── Похідні тарифи (Блок 2 крок 2, Ц28) ─────────────────────────────────
+//
+// Похідний тариф не має власних цін: його рядок на дату = ціна БАЗОВОГО
+// тарифу на цю дату (власний рядок бази, а без нього — базовий рядок типу,
+// по полю: буденна й вихідних окремо) ± коригування — і рендериться тут же,
+// через `upsertPrices` з `source: 'derived'` і `keepManual`: перевизначення
+// дати на похідному живе, а канал отримує число тим самим шляхом, що й для
+// будь-якого тарифу (Ц7: `derived_option` вендора не використовуємо).
+// Зміна ціни бази — власного рядка чи рядка типу — перерендерює залежних
+// тими самими датами; похідний від похідного писач не приймає, тож
+// ланцюжок закінчується на одному кроці.
+
+interface DerivedRule { id: string; basedOn: string; adjustment: RateAdjustment }
+
+/** = `OUTBOX_HORIZON_DAYS` каналу: далі ночі не існує ні для кого. */
+export const DERIVED_RENDER_DAYS = 500;
+
+function toRule(row: any): DerivedRule {
+  return {
+    id: String(row.id), basedOn: String(row.based_on_rate_plan_id),
+    adjustment: { kind: row.adjustment_kind, value: Number(row.adjustment_value), direction: row.adjustment_direction },
+  };
+}
+
+/** Похідні тарифи обʼєкта цього типу, що спираються на `basePlanId` (або на будь-яку базу, коли змінився рядок ТИПУ). */
+async function derivedPlansOf(sql: Sql, unitTypeId: string, basePlanId: string | null): Promise<DerivedRule[]> {
+  const select = `SELECT rp.id, rp.based_on_rate_plan_id, rp.adjustment_kind, rp.adjustment_value, rp.adjustment_direction
+       FROM rate_plans rp JOIN unit_types ut ON ut.property_id = rp.property_id
+      WHERE ut.id = ? AND rp.pricing_type = 'derived' AND rp.based_on_rate_plan_id IS NOT NULL`;
+  const rows = basePlanId
+    ? await sql.rows<any>(`${select} AND rp.based_on_rate_plan_id = ?`, [unitTypeId, basePlanId])
+    : await sql.rows<any>(select, [unitTypeId]);
+  return rows.map(toRule);
+}
+
+/** Ефективна ціна базового тарифу на дати: власний рядок, а де в ньому порожньо — базовий рядок типу. */
+async function basePricesFor(sql: Sql, unitTypeId: string, basePlanId: string, dates: string[]): Promise<Map<string, PriceShape>> {
+  const out = new Map<string, PriceShape>();
+  if (!dates.length) return out;
+  const holes = dates.map(() => '?').join(', ');
+  const rows = await sql.rows<any>(
+    `SELECT date, rate_plan_id, base_price, weekend_price FROM price_calendar
+      WHERE unit_type_id = ? AND (rate_plan_id IS NULL OR rate_plan_id = ?) AND date IN (${holes})`,
+    [unitTypeId, basePlanId, ...dates],
+  );
+  const own = new Map<string, any>();
+  const type = new Map<string, any>();
+  for (const r of rows) (r.rate_plan_id == null ? type : own).set(String(r.date).slice(0, 10), r);
+  for (const date of dates) {
+    const o = own.get(date);
+    const t = type.get(date);
+    if (!o && !t) continue;
+    out.set(date, { base_price: num(o?.base_price) ?? num(t?.base_price), weekend_price: num(o?.weekend_price) ?? num(t?.weekend_price) });
+  }
+  return out;
+}
+
+async function renderDerivedRows(unitTypeId: string, rule: DerivedRule, dates: string[]): Promise<void> {
+  const base = await basePricesFor(getSql(), unitTypeId, rule.basedOn, dates);
+  const inputs: PriceUpsertInput[] = dates.map((date) => {
+    const b = base.get(date);
+    return {
+      date,
+      base_price: derivedPrice(b?.base_price ?? null, rule.adjustment),
+      weekend_price: derivedPrice(b?.weekend_price ?? null, rule.adjustment),
+      source: 'derived',
+    };
+  });
+  await upsertPrices(unitTypeId, inputs, { ratePlanId: rule.id, keepManual: true });
+}
+
+async function rerenderDependents(unitTypeId: string, basePlanId: string | null, dates: string[]): Promise<void> {
+  const unique = [...new Set(dates)];
+  if (!unique.length) return;
+  for (const rule of await derivedPlansOf(getSql(), unitTypeId, basePlanId)) await renderDerivedRows(unitTypeId, rule, unique);
+}
+
+/**
+ * Повний рендер похідного тарифу — від сьогодні до горизонту, на кожен тип
+ * обʼєкта. Кличе писач тарифів після створення чи зміни правила. Тариф не
+ * похідний або чужий — нічого не робить і каже нуль.
+ */
+export async function renderDerivedPlan(planId: string, today: string = new Date().toISOString().slice(0, 10)): Promise<number> {
+  const sql = getSql();
+  const organizationId = currentOrganizationId();
+  if (!organizationId) throw new Error('price calendar: render without a tenant');
+  const plan = await sql.row<any>(
+    `SELECT rp.id, rp.property_id, rp.based_on_rate_plan_id, rp.adjustment_kind, rp.adjustment_value, rp.adjustment_direction
+       FROM rate_plans rp JOIN properties p ON p.id = rp.property_id
+      WHERE rp.id = ? AND p.organization_id = ? AND rp.pricing_type = 'derived'`,
+    [planId, organizationId],
+  );
+  if (!plan || !plan.based_on_rate_plan_id) return 0;
+  const rule = toRule(plan);
+  const unitTypes = await sql.rows<any>('SELECT id FROM unit_types WHERE property_id = ?', [plan.property_id]);
+  const dates: string[] = [];
+  const [y, m, d] = today.split('-').map(Number);
+  for (let i = 0; i < DERIVED_RENDER_DAYS; i++) dates.push(new Date(Date.UTC(y, m - 1, d + i)).toISOString().slice(0, 10));
+  for (const ut of unitTypes) await renderDerivedRows(String(ut.id), rule, dates);
+  return unitTypes.length;
 }
 
 /** Обмеження одного дня з базового рядка типу — для батчера каналів (Д1/Д2). */

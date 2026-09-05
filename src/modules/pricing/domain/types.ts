@@ -42,9 +42,12 @@ export interface DayPrice {
  *
  * Звідки ціна дня (Блок 2 крок 1, Ц27): `season` — розгорнута з клітинки
  * сезону; `manual` — редактор дня чи масовий, точкове перевизначення, яке
- * перерендер сезону не затирає; `import` — файл готелю.
+ * перерендер сезону не затирає; `import` — файл готелю; `derived` — рядок
+ * похідного тарифу, порахований від бази (Ц28, крок 2). Рядки «з правила»
+ * (`season`, `derived`) перерендер переписує; `manual` з ціною — ніколи.
  */
-export type PriceSource = 'season' | 'manual' | 'import';
+export type PriceSource = 'season' | 'manual' | 'import' | 'derived';
+export const PRICE_SOURCES: readonly PriceSource[] = ['season', 'manual', 'import', 'derived'];
 
 export interface PriceUpsertInput {
   date: string;
@@ -103,3 +106,23 @@ export interface QuoteResult {
 export type SellMode = 'per_room' | 'per_person';
 export const SELL_MODES: readonly SellMode[] = ['per_room', 'per_person'];
 
+/**
+ * Похідний тариф (Блок 2 крок 2, Ц28): ціна доби = ціна базового тарифу на
+ * дату ± коригування. `manual` — тариф зі своїми цінами (календар, сезони);
+ * `derived` — рядки рахуються від бази й рендеряться в календар з
+ * `source = 'derived'`. Похідний від похідного не буває — писач відмовляє.
+ */
+export type PricingType = 'manual' | 'derived';
+export const PRICING_TYPES: readonly PricingType[] = ['manual', 'derived'];
+/** Відсоток від бази або сума в валюті тарифу. */
+export type AdjustmentKind = 'percent' | 'fixed';
+export const ADJUSTMENT_KINDS: readonly AdjustmentKind[] = ['percent', 'fixed'];
+export type AdjustmentDirection = 'increase' | 'decrease';
+export const ADJUSTMENT_DIRECTIONS: readonly AdjustmentDirection[] = ['increase', 'decrease'];
+
+export interface RateAdjustment {
+  kind: AdjustmentKind;
+  /** Додатне число: відсоток (0 < v < 100 для зменшення) або сума. */
+  value: number;
+  direction: AdjustmentDirection;
+}

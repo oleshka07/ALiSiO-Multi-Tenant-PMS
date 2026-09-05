@@ -1403,11 +1403,11 @@ CREATE TABLE "price_calendar" (
   "closed" BIGINT DEFAULT 0 NOT NULL,
   "cta" BIGINT DEFAULT 0 NOT NULL,
   "ctd" BIGINT DEFAULT 0 NOT NULL,
+  "source" TEXT DEFAULT 'manual' NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "source" TEXT DEFAULT 'manual' NOT NULL,
   PRIMARY KEY ("id"),
-  CHECK (source IN ('season', 'manual', 'import'))
+  CHECK (source IN ('season', 'manual', 'import', 'derived'))
 );
 
 CREATE TABLE "price_los_tiers" (
@@ -1523,9 +1523,17 @@ CREATE TABLE "rate_plans" (
   "is_hidden" BOOLEAN DEFAULT false NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "pricing_type" TEXT DEFAULT 'manual' NOT NULL,
+  "based_on_rate_plan_id" TEXT,
+  "adjustment_kind" TEXT,
+  "adjustment_value" NUMERIC(14,2),
+  "adjustment_direction" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("property_id", "code"),
-  CHECK (sell_mode IN ('per_room', 'per_person'))
+  CHECK (sell_mode IN ('per_room', 'per_person')),
+  CHECK (pricing_type IN ('manual', 'derived')),
+  CHECK (adjustment_kind IN ('percent', 'fixed')),
+  CHECK (adjustment_direction IN ('increase', 'decrease'))
 );
 
 CREATE TABLE "reservation_guests" (
@@ -2318,7 +2326,9 @@ ALTER TABLE "property_guest_config" ADD CONSTRAINT "fk_property_guest_config_pro
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "property_photos" ADD CONSTRAINT "fk_property_photos_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
-ALTER TABLE "rate_plans" ADD CONSTRAINT "fk_rate_plans_property_id_1"
+ALTER TABLE "rate_plans" ADD CONSTRAINT "fk_rate_plans_based_on_rate_plan_id_1"
+  FOREIGN KEY ("based_on_rate_plan_id") REFERENCES "rate_plans" ("id");
+ALTER TABLE "rate_plans" ADD CONSTRAINT "fk_rate_plans_property_id_2"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "reservation_guests" ADD CONSTRAINT "fk_reservation_guests_sub_booking_id_1"
   FOREIGN KEY ("sub_booking_id") REFERENCES "reservation_sub_bookings" ("id");

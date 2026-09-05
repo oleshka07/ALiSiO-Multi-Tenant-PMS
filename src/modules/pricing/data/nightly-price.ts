@@ -193,7 +193,7 @@ export async function priceNights(input: {
   // продається: назвати нуль від імені готелю ми не можемо.
   const plan = ratePlanId
     ? await sql.row<any>(
-        'SELECT child_extra_gross, is_active, sell_mode FROM rate_plans WHERE id = ? AND property_id = ?',
+        'SELECT child_extra_gross, is_active, sell_mode, pricing_type FROM rate_plans WHERE id = ? AND property_id = ?',
         [ratePlanId, owner?.property_id ?? ''],
       )
     : null;
@@ -202,6 +202,11 @@ export async function priceNights(input: {
   // матриця й надбавка рахуються на БАЗОВУ заселеність, а не на партію.
   // Місткість при цьому перевіряється на справжню партію — вище.
   const perRoom = plan?.sell_mode === 'per_room';
+  // Похідний тариф (Ц28) має лише ті ціни, що порахував від бази рендер: дата
+  // без його рядка — ніч без ціни, а не успадкована базова ціна типу. Інакше
+  // «мінус 500 від 120» продавалось би за 120 — за числом, якого правило не
+  // називало (інваріант 17).
+  const derivedPlan = plan?.pricing_type === 'derived';
   const baseOccupancy = Number(owner?.base_occupancy) || 2;
   const quoteAdults = perRoom ? baseOccupancy : adults;
 
@@ -319,6 +324,12 @@ export async function priceNights(input: {
       const price = money(Math.max(0, rpPrice + extra));
       out.push({ date, price, source: 'rate_plan', adjustment: extra });
       occupancyPriced = true;
+      continue;
+    }
+
+    // Похідний без власного рядка на дату — без ціни (див. вище).
+    if (derivedPlan) {
+      missing.push(date);
       continue;
     }
 

@@ -270,6 +270,16 @@ function buildSchema(database: any) {
       description TEXT,
       included_services_json TEXT NOT NULL DEFAULT '[]',
       is_hidden INTEGER NOT NULL DEFAULT 0,
+      -- Похідний тариф (Блок 2 крок 2, Ц28): ціна доби = ціна базового
+      -- тарифу на дату ± коригування, рендериться в price_calendar рядком
+      -- тарифу з source = 'derived'. Словники закриті (docs/NAMING.md);
+      -- «похідний від похідного» відмовляє писач, не схема. І тут, і в ALTER
+      -- нижче (AGENTS §4).
+      pricing_type TEXT NOT NULL DEFAULT 'manual' CHECK (pricing_type IN ('manual', 'derived')),
+      based_on_rate_plan_id TEXT REFERENCES rate_plans(id),
+      adjustment_kind TEXT CHECK (adjustment_kind IN ('percent', 'fixed')),
+      adjustment_value REAL,
+      adjustment_direction TEXT CHECK (adjustment_direction IN ('increase', 'decrease')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(property_id, code)
@@ -1214,6 +1224,15 @@ function runMigrations(database: any) {
     if (!rpCols.includes('sell_mode')) {
       database.exec("ALTER TABLE rate_plans ADD COLUMN sell_mode TEXT NOT NULL DEFAULT 'per_person'");
       console.log('[DB] Added sell_mode to rate_plans');
+    }
+    // Блок 2 крок 2 (0069, Ц28): похідний тариф. І в CREATE, і тут.
+    if (!rpCols.includes('pricing_type')) {
+      database.exec("ALTER TABLE rate_plans ADD COLUMN pricing_type TEXT NOT NULL DEFAULT 'manual' CHECK (pricing_type IN ('manual', 'derived'))");
+      database.exec('ALTER TABLE rate_plans ADD COLUMN based_on_rate_plan_id TEXT REFERENCES rate_plans(id)');
+      database.exec("ALTER TABLE rate_plans ADD COLUMN adjustment_kind TEXT CHECK (adjustment_kind IN ('percent', 'fixed'))");
+      database.exec('ALTER TABLE rate_plans ADD COLUMN adjustment_value REAL');
+      database.exec("ALTER TABLE rate_plans ADD COLUMN adjustment_direction TEXT CHECK (adjustment_direction IN ('increase', 'decrease'))");
+      console.log('[DB] Added derived rate plan columns to rate_plans (0069)');
     }
     // Тут стояв ADD COLUMN власної ціни. Видалений разом зі створенням, а не
     // прикритий DROP-ом у кінці (AGENTS §4): у вже наявних локальних базах
@@ -2466,7 +2485,7 @@ function runMigrations(database: any) {
       -- клітинки сезону; manual — редактор дня чи масовий, тобто точкове
       -- перевизначення, яке перерендер сезону НЕ затирає; import — файл
       -- готелю. Обмеження джерела не мають — вони живуть на рядку типу.
-      source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('season', 'manual', 'import')),
+      source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('season', 'manual', 'import', 'derived')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
@@ -2476,11 +2495,70 @@ function runMigrations(database: any) {
   try {
     const pcCols = (database.prepare('PRAGMA table_info(price_calendar)').all() as any[]).map((c: any) => c.name);
     if (!pcCols.includes('source')) {
-      database.exec("ALTER TABLE price_calendar ADD COLUMN source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('season', 'manual', 'import'))");
+      database.exec("ALTER TABLE price_calendar ADD COLUMN source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('season', 'manual', 'import', 'derived'))");
       console.log('[DB] Added source to price_calendar (0068)');
     }
   } catch (e: any) {
     console.error('[DB] price_calendar source:', e.message);
+  }
+
+  // --- Migration 0069: `derived` серед джерел ціни (Блок 2 крок 2, Ц28) ---
+  //
+  // База, що дістала CHECK на `source` з 0068 без «derived», не може прийняти
+  // рядок похідного тарифу — а розширити CHECK у SQLite можна лише
+  // перебудовою. Правило AGENTS §4: sql індексів знімається до підміни,
+  // повертається після, лічильники рядків і індексів звіряються — саме так
+  // уже двічі зникав унікальний індекс на гостьовий токен і три індекси
+  // `accruals`. Свіжа база сюди не потрапляє: її CREATE вище вже з «derived».
+  try {
+    const pcCreate = (database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='price_calendar'").get() as { sql?: string } | undefined)?.sql ?? '';
+    if (pcCreate.includes('CHECK (source IN') && !pcCreate.includes("'derived'")) {
+      console.log('[DB] price_calendar: source CHECK → + derived (0069) — перебудова зі збереженням індексів');
+      const before = (database.prepare('SELECT COUNT(*) AS n FROM price_calendar').get() as { n: number }).n;
+      const indexSql = (database.prepare(
+        "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='price_calendar' AND sql IS NOT NULL",
+      ).all() as { sql: string }[]).map((r) => r.sql);
+      const live = (database.prepare('PRAGMA table_info(price_calendar)').all() as { name: string }[]).map((c) => c.name);
+      const carried = [
+        'id', 'unit_type_id', 'rate_plan_id', 'date', 'base_price', 'weekend_price',
+        'min_stay', 'max_stay', 'closed', 'cta', 'ctd', 'source', 'created_at', 'updated_at',
+      ].filter((c) => live.includes(c));
+
+      database.exec('PRAGMA foreign_keys = OFF');
+      database.exec(`
+        CREATE TABLE price_calendar_new (
+          id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+          unit_type_id TEXT NOT NULL REFERENCES unit_types(id) ON DELETE CASCADE,
+          rate_plan_id TEXT REFERENCES rate_plans(id),
+          date TEXT NOT NULL,
+          base_price REAL,
+          weekend_price REAL,
+          min_stay INTEGER NOT NULL DEFAULT 1,
+          max_stay INTEGER,
+          closed INTEGER NOT NULL DEFAULT 0,
+          cta INTEGER NOT NULL DEFAULT 0,
+          ctd INTEGER NOT NULL DEFAULT 0,
+          source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('season', 'manual', 'import', 'derived')),
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      database.exec(`INSERT INTO price_calendar_new (${carried.join(', ')}) SELECT ${carried.join(', ')} FROM price_calendar`);
+      database.exec('DROP TABLE price_calendar');
+      database.exec('ALTER TABLE price_calendar_new RENAME TO price_calendar');
+      for (const sql of indexSql) database.exec(sql);
+      database.exec('PRAGMA foreign_keys = ON');
+
+      const after = (database.prepare('SELECT COUNT(*) AS n FROM price_calendar').get() as { n: number }).n;
+      if (after !== before) throw new Error(`price_calendar rebuild lost rows: ${before} -> ${after}`);
+      const restored = (database.prepare(
+        "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='index' AND tbl_name='price_calendar' AND sql IS NOT NULL",
+      ).get() as { n: number }).n;
+      if (restored !== indexSql.length) throw new Error(`price_calendar rebuild lost indexes: ${indexSql.length} -> ${restored}`);
+      console.log(`[DB] price_calendar rebuilt with source 'derived' allowed (${after} rows, ${restored} indexes carried)`);
+    }
+  } catch (e: any) {
+    console.error('[DB] price_calendar source derived migration error:', e.message);
   }
 
   // --- Migration: drop the old UNIQUE(unit_type_id, date) from price_calendar ---

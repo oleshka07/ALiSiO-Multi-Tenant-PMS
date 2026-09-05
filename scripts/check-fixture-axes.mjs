@@ -212,6 +212,27 @@ const AXES = [
     scope: /[\s\S]+/,
     distinct: /sellMode: '(per_room|per_person)'/g, min: 2,
   },
+  // Блок 2 крок 2 (Ц28): похідний тариф. Один вид коригування не розрізняє
+  // «відсоток» і «суму»; один напрям — «плюс» і «мінус»; одна базова ціна —
+  // «порахували від бази» і «взяли константу».
+  {
+    file: 'src/modules/pricing/data/rate-plans.repo.check.ts',
+    axis: 'вид коригування похідного (adjustmentKind)',
+    scope: /\/\/ ── 10\. Похідний тариф[\s\S]*?(?=\n\} finally)/,
+    distinct: /adjustmentKind: '(percent|fixed)'/g, min: 2,
+  },
+  {
+    file: 'src/modules/pricing/data/rate-plans.repo.check.ts',
+    axis: 'напрям коригування похідного (adjustmentDirection)',
+    scope: /\/\/ ── 10\. Похідний тариф[\s\S]*?(?=\n\} finally)/,
+    distinct: /adjustmentDirection: '(increase|decrease)'/g, min: 2,
+  },
+  {
+    file: 'src/modules/pricing/data/rate-plans.repo.check.ts',
+    axis: 'базові ціни, від яких рахується похідний',
+    scope: /\/\/ ── 10\. Похідний тариф[\s\S]*?(?=\n\} finally)/,
+    distinct: /base_price: (\d+)/g, min: 3,
+  },
 ];
 
 /** Коментарі геть — блокові й рядкові; `://` у рядках лишається. */

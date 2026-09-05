@@ -69,6 +69,9 @@ const OVERRIDE = {
   // tenant problem. A reason is text even when the word next to it is money.
   'reservations.lodging_discount_reason': 'TEXT',
   'coupons.discount_type': 'TEXT',
+  // Коригування похідного тарифу (Ц28): відсоток або сума — обидва з двома
+  // знаками; слова «adjustment» шаблон грошей не знає.
+  'rate_plans.adjustment_value': 'NUMERIC(14,2)',
   'gift_card_automation_rules.discount_type': 'TEXT',
   'gift_cards.value_type': 'TEXT',
   'fin_system_state.value': 'TEXT',

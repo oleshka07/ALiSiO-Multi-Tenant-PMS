@@ -3,7 +3,11 @@ import { getSql, type Sql } from '@core/db/async';
 import { currentOrganizationId } from '@core/auth/tenant-context';
 import { money } from '@core/money';
 import { noteRatesChanged } from '@channels/outbox';
-import { SELL_MODES, type SellMode } from '../domain/types';
+import {
+  SELL_MODES, ADJUSTMENT_KINDS, ADJUSTMENT_DIRECTIONS,
+  type SellMode, type PricingType, type AdjustmentKind, type AdjustmentDirection, type RateAdjustment,
+} from '../domain/types';
+import { renderDerivedPlan } from './price-calendar.repo';
 
 /**
  * Тарифи обʼєкта — створити, змінити, перелічити. Екран «Тарифи».
@@ -70,9 +74,25 @@ export interface RatePlanSetting {
   mapped: boolean;
   /** Коди типів номерів, під якими тариф має хоч одну ціну на дату. Порожньо — не продається. */
   pricedUnitTypes: string[];
+  /** Не показувати на сайті й у віджеті; у канал такий тариф теж не йде. */
+  isHidden: boolean;
+  /** `manual` — свої ціни; `derived` — ціни рахуються від бази і рендеряться в календар (Ц28). */
+  pricingType: PricingType;
+  basedOnRatePlanId: string | null;
+  /** Правило похідного; `null` для звичайного тарифу. */
+  adjustment: RateAdjustment | null;
 }
 
-export interface CreateRatePlanInput {
+/** Похідний тариф — база й коригування (Ц28). Без цих полів — звичайний тариф. */
+export interface DerivedInput {
+  pricingType?: PricingType | null;
+  basedOnRatePlanId?: string | null;
+  adjustmentKind?: AdjustmentKind | null;
+  adjustmentValue?: number | null;
+  adjustmentDirection?: AdjustmentDirection | null;
+}
+
+export interface CreateRatePlanInput extends DerivedInput {
   propertyId: string;
   name: string;
   code: string;
@@ -81,9 +101,10 @@ export interface CreateRatePlanInput {
   childExtraGross: number | null;
   /** Порожньо — `per_person`. */
   sellMode?: SellMode | null;
+  isHidden?: boolean;
 }
 
-export interface UpdateRatePlanInput {
+export interface UpdateRatePlanInput extends DerivedInput {
   name?: string;
   code?: string;
   currency?: string;
@@ -93,6 +114,54 @@ export interface UpdateRatePlanInput {
   isActive?: boolean;
   /** Лише доки тариф не заведено у вендора — інакше `sell_mode_locked`. */
   sellMode?: SellMode;
+  isHidden?: boolean;
+}
+
+/** Похідний тариф у вигляді колонок — після перевірки. */
+interface DerivedColumns {
+  pricing_type: PricingType;
+  based_on_rate_plan_id: string | null;
+  adjustment_kind: AdjustmentKind | null;
+  adjustment_value: number | null;
+  adjustment_direction: AdjustmentDirection | null;
+}
+
+const MANUAL: DerivedColumns = { pricing_type: 'manual', based_on_rate_plan_id: null, adjustment_kind: null, adjustment_value: null, adjustment_direction: null };
+
+/**
+ * Правило похідного тарифу — перевірене (Ц28): база названа, свого обʼєкта,
+ * сама не похідна і не цей тариф (`based_on_required` / `based_on_invalid`);
+ * коригування — відомий вид і напрям, додатне число, а відсоток зменшення
+ * менший за сотню (`adjustment_invalid`): «мінус сто відсотків» — це не
+ * тариф, а ніч без ціни на кожну дату.
+ */
+async function normalizeDerived(t: Sql, propertyId: string, input: DerivedInput, selfId: string | null): Promise<DerivedColumns> {
+  if ((input.pricingType ?? 'manual') !== 'derived') return MANUAL;
+  const basedOn = input.basedOnRatePlanId ? String(input.basedOnRatePlanId) : '';
+  if (!basedOn) throw new Error('based_on_required');
+  if (selfId && basedOn === selfId) throw new Error('based_on_invalid');
+  const base = await t.row<any>('SELECT id, pricing_type FROM rate_plans WHERE id = ? AND property_id = ?', [basedOn, propertyId]);
+  if (!base || String(base.pricing_type ?? 'manual') === 'derived') throw new Error('based_on_invalid');
+  const kind = input.adjustmentKind as AdjustmentKind;
+  const direction = input.adjustmentDirection as AdjustmentDirection;
+  const value = Number(input.adjustmentValue);
+  if (!ADJUSTMENT_KINDS.includes(kind) || !ADJUSTMENT_DIRECTIONS.includes(direction)) throw new Error('adjustment_invalid');
+  if (!Number.isFinite(value) || value <= 0) throw new Error('adjustment_invalid');
+  if (kind === 'percent' && direction === 'decrease' && value >= 100) throw new Error('adjustment_invalid');
+  return { pricing_type: 'derived', based_on_rate_plan_id: basedOn, adjustment_kind: kind, adjustment_value: money(value), adjustment_direction: direction };
+}
+
+const sameRule = (a: DerivedColumns, b: DerivedColumns): boolean =>
+  a.pricing_type === b.pricing_type && a.based_on_rate_plan_id === b.based_on_rate_plan_id
+  && a.adjustment_kind === b.adjustment_kind && a.adjustment_value === b.adjustment_value && a.adjustment_direction === b.adjustment_direction;
+
+function ruleOf(row: Record<string, any>): DerivedColumns {
+  if (String(row.pricing_type ?? 'manual') !== 'derived') return MANUAL;
+  return {
+    pricing_type: 'derived', based_on_rate_plan_id: row.based_on_rate_plan_id == null ? null : String(row.based_on_rate_plan_id),
+    adjustment_kind: row.adjustment_kind ?? null, adjustment_value: row.adjustment_value == null ? null : Number(row.adjustment_value),
+    adjustment_direction: row.adjustment_direction ?? null,
+  };
 }
 
 const CODE = /^[A-Z0-9][A-Z0-9_-]{0,19}$/;
@@ -155,6 +224,12 @@ function toSetting(row: Record<string, any>, priced: string[], mapped: boolean):
     sellMode: readSellMode(row.sell_mode, row.id),
     mapped,
     pricedUnitTypes: priced,
+    isHidden: Boolean(Number(row.is_hidden ?? 0)),
+    pricingType: String(row.pricing_type ?? 'manual') === 'derived' ? 'derived' : 'manual',
+    basedOnRatePlanId: row.based_on_rate_plan_id == null ? null : String(row.based_on_rate_plan_id),
+    adjustment: String(row.pricing_type ?? 'manual') === 'derived' && row.adjustment_kind && row.adjustment_direction
+      ? { kind: row.adjustment_kind, value: Number(row.adjustment_value), direction: row.adjustment_direction }
+      : null,
   };
 }
 
@@ -239,14 +314,21 @@ export async function createRatePlan(input: CreateRatePlanInput): Promise<RatePl
   const sellMode = normalizeSellMode(input.sellMode, 'per_person');
   const id = `rp_${crypto.randomBytes(8).toString('hex')}`;
 
-  return getSql().tx(async (t) => {
+  const created = await getSql().tx(async (t) => {
     const property = await ownedProperty(t, input.propertyId);
     if (await codeTaken(t, property.id, code, null)) throw new Error('code_taken');
+    const derived = await normalizeDerived(t, property.id, input, null);
+    // Валюта похідного — валюта бази: його числа рахуються з її чисел.
+    const finalCurrency = derived.based_on_rate_plan_id
+      ? String((await t.row<any>('SELECT currency FROM rate_plans WHERE id = ?', [derived.based_on_rate_plan_id]))?.currency ?? currency)
+      : currency;
     const next = await t.row<any>('SELECT COALESCE(MAX(priority), 0) + 1 AS n FROM rate_plans WHERE property_id = ?', [property.id]);
     await t.run(
-      `INSERT INTO rate_plans (id, property_id, name, code, pricing_model, currency, meal_plan, child_extra_gross, sell_mode, priority)
-       VALUES (?, ?, ?, ?, 'standard', ?, ?, ?, ?, ?)`,
-      [id, property.id, name, code, currency, meal, child, sellMode, Number(next?.n ?? 1)],
+      `INSERT INTO rate_plans (id, property_id, name, code, pricing_model, currency, meal_plan, child_extra_gross, sell_mode, priority, is_hidden,
+                               pricing_type, based_on_rate_plan_id, adjustment_kind, adjustment_value, adjustment_direction)
+       VALUES (?, ?, ?, ?, 'standard', ?, ?, ?, ?, ?, ${input.isHidden ? 'TRUE' : 'FALSE'}, ?, ?, ?, ?, ?)`,
+      [id, property.id, name, code, finalCurrency, meal, child, sellMode, Number(next?.n ?? 1),
+        derived.pricing_type, derived.based_on_rate_plan_id, derived.adjustment_kind, derived.adjustment_value, derived.adjustment_direction],
     );
     // Ц16: новий тариф — нова пара в каналі. Пар ще немає (ціни немає), тож
     // двері напишуть нуль; але писач тарифів проходить через двері завжди —
@@ -255,13 +337,48 @@ export async function createRatePlan(input: CreateRatePlanInput): Promise<RatePl
     const row = await t.row<any>('SELECT * FROM rate_plans WHERE id = ?', [id]);
     return toSetting(row, [], false);
   });
+  // Похідний — одразу з цінами: рендер від сьогодні до горизонту (Ц28), поза
+  // транзакцією тарифу — писач календаря має свої.
+  if (created.pricingType === 'derived') await renderDerivedPlan(created.id);
+  return created;
 }
 
 export async function updateRatePlan(id: string, patch: UpdateRatePlanInput): Promise<RatePlanSetting> {
-  return getSql().tx(async (t) => {
+  let rerender = false;
+  const updated = await getSql().tx(async (t) => {
     const before = await ownedPlan(t, id);
     const sets: string[] = [];
     const values: unknown[] = [];
+
+    // Правило похідного (Ц28) — лише коли патч його називає; інакше як було.
+    if (patch.pricingType !== undefined || patch.basedOnRatePlanId !== undefined || patch.adjustmentKind !== undefined
+      || patch.adjustmentValue !== undefined || patch.adjustmentDirection !== undefined) {
+      const was = ruleOf(before);
+      const merged: DerivedInput = {
+        pricingType: patch.pricingType ?? was.pricing_type,
+        basedOnRatePlanId: patch.basedOnRatePlanId !== undefined ? patch.basedOnRatePlanId : was.based_on_rate_plan_id,
+        adjustmentKind: patch.adjustmentKind !== undefined ? patch.adjustmentKind : was.adjustment_kind,
+        adjustmentValue: patch.adjustmentValue !== undefined ? patch.adjustmentValue : was.adjustment_value,
+        adjustmentDirection: patch.adjustmentDirection !== undefined ? patch.adjustmentDirection : was.adjustment_direction,
+      };
+      const now = await normalizeDerived(t, String(before.property_id), merged, id);
+      if (!sameRule(was, now)) {
+        // Тариф, на який уже спираються похідні, сам похідним не стає.
+        if (now.pricing_type === 'derived') {
+          const dependents = await t.row<any>("SELECT id FROM rate_plans WHERE based_on_rate_plan_id = ? AND pricing_type = 'derived' LIMIT 1", [id]);
+          if (dependents) throw new Error('has_dependents');
+        }
+        sets.push('pricing_type = ?', 'based_on_rate_plan_id = ?', 'adjustment_kind = ?', 'adjustment_value = ?', 'adjustment_direction = ?');
+        values.push(now.pricing_type, now.based_on_rate_plan_id, now.adjustment_kind, now.adjustment_value, now.adjustment_direction);
+        rerender = now.pricing_type === 'derived';
+        // Похідний → звичайний: рядки лишаються цінами тарифу, але вже
+        // рукою поставленими — далі їх нічого не перерендерює.
+        if (was.pricing_type === 'derived' && now.pricing_type === 'manual') {
+          await t.run("UPDATE price_calendar SET source = 'manual' WHERE rate_plan_id = ? AND source = 'derived'", [id]);
+        }
+      }
+    }
+    if (patch.isHidden !== undefined) sets.push(patch.isHidden ? 'is_hidden = TRUE' : 'is_hidden = FALSE');
 
     if (patch.name !== undefined) { sets.push('name = ?'); values.push(normalizeName(patch.name)); }
     if (patch.code !== undefined) {
@@ -304,6 +421,8 @@ export async function updateRatePlan(id: string, patch: UpdateRatePlanInput): Pr
     const priced = await pricedUnitTypesOf(t, [id]);
     return toSetting(row, priced.get(id) ?? [], wasMapped);
   });
+  if (rerender) await renderDerivedPlan(id);
+  return updated;
 }
 
 /**
@@ -326,9 +445,15 @@ export async function updateRatePlan(id: string, patch: UpdateRatePlanInput): Pr
  */
 export async function deleteRatePlan(id: string): Promise<void> {
   await getSql().tx(async (t) => {
-    await ownedPlan(t, id);
+    const plan = await ownedPlan(t, id);
+    const derived = String(plan.pricing_type ?? 'manual') === 'derived';
+    // На базу спираються похідні — вона не видаляється, поки вони є (Ц28).
+    const dependent = await t.row<any>("SELECT id FROM rate_plans WHERE based_on_rate_plan_id = ? AND pricing_type = 'derived' LIMIT 1", [id]);
+    if (dependent) throw new Error('has_dependents');
+    // Рядки похідного — порахованi з бази, а не поставлені рукою: ідуть разом
+    // із ним. Ціни звичайного тарифу — ні: їх спершу прибирають у календарі.
     const priced = await pricedUnitTypesOf(t, [id]);
-    if ((priced.get(id) ?? []).length > 0) throw new Error('has_prices');
+    if (!derived && (priced.get(id) ?? []).length > 0) throw new Error('has_prices');
     const mapped = await t.row<any>(
       "SELECT id FROM cm_mappings WHERE entity_type = 'rate_plan' AND local_id = ? LIMIT 1", [id],
     );
@@ -336,6 +461,7 @@ export async function deleteRatePlan(id: string): Promise<void> {
     const booked = await t.row<any>('SELECT id FROM reservations WHERE rate_plan_id = ? LIMIT 1', [id]);
     if (booked) throw new Error('in_use');
 
+    if (derived) await t.run('DELETE FROM price_calendar WHERE rate_plan_id = ?', [id]);
     await t.run('DELETE FROM cm_outbox WHERE rate_plan_id = ?', [id]);
     await t.run('DELETE FROM rate_plans WHERE id = ?', [id]);
   });
