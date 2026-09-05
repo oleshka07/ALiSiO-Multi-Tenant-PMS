@@ -1,48 +1,46 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
-import { requirePropertyId, propertyErrorStatus, runWithOrganization } from '@core/auth/tenant-context';
+import { withModule, type Actor } from '@core/auth/session';
+import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 import { serverError } from '@core/http/errors';
 
 // GET /api/booking-sites — list all sites for property
-export async function GET(_req: NextRequest) {
+//
+// Під `booking_engine`, а не під `sites` (П15): список сайтів читає екран
+// коду віджета, щоб назвати сайт у вставці, — а форма бронювання не платна.
+// Створення і все редагування сайта — платний модуль `sites` (POST нижче і
+// `withOwnedSite` для `[id]/**`).
+export const GET = withModule('booking_engine', null, async (_req: NextRequest, _ctx: unknown, actor: Actor) => {
   try {
-    const session = await getSessionUser(getSessionIdFromCookies(_req.headers.get('cookie')));
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
+    const session = { organization_id: actor.organizationId, id: actor.user.id };
     const sql = getSql();
     // Scoped, and as the organization. This listed every booking site on the
     // server: the WHERE clause named only the status, so one hotel's operator
     // saw every other hotel's sites by name and slug.
-    const sites = await runWithOrganization(session.organization_id, () => sql.rows<any>(`
+    const sites = await sql.rows<any>(`
       SELECT
         bs.*,
         (SELECT COUNT(*) FROM site_listings sl WHERE sl.site_id = bs.id) as listings_count
       FROM booking_sites bs
       WHERE bs.organization_id = ? AND bs.status != 'deleted'
       ORDER BY bs.created_at DESC
-    `, [session.organization_id]));
+    `, [session.organization_id]);
 
     return NextResponse.json({ sites });
   } catch (error: any) {
     console.error('GET /api/booking-sites error:', error?.message);
     return NextResponse.json({ error: 'Failed to fetch sites' }, { status: 500 });
   }
-}
+});
 
-// POST /api/booking-sites — create new site
-export async function POST(request: NextRequest) {
+// POST /api/booking-sites — create new site (платний модуль `sites`, П15)
+export const POST = withModule('sites', 'nav:sites', async (request: NextRequest, _ctx: unknown, actor: Actor) => {
   try {
-    const session = await getSessionUser(getSessionIdFromCookies(request.headers.get('cookie')));
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    // This route reads the session itself rather than going through a guard,
-    // so nothing had established the tenant: requirePropertyId could still be
-    // told which property explicitly, but every write below ran unscoped, and
-    // on Postgres each one was refused by its policy.
-    return runWithOrganization(session.organization_id, async () => {
-
+    const session = { organization_id: actor.organizationId, id: actor.user.id };
+    // `withModule` вже встановив особу й орендаря (раніше маршрут читав сесію
+    // сам, і кожен запис нижче йшов без контексту — на Postgres політика їх
+    // відхиляла).
     const sql = getSql();
     const body = await request.json();
     const { name, type = 'self-hosted', currency = 'CZK', property_id } = body;
@@ -95,9 +93,8 @@ export async function POST(request: NextRequest) {
     `, [organizationId, propId, name.trim(), slug, type, currency, defaultDesignConfig, defaultWidgetConfig, session.id]);
 
     return NextResponse.json({ site }, { status: 201 });
-    });
   } catch (error: any) {
     console.error('POST /api/booking-sites error:', error);
     return serverError('app/api/booking-sites POST', error, 'Failed to create site');
   }
-}
+});

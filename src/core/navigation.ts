@@ -64,7 +64,7 @@ export const DESTINATIONS: Destination[] = [
   // ── Інтеграції ───────────────────────────────────────────────────────
   { label: 'Канали', href: '/app/settings/channel-manager', section: 'Інтеграції', permission: 'nav:settings', keywords: ['booking.com', 'airbnb', 'ical', 'синхронізація'] },
   { label: 'Віджет бронювання', href: '/app/settings/booking-widget', section: 'Інтеграції', permission: 'nav:settings', feature: 'booking_engine', keywords: ['embed', 'код на сайт', 'форма бронювання'] },
-  { label: 'Сайти бронювання', href: '/app/sites', section: 'Інтеграції', permission: 'nav:sites', feature: 'booking_engine', keywords: ['лендінг', 'домен', 'сторінка'] },
+  { label: 'Сайти бронювання', href: '/app/sites', section: 'Інтеграції', permission: 'nav:sites', feature: 'sites', keywords: ['лендінг', 'домен', 'сторінка'] },
 
   // ── Налаштування ─────────────────────────────────────────────────────
   { label: 'Налаштування', href: '/app/settings', section: 'Налаштування', permission: 'nav:settings' },
@@ -79,7 +79,7 @@ export const DESTINATIONS: Destination[] = [
   { label: 'Ціни каналів', href: '/app/settings/channel-rules', section: 'Налаштування', permission: 'nav:pricing', keywords: ['націнка', 'комісія', 'сніданок у ціні'] },
   { label: 'Джерела бронювань', href: '/app/settings/booking-sources', section: 'Налаштування', permission: 'nav:settings', keywords: ['звідки прийшов гість', 'канал продажу'] },
   { label: 'Послуги', href: '/app/settings/services', section: 'Налаштування', permission: 'nav:settings', keywords: ['сауна', 'сніданок', 'трансфер', 'додаткові'] },
-  { label: 'Гостьова сторінка', href: '/app/settings/guest-page', section: 'Налаштування', permission: 'nav:settings', keywords: ['портал гостя', 'самореєстрація', 'wifi'] },
+  { label: 'Гостьова сторінка', href: '/app/settings/guest-page', section: 'Налаштування', permission: 'nav:settings', feature: 'guest_page', keywords: ['портал гостя', 'самореєстрація', 'wifi'] },
 ];
 
 /**

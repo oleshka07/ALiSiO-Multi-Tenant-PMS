@@ -5,7 +5,7 @@ import { describeChanges } from '@/modules/bookings/ui/booking-history';
 import { HISTORY_ROLES, HISTORY_ICONS, HISTORY_COLORS, formatHistoryTime } from './booking-history-ui';
 import React, { useState, useEffect } from 'react';
 import { readQuote } from './quote-prefill';
-import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
+import { useHotelCurrency, useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import {
   Edit3, X, Save, Plus, Check, ArrowRight, Copy, ExternalLink,
   Loader2, Trash2, Phone, Receipt, RefreshCw, Clock, Lock, Mail, MessageCircle,
@@ -128,6 +128,9 @@ export default function BookingViewModal({
   // готелю», а не «як у першого клієнта». Сума в євро з підписом CZK — це
   // інші гроші, інше зобовʼязання і інший податок на фактурі.
   const hotelCurrency = useHotelCurrency();
+  // Посилання на гостьову сторінку — лише в готелю з модулем `guest_page` (П15):
+  // без нього портал відповідає 404, і кнопка брехала б.
+  const guestPageOn = !!useCurrentUser().features.guest_page;
   const [viewTab, setViewTab] = useState<'payment' | 'registration' | 'groups' | 'tax' | 'notes' | 'audit'>('payment');
   const [showPayForm, setShowPayForm] = useState(false);
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', type: 'partial', notes: '' });
@@ -474,7 +477,7 @@ export default function BookingViewModal({
         </button>
         <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
           <button className="btn btn-secondary" onClick={onClose}>{tUi('Закрити')}</button>
-          {b.guest_page_token && (
+          {guestPageOn && b.guest_page_token && (
             <>
               <button className="btn btn-secondary" title={tUi('Скопіювати')} onClick={() => {
                 navigator.clipboard.writeText(`${window.location.origin}/guest/${b.guest_page_token}`).then(() => showToast(tUi('Скопійовано!')));
@@ -693,7 +696,7 @@ export default function BookingViewModal({
                           // was one customer's brand written into all three
                           // languages of every template.
                           const hotel = b.property_name || '';
-                          const guestUrl = b.guest_page_token ? `${window.location.origin}/guest/${b.guest_page_token}` : '';
+                          const guestUrl = guestPageOn && b.guest_page_token ? `${window.location.origin}/guest/${b.guest_page_token}` : '';
                           const nights = b.nights || 1;
                           const guestsStr = lang === 'cz' ? `${b.adults} dosp.${b.children > 0 ? ` + ${b.children} dět.` : ''}` : lang === 'uk' ? `${b.adults} дор.${b.children > 0 ? ` + ${b.children} діт.` : ''}` : `${b.adults} adult${b.adults > 1 ? 's' : ''}${b.children > 0 ? ` + ${b.children} child.` : ''}`;
                           const totalStr = `${total.toLocaleString()} ${b.currency || hotelCurrency}`;
@@ -1591,7 +1594,7 @@ export default function BookingViewModal({
                         </span>
                       )}
                       {/* Guest page link */}
-                      {sb.child_guest_page_token && (
+                      {guestPageOn && sb.child_guest_page_token && (
                         <button
                           onClick={(e) => { e.stopPropagation(); window.open(`/guest/${sb.child_guest_page_token}`, '_blank'); }}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent-primary)', padding: 4 }}
@@ -1689,7 +1692,7 @@ export default function BookingViewModal({
                         {sb.notes && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 8, fontStyle: 'italic' }}>💬 {sb.notes}</div>}
 
                         {/* Guest page link for child reservation */}
-                        {sb.child_guest_page_token && (
+                        {guestPageOn && sb.child_guest_page_token && (
                           <div style={{
                             marginTop: 10, padding: '8px 10px', borderRadius: 8,
                             background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)',

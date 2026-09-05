@@ -97,7 +97,7 @@ const navigation: NavSection[] = [
     items: [
       { label: 'Канали', href: '/app/settings/channel-manager', icon: <Globe size={20} />, permission: 'nav:settings' },
       { label: 'Віджет бронювання', href: '/app/settings/booking-widget', icon: <Code2 size={20} />, permission: 'nav:settings', feature: 'booking_engine' },
-      { label: 'Сайти', href: '/app/sites', icon: <Globe size={20} />, permission: 'nav:sites', feature: 'booking_engine' },
+      { label: 'Сайти', href: '/app/sites', icon: <Globe size={20} />, permission: 'nav:sites', feature: 'sites' },
     ],
   },
   {

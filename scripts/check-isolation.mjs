@@ -125,12 +125,17 @@ async function main() {
   // фінанси, тож ключ вмикається тут — так само, як 'booking_engine' далі по тексту:
   // гейт лишається на місці, перевіряється сама ізоляція, а не право на
   // модуль.
+  // З 0065 (П15) `tasks`, `guest_page` і `sites` — теж OFF за дефолтом, а
+  // нижче зондуються задачі, гостьова конфігурація і сайти: вмикаються тут
+  // із тієї ж причини.
   for (const t of [a, b]) {
-    await sql.run(
-      `INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)
-       ON CONFLICT(organization_id, feature) DO UPDATE SET enabled = TRUE`,
-      [t.orgId, 'accounting'],
-    );
+    for (const feature of ['accounting', 'tasks', 'guest_page', 'sites']) {
+      await sql.run(
+        `INSERT INTO organization_features (organization_id, feature, enabled) VALUES (?, ?, TRUE)
+         ON CONFLICT(organization_id, feature) DO UPDATE SET enabled = TRUE`,
+        [t.orgId, feature],
+      );
+    }
   }
 
   try {

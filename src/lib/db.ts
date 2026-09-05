@@ -5709,6 +5709,16 @@ function runMigrations(database: any) {
       INSERT OR IGNORE INTO organization_features (organization_id, feature, enabled, updated_at)
       SELECT id, 'events', 1, datetime('now') FROM organizations
     `).run();
+
+    // ── П15, 05.09.2026 (0065): tasks/reports/day_sheets → OFF, нові ────
+    // guest_page і sites — OFF. Наявні організації отримують явний
+    // `enabled = 1` на всі пʼять: бачать усе, що бачили; нові — за дефолтом.
+    for (const f of ['tasks', 'reports', 'day_sheets', 'guest_page', 'sites']) {
+      database.prepare(`
+        INSERT OR IGNORE INTO organization_features (organization_id, feature, enabled, updated_at)
+        SELECT id, ?, 1, datetime('now') FROM organizations
+      `).run(f);
+    }
   } catch (e: any) {
     console.error('[DB] organization_features migration:', e.message);
   }

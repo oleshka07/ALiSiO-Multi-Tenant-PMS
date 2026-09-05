@@ -3,6 +3,7 @@
 import { useT } from '@core/i18n/client';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
+import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import Link from 'next/link';
 import {
   Building2,
@@ -19,7 +20,9 @@ import {
   Users2,
   Coffee, CreditCard, Tag } from 'lucide-react';
 
-const settingsItems = [
+// `feature` — ключ з core/features.ts: картка вимкненого модуля не показується
+// (той самий рядок, що ховає пункт меню і відмовляє маршрутам).
+const settingsItems: { title: string; desc: string; icon: React.ReactNode; href: string; color: string; feature?: string }[] = [
   {
     title: "Об'єкти (Properties)",
     desc: 'Керування об\'єктами розміщення',
@@ -68,6 +71,7 @@ const settingsItems = [
     icon: <Receipt size={22} />,
     href: '/app/settings/invoicing',
     color: 'orange',
+    feature: 'invoicing',
   },
   {
     title: 'Джерела бронювань',
@@ -82,6 +86,7 @@ const settingsItems = [
     icon: <UserCheck size={22} />,
     href: '/app/settings/guest-page',
     color: 'blue',
+    feature: 'guest_page',
   },
   {
     title: 'Послуги для гостей',
@@ -103,6 +108,7 @@ const settingsItems = [
     icon: <Code2 size={22} />,
     href: '/app/settings/booking-widget',
     color: 'green',
+    feature: 'booking_engine',
   },
   {
     title: 'Онлайн-оплата',
@@ -130,6 +136,8 @@ const settingsItems = [
 export default function SettingsPage() {
   const t = useT();
   const onMenuClick = useMobileMenu();
+  const { features } = useCurrentUser();
+  const visible = settingsItems.filter((item) => !item.feature || features[item.feature]);
   return (
     <>
       <Header title={t('Налаштування')} onMenuClick={onMenuClick} />
@@ -142,7 +150,7 @@ export default function SettingsPage() {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
-          {settingsItems.map((item) => (
+          {visible.map((item) => (
             <Link key={item.href} href={item.href} style={{ textDecoration: 'none' }}>
               <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer' }}>
                 <div className={`stat-icon ${item.color}`}>{item.icon}</div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
@@ -39,16 +40,17 @@ const CLEAN_COLORS: Record<string, { label: string; color: string }> = {
   in_progress: { label: 'В процесі', color: '#f59e0b' },
 };
 
-const QUICK_ACTIONS = [
+// `feature` — ключ з core/features.ts: плитка вимкненого модуля не показується.
+const QUICK_ACTIONS: { label: string; href: string; icon: typeof BookOpen; color: string; feature?: string }[] = [
   { label: 'Бронювання',  href: '/app/bookings',       icon: BookOpen,     color: '#3b82f6' },
   { label: 'Денна зміна', href: '/app/calendar?view=shift', icon: RefreshCw, color: '#3b82f6' },
   { label: 'Календар',    href: '/app/calendar',        icon: CalendarDays, color: '#14b8a6' },
   { label: 'Гості',       href: '/app/guests',          icon: Users,        color: '#8b5cf6' },
-  { label: 'Журнал',      href: '/app/finance/operations',     icon: List,         color: '#22c55e' },
-  { label: 'Фінанси',     href: '/app/finance',         icon: Wallet,       color: '#f59e0b' },
-  { label: 'Витрати',     href: '/app/finance/expenses',icon: BarChart3,    color: '#ef4444' },
+  { label: 'Журнал',      href: '/app/finance/operations',     icon: List,         color: '#22c55e', feature: 'accounting' },
+  { label: 'Фінанси',     href: '/app/finance',         icon: Wallet,       color: '#f59e0b', feature: 'accounting' },
+  { label: 'Витрати',     href: '/app/finance/expenses',icon: BarChart3,    color: '#ef4444', feature: 'accounting' },
   { label: 'Ціни',        href: '/app/pricing',         icon: DollarSign,   color: '#06b6d4' },
-  { label: 'Звіти',       href: '/app/reports',         icon: TrendingUp,   color: '#a855f7' },
+  { label: 'Звіти',       href: '/app/reports',         icon: TrendingUp,   color: '#a855f7', feature: 'reports' },
   { label: 'Налаштув.',   href: '/app/settings',        icon: Settings,     color: '#6b7280' },
 ];
 
@@ -56,6 +58,7 @@ type Tab = 'today' | 'tomorrow' | 'arrivals' | 'departures';
 
 export default function MobileDashboard() {
   const tUi = useT();
+  const { features } = useCurrentUser();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('today');
@@ -241,7 +244,7 @@ export default function MobileDashboard() {
         {tUi('Швидкий доступ')}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 8 }}>
-        {QUICK_ACTIONS.map(action => {
+        {QUICK_ACTIONS.filter((a) => !a.feature || features[a.feature]).map(action => {
           const Icon = action.icon;
           return (
             <Link key={action.href} href={action.href} style={{ textDecoration: 'none' }}>

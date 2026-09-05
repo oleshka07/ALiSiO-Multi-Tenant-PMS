@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { getSessionUser, getSessionIdFromCookies } from '@core/auth';
 import { runWithOrganization } from '@core/auth/tenant-context';
+import { hasFeature, featureDisabled } from '@core/features';
 
 /**
  * A booking site, if this session's hotel owns it — and a tenant context to
@@ -52,6 +53,16 @@ export async function withOwnedSite<T>(
 ): Promise<T | NextResponse> {
   const session = await getSessionUser(getSessionIdFromCookies(cookieHeader));
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Сайти-вітрини — платний модуль (`sites`, П15). Усе під
+  // `booking-sites/[id]/**` проходить крізь цю обгортку, тож варта одна на
+  // всі маршрути редагування сайта: без ключа — та сама відмова, що дає
+  // `withModule`. Список сайтів (GET у `route.ts`) навмисно НЕ тут — його
+  // читає екран коду віджета, а форма бронювання не платна (`booking_engine`).
+  if (!(await hasFeature(session.organization_id, 'sites'))) {
+    const refused = featureDisabled('sites');
+    return new NextResponse(refused.body, { status: refused.status, headers: refused.headers });
+  }
 
   return runWithOrganization(session.organization_id, async () => {
     const sql = getSql();

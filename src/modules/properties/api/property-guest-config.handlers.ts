@@ -3,9 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 // TODO: move to @core/translate or emit event for translation
 import { extractTexts, translateAndStore } from '@core/i18n/translate';
-import { withActor, withPermission } from '@core/auth/session';
+import { withModule } from '@core/auth/session';
 
-export const listPropertyGuestConfigs = withActor(async (_req, _ctx, actor) => {
+export const listPropertyGuestConfigs = withModule('guest_page', null, async (_req, _ctx, actor) => {
   try {
     const sql = getSql();
     // Scoped in the query, not left to RLS. On Postgres the policy would
@@ -31,7 +31,7 @@ export const listPropertyGuestConfigs = withActor(async (_req, _ctx, actor) => {
   }
 });
 
-export const updatePropertyGuestConfig = withPermission('manage_properties', async (request: NextRequest, _ctx, actor) => {
+export const updatePropertyGuestConfig = withModule('guest_page', 'manage_properties', async (request: NextRequest, _ctx, actor) => {
   try {
     const sql = getSql();
     const body = await request.json();

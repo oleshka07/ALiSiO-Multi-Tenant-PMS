@@ -5,6 +5,7 @@ import { cloudOcrAllowed } from '@core/privacy/ocr-consent';
 import { ocrDocument } from '@/modules/guests/domain/ai/ocr-document';
 import { checkRateLimit } from '@core/security/rate-limit';
 import { runWithPublicToken } from '@core/auth/tenant-context';
+import { hasFeature } from '@core/features';
 
 /**
  * Read a guest's identity document, from the guest's own page.
@@ -43,6 +44,11 @@ export async function POST(
     getSql().row<any>(
       'SELECT organization_id FROM reservations WHERE guest_page_token = ?', [token]));
   if (!reservation?.organization_id) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+  // Гостьова сторінка — платний модуль (`guest_page`, П15): той самий 404,
+  // що й для невідомого токена, як у `withGuestReservation`.
+  if (!(await hasFeature(reservation.organization_id, 'guest_page'))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 

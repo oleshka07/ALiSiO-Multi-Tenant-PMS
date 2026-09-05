@@ -38,6 +38,7 @@
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { runWithOrganization } from '@core/auth/tenant-context';
+import { hasFeature } from '@core/features';
 import { sendGuestReminderEmail } from '@/modules/bookings/data/send-guest-reminder-email';
 import { cronAuthFailure } from '@core/security/cron-auth';
 import { serverError } from '@core/http/errors';
@@ -72,6 +73,10 @@ export async function GET(request: Request) {
     const results: { organization: string; sent: number; found: number; error?: string }[] = [];
 
     for (const org of organizations) {
+      // Лист кличе гостя на гостьову сторінку зареєструватись — готель без
+      // модуля `guest_page` (П15) її не має, і посилання відповіло б 404.
+      // Питається ДО входу в контекст, у контексті організації (INC-014).
+      if (!(await hasFeature(org.id, 'guest_page'))) continue;
       try {
         // One hotel's failure must not stop the others' letters.
         const outcome = await runWithOrganization(org.id, async () => {

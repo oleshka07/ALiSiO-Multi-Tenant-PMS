@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 // TODO: move to @core/translate or emit event for translation
 import { extractTexts, translateAndStore } from '@core/i18n/translate';
-import { withActor } from '@core/auth/session';
+import { withModule } from '@core/auth/session';
 
 /** Another tenant's unit type must look exactly like a missing one. */
 async function ownsUnitType(organizationId: string, unitTypeId: string): Promise<boolean> {
@@ -15,7 +15,7 @@ async function ownsUnitType(organizationId: string, unitTypeId: string): Promise
   `, [unitTypeId, organizationId]);
 }
 
-export const getGuestPageConfig = withActor(async (_request: NextRequest, { params }: { params: Promise<{ unitTypeId: string }> }, actor) => {
+export const getGuestPageConfig = withModule('guest_page', null, async (_request: NextRequest, { params }: { params: Promise<{ unitTypeId: string }> }, actor) => {
   try {
     const sql = getSql();
     const { unitTypeId } = await params;
@@ -46,7 +46,7 @@ export const getGuestPageConfig = withActor(async (_request: NextRequest, { para
   }
 });
 
-export const updateGuestPageConfig = withActor(async (request: NextRequest, { params }: { params: Promise<{ unitTypeId: string }> }, actor) => {
+export const updateGuestPageConfig = withModule('guest_page', 'manage_properties', async (request: NextRequest, { params }: { params: Promise<{ unitTypeId: string }> }, actor) => {
   try {
     const sql = getSql();
     const { unitTypeId } = await params;

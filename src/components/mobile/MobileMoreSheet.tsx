@@ -16,18 +16,20 @@ interface MobileMoreSheetProps {
   onClose: () => void;
 }
 
-const moreItems = [
+// `feature` — ключ з core/features.ts: пункт вимкненого модуля не показується,
+// той самий рядок, який читають маршрути (реєстр вирішує, меню віддзеркалює).
+const moreItems: { section: string; items: { label: string; href: string; icon: typeof DollarSign; feature?: string }[] }[] = [
   { section: 'Управління', items: [
     { label: 'Ціноутворення', href: '/app/pricing', icon: DollarSign },
-    { label: 'Звіти', href: '/app/reports', icon: BarChart3 },
+    { label: 'Звіти', href: '/app/reports', icon: BarChart3, feature: 'reports' },
     { label: 'Гості', href: '/app/guests', icon: Users },
-    { label: 'Документи', href: '/app/documents', icon: FileText },
+    { label: 'Документи', href: '/app/documents', icon: FileText, feature: 'invoicing' },
   ]},
   { section: 'Фінанси', items: [
-    { label: 'Огляд', href: '/app/finance', icon: Wallet },
-    { label: 'Журнал транзакцій', href: '/app/finance/operations', icon: List },
-    { label: 'Витрати', href: '/app/finance/expenses', icon: Receipt },
-    { label: 'Cash Flow', href: '/app/finance/cashflow', icon: TrendingUp },
+    { label: 'Огляд', href: '/app/finance', icon: Wallet, feature: 'accounting' },
+    { label: 'Журнал транзакцій', href: '/app/finance/operations', icon: List, feature: 'accounting' },
+    { label: 'Витрати', href: '/app/finance/expenses', icon: Receipt, feature: 'accounting' },
+    { label: 'Cash Flow', href: '/app/finance/cashflow', icon: TrendingUp, feature: 'accounting' },
   ]},
   { section: 'Система', items: [
     { label: 'Налаштування', href: '/app/settings', icon: Settings },
@@ -37,7 +39,7 @@ const moreItems = [
 export default function MobileMoreSheet({ open, onClose }: MobileMoreSheetProps) {
   const t = useT();
   const pathname = usePathname();
-  const { user, logout } = useCurrentUser();
+  const { user, features, logout } = useCurrentUser();
 
   useBodyScrollLock(open);
 
@@ -65,7 +67,10 @@ export default function MobileMoreSheet({ open, onClose }: MobileMoreSheetProps)
         )}
 
         <div className="m-sheet-sections">
-          {moreItems.map(section => (
+          {moreItems
+            .map((section) => ({ ...section, items: section.items.filter((item) => !item.feature || features[item.feature]) }))
+            .filter((section) => section.items.length > 0)
+            .map(section => (
             <div key={section.section} className="m-sheet-section">
               <div className="m-sheet-section-title">{t(section.section)}</div>
               {section.items.map(item => {

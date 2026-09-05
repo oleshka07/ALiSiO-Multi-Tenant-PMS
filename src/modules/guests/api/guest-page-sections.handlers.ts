@@ -8,7 +8,7 @@
  * as "configured, does nothing" forever.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { withPermission, type Actor } from '@core/auth/session';
+import { withModule, type Actor } from '@core/auth/session';
 import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 import { getGuestPageSections, saveGuestPageSection } from '../data/guest-portal.repo';
 import { getSql } from '@core/db/async';
@@ -22,7 +22,7 @@ async function resolveProperty(actor: Actor, raw: string | null) {
   return row as { id: string; country: string | null };
 }
 
-export const listGuestPageSections = withPermission('manage_properties', async (
+export const listGuestPageSections = withModule('guest_page', 'manage_properties', async (
   request: NextRequest, _ctx: unknown, actor: Actor,
 ) => {
   try {
@@ -44,7 +44,7 @@ export const listGuestPageSections = withPermission('manage_properties', async (
  * a REAL page, because a synthetic one would hide exactly the data problems
  * the operator is trying to see.
  */
-export const getGuestPagePreview = withPermission('manage_properties', async (
+export const getGuestPagePreview = withModule('guest_page', 'manage_properties', async (
   request: NextRequest, _ctx: unknown, actor: Actor,
 ) => {
   try {
@@ -63,7 +63,7 @@ export const getGuestPagePreview = withPermission('manage_properties', async (
   }
 });
 
-export const updateGuestPageSections = withPermission('manage_properties', async (
+export const updateGuestPageSections = withModule('guest_page', 'manage_properties', async (
   request: NextRequest, _ctx: unknown, actor: Actor,
 ) => {
   try {

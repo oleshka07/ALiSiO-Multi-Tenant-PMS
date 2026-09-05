@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { withActor } from '@core/auth/session';
+import { withModule } from '@core/auth/session';
 
-export const listGuestPageConfigs = withActor(async (_req, _ctx, actor) => {
+export const listGuestPageConfigs = withModule('guest_page', null, async (_req, _ctx, actor) => {
   try {
     const sql = getSql();
     // Driven by UNIT TYPES, not by config rows. The old INNER JOIN from

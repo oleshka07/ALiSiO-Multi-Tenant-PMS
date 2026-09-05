@@ -8,7 +8,8 @@
  * Реєстр фіч має три сторони, і вони вміють розходитись мовчки:
  *
  *   1. `FEATURE_SPEC` — що взагалі вмикається;
- *   2. `Sidebar.tsx` — що зникає з меню;
+ *   2. `core/navigation.ts` — що зникає з меню, пошуку і за що заслінка
+ *      `ModuleGate` закриває екран (усі три читають цей каталог);
  *   3. маршрути — що перестає відповідати.
  *
  * Розходження між (1) і (2) дає пункт меню, який неможливо прибрати. Між (2)
@@ -21,8 +22,17 @@
  * `hasFeature` без рядка в базі повертає дефолт. Для інтеграції дефолт `ON`
  * означав би, що новий клієнт мовчки отримав німецьку фіскалізацію — тобто
  * PMS стала б незареєстрованою касою (docs/TSE-KASSENSICHV.md §6.4). Для
- * модуля дефолт `OFF` означав би, що в день додавання ключа кожен наявний
- * готель втратив би розділ меню. Обидві помилки тихі, тому перелічені поіменно.
+ * модуля дефолт `OFF` без міграції означав би, що в день додавання ключа
+ * кожен наявний готель втратив би розділ меню. Обидві помилки тихі, тому
+ * перелічені поіменно.
+ *
+ * ── Ключ без варти — червона збірка (Блок 0, П15) ───────────────────────
+ *
+ * Прапорець, який нічого не стереже, — перемикач-обманка в налаштуваннях:
+ * клієнт його бачить, тисне, нічого не відбувається. Саме тому `site_builder`
+ * не заводили наперед (П5), і саме тому кожен ключ модуля тут мусить назвати
+ * файли, у яких стоїть його варта, — інакше збірка червона. Інтеграції
+ * названі окремо, з місцем їхньої варти.
  */
 import assert from 'node:assert';
 import fs from 'node:fs';
@@ -40,13 +50,17 @@ const EXPECTED_DEFAULT: Record<Key, boolean> = {
   booking_engine: true,
   fiscal_de: false,
   online_payments: false,
-  tasks: true,
+  // OFF від 05.09.2026 (П15): платний модуль. Наявні готелі мають явний
+  // рядок enabled = TRUE, поставлений міграцією 0065.
+  tasks: false,
   // OFF від 31.08.2026: зали — зайвий розділ для обʼєкта на 5 номерів.
   // Наявні готелі мають явний рядок enabled = 1, поставлений міграцією.
   events: false,
-  reports: true,
+  // OFF від 05.09.2026 (П15): платний модуль; рядки — 0065.
+  reports: false,
   dashboard: true,
-  day_sheets: true,
+  // OFF від 05.09.2026 (П15): платний модуль; рядки — 0065.
+  day_sheets: false,
   // ON: готель, який здає номери, виписує документ — питання лише, чиїм
   // бланком. Дефолт OFF означав би, що в день появи ключа кожен наявний
   // клієнт мовчки втратив фактури, а новий не зміг би закрити перший заїзд.
@@ -64,6 +78,12 @@ const EXPECTED_DEFAULT: Record<Key, boolean> = {
   // бо модуль щойно зʼявився. Тобто це той рідкісний випадок, коли дефолт
   // можна поставити чесним без міграції, яка вписує явні рядки.
   channels: false,
+  // Новий ключ 05.09.2026 (П15), OFF, платно: гостьова сторінка,
+  // самореєстрація, послуги гостя. Наявні готелі — рядок 0065.
+  guest_page: false,
+  // Новий ключ 05.09.2026 (П15), OFF, платно: сайти-вітрини (`/app/sites`
+  // і їхнє керування). Форма бронювання лишається в `booking_engine`.
+  sites: false,
 };
 
 for (const key of Object.keys(FEATURE_SPEC) as Key[]) {
@@ -86,27 +106,50 @@ for (const [key, label] of Object.entries(FEATURES)) {
 }
 console.log('  ok  каталог для екрана збігається з реєстром');
 
-// ── Модулі: меню і маршрут читають той самий ключ ───────────────────────
+// ── Інтеграції: варта живе не в маршрутах модуля, а там, де названо ─────
 //
-// `day_sheets` у меню пишеться так само, як у реєстрі — підкресленням. Дефіс
-// у ключі («day-sheets») дав би пункт, який ніколи не ховається: `features`
-// такого ключа не має, і `!features[undefined]` — це просто `true`.
-const MODULES: Key[] = ['tasks', 'events', 'reports', 'dashboard', 'day_sheets', 'invoicing'];
-
-const sidebar = fs.readFileSync('src/components/layout/Sidebar.tsx', 'utf8');
-for (const key of MODULES) {
-  assert.ok(sidebar.includes(`feature: '${key}'`),
-    `модуль «${key}» вмикається в налаштуваннях, але його пункт меню не питає фічу — вимкнути його неможливо`);
+// Це не виняток із правила «ключ без варти — червона збірка», а той самий
+// принцип з іншою адресою: у кожного названо файл, де прапорець питається.
+const INTEGRATIONS: Partial<Record<Key, string>> = {
+  booking_engine: 'src/modules/widget/api/widget-site.handlers.ts',
+  fiscal_de: 'src/modules/invoicing/data/folio-payments.repo.ts',
+  online_payments: 'src/core/integration-credentials.ts',
+  channels: 'src/modules/channels/api/pull-cron.handlers.ts',
+};
+for (const [key, file] of Object.entries(INTEGRATIONS)) {
+  assert.ok(fs.existsSync(file!), `інтеграція «${key}»: файл варти ${file} зник`);
+  assert.ok(new RegExp(`['"]${key}['"]`).test(fs.readFileSync(file!, 'utf8')),
+    `інтеграція «${key}»: ${file} більше не називає ключ — прапорець нічого не стереже`);
 }
-console.log(`  ok  ${MODULES.length} модулів ховаються з меню`);
+
+// ── Модулі: меню/заслінка і маршрут читають той самий ключ ─────────────
+//
+// `day_sheets` у каталозі пишеться так само, як у реєстрі — підкресленням.
+// Дефіс у ключі («day-sheets») дав би пункт, який ніколи не ховається:
+// `features` такого ключа не має, і `!features[undefined]` — це просто `true`.
+//
+// Каталог — `core/navigation.ts`: з нього читають меню, пошук Ctrl+K і
+// заслінка `ModuleGate`. Ключ, якого там немає, — це екран, який відкриється
+// у вимкненому модулі з закладки.
+const MODULES = (Object.keys(FEATURE_SPEC) as Key[]).filter((k) => !(k in INTEGRATIONS));
+
+const catalog = fs.readFileSync('src/core/navigation.ts', 'utf8');
+for (const key of MODULES) {
+  assert.ok(catalog.includes(`feature: '${key}'`),
+    `модуль «${key}» вмикається в налаштуваннях, але жоден екран каталогу core/navigation.ts не питає фічу — вимкнути його неможливо`);
+}
+console.log(`  ok  ${MODULES.length} модулів ховаються з меню і закриваються заслінкою`);
 
 // ── Маршрути справді відмовляють ────────────────────────────────────────
 //
 // Файл, що ВОЛОДІЄ вартою: або сам маршрут, або хендлер, у який він
 // делегує. Перевірка на текст `withModule('<ключ>'` — вона не доводить, що
 // варта правильна, але доводить, що фіча взагалі питається; до цього не
-// питалась ніде.
-const OWNERS: Record<Exclude<Key, 'booking_engine' | 'fiscal_de' | 'online_payments'>, string[]> = {
+// питалась ніде. Там, де сесії немає (гостьовий портал за токеном) або
+// обгортка своя (`withOwnedSite`), варта — `hasFeature(…, '<ключ>')` з
+// відмовою; форма інша, питання те саме.
+const OWNERS: Record<Key, string[]> = {
+  booking_engine: [], fiscal_de: [], online_payments: [], channels: [],
   tasks: [
     'src/app/api/tasks/route.ts',
     'src/app/api/tasks/[id]/route.ts',
@@ -124,13 +167,40 @@ const OWNERS: Record<Exclude<Key, 'booking_engine' | 'fiscal_de' | 'online_payme
   // всі 25 експортів, а в хендлерах її довелось би повторити 25 разів — і
   // забути в одному з них.
   invoicing: ['src/modules/invoicing/api/index.ts'],
+  accounting: ['src/modules/finance/api/_guard.ts'],
+  // Гостьова сторінка: публічні двері за токеном проходять через
+  // `withGuestReservation` (усі шість) і OCR; налаштування — через хендлери
+  // конфігурації в properties і секцій у guests.
+  guest_page: [
+    'src/modules/guests/data/guest-scope.ts',
+    'src/app/api/guest/[token]/ocr/route.ts',
+    'src/modules/properties/api/guest-page-config.handlers.ts',
+    'src/modules/properties/api/guest-page-configs.handlers.ts',
+    'src/modules/properties/api/property-guest-config.handlers.ts',
+    'src/modules/guests/api/guest-page-sections.handlers.ts',
+  ],
+  // Сайти: кожен маршрут `booking-sites/[id]/**` проходить через
+  // `withOwnedSite`; створення — у списковому маршруті; аналітика — у
+  // хендлерах віджета. Список сайтів (GET) навмисно під `booking_engine`:
+  // його читає екран коду віджета, а форма бронювання — не платний модуль.
+  sites: [
+    'src/app/api/booking-sites/_owned-site.ts',
+    'src/app/api/booking-sites/route.ts',
+    'src/modules/widget/api/site-analytics.handlers.ts',
+  ],
 };
 
+const guardOf = (key: string) => new RegExp(`(?:withModule\\(\\s*'${key}'|hasFeature\\([^)]*'${key}')`);
+
 let guarded = 0;
-for (const [key, files] of Object.entries(OWNERS)) {
+for (const key of MODULES) {
+  const files = OWNERS[key];
+  assert.ok(files && files.length > 0,
+    `модуль «${key}» не називає жодного файла з вартою — ключ без варти це перемикач-обманка (П5); впишіть OWNERS у features.check.ts РАЗОМ із вартою`);
   for (const file of files) {
+    assert.ok(fs.existsSync(file), `${file} названо власником варти «${key}», але файла немає`);
     const src = fs.readFileSync(file, 'utf8');
-    assert.ok(src.includes(`withModule('${key}'`),
+    assert.ok(guardOf(key).test(src),
       `${file} обслуговує модуль «${key}», але не питає фічу — вимкнений модуль усе одно відповість`);
     guarded++;
   }

@@ -1,7 +1,7 @@
 ﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
-import { withPermission, notFound, type Actor } from '@core/auth/session';
+import { withModule, notFound, type Actor } from '@core/auth/session';
 
 function getToday(): string {
   return new Date().toISOString().split('T')[0];
@@ -121,7 +121,7 @@ async function getSessionsCount(siteId: string, ownIds: string[], from: string, 
   return row ? row.count : 0;
 }
 
-export const getAnalyticsOverview = withPermission('nav:sites', async (
+export const getAnalyticsOverview = withModule('sites', 'nav:sites', async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
   actor: Actor,
@@ -194,7 +194,7 @@ export const getAnalyticsOverview = withPermission('nav:sites', async (
   }
 });
 
-export const getAnalyticsTraffic = withPermission('nav:sites', async (
+export const getAnalyticsTraffic = withModule('sites', 'nav:sites', async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
   actor: Actor,
@@ -310,7 +310,7 @@ export const getAnalyticsTraffic = withPermission('nav:sites', async (
   }
 });
 
-export const getAnalyticsGeo = withPermission('nav:sites', async (
+export const getAnalyticsGeo = withModule('sites', 'nav:sites', async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
   actor: Actor,
@@ -455,7 +455,7 @@ export const getAnalyticsGeo = withPermission('nav:sites', async (
   }
 });
 
-export const getAnalyticsListings = withPermission('nav:sites', async (
+export const getAnalyticsListings = withModule('sites', 'nav:sites', async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
   actor: Actor,
@@ -537,7 +537,7 @@ export const getAnalyticsListings = withPermission('nav:sites', async (
   }
 });
 
-export const getAnalyticsCampaigns = withPermission('nav:sites', async (
+export const getAnalyticsCampaigns = withModule('sites', 'nav:sites', async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
   actor: Actor,
@@ -666,7 +666,7 @@ export const getAnalyticsCampaigns = withPermission('nav:sites', async (
   }
 });
 
-export const getAnalyticsFunnel = withPermission('nav:sites', async (
+export const getAnalyticsFunnel = withModule('sites', 'nav:sites', async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
   actor: Actor,

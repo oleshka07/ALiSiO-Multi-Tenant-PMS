@@ -22,6 +22,7 @@
  */
 import { getSql } from '@core/db/async';
 import { runWithPublicToken, runWithOrganization } from '@core/auth/tenant-context';
+import { hasFeature } from '@core/features';
 
 export interface GuestReservation {
   id: string;
@@ -52,6 +53,15 @@ export async function withGuestReservation<T>(
   // there is no hotel to act as, and guessing one is how a guest ends up
   // looking at somebody else's booking.
   if (!reservation?.organization_id) return null;
+
+  // Гостьова сторінка — платний модуль (`guest_page`, П15). Сесії тут немає,
+  // тож `withModule` не підходить; варта та сама, поставлена після того, як
+  // токен назвав готель: у готелю без модуля посилання відповідає тим самим
+  // 404, що й неіснуючий токен. Це ВАРТА, не заслінка — без неї ключ у
+  // налаштуваннях був би перемикачем-обманкою (П5), а гостьовий портал
+  // відкривався б кожному готелю безкоштовно. `hasFeature` читає рядок у
+  // контексті організації, про яку питає (INC-014).
+  if (!(await hasFeature(reservation.organization_id, 'guest_page'))) return null;
 
   return runWithOrganization(reservation.organization_id, () => fn(reservation));
 }
