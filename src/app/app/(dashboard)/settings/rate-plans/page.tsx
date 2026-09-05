@@ -13,12 +13,17 @@ import { ArrowLeft, Plus, Save, Loader2, Tag } from 'lucide-react';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
- * Тарифи обʼєкта: назва, код, валюта, харчування, ціна дитини.
+ * Тарифи обʼєкта: назва, код, валюта, харчування, ціна дитини, стан.
  *
  * Ціни на дати ставляться в календарі («Ціни») — тут лише сам тариф. Тариф
  * без ціни існує і показується, але не продається, і це видно в колонці
  * «є ціна на типах» (інваріант 17). Форма — звичайна акуратність
  * (інваріант 29); строгість — у писачі.
+ *
+ * «Зняти з продажу» (Блок 2.1): заведений у менеджері каналів тариф видалити
+ * не можна — його знімають з продажу, і канал закриває всі його ночі до
+ * горизонту; ціни в календарі лишаються, «Повернути в продаж» відкриває
+ * їх знову. Це кнопка з підтвердженням, а не перемикач: наслідок — у каналі.
  */
 
 interface RatePlan {
@@ -120,6 +125,31 @@ export default function RatePlansSettingsPage() {
       setBusy(false);
     }
   };
+  // Зняти з продажу / повернути — через той самий PATCH; канал дізнається
+  // з черги (координати до горизонту кладе писач, Ц16).
+  const setActive = async (p: RatePlan, active: boolean) => {
+    const question = active
+      ? `${tUi('Повернути в продаж')} ${p.code} — ${p.name}?`
+      : `${tUi('Зняти з продажу')} ${p.code} — ${p.name}? ${tUi('У менеджері каналів усі ночі цього тарифу стануть закритими. Ціни в календарі збережуться')}`;
+    if (!window.confirm(question)) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/pricing/rate-plans/${p.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: active }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { setNotice({ kind: 'error', text: explain(body?.error) }); return; }
+      setNotice({ kind: 'ok', text: active ? tUi('Тариф повернуто в продаж') : tUi('Тариф знято з продажу — канал закриє його ночі') });
+      await load(propertyId);
+    } catch {
+      setNotice({ kind: 'error', text: explain(undefined) });
+    } finally {
+      setBusy(false);
+    }
+  };
   const mealLabel = (m: string) => ({
     '': tUi('не вказано'), room_only: tUi('без харчування'), breakfast: tUi('сніданок'),
     half_board: tUi('напівпансіон'), full_board: tUi('повний пансіон'), all_inclusive: tUi('все включено'),
@@ -190,20 +220,30 @@ export default function RatePlansSettingsPage() {
                   <th>{tUi('Харчування')}</th>
                   <th>{tUi('Ціна дитини за ніч')}</th>
                   <th>{tUi('Є ціна на типах')}</th>
+                  <th>{tUi('Стан')}</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {plans.map((p) => (
-                  <tr key={p.id}>
+                  <tr key={p.id} style={p.isActive ? undefined : { color: 'var(--text-tertiary)' }}>
                     <td><code>{p.code}</code></td>
                     <td>{p.name}</td>
                     <td>{p.currency}</td>
                     <td>{mealLabel(p.mealPlan ?? '')}</td>
                     <td>{p.childExtraGross == null ? '—' : p.childExtraGross}</td>
                     <td>{p.pricedUnitTypes.length ? p.pricedUnitTypes.join(', ') : <span style={{ color: 'var(--accent-warning)' }}>{tUi('немає — не продається')}</span>}</td>
+                    <td>
+                      {p.isActive
+                        ? <span style={{ color: 'var(--accent-success)' }}>{tUi('продається')}</span>
+                        : <span style={{ color: 'var(--accent-danger)' }}>{tUi('знято з продажу')}</span>}
+                    </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button className="btn btn-sm" disabled={busy} onClick={() => startEdit(p)}>{tUi('Змінити')}</button>
+                      {' '}
+                      {p.isActive
+                        ? <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => setActive(p, false)}>{tUi('Зняти з продажу')}</button>
+                        : <button className="btn btn-sm" disabled={busy} onClick={() => setActive(p, true)}>{tUi('Повернути в продаж')}</button>}
                       {' '}
                       <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => remove(p)}>{tUi('Видалити')}</button>
                     </td>

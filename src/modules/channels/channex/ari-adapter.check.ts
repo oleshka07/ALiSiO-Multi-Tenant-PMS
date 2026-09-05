@@ -267,6 +267,15 @@ try {
       console.log('  ok  бюджет обʼєкта один на всі проходи: одинадцятий виклик за хвилину відмовляється');
     }
 
+    /** Ніч у тілі цінової смуги — за датою або за діапазоном, у який вона впала. */
+    const rateOn = (calls: { path: string; body: any }[], date: string) => {
+      const rates = calls.find((c) => c.path.endsWith('/restrictions'));
+      assert.ok(rates, 'смуга цін мала поїхати');
+      const v = rates!.body.values.find((x: any) => x.date === date || (x.date_from <= date && date <= x.date_to));
+      assert.ok(v, `у тілі цін немає ночі ${date}: ${JSON.stringify(rates!.body.values)}`);
+      return v;
+    };
+
     // ── 7. Обмеження дня їдуть у пачці БЕЗ наявності — і повз її проміжок ──
     //
     // Живе 03.09.2026 (INC-016): звірка повертала в чергу лише цінові
@@ -285,13 +294,6 @@ try {
       const D3 = addDays(DAY, 60);
       const D4 = addDays(DAY, 61);
       const D5 = addDays(DAY, 65);
-      const rateOn = (calls: { path: string; body: any }[], date: string) => {
-        const rates = calls.find((c) => c.path.endsWith('/restrictions'));
-        assert.ok(rates, 'смуга цін мала поїхати');
-        const v = rates!.body.values.find((x: any) => x.date === date || (x.date_from <= date && date <= x.date_to));
-        assert.ok(v, `у тілі цін немає ночі ${date}: ${JSON.stringify(rates!.body.values)}`);
-        return v;
-      };
 
       await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
       await bulkUpdatePrices({ unitTypeId: UT, dateFrom: D3, dateTo: D3, applyTo: 'all', base_price: 150, min_stay: 3 });
@@ -328,6 +330,45 @@ try {
         'наявність на інший день у тій самій пачці не має красти проміжок обмежень у цін');
       assert.strictEqual(await pendingCount(CONN), 0);
       console.log('  ok  обмеження дня їдуть і без наявності в пачці, і повз її проміжок (INC-016)');
+    }
+
+    // ── 8. Тариф знято з продажу → кожна ніч пари їде ЗАКРИТОЮ, без ціни ──
+    //
+    // Блок 2.1 (BUILD-PLAN): заведений у вендора тариф видалити не можна
+    // (`mapped`), а зняти з продажу не було чим — і канал продавав його далі
+    // за останньою ціною. Дзеркало лишається (адресат є), джерела ціни для
+    // вимкненого тарифу не існує (інваріант 17 — `priceNights` віддає ніч як
+    // `missing`), тож координата розвʼязується в «закрито» (И14). Ціна в
+    // календарі при цьому ЛЕЖИТЬ — D3 має 150 зі сцени 7: саме це відрізняє
+    // «знято з продажу» від «ціни немає». Дві осі (інваріант 26): той самий
+    // рядок ціни їде закритим при `is_active = FALSE` і відкритим із 15000
+    // при `TRUE` — константа «завжди закрито» чи «завжди відкрито» не пройде.
+    // Прапорець ставиться прямо в рядку: писач (`updateRatePlan`) і його
+    // координати — справа гейта тарифів; тут — що батчер його ЧУЄ.
+    {
+      const D3 = addDays(DAY, 60); // та сама ніч із ціною 150, що в сцені 7
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      await sql.run('UPDATE rate_plans SET is_active = FALSE WHERE id = ?', [RP]);
+      await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT, ratePlanId: RP, date: D3 });
+      const off = transport([]);
+      const r1 = await ariFlush(CONN, 'key', { client: { fetch: off.fetch } });
+      assert.strictEqual(r1.failed, 0, r1.errors.join(' | '));
+      const closed = rateOn(off.calls, D3);
+      assert.strictEqual(closed.stop_sell, true,
+        `тариф знято з продажу, а ніч поїхала відкритою — канал продає далі за останньою ціною: ${JSON.stringify(closed)}`);
+      assert.ok(!('rates' in closed), 'у знятого з продажу тарифу ціна не пишеться — навіть та, що лежить у календарі');
+      assert.strictEqual(closed.min_stay_arrival, 3, 'обмеження дня їдуть і в закриту ніч — вони з базового рядка, не з тарифу');
+
+      await sql.run('UPDATE rate_plans SET is_active = TRUE WHERE id = ?', [RP]);
+      await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT, ratePlanId: RP, date: D3 });
+      const on = transport([]);
+      const r2 = await ariFlush(CONN, 'key', { client: { fetch: on.fetch } });
+      assert.strictEqual(r2.failed, 0, r2.errors.join(' | '));
+      const open = rateOn(on.calls, D3);
+      assert.strictEqual(open.stop_sell, false, 'повернутий у продаж тариф — ніч відкрита ЯВНО (И14), не «не слати»');
+      assert.deepStrictEqual(open.rates, [{ occupancy: 2, rate: 15000 }], 'і та сама ціна з календаря знову їде');
+      assert.strictEqual(await pendingCount(CONN), 0);
+      console.log('  ok  тариф знято з продажу → stop_sell без ціни на ночі пари; повернуто → та сама ціна знову');
     }
   });
 } finally {

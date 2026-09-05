@@ -64,7 +64,12 @@ export const createRatePlanSetting = withPermission('manage_pricing', async (req
   }
 });
 
-/** PATCH /api/pricing/rate-plans/[id] { name?, code?, currency?, meal_plan?, child_extra_gross? } */
+/**
+ * PATCH /api/pricing/rate-plans/[id] { name?, code?, currency?, meal_plan?, child_extra_gross?, is_active? }
+ *
+ * `is_active: false` — зняти з продажу (канал закриє ночі до горизонту),
+ * `true` — повернути. Лише boolean: рядок «false» тут був би правдою.
+ */
 export const updateRatePlanSetting = withPermission('manage_pricing', async (request: NextRequest, { params }: { params: Promise<{ id: string }> }, _actor: Actor) => {
   try {
     const { id } = await params;
@@ -75,6 +80,7 @@ export const updateRatePlanSetting = withPermission('manage_pricing', async (req
     if (typeof body.currency === 'string') patch.currency = body.currency;
     if ('meal_plan' in body) patch.mealPlan = body.meal_plan ? String(body.meal_plan) : null;
     if ('child_extra_gross' in body) patch.childExtraGross = body.child_extra_gross === '' || body.child_extra_gross == null ? null : Number(body.child_extra_gross);
+    if (typeof body.is_active === 'boolean') patch.isActive = body.is_active;
     try {
       return NextResponse.json(await updateRatePlan(id, patch));
     } catch (error: unknown) {

@@ -22,6 +22,12 @@ export { priceNights, cheapestByDay } from '../data/nightly-price';
 // зайнятий іншим — тарифом у розумінні екрана цін.
 export { propertyRatePlans } from '../data/property-rate-plans';
 
+// Писач тарифів — двері для живого проходу (`channex-ari-live.mjs --retire`):
+// зняти з продажу й повернути тим самим кодом, що й екран, і побачити в
+// календарі вендора «закрито» (інваріант 27).
+export { updateRatePlan, listRatePlans } from '../data/rate-plans.repo';
+export type { RatePlanSetting, UpdateRatePlanInput } from '../data/rate-plans.repo';
+
 // Писачі календаря — двері для скриптів засіву та гейтів інших модулів
 // (гейт дверей каналів доводить через них, що ціна тарифу кладе координату
 // лише на його пару). Орендар — із контексту, тариф звіряється з обʼєктом.

@@ -4,6 +4,8 @@
  *   node scripts/channex-ari-live.mjs --org <orgId> <connId>                 # звіт: що поїхало б, що там зараз
  *   node scripts/channex-ari-live.mjs --org <orgId> <connId> --confirm       # поставити в чергу, прогнати, прочитати назад
  *   node scripts/channex-ari-live.mjs --org <orgId> <connId> --probe-429     # довести, що 429 повертає координату в чергу
+ *   node scripts/channex-ari-live.mjs --org <orgId> <connId> --retire <rpId> # зняти тариф з продажу дверима, прогнати, прочитати назад: закрито
+ *   node scripts/channex-ari-live.mjs --org <orgId> <connId> --restore <rpId># повернути в продаж, прогнати, прочитати назад: ціна знову
  *   … [--from YYYY-MM-DD] [--days N]                                         # дати (дефолт: +30 днів, 3 доби)
  *
  * ── Навіщо ──────────────────────────────────────────────────────────────
@@ -42,28 +44,41 @@
  * `--probe-429` навмисно перевищує ліміт вендора (10 викликів на хвилину на
  * обʼєкт) — на власному обʼєкті, у смузі наявності, справжніми числами. Він
  * чекає хвилину й доганяє чергу, щоб не лишити координату висіти.
+ *
+ * ── Блок 2.1: зняти з продажу — і побачити «закрито» на тому боці ───────
+ *
+ * `--retire <rpId>` кличе той самий писач, що й кнопка на екрані «Тарифи»
+ * (`updateRatePlan` через `@pricing`): тариф стає `is_active = FALSE`, двері
+ * кладуть координати на його пари до горизонту, прохід шле — і скрипт читає
+ * календар вендора назад: кожна опція тарифу у вікні мусить бути
+ * `stop_sell: true`. `--restore <rpId>` — назад: `stop_sell: false` і ціна.
+ * Обидва — стан НАШОГО обʼєкта на staging (інваріант 25); після `--retire`
+ * тариф лишається закритим, доки не зробити `--restore`.
  */
 import './lib/module-aliases.mjs';
 import { sampleRecorder } from './lib/channex-samples.mjs';
 
 const argv = process.argv.slice(2);
-const CONFIRM = argv.includes('--confirm');
 const PROBE_429 = argv.includes('--probe-429');
 const opt = (name, fallback) => {
   const i = argv.indexOf(name);
   return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback;
 };
+// Блок 2.1: зняти з продажу / повернути — це завжди прохід із читанням назад.
+const FLIP = opt('--retire', null) ? { id: opt('--retire', null), active: false }
+  : opt('--restore', null) ? { id: opt('--restore', null), active: true } : null;
+const CONFIRM = argv.includes('--confirm') || !!FLIP;
 
 let organizationId = null;
 let connectionId = null;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--org') { organizationId = argv[++i]; continue; }
-  if (argv[i] === '--from' || argv[i] === '--days') { i++; continue; }
+  if (['--from', '--days', '--retire', '--restore'].includes(argv[i])) { i++; continue; }
   if (argv[i].startsWith('--')) continue;
   connectionId = argv[i];
 }
 if (!organizationId || !connectionId) {
-  console.error('usage: node scripts/channex-ari-live.mjs --org <orgId> <connId> [--confirm|--probe-429] [--from YYYY-MM-DD] [--days N]');
+  console.error('usage: node scripts/channex-ari-live.mjs --org <orgId> <connId> [--confirm|--probe-429|--retire <rpId>|--restore <rpId>] [--from YYYY-MM-DD] [--days N]');
   console.error('  --org обовʼязковий: зʼєднання читається ЧЕРЕЗ орендаря, не за самим id (INC-010).');
   process.exit(2);
 }
@@ -96,7 +111,7 @@ const {
 const { recordVendorResponses } = await import('@channels');
 recordVendorResponses(sampleRecorder());
 const { availabilityByDay, catalogUnitTypes } = await import('@properties');
-const { priceNights } = await import('@pricing');
+const { priceNights, updateRatePlan, listRatePlans } = await import('@pricing');
 
 /** Сире читання повз наш клієнт: звірка мусить бачити відповідь, а не наше тлумачення. */
 async function get(path) {
@@ -141,6 +156,19 @@ await runWithOrganization(organizationId, async () => {
   for (const p of pairs) {
     const occ = options.filter((o) => o.localId === p.localId && o.unitTypeId === p.unitTypeId).map((o) => o.occupancy).sort();
     console.log(`  ${p.localId} × ${codeOf.get(p.unitTypeId) ?? p.unitTypeId}  → ${p.remoteId}  [${occ.join(',')}]`);
+  }
+
+  // ── Блок 2.1: зняти з продажу / повернути — ДВЕРИМА, до очікувань ──────
+  // Очікування нижче рахуються вже для нового стану: `priceNights` віддає
+  // ночі знятого тарифу як `missing`, тобто «закрито», — рівно те, що має
+  // побачити читання назад.
+  if (FLIP) {
+    const plan = (await listRatePlans(connection.propertyId)).find((p) => p.id === FLIP.id);
+    if (!plan) { console.error(`✗ тариф ${FLIP.id} не на обʼєкті цього зʼєднання`); process.exitCode = 1; return; }
+    if (!pairs.some((p) => p.localId === plan.id)) { console.error(`✗ тариф ${plan.code} не заведено у вендора — нема чого закривати`); process.exitCode = 1; return; }
+    console.log(`\nТАРИФ ${plan.code} (${plan.id}): ${plan.isActive ? 'продається' : 'знято з продажу'} → ${FLIP.active ? 'ПОВЕРНУТИ В ПРОДАЖ' : 'ЗНЯТИ З ПРОДАЖУ'}`);
+    const flipped = await updateRatePlan(plan.id, { isActive: FLIP.active });
+    console.log(`  писач: isActive=${flipped.isActive}; у черзі ціни ${await pendingChannelChanges(connectionId, 'rate')} (координати до горизонту від дверей, Ц16)`);
   }
 
   // ── Очікування — тими самими дверима, що й адаптер, але окремо ────────
@@ -232,6 +260,25 @@ await runWithOrganization(organizationId, async () => {
       if (verdict.rateMiss === 0 && verdict.openMiss === 0 && verdict.availMiss === 0) break;
     }
     show(after, 'ПІСЛЯ (живий календар вендора)');
+
+    // Блок 2.1: читання назад для знятого/повернутого тарифу — кожна його
+    // опція у вікні. Не «код відповіді 200», а значення в чужому календарі
+    // (інваріант 27).
+    if (FLIP) {
+      const own = options.filter((o) => o.localId === FLIP.id);
+      let bad = 0;
+      for (const o of own) {
+        for (const date of DATES) {
+          const c = after[o.remoteId]?.[date];
+          const ok = FLIP.active ? (c && c.stop_sell === false && c.rate != null) : (c && c.stop_sell === true);
+          if (!ok) { bad++; console.log(`  ! ${date} ${o.localId}×${codeOf.get(o.unitTypeId)} occ${o.occupancy}: ${JSON.stringify(c ?? null)}`); }
+        }
+      }
+      const total = own.length * DATES.length;
+      console.log(`\nБЛОК 2.1 — ${FLIP.active ? 'ПОВЕРНУТО В ПРОДАЖ' : 'ЗНЯТО З ПРОДАЖУ'}: ${total - bad} з ${total} ночей опцій тарифу `
+        + `${FLIP.active ? 'відкриті з ціною' : 'закриті (stop_sell)'} у ЖИВОМУ календарі вендора${bad ? '   ← НЕ ЗІЙШЛОСЯ' : ''}`);
+      if (bad) process.exitCode = 1;
+    }
     // П6: розписки вендора на відправлених координатах — те, що йде у форму.
     // Судяться лише рядки ЦЬОГО проходу (найновіші `report.sent`): відправлене
     // до появи колонки розписки не має і мати не може.

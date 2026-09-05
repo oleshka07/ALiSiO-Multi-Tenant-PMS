@@ -90,6 +90,14 @@ export interface NightlyPrices {
    * дати виїзду. Читає `stayRefusal()`; на тариф не дивимось (П7).
    */
   restrictions: StayRestrictions;
+  /**
+   * Тариф, про який питали, знято з продажу (`rate_plans.is_active = FALSE`,
+   * Блок 2.1) — і тоді всі ночі в `missing`, включно з тими, на які в
+   * календарі лежить його ціна: ціна знятого тарифу не існує ні для гостя,
+   * ні для каналу (інваріант 17). Прапорець окремий від `missing`, бо
+   * причина інша — не «ціни немає», а «цього не продають».
+   */
+  ratePlanRetired?: boolean;
 }
 
 /**
@@ -176,12 +184,23 @@ export async function priceNights(input: {
   // Надбавка за дитину живе на ТАРИФІ (Ц12) — так само, як `children_fee` у
   // менеджера каналів. Без тарифу її не існує, і тоді ніч із дітьми не
   // продається: назвати нуль від імені готелю ми не можемо.
-  const childExtraGross = ratePlanId
-    ? (await sql.row<any>(
-        'SELECT child_extra_gross FROM rate_plans WHERE id = ? AND property_id = ?',
+  const plan = ratePlanId
+    ? await sql.row<any>(
+        'SELECT child_extra_gross, is_active FROM rate_plans WHERE id = ? AND property_id = ?',
         [ratePlanId, owner?.property_id ?? ''],
-      ))?.child_extra_gross ?? null
+      )
     : null;
+  const childExtraGross = plan?.child_extra_gross ?? null;
+
+  // Тариф знято з продажу (Блок 2.1): жодне джерело не продає його — ні
+  // власний рядок, ні матриця, ні база. Рядки в календарі лишаються лежати
+  // на випадок повернення, але ціни з них не існує (інваріант 17). Саме на
+  // це спирається батчер: без ціни ніч їде як stop_sell (И14).
+  if (plan && !Number(plan.is_active)) {
+    const all: string[] = [];
+    for (let i = 0; i < nights; i++) all.push(addDays(checkIn, i));
+    return { nights: [], missing: all, total: 0, occupancyPriced: false, ratePlanRetired: true, closed: [], restrictions: OPEN_STAY };
+  }
 
   const quote = owner
     ? quoteStay({

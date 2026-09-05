@@ -170,6 +170,21 @@ const AXES = [
     scope: /\/\/ ── 7\. Обмеження дня[\s\S]*?(?=\n\} finally)/,
     distinct: /min_stay:\s*(\d+)/g, min: 2,
   },
+  // Блок 2.1: сцени про зняття з продажу стверджують про вісь `is_active` —
+  // той самий рядок ціни їде закритим при FALSE і відкритим при TRUE. Сцена
+  // з одним значенням довела б лише «завжди закрито» або «завжди відкрито».
+  {
+    file: 'src/modules/channels/channex/ari-adapter.check.ts',
+    axis: 'стан тарифу (is_active) у сцені про зняття з продажу',
+    scope: /\/\/ ── 8\. Тариф знято з продажу[\s\S]*?(?=\n\} finally)/,
+    distinct: /is_active = (TRUE|FALSE)/g, min: 2,
+  },
+  {
+    file: 'src/modules/pricing/data/rate-plans.repo.check.ts',
+    axis: 'стан тарифу (isActive) у сцені про зняття з продажу',
+    scope: /\/\/ ── 7\. Зняти з продажу[\s\S]*?(?=\n\} finally)/,
+    distinct: /isActive: (true|false) \}/g, min: 2,
+  },
 ];
 
 /** Коментарі геть — блокові й рядкові; `://` у рядках лишається. */

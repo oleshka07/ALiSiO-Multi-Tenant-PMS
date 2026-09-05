@@ -13,7 +13,14 @@
  *      заведено з валютою, і тиха зміна тут означала б ціни в іншій валюті
  *      на тому боці без жодної помилки.
  *
- * Перевірка написана ДО коду і була червоною (інваріант 24).
+ * І четверте, Блок 2.1 (сцена 7): тариф, заведений у вендора, видалити не
+ * можна (`mapped`) — але його можна ЗНЯТИ З ПРОДАЖУ, і тоді дзеркало
+ * лишається, ціна зникає для всіх (`priceNights` → `missing`), а в чергу
+ * лягає координата на кожну пару до горизонту — канал закриє ночі (И14).
+ * Повернення в продаж — та сама дорога назад.
+ *
+ * Перевірка написана ДО коду і була червоною (інваріант 24); сцена 7 —
+ * теж: `isActive` у патчі мовчки ігнорувався, тариф лишався в продажу.
  */
 import assert from 'node:assert';
 import '../../../../scripts/lib/module-aliases.mjs';
@@ -22,6 +29,8 @@ const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
 const { createRatePlan, updateRatePlan, listRatePlans, deleteRatePlan } = await import('./rate-plans.repo.ts');
 const { propertyRatePlans } = await import('./property-rate-plans.ts');
+const { priceNights } = await import('./nightly-price.ts');
+const { clipToHorizon } = await import('@channels/outbox');
 
 const sql = getSql();
 const A = '__rpw__a';
@@ -166,7 +175,58 @@ try {
   assert.deepStrictEqual((await runWithOrganization(A, () => listRatePlans(PROP(A)))).map((p) => p.code), ['BB'], 'у списку лишився лише BB');
   console.log('  ok  видалення: чистий свій тариф — так; з цінами, заведений у вендора, чужий — названа відмова');
 
-  console.log('rate-plans: тариф свого обʼєкта, код унікальний на обʼєкті, валюта замкнена ціною, видалення лише чистого');
+  // ── 7. Зняти з продажу: дзеркало лишається, ціна зникає, черга до горизонту ─
+  //
+  // BB заведено у вендора (мапінг на `__rpw_conn`), під ним ціна 120 на
+  // 2026-11-22 (сцена 5). Дві осі (інваріант 26): той самий рядок ціни дає
+  // 120 при `isActive: true` і `missing` при `false` — константа не пройде.
+  // Координата — від сьогодні до горизонту, рівно та, що кладе `noteRatesChanged`
+  // (`clipToHorizon`), і рівно на пару з дзеркала; без дзеркала нема кому
+  // адресувати.
+  const D = '2026-11-22';
+  const today = new Date().toISOString().slice(0, 10);
+  const span = clipToHorizon(today, null, today)!;
+  await sql.run(
+    `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, remote_id)
+     VALUES ('__rpw_map_bb', ?, '__rpw_conn', 'rate_plan', ?, ?, 'remote-bb')`,
+    [A, bb.id, UT(A)],
+  );
+  await sql.run("DELETE FROM cm_outbox WHERE connection_id = '__rpw_conn'");
+  const quote = () => runWithOrganization(A, () => priceNights({ unitTypeId: UT(A), checkIn: D, nights: 1, adults: 2, ratePlanId: bb.id }));
+  assert.strictEqual((await quote()).nights[0]?.price, 120, 'до зняття: ціна тарифу на дату є');
+
+  const off = await runWithOrganization(A, () => updateRatePlan(bb.id, { isActive: false }));
+  assert.strictEqual(off.isActive, false, 'писач мав зняти тариф з продажу, а не проігнорувати поле');
+  const listedOff = await runWithOrganization(A, () => listRatePlans(PROP(A)));
+  assert.strictEqual(listedOff.find((p) => p.id === bb.id)?.isActive, false, 'у списку екрана тариф є — і видно, що знятий');
+  assert.ok(!(await runWithOrganization(A, () => propertyRatePlans(PROP(A)))).some((p) => p.id === bb.id),
+    'читач каналу знятого тарифу не бачить — у каталог він більше не йде');
+  const gone = await quote();
+  assert.deepStrictEqual(gone.missing, [D], 'ціна знятого тарифу не існує (інваріант 17) — навіть та, що лежить у календарі');
+  assert.strictEqual(gone.ratePlanRetired, true, 'і причина названа: тариф знято з продажу, а не «ціни немає»');
+  const coords = await sql.rows<any>(
+    "SELECT unit_type_id, rate_plan_id, stay_date, stay_date_to FROM cm_outbox WHERE connection_id = '__rpw_conn' AND kind = 'rate'",
+  );
+  assert.deepStrictEqual(
+    coords.map((c) => ({ ut: String(c.unit_type_id), rp: String(c.rate_plan_id), from: String(c.stay_date).slice(0, 10), to: String(c.stay_date_to).slice(0, 10) })),
+    [{ ut: UT(A), rp: bb.id, from: span.from, to: span.to }],
+    'зняття кладе РІВНО одну координату: пара з дзеркала, від сьогодні до горизонту',
+  );
+  assert.strictEqual((await sql.rows('SELECT id FROM cm_mappings WHERE id = ?', ['__rpw_map_bb'])).length, 1, 'дзеркало лишилось — є кому адресувати «закрито»');
+  await runWithOrganization(B, () => assert.rejects(() => updateRatePlan(bb.id, { isActive: true }), /not found/i, 'чужий орендар не повертає в продаж'));
+
+  await sql.run("DELETE FROM cm_outbox WHERE connection_id = '__rpw_conn'");
+  const on = await runWithOrganization(A, () => updateRatePlan(bb.id, { isActive: true }));
+  assert.strictEqual(on.isActive, true);
+  const back = await quote();
+  assert.deepStrictEqual(back.missing, [], 'повернутий у продаж — ціна знову є');
+  assert.strictEqual(back.nights[0]?.price, 120, 'та сама ціна з календаря, не нова');
+  assert.ok((await runWithOrganization(A, () => propertyRatePlans(PROP(A)))).some((p) => p.id === bb.id), 'і читач каналу знову бачить');
+  assert.strictEqual((await sql.rows("SELECT id FROM cm_outbox WHERE connection_id = '__rpw_conn' AND kind = 'rate'")).length, 1,
+    'повернення теж кладе координату до горизонту — канал має відкрити ночі, а не чекати наступної ціни');
+  console.log('  ok  зняти з продажу: дзеркало лишається, ціна зникає для всіх, координата на пару до горизонту; повернення — назад');
+
+  console.log('rate-plans: тариф свого обʼєкта, код унікальний на обʼєкті, валюта замкнена ціною, видалення лише чистого, зняття з продажу закриває канал');
 } finally {
   await cleanup();
 }

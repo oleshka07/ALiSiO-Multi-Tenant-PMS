@@ -24,8 +24,24 @@ import { noteRatesChanged } from '@channels/outbox';
  * Тариф без ціни існує, показується, але не продається (інваріант 17) —
  * `propertyRatePlans()` віддає його з `sellable: false`.
  *
- * Деактивації тут теж немає навмисно: вимкнений тариф має закритись у
- * каналі (И14) і зникнути з котирування — це окремий крок зі своїм гейтом.
+ * ── Зняти з продажу (Блок 2.1) ──────────────────────────────────────────
+ *
+ * Заведений у вендора тариф видалити не можна (`mapped`): дзеркало без
+ * оригіналу — це ціна, яку батчер не порахує і не закриє. Тому тариф, який
+ * готель більше не продає, ЗНІМАЄТЬСЯ з продажу (`is_active = FALSE`), і це
+ * означає рівно три речі, разом і в одній транзакції:
+ *
+ *   - ціни в нього більше не існує ні для кого — `priceNights()` віддає
+ *     кожну ніч як `missing` з `ratePlanRetired` (інваріант 17), навіть
+ *     якщо рядки в календарі лежать; вони лишаються на випадок повернення;
+ *   - `propertyRatePlans()` його не віддає — у каталог він більше не йде;
+ *   - у чергу лягає координата на КОЖНУ його пару з дзеркала до горизонту
+ *     (`noteRatesChanged`): батчер не знайде джерела ціни і закриє ночі
+ *     (И14 — «закрито» треба сказати явно, інакше канал продає далі за
+ *     останньою ціною, і помилки немає ніде).
+ *
+ * Повернення (`is_active = TRUE`) — та сама дорога: координати до горизонту,
+ * ціни з календаря знову їдуть. Дзеркало не чіпається в обидва боки.
  */
 
 export interface RatePlanSetting {
@@ -57,6 +73,8 @@ export interface UpdateRatePlanInput {
   currency?: string;
   mealPlan?: string | null;
   childExtraGross?: number | null;
+  /** `false` — зняти з продажу, `true` — повернути. Див. шапку. */
+  isActive?: boolean;
 }
 
 const CODE = /^[A-Z0-9][A-Z0-9_-]{0,19}$/;
@@ -205,11 +223,16 @@ export async function updateRatePlan(id: string, patch: UpdateRatePlanInput): Pr
     }
     if (patch.mealPlan !== undefined) { sets.push('meal_plan = ?'); values.push(patch.mealPlan ? String(patch.mealPlan) : null); }
     if (patch.childExtraGross !== undefined) { sets.push('child_extra_gross = ?'); values.push(normalizeChild(patch.childExtraGross)); }
+    // Літералом, не параметром: SQLite не привʼязує boolean, а `1` у колонку
+    // BOOLEAN відхиляє Postgres (check-boolean-flags).
+    if (patch.isActive !== undefined) sets.push(patch.isActive ? 'is_active = TRUE' : 'is_active = FALSE');
 
     if (sets.length) {
       sets.push('updated_at = ?'); values.push(new Date().toISOString());
       await t.run(`UPDATE rate_plans SET ${sets.join(', ')} WHERE id = ?`, [...values, id]);
       // Ц16: те, що змінилось у тарифі, канал має почути через його пари.
+      // Для зняття з продажу це і є механізм «закрито до горизонту»: джерела
+      // ціни для вимкненого тарифу немає, батчер розвʼяже кожну ніч у stop_sell.
       await noteRatesChanged(t, { propertyId: String(before.property_id), ratePlanId: id, from: todayIso(), to: null });
     }
     const row = await t.row<any>('SELECT * FROM rate_plans WHERE id = ?', [id]);
