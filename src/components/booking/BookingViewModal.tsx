@@ -9,6 +9,7 @@ import FolioPanel from './card/FolioPanel';
 import FilesPanel from './card/FilesPanel';
 import StatusActions from './card/StatusActions';
 import RequotePanel from './card/RequotePanel';
+import PayerPicker from './card/PayerPicker';
 import { useHotelCurrency, useCurrentUser } from '@/ui/hooks/useCurrentUser';
 import {
   Edit3, X, Save, Plus, Check, ArrowRight, Copy, ExternalLink,
@@ -203,6 +204,17 @@ export default function BookingViewModal({
     email: bAny.invoice_company_email || '',
   });
   const [savingCompany, setSavingCompany] = useState(false);
+  // Вибір компанії з довідника (PayerPicker, 0093) переписує знімок на броні
+  // сервером; цей блок править той самий знімок, тож читає його заново.
+  useEffect(() => {
+    setCompanyMode(!!bAny.invoice_company_name);
+    setCompany({
+      name: bAny.invoice_company_name || '', ico: bAny.invoice_company_ico || '', dic: bAny.invoice_company_dic || '',
+      address: bAny.invoice_company_address || '', city: bAny.invoice_company_city || '',
+      country: bAny.invoice_company_country || '', email: bAny.invoice_company_email || '',
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bAny.company_id, bAny.invoice_company_name]);
 
   const persistCompany = async (mode: boolean, fields: typeof company) => {
     setSavingCompany(true);
@@ -1177,6 +1189,8 @@ export default function BookingViewModal({
                   unitTypeId={(b as any).unit_type_id || availableUnits.find(u => u.id === (b as any).unit_id)?.unit_type_id || null}
                   onApplied={(patch) => { setBooking({ ...b, ...patch }); onFetchBookings(); }} />
               )}
+              <PayerPicker booking={b} showToast={showToast}
+                onChanged={(patch) => { setBooking({ ...b, ...patch }); onFetchBookings(); }} />
               <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700 }}>{tUi('Гості кімнати')}</div>
               <div style={{
                 padding: '10px 16px', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: 8,

@@ -80,7 +80,9 @@ export const registerGuest = withActor(async (request: NextRequest, { params }: 
       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     `, [regId, id, guestId, isPrimary ? 1 : 0]);
 
-    updateRegistrationStatus(id);
+    // Дочекатись: 201 без await приходив ДО запису registration_status, і
+    // заселення одразу після останньої реєстрації отримувало 422.
+    await updateRegistrationStatus(id);
 
     return NextResponse.json({ id: regId, guestId }, { status: 201 });
   } catch (e: any) {
@@ -100,7 +102,9 @@ export const removeRegistration = withActor(async (request: NextRequest, { param
     if (!regId) return NextResponse.json({ error: 'reg_id required' }, { status: 400 });
 
     await sql.run('DELETE FROM guest_registrations WHERE id = ? AND reservation_id = ?', [regId, id]);
-    updateRegistrationStatus(id);
+    // Дочекатись: 201 без await приходив ДО запису registration_status, і
+    // заселення одразу після останньої реєстрації отримувало 422.
+    await updateRegistrationStatus(id);
 
     return NextResponse.json({ success: true });
   } catch (e: any) {

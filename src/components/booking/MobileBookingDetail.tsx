@@ -15,6 +15,7 @@ import {
 import FolioPanel from './card/FolioPanel';
 import FilesPanel from './card/FilesPanel';
 import StatusActions from './card/StatusActions';
+import PayerPicker from './card/PayerPicker';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -718,6 +719,10 @@ export default function MobileBookingDetail({
             <div style={{ padding: '12px 14px' }}>
               <div style={{ marginBottom: 12 }}>
                 <StatusActions booking={b} onChangeStatus={onChangeStatus} compact />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <PayerPicker booking={b} compact showToast={showToast}
+                  onChanged={(patch) => { setBooking({ ...b, ...patch }); onFetchBookings(); }} />
               </div>
               <div style={{
                 padding: '10px 12px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8,

@@ -13,6 +13,7 @@ import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
 import { decideCheckout } from '../data/checkout.repo';
 import type { CheckoutDecision } from '../domain/checkout-balance';
+import { companyPayer } from '@companies/kernel';
 
 export const getReservation = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
@@ -105,7 +106,35 @@ export const updateReservation = withPermission('manage_bookings', async (reques
 
     console.log('[PATCH] booking id:', id, 'body:', JSON.stringify(body));
 
+    // Платник-юрособа (0093, Блок 4 §2.3). Компанія з довідника СВОЄЇ
+    // організації — інакше 404 (інваріант 5): бронь готелю А не виставляється
+    // на фірму готелю Б. Вибір переписує знімок `invoice_company_*` з
+    // довідника — документ читає знімок, а не живий рядок; NULL повертає
+    // платника-фізособу і чистить знімок.
+    if (body.company_id !== undefined) {
+      if (body.company_id === null || body.company_id === '') {
+        body.company_id = null;
+        Object.assign(body, {
+          invoice_company_name: null, invoice_company_ico: null, invoice_company_dic: null,
+          invoice_company_address: null, invoice_company_city: null, invoice_company_country: null,
+          invoice_company_email: null,
+        });
+      } else {
+        const payer = await companyPayer(actor.organizationId, String(body.company_id));
+        if (!payer) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+        if (payer.archived) return NextResponse.json({ error: 'company_archived' }, { status: 409 });
+        body.company_id = payer.id;
+        Object.assign(body, {
+          invoice_company_name: payer.invoice_company_name, invoice_company_ico: payer.invoice_company_ico,
+          invoice_company_dic: payer.invoice_company_dic, invoice_company_address: payer.invoice_company_address,
+          invoice_company_city: payer.invoice_company_city, invoice_company_country: payer.invoice_company_country,
+          invoice_company_email: payer.invoice_company_email,
+        });
+      }
+    }
+
     const allowed = [
+      'company_id',
       'unit_id', 'check_in', 'check_out', 'nights', 'adults', 'children', 'infants',
       'status', 'payment_status', 'source', 'total_price', 'commission_amount',
       'notes', 'internal_notes',

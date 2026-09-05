@@ -310,6 +310,10 @@ function uniquesOf(table) {
   for (const ix of db.prepare(`PRAGMA index_list("${table}")`).all()) {
     if (!ix.unique) continue;
     if (ix.origin === 'pk') continue; // the primary key is emitted separately
+    // A partial unique index (`… WHERE business_id IS NOT NULL`, 0093) is not
+    // a table constraint: emitted as a table UNIQUE it would lose its WHERE
+    // and double the index that is written out below with the predicate kept.
+    if (ix.partial) continue;
     const cols = db.prepare(`PRAGMA index_info("${ix.name}")`).all().map((c) => c.name);
     if (cols.some((c) => c == null)) continue; // expression index — skipped, reported
     out.push(cols);

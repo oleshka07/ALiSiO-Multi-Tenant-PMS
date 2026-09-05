@@ -1358,6 +1358,75 @@ async function main() {
       console.log("  ok  B's task projects exclude A's");
     }
 
+    // ── Companies (Блок 4 §2.3, 0093) ────────────────────────────────────
+    // A company is a payer: its name and tax id end up on invoices. B must
+    // not see A's directory, and A's booking must not be billed to B's firm —
+    // a company id from another tenant is "not found", never accepted.
+    const compA = await call(cookieA, '/api/companies', {
+      method: 'POST', body: JSON.stringify({ name: 'Probe A s.r.o.', business_id: '12345678', address_country: 'cz' }),
+    });
+    assert.strictEqual(compA.status, 201, `A could not create a company: ${compA.status}`);
+    const cA = await compA.json();
+    // Same business id in B: a different organization, a different row (UNIQUE includes the tenant).
+    const compB = await call(cookieB, '/api/companies', {
+      method: 'POST', body: JSON.stringify({ name: 'Probe B GmbH', business_id: '12345678' }),
+    });
+    assert.strictEqual(compB.status, 201, `B could not create a company with A's business id: ${compB.status}`);
+    const cB = await compB.json();
+    const dupA = await call(cookieA, '/api/companies', {
+      method: 'POST', body: JSON.stringify({ name: 'Probe A again', business_id: '12345678' }),
+    });
+    assert.strictEqual(dupA.status, 409, `a duplicate business id inside A was accepted: ${dupA.status}`);
+
+    const compListB = await (await call(cookieB, '/api/companies')).json();
+    assert.ok(!compListB.rows.some((x) => x.id === cA.id), "B's company list contains A's company");
+    assert.strictEqual((await call(cookieB, `/api/companies/${cA.id}`)).status, 404, "B read A's company");
+    const renameCompB = await call(cookieB, `/api/companies/${cA.id}`, {
+      method: 'PATCH', body: JSON.stringify({ name: 'Hijacked' }),
+    });
+    assert.strictEqual(renameCompB.status, 404, `B renamed A's company: ${renameCompB.status}`);
+    // Read back through A's own door, not SQL: `companies` belongs to its
+    // module, and this script is not one of its front doors (check-boundaries).
+    const afterRename = await (await call(cookieA, `/api/companies/${cA.id}`)).json();
+    assert.strictEqual(afterRename.name, 'Probe A s.r.o.', "B's rename of A's company landed");
+    assert.strictEqual((await call(cookieB, `/api/companies/${cA.id}`, { method: 'DELETE' })).status, 404, "B deleted A's company");
+    assert.strictEqual((await call(cookieA, `/api/companies/${cA.id}`)).status, 200, "A's company is gone after B's delete");
+    console.log("  ok  B cannot see, rename or delete A's company; the same business id lives once per tenant");
+
+    // The probe booking above was deleted by the "deleting your own booking"
+    // probe; the payer needs a live one.
+    const payerBookRes = await call(cookieA, '/api/bookings', {
+      method: 'POST',
+      body: JSON.stringify({
+        firstName: 'Probe', lastName: 'Payer', unitId: `${TAG}unit_a`,
+        checkIn: '2031-02-10', checkOut: '2031-02-12', nights: 2, totalPrice: 100,
+      }),
+    });
+    assert.strictEqual(payerBookRes.status, 201, `A could not create a booking for the payer probe: ${payerBookRes.status}`);
+    const payerBooking = await payerBookRes.json();
+    const billToB = await call(cookieA, `/api/bookings/${payerBooking.id}`, {
+      method: 'PATCH', body: JSON.stringify({ company_id: cB.id }),
+    });
+    assert.strictEqual(billToB.status, 404, `A's booking was billed to B's company: ${billToB.status}`);
+    const billToA = await call(cookieA, `/api/bookings/${payerBooking.id}`, {
+      method: 'PATCH', body: JSON.stringify({ company_id: cA.id }),
+    });
+    assert.ok(billToA.ok, `A could not bill its booking to its own company: ${billToA.status}`);
+    const billed = await (await call(cookieA, `/api/bookings/${payerBooking.id}`)).json();
+    assert.strictEqual(billed.company_id, cA.id, 'company_id did not land on the booking');
+    assert.strictEqual(billed.invoice_company_name, 'Probe A s.r.o.', 'the payer snapshot was not copied from the directory');
+    assert.strictEqual(billed.invoice_company_ico, '12345678', 'the business id was not copied into the snapshot');
+    const inUse = await call(cookieA, `/api/companies/${cA.id}`, { method: 'DELETE' });
+    assert.strictEqual(inUse.status, 409, `a company with bookings was deleted: ${inUse.status}`);
+    const unbilled = await call(cookieA, `/api/bookings/${payerBooking.id}`, {
+      method: 'PATCH', body: JSON.stringify({ company_id: null }),
+    });
+    assert.ok(unbilled.ok, `A could not return the booking to a guest payer: ${unbilled.status}`);
+    const back = await (await call(cookieA, `/api/bookings/${payerBooking.id}`)).json();
+    assert.strictEqual(back.company_id, null, 'company_id was not cleared');
+    assert.strictEqual(back.invoice_company_name, null, 'the payer snapshot survived clearing the company');
+    console.log("  ok  a booking is billed only to its own tenant's company; the snapshot follows the choice");
+
     // ── Reports ──────────────────────────────────────────────────────────
     // Revenue, occupancy and the city-tax return were computed over every
     // reservation on the server. The city-tax report is the worse of the two:

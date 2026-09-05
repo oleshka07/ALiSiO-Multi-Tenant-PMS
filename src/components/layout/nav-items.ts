@@ -19,7 +19,7 @@ import type { Permission } from '@core/auth/permissions';
 import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, DollarSign, CalendarDays, BookOpen, Users, BarChart3, Settings,
-  CheckSquare, Presentation, ClipboardList, Brush,
+  CheckSquare, Presentation, ClipboardList, Brush, Building2,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -46,6 +46,8 @@ export const TOP_NAV: NavItem[] = [
     label: 'Гості', href: '/app/guests', icon: Users, permission: 'nav:guests', primary: true,
     children: [
       { label: 'Гості', href: '/app/guests', icon: Users, permission: 'nav:guests' },
+      // Компанії-платники (Блок 4 §2.3) — під Гостями, як у Hoteliera «Guests / Companies».
+      { label: 'Компанії', href: '/app/guests/companies', icon: Building2, permission: 'nav:guests' },
       { label: 'Evidenční kniha', href: '/app/guest-registry', icon: ClipboardList, permission: 'nav:guests', countries: ['CZ'] },
     ],
   },

@@ -325,6 +325,11 @@ function buildSchema(database: any) {
       unit_type_id TEXT REFERENCES unit_types(id),
       guest_id TEXT NOT NULL REFERENCES guests(id),
       rate_plan_id TEXT REFERENCES rate_plans(id),
+      -- company_id (0093) тут НЕМАЄ навмисно: таблиця companies народжується
+      -- в runMigrations, а засів (seedData) пише в reservations раніше — з
+      -- FK на ще не створену таблицю перший INSERT падає «no such table».
+      -- Колонка додається ALTER-ом у блоці 0093, як і решта пізніших колонок
+      -- цієї таблиці (invoice_company_*, registration_status …).
       check_in TEXT NOT NULL,
       check_out TEXT NOT NULL,
       nights INTEGER NOT NULL DEFAULT 1,
@@ -7005,6 +7010,51 @@ function runMigrations(database: any) {
     database.exec('CREATE INDEX IF NOT EXISTS idx_unit_cleaning_log_unit ON unit_cleaning_log(unit_id, changed_at)');
   } catch (e: any) {
     console.error('[DB] unit_cleaning_log migration:', e.message);
+  }
+
+  // --- 0093: компанії-платники ---
+  //
+  // Досі компанія на броні була семи вільними полями `invoice_company_*`,
+  // які набирались руками на кожну бронь заново. Тепер — рядок довідника;
+  // вибір платника на картці ставить `reservations.company_id` І переписує
+  // ті сім полів з довідника (знімок: документ читає його, а не живий рядок).
+  // `business_id` унікальний у межах організації (інваріант 3), порожній не
+  // бʼється (часткевий індекс). `archived_at` замість видалення: компанія з
+  // бронями лишається в історії, але випадає зі списку вибору.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS companies (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        name            TEXT NOT NULL,
+        business_id     TEXT,
+        vat_id          TEXT,
+        registry_no     TEXT,
+        address_street  TEXT,
+        address_city    TEXT,
+        address_zip     TEXT,
+        address_country TEXT,
+        bank_name       TEXT,
+        iban            TEXT,
+        bic             TEXT,
+        email           TEXT,
+        phone           TEXT,
+        notes           TEXT,
+        archived_at     TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_companies_org ON companies(organization_id, name)');
+    database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_org_business_id ON companies(organization_id, business_id) WHERE business_id IS NOT NULL');
+    const resCols93 = (database.prepare('PRAGMA table_info(reservations)').all() as any[]).map((c: any) => c.name);
+    if (!resCols93.includes('company_id')) {
+      database.exec('ALTER TABLE reservations ADD COLUMN company_id TEXT REFERENCES companies(id) ON DELETE SET NULL');
+      console.log('[DB] Added company_id to reservations');
+    }
+    database.exec('CREATE INDEX IF NOT EXISTS idx_reservations_company ON reservations(company_id)');
+  } catch (e: any) {
+    console.error('[DB] companies migration:', e.message);
   }
 
   // The last line of runMigrations, and the only reliable signal that the

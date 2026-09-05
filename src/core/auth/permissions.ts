@@ -184,6 +184,7 @@ export const NAV_PERMISSION_MAP: Record<string, Permission> = {
   '/app/reports/sales': 'nav:reports',
   '/app/reports/city-tax': 'nav:reports',
   '/app/guests': 'nav:guests',
+  '/app/guests/companies': 'nav:guests',
   '/app/documents': 'nav:documents',
   '/app/finance': 'nav:finance',
   '/app/finance/expenses': 'nav:finance',

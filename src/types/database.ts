@@ -251,6 +251,8 @@ export interface Reservation {
   unit_id: string;
   guest_id: string;
   rate_plan_id?: string;
+  /** Платник-юрособа з довідника `companies` (0093); NULL — гість. */
+  company_id?: string | null;
   check_in: string;
   check_out: string;
   nights: number;

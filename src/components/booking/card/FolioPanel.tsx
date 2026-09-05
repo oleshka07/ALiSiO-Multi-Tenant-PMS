@@ -109,10 +109,22 @@ export default function FolioPanel({ booking: b, compact, showToast, onBookingCh
 
   const payerName = `${b.first_name ?? ''} ${b.last_name ?? ''}`.trim() || null;
 
+  // Платник-компанія (0093): реквізити — зі знімка на броні, який сервер
+  // переписав із довідника при виборі. Фоліо заморожує їх у `payer_*` —
+  // саме їх читає документ (Д12).
+  const companyPayer = b.company_id && b.invoice_company_name ? {
+    payer_kind: 'company',
+    payer_name: String(b.invoice_company_name),
+    payer_address: [b.invoice_company_address, b.invoice_company_city, b.invoice_company_country].filter(Boolean).join(', ') || null,
+    payer_vat_no: b.invoice_company_dic || null,
+    payer_debtor_no: b.invoice_company_ico || null,
+  } : null;
+  const guestPayer = { payer_kind: 'guest', payer_name: payerName };
+
   const startFolio = () => call(async () => {
     const created = await fetch('/api/finance/folios', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reservation_id: b.id, payer_kind: 'guest', payer_name: payerName }),
+      body: JSON.stringify({ reservation_id: b.id, ...(companyPayer ?? guestPayer) }),
     });
     if (!created.ok) return created;
     const { id } = await created.json();
@@ -195,6 +207,15 @@ export default function FolioPanel({ booking: b, compact, showToast, onBookingCh
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reservation_id: b.id, payer_kind: 'guest', payer_name: name }),
     }), tUi('Не вдалося додати платника')).then((r) => { if (r) setNewPayer(''); });
+  };
+
+  /** Окреме фоліо на компанію-платника броні — коли перше вже відкрите на гостя. */
+  const addCompanyPayer = () => {
+    if (!companyPayer) return;
+    call(() => fetch('/api/finance/folios', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reservation_id: b.id, ...companyPayer }),
+    }), tUi('Не вдалося додати платника'));
   };
 
   if (loading) return <LoadingState compact />;
@@ -424,6 +445,11 @@ export default function FolioPanel({ booking: b, compact, showToast, onBookingCh
           <ArrowRight size={12} /> {tUi('Додати платника')}
         </button>
       </div>
+      {companyPayer && !folios.some((f) => f.payer_kind === 'company') && (
+        <button className="btn btn-sm btn-secondary" disabled={busy} onClick={addCompanyPayer} style={{ alignSelf: 'flex-start' }}>
+          🏢 {tUi('Рахунок на компанію')}: {companyPayer.payer_name}
+        </button>
+      )}
       <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
         {tUi('Кожен платник отримує окремий документ зі своїм номером. Виставлений документ виправляється лише сторно.')}
       </div>

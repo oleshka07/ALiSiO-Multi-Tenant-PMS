@@ -55,7 +55,9 @@
       "@day-sheets": ["./src/modules/day-sheets/api"],
       "@day-sheets/*": ["./src/modules/day-sheets/api/*"],
       "@housekeeping": ["./src/modules/housekeeping/api"],
-      "@housekeeping/*": ["./src/modules/housekeeping/api/*"]
+      "@housekeeping/*": ["./src/modules/housekeeping/api/*"],
+      "@companies": ["./src/modules/companies/api"],
+      "@companies/*": ["./src/modules/companies/api/*"]
     }
   },
   "include": [
