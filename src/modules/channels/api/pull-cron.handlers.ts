@@ -5,6 +5,8 @@ import { integrationCredentials } from '@core/integration-credentials';
 import { pullAllConnections, type PullAllReport } from '../data/pull-all';
 import { connectionInTenant } from '../data/connections.repo';
 import { unprocessedEvents, markEventsProcessed } from '../data/events.repo';
+import { channelsSyncedAt } from '../data/channels.repo';
+import { refreshConnectionChannelsFor, channelsMirrorAgeMs } from './channels.handlers';
 import type { PullReport } from '../data/pull-bookings';
 import { pullerFor, adapterFor } from '../providers';
 
@@ -63,6 +65,18 @@ export async function runChannelPullCron(): Promise<PullAllReport> {
     // Хто обслуговує зʼєднання, вирішує РЯДОК у базі, а не імпорт: жодне ім'я
     // менеджера каналів сюди не доходить (інваріант И1).
     pullerFor,
+
+    // Рівень OTA (К2) освіжається тим самим проходом, не частіше разу на
+    // годину: інакше дзеркало `cm_channels` міняється лише від кнопки
+    // «Оновити», і канал, підключений учора у вікні вендора, для екрана не
+    // існує. Вік — із самого дзеркала, тож перезапуск контейнера нічого не
+    // скидає.
+    // Читання мітки — тим самим розбором, що й екран: своя копія розійшлася б
+    // із ним на форматі SQLite («YYYY-MM-DD HH:MM:SS» без зони), і дзеркало
+    // «старіло» б на три години раніше на сервері за Києвом.
+    mirrorAgeMs: async (connectionId) => channelsMirrorAgeMs(await channelsSyncedAt(connectionId)),
+    refreshChannels: (connectionId, apiKey) => refreshConnectionChannelsFor(connectionId, apiKey),
+
     // Після проходу — зняти з журналу сигнали, які цей прохід і обслужив.
     pull: async (puller, connectionId, apiKey) => {
       const report = await puller(connectionId, apiKey);

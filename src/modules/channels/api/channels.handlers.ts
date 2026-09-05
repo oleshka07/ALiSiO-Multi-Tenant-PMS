@@ -55,7 +55,7 @@ async function moduleOff(actor: Actor): Promise<NextResponse | null> {
 }
 
 /** Скільки минуло від мітки. `null` — ще не питали. */
-function ageMs(syncedAt: string | null): number | null {
+export function channelsMirrorAgeMs(syncedAt: string | null): number | null {
   if (!syncedAt) return null;
   // Мітка приходить із бази: Postgres віддає ISO з зоною, SQLite —
   // `YYYY-MM-DD HH:MM:SS` в UTC без неї. Без `Z` друге читається як місцевий
@@ -113,7 +113,7 @@ async function screen(connectionId: string, propertyId: string) {
   return {
     channels: withPairs,
     syncedAt,
-    ageMs: ageMs(syncedAt),
+    ageMs: channelsMirrorAgeMs(syncedAt),
     staleAfterMs: REFRESH_EVERY_MS,
     totalPairs: pairs.length,
     // «Тариф є в дзеркалі, але не змаплений на жоден канал» — і окремо
@@ -206,7 +206,7 @@ export const refreshConnectionChannels = withPermission('manage_properties', asy
     // (`?force=1` з екрана — кнопка «все одно оновити»). Це не захист від
     // зловмисника, а захист бюджету обʼєкта від екрана, який перечитують.
     const force = new URL(request.url).searchParams.get('force') === '1';
-    const age = ageMs(await channelsSyncedAt(id));
+    const age = channelsMirrorAgeMs(await channelsSyncedAt(id));
     if (!force && age !== null && age < REFRESH_EVERY_MS) {
       return NextResponse.json({
         error: 'too_soon',

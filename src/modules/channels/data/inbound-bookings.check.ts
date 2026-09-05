@@ -23,6 +23,10 @@ import '../../../../scripts/lib/module-aliases.mjs';
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { getSql } = await import('@core/db/async');
 const { applyRevision } = await import('./inbound-bookings.repo.ts');
+// Наявність читається ТИМ САМИМ джерелом, що годує канал (И3): твердження
+// «група займає рівно свої кімнати» має спиратись на те, що побачить батчер,
+// а не на власний підрахунок рядків у сцені.
+const { availabilityByDay } = await import('@properties');
 
 const sql = getSql();
 const ORG = '__cm_check__org';
@@ -33,6 +37,15 @@ const GUEST = '__cm_check__guest';
 const CONN = '__cm_check__conn';
 const TYPE2 = '__cm_check__type2';
 const UNIT = '__cm_check__unit';
+/**
+ * Фонд, на якому читається наявність: ДВА номери першого типу й ОДИН другого.
+ *
+ * Порівну було б виродженою фікстурою (інваріант 26): «зайнято по типах» і
+ * «зайнято всього, поділене навпіл» дали б те саме число, і реалізація, яка
+ * рахує групу не тим типом, лишилась би зеленою.
+ */
+const UNIT2 = '__cm_check__unit2';
+const UNIT3 = '__cm_check__unit3';
 /** Другий орендар: один не доводить нічого. */
 const OTHER = '__cm_check__other';
 
@@ -48,6 +61,12 @@ async function cleanup() {
     await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
     await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [ORG]);
     await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
+    // Рядки групи — ПЕРЕД бронями: орендар у них не колонкою, а через
+    // `reservation_id`, тож після видалення броней політика їх уже не бачить
+    // і вони лишились би назавжди.
+    await sql.run(
+      `DELETE FROM reservation_sub_bookings
+        WHERE reservation_id IN (SELECT id FROM reservations WHERE organization_id = ?)`, [ORG]);
     await sql.run('DELETE FROM reservations WHERE organization_id = ?', [ORG]);
     await sql.run("DELETE FROM units WHERE id LIKE '__cm_check__%'", []);
     await sql.run("DELETE FROM unit_types WHERE id LIKE '__cm_check__%'", []);
@@ -75,11 +94,13 @@ try {
     // (Д9): без другого типу «тип змінився» і «тип той самий» невідрізнювані.
     await sql.run('INSERT INTO unit_types (id, property_id, category_id, name, code) VALUES (?, ?, ?, ?, ?)',
       [TYPE2, PROP, CAT, 'TW', 'TW']);
-    await sql.run(
-      `INSERT INTO units (id, property_id, unit_type_id, category_id, name, code, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, TRUE)`,
-      [UNIT, PROP, TYPE, CAT, '101', '101'],
-    );
+    for (const [id, type, name] of [[UNIT, TYPE, '101'], [UNIT2, TYPE, '102'], [UNIT3, TYPE2, '201']]) {
+      await sql.run(
+        `INSERT INTO units (id, property_id, unit_type_id, category_id, name, code, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, TRUE)`,
+        [id, PROP, type, CAT, name, name],
+      );
+    }
     await sql.run('INSERT INTO guests (id, organization_id, first_name, last_name) VALUES (?, ?, ?, ?)',
       [GUEST, ORG, 'Chan', 'Nel']);
     // `provider` називається ЯВНО: DEFAULT у схемі немає навмисно — імені
@@ -259,25 +280,31 @@ try {
       await sql.run("DELETE FROM cm_inbound_bookings WHERE organization_id = ? AND remote_booking_id = 'bkg-2'", [ORG]);
       await sql.run('DELETE FROM reservations WHERE id = ?', [id]);
     }
-
-    // ── Дві кімнати різних типів: створити → дати → прибрати → скасувати ─
+    // ── Дві кімнати різних типів: створити → змінити → прибрати ПЕРШУ → скасувати ─
     //
-    // К1: одна ревізія з кількома кімнатами — це БАТЬКІВСЬКА бронь і по
-    // дочірній на кімнату. Кожна дочірня на свій тип і без номера (П9),
-    // батьківська описує бронювання цілком.
+    // К4 у рідній формі групи (рецензія 07.09). Група в цьому продукті — це не
+    // «конверт і кімнати під ним»: майстер САМ Є кімнатою №1 (свій тип, свої
+    // дати, своя сума), кімнати 2..n — дочірні броні з `parent_id`, і на кожну
+    // кімнату є рядок `reservation_sub_bookings` — саме його читають фоліо,
+    // картка і аркуші дня.
     //
-    // Фікстура не вироджена по трьох осях, про які сцена стверджує
-    // (інваріант 26):
-    //   • ДВА РІЗНІ типи номера — з одним «кожна на свій тип» і «обидві на
-    //     перший» дали б однакову наявність;
-    //   • РІЗНІ дати кімнат — з однаковими «проміжок групи» і «дати першої
-    //     кімнати» невідрізнювані;
-    //   • сума бронювання 555 при кімнатах 300 + 210 = 510, і діти 1 зверху
-    //     при 0 + 0 у кімнатах — інакше «за ревізією» і «сума кімнат»
-    //     давали б те саме число.
+    // Конверт (батьківська без типу з сумарними гостями) виглядав правильним і
+    // ламав читачів мовчки: Zimmerliste рахував гостей двічі, турзбір — двічі,
+    // календар малював три плашки на дві кімнати.
+    //
+    // Фікстура не вироджена по осях, про які сцена стверджує (інваріант 26):
+    //   • ДВА РІЗНІ типи номера — з одним «кожна кімната на свій тип» і
+    //     «обидві на перший» дали б однакову наявність;
+    //   • РІЗНІ дати кімнат — з однаковими «дати майстра» і «дати кімнати №2»
+    //     невідрізнювані;
+    //   • бронювання цілком — 555 при кімнатах 300 + 210 = 510, троє дорослих
+    //     при 2 + 1 і одна дитина при 0 + 0: сума бронювання, що заповзла в
+    //     рядок майстра, арифметично видна;
+    //   • фонд ДВА номери першого типу й ОДИН другого — «зайнято по типах» не
+    //     збігається з «зайнято всього, поділене навпіл».
     //
     // Ключі кімнат тут іменовані (`ota_unique_id`, як дає Booking.com), тож
-    // «прибрати другу» прибирає саме другу. Позиційний випадок — у
+    // «прибрати першу» прибирає саме першу. Позиційний випадок — у
     // `pull-bookings.check.ts`, разом із ціною позиційного ключа.
     {
       const CODE = 'BDC-GRP';
@@ -291,101 +318,218 @@ try {
         ],
         ...over,
       });
+
+      let groupId = '';
       const group = async () => {
-        const parent = await sql.row<any>(
-          'SELECT * FROM reservations WHERE organization_id = ? AND external_uid = ?', [ORG, CODE]) as any;
+        const parent = await sql.row<any>('SELECT * FROM reservations WHERE id = ?', [groupId]) as any;
         const kids = await sql.rows<any>(
-          'SELECT * FROM reservations WHERE parent_id = ? ORDER BY external_uid', [parent?.id]) as any[];
-        return { parent, kids };
+          'SELECT * FROM reservations WHERE parent_id = ? ORDER BY external_uid', [groupId]) as any[];
+        const subs = await sql.rows<any>(
+          `SELECT * FROM reservation_sub_bookings WHERE reservation_id = ?
+            ORDER BY sort_order, created_at`, [groupId]) as any[];
+        return { parent, kids, subs };
       };
       const noted = async () => (await sql.rows<any>(
         "SELECT DISTINCT unit_type_id FROM cm_outbox WHERE organization_id = ? AND kind = 'availability' AND sent_at IS NULL",
         [ORG]) as any[]).map((r) => String(r.unit_type_id)).sort();
+
+      /**
+       * Скільки номерів обʼєкта зайнято тієї ночі — очима того, хто годує канал.
+       *
+       * Не підрахунок рядків: рахує `availabilityByDay()`, і рівно так само
+       * порахує батчер ARI. Конверт із типом дав би тут на одиницю більше, ніж
+       * кімнат у бронюванні, — і канал отримав би на одиницю менше вільних.
+       */
+      const FUND: Array<[string, number]> = [[TYPE, 2], [TYPE2, 1]];
+      const busyOn = async (night: string) => {
+        const next = new Date(`${night}T00:00:00Z`);
+        next.setUTCDate(next.getUTCDate() + 1);
+        const byDay = await availabilityByDay(PROP, night, next.toISOString().slice(0, 10));
+        let busy = 0;
+        for (const [typeId, units] of FUND) {
+          busy += units - Number(byDay.get(typeId)?.get(night) ?? units);
+        }
+        return busy;
+      };
 
       await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
 
       // 1. Створити.
       const made = await applyRevision(sql, CONN, groupRev({ remoteRevisionId: 'grp-1', status: 'new' }));
       assert.strictEqual(made.result, 'applied', `група не завелася: ${JSON.stringify(made)}`);
+      groupId = String(made.result === 'applied' ? made.reservationId : '');
       {
-        const { parent, kids } = await group();
-        assert.ok(parent, 'батьківської броні групи немає — бронювання нікуди повісити');
-        assert.strictEqual(kids.length, 2, `дочірніх мало бути дві, а є ${kids.length}`);
-        // Батьківська — конверт бронювання: свого типу вона НЕ має, інакше
-        // наявність відняла б три номери за дві кімнати (`unassignedByTypeDay`
-        // рахує КОЖЕН рядок без номера, батьківський теж).
-        assert.strictEqual(parent.unit_type_id ?? null, null,
-          'батьківська бронь узяла тип номера — наявність відняла б зайвий номер за кожну групу');
+        const { parent, kids, subs } = await group();
+        assert.ok(parent, 'майстра групи немає — бронювання нікуди повісити');
+        assert.strictEqual(kids.length, 1,
+          `дві кімнати — це майстер (кімната №1) і ОДНА дочірня, а дочірніх ${kids.length}`);
+
+        // Майстер — кімната №1, а не конверт над нею.
+        assert.strictEqual(String(parent.unit_type_id), TYPE,
+          'майстер лишився без типу — це конверт: список не покаже типу, а PATCH дозволить поставити його в номер');
         assert.strictEqual(parent.unit_id ?? null, null, 'канал не знає про кімнати (CP3)');
         assert.strictEqual(String(parent.check_in).slice(0, 10), '2026-10-10');
-        assert.strictEqual(String(parent.check_out).slice(0, 10), '2026-10-13',
-          'проміжок групи мав накрити ОБИДВІ кімнати, а взяв дати першої');
-        assert.strictEqual(Number(parent.nights), 3, 'ночі батьківської рахуються з її проміжку');
-        assert.strictEqual(Number(parent.total_price), 555,
-          'сума батьківської — за РЕВІЗІЄЮ (555), а не сума кімнат (510)');
-        assert.strictEqual(Number(parent.adults), 3, 'дорослі батьківської — за ревізією');
-        assert.strictEqual(Number(parent.children), 1,
-          'діти батьківської — за ревізією (1), а не сума кімнат (0)');
-        assert.strictEqual(String(made.result === 'applied' ? made.reservationId : ''), String(parent.id),
-          'журнал ревізії має вказувати на БАТЬКІВСЬКУ бронь групи');
+        assert.strictEqual(String(parent.check_out).slice(0, 10), '2026-10-12',
+          'дати майстра — це дати КІМНАТИ №1, а не проміжок усього бронювання');
+        assert.strictEqual(Number(parent.nights), 2, 'ночі майстра — з дат його кімнати');
+        assert.strictEqual(Number(parent.total_price), 300,
+          'у рядок майстра заповзла сума бронювання (555) замість суми його кімнати (300) — фоліо порахує чуже');
+        assert.strictEqual(Number(parent.adults), 2,
+          'дорослі майстра — його кімнати (2), а не бронювання (3): інакше Zimmerliste рахує гостей двічі');
+        assert.strictEqual(Number(parent.children), 0,
+          'діти майстра — його кімнати (0), а не бронювання (1): турзбір порахує зайву особу');
+        assert.strictEqual(String(parent.external_uid), `${CODE}#u:49`,
+          'майстер має нести ключ СВОЄЇ кімнати — інакше при зникненні кімнати №1 нема за чим упізнати, що він тримав');
 
-        assert.deepStrictEqual(kids.map((k) => String(k.unit_type_id)), [TYPE, TYPE2],
-          'дочірні мали лягти кожна на свій тип');
-        assert.deepStrictEqual(kids.map((k) => k.unit_id ?? null), [null, null],
-          'дочірня з каналу лягає без номера (П9)');
-        assert.deepStrictEqual(kids.map((k) => String(k.external_uid)), [`${CODE}#u:49`, `${CODE}#u:50`],
-          'дочірня має нести ключ своєї кімнати — інакше наступна редакція не впізнає її');
-        assert.deepStrictEqual(kids.map((k) => String(k.check_out).slice(0, 10)), ['2026-10-12', '2026-10-13'],
-          'дочірні мали зберегти ВЛАСНІ дати кімнат');
-        assert.deepStrictEqual(kids.map((k) => Number(k.nights)), [2, 3], 'ночі дочірньої — з її дат');
-        assert.deepStrictEqual(kids.map((k) => Number(k.total_price)), [300, 210],
-          'сума дочірньої — сума її кімнати');
-        assert.deepStrictEqual(kids.map((k) => Number(k.adults)), [2, 1], 'дорослі дочірньої — з її кімнати');
-        assert.deepStrictEqual(kids.map((k) => String(k.guest_id)), [String(parent.guest_id), String(parent.guest_id)],
+        assert.strictEqual(String(kids[0].unit_type_id), TYPE2, 'дочірня мала лягти на свій тип');
+        assert.strictEqual(kids[0].unit_id ?? null, null, 'дочірня з каналу лягає без номера (П9)');
+        assert.strictEqual(String(kids[0].external_uid), `${CODE}#u:50`, 'дочірня несе ключ своєї кімнати');
+        assert.strictEqual(String(kids[0].check_out).slice(0, 10), '2026-10-13', 'дочірня має ВЛАСНІ дати кімнати');
+        assert.strictEqual(Number(kids[0].nights), 3, 'ночі дочірньої — з її дат');
+        assert.strictEqual(Number(kids[0].total_price), 210, 'сума дочірньої — сума її кімнати');
+        assert.strictEqual(Number(kids[0].adults), 1, 'дорослі дочірньої — з її кімнати');
+        assert.strictEqual(String(kids[0].guest_id), String(parent.guest_id),
           'гість групи один: дві картки на одного гостя — дві історії замість однієї');
-        assert.deepStrictEqual(kids.map((k) => String(k.status)), ['confirmed', 'confirmed']);
+        assert.strictEqual(String(kids[0].status), 'confirmed');
+
+        // Рядки групи: по одному на кімнату. Кімната майстра — рядок без
+        // дочірньої броні (`child_reservation_id IS NULL`), як його заводить
+        // рецепція; кімната 2 — рядок зі своєю дочірньою.
+        assert.strictEqual(subs.length, 2,
+          `на кожну кімнату має бути рядок reservation_sub_bookings, а їх ${subs.length} — картка групи покаже порожньо`);
+        assert.strictEqual(subs[0].child_reservation_id ?? null, null,
+          'перший рядок групи — кімната самого майстра, у неї немає окремої броні');
+        assert.strictEqual(String(subs[1].child_reservation_id), String(kids[0].id),
+          'другий рядок групи має вказувати на дочірню бронь кімнати 2');
+        assert.deepStrictEqual(subs.map((s) => String(s.label)), ['DZ', 'TW'],
+          'назва рядка групи — тип номера кімнати: інакше в картці два рядки без імен');
+        assert.deepStrictEqual(subs.map((s) => Number(s.adults)), [2, 1], 'гості рядка — гості його кімнати');
+        assert.deepStrictEqual(subs.map((s) => Number(s.subtotal)), [300, 210], 'сума рядка — сума його кімнати');
+
+        assert.strictEqual(await busyOn('2026-10-10'), 2,
+          'у ніч, коли зайняті обидві кімнати, наявність має показати рівно два зайняті номери');
+        assert.strictEqual(await busyOn('2026-10-12'), 1,
+          'у ніч, коли кімната №1 уже виїхала, зайнятою лишається одна');
         assert.deepStrictEqual(await noted(), [TYPE, TYPE2].sort(),
           'наявність обох типів мала дізнатись про групу — інакше канал продасть номер, який уже зайнято');
       }
-      console.log('  ok  дві кімнати → батьківська бронь + дві дочірні, кожна на свій тип (К1)');
+      console.log('  ok  дві кімнати → майстер (кімната №1) + дочірня, і рядок групи на кожну (К4)');
 
       // 2. Змінити дати — на всю групу. Кімнати роз'їжджаються на РІЗНІ дати
-      //    навмисно: з однаковими «проміжок групи» і «дати будь-якої кімнати»
-      //    невідрізнювані, і крок 3 не мав би чому стискатись.
+      //    навмисно: з однаковими «дати майстра» і «дати кімнати 2» крок 3 не
+      //    мав би чому зсунутись.
       await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
       const moved = await applyRevision(sql, CONN, groupRev({ remoteRevisionId: 'grp-2', status: 'modified',
         checkIn: '2026-10-11', checkOut: '2026-10-15' }, [
-        { key: 'u:49', unitTypeId: TYPE, checkIn: '2026-10-11', checkOut: '2026-10-13', adults: 2, children: 0, amount: 300 },
+        { key: 'u:49', unitTypeId: TYPE, checkIn: '2026-10-11', checkOut: '2026-10-13', adults: 2, children: 0, amount: 320 },
         { key: 'u:50', unitTypeId: TYPE2, checkIn: '2026-10-12', checkOut: '2026-10-15', adults: 1, children: 0, amount: 210 },
       ]));
       assert.strictEqual(moved.result, 'applied');
       {
-        const { parent, kids } = await group();
-        assert.strictEqual(kids.length, 2, 'зміна дат подвоїла групу');
-        assert.strictEqual(String(parent.check_in).slice(0, 10), '2026-10-11', 'нові дати не доїхали до батьківської');
-        assert.strictEqual(String(parent.check_out).slice(0, 10), '2026-10-15',
-          'проміжок групи мав накрити найпізніший виїзд, а взяв виїзд першої кімнати');
-        assert.strictEqual(Number(parent.nights), 4, 'ночі батьківської — з її проміжку');
-        assert.deepStrictEqual(kids.map((k) => String(k.check_in).slice(0, 10)), ['2026-10-11', '2026-10-12'],
+        const { parent, kids, subs } = await group();
+        assert.strictEqual(kids.length, 1, 'зміна дат подвоїла групу');
+        assert.strictEqual(String(parent.check_in).slice(0, 10), '2026-10-11', 'нові дати кімнати №1 не доїхали до майстра');
+        assert.strictEqual(String(parent.check_out).slice(0, 10), '2026-10-13',
+          'майстер узяв найпізніший виїзд бронювання замість виїзду СВОЄЇ кімнати');
+        assert.strictEqual(Number(parent.nights), 2, 'ночі майстра перераховані з нових дат його кімнати');
+        assert.strictEqual(Number(parent.total_price), 320, 'нова сума кімнати №1 не доїхала до майстра');
+        assert.strictEqual(String(kids[0].check_in).slice(0, 10), '2026-10-12',
           'зміна дат мала застосуватись до ВСІХ кімнат групи, кожній свої');
-        assert.deepStrictEqual(kids.map((k) => Number(k.nights)), [2, 3], 'ночі дочірніх перераховані з нових дат');
+        assert.strictEqual(Number(kids[0].nights), 3, 'ночі дочірньої перераховані з нових дат');
+        assert.deepStrictEqual(subs.map((s) => Number(s.subtotal)), [320, 210],
+          'рядки групи мали піти за кімнатами — інакше фоліо лишиться на старій сумі');
+
+        assert.strictEqual(await busyOn('2026-10-12'), 2, 'у спільну ніч зайнято дві кімнати');
+        assert.strictEqual(await busyOn('2026-10-11'), 1, 'до заїзду кімнати 2 зайнята одна');
+        assert.strictEqual(await busyOn('2026-10-10'), 0, 'ніч, з якої група поїхала, мала звільнитись цілком');
         assert.deepStrictEqual(await noted(), [TYPE, TYPE2].sort(),
           'обидва типи мали дізнатись про перенесені ночі');
       }
       console.log('  ok  зміна дат застосовується до всієї групи, кожній кімнаті свої');
 
-      // 3. Прибрати ПЕРШУ кімнату. Дочірня СКАСОВУЄТЬСЯ, а не зникає: вона
-      //    була, і в звіті за минулий місяць має лишитись — так само як
-      //    скасована одинична бронь.
+      // 2b. Та сама група, але кімнати приїхали в ІНШОМУ ПОРЯДКУ.
       //
-      //    Саме першу, а не другу, і це вісь усього кроку (інваріант 26).
-      //    Прибрана друга виглядає однаково для двох різних реалізацій: та,
-      //    що впізнає кімнату КЛЮЧЕМ, і та, що бере її ПОЗИЦІЄЮ, дадуть один
-      //    результат, бо кімната, яка лишилась, і так перша. Прибрана перша
-      //    їх розводить: за ключем скасується `#u:49` і виживе `#u:50` зі
-      //    своїм типом; за позицією єдина кімната ляже в рядок `#u:49`,
-      //    перепише йому тип і скасує `#u:50` — тобто в базі лишиться жива
-      //    бронь із чужим ключем.
+      //     Вісь, без якої вся сцена вироджена (інваріант 26): доки кімната
+      //     майстра стоїть першою, «майстер тримає СВОЮ кімнату» і «майстер
+      //     бере кімнату з позиції 0» дають однакову базу. Порядок у ревізії
+      //     наш не тримає нічим — `booking_room_id` між ревізіями не
+      //     зберігається (вимір Н3), — і реалізація по позиції переклала б
+      //     кімнати між рядками: номер, який рецепція призначила під TW,
+      //     опинився б під DZ, а гості й сума помінялися б місцями беззвучно.
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      const reordered = await applyRevision(sql, CONN, groupRev({ remoteRevisionId: 'grp-2b', status: 'modified' }, [
+        { key: 'u:50', unitTypeId: TYPE2, checkIn: '2026-10-12', checkOut: '2026-10-15', adults: 1, children: 0, amount: 210 },
+        { key: 'u:49', unitTypeId: TYPE, checkIn: '2026-10-11', checkOut: '2026-10-13', adults: 2, children: 0, amount: 320 },
+      ]));
+      assert.strictEqual(reordered.result, 'applied');
+      {
+        const { parent, kids, subs } = await group();
+        assert.strictEqual(String(parent.external_uid), `${CODE}#u:49`,
+          'майстер перескочив на кімнату з позиції 0 — кімнати помінялися рядками від самого лише порядку в ревізії');
+        assert.strictEqual(String(parent.unit_type_id), TYPE, 'майстер мав лишитись на СВОЇЙ кімнаті та її типі');
+        assert.strictEqual(Number(parent.total_price), 320, 'сума майстра — його ж кімнати');
+        assert.strictEqual(kids.length, 1, 'перестановка кімнат завела зайву дочірню');
+        assert.strictEqual(String(kids[0].external_uid), `${CODE}#u:50`, 'дочірня мала лишитись своєю кімнатою');
+        assert.strictEqual(String(kids[0].unit_type_id), TYPE2);
+        assert.deepStrictEqual(subs.map((s) => String(s.label)), ['DZ', 'TW'],
+          'рядки групи пішли за порядком ревізії, а не за кімнатами');
+        assert.strictEqual(await busyOn('2026-10-12'), 2, 'перестановка кімнат не міняє зайнятості');
+      }
+      console.log('  ok  порядок кімнат у ревізії не пересуває кімнати між рядками — упізнає ключ');
+
+      // 2c. Прибрати кімнату 2 і повернути її під тим самим ключем.
+      //
+      //     Кімната, якої в редакції немає, СКАСОВУЄТЬСЯ, а не стирається: вона
+      //     була, гість про неї знає, у звіті за минулий місяць має лишитись.
+      //     Різницю видно лише тут: у кроці 3 зникає кімната майстра, а її
+      //     шлях інший (обмін рядками), тож «скасувати» і «видалити» там
+      //     невідрізнювані. Повернення тим самим ключем оживляє ТОЙ САМИЙ
+      //     рядок — інакше історія кімнати починається з нуля щоразу.
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      const kidIdBefore = String((await group()).kids[0].id);
+      const dropped = await applyRevision(sql, CONN, groupRev({ remoteRevisionId: 'grp-2c', status: 'modified' }, [
+        { key: 'u:49', unitTypeId: TYPE, checkIn: '2026-10-11', checkOut: '2026-10-13', adults: 2, children: 0, amount: 320 },
+      ]));
+      assert.strictEqual(dropped.result, 'applied');
+      {
+        const { parent, kids, subs } = await group();
+        assert.strictEqual(kids.length, 1,
+          'прибрану кімнату СТЕРЛИ, а не скасували — бронь, яка була, зникла зі звітів за минулий місяць');
+        assert.strictEqual(String(kids[0].id), kidIdBefore, 'скасування мало лишити ТОЙ САМИЙ рядок');
+        assert.strictEqual(String(kids[0].status), 'cancelled', 'кімната, якої немає в редакції, мала скасуватись');
+        assert.strictEqual(String(kids[0].unit_type_id), TYPE2, 'скасованій кімнаті переписали тип');
+        assert.strictEqual(String(parent.status), 'confirmed', 'майстра зачепило скасування чужої кімнати');
+        assert.strictEqual(subs.length, 1, 'рядок групи лишився на кімнаті, за яку вже не беруть грошей');
+        assert.strictEqual(await busyOn('2026-10-12'), 1, 'зайнятою лишається кімната майстра');
+        assert.strictEqual(await busyOn('2026-10-14'), 0, 'ночі прибраної кімнати мали звільнитись');
+      }
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      const back = await applyRevision(sql, CONN, groupRev({ remoteRevisionId: 'grp-2d', status: 'modified' }, [
+        { key: 'u:49', unitTypeId: TYPE, checkIn: '2026-10-11', checkOut: '2026-10-13', adults: 2, children: 0, amount: 320 },
+        { key: 'u:50', unitTypeId: TYPE2, checkIn: '2026-10-12', checkOut: '2026-10-15', adults: 1, children: 0, amount: 210 },
+      ]));
+      assert.strictEqual(back.result, 'applied');
+      {
+        const { kids, subs } = await group();
+        assert.strictEqual(kids.length, 1, 'кімната, що повернулась, завела ДРУГИЙ рядок замість того, що вже був');
+        assert.strictEqual(String(kids[0].id), kidIdBefore, 'кімната під тим самим ключем мала ожити тим самим рядком');
+        assert.strictEqual(String(kids[0].status), 'confirmed', 'кімната повернулась, а лишилась скасованою');
+        assert.strictEqual(subs.length, 2, 'рядок групи не повернувся разом із кімнатою');
+        assert.strictEqual(await busyOn('2026-10-14'), 1, 'ночі кімнати, що повернулась, мали знову зайнятись');
+      }
+      console.log('  ok  прибрана кімната скасовується тим самим рядком і оживає під своїм ключем');
+
+      // 3. Прибрати ПЕРШУ кімнату — ту, яку тримає майстер.
+      //
+      //    Це вісь усього кроку. Конверт просто скасував би «свою» дочірню;
+      //    рідна форма мусить ПЕРЕЙНЯТИ кімнату №2 в майстра (rekey), бо
+      //    майстер — це сама бронь: скасований майстер із живою дочірньою це
+      //    бронь, яку картка й аркуші дня показують скасованою, поки гість
+      //    заселяється.
+      //
+      //    Кімната, що зникла, лишається — скасованою дочірньою зі СВОЇМ
+      //    ключем і СВОЇМ типом: вона була, і в звіті за минулий місяць має
+      //    лишитись. Тобто рядки міняються місцями, а не зникають.
       await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
       const shrunk = await applyRevision(sql, CONN, groupRev({ remoteRevisionId: 'grp-3', status: 'modified',
         checkIn: '2026-10-12', checkOut: '2026-10-15', adults: 1, children: 0, totalPrice: 230 }, [
@@ -393,24 +537,37 @@ try {
       ]));
       assert.strictEqual(shrunk.result, 'applied');
       {
-        const { parent, kids } = await group();
-        assert.strictEqual(kids.length, 2, 'дочірня зникла з бази — скасування не стирає бронь');
-        assert.deepStrictEqual(kids.map((k) => String(k.external_uid)), [`${CODE}#u:49`, `${CODE}#u:50`],
-          'ключі дочірніх не мали мінятись від зникнення кімнати');
-        assert.deepStrictEqual(kids.map((k) => String(k.status)), ['cancelled', 'confirmed'],
-          'скасувалась не та кімната: прибрали ПЕРШУ, отже жити має #u:50 — ключ кімнати на те й потрібен');
-        assert.strictEqual(String(kids[1].unit_type_id), TYPE2,
-          'кімната, що лишилась, мала зберегти СВІЙ тип');
-        assert.strictEqual(String(kids[0].unit_type_id), TYPE,
-          'скасованій дочірній переписали тип — її ночі звільнились би не з того типу');
-        assert.strictEqual(String(parent.status), 'confirmed', 'група ще жива — скасувалась лише одна кімната');
-        assert.strictEqual(String(parent.check_in).slice(0, 10), '2026-10-12',
-          'проміжок групи мав стиснутись до кімнат, які лишились');
+        const { parent, kids, subs } = await group();
+        assert.strictEqual(String(parent.status), 'confirmed',
+          'майстер скасувався разом зі своєю кімнатою — жива кімната лишилась під скасованою бронню');
+        assert.strictEqual(String(parent.external_uid), `${CODE}#u:50`,
+          'майстер мав перейняти кімнату №2 (rekey) — інакше він тримає ключ кімнати, якої вже немає');
+        assert.strictEqual(String(parent.unit_type_id), TYPE2, 'майстер мав узяти тип кімнати, яку перейняв');
+        assert.strictEqual(String(parent.check_in).slice(0, 10), '2026-10-12', 'дати майстра — дати перейнятої кімнати');
         assert.strictEqual(String(parent.check_out).slice(0, 10), '2026-10-15');
+        assert.strictEqual(Number(parent.total_price), 210, 'сума майстра — сума перейнятої кімнати');
+
+        assert.strictEqual(kids.length, 1, 'дочірня зникла з бази — скасування не стирає бронь');
+        assert.strictEqual(String(kids[0].external_uid), `${CODE}#u:49`,
+          'скасованою має лишитись саме прибрана кімната — ключ на те й потрібен');
+        assert.strictEqual(String(kids[0].status), 'cancelled', 'прибрана кімната мала скасуватись');
+        assert.strictEqual(String(kids[0].unit_type_id), TYPE,
+          'скасованій кімнаті переписали тип — її ночі звільнились би не з того типу');
+
+        assert.strictEqual(subs.length, 1,
+          'рядок групи лишився на кімнаті, якої вже немає — фоліо виставить за неї гроші');
+        assert.strictEqual(subs[0].child_reservation_id ?? null, null,
+          'єдина жива кімната тепер у майстра, отже й рядок групи в неї без дочірньої');
+        assert.strictEqual(String(subs[0].label), 'TW', 'рядок групи мав піти за перейнятою кімнатою');
+        assert.strictEqual(Number(subs[0].subtotal), 210);
+
+        assert.strictEqual(await busyOn('2026-10-12'), 1,
+          'після прибраної кімнати зайнятим лишається рівно один номер');
+        assert.strictEqual(await busyOn('2026-10-11'), 0, 'ночі прибраної кімнати мали звільнитись повністю');
         assert.deepStrictEqual(await noted(), [TYPE, TYPE2].sort(),
           'звільнені ночі прибраної кімнати мали поїхати в канал — інакше номер лишиться непроданим');
       }
-      console.log('  ok  прибрана кімната скасовує СВОЮ дочірню за ключем і звільняє її ночі');
+      console.log('  ok  зникла кімната №1 — майстер переймає кімнату №2, прибрана лишається скасованою');
 
       // 4. Скасувати — усю групу.
       await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
@@ -418,39 +575,39 @@ try {
       assert.strictEqual(gone.result, 'applied');
       {
         const { parent, kids } = await group();
-        assert.strictEqual(String(parent.status), 'cancelled', 'скасування не дійшло до батьківської');
-        assert.deepStrictEqual(kids.map((k) => String(k.status)), ['cancelled', 'cancelled'],
+        assert.strictEqual(String(parent.status), 'cancelled', 'скасування не дійшло до майстра');
+        assert.deepStrictEqual(kids.map((k) => String(k.status)), ['cancelled'],
           'дочірні лишились активними після скасування бронювання — номери стояли б зайнятими');
-        assert.deepStrictEqual(await noted(), [TYPE2].sort(),
-          'звільнені ночі живої дочірньої мали поїхати в канал — і саме її типу');
+        assert.strictEqual(await busyOn('2026-10-12'), 0, 'скасована група не займає жодного номера');
+        assert.deepStrictEqual(await noted(), [TYPE2],
+          'звільнені ночі живої кімнати мали поїхати в канал — і саме її типу');
       }
       console.log('  ok  скасування ревізії скасовує всю групу');
 
-      // Історія — на батьківській, по запису на ревізію: рецепція читає групу
-      // в одному місці, а не збирає з чотирьох карток.
+      // Історія — на майстрі, по запису на ревізію: рецепція читає групу в
+      // одному місці, а не збирає з чотирьох карток. Сума бронювання (555 при
+      // кімнатах 510) живе САМЕ ТУТ і в журналі ревізій — не в рядку броні.
       {
-        const parentId = (await group()).parent.id;
         const rows = await sql.rows<any>(
-          `SELECT action FROM booking_activity_log
+          `SELECT action, details FROM booking_activity_log
             WHERE organization_id = ? AND reservation_id = ? ORDER BY created_at ASC, id ASC`,
-          [ORG, parentId]) as any[];
+          [ORG, groupId]) as any[];
         assert.deepStrictEqual(rows.map((r) => r.action),
-          ['channel_created', 'channel_modified', 'channel_modified', 'channel_cancelled'],
-          `чотири ревізії групи — чотири записи історії на батьківській, а є: ${JSON.stringify(rows.map((r) => r.action))}`);
-        console.log('  ok  історія групи пишеться на батьківській броні');
+          ['channel_created', ...Array(5).fill('channel_modified'), 'channel_cancelled'],
+          `сім ревізій групи — сім записів історії на майстрі, а є: ${JSON.stringify(rows.map((r) => r.action))}`);
+        assert.ok(String(rows[0].details).includes('555'),
+          'сума бронювання цілком (555) не названа ніде: у рядку її нема за задумом, отже вона мусить бути в історії');
+        assert.ok(/2\s*кімнат/i.test(String(rows[0].details)),
+          'історія не каже, що бронювання групове — рецепція не знатиме, чому сума не дорівнює броні');
+        console.log('  ok  історія групи пишеться на майстрі, сума бронювання — у ній, а не в рядку');
       }
 
       // 5. Бронювання, яке ПРИЙШЛО одною кімнатою, а стало двома.
       //
-      //    Тут ховається помилка, якої не видно в сценах вище: наявна бронь
-      //    уже має свій тип номера, і саме вона стає батьківською. Якщо тип
-      //    на ній лишити, `unassignedByTypeDay` порахує батьківську ПЛЮС дві
-      //    дочірні — три номери за групу з двох, — і канал отримає на одиницю
-      //    менше, ніж є. Мовчки: помилки немає ніде.
-      //
-      //    Рецепція до того ж могла поставити цю бронь у номер; кімната тепер
-      //    описана дочірньою, тож номер із батьківської знімається — інакше
-      //    він рахується зайнятим ДВІЧІ.
+      //    Одинична бронь уже має свій тип і могла стояти в номері. У рідній
+      //    формі вона стає кімнатою №1 групи — тобто лишається собою, і номер
+      //    з неї не знімається. Зайнято має стати ДВА номери, а не три (конверт
+      //    з типом) і не один (друга кімната загубилась).
       {
         const GROW = 'BDC-GROW';
         await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
@@ -480,31 +637,40 @@ try {
         assert.strictEqual(grown.result, 'applied');
         const parent = await sql.row<any>('SELECT * FROM reservations WHERE id = ?', [parentId]) as any;
         const kids = await sql.rows<any>('SELECT * FROM reservations WHERE parent_id = ? ORDER BY external_uid', [parentId]) as any[];
-        assert.strictEqual(kids.length, 2, `друга кімната мала стати дочірньою, а дочірніх ${kids.length}`);
-        assert.strictEqual(parent.unit_type_id ?? null, null,
-          'бронь, що стала групою, лишила свій тип на батьківській — наявність рахує ТРИ номери за групу з двох');
-        assert.strictEqual(parent.unit_id ?? null, null,
-          'номер лишився на батьківській, хоча кімнату тепер описує дочірня — номер зайнято двічі');
-        assert.strictEqual(Number(parent.total_price), 700, 'сума батьківської — за ревізією');
-        assert.deepStrictEqual(kids.map((k) => String(k.unit_type_id)), [TYPE, TYPE2],
-          'дочірні мали лягти кожна на свій тип');
-        console.log('  ok  бронь із однієї кімнати, що стала двома, віддає свій тип дочірній');
+        const subs = await sql.rows<any>(
+          'SELECT * FROM reservation_sub_bookings WHERE reservation_id = ? ORDER BY sort_order, created_at', [parentId]) as any[];
+        assert.strictEqual(kids.length, 1, `друга кімната мала стати дочірньою, а дочірніх ${kids.length}`);
+        assert.strictEqual(String(parent.unit_type_id), TYPE,
+          'бронь, що стала групою, втратила свій тип — це знову конверт');
+        assert.strictEqual(String(parent.unit_id), UNIT,
+          'номер зняли з броні, яка лишилась кімнатою №1 — рецепція розселяла її даремно');
+        assert.strictEqual(Number(parent.total_price), 400, 'сума майстра — сума його кімнати, а не бронювання (700)');
+        assert.strictEqual(String(kids[0].unit_type_id), TYPE2, 'дочірня мала лягти на свій тип');
+        assert.strictEqual(subs.length, 2, 'кімнати без рядків групи — картка покаже одну бронь замість двох');
+
+        assert.strictEqual(await busyOn('2026-12-01'), 2,
+          'бронювання з двох кімнат має займати рівно два номери: три — конверт із типом, один — загублена кімната');
+        assert.strictEqual(await busyOn('2026-12-03'), 1,
+          'у ніч, коли лишається лише друга кімната, зайнято один номер');
+        console.log('  ok  бронь із однієї кімнати, що стала двома, лишається кімнатою №1 і займає два номери');
 
         await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
-        await sql.run("DELETE FROM booking_activity_log WHERE organization_id = ? AND reservation_id IN (SELECT id FROM reservations WHERE organization_id = ? AND (external_uid = ? OR external_uid LIKE ?))",
-          [ORG, ORG, GROW, `${GROW}#%`]);
+        await sql.run("DELETE FROM booking_activity_log WHERE organization_id = ? AND reservation_id IN (SELECT id FROM reservations WHERE organization_id = ? AND external_uid LIKE ?)",
+          [ORG, ORG, `${GROW}%`]);
         await sql.run("DELETE FROM cm_inbound_bookings WHERE organization_id = ? AND remote_booking_id = 'bkg-grow'", [ORG]);
-        await sql.run('DELETE FROM reservations WHERE organization_id = ? AND parent_id IS NOT NULL AND external_uid LIKE ?', [ORG, `${GROW}#%`]);
-        await sql.run('DELETE FROM reservations WHERE organization_id = ? AND external_uid = ?', [ORG, GROW]);
+        await sql.run('DELETE FROM reservation_sub_bookings WHERE reservation_id = ?', [parentId]);
+        await sql.run('DELETE FROM reservations WHERE organization_id = ? AND parent_id IS NOT NULL AND external_uid LIKE ?', [ORG, `${GROW}%`]);
+        await sql.run('DELETE FROM reservations WHERE id = ?', [parentId]);
       }
 
       // Прибрати за собою: наступні сцени рахують броні й журнал ORG.
       await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
-      await sql.run("DELETE FROM booking_activity_log WHERE organization_id = ? AND reservation_id IN (SELECT id FROM reservations WHERE organization_id = ? AND (external_uid = ? OR external_uid LIKE ?))",
-        [ORG, ORG, CODE, `${CODE}#%`]);
+      await sql.run("DELETE FROM booking_activity_log WHERE organization_id = ? AND reservation_id IN (SELECT id FROM reservations WHERE organization_id = ? AND external_uid LIKE ?)",
+        [ORG, ORG, `${CODE}%`]);
       await sql.run("DELETE FROM cm_inbound_bookings WHERE organization_id = ? AND remote_booking_id = 'bkg-grp'", [ORG]);
-      await sql.run('DELETE FROM reservations WHERE organization_id = ? AND parent_id IS NOT NULL AND external_uid LIKE ?', [ORG, `${CODE}#%`]);
-      await sql.run('DELETE FROM reservations WHERE organization_id = ? AND external_uid = ?', [ORG, CODE]);
+      await sql.run('DELETE FROM reservation_sub_bookings WHERE reservation_id = ?', [groupId]);
+      await sql.run('DELETE FROM reservations WHERE organization_id = ? AND parent_id IS NOT NULL AND external_uid LIKE ?', [ORG, `${CODE}%`]);
+      await sql.run('DELETE FROM reservations WHERE id = ?', [groupId]);
     }
 
     // ── Неіснуюче зʼєднання ──────────────────────────────────────────────
