@@ -571,6 +571,9 @@ async function applyStructure(organizationId, plan) {
   // Набір ЗАМІНЮЄТЬСЯ цілком — як і на екрані: файл описує стан готелю, а не
   // додає до нього. Повторний прогін дає той самий набір, тобто ідемпотентний.
   if (plan.amenities) {
+    // Каталог міг ще не існувати: заведення готелю його не сіє (ядро не знає
+    // про модуль), а перший, хто його потребує, — саме цей файл.
+    await amenities.ensureAmenityCatalog(organizationId);
     const catalog = await amenities.amenityCatalog(organizationId);
     const byCode = new Map(catalog.flatMap((c) => c.amenities).map((a) => [a.code, a]));
     const idsFor = (codes, label) => {

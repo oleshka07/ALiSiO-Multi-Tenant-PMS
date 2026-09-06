@@ -134,3 +134,23 @@ AGENTS §23 рішення, яке вже записане, не перепит�
   робота, яку краще робити разом із рештою `settings/**`. Замість неї —
   живий прохід `check-isolation` (нові твердження), `apply-hotel` двічі
   (другий прохід каже `=`, а не `+`) і `check-fresh-schema --settles`.
+
+## Н5. CI зловив те, чого не бачив локальний прогін (виправлено)
+
+Перша редакція 2.2 сіяла каталог у `provisionOrganization`, імпортуючи
+`seedAmenityCatalog` із фасаду `@properties`. Локально все зелене: `npm run
+check` і всі перевірки імпортують через резолвер аліасів
+(`scripts/lib/module-aliases.mjs`). А `scripts/provision-org.mjs` запускає
+`src/core/provisioning.ts` голим node — і впав на
+`Invalid module "@properties" is not a valid package name`, тобто заведення
+НОВОГО ГОТЕЛЯ перестало працювати цілком. Крок CI сказав це дослівно:
+«provisioning printed no organization id».
+
+Це рівно той клас, про який попереджає AGENTS §4 («provisionOrganization
+втратив `await`… і `provision-org.mjs` два дні друкував undefined»): скрипт,
+якого ніхто не кличе локально, ламається мовчки.
+
+Виправлено не аліасом у скрипті, а прибиранням залежності: ядро більше не
+знає про модуль навіть через двері, каталог досівається при першому читанні
+(`ensureAmenityCatalog`) і в `apply-hotel`. Перевірено обома шляхами:
+`provision-org.mjs` заводить готель, `apply-hotel` кладе зручності.
