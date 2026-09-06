@@ -65,6 +65,28 @@ export async function createFolio(input: {
 }
 
 /**
+ * Фоліо цієї броні — наявне або щойно створене (В3).
+ *
+ * Фоліо — єдина книга проживання, тож гроші, що прийшли за бронь, мають куди
+ * лягти НАВІТЬ тоді, коли рецепція ще не відкривала вкладку «Фінанси». Доти
+ * готівковий внесок жив у `fin_operations` поруч із книгою, і виселення
+ * показувало повний борг при сплачених трьох тисячах.
+ *
+ * Перше за створенням, а не «якесь»: бронь із поділом рахунку між платниками
+ * має кілька фоліо, і платіж без явного вибору належить тому, що відкрили
+ * першим — інакше він щоразу потрапляв би в різні.
+ */
+export async function ensureReservationFolio(reservationId: string, t?: Sql): Promise<string> {
+  const organizationId = await requireOrganizationId();
+  const sql = t ?? getSql();
+  const existing = await sql.row<{ id: string }>(
+    'SELECT id FROM fin_folios WHERE organization_id = ? AND reservation_id = ? ORDER BY created_at ASC, id ASC LIMIT 1',
+    [organizationId, reservationId]);
+  if (existing) return String(existing.id);
+  return createFolio({ reservationId });
+}
+
+/**
  * Which money this folio counts.
  *
  * The reservation first — a booking taken in crowns is billed in crowns even

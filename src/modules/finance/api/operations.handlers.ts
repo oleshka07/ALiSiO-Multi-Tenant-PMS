@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { recalcPaymentStatusFromFolio } from '@bookings/kernel';
 import { cookies } from 'next/headers';
 import { getSql } from '@core/db/async';
 import { todayFor } from '@core/hotel-day';
@@ -871,38 +872,24 @@ export async function getReservationPaymentTotals(reservationId: string): Promis
 }
 
 export async function recalcReservationPaymentStatus(reservationId: string): Promise<void> {
-  const sql = getSql();
-  const res = await sql.row<any>('SELECT id, total_price, is_prepaid FROM reservations WHERE id = ?', [reservationId]) as { id: string; total_price: number; is_prepaid: number } | undefined;
-  if (!res) return;
-
-  // Channel-prepaid reservations (Booking / Airbnb / VRBO with is_prepaid=1
-  // from Hostex) are paid by definition — the platform already collected
-  // the money on the guest's behalf. Real cash arrives later as a bank
-  // payout but we don't want a partial bank op (e.g. tourist tax cleared
-  // separately, or a service add-on) to flip the booking back to
-  // 'partial' or 'unpaid'. PMS check-in trusts the platform flag.
-  if (res.is_prepaid === 1) return;
-
-  const { paid, refunded } = await getReservationPaymentTotals(reservationId);
-  const net = paid - refunded;
-  const total = Number(res.total_price) || 0;
-  let paymentStatus: 'unpaid' | 'partial' | 'paid' = 'unpaid';
-  if (total > 0 && net >= total - 0.005) paymentStatus = 'paid';
-  else if (net > 0) paymentStatus = 'partial';
-
-  // Read old status before update for TG notification editing
-  const oldRow = await sql.row<any>('SELECT payment_status FROM reservations WHERE id = ?', [reservationId]) as any;
-  const oldPaymentStatus = oldRow?.payment_status || 'unpaid';
-
-  await sql.run('UPDATE reservations SET payment_status = ? WHERE id = ?', [paymentStatus, reservationId]);
-
-  // Emit event if status changed
-  if (oldPaymentStatus !== paymentStatus) {
+  // В3: цей модуль статус БІЛЬШЕ НЕ РАХУЄ.
+  //
+  // Раніше він рахував його зі своєї книги — суми `fin_operations`, — поки
+  // фоліо рахувало зі своєї. Дві книги, які не знають одна про одну, дали
+  // видиму розбіжність: 3000 наперед із 5000 через фоліо давали борг 2000 на
+  // виселенні, а ті самі 3000 через касу — 5000. Рішення власника (В3): фоліо
+  // — єдина книга проживання, і слово виводиться з неї одним перерахунком.
+  //
+  // Функція лишається як ІМʼЯ, за яким її кличуть сім місць фінансів, і
+  // делегує. `is_prepaid`, стара подія про зміну статусу і повідомлення —
+  // усередині спільного перерахунку.
+  const change = await recalcPaymentStatusFromFolio(reservationId);
+  if (change?.changed) {
     import('@core/event-bus').then(({ eventBus }) => {
       eventBus.emit('booking.payment_status_changed', {
         bookingId: reservationId,
-        oldStatus: oldPaymentStatus,
-        newStatus: paymentStatus,
+        oldStatus: change.was,
+        newStatus: change.now,
       });
     }).catch(() => {});
   }

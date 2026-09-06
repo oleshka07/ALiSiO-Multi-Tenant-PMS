@@ -53,8 +53,25 @@ export function openBalance(charges: readonly number[], payments: readonly numbe
   return money(sumMoney(charges) - sumMoney(payments));
 }
 
-/** Борг без фоліо: зі статусу оплати броні. */
-export function balanceFromReservation(paymentStatus: string | null | undefined, totalPrice: number): number {
+/**
+ * Борг без фоліо: зі статусу оплати броні — і лише там, де слово ЗНАЄ суму.
+ *
+ * `null` означає «числа немає»: воно повертається для `partial`, бо це слово
+ * каже, що частина грошей прийшла, і НЕ каже, скільки. Раніше тут стояв увесь
+ * `total_price`, і виселення показувало повний борг броні, за яку вже
+ * заплатили три тисячі з пʼяти (В3). Вигадане число на екрані гірше за
+ * відсутнє: за ним рецепція вимагає в гостя гроші, яких він не винен.
+ *
+ * Після В3 такий стан майже не досяжний: гроші за бронь лягають у фоліо, тож
+ * `partial` без фоліо — це або спадок (його перераховує міграція 0095), або
+ * слово, поставлене руками. Політика вирішує, що робити з невідомим боргом,
+ * і `blocking` при цьому не пускає — інваріант 13.
+ */
+export function balanceFromReservation(
+  paymentStatus: string | null | undefined,
+  totalPrice: number,
+): number | null {
   if (paymentStatus === 'paid' || paymentStatus === 'prepaid') return 0;
+  if (paymentStatus === 'partial') return null;
   return money(Number(totalPrice) || 0);
 }

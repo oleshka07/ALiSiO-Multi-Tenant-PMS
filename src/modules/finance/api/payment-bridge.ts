@@ -2,9 +2,12 @@
 import { getSql } from '@core/db/async';
 import {
   createOperationInTx,
-  recalcReservationPaymentStatus,
   type OperationActor,
 } from './operations.handlers';
+// В3: гроші за бронь лягають У ФОЛІО, а слово рахує один спільний
+// перерахунок — не цей модуль. Двері фасадів, не чужий SQL.
+import { ensureReservationFolio, recordPayment as recordFolioPayment } from '@invoicing/kernel';
+import { recalcPaymentStatusFromFolio } from '@bookings/kernel';
 import { applyRulesToOperation, loadActiveRules } from '../data/auto-rules-engine';
 
 // Колонка `currency` тут NOT NULL, тож `|| 'CZK'` не спрацьовував ніколи —
@@ -160,7 +163,7 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
   // Non-cash methods (card, bank_transfer, online, booking_platform, etc.) arrive
   // via bank statement import and will be recorded when the real bank transaction lands.
   if (method !== 'cash') {
-    await recalcReservationPaymentStatus(reservationId);
+    await recalcPaymentStatusFromFolio(reservationId);
     return { operationId: '' };
   }
 
@@ -185,7 +188,30 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
     needs_review: needsReview,
   }, input.actor || null);
 
-  await recalcReservationPaymentStatus(reservationId);
+  // В3: гроші за бронь ЛЯГАЮТЬ У ФОЛІО, а не живуть поруч із ним.
+  //
+  // Доти готівковий внесок був лише рядком `fin_operations`, і виселення
+  // показувало ПОВНИЙ борг при сплачених трьох тисячах із пʼяти: книга
+  // проживання про ці гроші не знала. Повернення (`refund`) іде тим самим
+  // шляхом зі своїм знаком — каса, віддана назад, це рух у книзі, а не
+  // видалений рядок.
+  //
+  // Падіння тут не скасовує вже записану операцію (транзакції над обома
+  // писачами немає — `createOperationInTx` попри назву не відкриває BEGIN),
+  // тож помилка називається вголос і статус лишається тим, що був: краще
+  // старе слово, ніж слово, виведене з половини книги.
+  try {
+    const folioId = await ensureReservationFolio(reservationId);
+    await recordFolioPayment({
+      folioId,
+      amount: isRefund ? -Math.abs(amount) : Math.abs(amount),
+      method: 'cash',
+      paidAt,
+    });
+  } catch (e: any) {
+    console.error('[payment-bridge] платіж не ліг у фоліо:', e.message);
+  }
+  await recalcPaymentStatusFromFolio(reservationId);
 
   // Auto-rules: payment-bridge ops (Hostex / Teia / widget / manual
   // payment) start with no category / counterparty / project. Run the

@@ -32,8 +32,19 @@ export async function decideCheckout(sql: Sql, input: {
   if (!prop) return 'not_found';
   const policy = readCheckoutPolicy(prop.checkout_balance_policy);
   const folio = await reservationBalance(input.reservationId, sql);
-  const balance = folio.hasFolio
-    ? folio.balance
-    : balanceFromReservation(input.paymentStatus, input.totalPrice);
-  return checkoutDecision(policy, balance);
+  if (folio.hasFolio) return checkoutDecision(policy, folio.balance);
+
+  // Фоліо немає — питаємо слово, і воно не завжди знає суму. `partial` без
+  // фоліо каже «частина прийшла» і не каже скільки (В3): доти сюди йшов увесь
+  // `total_price`, і рецепція бачила повний борг на броні з депозитом.
+  // Невідомий борг не показується числом: під `none` виселяємо, під рештою —
+  // як борг без суми (інваріант 13: не знаємо — не відчиняємо).
+  const known = balanceFromReservation(input.paymentStatus, input.totalPrice);
+  if (known !== null) return checkoutDecision(policy, known);
+  if (policy === 'none') return { allowed: true, warning: null, balance: 0 };
+  return {
+    allowed: policy !== 'blocking',
+    warning: policy === 'warning' ? 'unpaid_balance' : null,
+    balance: 0,
+  };
 }

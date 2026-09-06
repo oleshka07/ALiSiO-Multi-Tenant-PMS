@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { ensureReservationFolio, recordPayment as recordFolioPayment } from '@invoicing/kernel';
+import { recalcPaymentStatusFromFolio } from '@bookings/kernel';
 import { getSql } from '@core/db/async';
 import { createPaymentOperation } from '@/modules/finance/api/payment-bridge';
 import { getOptionalActor } from '@/modules/finance/api/operations.handlers';
@@ -131,20 +133,30 @@ export const POST = withPermission('manage_payments', async (
 
     // Channel-prepaid reservations (Hostex Booking/Airbnb/VRBO with is_prepaid=1)
     // are paid by the platform — never downgrade their status from a marker.
+    // В3: маркер оплати кладе гроші У ФОЛІО, а слово рахує спільний
+    // перерахунок — з книги, а не з типу натиснутої кнопки.
+    //
+    // Доти тут стояла табличка «deposit → partial, full → paid», яка писала
+    // слово, не знаючи СУМИ: бронь ставала «частково оплаченою» без жодного
+    // числа за нею, і виселення показувало повний борг. Повернення теж не
+    // «unpaid» за означенням — воно зменшує сплачене, і скільки лишилось,
+    // каже фоліо.
     let statusChanged = false;
     if (res.is_prepaid !== 1) {
-      let nextStatus = res.payment_status;
-      if (type === 'full')              nextStatus = 'paid';
-      else if (type === 'refund')       nextStatus = 'unpaid';
-      else if (type === 'deposit')      nextStatus = 'partial';
-      else if (type === 'partial')      nextStatus = 'partial';
-      if (nextStatus !== res.payment_status) {
-        await sql.run(
-          'UPDATE reservations SET payment_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-          [nextStatus, reservation_id],
-        );
-        statusChanged = true;
+      const signed = type === 'refund' ? -Math.abs(Number(amount)) : Math.abs(Number(amount));
+      try {
+        const folioId = await ensureReservationFolio(reservation_id);
+        // Спосіб у фоліо — `transfer`, і це не спрощення. Маркер оплати за
+        // означенням НЕ касовий оборот (готівка йде вище, через
+        // `createPaymentOperation`), а `card_terminal` у німецькому готелі без
+        // фіскального модуля фоліо відхиляє — платіж не ліг би, і розбіжність
+        // повернулась би саме там, де її найважче помітити.
+        await recordFolioPayment({ folioId, amount: signed, method: 'transfer', paidAt: paid_at || null });
+      } catch (e: any) {
+        console.error('[api/payments] маркер не ліг у фоліо:', e.message);
       }
+      const change = await recalcPaymentStatusFromFolio(reservation_id);
+      statusChanged = Boolean(change?.changed);
     }
 
     try {

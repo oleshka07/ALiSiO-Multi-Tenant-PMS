@@ -7269,6 +7269,61 @@ function runMigrations(database: any) {
     console.error('[DB] amenities migration:', (e as Error).message);
   }
 
+  // --- 0095: статус оплати броні перераховується З ФОЛІО (В3) ---
+  //
+  // Дві книги вже розійшлися в чинних базах: слово в `reservations` ставили
+  // троє — картка фоліо, фінансовий модуль зі своєї суми і маркер оплати з
+  // типу натиснутої кнопки. Тепер книга одна, і спадок треба привести до неї.
+  //
+  // Міграція НІЧОГО НЕ ВИГАДУЄ. Вона рахує рівно те саме, що `statusFromFolio`:
+  // є нарахування проживання і борг нуль — `paid`; є проживання, гроші є, але
+  // не всі — `partial`; фоліо мовчить — слово лишається як стояло. І кожну
+  // бронь, де було інакше, називає в лозі поіменно: розбіжність — це те, що
+  // хтось має побачити, а не те, що тихо зникає під `UPDATE`.
+  //
+  // `is_prepaid` не чіпається: канал зібрав гроші з гостя, і часткова виплата
+  // на рахунок готелю не робить бронь «частково оплаченою» для рецепції.
+  try {
+    const rows = database.prepare(`
+      SELECT r.id, r.payment_status,
+        (SELECT COALESCE(SUM(i.total_gross), 0) FROM fin_folio_items i
+            JOIN fin_folios f ON f.id = i.folio_id
+           WHERE f.reservation_id = r.id AND i.voided_by_item_id IS NULL) AS charged,
+        (SELECT COALESCE(SUM(p.amount), 0) FROM fin_folio_payments p
+            JOIN fin_folios f ON f.id = p.folio_id
+           WHERE f.reservation_id = r.id) AS paid,
+        (SELECT COUNT(*) FROM fin_folio_items i
+            JOIN fin_folios f ON f.id = i.folio_id
+           WHERE f.reservation_id = r.id AND i.voided_by_item_id IS NULL AND i.kind = 'lodging') AS lodging
+        FROM reservations r
+       WHERE COALESCE(r.is_prepaid, 0) <> 1
+    `).all() as { id: string; payment_status: string; charged: number; paid: number; lodging: number }[];
+
+    const upd = database.prepare('UPDATE reservations SET payment_status = ? WHERE id = ?');
+    const diverged: string[] = [];
+    for (const r of rows) {
+      const charged = Number(r.charged) || 0;
+      const paid = Number(r.paid) || 0;
+      if (!(charged > 0) || Number(r.lodging) === 0) continue;   // фоліо мовчить
+      // Порівняння з допуском у півкопійки, а не `Math.round(x*100)/100`:
+      // остання форма заборонена інваріантом 9 і бреше саме на копійках
+      // (1.005 * 100 = 100.49999999999999). `money()` сюди не імпортується —
+      // db.ts живе до модулів.
+      const word = (charged - paid) <= 0.005
+        ? 'paid'
+        : (paid > 0 ? 'partial' : null);
+      if (!word || word === r.payment_status) continue;
+      diverged.push(`${r.id}: ${r.payment_status} → ${word}`);
+      upd.run(word, r.id);
+    }
+    if (diverged.length) {
+      console.log(`[DB] 0095: статус оплати перераховано з фоліо для ${diverged.length} брон(і/ей) — книги розходились:`);
+      for (const line of diverged) console.log(`[DB]   ${line}`);
+    }
+  } catch (e: any) {
+    console.error('[DB] 0095 payment status from folio:', e.message);
+  }
+
   // The last line of runMigrations, and the only reliable signal that the
   // schema has settled. scripts/check-fresh-schema.mjs waits for it: polling
   // the table count said "done" while ALTER TABLE ADD COLUMN was still going,
