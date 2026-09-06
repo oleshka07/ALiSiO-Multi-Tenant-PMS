@@ -140,12 +140,12 @@ const { percentOf } = await import('@core/money');
 const {
   channelConnection, connectionMirror, flushConnectionOutboxFor,
   enqueueChannelChange, pendingChannelChanges, queuedChannelChanges, stuckChannelChanges, recentChannelSends,
-  recentChannelSendLog, verifyConnectionSendsFor } = await import('@channels');
+  recentChannelSendLog, verifyConnectionSendsFor } = await import('@channels/live');
 // Інваріант 28: кожна жива відповідь лягає зразком у docs/vendor/channex/live/.
-const { recordVendorResponses } = await import('@channels');
+const { recordVendorResponses } = await import('@channels/live');
 recordVendorResponses(sampleRecorder());
-const { availabilityByDay, catalogUnitTypes } = await import('@properties');
-const { priceNights, updateRatePlan, listRatePlans, bulkUpdatePrices, upsertPrices } = await import('@pricing');
+const { availabilityByDay, catalogUnitTypes } = await import('@properties/live');
+const { priceNights, updateRatePlan, listRatePlans, bulkUpdatePrices, upsertPrices } = await import('@pricing/live');
 
 /** Сире читання повз наш клієнт: звірка мусить бачити відповідь, а не наше тлумачення. */
 async function get(path) {

@@ -59,8 +59,8 @@ import { recordSend, type SendSummary } from '../data/sends.repo';
 import type { AriValue } from './ari-payload';
 import { DEFAULT_MAX_ATTEMPTS, flushOutbox, type FlushDeps, type FlushReport, type NightSources } from '../domain/ari-batch.ts';
 import type { AvailabilityChange, RateChange } from '../port';
-import { availabilityByDay } from '@properties';
-import { priceNights, dayRestrictions, pairRestrictionsAt, type DayRestrictions } from '@pricing';
+import { availabilityByDay } from '@properties/live';
+import { priceNights, dayRestrictions, pairRestrictionsAt, type DayRestrictions } from '@pricing/live';
 import { money } from '@core/money';
 
 /**

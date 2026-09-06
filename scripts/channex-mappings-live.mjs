@@ -103,9 +103,9 @@ if (remoteOnly) {
 }
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
-const { channelConnection, connectionMirror } = await import('@channels');
-const { catalogUnitTypes } = await import('@properties');
-const { listRatePlans } = await import('@pricing');
+const { channelConnection, connectionMirror } = await import('@channels/live');
+const { catalogUnitTypes } = await import('@properties/live');
+const { listRatePlans } = await import('@pricing/live');
 
 await runWithOrganization(organizationId, async () => {
   const connection = await channelConnection(connectionId);

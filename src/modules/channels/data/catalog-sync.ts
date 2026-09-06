@@ -1,7 +1,7 @@
 import { getSql } from '@core/db/async';
 import { enqueueChange, OUTBOX_HORIZON_DAYS } from './outbox.repo';
 import { addDays } from './outbox-notes';
-import { catalogProperty, catalogUnitTypes } from '@properties';
+import { catalogProperty, catalogUnitTypes } from '@properties/live';
 // Вузькі двері — див. `@pricing/plans`: повний фасад тягне `next/server`.
 import { propertyRatePlans } from '@pricing/plans';
 import { connectionInTenant, rememberRemoteProperty } from './connections.repo';

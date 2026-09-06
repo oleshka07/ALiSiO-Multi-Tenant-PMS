@@ -162,31 +162,7 @@ export const disconnectChannelConnection = withPermission('manage_properties', a
   }
 });
 
-// ── Двері без HTTP — для живого прогону й інструментів оператора ──────────
-
-async function armedFor(connectionId: string) {
-  const organizationId = currentOrganizationId();
-  if (!organizationId) throw new Error('webhook: call without a tenant');
-  const connection = await connectionInTenant(connectionId);
-  if (!connection) throw new Error('webhook: connection not found');
-  const adapter = adapterFor(connection.provider);
-  if (!adapter) throw new Error(`webhook: unknown provider ${connection.provider}`);
-  const apiKey = await apiKeyOf(organizationId);
-  if (!apiKey) throw new Error('webhook: no channel manager key for this organization');
-  return { adapter, apiKey };
-}
-
-export async function ensureConnectionWebhookFor(connectionId: string) {
-  const { adapter, apiKey } = await armedFor(connectionId);
-  return adapter.ensureWebhook(connectionId, apiKey);
-}
-
-export async function removeConnectionWebhookFor(connectionId: string) {
-  const { adapter, apiKey } = await armedFor(connectionId);
-  return adapter.removeWebhook(connectionId, apiKey);
-}
-
-export async function testConnectionWebhookFor(connectionId: string) {
-  const { adapter, apiKey } = await armedFor(connectionId);
-  return adapter.testWebhook(connectionId, apiKey);
-}
+// Двері без HTTP переїхали у `webhook-admin.ops.ts` (07.09.2026) — з тієї
+// самої причини, що й у `connect.ops.ts`: цей файл імпортує `next/server`,
+// якого прод-образ не має, а живий прохід вебхука запускають саме там.
+export { ensureConnectionWebhookFor, removeConnectionWebhookFor, testConnectionWebhookFor } from './webhook-admin.ops';

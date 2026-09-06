@@ -49,7 +49,7 @@ const today = new Date().toISOString().slice(0, 10);
 const { runWithOrganization } = await import('@core/auth/tenant-context');
 const {
   channelConnection, pendingChannelChanges, fullSyncConnectionFor, verifyConnectionSendsFor, recordVendorResponses,
-} = await import('@channels');
+} = await import('@channels/live');
 recordVendorResponses(sampleRecorder());
 
 /** Сире читання повз наш клієнт: звірка мусить бачити відповідь, а не наше тлумачення. */

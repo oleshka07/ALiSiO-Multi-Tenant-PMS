@@ -100,12 +100,12 @@ if (!apiKey) {
 const environment = process.env.CHANNEX_ENV === 'production' ? 'production' : 'staging';
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
-const { syncConnectionCatalogFor, channelConnection, connectionMirror } = await import('@channels');
+const { syncConnectionCatalogFor, channelConnection, connectionMirror } = await import('@channels/live');
 // Інваріант 28: кожна жива відповідь лягає зразком у docs/vendor/channex/live/.
-const { recordVendorResponses } = await import('@channels');
+const { recordVendorResponses } = await import('@channels/live');
 recordVendorResponses(sampleRecorder());
-const { catalogProperty, catalogUnitTypes } = await import('@properties');
-const { propertyRatePlans } = await import('@pricing');
+const { catalogProperty, catalogUnitTypes } = await import('@properties/live');
+const { propertyRatePlans } = await import('@pricing/live');
 
 const BASE = environment === 'production'
   ? 'https://app.channex.io/api/v1' : 'https://staging.channex.io/api/v1';

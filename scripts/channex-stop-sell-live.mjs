@@ -50,7 +50,7 @@ const D = addDays(today, 400);
 const D2 = addDays(today, 401);
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');
-const { channelConnection, connectionMirror } = await import('@channels');
+const { channelConnection, connectionMirror } = await import('@channels/live');
 
 async function api(method, path, body) {
   const res = await fetch(`${BASE}${path}`, {
