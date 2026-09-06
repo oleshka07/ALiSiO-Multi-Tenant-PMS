@@ -1,7 +1,7 @@
 /**
  * Тіло збереження з редактора дня — лише те, що оператор справді змінив.
  *
- *   node src/modules/pricing/domain/day-edit.check.ts
+ *   node src/modules/pricing/ui/day-edit.check.ts
  *
  * Модалка засівається ЕФЕКТИВНИМИ значеннями дня (`getPriceMonth`): для пари
  * тип × тариф це або власне обмеження пари, або успадковане від типу — на

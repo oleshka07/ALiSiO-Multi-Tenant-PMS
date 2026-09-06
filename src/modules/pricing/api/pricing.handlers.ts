@@ -52,6 +52,9 @@ export const updatePricing = withPermission('manage_pricing', async (request: Ne
       if (e instanceof Error && /rate plan not found/i.test(e.message)) return NextResponse.json({ error: 'Rate plan not found' }, { status: 404 });
       // Нуль і відʼємне — не ціна (2.0): названа відмова, екран її перекладає.
       if (e instanceof Error && e.message === 'price_not_positive') return NextResponse.json({ error: 'price_not_positive' }, { status: 400 });
+      // Мінімум ночей менший за одиницю — те саме, що нуль у ціні: названа
+      // відмова, а не запис (рецензія 07.09 раунд 3, правка 1.1).
+      if (e instanceof Error && e.message === 'min_stay_invalid') return NextResponse.json({ error: 'min_stay_invalid' }, { status: 400 });
       throw e;
     }
 

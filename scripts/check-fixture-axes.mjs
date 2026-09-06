@@ -299,6 +299,14 @@ const AXES = [
     axis: 'змінене поле проти незмінного в тілі редактора дня',
     distinct: /base_price: (\d+)/g, min: 2,
   },
+  // Сцена 14: з одним лише нулем твердження «нуль відмовляє» зелене й у
+  // писача, який відмовляє ВСЬОМУ (рецензія 07.09 раунд 3, правка 1.1).
+  {
+    file: 'src/modules/pricing/data/price-calendar.repo.check.ts',
+    axis: 'мінімум ночей: заборонене значення проти дозволеного (сцена 14)',
+    scope: /\/\/ ── 14\. Мінімум ночей[\s\S]*?(?=\n {2}console\.log\('price-calendar)/,
+    distinct: /min_stay: (-?\d+)/g, min: 2,
+  },
   {
     file: 'src/modules/pricing/data/price-calendar.repo.check.ts',
     axis: 'мінімум пари проти мінімуму типу в сцені 13 (витік у тип)',

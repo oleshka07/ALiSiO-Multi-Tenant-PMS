@@ -44,6 +44,20 @@ function assertPositivePrice(value: unknown): void {
   if (!Number.isFinite(n) || n <= 0) throw new Error('price_not_positive');
 }
 
+/**
+ * Мінімум ночей — ціле від одиниці. Той самий клас, що нуль у ціні:
+ * очищене поле форми дає `Number('') === 0`, і нуль поїхав би в канал
+ * як `min_stay_arrival: 0` — число, якого готель не називав (рецензія
+ * 07.09 раунд 3, правка 1.1). `null` сюди не потрапляє: для пари це «як у
+ * типу», і його пропускає перевірка на `undefined`/`null` вище за текстом.
+ * «Не продавати» — це «Закрито», а не нуль ночей.
+ */
+function assertMinStay(value: unknown): void {
+  if (value === undefined || value === null) return;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 1) throw new Error('min_stay_invalid');
+}
+
 export interface PriceCalendarOptions {
   /** Ціна ТАРИФУ на дату (П2): рядок з `rate_plan_id`, не базовий. */
   ratePlanId?: string;
@@ -404,7 +418,7 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
     const dates = prices.map((p) => p.date).sort();
     // Відмова ДО дверей і до першого рядка: нуль не має ні записатись, ні
     // покласти координату в чергу.
-    for (const p of prices) { assertPositivePrice(p.base_price); assertPositivePrice(p.weekend_price); }
+    for (const p of prices) { assertPositivePrice(p.base_price); assertPositivePrice(p.weekend_price); assertMinStay(p.min_stay); }
 
     // Що лежало ДО запису — для масок (Блок 0.5): базові рядки завжди (там
     // обмеження, і для тарифу — успадкована ціна) і, для тарифу, його власні.
@@ -559,6 +573,7 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
 
   assertPositivePrice(input.base_price);
   assertPositivePrice(input.weekend_price);
+  assertMinStay(input.min_stay);
 
   await sql.tx(async (t) => {
     // Канали — в тій самій транзакції, одним діапазоном (див. upsertPrices);

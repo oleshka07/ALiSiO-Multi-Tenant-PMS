@@ -319,6 +319,36 @@ try {
   }
   console.log('  ok  редактор дня: незмінене не називається, власне обмеження пари не витікає в тип і на сусідній тариф');
 
+  // ── 14. Мінімум ночей менший за одиницю — не число, а відмова ─────────
+  //
+  // Рецензія 07.09 раунд 3, правка 1.1. Очищене поле «Мін. ночей» дає
+  // `Number('') === 0`, а `min={1}` стереже лише стрілки; ні хендлер, ні
+  // писач нуля не відкидали — у тіло до каналу поїхав би
+  // `min_stay_arrival: 0`, число, якого готель не називав. Це той самий
+  // клас, що нуль у ціні (05.09, бета): «не продавати» — це «Закрито».
+  //
+  // Осі (інваріант 26): 0 відмовляє, 1 записується — і числа несумісні,
+  // «відмовляє завжди» вбило б другу половину сцени.
+  await runWithOrganization(A, () => assert.rejects(
+    () => upsertPrices(UT(A), [{ date: D1, min_stay: 0 }]),
+    /min_stay_invalid/, 'нуль ночей — відмова з назвою, а не запис',
+  ));
+  await runWithOrganization(A, () => assert.rejects(
+    () => bulkUpdatePrices({ unitTypeId: UT(A), dateFrom: D1, dateTo: D2, min_stay: 0 }),
+    /min_stay_invalid/, 'масовий редактор — так само',
+  ));
+  await runWithOrganization(A, () => assert.rejects(
+    () => upsertPrices(UT(A), [{ date: D1, min_stay: -3 }], { ratePlanId: BB(A) }),
+    /min_stay_invalid/, 'відʼємне на парі — теж відмова',
+  ));
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, min_stay: 1 }]));
+  assert.strictEqual((await quote(A, BAR(A), D1)).restrictions.minStay, 1, 'одиниця — законне значення й записується');
+  // `null` — це «як у типу», не «нуль»: скидання власного обмеження пари
+  // мусить проходити повз варту.
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, min_stay: null }], { ratePlanId: BB(A) }));
+  assert.strictEqual((await quote(A, BB(A), D1)).restrictions.minStay, 1, 'null на парі — успадкувати, а не відмова');
+  console.log('  ok  мінімум ночей: нуль і відʼємне — відмова з назвою, одиниця пишеться, null скидає');
+
   console.log('price-calendar: ціна тарифу на дату — своя, успадкована названа, чуже — відмова; ціни немає — NULL, нуль — відмова');
 } finally {
   await cleanup();

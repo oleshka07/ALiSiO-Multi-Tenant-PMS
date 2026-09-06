@@ -157,7 +157,12 @@ function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
           </div>
           <div className="form-group">
             <label className="form-label">{t('Мін. ночей')}</label>
-            <input className="form-input" type="number" value={minStay} onChange={e => setMinStay(Number(e.target.value))} min={1} max={30} disabled={inherit} />
+            {/* Очищене поле дає `Number('') === 0`, а `min={1}` стереже лише
+                стрілки — нуль поїхав би в канал як мінімум, якого готель не
+                називав (рецензія 07.09 раунд 3, правка 1.1). Писач таке вже
+                відхиляє (`min_stay_invalid`); тут — щоб оператор не бачив
+                відмови там, де він просто стер поле. */}
+            <input className="form-input" type="number" value={minStay} onChange={e => setMinStay(Math.max(1, Number(e.target.value) || 1))} min={1} max={30} disabled={inherit} />
           </div>
           <div className="form-row" style={{ gap: 16 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
@@ -197,7 +202,7 @@ function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
                 <span>
                   {t('Як у типу')}
                   <span style={{ display: 'block', color: 'var(--text-tertiary)' }}>
-                    {t('Прибрати власні обмеження цього тарифу на цей день — далі діють значення типу номера')}
+                    {t('Прибрати власні обмеження цього тарифу на цей день, включно з максимумом ночей, якого в цій формі немає — далі діють значення типу номера')}
                   </span>
                 </span>
               </label>
@@ -617,7 +622,9 @@ export default function PricingPage() {
         const body = await res.json().catch(() => ({}));
         showToast(body?.error === 'price_not_positive'
           ? t('Ціна має бути більшою за нуль. Щоб не продавати день, поставте «Закрито»')
-          : t('Не вдалося зберегти'));
+          : body?.error === 'min_stay_invalid'
+            ? t('Мінімум ночей — від однієї. Щоб не продавати день, поставте «Закрито»')
+            : t('Не вдалося зберегти'));
       }
     } catch (e) { console.error(e); }
   };
@@ -638,7 +645,9 @@ export default function PricingPage() {
       } else {
         showToast(result?.error === 'price_not_positive'
           ? t('Ціна має бути більшою за нуль. Щоб не продавати день, поставте «Закрито»')
-          : t('Не вдалося зберегти'));
+          : result?.error === 'min_stay_invalid'
+            ? t('Мінімум ночей — від однієї. Щоб не продавати день, поставте «Закрито»')
+            : t('Не вдалося зберегти'));
       }
     } catch (e) { console.error(e); }
   };
