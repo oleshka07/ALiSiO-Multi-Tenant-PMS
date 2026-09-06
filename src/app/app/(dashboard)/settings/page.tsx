@@ -18,7 +18,7 @@ import { hasPermission, type Permission } from '@core/auth/permissions';
 import Link from 'next/link';
 import {
   Building2, BedDouble, Users, Settings as SettingsIcon, ChevronRight, Globe, LinkIcon, UserCheck,
-  Code2, Sparkles, Receipt, Users2, Coffee, CreditCard, Tag, Palette, Layers, CalendarRange, Baby, Percent } from 'lucide-react';
+  Code2, Sparkles, Receipt, Users2, Coffee, CreditCard, Tag, Palette, Layers, CalendarRange, Baby, Percent, Coins } from 'lucide-react';
 
 interface SettingsLink {
   title: string;
@@ -39,6 +39,8 @@ const GROUPS: { title: string; desc: string; items: SettingsLink[] }[] = [
       { title: 'Загальні налаштування', desc: 'Організація, реквізити, часова зона, валюта, контакти', icon: <SettingsIcon size={22} />, href: '/app/settings/general', color: 'purple' },
       { title: "Обʼєкти", desc: 'Адреса, час заїзду та виїзду, туристичний збір кожного обʼєкта', icon: <Building2 size={22} />, href: '/app/settings/properties', color: 'blue' },
       { title: 'Типи номерів і номери', desc: 'Місткість, базова заселеність, номери й їхній стан', icon: <BedDouble size={22} />, href: '/app/settings/units', color: 'blue' },
+      { title: 'Валюти', desc: 'У чому ведеться облік і в чому ще показуються суми — з курсом, який фіксує готель', icon: <Coins size={22} />, href: '/app/settings/currencies', color: 'green' },
+      { title: 'Зручності', desc: 'Що є в готелі і що є в номерах — один словник на сайт, гостьову сторінку і канали', icon: <Sparkles size={22} />, href: '/app/settings/amenities', color: 'blue' },
       { title: 'Послуги', desc: 'Сніданок, паркінг, трансфер — ціни та доступність', icon: <Sparkles size={22} />, href: '/app/settings/services', color: 'orange' },
       { title: 'Оплати', desc: 'Способи оплати на рецепції та шлюз онлайн-оплати', icon: <CreditCard size={22} />, href: '/app/settings/payments', color: 'green' },
       { title: 'Фактурування', desc: 'Ставки ПДВ, серії нумерації, бланк документа', icon: <Receipt size={22} />, href: '/app/settings/invoicing', color: 'orange', feature: 'invoicing' },

@@ -139,10 +139,76 @@ console.log('  ok  ручний курс лягає з тією ж точніс�
 // Спокуса тримати ручний курс колонкою в organization_currencies велика. Два
 // джерела курсу розходяться так само тихо, як чотири цикли по днях колись
 // давали чотири різні ціни за ніч (інваріант 16).
-const migration = fs.readFileSync(
-  'db/postgres/migrations/0041-a-hotel-keeps-its-own-money.sql', 'utf8');
-assert.ok(!/\brate\b\s+NUMERIC/i.test(migration),
-  'в organization_currencies зʼявилась колонка курсу — курс живе в finance_exchange_rates, і лише там');
+//
+// Читаються ВСІ міграції, а не одна.
+//
+// Тут стояв рівно файл `0041`, і це трималось на прозі, а не на гейті:
+// міграцію `0112` він не побачив би взагалі. До того ж регулярка
+// `\brate\b` не спрацьовує на `fixed_rate` — межі слова перед `rate` там
+// немає. Тобто рішення §2.2.1 стерегли слова «курс живе лише в
+// finance_exchange_rates», а перевіряв гейт зовсім інше (О7, рецензія раунду
+// 4). Тепер: будь-яка міграція, яка додає до `organization_currencies`
+// колонку, чиє ІМʼЯ МІСТИТЬ `rate`, валить збірку.
+//
+// Саме «містить», а не «закінчується на»: перша редакція цієї правки брала
+// `\b\w*rate\b`, тобто лише суфікс, і `rate_manual NUMERIC(18,8)` проходив
+// повз неї (рецензія раунду 6, п. 3.5). Три названі написання — це не сімʼя,
+// а три приклади; сімʼя — це слово `rate` де завгодно в імені. Перебір у цей
+// бік дешевий: хибне спрацювання видно тому, хто пише міграцію, і воно
+// коштує одного перейменування, а пропуск коштує другого джерела курсу.
+const RATE_COLUMN = /\b\w*rate\w*\b\s+(NUMERIC|DECIMAL|REAL|DOUBLE|FLOAT|INTEGER)/i;
+const MIGRATIONS_DIR = 'db/postgres/migrations';
+const rateColumnInCurrencies: string[] = [];
+for (const file of fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort()) {
+  const text = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+  // Прибираємо коментарі: міграція має право ПОЯСНЮВАТИ, чому такої колонки
+  // немає, і пояснення не мусить валити гейт (AGENTS §4).
+  const code = text.replace(/^\s*--.*$/gm, '');
+  // Область — сама таблиця: `ALTER TABLE organization_currencies …` до
+  // наступного `;`, і `CREATE TABLE organization_currencies (…)`.
+  for (const m of code.matchAll(/(?:ALTER|CREATE)\s+TABLE[^;]*?organization_currencies[\s\S]*?;/gi)) {
+    if (RATE_COLUMN.test(m[0])) rateColumnInCurrencies.push(file);
+  }
+}
+assert.deepStrictEqual(rateColumnInCurrencies, [],
+  'в organization_currencies зʼявилась колонка, чиє імʼя містить rate — '
+  + 'курс живе в finance_exchange_rates, і лише там (ARCHITECTURE §2.2.1, О7). '
+  + `Знайдено в: ${rateColumnInCurrencies.join(', ')}`);
+// Те саме про дзеркало SQLite: колонка, дописана лише туди, обійшла б перевірку
+// міграцій і зʼявилась би в кожного розробника й у CI.
+//
+// Тіло `CREATE TABLE` береться з балансуванням дужок, а не лінивим `…?\)`:
+// перший же `)` у цій таблиці закриває `DEFAULT (lower(hex(randomblob(16))))`,
+// тож ліниве збігання читало б два рядки замість усієї таблиці й мовчало б на
+// колонці, дописаній нижче. `ALTER TABLE … ADD COLUMN` — окремо, бо в
+// SQLite-дзеркалі колонки часто додаються саме так (AGENTS §4).
+const schemaTs = fs.readFileSync('src/lib/db.ts', 'utf8');
+
+function tableBody(text: string, table: string): string[] {
+  const bodies: string[] = [];
+  const head = new RegExp(`CREATE\\s+TABLE(?:\\s+IF\\s+NOT\\s+EXISTS)?\\s+${table}\\s*\\(`, 'gi');
+  for (const m of text.matchAll(head)) {
+    let depth = 1;
+    let i = (m.index ?? 0) + m[0].length;
+    const from = i;
+    while (i < text.length && depth > 0) {
+      if (text[i] === '(') depth++;
+      else if (text[i] === ')') depth--;
+      i++;
+    }
+    bodies.push(text.slice(from, i));
+  }
+  return bodies;
+}
+
+for (const body of tableBody(schemaTs, 'organization_currencies')) {
+  assert.ok(!RATE_COLUMN.test(body),
+    'у дзеркалі SQLite organization_currencies дістала колонку курсу — те саме друге джерело істини');
+}
+for (const m of schemaTs.matchAll(/ALTER\s+TABLE\s+organization_currencies\s+ADD\s+COLUMN[^'"`;]*/gi)) {
+  assert.ok(!RATE_COLUMN.test(m[0]),
+    `курс дописано в organization_currencies через ALTER: ${m[0].trim()}`);
+}
 assert.ok(/INSERT INTO finance_exchange_rates/.test(currency),
   'ручний курс пишеться не у finance_exchange_rates — тобто в друге джерело істини');
 // Запис валют живе в core, а не в модулі. Храповик меж спіймав протилежне:

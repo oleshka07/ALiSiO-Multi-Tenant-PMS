@@ -1,4 +1,5 @@
 import { getSql } from '@core/db/async';
+import { unitColumnsSql } from './units.repo';
 
 /**
  * Every function here takes the caller's organization and constrains on it.
@@ -34,7 +35,21 @@ async function owns(organizationId: string, id: string): Promise<boolean> {
   return !!await sql.row<any>('SELECT 1 FROM properties WHERE id = ? AND organization_id = ?', [id, organizationId]);
 }
 
-export async function getPropertyById(organizationId: string, id: string) {
+/**
+ * Картка обʼєкта: сам обʼєкт, його категорії, типи номерів і номери.
+ *
+ * `secrets` — те саме, що в `listUnits`, і з тієї ж причини: список номерів
+ * тут другий у застосунку, а маршрут теж під `withActor`. Поки він брав
+ * номери зірочкою, покоївка отримувала звідси пароль мережі й код замка
+ * кожного номера — тобто правка, зроблена в одному списку, другого не
+ * стосувалась (рецензія раунду 6, п. 3.1). Обидва тепер беруть колонки з
+ * одного закритого переліку — `unitColumnsSql`.
+ */
+export async function getPropertyById(
+  organizationId: string,
+  id: string,
+  options: { secrets?: boolean } = {},
+) {
   const sql = getSql();
 
   const property = await sql.row<any>('SELECT * FROM properties WHERE id = ? AND organization_id = ?', [id, organizationId]);
@@ -61,9 +76,9 @@ export async function getPropertyById(organizationId: string, id: string) {
   `, [id]);
 
   const units = await sql.rows<any>(`
-    SELECT u.*,
-      ut.name as unit_type_name, ut.code as unit_type_code,
-      c.name as category_name, c.type as category_type, c.icon as category_icon, c.color as category_color
+    SELECT ${unitColumnsSql(options.secrets === true)}
+      ut.id as unit_type_id, ut.name as unit_type_name, ut.code as unit_type_code,
+      c.id as category_id, c.name as category_name, c.type as category_type, c.icon as category_icon, c.color as category_color
     FROM units u
     JOIN unit_types ut ON u.unit_type_id = ut.id
     JOIN categories c ON u.category_id = c.id

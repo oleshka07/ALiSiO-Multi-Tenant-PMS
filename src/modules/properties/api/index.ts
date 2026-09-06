@@ -51,8 +51,43 @@ export {
 
 export { listGuestPageConfigs } from './guest-page-configs.handlers';
 export { getGuestPageConfig, updateGuestPageConfig } from './guest-page-config.handlers';
+// Писач змісту гостьової сторінки на рівні типу. Двері потрібні, щоб ніхто
+// інший — навіть фікстура — не писав `guest_page_config` власним SQL: другий
+// писач робить таблицю «спільною», і три справжні пробої зникають зі звіту
+// меж як прогрес, якого не було (INC-018).
+export { upsertGuestPageConfig } from '../data/guest-page-config.repo';
 export { listPropertyGuestConfigs, updatePropertyGuestConfig } from './property-guest-config.handlers';
 export { uploadPhoto, deletePhoto } from './photos.handlers';
+
+// Зручності (Блок 5a, 2.2): довідник організації і два призначення — на
+// обʼєкт і на тип номера. Каталог сіється при заведенні готелю, тож двері
+// відкриті і для `core/provisioning`, і для екрана, і для гостьової сторінки.
+// Писачі репозиторію виходять під іншими іменами, ніж HTTP-обробники нижче:
+// `setPropertyAmenities` — це маршрут, `assignPropertyAmenities` — функція, і
+// плутати їх у фасаді означало б, що виклик із крона випадково піде через
+// маршрут із сесією.
+export {
+  seedAmenityCatalog,
+  ensureAmenityCatalog,
+  amenityCatalog,
+  propertyAmenities,
+  unitTypeAmenities,
+  setPropertyAmenities as assignPropertyAmenities,
+  setUnitTypeAmenities as assignUnitTypeAmenities,
+  createAmenity as defineAmenity,
+  createAmenityCategory as defineAmenityCategory,
+} from '../data/amenities.repo';
+export type { AmenityRow, AmenityCategoryRow } from '../data/amenities.repo';
+export type { AmenityScope } from '../domain/amenity-catalog';
+export {
+  listAmenities,
+  createAmenity,
+  listPropertyAmenities,
+  setPropertyAmenities,
+  listUnitTypeAmenities,
+  setUnitTypeAmenities,
+  amenityMatrix,
+} from './amenities.handlers';
 
 // Setup progress (MASTER-PLAN §1.4): маршрут для дашборда і функція для
 // платформної таблиці (та ходить по організаціях сама, у контексті кожної).

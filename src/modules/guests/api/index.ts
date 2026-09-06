@@ -60,6 +60,11 @@ export { searchGuests } from '../data/guest-search';
 // GDPR-ретенція: обидва крон-маршрути (guests/gdpr-cron і cron/gdpr-retention)
 // кличуть одну реалізацію, і саме через фасад — щоб маршрут не відкривав
 // нутрощі модуля.
+// Зміст гостьової сторінки, зібраний з трьох рівнів (обʼєкт → тип → номер).
+// Двері потрібні власнику таблиці `guest_page_config`: його перевірка рівнів
+// має кликати резолвер, не заглядаючи в нутрощі модуля.
+export { getGuestPageConfig } from '../data/guest-portal.repo';
+
 export { anonymizeOldRegistrations } from '../data/registration.repo';
 export type { RetentionRunResult } from '../data/registration.repo';
 

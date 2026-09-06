@@ -109,7 +109,21 @@ export async function syncCnbRates(
   // кабінету, де орендар уже на місці.
   const oid = opts.organizationId ?? await orgId();
   if (!oid) throw new Error('No organization found');
-  const want = (opts.currencies || DEFAULT_CNB_CURRENCIES).map(c => c.toUpperCase());
+  const asked = (opts.currencies || DEFAULT_CNB_CURRENCIES).map(c => c.toUpperCase());
+
+  // Валюта, курс якої готель зафіксував САМ, банком не оновлюється.
+  //
+  // Це і є «фіксований курс на сайті» з П19, і тримається воно тут, ДО
+  // запису: інакше нічний прохід щоразу переписував би число, яке готель
+  // назвав удень, і на вітрині зʼявлялась би ціна за курсом, якого він не
+  // називав. Порожній перелік оголошених валют нічого не забороняє —
+  // готель, який їх не заводив, отримує старий набір за замовчуванням.
+  const declared = await runWithOrganization(oid, async () =>
+    await getSql().rows<{ code: string; rate_source: string }>(
+      'SELECT code, rate_source FROM organization_currencies WHERE organization_id = ?', [oid]));
+  const fixedByHotel = new Set(
+    declared.filter((d) => String(d.rate_source) !== 'cnb').map((d) => String(d.code).toUpperCase()));
+  const want = asked.filter((c) => !fixedByHotel.has(c));
 
   // Фіксинг можна передати ззовні: крон тягне його ОДИН раз і роздає по
   // готелях. Інакше сотня готелів — сотня однакових запитів до ČNB за той

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as unitsRepo from '../data/units.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
+import { hasPermission } from '@core/auth/permissions';
 import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 
 /**
@@ -14,11 +15,20 @@ type IdParams = { params: Promise<{ id: string }> };
 export const listUnits = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const { searchParams } = new URL(request.url);
+    // Секрети номера — лише тому, хто керує фондом.
+    //
+    // Маршрут лишається під `withActor`, бо його читають екрани зміни:
+    // мобільний чекліст покоївки, календар, картка броні. Але роль
+    // `housekeeper` має рівно одне право (`nav:dashboard`), і пароль мережі з
+    // кодом замка в тій відповіді — це ключ від дверей гостя в телефоні
+    // кожного, хто ввійшов. Тому не 403 на весь список, а список без секретів:
+    // відмовити цілком означало б зламати чотири робочі екрани заради двох
+    // полів, яких вони не показують.
     const rows = await unitsRepo.listUnits(actor.organizationId, {
       category: searchParams.get('category') || undefined,
       unitType: searchParams.get('unitType') || undefined,
       includePool: searchParams.get('include_pool') === '1',
-    });
+    }, { secrets: hasPermission(actor.user.permissions, 'manage_properties') });
     return NextResponse.json(rows);
   } catch (error) {
     console.error('GET /api/units error:', error);
@@ -78,7 +88,8 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
       return NextResponse.json({ created: created.length, items: created }, { status: 201 });
     }
 
-    const { unit_type_id, category_id, name, code, floor, zone, beds, notes, sort_order } = body;
+    const { unit_type_id, category_id, name, code, floor, zone, beds, notes, sort_order,
+      view, wifi_network, wifi_password, lock_code } = body;
 
     if (!unit_type_id || !category_id || !name || !code) {
       return NextResponse.json({ error: 'unit_type_id, category_id, name and code are required' }, { status: 400 });
@@ -86,6 +97,7 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
 
     const unit = await unitsRepo.createUnit(actor.organizationId, {
       unit_type_id, property_id, category_id, name, code, floor, zone, beds, notes, sort_order,
+      view, wifi_network, wifi_password, lock_code,
     });
     if (!unit) return NextResponse.json({ error: 'Property, category, unit type or building not found' }, { status: 404 });
     return NextResponse.json(unit, { status: 201 });

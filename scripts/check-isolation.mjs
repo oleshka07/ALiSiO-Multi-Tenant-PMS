@@ -93,6 +93,11 @@ async function cleanup() {
   // The app creates this table on first boot; cleanup may run against a
   // database the new code has not touched yet.
   try { await sql.run('DELETE FROM organization_features WHERE organization_id LIKE ?', [`${TAG}%`]); } catch { /* not yet migrated */ }
+  // Зручності: призначення перед каталогом, каталог перед організацією —
+  // зовнішні ключі ON.
+  for (const table of ['unit_type_amenities', 'property_amenities', 'amenities', 'amenity_categories']) {
+    try { await sql.run(`DELETE FROM ${table} WHERE organization_id LIKE ?`, [`${TAG}%`]); } catch { /* not yet migrated */ }
+  }
   await sql.run('DELETE FROM guests WHERE organization_id LIKE ?', [`${TAG}%`]);
   await sql.run('DELETE FROM app_users WHERE organization_id LIKE ?', [`${TAG}%`]);
   await sql.run('DELETE FROM sessions WHERE user_id LIKE ?', [`${TAG}%`]);
@@ -461,6 +466,124 @@ async function main() {
     assert.ok(unitARes.ok, `A could not create a unit: ${unitARes.status} ${await unitARes.clone().text()}`);
     const aUnit = await unitARes.json();
     assert.ok(aUnit?.id, `no unit id came back for A: ${JSON.stringify(aUnit).slice(0, 200)}`);
+
+    // ── Wi-Fi and the door code OF THE ROOM (Блок 5a, 2.1) ───────────────
+    // The same secrets as the two guest-page tables above, one level lower:
+    // a room's own network and lock code beat the type's and the property's,
+    // so this is where a hotel puts the code that actually opens a door.
+    // Read by the wrong tenant it is not a settings leak — it is entry.
+    const unitSecretsA = await call(cookieA, `/api/units/${aUnit.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        view: 'Blick auf den Hof', wifi_network: 'A-Room-Net',
+        wifi_password: 'a-room-secret', lock_code: 'A-1234#',
+      }),
+    });
+    assert.ok(unitSecretsA.ok, `A could not save its own room's wi-fi and lock code: ${unitSecretsA.status}`);
+    const savedA = await sql.row(
+      'SELECT view, wifi_network, wifi_password, lock_code FROM units WHERE id = ?', [aUnit.id]);
+    assert.strictEqual(savedA?.wifi_password, 'a-room-secret',
+      "A's own room wi-fi password did not reach the row — the field is displayed and silently dropped");
+    assert.strictEqual(savedA?.view, 'Blick auf den Hof', "A's own room view did not reach the row");
+
+    const unitListB = await (await call(cookieB, '/api/units')).json();
+    assert.ok(Array.isArray(unitListB) && !unitListB.some((u) => u.id === aUnit.id),
+      "B's unit list contains A's room — with the code that opens its door in it");
+
+    const unitPatchB = await call(cookieB, `/api/units/${aUnit.id}`, {
+      method: 'PATCH', body: JSON.stringify({ wifi_password: 'stolen', lock_code: '0000#' }),
+    });
+    assert.ok([403, 404].includes(unitPatchB.status),
+      `B rewrote A's room wi-fi and lock code: ${unitPatchB.status}`);
+    const afterB = await sql.row(
+      'SELECT wifi_password, lock_code FROM units WHERE id = ?', [aUnit.id]);
+    assert.strictEqual(afterB?.wifi_password, 'a-room-secret', "B's write reached A's room wi-fi password");
+    assert.strictEqual(afterB?.lock_code, 'A-1234#', "B's write reached A's door code");
+    console.log("  ok  B can neither read nor rewrite A's room wi-fi and door code");
+
+    // ── І та сама відповідь СВОЄМУ, але без права (рецензія 4, п. 2.1) ───
+    //
+    // Друга вісь, якої тут не було: сусід — не єдиний, від кого ці два поля
+    // закриті. `/api/units` читають екрани зміни (мобільний чекліст покоївки,
+    // календар, картка броні), а роль `housekeeper` має рівно одне право —
+    // `nav:dashboard`. Пароль мережі й код замка в тій відповіді це ключ від
+    // дверей гостя в телефоні кожного, хто ввійшов.
+    const maidId = `${TAG}maid_a`;
+    await sql.run(
+      'INSERT INTO app_users (id, organization_id, email, full_name, role, password_hash) VALUES (?, ?, ?, ?, ?, ?)',
+      [maidId, a.orgId, 'maid@isolation.test', 'Probe maid', 'housekeeper', PROBE_HASH]);
+    const cookieMaid = await login({ email: 'maid@isolation.test', password: PROBE_PASSWORD });
+    const maidUnits = await (await call(cookieMaid, '/api/units')).json();
+    assert.ok(Array.isArray(maidUnits) && maidUnits.some((u) => u.id === aUnit.id),
+      'покоївка не бачить номерів свого готелю — список їй потрібен для роботи');
+    for (const u of maidUnits) {
+      assert.ok(!('wifi_password' in u), 'у списку номерів для ролі без manage_properties є пароль мережі');
+      assert.ok(!('lock_code' in u), 'у списку номерів для ролі без manage_properties є код замка');
+    }
+    // А власник — бачить: інакше екран налаштувань не покаже того, що редагує.
+    const ownerUnits = await (await call(cookieA, '/api/units')).json();
+    const mine = (ownerUnits || []).find((u) => u.id === aUnit.id);
+    assert.strictEqual(mine?.wifi_password, 'a-room-secret',
+      'власник не бачить пароля мережі свого номера — екран налаштувань показує порожнє поле');
+    assert.strictEqual(mine?.lock_code, 'A-1234#', 'власник не бачить коду замка свого номера');
+
+    // Другі двері до того самого списку (рецензія 6, п. 3.1).
+    //
+    // Правка 2.1 закрила `/api/units` — і рівно його, бо твердження питало
+    // рівно його. `GET /api/properties/[id]` віддає номери окремим запитом
+    // (`SELECT u.*`), теж під `withActor`, і покоївка отримувала там пароль
+    // мережі й код замка КОЖНОГО номера. Тому вісь тепер називає обидва
+    // маршрути: гейт, який стереже один зі списків, доводить не «секрет
+    // закрито», а «закрито в тому місці, куди я подивилась».
+    const maidProperty = await (await call(cookieMaid, `/api/properties/${propA.id}`)).json();
+    assert.ok(Array.isArray(maidProperty?.units) && maidProperty.units.length > 0,
+      'покоївка не бачить номерів обʼєкта — картка обʼєкта потрібна їй для роботи');
+    for (const u of maidProperty.units) {
+      assert.ok(!('wifi_password' in u), 'у картці обʼєкта для ролі без manage_properties є пароль мережі');
+      assert.ok(!('lock_code' in u), 'у картці обʼєкта для ролі без manage_properties є код замка');
+      assert.ok(!('wifi_network' in u), 'у картці обʼєкта для ролі без manage_properties є назва мережі');
+    }
+    const ownerProperty = await (await call(cookieA, `/api/properties/${propA.id}`)).json();
+    const mineInProperty = (ownerProperty?.units || []).find((u) => u.id === aUnit.id);
+    assert.strictEqual(mineInProperty?.wifi_password, 'a-room-secret',
+      'власник не бачить пароля мережі в картці обʼєкта — екран налаштувань показує порожнє поле');
+    assert.strictEqual(mineInProperty?.lock_code, 'A-1234#',
+      'власник не бачить коду замка в картці обʼєкта');
+    // Те, чим картка обʼєкта живе, з переліку не зникло: закритий перелік
+    // помиляється в бік «порожнє поле на екрані», і це має бути видно тут.
+    for (const field of ['code', 'name', 'beds', 'room_status', 'is_active', 'category_id', 'unit_type_id']) {
+      assert.ok(field in (mineInProperty || {}),
+        `картка обʼєкта втратила поле ${field} — закритий перелік колонок звузили занадто`);
+    }
+    console.log('  ok  пароль мережі й код замка бачить лише manage_properties — в ОБОХ списках номерів');
+
+    // ── Зручності: словник організації (Блок 5a, 2.2) ───────────────────
+    // Каталог у кожного свій, з власними іменами рядків: спільні рядки
+    // означали б, що перейменування в одного готелю міняє слово в іншого, а
+    // «позначити все» одного — набір другого.
+    const amenCatA = await (await call(cookieA, '/api/amenities')).json();
+    const catBAll = await (await call(cookieB, '/api/amenities')).json();
+    const idsA = new Set((amenCatA || []).flatMap((c) => (c.amenities || []).map((a) => a.id)));
+    const idsB = new Set((catBAll || []).flatMap((c) => (c.amenities || []).map((a) => a.id)));
+    assert.ok(idsA.size > 0 && idsB.size > 0,
+      'каталог зручностей порожній — перше читання екрана його не досіяло (ensureAmenityCatalog)');
+    assert.ok([...idsB].every((id) => !idsA.has(id)),
+      "B's amenity catalogue shares rows with A's — renaming one hotel's word renames the other's");
+
+    // Своя зручність на ЧУЖИЙ обʼєкт і чужа — на свій: обидва id приходять із
+    // тіла запиту, і жоден із них не робить іншого своїм.
+    const ownOnForeign = await call(cookieB, `/api/properties/${propA.id}/amenities`, {
+      method: 'PUT', body: JSON.stringify({ amenity_ids: [[...idsB][0]] }),
+    });
+    assert.strictEqual(ownOnForeign.status, 404, `B assigned amenities to A's property: ${ownOnForeign.status}`);
+    const foreignOnOwn = await call(cookieB, `/api/properties/${propB.id}/amenities`, {
+      method: 'PUT', body: JSON.stringify({ amenity_ids: [[...idsA][0]] }),
+    });
+    assert.strictEqual(foreignOnOwn.status, 404, `B hung A's amenity on its own property: ${foreignOnOwn.status}`);
+    const leakedAssignment = await sql.row(
+      'SELECT COUNT(*) c FROM property_amenities WHERE property_id = ?', [propA.id]);
+    assert.strictEqual(Number(leakedAssignment.c), 0, "B's write reached A's property amenities");
+    console.log("  ok  B's amenity catalogue is its own, and neither id crosses the tenant line");
 
 
     // C11 — iCal channels. The rows carry the import URL a hotel got from its

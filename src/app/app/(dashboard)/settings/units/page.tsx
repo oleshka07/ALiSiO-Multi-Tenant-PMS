@@ -51,6 +51,11 @@ interface UnitFromAPI {
   base_occupancy: number;
   lock_code?: string;
   entry_photo_url?: string;
+  /** Блок 5a (0110): рівень НОМЕРА над типом і обʼєктом. */
+  floor?: number | null;
+  view?: string;
+  wifi_network?: string;
+  wifi_password?: string;
 }
 
 interface UnitTypeFromAPI {
@@ -160,7 +165,11 @@ export default function SettingsUnitsPage() {
   });
   const [bulkResult, setBulkResult] = useState('');
   const [editingUnit, setEditingUnit] = useState<UnitFromAPI | null>(null);
-  const [unitForm, setUnitForm] = useState({ name: '', code: '', beds: 0, zone: '', unit_type_id: '', room_status: 'available', cleaning_status: 'clean', lock_code: '', entry_photo_url: '' });
+  const [unitForm, setUnitForm] = useState({ name: '', code: '', beds: 0, zone: '', floor: '', view: '', wifi_network: '', wifi_password: '', unit_type_id: '', room_status: 'available', cleaning_status: 'clean', lock_code: '', entry_photo_url: '' });
+  // Пароль мережі й код замка показуються на вимогу, по номеру:
+  // таблиця відкрита на весь екран лобі, а право її редагувати має
+  // й той, хто стоїть до гостей спиною раз на зміну.
+  const [shownSecrets, setShownSecrets] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -267,6 +276,10 @@ export default function SettingsUnitsPage() {
       code: unit.code,
       beds: unit.beds,
       zone: unit.zone || '',
+      floor: unit.floor == null ? '' : String(unit.floor),
+      view: unit.view || '',
+      wifi_network: unit.wifi_network || '',
+      wifi_password: unit.wifi_password || '',
       unit_type_id: unit.unit_type_id,
       room_status: unit.room_status,
       cleaning_status: unit.cleaning_status,
@@ -344,6 +357,10 @@ export default function SettingsUnitsPage() {
         code: unitForm.code,
         beds: unitForm.beds,
         zone: unitForm.zone || null,
+        floor: unitForm.floor === '' ? null : Number(unitForm.floor),
+        view: unitForm.view || null,
+        wifi_network: unitForm.wifi_network || null,
+        wifi_password: unitForm.wifi_password || null,
         unit_type_id: unitForm.unit_type_id,
         room_status: unitForm.room_status,
         cleaning_status: unitForm.cleaning_status,
@@ -601,44 +618,83 @@ export default function SettingsUnitsPage() {
                         </div>
                       </div>
 
-                      {/* Units */}
-                      {!collapsedSub[sub.key] &&
-                        sub.units.map((unit) => (
-                          <div className="settings-tree-item" key={unit.id} style={{ paddingLeft: 56 }}>
-                            <div className="settings-tree-item-info">
-                              <div style={{
-                                width: 32, height: 32, borderRadius: 'var(--radius-sm)',
-                                background: 'var(--bg-tertiary)', display: 'flex',
-                                alignItems: 'center', justifyContent: 'center', fontSize: 14,
-                              }}>
-                                {group.categoryIcon || '🛏️'}
-                              </div>
-                              <div>
-                                <div style={{ fontWeight: 500, fontSize: 13 }}>{unit.name}</div>
-                                <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                                  {unit.code}
-                                  {unit.beds > 0 && ` · ${unit.beds} ${pluralUi(unit.beds, 'місць')}`}
-                                  {unit.zone && ` · ${unit.zone}`}
-                                  {unit.unit_type_name && ` · ${unit.unit_type_name}`}
-                                </div>
-                                {unit.lock_code && (
-                                  <div style={{ fontSize: 11, color: 'var(--accent-success)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                                    <Key size={10} /> {tUi('Код:')} {unit.lock_code}
-                                    {unit.entry_photo_url && <><Camera size={10} style={{ marginLeft: 6 }} /> {tUi('Фото')}</>}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="settings-tree-item-actions">
-                              <button className="btn btn-sm btn-ghost btn-icon" onClick={() => openEditUnit(unit)}>
-                                <Edit3 size={14} />
-                              </button>
-                              <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-danger)' }} onClick={() => openDeleteUnit(unit)}>
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                      {/* Номери типу — таблицею (Блок 5a, 2.1).
+                          Деревом їх було видно по одному рядку на номер, і
+                          поверх, вид, мережа й код замка в цей рядок не
+                          вміщались: готель на 40 номерів звіряв їх, відкриваючи
+                          сорок модалок. Пароль показується прихованим — його
+                          видно тим, хто вже має право редагувати фонд, але не
+                          через плече в лобі. */}
+                      {!collapsedSub[sub.key] && sub.units.length > 0 && (
+                        <div style={{ paddingLeft: 56, paddingRight: 12, overflowX: 'auto' }}>
+                          <table className="data-table" style={{ width: '100%', fontSize: 12 }}>
+                            <thead>
+                              <tr>
+                                <th style={{ textAlign: 'left' }}>{tUi('№')}</th>
+                                <th style={{ textAlign: 'left' }}>{tUi('Поверх')}</th>
+                                <th style={{ textAlign: 'left' }}>{tUi('Вид')}</th>
+                                <th style={{ textAlign: 'left' }}>{tUi('Wi-Fi мережа')}</th>
+                                <th style={{ textAlign: 'left' }}>{tUi('Wi-Fi пароль')}</th>
+                                <th style={{ textAlign: 'left' }}>{tUi('Код замка')}</th>
+                                <th style={{ textAlign: 'left' }}>{tUi('Зона')}</th>
+                                <th style={{ textAlign: 'left' }}>{tUi('Ліжка')}</th>
+                                <th style={{ textAlign: 'left' }}>{tUi('Активний')}</th>
+                                <th />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sub.units.map((unit) => (
+                                <tr key={unit.id}>
+                                  <td style={{ fontWeight: 500 }}>
+                                    {unit.name}
+                                    {unit.code !== unit.name && (
+                                      <span style={{ color: 'var(--text-tertiary)' }}> · {unit.code}</span>
+                                    )}
+                                  </td>
+                                  <td>{unit.floor ?? '—'}</td>
+                                  <td>{unit.view || '—'}</td>
+                                  <td>{unit.wifi_network || '—'}</td>
+                                  <td style={{ fontFamily: 'ui-monospace, monospace' }}>
+                                    {unit.wifi_password
+                                      ? (shownSecrets[unit.id]
+                                        ? unit.wifi_password
+                                        : <button
+                                          className="btn btn-sm btn-ghost"
+                                          style={{ padding: '0 4px', fontSize: 11 }}
+                                          onClick={() => setShownSecrets((p) => ({ ...p, [unit.id]: true }))}
+                                        >{tUi('показати')}</button>)
+                                      : '—'}
+                                  </td>
+                                  <td style={{ fontFamily: 'ui-monospace, monospace' }}>
+                                    {unit.lock_code
+                                      ? (shownSecrets[unit.id]
+                                        ? unit.lock_code
+                                        : <span style={{ color: 'var(--accent-success)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                          <Key size={10} />•••
+                                        </span>)
+                                      : '—'}
+                                    {unit.entry_photo_url && <Camera size={10} style={{ marginLeft: 6 }} />}
+                                  </td>
+                                  <td>{unit.zone || '—'}</td>
+                                  <td>{unit.beds > 0 ? unit.beds : '—'}</td>
+                                  {/* `is_active` приходить числом (SQLite) або
+                                      булевим (Postgres) — питаємо значення, а
+                                      не тип. */}
+                                  <td>{Number(unit.is_active) === 0 ? tUi('ні') : tUi('так')}</td>
+                                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                    <button className="btn btn-sm btn-ghost btn-icon" onClick={() => openEditUnit(unit)}>
+                                      <Edit3 size={14} />
+                                    </button>
+                                    <button className="btn btn-sm btn-ghost btn-icon" style={{ color: 'var(--accent-danger)' }} onClick={() => openDeleteUnit(unit)}>
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -696,6 +752,30 @@ export default function SettingsUnitsPage() {
             <div className="form-group">
               <label className="form-label">{tUi('Зона')}</label>
               <input className="form-input" value={unitForm.zone} onChange={(e) => setUnitForm((p) => ({ ...p, zone: e.target.value }))} placeholder={tUi('Напр.: східне крило')} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">{tUi('Поверх')}</label>
+              <input className="form-input" type="number" value={unitForm.floor} onChange={(e) => setUnitForm((p) => ({ ...p, floor: e.target.value }))} placeholder={tUi('Напр.: 2')} />
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">{tUi('Вид із вікна')}</label>
+              <input className="form-input" value={unitForm.view} onChange={(e) => setUnitForm((p) => ({ ...p, view: e.target.value }))} placeholder={tUi('Напр.: у двір')} />
+              <div className="form-hint">{tUi('Вид саме цього номера, словами. Вид для OTA — зручність типу.')}</div>
+            </div>
+          </div>
+          {/* Мережа номера перемагає мережу типу й обʼєкта, але тільки якщо
+              названі обидва поля: пароль від однієї мережі з назвою іншої —
+              це дзвінок на рецепцію о другій ночі. */}
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">{tUi('Wi-Fi мережа номера')}</label>
+              <input className="form-input" value={unitForm.wifi_network} onChange={(e) => setUnitForm((p) => ({ ...p, wifi_network: e.target.value }))} placeholder={tUi('Порожньо — мережа типу або обʼєкта')} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">{tUi('Wi-Fi пароль номера')}</label>
+              <input className="form-input" value={unitForm.wifi_password} onChange={(e) => setUnitForm((p) => ({ ...p, wifi_password: e.target.value }))} />
             </div>
           </div>
           <div className="form-row">

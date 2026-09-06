@@ -9,11 +9,50 @@ import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope'
  * written a hundred rooms into another tenant's property in one call.
  */
 
-export function listUnits(organizationId: string, filters: { category?: string; unitType?: string; includePool?: boolean } = {}) {
+/**
+ * Список номерів. `secrets` — чи входять у нього пароль мережі й код замка.
+ *
+ * За замовчуванням НЕ входять, і це не обережність, а вимога задачі: цей
+ * маршрут читають екрани зміни — мобільний чекліст покоївки, календар,
+ * картка броні, — і роль `housekeeper` має рівно одне право (`nav:dashboard`).
+ * Пароль мережі й код замка в тій відповіді — це ключ від дверей гостя в
+ * телефоні кожного, хто ввійшов.
+ *
+ * Повний список бачить лише `manage_properties`, тобто екран налаштувань, де
+ * ці поля й редагуються. `lock_code` лежав у відповіді ще до Блоку 5a — блок
+ * діру розширив паролем мережі, і закриває тепер обидві.
+ */
+/**
+ * Колонки номера, які взагалі виходять із модуля, — одним переліком.
+ *
+ * Один перелік, а не `u.*` у кожному запиті, і не тому що так охайніше.
+ * `SELECT u.*` віддає те, чого в ньому ще немає: колонка, додана міграцією,
+ * поїде клієнту тим самим днем, і ніхто цього не побачить. Саме так пароль
+ * мережі (0110) опинився у відповіді `/api/properties/[id]` для покоївки —
+ * список номерів там брався зірочкою, і правка `listUnits` його не
+ * стосувалася (рецензія раунду 6, п. 3.1).
+ *
+ * Тому перелік ЗАКРИТИЙ: нова колонка не з'являється у відповіді, поки її
+ * сюди не дописали. Забути дописати — видимий брак (порожнє поле на екрані),
+ * забути прибрати — тихий витік.
+ */
+export function unitColumnsSql(secrets: boolean): string {
+  return `
+      u.id, u.property_id, u.name, u.code, u.beds, u.zone, u.floor, u.room_status, u.cleaning_status, u.sort_order, u.is_active, u.is_pool, u.entry_photo_url,
+      u.view,
+      ${secrets ? 'u.wifi_network, u.wifi_password, u.lock_code,' : ''}`;
+}
+
+export function listUnits(
+  organizationId: string,
+  filters: { category?: string; unitType?: string; includePool?: boolean } = {},
+  options: { secrets?: boolean } = {},
+) {
   const sql = getSql();
+  const secrets = options.secrets === true;
   let query = `
     SELECT
-      u.id, u.property_id, u.name, u.code, u.beds, u.zone, u.room_status, u.cleaning_status, u.sort_order, u.is_active, u.is_pool, u.lock_code, u.entry_photo_url,
+      ${unitColumnsSql(secrets)}
       c.id as category_id, c.name as category_name, c.type as category_type, c.icon as category_icon, c.color as category_color,
       ut.id as unit_type_id, ut.name as unit_type_name, ut.code as unit_type_code, ut.max_adults, ut.base_occupancy
     FROM units u
@@ -56,6 +95,12 @@ export interface CreateUnitInput {
   beds?: number;
   notes?: string;
   sort_order?: number;
+  /** Вид із вікна ЦЬОГО номера, вільним текстом (0110). */
+  view?: string;
+  /** Мережа й пароль номера — рівень над типом і обʼєктом (0110). */
+  wifi_network?: string;
+  wifi_password?: string;
+  lock_code?: string;
 }
 
 /** Every id below arrives in the request body, so each is checked separately. */
@@ -89,12 +134,14 @@ export async function createUnit(organizationId: string, input: CreateUnitInput)
   const sql = getSql();
   const result = await sql.row<any>(
     `
-    INSERT INTO units (unit_type_id, property_id, category_id, name, code, floor, zone, beds, notes, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO units (unit_type_id, property_id, category_id, name, code, floor, zone, beds, notes, sort_order,
+                       view, wifi_network, wifi_password, lock_code)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING *`,
     [input.unit_type_id, input.property_id, input.category_id,
     input.name, input.code, intOr(input.floor, null), input.zone || null,
-    intOr(input.beds, 0), input.notes || null, intOr(input.sort_order, 0)],
+    intOr(input.beds, 0), input.notes || null, intOr(input.sort_order, 0),
+    input.view || null, input.wifi_network || null, input.wifi_password || null, input.lock_code || null],
   );
   // Канали: у типу побільшало номерів — на кожну ніч до горизонту.
   await noteAvailabilityChanged(sql, { propertyId: input.property_id, unitTypeId: input.unit_type_id, from: todayIso(), to: null });
@@ -193,7 +240,7 @@ export async function updateUnit(organizationId: string, id: string, fields: Rec
 
   const sql = getSql();
 
-  const nullableFields = ['floor', 'zone', 'notes', 'lock_code', 'entry_photo_url'];
+  const nullableFields = ['floor', 'zone', 'notes', 'lock_code', 'entry_photo_url', 'view', 'wifi_network', 'wifi_password'];
   for (const f of nullableFields) {
     if (fields[f] === '') fields[f] = null;
   }
@@ -203,7 +250,7 @@ export async function updateUnit(organizationId: string, id: string, fields: Rec
     if (fields[f] === '') delete fields[f];
   }
 
-  const allowed = ['name', 'code', 'unit_type_id', 'category_id', 'floor', 'zone', 'beds', 'room_status', 'cleaning_status', 'notes', 'sort_order', 'is_active', 'lock_code', 'entry_photo_url'];
+  const allowed = ['name', 'code', 'unit_type_id', 'category_id', 'floor', 'zone', 'beds', 'room_status', 'cleaning_status', 'notes', 'sort_order', 'is_active', 'lock_code', 'entry_photo_url', 'view', 'wifi_network', 'wifi_password'];
   const updates: string[] = [];
   const values: unknown[] = [];
 

@@ -155,6 +155,8 @@ const props = await import('../src/modules/properties/data/properties.repo.ts');
 const cats = await import('../src/modules/properties/data/categories.repo.ts');
 const types = await import('../src/modules/properties/data/unit-types.repo.ts');
 const units = await import('../src/modules/properties/data/units.repo.ts');
+const amenities = await import('../src/modules/properties/data/amenities.repo.ts');
+const currency = await import('../src/core/currency.ts');
 const pricing = await import('../src/modules/pricing/data/occupancy-price.repo.ts');
 const { priceNights } = await import('../src/modules/pricing/data/nightly-price.ts');
 
@@ -556,8 +558,118 @@ async function applyStructure(organizationId, plan) {
       property_id: property.id, category_id: ut.category_id, unit_type_id: ut.id,
       name: both(u, 'name') || code, code,
       floor: both(u, 'floor'), beds: Number(both(u, 'beds')) || 0, zone: both(u, 'zone'),
+      // Поля рівня НОМЕРА (0110): вид із вікна, своя мережа, свій код замка.
+      // Діапазон їх не має за побудовою — вид і код замка в кожного свої, а
+      // однакові на десять номерів вони не бувають.
+      view: both(u, 'view'),
+      wifi_network: both(u, 'wifiNetwork'),
+      wifi_password: both(u, 'wifiPassword'),
+      lock_code: both(u, 'lockCode'),
     });
     made ? say.made(label) : say.refused(label, 'відмовлено');
+  }
+
+  // ── зручності ─────────────────────────────────────────────────────────────
+  //
+  // Файл називає КОДИ каталогу, а не назви: назву готель міняє в себе, і
+  // прив'язка від цього не має розсипатись. Код, якого в каталозі немає, —
+  // названа відмова, а не тихий пропуск: інакше файл із трьома одруками
+  // застосовується «успішно», а на сайті порожньо.
+  //
+  // Набір ЗАМІНЮЄТЬСЯ цілком — як і на екрані: файл описує стан готелю, а не
+  // додає до нього. Повторний прогін дає той самий набір, тобто ідемпотентний.
+  if (plan.amenities) {
+    // Каталог міг ще не існувати: заведення готелю його не сіє (ядро не знає
+    // про модуль), а перший, хто його потребує, — саме цей файл.
+    await amenities.ensureAmenityCatalog(organizationId);
+    const catalog = await amenities.amenityCatalog(organizationId);
+    const byCode = new Map(catalog.flatMap((c) => c.amenities).map((a) => [a.code, a]));
+    const idsFor = (codes, label) => {
+      const ids = [];
+      for (const code of codes || []) {
+        const a = byCode.get(String(code));
+        if (!a) { say.refused(`${label}: ${code}`, 'такого коду немає в каталозі зручностей'); continue; }
+        ids.push(a.id);
+      }
+      return ids;
+    };
+
+    // «Той самий набір» звітується як `=`, а не `+`. Стан від повторного
+    // прогону не міняється в обох випадках, але звіт, який каже «зроблено» на
+    // прогоні, що нічого не зробив, привчає не читати звіт.
+    const sameSet = (a, b) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
+
+    const onProperty = plan.amenities.property || plan.amenities.object || [];
+    if (onProperty.length) {
+      const ids = idsFor(onProperty, 'зручність обʼєкта');
+      const before = (await amenities.propertyAmenities(organizationId, property.id)).map((a) => a.id);
+      if (DRY) say.made(`[суха] зручності обʼєкта: ${ids.length}`);
+      else if (sameSet(before, ids)) say.same(`зручності обʼєкта: ${ids.length}`);
+      else {
+        const saved = await amenities.setPropertyAmenities(organizationId, property.id, ids);
+        saved ? say.made(`зручності обʼєкта: ${saved.length}`) : say.refused('зручності обʼєкта', 'відмовлено');
+      }
+    }
+
+    for (const [typeCode, codes] of Object.entries(plan.amenities.unitTypes || plan.amenities.unit_types || {})) {
+      const ut = typeByCode.get(typeCode);
+      if (!ut) { say.refused(`зручності типу ${typeCode}`, 'такого типу у файлі не описано'); continue; }
+      const ids = idsFor(codes, `зручність типу ${typeCode}`);
+      const before = (await amenities.unitTypeAmenities(organizationId, ut.id)).map((a) => a.id);
+      if (DRY) { say.made(`[суха] зручності типу ${typeCode}: ${ids.length}`); continue; }
+      if (sameSet(before, ids)) { say.same(`зручності типу ${typeCode}: ${ids.length}`); continue; }
+      const saved = await amenities.setUnitTypeAmenities(organizationId, ut.id, ids);
+      saved ? say.made(`зручності типу ${typeCode}: ${saved.length}`) : say.refused(`зручності типу ${typeCode}`, 'відмовлено');
+    }
+  }
+
+  // ── валюти показу ─────────────────────────────────────────────────────────
+  //
+  // Файл описує СТАН: перелік замінюється цілком, як і на екрані. Курс —
+  // окремим рядком у `finance_exchange_rates` (інваріант «курс живе лише
+  // там», ARCHITECTURE §2.2.1), тож валюта без курсу заводиться, але нічого
+  // не показує — і це видно в звіті, а не мовчки.
+  if (plan.currencies) {
+    const list = Array.isArray(plan.currencies) ? plan.currencies : [];
+    const wanted = list
+      .map((c) => (typeof c === 'string' ? { code: c } : c))
+      .filter((c) => both(c, 'code'));
+
+    if (DRY) {
+      say.made(`[суха] валюти показу: ${wanted.length}`);
+    } else {
+      const before = (await currency.secondaryCurrencies(organizationId)).map((c) => `${c.code}:${c.rateSource}`);
+      const after = wanted.map((c) => `${String(both(c, 'code')).toUpperCase()}:${both(c, 'rateSource') === 'cnb' ? 'cnb' : 'manual'}`);
+      if (before.slice().sort().join() === after.slice().sort().join()) {
+        say.same(`валюти показу: ${after.length}`);
+      } else {
+        await currency.setSecondaryCurrencies(organizationId, wanted.map((c) => ({
+          code: String(both(c, 'code')).toUpperCase(),
+          rateSource: both(c, 'rateSource') === 'cnb' ? 'cnb' : 'manual',
+        })));
+        say.made(`валюти показу: ${after.length}`);
+      }
+
+      const base = await currency.organizationCurrency(organizationId);
+      for (const c of wanted) {
+        const code = String(both(c, 'code')).toUpperCase();
+        const raw = both(c, 'rate');
+        const source = both(c, 'rateSource') === 'cnb' ? 'cnb' : 'manual';
+        if (raw === undefined) {
+          say.same(source === 'cnb' ? `курс ${code}: тягне банк` : `курс ${code}: у файлі немає`);
+          continue;
+        }
+        const rate = Number(raw);
+        // Не «пропущено»: курс у файлі є, а числом він не є — далі його ніхто
+        // не введе, і гість побачить валюту без суми.
+        if (!Number.isFinite(rate) || rate <= 0) { say.refused(`курс ${code}`, `"${raw}" не додатне число`); continue; }
+        const date = String(both(c, 'rateDate') || new Date().toISOString().slice(0, 10));
+        const has = await currency.latestRate(organizationId, code, base, date);
+        if (has && Number(has.rate) === rate) { say.same(`курс ${code} = ${rate} ${base}`); continue; }
+        await currency.setManualRate(organizationId, code, base, rate, date);
+        say.made(`курс ${code} = ${rate} ${base} від ${date}`);
+      }
+    }
   }
 
   // ── правила каналів ───────────────────────────────────────────────────────

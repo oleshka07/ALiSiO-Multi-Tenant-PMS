@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { unitTypeAmenities } from '@properties';
 import { getSql } from '@core/db/async';
 import {
   resolveSections, isKnownSection,
@@ -186,11 +187,18 @@ export async function getGuestPageConfig(unitTypeId: string, propertyId: string,
   const sql = getSql();
   const unitTypeConfig = await sql.row<any>('SELECT * FROM guest_page_config WHERE unit_type_id = ?', [unitTypeId]) as any || null;
 
-  // Per-unit overrides (lock_code, entry_photo_url)
+  // Per-unit overrides (lock_code, entry_photo_url, view, wi-fi — 0110).
+  //
+  // Три рівні, і вони не рівноцінні: обʼєкт каже «як тут узагалі», тип —
+  // «як у таких номерах», номер — «як саме у цьому». Мережа й замок ЦЬОГО
+  // номера перемагають обидва верхні: в апарт-готелі мережа кімнатна, а код
+  // замка типу — це код, який не відчиняє двері гостя.
   let unitOverrides: any = null;
   if (unitId) {
     try {
-      unitOverrides = await sql.row<any>('SELECT lock_code, entry_photo_url FROM units WHERE id = ?', [unitId]) as any;
+      unitOverrides = await sql.row<any>(
+        'SELECT lock_code, entry_photo_url, view, wifi_network, wifi_password FROM units WHERE id = ?',
+        [unitId]) as any;
     } catch { /* columns may not exist yet */ }
   }
 
@@ -199,10 +207,31 @@ export async function getGuestPageConfig(unitTypeId: string, propertyId: string,
     propertyConfig = await sql.row<any>('SELECT * FROM property_guest_config WHERE property_id = ?', [propertyId]) as any || null;
   } catch { /* table may not exist yet */ }
 
-  const merged = !propertyConfig ? { ...unitTypeConfig } : {
+  /**
+   * Мережа береться ОДНИМ рівнем: назва й пароль разом або жодного (О2).
+   *
+   * Тут стояли два незалежні `||`, і готель, що вписав мережу на типі й не
+   * вписав пароль, віддавав гостю НАЗВУ ТИПУ З ПАРОЛЕМ ОБʼЄКТА. Гість вводить
+   * пароль, який не підходить, і о другій ночі дзвонить на рецепцію. Рівень
+   * номера це правило вже мав (нижче); тут його бракувало — рівно та
+   * ситуація, якою О2 і обґрунтоване.
+   */
+  const wifiFrom = (...levels: Array<{ wifi_network?: unknown; wifi_password?: unknown } | null | undefined>) => {
+    for (const level of levels) {
+      if (level?.wifi_network && level?.wifi_password) {
+        return { wifi_network: level.wifi_network, wifi_password: level.wifi_password };
+      }
+    }
+    return { wifi_network: null, wifi_password: null };
+  };
+
+  // `wifiFrom` і в гілці без обʼєкта: `property_guest_config` — рядок, а не
+  // обовʼязок, і поки цієї гілки правило не стосувалось, тип із самою назвою
+  // віддавав гостю назву без пароля (рецензія 6, п. 3.2). Правило одне на всі
+  // чотири шляхи, інакше воно не правило, а місце, де про нього згадали.
+  const merged = !propertyConfig ? { ...unitTypeConfig, ...wifiFrom(unitTypeConfig) } : {
     ...unitTypeConfig,
-    wifi_network: unitTypeConfig?.wifi_network || propertyConfig.wifi_network,
-    wifi_password: unitTypeConfig?.wifi_password || propertyConfig.wifi_password,
+    ...wifiFrom(unitTypeConfig, propertyConfig),
     restaurant_name: propertyConfig.restaurant_name,
     restaurant_hours: propertyConfig.restaurant_hours,
     restaurant_menu_url: propertyConfig.restaurant_menu_url,
@@ -232,6 +261,33 @@ export async function getGuestPageConfig(unitTypeId: string, propertyId: string,
   // Per-unit override: if unit has its own lock_code or entry_photo_url, use it
   if (unitOverrides?.lock_code) merged.lock_code = unitOverrides.lock_code;
   if (unitOverrides?.entry_photo_url) merged.entry_photo_url = unitOverrides.entry_photo_url;
+  // Рівень номера — тим самим правилом, що й два верхні: цілим або ніяк.
+  if (unitOverrides?.wifi_network && unitOverrides?.wifi_password) {
+    merged.wifi_network = unitOverrides.wifi_network;
+    merged.wifi_password = unitOverrides.wifi_password;
+  }
+  if (unitOverrides?.view) merged.unit_view = unitOverrides.view;
+
+  // Зручності типу — з довідника (Блок 5a, 2.2), а не з текстового поля.
+  //
+  // Старе `guest_page_config.amenities` лишається як є і показується далі:
+  // це вільний текст, який готель писав роками, і мовчки його втратити було б
+  // гірше, ніж мати два джерела на екрані. Нове поле окреме й називається
+  // інакше, тож сторінка показує «список» там, де він заповнений, і текст —
+  // де ні; переїзд одного в друге — крок гостьової сторінки, не цього блоку.
+  try {
+    const organizationId = (await sql.row<any>(
+      'SELECT organization_id FROM properties WHERE id = ?', [propertyId]) as any)?.organization_id;
+    if (organizationId) {
+      merged.amenity_list = await unitTypeAmenities(String(organizationId), unitTypeId);
+    }
+  } catch (e) {
+    // Сторінка гостя лишається живою і без списку — але мовчати не можна:
+    // «зручностей не назвали» і «запит зі зламаною колонкою» виглядали б для
+    // готелю однаково, а другого ніхто б не побачив ніколи (рецензія 07.09,
+    // 2.10). Деталь — у лог, гостю — просто сторінка без списку (інваріант 6).
+    console.error('[guest-portal] amenity list unavailable', e);
+  }
 
   return merged;
 }

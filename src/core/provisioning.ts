@@ -217,6 +217,19 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     for (const key of Object.keys(FEATURES) as FeatureKey[]) {
       await setFeature(organizationId, key, wanted.has(key) || featureDefault(key), t);
     }
+
+    // Каталог зручностей тут НЕ сіється, і це не пропуск.
+    //
+    // Перша редакція кликала звідси `seedAmenityCatalog` через фасад
+    // `@properties` — і зламала `scripts/provision-org.mjs`: той запускає цей
+    // файл голим node, без резолвера аліасів, тож заведення готеля падало на
+    // `Invalid module "@properties"`. Побачив це CI, не я: локально скрипт
+    // ніхто не кличе, а `npm run check` імпортує з аліасами.
+    //
+    // Урок ширший за одну помилку: ядро не має знати про модуль навіть через
+    // двері. Каталог досівається там, де він потрібен, — при першому читанні
+    // екрана (`ensureAmenityCatalog`) і в `apply-hotel`, — і це той самий
+    // шлях, яким його отримують готелі, заведені до 0111.
   }));
 
   return { organizationId, propertyId, ownerId, language };
