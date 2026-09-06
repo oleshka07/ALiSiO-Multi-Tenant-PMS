@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
+import { paymentStatusLabel } from '@/modules/bookings/ui/payment-status';
 import { getSql } from '@core/db/async';
 import { withPermission, type Actor } from '@core/auth/session';
 import ExcelJS from 'exceljs';
@@ -116,10 +117,10 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
       draft: 'Чернетка', tentative: 'Очікується', confirmed: 'Підтверджено',
       checked_in: 'Заселено', checked_out: 'Виселено',
     };
-    const PAYMENT_LABELS: Record<string, string> = {
-      unpaid: 'Не оплачено', payment_requested: 'Запит на оплату',
-      prepaid: 'Передплата', paid: 'Оплачено',
-    };
+    // Статуси оплати — зі спільного набору (`@bookings/ui/payment-status`);
+    // тутешня копія не знала `partial`, і у вивантаженні стояв сирий токен.
+    // `t()` тут не викликається навмисно: під `src/app/api` мова оператора не
+    // вирішує мову документа (`check-i18n-leak`), тож беруться самі слова.
     const METHOD_LABELS: Record<string, string> = {
       cash: 'Готівка', card: 'Картка', bank_transfer: 'Банк',
       invoice: 'Фактура', online: 'Онлайн', booking_platform: 'Платформа',
@@ -203,7 +204,7 @@ export const GET = await withPermission('view_reports', async (request: NextRequ
         status: STATUS_LABELS[row.status] || row.status || '',
         total_price: row.total_price || 0,
         currency: row.currency,
-        payment_status: PAYMENT_LABELS[row.payment_status] || row.payment_status || '',
+        payment_status: row.payment_status ? paymentStatusLabel(row.payment_status) : '',
         payment_method: getPaymentMethods(row.reservation_id),
         paid_amount: pay?.total || 0,
         commission: row.commission_amount || 0,

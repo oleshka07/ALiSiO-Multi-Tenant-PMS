@@ -1,6 +1,7 @@
 'use client';
 
 import { useT, usePlural } from '@core/i18n/client';
+import { paymentStatusLabel, paymentStatusLook } from '@/modules/bookings/ui/payment-status';
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/layout/Header';
@@ -72,12 +73,8 @@ const STATUS_MAP: Record<string, { label: string; badge: string }> = {
   cancelled: { label: 'Скасовано', badge: 'badge-danger' },
 };
 
-const PAYMENT_STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  unpaid: { label: 'Не оплачено', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
-  payment_requested: { label: 'Запит', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
-  prepaid: { label: 'Передплата', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
-  paid: { label: 'Оплачено', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
-};
+// Статуси оплати — зі спільного набору. Тутешня копія не знала `partial`, і на
+// картці гостя оператор бачив сирий токен замість слова.
 
 const DOC_TYPES: Record<string, string> = {
   passport: 'Паспорт',
@@ -857,10 +854,10 @@ function DesktopGuests({ initialSearch }: { initialSearch?: string }) {
                             <td>
                               <span style={{
                                 display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                                color: PAYMENT_STATUS_MAP[r.payment_status]?.color || '#888',
-                                background: PAYMENT_STATUS_MAP[r.payment_status]?.bg || 'rgba(128,128,128,0.1)',
+                                color: paymentStatusLook(r.payment_status).color,
+                                background: paymentStatusLook(r.payment_status).bg,
                               }}>
-                                {t(PAYMENT_STATUS_MAP[r.payment_status]?.label || r.payment_status)}
+                                {t(paymentStatusLabel(r.payment_status))}
                               </span>
                             </td>
                             <td style={{ fontWeight: 700 }}>{(r.total_price || 0).toLocaleString()} {r.currency}</td>

@@ -7071,14 +7071,42 @@ function runMigrations(database: any) {
   // має 67 колонок, накопичених ALTER-ами. Тому новий CREATE не переписується
   // руками — він БЕРЕТЬСЯ з бази і в ньому міняється рівно один CHECK: так
   // жодна колонка, дефолт чи зовнішній ключ не загубиться від перенабору.
-  // Далі — правило AGENTS §4: sql індексів зняти до підміни, повернути після,
-  // звірити лічильники рядків і індексів.
+  // Далі — домашній візерунок перебудови (`cm_mappings` вище, `accruals`):
+  // `PRAGMA foreign_keys = OFF` → `BEGIN` → … → `COMMIT` → `PRAGMA ON`, а в
+  // `catch` — `ROLLBACK` І ОБОВʼЯЗКОВО повернення прагми. Перша версія цього
+  // блоку транзакції не мала, і обрив на `INSERT` лишав `reservations_new`:
+  // застосунок після цього стартував, доходив до `migrations complete` — і
+  // обслуговував запити з `foreign_keys = 0`, бо прагму нікому було повернути.
+  // Кожен наступний старт повторював те саме, бо міграція вже не завершувалась.
+  // Індекси відтворюються через `IF NOT EXISTS` — з тієї ж причини.
   try {
+    // Прибирання за обірваною перебудовою ПЕРШИМ, і воно розрізняє два стани.
+    // `reservations_new` сам по собі — це або чернетка (оригінал ще на місці,
+    // її можна викидати), або ЄДИНА копія даних (обрив стався між `DROP` і
+    // `RENAME`). Сліпий `DROP TABLE IF EXISTS` знищив би другий випадок.
+    const hasTable = (name: string) => Boolean(database.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name));
+    if (hasTable('reservations_new')) {
+      if (hasTable('reservations')) {
+        database.exec('DROP TABLE reservations_new');
+        console.log('[DB] reservations_new: чернетку обірваної перебудови прибрано');
+      } else {
+        database.exec('ALTER TABLE reservations_new RENAME TO reservations');
+        console.log('[DB] reservations: відновлено з reservations_new після обірваної перебудови');
+      }
+    }
+
     const resSql = (database.prepare(
       "SELECT sql FROM sqlite_master WHERE type='table' AND name='reservations'",
     ).get() as { sql?: string } | undefined)?.sql ?? '';
     const narrow = /CHECK \(payment_status IN \([^)]*\)\)/.exec(resSql);
-    if (narrow && !narrow[0].includes("'partial'")) {
+    // Мовчання не можна плутати з «уже полагоджено»: якщо CHECK на цю колонку
+    // не знайшовся зовсім, це не «нічого робити не треба», це «я не впізнав
+    // схему». Скажи це вголос — інакше наступний читач лога впевнений, що
+    // міграція відпрацювала.
+    if (!narrow) {
+      console.warn('[DB] 0094: CHECK на payment_status не знайдено в схемі reservations — перебудову НЕ виконано');
+    } else if (!narrow[0].includes("'partial'")) {
       console.log('[DB] reservations: payment_status CHECK → + partial (0094) — перебудова зі збереженням індексів');
       const before = (database.prepare('SELECT COUNT(*) AS n FROM reservations').get() as { n: number }).n;
       const indexSql = (database.prepare(
@@ -7090,24 +7118,32 @@ function runMigrations(database: any) {
         .replace(/^CREATE TABLE\s+"?reservations"?/i, 'CREATE TABLE reservations_new');
       if (createNew === resSql) throw new Error('не вдалося перейменувати таблицю в CREATE — перебудову скасовано');
 
+      // Прагма — ПОЗА транзакцією: усередині SQLite її мовчки ігнорує.
       database.exec('PRAGMA foreign_keys = OFF');
+      database.exec('BEGIN');
       database.exec(createNew);
       const list = cols.map((c) => `"${c}"`).join(', ');
       database.exec(`INSERT INTO reservations_new (${list}) SELECT ${list} FROM reservations`);
       database.exec('DROP TABLE reservations');
       database.exec('ALTER TABLE reservations_new RENAME TO reservations');
-      for (const ix of indexSql) database.exec(ix);
-      database.exec('PRAGMA foreign_keys = ON');
-
+      for (const ix of indexSql) {
+        database.exec(ix.replace(/^CREATE\s+(UNIQUE\s+)?INDEX\s+/i, (m) => `${m}IF NOT EXISTS `));
+      }
+      // Звірка — ВСЕРЕДИНІ транзакції: інакше вона доповідає про втрату вже
+      // після того, як підміна зафіксована, і рятувати нічого.
       const after = (database.prepare('SELECT COUNT(*) AS n FROM reservations').get() as { n: number }).n;
       if (after !== before) throw new Error(`reservations rebuild lost rows: ${before} -> ${after}`);
       const restored = (database.prepare(
         "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='index' AND tbl_name='reservations' AND sql IS NOT NULL",
       ).get() as { n: number }).n;
-      if (restored !== indexSql.length) throw new Error(`reservations rebuild lost indexes: ${indexSql.length} -> ${restored}`);
+      if (restored < indexSql.length) throw new Error(`reservations rebuild lost indexes: ${indexSql.length} -> ${restored}`);
+      database.exec('COMMIT');
+      database.exec('PRAGMA foreign_keys = ON');
       console.log(`[DB] reservations rebuilt with payment_status 'partial' allowed (${after} rows, ${restored} indexes carried)`);
     }
   } catch (e: any) {
+    try { database.exec('ROLLBACK'); } catch { /* поза транзакцією */ }
+    database.exec('PRAGMA foreign_keys = ON');
     console.error('[DB] payment_status partial migration:', e.message);
   }
 

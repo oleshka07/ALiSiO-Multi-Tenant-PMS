@@ -113,9 +113,101 @@ try {
     for (const [v, look] of Object.entries(PAYMENT_STATUS_MAP)) {
       assert.ok(look.color.startsWith('var(--') && look.bg.startsWith('var(--'),
         `'${v}' пофарбовано літералом: у другій темі він лишиться кольором першої`);
+      assert.ok(look.icon && look.icon.trim(), `'${v}' без значка: у смузі планера й на чипах він лишиться порожнім`);
     }
-    console.log('  ok  кольори статусів — токени теми');
+    console.log('  ok  кольори статусів — токени теми, значок є в кожного');
+
+    // ── 6. РІВНІСТЬ, а не включення ──────────────────────────────────────
+    //
+    // Твердження 1 доводить лише «словник ⊆ дозволене»: значення, яке колонка
+    // дозволяє, а словник не знає, воно пропускає — а це рівно той дефект,
+    // від якого все почалось (`partial` жив у колонці нікому не відомий).
+    // Тому набір читається З ОЗНАЧЕННЯ CHECK і звіряється в обидва боки.
+    const ddl = await sql.row<{ sql: string }>(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='reservations'", []);
+    if (ddl?.sql) {
+      const m = /CHECK \(payment_status IN \(([^)]*)\)\)/.exec(ddl.sql);
+      assert.ok(m, 'CHECK на payment_status не знайдено — рівність множин недоведена');
+      const allowed = m![1].split(',').map((x) => x.trim().replace(/^'|'$/g, '')).filter(Boolean).sort();
+      const known = [...PAYMENT_STATUS_VALUES].sort();
+      assert.deepStrictEqual(allowed, known,
+        `колонка і словник розійшлися: база дозволяє [${allowed}], екран знає [${known}]`);
+      console.log(`  ok  множини РІВНІ: [${allowed.join(', ')}]`);
+    } else {
+      // Postgres-прогін (`check:pg`) читає каталог інакше; там рівність
+      // доводить `check-schema-drift`. Мовчати не можна — інакше зелень
+      // означала б «звірено», а насправді означала б «не дивився».
+      console.log('  (пропущено) не SQLite: рівність множин на Postgres тримає check-schema-drift');
+    }
   });
+
+  // ── 7. Жодного власного списку статусів поза словником ───────────────────
+  //
+  // Гейт вище звіряє базу зі словником, а не словник з його СПОЖИВАЧАМИ, і
+  // саме через це «усі копії переведено» було неправдою: у дереві лишались
+  // чотири власні списки, два з яких не знали `partial` (картка гостя і
+  // вивантаження CSV показували сирий токен). Тому — статичне твердження про
+  // вихідний код, як у `price-calendar.repo.check`.
+  //
+  // Форма словника впізнається за двома шаблонами: об'єктні ключі
+  // (`unpaid: { … }`) і пункти списку (`value="unpaid"`, `value: 'unpaid'`).
+  // Порівняння одного статусу в умові — не словник і не ловиться навмисно.
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+
+  /** Коментарі забілюються, а не вирізаються: номери рядків мають лишитись. */
+  const withoutComments = (src: string) => src
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
+
+  const DICT = 'src/modules/bookings/ui/payment-status.ts';
+  // Дві свідомі копії, і кожна з причиною, а не з недогляду:
+  const ALLOWED = new Map([
+    // Носій каталогу перекладів. Екстрактор рядків дістає літерали лише через
+    // МІСЦЕ РЕНДЕРУ в тому самому файлі, тож зі спільного модуля вони в
+    // catalogue.json не потрапляють узагалі — а це «100 % покриття» при
+    // українському слові на німецькому екрані. Список тут лишається навмисно
+    // і звіряється зі словником нижче, тож розійтися не може.
+    ['src/components/booking/BookingForm.tsx', 'носій каталогу перекладів, звіряється зі словником'],
+    // Чужа тека (задача §2.6: файл, названий чужим, не редагується). Передано
+    // у звіті рецензії 07.09 раунд 3, п. 2.2.
+    ['src/app/app/(dashboard)/sites/[siteId]/_components/BookingsTab.tsx', 'чужа тека — передано у звіті'],
+  ]);
+
+  const STATUSES = ['unpaid', 'payment_requested', 'partial', 'prepaid', 'paid'];
+  const walk = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) return e.name === 'node_modules' ? [] : walk(full);
+    return /\.tsx?$/.test(e.name) ? [full] : [];
+  });
+
+  const offenders: string[] = [];
+  for (const file of walk('src')) {
+    const rel = file.split(path.sep).join('/');
+    if (rel === DICT || ALLOWED.has(rel) || rel.endsWith('.check.ts')) continue;
+    const src = withoutComments(fs.readFileSync(file, 'utf8'));
+    const keys = new Set(STATUSES.filter((v) => new RegExp(`(^|[\\s{,])${v}\\s*:`, 'm').test(src)));
+    const options = new Set(STATUSES.filter((v) => new RegExp(`value\\s*[=:]\\s*['"\`]${v}['"\`]`).test(src)));
+    const shape = keys.size >= 3 ? 'словник' : options.size >= 3 ? 'список пунктів' : null;
+    if (shape) offenders.push(`${rel} — власний ${shape} статусів оплати (${[...(keys.size >= 3 ? keys : options)].join(', ')})`);
+  }
+  assert.deepStrictEqual(offenders, [],
+    `власний список статусів оплати поза ${DICT}:\n  ${offenders.join('\n  ')}`);
+  console.log(`  ok  власних списків статусів поза словником немає (2 свідомі винятки)`);
+
+  // ── 8. Носій каталогу не має права розійтися зі словником ────────────────
+  const carrier = fs.readFileSync('src/components/booking/BookingForm.tsx', 'utf8');
+  const block = /const PAYMENT_STATUS_OPTIONS[^=]*=\s*\[([\s\S]*?)\];/.exec(carrier);
+  assert.ok(block, 'у носія каталогу більше немає списку PAYMENT_STATUS_OPTIONS');
+  const carried = [...block![1].matchAll(/value:\s*'([^']+)',\s*label:\s*'([^']+)'/g)].map((m) => [m[1], m[2]]);
+  assert.deepStrictEqual(
+    carried.map(([v]) => v), [...PAYMENT_STATUS_VALUES],
+    'носій каталогу і словник мають різні НАБОРИ статусів');
+  for (const [v, label] of carried) {
+    assert.strictEqual(label, PAYMENT_STATUS_MAP[v as keyof typeof PAYMENT_STATUS_MAP].label,
+      `носій каталогу називає '${v}' інакше, ніж словник — у перекладі опиниться слово, якого екран не показує`);
+  }
+  console.log('  ok  носій каталогу перекладів слово в слово збігається зі словником');
 
   console.log('payment-status: база і екран знають той самий набір; «частково» зберігається і фільтрується');
 } finally {

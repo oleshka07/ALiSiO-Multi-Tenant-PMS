@@ -66,6 +66,12 @@ const PRIORITY_CFG: Record<string, { label: string; color: string }> = {
   urgent: { label: 'Терміновий', color: '#ef4444' },
 };
 
+// Імена параметрів у двох `.map` нижче РІЗНІ навмисно (`dateChip` /
+// `statusChip`). Екстрактор рядків веде походження константи за іменем
+// параметра без урахування області видимості, тож два `.map(chip => …)` в
+// одному файлі дають у каталозі літерали лише однієї з констант — і саме так
+// «Наст. 7 днів» не було ні в catalogue.json, ні в de.json, ні в cs.json:
+// німецький портьє бачив українське слово при заявлених 100 % покриття.
 const DATE_CHIPS = [
   { key: 'all',      label: 'Всі' },
   { key: 'today',    label: 'Сьогодні' },
@@ -821,14 +827,14 @@ export default function MobileTasks() {
 
       {/* Date filter chips */}
       <div className="m-chips">
-        {DATE_CHIPS.map(chip => (
+        {DATE_CHIPS.map(dateChip => (
           <button
-            key={chip.key}
-            className={`m-chip ${dateFilter === chip.key ? 'm-chip-active' : ''}`}
-            onClick={() => setDateFilter(chip.key)}
+            key={dateChip.key}
+            className={`m-dateChip ${dateFilter === dateChip.key ? 'm-dateChip-active' : ''}`}
+            onClick={() => setDateFilter(dateChip.key)}
           >
-            {tUi(chip.label)}
-            {chip.key === 'overdue' && overdue > 0 && (
+            {tUi(dateChip.label)}
+            {dateChip.key === 'overdue' && overdue > 0 && (
               <span style={{
                 marginLeft: 4, padding: '1px 6px', borderRadius: 8, fontSize: 9, fontWeight: 700,
                 background: 'rgba(239,68,68,0.2)', color: '#ef4444',
@@ -840,15 +846,15 @@ export default function MobileTasks() {
         ))}
       </div>
 
-      {/* Status filter chips */}
-      <div className="m-chips" style={{ marginTop: 2 }}>
-        {STATUS_CHIPS.map(chip => (
+      {/* Status filter dateChips */}
+      <div className="m-dateChips" style={{ marginTop: 2 }}>
+        {STATUS_CHIPS.map(statusChip => (
           <button
-            key={chip.key}
-            className={`m-chip ${statusFilter === chip.key ? 'm-chip-active' : ''}`}
-            onClick={() => setStatusFilter(chip.key)}
+            key={statusChip.key}
+            className={`m-statusChip ${statusFilter === statusChip.key ? 'm-statusChip-active' : ''}`}
+            onClick={() => setStatusFilter(statusChip.key)}
           >
-            {tUi(chip.label)}
+            {tUi(statusChip.label)}
           </button>
         ))}
       </div>

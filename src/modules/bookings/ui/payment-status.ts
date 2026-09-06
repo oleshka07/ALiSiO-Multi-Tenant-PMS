@@ -21,17 +21,24 @@ export interface PaymentStatusLook {
   label: string;
   color: string;
   bg: string;
+  /**
+   * Значок для тісних місць — смуга планера, чипи на телефоні. Він ТУТ, а не
+   * у кожного екрана свій: доки значки жили окремо, новий статус мовчки
+   * лишався порожнім кружечком, і саме так `partial` не мав значка в
+   * мобільному календарі.
+   */
+  icon: string;
 }
 
 export const PAYMENT_STATUS_MAP: Record<PaymentStatus, PaymentStatusLook> = {
-  unpaid: { label: 'Не оплачено', color: 'var(--accent-danger)', bg: 'var(--accent-danger-light)' },
-  payment_requested: { label: 'Запит на оплату', color: 'var(--accent-warning)', bg: 'var(--accent-warning-light)' },
+  unpaid: { label: 'Не оплачено', color: 'var(--accent-danger)', bg: 'var(--accent-danger-light)', icon: '✗' },
+  payment_requested: { label: 'Запит на оплату', color: 'var(--accent-warning)', bg: 'var(--accent-warning-light)', icon: '✉' },
   // «Частково» — гроші вже прийшли, але не всі: не червоне і не зелене.
   // Пише його фінансовий модуль (`recalcReservationPaymentStatus`) і
   // `POST /api/payments` з `type: deposit|partial`.
-  partial: { label: 'Частково оплачено', color: 'var(--accent-warning)', bg: 'var(--accent-warning-light)' },
-  prepaid: { label: 'Передплата', color: 'var(--accent-info)', bg: 'var(--accent-info-light)' },
-  paid: { label: 'Оплачено', color: 'var(--accent-success)', bg: 'var(--accent-success-light)' },
+  partial: { label: 'Частково оплачено', color: 'var(--accent-warning)', bg: 'var(--accent-warning-light)', icon: '◐' },
+  prepaid: { label: 'Передплата', color: 'var(--accent-info)', bg: 'var(--accent-info-light)', icon: '◓' },
+  paid: { label: 'Оплачено', color: 'var(--accent-success)', bg: 'var(--accent-success-light)', icon: '✓' },
 };
 
 /** Невідоме значення повертає себе, а не порожнечу: краще токен, ніж нічого. */
@@ -42,7 +49,8 @@ export function paymentStatusLabel(value: string | null | undefined): string {
 
 export function paymentStatusLook(value: string | null | undefined): PaymentStatusLook {
   const key = String(value ?? '') as PaymentStatus;
-  return PAYMENT_STATUS_MAP[key] ?? { label: String(value ?? ''), color: 'var(--text-tertiary)', bg: 'var(--bg-tertiary)' };
+  return PAYMENT_STATUS_MAP[key]
+    ?? { label: String(value ?? ''), color: 'var(--text-tertiary)', bg: 'var(--bg-tertiary)', icon: '●' };
 }
 
 /** Бронь, за яку заплачено не все: саме її шукає фільтр «частково». */

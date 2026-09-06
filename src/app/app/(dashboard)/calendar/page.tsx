@@ -1,6 +1,7 @@
 'use client';
 
 import { useT, usePlural } from '@core/i18n/client';
+import { PAYMENT_STATUS_VALUES, paymentStatusLabel, paymentStatusLook } from '@/modules/bookings/ui/payment-status';
 import { useRouter } from 'next/navigation';
 import { useState, useRef, useEffect, useMemo, useCallback, type MouseEvent, type DragEvent } from 'react';
 import Header from '@/components/layout/Header';
@@ -115,13 +116,9 @@ const FREES_THE_ROOM = ['cancelled', 'no_show'];
 
 // SOURCE_MAP is built dynamically from /api/booking-sources
 
-const PAYMENT_STATUS_MAP: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-  unpaid: { label: 'Не оплачено', color: '#ef4444', bg: 'rgba(239,68,68,0.15)', icon: '✗' },
-  payment_requested: { label: 'Запит на оплату', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', icon: '✉' },
-  prepaid: { label: 'Передплата', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)', icon: '◓' },
-  paid: { label: 'Оплачено', color: '#22c55e', bg: 'rgba(34,197,94,0.15)', icon: '✓' },
-  partial: { label: 'Часткова оплата', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', icon: '◐' },
-};
+// Статуси оплати — зі спільного набору (`@/modules/bookings/ui/payment-status`).
+// Тутешня копія була п'ятою; вона знала `partial`, але називала його інакшим
+// словом («Часткова оплата» проти «Частково оплачено») і фарбувала літералами.
 
 const CLEAN_MAP: Record<string, { label: string; color: string }> = {
   clean: { label: '✓', color: '#34d399' },
@@ -932,7 +929,7 @@ function CalendarDesktop() {
             </select>
             <select className="form-select" style={{ width: 110, fontSize: 11, padding: '4px 6px' }} value={paymentFilter} onChange={e => setPaymentFilter(e.target.value)}>
               <option value="">{tUi('💰 Все')}</option>
-              {Object.entries(PAYMENT_STATUS_MAP).map(([k, v]) => (<option key={k} value={k}>{v.icon} {tUi(v.label)}</option>))}
+              {PAYMENT_STATUS_VALUES.map((k) => (<option key={k} value={k}>{paymentStatusLook(k).icon} {tUi(paymentStatusLabel(k))}</option>))}
             </select>
             {rangeStart && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', fontSize: 11, color: 'var(--accent-primary)', fontWeight: 600 }}>
@@ -1318,10 +1315,10 @@ function CalendarDesktop() {
                                 {booking.payment_status && booking.payment_status !== 'paid' && (
                                   <span style={{
                                     fontSize: 10, fontWeight: 700, lineHeight: 1,
-                                    color: PAYMENT_STATUS_MAP[booking.payment_status]?.color || '#888',
+                                    color: paymentStatusLook(booking.payment_status).color,
                                     background: 'rgba(0,0,0,0.3)', borderRadius: 4, padding: '1px 4px',
                                   }}>
-                                    {PAYMENT_STATUS_MAP[booking.payment_status]?.icon || '●'}
+                                    {paymentStatusLook(booking.payment_status).icon}
                                   </span>
                                 )}
                               </div>
@@ -1383,7 +1380,7 @@ function CalendarDesktop() {
       {/* ─── Custom Tooltip ───────── */}
       {tooltip && (() => {
         const b = tooltip.booking;
-        const pm = PAYMENT_STATUS_MAP[b.payment_status] || PAYMENT_STATUS_MAP.unpaid;
+        const pm = paymentStatusLook(b.payment_status);
         return (
           <div style={{
             position: 'fixed', left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, -100%)',

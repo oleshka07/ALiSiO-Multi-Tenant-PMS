@@ -1,7 +1,8 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
-import { paymentStatusLook } from '@/modules/bookings/ui/payment-status';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
+import { paymentStatusLabel, paymentStatusLook } from '@/modules/bookings/ui/payment-status';
 import { explainStatusChange } from '@/components/booking/status-change';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
@@ -113,6 +114,7 @@ interface MobileBookingsProps {
 
 export default function MobileBookings({ openNew, initialSearch }: MobileBookingsProps) {
   const t = useT();
+  const cur = useHotelCurrency();
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [units, setUnits] = useState<UnitRow[]>([]);
   const [unitTypes, setUnitTypes] = useState<BFUnitTypeRow[]>([]);
@@ -378,8 +380,13 @@ export default function MobileBookings({ openNew, initialSearch }: MobileBooking
                   <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: st.bg, color: st.color }}>
                     {t(st.label)}
                   </span>
+                  {/* `Kč` тут стояло літералом — валюта одного клієнта на
+                      телефоні кожного готелю (інваріант 20). І слово статусу
+                      йшло повз `t()`: німецький портьє бачив українське. */}
                   <span style={{ fontSize: 11, fontWeight: 600, color: pay.color }}>
-                    {b.total_price > 0 ? `${b.total_price.toLocaleString()} Kč` : pay.label}
+                    {b.total_price > 0
+                      ? `${b.total_price.toLocaleString()} ${cur}`.trim()
+                      : t(paymentStatusLabel(b.payment_status))}
                   </span>
                 </div>
               </div>
