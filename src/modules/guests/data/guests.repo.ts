@@ -1,6 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from '@core/db/async';
+import { todayFor } from '@core/hotel-day';
 import type { CreateGuestInput } from '../domain/types';
+
+/** Фільтри списку гостей. Порожній обʼєкт — увесь список готелю. */
+export interface GuestFilters {
+  search?: string;
+  country?: string;
+  /** Є пошта або телефон. */
+  hasContacts?: boolean;
+  /** Є бронь, що ще не завершилась (за днем готелю). */
+  hasUpcoming?: boolean;
+  /** Хоч одна бронь виставлена на компанію-платника (0093). */
+  hasCompany?: boolean;
+}
 
 /**
  * guests carries organization_id, but nothing used it. listGuests started from
@@ -18,7 +31,7 @@ import type { CreateGuestInput } from '../domain/types';
 
 export async function listGuests(
   organizationId: string,
-  filters: { search?: string; country?: string } = {},
+  filters: GuestFilters = {},
   page: number = 1,
   limit: number = 50,
 ) {
@@ -34,6 +47,31 @@ export async function listGuests(
   if (filters.country) {
     where += ' AND g.country = ?';
     params.push(filters.country);
+  }
+  // ── Фільтри списку гостей (Блок 4 §2.5, форма — Hoteliera) ──────────────
+  //
+  // Кожен звужує, а не заміняє попередній: «є контакти» і «є компанія» разом
+  // означають обидва, а не останній вибраний.
+  if (filters.hasContacts) {
+    where += " AND (COALESCE(g.email, '') <> '' OR COALESCE(g.phone, '') <> '')";
+  }
+  if (filters.hasUpcoming) {
+    // «Майбутні» — за днем ГОТЕЛЮ, не за годинником сервера (інваріант
+    // hotel-day): гість, що виїжджає сьогодні, ще в домі, і о 23:00 у
+    // Празі бронь не має зникати зі списку через UTC.
+    where += ` AND EXISTS (
+      SELECT 1 FROM reservations r JOIN properties p ON p.id = r.property_id
+       WHERE r.guest_id = g.id AND p.organization_id = g.organization_id
+         AND r.status NOT IN ('cancelled', 'no_show') AND r.check_out >= ?)`;
+    params.push(await todayFor(organizationId));
+  }
+  if (filters.hasCompany) {
+    // Компанія у гостя — це компанія-платник хоч однієї його броні (0093):
+    // сам рядок гостя юрособи не знає, і не має знати.
+    where += ` AND EXISTS (
+      SELECT 1 FROM reservations r JOIN properties p ON p.id = r.property_id
+       WHERE r.guest_id = g.id AND p.organization_id = g.organization_id
+         AND r.company_id IS NOT NULL)`;
   }
 
   const countQuery = `SELECT COUNT(*) as total FROM guests g ${where}`;

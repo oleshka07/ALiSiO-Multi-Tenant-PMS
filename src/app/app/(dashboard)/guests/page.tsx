@@ -11,7 +11,7 @@ import MobileGuests from '@/components/mobile/pages/MobileGuests';
 import {
   Plus, Search, Eye, Edit3, X, Save, Trash2, Check,
   RefreshCw, Loader2, Mail, Phone, MapPin, FileText,
-  Calendar, User, ExternalLink,
+  Calendar, User, ExternalLink, Download,
 } from 'lucide-react';
 
 /* ================================================================
@@ -153,6 +153,10 @@ function DesktopGuests({ initialSearch }: { initialSearch?: string }) {
   */
   const [search, setSearch] = useState(initialSearch ?? '');
   const [countryFilter, setCountryFilter] = useState('');
+  // Фільтри Hoteliera (Блок 4 §2.5): має майбутні броні · є контакти ·
+  // має компанію. Рахує сервер — «майбутні» за днем готелю, «компанія» за
+  // платником броні (0093).
+  const [filters, setFilters] = useState({ upcoming: false, contacts: false, company: false });
 
   /* ── modals ──────────────────────────────────────── */
   const [viewGuest, setViewGuest] = useState<GuestDetail | null>(null);
@@ -166,12 +170,23 @@ function DesktopGuests({ initialSearch }: { initialSearch?: string }) {
   const onMenuClick = useMobileMenu();
 
   /* ── fetch guests list ───────────────────────────── */
+  // Один опис фільтрів на список і на експорт (Блок 4 §2.5): файл, який
+  // віддає не те, що на екрані, — це другий список, і оператор звіряє його
+  // з екраном до першої розбіжності.
+  const guestQuery = useCallback(() => {
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    if (countryFilter) params.set('country', countryFilter);
+    if (filters.upcoming) params.set('has_upcoming', '1');
+    if (filters.contacts) params.set('has_contacts', '1');
+    if (filters.company) params.set('has_company', '1');
+    return params;
+  }, [search, countryFilter, filters]);
+
   const fetchGuests = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (search) params.set('search', search);
-      if (countryFilter) params.set('country', countryFilter);
+      const params = guestQuery();
       params.set('page', page.toString());
       params.set('limit', limit.toString());
 
@@ -189,12 +204,12 @@ function DesktopGuests({ initialSearch }: { initialSearch?: string }) {
     } finally {
       setLoading(false);
     }
-  }, [search, countryFilter, page, limit]);
+  }, [guestQuery, page, limit]);
 
   // Reset to page 1 on filter change
   useEffect(() => {
     setPage(1);
-  }, [search, countryFilter]);
+  }, [search, countryFilter, filters]);
 
   useEffect(() => {
     const debounce = setTimeout(fetchGuests, 300);
@@ -473,11 +488,29 @@ function DesktopGuests({ initialSearch }: { initialSearch?: string }) {
                 <option key={c} value={c}>{t(COUNTRIES[c] || c)}</option>
               ))}
             </select>
-            {(search || countryFilter) && (
-              <button className="btn btn-ghost btn-sm" onClick={() => { setSearch(''); setCountryFilter(''); }}>
+            {([
+              ['upcoming', t('Має майбутні броні')],
+              ['contacts', t('Є контакти')],
+              ['company', t('Має компанію')],
+            ] as const).map(([key, label]) => (
+              <button key={key} type="button" className={`filter-chip ${filters[key] ? 'active' : ''}`}
+                onClick={() => setFilters((f) => ({ ...f, [key]: !f[key] }))}>{t(label)}</button>
+            ))}
+            {(search || countryFilter || filters.upcoming || filters.contacts || filters.company) && (
+              <button className="btn btn-ghost btn-sm" onClick={() => { setSearch(''); setCountryFilter(''); setFilters({ upcoming: false, contacts: false, company: false }); }}>
                 <X size={14} /> {t('Скинути')}
               </button>
             )}
+            {/* Експорт — той самий список, що на екрані, тими самими фільтрами. */}
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+              <a className="btn btn-secondary btn-sm" href={`/api/guests/export-csv?${guestQuery()}&format=simple`}>
+                <Download size={14} /> {t('CSV: контакти')}
+              </a>
+              <a className="btn btn-secondary btn-sm" href={`/api/guests/export-csv?${guestQuery()}&format=extended`}
+                title={t('Документ, дата народження, адреса, проживання, компанії')}>
+                <Download size={14} /> {t('CSV: повний')}
+              </a>
+            </div>
           </div>
         </div>
 
@@ -578,7 +611,10 @@ function DesktopGuests({ initialSearch }: { initialSearch?: string }) {
                     {g.last_check_in || <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
                   </td>
                   <td style={{ fontWeight: 600, fontSize: 13 }}>
-                    {g.total_revenue ? `${g.total_revenue.toLocaleString()} {cur}` : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                    {/* `{cur}` у шаблонному рядку — це літерал, а не валюта:
+                        колонка «Дохід» показувала «18 400 {cur}» кожному
+                        готелю. Валюта підставляється, як у картці нижче. */}
+                    {g.total_revenue ? `${g.total_revenue.toLocaleString()} ${cur}`.trim() : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
                   </td>
                   <td>
                     <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>

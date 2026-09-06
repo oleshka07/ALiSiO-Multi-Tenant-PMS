@@ -9,6 +9,7 @@ import { ownedUnit } from '../data/owned.repo';
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
 import { percentOf } from '@core/money';
+import { CONFLICTING_SQL, CANCELLED_BY_CLIENT_SQL, orderByClause } from '../data/list-filters';
 
 export const listReservations = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
@@ -147,7 +148,15 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
       params.push(unitIdFilter);
     }
 
-    query += ' ORDER BY r.check_in ASC';
+    // Два фільтри-твердження (Блок 4 §2.5, форма — Hoteliera): «показати
+    // конфліктні» — двом бронням продано одну кімнату на одну ніч;
+    // «скасовані клієнтом» — скасування прийшло не з нашої стійки. Обидва
+    // разом звужують, а не заміняють одне одного: кожен — свій `AND`.
+    // SQL і його сцена — `data/list-filters.ts`.
+    if (searchParams.get('conflicting') === '1') query += ` AND (${CONFLICTING_SQL})`;
+    if (searchParams.get('cancelled_by') === 'client') query += ` AND (${CANCELLED_BY_CLIENT_SQL})`;
+
+    query += orderByClause(searchParams.get('sort'), searchParams.get('dir'));
 
     const rows = await sql.rows<any>(query, params);
 

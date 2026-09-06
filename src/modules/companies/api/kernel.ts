@@ -5,7 +5,7 @@
  * `api/index.ts` тягне обробники з `next/server`, і сцена під голим node
  * його не імпортує.
  */
-import { getCompany, createCompany } from '../data/companies.repo';
+import { getCompany, createCompany, listCompanies } from '../data/companies.repo';
 import { normalizeCompany, payerSnapshot, payerAddressLine, type PayerSnapshot } from '../domain/company';
 
 export type { PayerSnapshot } from '../domain/company';
@@ -27,6 +27,18 @@ export interface CompanyPayer extends PayerSnapshot {
   payer_address: string | null;
   payer_vat_no: string | null;
   payer_debtor_no: string | null;
+}
+
+/**
+ * Назви компаній організації за їхніми id — для екранів і експортів, які
+ * показують «чиї це гроші», не заводячи власного SQL до довідника.
+ * Невідомий або чужий id у мапу не потрапляє.
+ */
+export async function companyNames(organizationId: string, ids: readonly string[]): Promise<Map<string, string>> {
+  const wanted = new Set(ids.filter(Boolean));
+  if (wanted.size === 0) return new Map();
+  const rows = await listCompanies(organizationId, { includeArchived: true });
+  return new Map(rows.filter((c) => wanted.has(c.id)).map((c) => [c.id, c.name]));
 }
 
 /**

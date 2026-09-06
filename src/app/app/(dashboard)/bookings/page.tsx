@@ -272,6 +272,11 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
   const [sourceFilter, setSourceFilter] = useState('');
   const [sortCol, setSortCol] = useState<string>('check_in');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  // Два фільтри-твердження (Блок 4 §2.5): «показати конфліктні» — одна
+  // кімната продана двічі на одну ніч; «скасовані клієнтом» — скасування
+  // прийшло з каналу, не з нашої стійки. Обидва рахує сервер.
+  const [conflictingOnly, setConflictingOnly] = useState(false);
+  const [cancelledByClient, setCancelledByClient] = useState(false);
 
   /* ── modals ───────────────────────────────────────── */
   const [showNewBooking, setShowNewBooking] = useState(false);
@@ -344,7 +349,7 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
 
   /* ── fetch bookings ───────────────────────────────── */
   // Порожній список після фільтра — це «змініть фільтр», а не «броней ще немає».
-  const filtersActive = Boolean(search || (statusFilter && statusFilter !== 'active') || categoryFilter || paymentFilter || dateFrom || dateTo || sourceFilter);
+  const filtersActive = Boolean(search || (statusFilter && statusFilter !== 'active') || categoryFilter || paymentFilter || dateFrom || dateTo || sourceFilter || conflictingOnly || cancelledByClient);
 
   const fetchBookings = useCallback(async () => {
     setLoading(true);
@@ -362,6 +367,16 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
       if (dateFrom) params.set('date_from', dateFrom);
       if (dateTo) params.set('date_to', dateTo);
       if (sourceFilter) params.set('source', sourceFilter);
+      if (conflictingOnly) params.set('conflicting', '1');
+      if (cancelledByClient) params.set('cancelled_by', 'client');
+      // Порядок — той самий стан, що й у клацанні по заголовку колонки:
+      // сервер віддає рядки вже впорядкованими там, де він це вміє (заїзд,
+      // виїзд, створено), а клієнт сортує тим самим ключем. Два незалежні
+      // сортування показували б різне на одному екрані.
+      if (['check_in', 'check_out', 'created_at'].includes(sortCol)) {
+        params.set('sort', sortCol);
+        params.set('dir', sortDir);
+      }
       // Область обʼєкта з шапки: обраний обʼєкт звужує список, «Усі» — ні.
       if (propertyId) params.set('property_id', propertyId);
 
@@ -373,7 +388,7 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, categoryFilter, paymentFilter, dateFrom, dateTo, sourceFilter, propertyId]);
+  }, [search, statusFilter, categoryFilter, paymentFilter, dateFrom, dateTo, sourceFilter, propertyId, conflictingOnly, cancelledByClient, sortCol, sortDir]);
 
   /* ── fetch ref data ───────────────────────────────── */
   useEffect(() => {
@@ -601,8 +616,8 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
                 <option key={k} value={k}>{t(v.label)}</option>
               ))}
             </select>
-            {(search || statusFilter || categoryFilter || paymentFilter || dateFrom || dateTo || sourceFilter) && (
-              <button className="btn btn-ghost btn-sm" onClick={() => { setSearch(''); setStatusFilter(''); setCategoryFilter(''); setPaymentFilter(''); setDateFrom(''); setDateTo(''); setSourceFilter(''); }}>
+            {(search || statusFilter || categoryFilter || paymentFilter || dateFrom || dateTo || sourceFilter || conflictingOnly || cancelledByClient) && (
+              <button className="btn btn-ghost btn-sm" onClick={() => { setSearch(''); setStatusFilter(''); setCategoryFilter(''); setPaymentFilter(''); setDateFrom(''); setDateTo(''); setSourceFilter(''); setConflictingOnly(false); setCancelledByClient(false); }}>
                 <X size={14} /> {t('Скинути')}
               </button>
             )}
@@ -631,6 +646,27 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
                 ))}
               </optgroup>
             </select>
+            {/* Сортування — той самий стан, що й клацання по заголовку колонки. */}
+            <select className="form-select" style={{ width: 210 }}
+              value={`${sortCol}:${sortDir}`}
+              onChange={(e) => { const [c, d] = e.target.value.split(':'); setSortCol(c); setSortDir(d as 'asc' | 'desc'); }}>
+              <option value="check_in:asc">{t('Заїзд: спочатку найближчі')}</option>
+              <option value="check_in:desc">{t('Заїзд: спочатку далекі')}</option>
+              <option value="check_out:asc">{t('Виїзд: спочатку найближчі')}</option>
+              <option value="check_out:desc">{t('Виїзд: спочатку далекі')}</option>
+              <option value="created_at:desc">{t('Створено: спочатку нові')}</option>
+              <option value="created_at:asc">{t('Створено: спочатку старі')}</option>
+            </select>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}
+              title={t('Одна кімната продана двічі на ті самі ночі')}>
+              <input type="checkbox" checked={conflictingOnly} onChange={(e) => setConflictingOnly(e.target.checked)} />
+              {t('Тільки конфліктні')}
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}
+              title={t('Скасування прийшло з каналу, а не з нашої стійки')}>
+              <input type="checkbox" checked={cancelledByClient} onChange={(e) => setCancelledByClient(e.target.checked)} />
+              {t('Скасовані клієнтом')}
+            </label>
           </div>
         </div>
 

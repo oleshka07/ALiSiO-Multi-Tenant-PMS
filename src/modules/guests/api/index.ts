@@ -8,7 +8,7 @@ import { orderServices as _orderServices } from './services.handlers';
 import { handleCartEvent as _handleCartEvent } from './cart.handlers';
 import { requestPayment as _requestPayment } from './payment-request.handlers';
 
-export { listGuests, createGuest } from './guests.handlers';
+export { listGuests, createGuest, exportGuests } from './guests.handlers';
 export { getGuest, updateGuest, deleteGuest } from './guest.handlers';
 
 /**
