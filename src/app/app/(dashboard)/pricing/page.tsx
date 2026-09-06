@@ -6,8 +6,10 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
-import { changedDayFields, hasRestrictionField, inheritRestrictionsPayload } from '@pricing';
-import type { DayEditPayload } from '@pricing';
+// Двері модуля цін для React — `ui/`, не фасад `@pricing`: фасад тягне
+// серверний шар у клієнтський бандл, і збірка падає на `node:module`.
+import { changedDayFields, hasRestrictionField, inheritRestrictionsPayload } from '@/modules/pricing/ui/day-edit';
+import type { DayEditPayload } from '@/modules/pricing/ui/day-edit';
 import {
   ChevronLeft,
   ChevronRight,

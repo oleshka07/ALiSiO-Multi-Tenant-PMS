@@ -295,7 +295,7 @@ const AXES = [
   // «поле змінене / не змінене»; з одним значенням у фікстурі твердження
   // зелене і для форми, яка шле все.
   {
-    file: 'src/modules/pricing/domain/day-edit.check.ts',
+    file: 'src/modules/pricing/ui/day-edit.check.ts',
     axis: 'змінене поле проти незмінного в тілі редактора дня',
     distinct: /base_price: (\d+)/g, min: 2,
   },

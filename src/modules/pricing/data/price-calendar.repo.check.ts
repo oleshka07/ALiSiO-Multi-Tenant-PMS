@@ -282,7 +282,7 @@ try {
   // два тарифи одного типу; і два тіла — від екрана і давнє повне — на двох
   // датах, тож сцена показує РІЗНИЦЮ, а не саму лише зелень.
   {
-    const { changedDayFields, hasRestrictionField } = await import('../domain/day-edit.ts');
+    const { changedDayFields, hasRestrictionField } = await import('../ui/day-edit.ts');
     // Тип: мінімум 1. Пара B&B: власний мінімум 10 і своя ціна.
     for (const date of [D3, D4]) {
       await runWithOrganization(A, () => upsertPrices(UT(A), [{ date, base_price: 100, min_stay: 1 }]));
