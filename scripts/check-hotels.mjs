@@ -159,6 +159,64 @@ for (const name of files) {
     } else if (!f(u, 'code', 'name')) {
       note(file, `номер типу ${typeCode}: ні from/to, ні code — нічого створювати`);
     }
+
+    // Поля рівня номера (0110). Діапазон їх не приймає — apply-hotel кладе їх
+    // лише поіменному номеру, тож у діапазоні вони МОВЧКИ пропадуть.
+    const label = f(u, 'code', 'name') ?? `${f(u, 'prefix') ?? ''}${from}…${f(u, 'to')}`;
+    const own = ['view', 'wifiNetwork', 'wifiPassword', 'lockCode'].filter((k) => f(u, k) !== undefined);
+    if (from !== undefined && own.length) {
+      note(file, `діапазон ${typeCode} (${label}): ${own.join(', ')} — діапазон цих полів не приймає, вони пропадуть мовчки`);
+    }
+    // Половина пари — це мережа, до якої не підключитись: резолвер гостьової
+    // сторінки бере рівень ЛИШЕ парою (назва + пароль), тож самотнє поле не
+    // перекриє нічого й гість побачить мережу типу під назвою номера.
+    const net = f(u, 'wifiNetwork');
+    const pass = f(u, 'wifiPassword');
+    if ((net === undefined) !== (pass === undefined)) {
+      note(file, `номер ${label}: є ${net === undefined ? 'wifiPassword' : 'wifiNetwork'} без пари — рівень номера бере мережу лише назвою І паролем`);
+    }
+  }
+
+  // ── валюти показу ─────────────────────────────────────────────────────────
+  //
+  // Курс у файлі готелю — це число, яке побачить гість, тому воно перевіряється
+  // як гроші, а не як налаштування (інваріант 29). Три речі ламаються мовчки:
+  // валюта без курсу нічого не показує, курс при джерелі `cnb` банк перепише
+  // тієї ж ночі, а база в переліку показу дає гостю «1 EUR = 1 EUR».
+  const baseCurrency = String(f(org, 'currency') || '').toUpperCase();
+  const seenCurrencies = new Set();
+  const currencies = plan.currencies || [];
+  if (!Array.isArray(currencies)) {
+    note(file, 'currencies — має бути масив');
+  } else {
+    // Стеля MAX_SECONDARY_CURRENCIES із core/currency.ts: більше екран не
+    // покаже, а setSecondaryCurrencies відмовить цілому переліку.
+    if (currencies.length > 3) note(file, `currencies: ${currencies.length} валют — більше трьох не приймається`);
+    for (const c of currencies) {
+      const code = String(f(c, 'code') || (typeof c === 'string' ? c : '')).toUpperCase();
+      if (!/^[A-Z]{3}$/.test(code)) { note(file, `валюта "${f(c, 'code') ?? c}" — код із трьох літер, як EUR`); continue; }
+      if (seenCurrencies.has(code)) note(file, `валюта ${code} названа двічі — другий рядок мовчки виграє`);
+      seenCurrencies.add(code);
+      if (code === baseCurrency) {
+        note(file, `валюта ${code} — це валюта обліку; у переліку показу вона дасть гостю «1 ${code} = 1 ${code}»`);
+      }
+      const source = f(c, 'rateSource') ?? 'manual';
+      if (source !== 'manual' && source !== 'cnb') {
+        note(file, `валюта ${code}: rateSource "${source}" — має бути manual або cnb`);
+      }
+      const rate = f(c, 'rate');
+      if (rate !== undefined && (!isNum(rate) || num(rate) <= 0)) {
+        note(file, `валюта ${code}: rate "${rate}" не додатне число`);
+      }
+      if (rate !== undefined && source === 'cnb') {
+        note(file, `валюта ${code}: rate при джерелі cnb — нічний прохід банку перепише його тієї ж ночі`);
+      }
+      if (rate === undefined && source === 'manual') {
+        note(file, `валюта ${code}: джерело manual і жодного rate — гість побачить «курс не задано», а не суму`);
+      }
+      const rateDate = f(c, 'rateDate');
+      if (rateDate !== undefined && !DATE.test(rateDate)) note(file, `валюта ${code}: rateDate "${rateDate}" не YYYY-MM-DD`);
+    }
   }
 
   // ── правила каналів ───────────────────────────────────────────────────────

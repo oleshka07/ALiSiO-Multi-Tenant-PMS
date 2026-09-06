@@ -331,6 +331,42 @@ const AXES = [
     scope: /\/\/ ── 10\. Похідний тариф[\s\S]*?(?=\n\} finally)/,
     distinct: /base_price: (\d+)/g, min: 3,
   },
+  // ── Блок 5a ─────────────────────────────────────────────────────────────
+  //
+  // Обидві нові перевірки заявляли у своїй документації «фікстура не
+  // вироджена по осях», а рядка тут не мали — тобто заявляли нікому
+  // (рецензія раунду 4, п. 2.6). Мовчання гейта не доведеність.
+  {
+    file: 'src/modules/properties/data/amenities.repo.check.ts',
+    axis: 'область зручності у сцені призначення (обʼєкт ≠ номер ≠ обидва)',
+    scope: /\/\/ ── 2\. Область тримає[\s\S]*?(?=\n {2}\/\/ ── 3\.)/,
+    distinct: /a\.code === '(elevator|hair_dryer|breakfast)'/g, min: 3,
+  },
+  {
+    file: 'src/modules/properties/data/amenities.repo.check.ts',
+    axis: 'мова каталогу (одна мова не розрізняє переклад і константу)',
+    distinct: /seedAmenityCatalog\(\w+, '(\w\w)'\)/g, min: 2,
+  },
+  {
+    file: 'src/core/currency.rates.check.ts',
+    axis: 'джерело курсу в одного готелю (manual ≠ cnb)',
+    distinct: /rateSource: '(manual|cnb)'/g, min: 2,
+  },
+  {
+    file: 'src/core/currency.rates.check.ts',
+    axis: 'числа курсу: ручний ≠ фіксинг банку',
+    distinct: /(?:, 'CZK', |, 'EUR', |EUR: |USD: )(\d+(?:\.\d+)?)/g, min: 3,
+  },
+  {
+    file: 'src/core/currency.rates.check.ts',
+    axis: 'базова валюта двох готелів (спільна база не розрізняє «до бази» і «до крон»)',
+    distinct: /default_currency\) VALUES \(\?, \?, \?, '(\w{3})'\)/g, min: 2,
+  },
+  {
+    file: 'src/modules/properties/data/guest-page-levels.check.ts',
+    axis: 'рівні мережі гостя (обʼєкт ≠ тип ≠ номер)',
+    distinct: /'(HOUSE|TYPE|ROOM)-NET'/g, min: 3,
+  },
 ];
 
 /** Коментарі геть — блокові й рядкові; `://` у рядках лишається. */

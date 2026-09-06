@@ -277,7 +277,13 @@ export async function getGuestPageConfig(unitTypeId: string, propertyId: string,
     if (organizationId) {
       merged.amenity_list = await unitTypeAmenities(String(organizationId), unitTypeId);
     }
-  } catch { /* модуль зручностей ще не мігрований — сторінка живе без списку */ }
+  } catch (e) {
+    // Сторінка гостя лишається живою і без списку — але мовчати не можна:
+    // «зручностей не назвали» і «запит зі зламаною колонкою» виглядали б для
+    // готелю однаково, а другого ніхто б не побачив ніколи (рецензія 07.09,
+    // 2.10). Деталь — у лог, гостю — просто сторінка без списку (інваріант 6).
+    console.error('[guest-portal] amenity list unavailable', e);
+  }
 
   return merged;
 }

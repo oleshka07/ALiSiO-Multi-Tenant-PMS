@@ -206,6 +206,31 @@ try {
     console.log('  ok  каталог і призначення сусіда не існують ні для читання, ні для запису');
   });
 
+  // Мова поза списком перекладів падає на АНГЛІЙСЬКУ, не на українську
+  // (рецензія раунду 4, п. 2.5). `provision-org.mjs` приймає сім мов, а
+  // каталог перекладений чотирма; польський готель має побачити «Elevator»,
+  // а не «Ліфт» — це різниця між «переклад ще не зробили» і «мова, якої в
+  // цьому світі немає».
+  {
+    const PL = '__amen_check__pl';
+    await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [PL, 'PL', PL]);
+    try {
+      await runWithOrganization(PL, async () => {
+        await repo.seedAmenityCatalog(PL, 'pl');
+        const lift = (await repo.amenityCatalog(PL)).flatMap((c) => c.amenities).find((a) => a.code === 'elevator');
+        assert.strictEqual(lift?.name, 'Elevator',
+          'мова без перекладу впала на українську — польський готель бачить кирилицю');
+      });
+      console.log('  ok  мова поза перекладом падає на англійську, а не на мову продукту');
+    } finally {
+      await runWithOrganization(PL, async () => {
+        await sql.run('DELETE FROM amenities WHERE organization_id = ?', [PL]);
+        await sql.run('DELETE FROM amenity_categories WHERE organization_id = ?', [PL]);
+      });
+      await sql.run('DELETE FROM organizations WHERE id = ?', [PL]);
+    }
+  }
+
   // Мовна вісь: другий орендар сіявся чеською — назва в нього СВОЯ.
   await runWithOrganization(OTHER, async () => {
     const lift = (await repo.amenityCatalog(OTHER)).flatMap((c) => c.amenities).find((a) => a.code === 'elevator');

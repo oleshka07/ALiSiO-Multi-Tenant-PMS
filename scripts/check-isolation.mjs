@@ -536,7 +536,8 @@ async function main() {
     const catBAll = await (await call(cookieB, '/api/amenities')).json();
     const idsA = new Set((amenCatA || []).flatMap((c) => (c.amenities || []).map((a) => a.id)));
     const idsB = new Set((catBAll || []).flatMap((c) => (c.amenities || []).map((a) => a.id)));
-    assert.ok(idsA.size > 0 && idsB.size > 0, 'каталог зручностей порожній — його не сіє заведення готелю');
+    assert.ok(idsA.size > 0 && idsB.size > 0,
+      'каталог зручностей порожній — перше читання екрана його не досіяло (ensureAmenityCatalog)');
     assert.ok([...idsB].every((id) => !idsA.has(id)),
       "B's amenity catalogue shares rows with A's — renaming one hotel's word renames the other's");
 
