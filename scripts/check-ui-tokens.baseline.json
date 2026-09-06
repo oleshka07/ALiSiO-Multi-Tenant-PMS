@@ -1,7 +1,7 @@
 {
   "src/app/app/(dashboard)/audit/page.tsx": 14,
   "src/app/app/(dashboard)/bookings/[id]/meldeschein/page.tsx": 4,
-  "src/app/app/(dashboard)/bookings/page.tsx": 31,
+  "src/app/app/(dashboard)/bookings/page.tsx": 19,
   "src/app/app/(dashboard)/calendar/page.tsx": 85,
   "src/app/app/(dashboard)/dashboard/page.tsx": 18,
   "src/app/app/(dashboard)/documents/page.tsx": 173,
@@ -102,7 +102,7 @@
   "src/components/mobile/MobileLayout.tsx": 3,
   "src/components/mobile/MobileQuickCreateSheet.tsx": 6,
   "src/components/mobile/MobileShiftChecklists.tsx": 16,
-  "src/components/mobile/pages/MobileBookings.tsx": 27,
+  "src/components/mobile/pages/MobileBookings.tsx": 23,
   "src/components/mobile/pages/MobileCalendar.tsx": 51,
   "src/components/mobile/pages/MobileDashboard.tsx": 38,
   "src/components/mobile/pages/MobileFinanceOverview.tsx": 29,

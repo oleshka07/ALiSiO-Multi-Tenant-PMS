@@ -14,6 +14,7 @@ import SourceIcon from '@/components/ui/SourceIcon';
 import MobileFilterBar from '@/components/mobile/MobileFilterBar';
 import BookingViewModal from '@/components/booking/BookingViewModal';
 import { explainStatusChange } from '@/components/booking/status-change';
+import { PAYMENT_STATUS_VALUES, paymentStatusLabel, paymentStatusLook } from '@/modules/bookings/ui/payment-status';
 import BookingForm, { type WidgetSiteSourceRow } from '@/components/booking/BookingForm';
 import type { DashboardAlert } from '@/modules/dashboard/domain/alerts';
 import {
@@ -118,12 +119,10 @@ const STATUS_MAP: Record<string, { label: string; badge: string }> = {
   cancelled: { label: 'Скасовано', badge: 'badge-danger' },
 };
 
-const PAYMENT_STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  unpaid: { label: 'Не оплачено', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
-  payment_requested: { label: 'Запит на оплату', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
-  prepaid: { label: 'Передплата', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
-  paid: { label: 'Оплачено', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
-};
+// Словник статусів оплати живе в `@/modules/bookings/ui/payment-status`: тут
+// він був четвертою копією, і саме тому пропустив `partial` — значення, яке
+// фінансовий модуль пише з 2026-го, а список броней не вмів ані назвати, ані
+// відфільтрувати. Порядок пунктів фільтра = порядок у PAYMENT_STATUS_VALUES.
 
 // SOURCE_MAP is built dynamically from /api/booking-sources
 
@@ -612,8 +611,8 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
             </select>
             <select className="form-select" style={{ width: 170 }} value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
               <option value="">{t('Всі оплати')}</option>
-              {Object.entries(PAYMENT_STATUS_MAP).map(([k, v]) => (
-                <option key={k} value={k}>{t(v.label)}</option>
+              {PAYMENT_STATUS_VALUES.map((k) => (
+                <option key={k} value={k}>{t(paymentStatusLabel(k))}</option>
               ))}
             </select>
             {(search || statusFilter || categoryFilter || paymentFilter || dateFrom || dateTo || sourceFilter || conflictingOnly || cancelledByClient) && (
@@ -745,7 +744,7 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
                     <td>{b.check_in}</td><td>{b.check_out}</td><td>{b.nights}</td>
                     <td><span className="flex items-center gap-2" style={{ fontSize: 12 }}><Users size={12} /> {b.adults}{b.children > 0 && <span style={{ color: 'var(--text-tertiary)' }}>+{b.children}</span>}</span></td>
                     <td><span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{t(STATUS_MAP[b.status]?.label || b.status)}</span></td>
-                    <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>{t(PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status)}</span></td>
+                    <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: paymentStatusLook(b.payment_status).color, background: paymentStatusLook(b.payment_status).bg }}>{t(paymentStatusLabel(b.payment_status))}</span></td>
                     <td>
                       <span className="badge" style={{ background: (sourceMap[b.source]?.color || '#6c7086') + '22', color: sourceMap[b.source]?.color || '#6c7086' }}>{sourceMap[b.source]?.label || b.source}</span>
                       {b.hostex_channel_type && <span style={{ marginLeft: 4 }} title={`Hostex: ${b.hostex_channel_type}`}>🌐</span>}
@@ -809,8 +808,8 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
                       <div className="booking-card-unit-sub">{b.category_name || b.category_type || ''}</div>
                       <div className="booking-card-price">
                         {(b.total_price || 0).toLocaleString()} {b.currency || hotelCurrency}
-                        <span style={{ marginLeft: 6, display: 'inline-block', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>
-                          {t(PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status)}
+                        <span style={{ marginLeft: 6, display: 'inline-block', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, color: paymentStatusLook(b.payment_status).color, background: paymentStatusLook(b.payment_status).bg }}>
+                          {t(paymentStatusLabel(b.payment_status))}
                         </span>
                       </div>
                       {(b.commission_amount || 0) > 0 && (

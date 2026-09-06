@@ -337,7 +337,7 @@ function buildSchema(database: any) {
       children INTEGER NOT NULL DEFAULT 0,
       infants INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
-      payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'payment_requested', 'prepaid', 'paid')),
+      payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'payment_requested', 'partial', 'prepaid', 'paid')),
       source TEXT NOT NULL DEFAULT 'direct' CHECK (source IN ('direct', 'phone', 'whatsapp', 'booking_com', 'airbnb', 'other_ota')),
       total_price REAL NOT NULL DEFAULT 0,
       currency TEXT NOT NULL DEFAULT 'CZK',
@@ -798,7 +798,7 @@ function runMigrations(database: any) {
           children INTEGER NOT NULL DEFAULT 0,
           infants INTEGER NOT NULL DEFAULT 0,
           status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
-          payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'payment_requested', 'prepaid', 'paid')),
+          payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'payment_requested', 'partial', 'prepaid', 'paid')),
           source TEXT NOT NULL DEFAULT 'direct',
           total_price REAL NOT NULL DEFAULT 0,
           currency TEXT NOT NULL DEFAULT 'CZK',
@@ -7055,6 +7055,60 @@ function runMigrations(database: any) {
     database.exec('CREATE INDEX IF NOT EXISTS idx_reservations_company ON reservations(company_id)');
   } catch (e: any) {
     console.error('[DB] companies migration:', e.message);
+  }
+
+  // --- 0094: payment_status приймає 'partial' ---
+  //
+  // Колонка мала CHECK на чотири значення, а ДВА писачі роками ставили пʼяте:
+  // `finance/api/operations.handlers.ts` (перерахунок після кожної операції з
+  // бронню — «гроші прийшли, але не всі») і `app/api/payments/route.ts`
+  // (`type: deposit|partial`). Обидва впирались у CHECK, і депозит лягав у
+  // фінанси, а бронь лишалась «не оплачено» — з помилкою у відповіді, після
+  // якої оператор має всі підстави провести оплату вдруге. Планер уже читав
+  // це значення (`calendar/page.tsx:559`) і не міг побачити його ніколи.
+  //
+  // Розширити CHECK у SQLite можна лише перебудовою таблиці, а `reservations`
+  // має 67 колонок, накопичених ALTER-ами. Тому новий CREATE не переписується
+  // руками — він БЕРЕТЬСЯ з бази і в ньому міняється рівно один CHECK: так
+  // жодна колонка, дефолт чи зовнішній ключ не загубиться від перенабору.
+  // Далі — правило AGENTS §4: sql індексів зняти до підміни, повернути після,
+  // звірити лічильники рядків і індексів.
+  try {
+    const resSql = (database.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='reservations'",
+    ).get() as { sql?: string } | undefined)?.sql ?? '';
+    const narrow = /CHECK \(payment_status IN \([^)]*\)\)/.exec(resSql);
+    if (narrow && !narrow[0].includes("'partial'")) {
+      console.log('[DB] reservations: payment_status CHECK → + partial (0094) — перебудова зі збереженням індексів');
+      const before = (database.prepare('SELECT COUNT(*) AS n FROM reservations').get() as { n: number }).n;
+      const indexSql = (database.prepare(
+        "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='reservations' AND sql IS NOT NULL",
+      ).all() as { sql: string }[]).map((r) => r.sql);
+      const cols = (database.prepare('PRAGMA table_info(reservations)').all() as { name: string }[]).map((c) => c.name);
+      const createNew = resSql
+        .replace(narrow[0], "CHECK (payment_status IN ('unpaid', 'payment_requested', 'partial', 'prepaid', 'paid'))")
+        .replace(/^CREATE TABLE\s+"?reservations"?/i, 'CREATE TABLE reservations_new');
+      if (createNew === resSql) throw new Error('не вдалося перейменувати таблицю в CREATE — перебудову скасовано');
+
+      database.exec('PRAGMA foreign_keys = OFF');
+      database.exec(createNew);
+      const list = cols.map((c) => `"${c}"`).join(', ');
+      database.exec(`INSERT INTO reservations_new (${list}) SELECT ${list} FROM reservations`);
+      database.exec('DROP TABLE reservations');
+      database.exec('ALTER TABLE reservations_new RENAME TO reservations');
+      for (const ix of indexSql) database.exec(ix);
+      database.exec('PRAGMA foreign_keys = ON');
+
+      const after = (database.prepare('SELECT COUNT(*) AS n FROM reservations').get() as { n: number }).n;
+      if (after !== before) throw new Error(`reservations rebuild lost rows: ${before} -> ${after}`);
+      const restored = (database.prepare(
+        "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='index' AND tbl_name='reservations' AND sql IS NOT NULL",
+      ).get() as { n: number }).n;
+      if (restored !== indexSql.length) throw new Error(`reservations rebuild lost indexes: ${indexSql.length} -> ${restored}`);
+      console.log(`[DB] reservations rebuilt with payment_status 'partial' allowed (${after} rows, ${restored} indexes carried)`);
+    }
+  } catch (e: any) {
+    console.error('[DB] payment_status partial migration:', e.message);
   }
 
   // The last line of runMigrations, and the only reliable signal that the

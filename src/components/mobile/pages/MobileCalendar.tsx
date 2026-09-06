@@ -1,6 +1,7 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { PAYMENT_STATUS_VALUES, paymentStatusLabel } from '@/modules/bookings/ui/payment-status';
 import { explainStatusChange } from '@/components/booking/status-change';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -63,16 +64,15 @@ const STATUS_LABELS: Record<string, string> = {
   draft: 'Чернетка',
 };
 
-const PAYMENT_LABELS: Record<string, string> = {
-  unpaid: 'Не оплачено',
-  payment_requested: 'Запит',
-  prepaid: 'Передплата',
-  paid: 'Оплачено',
-};
-
+// Підписи — зі спільного набору (`@/modules/bookings/ui/payment-status`);
+// тутешня копія не знала 'partial', тож фільтр на телефоні не мав чим
+// вибрати броні з депозитом. Значки лишаються місцевими — це вибір
+// мобільного екрана, — але ключі беруться з набору, щоб нове значення не
+// лишилось без значка мовчки.
 const PAYMENT_ICONS: Record<string, string> = {
   unpaid: '✗',
   payment_requested: '✉',
+  partial: '◐',
   prepaid: '◓',
   paid: '✓',
 };
@@ -197,7 +197,7 @@ function FiltersSheet({
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 8, textTransform: 'uppercase' }}>{tUi('Оплата')}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {[{ k: '', l: tUi('Всі') }, ...Object.keys(PAYMENT_LABELS).map(k => ({ k, l: `${PAYMENT_ICONS[k]} ${PAYMENT_LABELS[k]}` }))].map(opt => (
+              {[{ k: '', l: tUi('Всі') }, ...PAYMENT_STATUS_VALUES.map(k => ({ k, l: `${PAYMENT_ICONS[k] || ''} ${tUi(paymentStatusLabel(k))}`.trim() }))].map(opt => (
                 <button
                   key={opt.k || 'all'}
                   onClick={() => setPaymentFilter(opt.k)}

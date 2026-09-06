@@ -1,6 +1,7 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { paymentStatusLook } from '@/modules/bookings/ui/payment-status';
 import { explainStatusChange } from '@/components/booking/status-change';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
@@ -38,12 +39,11 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
   cancelled:   { label: 'Скасовано',    color: '#f87171', bg: 'rgba(248,113,113,0.15)' },
 };
 
-const PAY_MAP: Record<string, { label: string; color: string }> = {
-  unpaid:   { label: 'Не оплачено', color: '#f87171' },
-  partial:  { label: 'Частково',    color: '#fbbf24' },
-  paid:     { label: 'Оплачено',    color: '#34d399' },
-  refunded: { label: 'Повернення',  color: '#a78bfa' },
-};
+// Свій словник тут знав 'partial', але не знав 'payment_requested' і
+// 'prepaid' — і передплачена бронь показувалась на телефоні як «Не
+// оплачено», бо падала в дефолт. Плюс мертвий 'refunded': це стан рядка
+// оплати (`payments.status`), а не стан броні. Тепер набір один на всі
+// екрани — `@/modules/bookings/ui/payment-status`.
 
 const FILTER_CHIPS = [
   { key: '', label: 'Всі' },
@@ -362,7 +362,7 @@ export default function MobileBookings({ openNew, initialSearch }: MobileBooking
       ) : (
         filtered.map(b => {
           const st = STATUS_MAP[b.status] || STATUS_MAP.draft;
-          const pay = PAY_MAP[b.payment_status] || PAY_MAP.unpaid;
+          const pay = paymentStatusLook(b.payment_status);
           const cleanLabel = b.cleaning_status === 'clean' ? t('Чисто') : b.cleaning_status === 'dirty' ? t('Брудно') : b.cleaning_status === 'in_progress' ? t('В процесі') : null;
           const cleanColor = b.cleaning_status === 'clean' ? '#22c55e' : b.cleaning_status === 'dirty' ? '#ef4444' : '#f59e0b';
           return (

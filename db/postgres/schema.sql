@@ -1757,7 +1757,7 @@ CREATE TABLE "reservations" (
   PRIMARY KEY ("id"),
   UNIQUE ("guest_page_token"),
   CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
-  CHECK (payment_status IN ('unpaid', 'payment_requested', 'prepaid', 'paid')),
+  CHECK (payment_status IN ('unpaid', 'payment_requested', 'partial', 'prepaid', 'paid')),
   CONSTRAINT "reservations_lodging_discount_range" CHECK (lodging_discount_percent >= 0 AND lodging_discount_percent <= 100)
 );
 

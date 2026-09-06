@@ -89,9 +89,23 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'cancelled', label: 'Скасовано' },
 ];
 
-const PAYMENT_STATUS_OPTIONS: { value: string; label: string }[] = [
+/**
+ * «Частково» тут ВИДНО, але руками не ставиться.
+ *
+ * Це значення рахують гроші, а не оператор: `recalcReservationPaymentStatus`
+ * ставить його, коли внесків більше нуля й менше за суму. Дати його в список
+ * як звичайний пункт означало б другого писача одного поля — рівно та розбіжність,
+ * через яку в Д17 не завели колонку «хто скасував».
+ *
+ * Але й прибрати не можна: `<select>` зі значенням, якого немає серед
+ * пунктів, малюється ПОРОЖНІМ, і на броні з депозитом оператор бачив би
+ * пусте поле, а один випадковий клік затирав би пораховане число словом.
+ * Тому пункт є і вимкнений: своє значення показує, вибрати себе не дає.
+ */
+const PAYMENT_STATUS_OPTIONS: { value: string; label: string; derived?: boolean }[] = [
   { value: 'unpaid', label: 'Не оплачено' },
   { value: 'payment_requested', label: 'Запит на оплату' },
+  { value: 'partial', label: 'Частково оплачено', derived: true },
   { value: 'prepaid', label: 'Передплата' },
   { value: 'paid', label: 'Оплачено' },
 ];
@@ -731,7 +745,19 @@ export default function BookingForm({
           <div className="form-group">
             <label className="form-label">{t('Статус оплати')}</label>
             <select className="form-select" value={form.paymentStatus} onChange={e => setForm(p => ({ ...p, paymentStatus: e.target.value }))}>
-              {PAYMENT_STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{t(s.label)}</option>)}
+              {/* `.map` іде ПРЯМО по константі й ПРЯМО повертає <option>:
+                  екстрактор рядків бачить літерали таблиці лише так. `.filter`
+                  перед ним і умовний `null` усередині вже зробили «Частково
+                  оплачено» неперекладним — у каталог воно не потрапляло
+                  зовсім, тобто німецький портьє бачив би українське слово.
+                  Тому похідний пункт ховається атрибутом, а не структурою. */}
+              {PAYMENT_STATUS_OPTIONS.map(ps => (
+                <option key={ps.value} value={ps.value}
+                  disabled={ps.derived}
+                  hidden={ps.derived && form.paymentStatus !== ps.value}>
+                  {t(ps.label)}{ps.derived ? ` — ${t('рахується з оплат')}` : ''}
+                </option>
+              ))}
             </select>
           </div>
         </div>
