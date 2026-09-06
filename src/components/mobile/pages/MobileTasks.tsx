@@ -830,7 +830,7 @@ export default function MobileTasks() {
         {DATE_CHIPS.map(dateChip => (
           <button
             key={dateChip.key}
-            className={`m-dateChip ${dateFilter === dateChip.key ? 'm-dateChip-active' : ''}`}
+            className={`m-chip ${dateFilter === dateChip.key ? 'm-chip-active' : ''}`}
             onClick={() => setDateFilter(dateChip.key)}
           >
             {tUi(dateChip.label)}
@@ -846,12 +846,12 @@ export default function MobileTasks() {
         ))}
       </div>
 
-      {/* Status filter dateChips */}
-      <div className="m-dateChips" style={{ marginTop: 2 }}>
+      {/* Status filter chips */}
+      <div className="m-chips" style={{ marginTop: 2 }}>
         {STATUS_CHIPS.map(statusChip => (
           <button
             key={statusChip.key}
-            className={`m-statusChip ${statusFilter === statusChip.key ? 'm-statusChip-active' : ''}`}
+            className={`m-chip ${statusFilter === statusChip.key ? 'm-chip-active' : ''}`}
             onClick={() => setStatusFilter(statusChip.key)}
           >
             {tUi(statusChip.label)}

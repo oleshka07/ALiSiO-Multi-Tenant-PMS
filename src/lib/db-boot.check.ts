@@ -103,19 +103,32 @@ import Database from 'better-sqlite3';
 const WIDE = /CHECK \(payment_status IN \([^)]*'partial'[^)]*\)\)/;
 
 /** Стан бази очима свіжого процесу: саме так її побачить застосунок. */
-function bootAndRead(dir: string): { fk: number; wide: boolean; leftover: number; rows: number; idx: number; done: boolean } {
+function bootAndRead(dir: string): { fk: number; wide: boolean; leftover: number; rows: number; idx: number; done: boolean; dupToken: string } {
   const probe = `
     import './scripts/lib/module-aliases.mjs';
     const { getDb } = await import('@core/db');
     const db = getDb();
     const sql = (db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='reservations'").get() || {}).sql || '';
-    console.log('STATE ' + JSON.stringify({
+    const state = {
       fk: db.pragma('foreign_keys', { simple: true }),
       wide: /CHECK \\(payment_status IN \\([^)]*'partial'[^)]*\\)\\)/.test(sql),
       leftover: db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='reservations_new'").get().n,
       rows: db.prepare('SELECT COUNT(*) n FROM reservations').get().n,
       idx: db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='index' AND tbl_name='reservations' AND sql IS NOT NULL").get().n,
-    }));
+      dupToken: 'no-rows',
+    };
+    // Лічильник індексів можна задовольнити тринадцятьма НЕ ТИМИ індексами,
+    // тож окремо перевіряється наслідок: чи можна двом бронях поставити один
+    // гостьовий токен. База одноразова, тож писати в неї тут можна.
+    const two = db.prepare('SELECT id FROM reservations LIMIT 2').all();
+    if (two.length === 2) {
+      try {
+        const up = db.prepare("UPDATE reservations SET guest_page_token = '__dup__' WHERE id = ?");
+        up.run(two[0].id); up.run(two[1].id);
+        state.dupToken = 'ALLOWED';
+      } catch { state.dupToken = 'rejected'; }
+    }
+    console.log('STATE ' + JSON.stringify(state));
   `;
   const out = execFileSync(process.execPath, [
     '--disable-warning=MODULE_TYPELESS_PACKAGE_JSON', '--input-type=module', '-e', probe,
@@ -205,12 +218,32 @@ narrowBack(lostFile);
   raw.close();
 }
 const afterLost = bootAndRead(lostDir);
+// Прагма першим — тим самим порядком, що в сцені 5.
+assert.strictEqual(afterLost.fk, 1, 'після відновлення застосунок працює з ВИМКНЕНИМИ зовнішніми ключами');
 assert.ok(afterLost.done, 'старт після обриву на підміні не дійшов до кінця міграцій');
 assert.strictEqual(afterLost.rows, fresh.rows, 'броні загублено: обрив на підміні лишає ЄДИНУ копію в reservations_new');
 assert.ok(afterLost.wide, 'відновлену таблицю не перебудовано під широкий CHECK');
 assert.strictEqual(afterLost.leftover, 0);
-assert.strictEqual(afterLost.fk, 1, 'після відновлення застосунок працює з ВИМКНЕНИМИ зовнішніми ключами');
-console.log('  ok  обрив на підміні: дані відновлено з reservations_new, не знищено');
+// Індекси — це не швидкість.
+//
+// Перша версія гілки відновлення перейменовувала `reservations_new` назад і на
+// цьому спинялась. Після перейменування CHECK уже широкий, тож гілка
+// перебудови — та, у якій індекси й відтворюються, — не виконувалась НІКОЛИ.
+// Рядки на місці, `integrity_check ok`, `foreign_keys = 1`, і жодного
+// іменованого індексу: серед утрачених `CREATE UNIQUE INDEX
+// idx_reservations_guest_token` — обмеження, без якого двом бронях можна
+// поставити ОДИН гостьовий токен, і жодна помилка про це не скаже. Стан
+// досяжний саме для баз, які пройшли старий 0094 і померли на підміні, тобто
+// рівно для тих, заради яких гілка відновлення й написана.
+assert.ok(afterLost.idx >= fresh.idx,
+  `відновлення врятувало рядки і викинуло індекси: ${fresh.idx} → ${afterLost.idx} `
+  + '(серед них УНІКАЛЬНИЙ на guest_page_token — два гості на одному посиланні)');
+// Лічильник можна задовольнити тринадцятьма не тими індексами — тому окремо
+// наслідок, той самий, яким рецензія довела дірку.
+assert.strictEqual(afterLost.dupToken, 'rejected',
+  'після відновлення двом бронях можна поставити ОДИН гостьовий токен — унікальний індекс не повернувся');
+assert.strictEqual(fresh.dupToken, 'rejected', 'свіжа база не боронить гостьовий токен — сцена доводила б не те');
+console.log(`  ok  обрив на підміні: дані відновлено з reservations_new, індекси теж (${afterLost.idx}), один токен двом не дається`);
 
 for (const d of [freshDir, draftDir, lostDir]) {
   try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* Windows */ }

@@ -7079,6 +7079,28 @@ function runMigrations(database: any) {
   // обслуговував запити з `foreign_keys = 0`, бо прагму нікому було повернути.
   // Кожен наступний старт повторював те саме, бо міграція вже не завершувалась.
   // Індекси відтворюються через `IF NOT EXISTS` — з тієї ж причини.
+  //
+  // Канонічний набір індексів `reservations` — один список, бо гілці
+  // відновлення нема звідки взяти те, що загинуло разом зі знятою таблицею.
+  // Він мусить збігатися з тим, що дає свіжа база; тримає це сцена
+  // `db-boot.check.ts` (`afterLost.idx >= fresh.idx`) — не око.
+  // `idx_reservations_unassigned` ЧАСТКОВИЙ: предикат `WHERE unit_id IS NULL`
+  // не косметика, індекс без нього — інше обмеження.
+  const RESERVATION_INDEXES = [
+    'CREATE INDEX IF NOT EXISTS idx_reservations_property ON reservations(property_id)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_unit ON reservations(unit_id)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_guest ON reservations(guest_id)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_dates ON reservations(check_in, check_out)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_status ON reservations(status)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_org ON reservations(organization_id)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_external_uid ON reservations(external_uid)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_unit_type ON reservations(unit_type_id)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_parent ON reservations(parent_id)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_hostex_code ON reservations(hostex_reservation_code)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_company ON reservations(company_id)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_unassigned ON reservations(property_id, check_in) WHERE unit_id IS NULL',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_reservations_guest_token ON reservations(guest_page_token)',
+  ];
   try {
     // Прибирання за обірваною перебудовою ПЕРШИМ, і воно розрізняє два стани.
     // `reservations_new` сам по собі — це або чернетка (оригінал ще на місці,
@@ -7091,8 +7113,20 @@ function runMigrations(database: any) {
         database.exec('DROP TABLE reservations_new');
         console.log('[DB] reservations_new: чернетку обірваної перебудови прибрано');
       } else {
+        // Перейменувати — це врятувати РЯДКИ. Індекси гинуть разом зі знятим
+        // оригіналом, а після перейменування CHECK уже широкий, тож гілка
+        // перебудови нижче (де вони й відтворюються) не виконається НІКОЛИ.
+        // Перша версія на цьому й спинялась: 20 броней на місці,
+        // `integrity_check ok`, `foreign_keys = 1` — і жодного іменованого
+        // індексу. Серед утрачених `idx_reservations_guest_token`, УНІКАЛЬНИЙ:
+        // без нього двом бронях можна поставити один гостьовий токен, і про це
+        // не скаже жодна помилка. Це не швидкість, це обмеження.
         database.exec('ALTER TABLE reservations_new RENAME TO reservations');
-        console.log('[DB] reservations: відновлено з reservations_new після обірваної перебудови');
+        for (const ix of RESERVATION_INDEXES) database.exec(ix);
+        const back = (database.prepare(
+          "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='index' AND tbl_name='reservations' AND sql IS NOT NULL",
+        ).get() as { n: number }).n;
+        console.log(`[DB] reservations: відновлено з reservations_new після обірваної перебудови (${back} індексів повернуто)`);
       }
     }
 

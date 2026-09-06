@@ -588,16 +588,16 @@ export default function BookingForm({
             {/* ── Standard channels ── */}
             {bookingSources.length > 0 && (
               <optgroup label={t('Канали')}>
-                {bookingSources.map(s => (
-                  <option key={s.code} value={s.code}>{t(s.name)}</option>
+                {bookingSources.map(src => (
+                  <option key={src.code} value={src.code}>{t(src.name)}</option>
                 ))}
               </optgroup>
             )}
             {/* ── Booking widget sites ── */}
             {widgetSources.length > 0 && (
               <optgroup label={t('🌐 Віджети бронювань')}>
-                {widgetSources.map(s => (
-                  <option key={s.code} value={s.code}>🌐 {t(s.name)}</option>
+                {widgetSources.map(site => (
+                  <option key={site.code} value={site.code}>🌐 {t(site.name)}</option>
                 ))}
               </optgroup>
             )}
@@ -739,7 +739,7 @@ export default function BookingForm({
           <div className="form-group">
             <label className="form-label">{t('Статус')}</label>
             <select className="form-select" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
-              {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{t(s.label)}</option>)}
+              {STATUS_OPTIONS.map(st => <option key={st.value} value={st.value}>{t(st.label)}</option>)}
             </select>
           </div>
           <div className="form-group">
@@ -797,7 +797,7 @@ export default function BookingForm({
           <div className="form-group">
             <label className="form-label">{t('Статус збору')}</label>
             <select className="form-select" value={form.cityTaxPaid} onChange={e => setForm(p => ({ ...p, cityTaxPaid: e.target.value }))}>
-              {CITY_TAX_PAID_OPTIONS.map(s => <option key={s.value} value={s.value}>{t(s.label)}</option>)}
+              {CITY_TAX_PAID_OPTIONS.map(tax => <option key={tax.value} value={tax.value}>{t(tax.label)}</option>)}
             </select>
           </div>
         </div>

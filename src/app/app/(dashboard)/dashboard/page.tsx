@@ -1,6 +1,7 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -100,6 +101,9 @@ export default function DashboardPage() {
 }
 
 function DashboardDesktop() {
+  // Валюта — ГОТЕЛЮ. Тут стояло `Kč` літералом у двох місцях: валюта
+  // першого клієнта в підсумках замовлень кожного готелю (інваріант 20).
+  const cur = useHotelCurrency();
   const t = useT();
   const [data, setData] = useState<DashboardData | null>(null);
   const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([]);
@@ -310,7 +314,7 @@ function DashboardDesktop() {
                         {o.startHour != null && <span style={{ color: 'var(--text-tertiary)', marginLeft: 4 }}>{String(o.startHour).padStart(2,'0')}:00–{String(o.endHour).padStart(2,'0')}:00</span>}
                       </td>
                       <td>{o.unitName ? <span className="badge badge-primary">{o.unitName}</span> : '—'}</td>
-                      <td style={{ fontWeight: 600 }}>{o.totalPrice} Kč</td>
+                      <td style={{ fontWeight: 600 }}>{`${o.totalPrice} ${cur}`.trim()}</td>
                       <td>
                         <span className={`badge ${STATUS_ORDER_MAP[o.status]?.badge || 'badge-info'}`}>
                           {t(STATUS_ORDER_MAP[o.status]?.label || o.status)}
@@ -360,7 +364,7 @@ function DashboardDesktop() {
                       </div>
                     </div>
                     <div className="dashboard-event-card-right">
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{o.totalPrice} Kč</div>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{`${o.totalPrice} ${cur}`.trim()}</div>
                       <span className={`badge ${STATUS_ORDER_MAP[o.status]?.badge || 'badge-info'}`} style={{ fontSize: 10, padding: '1px 6px' }}>
                         {t(STATUS_ORDER_MAP[o.status]?.label || o.status)}
                       </span>
