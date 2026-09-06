@@ -455,7 +455,18 @@ try {
 
       const log = await recentSendLog(CONN);
       assert.strictEqual(log.length, 2, `два виклики — два рядки журналу, а не ${log.length}`);
-      const [ok, failed] = log; // найновіший перший
+      // Рядки беруться за ВМІСТОМ, не за позицією. `sent_at` у SQLite має
+      // роздільність в одну секунду (`datetime('now')`), а тайбрейкер у
+      // `recentSendLog` — `id DESC`, тобто випадковий hex: два виклики, що
+      // вклалися в одну секунду (на раннері — завжди), повертаються в
+      // довільному порядку. Сцена, яка читала їх позицією, була через це
+      // монеткою: 06.09.2026 той самий код дав зелене й червоне на двох
+      // сусідніх комітах, які коду не торкались. Порядок «найновіший перший»
+      // тут не стверджується — його не з чим розрізняти на однакових
+      // мітках; на екрані оператора це косметика.
+      const ok = log.find((r) => r.responseStatus === 200)!;
+      const failed = log.find((r) => r.responseStatus === 429)!;
+      assert.ok(ok && failed, `у журналі мають бути обидва виклики: ${log.map((r) => r.responseStatus).join(', ')}`);
       assert.strictEqual(failed.responseStatus, 429, 'невдалий виклик — рядок зі статусом 429');
       assert.strictEqual(failed.taskId, null, 'і без task id');
       assert.strictEqual(ok.responseStatus, 200);
