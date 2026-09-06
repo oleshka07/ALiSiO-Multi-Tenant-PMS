@@ -51,6 +51,11 @@ export {
 
 export { listGuestPageConfigs } from './guest-page-configs.handlers';
 export { getGuestPageConfig, updateGuestPageConfig } from './guest-page-config.handlers';
+// Писач змісту гостьової сторінки на рівні типу. Двері потрібні, щоб ніхто
+// інший — навіть фікстура — не писав `guest_page_config` власним SQL: другий
+// писач робить таблицю «спільною», і три справжні пробої зникають зі звіту
+// меж як прогрес, якого не було (INC-018).
+export { upsertGuestPageConfig } from '../data/guest-page-config.repo';
 export { listPropertyGuestConfigs, updatePropertyGuestConfig } from './property-guest-config.handlers';
 export { uploadPhoto, deletePhoto } from './photos.handlers';
 

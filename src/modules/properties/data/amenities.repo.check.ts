@@ -145,6 +145,46 @@ try {
     console.log('  ok  призначення — набір: зняте зникає, повтор не двоїть, порожнє зберігається');
   });
 
+  // ── 3b. Два готелі зі СПІЛЬНИМ ХВОСТОМ ідентифікатора ─────────────────
+  //
+  // Первинний ключ рядка каталогу не має походити від орендаря шматком.
+  // Перша редакція будувала його як `am_cat_${orgId.slice(-8)}_${code}`, і це
+  // не теоретична колізія: `org_` + 16 hex, обрізані до восьми, — 32 біти, а
+  // рядків каталогу 72 на готель. Другий готель із тим самим хвостом падав на
+  // `duplicate key … amenity_categories_pkey` ще до першого рядка `amenities`,
+  // тобто `GET /api/amenities` віддавав 500 НАЗАВЖДИ, а `apply-hotel` на цей
+  // готель не накочувався.
+  //
+  // Хвіст тут заданий однаковим НАВМИСНО: випадкові id колізії не дають, і
+  // сцена на них була б зеленою в обох світах (інваріант 26).
+  {
+    const TAIL = 'deadbeef';
+    const twinA = `__amen_check__twin_a_${TAIL}`;
+    const twinB = `__amen_check__twin_b_${TAIL}`;
+    for (const id of [twinA, twinB]) {
+      await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [id, 'Twin', id]);
+    }
+    try {
+      await runWithOrganization(twinA, async () => { await repo.seedAmenityCatalog(twinA, 'uk'); });
+      await runWithOrganization(twinB, async () => { await repo.seedAmenityCatalog(twinB, 'cs'); });
+      const [a, b] = [
+        await runWithOrganization(twinA, () => repo.amenityCatalog(twinA)),
+        await runWithOrganization(twinB, () => repo.amenityCatalog(twinB)),
+      ];
+      assert.ok(a.flatMap((c) => c.amenities).length > 0 && b.flatMap((c) => c.amenities).length > 0,
+        'у другого готелю зі спільним хвостом id каталог порожній — ключ рядка походить від орендаря');
+      console.log('  ok  два готелі зі спільним хвостом ідентифікатора заводяться обидва');
+    } finally {
+      for (const id of [twinB, twinA]) {
+        await runWithOrganization(id, async () => {
+          await sql.run('DELETE FROM amenities WHERE organization_id = ?', [id]);
+          await sql.run('DELETE FROM amenity_categories WHERE organization_id = ?', [id]);
+        });
+        await sql.run('DELETE FROM organizations WHERE id = ?', [id]);
+      }
+    }
+  }
+
   // ── 4. Чужа організація не існує ──────────────────────────────────────
   await runWithOrganization(OTHER, async () => {
     await repo.seedAmenityCatalog(OTHER, 'cs');

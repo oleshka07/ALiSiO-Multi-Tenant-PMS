@@ -61,7 +61,16 @@ export async function seedAmenityCatalog(
 
   const categoryIds = new Map<string, string>();
   for (const c of AMENITY_CATEGORIES) {
-    const id = `am_cat_${organizationId.slice(-8)}_${c.code}`;
+    // Ключ рядка НЕ походить від орендаря шматком.
+    //
+    // Тут стояло `am_cat_${organizationId.slice(-8)}_${code}` — і це не
+    // теоретична колізія: `org_` + 16 hex, обрізані до восьми, це 32 біти, а
+    // рядків каталогу 72 на готель. Другий готель зі спільним хвостом падав
+    // на `duplicate key … _pkey` ще до першого рядка `amenities`, тобто
+    // `GET /api/amenities` віддавав 500 назавжди. Ідемпотентність тримає не
+    // ідентифікатор, а `ON CONFLICT (organization_id, code)`, тож id тут
+    // потрібен лише унікальний.
+    const id = crypto.randomUUID();
     const made = await sql.run(
       `INSERT INTO amenity_categories (id, organization_id, code, name, sort_order)
        VALUES (?, ?, ?, ?, ?)
@@ -86,7 +95,7 @@ export async function seedAmenityCatalog(
       `INSERT INTO amenities (id, organization_id, category_id, code, name, icon, scope, sort_order)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (organization_id, code) DO NOTHING`,
-      [`am_${organizationId.slice(-8)}_${a.code}`, organizationId, categoryId,
+      [crypto.randomUUID(), organizationId, categoryId,
         a.code, amenityName(a, language), a.icon ?? null, a.scope, order],
     );
     if (made.changes > 0) result.amenities++;

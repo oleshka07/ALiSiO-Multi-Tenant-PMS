@@ -9,15 +9,31 @@ import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope'
  * written a hundred rooms into another tenant's property in one call.
  */
 
-export function listUnits(organizationId: string, filters: { category?: string; unitType?: string; includePool?: boolean } = {}) {
+/**
+ * Список номерів. `secrets` — чи входять у нього пароль мережі й код замка.
+ *
+ * За замовчуванням НЕ входять, і це не обережність, а вимога задачі: цей
+ * маршрут читають екрани зміни — мобільний чекліст покоївки, календар,
+ * картка броні, — і роль `housekeeper` має рівно одне право (`nav:dashboard`).
+ * Пароль мережі й код замка в тій відповіді — це ключ від дверей гостя в
+ * телефоні кожного, хто ввійшов.
+ *
+ * Повний список бачить лише `manage_properties`, тобто екран налаштувань, де
+ * ці поля й редагуються. `lock_code` лежав у відповіді ще до Блоку 5a — блок
+ * діру розширив паролем мережі, і закриває тепер обидві.
+ */
+export function listUnits(
+  organizationId: string,
+  filters: { category?: string; unitType?: string; includePool?: boolean } = {},
+  options: { secrets?: boolean } = {},
+) {
   const sql = getSql();
+  const secrets = options.secrets === true;
   let query = `
     SELECT
-      u.id, u.property_id, u.name, u.code, u.beds, u.zone, u.floor, u.room_status, u.cleaning_status, u.sort_order, u.is_active, u.is_pool, u.lock_code, u.entry_photo_url,
-      -- Вид, мережа і пароль номера (0110). Список за вартою сесії, і
-      -- сусідній орендар його не бачить узагалі — check-isolation питає це
-      -- живим запитом.
-      u.view, u.wifi_network, u.wifi_password,
+      u.id, u.property_id, u.name, u.code, u.beds, u.zone, u.floor, u.room_status, u.cleaning_status, u.sort_order, u.is_active, u.is_pool, u.entry_photo_url,
+      u.view,
+      ${secrets ? 'u.wifi_network, u.wifi_password, u.lock_code,' : ''}
       c.id as category_id, c.name as category_name, c.type as category_type, c.icon as category_icon, c.color as category_color,
       ut.id as unit_type_id, ut.name as unit_type_name, ut.code as unit_type_code, ut.max_adults, ut.base_occupancy
     FROM units u

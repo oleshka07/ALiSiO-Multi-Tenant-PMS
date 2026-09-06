@@ -207,10 +207,27 @@ export async function getGuestPageConfig(unitTypeId: string, propertyId: string,
     propertyConfig = await sql.row<any>('SELECT * FROM property_guest_config WHERE property_id = ?', [propertyId]) as any || null;
   } catch { /* table may not exist yet */ }
 
+  /**
+   * Мережа береться ОДНИМ рівнем: назва й пароль разом або жодного (О2).
+   *
+   * Тут стояли два незалежні `||`, і готель, що вписав мережу на типі й не
+   * вписав пароль, віддавав гостю НАЗВУ ТИПУ З ПАРОЛЕМ ОБʼЄКТА. Гість вводить
+   * пароль, який не підходить, і о другій ночі дзвонить на рецепцію. Рівень
+   * номера це правило вже мав (нижче); тут його бракувало — рівно та
+   * ситуація, якою О2 і обґрунтоване.
+   */
+  const wifiFrom = (...levels: Array<{ wifi_network?: unknown; wifi_password?: unknown } | null | undefined>) => {
+    for (const level of levels) {
+      if (level?.wifi_network && level?.wifi_password) {
+        return { wifi_network: level.wifi_network, wifi_password: level.wifi_password };
+      }
+    }
+    return { wifi_network: null, wifi_password: null };
+  };
+
   const merged = !propertyConfig ? { ...unitTypeConfig } : {
     ...unitTypeConfig,
-    wifi_network: unitTypeConfig?.wifi_network || propertyConfig.wifi_network,
-    wifi_password: unitTypeConfig?.wifi_password || propertyConfig.wifi_password,
+    ...wifiFrom(unitTypeConfig, propertyConfig),
     restaurant_name: propertyConfig.restaurant_name,
     restaurant_hours: propertyConfig.restaurant_hours,
     restaurant_menu_url: propertyConfig.restaurant_menu_url,
@@ -240,9 +257,7 @@ export async function getGuestPageConfig(unitTypeId: string, propertyId: string,
   // Per-unit override: if unit has its own lock_code or entry_photo_url, use it
   if (unitOverrides?.lock_code) merged.lock_code = unitOverrides.lock_code;
   if (unitOverrides?.entry_photo_url) merged.entry_photo_url = unitOverrides.entry_photo_url;
-  // Мережа номера бере ОБИДВА поля разом або жодного: пароль від однієї
-  // мережі з назвою іншої — це підключення, яке не відбудеться, і гість,
-  // який дзвонить на рецепцію о другій ночі.
+  // Рівень номера — тим самим правилом, що й два верхні: цілим або ніяк.
   if (unitOverrides?.wifi_network && unitOverrides?.wifi_password) {
     merged.wifi_network = unitOverrides.wifi_network;
     merged.wifi_password = unitOverrides.wifi_password;

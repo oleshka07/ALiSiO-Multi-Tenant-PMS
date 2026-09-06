@@ -501,6 +501,33 @@ async function main() {
     assert.strictEqual(afterB?.lock_code, 'A-1234#', "B's write reached A's door code");
     console.log("  ok  B can neither read nor rewrite A's room wi-fi and door code");
 
+    // ── І та сама відповідь СВОЄМУ, але без права (рецензія 4, п. 2.1) ───
+    //
+    // Друга вісь, якої тут не було: сусід — не єдиний, від кого ці два поля
+    // закриті. `/api/units` читають екрани зміни (мобільний чекліст покоївки,
+    // календар, картка броні), а роль `housekeeper` має рівно одне право —
+    // `nav:dashboard`. Пароль мережі й код замка в тій відповіді це ключ від
+    // дверей гостя в телефоні кожного, хто ввійшов.
+    const maidId = `${TAG}maid_a`;
+    await sql.run(
+      'INSERT INTO app_users (id, organization_id, email, full_name, role, password_hash) VALUES (?, ?, ?, ?, ?, ?)',
+      [maidId, a.orgId, 'maid@isolation.test', 'Probe maid', 'housekeeper', PROBE_HASH]);
+    const cookieMaid = await login({ email: 'maid@isolation.test', password: PROBE_PASSWORD });
+    const maidUnits = await (await call(cookieMaid, '/api/units')).json();
+    assert.ok(Array.isArray(maidUnits) && maidUnits.some((u) => u.id === aUnit.id),
+      'покоївка не бачить номерів свого готелю — список їй потрібен для роботи');
+    for (const u of maidUnits) {
+      assert.ok(!('wifi_password' in u), 'у списку номерів для ролі без manage_properties є пароль мережі');
+      assert.ok(!('lock_code' in u), 'у списку номерів для ролі без manage_properties є код замка');
+    }
+    // А власник — бачить: інакше екран налаштувань не покаже того, що редагує.
+    const ownerUnits = await (await call(cookieA, '/api/units')).json();
+    const mine = (ownerUnits || []).find((u) => u.id === aUnit.id);
+    assert.strictEqual(mine?.wifi_password, 'a-room-secret',
+      'власник не бачить пароля мережі свого номера — екран налаштувань показує порожнє поле');
+    assert.strictEqual(mine?.lock_code, 'A-1234#', 'власник не бачить коду замка свого номера');
+    console.log('  ok  пароль мережі й код замка бачить лише manage_properties, решта — той самий список без них');
+
     // ── Зручності: словник організації (Блок 5a, 2.2) ───────────────────
     // Каталог у кожного свій, з власними іменами рядків: спільні рядки
     // означали б, що перейменування в одного готелю міняє слово в іншого, а

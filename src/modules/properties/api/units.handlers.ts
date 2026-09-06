@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as unitsRepo from '../data/units.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
+import { hasPermission } from '@core/auth/permissions';
 import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
 
 /**
@@ -14,11 +15,20 @@ type IdParams = { params: Promise<{ id: string }> };
 export const listUnits = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
     const { searchParams } = new URL(request.url);
+    // Секрети номера — лише тому, хто керує фондом.
+    //
+    // Маршрут лишається під `withActor`, бо його читають екрани зміни:
+    // мобільний чекліст покоївки, календар, картка броні. Але роль
+    // `housekeeper` має рівно одне право (`nav:dashboard`), і пароль мережі з
+    // кодом замка в тій відповіді — це ключ від дверей гостя в телефоні
+    // кожного, хто ввійшов. Тому не 403 на весь список, а список без секретів:
+    // відмовити цілком означало б зламати чотири робочі екрани заради двох
+    // полів, яких вони не показують.
     const rows = await unitsRepo.listUnits(actor.organizationId, {
       category: searchParams.get('category') || undefined,
       unitType: searchParams.get('unitType') || undefined,
       includePool: searchParams.get('include_pool') === '1',
-    });
+    }, { secrets: hasPermission(actor.user.permissions, 'manage_properties') });
     return NextResponse.json(rows);
   } catch (error) {
     console.error('GET /api/units error:', error);
