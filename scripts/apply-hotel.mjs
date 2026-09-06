@@ -583,10 +583,17 @@ async function applyStructure(organizationId, plan) {
       return ids;
     };
 
+    // «Той самий набір» звітується як `=`, а не `+`. Стан від повторного
+    // прогону не міняється в обох випадках, але звіт, який каже «зроблено» на
+    // прогоні, що нічого не зробив, привчає не читати звіт.
+    const sameSet = (a, b) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
+
     const onProperty = plan.amenities.property || plan.amenities.object || [];
     if (onProperty.length) {
       const ids = idsFor(onProperty, 'зручність обʼєкта');
+      const before = (await amenities.propertyAmenities(organizationId, property.id)).map((a) => a.id);
       if (DRY) say.made(`[суха] зручності обʼєкта: ${ids.length}`);
+      else if (sameSet(before, ids)) say.same(`зручності обʼєкта: ${ids.length}`);
       else {
         const saved = await amenities.setPropertyAmenities(organizationId, property.id, ids);
         saved ? say.made(`зручності обʼєкта: ${saved.length}`) : say.refused('зручності обʼєкта', 'відмовлено');
@@ -597,7 +604,9 @@ async function applyStructure(organizationId, plan) {
       const ut = typeByCode.get(typeCode);
       if (!ut) { say.refused(`зручності типу ${typeCode}`, 'такого типу у файлі не описано'); continue; }
       const ids = idsFor(codes, `зручність типу ${typeCode}`);
+      const before = (await amenities.unitTypeAmenities(organizationId, ut.id)).map((a) => a.id);
       if (DRY) { say.made(`[суха] зручності типу ${typeCode}: ${ids.length}`); continue; }
+      if (sameSet(before, ids)) { say.same(`зручності типу ${typeCode}: ${ids.length}`); continue; }
       const saved = await amenities.setUnitTypeAmenities(organizationId, ut.id, ids);
       saved ? say.made(`зручності типу ${typeCode}: ${saved.length}`) : say.refused(`зручності типу ${typeCode}`, 'відмовлено');
     }
