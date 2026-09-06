@@ -462,6 +462,40 @@ async function main() {
     const aUnit = await unitARes.json();
     assert.ok(aUnit?.id, `no unit id came back for A: ${JSON.stringify(aUnit).slice(0, 200)}`);
 
+    // ── Wi-Fi and the door code OF THE ROOM (Блок 5a, 2.1) ───────────────
+    // The same secrets as the two guest-page tables above, one level lower:
+    // a room's own network and lock code beat the type's and the property's,
+    // so this is where a hotel puts the code that actually opens a door.
+    // Read by the wrong tenant it is not a settings leak — it is entry.
+    const unitSecretsA = await call(cookieA, `/api/units/${aUnit.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        view: 'Blick auf den Hof', wifi_network: 'A-Room-Net',
+        wifi_password: 'a-room-secret', lock_code: 'A-1234#',
+      }),
+    });
+    assert.ok(unitSecretsA.ok, `A could not save its own room's wi-fi and lock code: ${unitSecretsA.status}`);
+    const savedA = await sql.row(
+      'SELECT view, wifi_network, wifi_password, lock_code FROM units WHERE id = ?', [aUnit.id]);
+    assert.strictEqual(savedA?.wifi_password, 'a-room-secret',
+      "A's own room wi-fi password did not reach the row — the field is displayed and silently dropped");
+    assert.strictEqual(savedA?.view, 'Blick auf den Hof', "A's own room view did not reach the row");
+
+    const unitListB = await (await call(cookieB, '/api/units')).json();
+    assert.ok(Array.isArray(unitListB) && !unitListB.some((u) => u.id === aUnit.id),
+      "B's unit list contains A's room — with the code that opens its door in it");
+
+    const unitPatchB = await call(cookieB, `/api/units/${aUnit.id}`, {
+      method: 'PATCH', body: JSON.stringify({ wifi_password: 'stolen', lock_code: '0000#' }),
+    });
+    assert.ok([403, 404].includes(unitPatchB.status),
+      `B rewrote A's room wi-fi and lock code: ${unitPatchB.status}`);
+    const afterB = await sql.row(
+      'SELECT wifi_password, lock_code FROM units WHERE id = ?', [aUnit.id]);
+    assert.strictEqual(afterB?.wifi_password, 'a-room-secret', "B's write reached A's room wi-fi password");
+    assert.strictEqual(afterB?.lock_code, 'A-1234#', "B's write reached A's door code");
+    console.log("  ok  B can neither read nor rewrite A's room wi-fi and door code");
+
 
     // C11 — iCal channels. The rows carry the import URL a hotel got from its
     // OTA and the export token that IS the credential for its own calendar

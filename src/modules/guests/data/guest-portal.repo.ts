@@ -186,11 +186,18 @@ export async function getGuestPageConfig(unitTypeId: string, propertyId: string,
   const sql = getSql();
   const unitTypeConfig = await sql.row<any>('SELECT * FROM guest_page_config WHERE unit_type_id = ?', [unitTypeId]) as any || null;
 
-  // Per-unit overrides (lock_code, entry_photo_url)
+  // Per-unit overrides (lock_code, entry_photo_url, view, wi-fi — 0110).
+  //
+  // Три рівні, і вони не рівноцінні: обʼєкт каже «як тут узагалі», тип —
+  // «як у таких номерах», номер — «як саме у цьому». Мережа й замок ЦЬОГО
+  // номера перемагають обидва верхні: в апарт-готелі мережа кімнатна, а код
+  // замка типу — це код, який не відчиняє двері гостя.
   let unitOverrides: any = null;
   if (unitId) {
     try {
-      unitOverrides = await sql.row<any>('SELECT lock_code, entry_photo_url FROM units WHERE id = ?', [unitId]) as any;
+      unitOverrides = await sql.row<any>(
+        'SELECT lock_code, entry_photo_url, view, wifi_network, wifi_password FROM units WHERE id = ?',
+        [unitId]) as any;
     } catch { /* columns may not exist yet */ }
   }
 
@@ -232,6 +239,14 @@ export async function getGuestPageConfig(unitTypeId: string, propertyId: string,
   // Per-unit override: if unit has its own lock_code or entry_photo_url, use it
   if (unitOverrides?.lock_code) merged.lock_code = unitOverrides.lock_code;
   if (unitOverrides?.entry_photo_url) merged.entry_photo_url = unitOverrides.entry_photo_url;
+  // Мережа номера бере ОБИДВА поля разом або жодного: пароль від однієї
+  // мережі з назвою іншої — це підключення, яке не відбудеться, і гість,
+  // який дзвонить на рецепцію о другій ночі.
+  if (unitOverrides?.wifi_network && unitOverrides?.wifi_password) {
+    merged.wifi_network = unitOverrides.wifi_network;
+    merged.wifi_password = unitOverrides.wifi_password;
+  }
+  if (unitOverrides?.view) merged.unit_view = unitOverrides.view;
 
   return merged;
 }

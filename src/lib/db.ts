@@ -213,6 +213,13 @@ function buildSchema(database: any) {
       notes TEXT,
       sort_order INTEGER NOT NULL DEFAULT 0,
       is_active INTEGER NOT NULL DEFAULT 1,
+      -- Блок 5a (0110): вид із вікна ЦЬОГО номера — вільним текстом, бо
+      -- «на липу» коду не має; стандартизований вид для OTA — зручність типу
+      -- з категорії VIEW. Мережа й пароль — рівень номера над рівнями типу і
+      -- обʼєкта: в апарт-готелі мережа буває кімнатна.
+      view TEXT,
+      wifi_network TEXT,
+      wifi_password TEXT,
       -- Virtual "staging pool" unit used by the room-allocation modal to
       -- park bookings without a real room. Hidden from regular listings.
       is_pool INTEGER NOT NULL DEFAULT 0,
@@ -6919,6 +6926,20 @@ function runMigrations(database: any) {
     database.exec('CREATE INDEX IF NOT EXISTS idx_ai_usage_month ON ai_usage(organization_id, created_at)');
   } catch (e) {
     console.error('[DB] ai_usage migration:', (e as Error).message);
+  }
+
+  // ── Блок 5a, 0110: вид, мережа і пароль на НОМЕРІ ───────────────────────
+  //
+  // Дописано і сюди, і в `CREATE TABLE units` вище: міграції тут пишуться як
+  // «оновити з попереднього стану», тож колонка лише в ALTER є в мігрованій
+  // базі й відсутня в нового клієнта, а колонка лише в CREATE — навпаки.
+  try {
+    for (const [col, decl] of [['view', 'TEXT'], ['wifi_network', 'TEXT'], ['wifi_password', 'TEXT']] as const) {
+      const cols = (database.prepare('PRAGMA table_info(units)').all() as any[]).map((c: any) => c.name);
+      if (!cols.includes(col)) database.exec(`ALTER TABLE units ADD COLUMN ${col} ${decl}`);
+    }
+  } catch (e) {
+    console.error('[DB] units view/wifi migration:', (e as Error).message);
   }
 
   // The last line of runMigrations, and the only reliable signal that the

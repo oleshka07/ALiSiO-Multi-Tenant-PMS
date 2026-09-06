@@ -13,7 +13,11 @@ export function listUnits(organizationId: string, filters: { category?: string; 
   const sql = getSql();
   let query = `
     SELECT
-      u.id, u.property_id, u.name, u.code, u.beds, u.zone, u.room_status, u.cleaning_status, u.sort_order, u.is_active, u.is_pool, u.lock_code, u.entry_photo_url,
+      u.id, u.property_id, u.name, u.code, u.beds, u.zone, u.floor, u.room_status, u.cleaning_status, u.sort_order, u.is_active, u.is_pool, u.lock_code, u.entry_photo_url,
+      -- Вид, мережа і пароль номера (0110). Список за вартою сесії, і
+      -- сусідній орендар його не бачить узагалі — check-isolation питає це
+      -- живим запитом.
+      u.view, u.wifi_network, u.wifi_password,
       c.id as category_id, c.name as category_name, c.type as category_type, c.icon as category_icon, c.color as category_color,
       ut.id as unit_type_id, ut.name as unit_type_name, ut.code as unit_type_code, ut.max_adults, ut.base_occupancy
     FROM units u
@@ -56,6 +60,12 @@ export interface CreateUnitInput {
   beds?: number;
   notes?: string;
   sort_order?: number;
+  /** Вид із вікна ЦЬОГО номера, вільним текстом (0110). */
+  view?: string;
+  /** Мережа й пароль номера — рівень над типом і обʼєктом (0110). */
+  wifi_network?: string;
+  wifi_password?: string;
+  lock_code?: string;
 }
 
 /** Every id below arrives in the request body, so each is checked separately. */
@@ -89,12 +99,14 @@ export async function createUnit(organizationId: string, input: CreateUnitInput)
   const sql = getSql();
   const result = await sql.row<any>(
     `
-    INSERT INTO units (unit_type_id, property_id, category_id, name, code, floor, zone, beds, notes, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO units (unit_type_id, property_id, category_id, name, code, floor, zone, beds, notes, sort_order,
+                       view, wifi_network, wifi_password, lock_code)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING *`,
     [input.unit_type_id, input.property_id, input.category_id,
     input.name, input.code, intOr(input.floor, null), input.zone || null,
-    intOr(input.beds, 0), input.notes || null, intOr(input.sort_order, 0)],
+    intOr(input.beds, 0), input.notes || null, intOr(input.sort_order, 0),
+    input.view || null, input.wifi_network || null, input.wifi_password || null, input.lock_code || null],
   );
   // Канали: у типу побільшало номерів — на кожну ніч до горизонту.
   await noteAvailabilityChanged(sql, { propertyId: input.property_id, unitTypeId: input.unit_type_id, from: todayIso(), to: null });
@@ -193,7 +205,7 @@ export async function updateUnit(organizationId: string, id: string, fields: Rec
 
   const sql = getSql();
 
-  const nullableFields = ['floor', 'zone', 'notes', 'lock_code', 'entry_photo_url'];
+  const nullableFields = ['floor', 'zone', 'notes', 'lock_code', 'entry_photo_url', 'view', 'wifi_network', 'wifi_password'];
   for (const f of nullableFields) {
     if (fields[f] === '') fields[f] = null;
   }
@@ -203,7 +215,7 @@ export async function updateUnit(organizationId: string, id: string, fields: Rec
     if (fields[f] === '') delete fields[f];
   }
 
-  const allowed = ['name', 'code', 'unit_type_id', 'category_id', 'floor', 'zone', 'beds', 'room_status', 'cleaning_status', 'notes', 'sort_order', 'is_active', 'lock_code', 'entry_photo_url'];
+  const allowed = ['name', 'code', 'unit_type_id', 'category_id', 'floor', 'zone', 'beds', 'room_status', 'cleaning_status', 'notes', 'sort_order', 'is_active', 'lock_code', 'entry_photo_url', 'view', 'wifi_network', 'wifi_password'];
   const updates: string[] = [];
   const values: unknown[] = [];
 

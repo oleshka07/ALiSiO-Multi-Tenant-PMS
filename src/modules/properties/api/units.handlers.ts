@@ -78,7 +78,8 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
       return NextResponse.json({ created: created.length, items: created }, { status: 201 });
     }
 
-    const { unit_type_id, category_id, name, code, floor, zone, beds, notes, sort_order } = body;
+    const { unit_type_id, category_id, name, code, floor, zone, beds, notes, sort_order,
+      view, wifi_network, wifi_password, lock_code } = body;
 
     if (!unit_type_id || !category_id || !name || !code) {
       return NextResponse.json({ error: 'unit_type_id, category_id, name and code are required' }, { status: 400 });
@@ -86,6 +87,7 @@ export const createUnit = withPermission('manage_properties', async (request: Ne
 
     const unit = await unitsRepo.createUnit(actor.organizationId, {
       unit_type_id, property_id, category_id, name, code, floor, zone, beds, notes, sort_order,
+      view, wifi_network, wifi_password, lock_code,
     });
     if (!unit) return NextResponse.json({ error: 'Property, category, unit type or building not found' }, { status: 404 });
     return NextResponse.json(unit, { status: 201 });
