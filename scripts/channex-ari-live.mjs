@@ -328,13 +328,19 @@ await runWithOrganization(organizationId, async () => {
     console.log(`  після: у черзі ${await pendingChannelChanges(connectionId)}, застрягло ${(await stuckChannelChanges(connectionId)).length}`);
 
     // ── ПІСЛЯ: вендор застосовує задачі асинхронно — чекаємо, доки зійдеться або вичерпається час ──
+    // З --min-stay чекати треба й на САМ мінімум: ціни в цьому проході не
+    // мінялися, тож збіг за цінами настав би на першій же спробі — і читання
+    // назад побачило б старе число, якого вендор ще не встиг замінити.
+    const minStayReady = (cal) => !MIN_STAY || options
+      .filter((o) => o.localId === MIN_STAY.id)
+      .every((o) => DATES.every((date) => cal[o.remoteId]?.[date]?.min_stay_arrival === MIN_STAY.n));
     let after = null;
     let verdict = null;
     for (let attempt = 0; attempt < 12; attempt++) {
       await sleep(attempt === 0 ? 1500 : 2500);
       after = await readCalendar(remote, FROM, TO);
       verdict = compare(after);
-      if (verdict.rateMiss === 0 && verdict.openMiss === 0 && verdict.availMiss === 0) break;
+      if (verdict.rateMiss === 0 && verdict.openMiss === 0 && verdict.availMiss === 0 && minStayReady(after)) break;
     }
     show(after, 'ПІСЛЯ (живий календар вендора)');
 
@@ -383,8 +389,10 @@ await runWithOrganization(organizationId, async () => {
       for (const o of [...own, ...neighbours]) {
         for (const date of DATES) {
           const got = after[o.remoteId]?.[date]?.min_stay_arrival;
+          // Сусід міг не мати рядка взагалі — тоді «без змін» це та сама
+          // відсутність, а не число; порівнюємо як є, включно з обома порожніми.
           const want = o.localId === MIN_STAY.id ? MIN_STAY.n : minStayBefore[o.remoteId]?.[date]?.min_stay_arrival;
-          const ok = got != null && got === want;
+          const ok = got === want;
           if (!ok) bad++;
           console.log(`  ${ok ? ' ' : '!'} ${date} ${o.localId}×${codeOf.get(o.unitTypeId)} occ${o.occupancy}: min_stay_arrival=${got ?? '?'} (${o.localId === MIN_STAY.id ? 'мало стати' : 'мало лишитись'} ${want ?? '?'})`);
         }
