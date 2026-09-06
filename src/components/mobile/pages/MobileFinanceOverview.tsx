@@ -1,6 +1,7 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
@@ -51,11 +52,16 @@ const TX_LABELS: Record<string, string> = {
   transfer: 'Переказ',
 };
 
-function fmt(n: number) {
-  return `${Math.round(Math.abs(n)).toLocaleString('cs-CZ')} Kč`;
+// Валюта і локаль — ГОТЕЛЮ, обидві були зашиті: `Kč` і `'cs-CZ'`. Це валюта і
+// формат числа першого клієнта у фінансовому огляді кожного готелю
+// (інваріант 20). Функція модульна, тож валюта приходить аргументом — хук
+// живе в компоненті.
+function fmt(n: number, cur: string) {
+  return `${Math.round(Math.abs(n)).toLocaleString()} ${cur}`.trim();
 }
 
 export default function MobileFinanceOverview() {
+  const cur = useHotelCurrency();
   const t = useT();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [kpi, setKpi] = useState<KPI | null>(null);
@@ -98,7 +104,7 @@ export default function MobileFinanceOverview() {
           {t('Загальний баланс')}
         </div>
         <div style={{ fontSize: 32, fontWeight: 800, lineHeight: 1 }}>
-          {Math.round(totalBalance).toLocaleString('cs-CZ')} Kč
+          {`${Math.round(totalBalance).toLocaleString()} ${cur}`.trim()}
         </div>
         <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
           {accounts.length} {t('рахунків')}
@@ -136,14 +142,14 @@ export default function MobileFinanceOverview() {
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
                 <TrendingUp size={18} color="#22c55e" />
               </div>
-              <div className="m-kpi-value" style={{ color: '#22c55e', fontSize: 20 }}>{fmt(kpi.revenue)}</div>
+              <div className="m-kpi-value" style={{ color: '#22c55e', fontSize: 20 }}>{fmt(kpi.revenue, cur)}</div>
               <div className="m-kpi-label">{t('Дохід')}</div>
             </div>
             <div className="m-kpi-card">
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
                 <TrendingDown size={18} color="#ef4444" />
               </div>
-              <div className="m-kpi-value" style={{ color: '#ef4444', fontSize: 20 }}>{fmt(kpi.expenses)}</div>
+              <div className="m-kpi-value" style={{ color: '#ef4444', fontSize: 20 }}>{fmt(kpi.expenses, cur)}</div>
               <div className="m-kpi-label">{t('Витрати')}</div>
             </div>
             <div className="m-kpi-card">
@@ -151,7 +157,7 @@ export default function MobileFinanceOverview() {
                 <BarChart3 size={18} color={kpi.ebitda >= 0 ? '#22c55e' : '#ef4444'} />
               </div>
               <div className="m-kpi-value" style={{ color: kpi.ebitda >= 0 ? '#22c55e' : '#ef4444', fontSize: 20 }}>
-                {fmt(kpi.ebitda)}
+                {fmt(kpi.ebitda, cur)}
               </div>
               <div className="m-kpi-label">EBITDA</div>
             </div>

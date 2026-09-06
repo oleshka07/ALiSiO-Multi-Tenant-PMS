@@ -52,5 +52,21 @@ export type { NewCharge } from '../data/folio.repo';
  * — і саме таким, який найлегше не помітити: вона ж «просто тест».
  */
 export { issueInvoice } from '../data/folio.repo';
+
+/**
+ * Скільки гість винен за бронню — для варти виселення в `@bookings` (Блок 4,
+ * `properties.checkout_balance_policy`). `hasFolio: false` каже викликачу,
+ * що фоліо ще немає і борг треба читати зі статусу оплати самої броні.
+ */
+export { reservationBalance, reservationFolioSummary } from '../data/folio-summary.repo';
+
+/**
+ * Оплата на фоліо без HTTP — для сцен сусідніх модулів (варта виселення в
+ * `@bookings` доводить борг «нараховане − оплачене» через ці ж двері, а не
+ * власним `INSERT` у таблицю фактурування). Фіскальна варта всередині — та
+ * сама, що на маршруті.
+ */
+export { recordPayment } from '../data/folio-payments.repo';
+export type { ReservationFolioSummary, FolioSummary } from '../data/folio-summary.repo';
 export { loadInvoiceDocument } from '../data/invoice-document.repo';
 export { generateGermanInvoicePdf } from '../domain/invoice-pdf-de';

@@ -101,8 +101,13 @@ const LEGACY = new Map([
     'freeUnitsForRange(unitIds, …) — тут же зникає цикл із запитом на номер.'],
   ['src/modules/bookings/api/reservations.handlers.ts',
     'вартовий подвійного бронювання при створенні броні оператором.'],
-  ['src/modules/bookings/api/reservation.handlers.ts',
-    'той самий вартовий при зміні броні (з виключенням самої броні за id).'],
+  // 06.09.2026 (Блок 4 §2.4): той самий борг переїхав із reservation.handlers.ts
+  // у власний файл зі сценою (conflicts.repo.check.ts) і навчився бачити
+  // availability_blocks. Це ПЕРЕНЕСЕННЯ запису, не новий: список не виріс.
+  // Лікується, коли @properties віддасть occupiedSpans() з причиною
+  // (бронь/блок) і виключенням самої броні за id — тоді файл зникає звідси.
+  ['src/modules/bookings/data/conflicts.repo.ts',
+    'вартовий при зміні броні (з виключенням самої броні за id) — бронь і закриття номера.'],
   ['src/modules/bookings/api/sub-bookings.handlers.ts',
     'той самий вартовий для під-броней групового заїзду.'],
 ]);

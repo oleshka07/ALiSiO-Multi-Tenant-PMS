@@ -32,6 +32,10 @@ export const ALL_PERMISSIONS = [
   'manage_finance_settings',
   'manage_sites',
   'manage_tasks',
+  // Борд прибирання: бачити стан номерів і міняти його в один клік
+  // (Блок 4 §2.2). Окремо від manage_properties — покоївка не редагує
+  // номерний фонд, але саме вона й каже «чисто».
+  'manage_housekeeping',
 ] as const;
 
 export type Permission = (typeof ALL_PERMISSIONS)[number];
@@ -70,6 +74,7 @@ export const PERMISSION_GROUPS: { title: string; permissions: { key: Permission;
       { key: 'manage_finance_settings', label: 'Налаштування фінансів (рахунки, категорії, контрагенти)' },
       { key: 'manage_sites', label: 'Керування сайтами' },
       { key: 'manage_tasks', label: 'Керування задачами' },
+      { key: 'manage_housekeeping', label: 'Прибирання (борд та історія)' },
     ],
   },
 ];
@@ -84,7 +89,7 @@ export const ROLE_DEFAULTS: Record<UserRole, Permission[]> = {
     'manage_bookings', 'manage_guests', 'manage_pricing',
     'view_reports', 'manage_payments', 'manage_documents',
     'manage_expenses', 'view_finance', 'manage_finance_settings',
-    'manage_sites', 'manage_tasks',
+    'manage_sites', 'manage_tasks', 'manage_housekeeping',
   ],
   receptionist: [
     'nav:dashboard', 'nav:calendar', 'nav:bookings', 'nav:guests', 'nav:tasks',
@@ -99,10 +104,10 @@ export const ROLE_DEFAULTS: Record<UserRole, Permission[]> = {
     // звітність. Сторно тут навмисно: виданий документ не редагується, він
     // скасовується зустрічним, і це не рішення зміни.
     'nav:documents',
-    'manage_bookings', 'manage_guests', 'manage_tasks', 'manage_documents',
+    'manage_bookings', 'manage_guests', 'manage_tasks', 'manage_documents', 'manage_housekeeping',
   ],
   housekeeper: [
-    'nav:dashboard',
+    'nav:dashboard', 'manage_housekeeping',
   ],
   maintenance: [
     'nav:dashboard',
@@ -179,6 +184,7 @@ export const NAV_PERMISSION_MAP: Record<string, Permission> = {
   '/app/reports/sales': 'nav:reports',
   '/app/reports/city-tax': 'nav:reports',
   '/app/guests': 'nav:guests',
+  '/app/guests/companies': 'nav:guests',
   '/app/documents': 'nav:documents',
   '/app/finance': 'nav:finance',
   '/app/finance/expenses': 'nav:finance',

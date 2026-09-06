@@ -89,9 +89,23 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'cancelled', label: 'Скасовано' },
 ];
 
-const PAYMENT_STATUS_OPTIONS: { value: string; label: string }[] = [
+/**
+ * «Частково» тут ВИДНО, але руками не ставиться.
+ *
+ * Це значення рахують гроші, а не оператор: `recalcReservationPaymentStatus`
+ * ставить його, коли внесків більше нуля й менше за суму. Дати його в список
+ * як звичайний пункт означало б другого писача одного поля — рівно та розбіжність,
+ * через яку в Д17 не завели колонку «хто скасував».
+ *
+ * Але й прибрати не можна: `<select>` зі значенням, якого немає серед
+ * пунктів, малюється ПОРОЖНІМ, і на броні з депозитом оператор бачив би
+ * пусте поле, а один випадковий клік затирав би пораховане число словом.
+ * Тому пункт є і вимкнений: своє значення показує, вибрати себе не дає.
+ */
+const PAYMENT_STATUS_OPTIONS: { value: string; label: string; derived?: boolean }[] = [
   { value: 'unpaid', label: 'Не оплачено' },
   { value: 'payment_requested', label: 'Запит на оплату' },
+  { value: 'partial', label: 'Частково оплачено', derived: true },
   { value: 'prepaid', label: 'Передплата' },
   { value: 'paid', label: 'Оплачено' },
 ];
@@ -574,16 +588,16 @@ export default function BookingForm({
             {/* ── Standard channels ── */}
             {bookingSources.length > 0 && (
               <optgroup label={t('Канали')}>
-                {bookingSources.map(s => (
-                  <option key={s.code} value={s.code}>{t(s.name)}</option>
+                {bookingSources.map(src => (
+                  <option key={src.code} value={src.code}>{t(src.name)}</option>
                 ))}
               </optgroup>
             )}
             {/* ── Booking widget sites ── */}
             {widgetSources.length > 0 && (
               <optgroup label={t('🌐 Віджети бронювань')}>
-                {widgetSources.map(s => (
-                  <option key={s.code} value={s.code}>🌐 {t(s.name)}</option>
+                {widgetSources.map(site => (
+                  <option key={site.code} value={site.code}>🌐 {t(site.name)}</option>
                 ))}
               </optgroup>
             )}
@@ -725,13 +739,32 @@ export default function BookingForm({
           <div className="form-group">
             <label className="form-label">{t('Статус')}</label>
             <select className="form-select" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
-              {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{t(s.label)}</option>)}
+              {STATUS_OPTIONS.map(st => <option key={st.value} value={st.value}>{t(st.label)}</option>)}
             </select>
           </div>
           <div className="form-group">
             <label className="form-label">{t('Статус оплати')}</label>
             <select className="form-select" value={form.paymentStatus} onChange={e => setForm(p => ({ ...p, paymentStatus: e.target.value }))}>
-              {PAYMENT_STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{t(s.label)}</option>)}
+              {/* Параметр зветься `ps`, а не `s`, і це не косметика.
+                  Екстрактор рядків веде походження константи за ІМЕНЕМ
+                  параметра, без урахування області видимості, тож два
+                  `.map(s => …)` в одному файлі дають у каталог літерали лише
+                  однієї константи. Тут таких сусідів двоє — `STATUS_OPTIONS`
+                  нижче і `CITY_TAX_PAID_OPTIONS`, — і поки цей список теж
+                  звався `s`, «Частково оплачено» не потрапляло в каталог
+                  зовсім: німецький портьє бачив би українське слово при
+                  заявлених 100 %. (Перша версія цього коментаря звинувачувала
+                  `.filter` перед `.map` і умовний `null` усередині —
+                  неправильно: екстрактор дивиться крізь них, винен виключно
+                  збіг імені. Похідний пункт ховається атрибутом просто тому,
+                  що так простіше читати.) */}
+              {PAYMENT_STATUS_OPTIONS.map(ps => (
+                <option key={ps.value} value={ps.value}
+                  disabled={ps.derived}
+                  hidden={ps.derived && form.paymentStatus !== ps.value}>
+                  {t(ps.label)}{ps.derived ? ` — ${t('рахується з оплат')}` : ''}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -764,7 +797,7 @@ export default function BookingForm({
           <div className="form-group">
             <label className="form-label">{t('Статус збору')}</label>
             <select className="form-select" value={form.cityTaxPaid} onChange={e => setForm(p => ({ ...p, cityTaxPaid: e.target.value }))}>
-              {CITY_TAX_PAID_OPTIONS.map(s => <option key={s.value} value={s.value}>{t(s.label)}</option>)}
+              {CITY_TAX_PAID_OPTIONS.map(tax => <option key={tax.value} value={tax.value}>{t(tax.label)}</option>)}
             </select>
           </div>
         </div>

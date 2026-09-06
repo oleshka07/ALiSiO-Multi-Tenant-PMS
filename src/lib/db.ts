@@ -149,6 +149,12 @@ function buildSchema(database: any) {
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      -- Блок 4 (0091): що робить виселення з несплаченим залишком —
+      -- нічого, попереджає або відмовляє (Hoteliera General settings).
+      -- І тут, і в ALTER нижче (AGENTS §4). CHECK лише тут: SQLite не
+      -- додає обмеження через ALTER; писач звіряє значення сам.
+      checkout_balance_policy TEXT NOT NULL DEFAULT 'warning'
+        CHECK (checkout_balance_policy IN ('none', 'warning', 'blocking')),
       UNIQUE(organization_id, slug)
     );
 
@@ -319,6 +325,11 @@ function buildSchema(database: any) {
       unit_type_id TEXT REFERENCES unit_types(id),
       guest_id TEXT NOT NULL REFERENCES guests(id),
       rate_plan_id TEXT REFERENCES rate_plans(id),
+      -- company_id (0093) тут НЕМАЄ навмисно: таблиця companies народжується
+      -- в runMigrations, а засів (seedData) пише в reservations раніше — з
+      -- FK на ще не створену таблицю перший INSERT падає «no such table».
+      -- Колонка додається ALTER-ом у блоці 0093, як і решта пізніших колонок
+      -- цієї таблиці (invoice_company_*, registration_status …).
       check_in TEXT NOT NULL,
       check_out TEXT NOT NULL,
       nights INTEGER NOT NULL DEFAULT 1,
@@ -326,7 +337,7 @@ function buildSchema(database: any) {
       children INTEGER NOT NULL DEFAULT 0,
       infants INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
-      payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'payment_requested', 'prepaid', 'paid')),
+      payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'payment_requested', 'partial', 'prepaid', 'paid')),
       source TEXT NOT NULL DEFAULT 'direct' CHECK (source IN ('direct', 'phone', 'whatsapp', 'booking_com', 'airbnb', 'other_ota')),
       total_price REAL NOT NULL DEFAULT 0,
       currency TEXT NOT NULL DEFAULT 'CZK',
@@ -787,7 +798,7 @@ function runMigrations(database: any) {
           children INTEGER NOT NULL DEFAULT 0,
           infants INTEGER NOT NULL DEFAULT 0,
           status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('draft', 'tentative', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show')),
-          payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'payment_requested', 'prepaid', 'paid')),
+          payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'payment_requested', 'partial', 'prepaid', 'paid')),
           source TEXT NOT NULL DEFAULT 'direct',
           total_price REAL NOT NULL DEFAULT 0,
           currency TEXT NOT NULL DEFAULT 'CZK',
@@ -6919,6 +6930,255 @@ function runMigrations(database: any) {
     database.exec('CREATE INDEX IF NOT EXISTS idx_ai_usage_month ON ai_usage(organization_id, created_at)');
   } catch (e) {
     console.error('[DB] ai_usage migration:', (e as Error).message);
+  }
+
+  // ─── Блок 4 «День готелю» — міграції 0090–0099 (docs/tasks/README.md) ───
+  //
+  // Паралельна сесія дописує СЮДИ, в кінець блоку; сесія 1 — вище. При
+  // rebase конфлікт вирішується збереженням обох у порядку номерів.
+
+  // --- 0091: перевірка балансу при виселенні — налаштування обʼєкта ---
+  //
+  // `none | warning | blocking`, дефолт `warning`: виселення з боргом
+  // проходить, але відповідь несе прапорець; `blocking` — 422 з назвою
+  // причини. І в CREATE, і тут (AGENTS §4): база, народжена до колонки,
+  // інакше лишилась би без неї, і виселення з боргом читалось би як
+  // «політики немає» — тобто `none`, найслабше з трьох.
+  try {
+    const propCols = (database.prepare('PRAGMA table_info(properties)').all() as any[]).map((c: any) => c.name);
+    if (!propCols.includes('checkout_balance_policy')) {
+      database.exec("ALTER TABLE properties ADD COLUMN checkout_balance_policy TEXT NOT NULL DEFAULT 'warning'");
+      console.log('[DB] Added checkout_balance_policy to properties');
+    }
+  } catch (e: any) {
+    console.error('[DB] properties checkout_balance_policy:', e.message);
+  }
+
+  // --- 0090: вкладення до броні ---
+  //
+  // Файл лежить у `data/uploads/<org>/reservations/…` (те саме сховище, що
+  // `api/file-upload`); рядок каже, до якої броні він належить і хто його
+  // поклав. `organization_id` явно (інваріант 12) — і в рядку, і в шляху
+  // файла, бо саме шлях перевіряє `GET /api/uploads`. Ретенція — разом із
+  // бронню (ON DELETE CASCADE); GDPR-цикл знеособлення цю таблицю не чіпає.
+  // `kind` — вільний рядок (`document`, `photo`, `other`): словник вкладень
+  // не має вимагати міграції.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS reservation_files (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        reservation_id  TEXT NOT NULL REFERENCES reservations(id) ON DELETE CASCADE,
+        kind            TEXT NOT NULL DEFAULT 'other',
+        path            TEXT NOT NULL,
+        original_name   TEXT NOT NULL,
+        mime_type       TEXT,
+        size_bytes      INTEGER NOT NULL DEFAULT 0,
+        uploaded_by     TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_reservation_files_org ON reservation_files(organization_id)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_reservation_files_reservation ON reservation_files(reservation_id, created_at)');
+  } catch (e: any) {
+    console.error('[DB] reservation_files migration:', e.message);
+  }
+
+  // --- 0092: історія прибирання ---
+  //
+  // `units.cleaning_status` міняли мовчки: PATCH номера, чекліст зміни,
+  // тепер — виселення. Хто, коли і з якого стану — не лишалось ніде.
+  // Рядок = одна зміна стану одного номера; `source` каже, звідки прийшла
+  // (`manual` — борд/чекліст, `checkout` — автоматика виселення).
+  // `organization_id` явно (інваріант 12); `changed_by` — FK на app_users:
+  // невідомий автор — це відмова, а не порожній рядок.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS unit_cleaning_log (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        unit_id         TEXT NOT NULL REFERENCES units(id) ON DELETE CASCADE,
+        from_status     TEXT NOT NULL,
+        to_status       TEXT NOT NULL,
+        source          TEXT NOT NULL DEFAULT 'manual',
+        changed_by      TEXT REFERENCES app_users(id) ON DELETE SET NULL,
+        changed_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        note            TEXT
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_unit_cleaning_log_org ON unit_cleaning_log(organization_id, changed_at)');
+    database.exec('CREATE INDEX IF NOT EXISTS idx_unit_cleaning_log_unit ON unit_cleaning_log(unit_id, changed_at)');
+  } catch (e: any) {
+    console.error('[DB] unit_cleaning_log migration:', e.message);
+  }
+
+  // --- 0093: компанії-платники ---
+  //
+  // Досі компанія на броні була семи вільними полями `invoice_company_*`,
+  // які набирались руками на кожну бронь заново. Тепер — рядок довідника;
+  // вибір платника на картці ставить `reservations.company_id` І переписує
+  // ті сім полів з довідника (знімок: документ читає його, а не живий рядок).
+  // `business_id` унікальний у межах організації (інваріант 3), порожній не
+  // бʼється (часткевий індекс). `archived_at` замість видалення: компанія з
+  // бронями лишається в історії, але випадає зі списку вибору.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS companies (
+        id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        name            TEXT NOT NULL,
+        business_id     TEXT,
+        vat_id          TEXT,
+        registry_no     TEXT,
+        address_street  TEXT,
+        address_city    TEXT,
+        address_zip     TEXT,
+        address_country TEXT,
+        bank_name       TEXT,
+        iban            TEXT,
+        bic             TEXT,
+        email           TEXT,
+        phone           TEXT,
+        notes           TEXT,
+        archived_at     TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    database.exec('CREATE INDEX IF NOT EXISTS idx_companies_org ON companies(organization_id, name)');
+    database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_org_business_id ON companies(organization_id, business_id) WHERE business_id IS NOT NULL');
+    const resCols93 = (database.prepare('PRAGMA table_info(reservations)').all() as any[]).map((c: any) => c.name);
+    if (!resCols93.includes('company_id')) {
+      database.exec('ALTER TABLE reservations ADD COLUMN company_id TEXT REFERENCES companies(id) ON DELETE SET NULL');
+      console.log('[DB] Added company_id to reservations');
+    }
+    database.exec('CREATE INDEX IF NOT EXISTS idx_reservations_company ON reservations(company_id)');
+  } catch (e: any) {
+    console.error('[DB] companies migration:', e.message);
+  }
+
+  // --- 0094: payment_status приймає 'partial' ---
+  //
+  // Колонка мала CHECK на чотири значення, а ДВА писачі роками ставили пʼяте:
+  // `finance/api/operations.handlers.ts` (перерахунок після кожної операції з
+  // бронню — «гроші прийшли, але не всі») і `app/api/payments/route.ts`
+  // (`type: deposit|partial`). Обидва впирались у CHECK, і депозит лягав у
+  // фінанси, а бронь лишалась «не оплачено» — з помилкою у відповіді, після
+  // якої оператор має всі підстави провести оплату вдруге. Планер уже читав
+  // це значення (`calendar/page.tsx:559`) і не міг побачити його ніколи.
+  //
+  // Розширити CHECK у SQLite можна лише перебудовою таблиці, а `reservations`
+  // має 67 колонок, накопичених ALTER-ами. Тому новий CREATE не переписується
+  // руками — він БЕРЕТЬСЯ з бази і в ньому міняється рівно один CHECK: так
+  // жодна колонка, дефолт чи зовнішній ключ не загубиться від перенабору.
+  // Далі — домашній візерунок перебудови (`cm_mappings` вище, `accruals`):
+  // `PRAGMA foreign_keys = OFF` → `BEGIN` → … → `COMMIT` → `PRAGMA ON`, а в
+  // `catch` — `ROLLBACK` І ОБОВʼЯЗКОВО повернення прагми. Перша версія цього
+  // блоку транзакції не мала, і обрив на `INSERT` лишав `reservations_new`:
+  // застосунок після цього стартував, доходив до `migrations complete` — і
+  // обслуговував запити з `foreign_keys = 0`, бо прагму нікому було повернути.
+  // Кожен наступний старт повторював те саме, бо міграція вже не завершувалась.
+  // Індекси відтворюються через `IF NOT EXISTS` — з тієї ж причини.
+  //
+  // Канонічний набір індексів `reservations` — один список, бо гілці
+  // відновлення нема звідки взяти те, що загинуло разом зі знятою таблицею.
+  // Він мусить збігатися з тим, що дає свіжа база; тримає це сцена
+  // `db-boot.check.ts` (`afterLost.idx >= fresh.idx`) — не око.
+  // `idx_reservations_unassigned` ЧАСТКОВИЙ: предикат `WHERE unit_id IS NULL`
+  // не косметика, індекс без нього — інше обмеження.
+  const RESERVATION_INDEXES = [
+    'CREATE INDEX IF NOT EXISTS idx_reservations_property ON reservations(property_id)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_unit ON reservations(unit_id)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_guest ON reservations(guest_id)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_dates ON reservations(check_in, check_out)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_status ON reservations(status)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_org ON reservations(organization_id)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_external_uid ON reservations(external_uid)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_unit_type ON reservations(unit_type_id)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_parent ON reservations(parent_id)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_hostex_code ON reservations(hostex_reservation_code)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_company ON reservations(company_id)',
+    'CREATE INDEX IF NOT EXISTS idx_reservations_unassigned ON reservations(property_id, check_in) WHERE unit_id IS NULL',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_reservations_guest_token ON reservations(guest_page_token)',
+  ];
+  try {
+    // Прибирання за обірваною перебудовою ПЕРШИМ, і воно розрізняє два стани.
+    // `reservations_new` сам по собі — це або чернетка (оригінал ще на місці,
+    // її можна викидати), або ЄДИНА копія даних (обрив стався між `DROP` і
+    // `RENAME`). Сліпий `DROP TABLE IF EXISTS` знищив би другий випадок.
+    const hasTable = (name: string) => Boolean(database.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name));
+    if (hasTable('reservations_new')) {
+      if (hasTable('reservations')) {
+        database.exec('DROP TABLE reservations_new');
+        console.log('[DB] reservations_new: чернетку обірваної перебудови прибрано');
+      } else {
+        // Перейменувати — це врятувати РЯДКИ. Індекси гинуть разом зі знятим
+        // оригіналом, а після перейменування CHECK уже широкий, тож гілка
+        // перебудови нижче (де вони й відтворюються) не виконається НІКОЛИ.
+        // Перша версія на цьому й спинялась: 20 броней на місці,
+        // `integrity_check ok`, `foreign_keys = 1` — і жодного іменованого
+        // індексу. Серед утрачених `idx_reservations_guest_token`, УНІКАЛЬНИЙ:
+        // без нього двом бронях можна поставити один гостьовий токен, і про це
+        // не скаже жодна помилка. Це не швидкість, це обмеження.
+        database.exec('ALTER TABLE reservations_new RENAME TO reservations');
+        for (const ix of RESERVATION_INDEXES) database.exec(ix);
+        const back = (database.prepare(
+          "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='index' AND tbl_name='reservations' AND sql IS NOT NULL",
+        ).get() as { n: number }).n;
+        console.log(`[DB] reservations: відновлено з reservations_new після обірваної перебудови (${back} індексів повернуто)`);
+      }
+    }
+
+    const resSql = (database.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='reservations'",
+    ).get() as { sql?: string } | undefined)?.sql ?? '';
+    const narrow = /CHECK \(payment_status IN \([^)]*\)\)/.exec(resSql);
+    // Мовчання не можна плутати з «уже полагоджено»: якщо CHECK на цю колонку
+    // не знайшовся зовсім, це не «нічого робити не треба», це «я не впізнав
+    // схему». Скажи це вголос — інакше наступний читач лога впевнений, що
+    // міграція відпрацювала.
+    if (!narrow) {
+      console.warn('[DB] 0094: CHECK на payment_status не знайдено в схемі reservations — перебудову НЕ виконано');
+    } else if (!narrow[0].includes("'partial'")) {
+      console.log('[DB] reservations: payment_status CHECK → + partial (0094) — перебудова зі збереженням індексів');
+      const before = (database.prepare('SELECT COUNT(*) AS n FROM reservations').get() as { n: number }).n;
+      const indexSql = (database.prepare(
+        "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='reservations' AND sql IS NOT NULL",
+      ).all() as { sql: string }[]).map((r) => r.sql);
+      const cols = (database.prepare('PRAGMA table_info(reservations)').all() as { name: string }[]).map((c) => c.name);
+      const createNew = resSql
+        .replace(narrow[0], "CHECK (payment_status IN ('unpaid', 'payment_requested', 'partial', 'prepaid', 'paid'))")
+        .replace(/^CREATE TABLE\s+"?reservations"?/i, 'CREATE TABLE reservations_new');
+      if (createNew === resSql) throw new Error('не вдалося перейменувати таблицю в CREATE — перебудову скасовано');
+
+      // Прагма — ПОЗА транзакцією: усередині SQLite її мовчки ігнорує.
+      database.exec('PRAGMA foreign_keys = OFF');
+      database.exec('BEGIN');
+      database.exec(createNew);
+      const list = cols.map((c) => `"${c}"`).join(', ');
+      database.exec(`INSERT INTO reservations_new (${list}) SELECT ${list} FROM reservations`);
+      database.exec('DROP TABLE reservations');
+      database.exec('ALTER TABLE reservations_new RENAME TO reservations');
+      for (const ix of indexSql) {
+        database.exec(ix.replace(/^CREATE\s+(UNIQUE\s+)?INDEX\s+/i, (m) => `${m}IF NOT EXISTS `));
+      }
+      // Звірка — ВСЕРЕДИНІ транзакції: інакше вона доповідає про втрату вже
+      // після того, як підміна зафіксована, і рятувати нічого.
+      const after = (database.prepare('SELECT COUNT(*) AS n FROM reservations').get() as { n: number }).n;
+      if (after !== before) throw new Error(`reservations rebuild lost rows: ${before} -> ${after}`);
+      const restored = (database.prepare(
+        "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='index' AND tbl_name='reservations' AND sql IS NOT NULL",
+      ).get() as { n: number }).n;
+      if (restored < indexSql.length) throw new Error(`reservations rebuild lost indexes: ${indexSql.length} -> ${restored}`);
+      database.exec('COMMIT');
+      database.exec('PRAGMA foreign_keys = ON');
+      console.log(`[DB] reservations rebuilt with payment_status 'partial' allowed (${after} rows, ${restored} indexes carried)`);
+    }
+  } catch (e: any) {
+    try { database.exec('ROLLBACK'); } catch { /* поза транзакцією */ }
+    database.exec('PRAGMA foreign_keys = ON');
+    console.error('[DB] payment_status partial migration:', e.message);
   }
 
   // The last line of runMigrations, and the only reliable signal that the

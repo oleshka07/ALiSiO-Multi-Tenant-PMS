@@ -396,6 +396,85 @@ export async function postServiceCharges(input: {
   };
 }
 
+/**
+ * Нарахувати послугу з каталогу готелю рукою рецепції — без замовлення.
+ *
+ * Блок 4, вкладка «Фінанси»: гість узяв пляшку води на рецепції, і на рахунок
+ * вона лягає з каталогу `additional_services` — назвою готелю, його ціною і
+ * ставкою ПДВ за датою послуги (інваріант 18), тим самим шляхом, що й
+ * замовлення з гостьової сторінки (`postServiceCharges`). Ціни й ставки в
+ * тілі запиту немає: картка називає послугу, кількість і дату, решту знає
+ * база. Послуга без `vat_code` відмовляється поіменно — так само, як там.
+ */
+export async function postCatalogService(input: {
+  folioId: string;
+  reservationId: string | null;
+  serviceId: string;
+  quantity: number;
+  serviceDate: string;
+}): Promise<PostResult | PostRefusal | { reason: 'no_service' } | { reason: 'no_folio' }> {
+  const organizationId = await requireOrganizationId();
+  const sql = getSql();
+
+  const folio = await sql.row<any>(
+    `SELECT f.id, COALESCE(r.property_id, f.property_id) AS property_id, r.id AS reservation_id,
+            u.code AS unit_code, u.name AS unit_name, g.first_name, g.last_name
+       FROM fin_folios f
+       LEFT JOIN reservations r ON r.id = f.reservation_id
+       LEFT JOIN units u ON u.id = r.unit_id
+       LEFT JOIN guests g ON g.id = r.guest_id
+      WHERE f.id = ? AND f.organization_id = ?`,
+    [input.folioId, organizationId]);
+  if (!folio) return { reason: 'no_folio' };
+
+  // Послуга — обʼєкта цієї організації; чужий id виглядає як відсутній.
+  const svc = await sql.row<any>(
+    `SELECT s.id, s.name, s.name_de, s.price, s.vat_code, s.vat_split
+       FROM additional_services s
+       JOIN properties p ON p.id = s.property_id
+      WHERE s.id = ? AND p.organization_id = ?`,
+    [input.serviceId, organizationId]);
+  if (!svc) return { reason: 'no_service' };
+  if (!svc.vat_code) return { reason: 'service_without_tax_code', services: [String(svc.name)] };
+
+  const quantity = Math.max(1, Math.floor(Number(input.quantity) || 1));
+  const serviceDate = day(input.serviceDate) || day(new Date());
+  const rates = await sql.rows<TaxRate>(
+    'SELECT code, rate, valid_from, valid_to FROM fin_tax_rates WHERE organization_id = ?',
+    [organizationId]);
+  const locale = folio.property_id ? localeForLanguage(await documentLanguage(folio.property_id)) : null;
+  const baseName = (locale === 'de-DE' && svc.name_de) ? String(svc.name_de) : String(svc.name);
+  const guestName = [folio.first_name, folio.last_name].filter(Boolean).join(' ') || null;
+  const unitCode = folio.unit_code || folio.unit_name || null;
+  const unitPrice = Number(svc.price) || 0;
+
+  const charges: NewCharge[] = [];
+  const split = parseVatSplit(svc.vat_split);
+  if (split) {
+    for (const part of splitCharge(split, unitPrice, quantity)) {
+      const rate = pickRate(rates, part.vatCode as TaxRate['code'], serviceDate);
+      if (!rate) return { reason: 'no_tax_rate', code: part.vatCode, date: serviceDate };
+      charges.push({
+        folioId: input.folioId, reservationId: folio.reservation_id ?? input.reservationId ?? null,
+        serviceDate, kind: 'service', description: `${baseName} – ${part.label}`,
+        guestName, unitCode, quantity,
+        unitPriceGross: part.unitGross, totalGross: part.totalGross, vatRate: rate.rate, source: 'service',
+      });
+    }
+  } else {
+    const rate = pickRate(rates, svc.vat_code as TaxRate['code'], serviceDate);
+    if (!rate) return { reason: 'no_tax_rate', code: String(svc.vat_code), date: serviceDate };
+    charges.push({
+      folioId: input.folioId, reservationId: folio.reservation_id ?? input.reservationId ?? null,
+      serviceDate, kind: 'service', description: baseName, guestName, unitCode, quantity,
+      unitPriceGross: money(unitPrice), totalGross: money(unitPrice * quantity), vatRate: rate.rate, source: 'service',
+    });
+  }
+
+  await addCharges(charges);
+  return { posted: charges.length, gross: money(charges.reduce((s, c) => s + c.totalGross, 0)), lines: [] };
+}
+
 function toRule(r: any): ChannelRateRule {
   return {
     channel: r.channel ?? null,

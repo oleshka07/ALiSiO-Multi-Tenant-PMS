@@ -23,6 +23,7 @@ interface PropertyRow extends AnyRow {
   id: string; name: string; slug: string; address?: string; city?: string;
   country?: string; phone?: string; email?: string;
   check_in_time: string; check_out_time: string; city_tax_per_night?: number; is_active: number;
+  checkout_balance_policy?: 'none' | 'warning' | 'blocking';
   category_count: number; unit_count: number; unit_type_count: number;
 }
 
@@ -168,7 +169,7 @@ export default function SettingsPropertiesPage() {
   // country deliberately empty: jurisdiction (Meldeschein, invoice language,
   // the fiscal till) hangs off it, so it must be chosen, not inherited from
   // the first customer's default.
-  const [propForm, setPropForm] = useState({ name: '', slug: '', address: '', city: '', country: '', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00', city_tax_per_night: 0 });
+  const [propForm, setPropForm] = useState({ name: '', slug: '', address: '', city: '', country: '', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00', city_tax_per_night: 0, checkout_balance_policy: 'warning' as 'none' | 'warning' | 'blocking' });
   const [catForm, setCatForm] = useState({ name: '', type: 'hotel', description: '', icon: '🏨', color: '#60a5fa', sort_order: 0, show_in_tasks: 1, show_in_finance: 0, show_in_booking: 1 });
   const [utForm, setUtForm] = useState({ category_id: '', name: '', code: '', max_adults: 2, max_children: 2, max_occupancy: 4, base_occupancy: 2, beds_single: 0, beds_double: 1, beds_sofa: 0, extra_bed_available: 0, sort_order: 0 });
   const [unitForm, setUnitForm] = useState({ unit_type_id: '', category_id: '', name: '', code: '', beds: 2, floor: '', zone: '', notes: '', sort_order: 0 });
@@ -252,10 +253,11 @@ export default function SettingsPropertiesPage() {
         country: p.country || 'CZ', phone: p.phone || '', email: p.email || '',
         check_in_time: p.check_in_time, check_out_time: p.check_out_time,
         city_tax_per_night: p.city_tax_per_night ?? 0,
+        checkout_balance_policy: p.checkout_balance_policy ?? 'warning',
       });
     } else {
       setEditId(null);
-      setPropForm({ name: '', slug: '', address: '', city: '', country: 'CZ', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00', city_tax_per_night: 0 });
+      setPropForm({ name: '', slug: '', address: '', city: '', country: 'CZ', phone: '', email: '', check_in_time: '15:00', check_out_time: '10:00', city_tax_per_night: 0, checkout_balance_policy: 'warning' });
     }
     setModal('property');
   };
@@ -864,6 +866,20 @@ export default function SettingsPropertiesPage() {
               <label className="form-label">{tUi('Міський податок / ніч')}</label>
               <input className="form-input" type="number" min="0" step="0.01" value={propForm.city_tax_per_night}
                 onChange={e => setPropForm(p => ({ ...p, city_tax_per_night: Number(e.target.value) }))} />
+            </div>
+          </div>
+          {/* Блок 4 (0091): що робить виселення з несплаченим залишком. Одне поле
+              налаштувань обʼєкта — джерело форми Hoteliera, General settings. */}
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">{tUi('Виселення з боргом')}</label>
+              <select className="form-select" value={propForm.checkout_balance_policy}
+                onChange={e => setPropForm(p => ({ ...p, checkout_balance_policy: e.target.value as 'none' | 'warning' | 'blocking' }))}>
+                <option value="none">{tUi('Не перевіряти баланс')}</option>
+                <option value="warning">{tUi('Попередити, але виселити')}</option>
+                <option value="blocking">{tUi('Заборонити виселення з боргом')}</option>
+              </select>
+              <div className="form-hint">{tUi('Борг рахується з рахунку броні; без рахунку — зі статусу оплати.')}</div>
             </div>
           </div>
         </Modal>

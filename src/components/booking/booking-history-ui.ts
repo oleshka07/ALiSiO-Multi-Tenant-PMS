@@ -11,6 +11,7 @@ export const HISTORY_ICONS: Record<string, string> = {
   created: '✨', deleted: '🗑️', status_change: '🔄', payment_status_change: '💰',
   price_change: '💲', unit_change: '🏠', dates_change: '📅',
   registration_change: '📋', notes_change: '📝', internal_notes_change: '📝',
+  guests_change: '👥',
   payment: '💳', note: '📝',
   channel_created: '📡', channel_modified: '📡', channel_cancelled: '📡',
 };
@@ -24,6 +25,7 @@ export const HISTORY_COLORS: Record<string, string> = {
   unit_change: '#A78BFA',
   dates_change: '#A78BFA',
   registration_change: '#5B7CFF',
+  guests_change: 'var(--accent-info)',
   notes_change: 'var(--text-tertiary)',
   internal_notes_change: 'var(--text-tertiary)',
   channel_created: '#4ADE80',

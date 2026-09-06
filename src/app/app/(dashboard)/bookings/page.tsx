@@ -13,6 +13,8 @@ import MobileBookings from '@/components/mobile/pages/MobileBookings';
 import SourceIcon from '@/components/ui/SourceIcon';
 import MobileFilterBar from '@/components/mobile/MobileFilterBar';
 import BookingViewModal from '@/components/booking/BookingViewModal';
+import { explainStatusChange } from '@/components/booking/status-change';
+import { PAYMENT_STATUS_VALUES, paymentStatusLabel, paymentStatusLook } from '@/modules/bookings/ui/payment-status';
 import BookingForm, { type WidgetSiteSourceRow } from '@/components/booking/BookingForm';
 import type { DashboardAlert } from '@/modules/dashboard/domain/alerts';
 import {
@@ -117,12 +119,10 @@ const STATUS_MAP: Record<string, { label: string; badge: string }> = {
   cancelled: { label: 'Скасовано', badge: 'badge-danger' },
 };
 
-const PAYMENT_STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  unpaid: { label: 'Не оплачено', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
-  payment_requested: { label: 'Запит на оплату', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
-  prepaid: { label: 'Передплата', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
-  paid: { label: 'Оплачено', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
-};
+// Словник статусів оплати живе в `@/modules/bookings/ui/payment-status`: тут
+// він був четвертою копією, і саме тому пропустив `partial` — значення, яке
+// фінансовий модуль пише з 2026-го, а список броней не вмів ані назвати, ані
+// відфільтрувати. Порядок пунктів фільтра = порядок у PAYMENT_STATUS_VALUES.
 
 // SOURCE_MAP is built dynamically from /api/booking-sources
 
@@ -271,6 +271,11 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
   const [sourceFilter, setSourceFilter] = useState('');
   const [sortCol, setSortCol] = useState<string>('check_in');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  // Два фільтри-твердження (Блок 4 §2.5): «показати конфліктні» — одна
+  // кімната продана двічі на одну ніч; «скасовані клієнтом» — скасування
+  // прийшло з каналу, не з нашої стійки. Обидва рахує сервер.
+  const [conflictingOnly, setConflictingOnly] = useState(false);
+  const [cancelledByClient, setCancelledByClient] = useState(false);
 
   /* ── modals ───────────────────────────────────────── */
   const [showNewBooking, setShowNewBooking] = useState(false);
@@ -343,7 +348,7 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
 
   /* ── fetch bookings ───────────────────────────────── */
   // Порожній список після фільтра — це «змініть фільтр», а не «броней ще немає».
-  const filtersActive = Boolean(search || (statusFilter && statusFilter !== 'active') || categoryFilter || paymentFilter || dateFrom || dateTo || sourceFilter);
+  const filtersActive = Boolean(search || (statusFilter && statusFilter !== 'active') || categoryFilter || paymentFilter || dateFrom || dateTo || sourceFilter || conflictingOnly || cancelledByClient);
 
   const fetchBookings = useCallback(async () => {
     setLoading(true);
@@ -361,6 +366,16 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
       if (dateFrom) params.set('date_from', dateFrom);
       if (dateTo) params.set('date_to', dateTo);
       if (sourceFilter) params.set('source', sourceFilter);
+      if (conflictingOnly) params.set('conflicting', '1');
+      if (cancelledByClient) params.set('cancelled_by', 'client');
+      // Порядок — той самий стан, що й у клацанні по заголовку колонки:
+      // сервер віддає рядки вже впорядкованими там, де він це вміє (заїзд,
+      // виїзд, створено), а клієнт сортує тим самим ключем. Два незалежні
+      // сортування показували б різне на одному екрані.
+      if (['check_in', 'check_out', 'created_at'].includes(sortCol)) {
+        params.set('sort', sortCol);
+        params.set('dir', sortDir);
+      }
       // Область обʼєкта з шапки: обраний обʼєкт звужує список, «Усі» — ні.
       if (propertyId) params.set('property_id', propertyId);
 
@@ -372,7 +387,7 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, categoryFilter, paymentFilter, dateFrom, dateTo, sourceFilter, propertyId]);
+  }, [search, statusFilter, categoryFilter, paymentFilter, dateFrom, dateTo, sourceFilter, propertyId, conflictingOnly, cancelledByClient, sortCol, sortDir]);
 
   /* ── fetch ref data ───────────────────────────────── */
   useEffect(() => {
@@ -442,16 +457,17 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (res.ok) {
-        showToast(`Статус змінено на: ${STATUS_MAP[newStatus]?.label || newStatus}`);
+      const data = await res.json().catch(() => ({}));
+      const outcome = explainStatusChange(res.ok, data, t);
+      if (outcome.ok) {
+        showToast(outcome.warning ? outcome.message : `${t('Статус змінено на:')} ${t(STATUS_MAP[newStatus]?.label || newStatus)}`);
         await fetchBookings();
         fetchAlerts();
         if (viewBooking && viewBooking.id === id) {
           setViewBooking({ ...viewBooking, status: newStatus });
         }
       } else {
-        const data = await res.json();
-        alert(`Помилка зміни статусу: ${data.error || 'Невідома помилка'}`);
+        alert(`${t('Помилка зміни статусу:')} ${outcome.message}`);
       }
     } catch (e) {
       console.error('Status change error:', e);
@@ -595,12 +611,12 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
             </select>
             <select className="form-select" style={{ width: 170 }} value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
               <option value="">{t('Всі оплати')}</option>
-              {Object.entries(PAYMENT_STATUS_MAP).map(([k, v]) => (
-                <option key={k} value={k}>{t(v.label)}</option>
+              {PAYMENT_STATUS_VALUES.map((k) => (
+                <option key={k} value={k}>{t(paymentStatusLabel(k))}</option>
               ))}
             </select>
-            {(search || statusFilter || categoryFilter || paymentFilter || dateFrom || dateTo || sourceFilter) && (
-              <button className="btn btn-ghost btn-sm" onClick={() => { setSearch(''); setStatusFilter(''); setCategoryFilter(''); setPaymentFilter(''); setDateFrom(''); setDateTo(''); setSourceFilter(''); }}>
+            {(search || statusFilter || categoryFilter || paymentFilter || dateFrom || dateTo || sourceFilter || conflictingOnly || cancelledByClient) && (
+              <button className="btn btn-ghost btn-sm" onClick={() => { setSearch(''); setStatusFilter(''); setCategoryFilter(''); setPaymentFilter(''); setDateFrom(''); setDateTo(''); setSourceFilter(''); setConflictingOnly(false); setCancelledByClient(false); }}>
                 <X size={14} /> {t('Скинути')}
               </button>
             )}
@@ -629,6 +645,27 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
                 ))}
               </optgroup>
             </select>
+            {/* Сортування — той самий стан, що й клацання по заголовку колонки. */}
+            <select className="form-select" style={{ width: 210 }}
+              value={`${sortCol}:${sortDir}`}
+              onChange={(e) => { const [c, d] = e.target.value.split(':'); setSortCol(c); setSortDir(d as 'asc' | 'desc'); }}>
+              <option value="check_in:asc">{t('Заїзд: спочатку найближчі')}</option>
+              <option value="check_in:desc">{t('Заїзд: спочатку далекі')}</option>
+              <option value="check_out:asc">{t('Виїзд: спочатку найближчі')}</option>
+              <option value="check_out:desc">{t('Виїзд: спочатку далекі')}</option>
+              <option value="created_at:desc">{t('Створено: спочатку нові')}</option>
+              <option value="created_at:asc">{t('Створено: спочатку старі')}</option>
+            </select>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}
+              title={t('Одна кімната продана двічі на ті самі ночі')}>
+              <input type="checkbox" checked={conflictingOnly} onChange={(e) => setConflictingOnly(e.target.checked)} />
+              {t('Тільки конфліктні')}
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}
+              title={t('Скасування прийшло з каналу, а не з нашої стійки')}>
+              <input type="checkbox" checked={cancelledByClient} onChange={(e) => setCancelledByClient(e.target.checked)} />
+              {t('Скасовані клієнтом')}
+            </label>
           </div>
         </div>
 
@@ -707,7 +744,7 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
                     <td>{b.check_in}</td><td>{b.check_out}</td><td>{b.nights}</td>
                     <td><span className="flex items-center gap-2" style={{ fontSize: 12 }}><Users size={12} /> {b.adults}{b.children > 0 && <span style={{ color: 'var(--text-tertiary)' }}>+{b.children}</span>}</span></td>
                     <td><span className={`badge ${STATUS_MAP[b.status]?.badge || 'badge-info'}`}>{t(STATUS_MAP[b.status]?.label || b.status)}</span></td>
-                    <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>{t(PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status)}</span></td>
+                    <td><span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: paymentStatusLook(b.payment_status).color, background: paymentStatusLook(b.payment_status).bg }}>{t(paymentStatusLabel(b.payment_status))}</span></td>
                     <td>
                       <span className="badge" style={{ background: (sourceMap[b.source]?.color || '#6c7086') + '22', color: sourceMap[b.source]?.color || '#6c7086' }}>{sourceMap[b.source]?.label || b.source}</span>
                       {b.hostex_channel_type && <span style={{ marginLeft: 4 }} title={`Hostex: ${b.hostex_channel_type}`}>🌐</span>}
@@ -771,8 +808,8 @@ function BookingsDesktop({ initialSearch }: { initialSearch?: string }) {
                       <div className="booking-card-unit-sub">{b.category_name || b.category_type || ''}</div>
                       <div className="booking-card-price">
                         {(b.total_price || 0).toLocaleString()} {b.currency || hotelCurrency}
-                        <span style={{ marginLeft: 6, display: 'inline-block', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, color: PAYMENT_STATUS_MAP[b.payment_status]?.color || '#888', background: PAYMENT_STATUS_MAP[b.payment_status]?.bg || 'rgba(128,128,128,0.1)' }}>
-                          {t(PAYMENT_STATUS_MAP[b.payment_status]?.label || b.payment_status)}
+                        <span style={{ marginLeft: 6, display: 'inline-block', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, color: paymentStatusLook(b.payment_status).color, background: paymentStatusLook(b.payment_status).bg }}>
+                          {t(paymentStatusLabel(b.payment_status))}
                         </span>
                       </div>
                       {(b.commission_amount || 0) > 0 && (

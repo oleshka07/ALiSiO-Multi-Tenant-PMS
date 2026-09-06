@@ -1,6 +1,7 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect, useCallback } from 'react';
 import { Search, RefreshCw, Phone, Mail, MapPin, X, ChevronRight, User, Plus, Edit2, MessageCircle, Save } from 'lucide-react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
@@ -286,6 +287,9 @@ function GuestDetailSheet({
   onEdit: () => void;
 }) {
   const t = useT();
+  // Валюта — ГОТЕЛЮ. Тут стояло `Kč` літералом двічі, плюс `'0 Kč'` у гілці
+  // порожнечі: валюта першого клієнта в картці гостя кожного готелю.
+  const cur = useHotelCurrency();
   const [stays, setStays] = useState<ReservationRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -337,7 +341,7 @@ function GuestDetailSheet({
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 18, fontWeight: 700 }}>{guest.first_name} {guest.last_name}</div>
               <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                {guest.total_stays} {t('перебування ·')} {guest.total_revenue ? `${Math.round(guest.total_revenue).toLocaleString()} Kč` : '0 Kč'}
+                {guest.total_stays} {t('перебування ·')} {`${Math.round(guest.total_revenue || 0).toLocaleString()} ${cur}`.trim()}
               </div>
             </div>
           </div>
@@ -427,7 +431,7 @@ function GuestDetailSheet({
                   </div>
                   {s.total_price > 0 && (
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginTop: 4 }}>
-                      {s.total_price.toLocaleString()} Kč
+                      {`${s.total_price.toLocaleString()} ${cur}`.trim()}
                     </div>
                   )}
                 </div>
@@ -443,6 +447,7 @@ function GuestDetailSheet({
 // ─── Main Component ────────────────────────────────────────
 
 export default function MobileGuests({ openNew, initialSearch }: { openNew?: boolean; initialSearch?: string }) {
+  const cur = useHotelCurrency();
   const t = useT();
   const [guests, setGuests] = useState<GuestRow[]>([]);
   const [loading, setLoading] = useState(true);

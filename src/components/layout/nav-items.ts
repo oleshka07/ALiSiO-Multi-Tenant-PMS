@@ -19,7 +19,7 @@ import type { Permission } from '@core/auth/permissions';
 import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, DollarSign, CalendarDays, BookOpen, Users, BarChart3, Settings,
-  CheckSquare, Presentation, ClipboardList,
+  CheckSquare, Presentation, ClipboardList, Brush, Building2,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -46,6 +46,8 @@ export const TOP_NAV: NavItem[] = [
     label: 'Гості', href: '/app/guests', icon: Users, permission: 'nav:guests', primary: true,
     children: [
       { label: 'Гості', href: '/app/guests', icon: Users, permission: 'nav:guests' },
+      // Компанії-платники (Блок 4 §2.3) — під Гостями, як у Hoteliera «Guests / Companies».
+      { label: 'Компанії', href: '/app/guests/companies', icon: Building2, permission: 'nav:guests' },
       { label: 'Evidenční kniha', href: '/app/guest-registry', icon: ClipboardList, permission: 'nav:guests', countries: ['CZ'] },
     ],
   },
@@ -53,6 +55,9 @@ export const TOP_NAV: NavItem[] = [
   // звіти, на які є право і ключ. Пункт без окремого права: хто не має
   // жодного звіту, побачить порожній стан із поясненням.
   { label: 'Звіти', href: '/app/reports', icon: BarChart3 },
+  // Прибирання — під Reports, як у Hoteliera (Блок 4 §2.2). Ядро, без ключа;
+  // право `manage_housekeeping` мають покоївка, рецепція і менеджер.
+  { label: 'Прибирання', href: '/app/housekeeping', icon: Brush, permission: 'manage_housekeeping' },
   // Платні модулі — зʼявляються з ключем.
   { label: 'Задачі', href: '/app/tasks', icon: CheckSquare, permission: 'nav:tasks', feature: 'tasks' },
   { label: 'Зали', href: '/app/events', icon: Presentation, permission: 'nav:bookings', feature: 'events' },

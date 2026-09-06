@@ -1,0 +1,9 @@
+{
+  "note": "Стеля знаків валюти на екран. Мої теки (Блок 4) — нуль; лишок у чужих, передано у звіті рецензії 07.09 раунд 6 п.2.7.",
+  "files": {
+    "src/app/app/(dashboard)/documents/page.tsx": 2,
+    "src/app/app/(dashboard)/events/page.tsx": 3,
+    "src/app/app/(dashboard)/pricing/page.tsx": 3,
+    "src/app/app/(dashboard)/sites/[siteId]/_components/AnalyticsTab.tsx": 1
+  }
+}

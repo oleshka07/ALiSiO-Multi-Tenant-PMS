@@ -1,6 +1,7 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
 import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
@@ -22,7 +23,9 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Brush,
 } from 'lucide-react';
+import Link from 'next/link';
 
 interface DashboardData {
   arrivalsToday: number;
@@ -40,6 +43,10 @@ interface DashboardData {
     first_name: string; last_name: string; unit_name: string; unit_code: string; cleaning_status: string;
     property_id?: string; property_name?: string;
   }>;
+  housekeeping?: {
+    total: number; dirty: number; in_progress: number; clean: number; out_of_order: number;
+    recent: Array<{ id: string; unit_code: string; from_status: string; to_status: string; changed_by_name: string | null; changed_at: string; source: string }>;
+  };
 }
 
 const STATUS_MAP: Record<string, { label: string; badge: string }> = {
@@ -55,6 +62,11 @@ const CLEAN_MAP: Record<string, { label: string; badge: string }> = {
   dirty: { label: 'Брудно', badge: 'badge-danger' },
   in_progress: { label: 'Прибирається', badge: 'badge-warning' },
 };
+
+// Словник борду прибирання (`/app/housekeeping`): журнал на дашборді каже те
+// саме слово, що й борд, куди веде кнопка поруч. CLEAN_MAP вище — спадковий
+// словник таблиці виїздів («Прибрано»), його тут не чіпаємо.
+const BOARD_LABEL: Record<string, string> = { clean: 'Чисто', dirty: 'Брудно', in_progress: 'У роботі' };
 
 const STATUS_ORDER_MAP: Record<string, { label: string; badge: string }> = {
   pending: { label: 'Очікує оплати', badge: 'badge-warning' },
@@ -89,6 +101,9 @@ export default function DashboardPage() {
 }
 
 function DashboardDesktop() {
+  // Валюта — ГОТЕЛЮ. Тут стояло `Kč` літералом у двох місцях: валюта
+  // першого клієнта в підсумках замовлень кожного готелю (інваріант 20).
+  const cur = useHotelCurrency();
   const t = useT();
   const [data, setData] = useState<DashboardData | null>(null);
   const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([]);
@@ -209,6 +224,43 @@ function DashboardDesktop() {
           </div>
         </div>
 
+        {/* Прибирання (Блок 4 §2.2) — лічильники й останні зміни, як у Hoteliera */}
+        {data.housekeeping && (
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+                <Brush size={16} /> {t('Номери')}
+              </h3>
+              <Link href="/app/housekeeping" className="btn btn-sm btn-secondary">{t('Борд прибирання')}</Link>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: 12 }}>
+              {([
+                ['total', t('Усього'), 'var(--text-primary)'],
+                ['dirty', t('Брудні'), 'var(--accent-danger)'],
+                ['in_progress', t('У роботі'), 'var(--accent-warning)'],
+                ['clean', t('Чисті'), 'var(--accent-success)'],
+                ['out_of_order', t('Out of order'), 'var(--text-tertiary)'],
+              ] as const).map(([k, lbl, color]) => (
+                <div key={k} style={{ padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color, lineHeight: 1 }}>{data.housekeeping![k]}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>{lbl}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 6 }}>{t('Останні зміни прибирання')}</div>
+            {data.housekeeping.recent.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('Сьогодні змін прибирання ще не було.')}</div>
+            ) : data.housekeeping.recent.map((r) => (
+              <div key={r.id} style={{ display: 'flex', gap: 10, fontSize: 12, padding: '4px 0', borderBottom: '1px solid var(--border-primary)' }}>
+                <span style={{ color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>{String(r.changed_at).replace('T', ' ').slice(11, 16)}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{r.unit_code}</span>
+                <span>{t(BOARD_LABEL[r.from_status] || r.from_status)} → <b>{t(BOARD_LABEL[r.to_status] || r.to_status)}</b></span>
+                <span style={{ marginLeft: 'auto', color: 'var(--text-tertiary)' }}>{r.changed_by_name || (r.source === 'checkout' ? t('виселення') : t('Система'))}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Service Orders */}
           <div className="card" style={{ marginBottom: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
@@ -262,7 +314,7 @@ function DashboardDesktop() {
                         {o.startHour != null && <span style={{ color: 'var(--text-tertiary)', marginLeft: 4 }}>{String(o.startHour).padStart(2,'0')}:00–{String(o.endHour).padStart(2,'0')}:00</span>}
                       </td>
                       <td>{o.unitName ? <span className="badge badge-primary">{o.unitName}</span> : '—'}</td>
-                      <td style={{ fontWeight: 600 }}>{o.totalPrice} Kč</td>
+                      <td style={{ fontWeight: 600 }}>{`${o.totalPrice} ${cur}`.trim()}</td>
                       <td>
                         <span className={`badge ${STATUS_ORDER_MAP[o.status]?.badge || 'badge-info'}`}>
                           {t(STATUS_ORDER_MAP[o.status]?.label || o.status)}
@@ -312,7 +364,7 @@ function DashboardDesktop() {
                       </div>
                     </div>
                     <div className="dashboard-event-card-right">
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{o.totalPrice} Kč</div>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{`${o.totalPrice} ${cur}`.trim()}</div>
                       <span className={`badge ${STATUS_ORDER_MAP[o.status]?.badge || 'badge-info'}`} style={{ fontSize: 10, padding: '1px 6px' }}>
                         {t(STATUS_ORDER_MAP[o.status]?.label || o.status)}
                       </span>

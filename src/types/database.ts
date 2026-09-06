@@ -58,6 +58,8 @@ export interface Property {
   email?: string;
   check_in_time: string;
   check_out_time: string;
+  /** Виселення з боргом: `none | warning | blocking` (0091). */
+  checkout_balance_policy?: 'none' | 'warning' | 'blocking';
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -249,6 +251,8 @@ export interface Reservation {
   unit_id: string;
   guest_id: string;
   rate_plan_id?: string;
+  /** Платник-юрособа з довідника `companies` (0093); NULL — гість. */
+  company_id?: string | null;
   check_in: string;
   check_out: string;
   nights: number;

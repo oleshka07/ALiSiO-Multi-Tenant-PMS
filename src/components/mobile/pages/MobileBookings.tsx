@@ -1,6 +1,9 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { useHotelCurrency } from '@/ui/hooks/useCurrentUser';
+import { paymentStatusLabel, paymentStatusLook } from '@/modules/bookings/ui/payment-status';
+import { explainStatusChange } from '@/components/booking/status-change';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 import { Search, RefreshCw, Phone, Plus, X, LogIn, LogOut, Building2, Pencil, Info, Link, MessageCircle } from 'lucide-react';
@@ -37,12 +40,11 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
   cancelled:   { label: 'Скасовано',    color: '#f87171', bg: 'rgba(248,113,113,0.15)' },
 };
 
-const PAY_MAP: Record<string, { label: string; color: string }> = {
-  unpaid:   { label: 'Не оплачено', color: '#f87171' },
-  partial:  { label: 'Частково',    color: '#fbbf24' },
-  paid:     { label: 'Оплачено',    color: '#34d399' },
-  refunded: { label: 'Повернення',  color: '#a78bfa' },
-};
+// Свій словник тут знав 'partial', але не знав 'payment_requested' і
+// 'prepaid' — і передплачена бронь показувалась на телефоні як «Не
+// оплачено», бо падала в дефолт. Плюс мертвий 'refunded': це стан рядка
+// оплати (`payments.status`), а не стан броні. Тепер набір один на всі
+// екрани — `@/modules/bookings/ui/payment-status`.
 
 const FILTER_CHIPS = [
   { key: '', label: 'Всі' },
@@ -112,6 +114,7 @@ interface MobileBookingsProps {
 
 export default function MobileBookings({ openNew, initialSearch }: MobileBookingsProps) {
   const t = useT();
+  const cur = useHotelCurrency();
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [units, setUnits] = useState<UnitRow[]>([]);
   const [unitTypes, setUnitTypes] = useState<BFUnitTypeRow[]>([]);
@@ -210,7 +213,12 @@ export default function MobileBookings({ openNew, initialSearch }: MobileBooking
   };
 
   const handleChangeStatus = async (id: string, status: string) => {
-    await fetch(`/api/bookings/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    const res = await fetch(`/api/bookings/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    // Відмову сервера (422 без оплати чи з боргом) і попередження треба ПОКАЗАТИ:
+    // мовчазний `await fetch` виглядав як «кнопка не працює».
+    const outcome = explainStatusChange(res.ok, await res.json().catch(() => ({})), t);
+    if (outcome.message) alert(outcome.message);
+    if (!outcome.ok) return;
     fetchData();
   };
 
@@ -356,7 +364,7 @@ export default function MobileBookings({ openNew, initialSearch }: MobileBooking
       ) : (
         filtered.map(b => {
           const st = STATUS_MAP[b.status] || STATUS_MAP.draft;
-          const pay = PAY_MAP[b.payment_status] || PAY_MAP.unpaid;
+          const pay = paymentStatusLook(b.payment_status);
           const cleanLabel = b.cleaning_status === 'clean' ? t('Чисто') : b.cleaning_status === 'dirty' ? t('Брудно') : b.cleaning_status === 'in_progress' ? t('В процесі') : null;
           const cleanColor = b.cleaning_status === 'clean' ? '#22c55e' : b.cleaning_status === 'dirty' ? '#ef4444' : '#f59e0b';
           return (
@@ -372,8 +380,13 @@ export default function MobileBookings({ openNew, initialSearch }: MobileBooking
                   <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: st.bg, color: st.color }}>
                     {t(st.label)}
                   </span>
+                  {/* `Kč` тут стояло літералом — валюта одного клієнта на
+                      телефоні кожного готелю (інваріант 20). І слово статусу
+                      йшло повз `t()`: німецький портьє бачив українське. */}
                   <span style={{ fontSize: 11, fontWeight: 600, color: pay.color }}>
-                    {b.total_price > 0 ? `${b.total_price.toLocaleString()} Kč` : pay.label}
+                    {b.total_price > 0
+                      ? `${b.total_price.toLocaleString()} ${cur}`.trim()
+                      : t(paymentStatusLabel(b.payment_status))}
                   </span>
                 </div>
               </div>

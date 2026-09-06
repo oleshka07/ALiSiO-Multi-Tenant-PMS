@@ -78,6 +78,14 @@ Charter описує, ЯК називати. Він не вимагає нега
   - `gift_cards.status`: `draft | active | paid | activated | cancelled |
     expired`
   - `tasks.status`: `todo | in_progress | done | cancelled`
+  - `properties.checkout_balance_policy`: `none | warning | blocking` — що
+    робить виселення з несплаченим залишком (0091); дефолт `warning`;
+    невідоме слово читач бере як `blocking`
+  - `reservation_files.kind`: `document | photo | other` — вільний рядок, не
+    CHECK: словник вкладень не має вимагати міграції (0090)
+  - `unit_cleaning_log.source`: `manual | checkout` — звідки прийшла зміна
+    стану прибирання (борд/чекліст або автоматика виселення); вільний рядок
+    (0092). Самі стани — `units.cleaning_status`: `clean | dirty | in_progress`
   - `cm_outbox.kind`, `cm_sends.lane`: `availability | rate` — дві смуги
     менеджера каналів; `cm_outbox.field_mask` — біти в порядку `RATE_FIELDS`
     домену (`prices, closed, minStay, maxStay, noArrival, noDeparture`),
@@ -192,6 +200,7 @@ Historично співіснують `r001`, `u_dlx1`, `org_demo` (сіди) т
 | `derived` (похідний тариф) | тариф без своїх цін: база ± коригування, рядки рахуються й рендеряться в календар з `source = 'derived'` | `derived_option` Channex — не використовується (Ц7); `site_rate_plans.derived_from_plan_id` — спадок сайтів |
 | `override` (перевизначення дати) | рядок `price_calendar` з ціною і `source = 'manual'`, який перерендер сезону не затирає | `manual` без ціни — рядок обмеження, не перевизначення |
 | `property scope` (область обʼєкта) | який обʼєкт організації зараз на екрані: `?property=<id\|all>`, кука `property_scope`, `usePropertyScope()` | орендар — той на сесії й зʼєднанні; область його не заміняє |
+| `company` | компанія-платник, рядок довідника `companies` (0093): `business_id` — реєстраційний ІД (IČO), `vat_id` — податковий (DIČ / USt-IdNr.), `registry_no` — запис у реєстрі (суд, розділ, вкладка) | `invoice_company_*` на броні — ЗНІМОК платника для документа, не посилання; `organization` — тенант |
 
 ## 9. Заборонене
 

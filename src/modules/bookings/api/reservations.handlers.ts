@@ -9,6 +9,7 @@ import { ownedUnit } from '../data/owned.repo';
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
 import { percentOf } from '@core/money';
+import { CONFLICTING_SQL, CANCELLED_BY_CLIENT_SQL, orderByClause } from '../data/list-filters';
 
 export const listReservations = withActor(async (request: NextRequest, _ctx, actor: Actor) => {
   try {
@@ -34,6 +35,9 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
         -- «0 %» на броні, де знижка є, — і перший же blur затер би її.
         r.lodging_discount_percent, r.lodging_discount_reason,
         r.breakfast_included,
+        -- Платник (0093): картка відкривається з рядка списку і показує, на
+        -- кого документ, не чекаючи детального запиту.
+        r.company_id, r.invoice_company_name,
         (SELECT COUNT(*) FROM reservation_sub_bookings WHERE reservation_id = r.id) as sub_booking_count,
         g.id as guest_id, g.first_name, g.last_name, g.email as guest_email, g.phone as guest_phone, g.nationality,
         u.id as unit_id, u.name as unit_name, u.code as unit_code, u.is_pool as unit_is_pool,
@@ -73,10 +77,13 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
       query += ' AND r.parent_id IS NULL';
     }
 
+    // Два незалежні фільтри: «без скасованих» звужує, «статус» звужує далі.
+    // Раніше `else if` мовчки вимикав статус, щойно стояв exclude_cancelled.
     const excludeCancelled = searchParams.get('exclude_cancelled') === '1';
     if (excludeCancelled) {
       query += " AND r.status NOT IN ('cancelled', 'no_show')";
-    } else if (status) {
+    }
+    if (status) {
       query += ' AND r.status = ?';
       params.push(status);
     }
@@ -141,7 +148,15 @@ export const listReservations = withActor(async (request: NextRequest, _ctx, act
       params.push(unitIdFilter);
     }
 
-    query += ' ORDER BY r.check_in ASC';
+    // Два фільтри-твердження (Блок 4 §2.5, форма — Hoteliera): «показати
+    // конфліктні» — двом бронням продано одну кімнату на одну ніч;
+    // «скасовані клієнтом» — скасування прийшло не з нашої стійки. Обидва
+    // разом звужують, а не заміняють одне одного: кожен — свій `AND`.
+    // SQL і його сцена — `data/list-filters.ts`.
+    if (searchParams.get('conflicting') === '1') query += ` AND (${CONFLICTING_SQL})`;
+    if (searchParams.get('cancelled_by') === 'client') query += ` AND (${CANCELLED_BY_CLIENT_SQL})`;
+
+    query += orderByClause(searchParams.get('sort'), searchParams.get('dir'));
 
     const rows = await sql.rows<any>(query, params);
 

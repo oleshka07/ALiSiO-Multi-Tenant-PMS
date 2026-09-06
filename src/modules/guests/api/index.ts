@@ -8,7 +8,7 @@ import { orderServices as _orderServices } from './services.handlers';
 import { handleCartEvent as _handleCartEvent } from './cart.handlers';
 import { requestPayment as _requestPayment } from './payment-request.handlers';
 
-export { listGuests, createGuest } from './guests.handlers';
+export { listGuests, createGuest, exportGuests } from './guests.handlers';
 export { getGuest, updateGuest, deleteGuest } from './guest.handlers';
 
 /**
@@ -62,3 +62,8 @@ export { searchGuests } from '../data/guest-search';
 // нутрощі модуля.
 export { anonymizeOldRegistrations } from '../data/registration.repo';
 export type { RetentionRunResult } from '../data/registration.repo';
+
+// Реєстрація з картки броні — той самий писач обох книг гостей, що й портал
+// (Д16): картка в @bookings не пише таблиці гостей сама.
+export { addReceptionRegistration, removeReceptionRegistration } from '../data/registration.repo';
+export type { ReceptionGuestSnapshot } from '../data/registration.repo';

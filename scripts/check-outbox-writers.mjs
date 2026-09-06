@@ -48,6 +48,7 @@ const ALLOWED = new Map([
   ['src/modules/finance/api/operations.handlers.ts', 'payment_status'],
   ['src/modules/guests/api/payment-request.handlers.ts', 'payment_status — гроші, не ночі'],
   ['src/modules/properties/api/photos.handlers.ts', 'photos — картинки типу, не місткість і не ціна'],
+  ['src/modules/properties/data/cleaning.repo.ts', 'cleaning_status — стан прибирання номера, не наявність і не ціна (0092)'],
   ['src/lib/db.ts', 'схема й засів'],
 ]);
 

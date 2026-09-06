@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { noteStay, movesStay, stayById, staysOfParent } from '../data/stay-notes';
+import { noteStay, movesStay, staysOfParent } from '../data/stay-notes';
+import { writeReservationChange } from '../data/reservation-write.repo';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, generateGuestToken } from '@core/db';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
@@ -10,6 +11,11 @@ import { getSessionUser } from '@core/auth';
 import { writeBookingAudit, getBookingActor, buildBookingLabel } from './audit-log.handlers';
 import { getSql } from '@core/db/async';
 import { serverError } from '@core/http/errors';
+import { decideCheckout } from '../data/checkout.repo';
+import type { CheckoutDecision } from '../domain/checkout-balance';
+import { companyPayer } from '@companies/kernel';
+import { findStayConflict } from '../data/conflicts.repo';
+import { legacyInvoiceWanted } from '../domain/folio-payment';
 
 export const getReservation = withActor(async (_request: NextRequest, { params }: { params: Promise<{ id: string }> }, actor: Actor) => {
   try {
@@ -79,7 +85,8 @@ export const updateReservation = withPermission('manage_bookings', async (reques
   try {
     const sql = getSql();
     const { id } = await params;
-    if (!await ownedReservation(actor.organizationId, id)) {
+    const owned = await ownedReservation(actor.organizationId, id);
+    if (!owned) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     const body = await request.json();
@@ -101,7 +108,35 @@ export const updateReservation = withPermission('manage_bookings', async (reques
 
     console.log('[PATCH] booking id:', id, 'body:', JSON.stringify(body));
 
+    // Платник-юрособа (0093, Блок 4 §2.3). Компанія з довідника СВОЄЇ
+    // організації — інакше 404 (інваріант 5): бронь готелю А не виставляється
+    // на фірму готелю Б. Вибір переписує знімок `invoice_company_*` з
+    // довідника — документ читає знімок, а не живий рядок; NULL повертає
+    // платника-фізособу і чистить знімок.
+    if (body.company_id !== undefined) {
+      if (body.company_id === null || body.company_id === '') {
+        body.company_id = null;
+        Object.assign(body, {
+          invoice_company_name: null, invoice_company_ico: null, invoice_company_dic: null,
+          invoice_company_address: null, invoice_company_city: null, invoice_company_country: null,
+          invoice_company_email: null,
+        });
+      } else {
+        const payer = await companyPayer(actor.organizationId, String(body.company_id));
+        if (!payer) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+        if (payer.archived) return NextResponse.json({ error: 'company_archived' }, { status: 409 });
+        body.company_id = payer.id;
+        Object.assign(body, {
+          invoice_company_name: payer.invoice_company_name, invoice_company_ico: payer.invoice_company_ico,
+          invoice_company_dic: payer.invoice_company_dic, invoice_company_address: payer.invoice_company_address,
+          invoice_company_city: payer.invoice_company_city, invoice_company_country: payer.invoice_company_country,
+          invoice_company_email: payer.invoice_company_email,
+        });
+      }
+    }
+
     const allowed = [
+      'company_id',
       'unit_id', 'check_in', 'check_out', 'nights', 'adults', 'children', 'infants',
       'status', 'payment_status', 'source', 'total_price', 'commission_amount',
       'notes', 'internal_notes',
@@ -158,6 +193,43 @@ export const updateReservation = withPermission('manage_bookings', async (reques
       }
     }
 
+    // Виселення з боргом — за політикою ОБʼЄКТА (0091, Блок 4): `none` не
+    // дивиться, `warning` виселяє з прапорцем у відповіді, `blocking` — 422 з
+    // назвою причини. Борг — з фоліо броні; без фоліо — зі статусу оплати,
+    // того самого слова, за яким варта заселення пускає гостя в номер.
+    // Домен — `checkout-balance.ts`, обидві осі тримає його перевірка.
+    // Заселення в неприбраний номер — попередження, не заборона (Блок 4 §2.2):
+    // рецепція бачить, що номер брудний, і вирішує сама.
+    let checkinWarning: 'unit_dirty' | null = null;
+    if (body.status === 'checked_in') {
+      const targetUnit = body.unit_id ?? beforeSnapshot?.unit_id;
+      if (targetUnit) {
+        // З орендарем у запиті (рецензія 07.09 п.7), хоч власність номера
+        // вже доведена `ownedUnit` вище: правило одне на всі читання.
+        const u = await sql.row<any>(
+          `SELECT u.cleaning_status FROM units u JOIN properties p ON p.id = u.property_id
+            WHERE u.id = ? AND p.organization_id = ?`, [targetUnit, actor.organizationId]);
+        if (u && u.cleaning_status !== 'clean') checkinWarning = 'unit_dirty';
+      }
+    }
+
+    let checkout: CheckoutDecision | null = null;
+    if (body.status === 'checked_out' && beforeSnapshot?.status !== 'checked_out') {
+      const decision = await decideCheckout(sql, {
+        organizationId: actor.organizationId, propertyId: owned.property_id, reservationId: id,
+        paymentStatus: body.payment_status ?? beforeSnapshot?.payment_status,
+        totalPrice: Number(beforeSnapshot?.total_price) || 0,
+      });
+      // Обʼєкта немає — політики немає — виселення не дозволяється (інваріант 13).
+      if (decision === 'not_found') return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      checkout = decision;
+      if (!checkout.allowed) {
+        return NextResponse.json(
+          { error: 'checkout_balance_blocking', balance: checkout.balance, currency: beforeSnapshot?.currency ?? null },
+          { status: 422 });
+      }
+    }
+
     // Snapshot BEFORE the UPDATE so the activity log can record the
     // previous unit. Reading after the UPDATE would just echo the new
     // value back at us.
@@ -171,25 +243,27 @@ export const updateReservation = withPermission('manage_bookings', async (reques
     // the target unit is free across the (possibly new) dates. POST has
     // this check; PATCH historically did not, so unit reassignment via
     // edit forms or the room-allocation modal could silently double-book.
-    // Staging pool units intentionally hold many bookings at once — skip
-    // the check when the target unit is a pool.
+    // Since Блок 4 §2.4 the same question also sees availability_blocks:
+    // a room closed for maintenance is not free either. `conflicts.repo.ts`
+    // answers both for the edit form, the planner drag and the allocation
+    // modal alike; pool units are skipped there by design.
     if (body.unit_id !== undefined || body.check_in !== undefined || body.check_out !== undefined) {
       const current = await sql.row<any>('SELECT unit_id, check_in, check_out FROM reservations WHERE id = ?', [id]) as { unit_id: string; check_in: string; check_out: string } | undefined;
       if (current) {
         const targetUnit = body.unit_id !== undefined ? body.unit_id : current.unit_id;
         const targetIn  = body.check_in   !== undefined ? body.check_in  : current.check_in;
         const targetOut = body.check_out  !== undefined ? body.check_out : current.check_out;
-        const targetUnitRow = await sql.row<any>('SELECT is_pool FROM units WHERE id = ?', [targetUnit]) as { is_pool?: number } | undefined;
-        if (!targetUnitRow?.is_pool) {
-          const overlap = await sql.row<any>(`
-            SELECT id FROM reservations
-            WHERE unit_id = ? AND id <> ? AND status NOT IN ('cancelled', 'no_show')
-              AND check_in < ? AND check_out > ?
-            LIMIT 1
-          `, [targetUnit, id, targetOut, targetIn]) as { id: string } | undefined;
-          if (overlap) {
+        if (targetUnit) {
+          const conflict = await findStayConflict(sql, { unitId: String(targetUnit), checkIn: targetIn, checkOut: targetOut, excludeReservationId: id });
+          if (conflict?.kind === 'booking') {
             return NextResponse.json(
-              { error: 'Кімната зайнята на ці дати іншим бронюванням', conflictBookingId: overlap.id },
+              { error: 'Кімната зайнята на ці дати іншим бронюванням', code: 'unit_occupied', conflictBookingId: conflict.id },
+              { status: 409 },
+            );
+          }
+          if (conflict?.kind === 'block') {
+            return NextResponse.json(
+              { error: 'Номер закрито на ці дати', code: 'unit_blocked', blockId: conflict.id, reason: conflict.reason, date_from: conflict.date_from, date_to: conflict.date_to },
               { status: 409 },
             );
           }
@@ -228,21 +302,22 @@ export const updateReservation = withPermission('manage_bookings', async (reques
       oldPaymentStatus = oldRes?.payment_status || null;
     }
 
-    // Канали: стан ДО зміни звільняє старі ночі, стан ПІСЛЯ займає нові.
-    const stayBefore = movesStay(body) ? await stayById(sql, id) : undefined;
-    const childrenBefore = movesStay(body) ? await staysOfParent(sql, id) : [];
-
+    // Одна транзакція на бронь, її ночі в каналі, дочірні броні і — при
+    // виселенні — стан прибирання номера (Блок 4, 0092). Тіло транзакції —
+    // `reservation-write.repo.ts`, сцена поруч.
     if (sets.length > 0) {
       sets.push("updated_at = CURRENT_TIMESTAMP");
       values.push(id);
-      const statement = `UPDATE reservations SET ${sets.join(', ')} WHERE id = ?`;
-      console.log('[PATCH] SQL:', statement, 'values:', values);
-      const result = await sql.run(statement, values);
-      console.log('[PATCH] result:', JSON.stringify(result));
-      if (stayBefore) {
-        await noteStay(sql, stayBefore);
-        await noteStay(sql, await stayById(sql, id));
-      }
+      await writeReservationChange(sql, {
+        organizationId: actor.organizationId, reservationId: id,
+        statement: `UPDATE reservations SET ${sets.join(', ')} WHERE id = ?`, values,
+        movesStay: movesStay(body),
+        cascade: {
+          status: body.status, payment_status: body.payment_status, check_in: body.check_in,
+          check_out: body.check_out, nights: body.nights, source: body.source,
+        },
+        checkout: checkout ? { changedBy: actor.user.id } : null,
+      });
     }
 
     // Emit payment status change event for TG notification editing
@@ -281,7 +356,13 @@ export const updateReservation = withPermission('manage_bookings', async (reques
       const logActions: { action: string; details: string }[] = [];
       if (body.status) logActions.push({ action: 'status_change', details: `Статус → ${body.status}` });
       if (body.payment_status) logActions.push({ action: 'payment_status_change', details: `Оплата → ${body.payment_status}` });
-      if (body.total_price !== undefined) logActions.push({ action: 'price_change', details: `Ціна → ${body.total_price} CZK` });
+      // Валюта — броні, не одного клієнта: «CZK» тут стояло літералом.
+      if (body.total_price !== undefined) logActions.push({ action: 'price_change', details: `Ціна → ${body.total_price} ${beforeSnapshot?.currency || ''}`.trim() });
+      if (body.adults !== undefined || body.children !== undefined) {
+        const was = `${beforeSnapshot?.adults ?? '—'}+${beforeSnapshot?.children ?? 0}`;
+        const now = `${body.adults ?? beforeSnapshot?.adults ?? '—'}+${body.children ?? beforeSnapshot?.children ?? 0}`;
+        logActions.push({ action: 'guests_change', details: `Гості: ${was} → ${now}` });
+      }
       if (body.unit_id !== undefined) {
         const nextRow = await sql.row<any>('SELECT name FROM units WHERE id = ?', [body.unit_id]) as { name?: string } | undefined;
         const before = prevUnitLabel || '—';
@@ -301,35 +382,24 @@ export const updateReservation = withPermission('manage_bookings', async (reques
     // Cash marked by the operator counts as confirmed; any other manual "paid"
     // (card/online without a Teya confirmation) stays unconfirmed and is excluded
     // from the monthly ISDOC export until reconciled.
-    if (body.payment_status === 'paid') {
+    // Оплата з фоліо (`payment_method` folio/folio_cash) сюди не потрапляє:
+    // документ виставляє фоліо, і він там один (рецензія 07.09 п.1,
+    // `domain/folio-payment.ts`). Інакше на одну суму виходило два номери.
+    if (legacyInvoiceWanted(body)) {
       const isCash = body.payment_method === 'cash';
       generateInvoiceForReservation(id, isCash ? { confirmed: true, source: 'cash' } : { confirmed: false, source: 'manual' });
     }
 
-    // ── Cascade to child reservations ──
-    // When master's status or payment_status changes, mirror to all children
-    try {
-      const cascadeFields: string[] = [];
-      const cascadeValues: any[] = [];
-      if (body.status) { cascadeFields.push('status = ?'); cascadeValues.push(body.status); }
-      if (body.payment_status) { cascadeFields.push('payment_status = ?'); cascadeValues.push(body.payment_status); }
-      if (body.check_in) { cascadeFields.push('check_in = ?'); cascadeValues.push(body.check_in); }
-      if (body.check_out) { cascadeFields.push('check_out = ?'); cascadeValues.push(body.check_out); }
-      if (body.nights) { cascadeFields.push('nights = ?'); cascadeValues.push(body.nights); }
-      if (body.source) { cascadeFields.push('source = ?'); cascadeValues.push(body.source); }
-      if (cascadeFields.length > 0) {
-        cascadeFields.push("updated_at = CURRENT_TIMESTAMP");
-        cascadeValues.push(id);
-        await sql.run(`UPDATE reservations SET ${cascadeFields.join(', ')} WHERE parent_id = ?`, [...cascadeValues]);
-        // Дочірні броні рухаються разом із головною — і їхні ночі теж.
-        for (const child of childrenBefore) await noteStay(sql, child);
-        for (const child of await staysOfParent(sql, id)) await noteStay(sql, child);
-      }
-    } catch (cascErr) { console.error('[PATCH] cascade to children error (non-fatal):', cascErr); }
-
-    // Return updated booking with guest_page_token
+    // Return updated booking with guest_page_token — і прапорець виселення з
+    // боргом під `warning`, щоб рецепція побачила суму, а не лише «готово».
     const updated = await sql.row<any>('SELECT guest_page_token FROM reservations WHERE id = ?', [id]) as any;
-    return NextResponse.json({ success: true, guest_page_token: updated?.guest_page_token || null });
+    return NextResponse.json({
+      success: true,
+      guest_page_token: updated?.guest_page_token || null,
+      ...(checkout?.warning
+        ? { warning: checkout.warning, balance: checkout.balance, currency: beforeSnapshot?.currency ?? null }
+        : checkinWarning ? { warning: checkinWarning } : {}),
+    });
   } catch (error: any) {
     console.error('PATCH /api/bookings/[id] error:', error?.message || error);
     return serverError('modules/bookings/api/reservation updateReservation', error, 'Failed to update booking');

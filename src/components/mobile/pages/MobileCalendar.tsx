@@ -1,6 +1,8 @@
 'use client';
 
 import { useT } from '@core/i18n/client';
+import { PAYMENT_STATUS_VALUES, paymentStatusLabel, paymentStatusLook } from '@/modules/bookings/ui/payment-status';
+import { explainStatusChange } from '@/components/booking/status-change';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, RefreshCw, Filter, X, Search } from 'lucide-react';
@@ -62,19 +64,12 @@ const STATUS_LABELS: Record<string, string> = {
   draft: 'Чернетка',
 };
 
-const PAYMENT_LABELS: Record<string, string> = {
-  unpaid: 'Не оплачено',
-  payment_requested: 'Запит',
-  prepaid: 'Передплата',
-  paid: 'Оплачено',
-};
-
-const PAYMENT_ICONS: Record<string, string> = {
-  unpaid: '✗',
-  payment_requested: '✉',
-  prepaid: '◓',
-  paid: '✓',
-};
+// Підписи І ЗНАЧКИ — зі спільного набору (`@/modules/bookings/ui/payment-status`).
+// Тутешня копія не знала 'partial', тож фільтр на телефоні не мав чим вибрати
+// броні з депозитом. Значки спершу лишились місцевими з обіцянкою «нове
+// значення не лишиться без значка мовчки» — а код писав `|| ''`, тобто мовчки
+// лишав порожньо, рівно те, чого обіцяв не робити. Тепер значок у словнику, і
+// його відсутність валить гейт, а не зникає з екрана.
 
 const CLEAN_LABELS: Record<string, string> = {
   clean: '✓ Чисто',
@@ -196,7 +191,7 @@ function FiltersSheet({
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 8, textTransform: 'uppercase' }}>{tUi('Оплата')}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {[{ k: '', l: tUi('Всі') }, ...Object.keys(PAYMENT_LABELS).map(k => ({ k, l: `${PAYMENT_ICONS[k]} ${PAYMENT_LABELS[k]}` }))].map(opt => (
+              {[{ k: '', l: tUi('Всі') }, ...PAYMENT_STATUS_VALUES.map(k => ({ k, l: `${paymentStatusLook(k).icon} ${tUi(paymentStatusLabel(k))}`.trim() }))].map(opt => (
                 <button
                   key={opt.k || 'all'}
                   onClick={() => setPaymentFilter(opt.k)}
@@ -514,7 +509,12 @@ export default function MobileCalendar() {
   };
 
   const handleChangeStatus = async (id: string, status: string) => {
-    await fetch(`/api/bookings/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    const res = await fetch(`/api/bookings/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    // Відмову сервера (422 без оплати чи з боргом) і попередження треба ПОКАЗАТИ:
+    // мовчазний `await fetch` виглядав як «кнопка не працює».
+    const outcome = explainStatusChange(res.ok, await res.json().catch(() => ({})), tUi);
+    if (outcome.message) alert(outcome.message);
+    if (!outcome.ok) return;
     if (viewBooking && viewBooking.id === id) setViewBooking({ ...viewBooking, status });
     fetchData();
   };
@@ -1028,7 +1028,7 @@ export default function MobileCalendar() {
                           // Прапорець «прийшла з каналу», а не «з Hostex»: посередника немає,
                           // канал лишився. Іконка 🌐 говорить саме це.
                           const fromChannel = !!b.hostex_channel_type;
-                          const payIcon = b.payment_status && b.payment_status !== 'paid' ? PAYMENT_ICONS[b.payment_status] : null;
+                          const payIcon = b.payment_status && b.payment_status !== 'paid' ? paymentStatusLook(b.payment_status).icon : null;
                           return (
                             <div
                               key={b.id}
