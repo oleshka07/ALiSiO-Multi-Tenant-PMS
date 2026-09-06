@@ -58,6 +58,9 @@ export { dayRestrictions, pairRestrictionsAt, pricedDaysAhead } from '../data/pr
 export type { DayRestrictions } from '../data/price-calendar.repo';
 // Обмеження перебування — одне правило для віджета, бронювання й каналу (Д1/Д2).
 export { stayRefusal, OPEN_STAY } from '../domain/restrictions';
+// Тіло редактора дня: лише змінене (рецензія 07.09 раунд 2, правка 1).
+export { changedDayFields, hasRestrictionField, inheritRestrictionsPayload, DAY_RESTRICTION_KEYS } from '../domain/day-edit';
+export type { DayEditFields, DayEditPayload } from '../domain/day-edit';
 export type { StayRestrictions, StayRefusal } from '../domain/restrictions';
 export type { BulkUpdateInput, PriceCalendarOptions } from '../data/price-calendar.repo';
 export type {

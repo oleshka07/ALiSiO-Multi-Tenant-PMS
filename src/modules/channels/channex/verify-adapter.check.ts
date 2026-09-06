@@ -43,6 +43,10 @@ const OTHER = '__verify_adapter_other__';
 const PROP = `${ORG}_prop`;
 const UT = `${ORG}_ut`;
 const RP = `${ORG}_rp`;
+// Другий тариф того самого типу: без нього сцена 10 не розрізняє «ефективне
+// пари» і «ефективне типу» — з одним тарифом обидва прочитання дають те саме
+// число (рецензія 07.09 раунд 2, правка 2).
+const RP2 = `${ORG}_rp2`;
 const CONN = `${ORG}_conn`;
 const DAY = '2027-03-10';
 const DAY2 = '2027-03-11';
@@ -329,29 +333,73 @@ try {
     // Пара BAR має власний мінімум 3 при типу 2. Той бік віддає 2 (значення
     // типу) — це РОЗБІЖНІСТЬ для пари: очікуване рахується ефективним
     // обмеженням пари, не типу. Віддає 3 — збіг. Осі: власне 3 проти типу 2.
+    // Другий тариф того самого типу — СВОЄЇ ціни й свого обмеження не має:
+    // його очікуване мусить лишитись значенням типу (2), поки перший тримає
+    // власні 3. Осі сцени: два тарифи однієї пари типу, 3 проти 2 на одну
+    // дату; з одним тарифом ця сцена була зелена й на коді до 0072.
+    await runWithOrganization(ORG, async () => {
+      await sql.run(
+        `INSERT INTO rate_plans (id, property_id, name, code, currency, is_active, is_hidden, priority)
+         VALUES (?, ?, ?, ?, 'EUR', TRUE, FALSE, 1)`,
+        [RP2, PROP, 'Bed & Breakfast', 'BB'],
+      );
+      for (const [entityType, occupancy, remoteId] of [
+        ['rate_plan', 0, 'remote-rp2'], ['rate_plan_option', 2, 'remote-rp2'], ['rate_plan_option', 1, 'remote-rp2-occ1'],
+      ] as [string, number, string][]) {
+        await sql.run(
+          `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, occupancy, remote_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [`${CONN}_m2_${entityType}_${occupancy}`, ORG, CONN, entityType, RP2, UT, occupancy, remoteId],
+        );
+      }
+      await sql.run(
+        `INSERT INTO cm_outbox (id, organization_id, connection_id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to, sent_at, receipt)
+         VALUES (?, ?, ?, 'rate', ?, ?, ?, NULL, ?, ?)`,
+        [`${ORG}_s_rp2`, ORG, CONN, UT, RP2, DAY, '2027-03-01T11:00:00Z', 'task-rp2'],
+      );
+    });
     await upsertPrices(UT, [{ date: DAY, min_stay: 3 }], { ratePlanId: RP });
     await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
     const typeValue = transport({
       data: {
         'remote-rp': { [DAY]: open(2, 1), [DAY2]: cell('150.00', true, 2) },
         'remote-rp-occ1': { [DAY]: open(2, 1), [DAY2]: cell('120.00', true, 2) },
+        // Другий тариф: той бік тримає 2 — для НЬОГО це збіг, бо своїх
+        // обмежень у пари немає і ефективне для неї — значення типу.
+        'remote-rp2': { [DAY]: open(2, 1) },
+        'remote-rp2-occ1': { [DAY]: open(2, 1) },
       },
     });
     const tv = await verifySends(CONN, 'key', { today: TODAY, now: () => NOW, client: { fetch: typeValue.fetch } });
     assert.deepStrictEqual(
-      tv.mismatches.filter((m) => m.field === 'minStay').map((m) => [m.date, m.occupancy, m.ours, m.theirs]).sort(),
+      tv.mismatches.filter((m) => m.ratePlanId === RP && m.field === 'minStay').map((m) => [m.date, m.occupancy, m.ours, m.theirs]).sort(),
       [[DAY, 1, '3', '2'], [DAY, 2, '3', '2']],
       'той бік тримає значення типу (2), а пара має своє (3) — розбіжність, тип пару не рятує',
+    );
+    assert.deepStrictEqual(
+      tv.mismatches.filter((m) => m.ratePlanId === RP2 && m.field === 'minStay'), [],
+      'а другий тариф того самого типу власного обмеження не має — його очікуване лишається значенням ТИПУ (2), і 2 на тому боці для нього збіг',
     );
     await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
     const pairValue = transport({
       data: {
         'remote-rp': { [DAY]: open(3, 1), [DAY2]: cell('150.00', true, 2) },
         'remote-rp-occ1': { [DAY]: open(3, 1), [DAY2]: cell('120.00', true, 2) },
+        // Те саме число на другому тарифі — для НЬОГО це вже розбіжність.
+        'remote-rp2': { [DAY]: open(3, 1) },
+        'remote-rp2-occ1': { [DAY]: open(3, 1) },
       },
     });
     const pv = await verifySends(CONN, 'key', { today: TODAY, now: () => NOW, client: { fetch: pairValue.fetch } });
-    assert.deepStrictEqual(pv.mismatches.filter((m) => m.field === 'minStay'), [], 'той бік тримає власне значення пари (3) — збіг');
+    assert.deepStrictEqual(
+      pv.mismatches.filter((m) => m.ratePlanId === RP && m.field === 'minStay'), [],
+      'той бік тримає власне значення пари (3) — збіг',
+    );
+    assert.deepStrictEqual(
+      pv.mismatches.filter((m) => m.ratePlanId === RP2 && m.field === 'minStay').map((m) => [m.occupancy, m.ours, m.theirs]).sort(),
+      [[1, '2', '3'], [2, '2', '3']],
+      'і навпаки: 3 на другому тарифі — розбіжність, бо його очікуване 2; інакше сцена стверджувала б про вісь, якої у фікстурі немає',
+    );
     await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
     console.log('  ok  звірка порівнює з ефективним обмеженням ПАРИ — значення типу розбіжність не лагодить');
   });

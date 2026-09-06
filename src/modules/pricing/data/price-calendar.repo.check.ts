@@ -34,6 +34,8 @@ const BAR = (o: string) => `${o}_bar`;
 const BB = (o: string) => `${o}_bb`;
 const D1 = '2026-11-25';
 const D2 = '2026-11-26';
+const D3 = '2026-11-27';
+const D4 = '2026-11-28';
 
 async function cleanup() {
   for (const o of [A, B]) {
@@ -116,6 +118,14 @@ try {
   // писачі йдуть через одні двері (`noteCalendarChanged`); ціна пари називає
   // тариф (Ц10); обмеження називають тариф, коли записані в рядок ПАРИ, і не
   // називають, коли в базовий рядок типу (Ц32 переглянуто 07.09).
+  //
+  // ОХОПЛЕННЯ координати обмежень у цьому файлі більше не стверджується
+  // статично: до 07.09 тут стояло «координата обмежень тарифу не називає»,
+  // і після Ц32 це твердження стало хибним. Замінити його рядком про
+  // протилежне не можна — обидва варіанти правильні, вибір робить область
+  // (`restrictionsScope`), а її наслідок видно лише на живих таблицях черги.
+  // Тому охоплення доводять сцени 12 і 14 `ari-adapter.check`, а сцена 13
+  // нижче — те, що екран не називає області, якої оператор не просив.
   {
     const fs = await import('node:fs');
     const src = fs.readFileSync(new URL('./price-calendar.repo.ts', import.meta.url), 'utf8')
@@ -257,6 +267,57 @@ try {
   assert.strictEqual((await quote(A, BB(A))).nights[0]?.price, 100, 'null на ціні тарифу прибирає її — тариф знову успадковує базу');
   assert.strictEqual(Number(cleared2.min_stay), 2);
   console.log('  ok  null — прибрати, відсутнє — не чіпати, на всіх полях і в обох рядках');
+
+  // ── 13. Редактор дня не переказує в тип того, чого оператор не міняв ──
+  //
+  // Рецензія 07.09 раунд 2, правка 1. Модалка засівається ЕФЕКТИВНИМИ
+  // значеннями пари (`getPriceMonth`), а прапорець «на всі тарифи типу»
+  // увімкнений за замовчуванням. Форма, яка шле всі поля, перетворювала
+  // «змінив ціну B&B» на «записав власний мінімум B&B у тип» — і сусідній
+  // BAR продавався за чужим числом, а координата лягала на кожну пару
+  // («Unexpected rate plan in update»). Тіло тепер будує `changedDayFields`.
+  //
+  // Осі (інваріант 26): мінімум пари 10 проти мінімуму типу 1 — числа
+  // несумісні, «просочилось» від «не просочилось» не відрізнити не можна;
+  // два тарифи одного типу; і два тіла — від екрана і давнє повне — на двох
+  // датах, тож сцена показує РІЗНИЦЮ, а не саму лише зелень.
+  {
+    const { changedDayFields, hasRestrictionField } = await import('../domain/day-edit.ts');
+    // Тип: мінімум 1. Пара B&B: власний мінімум 10 і своя ціна.
+    for (const date of [D3, D4]) {
+      await runWithOrganization(A, () => upsertPrices(UT(A), [{ date, base_price: 100, min_stay: 1 }]));
+      await runWithOrganization(A, () => upsertPrices(UT(A), [{ date, base_price: 130, min_stay: 10 }], { ratePlanId: BB(A) }));
+    }
+    // Так день виглядає в сітці тарифу — саме цим засівається модалка.
+    const grid = await runWithOrganization(A, () => getPriceMonth(UT(A), 11, 2026, BB(A)));
+    const shown = grid.days.find((d) => d.date === D3)!;
+    assert.strictEqual(shown.min_stay, 10, 'сітка показує ефективний мінімум пари');
+    const opened = {
+      base_price: shown.base_price, weekend_price: shown.weekend_price,
+      min_stay: shown.min_stay, closed: Boolean(shown.closed), cta: Boolean(shown.cta), ctd: Boolean(shown.ctd),
+    };
+
+    // Оператор змінив ЛИШЕ ціну і не чіпав прапорця «на всі тарифи типу».
+    const body = changedDayFields(opened, { ...opened, base_price: 155 });
+    await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D3, ...body }], {
+      ratePlanId: BB(A), restrictionsScope: hasRestrictionField(body) ? 'type' : undefined,
+    }));
+    assert.strictEqual((await quote(A, BB(A), D3)).nights[0]?.price, 155, 'ціна тарифу записана');
+    assert.strictEqual((await quote(A, BAR(A), D3)).restrictions.minStay, 1,
+      'сусідній тариф мусить лишитись на мінімумі ТИПУ (1): зміна ціни одного тарифу не переносить чуже обмеження на всі');
+    assert.strictEqual((await quote(A, BB(A), D3)).restrictions.minStay, 10, 'а власний мінімум пари лишається її власним');
+    const typeRow = await sql.row<any>('SELECT min_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D3]);
+    assert.strictEqual(Number(typeRow.min_stay), 1, `у базовому рядку типу мусить лишитись 1, а лежить ${typeRow.min_stay}`);
+
+    // А ось що робило давнє тіло «вся форма»: те саме значення, названий тип
+    // — і мінімум пари стає мінімумом типу. Це те, що гейт ловить.
+    await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D4, ...opened, base_price: 155 }], {
+      ratePlanId: BB(A), restrictionsScope: 'type',
+    }));
+    assert.strictEqual((await quote(A, BAR(A), D4)).restrictions.minStay, 10,
+      'повна форма переносить власний мінімум пари в тип — сцена мусить бачити цю різницю, інакше вона нічого не стверджує');
+  }
+  console.log('  ok  редактор дня: незмінене не називається, власне обмеження пари не витікає в тип і на сусідній тариф');
 
   console.log('price-calendar: ціна тарифу на дату — своя, успадкована названа, чуже — відмова; ціни немає — NULL, нуль — відмова');
 } finally {

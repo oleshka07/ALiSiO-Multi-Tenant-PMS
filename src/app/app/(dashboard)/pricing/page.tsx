@@ -6,6 +6,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import Header from '@/components/layout/Header';
 import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
+import { changedDayFields, hasRestrictionField, inheritRestrictionsPayload } from '@pricing';
+import type { DayEditPayload } from '@pricing';
 import {
   ChevronLeft,
   ChevronRight,
@@ -85,7 +87,7 @@ function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
   day: PriceDay;
   /** У «Чия ціна» обрано тариф — обмеження можуть лягти на його пару або на всі тарифи типу. */
   ratePlanSelected: boolean;
-  onSave: (data: Partial<PriceDay> & { restrictionsScope?: 'pair' | 'type' }) => void;
+  onSave: (data: DayEditPayload & { restrictionsScope?: 'pair' | 'type' }) => void;
   onClose: () => void;
 }) {
   const t = useT();
@@ -101,6 +103,36 @@ function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
   const [closed, setClosed] = useState(!!day.closed);
   const [cta, setCta] = useState(!!day.cta);
   const [ctd, setCtd] = useState(!!day.ctd);
+  // «Як у типу»: скинути ВЛАСНІ обмеження пари в NULL і знову успадковувати
+  // (рецензія 07.09 раунд 2, правка 3). Має сенс лише для самої пари, тому
+  // вмикається разом зі зняттям прапорця «на всі тарифи типу».
+  const [inherit, setInherit] = useState(false);
+
+  // Стан при ВІДКРИТТІ — з ним звіряється форма при збереженні. Модалка
+  // показує ефективні значення пари: власне обмеження тарифу і успадковане
+  // від типу на екрані однакові. Тіло, яке переказує їх назад, переносить
+  // власне обмеження пари в тип і накриває сусідні тарифи (правка 1).
+  const opened = {
+    base_price: day.base_price, weekend_price: day.weekend_price,
+    min_stay: day.min_stay, closed: !!day.closed, cta: !!day.cta, ctd: !!day.ctd,
+  };
+  const body = () => {
+    // Порожня ціна — «не чіпати» (2.0), тому вона дорівнює тому, що лежало.
+    const edited = {
+      base_price: basePrice === '' ? day.base_price : Number(basePrice),
+      weekend_price: weekendPrice === '' ? null : Number(weekendPrice),
+      min_stay: minStay, closed, cta, ctd,
+    };
+    const changed = inherit
+      // Скидання обмежень пари: ціна — як звичайно, обмеження — всі в NULL.
+      ? { ...changedDayFields(opened, { ...opened, base_price: edited.base_price, weekend_price: edited.weekend_price }), ...inheritRestrictionsPayload() }
+      : changedDayFields(opened, edited);
+    // Область має сенс лише коли в тілі є обмеження; скидання — завжди на пару.
+    const scope = ratePlanSelected && hasRestrictionField(changed)
+      ? { restrictionsScope: inherit ? 'pair' as const : (allPlans ? 'type' as const : 'pair' as const) }
+      : {};
+    return { ...changed, ...scope };
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -123,17 +155,17 @@ function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
           </div>
           <div className="form-group">
             <label className="form-label">{t('Мін. ночей')}</label>
-            <input className="form-input" type="number" value={minStay} onChange={e => setMinStay(Number(e.target.value))} min={1} max={30} />
+            <input className="form-input" type="number" value={minStay} onChange={e => setMinStay(Number(e.target.value))} min={1} max={30} disabled={inherit} />
           </div>
           <div className="form-row" style={{ gap: 16 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-              <input type="checkbox" checked={closed} onChange={e => setClosed(e.target.checked)} /> {t('Закрито')}
+              <input type="checkbox" checked={closed} onChange={e => setClosed(e.target.checked)} disabled={inherit} /> {t('Закрито')}
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-              <input type="checkbox" checked={cta} onChange={e => setCta(e.target.checked)} /> CTA
+              <input type="checkbox" checked={cta} onChange={e => setCta(e.target.checked)} disabled={inherit} /> CTA
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-              <input type="checkbox" checked={ctd} onChange={e => setCtd(e.target.checked)} /> CTD
+              <input type="checkbox" checked={ctd} onChange={e => setCtd(e.target.checked)} disabled={inherit} /> CTD
             </label>
           </div>
           {/* Обмеження (Ц32 переглянуто 07.09): належать ПАРІ тип × тариф.
@@ -141,8 +173,8 @@ function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
               дефолт), або лише на цю пару. Ціна — завжди того, чия обрана в
               «Чия ціна». */}
           {ratePlanSelected ? (
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 10, fontSize: 12, cursor: 'pointer' }}>
-              <input type="checkbox" checked={allPlans} onChange={e => setAllPlans(e.target.checked)} style={{ marginTop: 2 }} />
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 10, fontSize: 12, cursor: inherit ? 'default' : 'pointer', opacity: inherit ? 0.5 : 1 }}>
+              <input type="checkbox" checked={allPlans && !inherit} disabled={inherit} onChange={e => setAllPlans(e.target.checked)} style={{ marginTop: 2 }} />
               <span>
                 {t('Мін. ночей, «Закрито», CTA і CTD — на всі тарифи типу')}
                 <span style={{ display: 'block', color: 'var(--text-tertiary)', fontSize: 11 }}>
@@ -155,23 +187,24 @@ function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
               {t('Мін. ночей, «Закрито», CTA і CTD — на тип номера: діють на тарифи без власного значення')}
             </span>
           )}
-          {day.restrictionsOwn && (
-            <span style={{ display: 'block', marginTop: 6, fontSize: 11, color: 'var(--accent-warning)' }}>
-              {t('Цей день має власні обмеження тарифу — тип їх не перекриває')}
-            </span>
+          {ratePlanSelected && day.restrictionsOwn && (
+            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--accent-warning)' }}>
+              {t('Обмеження цього дня — власні цього тарифу. Зміна з увімкненим прапорцем ляже на тип і цього тарифу не торкнеться')}
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 6, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={inherit} onChange={e => setInherit(e.target.checked)} style={{ marginTop: 2 }} />
+                <span>
+                  {t('Як у типу')}
+                  <span style={{ display: 'block', color: 'var(--text-tertiary)' }}>
+                    {t('Прибрати власні обмеження цього тарифу на цей день — далі діють значення типу номера')}
+                  </span>
+                </span>
+              </label>
+            </div>
           )}
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>{t('Скасувати')}</button>
-          <button className="btn btn-primary" onClick={() => onSave({
-            ...(basePrice === '' ? {} : { base_price: basePrice }),
-            weekend_price: weekendPrice === '' ? null : Number(weekendPrice),
-            min_stay: minStay,
-            closed: closed ? 1 : 0,
-            cta: cta ? 1 : 0,
-            ctd: ctd ? 1 : 0,
-            ...(ratePlanSelected ? { restrictionsScope: allPlans ? 'type' : 'pair' } : {}),
-          })}>
+          <button className="btn btn-primary" onClick={() => onSave(body())}>
             <Save size={14} /> {t('Зберегти')}
           </button>
         </div>
@@ -556,11 +589,14 @@ export default function PricingPage() {
   };
 
   // Save single day
-  const handleSaveDay = async (data: Partial<PriceDay> & { restrictionsScope?: 'pair' | 'type' }) => {
+  const handleSaveDay = async (data: DayEditPayload & { restrictionsScope?: 'pair' | 'type' }) => {
     if (!editDay) return;
     try {
       // Область обмежень (Ц32 переглянуто) — параметр запиту, не поле дня.
       const { restrictionsScope, ...fields } = data;
+      // Нічого не змінили — нічого не пишемо: порожній запит завів би рядок
+      // календаря, якого не було, і поклав координату в канал ні за що.
+      if (Object.keys(fields).length === 0) { setEditDay(null); return; }
       const res = await fetch('/api/pricing', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
