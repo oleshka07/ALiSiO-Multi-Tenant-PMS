@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as propertiesRepo from '../data/properties.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
+import { hasPermission } from '@core/auth/permissions';
 
 /**
  * Each handler is wrapped so it cannot run without an identity, and the
@@ -50,7 +51,13 @@ export const createProperty = withPermission('manage_properties', async (request
 export const getProperty = withActor(async (_request, context: IdParams, actor: Actor) => {
   try {
     const { id } = await context.params;
-    const result = await propertiesRepo.getPropertyById(actor.organizationId, id);
+    // Секрети номера — лише під manage_properties, як і в `/api/units`
+    // (О8, рецензія 6 п. 3.1). Маршрут лишається під `withActor`: картку
+    // обʼєкта читають і ролі без цього права, і 403 на всю картку зламав би
+    // їм роботу заради двох полів, яких вони не показують.
+    const result = await propertiesRepo.getPropertyById(actor.organizationId, id, {
+      secrets: hasPermission(actor.user.permissions, 'manage_properties'),
+    });
     if (!result) return NextResponse.json({ error: 'Property not found' }, { status: 404 });
     return NextResponse.json(result);
   } catch (error) {

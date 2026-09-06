@@ -225,7 +225,11 @@ export async function getGuestPageConfig(unitTypeId: string, propertyId: string,
     return { wifi_network: null, wifi_password: null };
   };
 
-  const merged = !propertyConfig ? { ...unitTypeConfig } : {
+  // `wifiFrom` і в гілці без обʼєкта: `property_guest_config` — рядок, а не
+  // обовʼязок, і поки цієї гілки правило не стосувалось, тип із самою назвою
+  // віддавав гостю назву без пароля (рецензія 6, п. 3.2). Правило одне на всі
+  // чотири шляхи, інакше воно не правило, а місце, де про нього згадали.
+  const merged = !propertyConfig ? { ...unitTypeConfig, ...wifiFrom(unitTypeConfig) } : {
     ...unitTypeConfig,
     ...wifiFrom(unitTypeConfig, propertyConfig),
     restaurant_name: propertyConfig.restaurant_name,

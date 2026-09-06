@@ -17,16 +17,35 @@
  * аліасів» (буває: `src/core/currency.ts` імпортує `@core/db/async`, і це
  * нормально, бо його вантажать лише скрипти з резолвером), а:
  *
- *   1. Скрипт, який імпортує `../src/…` БЕЗ власного `registerHooks`, тягне
- *      за собою граф файлів — і в жодному з них не має бути жодного аліаса з
- *      `tsconfig.paths`. Граф обходиться справді, по відносних імпортах:
- *      саме так `provisioning.ts` дістав `@properties` через два кроки від
- *      входу.
- *   2. Скрипт, який імпортує `../src/modules/…`, зобовʼязаний мати власний
- *      `registerHooks`. Модулі користуються аліасами всюди, і сподіватись, що
+ *   1. **Власні статичні імпорти скрипта** ніколи не аліаси — навіть якщо
+ *      резолвер у ньому є. Статичний імпорт node резолвить ДО того, як
+ *      виконається перший рядок тіла, тобто до `registerHooks`.
+ *   2. Скрипт БЕЗ власного `registerHooks` тягне за собою граф файлів — і в
+ *      жодному з них немає жодного аліаса з `tsconfig.paths`.
+ *   3. Скрипт, який вантажить `../src/modules/…`, зобовʼязаний мати власний
+ *      резолвер. Модулі користуються аліасами всюди, і сподіватись, що
  *      конкретна гілка графа їх не має, — це чекати наступного `55df209`.
- *      Сьогодні такі скрипти два: `apply-hotel.mjs` і `seed-demo-stays.mjs`,
- *      і обидва резолвер мають.
+ *      Сьогодні такі скрипти два: `apply-hotel.mjs` і `seed-demo-stays.mjs`.
+ *
+ * ── Чому розбір, а не регулярки (рецензія раунду 6, п. 3.3) ───────────────
+ *
+ * Перша редакція шукала імпорти регулярками і мала три дірки, кожну з яких
+ * рецензія відкрила однією правкою:
+ *
+ *   — `import … from '@properties'` ПЕРШИМ РЯДКОМ самого скрипта: гейт
+ *     дивився лише на файли, до яких скрипт дотягується, а не на нього;
+ *   — `const late = await import('@properties')` на верхньому рівні файла
+ *     графа: виконується при завантаженні точнісінько як статичний, а
+ *     «динамічні не рахуємо» відкидало його разом із лінивими;
+ *   — `fs.readdirSync('scripts')` без рекурсії.
+ *
+ * Відрізнити «динамічний імпорт верхнього рівня» від «динамічного всередині
+ * функції» регуляркою не можна: для цього треба знати, чи він у тілі функції,
+ * а це синтаксис, а не текст. Тому файли розбирає TypeScript — той самий, що
+ * вже стоїть у репозиторії і бігає в CI. Ліниве ребро (`() => import(…)`,
+ * фонові такти `db.ts`) лишається незарахованим свідомо: воно виконується,
+ * лише коли гілку викликали, і рахувати його означало б доповісти про
+ * 78 «падінь» у коді, який працює щодня.
  *
  * Стеля нульова від початку: сьогодні порушень нуль, тож будь-яке нове —
  * червоне. Це не храповик, бо тут немає чого списувати: скрипт або
@@ -34,6 +53,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import ts from 'typescript';
 
 const STRICT = process.argv.includes('--strict');
 const ROOT = process.cwd();
@@ -44,69 +64,44 @@ const rawTsconfig = fs.readFileSync(path.join(ROOT, 'tsconfig.json'), 'utf8').re
 const ALIASES = Object.keys(JSON.parse(rawTsconfig).compilerOptions?.paths ?? {});
 const isAlias = (spec) => ALIASES.some((a) => (a.endsWith('/*') ? spec.startsWith(a.slice(0, -1)) : spec === a));
 
-/**
- * Коментарі вирізаються ДО пошуку — інакше перевірка рахує власні приклади й
- * чужі пояснення (AGENTS §4, три випадки за одну сесію).
- *
- * Порядково, як у `check-boundaries.mjs`, і з тієї ж причини — я наступила на
- * ту саму міну, поки писала цей файл. Регулярка `/\/\*[\s\S]*?\*\//` відкриває
- * «коментар» на РЯДКУ `'/*'` у `scripts/seed-demo-stays.mjs` (там
- * `pattern.endsWith('/*')`) і зʼїдає шістдесят рядків коду разом із
- * `registerHooks` та імпортами модулів. Перший прогін цього гейта показав
- * «7 скриптів, чисто» і не побачив восьмого взагалі — тобто мовчазно
- * пропустив рівно те, заради чого написаний.
- */
-const stripComments = (src) => {
-  const out = [];
-  let inBlock = false;
-  for (const line of src.split('\n')) {
-    if (inBlock) {
-      const end = line.indexOf('*/');
-      if (end === -1) continue;
-      inBlock = false;
-      out.push(line.slice(end + 2));
-      continue;
-    }
-    const t = line.trimStart();
-    if (t.startsWith('//')) continue;
-    if (t.startsWith('/*')) {
-      const end = t.indexOf('*/', 2);
-      if (end === -1) { inBlock = true; continue; }
-      out.push(t.slice(end + 2));
-      continue;
-    }
-    out.push(line);
-  }
-  return out.join('\n');
-};
+const isFunctionLike = (node) => ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)
+  || ts.isArrowFunction(node) || ts.isMethodDeclaration(node)
+  || ts.isGetAccessor(node) || ts.isSetAccessor(node) || ts.isConstructorDeclaration(node);
 
 /**
- * Специфікатори імпорту файла, з поділом на статичні й динамічні.
+ * Імпорти файла: статичні, динамічні верхнього рівня і ліниві.
  *
- * Поділ тут не косметичний. Статичний `import … from '@core/x'` node
- * резолвить при завантаженні файла — тобто скрипт падає, ще нічого не
- * зробивши, і саме так упав `provision-org.mjs`. Динамічний
- * `() => import('…')` резолвиться, лише коли гілку справді викликали, і в
- * `src/lib/db.ts` таких кілька: фонові такти (`tick('Recurring', () =>
- * import('../modules/finance/…'))`) не виконуються за коротке життя скрипта
- * оператора. Обходити граф по динамічних ребрах означало б доповісти про
- * 78 «падінь» у коді, який працює щодня, — а гейт, який кричить на
- * робочому коді, вчить його ігнорувати.
+ * `eager` — те, що node виконає, просто завантаживши файл: статичні імпорти,
+ * `export … from`, `require()` і `await import()` поза будь-якою функцією.
+ * `lazy` — динамічні всередині функції: вони можуть не виконатись ніколи.
  */
-function imports(src) {
-  const stat = [];
-  const dyn = [];
-  const code = stripComments(src);
-  for (const [re, bucket] of [
-    [/\bfrom\s+['"]([^'"]+)['"]/g, stat],
-    [/(?:^|[\s;{])import\s+['"]([^'"]+)['"]/gm, stat],
-    [/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g, dyn],
-    [/\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g, dyn],
-  ]) {
-    let m;
-    while ((m = re.exec(code)) !== null) bucket.push(m[1]);
-  }
-  return { stat, dyn, all: [...stat, ...dyn] };
+function imports(file) {
+  const text = fs.readFileSync(file, 'utf8');
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.ESNext, true,
+    /\.tsx$/.test(file) ? ts.ScriptKind.TSX : undefined);
+  const eagerStatic = [];
+  const eagerDynamic = [];
+  const lazy = [];
+
+  const literal = (node) => (node && ts.isStringLiteralLike(node) ? node.text : null);
+
+  const walk = (node, insideFunction) => {
+    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
+      const spec = literal(node.moduleSpecifier);
+      if (spec) eagerStatic.push(spec);
+    } else if (node.kind === ts.SyntaxKind.CallExpression
+      && (node.expression?.kind === ts.SyntaxKind.ImportKeyword
+        || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))) {
+      const spec = literal(node.arguments?.[0]);
+      if (spec) (insideFunction ? lazy : eagerDynamic).push(spec);
+    }
+    const nowInside = insideFunction || isFunctionLike(node);
+    ts.forEachChild(node, (child) => walk(child, nowInside));
+  };
+  ts.forEachChild(source, (child) => walk(child, false));
+
+  return { eagerStatic, eagerDynamic, lazy, eager: [...eagerStatic, ...eagerDynamic],
+    all: [...eagerStatic, ...eagerDynamic, ...lazy], text };
 }
 
 /** Відносний специфікатор → файл на диску (розширення node не добирає). */
@@ -122,30 +117,48 @@ function resolveRelative(fromFile, spec) {
 const rel = (p) => path.relative(ROOT, p).split(path.sep).join('/');
 
 // ── скрипти, які вантажать код застосунку ───────────────────────────────────
-const scripts = fs.readdirSync(path.join(ROOT, 'scripts'))
-  .filter((f) => /\.mjs$/.test(f))
-  .map((f) => path.join(ROOT, 'scripts', f));
+//
+// Рекурсивно: `scripts/lib/` теж скрипти, і завтра там може зʼявитись вхід.
+function allScripts(dir) {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...allScripts(full));
+    else if (/\.(mjs|js|cjs)$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}
 
+const scripts = allScripts(path.join(ROOT, 'scripts')).sort();
 const inventory = [];
 
 for (const file of scripts) {
-  const src = fs.readFileSync(file, 'utf8');
-  const code = stripComments(src);
-  const appImports = imports(src).all.filter((s) => /^\.\.\/src\//.test(s));
-  if (appImports.length === 0) continue;
+  const own = imports(file);
+  const appImports = own.all.filter((s) => /(^|\/)\.\.\/src\//.test(s) || s.startsWith('../src/'));
+  const ownAliases = own.eagerStatic.filter(isAlias);
+  if (appImports.length === 0 && ownAliases.length === 0) continue;
 
-  const hasHooks = /\bregisterHooks\s*\(/.test(code);
+  const hasHooks = /\bregisterHooks\s*\(/.test(own.text);
   const touchesModules = appImports.some((s) => s.startsWith('../src/modules/'));
   inventory.push({ file: rel(file), hasHooks, touchesModules, entries: appImports.length });
 
-  // Правило 2: модулі — лише з власним резолвером.
+  // Правило 1: власні СТАТИЧНІ імпорти — ніколи не аліас.
+  //
+  // Резолвер тут не рятує за побудовою: `registerHooks` — це рядок у тілі
+  // файла, а статичні імпорти node резолвить до того, як тіло почалось.
+  for (const spec of ownAliases) {
+    problems.push(`${rel(file)}: власний статичний імпорт "${spec}" — аліас; node резолвить його ДО registerHooks, тож скрипт не стартує`);
+  }
+
+  // Правило 3: модулі — лише з власним резолвером.
   if (touchesModules && !hasHooks) {
     problems.push(`${rel(file)}: вантажить ../src/modules/… без власного registerHooks — на сервері це впаде на першому ж аліасі`);
     continue;
   }
   if (hasHooks) continue;
 
-  // Правило 1: граф голого скрипта не містить аліасів.
+  // Правило 2: граф голого скрипта не містить аліасів.
   const seen = new Set();
   const queue = [];
   for (const spec of appImports) {
@@ -159,9 +172,9 @@ for (const file of scripts) {
     if (seen.has(current)) continue;
     seen.add(current);
     const here = [...chain, rel(current)];
-    // Лише статичні ребра: їх node резолвить, коли вантажить файл, тож вони
-    // виконуються ЗАВЖДИ, а динамічні — лише якщо гілку викликали.
-    for (const spec of imports(fs.readFileSync(current, 'utf8')).stat) {
+    // Ребра, які node пройде, просто завантаживши файл: статичні і динамічні
+    // ВЕРХНЬОГО РІВНЯ. Ліниві (`() => import(…)`) не рахуються.
+    for (const spec of imports(current).eager) {
       if (isAlias(spec)) {
         problems.push(`${here.join(' → ')}: аліас "${spec}" — резолвера в цьому ланцюжку немає, голий node на ньому впаде`);
         continue;

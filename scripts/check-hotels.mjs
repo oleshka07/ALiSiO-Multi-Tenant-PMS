@@ -162,7 +162,12 @@ for (const name of files) {
 
     // Поля рівня номера (0110). Діапазон їх не приймає — apply-hotel кладе їх
     // лише поіменному номеру, тож у діапазоні вони МОВЧКИ пропадуть.
-    const label = f(u, 'code', 'name') ?? `${f(u, 'prefix') ?? ''}${from}…${f(u, 'to')}`;
+    // Префікс належить ОБОМ кінцям діапазону: `prefix: "4"`, `from: 1`,
+    // `to: 5` — це номери 41…45, а не «41…5», як друкувала перша редакція
+    // (рецензія раунду 6, п. 3.6). Мітка ходить у текст відмови, тобто це
+    // єдине, за чим людина шукає рядок у своєму файлі.
+    const prefix = f(u, 'prefix') ?? '';
+    const label = f(u, 'code', 'name') ?? `${prefix}${from}…${prefix}${f(u, 'to')}`;
     const own = ['view', 'wifiNetwork', 'wifiPassword', 'lockCode'].filter((k) => f(u, k) !== undefined);
     if (from !== undefined && own.length) {
       note(file, `діапазон ${typeCode} (${label}): ${own.join(', ')} — діапазон цих полів не приймає, вони пропадуть мовчки`);

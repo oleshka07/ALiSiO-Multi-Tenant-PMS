@@ -526,7 +526,36 @@ async function main() {
     assert.strictEqual(mine?.wifi_password, 'a-room-secret',
       'власник не бачить пароля мережі свого номера — екран налаштувань показує порожнє поле');
     assert.strictEqual(mine?.lock_code, 'A-1234#', 'власник не бачить коду замка свого номера');
-    console.log('  ok  пароль мережі й код замка бачить лише manage_properties, решта — той самий список без них');
+
+    // Другі двері до того самого списку (рецензія 6, п. 3.1).
+    //
+    // Правка 2.1 закрила `/api/units` — і рівно його, бо твердження питало
+    // рівно його. `GET /api/properties/[id]` віддає номери окремим запитом
+    // (`SELECT u.*`), теж під `withActor`, і покоївка отримувала там пароль
+    // мережі й код замка КОЖНОГО номера. Тому вісь тепер називає обидва
+    // маршрути: гейт, який стереже один зі списків, доводить не «секрет
+    // закрито», а «закрито в тому місці, куди я подивилась».
+    const maidProperty = await (await call(cookieMaid, `/api/properties/${propA.id}`)).json();
+    assert.ok(Array.isArray(maidProperty?.units) && maidProperty.units.length > 0,
+      'покоївка не бачить номерів обʼєкта — картка обʼєкта потрібна їй для роботи');
+    for (const u of maidProperty.units) {
+      assert.ok(!('wifi_password' in u), 'у картці обʼєкта для ролі без manage_properties є пароль мережі');
+      assert.ok(!('lock_code' in u), 'у картці обʼєкта для ролі без manage_properties є код замка');
+      assert.ok(!('wifi_network' in u), 'у картці обʼєкта для ролі без manage_properties є назва мережі');
+    }
+    const ownerProperty = await (await call(cookieA, `/api/properties/${propA.id}`)).json();
+    const mineInProperty = (ownerProperty?.units || []).find((u) => u.id === aUnit.id);
+    assert.strictEqual(mineInProperty?.wifi_password, 'a-room-secret',
+      'власник не бачить пароля мережі в картці обʼєкта — екран налаштувань показує порожнє поле');
+    assert.strictEqual(mineInProperty?.lock_code, 'A-1234#',
+      'власник не бачить коду замка в картці обʼєкта');
+    // Те, чим картка обʼєкта живе, з переліку не зникло: закритий перелік
+    // помиляється в бік «порожнє поле на екрані», і це має бути видно тут.
+    for (const field of ['code', 'name', 'beds', 'room_status', 'is_active', 'category_id', 'unit_type_id']) {
+      assert.ok(field in (mineInProperty || {}),
+        `картка обʼєкта втратила поле ${field} — закритий перелік колонок звузили занадто`);
+    }
+    console.log('  ok  пароль мережі й код замка бачить лише manage_properties — в ОБОХ списках номерів');
 
     // ── Зручності: словник організації (Блок 5a, 2.2) ───────────────────
     // Каталог у кожного свій, з власними іменами рядків: спільні рядки

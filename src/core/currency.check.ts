@@ -148,8 +148,15 @@ console.log('  ok  ручний курс лягає з тією ж точніс�
 // немає. Тобто рішення §2.2.1 стерегли слова «курс живе лише в
 // finance_exchange_rates», а перевіряв гейт зовсім інше (О7, рецензія раунду
 // 4). Тепер: будь-яка міграція, яка додає до `organization_currencies`
-// колонку з іменем на `rate`, валить збірку — і `rate`, і `manual_rate`, і
-// `fixed_rate`.
+// колонку, чиє ІМʼЯ МІСТИТЬ `rate`, валить збірку.
+//
+// Саме «містить», а не «закінчується на»: перша редакція цієї правки брала
+// `\b\w*rate\b`, тобто лише суфікс, і `rate_manual NUMERIC(18,8)` проходив
+// повз неї (рецензія раунду 6, п. 3.5). Три названі написання — це не сімʼя,
+// а три приклади; сімʼя — це слово `rate` де завгодно в імені. Перебір у цей
+// бік дешевий: хибне спрацювання видно тому, хто пише міграцію, і воно
+// коштує одного перейменування, а пропуск коштує другого джерела курсу.
+const RATE_COLUMN = /\b\w*rate\w*\b\s+(NUMERIC|DECIMAL|REAL|DOUBLE|FLOAT|INTEGER)/i;
 const MIGRATIONS_DIR = 'db/postgres/migrations';
 const rateColumnInCurrencies: string[] = [];
 for (const file of fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort()) {
@@ -160,11 +167,11 @@ for (const file of fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql
   // Область — сама таблиця: `ALTER TABLE organization_currencies …` до
   // наступного `;`, і `CREATE TABLE organization_currencies (…)`.
   for (const m of code.matchAll(/(?:ALTER|CREATE)\s+TABLE[^;]*?organization_currencies[\s\S]*?;/gi)) {
-    if (/\b\w*rate\b\s+(NUMERIC|DECIMAL|REAL|DOUBLE|FLOAT)/i.test(m[0])) rateColumnInCurrencies.push(file);
+    if (RATE_COLUMN.test(m[0])) rateColumnInCurrencies.push(file);
   }
 }
 assert.deepStrictEqual(rateColumnInCurrencies, [],
-  'в organization_currencies зʼявилась колонка курсу (rate / manual_rate / fixed_rate) — '
+  'в organization_currencies зʼявилась колонка, чиє імʼя містить rate — '
   + 'курс живе в finance_exchange_rates, і лише там (ARCHITECTURE §2.2.1, О7). '
   + `Знайдено в: ${rateColumnInCurrencies.join(', ')}`);
 // Те саме про дзеркало SQLite: колонка, дописана лише туди, обійшла б перевірку
@@ -176,7 +183,6 @@ assert.deepStrictEqual(rateColumnInCurrencies, [],
 // колонці, дописаній нижче. `ALTER TABLE … ADD COLUMN` — окремо, бо в
 // SQLite-дзеркалі колонки часто додаються саме так (AGENTS §4).
 const schemaTs = fs.readFileSync('src/lib/db.ts', 'utf8');
-const RATE_COLUMN = /\b\w*rate\b\s+(NUMERIC|DECIMAL|REAL|DOUBLE|FLOAT|INTEGER)/i;
 
 function tableBody(text: string, table: string): string[] {
   const bodies: string[] = [];

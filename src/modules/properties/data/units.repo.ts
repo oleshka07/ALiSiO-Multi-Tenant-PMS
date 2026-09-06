@@ -22,6 +22,27 @@ import { ownsProperty, ownsViaProperty, propertyScopeSql } from './tenant-scope'
  * ці поля й редагуються. `lock_code` лежав у відповіді ще до Блоку 5a — блок
  * діру розширив паролем мережі, і закриває тепер обидві.
  */
+/**
+ * Колонки номера, які взагалі виходять із модуля, — одним переліком.
+ *
+ * Один перелік, а не `u.*` у кожному запиті, і не тому що так охайніше.
+ * `SELECT u.*` віддає те, чого в ньому ще немає: колонка, додана міграцією,
+ * поїде клієнту тим самим днем, і ніхто цього не побачить. Саме так пароль
+ * мережі (0110) опинився у відповіді `/api/properties/[id]` для покоївки —
+ * список номерів там брався зірочкою, і правка `listUnits` його не
+ * стосувалася (рецензія раунду 6, п. 3.1).
+ *
+ * Тому перелік ЗАКРИТИЙ: нова колонка не з'являється у відповіді, поки її
+ * сюди не дописали. Забути дописати — видимий брак (порожнє поле на екрані),
+ * забути прибрати — тихий витік.
+ */
+export function unitColumnsSql(secrets: boolean): string {
+  return `
+      u.id, u.property_id, u.name, u.code, u.beds, u.zone, u.floor, u.room_status, u.cleaning_status, u.sort_order, u.is_active, u.is_pool, u.entry_photo_url,
+      u.view,
+      ${secrets ? 'u.wifi_network, u.wifi_password, u.lock_code,' : ''}`;
+}
+
 export function listUnits(
   organizationId: string,
   filters: { category?: string; unitType?: string; includePool?: boolean } = {},
@@ -31,9 +52,7 @@ export function listUnits(
   const secrets = options.secrets === true;
   let query = `
     SELECT
-      u.id, u.property_id, u.name, u.code, u.beds, u.zone, u.floor, u.room_status, u.cleaning_status, u.sort_order, u.is_active, u.is_pool, u.entry_photo_url,
-      u.view,
-      ${secrets ? 'u.wifi_network, u.wifi_password, u.lock_code,' : ''}
+      ${unitColumnsSql(secrets)}
       c.id as category_id, c.name as category_name, c.type as category_type, c.icon as category_icon, c.color as category_color,
       ut.id as unit_type_id, ut.name as unit_type_name, ut.code as unit_type_code, ut.max_adults, ut.base_occupancy
     FROM units u

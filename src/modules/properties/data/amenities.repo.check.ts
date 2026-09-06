@@ -150,7 +150,7 @@ try {
   // Первинний ключ рядка каталогу не має походити від орендаря шматком.
   // Перша редакція будувала його як `am_cat_${orgId.slice(-8)}_${code}`, і це
   // не теоретична колізія: `org_` + 16 hex, обрізані до восьми, — 32 біти, а
-  // рядків каталогу 72 на готель. Другий готель із тим самим хвостом падав на
+  // рядків каталогу 73 на готель. Другий готель із тим самим хвостом падав на
   // `duplicate key … amenity_categories_pkey` ще до першого рядка `amenities`,
   // тобто `GET /api/amenities` віддавав 500 НАЗАВЖДИ, а `apply-hotel` на цей
   // готель не накочувався.
@@ -206,29 +206,79 @@ try {
     console.log('  ok  каталог і призначення сусіда не існують ні для читання, ні для запису');
   });
 
-  // Мова поза списком перекладів падає на АНГЛІЙСЬКУ, не на українську
-  // (рецензія раунду 4, п. 2.5). `provision-org.mjs` приймає сім мов, а
-  // каталог перекладений чотирма; польський готель має побачити «Elevator»,
-  // а не «Ліфт» — це різниця між «переклад ще не зробили» і «мова, якої в
-  // цьому світі немає».
-  {
-    const PL = '__amen_check__pl';
-    await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [PL, 'PL', PL]);
+  // Кожна з СЕМИ мов заведення — своя, і жодна не запасна (рішення власника
+  // 07.09, рецензія раунду 6). `provision-org.mjs` приймає `uk en de cs pl nl
+  // fr`, і каталог тепер перекладений усіма сімома: польський готель бачить
+  // «Winda», а не «Elevator» і тим більше не «Ліфт».
+  //
+  // Сцена бере ДВІ мови з тих, що додалися останніми, і різні рядки: одна
+  // мова не розрізнила б переклад і константу, а `pl` із `nl` на одному й
+  // тому самому слові («Sauna») не розрізнили б переклад і збіг.
+  for (const [lang, code, expected] of [
+    ['pl', 'elevator', 'Winda'],
+    ['nl', 'bathtub', 'Bad'],
+    ['fr', 'breakfast', 'Petit-déjeuner'],
+  ] as const) {
+    const org = `__amen_check__${lang}`;
+    await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org, lang, org]);
     try {
-      await runWithOrganization(PL, async () => {
-        await repo.seedAmenityCatalog(PL, 'pl');
-        const lift = (await repo.amenityCatalog(PL)).flatMap((c) => c.amenities).find((a) => a.code === 'elevator');
-        assert.strictEqual(lift?.name, 'Elevator',
-          'мова без перекладу впала на українську — польський готель бачить кирилицю');
+      await runWithOrganization(org, async () => {
+        await repo.seedAmenityCatalog(org, lang);
+        const row = (await repo.amenityCatalog(org)).flatMap((c) => c.amenities).find((a) => a.code === code);
+        assert.strictEqual(row?.name, expected,
+          `готель мовою ${lang} бачить не свій рядок — сіється не переклад, а запасна мова`);
       });
-      console.log('  ok  мова поза перекладом падає на англійську, а не на мову продукту');
     } finally {
-      await runWithOrganization(PL, async () => {
-        await sql.run('DELETE FROM amenities WHERE organization_id = ?', [PL]);
-        await sql.run('DELETE FROM amenity_categories WHERE organization_id = ?', [PL]);
+      await runWithOrganization(org, async () => {
+        await sql.run('DELETE FROM amenities WHERE organization_id = ?', [org]);
+        await sql.run('DELETE FROM amenity_categories WHERE organization_id = ?', [org]);
       });
-      await sql.run('DELETE FROM organizations WHERE id = ?', [PL]);
+      await sql.run('DELETE FROM organizations WHERE id = ?', [org]);
     }
+  }
+  console.log('  ok  сім мов заведення — сім каталогів, кожен своєю');
+
+  // А мова ПОЗА сімома падає на англійську, не на українську: запасна
+  // українська означала б, що італійський готель відкриває екран і бачить
+  // кирилицю — мову, якої в його світі немає взагалі (О5).
+  {
+    const IT = '__amen_check__it';
+    await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [IT, 'IT', IT]);
+    try {
+      await runWithOrganization(IT, async () => {
+        await repo.seedAmenityCatalog(IT, 'it');
+        const lift = (await repo.amenityCatalog(IT)).flatMap((c) => c.amenities).find((a) => a.code === 'elevator');
+        assert.strictEqual(lift?.name, 'Elevator',
+          'мова без перекладу впала на українську — італійський готель бачить кирилицю');
+      });
+      console.log('  ok  мова поза сімома падає на англійську, а не на мову продукту');
+    } finally {
+      await runWithOrganization(IT, async () => {
+        await sql.run('DELETE FROM amenities WHERE organization_id = ?', [IT]);
+        await sql.run('DELETE FROM amenity_categories WHERE organization_id = ?', [IT]);
+      });
+      await sql.run('DELETE FROM organizations WHERE id = ?', [IT]);
+    }
+  }
+
+  // Повнота: кожен рядок каталогу має кожну з семи мов, непорожньою.
+  //
+  // Без цього наступна мова додається «майже»: половина файла перекладена,
+  // решта мовчки падає на англійську, і побачить це той готель, якому не
+  // пощастило.
+  // Перевірка статична — на самому словнику, не на базі.
+  {
+    const { AMENITIES, AMENITY_CATEGORIES, CATALOG_LANGUAGES } = await import('../domain/amenity-catalog.ts');
+    const holes: string[] = [];
+    for (const seed of [...AMENITY_CATEGORIES, ...AMENITIES]) {
+      for (const lang of CATALOG_LANGUAGES) {
+        const value = (seed.name as unknown as Record<string, string | undefined>)[lang];
+        if (!value || !value.trim()) holes.push(`${seed.code}.${lang}`);
+      }
+    }
+    assert.deepStrictEqual(holes, [],
+      `у словнику є рядки без перекладу: ${holes.join(', ')}`);
+    console.log(`  ok  словник повний: ${AMENITY_CATEGORIES.length + AMENITIES.length} рядків × ${CATALOG_LANGUAGES.length} мов`);
   }
 
   // Мовна вісь: другий орендар сіявся чеською — назва в нього СВОЯ.
