@@ -36,3 +36,65 @@ export function serverError(scope: string, err: unknown, userMessage?: string): 
     { status: 500 },
   );
 }
+
+/**
+ * Названа відмова — і те, що відрізняє її від помилки драйвера.
+ *
+ * `serverError` вище розвʼязує половину задачі: 500 не переказує тексту
+ * винятку. Друга половина — 4xx, і вона довго виглядала розвʼязаною: «400
+ * лишає своє повідомлення» істинне рівно доти, доки в тому `catch` ловиться
+ * НАША відмова. Глухий `catch (e) { return { error: e.message }, 400 }` над
+ * шматком, що пише в базу, ловить обидва роди одним рукавом: і «amount must
+ * be a positive number», і текст CHECK зі списком дозволених значень і
+ * назвою колонки. Гірше того, відповідь при цьому 400 — тобто поломка не
+ * виглядає поломкою, і в лог не потрапляє нічого (рецензія 07.09 раунд 3;
+ * `finance/api/operations.handlers.ts:542` і `:786`).
+ *
+ * Тому відмова, яку МОЖНА показати людині, кидається явно — `refuse('…')`, —
+ * а `catch` розбирає рід: названа відмова їде своїм статусом і своїм
+ * текстом, будь-що інше йде в лог і повертає загальне речення. Різниця не в
+ * тому, що написано в повідомленні, а в тому, хто його написав.
+ *
+ * Тримають `scripts/check-error-leak.mjs` (друга вісь) і `errors.check.ts`.
+ */
+export class Refusal extends Error {
+  readonly isRefusal = true;
+  readonly status: number;
+
+  // Поле оголошене окремо, не параметром конструктора: `node` виконує тут
+  // TypeScript у режимі зрізання типів, а параметр-властивість — це синтаксис,
+  // який зрізанням не робиться. Гейти в `.check.ts` бігають саме так.
+  constructor(message: string, status = 400) {
+    super(message);
+    this.name = 'Refusal';
+    this.status = status;
+  }
+}
+
+/** Відмовити з текстом, який побачить людина. Кидає — не повертає. */
+export function refuse(message: string, status = 400): never {
+  throw new Refusal(message, status);
+}
+
+/**
+ * Чи це названа нами відмова.
+ *
+ * Перевіряється й полем, не лише `instanceof`: у Next модуль може бути
+ * завантажений двічі (серверний бандл і рут), і тоді класи різні, а
+ * поведінка мусить лишатись тією самою.
+ */
+export function isRefusal(e: unknown): e is Refusal {
+  return e instanceof Refusal
+    || (typeof e === 'object' && e !== null && (e as { isRefusal?: unknown }).isRefusal === true);
+}
+
+/**
+ * Один `catch` на обидва роди: названа відмова — своїм статусом і текстом,
+ * решта — у лог і 500 загальним реченням.
+ */
+export function handleError(scope: string, err: unknown, userMessage?: string): NextResponse {
+  if (isRefusal(err)) {
+    return NextResponse.json({ error: err.message }, { status: err.status });
+  }
+  return serverError(scope, err, userMessage);
+}

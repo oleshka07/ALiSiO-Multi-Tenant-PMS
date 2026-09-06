@@ -42,18 +42,26 @@ const BAR = `${A}_bar`;
 const BB = `${A}_bb`;
 const CONN = `${A}_conn`;
 
+/**
+ * Прибирання — У КОНТЕКСТІ ОРЕНДАРЯ (рецензія 07.09). Без нього на Postgres
+ * під `FORCE ROW LEVEL SECURITY` тенантний `DELETE` не бачить рядків,
+ * відповідає «0» і не падає: наступний прогін сіє на брудній базі, а гейт
+ * лишається зеленим. `organizations` орендаря не має — вона поза контекстом.
+ */
 async function cleanup() {
   for (const org of [A, B]) {
-    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM season_prices WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM seasons WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM price_calendar WHERE unit_type_id = ?', [`${org}_dbl`]);
-    await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [`${org}_prop`]);
-    await sql.run('DELETE FROM unit_types WHERE property_id = ?', [`${org}_prop`]);
-    await sql.run('DELETE FROM categories WHERE property_id = ?', [`${org}_prop`]);
-    await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    await runWithOrganization(org, async () => {
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM season_prices WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM seasons WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM price_calendar WHERE unit_type_id = ?', [`${org}_dbl`]);
+      await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [`${org}_prop`]);
+      await sql.run('DELETE FROM unit_types WHERE property_id = ?', [`${org}_prop`]);
+      await sql.run('DELETE FROM categories WHERE property_id = ?', [`${org}_prop`]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    });
     await sql.run('DELETE FROM organizations WHERE id = ?', [org]);
   }
 }

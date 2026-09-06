@@ -59,18 +59,30 @@ const addDays = (iso: string, n: number) => {
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
 
+/**
+ * Прибирання — У КОНТЕКСТІ ОРЕНДАРЯ (рецензія 07.09).
+ *
+ * Тенантні таблиці на Postgres під `FORCE ROW LEVEL SECURITY` без орендаря
+ * на зʼєднанні не видаляються: політика не бачить жодного рядка, `DELETE`
+ * відповідає «0 рядків» і не падає. Гейт при цьому лишається зеленим —
+ * просто сіє на брудній базі наступного разу. Сама `organizations` орендаря
+ * не має за означенням, тож її рядок видаляється поза контекстом, останнім.
+ */
 async function cleanup() {
-  await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
-  try { await sql.run('DELETE FROM cm_sends WHERE organization_id = ?', [ORG]); } catch { /* таблиці ще немає — гейт червоний нижче */ }
-  await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM units WHERE property_id = ?', [PROP]);
-  // Тип першим: календар цін іде за ним каскадом (до цінових таблиць звідси
-  // не торкаємось — інваріант 16), і лише тоді тарифи, на які він посилався.
-  await sql.run('DELETE FROM unit_types WHERE property_id = ?', [PROP]);
-  await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP]);
-  await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP]);
-  await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
+  await runWithOrganization(ORG, async () => {
+    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+    try { await sql.run('DELETE FROM cm_sends WHERE organization_id = ?', [ORG]); } catch { /* таблиці ще немає — гейт червоний нижче */ }
+    await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [ORG]);
+    await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
+    await sql.run('DELETE FROM price_rules WHERE organization_id = ?', [ORG]);
+    await sql.run('DELETE FROM units WHERE property_id = ?', [PROP]);
+    // Тип першим: календар цін іде за ним каскадом (до цінових таблиць звідси
+    // не торкаємось — інваріант 16), і лише тоді тарифи, на які він посилався.
+    await sql.run('DELETE FROM unit_types WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
+  });
   await sql.run('DELETE FROM organizations WHERE id = ?', [ORG]);
 }
 

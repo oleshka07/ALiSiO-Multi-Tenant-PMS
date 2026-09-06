@@ -9,7 +9,7 @@ import { getSessionUser } from '@core/auth';
 import { loadActiveRules, isRuleApplicable } from '../data/auto-rules-engine';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { ownedFinanceRow } from '../data/owned.repo';
-import { serverError } from '@core/http/errors';
+import { serverError, refuse, handleError } from '@core/http/errors';
 import { organizationCurrency } from '@core/currency';
 
 const OP_TYPES = ['income', 'expense', 'transfer'] as const;
@@ -85,9 +85,10 @@ async function computeAmountCompany(amount: number, currency: string, paidAt: st
 
   if (!rate) {
     // Still nothing — refuse to silently zero-out or 1:1-pretend the op.
-    // The handler-level catch turns this into a 400 so the operator sees
-    // it and adds a rate in /finance/settings → Курси валют.
-    throw new Error(`No ${currency}→CZK exchange rate configured. Add one at /finance/settings → Курси валют before saving this operation.`);
+    // `refuse`, а не голий `Error`: у `catch` рід помилки має бути видимий,
+    // інакше вона поїде клієнтові поряд із текстом драйвера (див.
+    // @core/http/errors, друга вісь check-error-leak).
+    refuse(`No ${currency}→CZK exchange rate configured. Add one at /finance/settings → Курси валют before saving this operation.`);
   }
 
   return amount * rate.rate;
@@ -452,22 +453,22 @@ export async function createOperationInTx(
   const createdBy = actor?.id || null;
   const { op_type, amount, paid_at } = input;
   if (!(OP_TYPES as readonly string[]).includes(op_type)) {
-    throw new Error(`op_type must be one of ${OP_TYPES.join(', ')}`);
+    refuse(`op_type must be one of ${OP_TYPES.join(', ')}`);
   }
   if (typeof amount !== 'number' || !isFinite(amount) || amount <= 0) {
-    throw new Error('amount must be a positive number');
+    refuse('amount must be a positive number');
   }
   if (!paid_at || typeof paid_at !== 'string') {
-    throw new Error('paid_at is required');
+    refuse('paid_at is required');
   }
 
-  if (op_type === 'income' && !input.account_to_id) throw new Error('income requires account_to_id');
-  if (op_type === 'expense' && !input.account_from_id) throw new Error('expense requires account_from_id');
+  if (op_type === 'income' && !input.account_to_id) refuse('income requires account_to_id');
+  if (op_type === 'expense' && !input.account_from_id) refuse('expense requires account_from_id');
   if (op_type === 'transfer' && (!input.account_from_id || !input.account_to_id)) {
-    throw new Error('transfer requires both account_from_id and account_to_id');
+    refuse('transfer requires both account_from_id and account_to_id');
   }
   if (op_type === 'transfer' && input.account_from_id === input.account_to_id) {
-    throw new Error('account_from_id and account_to_id must differ');
+    refuse('account_from_id and account_to_id must differ');
   }
 
   // Валюта готелю, а не крони. `orgId` тут уже є — питати нема кого іншого.
@@ -538,8 +539,8 @@ export async function createOperation(request: NextRequest): Promise<NextRespons
     if (body.reservation_id) await recalcReservationPaymentStatus(body.reservation_id);
 
     return NextResponse.json(await enrichOperation(created), { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  } catch (error: unknown) {
+    return handleError('modules/finance/api/operations createOperation', error);
   }
 }
 
@@ -625,7 +626,7 @@ export async function updateOperation(
 
     return NextResponse.json(await enrichOperation(updated));
   } catch (error: any) {
-    return serverError('modules/finance/api/operations updateOperation', error);
+    return handleError('modules/finance/api/operations updateOperation', error);
   }
 }
 
@@ -719,7 +720,7 @@ export async function mergeOperations(request: NextRequest): Promise<NextRespons
     return NextResponse.json({ ok: true, merged_into: expOp.id });
 
   } catch (error: any) {
-    return serverError('modules/finance/api/operations mergeOperations', error);
+    return handleError('modules/finance/api/operations mergeOperations', error);
   }
 }
 
@@ -782,8 +783,8 @@ export async function duplicateOperation(
     }, actor);
     const created = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [newId]);
     return NextResponse.json(await enrichOperation(created), { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  } catch (error: unknown) {
+    return handleError('modules/finance/api/operations duplicateOperation', error);
   }
 }
 
@@ -838,7 +839,7 @@ export async function applyRecurringSuggestion(
     const updated = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]);
     return NextResponse.json({ ok: true, action: 'applied', operation: enrichOperation(updated) });
   } catch (error: any) {
-    return serverError('modules/finance/api/operations applyRecurringSuggestion', error);
+    return handleError('modules/finance/api/operations applyRecurringSuggestion', error);
   }
 }
 
