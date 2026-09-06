@@ -231,7 +231,8 @@ console.log('nightly-price: all checks passed');
 // Пʼять днів у грудні, кожен зі своїм обмеженням, і два РІЗНІ мінімуми
 // (інваріант 26): 20 — мін. 2 і заборона заїзду; 21 — мін. 3; 22 — закрито;
 // 23 — заборона виїзду (дата ВИЇЗДУ); 24 — відкритий. Рядок ТАРИФУ на 20-те
-// має власне «закрито» — і його ніхто не читає: обмеження живуть на типі (П7).
+// має власне «закрито» — і воно ЧИТАЄТЬСЯ для цієї пари (Ц32 переглянуто
+// 07.09): пара закрита при відкритому типі — без тарифу ніч продається.
 {
   const { stayRefusal } = await import('../domain/restrictions.ts');
   const dec = async (date: string, over: Record<string, unknown>) => {
@@ -272,9 +273,11 @@ console.log('nightly-price: all checks passed');
   assert.strictEqual(dep24.restrictions.minStay, 1);
 
   const barClosedRow = await priceNights({ unitTypeId: TYPE, checkIn: '2026-12-20', nights: 1, adults: 2, ratePlanId: BAR });
-  assert.deepStrictEqual(barClosedRow.closed, [], '«закрито» на рядку ТАРИФУ не читається: обмеження — на типі (П7)');
-  assert.strictEqual(barClosedRow.nights[0]?.price, 250, 'ціна тарифу при цьому своя');
-  console.log('  ok  Д1/Д2: закрита ніч не продається й названа; мінімум, максимум, заїзд, виїзд — з базового рядка типу');
+  assert.deepStrictEqual(barClosedRow.closed, ['2026-12-20'], '«закрито» на рядку ТАРИФУ читається для його пари (Ц32 переглянуто)');
+  assert.deepStrictEqual(barClosedRow.missing, ['2026-12-20'], 'закрита пара не продається');
+  assert.strictEqual(arr20.closed.length, 0, 'а без тарифу — тип відкритий, ніч продається');
+  assert.strictEqual(arr20.restrictions.minStay, 2, 'мінімум пари без свого — від типу (2)');
+  console.log('  ok  Д1/Д2: закрита ніч не продається й названа; мінімум, максимум, заїзд, виїзд — ефективні для пари');
 }
 
 // ── Ціна вихідних нуль — це не ціна (рецензія 2.0, 05.09.2026) ─────────────
@@ -363,6 +366,27 @@ assert.deepStrictEqual(noKidRule.missing, ['2026-11-10'], 'дитина без �
 assert.strictEqual(noKidRule.childRuleMissing, true, 'і причина названа');
 await sql.run("DELETE FROM extra_occupancy_rules WHERE organization_id = ?", [ORG]);
 console.log('  ok  надбавки правилами: дорослий понад базу за правилом, дитина відсотком від ночі, «за номер» без дорослої, без правила — без ціни');
+
+// ── Обмеження на ТАРИФІ (Ц32 переглянуто 07.09): закрита пара при відкритому типі ──
+//
+// Ефективне обмеження пари = рядок пари, якщо задано, інакше базовий рядок
+// типу. Закрита пара BAR на відкритому типі — `missing` лише для BAR; B&B і
+// базова ціна продаються. Мінімум пари теж свій. Осі: дві пари, «пара
+// закрита» проти «тип відкритий».
+await sql.run(
+  `INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, closed, min_stay) VALUES ('pc_bar_closed_1113', ?, ?, '2026-11-13', 250, 1, 4)`,
+  [TYPE, BAR],
+);
+const pairClosed = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-13', nights: 1, adults: 2, ratePlanId: BAR });
+assert.deepStrictEqual(pairClosed.missing, ['2026-11-13'], 'закрита ПАРА — ніч BAR не продається');
+assert.deepStrictEqual(pairClosed.closed, ['2026-11-13'], 'і названа закритою');
+assert.strictEqual(pairClosed.restrictions.minStay, 4, 'мінімум пари — свій (4), не типу');
+const pairOpenBnb = await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-13', nights: 1, adults: 2, ratePlanId: BNB });
+assert.deepStrictEqual(pairOpenBnb.missing, [], 'B&B на тому ж типі відкритий — тип не закритий');
+assert.strictEqual(pairOpenBnb.restrictions.minStay, 1, 'і мінімум типу (1), не BAR-ів');
+assert.deepStrictEqual((await priceNights({ unitTypeId: TYPE, checkIn: '2026-11-13', nights: 1, adults: 2 })).missing, [], 'базова ціна типу теж продається');
+await sql.run("DELETE FROM price_calendar WHERE id = 'pc_bar_closed_1113'");
+console.log('  ok  закрита пара при відкритому типі — missing лише для пари; мінімум пари свій');
 
 // ── Правила цін і промо (Блок 2 крок 4, Ц31) ───────────────────────────────
 //

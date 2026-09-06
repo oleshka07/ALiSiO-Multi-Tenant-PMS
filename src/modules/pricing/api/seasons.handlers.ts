@@ -16,7 +16,7 @@ import {
 
 const NAMED: Record<string, number> = {
   season_overlap: 409, season_dates_invalid: 400, season_name_required: 400, season_split_invalid: 400,
-  price_not_positive: 400, unit_type_not_found: 404, rate_plan_not_found: 404, season_not_found: 404, property_not_found: 404,
+  price_not_positive: 400, rate_plan_derived: 400, unit_type_not_found: 404, rate_plan_not_found: 404, season_not_found: 404, property_not_found: 404,
 };
 
 function named(error: unknown): NextResponse | null {

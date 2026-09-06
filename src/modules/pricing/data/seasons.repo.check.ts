@@ -150,11 +150,29 @@ try {
     assert.deepStrictEqual(bbQueue.map((q) => q.ratePlanId), [BB], 'ціна тарифу — координата лише його пари (Ц10)');
     const cells = await seasonPrices(summer.id);
     assert.strictEqual(cells.length, 2, 'дві клітинки: базова і B&B');
-    console.log('  ok  клітинка тарифу рендериться у власний рядок, координата лише його пари');
+    // Рецензія 07.09 п.3: клітинка ТАРИФУ не заводить базових рядків типу на
+    // весь сезон (500 порожніх рядків із дефолтами обмежень). Осінь має лише
+    // клітинку B&B — базових рядків на її дати не зʼявляється.
+    await setSeasonPrice(autumn.id, { unitTypeId: DBL, ratePlanId: BB, price: 90, weekendPrice: null });
+    const autumnBase = await sql.row<any>("SELECT COUNT(*) AS n FROM price_calendar WHERE unit_type_id = ? AND rate_plan_id IS NULL AND date >= '2027-09-01' AND date <= '2027-10-31'", [DBL]);
+    assert.strictEqual(Number(autumnBase?.n ?? 0), 0, `клітинка тарифу завела ${autumnBase?.n} базових рядків типу — має нуль`);
+    assert.strictEqual(Number((await row('2027-09-15', BB))?.base_price), 90, 'а рядок тарифу є');
+    // Рецензія 07.09 п.4: клітинка сезону на ПОХІДНИЙ тариф — відмова: його
+    // рядки рахує перерендер бази, сезон їх переписав би.
+    await sql.run(
+      `INSERT INTO rate_plans (id, property_id, name, code, currency, is_active, pricing_type, based_on_rate_plan_id, adjustment_kind, adjustment_value, adjustment_direction)
+       VALUES (?, ?, 'Derived', 'DER', 'EUR', TRUE, 'derived', ?, 'percent', 10, 'decrease')`, [`${A}_der`, PROP, BAR]);
+    await assert.rejects(() => setSeasonPrice(summer.id, { unitTypeId: DBL, ratePlanId: `${A}_der`, price: 100, weekendPrice: null }), /rate_plan_derived/,
+      'клітинка сезону на похідний — відмова з назвою');
+    console.log('  ok  клітинка тарифу рендериться у власний рядок, координата лише його пари; базових рядків не заводить; похідний — відмова');
 
     // ── 4. Перевизначення дати лишається; прибрати — окрема дія ──────────
     await upsertPrices(DBL, [{ date: '2027-07-04', base_price: 999 }]);
     assert.strictEqual((await row('2027-07-04', null))?.source, 'manual', 'ціна з редактора дня — «manual»');
+    // Рецензія 07.09 п.5: сезон каже оператору, скільки ночей у нього мають
+    // ручні перевизначення — інакше новий сезон у готелі з набраним календарем
+    // «нічого не міняє», і ніхто не знає чому.
+    assert.strictEqual((await listSeasons(PROP)).find((s) => s.id === summer.id)?.manualOverrides, 1, 'одна ніч з ручним перевизначенням названа в сезоні');
     await setSeasonPrice(summer.id, { unitTypeId: DBL, ratePlanId: null, price: 110, weekendPrice: 130 });
     assert.strictEqual(Number((await row('2027-07-04', null))?.base_price), 999, 'перерендер сезону затер точкове перевизначення дати');
     assert.strictEqual(Number((await row('2027-07-05', null))?.base_price), 110, 'сусідня ніч без перевизначення отримала нову ціну сезону');
@@ -162,6 +180,7 @@ try {
     const cleared = await row('2027-07-04', null);
     assert.strictEqual(Number(cleared?.base_price), 110, '«прибрати перевизначення» повертає ціну сезону');
     assert.strictEqual(cleared?.source, 'season');
+    assert.strictEqual((await listSeasons(PROP)).find((s) => s.id === summer.id)?.manualOverrides, 0, 'після прибирання — жодного');
     console.log('  ok  перевизначення дати переживає перерендер; «прибрати перевизначення» — окрема дія');
 
     // ── 5. Масовий редактор і надалі пише «manual» ────────────────────────

@@ -109,27 +109,24 @@ try {
   assert.strictEqual((await quote(A, BB(A))).nights[0]?.price, 130, 'ціна не змінилась');
   console.log('  ok  чужий тариф і чужий орендар — відмова без запису');
 
-  // ── 6. Писач називає тариф дверям каналів — статично ─────────────────
+  // ── 6. Писач іде дверима каналів — статично ──────────────────────────
   //
   // Куди лягає координата, доводить гейт дверей у модулі каналів (його
-  // таблиці; `ari-adapter.check` сцена 12). Тут — друга половина: обидва
-  // писачі йдуть через одні двері (`noteCalendarChanged`), і там ЦІНА
-  // називає тариф (інакше ціна тарифу поїхала б на всі пари типу, Ц10), а
-  // ОБМЕЖЕННЯ — не називає (вони на типі, П7/Ц32, і мають поїхати на кожну
-  // пару; Блок 0.6 A1).
+  // таблиці; `ari-adapter.check` сцени 12 і 14). Тут — друга половина: обидва
+  // писачі йдуть через одні двері (`noteCalendarChanged`); ціна пари називає
+  // тариф (Ц10); обмеження називають тариф, коли записані в рядок ПАРИ, і не
+  // називають, коли в базовий рядок типу (Ц32 переглянуто 07.09).
   {
     const fs = await import('node:fs');
     const src = fs.readFileSync(new URL('./price-calendar.repo.ts', import.meta.url), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     const calls = [...src.matchAll(/noteRatesChanged\(t, \{([^}]*)\}/g)].map((m) => m[1]);
-    assert.strictEqual(calls.length, 2, 'двері каналів — рівно два виклики: ціна пари й обмеження типу');
+    assert.ok(calls.length >= 2, 'двері каналів — щонайменше два виклики: ціна пари й обмеження');
     const price = calls.find((a) => /priceFields/.test(a));
-    const restriction = calls.find((a) => /restrictionFields/.test(a));
     assert.ok(price && /ratePlanId:/.test(price), `координата ціни мусить називати тариф: {${price?.trim()}}`);
-    assert.ok(restriction && !/ratePlanId:/.test(restriction), `координата обмежень НЕ називає тариф — вона на всі пари типу: {${restriction?.trim()}}`);
     assert.strictEqual([...src.matchAll(/noteCalendarChanged\(t, \{/g)].length, 2, 'обидва писачі календаря йдуть через ті самі двері');
   }
-  console.log('  ok  двері каналів: ціна називає тариф, обмеження — тип');
+  console.log('  ok  двері каналів: обидва писачі через одні двері, ціна називає тариф');
 
   // ── 7. Обмеження без ціни — рядок без ціни, а не ціна нуль (2.0) ─────
   //
@@ -190,25 +187,47 @@ try {
   assert.strictEqual(bulkQuote.restrictions.minStay, 3, 'а обмеження записане');
   console.log('  ok  масове обмеження на діапазон без цін — рядки без ціни');
 
-  // ── 11. Обмеження з екрана ТАРИФУ — на тип: котирування іншого тарифу й обидві сітки бачать його ──
+  // ── 11. Обмеження на ТАРИФІ: своє в пари, успадковане від типу (Ц32 переглянуто 07.09) ──
   //
-  // Блок 0.6 A1. Обмеження живуть у базовому рядку (П7, Ц32); редактор дня з
-  // вибраним тарифом писав їх у рядок тарифу — котирування BAR і канал їх не
-  // бачили, а сітка B&B показувала. Осі: мінімум 3 проти 1; ціна B&B (130)
-  // при цьому лишається своєю, а BAR — базовою (100), тобто «усе на базу»
-  // не пройде.
+  // Тести 5/7/8 сертифікації ставлять різні обмеження на різні тарифи одного
+  // типу; Hoteliera тримає min/max на тарифі, Channex — на тарифі за
+  // означенням. Ефективне обмеження пари = значення на рядку пари, якщо
+  // задане (NOT NULL), інакше базовий рядок типу. Тип — зручність запису «на
+  // всі тарифи»; власне значення пари він не затирає.
+  //
+  // Осі (інваріант 26): дві пари одного типу (BAR і B&B); мінімум 3 на парі
+  // проти 1 у типу; потім тип 2 — B&B бере 2, BAR тримає своє 3; `null` на
+  // парі — назад до типу (2). Ціна при цьому не зачеплена (130 і 100).
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D2, min_stay: 3 }], { ratePlanId: BB(A) }));
-  assert.strictEqual((await quote(A, BAR(A), D2)).restrictions.minStay, 3, 'мінімум, поставлений з екрана B&B, діє на BAR — він на типі');
+  assert.strictEqual((await quote(A, BB(A), D2)).restrictions.minStay, 3, 'мінімум на B&B — діє на B&B');
+  assert.strictEqual((await quote(A, BAR(A), D2)).restrictions.minStay, 1, 'а BAR його не бачить: обмеження — на тарифі, не на типі');
   assert.strictEqual((await quote(A, BB(A), D2)).nights[0]?.price, 130, 'ціна B&B при цьому не зачеплена');
   assert.strictEqual((await quote(A, BAR(A), D2)).nights[0]?.price, 100, 'і базова — теж');
   const baseGrid = await runWithOrganization(A, () => getPriceMonth(UT(A), 11, 2026));
   const planGrid = await runWithOrganization(A, () => getPriceMonth(UT(A), 11, 2026, BB(A)));
-  assert.strictEqual(baseGrid.days.find((d) => d.date === D2)?.min_stay, 3, 'сітка бази показує мінімум');
-  assert.strictEqual(planGrid.days.find((d) => d.date === D2)?.min_stay, 3, 'сітка тарифу показує той самий мінімум — з базового рядка');
+  assert.strictEqual(baseGrid.days.find((d) => d.date === D2)?.min_stay, 1, 'сітка типу — мінімум типу (1)');
+  assert.strictEqual(planGrid.days.find((d) => d.date === D2)?.min_stay, 3, 'сітка тарифу — ефективний мінімум пари (3)');
+  assert.strictEqual(planGrid.days.find((d) => d.date === D2)?.restrictionsOwn, true, 'і каже, що це ВЛАСНЕ значення пари');
   assert.strictEqual(planGrid.days.find((d) => d.date === D2)?.base_price, 130, 'а ціну — свою');
-  const planRow = await sql.row<any>('SELECT min_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id = ?', [UT(A), D2, BB(A)]);
-  assert.strictEqual(Number(planRow?.min_stay ?? 1), 1, 'рядок тарифу обмеження не несе');
-  console.log('  ok  обмеження з екрана тарифу — на тип: котирування, сітка бази й сітка тарифу бачать одне число');
+  // «На всі тарифи типу» — базовий рядок: B&B успадковує 2, BAR (без свого) — 2, власне 3 у B&B… ні:
+  // власне значення пари лишається — це те, заради чого воно на парі.
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D2, min_stay: 2 }]));
+  assert.strictEqual((await quote(A, BAR(A), D2)).restrictions.minStay, 2, 'BAR без свого — від типу, 2');
+  assert.strictEqual((await quote(A, BB(A), D2)).restrictions.minStay, 3, 'B&B зі своїм — тримає 3, тип його не затирає');
+  assert.strictEqual((await runWithOrganization(A, () => getPriceMonth(UT(A), 11, 2026, BAR(A)))).days.find((d) => d.date === D2)?.restrictionsOwn, false, 'сітка BAR: успадковане, не власне');
+  // Скинути власне пари — явний null: далі як у типу.
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D2, min_stay: null }], { ratePlanId: BB(A) }));
+  assert.strictEqual((await quote(A, BB(A), D2)).restrictions.minStay, 2, 'null на парі — успадкувати від типу (2), а не дефолт 1');
+  // Закрито: пара закрита при відкритому типі; тип закритий — усі пари.
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D2, closed: true }], { ratePlanId: BB(A) }));
+  assert.deepStrictEqual((await quote(A, BB(A), D2)).closed, [D2], 'закрита пара — ніч закрита для B&B');
+  assert.deepStrictEqual((await quote(A, BAR(A), D2)).closed, [], 'а BAR відкритий: тип відкритий');
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D2, closed: true }]));
+  assert.deepStrictEqual((await quote(A, BAR(A), D2)).closed, [D2], 'тип закритий — закрита й пара без свого');
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D2, closed: false }]));
+  await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D2, closed: false }], { ratePlanId: BB(A) }));
+  assert.deepStrictEqual((await quote(A, BB(A), D2)).closed, [], 'відкрито назад — обидва');
+  console.log('  ok  обмеження на тарифі: своє на парі, успадковане від типу, тип не затирає власне, null — успадкувати; закрита пара при відкритому типі');
 
   // ── 12. Одна семантика `null` на всі поля (Блок 0.6 B4) ────────────────
   //

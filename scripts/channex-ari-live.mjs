@@ -7,6 +7,7 @@
  *   node scripts/channex-ari-live.mjs --org <orgId> <connId> --retire <rpId> # зняти тариф з продажу дверима, прогнати, прочитати назад: закрито
  *   node scripts/channex-ari-live.mjs --org <orgId> <connId> --restore <rpId># повернути в продаж, прогнати, прочитати назад: ціна знову
  *   node scripts/channex-ari-live.mjs --org <orgId> <connId> --reprice <rpId>=<ціна>  # Блок 0.5: змінити ціну ТАРИФУ справжнім писачем, прогнати, прочитати назад — і показати, які поля були в тілі
+ *   node scripts/channex-ari-live.mjs --org <orgId> <connId> --min-stay <rpId>=<n>    # 0072: мінімум ночей на ОДНОМУ тарифі, прочитати назад ОБИДВІ пари типу — сусідній тариф лишається зі своїм
  *   … [--from YYYY-MM-DD] [--days N]                                         # дати (дефолт: +30 днів, 3 доби)
  *
  * ── Навіщо ──────────────────────────────────────────────────────────────
@@ -55,6 +56,18 @@
  * `stop_sell: true`. `--restore <rpId>` — назад: `stop_sell: false` і ціна.
  * Обидва — стан НАШОГО обʼєкта на staging (інваріант 25); після `--retire`
  * тариф лишається закритим, доки не зробити `--restore`.
+ *
+ * ── 0072: обмеження належить парі тип×тариф, не типу ────────────────────
+ *
+ * `--min-stay <rpId>=<n>` пише мінімум ночей ТИМ САМИМ писачем, що й
+ * редактор дня з вимкненою галочкою «на всі тарифи типу» (`upsertPrices` з
+ * `ratePlanId`): рядок пари отримує власне значення, координата йде лише на
+ * цю пару. Читання назад — `min_stay_arrival` на КОЖНІЙ опції КОЖНОЇ пари
+ * типу у вікні: опції названого тарифу мусять показати `n`, опції сусіднього
+ * тарифу того ж типу — своє попереднє число. Одна пара довела б лише «щось
+ * поїхало»; дві пари одного типу доводять, що поїхало на ту, а не на обидві
+ * (тести 5/7/8 сертифікації). Значення лишається на нашому обʼєкті; повернути —
+ * тим самим прапорцем з попереднім числом.
  */
 import './lib/module-aliases.mjs';
 import { sampleRecorder } from './lib/channex-samples.mjs';
@@ -79,18 +92,27 @@ const REPRICE = (() => {
   if (!id || !(Number(price) > 0)) { console.error('--reprice чекає <rpId>=<ціна>, ціна > 0'); process.exit(2); }
   return { id, price: Number(price) };
 })();
-const CONFIRM = argv.includes('--confirm') || !!FLIP || !!REPRICE;
+// 0072: мінімум ночей на одному тарифі — писачем редактора дня з `ratePlanId`,
+// читання назад по ОБОХ парах типу (сусідня мусить лишитись незмінною).
+const MIN_STAY = (() => {
+  const v = opt('--min-stay', null);
+  if (!v) return null;
+  const [id, n] = v.split('=');
+  if (!id || !Number.isInteger(Number(n)) || Number(n) < 1) { console.error('--min-stay чекає <rpId>=<n>, n — ціле ≥ 1'); process.exit(2); }
+  return { id, n: Number(n) };
+})();
+const CONFIRM = argv.includes('--confirm') || !!FLIP || !!REPRICE || !!MIN_STAY;
 
 let organizationId = null;
 let connectionId = null;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--org') { organizationId = argv[++i]; continue; }
-  if (['--from', '--days', '--retire', '--restore', '--reprice'].includes(argv[i])) { i++; continue; }
+  if (['--from', '--days', '--retire', '--restore', '--reprice', '--min-stay'].includes(argv[i])) { i++; continue; }
   if (argv[i].startsWith('--')) continue;
   connectionId = argv[i];
 }
 if (!organizationId || !connectionId) {
-  console.error('usage: node scripts/channex-ari-live.mjs --org <orgId> <connId> [--confirm|--probe-429|--retire <rpId>|--restore <rpId>] [--from YYYY-MM-DD] [--days N]');
+  console.error('usage: node scripts/channex-ari-live.mjs --org <orgId> <connId> [--confirm|--probe-429|--retire <rpId>|--restore <rpId>|--reprice <rpId>=<ціна>|--min-stay <rpId>=<n>] [--from YYYY-MM-DD] [--days N]');
   console.error('  --org обовʼязковий: зʼєднання читається ЧЕРЕЗ орендаря, не за самим id (INC-010).');
   process.exit(2);
 }
@@ -123,7 +145,7 @@ const {
 const { recordVendorResponses } = await import('@channels');
 recordVendorResponses(sampleRecorder());
 const { availabilityByDay, catalogUnitTypes } = await import('@properties');
-const { priceNights, updateRatePlan, listRatePlans, bulkUpdatePrices } = await import('@pricing');
+const { priceNights, updateRatePlan, listRatePlans, bulkUpdatePrices, upsertPrices } = await import('@pricing');
 
 /** Сире читання повз наш клієнт: звірка мусить бачити відповідь, а не наше тлумачення. */
 async function get(path) {
@@ -133,10 +155,10 @@ async function get(path) {
   return JSON.parse(text);
 }
 
-/** `data[optionId][date] = { rate, stop_sell, availability }` — И13. */
+/** `data[optionId][date] = { rate, stop_sell, availability, min_stay_arrival }` — И13; мінімум читається тим самим імʼям, яким шлеться (INC-015). */
 async function readCalendar(remotePropertyId, from, to) {
   const body = await get(`/restrictions?filter[property_id]=${remotePropertyId}`
-    + `&filter[date][gte]=${from}&filter[date][lte]=${to}&filter[restrictions]=rate,stop_sell,availability`);
+    + `&filter[date][gte]=${from}&filter[date][lte]=${to}&filter[restrictions]=rate,stop_sell,availability,min_stay_arrival`);
   return body.data ?? {};
 }
 
@@ -195,6 +217,30 @@ await runWithOrganization(organizationId, async () => {
     }
     const queued = (await queuedChannelChanges(connectionId)).filter((q) => q.kind === 'rate' && q.date === FROM);
     console.log(`  у черзі від писача: ${queued.length} координат, маски: ${[...new Set(queued.map((q) => JSON.stringify(q.fields)))].join(' ')}`);
+  }
+
+  // ── 0072: мінімум ночей на одній парі — писачем редактора дня, до очікувань ──
+  let minStayBefore = null; // optionRemoteId|date → min_stay_arrival до запису, для сусідніх пар
+  if (MIN_STAY) {
+    const plan = (await listRatePlans(connection.propertyId)).find((p) => p.id === MIN_STAY.id);
+    if (!plan) { console.error(`✗ тариф ${MIN_STAY.id} не на обʼєкті цього зʼєднання`); process.exitCode = 1; return; }
+    const own = pairs.filter((p) => p.localId === plan.id);
+    if (!own.length) { console.error(`✗ тариф ${plan.code} не заведено у вендора`); process.exitCode = 1; return; }
+    const siblings = pairs.filter((p) => p.localId !== plan.id && own.some((o) => o.unitTypeId === p.unitTypeId));
+    if (!siblings.length) {
+      console.error(`✗ на типах тарифу ${plan.code} немає другого тарифу — одна пара не доводить, що обмеження лягло на тариф, а не на тип`);
+      process.exitCode = 1; return;
+    }
+    minStayBefore = await readCalendar(remote, FROM, TO);
+    console.log(`\nТАРИФ ${plan.code}: мінімум ${MIN_STAY.n} ночей на ${FROM}…${TO} — писачем редактора дня з ratePlanId (галочка «на всі тарифи типу» ВИМКНЕНА), на кожному типі пари`);
+    for (const p of own) {
+      await upsertPrices(p.unitTypeId, DATES.map((date) => ({ date, min_stay: MIN_STAY.n })), { ratePlanId: plan.id });
+    }
+    const queued = (await queuedChannelChanges(connectionId)).filter((q) => q.kind === 'rate' && q.date === FROM);
+    const onSiblings = queued.filter((q) => siblings.some((s) => s.unitTypeId === q.unitTypeId && s.localId === q.ratePlanId));
+    console.log(`  у черзі від писача: ${queued.length} координат, маски: ${[...new Set(queued.map((q) => JSON.stringify(q.fields)))].join(' ')}`
+      + `; на сусідніх парах типу: ${onSiblings.length}${onSiblings.length ? '   ← координата пішла на чужий тариф' : ''}`);
+    if (onSiblings.length) process.exitCode = 1;
   }
 
   // ── Очікування — тими самими дверима, що й адаптер, але окремо ────────
@@ -263,7 +309,7 @@ await runWithOrganization(organizationId, async () => {
     // З --reprice координати вже поклав справжній писач — зі своєю маскою;
     // класти повні поверх означало б стерти маску (NULL поглинає) і довести
     // не те, що питаємо.
-    if (!REPRICE) {
+    if (!REPRICE && !MIN_STAY) {
       for (const u of unitTypes) {
         await enqueueChannelChange(sql, connectionId, { kind: 'availability', unitTypeId: u.localId, date: FROM, dateTo: TO });
       }
@@ -325,6 +371,30 @@ await runWithOrganization(organizationId, async () => {
     console.log(`\nЖУРНАЛ ВІДПРАВЛЕНЬ (цей прохід, ${log.length} виклик(ів)):`);
     for (const l of log) {
       console.log(`  ${String(l.sentAt).slice(0, 19)} ${l.lane.padEnd(12)} ${l.responseStatus ?? '—'} task ${l.taskId ?? '—'}  значень ${l.rowsCount}  поля: ${l.summary.fields.join(', ')}  ${l.summary.from}…${l.summary.to}`);
+    }
+    // 0072: читання назад по ОБОХ парах кожного типу — названий тариф показує n,
+    // сусідній — своє попереднє число. Не «код 200», а значення (інваріант 27).
+    if (MIN_STAY) {
+      const own = options.filter((o) => o.localId === MIN_STAY.id);
+      const ownTypes = new Set(own.map((o) => o.unitTypeId));
+      const neighbours = options.filter((o) => o.localId !== MIN_STAY.id && ownTypes.has(o.unitTypeId));
+      let bad = 0;
+      console.log(`\n0072 — МІНІМУМ НОЧЕЙ НА ТАРИФІ (читання назад, ${FROM}…${TO}):`);
+      for (const o of [...own, ...neighbours]) {
+        for (const date of DATES) {
+          const got = after[o.remoteId]?.[date]?.min_stay_arrival;
+          const want = o.localId === MIN_STAY.id ? MIN_STAY.n : minStayBefore[o.remoteId]?.[date]?.min_stay_arrival;
+          const ok = got != null && got === want;
+          if (!ok) bad++;
+          console.log(`  ${ok ? ' ' : '!'} ${date} ${o.localId}×${codeOf.get(o.unitTypeId)} occ${o.occupancy}: min_stay_arrival=${got ?? '?'} (${o.localId === MIN_STAY.id ? 'мало стати' : 'мало лишитись'} ${want ?? '?'})`);
+        }
+      }
+      const total = (own.length + neighbours.length) * DATES.length;
+      console.log(`  ${total - bad} з ${total} ночей опцій зійшлись: тариф ${MIN_STAY.id} = ${MIN_STAY.n}, сусідні тарифи тих самих типів — без змін${bad ? '   ← НЕ ЗІЙШЛОСЯ' : ''}`);
+      const rateCalls = log.filter((l) => l.lane === 'rate');
+      const touchedForeign = rateCalls.some((l) => (l.summary.pairs ?? []).some((pr) => pr.ratePlanId !== MIN_STAY.id));
+      if (touchedForeign) console.log('  ! у тілі проходу були координати чужого тарифу');
+      if (bad || touchedForeign) process.exitCode = 1;
     }
     if (REPRICE) {
       const rateCalls = log.filter((l) => l.lane === 'rate');

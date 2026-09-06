@@ -44,7 +44,10 @@ export const updatePricing = withPermission('manage_pricing', async (request: Ne
     const ratePlanId = typeof body.ratePlanId === 'string' && body.ratePlanId ? body.ratePlanId : undefined;
     let updated: number;
     try {
-      updated = await upsertPrices(unitTypeId, prices, { ratePlanId });
+      // Обмеження з названим тарифом — у пару (дефолт) або «на всі тарифи
+      // типу» (Ц32 переглянуто 07.09) — вирішує прапорець екрана.
+      const restrictionsScope = body.restrictionsScope === 'type' ? 'type' as const : undefined;
+      updated = await upsertPrices(unitTypeId, prices, { ratePlanId, restrictionsScope });
     } catch (e) {
       if (e instanceof Error && /rate plan not found/i.test(e.message)) return NextResponse.json({ error: 'Rate plan not found' }, { status: 404 });
       // Нуль і відʼємне — не ціна (2.0): названа відмова, екран її перекладає.

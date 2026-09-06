@@ -314,21 +314,36 @@ export async function priceNights(input: {
   const fromCalendar = new Map(days.filter((d) => d.rate_plan_id == null && String(day(d.date)) < checkOut).map((d) => [day(d.date), d]));
   const fromRatePlan = new Map(days.filter((d) => d.rate_plan_id != null && String(day(d.date)) < checkOut).map((d) => [day(d.date), d]));
   const baseRow = (date: string) => days.find((d) => d.rate_plan_id == null && day(d.date) === date);
+  const pairRow = (date: string) => (ratePlanId ? days.find((d) => d.rate_plan_id != null && day(d.date) === date) : undefined);
 
-  // Обмеження — лише з базового рядка типу (Д1; П7): рядок тарифу їх не має.
-  const arrival = baseRow(checkIn);
-  const departure = baseRow(checkOut);
+  // Обмеження — ЕФЕКТИВНІ пари (Ц32 переглянуто 07.09): власне значення на
+  // рядку пари, де задане, інакше базовий рядок типу. «Закрито» — тип АБО
+  // пара: тип закритий закриває всі пари; пара закрита при відкритому типі —
+  // лише вона. Без тарифу — обмеження типу (Д1/Д2).
+  const eff = (date: string) => {
+    const b = baseRow(date);
+    const p = pairRow(date);
+    const maxRaw = p?.max_stay ?? b?.max_stay;
+    return {
+      minStay: Math.max(1, Number(p?.min_stay ?? b?.min_stay ?? 1) || 1),
+      maxStay: maxRaw == null ? null : Number(maxRaw),
+      closed: Number(b?.closed ?? 0) === 1 || Number(p?.closed ?? 0) === 1,
+      cta: Number(p?.cta ?? b?.cta ?? 0) === 1,
+      ctd: Number(p?.ctd ?? b?.ctd ?? 0) === 1,
+    };
+  };
+  const arrival = eff(checkIn);
+  const departure = eff(checkOut);
   const closedNights: string[] = [];
   for (let i = 0; i < nights; i++) {
     const date = addDays(checkIn, i);
-    if (Number(baseRow(date)?.closed ?? 0) === 1) closedNights.push(date);
+    if (eff(date).closed) closedNights.push(date);
   }
-  const maxStayRaw = arrival?.max_stay;
   const restrictions: StayRestrictions = {
-    minStay: Math.max(1, Number(arrival?.min_stay ?? 1) || 1),
-    maxStay: maxStayRaw == null ? null : Number(maxStayRaw),
-    noArrival: Number(arrival?.cta ?? 0) === 1,
-    noDeparture: Number(departure?.ctd ?? 0) === 1,
+    minStay: arrival.minStay,
+    maxStay: arrival.maxStay,
+    noArrival: arrival.cta,
+    noDeparture: departure.ctd,
     closedNights,
   };
 

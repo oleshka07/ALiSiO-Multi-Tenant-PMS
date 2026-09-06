@@ -49,6 +49,8 @@ interface PriceDay {
   hasData: boolean;
   /** Сітка тарифу: число успадковане від типу — власного рядка тарифу на цей день немає. */
   inherited?: boolean;
+  /** Сітка тарифу: обмеження дня — власні цієї пари, не типу (Ц32 переглянуто 07.09). */
+  restrictionsOwn?: boolean;
 }
 
 interface QuoteResult {
@@ -79,12 +81,17 @@ const CZK_TO_EUR = 23.5;
 /* ================================================================
    Edit Cell Modal
    ================================================================ */
-function EditDayModal({ day, onSave, onClose }: {
+function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
   day: PriceDay;
-  onSave: (data: Partial<PriceDay>) => void;
+  /** У «Чия ціна» обрано тариф — обмеження можуть лягти на його пару або на всі тарифи типу. */
+  ratePlanSelected: boolean;
+  onSave: (data: Partial<PriceDay> & { restrictionsScope?: 'pair' | 'type' }) => void;
   onClose: () => void;
 }) {
   const t = useT();
+  // Обмеження з вибраним тарифом (Ц32 переглянуто 07.09): дефолт — на всі
+  // тарифи типу (базовий рядок), зняти прапорець — лише на цю пару.
+  const [allPlans, setAllPlans] = useState(true);
   // Порожнє поле — «ціну не чіпати»: збереження обмеження на день без ціни
   // не пише нуль (2.0). Тут стояло `useState(day.base_price)`, і для дня без
   // рядка це був 0 — його й відправляли в канал як ціну.
@@ -129,13 +136,30 @@ function EditDayModal({ day, onSave, onClose }: {
               <input type="checkbox" checked={ctd} onChange={e => setCtd(e.target.checked)} /> CTD
             </label>
           </div>
-          {/* Обмеження — на тип номера, для всіх його тарифів (П7, Ц32): і з
-              вибраним тарифом вони лягають на базовий рядок типу і їдуть у
-              канал на кожну його пару (Блок 0.6 A1). Ціна ж — того, чия
-              обрана в «Чия ціна». */}
-          <span style={{ display: 'block', marginTop: 8, fontSize: 11, color: 'var(--text-tertiary)' }}>
-            {t('Мін. ночей, «Закрито», CTA і CTD — на тип номера: діють на всі його тарифи')}
-          </span>
+          {/* Обмеження (Ц32 переглянуто 07.09): належать ПАРІ тип × тариф.
+              З вибраним тарифом — або на всі тарифи типу (базовий рядок,
+              дефолт), або лише на цю пару. Ціна — завжди того, чия обрана в
+              «Чия ціна». */}
+          {ratePlanSelected ? (
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 10, fontSize: 12, cursor: 'pointer' }}>
+              <input type="checkbox" checked={allPlans} onChange={e => setAllPlans(e.target.checked)} style={{ marginTop: 2 }} />
+              <span>
+                {t('Мін. ночей, «Закрито», CTA і CTD — на всі тарифи типу')}
+                <span style={{ display: 'block', color: 'var(--text-tertiary)', fontSize: 11 }}>
+                  {t('Зняти — і вони ляжуть лише на цей тариф; тарифи зі своїм значенням тип не перекриває')}
+                </span>
+              </span>
+            </label>
+          ) : (
+            <span style={{ display: 'block', marginTop: 8, fontSize: 11, color: 'var(--text-tertiary)' }}>
+              {t('Мін. ночей, «Закрито», CTA і CTD — на тип номера: діють на тарифи без власного значення')}
+            </span>
+          )}
+          {day.restrictionsOwn && (
+            <span style={{ display: 'block', marginTop: 6, fontSize: 11, color: 'var(--accent-warning)' }}>
+              {t('Цей день має власні обмеження тарифу — тип їх не перекриває')}
+            </span>
+          )}
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>{t('Скасувати')}</button>
@@ -146,6 +170,7 @@ function EditDayModal({ day, onSave, onClose }: {
             closed: closed ? 1 : 0,
             cta: cta ? 1 : 0,
             ctd: ctd ? 1 : 0,
+            ...(ratePlanSelected ? { restrictionsScope: allPlans ? 'type' : 'pair' } : {}),
           })}>
             <Save size={14} /> {t('Зберегти')}
           </button>
@@ -158,11 +183,13 @@ function EditDayModal({ day, onSave, onClose }: {
 /* ================================================================
    Bulk Edit Modal
    ================================================================ */
-function BulkEditModal({ onSave, onClose }: {
+function BulkEditModal({ ratePlanSelected, onSave, onClose }: {
+  ratePlanSelected: boolean;
   onSave: (data: any) => void;
   onClose: () => void;
 }) {
   const t = useT();
+  const [allPlans, setAllPlans] = useState(true);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [basePrice, setBasePrice] = useState('');
@@ -187,6 +214,8 @@ function BulkEditModal({ onSave, onClose }: {
       closed: closed,
       cta: cta,
       ctd: ctd,
+      // Обмеження з вибраним тарифом — на всі тарифи типу або лише на пару (Ц32 переглянуто).
+      ...(ratePlanSelected ? { restrictionsScope: allPlans ? 'type' : 'pair' } : {}),
     });
     setSaving(false);
   };
@@ -243,8 +272,19 @@ function BulkEditModal({ onSave, onClose }: {
             </div>
           </div>
           {/* Тест 7 сертифікації — кілька обмежень одним рухом: максимум ночей,
-              заборона заїзду (CTA) і виїзду (CTD) на діапазон. Обмеження — на
-              тип номера, для всіх його тарифів (П7). */}
+              заборона заїзду (CTA) і виїзду (CTD) на діапазон. Обмеження
+              належать парі тип × тариф (Ц32 переглянуто 07.09). */}
+          {ratePlanSelected && (
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 10, fontSize: 12, cursor: 'pointer' }}>
+              <input type="checkbox" checked={allPlans} onChange={e => setAllPlans(e.target.checked)} style={{ marginTop: 2 }} />
+              <span>
+                {t('Обмеження — на всі тарифи типу')}
+                <span style={{ display: 'block', color: 'var(--text-tertiary)', fontSize: 11 }}>
+                  {t('Зняти — лише на обраний тариф (як у тестах 5, 7, 8: різне на різних тарифах)')}
+                </span>
+              </span>
+            </label>
+          )}
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">{t('Макс. ночей')}</label>
@@ -516,16 +556,19 @@ export default function PricingPage() {
   };
 
   // Save single day
-  const handleSaveDay = async (data: Partial<PriceDay>) => {
+  const handleSaveDay = async (data: Partial<PriceDay> & { restrictionsScope?: 'pair' | 'type' }) => {
     if (!editDay) return;
     try {
+      // Область обмежень (Ц32 переглянуто) — параметр запиту, не поле дня.
+      const { restrictionsScope, ...fields } = data;
       const res = await fetch('/api/pricing', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           unitTypeId: selectedUnitType,
           ratePlanId: ratePlanId || undefined,
-          prices: [{ date: editDay.date, ...data }],
+          restrictionsScope,
+          prices: [{ date: editDay.date, ...fields }],
         }),
       });
       if (res.ok) {
@@ -735,6 +778,7 @@ export default function PricingPage() {
                         <div className="pricing-cell-badges">
                           {day.isWeekend && <span className="pricing-cell-badge">WE</span>}
                           {day.min_stay > 1 && <span className="pricing-cell-badge">min {day.min_stay}</span>}
+                          {day.restrictionsOwn && <span className="pricing-cell-badge" title={t('Обмеження — власні цього тарифу, тип їх не перекриває')}>{t('власне')}</span>}
                           {day.cta ? <span className="pricing-cell-badge" style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>CTA</span> : null}
                           {day.ctd ? <span className="pricing-cell-badge" style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>CTD</span> : null}
                           {day.closed ? <span className="pricing-cell-badge" style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>Closed</span> : null}
@@ -799,10 +843,10 @@ export default function PricingPage() {
         <WidgetPriceListSection />
 
         {/* Edit Day Modal */}
-        {editDay && <EditDayModal day={editDay} onSave={handleSaveDay} onClose={() => setEditDay(null)} />}
+        {editDay && <EditDayModal day={editDay} ratePlanSelected={Boolean(ratePlanId)} onSave={handleSaveDay} onClose={() => setEditDay(null)} />}
 
         {/* Bulk Edit Modal */}
-        {showBulkEdit && <BulkEditModal onSave={handleBulkSave} onClose={() => setShowBulkEdit(false)} />}
+        {showBulkEdit && <BulkEditModal ratePlanSelected={Boolean(ratePlanId)} onSave={handleBulkSave} onClose={() => setShowBulkEdit(false)} />}
       </div>
     </>
   );

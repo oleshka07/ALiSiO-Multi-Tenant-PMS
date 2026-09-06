@@ -36,7 +36,12 @@ export const updateBulkPricing = withPermission('manage_pricing', async (request
 
     let updated: number;
     try {
-      updated = await bulkUpdatePrices({ unitTypeId, dateFrom, dateTo, applyTo, ...body, ratePlanId: typeof body.ratePlanId === 'string' && body.ratePlanId ? body.ratePlanId : undefined });
+      updated = await bulkUpdatePrices({
+        unitTypeId, dateFrom, dateTo, applyTo, ...body,
+        ratePlanId: typeof body.ratePlanId === 'string' && body.ratePlanId ? body.ratePlanId : undefined,
+        // Обмеження з названим тарифом — у пару або «на всі тарифи типу» (Ц32 переглянуто 07.09).
+        restrictionsScope: body.restrictionsScope === 'type' ? 'type' : undefined,
+      });
     } catch (e) {
       if (e instanceof Error && /rate plan not found/i.test(e.message)) return NextResponse.json({ error: 'Rate plan not found' }, { status: 404 });
       // Нуль і відʼємне — не ціна (2.0): названа відмова, екран її перекладає.

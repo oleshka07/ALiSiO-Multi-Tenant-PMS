@@ -21,10 +21,10 @@ import { EmptyState, LoadingState } from '@/components/ui/State';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Scissors, Trash2, Loader2, CalendarRange, Eraser } from 'lucide-react';
 
-interface Season { id: string; propertyId: string; name: string; dateFrom: string; dateTo: string; sortOrder: number; cells: number }
+interface Season { id: string; propertyId: string; name: string; dateFrom: string; dateTo: string; sortOrder: number; cells: number; manualOverrides: number }
 interface Cell { id: string; seasonId: string; unitTypeId: string; ratePlanId: string | null; price: number; weekendPrice: number | null }
 interface UnitType { id: string; name: string; code: string; property_id: string }
-interface RatePlan { id: string; name: string; code: string; isActive: boolean }
+interface RatePlan { id: string; name: string; code: string; isActive: boolean; pricingType?: 'manual' | 'derived' }
 
 export default function SeasonsSettingsPage() {
   const t = useT();
@@ -35,6 +35,7 @@ export default function SeasonsSettingsPage() {
     season_name_required: t('Назва обовʼязкова'),
     season_split_invalid: t('Дата поділу має бути всередині сезону, не на першому дні'),
     price_not_positive: t('Ціна має бути більшою за нуль'),
+    rate_plan_derived: t('Похідний тариф рахується від бази — клітинки сезону в нього немає'),
   };
   const { propertyId } = usePropertyScope();
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -62,7 +63,8 @@ export default function SeasonsSettingsPage() {
       ]);
       setSeasons(Array.isArray(s) ? s : []);
       setUnitTypes((Array.isArray(u) ? u : []).filter((x: UnitType) => !x.property_id || x.property_id === pid));
-      setRatePlans((Array.isArray(r) ? r : []).filter((p: RatePlan) => p.isActive));
+      // Похідні тарифи (Ц28) колонки не мають: їх рядки рахує перерендер бази.
+      setRatePlans((Array.isArray(r) ? r : []).filter((p: RatePlan) => p.isActive && p.pricingType !== 'derived'));
     } catch {
       setError(t('Не вдалося завантажити сезони'));
     } finally {
@@ -162,6 +164,7 @@ export default function SeasonsSettingsPage() {
     setBusy('clear');
     const res = await fetch(`/api/pricing/seasons/${current.id}/clear-overrides`, { method: 'POST' });
     if (!res.ok) say((await res.json().catch(() => ({})))?.error, 'Не вдалося прибрати перевизначення');
+    if (propertyId) await load(propertyId);
     setBusy(null);
   };
 
@@ -239,6 +242,15 @@ export default function SeasonsSettingsPage() {
               <p style={{ color: 'var(--text-tertiary)', fontSize: 12, marginTop: 0 }}>
                 {t('Ціна за ніч і, за бажанням, ціна вихідних. Порожня клітинка — тариф у цьому сезоні успадковує базову ціну типу. Зберігається при виході з поля.')}
               </p>
+              {/* Рецензія 07.09 п.5: після 0068 усі наявні рядки календаря — ручні
+                  перевизначення, і новий сезон у готелі з набраним календарем нічого
+                  не змінить, доки їх не прибрати. Це має бути сказано оператору. */}
+              {current.manualOverrides > 0 && (
+                <div className="login-error" style={{ marginBottom: 10, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span>{t('Ночей із ручними перевизначеннями в цьому сезоні')}: <strong>{current.manualOverrides}</strong> — {t('ціна сезону на них не діє')}</span>
+                  <button className="btn btn-sm" disabled={busy === 'clear'} onClick={clearOverrides}>{t('Прибрати перевизначення')}</button>
+                </div>
+              )}
               {unitTypes.length === 0 ? <EmptyState title={t('Немає типів номерів')} hint={t('Спершу заведіть типи номерів у Налаштування → Типи номерів і номери.')} /> : (
                 <div className="table-wrapper">
                   <table className="table">

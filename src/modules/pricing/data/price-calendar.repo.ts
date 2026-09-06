@@ -53,6 +53,13 @@ export interface PriceCalendarOptions {
    * оператор поставив на дату рукою. Лише з `ratePlanId`.
    */
   keepManual?: boolean;
+  /**
+   * Куди лягають ОБМЕЖЕННЯ, коли названо тариф (Ц32 переглянуто 07.09):
+   * `pair` (дефолт) — у рядок цієї пари, координата лише на неї; `type` —
+   * у базовий рядок типу («на всі тарифи типу»), координата на всі пари,
+   * власні значення інших пар не затираються. Без тарифу — завжди тип.
+   */
+  restrictionsScope?: 'pair' | 'type';
 }
 
 export async function getPriceMonth(unitTypeId: string, month: number, year: number, ratePlanId?: string): Promise<{ unitTypeId: string; ratePlanId: string | null; month: number; year: number; days: DayPrice[] }> {
@@ -76,10 +83,9 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
 
   // Сітка ТАРИФУ: ЦІНА з власного рядка тарифу поверх базового. Де власної
   // немає — показуємо базову і кажемо, що вона успадкована: інакше оператор
-  // бачить число і не знає, чиє воно. ОБМЕЖЕННЯ — завжди з базового рядка
-  // типу (П7, Ц32): рядок тарифу їх не несе, і саме базові читають батчер і
-  // котирування (Блок 0.6 A1 — до того сітка тарифу показувала обмеження з
-  // рядка тарифу, яких у каналі не було ніколи).
+  // бачить число і не знає, чиє воно. ОБМЕЖЕННЯ — ЕФЕКТИВНІ пари (Ц32
+  // переглянуто 07.09): власне значення пари, де є (`restrictionsOwn`), інакше
+  // базового рядка типу — саме так їх читають батчер і котирування.
   const own = new Map<string, any>();
   if (ratePlanId) {
     const planRows = await sql.rows<any>(`
@@ -109,19 +115,20 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
       // показує «—», не 0, і редактор дня відкриває порожнє поле.
       const basePrice = priceRow?.base_price == null ? null : Number(priceRow.base_price);
       const weekendPrice = priceRow?.weekend_price == null ? null : Number(priceRow.weekend_price);
+      const r = effectiveRestrictions(ratePlanId ? shapeOf(ownRow) : null, shapeOf(baseRow));
       days.push({
         date: dateStr, day: d, dayOfWeek, isWeekend,
         base_price: basePrice,
         weekend_price: weekendPrice,
         effective_price: isWeekend && weekendPrice != null ? weekendPrice : basePrice,
-        min_stay: baseRow?.min_stay ?? 1,
-        max_stay: baseRow?.max_stay ?? null,
-        closed: baseRow?.closed ?? 0,
-        cta: baseRow?.cta ?? 0,
-        ctd: baseRow?.ctd ?? 0,
+        min_stay: r.min_stay,
+        max_stay: r.max_stay,
+        closed: r.closed ? 1 : 0,
+        cta: r.cta ? 1 : 0,
+        ctd: r.ctd ? 1 : 0,
         hasData: true,
         source: ((priceRow ?? existing).source ?? 'manual') as PriceSource,
-        ...(ratePlanId ? { inherited: !ownPriced } : {}),
+        ...(ratePlanId ? { inherited: !ownPriced, restrictionsOwn: hasOwnRestrictions(ownRow) } : {}),
       });
     } else {
       days.push({ date: dateStr, day: d, dayOfWeek, isWeekend, base_price: null, weekend_price: null, effective_price: null, min_stay: 1, max_stay: null, closed: 0, cta: 0, ctd: 0, hasData: false });
@@ -147,34 +154,59 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
  */
 const ON_CONFLICT_ROW = `ON CONFLICT(unit_type_id, (COALESCE(rate_plan_id, '')), date)`;
 
-/** Рядок календаря так, як його порівнює маска: ціни й пʼять обмежень. */
+/**
+ * Рядок календаря так, як його порівнює маска: ціни й пʼять обмежень.
+ * Обмеження nullable (0072, Ц32 переглянуто): на рядку ПАРИ NULL — «як у
+ * типу»; на базовому рядку NULL не мало би бути, читається як дефолт.
+ */
 interface CalendarRowShape {
   base_price: number | null;
   weekend_price: number | null;
-  min_stay: number;
+  min_stay: number | null;
   max_stay: number | null;
-  closed: boolean;
-  cta: boolean;
-  ctd: boolean;
+  closed: boolean | null;
+  cta: boolean | null;
+  ctd: boolean | null;
 }
 
 const num = (v: unknown): number | null => (v == null ? null : Number(v));
-const flag = (v: unknown): boolean => Boolean(Number(v ?? 0));
+const flagOrNull = (v: unknown): boolean | null => (v == null ? null : Boolean(Number(v)));
 
-/** Рядок бази (або його відсутність) у формі для порівняння. */
+/** Рядок (або його відсутність) у формі для порівняння. */
 function shapeOf(row: any | undefined): CalendarRowShape | null {
   if (!row) return null;
   return {
     base_price: num(row.base_price), weekend_price: num(row.weekend_price),
-    min_stay: Number(row.min_stay ?? 1) || 1, max_stay: num(row.max_stay),
-    closed: flag(row.closed), cta: flag(row.cta), ctd: flag(row.ctd),
+    min_stay: num(row.min_stay), max_stay: num(row.max_stay),
+    closed: flagOrNull(row.closed), cta: flagOrNull(row.cta), ctd: flagOrNull(row.ctd),
   };
 }
 
 /** Ціна пари: `base_price` і `weekend_price` разом. */
 type PriceShape = Pick<CalendarRowShape, 'base_price' | 'weekend_price'>;
-/** Обмеження типу: мінімум, максимум, «закрито», заборона заїзду й виїзду. */
-type RestrictionShape = Pick<CalendarRowShape, 'min_stay' | 'max_stay' | 'closed' | 'cta' | 'ctd'>;
+/** ЕФЕКТИВНЕ обмеження: мінімум, максимум, «закрито», заборона заїзду й виїзду — без NULL. */
+interface RestrictionShape { min_stay: number; max_stay: number | null; closed: boolean; cta: boolean; ctd: boolean }
+
+/**
+ * Ефективне обмеження пари (Ц32 переглянуто 07.09): власне значення пари, де
+ * задане, інакше базовий рядок типу, інакше дефолт. «Закрито» — тип АБО пара:
+ * тип закритий → усі його пари закриті (И14, липкість), пара закрита при
+ * відкритому типі — лише вона. Без пари (`pair = null`) — обмеження типу.
+ */
+function effectiveRestrictions(pair: CalendarRowShape | null, base: CalendarRowShape | null): RestrictionShape {
+  return {
+    min_stay: Math.max(1, Number(pair?.min_stay ?? base?.min_stay ?? 1) || 1),
+    max_stay: pair?.max_stay ?? base?.max_stay ?? null,
+    closed: (base?.closed ?? false) || (pair?.closed ?? false),
+    cta: pair?.cta ?? base?.cta ?? false,
+    ctd: pair?.ctd ?? base?.ctd ?? false,
+  };
+}
+
+/** Чи має рядок пари хоч одне ВЛАСНЕ обмеження. */
+function hasOwnRestrictions(row: any | undefined): boolean {
+  return Boolean(row) && RESTRICTION_COLS.some((c) => row[c] != null);
+}
 
 /**
  * Які поля ЦІНИ змінились — маска координати ПАРИ (Блок 0.5).
@@ -198,11 +230,12 @@ function changedPriceFields(before: PriceShape | null, after: PriceShape): RateF
 }
 
 /**
- * Які ОБМЕЖЕННЯ змінились — маска координати на КОЖНУ пару типу (Блок 0.6 A1).
+ * Які ОБМЕЖЕННЯ змінились — маска координати.
  *
- * Обмеження живуть на типі (П7, Ц32) — у базовому рядку, який читають батчер
- * (`dayRestrictions`) і котирування; тарифу вони не належать. Порівнюється
- * базовий рядок до і після, незалежно від того, з якого екрана прийшло.
+ * Порівнюються ЕФЕКТИВНІ обмеження до і після: для запису в рядок пари — цієї
+ * пари (координата лише на неї), для запису в базовий рядок типу — типу
+ * (координата на кожну його пару; пара зі своїм значенням тримає його, і її
+ * ефективне не міняється — це видно батчеру при читанні, не в масці).
  */
 function changedRestrictionFields(before: RestrictionShape | null, after: RestrictionShape): RateField[] {
   const out = new Set<RateField>();
@@ -214,15 +247,17 @@ function changedRestrictionFields(before: RestrictionShape | null, after: Restri
   return [...out];
 }
 
-/** Ефективна ціна пари ДО запису: власний рядок, а де в ньому порожньо — успадкований базовий. */
-function effectivePriceBefore(own: PriceShape | null, inherited: PriceShape | null): PriceShape | null {
-  if (!own) return inherited;
-  if (!inherited) return own;
-  return {
-    base_price: own.base_price ?? inherited.base_price,
-    weekend_price: own.weekend_price ?? inherited.weekend_price,
-  };
+/**
+ * Ефективна ціна пари: власний рядок ЦІЛКОМ, якщо він має ціну, інакше
+ * базовий рядок типу цілком — так само її читає `dayPrice` у котируванні
+ * (рецензія 07.09 п.1). По полю не можна: власний рядок бази 120 без ціни
+ * вихідних продає пʼятницю за 120, а не за вихідну типу.
+ */
+function effectivePrice(own: PriceShape | null, inherited: PriceShape | null): PriceShape | null {
+  if (own && own.base_price != null) return own;
+  return inherited;
 }
+const effectivePriceBefore = effectivePrice;
 
 /**
  * Двері каналів для обох писачів календаря — В ТІЙ САМІЙ транзакції, одним
@@ -232,12 +267,10 @@ function effectivePriceBefore(own: PriceShape | null, inherited: PriceShape | nu
  *
  *   ціна        → пара вибраного тарифу (Ц10); без тарифу — базова ціна
  *                 типу, її успадковує кожен тариф, тож усі пари типу;
- *   обмеження   → УСІ пари типу завжди (П7, Ц32): вони лежать у базовому
- *                 рядку, з якого батчер читає їх для кожного тарифу.
- *
- * До 05.09.2026 (Блок 0.6 A1) з екрана тарифу обмеження їхали однією
- * координатою з ціною — лише на його пару, і батчер читав для неї базовий
- * рядок, у який ніхто нічого не писав: «мін 2» доїхав одиницею.
+ *   обмеження   → пара, коли записані в рядок ПАРИ (Ц32 переглянуто 07.09);
+ *                 усі пари типу, коли записані в базовий рядок («на всі
+ *                 тарифи типу») — батчер читає ефективне обмеження кожної
+ *                 пари, тож пара зі своїм значенням отримає його ж.
  *
  * Координата — лише коли щось справді змінилось, і лише з тим, що
  * змінилось: зайва координата коштує виклик із ліміту, зайве поле —
@@ -248,51 +281,69 @@ async function noteCalendarChanged(
   span: { propertyId: string; unitTypeId: string; ratePlanId: string | null; from: string; to: string },
   priceFields: Set<RateField>,
   restrictionFields: Set<RateField>,
+  restrictionsOnPair = false,
 ): Promise<void> {
   const { propertyId, unitTypeId, from, to } = span;
   if (priceFields.size) {
     await noteRatesChanged(t, { propertyId, unitTypeId, ratePlanId: span.ratePlanId ?? undefined, from, to, fields: [...priceFields] });
   }
   if (restrictionFields.size) {
-    await noteRatesChanged(t, { propertyId, unitTypeId, from, to, fields: [...restrictionFields] });
+    await noteRatesChanged(t, { propertyId, unitTypeId, ratePlanId: restrictionsOnPair ? (span.ratePlanId ?? undefined) : undefined, from, to, fields: [...restrictionFields] });
   }
 }
 
-const restrictionsOf = (row: CalendarRowShape | null): RestrictionShape | null => row && {
-  min_stay: row.min_stay, max_stay: row.max_stay, closed: row.closed, cta: row.cta, ctd: row.ctd,
-};
+/** Обмеження базового рядка типу як ефективні (без пари). */
+const restrictionsOf = (row: CalendarRowShape | null): RestrictionShape | null => row && effectiveRestrictions(null, row);
+
+/** Поля обмежень, які запит НАЗВАВ (включно з явним `null`). */
+const restrictionFieldsPresent = (input: object): boolean =>
+  RESTRICTION_COLS.some((c) => (input as Record<string, unknown>)[c] !== undefined);
+
+/** Рядок пари ПІСЛЯ запису обмежень: поля немає — як лежало; `null` — успадкувати від типу; значення — воно. */
+function pairAfter(own: CalendarRowShape | null, p: PriceUpsertInput): CalendarRowShape {
+  const pick = <T>(input: T | null | undefined, existing: T | null | undefined): T | null => (input === undefined ? (existing ?? null) : (input ?? null));
+  return {
+    base_price: own?.base_price ?? null, weekend_price: own?.weekend_price ?? null,
+    min_stay: pick(p.min_stay, own?.min_stay), max_stay: pick(p.max_stay, own?.max_stay),
+    closed: pick(p.closed, own?.closed), cta: pick(p.cta, own?.cta), ctd: pick(p.ctd, own?.ctd),
+  };
+}
 
 /**
- * Рядок ТАРИФУ несе лише ціну (Блок 0.6 A1): обмеження на ньому не читає
- * ніхто — ні батчер, ні котирування, ні сітка. Пишеться лише коли є що
- * нести: назвали ціну, або рядок уже є (тоді «прибрати ціну вихідних» теж
- * має куди лягти). Порожній рядок тарифу — це сітка, яка каже «власна
+ * Рядок ПАРИ: ціна тарифу і — з 07.09 (Ц32 переглянуто) — власні обмеження
+ * пари, кожне nullable: NULL — «як у типу». Пишеться лише коли є що нести:
+ * назвали ціну чи обмеження, або рядок уже є (тоді «прибрати ціну вихідних»
+ * теж має куди лягти). Порожній рядок тарифу — це сітка, яка каже «власна
  * ціна», показуючи успадковану.
  *
  * Одна семантика на кожне поле (Блок 0.6 B4): поля немає в запиті — не
- * чіпати; явний `null` — прибрати; значення — записати. Через COALESCE цього
- * не сказати (null і «немає поля» там однакові), тому вибір робиться тут, а
- * не в SQL — `keepOrSet`. До 05.09.2026 у `base_price` стояв COALESCE, і явний
- * `null` ціну не прибирав, хоч маска координати вже казала «ціна зникла»; у
- * `weekend_price` без умови стояло `excluded.weekend_price`, і збереження
- * обмеження без поля ціни затирало ціну вихідних NULL: з пʼятниці по неділю
- * продавалась буденна — без жодної помилки.
+ * чіпати; явний `null` — прибрати (для обмеження пари — успадкувати від
+ * типу); значення — записати. Через COALESCE цього не сказати (null і «немає
+ * поля» там однакові), тому вибір робиться тут, а не в SQL — `keepOrSet`. До
+ * 05.09.2026 у `base_price` стояв COALESCE, і явний `null` ціну не прибирав,
+ * хоч маска координати вже казала «ціна зникла»; у `weekend_price` без умови
+ * стояло `excluded.weekend_price`, і збереження обмеження без поля ціни
+ * затирало ціну вихідних NULL: з пʼятниці по неділю продавалась буденна.
  */
-async function writeRatePlanPrice(
+async function writeRatePlanRow(
   t: Sql, unitTypeId: string, ratePlanId: string, date: string,
-  price: { base_price?: number | null; weekend_price?: number | null; source?: PriceSource }, rowExists: boolean,
+  input: { base_price?: number | null; weekend_price?: number | null; source?: PriceSource; min_stay?: number | null; max_stay?: number | null; closed?: boolean | null; cta?: boolean | null; ctd?: boolean | null },
+  rowExists: boolean,
 ): Promise<void> {
-  if (!rowExists && price.base_price == null && price.weekend_price == null) return;
+  const namesRestriction = restrictionFieldsPresent(input);
+  if (!rowExists && input.base_price == null && input.weekend_price == null && !namesRestriction) return;
   // Джерело (Ц27) міняється лише разом із ціною.
-  const pricedNow = price.base_price !== undefined || price.weekend_price !== undefined;
+  const pricedNow = input.base_price !== undefined || input.weekend_price !== undefined;
+  const bit = (v: boolean | null | undefined): number | null => (v == null ? null : (v ? 1 : 0));
   await t.run(`
-    INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, source)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ${ON_CONFLICT_ROW} DO UPDATE SET
-      ${keepOrSet(price, ['base_price', 'weekend_price'])},
+      ${keepOrSet(input, ['base_price', 'weekend_price', ...RESTRICTION_COLS])},
       source = ${pricedNow ? 'excluded.source' : 'price_calendar.source'},
       updated_at = CURRENT_TIMESTAMP
-  `, [newId(), unitTypeId, ratePlanId, date, price.base_price ?? null, price.weekend_price ?? null, price.source ?? 'manual']);
+  `, [newId(), unitTypeId, ratePlanId, date, input.base_price ?? null, input.weekend_price ?? null,
+    input.min_stay ?? null, input.max_stay ?? null, bit(input.closed), bit(input.cta), bit(input.ctd), input.source ?? 'manual']);
 }
 
 /**
@@ -323,9 +374,9 @@ function resolveRestrictions(p: PriceUpsertInput, base: CalendarRowShape | null)
 }
 
 /**
- * Обмеження — у БАЗОВИЙ рядок типу, ціни його не чіпаючи (П7, Ц32). Так
- * пише екран тарифу: на день без базового рядка заводиться рядок без ціни
- * (NULL, ніч у `missing`, обмеження діє — 0062).
+ * Обмеження — у БАЗОВИЙ рядок типу («на всі тарифи типу»), ціни його не
+ * чіпаючи: на день без базового рядка заводиться рядок без ціни (NULL, ніч у
+ * `missing`, обмеження діє — 0062). Пара зі своїм значенням його тримає.
  */
 /** `present` — обʼєкт, чиї визначені поля пишуться; злиті значення (`r`) — для нового рядка. */
 async function writeBaseRestrictions(t: Sql, unitTypeId: string, date: string, r: RestrictionShape, present: object): Promise<void> {
@@ -376,26 +427,35 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
     const wdates = writes.map((p) => p.date).sort();
     const priceChanged = new Set<RateField>();
     const restrictionChanged = new Set<RateField>();
+    // Обмеження з названим тарифом — у рядок пари (Ц32 переглянуто), якщо
+    // екран не сказав «на всі тарифи типу».
+    const restrictionsOnPair = Boolean(ratePlanId) && options.restrictionsScope !== 'type';
 
     for (const p of writes) {
       const base = shapeOf(baseBy.get(p.date));
       const own = ratePlanId ? shapeOf(planBy.get(p.date)) : base;
-      // Ціна: яку пара матиме після запису — власна, де названа або лежала,
-      // інакше успадкована базова.
+      // Ціна: яку пара матиме після запису — власний рядок цілком, коли має
+      // ціну (названу або ту, що лежала), інакше успадкований базовий цілком.
       const inherited = ratePlanId ? base : null;
-      const after: PriceShape = {
-        base_price: resolveField(p.base_price, own?.base_price, null) ?? inherited?.base_price ?? null,
-        weekend_price: resolveField(p.weekend_price, own?.weekend_price, null) ?? inherited?.weekend_price ?? null,
+      const ownAfter: PriceShape = {
+        base_price: resolveField(p.base_price, own?.base_price, null),
+        weekend_price: resolveField(p.weekend_price, own?.weekend_price, null),
       };
+      const after: PriceShape = effectivePrice(ownAfter, inherited) ?? { base_price: null, weekend_price: null };
       for (const f of changedPriceFields(effectivePriceBefore(own, inherited), after)) priceChanged.add(f);
-      // Обмеження: базовий рядок до і після — з будь-якого екрана; поля, яких
-      // у запиті немає, лишаються як були (B4).
-      for (const f of changedRestrictionFields(restrictionsOf(base), resolveRestrictions(p, base))) restrictionChanged.add(f);
+      // Обмеження: ефективне до і після — пари, коли пишемо в пару; типу, коли
+      // в базовий рядок. Поля, яких у запиті немає, лишаються як були (B4).
+      if (restrictionsOnPair) {
+        const pairBefore = shapeOf(planBy.get(p.date));
+        for (const f of changedRestrictionFields(effectiveRestrictions(pairBefore, base), effectiveRestrictions(pairAfter(pairBefore, p), base))) restrictionChanged.add(f);
+      } else {
+        for (const f of changedRestrictionFields(restrictionsOf(base), resolveRestrictions(p, base))) restrictionChanged.add(f);
+      }
     }
     if (owner && wdates.length) {
       await noteCalendarChanged(t, {
         propertyId: String(owner.property_id), unitTypeId, ratePlanId, from: wdates[0], to: wdates[wdates.length - 1],
-      }, priceChanged, restrictionChanged);
+      }, priceChanged, restrictionChanged, restrictionsOnPair);
     }
 
     for (const p of writes) {
@@ -405,11 +465,17 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
       // рядку сезону не робить його перевизначенням.
       const pricedNow = p.base_price !== undefined || p.weekend_price !== undefined;
       if (ratePlanId) {
-        await writeRatePlanPrice(t, unitTypeId, ratePlanId, p.date, p, planBy.has(p.date));
-        // Обмеження — у базовий рядок типу, але лише коли їх назвали: запис
-        // самої ціни тарифу (рендер похідного) не має заводити рядків
-        // обмежень на 500 ночей уперед.
-        if (RESTRICTION_COLS.some((c) => (p as unknown as Record<string, unknown>)[c] !== undefined)) {
+        if (restrictionsOnPair) {
+          // Ціна й власні обмеження пари — в її рядок.
+          await writeRatePlanRow(t, unitTypeId, ratePlanId, p.date, p, planBy.has(p.date));
+          continue;
+        }
+        // «На всі тарифи типу»: ціна — в рядок пари, обмеження — в базовий рядок
+        // типу, і лише коли їх назвали: запис самої ціни тарифу (рендер
+        // похідного) не має заводити рядків обмежень на 500 ночей уперед.
+        const priceOnly = { base_price: p.base_price, weekend_price: p.weekend_price, source: p.source };
+        await writeRatePlanRow(t, unitTypeId, ratePlanId, p.date, priceOnly, planBy.has(p.date));
+        if (restrictionFieldsPresent(p)) {
           await writeBaseRestrictions(t, unitTypeId, p.date, r, p);
         }
         continue;
@@ -477,6 +543,8 @@ export interface BulkUpdateInput {
    * виклик без цього прапорця.
    */
   keepManual?: boolean;
+  /** Куди лягають обмеження з названим тарифом — див. `PriceCalendarOptions.restrictionsScope`. */
+  restrictionsScope?: 'pair' | 'type';
 }
 
 export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> {
@@ -501,6 +569,8 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
       : await t.row<any>('SELECT property_id FROM unit_types WHERE id = ?', [unitTypeId]);
     const priceChanged = new Set<RateField>();
     const restrictionChanged = new Set<RateField>();
+    const restrictionsOnPair = Boolean(ratePlanId) && input.restrictionsScope !== 'type';
+    const restrictionInput = { min_stay: input.min_stay, max_stay: input.max_stay, closed: input.closed, cta: input.cta, ctd: input.ctd };
 
     const current = new Date(start);
     while (current <= end) {
@@ -547,23 +617,37 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
       const pricedNow = input.base_price !== undefined || input.weekend_price !== undefined;
       const source: PriceSource = pricedNow ? (input.source ?? 'manual') : ((priceRow?.source as PriceSource | undefined) ?? 'manual');
 
-      // Маски (Блок 0.5 / 0.6 A1): ціна — різниця ефективної ціни ПАРИ;
-      // обмеження — різниця базового рядка ТИПУ.
+      // Маски (Блок 0.5 / 0.6 A1): ціна — різниця ефективної ціни ПАРИ (власний
+      // рядок цілком, коли має ціну, інакше базовий цілком — рецензія 07.09 п.1);
+      // обмеження — різниця ефективного обмеження пари або типу (Ц32 переглянуто).
       const inherited = ratePlanId ? shapeOf(base) : null;
-      const afterPrice: PriceShape = {
-        base_price: num(basePrice) ?? inherited?.base_price ?? null,
-        weekend_price: num(weekendPrice) ?? inherited?.weekend_price ?? null,
-      };
+      const ownAfter: PriceShape = { base_price: num(basePrice), weekend_price: num(weekendPrice) };
+      const afterPrice: PriceShape = effectivePrice(ownAfter, inherited) ?? { base_price: null, weekend_price: null };
       for (const f of changedPriceFields(effectivePriceBefore(shapeOf(priceRow), inherited), afterPrice)) priceChanged.add(f);
       const restrictions: RestrictionShape = {
         min_stay: Number(minStay) || 1, max_stay: num(maxStay), closed: Boolean(closed), cta: Boolean(cta), ctd: Boolean(ctd),
       };
-      for (const f of changedRestrictionFields(restrictionsOf(shapeOf(base)), restrictions)) restrictionChanged.add(f);
+      if (restrictionsOnPair) {
+        const pairBefore = shapeOf(plan);
+        const baseShape = shapeOf(base);
+        for (const f of changedRestrictionFields(effectiveRestrictions(pairBefore, baseShape), effectiveRestrictions(pairAfter(pairBefore, restrictionInput as PriceUpsertInput), baseShape))) restrictionChanged.add(f);
+      } else {
+        for (const f of changedRestrictionFields(restrictionsOf(shapeOf(base)), restrictions)) restrictionChanged.add(f);
+      }
 
       if (ratePlanId) {
-        await writeRatePlanPrice(t, unitTypeId, ratePlanId, dateStr, { base_price: num(basePrice), weekend_price: num(weekendPrice), source }, Boolean(plan));
-        // Масовий редактор уже злив «не змінювати» з базовим рядком — усі пʼять полів визначені.
-        await writeBaseRestrictions(t, unitTypeId, dateStr, restrictions, restrictions);
+        if (restrictionsOnPair) {
+          // Ціна й власні обмеження пари — в її рядок; поля «не змінювати» не чіпаються.
+          await writeRatePlanRow(t, unitTypeId, ratePlanId, dateStr, { base_price: num(basePrice), weekend_price: num(weekendPrice), source, ...restrictionInput }, Boolean(plan));
+        } else {
+          await writeRatePlanRow(t, unitTypeId, ratePlanId, dateStr, { base_price: num(basePrice), weekend_price: num(weekendPrice), source }, Boolean(plan));
+          // «На всі тарифи типу»: базовий рядок — лише коли названо хоч одне
+          // обмеження (рецензія 07.09 п.3: рендер сезону/похідного на 500 ночей
+          // не має заводити 500 порожніх базових рядків із дефолтами).
+          if (restrictionFieldsPresent(restrictionInput)) {
+            await writeBaseRestrictions(t, unitTypeId, dateStr, restrictions, restrictions);
+          }
+        }
       } else {
         await t.run(`
         INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price, weekend_price, min_stay, max_stay, closed, cta, ctd, source)
@@ -588,7 +672,7 @@ export async function bulkUpdatePrices(input: BulkUpdateInput): Promise<number> 
     if (owner) {
       await noteCalendarChanged(t, {
         propertyId: String(owner.property_id), unitTypeId, ratePlanId, from: dateFrom, to: dateTo,
-      }, priceChanged, restrictionChanged);
+      }, priceChanged, restrictionChanged, restrictionsOnPair);
     }
   });
 
@@ -620,11 +704,16 @@ function toRule(row: any): DerivedRule {
   };
 }
 
-/** Похідні тарифи обʼєкта цього типу, що спираються на `basePlanId` (або на будь-яку базу, коли змінився рядок ТИПУ). */
+/**
+ * АКТИВНІ похідні тарифи обʼєкта цього типу, що спираються на `basePlanId`
+ * (або на будь-яку базу, коли змінився рядок ТИПУ). Знятий з продажу не
+ * перерендерюється (рецензія 07.09 п.2): кожна координата на його пару
+ * везла б у канал «закрито» ще раз; повернення в продаж рендерить його само.
+ */
 async function derivedPlansOf(sql: Sql, unitTypeId: string, basePlanId: string | null): Promise<DerivedRule[]> {
   const select = `SELECT rp.id, rp.based_on_rate_plan_id, rp.adjustment_kind, rp.adjustment_value, rp.adjustment_direction
        FROM rate_plans rp JOIN unit_types ut ON ut.property_id = rp.property_id
-      WHERE ut.id = ? AND rp.pricing_type = 'derived' AND rp.based_on_rate_plan_id IS NOT NULL`;
+      WHERE ut.id = ? AND rp.pricing_type = 'derived' AND rp.based_on_rate_plan_id IS NOT NULL AND rp.is_active = TRUE`;
   const rows = basePlanId
     ? await sql.rows<any>(`${select} AND rp.based_on_rate_plan_id = ?`, [unitTypeId, basePlanId])
     : await sql.rows<any>(select, [unitTypeId]);
@@ -648,7 +737,12 @@ async function basePricesFor(sql: Sql, unitTypeId: string, basePlanId: string, d
     const o = own.get(date);
     const t = type.get(date);
     if (!o && !t) continue;
-    out.set(date, { base_price: num(o?.base_price) ?? num(t?.base_price), weekend_price: num(o?.weekend_price) ?? num(t?.weekend_price) });
+    // Рядок ЦІЛКОМ — власний, коли має ціну, інакше типу (рецензія 07.09 п.1):
+    // так само читає `dayPrice`; по полю ціна вихідних типу просочилась би в
+    // базу без вихідних, і похідний рендерив пʼятницю від числа, за яке база
+    // її не продає.
+    const shape = effectivePrice(shapeOf(o), shapeOf(t));
+    if (shape) out.set(date, { base_price: shape.base_price, weekend_price: shape.weekend_price });
   }
   return out;
 }
@@ -714,25 +808,39 @@ export interface DayRestrictions {
  * правильно — обмеження, якого готель не називав, не існує. Ціна при цьому
  * читається окремо, котируванням (інваріант 16).
  */
+/**
+ * Обмеження дня для батчера каналів (Д1/Д2) — ЕФЕКТИВНІ (Ц32 переглянуто
+ * 07.09): ключ `тип|дата` — обмеження типу; ключ `тип|тариф|дата` — обмеження
+ * пари (власне, де є, інакше типу). Пара без свого рядка ключа не має:
+ * читач бере ключ типу. Ключ пари є лише там, де рядок пари несе хоч одне
+ * власне значення — інакше він казав би те саме, що тип.
+ */
 export async function dayRestrictions(unitTypeIds: string[], from: string, to: string): Promise<Map<string, DayRestrictions>> {
   const out = new Map<string, DayRestrictions>();
   if (unitTypeIds.length === 0) return out;
   const rows = await getSql().rows<any>(
-    `SELECT unit_type_id, date, min_stay, max_stay, closed, cta, ctd
+    `SELECT unit_type_id, rate_plan_id, date, min_stay, max_stay, closed, cta, ctd
        FROM price_calendar
-      WHERE unit_type_id IN (${unitTypeIds.map(() => '?').join(', ')}) AND rate_plan_id IS NULL AND date >= ? AND date <= ?`,
+      WHERE unit_type_id IN (${unitTypeIds.map(() => '?').join(', ')}) AND date >= ? AND date <= ?`,
     [...unitTypeIds, from, to],
   );
+  const toDay = (r: RestrictionShape): DayRestrictions => ({
+    minStay: r.min_stay, maxStay: r.max_stay, noArrival: r.cta, noDeparture: r.ctd, closed: r.closed,
+  });
+  const baseBy = new Map<string, any>();
+  for (const r of rows) if (r.rate_plan_id == null) baseBy.set(`${r.unit_type_id}|${String(r.date).slice(0, 10)}`, r);
+  for (const [key, r] of baseBy) out.set(key, toDay(effectiveRestrictions(null, shapeOf(r))));
   for (const r of rows) {
-    out.set(`${r.unit_type_id}|${String(r.date).slice(0, 10)}`, {
-      minStay: Math.max(1, Number(r.min_stay ?? 1) || 1),
-      maxStay: r.max_stay == null ? null : Number(r.max_stay),
-      noArrival: Number(r.cta ?? 0) === 1,
-      noDeparture: Number(r.ctd ?? 0) === 1,
-      closed: Number(r.closed ?? 0) === 1,
-    });
+    if (r.rate_plan_id == null || !hasOwnRestrictions(r)) continue;
+    const date = String(r.date).slice(0, 10);
+    out.set(`${r.unit_type_id}|${r.rate_plan_id}|${date}`, toDay(effectiveRestrictions(shapeOf(r), shapeOf(baseBy.get(`${r.unit_type_id}|${date}`)))));
   }
   return out;
+}
+
+/** Обмеження ПАРИ на день з мапи `dayRestrictions`: власний ключ пари, інакше типу. */
+export function pairRestrictionsAt(map: Map<string, DayRestrictions>, unitTypeId: string, date: string, ratePlanId?: string | null): DayRestrictions | null {
+  return (ratePlanId ? map.get(`${unitTypeId}|${ratePlanId}|${date}`) : undefined) ?? map.get(`${unitTypeId}|${date}`) ?? null;
 }
 
 /**

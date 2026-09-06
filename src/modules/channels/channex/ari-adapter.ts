@@ -60,7 +60,7 @@ import type { AriValue } from './ari-payload';
 import { DEFAULT_MAX_ATTEMPTS, flushOutbox, type FlushDeps, type FlushReport, type NightSources } from '../domain/ari-batch.ts';
 import type { AvailabilityChange, RateChange } from '../port';
 import { availabilityByDay } from '@properties';
-import { priceNights, dayRestrictions, type DayRestrictions } from '@pricing';
+import { priceNights, dayRestrictions, pairRestrictionsAt, type DayRestrictions } from '@pricing';
 import { money } from '@core/money';
 
 /**
@@ -225,14 +225,16 @@ export function nightSources(ctx: MirrorContext, spanOf: (lane: Lane) => { from:
 
     // Обмеження дня — одним читанням на прохід, для всіх типів дзеркала
     // (Д1/Д2), у проміжку ЦІНОВОЇ смуги: саме її координати їх везуть.
-    restrictionsAt: async (unitTypeId, date) => {
+    // Обмеження — ефективні для ПАРИ (Ц32 переглянуто 07.09): власний ключ
+    // пари, де рядок пари має своє значення, інакше ключ типу.
+    restrictionsAt: async (unitTypeId, date, ratePlanId) => {
       if (!restrictionsByDay) {
         const span = spanOf('rate');
         restrictionsByDay = span
           ? await dayRestrictions(mirroredUnitTypeIds, span.from, span.to)
           : new Map();
       }
-      return restrictionsByDay.get(`${unitTypeId}|${date}`) ?? null;
+      return pairRestrictionsAt(restrictionsByDay, unitTypeId, date, ratePlanId);
     },
 
     pricesAt: async (unitTypeId, ratePlanId, date) => {

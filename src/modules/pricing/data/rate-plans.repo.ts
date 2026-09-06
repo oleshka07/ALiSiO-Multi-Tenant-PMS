@@ -384,7 +384,21 @@ export async function updateRatePlan(id: string, patch: UpdateRatePlanInput): Pr
     if (patch.mealPlan !== undefined) { sets.push('meal_plan = ?'); values.push(patch.mealPlan ? String(patch.mealPlan) : null); }
     // Літералом, не параметром: SQLite не привʼязує boolean, а `1` у колонку
     // BOOLEAN відхиляє Postgres (check-boolean-flags).
-    if (patch.isActive !== undefined) sets.push(patch.isActive ? 'is_active = TRUE' : 'is_active = FALSE');
+    if (patch.isActive !== undefined) {
+      // Зняти БАЗУ з продажу, поки на неї спирається активний похідний, не
+      // можна (рецензія 07.09 п.2): похідний продавав би від знятої бази, а
+      // каскадне зняття — рішення, якого оператор не ухвалював. Спершу зняти
+      // похідні — явно.
+      if (!patch.isActive && Number(before.is_active)) {
+        const activeDependent = await t.row<any>(
+          "SELECT id FROM rate_plans WHERE based_on_rate_plan_id = ? AND pricing_type = 'derived' AND is_active = TRUE LIMIT 1", [id]);
+        if (activeDependent) throw new Error('has_dependents');
+      }
+      sets.push(patch.isActive ? 'is_active = TRUE' : 'is_active = FALSE');
+      // Повернутий у продаж похідний — перерендер: поки він був знятий, база
+      // могла змінитись, а його рядки стояли (derivedPlansOf знятих не чіпає).
+      if (patch.isActive && !Number(before.is_active) && String(before.pricing_type ?? 'manual') === 'derived') rerender = true;
+    }
     const wasMapped = (await mappedOf(t, [id])).has(id);
     if (patch.sellMode !== undefined) {
       const mode = normalizeSellMode(patch.sellMode, readSellMode(before.sell_mode, before.id));

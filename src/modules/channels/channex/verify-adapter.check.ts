@@ -35,7 +35,7 @@ const { verifySends } = await import('./verify-adapter.ts');
 const { queuedChanges } = await import('../data/outbox.repo.ts');
 // Ціна й обмеження сіються ДВЕРИМА модуля цін, не рядком у таблицю: інваріант
 // 16 тримає гейт `check-price-source` і для перевірок.
-const { bulkUpdatePrices } = await import('@pricing');
+const { bulkUpdatePrices, upsertPrices } = await import('@pricing');
 
 const sql = getSql();
 const ORG = '__verify_adapter__';
@@ -55,9 +55,11 @@ async function cleanup() {
   await sql.run('DELETE FROM cm_outbox WHERE organization_id IN (?, ?)', [ORG, OTHER]);
   await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP]);
+  // Тип перед тарифами: рядки календаря (у т. ч. рядок ПАРИ з власним
+  // обмеженням, сцена 10) ідуть за типом каскадом і посилаються на тариф.
   await sql.run('DELETE FROM units WHERE property_id = ?', [PROP]);
   await sql.run('DELETE FROM unit_types WHERE property_id = ?', [PROP]);
+  await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP]);
   await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP]);
   await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM organizations WHERE id IN (?, ?)', [ORG, OTHER]);
@@ -322,6 +324,36 @@ try {
     );
     await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
     console.log('  ok  мінімум ночей звіряється полем заїзду по обох осях');
+
+    // ── 10. Розбіжність на рівні ПАРИ не «лагодиться» значенням типу (Ц32 переглянуто 07.09) ─
+    // Пара BAR має власний мінімум 3 при типу 2. Той бік віддає 2 (значення
+    // типу) — це РОЗБІЖНІСТЬ для пари: очікуване рахується ефективним
+    // обмеженням пари, не типу. Віддає 3 — збіг. Осі: власне 3 проти типу 2.
+    await upsertPrices(UT, [{ date: DAY, min_stay: 3 }], { ratePlanId: RP });
+    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
+    const typeValue = transport({
+      data: {
+        'remote-rp': { [DAY]: open(2, 1), [DAY2]: cell('150.00', true, 2) },
+        'remote-rp-occ1': { [DAY]: open(2, 1), [DAY2]: cell('120.00', true, 2) },
+      },
+    });
+    const tv = await verifySends(CONN, 'key', { today: TODAY, now: () => NOW, client: { fetch: typeValue.fetch } });
+    assert.deepStrictEqual(
+      tv.mismatches.filter((m) => m.field === 'minStay').map((m) => [m.date, m.occupancy, m.ours, m.theirs]).sort(),
+      [[DAY, 1, '3', '2'], [DAY, 2, '3', '2']],
+      'той бік тримає значення типу (2), а пара має своє (3) — розбіжність, тип пару не рятує',
+    );
+    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
+    const pairValue = transport({
+      data: {
+        'remote-rp': { [DAY]: open(3, 1), [DAY2]: cell('150.00', true, 2) },
+        'remote-rp-occ1': { [DAY]: open(3, 1), [DAY2]: cell('120.00', true, 2) },
+      },
+    });
+    const pv = await verifySends(CONN, 'key', { today: TODAY, now: () => NOW, client: { fetch: pairValue.fetch } });
+    assert.deepStrictEqual(pv.mismatches.filter((m) => m.field === 'minStay'), [], 'той бік тримає власне значення пари (3) — збіг');
+    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
+    console.log('  ok  звірка порівнює з ефективним обмеженням ПАРИ — значення типу розбіжність не лагодить');
   });
 } finally {
   await cleanup();

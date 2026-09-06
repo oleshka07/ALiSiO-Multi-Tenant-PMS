@@ -166,7 +166,7 @@
   з храповиком.
 - **`scripts/`** — ~25 гейтів у `npm run check`; окремо `npm run check:pg`
   на живому Postgres.
-- **`db/postgres/migrations/`** — 0001…0071 (0071 правила цін і промо `price_rules`; 0070 надбавки за заселеність `extra_occupancy_rules` і `organizations.child_age_bands`, `rate_plans.child_extra_gross` → правило і геть; 0068 сезони `seasons`/`season_prices` і `price_calendar.source`, 0069 похідні тарифи й `source = 'derived'`, 0062 ціни немає = NULL, 0063 `sell_mode`, 0064 нуль у ціні вихідних → NULL, 0065 дефолти модулів П15, 0066 маска полів `cm_outbox.field_mask` і журнал відправлень `cm_sends`, 0067 досилання стану після 0062 і CHECK на `sell_mode`); `db/postgres/schema.sql`
+- **`db/postgres/migrations/`** — 0001…0072 (0072 обмеження на парі тип × тариф — колонки обмежень `price_calendar` nullable, Ц32 переглянуто; 0071 правила цін і промо `price_rules`; 0070 надбавки за заселеність `extra_occupancy_rules` і `organizations.child_age_bands`, `rate_plans.child_extra_gross` → правило і геть; 0068 сезони `seasons`/`season_prices` і `price_calendar.source`, 0069 похідні тарифи й `source = 'derived'`, 0062 ціни немає = NULL, 0063 `sell_mode`, 0064 нуль у ціні вихідних → NULL, 0065 дефолти модулів П15, 0066 маска полів `cm_outbox.field_mask` і журнал відправлень `cm_sends`, 0067 досилання стану після 0062 і CHECK на `sell_mode`); `db/postgres/schema.sql`
   генерується `scripts/pg-schema.mjs`, руками не редагується (інваріант 10).
 - **`hotels/*.json`** — описи готелів; `_example.json` — шаблон.
 

@@ -53,6 +53,13 @@ export interface Season {
   sortOrder: number;
   /** Скільки клітинок ціни заведено. */
   cells: number;
+  /**
+   * Скільки ночей сезону (на типах обʼєкта, у будь-якому рядку — типу чи
+   * тарифу) мають ручне перевизначення ціни (`source = 'manual'` з ціною):
+   * їх перерендер сезону не чіпає, і оператор має це бачити (рецензія 07.09
+   * п.5) — інакше новий сезон у готелі з набраним календарем «нічого не міняє».
+   */
+  manualOverrides: number;
 }
 
 export interface SeasonPriceCell {
@@ -129,11 +136,33 @@ async function assertNoOverlap(t: Sql, propertyId: string, dateFrom: string, dat
 
 const day = (v: unknown) => String(v).slice(0, 10);
 
-function toSeason(row: any, cells: number): Season {
+function toSeason(row: any, cells: number, manualOverrides = 0): Season {
   return {
     id: String(row.id), propertyId: String(row.property_id), name: String(row.name),
-    dateFrom: day(row.date_from), dateTo: day(row.date_to), sortOrder: Number(row.sort_order) || 0, cells,
+    dateFrom: day(row.date_from), dateTo: day(row.date_to), sortOrder: Number(row.sort_order) || 0, cells, manualOverrides,
   };
+}
+
+/**
+ * Ручні перевизначення ціни в межах сезонів — по сезону.
+ * `price_calendar.date` на Postgres — DATE, межі сезону — TEXT (pg-schema типізує
+ * лише `^date$`/`_date$`); порівняння без приведення там падає оператором
+ * (INC-011, SQLite цього не бачить). Дата текстом `YYYY-MM-DD` порівнюється лексично правильно.
+ */
+async function manualOverrideCounts(sql: Sql, seasonIds: string[]): Promise<Map<string, number>> {
+  if (seasonIds.length === 0) return new Map();
+  const rows = await sql.rows<any>(
+    `SELECT s.id AS season_id, COUNT(*) AS n
+       FROM seasons s
+       JOIN unit_types ut ON ut.property_id = s.property_id
+       JOIN price_calendar pc ON pc.unit_type_id = ut.id
+        AND CAST(pc.date AS TEXT) >= s.date_from AND CAST(pc.date AS TEXT) <= s.date_to
+      WHERE s.id IN (${seasonIds.map(() => '?').join(', ')}) AND s.organization_id = ?
+        AND pc.source = 'manual' AND pc.base_price IS NOT NULL
+      GROUP BY s.id`,
+    [...seasonIds, requireOrganizationId()],
+  );
+  return new Map(rows.map((r) => [String(r.season_id), Number(r.n)]));
 }
 
 function toCell(row: any): SeasonPriceCell {
@@ -164,14 +193,16 @@ export async function listSeasons(propertyId: string, options: { includePast?: b
       ORDER BY s.date_from, s.id`,
     options.includePast ? [propertyId, organizationId, organizationId] : [propertyId, organizationId, organizationId, options.today ?? todayIso()],
   );
-  const counts = await cellCounts(sql, rows.map((r) => String(r.id)));
-  return rows.map((r) => toSeason(r, counts.get(String(r.id)) ?? 0));
+  const ids = rows.map((r) => String(r.id));
+  const counts = await cellCounts(sql, ids);
+  const overrides = await manualOverrideCounts(sql, ids);
+  return rows.map((r) => toSeason(r, counts.get(String(r.id)) ?? 0, overrides.get(String(r.id)) ?? 0));
 }
 
 export async function getSeason(id: string): Promise<Season> {
   const sql = getSql();
   const row = await ownedSeasonRow(sql, id);
-  return toSeason(row, (await cellCounts(sql, [id])).get(id) ?? 0);
+  return toSeason(row, (await cellCounts(sql, [id])).get(id) ?? 0, (await manualOverrideCounts(sql, [id])).get(id) ?? 0);
 }
 
 export async function createSeason(input: SeasonInput): Promise<Season> {
@@ -273,8 +304,11 @@ export async function setSeasonPrice(seasonId: string, input: SeasonPriceInput):
   const unitType = await sql.row<any>('SELECT id FROM unit_types WHERE id = ? AND property_id = ?', [input.unitTypeId, season.property_id]);
   if (!unitType) throw new Error('unit_type_not_found');
   if (input.ratePlanId) {
-    const plan = await sql.row<any>('SELECT id FROM rate_plans WHERE id = ? AND property_id = ?', [input.ratePlanId, season.property_id]);
+    const plan = await sql.row<any>('SELECT id, pricing_type FROM rate_plans WHERE id = ? AND property_id = ?', [input.ratePlanId, season.property_id]);
     if (!plan) throw new Error('rate_plan_not_found');
+    // Похідний тариф (Ц28) не має власних цін — його рядки рахує перерендер
+    // бази, і клітинка сезону їх переписала б (рецензія 07.09 п.4).
+    if (String(plan.pricing_type ?? 'manual') === 'derived') throw new Error('rate_plan_derived');
   }
   await sql.run(
     `INSERT INTO season_prices (id, organization_id, season_id, unit_type_id, rate_plan_id, price, weekend_price)

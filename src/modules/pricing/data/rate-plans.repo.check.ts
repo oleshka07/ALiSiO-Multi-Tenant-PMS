@@ -337,6 +337,17 @@ try {
     assert.strictEqual(g1.source, 'derived', 'рядок похідного позначений джерелом «derived»');
     assert.strictEqual(g1.inherited, false, 'це власний рядок тарифу, не успадкована база');
 
+    // Рецензія 07.09 п.1: похідний бере рядок бази ЦІЛКОМ — власний, інакше
+    // типу, як `dayPrice`. Тип на D4 має ціну вихідних 150; власний рядок бази
+    // STD на D4 — 120 БЕЗ вихідних. База продає пʼятницю за 120, тож NR — 108
+    // і без ціни вихідних, а не 135 від вихідних типу, за які база не продає.
+    const D4 = '2027-05-13';
+    await runWithOrganization(A, () => bulkUpdatePrices({ unitTypeId: UT(A), dateFrom: D4, dateTo: D4, applyTo: 'all', base_price: 100, weekend_price: 150 }));
+    await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D4, base_price: 120 }], { ratePlanId: std.id }));
+    const g4 = (await runWithOrganization(A, () => getPriceMonth(UT(A), 5, 2027, nr.id))).days.find((d) => d.date === D4)!;
+    assert.strictEqual(g4.base_price, 108, 'NR на D4 — від власного рядка бази 120 − 10 %');
+    assert.strictEqual(g4.weekend_price, null, 'ціна вихідних — теж від власного рядка бази (її немає), не 135 від вихідних типу');
+
     const plus = await runWithOrganization(A, () => createRatePlan({
       propertyId: PROP(A), name: 'Plus', code: 'PLUS', currency: 'USD', mealPlan: null,
       pricingType: 'derived', basedOnRatePlanId: std.id, adjustmentKind: 'fixed', adjustmentValue: 25, adjustmentDirection: 'increase',
@@ -365,14 +376,28 @@ try {
     const nrCoords = await sql.rows<any>("SELECT stay_date, stay_date_to FROM cm_outbox WHERE connection_id = '__rpw_conn' AND rate_plan_id = ?", [nr.id]);
     assert.ok(nrCoords.length >= 1, 'рендер похідного іде через двері каналу — координата на його пару (Ц16)');
 
-    // Знятий з продажу похідний перерендер не повертає в продаж.
+    // Знятий з продажу похідний перерендер не повертає в продаж — і не
+    // перерендерює взагалі (рецензія 07.09 п.2): координат на його пару немає.
     await runWithOrganization(A, () => updateRatePlan(nr.id, { isActive: false }));
+    await sql.run("DELETE FROM cm_outbox WHERE connection_id = '__rpw_conn'");
     await runWithOrganization(A, () => bulkUpdatePrices({ unitTypeId: UT(A), dateFrom: D3, dateTo: D3, applyTo: 'all', base_price: 210 }));
     const retired = await q(nr.id, D3);
     assert.deepStrictEqual(retired.missing, [D3], 'знятий похідний після перерендеру бази лишається без ціни');
     assert.strictEqual(retired.ratePlanRetired, true);
     assert.ok(!(await runWithOrganization(A, () => propertyRatePlans(PROP(A)))).some((p) => p.id === nr.id), 'і в каталог не йде');
     assert.strictEqual(await price(plus.id, D3), 215, 'а живий PLUS перерендерено: власний рядок бази 190 + 25');
+    // Вісь «знятий не перерендерюється»: база типу D1 120 → 130 змінила б рядок NR
+    // (108 → 117) і поклала б координату на зняту пару — не має ні того, ні того.
+    await runWithOrganization(A, () => bulkUpdatePrices({ unitTypeId: UT(A), dateFrom: D1, dateTo: D1, applyTo: 'all', base_price: 130 }));
+    assert.strictEqual(Number((await sql.row<any>('SELECT base_price FROM price_calendar WHERE rate_plan_id = ? AND date = ?', [nr.id, D1]))?.base_price), 108,
+      'рядок знятого похідного не перерахований (лишився 108, не 117)');
+    assert.strictEqual((await sql.rows<any>("SELECT id FROM cm_outbox WHERE connection_id = '__rpw_conn' AND rate_plan_id = ?", [nr.id])).length, 0,
+      'і жодної координати на зняту пару при зміні бази');
+    assert.strictEqual(await price(plus.id, D1), 155, 'а живий PLUS перерахований: 130 + 25');
+    // Зняти БАЗУ з продажу, поки на неї спирається активний похідний (PLUS), не
+    // можна — явна дія, не каскад (рецензія 07.09 п.2).
+    await runWithOrganization(A, () => assert.rejects(() => updateRatePlan(std.id, { isActive: false }), /has_dependents/,
+      'база з активним похідним не знімається з продажу — інакше похідний продавав би від знятої бази'));
 
     // Коригування, що зʼїдає ціну, — дня без ціни, не ціна нуль (Ц24).
     const free = await runWithOrganization(A, () => createRatePlan({
@@ -385,6 +410,12 @@ try {
     await runWithOrganization(A, () => assert.rejects(() => deleteRatePlan(std.id), /has_dependents/, 'на базу спираються похідні — відмова з назвою'));
     await runWithOrganization(A, () => deleteRatePlan(plus.id));
     assert.strictEqual((await sql.rows('SELECT id FROM price_calendar WHERE rate_plan_id = ?', [plus.id])).length, 0, 'рядки похідного — його, і йдуть разом із ним');
+    // Активних похідних не лишилось (NR знято, PLUS видалено, FREE активний!) — FREE ще тримає базу.
+    await runWithOrganization(A, () => assert.rejects(() => updateRatePlan(std.id, { isActive: false }), /has_dependents/, 'FREE активний — база ще тримається'));
+    await runWithOrganization(A, () => updateRatePlan(free.id, { isActive: false }));
+    const stdOff = await runWithOrganization(A, () => updateRatePlan(std.id, { isActive: false }));
+    assert.strictEqual(stdOff.isActive, false, 'без активних похідних базу можна зняти з продажу');
+    await runWithOrganization(A, () => updateRatePlan(std.id, { isActive: true }));
     const listedDerived = await runWithOrganization(A, () => listRatePlans(PROP(A)));
     assert.deepStrictEqual(listedDerived.find((p) => p.id === nr.id)?.adjustment, { kind: 'percent', value: 10, direction: 'decrease' }, 'екран бачить правило похідного');
     console.log('  ok  похідний тариф: база ± % / сума рендериться в календар, власний рядок бази важить, перерендер при зміні бази, перевизначення живе, знятий не повертається');

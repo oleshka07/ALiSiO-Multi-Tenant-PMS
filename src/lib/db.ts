@@ -2542,11 +2542,15 @@ function runMigrations(database: any) {
       date TEXT NOT NULL,
       base_price REAL,
       weekend_price REAL,
-      min_stay INTEGER NOT NULL DEFAULT 1,
+      -- Обмеження (0072, Ц32 переглянуто 07.09): nullable і без дефолту. На
+      -- рядку ПАРИ NULL означає «як у типу»; базовий рядок писачі заповнюють
+      -- явно. Дефолт колонки поставив би новому рядку пари власне значення,
+      -- якого ніхто не називав.
+      min_stay INTEGER,
       max_stay INTEGER,
-      closed INTEGER NOT NULL DEFAULT 0,
-      cta INTEGER NOT NULL DEFAULT 0,
-      ctd INTEGER NOT NULL DEFAULT 0,
+      closed INTEGER,
+      cta INTEGER,
+      ctd INTEGER,
       -- Звідки ціна цього дня (Блок 2 крок 1, Ц27): season — розгорнута з
       -- клітинки сезону; manual — редактор дня чи масовий, тобто точкове
       -- перевизначення, яке перерендер сезону НЕ затирає; import — файл
@@ -2599,11 +2603,11 @@ function runMigrations(database: any) {
           date TEXT NOT NULL,
           base_price REAL,
           weekend_price REAL,
-          min_stay INTEGER NOT NULL DEFAULT 1,
+          min_stay INTEGER,
           max_stay INTEGER,
-          closed INTEGER NOT NULL DEFAULT 0,
-          cta INTEGER NOT NULL DEFAULT 0,
-          ctd INTEGER NOT NULL DEFAULT 0,
+          closed INTEGER,
+          cta INTEGER,
+          ctd INTEGER,
           source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('season', 'manual', 'import', 'derived')),
           created_at TEXT NOT NULL DEFAULT (datetime('now')),
           updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -2625,6 +2629,67 @@ function runMigrations(database: any) {
     }
   } catch (e: any) {
     console.error('[DB] price_calendar source derived migration error:', e.message);
+  }
+
+  // --- Migration 0072: обмеження на ПАРІ — колонки nullable без дефолту ---
+  //
+  // Ц32 переглянуто 07.09: ефективне обмеження пари = рядок пари, якщо
+  // задано, інакше базовий рядок типу. NOT NULL DEFAULT на колонках робив би
+  // кожен новий рядок пари носієм «власного» дефолту. SQLite не вміє DROP NOT
+  // NULL — перебудова за правилом AGENTS §4 (індекси зняти й повернути,
+  // лічильники звірити), а рядки пар, що несли дефолти таблиці (їх ніхто не
+  // читав — A1), обнуляються один раз, разом із перебудовою.
+  try {
+    const cols = database.prepare('PRAGMA table_info(price_calendar)').all() as { name: string; notnull: number }[];
+    const minStay = cols.find((c) => c.name === 'min_stay');
+    if (minStay && Number(minStay.notnull) === 1) {
+      console.log('[DB] price_calendar: обмеження стають nullable (0072) — перебудова зі збереженням індексів');
+      const before = (database.prepare('SELECT COUNT(*) AS n FROM price_calendar').get() as { n: number }).n;
+      const indexSql = (database.prepare(
+        "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='price_calendar' AND sql IS NOT NULL",
+      ).all() as { sql: string }[]).map((r) => r.sql);
+      const live = cols.map((c) => c.name);
+      const carried = [
+        'id', 'unit_type_id', 'rate_plan_id', 'date', 'base_price', 'weekend_price',
+        'min_stay', 'max_stay', 'closed', 'cta', 'ctd', 'source', 'created_at', 'updated_at',
+      ].filter((c) => live.includes(c));
+      database.exec('PRAGMA foreign_keys = OFF');
+      database.exec(`
+        CREATE TABLE price_calendar_new (
+          id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+          unit_type_id TEXT NOT NULL REFERENCES unit_types(id) ON DELETE CASCADE,
+          rate_plan_id TEXT REFERENCES rate_plans(id),
+          date TEXT NOT NULL,
+          base_price REAL,
+          weekend_price REAL,
+          min_stay INTEGER,
+          max_stay INTEGER,
+          closed INTEGER,
+          cta INTEGER,
+          ctd INTEGER,
+          source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('season', 'manual', 'import', 'derived')),
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      database.exec(`INSERT INTO price_calendar_new (${carried.join(', ')}) SELECT ${carried.join(', ')} FROM price_calendar`);
+      database.exec('DROP TABLE price_calendar');
+      database.exec('ALTER TABLE price_calendar_new RENAME TO price_calendar');
+      for (const sql of indexSql) database.exec(sql);
+      database.exec('PRAGMA foreign_keys = ON');
+      const after = (database.prepare('SELECT COUNT(*) AS n FROM price_calendar').get() as { n: number }).n;
+      if (after !== before) throw new Error(`price_calendar rebuild lost rows: ${before} -> ${after}`);
+      const restored = (database.prepare(
+        "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='index' AND tbl_name='price_calendar' AND sql IS NOT NULL",
+      ).get() as { n: number }).n;
+      if (restored !== indexSql.length) throw new Error(`price_calendar rebuild lost indexes: ${indexSql.length} -> ${restored}`);
+      const nulled = database.prepare(
+        'UPDATE price_calendar SET min_stay = NULL, max_stay = NULL, closed = NULL, cta = NULL, ctd = NULL WHERE rate_plan_id IS NOT NULL',
+      ).run().changes;
+      console.log(`[DB] price_calendar rebuilt with nullable restrictions (${after} rows, ${restored} indexes carried, ${nulled} pair rows reset to «як у типу»)`);
+    }
+  } catch (e: any) {
+    console.error('[DB] price_calendar nullable restrictions migration error:', e.message);
   }
 
   // --- Migration: drop the old UNIQUE(unit_type_id, date) from price_calendar ---
@@ -2669,11 +2734,11 @@ function runMigrations(database: any) {
           date TEXT NOT NULL,
           base_price REAL,
           weekend_price REAL,
-          min_stay INTEGER NOT NULL DEFAULT 1,
+          min_stay INTEGER,
           max_stay INTEGER,
-          closed INTEGER NOT NULL DEFAULT 0,
-          cta INTEGER NOT NULL DEFAULT 0,
-          ctd INTEGER NOT NULL DEFAULT 0,
+          closed INTEGER,
+          cta INTEGER,
+          ctd INTEGER,
           created_at TEXT NOT NULL DEFAULT (datetime('now')),
           updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
@@ -2746,11 +2811,11 @@ function runMigrations(database: any) {
           date TEXT NOT NULL,
           base_price REAL,
           weekend_price REAL,
-          min_stay INTEGER NOT NULL DEFAULT 1,
+          min_stay INTEGER,
           max_stay INTEGER,
-          closed INTEGER NOT NULL DEFAULT 0,
-          cta INTEGER NOT NULL DEFAULT 0,
-          ctd INTEGER NOT NULL DEFAULT 0,
+          closed INTEGER,
+          cta INTEGER,
+          ctd INTEGER,
           created_at TEXT NOT NULL DEFAULT (datetime('now')),
           updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         )

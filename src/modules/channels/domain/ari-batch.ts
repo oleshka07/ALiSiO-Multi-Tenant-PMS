@@ -299,11 +299,12 @@ export interface FlushDeps {
    * би зеленим в обох світах.
    */
   /**
-   * Обмеження дня з календаря типу (Д1/Д2): мінімум і максимум ночей,
-   * заборони заїзду й виїзду, «закрито». Необовʼязкове — без нього батчер
-   * шле лише ціну, як до 02.09; день без рядка — без обмежень.
+   * Обмеження дня для ПАРИ (Д1/Д2; Ц32 переглянуто 07.09): мінімум і
+   * максимум ночей, заборони заїзду й виїзду, «закрито» — ефективні для цього
+   * тарифу (власне значення пари, інакше типу). Необовʼязкове — без нього
+   * батчер шле лише ціну, як до 02.09; день без рядка — без обмежень.
    */
-  restrictionsAt?(unitTypeId: string, date: string): Promise<
+  restrictionsAt?(unitTypeId: string, date: string, ratePlanId?: string): Promise<
     { minStay: number; maxStay: number | null; noArrival: boolean; noDeparture: boolean; closed: boolean } | undefined | null
   >;
   priceModifierPercent?: number;
@@ -371,8 +372,8 @@ export async function resolveAvailabilityNight(deps: NightSources, unitTypeId: s
  * Ціна й умови пари на ніч, як вони поїдуть у канал.
  *
  * Правило 2 з шапки, і воно тут ціле: або ціни та явне відкриття, або
- * закриття. Третього — «не слати» — немає. Обмеження — з базового рядка
- * типу (Д1), на кожен тариф типу (П7). «Закрито» в календарі — це
+ * закриття. Третього — «не слати» — немає. Обмеження — ефективні для ПАРИ
+ * (Ц32 переглянуто 07.09): власне значення пари, інакше типу. «Закрито» в календарі — це
  * `closed: true` ПРИ ціні (Д2): stop-прапорець у вендора липкий (И14), ціна
  * його не знімає, тож обидва їдуть разом, а наступне відкриття шле
  * `closed: false` знову з ціною.
@@ -386,7 +387,7 @@ export async function resolveRateNight(
 ): Promise<RateChange> {
   const base = await deps.pricesAt(unitTypeId, ratePlanId, date);
   const prices = shift(base, deps.priceModifierPercent ?? 0);
-  const r = (await deps.restrictionsAt?.(unitTypeId, date)) ?? null;
+  const r = (await deps.restrictionsAt?.(unitTypeId, date, ratePlanId)) ?? null;
   // Без маски — весь стан (повний синк, старі рядки, зміна тарифу).
   const all = fields == null;
   const wants = (f: RateField) => all || fields.includes(f);
@@ -399,7 +400,7 @@ export async function resolveRateNight(
   // писач назвав його: сам прапорець читається з календаря (Д2).
   if (!priced) out.closed = true;
   else if (wants('closed')) out.closed = r?.closed === true;
-  // Обмеження — з базового рядка типу (Д1). Ночі без рядка дефолти дістають
+  // Обмеження — ефективні пари (Д1; Ц32 переглянуто). Ночі без рядка дефолти дістають
   // лише БЕЗ маски (Ц34 (в)): повний синк мусить нести всі чотири явно —
   // 576/576 значень без них і були відмовою вендора (Б2). У дельті ніч без
   // рядка обмежень не несе: дефолт, якого готель не називав, не вигадується.
