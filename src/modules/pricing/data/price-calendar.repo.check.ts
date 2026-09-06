@@ -347,7 +347,23 @@ try {
   // мусить проходити повз варту.
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, min_stay: null }], { ratePlanId: BB(A) }));
   assert.strictEqual((await quote(A, BB(A), D1)).restrictions.minStay, 1, 'null на парі — успадкувати, а не відмова');
-  console.log('  ok  мінімум ночей: нуль і відʼємне — відмова з назвою, одиниця пишеться, null скидає');
+  // Друга половина (правка 5.3 раунду 5): відмову писача видно НА ЕКРАНІ як
+  // 400 з назвою. Без цього звʼязок «кинув → показали» тримався на читанні:
+  // перейменування помилки лишило б гейт вище зеленим, а оператор побачив би
+  // «Не вдалося зберегти» замість причини.
+  {
+    const fs = await import('node:fs');
+    const strip = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    for (const f of ['../api/pricing.handlers.ts', '../api/bulk.handlers.ts']) {
+      const src = strip(fs.readFileSync(new URL(f, import.meta.url), 'utf8'));
+      assert.ok(/min_stay_invalid/.test(src), `${f}: відмова писача мусить мати відображення в хендлері`);
+      assert.ok(/min_stay_invalid[\s\S]{0,160}status:\s*400/.test(src), `${f}: і саме 400, а не 500`);
+    }
+    const page = strip(fs.readFileSync(new URL('../../../app/app/(dashboard)/pricing/page.tsx', import.meta.url), 'utf8'));
+    assert.strictEqual((page.match(/min_stay_invalid/g) || []).length, 2,
+      'обидва екрани (день і масовий) перекладають цю відмову, інакше оператор бачить «Не вдалося зберегти»');
+  }
+  console.log('  ok  мінімум ночей: нуль і відʼємне — відмова з назвою, одиниця пишеться, null скидає; хендлери й екрани її називають');
 
   console.log('price-calendar: ціна тарифу на дату — своя, успадкована названа, чуже — відмова; ціни немає — NULL, нуль — відмова');
 } finally {

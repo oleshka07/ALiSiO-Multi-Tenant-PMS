@@ -94,12 +94,18 @@ export async function generateInvoiceForReservation(
     const dueDate = res.check_out > today ? res.check_out : today;
     const period = (res.check_out || today).slice(0, 7);
 
-    await sql.run(`
-      INSERT INTO invoices (id, organization_id, reservation_id, invoice_number, issued_at, due_date, amount, currency, status, series, period, confirmed, confirmation_source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'issued', 'HOUSE', ?, ?, ?)
     // Валюта броні, а якщо її немає — валюта ГОТЕЛЮ, не крони. Фактура з
     // чужою валютою — не «майже правильна»: 4200 EUR і 4200 CZK це різні
     // зобовʼязання, і виправити виписаний документ можна лише сторно.
+    //
+    // Коментар стоїть ТУТ, а не всередині шаблону: `//` SQL коментарем не
+    // вважає, і з 28.08.2026 (`7cd6a91`) цей INSERT не парсився взагалі —
+    // `near "/": syntax error`, `catch` нижче ковтав виняток, виклик із
+    // `reservation.handlers` fire-and-forget, і фактури просто не було
+    // (рецензія 07.09 раунд 5, правка 5.1).
+    await sql.run(`
+      INSERT INTO invoices (id, organization_id, reservation_id, invoice_number, issued_at, due_date, amount, currency, status, series, period, confirmed, confirmation_source)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'issued', 'HOUSE', ?, ?, ?)
     `, [invoiceId, organizationId, reservationId, invoiceNumber, today, dueDate, res.total_price, res.currency || await organizationCurrency(organizationId), period, confirmed, confirmationSource]);
 
     console.log(`[Invoices] Created ${invoiceNumber} for reservation ${reservationId}`);

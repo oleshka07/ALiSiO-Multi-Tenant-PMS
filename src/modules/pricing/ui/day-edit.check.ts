@@ -19,7 +19,7 @@
 import assert from 'node:assert';
 import '../../../../scripts/lib/module-aliases.mjs';
 
-const { changedDayFields, hasRestrictionField, inheritRestrictionsPayload } = await import('./day-edit.ts');
+const { changedDayFields, hasRestrictionField, inheritRestrictionsPayload, buildDayPayload } = await import('./day-edit.ts');
 
 // День, як його бачить оператор у сітці ТАРИФУ: ціна власна, мінімум 10 —
 // власний мінімум цієї пари, «закрито» успадковане від типу. На екрані
@@ -61,53 +61,65 @@ const opened = { base_price: 100, weekend_price: null, min_stay: 10, closed: tru
   assert.ok(!('base_price' in inherit), 'ціна тарифу при скиданні обмежень лишається його власною');
 }
 
-// ── 5. Екран справді ходить через цю функцію ───────────────────────────
+// ── 5. Тіло модалки — ПОВЕДІНКА `buildDayPayload`, не форма виразу ─────
 //
-// Рецензія 07.09 раунд 3, правка 1.2: сцени вище стережуть ФУНКЦІЮ, а дефект
-// жив у `pricing/page.tsx`. Повернення тіла модалки до сирого обʼєкта форми
-// лишало `npm run check` і `tsc` зеленими — файл, у якому був дефект, гейтом
-// не накритий. Тому статичне твердження про сам екран, тим самим патерном,
-// що сцена 6 `price-calendar.repo.check`: коментарі вирізаються, інакше
-// перевірка рахує власну документацію (AGENTS §4).
+// Рецензія 07.09 раунд 5, правка 5.2. Попереднє формулювання читало
+// `pricing/page.tsx` текстом і забороняло один синтаксис — на трьох інших
+// саботажах, що імітують ту саму помилку, воно лишалось зеленим:
+// домішування сирого стану поверх обчисленого, проміжна змінна, порожня
+// база порівняння. Тепер збірка тіла живе окремою функцією, і тут
+// стверджується те, що вона ВІДДАЄ.
 {
-  const fs = await import('node:fs');
-  const url = new URL('../../../app/app/(dashboard)/pricing/page.tsx', import.meta.url);
-  const file = fs.readFileSync(url, 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  // Лише модалка ДНЯ. Масовий редактор поруч збирає тіло сам, і правильно:
-  // там «поле не заповнене» вже означає «не чіпати» (`!== ''` → undefined),
-  // тобто те саме правило, тільки іншим механізмом.
-  const start = file.indexOf('function EditDayModal(');
-  const end = file.indexOf('function BulkEditModal(');
-  assert.ok(start >= 0 && end > start, 'у файлі екрана мусять бути обидві модалки — інакше сцена дивиться не туди');
-  const src = file.slice(start, end);
+  // День у сітці ТАРИФУ: власний мінімум пари 10, ціна 100.
+  const day = { base_price: 100, weekend_price: null, min_stay: 10, closed: false, cta: false, ctd: false };
+  const form = { basePrice: 100 as number | '', weekendPrice: '' as number | '', minStay: 10, closed: false, cta: false, ctd: false };
+  const flags = { ratePlanSelected: true, allPlans: true, inherit: false };
 
-  // Не «виклик десь є», а «тіло будується саме ним у КОЖНІЙ гілці»: перше
-  // твердження зелене й тоді, коли одна гілка повернулась до сирого стану
-  // форми (саме так і виглядав дефект).
-  const changed = src.match(/const changed = [\s\S]*?;\n/);
-  assert.ok(changed, 'у модалці дня мусить бути один вираз, який будує тіло');
-  const expr = changed![0];
-  assert.ok(/changedDayFields\(/.test(expr),
-    `тіло дня будується через changedDayFields — інакше модалка знову шле всю форму: ${expr.trim()}`);
-  // `: edited.base_price` всередині гілки скидання — законне читання поля,
-  // а не віддача всього стану; ловимо саме віддачу цілком.
-  assert.strictEqual(/[?:]\s*edited\s*(?=[;\n])/.test(expr), false,
-    `жодна гілка не віддає сирий стан форми як тіло: ${expr.trim()}`);
-  assert.ok(/inheritRestrictionsPayload\(\)/.test(src),
-    'дія «Як у типу» мусить брати тіло з inheritRestrictionsPayload');
-  assert.ok(/hasRestrictionField\(/.test(src),
-    'область («на всі тарифи типу») додається лише коли в тілі є обмеження');
+  // Оператор змінив ЛИШЕ ціну, прапорця не чіпав.
+  assert.deepStrictEqual(
+    buildDayPayload(day, { ...form, basePrice: 155 }, flags), { base_price: 155 },
+    'тіло мусить нести саму ціну: усе зайве осідає в типі й накриває сусідні тарифи',
+  );
 
-  // Тіло, яке йде в onSave, — результат `body()`, а не розгорнутий стан
-  // форми. Саме таке розгортання й було дефектом.
-  assert.ok(/onSave\(body\(\)\)/.test(src),
-    'кнопка «Зберегти» мусить кликати onSave(body()) — тіло будує одна функція, а не розмітка');
+  // Змінене обмеження їде разом з областю.
+  assert.deepStrictEqual(
+    buildDayPayload(day, { ...form, minStay: 3 }, flags), { min_stay: 3, restrictionsScope: 'type' },
+    'змінений мінімум — новим значенням і з областю «на всі тарифи типу»',
+  );
+  assert.deepStrictEqual(
+    buildDayPayload(day, { ...form, minStay: 3 }, { ...flags, allPlans: false }), { min_stay: 3, restrictionsScope: 'pair' },
+    'знятий прапорець — лише на пару',
+  );
 
-  // І тіло не збирається обʼєктом просто в місці виклику: саме таке
-  // розгортання стану форми й було дефектом.
-  const raw = src.match(/onSave\(\s*\{/);
-  assert.strictEqual(raw, null, `модалка не збирає тіло вручну в onSave: ${raw?.[0]}`);
+  // «Як у типу»: всі пʼять у NULL, область — завжди пара.
+  assert.deepStrictEqual(
+    buildDayPayload(day, form, { ...flags, inherit: true }),
+    { min_stay: null, max_stay: null, closed: null, cta: null, ctd: null, restrictionsScope: 'pair' },
+    '«Як у типу» скидає всі обмеження пари, зокрема максимум',
+  );
+
+  // Нічого не змінили — порожнє тіло, запиту не буде.
+  assert.deepStrictEqual(buildDayPayload(day, form, flags), {}, 'порожня правка — порожнє тіло');
+
+  // Без обраного тарифу область не називається взагалі.
+  assert.deepStrictEqual(
+    buildDayPayload(day, { ...form, minStay: 3 }, { ...flags, ratePlanSelected: false }), { min_stay: 3 },
+    'у базовій сітці області немає — писати нема куди, крім типу',
+  );
 }
 
-console.log('day-edit: тіло дня несе лише змінене; null — прибрати чи «як у типу»; порожня правка нічого не пише; екран ходить через цю функцію');
+// ── 6. Екран кличе саме цю функцію ─────────────────────────────────────
+//
+// Один рядок, і більше нічого: усе інше тепер тримає сцена 5 поведінкою.
+{
+  const fs = await import('node:fs');
+  const file = fs.readFileSync(new URL('../../../app/app/(dashboard)/pricing/page.tsx', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const start = file.indexOf('function EditDayModal(');
+  const end = file.indexOf('function BulkEditModal(');
+  assert.ok(start >= 0 && end > start, 'у файлі екрана мусять бути обидві модалки');
+  assert.ok(/buildDayPayload\(/.test(file.slice(start, end)),
+    'модалка дня мусить будувати тіло через buildDayPayload — інакше поведінка вище нічого не стереже');
+}
+
+console.log('day-edit: тіло дня несе лише змінене; «Як у типу» скидає пʼять; область за прапорцями; екран кличе buildDayPayload');

@@ -8,7 +8,7 @@ import { useMobileMenu } from '@/ui/MobileMenuContext';
 import { usePropertyScope } from '@/ui/PropertyScopeContext';
 // Двері модуля цін для React — `ui/`, не фасад `@pricing`: фасад тягне
 // серверний шар у клієнтський бандл, і збірка падає на `node:module`.
-import { changedDayFields, hasRestrictionField, inheritRestrictionsPayload } from '@/modules/pricing/ui/day-edit';
+import { buildDayPayload } from '@/modules/pricing/ui/day-edit';
 import type { DayEditPayload } from '@/modules/pricing/ui/day-edit';
 import {
   ChevronLeft,
@@ -100,7 +100,7 @@ function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
   // не пише нуль (2.0). Тут стояло `useState(day.base_price)`, і для дня без
   // рядка це був 0 — його й відправляли в канал як ціну.
   const [basePrice, setBasePrice] = useState<number | ''>(day.base_price ?? '');
-  const [weekendPrice, setWeekendPrice] = useState(day.weekend_price ?? '');
+  const [weekendPrice, setWeekendPrice] = useState<number | ''>(day.weekend_price ?? '');
   const [minStay, setMinStay] = useState(day.min_stay);
   const [closed, setClosed] = useState(!!day.closed);
   const [cta, setCta] = useState(!!day.cta);
@@ -118,23 +118,10 @@ function EditDayModal({ day, ratePlanSelected, onSave, onClose }: {
     base_price: day.base_price, weekend_price: day.weekend_price,
     min_stay: day.min_stay, closed: !!day.closed, cta: !!day.cta, ctd: !!day.ctd,
   };
-  const body = () => {
-    // Порожня ціна — «не чіпати» (2.0), тому вона дорівнює тому, що лежало.
-    const edited = {
-      base_price: basePrice === '' ? day.base_price : Number(basePrice),
-      weekend_price: weekendPrice === '' ? null : Number(weekendPrice),
-      min_stay: minStay, closed, cta, ctd,
-    };
-    const changed = inherit
-      // Скидання обмежень пари: ціна — як звичайно, обмеження — всі в NULL.
-      ? { ...changedDayFields(opened, { ...opened, base_price: edited.base_price, weekend_price: edited.weekend_price }), ...inheritRestrictionsPayload() }
-      : changedDayFields(opened, edited);
-    // Область має сенс лише коли в тілі є обмеження; скидання — завжди на пару.
-    const scope = ratePlanSelected && hasRestrictionField(changed)
-      ? { restrictionsScope: inherit ? 'pair' as const : (allPlans ? 'type' as const : 'pair' as const) }
-      : {};
-    return { ...changed, ...scope };
-  };
+  // Тіло будує одна функція в `@/modules/pricing/ui/day-edit` — там її
+  // стереже гейт ПОВЕДІНКОЮ (правка 5.2 рецензії раунду 5). Тут лишається
+  // лише виклик: стан дня, стан форми, прапорці.
+  const body = () => buildDayPayload(opened, { basePrice, weekendPrice, minStay, closed, cta, ctd }, { ratePlanSelected, allPlans, inherit });
 
   return (
     <div className="modal-overlay" onClick={onClose}>

@@ -73,3 +73,55 @@ export function hasRestrictionField(payload: DayEditPayload): boolean {
 export function inheritRestrictionsPayload(): DayEditPayload {
   return { min_stay: null, max_stay: null, closed: null, cta: null, ctd: null };
 }
+
+/** Стан форми редактора дня — рівно те, що бачить оператор у полях. */
+export interface DayEditForm {
+  /** Порожньо — «ціну не чіпати» (2.0), а не «прибрати». */
+  basePrice: number | '';
+  /** Порожньо — прибрати ціну вихідних. */
+  weekendPrice: number | '';
+  minStay: number;
+  closed: boolean;
+  cta: boolean;
+  ctd: boolean;
+}
+
+/** Прапорці модалки, які вирішують область запису. */
+export interface DayEditFlags {
+  /** У «Чия ціна» обрано тариф. */
+  ratePlanSelected: boolean;
+  /** «На всі тарифи типу» — увімкнено за замовчуванням. */
+  allPlans: boolean;
+  /** «Як у типу» — скинути власні обмеження пари. */
+  inherit: boolean;
+}
+
+/**
+ * Тіло запиту, яке шле модалка дня — цілком, від стану дня і форми до
+ * області обмежень.
+ *
+ * Винесено з JSX навмисно (рецензія 07.09 раунд 5, правка 5.2). Поки збірка
+ * тіла жила в компоненті, гейт міг стверджувати лише ФОРМУ виразу — і
+ * пропускав три саботажі, що імітують той самий дефект: домішування сирого
+ * стану поверх обчисленого, проміжна змінна, порожня база порівняння. Тепер
+ * стверджується ПОВЕДІНКА цієї функції, а про екран лишається один рядок —
+ * «модалка кличе `buildDayPayload`».
+ */
+export function buildDayPayload(opened: DayEditFields, form: DayEditForm, flags: DayEditFlags): DayEditPayload & { restrictionsScope?: 'pair' | 'type' } {
+  const edited: DayEditFields = {
+    // Порожня ціна — «не чіпати», тому дорівнює тому, що лежало.
+    base_price: form.basePrice === '' ? opened.base_price : Number(form.basePrice),
+    weekend_price: form.weekendPrice === '' ? null : Number(form.weekendPrice),
+    min_stay: form.minStay, closed: form.closed, cta: form.cta, ctd: form.ctd,
+  };
+  const changed = flags.inherit
+    // Скидання обмежень пари: ціна — як звичайно, обмеження — всі в NULL.
+    ? {
+      ...changedDayFields(opened, { ...opened, base_price: edited.base_price, weekend_price: edited.weekend_price }),
+      ...inheritRestrictionsPayload(),
+    }
+    : changedDayFields(opened, edited);
+  // Область має сенс лише коли в тілі є обмеження; скидання — завжди на пару.
+  if (!flags.ratePlanSelected || !hasRestrictionField(changed)) return changed;
+  return { ...changed, restrictionsScope: flags.inherit || !flags.allPlans ? 'pair' : 'type' };
+}
