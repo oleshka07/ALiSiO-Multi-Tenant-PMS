@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { unitTypeAmenities } from '@properties';
 import { getSql } from '@core/db/async';
 import {
   resolveSections, isKnownSection,
@@ -247,6 +248,21 @@ export async function getGuestPageConfig(unitTypeId: string, propertyId: string,
     merged.wifi_password = unitOverrides.wifi_password;
   }
   if (unitOverrides?.view) merged.unit_view = unitOverrides.view;
+
+  // Зручності типу — з довідника (Блок 5a, 2.2), а не з текстового поля.
+  //
+  // Старе `guest_page_config.amenities` лишається як є і показується далі:
+  // це вільний текст, який готель писав роками, і мовчки його втратити було б
+  // гірше, ніж мати два джерела на екрані. Нове поле окреме й називається
+  // інакше, тож сторінка показує «список» там, де він заповнений, і текст —
+  // де ні; переїзд одного в друге — крок гостьової сторінки, не цього блоку.
+  try {
+    const organizationId = (await sql.row<any>(
+      'SELECT organization_id FROM properties WHERE id = ?', [propertyId]) as any)?.organization_id;
+    if (organizationId) {
+      merged.amenity_list = await unitTypeAmenities(String(organizationId), unitTypeId);
+    }
+  } catch { /* модуль зручностей ще не мігрований — сторінка живе без списку */ }
 
   return merged;
 }

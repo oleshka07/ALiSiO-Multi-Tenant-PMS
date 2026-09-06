@@ -6942,6 +6942,73 @@ function runMigrations(database: any) {
     console.error('[DB] units view/wifi migration:', (e as Error).message);
   }
 
+  // ── Блок 5a, 0111: зручності — довідник організації і два призначення ───
+  //
+  // Дзеркало Postgres-міграції для SQLite розробки. `scope` тут теж із CHECK:
+  // без нього матриця призначення пропонує повісити ліфт на тип номера.
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS amenity_categories (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        code TEXT NOT NULL,
+        name TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(organization_id, code)
+      )
+    `);
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS amenities (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        category_id TEXT NOT NULL REFERENCES amenity_categories(id) ON DELETE CASCADE,
+        code TEXT NOT NULL,
+        name TEXT NOT NULL,
+        icon TEXT,
+        scope TEXT NOT NULL DEFAULT 'both' CHECK (scope IN ('property', 'unit_type', 'both')),
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(organization_id, code)
+      )
+    `);
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS property_amenities (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        amenity_id TEXT NOT NULL REFERENCES amenities(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(property_id, amenity_id)
+      )
+    `);
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS unit_type_amenities (
+        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        unit_type_id TEXT NOT NULL REFERENCES unit_types(id) ON DELETE CASCADE,
+        amenity_id TEXT NOT NULL REFERENCES amenities(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(unit_type_id, amenity_id)
+      )
+    `);
+    for (const [name, spec] of [
+      ['idx_amenity_categories_org', 'amenity_categories(organization_id)'],
+      ['idx_amenities_org', 'amenities(organization_id)'],
+      ['idx_amenities_category', 'amenities(category_id)'],
+      ['idx_property_amenities_org', 'property_amenities(organization_id)'],
+      ['idx_property_amenities_property', 'property_amenities(property_id)'],
+      ['idx_unit_type_amenities_org', 'unit_type_amenities(organization_id)'],
+      ['idx_unit_type_amenities_type', 'unit_type_amenities(unit_type_id)'],
+    ] as const) {
+      database.exec(`CREATE INDEX IF NOT EXISTS ${name} ON ${spec}`);
+    }
+    console.log('[DB] amenities catalogue and assignments ready');
+  } catch (e) {
+    console.error('[DB] amenities migration:', (e as Error).message);
+  }
+
   // The last line of runMigrations, and the only reliable signal that the
   // schema has settled. scripts/check-fresh-schema.mjs waits for it: polling
   // the table count said "done" while ALTER TABLE ADD COLUMN was still going,

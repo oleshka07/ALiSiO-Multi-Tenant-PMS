@@ -93,6 +93,11 @@ async function cleanup() {
   // The app creates this table on first boot; cleanup may run against a
   // database the new code has not touched yet.
   try { await sql.run('DELETE FROM organization_features WHERE organization_id LIKE ?', [`${TAG}%`]); } catch { /* not yet migrated */ }
+  // Зручності: призначення перед каталогом, каталог перед організацією —
+  // зовнішні ключі ON.
+  for (const table of ['unit_type_amenities', 'property_amenities', 'amenities', 'amenity_categories']) {
+    try { await sql.run(`DELETE FROM ${table} WHERE organization_id LIKE ?`, [`${TAG}%`]); } catch { /* not yet migrated */ }
+  }
   await sql.run('DELETE FROM guests WHERE organization_id LIKE ?', [`${TAG}%`]);
   await sql.run('DELETE FROM app_users WHERE organization_id LIKE ?', [`${TAG}%`]);
   await sql.run('DELETE FROM sessions WHERE user_id LIKE ?', [`${TAG}%`]);
@@ -495,6 +500,33 @@ async function main() {
     assert.strictEqual(afterB?.wifi_password, 'a-room-secret', "B's write reached A's room wi-fi password");
     assert.strictEqual(afterB?.lock_code, 'A-1234#', "B's write reached A's door code");
     console.log("  ok  B can neither read nor rewrite A's room wi-fi and door code");
+
+    // ── Зручності: словник організації (Блок 5a, 2.2) ───────────────────
+    // Каталог у кожного свій, з власними іменами рядків: спільні рядки
+    // означали б, що перейменування в одного готелю міняє слово в іншого, а
+    // «позначити все» одного — набір другого.
+    const amenCatA = await (await call(cookieA, '/api/amenities')).json();
+    const catBAll = await (await call(cookieB, '/api/amenities')).json();
+    const idsA = new Set((amenCatA || []).flatMap((c) => (c.amenities || []).map((a) => a.id)));
+    const idsB = new Set((catBAll || []).flatMap((c) => (c.amenities || []).map((a) => a.id)));
+    assert.ok(idsA.size > 0 && idsB.size > 0, 'каталог зручностей порожній — його не сіє заведення готелю');
+    assert.ok([...idsB].every((id) => !idsA.has(id)),
+      "B's amenity catalogue shares rows with A's — renaming one hotel's word renames the other's");
+
+    // Своя зручність на ЧУЖИЙ обʼєкт і чужа — на свій: обидва id приходять із
+    // тіла запиту, і жоден із них не робить іншого своїм.
+    const ownOnForeign = await call(cookieB, `/api/properties/${propA.id}/amenities`, {
+      method: 'PUT', body: JSON.stringify({ amenity_ids: [[...idsB][0]] }),
+    });
+    assert.strictEqual(ownOnForeign.status, 404, `B assigned amenities to A's property: ${ownOnForeign.status}`);
+    const foreignOnOwn = await call(cookieB, `/api/properties/${propB.id}/amenities`, {
+      method: 'PUT', body: JSON.stringify({ amenity_ids: [[...idsA][0]] }),
+    });
+    assert.strictEqual(foreignOnOwn.status, 404, `B hung A's amenity on its own property: ${foreignOnOwn.status}`);
+    const leakedAssignment = await sql.row(
+      'SELECT COUNT(*) c FROM property_amenities WHERE property_id = ?', [propA.id]);
+    assert.strictEqual(Number(leakedAssignment.c), 0, "B's write reached A's property amenities");
+    console.log("  ok  B's amenity catalogue is its own, and neither id crosses the tenant line");
 
 
     // C11 — iCal channels. The rows carry the import URL a hotel got from its

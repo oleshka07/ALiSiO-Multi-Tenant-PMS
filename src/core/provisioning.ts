@@ -6,6 +6,9 @@ import { getSql } from './db/async.ts';
 import { runWithOrganization } from './auth/tenant-context.ts';
 import { DEFAULT_LANGUAGE, LANGUAGE_CODES, isLanguage } from './i18n/languages.ts';
 import { defaultBookingSources } from './booking-sources.ts';
+// Через фасад модуля, не в його нутрощі: заведення готелю — єдине місце, де
+// ядро знає про зручності, і знає воно рівно одні двері.
+import { seedAmenityCatalog } from '@properties';
 
 /**
  * Creating a customer.
@@ -217,6 +220,18 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     for (const key of Object.keys(FEATURES) as FeatureKey[]) {
       await setFeature(organizationId, key, wanted.has(key) || featureDefault(key), t);
     }
+
+    // Стартовий каталог зручностей — мовою готелю (Блок 5a, 2.2).
+    //
+    // Через `t`, а не через пул: рядки посилаються на організацію, яку ця
+    // транзакція ще не закомітила, тож на Postgres друге зʼєднання впало б на
+    // зовнішньому ключі — те саме правило, що для реєстру фіч вище.
+    //
+    // Порожній каталог виглядав би як «у продукті такого немає»: екран
+    // «Зручності» пропонував би заводити з нуля сорок загальновідомих слів, і
+    // кожен готель назвав би їх по-своєму, а канал отримав би сорок різних
+    // словників замість одного.
+    await seedAmenityCatalog(organizationId, language, t);
   }));
 
   return { organizationId, propertyId, ownerId, language };

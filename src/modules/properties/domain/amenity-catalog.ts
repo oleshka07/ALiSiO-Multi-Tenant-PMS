@@ -1,0 +1,166 @@
+/**
+ * Стартовий каталог зручностей — те, з чого починає КОЖЕН новий готель.
+ *
+ * ── Чому в коді, а не в базі ────────────────────────────────────────────
+ *
+ * Це не дані клієнта, а словник продукту: коди, на які мапиться канал і
+ * якими розмовляють сайт із гостьовою сторінкою. Дані клієнта — те, ЩО він
+ * позначив у себе (`property_amenities`, `unit_type_amenities`), і його
+ * власні зручності понад цей список, які він заводить сам.
+ *
+ * Тобто інваріант 20 не порушено: у коді немає жодної назви, ціни чи
+ * ідентифікатора конкретного готелю — лише загальні слова, які однакові в
+ * будь-якому місті.
+ *
+ * ── Область (`scope`) — не косметика ────────────────────────────────────
+ *
+ * Ліфт буває в будинку, фен — у номері, сніданок у номер — і там, і там.
+ * Джерело форми (Hoteliera, `org-settings-amenities`) позначає це `L`, `R`,
+ * `L+R`, і саме цим полем матриця призначення відрізняє «можна повісити на
+ * обʼєкт» від «можна на тип номера». Без нього перелік на 40 позицій
+ * однаковий обабіч, і готель повісить ліфт на двомісний номер.
+ *
+ * ── Назви трьома мовами ─────────────────────────────────────────────────
+ *
+ * Готель отримує каталог СВОЄЮ мовою (як `defaultBookingSources`): рядок у
+ * базі один, і його можна перейменувати. Мова гостя — інша річ: гостьова
+ * сторінка перекладає вміст своїм шляхом, і `code` тут саме для того, щоб
+ * переклад не залежав від того, як готель назвав рядок у себе.
+ */
+
+export type AmenityScope = 'property' | 'unit_type' | 'both';
+
+export interface AmenityCategorySeed {
+  code: string;
+  name: { uk: string; cs: string; de: string };
+  sortOrder: number;
+}
+
+export interface AmenitySeed {
+  code: string;
+  category: string;
+  scope: AmenityScope;
+  icon?: string;
+  name: { uk: string; cs: string; de: string };
+}
+
+export const AMENITY_CATEGORIES: AmenityCategorySeed[] = [
+  { code: 'general', sortOrder: 1, name: { uk: 'Загальне', cs: 'Obecné', de: 'Allgemein' } },
+  { code: 'room', sortOrder: 2, name: { uk: 'У номері', cs: 'Na pokoji', de: 'Im Zimmer' } },
+  { code: 'bathroom', sortOrder: 3, name: { uk: 'Ванна кімната', cs: 'Koupelna', de: 'Badezimmer' } },
+  { code: 'food', sortOrder: 4, name: { uk: 'Їжа й напої', cs: 'Jídlo a nápoje', de: 'Essen und Trinken' } },
+  { code: 'internet', sortOrder: 5, name: { uk: 'Інтернет', cs: 'Internet', de: 'Internet' } },
+  { code: 'parking', sortOrder: 6, name: { uk: 'Паркування', cs: 'Parkování', de: 'Parken' } },
+  { code: 'services', sortOrder: 7, name: { uk: 'Послуги', cs: 'Služby', de: 'Services' } },
+  { code: 'wellness', sortOrder: 8, name: { uk: 'Спа й велнес', cs: 'Spa a wellness', de: 'Spa und Wellness' } },
+  { code: 'family', sortOrder: 9, name: { uk: 'Родина й дозвілля', cs: 'Rodina a zábava', de: 'Familie und Freizeit' } },
+  { code: 'safety', sortOrder: 10, name: { uk: 'Безпека', cs: 'Bezpečnost', de: 'Sicherheit' } },
+  { code: 'outdoors', sortOrder: 11, name: { uk: 'Надворі', cs: 'Venku', de: 'Außenbereich' } },
+  { code: 'view', sortOrder: 12, name: { uk: 'Вид', cs: 'Výhled', de: 'Ausblick' } },
+];
+
+/**
+ * Сорок позицій, а не сто пʼятдесят п'ять.
+ *
+ * Довший перелік не робить готель повнішим — він робить екран, на якому
+ * нічого не позначено, бо позначати його ніхто не сідає. Те, чого тут немає,
+ * готель додає сам однією кнопкою; те, що є, покриває звичайний європейський
+ * готель і всі поля, які питає канал.
+ */
+export const AMENITIES: AmenitySeed[] = [
+  // Загальне — про будинок
+  { code: 'air_conditioning', category: 'general', scope: 'both', icon: 'wind', name: { uk: 'Кондиціонер', cs: 'Klimatizace', de: 'Klimaanlage' } },
+  { code: 'heating', category: 'general', scope: 'both', icon: 'thermometer', name: { uk: 'Опалення', cs: 'Topení', de: 'Heizung' } },
+  { code: 'elevator', category: 'general', scope: 'property', icon: 'chevrons-up', name: { uk: 'Ліфт', cs: 'Výtah', de: 'Aufzug' } },
+  { code: 'non_smoking', category: 'general', scope: 'both', icon: 'ban', name: { uk: 'Для некурців', cs: 'Nekuřácké', de: 'Nichtraucher' } },
+  { code: 'family_rooms', category: 'general', scope: 'both', icon: 'users', name: { uk: 'Сімейні номери', cs: 'Rodinné pokoje', de: 'Familienzimmer' } },
+  { code: 'accessible', category: 'general', scope: 'both', icon: 'accessibility', name: { uk: 'Доступно для людей з інвалідністю', cs: 'Bezbariérový přístup', de: 'Barrierefrei' } },
+  { code: 'pets_allowed', category: 'general', scope: 'both', icon: 'paw-print', name: { uk: 'Можна з тваринами', cs: 'Domácí mazlíčci povoleni', de: 'Haustiere erlaubt' } },
+
+  // У номері
+  { code: 'tv', category: 'room', scope: 'unit_type', icon: 'tv', name: { uk: 'Телевізор', cs: 'Televize', de: 'Fernseher' } },
+  { code: 'minibar', category: 'room', scope: 'unit_type', icon: 'wine', name: { uk: 'Мінібар', cs: 'Minibar', de: 'Minibar' } },
+  { code: 'safe', category: 'room', scope: 'unit_type', icon: 'lock', name: { uk: 'Сейф', cs: 'Trezor', de: 'Safe' } },
+  { code: 'desk', category: 'room', scope: 'unit_type', icon: 'lamp-desk', name: { uk: 'Робочий стіл', cs: 'Pracovní stůl', de: 'Schreibtisch' } },
+  { code: 'wardrobe', category: 'room', scope: 'unit_type', icon: 'shirt', name: { uk: 'Шафа', cs: 'Šatní skříň', de: 'Kleiderschrank' } },
+  { code: 'kettle', category: 'room', scope: 'unit_type', icon: 'coffee', name: { uk: 'Електрочайник', cs: 'Rychlovarná konvice', de: 'Wasserkocher' } },
+  { code: 'coffee_maker', category: 'room', scope: 'unit_type', icon: 'coffee', name: { uk: 'Кавоварка', cs: 'Kávovar', de: 'Kaffeemaschine' } },
+  { code: 'balcony', category: 'room', scope: 'unit_type', icon: 'door-open', name: { uk: 'Балкон', cs: 'Balkon', de: 'Balkon' } },
+  { code: 'terrace', category: 'room', scope: 'unit_type', icon: 'sun', name: { uk: 'Тераса', cs: 'Terasa', de: 'Terrasse' } },
+  { code: 'kitchenette', category: 'room', scope: 'unit_type', icon: 'cooking-pot', name: { uk: 'Кухонний куток', cs: 'Kuchyňský kout', de: 'Küchenzeile' } },
+  { code: 'blackout_curtains', category: 'room', scope: 'unit_type', icon: 'moon', name: { uk: 'Затемнювальні штори', cs: 'Zatemňovací závěsy', de: 'Verdunkelungsvorhänge' } },
+  { code: 'soundproof', category: 'room', scope: 'unit_type', icon: 'volume-x', name: { uk: 'Звукоізоляція', cs: 'Zvuková izolace', de: 'Schallschutz' } },
+
+  // Ванна
+  { code: 'private_bathroom', category: 'bathroom', scope: 'unit_type', icon: 'bath', name: { uk: 'Власна ванна кімната', cs: 'Vlastní koupelna', de: 'Eigenes Bad' } },
+  { code: 'shower', category: 'bathroom', scope: 'unit_type', icon: 'shower-head', name: { uk: 'Душ', cs: 'Sprcha', de: 'Dusche' } },
+  { code: 'bathtub', category: 'bathroom', scope: 'unit_type', icon: 'bath', name: { uk: 'Ванна', cs: 'Vana', de: 'Badewanne' } },
+  { code: 'hair_dryer', category: 'bathroom', scope: 'unit_type', icon: 'wind', name: { uk: 'Фен', cs: 'Fén', de: 'Haartrockner' } },
+  { code: 'toiletries', category: 'bathroom', scope: 'unit_type', icon: 'droplets', name: { uk: 'Засоби гігієни', cs: 'Hygienické potřeby', de: 'Pflegeprodukte' } },
+  { code: 'towels', category: 'bathroom', scope: 'unit_type', icon: 'layers', name: { uk: 'Рушники', cs: 'Ručníky', de: 'Handtücher' } },
+
+  // Їжа й напої
+  { code: 'restaurant', category: 'food', scope: 'property', icon: 'utensils', name: { uk: 'Ресторан', cs: 'Restaurace', de: 'Restaurant' } },
+  { code: 'bar', category: 'food', scope: 'property', icon: 'martini', name: { uk: 'Бар', cs: 'Bar', de: 'Bar' } },
+  { code: 'breakfast', category: 'food', scope: 'both', icon: 'croissant', name: { uk: 'Сніданок', cs: 'Snídaně', de: 'Frühstück' } },
+  { code: 'room_service', category: 'food', scope: 'both', icon: 'bell-ring', name: { uk: 'Обслуговування в номері', cs: 'Pokojová služba', de: 'Zimmerservice' } },
+
+  // Інтернет
+  { code: 'wifi_free', category: 'internet', scope: 'both', icon: 'wifi', name: { uk: 'Безкоштовний Wi-Fi', cs: 'Wi-Fi zdarma', de: 'WLAN kostenlos' } },
+  { code: 'wifi_public_areas', category: 'internet', scope: 'property', icon: 'wifi', name: { uk: 'Wi-Fi у спільних зонах', cs: 'Wi-Fi ve společných prostorách', de: 'WLAN in öffentlichen Bereichen' } },
+
+  // Паркування
+  { code: 'parking_free', category: 'parking', scope: 'property', icon: 'circle-parking', name: { uk: 'Безкоштовна парковка', cs: 'Parkování zdarma', de: 'Kostenlose Parkplätze' } },
+  { code: 'parking_paid', category: 'parking', scope: 'property', icon: 'circle-parking', name: { uk: 'Платна парковка', cs: 'Placené parkování', de: 'Kostenpflichtige Parkplätze' } },
+  { code: 'garage', category: 'parking', scope: 'property', icon: 'warehouse', name: { uk: 'Гараж', cs: 'Garáž', de: 'Garage' } },
+  { code: 'ev_charging', category: 'parking', scope: 'property', icon: 'plug-zap', name: { uk: 'Зарядка для електромобіля', cs: 'Nabíjení elektromobilů', de: 'E-Auto-Ladestation' } },
+
+  // Послуги
+  { code: 'front_desk_24h', category: 'services', scope: 'property', icon: 'concierge-bell', name: { uk: 'Цілодобова рецепція', cs: 'Nonstop recepce', de: 'Rezeption rund um die Uhr' } },
+  { code: 'daily_housekeeping', category: 'services', scope: 'both', icon: 'brush-cleaning', name: { uk: 'Щоденне прибирання', cs: 'Denní úklid', de: 'Tägliche Reinigung' } },
+  { code: 'laundry', category: 'services', scope: 'both', icon: 'washing-machine', name: { uk: 'Пральня', cs: 'Prádelna', de: 'Wäscheservice' } },
+  { code: 'luggage_storage', category: 'services', scope: 'property', icon: 'luggage', name: { uk: 'Камера схову', cs: 'Úschovna zavazadel', de: 'Gepäckaufbewahrung' } },
+  { code: 'airport_shuttle', category: 'services', scope: 'property', icon: 'bus', name: { uk: 'Трансфер з аеропорту', cs: 'Kyvadlová doprava na letiště', de: 'Flughafentransfer' } },
+
+  // Спа й велнес
+  { code: 'sauna', category: 'wellness', scope: 'property', icon: 'flame', name: { uk: 'Сауна', cs: 'Sauna', de: 'Sauna' } },
+  { code: 'spa', category: 'wellness', scope: 'property', icon: 'sparkles', name: { uk: 'Спа', cs: 'Spa', de: 'Spa' } },
+  { code: 'hot_tub', category: 'wellness', scope: 'property', icon: 'waves', name: { uk: 'Купіль', cs: 'Vířivka', de: 'Whirlpool' } },
+  { code: 'fitness', category: 'wellness', scope: 'property', icon: 'dumbbell', name: { uk: 'Тренажерний зал', cs: 'Fitness', de: 'Fitnessraum' } },
+  { code: 'pool', category: 'wellness', scope: 'property', icon: 'waves', name: { uk: 'Басейн', cs: 'Bazén', de: 'Swimmingpool' } },
+
+  // Родина й дозвілля
+  { code: 'playground', category: 'family', scope: 'property', icon: 'baby', name: { uk: 'Дитячий майданчик', cs: 'Dětské hřiště', de: 'Spielplatz' } },
+  { code: 'board_games', category: 'family', scope: 'both', icon: 'dices', name: { uk: 'Настільні ігри', cs: 'Společenské hry', de: 'Gesellschaftsspiele' } },
+  { code: 'bicycle_rental', category: 'family', scope: 'property', icon: 'bike', name: { uk: 'Прокат велосипедів', cs: 'Půjčovna kol', de: 'Fahrradverleih' } },
+  { code: 'ski_storage', category: 'family', scope: 'property', icon: 'snowflake', name: { uk: 'Лижна кімната', cs: 'Lyžárna', de: 'Skiraum' } },
+
+  // Безпека
+  { code: 'smoke_alarm', category: 'safety', scope: 'both', icon: 'siren', name: { uk: 'Датчик диму', cs: 'Detektor kouře', de: 'Rauchmelder' } },
+  { code: 'key_card_access', category: 'safety', scope: 'both', icon: 'key-round', name: { uk: 'Вхід за карткою', cs: 'Přístup na kartu', de: 'Schlüsselkartenzugang' } },
+  { code: 'cctv', category: 'safety', scope: 'property', icon: 'cctv', name: { uk: 'Відеоспостереження', cs: 'Kamerový systém', de: 'Videoüberwachung' } },
+  { code: 'first_aid_kit', category: 'safety', scope: 'property', icon: 'briefcase-medical', name: { uk: 'Аптечка', cs: 'Lékárnička', de: 'Erste-Hilfe-Kasten' } },
+
+  // Надворі
+  { code: 'garden', category: 'outdoors', scope: 'property', icon: 'trees', name: { uk: 'Сад', cs: 'Zahrada', de: 'Garten' } },
+  { code: 'sun_terrace', category: 'outdoors', scope: 'property', icon: 'sun', name: { uk: 'Тераса для засмаги', cs: 'Sluneční terasa', de: 'Sonnenterrasse' } },
+  { code: 'bbq', category: 'outdoors', scope: 'property', icon: 'flame', name: { uk: 'Місце для барбекю', cs: 'Gril', de: 'Grillplatz' } },
+
+  // Вид — той самий словник, яким OTA описує номер (О1)
+  { code: 'sea_view', category: 'view', scope: 'unit_type', icon: 'waves', name: { uk: 'Вид на море', cs: 'Výhled na moře', de: 'Meerblick' } },
+  { code: 'mountain_view', category: 'view', scope: 'unit_type', icon: 'mountain', name: { uk: 'Вид на гори', cs: 'Výhled na hory', de: 'Bergblick' } },
+  { code: 'garden_view', category: 'view', scope: 'unit_type', icon: 'trees', name: { uk: 'Вид на сад', cs: 'Výhled do zahrady', de: 'Gartenblick' } },
+  { code: 'city_view', category: 'view', scope: 'unit_type', icon: 'building', name: { uk: 'Вид на місто', cs: 'Výhled na město', de: 'Stadtblick' } },
+  { code: 'courtyard_view', category: 'view', scope: 'unit_type', icon: 'square', name: { uk: 'Вид у двір', cs: 'Výhled do dvora', de: 'Hofblick' } },
+];
+
+/** Назва мовою готелю; невідома мова падає на англійську назву коду. */
+export function amenityName(seed: { name: { uk: string; cs: string; de: string } }, language: string): string {
+  const byLang = seed.name as Record<string, string | undefined>;
+  return byLang[language] ?? seed.name.uk;
+}
+
+/** Область каже, куди зручність МОЖНА повісити. */
+export function scopeAllows(scope: AmenityScope, target: 'property' | 'unit_type'): boolean {
+  return scope === 'both' || scope === target;
+}

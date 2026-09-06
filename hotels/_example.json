@@ -109,6 +109,25 @@
       "floor": "3"
     }
   ],
+  "_amenities": "Зручності з каталогу — КОДАМИ (`elevator`, `wifi_free`, `sea_view`). Каталог заводиться при створенні готелю; свої коди додаються на екрані «Зручності». Набір ЗАМІНЮЄТЬСЯ цілком, тому повторний прогін дає той самий стан. Код не тієї області (ліфт на тип номера) — названа відмова, не тихий пропуск.",
+  "amenities": {
+    "property": [
+      "elevator",
+      "wifi_free",
+      "parking_free",
+      "breakfast",
+      "front_desk_24h"
+    ],
+    "unitTypes": {
+      "DZD": [
+        "tv",
+        "safe",
+        "private_bathroom",
+        "hair_dryer",
+        "city_view"
+      ]
+    }
+  },
   "channelRules": [
     {
       "channel": null,

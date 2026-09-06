@@ -155,6 +155,7 @@ const props = await import('../src/modules/properties/data/properties.repo.ts');
 const cats = await import('../src/modules/properties/data/categories.repo.ts');
 const types = await import('../src/modules/properties/data/unit-types.repo.ts');
 const units = await import('../src/modules/properties/data/units.repo.ts');
+const amenities = await import('../src/modules/properties/data/amenities.repo.ts');
 const pricing = await import('../src/modules/pricing/data/occupancy-price.repo.ts');
 const { priceNights } = await import('../src/modules/pricing/data/nightly-price.ts');
 
@@ -558,6 +559,48 @@ async function applyStructure(organizationId, plan) {
       floor: both(u, 'floor'), beds: Number(both(u, 'beds')) || 0, zone: both(u, 'zone'),
     });
     made ? say.made(label) : say.refused(label, 'відмовлено');
+  }
+
+  // ── зручності ─────────────────────────────────────────────────────────────
+  //
+  // Файл називає КОДИ каталогу, а не назви: назву готель міняє в себе, і
+  // прив'язка від цього не має розсипатись. Код, якого в каталозі немає, —
+  // названа відмова, а не тихий пропуск: інакше файл із трьома одруками
+  // застосовується «успішно», а на сайті порожньо.
+  //
+  // Набір ЗАМІНЮЄТЬСЯ цілком — як і на екрані: файл описує стан готелю, а не
+  // додає до нього. Повторний прогін дає той самий набір, тобто ідемпотентний.
+  if (plan.amenities) {
+    const catalog = await amenities.amenityCatalog(organizationId);
+    const byCode = new Map(catalog.flatMap((c) => c.amenities).map((a) => [a.code, a]));
+    const idsFor = (codes, label) => {
+      const ids = [];
+      for (const code of codes || []) {
+        const a = byCode.get(String(code));
+        if (!a) { say.refused(`${label}: ${code}`, 'такого коду немає в каталозі зручностей'); continue; }
+        ids.push(a.id);
+      }
+      return ids;
+    };
+
+    const onProperty = plan.amenities.property || plan.amenities.object || [];
+    if (onProperty.length) {
+      const ids = idsFor(onProperty, 'зручність обʼєкта');
+      if (DRY) say.made(`[суха] зручності обʼєкта: ${ids.length}`);
+      else {
+        const saved = await amenities.setPropertyAmenities(organizationId, property.id, ids);
+        saved ? say.made(`зручності обʼєкта: ${saved.length}`) : say.refused('зручності обʼєкта', 'відмовлено');
+      }
+    }
+
+    for (const [typeCode, codes] of Object.entries(plan.amenities.unitTypes || plan.amenities.unit_types || {})) {
+      const ut = typeByCode.get(typeCode);
+      if (!ut) { say.refused(`зручності типу ${typeCode}`, 'такого типу у файлі не описано'); continue; }
+      const ids = idsFor(codes, `зручність типу ${typeCode}`);
+      if (DRY) { say.made(`[суха] зручності типу ${typeCode}: ${ids.length}`); continue; }
+      const saved = await amenities.setUnitTypeAmenities(organizationId, ut.id, ids);
+      saved ? say.made(`зручності типу ${typeCode}: ${saved.length}`) : say.refused(`зручності типу ${typeCode}`, 'відмовлено');
+    }
   }
 
   // ── правила каналів ───────────────────────────────────────────────────────

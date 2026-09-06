@@ -97,6 +97,33 @@ CREATE TABLE "ai_usage" (
   PRIMARY KEY ("id")
 );
 
+CREATE TABLE "amenities" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "category_id" TEXT NOT NULL,
+  "code" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "icon" TEXT,
+  "scope" TEXT DEFAULT 'both' NOT NULL,
+  "sort_order" BIGINT DEFAULT 0 NOT NULL,
+  "is_active" BOOLEAN DEFAULT true NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("organization_id", "code"),
+  CHECK (scope IN ('property', 'unit_type', 'both'))
+);
+
+CREATE TABLE "amenity_categories" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "code" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "sort_order" BIGINT DEFAULT 0 NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("organization_id", "code")
+);
+
 CREATE TABLE "app_users" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "organization_id" TEXT NOT NULL,
@@ -1518,6 +1545,16 @@ CREATE TABLE "properties" (
   UNIQUE ("organization_id", "slug")
 );
 
+CREATE TABLE "property_amenities" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "property_id" TEXT NOT NULL,
+  "amenity_id" TEXT NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("property_id", "amenity_id")
+);
+
 CREATE TABLE "property_guest_config" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "property_id" TEXT NOT NULL,
@@ -1941,6 +1978,16 @@ CREATE TABLE "tasks" (
   CHECK (priority IN ('low', 'normal', 'high', 'urgent'))
 );
 
+CREATE TABLE "unit_type_amenities" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "unit_type_id" TEXT NOT NULL,
+  "amenity_id" TEXT NOT NULL,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id"),
+  UNIQUE ("unit_type_id", "amenity_id")
+);
+
 CREATE TABLE "unit_type_photos" (
   "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
   "unit_type_id" TEXT NOT NULL,
@@ -2088,6 +2135,12 @@ ALTER TABLE "accruals" ADD CONSTRAINT "fk_accruals_organization_id_5"
 ALTER TABLE "additional_services" ADD CONSTRAINT "fk_additional_services_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "ai_usage" ADD CONSTRAINT "fk_ai_usage_organization_id_1"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "amenities" ADD CONSTRAINT "fk_amenities_category_id_1"
+  FOREIGN KEY ("category_id") REFERENCES "amenity_categories" ("id") ON DELETE CASCADE;
+ALTER TABLE "amenities" ADD CONSTRAINT "fk_amenities_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "amenity_categories" ADD CONSTRAINT "fk_amenity_categories_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "app_users" ADD CONSTRAINT "fk_app_users_default_cash_account_id_1"
   FOREIGN KEY ("default_cash_account_id") REFERENCES "finance_accounts" ("id");
@@ -2395,6 +2448,12 @@ ALTER TABLE "price_rules" ADD CONSTRAINT "fk_price_rules_organization_id_2"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "properties" ADD CONSTRAINT "fk_properties_organization_id_1"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "property_amenities" ADD CONSTRAINT "fk_property_amenities_amenity_id_1"
+  FOREIGN KEY ("amenity_id") REFERENCES "amenities" ("id") ON DELETE CASCADE;
+ALTER TABLE "property_amenities" ADD CONSTRAINT "fk_property_amenities_property_id_2"
+  FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "property_amenities" ADD CONSTRAINT "fk_property_amenities_organization_id_3"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "property_guest_config" ADD CONSTRAINT "fk_property_guest_config_property_id_1"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
 ALTER TABLE "property_photos" ADD CONSTRAINT "fk_property_photos_property_id_1"
@@ -2497,6 +2556,12 @@ ALTER TABLE "tasks" ADD CONSTRAINT "fk_tasks_project_id_5"
   FOREIGN KEY ("project_id") REFERENCES "task_projects" ("id") ON DELETE SET NULL;
 ALTER TABLE "tasks" ADD CONSTRAINT "fk_tasks_organization_id_6"
   FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
+ALTER TABLE "unit_type_amenities" ADD CONSTRAINT "fk_unit_type_amenities_amenity_id_1"
+  FOREIGN KEY ("amenity_id") REFERENCES "amenities" ("id") ON DELETE CASCADE;
+ALTER TABLE "unit_type_amenities" ADD CONSTRAINT "fk_unit_type_amenities_unit_type_id_2"
+  FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
+ALTER TABLE "unit_type_amenities" ADD CONSTRAINT "fk_unit_type_amenities_organization_id_3"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "unit_type_photos" ADD CONSTRAINT "fk_unit_type_photos_unit_type_id_1"
   FOREIGN KEY ("unit_type_id") REFERENCES "unit_types" ("id") ON DELETE CASCADE;
 ALTER TABLE "unit_types" ADD CONSTRAINT "fk_unit_types_category_id_1"
@@ -2529,6 +2594,9 @@ CREATE INDEX "idx_accruals_org" ON "accruals" ("organization_id");
 CREATE INDEX "idx_accruals_status" ON "accruals" ("status");
 CREATE INDEX "idx_ai_usage_month" ON "ai_usage" ("organization_id", "created_at");
 CREATE INDEX "idx_ai_usage_org" ON "ai_usage" ("organization_id");
+CREATE INDEX "idx_amenities_category" ON "amenities" ("category_id");
+CREATE INDEX "idx_amenities_org" ON "amenities" ("organization_id");
+CREATE INDEX "idx_amenity_categories_org" ON "amenity_categories" ("organization_id");
 CREATE UNIQUE INDEX "idx_app_users_org_email" ON "app_users" (organization_id, lower(email));
 CREATE INDEX "idx_availability_blocks_org" ON "availability_blocks" ("organization_id");
 CREATE INDEX "idx_availability_blocks_unit" ON "availability_blocks" ("unit_id", "date_from", "date_to");
@@ -2662,6 +2730,8 @@ CREATE UNIQUE INDEX "idx_price_occupancy_row" ON "price_occupancy" (organization
 CREATE INDEX "idx_price_rules_org" ON "price_rules" ("organization_id");
 CREATE UNIQUE INDEX "idx_price_rules_promo_code" ON "price_rules" (organization_id, lower(code)) WHERE code IS NOT NULL;
 CREATE INDEX "idx_price_rules_property" ON "price_rules" ("property_id", "priority");
+CREATE INDEX "idx_property_amenities_org" ON "property_amenities" ("organization_id");
+CREATE INDEX "idx_property_amenities_property" ON "property_amenities" ("property_id");
 CREATE INDEX "idx_line_items_sub" ON "reservation_line_items" ("sub_booking_id");
 CREATE INDEX "idx_sub_bookings_res" ON "reservation_sub_bookings" ("reservation_id");
 CREATE INDEX "idx_reservations_dates" ON "reservations" ("check_in", "check_out");
@@ -2691,6 +2761,8 @@ CREATE INDEX "idx_tasks_due" ON "tasks" ("due_date");
 CREATE INDEX "idx_tasks_org" ON "tasks" ("organization_id");
 CREATE INDEX "idx_tasks_project" ON "tasks" ("project_id");
 CREATE INDEX "idx_tasks_status" ON "tasks" ("status");
+CREATE INDEX "idx_unit_type_amenities_org" ON "unit_type_amenities" ("organization_id");
+CREATE INDEX "idx_unit_type_amenities_type" ON "unit_type_amenities" ("unit_type_id");
 CREATE INDEX "idx_units_category" ON "units" ("category_id");
 CREATE INDEX "idx_units_property" ON "units" ("property_id");
 CREATE INDEX "idx_units_unit_type" ON "units" ("unit_type_id");
@@ -2704,6 +2776,8 @@ CREATE INDEX "idx_widget_price_list_org" ON "widget_price_list" ("organization_i
 -- Indexes the row-level security predicates depend on.
 CREATE INDEX IF NOT EXISTS "idx_accruals_org" ON "accruals" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_ai_usage_org" ON "ai_usage" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_amenities_org" ON "amenities" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_amenity_categories_org" ON "amenity_categories" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_app_users_org" ON "app_users" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_availability_blocks_org" ON "availability_blocks" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_booking_activity_log_org" ON "booking_activity_log" ("organization_id");
@@ -2765,6 +2839,7 @@ CREATE INDEX IF NOT EXISTS "idx_price_los_tiers_org" ON "price_los_tiers" ("orga
 CREATE INDEX IF NOT EXISTS "idx_price_occupancy_org" ON "price_occupancy" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_price_rules_org" ON "price_rules" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_properties_org" ON "properties" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_property_amenities_org" ON "property_amenities" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_reservations_org" ON "reservations" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_season_prices_org" ON "season_prices" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_seasons_org" ON "seasons" ("organization_id");
@@ -2772,6 +2847,7 @@ CREATE INDEX IF NOT EXISTS "idx_task_attachments_org" ON "task_attachments" ("or
 CREATE INDEX IF NOT EXISTS "idx_task_projects_org" ON "task_projects" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_task_tags_org" ON "task_tags" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_tasks_org" ON "tasks" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_unit_type_amenities_org" ON "unit_type_amenities" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_widget_handshakes_org" ON "widget_handshakes" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_widget_price_list_org" ON "widget_price_list" ("organization_id");
 
@@ -2784,6 +2860,10 @@ CREATE INDEX IF NOT EXISTS "idx_widget_price_list_org" ON "widget_price_list" ("
 ALTER TABLE "accruals" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "ai_usage" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "amenities" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "amenity_categories" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "app_users" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2907,6 +2987,8 @@ ALTER TABLE "price_rules" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "properties" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "property_amenities" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "reservations" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "season_prices" ALTER COLUMN "organization_id"
@@ -2920,6 +3002,8 @@ ALTER TABLE "task_projects" ALTER COLUMN "organization_id"
 ALTER TABLE "task_tags" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "tasks" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "unit_type_amenities" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "widget_handshakes" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -2948,6 +3032,18 @@ CREATE POLICY "additional_services_tenant" ON "additional_services"
 ALTER TABLE "ai_usage" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "ai_usage" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "ai_usage_tenant" ON "ai_usage"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "amenities" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "amenities" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "amenities_tenant" ON "amenities"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "amenity_categories" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "amenity_categories" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "amenity_categories_tenant" ON "amenity_categories"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
@@ -3401,6 +3497,12 @@ CREATE POLICY "properties_tenant" ON "properties"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
+ALTER TABLE "property_amenities" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "property_amenities" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "property_amenities_tenant" ON "property_amenities"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
 ALTER TABLE "property_guest_config" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "property_guest_config" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "property_guest_config_tenant" ON "property_guest_config"
@@ -3524,6 +3626,12 @@ CREATE POLICY "task_tags_tenant" ON "task_tags"
 ALTER TABLE "tasks" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "tasks" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "tasks_tenant" ON "tasks"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
+
+ALTER TABLE "unit_type_amenities" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "unit_type_amenities" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "unit_type_amenities_tenant" ON "unit_type_amenities"
   USING ("organization_id" = current_setting('app.organization_id'))
   WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 

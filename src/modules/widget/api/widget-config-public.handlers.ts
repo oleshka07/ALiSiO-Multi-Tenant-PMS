@@ -5,7 +5,7 @@ import { priceNights } from '@pricing';
 import { getDb } from '@core/db';
 import { hasFeature, featureDisabled } from '@core/features';
 import { runWithOrganization } from '@core/auth/tenant-context';
-import { availabilityByDay } from '@properties';
+import { availabilityByDay, propertyAmenities, unitTypeAmenities } from '@properties';
 import { shiftDays } from '@core/hotel-day';
 import { organizationCurrency } from '@core/currency';
 
@@ -69,6 +69,15 @@ export async function getWidgetConfig(request: NextRequest) {
       WHERE ut.is_active = TRUE AND ut.bookable_online = TRUE AND ut.property_id = ?
       ORDER BY ut.sort_order
     `, [property.id]) as any[];
+
+    // Зручності обʼєкта і типів — через фасад @properties, одним читанням на
+    // тип: вітрина не ходить у таблиці модуля сама (`check-boundaries`).
+    const propertyLevelAmenities = await propertyAmenities(String(property.organization_id), String(property.id));
+    const amenitiesByType = new Map<string, Awaited<ReturnType<typeof unitTypeAmenities>>>();
+    for (const ut of unitTypes) {
+      amenitiesByType.set(String(ut.id),
+        await unitTypeAmenities(String(property.organization_id), String(ut.id)));
+    }
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -185,7 +194,17 @@ export async function getWidgetConfig(request: NextRequest) {
         maxOccupancy: ut.max_occupancy,
         bedsDouble: ut.beds_double,
         bedsSingle: ut.beds_single,
+        // Зручності типу — кодами і назвами (Блок 5a, 2.2). Віджет їх поки не
+        // малює, і це навмисно: цей блок дає МОДЕЛЬ і дані, а вітрина —
+        // наступний крок. Дані віддаються вже тепер, бо інакше перший же
+        // споживач напише свій запит до таблиці й обійде фасад.
+        amenities: (amenitiesByType.get(String(ut.id)) ?? []).map((a) => ({
+          code: a.code, name: a.name, icon: a.icon,
+        })),
       })),
+      // Зручності самого обʼєкта: ліфт і паркінг живуть у будинку, а не в
+      // номері, і на вітрині їм місце поруч із адресою.
+      amenities: propertyLevelAmenities.map((a) => ({ code: a.code, name: a.name, icon: a.icon })),
       defaults: {
         checkIn: defaultCheckIn,
         checkOut: defaultCheckOut,
