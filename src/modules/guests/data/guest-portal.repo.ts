@@ -74,7 +74,7 @@ export async function getReservationByToken(token: string) {
       c.id as category_id, c.name as category_name, c.type as category_type, c.icon as category_icon, c.color as category_color,
       ut.id as unit_type_id, ut.name as unit_type_name, ut.code as unit_type_code,
       ut.max_adults, ut.max_children, ut.max_occupancy, ut.base_occupancy,
-      ut.beds_single, ut.beds_double, ut.beds_sofa, ut.extra_bed_available, ut.description as unit_type_description
+      ut.beds_single, ut.beds_double, ut.beds_sofa, ut.extra_bed_available, ut.description as unit_type_description,
       p.name as property_name, p.address as property_address, p.city as property_city,
       p.country as property_country, p.phone as property_phone, p.email as property_email,
       p.check_in_time, p.check_out_time,
