@@ -182,6 +182,61 @@ export async function setSecondaryCurrencies(
   });
 }
 
+/**
+ * Курси для ПОКАЗУ — одна відповідь на «у чому ще ми показуємо суми».
+ *
+ * ── Чому це окремі двері, а не `secondaryCurrencies()` ──────────────────
+ *
+ * `secondaryCurrencies()` описує НАЛАШТУВАННЯ: перелік із джерелом і датою,
+ * як його бачить екран. Показ гостю питає інше — «на скільки множити», — і
+ * додає базу (курс 1), якої в переліку немає за означенням. Два різні
+ * питання з однієї функції означали б, що вітрина сама вирішує, що робити
+ * з базою й порожнім курсом, а таких вітрин уже три.
+ *
+ * ── Валюта БЕЗ курсу відсутня, а не нуль ────────────────────────────────
+ *
+ * Це інваріант 17, застосований до курсу. «≈ 0 EUR» гірше за відсутність:
+ * нуль виглядає як факт, і саме таким його показує будь-який `||`. Тому
+ * `missing` називає такі валюти окремо — щоб екран сказав «курс не заданий»
+ * і повів у налаштування, а не мовчав.
+ *
+ * ── Фіксований курс — це курс, який назвав ГОТЕЛЬ ────────────────────────
+ *
+ * П19 каже «кілька валют із фіксованим курсом на сайті». Фіксує його готель
+ * (`rate_source = 'manual'`), і прохід ČNB такі валюти не чіпає взагалі
+ * (`fx/cnb.ts`). Другої колонки курсу для цього не заводиться: курс живе в
+ * `finance_exchange_rates` і лише там (ARCHITECTURE §2.2.1) — інакше два
+ * джерела розійшлися б тихо, і жодне з них не було б неправильним на вигляд.
+ */
+export interface DisplayRates {
+  /** Валюта обліку. Ціна, бронь, фоліо й документ — завжди в ній (О6). */
+  base: string;
+  /** код → скільки одиниць БАЗИ коштує одиниця цієї валюти. База — 1. */
+  rates: Record<string, number>;
+  /** Оголошені валюти, курсу яких готель ще не назвав. */
+  missing: string[];
+}
+
+export async function displayRates(organizationId: string, onDate?: string): Promise<DisplayRates> {
+  const base = await organizationCurrency(organizationId);
+  const sql = getSql();
+  const rows = await sql.rows<{ code: string }>(
+    `SELECT code FROM organization_currencies
+      WHERE organization_id = ? ORDER BY sort_order, code`,
+    [organizationId]);
+
+  const rates: Record<string, number> = { [base]: 1 };
+  const missing: string[] = [];
+  for (const r of rows) {
+    const code = String(r.code);
+    if (code === base) continue;
+    const fx = await latestRate(organizationId, code, base, onDate);
+    if (fx) rates[code] = fx.rate;
+    else missing.push(code);
+  }
+  return { base, rates, missing };
+}
+
 /** Чи оголошена ця валюта в готелі — і з яким джерелом курсу. */
 export async function declaredCurrency(
   organizationId: string,

@@ -7,7 +7,7 @@ import { hasFeature, featureDisabled } from '@core/features';
 import { runWithOrganization } from '@core/auth/tenant-context';
 import { availabilityByDay, propertyAmenities, unitTypeAmenities } from '@properties';
 import { shiftDays } from '@core/hotel-day';
-import { organizationCurrency } from '@core/currency';
+import { displayRates, organizationCurrency } from '@core/currency';
 
 export const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -183,6 +183,11 @@ export async function getWidgetConfig(request: NextRequest) {
         // Гість бачив число, за яким збирався платити, з чужою валютою: не
         // помилка на екрані, а неправильна ціна на вітрині.
         currency: await organizationCurrency(String(owner.organization_id)),
+        // Валюти показу і їхні курси — одними дверима (`displayRates`), а не
+        // трьома запитами вітрини. Валюта без курсу сюди не потрапляє взагалі:
+        // «≈ 0 EUR» гість читає як факт (інваріант 17 для курсу). Малює це
+        // віджет наступним кроком — модель і дані є вже тепер.
+        displayRates: (await displayRates(String(owner.organization_id))).rates,
       },
       unitTypes: unitTypes.map((ut: any) => ({
         id: ut.id,
