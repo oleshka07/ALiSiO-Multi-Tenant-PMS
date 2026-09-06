@@ -822,6 +822,76 @@ try {
       assert.strictEqual(await pendingCount(CONN), 0);
       console.log('  ok  опція без джерела ціни випадає з тіла, пара лишається відкритою; без ціни на жодну — закрита');
     }
+
+    // ── 15. У канал не їдуть правила, які на добовій координаті брешуть ────
+    //
+    // Рецензія 07.09 раунд 2, правка 4.2. Батчер цінує кожну дату як окрему
+    // поїздку на ОДНУ ніч (`nights: 1`, `checkIn: date`). Умови, які
+    // говорять про поїздку цілком, на такій координаті означають не те:
+    //
+    //   * `max_los` — правило «1–2 ночі +30 %» проходить умову на КОЖНІЙ
+    //     даті, тож гість OTA з семи ночей платив коротку надбавку сім
+    //     разів, а напряму — жодного;
+    //   * `period_of_checkin` — «заїзд у ці дні» діяло поночі: ціна кожної
+    //     ночі всередині вікна, хоч гість заїхав до нього;
+    //   * `period_of_checkout` — те саме зі зсувом на добу (`date + 1`);
+    //   * `min_los` — мовчки не їхало ніколи (1 < мінімуму).
+    //
+    // Тепер вони відсікаються ЯВНО, як і дата бронювання. Ціна в канал —
+    // та, що не залежить від тривалості й від того, чия це ніч у поїздці.
+    //
+    // Осі (інваріант 26): три дати з ОДНАКОВОЮ базою 200,00 і різними
+    // правилами — з `max_los` (26000, якби їхало), з `period_of_checkin`
+    // (15000, якби їхало) і з правилом на період проживання, яке їхати
+    // МУСИТЬ (15000 ≠ 20000). Без третьої дати «нічого не їде» лишалось би
+    // зеленим і на коді, який просто вимкнув правила в каналі.
+    {
+      const { upsertPrices } = await import('@pricing');
+      const D15 = addDays(DAY, 200);
+      const D16 = addDays(DAY, 201);
+      const D17 = addDays(DAY, 202);
+      for (const d of [D15, D16, D17]) await upsertPrices(UT, [{ date: d, base_price: 200 }], { ratePlanId: RP });
+
+      // Правила сіються прямим `INSERT` навмисно: писач правил живе в
+      // `@pricing/data`, і кликати його звідси означало б пробити межу
+      // модуля заради фікстури. Орендар названий явно (інваріант 12).
+      const rules: [string, string, string, string, number, string, number | null][] = [
+        [`${ORG}_r_los`, 'Коротко +30 %', D15, 'increase', 30, 'percent', 2],
+        [`${ORG}_r_in`, 'Заїзд у ці дні −50', D16, 'decrease', 50, 'fixed', null],
+        [`${ORG}_r_stay`, 'Проживання −25 %', D17, 'decrease', 25, 'percent', null],
+      ];
+      const conditionOf = (id: string) => (id.endsWith('_in') ? 'period_of_checkin' : 'period_of_stay');
+      for (const [id, name, date, action, value, valueKind, maxLos] of rules) {
+        await sql.run(
+          `INSERT INTO price_rules (id, organization_id, property_id, name, kind, condition_kind,
+                                    date_from, date_to, max_los, action, value, value_kind, priority, is_active)
+           VALUES (?, ?, ?, ?, 'rule', ?, ?, ?, ?, ?, ?, ?, 10, TRUE)`,
+          [id, ORG, PROP, name, conditionOf(id), date, date, maxLos, action, value, valueKind],
+        );
+      }
+
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      for (const d of [D15, D16, D17]) await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT, ratePlanId: RP, date: d });
+      const t15 = transport([]);
+      const r15 = await ariFlush(CONN, 'key', { client: { fetch: t15.fetch, limiter: new ChannexRateLimiter() } });
+      assert.strictEqual(r15.failed, 0, r15.errors.join(' | '));
+      const sent = t15.calls.filter((c) => c.path.endsWith('/restrictions')).flatMap((c) => c.body.values);
+      // Однакові числа сусідніх дат батчер зливає в один `date_range`, тож
+      // шукати треба по відрізку, а не по полю `date`.
+      const rateOn = (d: string) => sent.find((x: any) => x.rate_plan_id === 'remote-rp'
+        && String(x.date_from ?? x.date) <= d && d <= String(x.date_to ?? x.date))?.rates?.[0]?.rate;
+
+      assert.strictEqual(rateOn(D15), 20000,
+        `правило з max_los у канал не їде: на добовій координаті воно спрацювало б на кожній ночі, а поїхало ${rateOn(D15)}`);
+      assert.strictEqual(rateOn(D16), 20000,
+        `правило «період заїзду» у канал не їде: ніч усередині вікна — не обовʼязково ніч заїзду, а поїхало ${rateOn(D16)}`);
+      assert.strictEqual(rateOn(D17), 15000,
+        `а правило на період ПРОЖИВАННЯ їде: воно про саму ніч, і 200,00 − 25 % = 150,00, а поїхало ${rateOn(D17)}`);
+
+      await sql.run('DELETE FROM price_rules WHERE organization_id = ?', [ORG]);
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      console.log('  ok  у канал їдуть лише правила, вирішувані на одній ночі; max_los і вікна заїзду/виїзду — ні');
+    }
   });
 } finally {
   await cleanup();

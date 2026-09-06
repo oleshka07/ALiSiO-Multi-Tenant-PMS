@@ -121,9 +121,37 @@ function onWeekDay(rule: PriceRule, date: string): boolean {
   return rule.weekDays.includes(isoWeekday(date));
 }
 
+/**
+ * Умова говорить про ПОЇЗДКУ цілком і на добовій координаті означає не те.
+ *
+ * Батчер каналу цінує кожну дату як окрему поїздку на одну ніч
+ * (`ari-adapter.ts`, `nights: 1`, `checkIn: date`) — інакше не можна: у
+ * менеджера каналів координата саме така, «ціна номера на цю дату». Умови
+ * про тривалість і про роль ночі в поїздці на ній перетворюються на інші
+ * умови (рецензія 07.09 раунд 2, правка 4.2):
+ *
+ *   * `max_los` — «1–2 ночі +30 %» проходить на КОЖНІЙ даті, тож гість OTA
+ *     з семи ночей платив коротку надбавку сім разів, а напряму — жодного;
+ *   * `min_los` — навпаки, не проходить ніколи (1 < мінімуму), тобто знижка
+ *     «від 3 ночей» мовчки не існувала для каналу;
+ *   * `period_of_checkin` — «заїзд у ці дні» діяло поночі: під нього
+ *     потрапляла кожна ніч усередині вікна, чия б вона не була;
+ *   * `period_of_checkout` — те саме зі зсувом на добу (`checkOut = date+1`).
+ *
+ * Тому в канал вони не їдуть — явно, як і дата бронювання. Ціна, яку бачить
+ * канал, не залежить ні від тривалості, ні від того, чия це ніч у поїздці.
+ * Правило на ПЕРІОД ПРОЖИВАННЯ (`period_of_stay`, дати, дні тижня) їде: воно
+ * про саму ніч, і на добовій координаті означає рівно те саме.
+ */
+function undecidableOnOneNight(rule: PriceRule): boolean {
+  return rule.minLos != null || rule.maxLos != null
+    || rule.conditionKind === 'period_of_checkin' || rule.conditionKind === 'period_of_checkout';
+}
+
 /** Умови, які вирішуються на рівні ПОЇЗДКИ — однаково для кожної її ночі. */
 export function ruleAppliesToStay(rule: PriceRule, ctx: StayContext): boolean {
   if (!rule.isActive) return false;
+  if (ctx.channel === 'channel' && undecidableOnOneNight(rule)) return false;
   if (rule.kind === 'promo') {
     if (!rule.code || !ctx.promoCode) return false;
     if (rule.code.trim().toUpperCase() !== ctx.promoCode.trim().toUpperCase()) return false;
@@ -163,9 +191,19 @@ function shift(rule: PriceRule, price: number): number {
   return rule.action === 'decrease' ? -raw : raw;
 }
 
-/** Правила за пріоритетом; однаковий пріоритет — за назвою, щоб порядок не залежав від SQL. */
+/**
+ * Правила за пріоритетом; однаковий пріоритет — за назвою, потім за `id`.
+ *
+ * Порівняння САМИМИ рядками, не `localeCompare` (рецензія 07.09 раунд 2,
+ * правка 4.7): `localeCompare` бере правила сортування з локалі середовища,
+ * а правила компонуються одне на результат іншого — для пари «−10 %» і
+ * «+20 сумою» переставлений порядок дає інші гроші. Ціна не має залежати від
+ * того, з якою локаллю піднявся Node на конкретній машині.
+ */
+const byString = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
 export function sortRules(rules: readonly PriceRule[]): PriceRule[] {
-  return [...rules].sort((a, b) => (a.priority - b.priority) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  return [...rules].sort((a, b) => (a.priority - b.priority) || byString(a.name, b.name) || byString(a.id, b.id));
 }
 
 /**
