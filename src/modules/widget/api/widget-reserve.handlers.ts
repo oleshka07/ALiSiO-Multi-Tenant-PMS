@@ -13,7 +13,7 @@ import { percentOf } from '@core/money';
 import { siteAllowsHost, type SiteRow } from '../data/site.repo';
 import { quoteCertificate, claimCertificate } from '../data/certificate.repo';
 import { couponApplies, packageApplies } from '../domain/coupon-eligibility';
-import { promoCodeFor } from '../data/legacy-offer-code';
+import { promoCodeFor, offerForCode } from '../data/legacy-offer-code';
 import { redeemPromoCode } from '@pricing';
 import { ratePlanNightPrice } from '../domain/rate-plan';
 import { priceNights, stayRefusal, OPEN_STAY } from '@pricing';
@@ -369,22 +369,12 @@ export async function createWidgetReservation(request: NextRequest) {
     if (couponCode) {
       try {
         const code = String(couponCode).toUpperCase().trim();
-        offer = await sql.row<any>(`
-          SELECT * FROM coupons
-          WHERE code = ? AND is_active = TRUE
-            AND (valid_from IS NULL OR valid_from <= ?)
-            AND (valid_until IS NULL OR valid_until >= ?)
-            AND (max_uses IS NULL OR current_uses < max_uses)
-        `, [code, checkOut, checkIn]) as any;
-
-        if (!offer) {
-          offer = await sql.row<any>(`
-            SELECT * FROM gift_card_bundles 
-            WHERE coupon_code = ? AND is_active = TRUE 
-              AND (redemption_limit IS NULL OR current_uses < redemption_limit)
-          `, [code]) as any;
-          if (offer) isBundle = true;
-        }
+        // Купон — ЛИШЕ свого готелю (рецензія 07.09 раунд 2, правка 4.4).
+        // Маршрут публічний: доти читання фільтрувалось за кодом і датами, тож
+        // код чужого купона знижував нашу суму й піднімав ЧУЖИЙ current_uses.
+        const found = await offerForCode(sql, code, String(unitOrg.organization_id), { checkIn, checkOut });
+        offer = found.offer as any;
+        isBundle = found.isBundle;
 
         if (offer) {
           // Умови купона перевіряють ТУТ, бо тут вирішують гроші.
@@ -457,13 +447,10 @@ export async function createWidgetReservation(request: NextRequest) {
     if (extraCouponCode) {
       try {
         const extraCode = String(extraCouponCode).toUpperCase().trim();
-        const extraOffer = await sql.row<any>(`
-          SELECT * FROM coupons
-          WHERE code = ? AND is_active = TRUE
-            AND (valid_from IS NULL OR valid_from <= ?)
-            AND (valid_until IS NULL OR valid_until >= ?)
-            AND (max_uses IS NULL OR current_uses < max_uses)
-        `, [extraCode, checkOut, checkIn]) as any;
+        // Другий код — той самий скоуп: читач один на всі три місця, інакше
+        // вони знову розійдуться (правка 4.4). Пакетом другий код не буває.
+        const extraFound = await offerForCode(sql, extraCode, String(unitOrg.organization_id), { checkIn, checkOut });
+        const extraOffer = (extraFound.isBundle ? null : extraFound.offer) as any;
 
         if (extraOffer) {
           // Другий код — ті самі умови. Без цього «додатковий промокод» був
@@ -556,6 +543,24 @@ export async function createWidgetReservation(request: NextRequest) {
 
     const createdReservations: { reservationId: string; guestPageToken: string; unitName: string; slot: number }[] = [];
 
+    // Промо з правил цін (Ц31) — використання лічиться ДО першого запису і на
+    // ВСЕ замовлення одразу (рецензія 07.09 раунд 2, правка 4.3). Між пошуком
+    // і бронюванням код міг забрати інший гість, і тоді чесна відповідь —
+    // відмова з назвою, а не сума без знижки, якої гість не бачив.
+    //
+    // Раніше цей виклик стояв усередині циклу по номерах: із залишком 1 і
+    // замовленням на 3 перша бронь уже лежала в базі за акційною ціною, а
+    // друге коло віддавало 409 — половина замовлення створена, повтор робить
+    // ще одну. Тепер замовлення або вміщається в залишок цілим, або не
+    // списується взагалі, і жодної броні до цієї відповіді не існує.
+    if (promoCode && unitOrg && priced?.rulesApplied?.some((r) => r.kind === 'promo')) {
+      const redeemed = await runWithOrganization(String(unitOrg.organization_id),
+        () => redeemPromoCode(String(unit.property_id), String(unitOrg.organization_id), promoCode, bookingQuantity));
+      if (!redeemed) {
+        return NextResponse.json({ error: 'Promo code is no longer available', reason: 'promo_exhausted' }, { status: 409, headers: CORS_HEADERS });
+      }
+    }
+
     for (let slot = 1; slot <= bookingQuantity; slot++) {
       const resId = `r_${Date.now()}_${slot}`;
       const guestPageToken = await generateToken();
@@ -565,17 +570,6 @@ export async function createWidgetReservation(request: NextRequest) {
       if (documentStrategy) notesArr.push(`document_strategy:${documentStrategy}`);
       if (certificateNote) notesArr.push(certificateNote);
       const finalNotes = notesArr.length > 0 ? notesArr.join(' | ') : null;
-
-      // Промо з правил цін (Ц31) — використання лічиться ДО запису броні, у
-      // межах ліміту: між пошуком і бронюванням його міг забрати інший гість,
-      // і тоді чесна відповідь — відмова з назвою, а не сума без знижки, якої
-      // гість не бачив.
-      if (promoCode && unitOrg && priced?.rulesApplied?.some((r) => r.kind === 'promo')) {
-        const redeemed = await runWithOrganization(String(unitOrg.organization_id), () => redeemPromoCode(String(unit.property_id), String(unitOrg.organization_id), promoCode));
-        if (!redeemed) {
-          return NextResponse.json({ error: 'Promo code is no longer available', reason: 'promo_exhausted' }, { status: 409, headers: CORS_HEADERS });
-        }
-      }
 
       await sql.run(`
         -- organization_id, named rather than left to the column DEFAULT: that

@@ -293,17 +293,29 @@ export async function deleteRule(id: string): Promise<void> {
 }
 
 /**
- * Промокод використано ще раз — після того, як бронь СТВОРЕНА. Лічильник
- * росте лише в межах ліміту: два гості з останнім використанням одночасно —
- * другий отримує `false`, і бронь має або відмовити, або порахуватись без коду.
- * Орендар — з обʼєкта: шлях віджета сесії не має.
+ * Промокод використано ЗАМОВЛЕННЯМ — усіма його номерами одразу.
+ *
+ * Лічильник росте лише в межах ліміту: два гості з останнім використанням
+ * одночасно — другий отримує `false`, і бронь має або відмовити, або
+ * порахуватись без коду. Орендар — з обʼєкта: шлях віджета сесії не має.
+ *
+ * `times` — скільки номерів у замовленні (рецензія 07.09 раунд 2, правка
+ * 4.3). Замовлення лічиться ЦІЛИМ: `current_uses + times <= max_uses`, один
+ * `UPDATE`, одна умова. Доти віджет крутив цей виклик усередині циклу по
+ * номерах — із залишком 1 і замовленням на 3 перша бронь створювалась за
+ * акційною ціною, а на другому колі гість отримував 409 посеред циклу:
+ * половина замовлення в базі, гроші пораховані по-різному, повтор робить ще
+ * одну бронь. Часткове списання — це і є та половина, тому його немає:
+ * вміщається все або не списується нічого.
  */
-export async function redeemPromoCode(propertyId: string, organizationId: string, code: string): Promise<boolean> {
+export async function redeemPromoCode(propertyId: string, organizationId: string, code: string, times = 1): Promise<boolean> {
+  const n = Math.trunc(Number(times));
+  if (!Number.isFinite(n) || n < 1) throw new Error('promo_times_invalid');
   const changed = await getSql().run(
-    `UPDATE price_rules SET current_uses = current_uses + 1, updated_at = CURRENT_TIMESTAMP
+    `UPDATE price_rules SET current_uses = current_uses + ?, updated_at = CURRENT_TIMESTAMP
       WHERE property_id = ? AND organization_id = ? AND kind = 'promo' AND lower(code) = lower(?) AND is_active = TRUE
-        AND (max_uses IS NULL OR current_uses < max_uses)`,
-    [propertyId, organizationId, code.trim()],
+        AND (max_uses IS NULL OR current_uses + ? <= max_uses)`,
+    [n, propertyId, organizationId, code.trim(), n],
   );
   return Number(changed.changes) > 0;
 }
