@@ -34,6 +34,21 @@ const { upsertPrices, bulkUpdatePrices } = await import('./price-calendar.repo.t
 const { queuedChannelChanges: queuedChanges } = await import('@channels');
 
 const sql = getSql();
+/**
+ * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
+ *
+ * Прямий `sql.*` без орендаря під роллю застосунку (`alisio_app`, FORCE RLS)
+ * або відхиляється політикою (запис), або мовчки бачить порожньо (читання):
+ * твердження лишається зеленим, нічого не перевіривши (INC-014). Місця, де
+ * сцена свідомо стає ІНШИМ орендарем, лишаються явними
+ * `runWithOrganization(…)`.
+ */
+const asOrg = {
+  run: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.run(q, params as any)),
+  row: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.row<any>(q, params as any)),
+  rows: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.rows<any>(q, params as any)),
+};
+
 const A = '__seasons__a';
 const B = '__seasons__b';
 const PROP = `${A}_prop`;
@@ -42,53 +57,67 @@ const BAR = `${A}_bar`;
 const BB = `${A}_bb`;
 const CONN = `${A}_conn`;
 
+/**
+ * Засів і прибирання — В КОНТЕКСТІ ОРЕНДАРЯ, як це робить застосунок.
+ *
+ * Під роллю застосунку (`alisio_app`, FORCE RLS) запис без орендаря на
+ * зʼєднанні політика відхиляє, а видалення мовчки чіпає НУЛЬ рядків — і
+ * наступний `DELETE` падає вже на чужому ключі. Під суперкористувачем
+ * проходить і те, і те, тому гейт був зелений і про політики не свідчив
+ * (INC-014). Рядок `organizations` лишається поза контекстом: ця таблиця
+ * орендаря НАЗИВАЄ, політики на ній немає за побудовою.
+ */
 async function cleanup() {
   for (const org of [A, B]) {
-    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM season_prices WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM seasons WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM price_calendar WHERE unit_type_id = ?', [`${org}_dbl`]);
-    await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [`${org}_prop`]);
-    await sql.run('DELETE FROM unit_types WHERE property_id = ?', [`${org}_prop`]);
-    await sql.run('DELETE FROM categories WHERE property_id = ?', [`${org}_prop`]);
-    await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    await runWithOrganization(org, async () => {
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM season_prices WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM seasons WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM price_calendar WHERE unit_type_id = ?', [`${org}_dbl`]);
+      await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [`${org}_prop`]);
+      await sql.run('DELETE FROM unit_types WHERE property_id = ?', [`${org}_prop`]);
+      await sql.run('DELETE FROM categories WHERE property_id = ?', [`${org}_prop`]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    });
     await sql.run('DELETE FROM organizations WHERE id = ?', [org]);
   }
 }
 
 async function seed(org: string) {
-  const prop = `${org}_prop`;
   await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org, org, org]);
   await runWithOrganization(org, async () => {
-    await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [prop, org, org, prop]);
-    await sql.run('INSERT INTO categories (id, property_id, name, type) VALUES (?, ?, ?, ?)', [`${org}_cat`, prop, 'Rooms', 'room']);
-    await sql.run(
-      `INSERT INTO unit_types (id, property_id, category_id, name, code, max_adults, max_children, max_occupancy, base_occupancy)
-       VALUES (?, ?, ?, 'Double', 'DBL', 2, 0, 2, 2)`,
-      [`${org}_dbl`, prop, `${org}_cat`],
-    );
-    for (const [id, code] of [[`${org}_bar`, 'BAR'], [`${org}_bb`, 'BB']]) {
-      await sql.run(`INSERT INTO rate_plans (id, property_id, name, code, currency, is_active) VALUES (?, ?, ?, ?, 'EUR', TRUE)`, [id, prop, code, code]);
-    }
-    // Зʼєднання з дзеркалом: обидві пари змаплені — рендер має покласти по
-    // координаті на кожну.
-    await sql.run(
-      `INSERT INTO cm_connections (id, organization_id, property_id, provider, environment, webhook_token, webhook_secret, is_enabled, remote_property_id)
-       VALUES (?, ?, ?, 'probe', 'staging', ?, ?, TRUE, 'remote')`,
-      [`${org}_conn`, org, prop, `tok_${org}`, `sec_${org}`],
-    );
-    await sql.run(
-      `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, occupancy, remote_id) VALUES (?, ?, ?, 'unit_type', ?, '', 0, 'r-ut')`,
-      [`${org}_m_ut`, org, `${org}_conn`, `${org}_dbl`],
-    );
-    for (const rp of [`${org}_bar`, `${org}_bb`]) {
+    const prop = `${org}_prop`;
+    await runWithOrganization(org, async () => {
+      await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [prop, org, org, prop]);
+      await sql.run('INSERT INTO categories (id, property_id, name, type) VALUES (?, ?, ?, ?)', [`${org}_cat`, prop, 'Rooms', 'room']);
       await sql.run(
-        `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, occupancy, remote_id) VALUES (?, ?, ?, 'rate_plan', ?, ?, 0, ?)`,
-        [`${org}_m_${rp}`, org, `${org}_conn`, rp, `${org}_dbl`, `r-${rp}`],
+        `INSERT INTO unit_types (id, property_id, category_id, name, code, max_adults, max_children, max_occupancy, base_occupancy)
+         VALUES (?, ?, ?, 'Double', 'DBL', 2, 0, 2, 2)`,
+        [`${org}_dbl`, prop, `${org}_cat`],
       );
-    }
+      for (const [id, code] of [[`${org}_bar`, 'BAR'], [`${org}_bb`, 'BB']]) {
+        await sql.run(`INSERT INTO rate_plans (id, property_id, name, code, currency, is_active) VALUES (?, ?, ?, ?, 'EUR', TRUE)`, [id, prop, code, code]);
+      }
+      // Зʼєднання з дзеркалом: обидві пари змаплені — рендер має покласти по
+      // координаті на кожну.
+      await sql.run(
+        `INSERT INTO cm_connections (id, organization_id, property_id, provider, environment, webhook_token, webhook_secret, is_enabled, remote_property_id)
+         VALUES (?, ?, ?, 'probe', 'staging', ?, ?, TRUE, 'remote')`,
+        [`${org}_conn`, org, prop, `tok_${org}`, `sec_${org}`],
+      );
+      await sql.run(
+        `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, occupancy, remote_id) VALUES (?, ?, ?, 'unit_type', ?, '', 0, 'r-ut')`,
+        [`${org}_m_ut`, org, `${org}_conn`, `${org}_dbl`],
+      );
+      for (const rp of [`${org}_bar`, `${org}_bb`]) {
+        await sql.run(
+          `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, occupancy, remote_id) VALUES (?, ?, ?, 'rate_plan', ?, ?, 0, ?)`,
+          [`${org}_m_${rp}`, org, `${org}_conn`, rp, `${org}_dbl`, `r-${rp}`],
+        );
+      }
+    });
   });
 }
 
@@ -119,7 +148,7 @@ try {
     // ── 2. Клітинка рендериться в календар — через двері, одним діапазоном ─
     // Базовий рядок з мінімумом 3 на одну ніч ДО рендера: обмеження рендер не чіпає.
     await upsertPrices(DBL, [{ date: '2027-06-10', min_stay: 3 }]);
-    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [A]);
+    await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ?', [A]);
 
     await setSeasonPrice(summer.id, { unitTypeId: DBL, ratePlanId: null, price: 100, weekendPrice: 130 });
     const first = await row('2027-06-01', null);
@@ -142,7 +171,7 @@ try {
     console.log('  ok  клітинка рендериться в календар рядками «сезон», одна координата на пару, маска з різниці');
 
     // ── 3. Тарифна клітинка — інше число, окремий рядок тарифу ────────────
-    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [A]);
+    await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ?', [A]);
     await setSeasonPrice(summer.id, { unitTypeId: DBL, ratePlanId: BB, price: 120, weekendPrice: null });
     assert.strictEqual(Number((await row('2027-07-15', BB))?.base_price), 120, 'клітинка тарифу — рядок тарифу');
     assert.strictEqual(Number((await row('2027-07-15', null))?.base_price), 100, 'базовий рядок при цьому цілий');
@@ -154,12 +183,12 @@ try {
     // весь сезон (500 порожніх рядків із дефолтами обмежень). Осінь має лише
     // клітинку B&B — базових рядків на її дати не зʼявляється.
     await setSeasonPrice(autumn.id, { unitTypeId: DBL, ratePlanId: BB, price: 90, weekendPrice: null });
-    const autumnBase = await sql.row<any>("SELECT COUNT(*) AS n FROM price_calendar WHERE unit_type_id = ? AND rate_plan_id IS NULL AND date >= '2027-09-01' AND date <= '2027-10-31'", [DBL]);
+    const autumnBase = await asOrg.row("SELECT COUNT(*) AS n FROM price_calendar WHERE unit_type_id = ? AND rate_plan_id IS NULL AND date >= '2027-09-01' AND date <= '2027-10-31'", [DBL]);
     assert.strictEqual(Number(autumnBase?.n ?? 0), 0, `клітинка тарифу завела ${autumnBase?.n} базових рядків типу — має нуль`);
     assert.strictEqual(Number((await row('2027-09-15', BB))?.base_price), 90, 'а рядок тарифу є');
     // Рецензія 07.09 п.4: клітинка сезону на ПОХІДНИЙ тариф — відмова: його
     // рядки рахує перерендер бази, сезон їх переписав би.
-    await sql.run(
+    await asOrg.run(
       `INSERT INTO rate_plans (id, property_id, name, code, currency, is_active, pricing_type, based_on_rate_plan_id, adjustment_kind, adjustment_value, adjustment_direction)
        VALUES (?, ?, 'Derived', 'DER', 'EUR', TRUE, 'derived', ?, 'percent', 10, 'decrease')`, [`${A}_der`, PROP, BAR]);
     await assert.rejects(() => setSeasonPrice(summer.id, { unitTypeId: DBL, ratePlanId: `${A}_der`, price: 100, weekendPrice: null }), /rate_plan_derived/,

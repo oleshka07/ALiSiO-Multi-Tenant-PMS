@@ -47,6 +47,21 @@ const { enqueueChange, queuedChanges, pendingCount, stuckChanges } = await impor
 const { bulkUpdatePrices } = await import('@pricing');
 
 const sql = getSql();
+/**
+ * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
+ *
+ * Прямий `sql.*` без орендаря під роллю застосунку (`alisio_app`, FORCE RLS)
+ * або відхиляється політикою (запис), або мовчки бачить порожньо (читання):
+ * твердження лишається зеленим, нічого не перевіривши (INC-014). Місця, де
+ * сцена свідомо стає ІНШИМ орендарем, лишаються явними
+ * `runWithOrganization(…)`.
+ */
+const asOrg = {
+  run: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.run(q, params as any)),
+  row: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.row<any>(q, params as any)),
+  rows: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.rows<any>(q, params as any)),
+};
+
 const ORG = '__ari_adapter__';
 const PROP = `${ORG}_prop`;
 const UT = `${ORG}_ut`;
@@ -59,18 +74,30 @@ const addDays = (iso: string, n: number) => {
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
 
+/**
+ * Засів і прибирання — В КОНТЕКСТІ ОРЕНДАРЯ, як це робить застосунок.
+ *
+ * Під роллю застосунку (`alisio_app`, FORCE RLS) запис без орендаря на
+ * зʼєднанні політика відхиляє, а видалення мовчки чіпає НУЛЬ рядків — і
+ * наступний `DELETE` падає вже на чужому ключі. Під суперкористувачем
+ * проходить і те, і те, тому гейт був зелений і про політики не свідчив
+ * (INC-014). Рядок `organizations` лишається поза контекстом: ця таблиця
+ * орендаря НАЗИВАЄ, політики на ній немає за побудовою.
+ */
 async function cleanup() {
-  await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
-  try { await sql.run('DELETE FROM cm_sends WHERE organization_id = ?', [ORG]); } catch { /* таблиці ще немає — гейт червоний нижче */ }
-  await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
-  await sql.run('DELETE FROM units WHERE property_id = ?', [PROP]);
-  // Тип першим: календар цін іде за ним каскадом (до цінових таблиць звідси
-  // не торкаємось — інваріант 16), і лише тоді тарифи, на які він посилався.
-  await sql.run('DELETE FROM unit_types WHERE property_id = ?', [PROP]);
-  await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP]);
-  await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP]);
-  await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
+  await runWithOrganization(ORG, async () => {
+    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+    try { await sql.run('DELETE FROM cm_sends WHERE organization_id = ?', [ORG]); } catch { /* таблиці ще немає — гейт червоний нижче */ }
+    await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [ORG]);
+    await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [ORG]);
+    await sql.run('DELETE FROM units WHERE property_id = ?', [PROP]);
+    // Тип першим: календар цін іде за ним каскадом (до цінових таблиць звідси
+    // не торкаємось — інваріант 16), і лише тоді тарифи, на які він посилався.
+    await sql.run('DELETE FROM unit_types WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP]);
+    await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
+  });
   await sql.run('DELETE FROM organizations WHERE id = ?', [ORG]);
 }
 
@@ -298,10 +325,10 @@ try {
       const D4 = addDays(DAY, 61);
       const D5 = addDays(DAY, 65);
 
-      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
       await bulkUpdatePrices({ unitTypeId: UT, dateFrom: D3, dateTo: D3, applyTo: 'all', base_price: 150, min_stay: 3 });
       await bulkUpdatePrices({ unitTypeId: UT, dateFrom: D4, dateTo: D4, applyTo: 'all', base_price: 150, min_stay: 2, cta: true });
-      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
 
       // Вісь 1: у пачці лише ціни — жодного рядка наявності.
       await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT, ratePlanId: RP, date: D3 });
@@ -350,8 +377,8 @@ try {
     // координати — справа гейта тарифів; тут — що батчер його ЧУЄ.
     {
       const D3 = addDays(DAY, 60); // та сама ніч із ціною 150, що в сцені 7
-      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
-      await sql.run('UPDATE rate_plans SET is_active = FALSE WHERE id = ?', [RP]);
+      await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      await asOrg.run('UPDATE rate_plans SET is_active = FALSE WHERE id = ?', [RP]);
       await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT, ratePlanId: RP, date: D3 });
       const off = transport([]);
       const r1 = await ariFlush(CONN, 'key', { client: { fetch: off.fetch } });
@@ -362,7 +389,7 @@ try {
       assert.ok(!('rates' in closed), 'у знятого з продажу тарифу ціна не пишеться — навіть та, що лежить у календарі');
       assert.strictEqual(closed.min_stay_arrival, 3, 'обмеження дня їдуть і в закриту ніч — вони з базового рядка, не з тарифу');
 
-      await sql.run('UPDATE rate_plans SET is_active = TRUE WHERE id = ?', [RP]);
+      await asOrg.run('UPDATE rate_plans SET is_active = TRUE WHERE id = ?', [RP]);
       await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT, ratePlanId: RP, date: D3 });
       const on = transport([]);
       const r2 = await ariFlush(CONN, 'key', { client: { fetch: on.fetch } });
@@ -389,11 +416,11 @@ try {
       const D7 = addDays(DAY, 71);
       const D8 = addDays(DAY, 72);
       const D3 = addDays(DAY, 60); // 150, мінімум 3, зі сцени 7
-      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
       await bulkUpdatePrices({ unitTypeId: UT, dateFrom: D6, dateTo: D6, applyTo: 'all', base_price: 150, cta: true });
       await bulkUpdatePrices({ unitTypeId: UT, dateFrom: D7, dateTo: D7, applyTo: 'all', base_price: 150, cta: false });
       await bulkUpdatePrices({ unitTypeId: UT, dateFrom: D8, dateTo: D8, applyTo: 'all', base_price: 150, cta: true });
-      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
 
       const bodyKeys = (v: Record<string, unknown>) => Object.keys(v).filter((k) => !['property_id', 'rate_plan_id', 'date', 'date_from', 'date_to'].includes(k)).sort();
 
@@ -446,7 +473,7 @@ try {
     {
       const { recentSendLog } = await import('../data/sends.repo.ts');
       const D9 = addDays(DAY, 80);
-      await sql.run('DELETE FROM cm_sends WHERE organization_id = ?', [ORG]);
+      await asOrg.run('DELETE FROM cm_sends WHERE organization_id = ?', [ORG]);
       await enqueueChange(sql, CONN, { kind: 'availability', unitTypeId: UT, date: D9 });
       const bad = transport([{ status: 429, body: BODY_429 }]);
       await ariFlush(CONN, 'key', { client: { fetch: bad.fetch, limiter: new ChannexRateLimiter(), sleep: async () => {} } });
@@ -541,13 +568,13 @@ try {
       const RP2 = `${ORG}_rp2`;
       const D12 = addDays(DAY, 100);
       const { upsertPrices, getPriceMonth } = await import('@pricing');
-      await sql.run(
+      await asOrg.run(
         `INSERT INTO rate_plans (id, property_id, name, code, currency, is_active, is_hidden, priority)
          VALUES (?, ?, ?, ?, 'EUR', TRUE, FALSE, 0)`,
         [RP2, PROP, 'Bed & Breakfast', 'BB'],
       );
       for (const [entityType, occupancy] of [['rate_plan', 0], ['rate_plan_option', 2]] as const) {
-        await sql.run(
+        await asOrg.run(
           `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, occupancy, remote_id)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [`${CONN}_m2_${entityType}_${occupancy}`, ORG, CONN, entityType, RP2, UT, occupancy, 'remote-rp2'],
@@ -663,19 +690,19 @@ try {
       const TWIN = `${ORG}_twin`;
       const RP2 = `${ORG}_rp2`;
       const { upsertPrices } = await import('@pricing');
-      await sql.run(
+      await asOrg.run(
         `INSERT INTO unit_types (id, property_id, category_id, name, code, max_adults, max_children, max_occupancy, base_occupancy, is_active, bookable_online)
          VALUES (?, ?, ?, ?, ?, 2, 0, 2, 2, TRUE, TRUE)`,
         [TWIN, PROP, `${ORG}_cat`, 'Twin', 'TWIN'],
       );
-      await sql.run(`INSERT INTO units (id, property_id, unit_type_id, category_id, name, code, is_active) VALUES (?, ?, ?, ?, ?, ?, TRUE)`, [`${ORG}_u_twin`, PROP, TWIN, `${ORG}_cat`, '201', '201']);
+      await asOrg.run(`INSERT INTO units (id, property_id, unit_type_id, category_id, name, code, is_active) VALUES (?, ?, ?, ?, ?, ?, TRUE)`, [`${ORG}_u_twin`, PROP, TWIN, `${ORG}_cat`, '201', '201']);
       const mirror14: [string, string, string, number, string][] = [
         ['unit_type', TWIN, '', 0, 'remote-ut-twin'],
         ['rate_plan', RP, TWIN, 0, 'remote-twin-bar'], ['rate_plan_option', RP, TWIN, 2, 'remote-twin-bar'],
         ['rate_plan', RP2, TWIN, 0, 'remote-twin-bb'], ['rate_plan_option', RP2, TWIN, 2, 'remote-twin-bb'],
       ];
       for (const [entityType, localId, unitTypeId, occupancy, remoteId] of mirror14) {
-        await sql.run(
+        await asOrg.run(
           `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, occupancy, remote_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [`${CONN}_m14_${entityType}_${localId}_${occupancy}`, ORG, CONN, entityType, localId, unitTypeId, occupancy, remoteId],
         );
@@ -763,13 +790,13 @@ try {
       const D13 = addDays(DAY, 110);
       const D14 = addDays(DAY, 111);
       const { createOccupancyRow, upsertPrices } = await import('@pricing');
-      await sql.run(
+      await asOrg.run(
         `INSERT INTO unit_types (id, property_id, category_id, name, code,
                                  max_adults, max_children, max_occupancy, base_occupancy, is_active, bookable_online)
          VALUES (?, ?, ?, ?, ?, 3, 0, 3, 2, TRUE, TRUE)`,
         [UT3, PROP, `${ORG}_cat`, 'Triple', 'TRP'],
       );
-      await sql.run(
+      await asOrg.run(
         `INSERT INTO units (id, property_id, unit_type_id, category_id, name, code, is_active) VALUES (?, ?, ?, ?, ?, ?, TRUE)`,
         [`${ORG}_u3`, PROP, UT3, `${ORG}_cat`, '301', '301'],
       );
@@ -783,7 +810,7 @@ try {
         ['rate_plan_option', RP, UT3, 3, 'remote-rp-ut3-o3'],
       ];
       for (const [entityType, localId, unitTypeId, occupancy, remoteId] of mirror3) {
-        await sql.run(
+        await asOrg.run(
           `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, occupancy, remote_id)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [`${CONN}_m3_${entityType}_${occupancy}`, ORG, CONN, entityType, localId, unitTypeId, occupancy, remoteId],
@@ -796,7 +823,7 @@ try {
       await upsertPrices(UT3, [{ date: D13, base_price: 150 }], { ratePlanId: RP });
       await createOccupancyRow(PROP, { unit_type_id: UT3, persons: 2, price_gross: 150 });
       await createOccupancyRow(PROP, { unit_type_id: UT3, persons: 1, price_gross: 120 });
-      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
 
       await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT3, ratePlanId: RP, date: D13 });
       const t13 = transport([]);
@@ -812,7 +839,7 @@ try {
       // дат цінує будь-яку ніч, тож «без ціни взагалі» тут — закритий день:
       // закриту ніч не цінує жодне джерело (Д2).
       await bulkUpdatePrices({ unitTypeId: UT3, dateFrom: D14, dateTo: D14, applyTo: 'all', closed: true });
-      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
       await enqueueChange(sql, CONN, { kind: 'rate', unitTypeId: UT3, ratePlanId: RP, date: D14 });
       const t14 = transport([]);
       await ariFlush(CONN, 'key', { client: { fetch: t14.fetch, limiter: new ChannexRateLimiter() } });

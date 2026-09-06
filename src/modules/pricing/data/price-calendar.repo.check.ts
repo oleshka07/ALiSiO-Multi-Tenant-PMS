@@ -26,6 +26,21 @@ const { upsertPrices, bulkUpdatePrices, getPriceMonth } = await import('./price-
 const { priceNights } = await import('./nightly-price.ts');
 
 const sql = getSql();
+/**
+ * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
+ *
+ * Прямий `sql.*` без орендаря під роллю застосунку (`alisio_app`, FORCE RLS)
+ * або відхиляється політикою (запис), або мовчки бачить порожньо (читання):
+ * твердження лишається зеленим, нічого не перевіривши (INC-014). Місця, де
+ * сцена свідомо стає ІНШИМ орендарем, лишаються явними
+ * `runWithOrganization(…)`.
+ */
+const asOrg = {
+  run: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.run(q, params as any)),
+  row: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.row<any>(q, params as any)),
+  rows: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.rows<any>(q, params as any)),
+};
+
 const A = '__pc2__a';
 const B = '__pc2__b';
 const PROP = (o: string) => `${o}_prop`;
@@ -37,31 +52,45 @@ const D2 = '2026-11-26';
 const D3 = '2026-11-27';
 const D4 = '2026-11-28';
 
+/**
+ * Засів і прибирання — В КОНТЕКСТІ ОРЕНДАРЯ, як це робить застосунок.
+ *
+ * Під роллю застосунку (`alisio_app`, FORCE RLS) запис без орендаря на
+ * зʼєднанні політика відхиляє, а видалення мовчки чіпає НУЛЬ рядків — і
+ * наступний `DELETE` падає вже на чужому ключі. Під суперкористувачем
+ * проходить і те, і те, тому гейт був зелений і про політики не свідчив
+ * (INC-014). Рядок `organizations` лишається поза контекстом: ця таблиця
+ * орендаря НАЗИВАЄ, політики на ній немає за побудовою.
+ */
 async function cleanup() {
   for (const o of [A, B]) {
-    await sql.run('DELETE FROM price_calendar WHERE unit_type_id = ?', [UT(o)]);
-    await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP(o)]);
-    await sql.run('DELETE FROM unit_types WHERE id = ?', [UT(o)]);
-    await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP(o)]);
-    await sql.run('DELETE FROM properties WHERE organization_id = ?', [o]);
+    await runWithOrganization(o, async () => {
+      await sql.run('DELETE FROM price_calendar WHERE unit_type_id = ?', [UT(o)]);
+      await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP(o)]);
+      await sql.run('DELETE FROM unit_types WHERE id = ?', [UT(o)]);
+      await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP(o)]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [o]);
+    });
     await sql.run('DELETE FROM organizations WHERE id = ?', [o]);
   }
 }
 async function seed(o: string) {
   await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [o, o, o]);
-  await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [PROP(o), o, o, PROP(o)]);
-  await sql.run('INSERT INTO categories (id, property_id, name, type) VALUES (?, ?, ?, ?)', [`${o}_cat`, PROP(o), 'Rooms', 'room']);
-  await sql.run(
-    `INSERT INTO unit_types (id, property_id, category_id, name, code, max_adults, max_children, max_occupancy, base_occupancy)
-     VALUES (?, ?, ?, 'Double', 'DBL', 2, 0, 2, 2)`,
-    [UT(o), PROP(o), `${o}_cat`],
-  );
-  for (const [id, code, name] of [[BAR(o), 'BAR', 'Best Available'], [BB(o), 'BB', 'Bed & Breakfast']]) {
+  await runWithOrganization(o, async () => {
+    await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [PROP(o), o, o, PROP(o)]);
+    await sql.run('INSERT INTO categories (id, property_id, name, type) VALUES (?, ?, ?, ?)', [`${o}_cat`, PROP(o), 'Rooms', 'room']);
     await sql.run(
-      `INSERT INTO rate_plans (id, property_id, name, code, pricing_model, currency, priority) VALUES (?, ?, ?, ?, 'standard', 'USD', 1)`,
-      [id, PROP(o), name, code],
+      `INSERT INTO unit_types (id, property_id, category_id, name, code, max_adults, max_children, max_occupancy, base_occupancy)
+       VALUES (?, ?, ?, 'Double', 'DBL', 2, 0, 2, 2)`,
+      [UT(o), PROP(o), `${o}_cat`],
     );
-  }
+    for (const [id, code, name] of [[BAR(o), 'BAR', 'Best Available'], [BB(o), 'BB', 'Bed & Breakfast']]) {
+      await sql.run(
+        `INSERT INTO rate_plans (id, property_id, name, code, pricing_model, currency, priority) VALUES (?, ?, ?, ?, 'standard', 'USD', 1)`,
+        [id, PROP(o), name, code],
+      );
+    }
+  });
 }
 const quote = (o: string, ratePlanId: string | undefined, date = D1) => runWithOrganization(o, () =>
   priceNights({ unitTypeId: UT(o), checkIn: date, nights: 1, adults: 2, children: 0, ratePlanId }));
@@ -148,7 +177,7 @@ try {
   const D3 = '2026-11-27';
   const D4 = '2026-11-28';
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D3, min_stay: 2 }]));
-  const bare = await sql.row<any>('SELECT base_price FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D3]);
+  const bare = await asOrg.row('SELECT base_price FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D3]);
   assert.ok(bare, 'рядок обмеження існує');
   assert.strictEqual(bare.base_price, null, `ціни немає — NULL, не ${bare.base_price}`);
   const unpriced = await quote(A, BAR(A), D3);
@@ -180,13 +209,13 @@ try {
   // без жодного з полів ціни рядок має тримати обидва.
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, base_price: 100, weekend_price: 130 }]));
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, min_stay: 2 }]));
-  const kept = await sql.row<any>('SELECT base_price, weekend_price, min_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
+  const kept = await asOrg.row('SELECT base_price, weekend_price, min_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
   assert.strictEqual(Number(kept.base_price), 100, 'базова ціна пережила збереження обмеження');
   assert.strictEqual(kept.weekend_price == null ? null : Number(kept.weekend_price), 130, `ціна вихідних затерлась збереженням обмеження без поля ціни: ${kept.weekend_price}`);
   assert.strictEqual(Number(kept.min_stay), 2, 'а обмеження записане');
   // Явний `null` — це «прибрати ціну вихідних», і його треба вміти сказати.
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, weekend_price: null }]));
-  const cleared = await sql.row<any>('SELECT weekend_price FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
+  const cleared = await asOrg.row('SELECT weekend_price FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
   assert.strictEqual(cleared.weekend_price, null, 'явний null прибирає ціну вихідних');
   console.log('  ok  збереження обмеження без поля ціни не чіпає ні базову ціну, ні ціну вихідних; явний null прибирає');
 
@@ -250,13 +279,13 @@ try {
   // 2, а не стає 1; явний `null` максимуму прибирає його, ціна при цьому ціла.
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, base_price: 100, min_stay: 2, max_stay: 5 }]));
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, base_price: null }]));
-  const nulled = await sql.row<any>('SELECT base_price, min_stay, max_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
+  const nulled = await asOrg.row('SELECT base_price, min_stay, max_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
   assert.strictEqual(nulled.base_price, null, `явний null ціни мав прибрати її, а лишилось ${nulled.base_price} — маска каже «зникла», база тримає`);
   assert.deepStrictEqual((await quote(A, BAR(A), D1)).missing, [D1], 'ніч без ціни — у missing');
   assert.strictEqual(Number(nulled.min_stay), 2, `мінімум, якого в запиті немає, лишається 2, а не ${nulled.min_stay}`);
   assert.strictEqual(Number(nulled.max_stay), 5, 'максимум, якого в запиті немає, лишається');
   await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D1, base_price: 100, max_stay: null }]));
-  const cleared2 = await sql.row<any>('SELECT base_price, min_stay, max_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
+  const cleared2 = await asOrg.row('SELECT base_price, min_stay, max_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D1]);
   assert.strictEqual(cleared2.max_stay, null, 'явний null максимуму прибирає його');
   assert.strictEqual(Number(cleared2.base_price), 100, 'ціна записана');
   assert.strictEqual(Number(cleared2.min_stay), 2, 'мінімум не зачеплений');
@@ -306,7 +335,7 @@ try {
     assert.strictEqual((await quote(A, BAR(A), D3)).restrictions.minStay, 1,
       'сусідній тариф мусить лишитись на мінімумі ТИПУ (1): зміна ціни одного тарифу не переносить чуже обмеження на всі');
     assert.strictEqual((await quote(A, BB(A), D3)).restrictions.minStay, 10, 'а власний мінімум пари лишається її власним');
-    const typeRow = await sql.row<any>('SELECT min_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D3]);
+    const typeRow = await asOrg.row('SELECT min_stay FROM price_calendar WHERE unit_type_id = ? AND date = ? AND rate_plan_id IS NULL', [UT(A), D3]);
     assert.strictEqual(Number(typeRow.min_stay), 1, `у базовому рядку типу мусить лишитись 1, а лежить ${typeRow.min_stay}`);
 
     // А ось що робило давнє тіло «вся форма»: те саме значення, названий тип

@@ -39,29 +39,63 @@ const B = '__rpw__b';
 const PROP = (org: string) => `${org}_prop`;
 const UT = (org: string) => `${org}_ut`;
 
+/**
+ * Засів і прибирання — В КОНТЕКСТІ ОРЕНДАРЯ, як це робить застосунок.
+ *
+ * Не косметика і не «щоб було однаково». Під роллю застосунку (`alisio_app`,
+ * FORCE RLS) запис без орендаря на зʼєднанні відхиляється політикою, а
+ * ВИДАЛЕННЯ мовчки чіпає нуль рядків — після чого `DELETE properties` падає
+ * на чужому ключі, і виглядає це як зламана схема. Під суперкористувачем
+ * обидва проходять, тож гейт був зелений і не доводив нічого про політики
+ * (INC-014).
+ */
 async function cleanup() {
-  await sql.run("DELETE FROM cm_outbox WHERE connection_id = '__rpw_conn'");
-  await sql.run("DELETE FROM cm_mappings WHERE connection_id = '__rpw_conn'");
-  await sql.run("DELETE FROM cm_connections WHERE id = '__rpw_conn'");
+  await runWithOrganization(A, async () => {
+    await sql.run("DELETE FROM cm_outbox WHERE connection_id = '__rpw_conn'");
+    await sql.run("DELETE FROM cm_mappings WHERE connection_id = '__rpw_conn'");
+    await sql.run("DELETE FROM cm_connections WHERE id = '__rpw_conn'");
+  });
   for (const org of [A, B]) {
-    await sql.run('DELETE FROM price_calendar WHERE unit_type_id = ?', [UT(org)]);
-    await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP(org)]);
-    await sql.run('DELETE FROM unit_types WHERE id = ?', [UT(org)]);
-    await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP(org)]);
-    await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    await runWithOrganization(org, async () => {
+      await sql.run('DELETE FROM price_calendar WHERE unit_type_id = ?', [UT(org)]);
+      await sql.run('DELETE FROM rate_plans WHERE property_id = ?', [PROP(org)]);
+      await sql.run('DELETE FROM unit_types WHERE id = ?', [UT(org)]);
+      await sql.run('DELETE FROM categories WHERE property_id = ?', [PROP(org)]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    });
+    // `organizations` — таблиця без політики (вона й називає орендаря), тож
+    // рядок організації прибирається поза контекстом і після всього свого.
     await sql.run('DELETE FROM organizations WHERE id = ?', [org]);
   }
 }
 async function seed(org: string) {
   await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org, org, org]);
-  await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [PROP(org), org, org, PROP(org)]);
-  await sql.run('INSERT INTO categories (id, property_id, name, type) VALUES (?, ?, ?, ?)', [`${org}_cat`, PROP(org), 'Rooms', 'room']);
-  await sql.run(
-    `INSERT INTO unit_types (id, property_id, category_id, name, code, max_adults, max_children, max_occupancy, base_occupancy)
-     VALUES (?, ?, ?, 'Double', 'DBL', 2, 0, 2, 2)`,
-    [UT(org), PROP(org), `${org}_cat`],
-  );
+  await runWithOrganization(org, async () => {
+    await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [PROP(org), org, org, PROP(org)]);
+    await sql.run('INSERT INTO categories (id, property_id, name, type) VALUES (?, ?, ?, ?)', [`${org}_cat`, PROP(org), 'Rooms', 'room']);
+    await sql.run(
+      `INSERT INTO unit_types (id, property_id, category_id, name, code, max_adults, max_children, max_occupancy, base_occupancy)
+       VALUES (?, ?, ?, 'Double', 'DBL', 2, 0, 2, 2)`,
+      [UT(org), PROP(org), `${org}_cat`],
+    );
+  });
 }
+
+/**
+ * Той самий `sql`, але завжди в контексті орендаря A — як у застосунку.
+ *
+ * Сцени нижче цілком про готель A: він створює тарифи, під ним ціни, його
+ * зʼєднання з каналом. Прямий `sql.*` без орендаря під роллю застосунку або
+ * відхиляється політикою (запис), або мовчки бачить порожньо (читання) —
+ * тобто твердження лишається зеленим, нічого не перевіривши (INC-014).
+ * Місця, де сцена свідомо стає іншим орендарем, як були
+ * `runWithOrganization(B, …)`, так і лишились.
+ */
+const asA = {
+  run: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.run(q, params as any)),
+  row: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.row<any>(q, params as any)),
+  rows: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.rows<any>(q, params as any)),
+};
 
 await cleanup();
 await seed(A);
@@ -82,7 +116,7 @@ try {
     () => createRatePlan({ propertyId: PROP(B), name: 'X', code: 'X', currency: 'USD', mealPlan: null }),
     /not found/i, 'чужий обʼєкт — «not found», не тариф у чужому готелі',
   ));
-  assert.strictEqual((await sql.rows('SELECT id FROM rate_plans WHERE property_id = ?', [PROP(B)])).length, 0, 'у Б нічого не зʼявилось');
+  assert.strictEqual((await asA.rows('SELECT id FROM rate_plans WHERE property_id = ?', [PROP(B)])).length, 0, 'у Б нічого не зʼявилось');
   console.log('  ok  тариф створюється лише на своєму обʼєкті');
 
   // ── 2. Код унікальний у межах обʼєкта — названо, не 500 ──────────────
@@ -122,10 +156,12 @@ try {
   // ── 5. Валюта: вільна, доки немає цін; замкнена, щойно вони є ─────────
   const eur = await runWithOrganization(A, () => updateRatePlan(bb.id, { currency: 'EUR' }));
   assert.strictEqual(eur.currency, 'EUR', 'без цін валюту можна змінити');
-  await sql.run(
+  // Орендар — на зʼєднанні, а не в рядку: у `price_calendar` немає власної
+  // колонки організації, політика веде через тип номера до обʼєкта.
+  await runWithOrganization(A, () => sql.run(
     `INSERT INTO price_calendar (id, unit_type_id, rate_plan_id, date, base_price) VALUES ('__rpw_pc', ?, ?, '2026-11-22', 120)`,
     [UT(A), bb.id],
-  );
+  ));
   await runWithOrganization(A, () => assert.rejects(() => updateRatePlan(bb.id, { currency: 'USD' }), /currency_locked/,
     'є ціна під тарифом — валюта замкнена: у вендора тариф уже заведено з нею'));
   const still = await runWithOrganization(A, () => listRatePlans(PROP(A)));
@@ -147,30 +183,34 @@ try {
     'під тарифом є ціна — не видаляється, і причина названа'));
   await runWithOrganization(B, () => assert.rejects(() => deleteRatePlan(bar.id), /not found/i,
     'чужий орендар не видаляє — «not found», не 403'));
-  assert.strictEqual((await sql.rows('SELECT id FROM rate_plans WHERE id = ?', [bar.id])).length, 1, 'BAR на місці після чужої спроби');
+  // Читання теж у контексті: без орендаря політика віддає порожньо, і
+  // твердження «рядок на місці» тихо перетворилось би на «рядка не видно».
+  assert.strictEqual(
+    (await runWithOrganization(A, () => sql.rows('SELECT id FROM rate_plans WHERE id = ?', [bar.id]))).length,
+    1, 'BAR на місці після чужої спроби');
 
-  await sql.run(
+  await asA.run(
     `INSERT INTO cm_connections (id, organization_id, property_id, provider, webhook_token, webhook_secret)
      VALUES ('__rpw_conn', ?, ?, 'test', '__rpw_wt', '__rpw_ws')`,
     [A, PROP(A)],
   );
-  await sql.run(
+  await asA.run(
     `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, remote_id)
      VALUES ('__rpw_map', ?, '__rpw_conn', 'rate_plan', ?, ?, 'remote-bar')`,
     [A, bar.id, UT(A)],
   );
   await runWithOrganization(A, () => assert.rejects(() => deleteRatePlan(bar.id), /mapped/,
     'тариф заведено у вендора — не видаляється: дзеркало лишилось би без оригіналу'));
-  await sql.run('DELETE FROM cm_mappings WHERE id = ?', ['__rpw_map']);
+  await asA.run('DELETE FROM cm_mappings WHERE id = ?', ['__rpw_map']);
 
-  await sql.run(
+  await asA.run(
     `INSERT INTO cm_outbox (id, organization_id, connection_id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to)
      VALUES ('__rpw_out', ?, '__rpw_conn', 'rate', ?, ?, '2026-11-22', '2026-11-22')`,
     [A, UT(A), bar.id],
   );
   await runWithOrganization(A, () => deleteRatePlan(bar.id));
-  assert.strictEqual((await sql.rows('SELECT id FROM rate_plans WHERE id = ?', [bar.id])).length, 0, 'чистий тариф видалено');
-  assert.strictEqual((await sql.rows('SELECT id FROM cm_outbox WHERE rate_plan_id = ?', [bar.id])).length, 0,
+  assert.strictEqual((await asA.rows('SELECT id FROM rate_plans WHERE id = ?', [bar.id])).length, 0, 'чистий тариф видалено');
+  assert.strictEqual((await asA.rows('SELECT id FROM cm_outbox WHERE rate_plan_id = ?', [bar.id])).length, 0,
     'координати черги видаленого тарифу прибрано разом із ним — батчер не шукатиме тариф, якого немає');
   assert.deepStrictEqual((await runWithOrganization(A, () => listRatePlans(PROP(A)))).map((p) => p.code), ['BB'], 'у списку лишився лише BB');
   console.log('  ok  видалення: чистий свій тариф — так; з цінами, заведений у вендора, чужий — названа відмова');
@@ -186,12 +226,12 @@ try {
   const D = '2026-11-22';
   const today = new Date().toISOString().slice(0, 10);
   const span = clipToHorizon(today, null, today)!;
-  await sql.run(
+  await asA.run(
     `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, remote_id)
      VALUES ('__rpw_map_bb', ?, '__rpw_conn', 'rate_plan', ?, ?, 'remote-bb')`,
     [A, bb.id, UT(A)],
   );
-  await sql.run("DELETE FROM cm_outbox WHERE connection_id = '__rpw_conn'");
+  await asA.run("DELETE FROM cm_outbox WHERE connection_id = '__rpw_conn'");
   const quote = () => runWithOrganization(A, () => priceNights({ unitTypeId: UT(A), checkIn: D, nights: 1, adults: 2, ratePlanId: bb.id }));
   assert.strictEqual((await quote()).nights[0]?.price, 120, 'до зняття: ціна тарифу на дату є');
 
@@ -204,7 +244,7 @@ try {
   const gone = await quote();
   assert.deepStrictEqual(gone.missing, [D], 'ціна знятого тарифу не існує (інваріант 17) — навіть та, що лежить у календарі');
   assert.strictEqual(gone.ratePlanRetired, true, 'і причина названа: тариф знято з продажу, а не «ціни немає»');
-  const coords = await sql.rows<any>(
+  const coords = await asA.rows(
     "SELECT unit_type_id, rate_plan_id, stay_date, stay_date_to FROM cm_outbox WHERE connection_id = '__rpw_conn' AND kind = 'rate'",
   );
   assert.deepStrictEqual(
@@ -212,17 +252,17 @@ try {
     [{ ut: UT(A), rp: bb.id, from: span.from, to: span.to }],
     'зняття кладе РІВНО одну координату: пара з дзеркала, від сьогодні до горизонту',
   );
-  assert.strictEqual((await sql.rows('SELECT id FROM cm_mappings WHERE id = ?', ['__rpw_map_bb'])).length, 1, 'дзеркало лишилось — є кому адресувати «закрито»');
+  assert.strictEqual((await asA.rows('SELECT id FROM cm_mappings WHERE id = ?', ['__rpw_map_bb'])).length, 1, 'дзеркало лишилось — є кому адресувати «закрито»');
   await runWithOrganization(B, () => assert.rejects(() => updateRatePlan(bb.id, { isActive: true }), /not found/i, 'чужий орендар не повертає в продаж'));
 
-  await sql.run("DELETE FROM cm_outbox WHERE connection_id = '__rpw_conn'");
+  await asA.run("DELETE FROM cm_outbox WHERE connection_id = '__rpw_conn'");
   const on = await runWithOrganization(A, () => updateRatePlan(bb.id, { isActive: true }));
   assert.strictEqual(on.isActive, true);
   const back = await quote();
   assert.deepStrictEqual(back.missing, [], 'повернутий у продаж — ціна знову є');
   assert.strictEqual(back.nights[0]?.price, 120, 'та сама ціна з календаря, не нова');
   assert.ok((await runWithOrganization(A, () => propertyRatePlans(PROP(A)))).some((p) => p.id === bb.id), 'і читач каналу знову бачить');
-  assert.strictEqual((await sql.rows("SELECT id FROM cm_outbox WHERE connection_id = '__rpw_conn' AND kind = 'rate'")).length, 1,
+  assert.strictEqual((await asA.rows("SELECT id FROM cm_outbox WHERE connection_id = '__rpw_conn' AND kind = 'rate'")).length, 1,
     'повернення теж кладе координату до горизонту — канал має відкрити ночі, а не чекати наступної ціни');
   console.log('  ok  зняти з продажу: дзеркало лишається, ціна зникає для всіх, координата на пару до горизонту; повернення — назад');
 
@@ -268,7 +308,7 @@ try {
   assert.strictEqual(readSellMode('per_night', 'x'), 'per_person', 'невідомий режим на читанні — per_person, не виняток');
   assert.strictEqual(readSellMode('per_room', 'x'), 'per_room', 'відомий режим читається як є');
   assert.strictEqual(readSellMode(null, 'x'), 'per_person', 'порожній — дефолт');
-  const refused = await sql.run(
+  const refused = await asA.run(
     `INSERT INTO rate_plans (id, property_id, name, code, currency, sell_mode) VALUES (?, ?, 'Stray', 'STRAY', 'USD', 'per_night')`,
     [`${A}_stray`, PROP(A)],
   ).then(() => false, (e: unknown) => /check/i.test(String((e as Error)?.message ?? e)));
@@ -360,8 +400,8 @@ try {
     }), /based_on_invalid/, 'похідний від похідного — відмова: ланцюжок правил ніхто не прочитає'));
 
     // Зміна бази перерендерює похідні; перевизначення дати на похідному живе.
-    await sql.run("DELETE FROM cm_outbox WHERE connection_id = '__rpw_conn'");
-    await sql.run(
+    await asA.run("DELETE FROM cm_outbox WHERE connection_id = '__rpw_conn'");
+    await asA.run(
       `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, remote_id)
        VALUES ('__rpw_map_nr', ?, '__rpw_conn', 'rate_plan', ?, ?, 'remote-nr')`,
       [A, nr.id, UT(A)],
@@ -373,13 +413,13 @@ try {
     assert.strictEqual(await price(plus.id, D2), 145, 'PLUS без перевизначення — 120 + 25');
     await runWithOrganization(A, () => upsertPrices(UT(A), [{ date: D3, base_price: 190 }], { ratePlanId: std.id }));
     assert.strictEqual(await price(nr.id, D3), 171, 'зміна власного рядка бази 180 → 190: NR 171');
-    const nrCoords = await sql.rows<any>("SELECT stay_date, stay_date_to FROM cm_outbox WHERE connection_id = '__rpw_conn' AND rate_plan_id = ?", [nr.id]);
+    const nrCoords = await asA.rows("SELECT stay_date, stay_date_to FROM cm_outbox WHERE connection_id = '__rpw_conn' AND rate_plan_id = ?", [nr.id]);
     assert.ok(nrCoords.length >= 1, 'рендер похідного іде через двері каналу — координата на його пару (Ц16)');
 
     // Знятий з продажу похідний перерендер не повертає в продаж — і не
     // перерендерює взагалі (рецензія 07.09 п.2): координат на його пару немає.
     await runWithOrganization(A, () => updateRatePlan(nr.id, { isActive: false }));
-    await sql.run("DELETE FROM cm_outbox WHERE connection_id = '__rpw_conn'");
+    await asA.run("DELETE FROM cm_outbox WHERE connection_id = '__rpw_conn'");
     await runWithOrganization(A, () => bulkUpdatePrices({ unitTypeId: UT(A), dateFrom: D3, dateTo: D3, applyTo: 'all', base_price: 210 }));
     const retired = await q(nr.id, D3);
     assert.deepStrictEqual(retired.missing, [D3], 'знятий похідний після перерендеру бази лишається без ціни');
@@ -389,9 +429,9 @@ try {
     // Вісь «знятий не перерендерюється»: база типу D1 120 → 130 змінила б рядок NR
     // (108 → 117) і поклала б координату на зняту пару — не має ні того, ні того.
     await runWithOrganization(A, () => bulkUpdatePrices({ unitTypeId: UT(A), dateFrom: D1, dateTo: D1, applyTo: 'all', base_price: 130 }));
-    assert.strictEqual(Number((await sql.row<any>('SELECT base_price FROM price_calendar WHERE rate_plan_id = ? AND date = ?', [nr.id, D1]))?.base_price), 108,
+    assert.strictEqual(Number((await asA.row('SELECT base_price FROM price_calendar WHERE rate_plan_id = ? AND date = ?', [nr.id, D1]))?.base_price), 108,
       'рядок знятого похідного не перерахований (лишився 108, не 117)');
-    assert.strictEqual((await sql.rows<any>("SELECT id FROM cm_outbox WHERE connection_id = '__rpw_conn' AND rate_plan_id = ?", [nr.id])).length, 0,
+    assert.strictEqual((await asA.rows("SELECT id FROM cm_outbox WHERE connection_id = '__rpw_conn' AND rate_plan_id = ?", [nr.id])).length, 0,
       'і жодної координати на зняту пару при зміні бази');
     assert.strictEqual(await price(plus.id, D1), 155, 'а живий PLUS перерахований: 130 + 25');
     // Зняти БАЗУ з продажу, поки на неї спирається активний похідний (PLUS), не
@@ -409,7 +449,7 @@ try {
     // Базу з похідними не видалити; похідний видаляється разом зі своїми рядками.
     await runWithOrganization(A, () => assert.rejects(() => deleteRatePlan(std.id), /has_dependents/, 'на базу спираються похідні — відмова з назвою'));
     await runWithOrganization(A, () => deleteRatePlan(plus.id));
-    assert.strictEqual((await sql.rows('SELECT id FROM price_calendar WHERE rate_plan_id = ?', [plus.id])).length, 0, 'рядки похідного — його, і йдуть разом із ним');
+    assert.strictEqual((await asA.rows('SELECT id FROM price_calendar WHERE rate_plan_id = ?', [plus.id])).length, 0, 'рядки похідного — його, і йдуть разом із ним');
     // Активних похідних не лишилось (NR знято, PLUS видалено, FREE активний!) — FREE ще тримає базу.
     await runWithOrganization(A, () => assert.rejects(() => updateRatePlan(std.id, { isActive: false }), /has_dependents/, 'FREE активний — база ще тримається'));
     await runWithOrganization(A, () => updateRatePlan(free.id, { isActive: false }));
