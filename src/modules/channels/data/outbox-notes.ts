@@ -2,7 +2,9 @@ import type { Sql } from '@core/db/async';
 import { connectionsForProperty } from './connections.repo';
 import { connectionMirror } from './mappings.repo';
 import { enqueueChange, OUTBOX_HORIZON_DAYS } from './outbox.repo';
-import { listRatePlans } from '@pricing';
+// Вузькі двері, не повний фасад: `@pricing` тягне HTTP-обробники, а з ними
+// `next/server`, якого в продакшн-образі немає (`@pricing/plans`).
+import { listRatePlans } from '@pricing/plans';
 import type { RateField } from '../domain/ari-batch.ts';
 
 /**

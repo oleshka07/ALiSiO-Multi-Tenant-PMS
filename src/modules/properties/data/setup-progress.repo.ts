@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from '@core/db/async';
 import { todayFor } from '@core/hotel-day';
-import { pricedDaysAhead, listRatePlans } from '@pricing';
+// Вузькі двері — див. `@pricing/plans`: повний фасад тягне `next/server`.
+import { pricedDaysAhead, listRatePlans } from '@pricing/plans';
 import { connectionsForProperty } from '@channels';
 import { hasFeature } from '@core/features';
 import { setupProgress, PRICE_COVERAGE_DAYS, type SetupProgress, type SetupSnapshot } from '../domain/setup-progress';
