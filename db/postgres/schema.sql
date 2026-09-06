@@ -1536,8 +1536,10 @@ CREATE TABLE "properties" (
   "is_active" BOOLEAN DEFAULT true NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "checkout_balance_policy" TEXT DEFAULT 'warning' NOT NULL,
   PRIMARY KEY ("id"),
-  UNIQUE ("organization_id", "slug")
+  UNIQUE ("organization_id", "slug"),
+  CHECK (checkout_balance_policy IN ('none', 'warning', 'blocking'))
 );
 
 CREATE TABLE "property_guest_config" (
@@ -1614,6 +1616,20 @@ CREATE TABLE "rate_plans" (
   CHECK (pricing_type IN ('manual', 'derived')),
   CHECK (adjustment_kind IN ('percent', 'fixed')),
   CHECK (adjustment_direction IN ('increase', 'decrease'))
+);
+
+CREATE TABLE "reservation_files" (
+  "id" TEXT DEFAULT encode(gen_random_bytes(16), 'hex') NOT NULL,
+  "organization_id" TEXT NOT NULL,
+  "reservation_id" TEXT NOT NULL,
+  "kind" TEXT DEFAULT 'other' NOT NULL,
+  "path" TEXT NOT NULL,
+  "original_name" TEXT NOT NULL,
+  "mime_type" TEXT,
+  "size_bytes" BIGINT DEFAULT 0 NOT NULL,
+  "uploaded_by" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  PRIMARY KEY ("id")
 );
 
 CREATE TABLE "reservation_guests" (
@@ -2438,6 +2454,10 @@ ALTER TABLE "rate_plans" ADD CONSTRAINT "fk_rate_plans_based_on_rate_plan_id_1"
   FOREIGN KEY ("based_on_rate_plan_id") REFERENCES "rate_plans" ("id");
 ALTER TABLE "rate_plans" ADD CONSTRAINT "fk_rate_plans_property_id_2"
   FOREIGN KEY ("property_id") REFERENCES "properties" ("id") ON DELETE CASCADE;
+ALTER TABLE "reservation_files" ADD CONSTRAINT "fk_reservation_files_reservation_id_1"
+  FOREIGN KEY ("reservation_id") REFERENCES "reservations" ("id") ON DELETE CASCADE;
+ALTER TABLE "reservation_files" ADD CONSTRAINT "fk_reservation_files_organization_id_2"
+  FOREIGN KEY ("organization_id") REFERENCES "organizations" ("id") ON DELETE CASCADE;
 ALTER TABLE "reservation_guests" ADD CONSTRAINT "fk_reservation_guests_sub_booking_id_1"
   FOREIGN KEY ("sub_booking_id") REFERENCES "reservation_sub_bookings" ("id");
 ALTER TABLE "reservation_guests" ADD CONSTRAINT "fk_reservation_guests_guest_id_2"
@@ -2707,6 +2727,8 @@ CREATE UNIQUE INDEX "idx_price_occupancy_row" ON "price_occupancy" (organization
 CREATE INDEX "idx_price_rules_org" ON "price_rules" ("organization_id");
 CREATE UNIQUE INDEX "idx_price_rules_promo_code" ON "price_rules" (organization_id, lower(code)) WHERE code IS NOT NULL;
 CREATE INDEX "idx_price_rules_property" ON "price_rules" ("property_id", "priority");
+CREATE INDEX "idx_reservation_files_org" ON "reservation_files" ("organization_id");
+CREATE INDEX "idx_reservation_files_reservation" ON "reservation_files" ("reservation_id", "created_at");
 CREATE INDEX "idx_line_items_sub" ON "reservation_line_items" ("sub_booking_id");
 CREATE INDEX "idx_sub_bookings_res" ON "reservation_sub_bookings" ("reservation_id");
 CREATE INDEX "idx_reservations_company" ON "reservations" ("company_id");
@@ -2814,6 +2836,7 @@ CREATE INDEX IF NOT EXISTS "idx_price_los_tiers_org" ON "price_los_tiers" ("orga
 CREATE INDEX IF NOT EXISTS "idx_price_occupancy_org" ON "price_occupancy" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_price_rules_org" ON "price_rules" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_properties_org" ON "properties" ("organization_id");
+CREATE INDEX IF NOT EXISTS "idx_reservation_files_org" ON "reservation_files" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_reservations_org" ON "reservations" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_season_prices_org" ON "season_prices" ("organization_id");
 CREATE INDEX IF NOT EXISTS "idx_seasons_org" ON "seasons" ("organization_id");
@@ -2958,6 +2981,8 @@ ALTER TABLE "price_occupancy" ALTER COLUMN "organization_id"
 ALTER TABLE "price_rules" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "properties" ALTER COLUMN "organization_id"
+  SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
+ALTER TABLE "reservation_files" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
 ALTER TABLE "reservations" ALTER COLUMN "organization_id"
   SET DEFAULT NULLIF(current_setting('app.organization_id', true), '');
@@ -3478,6 +3503,12 @@ ALTER TABLE "rate_plans" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "rate_plans_tenant" ON "rate_plans"
   USING ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')))
   WITH CHECK ("property_id" IN (SELECT "id" FROM "properties" WHERE "organization_id" = current_setting('app.organization_id')));
+
+ALTER TABLE "reservation_files" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "reservation_files" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "reservation_files_tenant" ON "reservation_files"
+  USING ("organization_id" = current_setting('app.organization_id'))
+  WITH CHECK ("organization_id" = current_setting('app.organization_id'));
 
 ALTER TABLE "reservation_guests" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "reservation_guests" FORCE ROW LEVEL SECURITY;
