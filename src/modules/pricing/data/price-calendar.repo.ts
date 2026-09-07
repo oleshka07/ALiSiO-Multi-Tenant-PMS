@@ -526,21 +526,31 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
   return prices.length;
 }
 
+/**
+ * Ціни діапазону для шахматки. `effective_price` рахує КОД, не запит.
+ *
+ * Тут стояв власний `CASE WHEN dayOfWeek IN (0,5,6) AND weekend_price IS NOT
+ * NULL` — четверта копія правила вихідних, і в ній не було варти на нуль та
+ * відʼємне, яку `nightly-price` має з 0062. Тобто `weekend_price = 0`
+ * показувався б суботі як ціна саме тим шляхом, який 0062 закрила для
+ * буднів. Блок 6 оголосив копії прибраними і цю не побачив: гейт шукав
+ * ТЕРНАРНИК у JS, а SQL-гілка на цей візерунок не схожа (рецензія раунду 9,
+ * Р9.3).
+ *
+ * Правило одне — `dayRowPrice()` з `@pricing/domain/day-price`, — і воно не
+ * буває в SQL: запит віддає колонки, рішення ухвалює домен.
+ */
 export async function getBulkPrices(organizationId: string, startDate: string, endDate: string) {
   const sql = getSql();
-  return await sql.rows<any>(`
-    SELECT pc.unit_type_id, pc.date, pc.base_price, pc.weekend_price,
-      CASE
-        WHEN (${sql.dialect.dayOfWeek('pc.date')} IN (0, 5, 6)) AND pc.weekend_price IS NOT NULL
-        THEN pc.weekend_price
-        ELSE pc.base_price
-      END as effective_price
+  const rows = await sql.rows<any>(`
+    SELECT pc.unit_type_id, pc.date, pc.base_price, pc.weekend_price
     FROM price_calendar pc
     JOIN unit_types ut ON pc.unit_type_id = ut.id
     JOIN properties p ON ut.property_id = p.id
     WHERE p.organization_id = ? AND pc.date >= ? AND pc.date <= ?
     ORDER BY pc.unit_type_id, pc.date
   `, [organizationId, startDate, endDate]);
+  return rows.map((r) => ({ ...r, effective_price: dayRowPrice(r, r.date).price }));
 }
 
 export interface BulkUpdateInput {

@@ -261,7 +261,6 @@ async function calendarFor(searchParams: URLSearchParams) {
 
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr   = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const isWeekend = [0, 5, 6].includes(new Date(year, month, d).getDay());
 
       const bookedUnitIds = new Set<string>();
       for (const r of reservations) {

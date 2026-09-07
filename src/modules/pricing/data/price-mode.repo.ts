@@ -19,3 +19,27 @@ export async function setPricingAdvanced(organizationId: string, advanced: boole
   await getSql().run(
     'UPDATE organizations SET pricing_advanced = ? WHERE id = ?', [advanced, organizationId]);
 }
+
+/**
+ * Скільки МАЙБУТНІХ днів мають окрему ціну вихідних.
+ *
+ * Потрібне рівно в одному місці: коли готель ВИМИКАЄ розширений режим
+ * (рецензія раунду 9, Р9.5). Дані в мить перемикання не гинуть, але готель
+ * переходить у режим, де кожна правка ціни витирає невидиме число — і доти
+ * про це не було сказано ніде, а заводити ціни вихідних можна й повз цей
+ * екран (сезони). Тому перемикання називає число: «на 14 днях стоїть окрема
+ * ціна вихідних».
+ *
+ * Минулі дати не рахуються: правку ціни на вчора ніхто не робить, а число,
+ * яке включає торішні дні, лякає без причини.
+ */
+export async function weekendPriceDayCount(organizationId: string, from: string): Promise<number> {
+  const row = await getSql().row<{ n?: unknown }>(`
+    SELECT COUNT(*) AS n
+    FROM price_calendar pc
+    JOIN unit_types ut ON pc.unit_type_id = ut.id
+    JOIN properties p ON ut.property_id = p.id
+    WHERE p.organization_id = ? AND pc.date >= ? AND pc.weekend_price IS NOT NULL AND pc.weekend_price > 0
+  `, [organizationId, from]);
+  return Number(row?.n ?? 0) || 0;
+}

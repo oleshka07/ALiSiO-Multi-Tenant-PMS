@@ -407,42 +407,171 @@ try {
     console.log('  ok  простий режим: 333 доходить до ночі й до сітки, у тому числі в пʼятницю й суботу');
   });
 
-  // ── 16. Підпис клітинки збігається з тим, за що платить гість ─────────
+  // ── 16. Число І підпис клітинки — з того самого резолвера ────────────
   //
-  // Блок 6, гейт 3. Підпис — це відповідь на «чому тут це число», і він
-  // мусить приходити з ТОГО САМОГО резолвера, що цінує ніч. Найгостріше це
-  // видно на матриці: сітка місяця знає лише рядки календаря, тож виведений
-  // із них підпис сказав би «базова 100», поки гість платить 120 з матриці.
+  // Блок 6 гейт 3, і рецензія раунду 9 (Р9.2, блокер). Підпис — це відповідь
+  // на «чому тут це число», тож обидва мусять приходити з ТОГО САМОГО
+  // резолвера, що цінує ніч. Найгостріше це видно на матриці: сітка місяця
+  // знає лише рядки календаря, і доти клітинка малювала 100 із сітки, а
+  // підпис «матриця заселеності» — з резолвера гостя, який казав 120.
   //
   // Осі (інваріант 26): три різні джерела на трьох датах — базова, ціна
-  // вихідних і матриця, — і три різні числа. З одним джерелом твердження
-  // зелене і на коді, який завжди повертає той самий ключ.
+  // вихідних і матриця, — три різні числа, і на матричній даті число сітки
+  // (100) арифметично несумісне з ціною гостя (120). З одним джерелом або з
+  // рівними числами твердження зелене й на коді, що бере число не звідти.
   await runWithOrganization(A, async () => {
-    const { monthOrigins } = await import('./month-origins.ts');
+    const { monthGuestPrices } = await import('./month-origins.ts');
+    const { cellPrice } = await import('../ui/price-origin.ts');
     const { createPrice } = await import('./occupancy-price.repo.ts');
     // 25.11 — середа (базова), 27.11 — пʼятниця (ціна вихідних).
     await upsertPrices(UT(A), [{ date: D1, base_price: 100, weekend_price: null }]);
     await upsertPrices(UT(A), [{ date: D3, base_price: 100, weekend_price: 115 }]);
 
-    const before = await monthOrigins(UT(A), 11, 2026);
-    assert.strictEqual(before[D1], 'unit_type', `${D1}: середа — базова ціна типу, а не ${before[D1]}`);
-    assert.strictEqual(before[D3], 'unit_type_weekend', `${D3}: пʼятниця — ціна вихідних, а не ${before[D3]}`);
+    const before = await monthGuestPrices(UT(A), 11, 2026);
+    assert.strictEqual(before[D1]?.origin, 'unit_type', `${D1}: середа — базова ціна типу, а не ${before[D1]?.origin}`);
+    assert.strictEqual(before[D1]?.price, 100, `${D1}: і число те саме`);
+    assert.strictEqual(before[D3]?.origin, 'unit_type_weekend', `${D3}: пʼятниця — ціна вихідних, а не ${before[D3]?.origin}`);
+    assert.strictEqual(before[D3]?.price, 115, `${D3}: і число — 115, з колонки вихідних`);
 
-    // А тепер матриця заселеності на дві особи: вона перекриває календар, і
-    // підпис мусить це сказати — інакше екран називає джерело, якого гість не
-    // бачить у своїй сумі.
+    // А тепер матриця заселеності на дві особи: вона перекриває календар.
     await createPrice(PROP(A), { unit_type_id: UT(A), persons: 2, price_gross: 120 });
-    const after = await monthOrigins(UT(A), 11, 2026);
-    assert.strictEqual(after[D1], 'matrix', `${D1}: матриця перекриває календар — підпис мусить казати «матриця», а не ${after[D1]}`);
+    const after = await monthGuestPrices(UT(A), 11, 2026);
+    assert.strictEqual(after[D1]?.origin, 'matrix', `${D1}: матриця перекриває календар — підпис мусить казати «матриця», а не ${after[D1]?.origin}`);
+    assert.strictEqual(after[D1]?.price, 120, `${D1}: і число мусить бути 120 — стільки платить гість, а не ${after[D1]?.price}`);
 
-    // І число під підписом — те саме, що платить гість.
+    // Ось і сам розрив, який бачив контролер: сітка каже 100, гість платить
+    // 120. Клітинка мусить показати 120 з підписом «матриця», а не 100 з ним.
+    const month = await getPriceMonth(UT(A), 11, 2026);
+    const gridDay = month.days.find((d) => d.date === D1)!;
+    assert.strictEqual(gridDay.effective_price, 100,
+      'сітка календаря й далі каже 100 — саме тому число не можна брати з неї');
+    const cell = cellPrice({ effective_price: gridDay.effective_price, guest: after[D1] });
+    assert.strictEqual(cell.price, 120, 'клітинка показує 120 — те, що платить гість, а не 100 з рядка');
+    assert.strictEqual(cell.origin, 'matrix', 'і підпис під цим самим числом');
+
+    // І сам резолвер називає те саме — доказ, що це не збіг у перекладі.
     const night = await priceNights({ unitTypeId: UT(A), checkIn: D1, nights: 1, adults: 2 });
     assert.strictEqual(night.nights[0]?.price, 120, 'гість платить 120 з матриці');
-    assert.strictEqual(night.nights[0]?.source, 'matrix', 'і сам резолвер називає те саме джерело');
+    assert.strictEqual(night.nights[0]?.source, 'matrix');
     assert.strictEqual(night.nights[0]?.column, 'base', 'матриця колонки вихідних не має');
 
+    // ── Вісь кадрування: сітка цін питає про ОДНУ ніч ──────────────────
+    //
+    // Спершу тут був один виклик `priceNights` на весь місяць
+    // (`nights: lastDay`), і знижка за довжину перебування мовчки лягала на
+    // кожну клітинку: тридцять ночей — це одна довга поїздка. Без тіра ця
+    // вісь вироджена — «одна ніч» і «дві ночі» дають те саме число, і мутація
+    // кадрування лишається зеленою (інваріант 26). Тому тір є, і його
+    // величина (−20) арифметично несумісна з правильною відповіддю.
+    const { createTier } = await import('./occupancy-price.repo.ts');
+    await createPrice(PROP(A), { unit_type_id: UT(A), persons: 2, price_gross: 120 });
+    const tierId = await createTier(PROP(A), { unit_type_id: UT(A), min_nights: 2, adjustment_gross: -20, persons: 2 });
+    const oneNight = await monthGuestPrices(UT(A), 11, 2026);
+    assert.strictEqual(oneNight[D1]?.price, 120,
+      `${D1}: клітинка питає про ОДНУ ніч — 120, а не 100 зі знижки за дві (${oneNight[D1]?.price})`);
+    const twoNights = await priceNights({ unitTypeId: UT(A), checkIn: D1, nights: 2, adults: 2 });
+    assert.strictEqual(twoNights.nights[0]?.price, 100,
+      'а поїздка на дві ночі справді дешевша — інакше твердження вище нічого не розрізняє');
+
+    if (tierId) await sql.run('DELETE FROM price_los_tiers WHERE id = ?', [tierId]);
     await sql.run('DELETE FROM price_occupancy WHERE unit_type_id = ?', [UT(A)]);
-    console.log('  ok  підпис клітинки — з того самого резолвера, що ціна гостя: базова, вихідних, матриця');
+    console.log('  ok  число й підпис клітинки — з одного резолвера, і клітинка питає про одну ніч (120, не 100)');
+  });
+
+  // ── 17. Масовий редактор у простому режимі — як денний ────────────────
+  //
+  // Рецензія раунду 9, Р9.1 (блокер). Сцена 15 доводила це для ДЕННОЇ
+  // модалки, і саме тому дірка лишилась непоміченою: масовий редактор — це
+  // той шлях, яким ціну ставлять на місяць, і в ньому 115 переживало 333.
+  //
+  // Проміжок навмисно перетинає межу тижня: 25–26.11 — будні, 27.11 —
+  // пʼятниця, 28.11 — субота. З одного дня сцена була б зелена й на коді, де
+  // правило вихідних не зачеплене взагалі (інваріант 26).
+  await runWithOrganization(A, async () => {
+    const { buildBulkPayload } = await import('../ui/bulk-edit.ts');
+    const DAYS = [D1, D2, D3, D4];
+    for (const date of DAYS) await upsertPrices(UT(A), [{ date, base_price: 100, weekend_price: 115 }]);
+
+    const before = await priceNights({ unitTypeId: UT(A), checkIn: D3, nights: 1, adults: 2 });
+    assert.strictEqual(before.nights[0]?.price, 115, 'до правки пʼятниця коштує 115 — інакше сцена нічого не про вихідні');
+
+    // Те, що робить оператор у простому режимі: діапазон, 333, зберегти.
+    const body = buildBulkPayload(
+      {
+        dateFrom: D1, dateTo: D4, applyTo: 'all',
+        basePrice: 333, weekendPrice: '', clearWeekend: false, minStay: '', maxStay: '',
+      },
+      { ratePlanSelected: false, allPlans: false, advanced: false },
+    );
+    await bulkUpdatePrices({ unitTypeId: UT(A), ...body });
+
+    for (const date of DAYS) {
+      const q = await priceNights({ unitTypeId: UT(A), checkIn: date, nights: 1, adults: 2 });
+      assert.strictEqual(q.nights[0]?.price, 333,
+        `${date}: мусить коштувати 333, а не ${q.nights[0]?.price}`);
+    }
+
+    // І окремо — рядок, яким рецензія назвала дефект.
+    const friday = await priceNights({ unitTypeId: UT(A), checkIn: D3, nights: 1, adults: 2 });
+    assert.strictEqual(friday.nights[0]?.price, 333, '2026-11-27: мусить коштувати 333, а не 115');
+
+    // Друге значення осі «чи змінено ціну»: правка самого лише мінімуму ночей
+    // ціну вихідних НЕ витирає. Без цього «прибирати завжди» було б зеленим.
+    await upsertPrices(UT(A), [{ date: D3, base_price: 100, weekend_price: 115 }]);
+    const onlyMin = buildBulkPayload(
+      {
+        dateFrom: D3, dateTo: D3, applyTo: 'all',
+        basePrice: '', weekendPrice: '', clearWeekend: false, minStay: 3, maxStay: '',
+      },
+      { ratePlanSelected: false, allPlans: false, advanced: false },
+    );
+    await bulkUpdatePrices({ unitTypeId: UT(A), ...onlyMin });
+    const kept = await priceNights({ unitTypeId: UT(A), checkIn: D3, nights: 1, adults: 2 });
+    assert.strictEqual(kept.nights[0]?.price, 115,
+      'правка самого лише мінімуму ночей не чіпає ціни вихідних — інакше вона витирала б числа мовчки');
+
+    console.log('  ok  масовий редактор у простому режимі: 333 доходить до пʼятниці й суботи, правка мінімуму нічого не витирає');
+  });
+
+  // ── 18. Нуль у колонці вихідних не стає ціною НА ЖОДНОМУ шляху ────────
+  //
+  // Рецензія раунду 9, Р9.3. Варта на нуль і відʼємне жила в `nightly-price`
+  // з 0062, а `getBulkPrices` мала власну копію правила в SQL — без неї. Тобто
+  // шахматка показувала б суботу за нуль тим самим шляхом, який 0062 закрила
+  // для буднів. Статична половина гейта (`day-price.check` сцена 5) стереже,
+  // щоб копій не було; ця стереже наслідок.
+  //
+  // Осі (інваріант 26): три ШЛЯХИ, які віддають ціну дня, і два дні — субота
+  // (де колонка вихідних діє) і середа (де ні). З одного шляху або з одного
+  // дня твердження зелене й там, де правило не зачеплене.
+  await runWithOrganization(A, async () => {
+    const { getBulkPrices } = await import('./price-calendar.repo.ts');
+    // Нуль писачі не приймають (Ц24) — рядок міг лягти повз писача або до
+    // відмови, тому сюди він потрапляє сирим запитом, як у житті.
+    await upsertPrices(UT(A), [{ date: D4, base_price: 200 }]);   // 28.11 — субота
+    await upsertPrices(UT(A), [{ date: D2, base_price: 200 }]);   // 26.11 — середа
+    await sql.run('UPDATE price_calendar SET weekend_price = 0 WHERE unit_type_id = ? AND date IN (?, ?)',
+      [UT(A), D4, D2]);
+
+    const month = await getPriceMonth(UT(A), 11, 2026);
+    for (const date of [D4, D2]) {
+      const day = month.days.find((d) => d.date === date)!;
+      assert.strictEqual(day.effective_price, 200, `${date}: сітка місяця — 200, а не нуль з колонки вихідних`);
+      assert.strictEqual(day.price_column, 'base', `${date}: і колонка «базова» — нуля в колонці вихідних не існує`);
+    }
+
+    const bulk = await getBulkPrices(A, D1, D4);
+    for (const date of [D4, D2]) {
+      const row = bulk.find((r: { date: string; unit_type_id: string }) => r.date === date && r.unit_type_id === UT(A))!;
+      assert.strictEqual(Number(row.effective_price), 200,
+        `${date}: шахматка — 200, а не ${row.effective_price}: нуль у колонці вихідних не продає ніч`);
+    }
+
+    for (const date of [D4, D2]) {
+      const q = await priceNights({ unitTypeId: UT(A), checkIn: date, nights: 1, adults: 2 });
+      assert.strictEqual(q.nights[0]?.price, 200, `${date}: і гість платить 200`);
+    }
+    console.log('  ok  нуль у колонці вихідних не стає ціною: ні в сітці, ні в шахматці, ні у гостя — і в суботу, і в середу');
   });
 
   console.log('price-calendar: ціна тарифу на дату — своя, успадкована названа, чуже — відмова; ціни немає — NULL, нуль — відмова');

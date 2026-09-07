@@ -57,20 +57,49 @@ assert.strictEqual(priceOrigin('matrix'), 'matrix', 'матриця колонк
 // ── 5. Копій правила не лишилось ──────────────────────────────────────────
 //
 // Статично, і саме тому, що поведінка тут нічого про копії не каже: три
-// однакові рядки в трьох файлах дають зелений результат кожен окремо. Шукаємо
-// сам візерунок «вихідний ? ціна вихідних : базова» поза цим модулем.
+// однакові рядки в трьох файлах дають зелений результат кожен окремо.
+//
+// Спершу тут шукався ТЕРНАРНИК `isWeekend && …weekend… != null ?`, і рецензія
+// раунду 9 (Р9.3) показала, чого це варте: четверта копія жила в SQL
+// (`CASE WHEN dayOfWeek IN (0,5,6) AND weekend_price IS NOT NULL`), на
+// візерунок не схожа, і гейт лишався зеленим. Другим твердженням він приймав
+// файл, у якому просто трапилось слово `min_weekend_price`.
+//
+// Тому шукається ВЛАСТИВІСТЬ, а не форма: `weekend_price` у файлі поза цим
+// модулем може бути лише ІМЕНЕМ — колонкою в SQL, полем обʼєкта, ключем
+// маски. Щойно поруч зʼявляється рішення (`CASE`, `?`, `IS NOT NULL`,
+// порівняння) — це власна копія правила, хай яким синтаксисом написана.
 const FILES = [
   'src/modules/pricing/data/nightly-price.ts',
   'src/modules/pricing/data/price-calendar.repo.ts',
   'src/modules/widget/api/widget-calendar-public.handlers.ts',
 ];
+// Рішення про те, ЯКА КОЛОНКА діє, за означенням вимагає знати день тижня.
+// Тому червоне — це пара «колонка вихідних + день» в одному рішенні, хай яким
+// синтаксисом написана: тернарник у JS чи `CASE WHEN` у SQL. Саме пари не
+// вистачало старому візерунку — SQL-гілка на тернарник не схожа (Р9.3).
+//
+// Нормалізація `null` (`weekend_price == null ? null : Number(...)`) під це не
+// підпадає, і правильно: вона про тип значення, а не про те, чиє воно.
+const COLUMN = /\b(weekend_price|weekendPrice)\b/i;
+const DAY = /\b(isWeekend|dayOfWeek|getUTCDay|getDay)\b|IN\s*\(\s*0\s*,\s*5\s*,\s*6\s*\)/i;
+// Третя складова — саме РІШЕННЯ. Перелік полів, де день і колонка стоять
+// поруч як дані (`{ dayOfWeek, isWeekend, weekend_price: null }`), нічого не
+// вирішує; рішення видно за умовою або галуженням.
+const DECIDE = /\?|\bCASE\b|\bTHEN\b|\bAND\b|IS\s+NOT\s+NULL|[!=]==?|&&|\|\|/i;
 for (const f of FILES) {
   const text = (await readFile(new URL(`../../../../${f}`, import.meta.url), 'utf8'))
     .replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.ok(!/isWeekend\s*&&\s*\w*[Ww]eekend\w*\s*!=\s*null\s*\?/.test(text),
-    `${f}: своя копія правила вихідних — має бути виклик dayRowPrice() з @pricing/domain/day-price`);
-  assert.ok(/dayRowPrice|min_weekend_price/.test(text),
-    `${f}: правило вихідних мусить приходити з одного місця`);
+  for (const line of text.split('\n')) {
+    assert.ok(!(COLUMN.test(line) && DAY.test(line) && DECIDE.test(line)),
+      `${f}: своя копія правила вихідних — «${line.trim()}». Рішення ухвалює dayRowPrice() з @pricing/domain/day-price`);
+  }
+  // І окремо — SQL: `CASE`, у тілі якого згадана колонка вихідних. Запит
+  // віддає колонки; який стовпчик діє на цю дату, вирішує домен.
+  assert.ok(!/CASE[\s\S]{0,300}?(weekend_price|weekendPrice)/i.test(text),
+    `${f}: правило вихідних усередині SQL CASE — запит має віддавати колонки, не рішення`);
+  assert.ok(/\bdayRowPrice\b/.test(text),
+    `${f}: правило вихідних мусить приходити з одного місця — виклику dayRowPrice() тут немає`);
 }
 
 console.log('day-price: правило вихідних одне, воно називає колонку, нуль і відʼємне не продають ніч');

@@ -10,9 +10,10 @@ import { usePropertyScope } from '@/ui/PropertyScopeContext';
 // серверний шар у клієнтський бандл, і збірка падає на `node:module`.
 import { buildDayPayload } from '@/modules/pricing/ui/day-edit';
 import type { DayEditPayload } from '@/modules/pricing/ui/day-edit';
+import { buildBulkPayload } from '@/modules/pricing/ui/bulk-edit';
 // Через двері `modules/pricing/ui/` — не імпортом нутрощів: підписи джерел
 // належать модулю цін, а не екрану (той самий шлях, що `day-edit`).
-import { ORIGIN_LABELS, type PriceOrigin } from '@/modules/pricing/ui/price-origin';
+import { ORIGIN_LABELS, cellPrice, type PriceOrigin } from '@/modules/pricing/ui/price-origin';
 import {
   ChevronLeft,
   ChevronRight,
@@ -59,14 +60,18 @@ interface PriceDay {
   /** Сітка тарифу: обмеження дня — власні цієї пари, не типу (Ц32 переглянуто 07.09). */
   restrictionsOwn?: boolean;
   /**
-   * Звідки взялося `effective_price` — ключ від сервера (Блок 6, п.1).
+   * Скільки коштує ця ніч ГОСТЮ і звідки число — від сервера, одним обʼєктом
+   * (Блок 6 п.1, Р9.2).
    *
    * Рахує його `priceNights`, той самий резолвер, що цінує ніч гостю: у
-   * ньому МАТРИЦЯ заселеності перекриває календар, тож вивести підпис із
-   * полів рядка не можна — клітинка казала б «базова 100», поки гість
-   * платить 120.
+   * ньому МАТРИЦЯ заселеності перекриває календар. Тому ні число, ні підпис
+   * не виводяться з полів рядка, і розділити їх тут нема з чого — доти
+   * клітинка казала «100 · матриця заселеності», поки матриця казала 120.
+   *
+   * `null` — ніч закрита або жодне джерело її не цінує: показуємо число
+   * рядка календаря БЕЗ підпису (`cellPrice`).
    */
-  origin?: PriceOrigin | null;
+  guest?: { price: number; origin: PriceOrigin } | null;
 }
 
 
@@ -150,15 +155,17 @@ function EditDayModal({ day, ratePlanSelected, advanced, onSave, onClose }: {
         <div className="modal-header">
           <h3 className="modal-title">
             {day.day} {t(MONTH_NAMES[new Date(day.date).getMonth()])} ({t(DAY_NAMES[day.dayOfWeek])})
-            {/* Звідки взялося число, яке лежить у полі. Ключ приходить із
-                сервера від `priceNights` — того самого резолвера, що цінує
-                ніч гостю; виводити його тут із `isWeekend` означало б завести
-                ще одну копію правила вихідних (Блок 6, п.1). */}
-            {day.effective_price != null && day.origin && (
-              <span style={{ display: 'block', fontSize: 11, fontWeight: 400, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                {day.effective_price.toLocaleString()} · {t(ORIGIN_LABELS[day.origin])}
-              </span>
-            )}
+            {/* Скільки платить гість і звідки це число — тим самим одним
+                рішенням, що й клітинка (`cellPrice`). Тут стояло число сітки
+                з підписом резолвера: два різні джерела в одному рядку. */}
+            {(() => {
+              const cell = cellPrice(day);
+              return cell.price != null && cell.origin ? (
+                <span style={{ display: 'block', fontSize: 11, fontWeight: 400, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                  {cell.price.toLocaleString()} · {t(ORIGIN_LABELS[cell.origin])}
+                </span>
+              ) : null;
+            })()}
           </h3>
           <button className="modal-close" onClick={onClose}><X size={18} /></button>
         </div>
@@ -290,20 +297,21 @@ function BulkEditModal({ ratePlanSelected, advanced, onSave, onClose }: {
   const handleSave = async () => {
     if (!dateFrom || !dateTo) { alert(t('Вкажіть діапазон дат')); return; }
     setSaving(true);
-    await onSave({
-      dateFrom, dateTo, applyTo,
-      base_price: basePrice !== '' ? Number(basePrice) : undefined,
-      // `null` — прибрати; `undefined` — не чіпати. Порожнє поле більше не
-      // означає нічого третього.
-      weekend_price: clearWeekend ? null : (weekendPrice !== '' ? Number(weekendPrice) : undefined),
-      min_stay: minStay !== '' ? Number(minStay) : undefined,
-      max_stay: maxStay !== '' ? Number(maxStay) : undefined,
-      closed: closed,
-      cta: cta,
-      ctd: ctd,
-      // Обмеження з вибраним тарифом — на всі тарифи типу або лише на пару (Ц32 переглянуто).
-      ...(ratePlanSelected ? { restrictionsScope: allPlans ? 'type' : 'pair' } : {}),
-    });
+    // Тіло збирає `buildBulkPayload` — див. `pricing/ui/bulk-edit.ts`. Тут
+    // навмисно нема жодного рішення: поки воно жило в цьому виразі, у простому
+    // режимі невидима ціна вихідних 115 переживала правку ціни на 333 (Р9.1).
+    await onSave(buildBulkPayload(
+      {
+        dateFrom, dateTo, applyTo,
+        basePrice: basePrice !== '' ? Number(basePrice) : '',
+        weekendPrice: weekendPrice !== '' ? Number(weekendPrice) : '',
+        clearWeekend,
+        minStay: minStay !== '' ? Number(minStay) : '',
+        maxStay: maxStay !== '' ? Number(maxStay) : '',
+        closed, cta, ctd,
+      },
+      { ratePlanSelected, allPlans, advanced },
+    ));
     setSaving(false);
   };
 
@@ -576,6 +584,10 @@ export default function PricingPage() {
   // сітка місяця (міграція 0112). Дефолт простий: показати менше безпечніше,
   // ніж показати поле, яке мовчки перебиває ціну.
   const [advancedPricing, setAdvancedPricing] = useState(false);
+  /** Скільки майбутніх днів мають окрему ціну вихідних — для попередження Р9.5. */
+  const [weekendPriceDays, setWeekendPriceDays] = useState(0);
+  /** Ціну гостя порахувати не вдалось — підписів джерел на екрані немає (Р9.8). */
+  const [guestPriceError, setGuestPriceError] = useState<string | null>(null);
   const [toast, setToast] = useState('');
   // Чи веде цей готель ціни матрицею заселеності. Порожній день-календар при
   // заповненій матриці — не «цін немає», а «вони в іншому місці», і без цього
@@ -627,12 +639,24 @@ export default function PricingPage() {
       const data = await res.json();
       if (data.days) setPriceData(data.days);
       if (typeof data.advancedPricing === 'boolean') setAdvancedPricing(data.advancedPricing);
+      if (typeof data.weekendPriceDays === 'number') setWeekendPriceDays(data.weekendPriceDays);
+      setGuestPriceError(typeof data.guestPriceError === 'string' ? data.guestPriceError : null);
     } catch (e) { console.error(e); }
     setLoading(false);
   }, [selectedUnitType, month, year, ratePlanId]);
 
   /** Перемикач «розширені ціни» — записується готелю, не браузеру. */
   const toggleAdvanced = async (next: boolean) => {
+    // Вимкнення називає наслідок числом (Р9.5). Дані в мить перемикання не
+    // гинуть, але готель переходить у режим, де кожна правка ціни витирає
+    // невидиму ціну вихідних — а завести її можна й повз цей екран, у
+    // сезонах. Мовчазне перемикання тут і є той клас, який Блок 6 закриває.
+    if (!next && weekendPriceDays > 0) {
+      const ok = window.confirm(
+        `${t('Окрема ціна вихідних стоїть на днях:')} ${weekendPriceDays}. `
+        + t('У простому режимі це поле не показується, і кожна зміна ціни на такому дні прибиратиме його. Наявні числа зараз не зникнуть.'));
+      if (!ok) return;
+    }
     setAdvancedPricing(next);
     try {
       const res = await fetch('/api/pricing/mode', {
@@ -862,6 +886,16 @@ export default function PricingPage() {
           )}
         </div>
 
+        {/* Ціну гостя порахувати не вдалось: числа рядків лишаються, а підписи
+            джерел зникають з усього місяця. Мовчати про це не можна — оператор
+            бачив би екран без пояснень і не мав як зрозуміти чому (Р9.8). */}
+        {guestPriceError && (
+          <div className="card" style={{ marginBottom: 12, borderColor: 'var(--accent-warning)', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <AlertTriangle size={16} style={{ color: 'var(--accent-warning)', flexShrink: 0 }} />
+            <span style={{ fontSize: 13 }}>{t('Не вдалося порахувати ціну гостя — підписи джерел не показані. Числа з календаря на місці.')}</span>
+          </div>
+        )}
+
         {/* Month Navigation */}
         <div className="flex items-center justify-between mb-4">
           <button className="btn btn-ghost btn-icon" onClick={prevMonth}><ChevronLeft size={20} /></button>
@@ -897,22 +931,28 @@ export default function PricingPage() {
                         <div className="pricing-cell-date">
                           {day.day} {t(DAY_NAMES[day.dayOfWeek])}
                         </div>
-                        <div className="pricing-cell-price" style={{
-                          color: day.effective_price == null ? 'var(--text-tertiary)' : day.isWeekend ? '#f59e0b' : undefined,
-                          fontSize: day.effective_price != null ? 15 : 13,
-                        }}>
-                          {day.effective_price != null ? `${day.effective_price.toLocaleString()}` : '—'}{day.inherited ? <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 3 }}>↑</span> : null}
-                        </div>
-                        {/* Звідки це число (Блок 6, п.1). Ключ рахує сервер тим
-                            самим резолвером, що цінує ніч гостю: матриця
-                            заселеності перекриває календар, тож вивести підпис
-                            із полів рядка не можна — клітинка казала б «базова
-                            100», поки гість платить 120. */}
-                        {day.effective_price != null && day.origin && (
-                          <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }} title={t('Звідки взялося це число')}>
-                            {t(ORIGIN_LABELS[day.origin])}
-                          </div>
-                        )}
+                        {/* Число І підпис — одним рішенням (`cellPrice`).
+                            Р9.2: доти число малювала сітка календаря, а підпис
+                            приходив із резолвера гостя, і на живій базі це дало
+                            «100 · матриця заселеності», поки матриця казала
+                            120. Немає ціни гостя — показуємо число рядка без
+                            підпису: скільки заплатить гість, ми не знаємо. */}
+                        {(() => {
+                          const cell = cellPrice(day);
+                          return (<>
+                            <div className="pricing-cell-price" style={{
+                              color: cell.price == null ? 'var(--text-tertiary)' : day.isWeekend ? '#f59e0b' : undefined,
+                              fontSize: cell.price != null ? 15 : 13,
+                            }}>
+                              {cell.price != null ? `${cell.price.toLocaleString()}` : '—'}{day.inherited ? <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 3 }}>↑</span> : null}
+                            </div>
+                            {cell.origin && (
+                              <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }} title={t('Звідки взялося це число')}>
+                                {t(ORIGIN_LABELS[cell.origin])}
+                              </div>
+                            )}
+                          </>);
+                        })()}
                         <div className="pricing-cell-badges">
                           {day.isWeekend && <span className="pricing-cell-badge">WE</span>}
                           {day.min_stay > 1 && <span className="pricing-cell-badge">min {day.min_stay}</span>}
