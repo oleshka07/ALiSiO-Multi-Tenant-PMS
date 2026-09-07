@@ -58,4 +58,31 @@ const weird = handleError('check', { message: DRIVER });
 assert.strictEqual(weird.status, 500);
 assert.ok(!String((await weird.json()).error).includes(DRIVER), 'обʼєкт із полем message — не відмова');
 
+// ── 5. Відмови готелю — того самого роду (рецензія 07.09 раунд 8, Р8.1) ───
+//
+// `requirePropertyId` двічі ходить у базу, а поруч із ним жила
+// `propertyErrorStatus(e)` з правилом «PropertyNotFound → 404, БУДЬ-ЩО ІНШЕ →
+// 400». Будь-що інше — це й помилка драйвера, тож п'ятнадцять обробників
+// віддавали її текст зі статусом 400. Функції більше немає; натомість усі три
+// відмови `requirePropertyId` названі, і саме це тут доводиться — на РОДІ, не
+// на тексті: `handleError` не знає слова «property» і знати його не мусить.
+//
+// Осі: два різні статуси відмови (404 і 400) плюс помилка драйвера, чий текст
+// містить слово «propert» — саме такий рядок раніше проходив за
+// `/property/i.test(message)` і їхав клієнтові дослівно.
+const { PropertyNotFound } = await import('../auth/tenant-context.ts');
+
+const notMine = handleError('check', new PropertyNotFound());
+assert.strictEqual(notMine.status, 404, 'чужий готель — 404, не 400 (інваріант 5)');
+assert.strictEqual((await notMine.json()).error, 'Property not found', 'і своїм текстом');
+
+const several = handleError('check', new Refusal('This organization has more than one property — property_id is required'));
+assert.strictEqual(several.status, 400, '«скажи який готель» — 400: це твердження про ЗАПИТ');
+
+const driverAboutProperties = handleError('check', new Error('relation "properties" does not exist'));
+assert.strictEqual(driverAboutProperties.status, 500,
+  'помилка драйвера зі словом «propert» у тексті — 500, а не 400: рід не вгадується за словом');
+assert.ok(!String((await driverAboutProperties.json()).error).includes('properties'),
+  'і назви таблиці клієнт не бачить');
+
 console.log('errors: названа відмова доходить своїм статусом і текстом; помилка драйвера — 500 без жодного слова з неї');

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as feesRepo from '../data/fees.repo';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
-import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
+import { requirePropertyId } from '@core/auth/tenant-context';
+import { handleError } from '@core/http/errors';
 
 /**
  * Збори поверх ціни за ніч: екран готелю.
@@ -48,10 +49,7 @@ export const createFee = withPermission('manage_properties', async (request: Nex
     try {
       propertyId = await requirePropertyId(body.property_id);
     } catch (e) {
-      return NextResponse.json(
-        { error: e instanceof Error ? e.message : 'Property not found' },
-        { status: propertyErrorStatus(e) },
-      );
+      return handleError('properties/fees', e);
     }
 
     const bad = feesRepo.validateFee(body);

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { withPermission, type Actor } from '@core/auth/session';
-import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
-import { serverError } from '@core/http/errors';
+import { requirePropertyId } from '@core/auth/tenant-context';
+import { serverError, handleError } from '@core/http/errors';
 import { listRules, createRule, updateRule, deleteRule, type RuleInput } from '../data/price-rules.repo';
 import type { RuleKind, RuleCondition, RuleAction, RuleValueKind } from '../domain/price-rules';
 
@@ -64,7 +64,7 @@ export const listPriceRules = withPermission('manage_pricing', async (request: N
     try {
       propertyId = await requirePropertyId(new URL(request.url).searchParams.get('property_id'));
     } catch (e) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : 'Property not found' }, { status: propertyErrorStatus(e) });
+      return handleError('pricing/price-rules', e);
     }
     try {
       return NextResponse.json(await listRules(propertyId));
@@ -84,7 +84,7 @@ export const createPriceRule = withPermission('manage_pricing', async (request: 
     try {
       propertyId = await requirePropertyId(typeof body.property_id === 'string' ? body.property_id : null);
     } catch (e) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : 'Property not found' }, { status: propertyErrorStatus(e) });
+      return handleError('pricing/price-rules', e);
     }
     try {
       return NextResponse.json(await createRule(propertyId, inputFrom(body)), { status: 201 });

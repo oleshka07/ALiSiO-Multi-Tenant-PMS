@@ -2,8 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSql } from '@core/db/async';
 import { withModule, type Actor } from '@core/auth/session';
-import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
-import { serverError } from '@core/http/errors';
+import { requirePropertyId } from '@core/auth/tenant-context';
+import { serverError, handleError } from '@core/http/errors';
 
 // GET /api/booking-sites — list all sites for property
 //
@@ -55,7 +55,7 @@ export const POST = withModule('sites', 'nav:sites', async (request: NextRequest
     try {
       propId = await requirePropertyId(property_id);
     } catch (e: any) {
-      return NextResponse.json({ error: e.message }, { status: propertyErrorStatus(e) });
+      return handleError('booking-sites POST', e);
     }
 
     const defaultDesignConfig = JSON.stringify({

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { withPermission, type Actor } from '@core/auth/session';
-import { requirePropertyId, propertyErrorStatus } from '@core/auth/tenant-context';
-import { serverError } from '@core/http/errors';
+import { requirePropertyId } from '@core/auth/tenant-context';
+import { serverError, handleError } from '@core/http/errors';
 import { listRatePlans, createRatePlan, updateRatePlan, deleteRatePlan } from '../data/rate-plans.repo';
 import type { SellMode, PricingType, AdjustmentKind, AdjustmentDirection } from '../domain/types';
 
@@ -44,7 +44,7 @@ export const listRatePlanSettings = withPermission('manage_pricing', async (requ
     try {
       propertyId = await requirePropertyId(new URL(request.url).searchParams.get('property_id'));
     } catch (e) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : 'Property not found' }, { status: propertyErrorStatus(e) });
+      return handleError('pricing/rate-plans', e);
     }
     return NextResponse.json(await listRatePlans(propertyId));
   } catch (error: unknown) {
@@ -64,7 +64,7 @@ export const createRatePlanSetting = withPermission('manage_pricing', async (req
     try {
       propertyId = await requirePropertyId(typeof body.property_id === 'string' ? body.property_id : null);
     } catch (e) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : 'Property not found' }, { status: propertyErrorStatus(e) });
+      return handleError('pricing/rate-plans', e);
     }
     try {
       const created = await createRatePlan({
