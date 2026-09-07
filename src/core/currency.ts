@@ -1,4 +1,5 @@
 import { getSql } from '@core/db/async';
+import { refuse } from './http/refusal';
 import { todayFor } from '@core/hotel-day';
 import { money } from '@core/money';
 
@@ -59,20 +60,26 @@ export interface SecondaryCurrency {
 }
 
 /**
- * Основна валюта готелю. Кидає, якщо її немає.
+ * Основна валюта готелю. Відмовляє, якщо її немає.
  *
- * Кидає навмисно. Порожня `default_currency` означає зламаний рядок
+ * Відмовляє навмисно. Порожня `default_currency` означає зламаний рядок
  * організації, і підставити замість неї будь-що — значить пустити далі суму,
  * про яку ніхто вже не дізнається, що вона в невідомій валюті.
+ *
+ * `refuse`, а не голий `Error` (рецензія 07.09 раунд 7, П3): це повідомлення
+ * написали ми і воно каже оператору, що робити, — тож `catch` мусить уміти
+ * відрізнити його від помилки драйвера, яка прийде тим самим шляхом (обидва
+ * читання тут ходять у базу). Статус 409, а не 400: запит правильний, це стан
+ * організації не дозволяє відповісти.
  */
 export async function organizationCurrency(organizationId: string): Promise<string> {
   const sql = getSql();
   const org = await sql.row<{ default_currency?: string }>(
     'SELECT default_currency FROM organizations WHERE id = ?', [organizationId]);
   if (org?.default_currency) return String(org.default_currency);
-  throw new Error(
-    `У організації ${organizationId} не задана основна валюта. ` +
-    'Налаштування → Загальні → Основна валюта.');
+  refuse(
+    `У організації ${organizationId} не задана основна валюта. `
+    + 'Налаштування → Загальні → Основна валюта.', 409);
 }
 
 /**

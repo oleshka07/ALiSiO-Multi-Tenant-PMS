@@ -56,6 +56,11 @@ const DECLARED = [
   'reset-password.mjs',
   'check-deployed-db.mjs',
   'encrypt-credentials.mjs',
+  // Демо-проживання: `deploy.sh` кличе його одразу після звірки готельних
+  // файлів, і він другий у дереві скрипт із власним резолвером аліасів
+  // (`check-bare-node.mjs`). У DEPLOY.md його не запускають руками, тож
+  // перехресна перевірка нижче до нього не дійде — звідси рядок тут (П5).
+  'seed-demo-stays.mjs',
 ];
 
 const live = fs.readdirSync(path.join(ROOT, 'scripts'))
@@ -151,7 +156,9 @@ const BAR = '═'.repeat(78);
 console.log(`\n${BAR}`);
 console.log('ВХІД, ЯКИЙ ЗАПУСКАЮТЬ У ПРОД-ОБРАЗІ, НЕ ТЯГНЕ next/*');
 console.log(BAR);
-console.log(`\n  входів перевірено: ${ENTRIES.length} (${DECLARED.length} з DEPLOY.md, ${live.length} живих проходів)`);
+const fromDeploy = DECLARED.filter((f) => named.includes(f)).length;
+console.log(`\n  входів перевірено: ${ENTRIES.length} (${fromDeploy} названо в DEPLOY.md,`
+  + ` ${DECLARED.length - fromDeploy} названо тут, ${live.length} живих проходів)`);
 
 if (!problems.length && !hits.length) {
   console.log('  чисто — кожен вхід піднімається так само, як у образі\n');

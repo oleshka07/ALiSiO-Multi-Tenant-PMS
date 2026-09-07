@@ -32,6 +32,7 @@
  * шапка `channex-catalog-live.mjs`.
  */
 import './lib/module-aliases.mjs';
+import { requireVendorKey } from './lib/vendor-key.mjs';
 
 const argv = process.argv.slice(2);
 const opt = (name) => { const i = argv.indexOf(name); return i >= 0 && argv[i + 1] ? argv[i + 1] : null; };
@@ -44,8 +45,7 @@ if (!remoteOnly && (!organizationId || !connectionId)) {
   console.error('  --org обовʼязковий: зʼєднання читається ЧЕРЕЗ орендаря (connectionInTenant), не за id (INC-010).');
   process.exit(2);
 }
-const apiKey = process.env.CHANNEX_API_KEY;
-if (!apiKey) { console.error('немає CHANNEX_API_KEY в оточенні — далі йти нема куди'); process.exit(2); }
+const apiKey = requireVendorKey('CHANNEX_API_KEY');
 const environment = process.env.CHANNEX_ENV === 'production' ? 'production' : 'staging';
 const BASE = environment === 'production' ? 'https://app.channex.io/api/v1' : 'https://staging.channex.io/api/v1';
 

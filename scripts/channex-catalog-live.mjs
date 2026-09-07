@@ -62,6 +62,7 @@
 // тут не треба: цей скрипт запускають усередині репозиторію, а не на сервері
 // під час деплою (саме тому свою копію тримає apply-hotel.mjs, і лише він).
 import './lib/module-aliases.mjs';
+import { requireVendorKey } from './lib/vendor-key.mjs';
 import { sampleRecorder } from './lib/channex-samples.mjs';
 
 const argv = process.argv.slice(2);
@@ -92,11 +93,7 @@ if (jobs.length === 0) {
   process.exit(2);
 }
 
-const apiKey = process.env.CHANNEX_API_KEY;
-if (!apiKey) {
-  console.error('немає CHANNEX_API_KEY в оточенні — далі йти нема куди');
-  process.exit(2);
-}
+const apiKey = requireVendorKey('CHANNEX_API_KEY');
 const environment = process.env.CHANNEX_ENV === 'production' ? 'production' : 'staging';
 
 const { runWithOrganization } = await import('@core/auth/tenant-context');

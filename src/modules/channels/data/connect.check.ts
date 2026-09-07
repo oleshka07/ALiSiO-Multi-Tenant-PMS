@@ -36,20 +36,34 @@ const A = '__connect__a';
 const B = '__connect__b';
 const PROP = (org: string) => `${org}_prop`;
 
+/**
+ * Сів і прибрав — У КОНТЕКСТІ ОРЕНДАРЯ.
+ *
+ * Це був останній названий блокер того, щоб `npm run check:pg` бігав роллю
+ * `alisio_app`, а не суперкористувачем (ARCHITECTURE, «Лишається», INC-014):
+ * `properties` сіялись поза контекстом, і на стенді з роллю без суперправ
+ * ланцюг падав тут — `new row violates row-level security policy for table
+ * "properties"`. У CI він зелений лише тому, що там суперкористувач, який RLS
+ * обходить, тобто вісь політик у ньому відсутня за побудовою.
+ */
 async function cleanup() {
   for (const org of [A, B]) {
-    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM channel_credentials WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    await runWithOrganization(org, async () => {
+      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM cm_mappings WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM channel_credentials WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    });
     await sql.run('DELETE FROM organizations WHERE id = ?', [org]);
   }
 }
 
 async function seed(org: string) {
   await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org, org, org]);
-  await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [PROP(org), org, org, PROP(org)]);
+  await runWithOrganization(org, () => sql.run(
+    'INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)',
+    [PROP(org), org, org, PROP(org)]));
 }
 
 await cleanup();
@@ -111,8 +125,15 @@ try {
   });
 
   // ── Другий орендар не бачить і не вмикає чужого ───────────────────────
+  //
+  // Id чужого зʼєднання беремо в контексті САМОГО A, не всередині B: на
+  // Postgres під RLS цей `SELECT` з-під B не бачить нічого, і сцена падала б
+  // на `undefined.id` ще до свого твердження — тобто доводила б не те. Сенс
+  // сцени в тому, що B знає ідентифікатор і все одно не може ним скористатись.
+  const connA = await runWithOrganization(A, async () =>
+    (await sql.rows('SELECT id FROM cm_connections WHERE organization_id = ?', [A]))[0] as { id: string });
+  assert.ok(connA?.id, 'у A мусить бути зʼєднання — інакше наступне твердження порожнє');
   await runWithOrganization(B, async () => {
-    const connA = (await sql.rows('SELECT id FROM cm_connections WHERE organization_id = ?', [A]))[0] as { id: string };
     await assert.rejects(() => setConnectionEnabled(connA.id, true), /not found/i, 'чужий орендар увімкнув чуже зʼєднання');
     assert.strictEqual((await setupState(PROP(A))).property, null);
     console.log('  ok  чужий орендар не вмикає чужого');

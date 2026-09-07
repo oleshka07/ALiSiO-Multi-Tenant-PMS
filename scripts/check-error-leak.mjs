@@ -61,7 +61,20 @@ const LEAK = /error:\s*(?:e|err|error)\??\.message[^}]*\}\s*,\s*\{\s*status:\s*5
 // `catch (…) { … error: <e>.message … status: 4xx … }` — тіло catch до його
 // закриття (шукаємо по балансу дужок від `{` після `catch (…)`).
 const CATCH = /catch\s*\(([^)]*)\)\s*\{/g;
-const DB_CALL = /\bsql\s*\.\s*(?:run|rows|row|tx)\b|\.\s*tx\s*\(/;
+// Що вважається «тут відбувається щось, чиїх повідомлень ми не писали».
+//
+// Спершу тут стояв літеральний `sql.run|row|rows|tx`, і цього виявилось мало:
+// `properties/api/currency.handlers.ts:45` віддавав `e?.message` з 409, а
+// читання бази було сховане за викликом репозиторію (`organizationCurrency`
+// → `core/currency.ts:70`). Гейт мовчав саме там, де мав говорити (рецензія
+// 07.09 раунд 7, П3).
+//
+// Тому ознака ширша й простіша: у тілі `try` є `await`. Усе, чого ми чекаємо,
+// може бути введенням-виведенням — база, вендор, файл, — і текст його помилки
+// написали не ми. Вузький `catch` навколо СИНХРОННОГО валідатора під цю
+// ознаку не підпадає, і це правильно: там ловити нема чого, крім власного
+// рядка (`counterparties`, `auto-rules` — обидва без `await`).
+const DB_CALL = /\bawait\b|\bsql\s*\.\s*(?:run|rows|row|tx)\b|\.\s*tx\s*\(/;
 
 const offenders = [];
 const blind = [];
@@ -83,7 +96,10 @@ function blockAt(text, open) {
  */
 function tryBodyBefore(text, catchStart) {
   const head = text.slice(0, catchStart);
-  const at = head.lastIndexOf('try');
+  // Слово `try`, не підрядок: `entry`, `country`, `retry`, `geometry` містять
+  // ті самі три літери, і `lastIndexOf` зсував би початок «тіла try» у
+  // випадкове місце — аж до хибно-зеленого (П4).
+  const at = [...head.matchAll(/\btry\b/g)].pop()?.index ?? -1;
   if (at < 0) return '';
   const open = head.indexOf('{', at);
   return open < 0 ? '' : head.slice(open);

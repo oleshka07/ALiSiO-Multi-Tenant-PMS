@@ -24,6 +24,7 @@ import { readFile } from 'node:fs/promises';
 import '../../../../scripts/lib/module-aliases.mjs';
 
 const { getSql } = await import('@core/db/async');
+const { runWithOrganization } = await import('@core/auth/tenant-context');
 const { offerForCode, isLegacyOfferCode } = await import('./legacy-offer-code.ts');
 
 const sql = getSql();
@@ -32,12 +33,41 @@ const B = '__offer_b__';
 const CODE = 'SPRING10';
 const WINDOW = { checkIn: '2026-11-10', checkOut: '2026-11-12' };
 
+/**
+ * Читання — очима ТОГО САМОГО орендаря, що й у бойовому шляху.
+ *
+ * `POST /api/widget/reserve` цілком загорнутий у `withSite`, а той — у
+ * `runWithOrganization` (`widget/data/site.repo.ts:125`). Поза контекстом на
+ * Postgres під `FORCE ROW LEVEL SECURITY` політика не показує НІЧОГО: перший
+ * прогін цього гейта на стенді з роллю `alisio_app` упав саме так — «А не
+ * дістала свого купона», бо його не бачив ніхто.
+ *
+ * Що з цього доводить який рушій. На SQLite політик немає, тож зелене тут —
+ * заслуга `AND organization_id = ?` всередині читача, і зняття цієї умови
+ * робить гейт червоним (так його й написали 07.09). На Postgres поверх цього
+ * стоїть друга стіна — політика, — тож там сцена 1 доводить не читача, а те,
+ * що читання ВЗАГАЛІ проходить під RLS: і купон, і пакет через
+ * `JOIN booking_sites`. Саме цього не перевіряв ніхто (П7 раунду 7).
+ */
+const asOrg = <T>(o: string, fn: () => Promise<T>): Promise<T> => runWithOrganization(o, fn);
+
+/**
+ * Сів і прибрав — У КОНТЕКСТІ ОРЕНДАРЯ.
+ *
+ * Гейт бігає і на Postgres (`npm run check:pg`, П7 раунду 7), а там під
+ * `FORCE ROW LEVEL SECURITY` тенантний `INSERT` політика відхиляє, а `DELETE`
+ * без орендаря не бачить жодного рядка: відповідає «0» і не падає. Тобто без
+ * контексту гейт або впав би на засіві, або тихо сіяв на брудній базі.
+ * `organizations` орендаря не має — вона поза контекстом.
+ */
 async function cleanup() {
   for (const o of [A, B]) {
-    await sql.run('DELETE FROM gift_card_bundles WHERE site_id = ?', [`${o}_site`]);
-    await sql.run('DELETE FROM booking_sites WHERE organization_id = ?', [o]);
-    await sql.run('DELETE FROM coupons WHERE organization_id = ?', [o]);
-    await sql.run('DELETE FROM properties WHERE organization_id = ?', [o]);
+    await runWithOrganization(o, async () => {
+      await sql.run('DELETE FROM gift_card_bundles WHERE site_id = ?', [`${o}_site`]);
+      await sql.run('DELETE FROM booking_sites WHERE organization_id = ?', [o]);
+      await sql.run('DELETE FROM coupons WHERE organization_id = ?', [o]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [o]);
+    });
     await sql.run('DELETE FROM organizations WHERE id = ?', [o]);
   }
 }
@@ -46,47 +76,50 @@ await cleanup();
 try {
   for (const [o, amount] of [[A, 10], [B, 50]] as [string, number][]) {
     await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [o, o, o]);
-    await sql.run(
+    await runWithOrganization(o, () => sql.run(
       `INSERT INTO coupons (id, organization_id, code, discount_type, offer_amount, is_active, current_uses)
        VALUES (?, ?, ?, 'percentage', ?, TRUE, 0)`,
       [`${o}_coupon`, o, CODE, amount],
-    );
+    ));
   }
 
   // ── 1. Кожна організація бачить СВІЙ купон ────────────────────────────
-  const forA = await offerForCode(sql, CODE, A, WINDOW);
-  const forB = await offerForCode(sql, CODE, B, WINDOW);
+  const forA = await asOrg(A, () => offerForCode(sql, CODE, A, WINDOW));
+  const forB = await asOrg(B, () => offerForCode(sql, CODE, B, WINDOW));
   assert.strictEqual(forA.offer?.id, `${A}_coupon`, 'організація A мусить дістати свій купон');
   assert.strictEqual(forB.offer?.id, `${B}_coupon`, 'а B — свій');
   assert.strictEqual(Number(forA.offer?.offer_amount), 10, 'і свою знижку: 10 %, не 50 % сусіда');
   assert.strictEqual(Number(forB.offer?.offer_amount), 50, 'і навпаки');
 
   // ── 2. Код, якого ця організація не має, не знаходиться ───────────────
-  await sql.run('DELETE FROM coupons WHERE organization_id = ?', [A]);
-  const gone = await offerForCode(sql, CODE, A, WINDOW);
+  await runWithOrganization(A, () => sql.run('DELETE FROM coupons WHERE organization_id = ?', [A]));
+  const gone = await asOrg(A, () => offerForCode(sql, CODE, A, WINDOW));
   assert.strictEqual(gone.offer, null,
     'купон сусіда з тим самим кодом не має знаходитись: гроші віднялись би від нашої суми, а лічильник виріс би в нього');
-  assert.strictEqual(Number((await sql.row<any>('SELECT current_uses FROM coupons WHERE id = ?', [`${B}_coupon`]))?.current_uses), 0,
+  assert.strictEqual(Number((await runWithOrganization(B, () =>
+    sql.row<any>('SELECT current_uses FROM coupons WHERE id = ?', [`${B}_coupon`])))?.current_uses), 0,
     'і чужий лічильник не рухається');
 
   // ── 3. Пакет скоупується через booking_sites ──────────────────────────
-  await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [`${B}_prop`, B, 'B', `${B}_prop`]);
-  await sql.run('INSERT INTO booking_sites (id, organization_id, property_id, name, slug) VALUES (?, ?, ?, ?, ?)',
-    [`${B}_site`, B, `${B}_prop`, 'B', `${B}_site`]);
-  await sql.run(
-    `INSERT INTO gift_card_bundles (id, organization_id, site_id, name, price, coupon_code, is_active, current_uses)
-     VALUES (?, (SELECT organization_id FROM booking_sites WHERE id = ?), ?, 'Пакет', 8500, ?, TRUE, 0)`,
-    [`${B}_bundle`, `${B}_site`, `${B}_site`, 'PACK2'],
-  );
-  const bundleForB = await offerForCode(sql, 'PACK2', B, WINDOW);
+  await runWithOrganization(B, async () => {
+    await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [`${B}_prop`, B, 'B', `${B}_prop`]);
+    await sql.run('INSERT INTO booking_sites (id, organization_id, property_id, name, slug) VALUES (?, ?, ?, ?, ?)',
+      [`${B}_site`, B, `${B}_prop`, 'B', `${B}_site`]);
+    await sql.run(
+      `INSERT INTO gift_card_bundles (id, organization_id, site_id, name, price, coupon_code, is_active, current_uses)
+       VALUES (?, (SELECT organization_id FROM booking_sites WHERE id = ?), ?, 'Пакет', 8500, ?, TRUE, 0)`,
+      [`${B}_bundle`, `${B}_site`, `${B}_site`, 'PACK2'],
+    );
+  });
+  const bundleForB = await asOrg(B, () => offerForCode(sql, 'PACK2', B, WINDOW));
   assert.strictEqual(bundleForB.offer?.id, `${B}_bundle`, 'своя організація бачить свій пакет');
   assert.strictEqual(bundleForB.isBundle, true, 'і він названий пакетом — знижка рахується інакше');
-  const bundleForA = await offerForCode(sql, 'PACK2', A, WINDOW);
+  const bundleForA = await asOrg(A, () => offerForCode(sql, 'PACK2', A, WINDOW));
   assert.strictEqual(bundleForA.offer, null, 'чужий пакет не знаходиться — він за booking_sites сусіда');
 
   // ── 4. Межа з промо-правилами лишається цілою ─────────────────────────
-  assert.strictEqual(await isLegacyOfferCode(sql, 'PACK2', B), true, 'код пакета для B — старий купон, до правил не доходить');
-  assert.strictEqual(await isLegacyOfferCode(sql, 'PACK2', A), false, 'для A той самий рядок купоном не є — його код вільний для правил');
+  assert.strictEqual(await asOrg(B, () => isLegacyOfferCode(sql, 'PACK2', B)), true, 'код пакета для B — старий купон, до правил не доходить');
+  assert.strictEqual(await asOrg(A, () => isLegacyOfferCode(sql, 'PACK2', A)), false, 'для A той самий рядок купоном не є — його код вільний для правил');
 
   // ── 5. Хендлер бронювання ходить ЦИМ читачем, а не своїм SELECT ───────
   //
