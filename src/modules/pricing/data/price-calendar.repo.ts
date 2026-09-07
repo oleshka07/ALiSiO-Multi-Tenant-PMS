@@ -539,6 +539,18 @@ export async function upsertPrices(unitTypeId: string, prices: PriceUpsertInput[
  *
  * Правило одне — `dayRowPrice()` з `@pricing/domain/day-price`, — і воно не
  * буває в SQL: запит віддає колонки, рішення ухвалює домен.
+ *
+ * ── І тільки БАЗОВИЙ рядок типу ─────────────────────────────────────────
+ *
+ * Тут не було `rate_plan_id IS NULL`, а з Блоку 2 в `price_calendar` лежать
+ * рядки двох родів: базовий рядок типу і власна ціна тарифу на ту саму дату.
+ * Тобто запит віддавав по ДВА рядки на одну клітинку, а споживач
+ * (`calendar/page.tsx`, шахматка) кладе їх у мапу за `unit_type_id + date` —
+ * тож перемагав той, що прийшов останнім. Який саме — вирішував рушій:
+ * SQLite віддавав базовий, Postgres — тарифний. Шахматка показувала ціну
+ * тарифу як ціну номера, мовчки і лише на проді (INC-027).
+ *
+ * Шахматка про тарифи не знає взагалі — вона показує, скільки коштує НОМЕР.
  */
 export async function getBulkPrices(organizationId: string, startDate: string, endDate: string) {
   const sql = getSql();
@@ -548,6 +560,7 @@ export async function getBulkPrices(organizationId: string, startDate: string, e
     JOIN unit_types ut ON pc.unit_type_id = ut.id
     JOIN properties p ON ut.property_id = p.id
     WHERE p.organization_id = ? AND pc.date >= ? AND pc.date <= ?
+      AND pc.rate_plan_id IS NULL
     ORDER BY pc.unit_type_id, pc.date
   `, [organizationId, startDate, endDate]);
   return rows.map((r) => ({ ...r, effective_price: dayRowPrice(r, r.date).price }));

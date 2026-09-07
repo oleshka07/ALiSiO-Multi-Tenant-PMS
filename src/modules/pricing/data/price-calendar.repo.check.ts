@@ -590,11 +590,23 @@ try {
       assert.strictEqual(day.price_column, 'base', `${date}: і колонка «базова» — нуля в колонці вихідних не існує`);
     }
 
+    // Третя вісь, знайдена CI на Postgres (INC-027): на D4 лежить і базовий
+    // рядок типу (200), і власна ціна тарифу BB (155, сцена 13). Доти
+    // `getBulkPrices` віддавала ОБИДВА, а шахматка залишала той, що прийшов
+    // останнім — SQLite віддавав базовий, Postgres тарифний. Числа 200 і 155
+    // несумісні навмисно: «узяли не той рядок» не може дати ту саму
+    // відповідь.
     const bulk = await getBulkPrices(A, D1, D4);
+    const forDay = (date: string) =>
+      bulk.filter((r: { date: string; unit_type_id: string }) => String(r.date).slice(0, 10) === date && r.unit_type_id === UT(A));
+    assert.strictEqual(forDay(D4).length, 1,
+      `${D4}: шахматка мусить дістати РІВНО ОДИН рядок на клітинку — базовий рядок типу; `
+      + `прийшло ${forDay(D4).length}, і який із них переможе, вирішував би рушій`);
     for (const date of [D4, D2]) {
-      const row = bulk.find((r: { date: string; unit_type_id: string }) => r.date === date && r.unit_type_id === UT(A))!;
+      const row = forDay(date)[0];
       assert.strictEqual(Number(row.effective_price), 200,
-        `${date}: шахматка — 200, а не ${row.effective_price}: нуль у колонці вихідних не продає ніч`);
+        `${date}: шахматка — 200, а не ${row.effective_price}: нуль у колонці вихідних не продає ніч, `
+        + 'і ціна тарифу не видає себе за ціну номера');
     }
 
     for (const date of [D4, D2]) {
