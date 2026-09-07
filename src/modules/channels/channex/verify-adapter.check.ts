@@ -38,6 +38,21 @@ const { queuedChanges } = await import('../data/outbox.repo.ts');
 const { bulkUpdatePrices, upsertPrices } = await import('@pricing');
 
 const sql = getSql();
+/**
+ * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
+ *
+ * Прямий `sql.*` без орендаря під роллю застосунку (`alisio_app`, FORCE RLS)
+ * або відхиляється політикою (запис), або мовчки бачить порожньо (читання):
+ * твердження лишається зеленим, нічого не перевіривши (INC-014). Місця, де
+ * сцена свідомо стає ІНШИМ орендарем, лишаються явними
+ * `runWithOrganization(…)`.
+ */
+const asOrg = {
+  run: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.run(q, params as any)),
+  row: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.row<any>(q, params as any)),
+  rows: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.rows<any>(q, params as any)),
+};
+
 const ORG = '__verify_adapter__';
 const OTHER = '__verify_adapter_other__';
 const PROP = `${ORG}_prop`;
@@ -204,7 +219,7 @@ try {
       assert.deepStrictEqual(r.unverified, [{ field: 'minStay', count: 4 }, { field: 'maxStay', count: 4 }], 'дефолти названі, той бік мовчить — не звірено, не розбіжність');
       assert.strictEqual(back[0].fields, null, 'повернуте звіркою їде ВСІМ станом — маски немає');
       console.log('  ok  розбіжність на неосновній опції видима (И13), назад у чергу однією координатою з причиною');
-      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
+      await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
     }
 
     // ── 2. Усе збігається — нічого не повертається ──────────────────────
@@ -244,7 +259,7 @@ try {
         'у чергу йде наявність — те, що знімає прапорець; ціна не крутиться вічно');
       assert.match(String(back[0].lastError), /^verify: free 2 ≠ 0$/);
       console.log('  ok  нуль наявності на тому боці: назад у чергу йде наявність, не ціна');
-      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
+      await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
     }
 
     // ── 3. Ночі немає на тому боці — не звірено, не в чергу ─────────────
@@ -265,7 +280,7 @@ try {
 
     // ── 4. Молоде відправлення без старих — нема чого читати, викликів нуль ─
     {
-      await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+      await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
       await sent('a3', 'availability', DAY, null, FRESH);
       const t = transport({ data: {} });
       const r = await verifySends(CONN, 'key', { today: TODAY, now: () => NOW, client: { fetch: t.fetch } });
@@ -303,12 +318,12 @@ try {
   await runWithOrganization(ORG, async () => {
     // Своя черга: попередні сцени її переписали. Одне старе відправлення
     // ціни на DAY — рівно та ніч, про яку йдеться.
-    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
+    await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ?', [ORG]);
     await sent('r9', 'rate', DAY, null, OLD);
     // Базовий рядок типу на DAY: ціна 150, мінімум 2 ночі. Писач кладе
     // координату в чергу (Ц16) — вона тут не потрібна, прибирається.
     await bulkUpdatePrices({ unitTypeId: UT, dateFrom: DAY, dateTo: DAY, applyTo: 'all', base_price: 150, min_stay: 2 });
-    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
+    await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
     const open = (arrival: number, through: number) => ({
       ...cell('150.00', false, 2), min_stay_arrival: arrival, min_stay_through: through,
     });
@@ -321,7 +336,7 @@ try {
     const a = await verifySends(CONN, 'key', { today: TODAY, now: () => NOW, client: { fetch: agree.fetch } });
     assert.deepStrictEqual(a.mismatches.filter((m) => m.field === 'minStay'), [],
       'arrival 2 / through 1 при наших 2 — збіг: читається поле заїзду');
-    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
+    await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
 
     const differ = transport({
       data: {
@@ -335,7 +350,7 @@ try {
       [[DAY, 1, '2', '1'], [DAY, 2, '2', '1']],
       'arrival 1 / through 2 при наших 2 — розбіжність на кожній опції: through не рятує',
     );
-    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
+    await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
     console.log('  ok  мінімум ночей звіряється полем заїзду по обох осях');
 
     // ── 10. Розбіжність на рівні ПАРИ не «лагодиться» значенням типу (Ц32 переглянуто 07.09) ─
@@ -347,7 +362,7 @@ try {
     // власні 3. Осі сцени: два тарифи однієї пари типу, 3 проти 2 на одну
     // дату; з одним тарифом ця сцена була зелена й на коді до 0072.
     await runWithOrganization(ORG, async () => {
-      await sql.run(
+      await asOrg.run(
         `INSERT INTO rate_plans (id, property_id, name, code, currency, is_active, is_hidden, priority)
          VALUES (?, ?, ?, ?, 'EUR', TRUE, FALSE, 1)`,
         [RP2, PROP, 'Bed & Breakfast', 'BB'],
@@ -355,20 +370,20 @@ try {
       for (const [entityType, occupancy, remoteId] of [
         ['rate_plan', 0, 'remote-rp2'], ['rate_plan_option', 2, 'remote-rp2'], ['rate_plan_option', 1, 'remote-rp2-occ1'],
       ] as [string, number, string][]) {
-        await sql.run(
+        await asOrg.run(
           `INSERT INTO cm_mappings (id, organization_id, connection_id, entity_type, local_id, unit_type_id, occupancy, remote_id)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [`${CONN}_m2_${entityType}_${occupancy}`, ORG, CONN, entityType, RP2, UT, occupancy, remoteId],
         );
       }
-      await sql.run(
+      await asOrg.run(
         `INSERT INTO cm_outbox (id, organization_id, connection_id, kind, unit_type_id, rate_plan_id, stay_date, stay_date_to, sent_at, receipt)
          VALUES (?, ?, ?, 'rate', ?, ?, ?, NULL, ?, ?)`,
         [`${ORG}_s_rp2`, ORG, CONN, UT, RP2, DAY, '2027-03-01T11:00:00Z', 'task-rp2'],
       );
     });
     await upsertPrices(UT, [{ date: DAY, min_stay: 3 }], { ratePlanId: RP });
-    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
+    await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
     const typeValue = transport({
       data: {
         'remote-rp': { [DAY]: open(2, 1), [DAY2]: cell('150.00', true, 2) },
@@ -389,7 +404,7 @@ try {
       tv.mismatches.filter((m) => m.ratePlanId === RP2 && m.field === 'minStay'), [],
       'а другий тариф того самого типу власного обмеження не має — його очікуване лишається значенням ТИПУ (2), і 2 на тому боці для нього збіг',
     );
-    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
+    await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
     const pairValue = transport({
       data: {
         'remote-rp': { [DAY]: open(3, 1), [DAY2]: cell('150.00', true, 2) },
@@ -409,7 +424,7 @@ try {
       [[1, '2', '3'], [2, '2', '3']],
       'і навпаки: 3 на другому тарифі — розбіжність, бо його очікуване 2; інакше сцена стверджувала б про вісь, якої у фікстурі немає',
     );
-    await sql.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
+    await asOrg.run('DELETE FROM cm_outbox WHERE organization_id = ? AND sent_at IS NULL', [ORG]);
     console.log('  ok  звірка порівнює з ефективним обмеженням ПАРИ — значення типу розбіжність не лагодить');
   });
 } finally {
