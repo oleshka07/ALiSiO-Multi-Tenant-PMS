@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { noteRatesChanged, type RateField } from '@channels/outbox';
+import { dayRowPrice, type PriceColumn } from '../domain/day-price';
 import crypto from 'crypto';
 import { getSql, type Sql } from '@core/db/async';
 import { currentOrganizationId } from '@core/auth/tenant-context';
@@ -130,11 +131,19 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
       const basePrice = priceRow?.base_price == null ? null : Number(priceRow.base_price);
       const weekendPrice = priceRow?.weekend_price == null ? null : Number(priceRow.weekend_price);
       const r = effectiveRestrictions(ratePlanId ? shapeOf(ownRow) : null, shapeOf(baseRow));
+      // Ціна дня — ОДНІЄЮ функцією з `@pricing/domain/day-price`, тією самою,
+      // якою її рахує `priceNights` для гостя. Доти тут стояла своя копія
+      // правила вихідних, і вона вже розходилась: варти на нуль і відʼємне не
+      // було, тож `weekend_price = 0` показувався б суботі як ціна (Блок 6).
+      const effective = dayRowPrice(priceRow, dateStr);
       days.push({
         date: dateStr, day: d, dayOfWeek, isWeekend,
         base_price: basePrice,
         weekend_price: weekendPrice,
-        effective_price: isWeekend && weekendPrice != null ? weekendPrice : basePrice,
+        effective_price: effective.price,
+        // Колонка, з якої взяте число: екран показує її підписом, а не
+        // виводить із `isWeekend` заново.
+        price_column: effective.column,
         min_stay: r.min_stay,
         max_stay: r.max_stay,
         closed: r.closed ? 1 : 0,
@@ -145,7 +154,7 @@ export async function getPriceMonth(unitTypeId: string, month: number, year: num
         ...(ratePlanId ? { inherited: !ownPriced, restrictionsOwn: hasOwnRestrictions(ownRow) } : {}),
       });
     } else {
-      days.push({ date: dateStr, day: d, dayOfWeek, isWeekend, base_price: null, weekend_price: null, effective_price: null, min_stay: 1, max_stay: null, closed: 0, cta: 0, ctd: 0, hasData: false });
+      days.push({ date: dateStr, day: d, dayOfWeek, isWeekend, base_price: null, weekend_price: null, effective_price: null, price_column: 'base', min_stay: 1, max_stay: null, closed: 0, cta: 0, ctd: 0, hasData: false });
     }
   }
 

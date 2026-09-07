@@ -36,6 +36,7 @@
  * answer that does not require reading this file.
  */
 import { getSql } from '@core/db/async';
+import { dayRowPrice, type PriceColumn } from '../domain/day-price';
 import { quoteStay, matrixPriceFor, type PriceRow, type LosTier } from '../domain/occupancy-price';
 import { OPEN_STAY, type StayRestrictions } from '../domain/restrictions';
 import { pickRule, surchargeOf, nightSurcharges, type OccupancyRule, type AgeBand, type SurchargeMissing } from '../domain/extra-occupancy';
@@ -52,6 +53,15 @@ export interface NightlyPrice {
    * card, or the day calendar's base row.
    */
   source: 'rate_plan' | 'matrix' | 'calendar';
+  /**
+   * Колонка рядка, з якої взяте число: `weekend` — ціна вихідних перебила
+   * базову. Матриця колонки не має, тож там завжди `base`.
+   *
+   * Існує заради екрана (Блок 6): «115 · ціна вихідних» замість голого 115.
+   * Виводити це на екрані з `isWeekend` означало б завести четверту копію
+   * правила вихідних — рівно те, що цей блок прибрав.
+   */
+  column: PriceColumn;
   /**
    * What was added to or taken off the base number: the LOS tier when the
    * matrix priced this night, the occupancy surcharge when a rate plan did.
@@ -425,7 +435,8 @@ export async function priceNights(input: {
     // whole point of putting it in the calendar: two rate plans of one room
     // type carry independent prices for the same date.
     const rp = fromRatePlan.get(date);
-    const rpPrice = rp ? dayPrice(rp, date) : null;
+    const rpCell = dayRowPrice(rp, date);
+    const rpPrice = rp ? rpCell.price : null;
     if (rp && rpPrice != null) {
       // Дорослі понад базу: правило (Ц30), а без правила — матриця.
       const extra = ruledAdults(ratePlanId, rpPrice) ?? surcharge(date);
@@ -449,7 +460,7 @@ export async function priceNights(input: {
       }
       const adjustment = money(extra + kids.amount);
       const price = money(Math.max(0, rpPrice + adjustment));
-      out.push({ date, price, source: 'rate_plan', adjustment });
+      out.push({ date, price, source: 'rate_plan', column: rpCell.column, adjustment });
       occupancyPriced = true;
       continue;
     }
@@ -473,13 +484,14 @@ export async function priceNights(input: {
         missing.push(date);
         continue;
       }
-      out.push({ date, price: money(m.price + kids.amount), source: 'matrix', adjustment: money((m.adjustment ?? 0) + kids.amount) });
+      out.push({ date, price: money(m.price + kids.amount), source: 'matrix', column: 'base', adjustment: money((m.adjustment ?? 0) + kids.amount) });
       occupancyPriced = true;
       continue;
     }
 
     const c = fromCalendar.get(date);
-    const cPrice = c ? dayPrice(c, date) : null;
+    const cCell = dayRowPrice(c, date);
+    const cPrice = c ? cCell.price : null;
     if (c && cPrice != null) {
       // Базовий рядок типу цінує будь-яку заселеність, як і досі; правило
       // дорослих понад базу (Ц30), коли воно є, додається зверху.
@@ -491,7 +503,7 @@ export async function priceNights(input: {
         continue;
       }
       const adjustment = money((extra ?? 0) + kids.amount);
-      out.push({ date, price: money(cPrice + adjustment), source: 'calendar', ...(adjustment ? { adjustment } : {}) });
+      out.push({ date, price: money(cPrice + adjustment), source: 'calendar', column: cCell.column, ...(adjustment ? { adjustment } : {}) });
       if (extra != null && quoteAdults > baseOccupancy) occupancyPriced = true;
       continue;
     }
@@ -584,29 +596,6 @@ export async function cheapestByDay(input: {
     }
   }
   return out;
-}
-
-/**
- * The day row's price for this date.
- *
- * Friday, Saturday and Sunday take `weekend_price` where one is set. That rule
- * was written three times, identically, in three files; it lives here now.
- */
-function dayPrice(row: any, date: string): number | null {
-  const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
-  const isWeekend = dow === 0 || dow === 5 || dow === 6;
-  // Рядок без ціни (лише обмеження, 0062) — `null`: ніч у `missing`, не за 0.
-  // Нуль і відʼємне читаються так само (Ц24): писачі їх більше не приймають,
-  // але рядок міг лягти повз писача або до відмови — і `weekend_price = 0`
-  // продавав пʼятницю за нуль тим самим шляхом, який 0062 закрила для буднів.
-  const named = (v: unknown): number | null => {
-    if (v == null) return null;
-    const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  };
-  const base = named(row.base_price);
-  const weekend = named(row.weekend_price);
-  return isWeekend && weekend != null ? weekend : base;
 }
 
 async function loadMatrixRows(organizationId: string, propertyId: string): Promise<PriceRow[]> {

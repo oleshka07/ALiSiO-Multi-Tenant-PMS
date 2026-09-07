@@ -1,7 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { getPriceMonth, upsertPrices } from '../data/price-calendar.repo';
+import { monthOrigins } from '../data/month-origins';
+import { pricingAdvanced, setPricingAdvanced } from '../data/price-mode.repo';
+import type { PriceOrigin } from '../domain/day-price';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
+import { handleError } from '@core/http/errors';
 import { ownedUnitType } from '../data/owned.repo';
 
 export const getPricing = withActor(async (request: NextRequest, _ctx, actor: Actor): Promise<NextResponse> => {
@@ -21,7 +25,30 @@ export const getPricing = withActor(async (request: NextRequest, _ctx, actor: Ac
     }
 
     const ratePlanId = searchParams.get('ratePlanId') || undefined;
-    return NextResponse.json(await getPriceMonth(unitTypeId, month, year, ratePlanId));
+    const grid = await getPriceMonth(unitTypeId, month, year, ratePlanId);
+
+    // ── Звідки взялося число, яке побачить оператор ──────────────────────
+    //
+    // Сітка знає лише рядки календаря, а гість платить за іншим правилом:
+    // МАТРИЦЯ заселеності перекриває календар (`nightly-price.ts`). Тому
+    // підпис джерела береться з того самого резолвера, що й ціна гостя —
+    // одним викликом на місяць, — а не виводиться з полів рядка. Інакше
+    // клітинка казала б «базова 100», поки гість платить 120 з матриці:
+    // рівно той рід мовчання, через який заведено весь Блок 6.
+    //
+    // Помилка тут не має ламати екран цін: підпис — це допомога, а не ціна.
+    let origins: Record<string, PriceOrigin> = {};
+    try {
+      origins = await monthOrigins(unitTypeId, month, year, ratePlanId);
+    } catch (e) {
+      console.error('[pricing] month origins:', e instanceof Error ? e.message : e);
+    }
+
+    return NextResponse.json({
+      ...grid,
+      days: grid.days.map((d) => ({ ...d, origin: origins[d.date] ?? null })),
+      advancedPricing: await pricingAdvanced(actor.organizationId),
+    });
   } catch (error: any) {
     console.error('GET /api/pricing error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to fetch pricing' }, { status: 500 });
@@ -69,5 +96,24 @@ export const updatePricing = withPermission('manage_pricing', async (request: Ne
   } catch (error: any) {
     console.error('PUT /api/pricing error:', error?.message || error);
     return NextResponse.json({ error: 'Failed to update pricing' }, { status: 500 });
+  }
+});
+
+/**
+ * PUT /api/pricing/mode { advanced: boolean } — «розширені ціни» для готелю.
+ *
+ * Право те саме, що на самі ціни: перемикач вирішує, які поля оператор бачить
+ * і, отже, які числа може змінити.
+ */
+export const setPricingMode = withPermission('manage_pricing', async (request: NextRequest, _ctx, actor: Actor): Promise<NextResponse> => {
+  try {
+    const body = await request.json();
+    if (typeof body?.advanced !== 'boolean') {
+      return NextResponse.json({ error: 'advanced must be a boolean' }, { status: 400 });
+    }
+    await setPricingAdvanced(actor.organizationId, body.advanced);
+    return NextResponse.json({ advanced: body.advanced });
+  } catch (error: unknown) {
+    return handleError('modules/pricing/api/pricing setPricingMode', error);
   }
 });

@@ -115,6 +115,11 @@ const OVERRIDE = {
   // не каже». Розширювати шаблон під кожну таку — означає рано чи пізно
   // затягнути в BOOLEAN справжній лічильник.
   'unit_types.extra_bed_available': 'BOOLEAN',
+  // Блок 6: «розширені ціни» — прапорець готелю. BOOLEAN, а не число, бо
+  // писач передає `true`/`false` (інваріант 12), і BIGINT відхилив би це на
+  // Postgres — при тому, що на SQLite воно б працювало й розбіжність
+  // виявилась би лише на сервері. Міграція 0112 оголошує його так само.
+  'organizations.pricing_advanced': 'BOOLEAN',
   // Три стани: null = «вирішує правило каналу», і це не те саме, що false.
   // BOOLEAN у Postgres nullable, тож третій стан зберігається.
   'unit_types.breakfast_included': 'BOOLEAN',

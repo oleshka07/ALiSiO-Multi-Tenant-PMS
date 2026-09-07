@@ -365,6 +365,86 @@ try {
   }
   console.log('  ok  мінімум ночей: нуль і відʼємне — відмова з назвою, одиниця пишеться, null скидає; хендлери й екрани її називають');
 
+  // ── 15. Простий режим: 333 доходить до ночі, у тому числі до вихідних ──
+  //
+  // Наскрізна сцена приводу Блоку 6. Сцена 5a `day-edit.check` доводить, що
+  // тіло несе `weekend_price: null`; тут доводиться, що після ЗАПИСУ цим
+  // тілом ніч справді коштує 333 — і в пʼятницю, і в суботу, а не 115.
+  // Проміжок навмисно перетинає межу тижня: 27.11 — пʼятниця, 28.11 —
+  // субота, 25–26.11 — будні. З одного дня ця сцена була б зелена й на коді,
+  // де правило вихідних не зачеплене взагалі.
+  await runWithOrganization(A, async () => {
+    const { buildDayPayload } = await import('../ui/day-edit.ts');
+    const DAYS = [D1, D2, D3, D4];
+    for (const date of DAYS) {
+      await upsertPrices(UT(A), [{ date, base_price: 100, weekend_price: 115 }]);
+    }
+    const before = await priceNights({ unitTypeId: UT(A), checkIn: D3, nights: 1, adults: 2 });
+    assert.strictEqual(before.nights[0]?.price, 115, 'до правки пʼятниця коштує 115 — інакше сцена нічого не про вихідні');
+
+    // Те, що робить оператор у простому режимі: ввів 333, більше нічого.
+    const opened = { base_price: 100, weekend_price: 115, min_stay: 1, closed: false, cta: false, ctd: false };
+    const body = buildDayPayload(
+      opened,
+      { basePrice: 333, weekendPrice: 115, minStay: 1, closed: false, cta: false, ctd: false },
+      { ratePlanSelected: false, allPlans: false, inherit: false, advanced: false },
+    );
+    for (const date of DAYS) await upsertPrices(UT(A), [{ date, ...body }]);
+
+    for (const date of DAYS) {
+      const q = await priceNights({ unitTypeId: UT(A), checkIn: date, nights: 1, adults: 2 });
+      assert.strictEqual(q.nights[0]?.price, 333,
+        `${date}: оператор поставив 333 у простому режимі — ніч мусить коштувати 333, а не ${q.nights[0]?.price}`);
+    }
+
+    // І сітка місяця показує те саме число з тим самим підписом джерела.
+    const month = await getPriceMonth(UT(A), 11, 2026);
+    for (const date of DAYS) {
+      const day = month.days.find((d) => d.date === date)!;
+      assert.strictEqual(day.effective_price, 333, `${date}: у сітці теж 333`);
+      assert.strictEqual(day.price_column, 'base', `${date}: і підпис каже «базова», бо ціни вихідних більше немає`);
+    }
+    console.log('  ok  простий режим: 333 доходить до ночі й до сітки, у тому числі в пʼятницю й суботу');
+  });
+
+  // ── 16. Підпис клітинки збігається з тим, за що платить гість ─────────
+  //
+  // Блок 6, гейт 3. Підпис — це відповідь на «чому тут це число», і він
+  // мусить приходити з ТОГО САМОГО резолвера, що цінує ніч. Найгостріше це
+  // видно на матриці: сітка місяця знає лише рядки календаря, тож виведений
+  // із них підпис сказав би «базова 100», поки гість платить 120 з матриці.
+  //
+  // Осі (інваріант 26): три різні джерела на трьох датах — базова, ціна
+  // вихідних і матриця, — і три різні числа. З одним джерелом твердження
+  // зелене і на коді, який завжди повертає той самий ключ.
+  await runWithOrganization(A, async () => {
+    const { monthOrigins } = await import('./month-origins.ts');
+    const { createPrice } = await import('./occupancy-price.repo.ts');
+    // 25.11 — середа (базова), 27.11 — пʼятниця (ціна вихідних).
+    await upsertPrices(UT(A), [{ date: D1, base_price: 100, weekend_price: null }]);
+    await upsertPrices(UT(A), [{ date: D3, base_price: 100, weekend_price: 115 }]);
+
+    const before = await monthOrigins(UT(A), 11, 2026);
+    assert.strictEqual(before[D1], 'unit_type', `${D1}: середа — базова ціна типу, а не ${before[D1]}`);
+    assert.strictEqual(before[D3], 'unit_type_weekend', `${D3}: пʼятниця — ціна вихідних, а не ${before[D3]}`);
+
+    // А тепер матриця заселеності на дві особи: вона перекриває календар, і
+    // підпис мусить це сказати — інакше екран називає джерело, якого гість не
+    // бачить у своїй сумі.
+    await createPrice(PROP(A), { unit_type_id: UT(A), persons: 2, price_gross: 120 });
+    const after = await monthOrigins(UT(A), 11, 2026);
+    assert.strictEqual(after[D1], 'matrix', `${D1}: матриця перекриває календар — підпис мусить казати «матриця», а не ${after[D1]}`);
+
+    // І число під підписом — те саме, що платить гість.
+    const night = await priceNights({ unitTypeId: UT(A), checkIn: D1, nights: 1, adults: 2 });
+    assert.strictEqual(night.nights[0]?.price, 120, 'гість платить 120 з матриці');
+    assert.strictEqual(night.nights[0]?.source, 'matrix', 'і сам резолвер називає те саме джерело');
+    assert.strictEqual(night.nights[0]?.column, 'base', 'матриця колонки вихідних не має');
+
+    await sql.run('DELETE FROM price_occupancy WHERE unit_type_id = ?', [UT(A)]);
+    console.log('  ok  підпис клітинки — з того самого резолвера, що ціна гостя: базова, вихідних, матриця');
+  });
+
   console.log('price-calendar: ціна тарифу на дату — своя, успадкована названа, чуже — відмова; ціни немає — NULL, нуль — відмова');
 } finally {
   await cleanup();
