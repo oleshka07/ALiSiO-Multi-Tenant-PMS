@@ -31,8 +31,17 @@ export async function decideCheckout(sql: Sql, input: {
     [input.propertyId, input.organizationId]);
   if (!prop) return 'not_found';
   const policy = readCheckoutPolicy(prop.checkout_balance_policy);
+  // Фоліо відповідає, ЛИШЕ коли в ньому щось нараховано.
+  //
+  // `hasFolio` істинний від самої НАЯВНОСТІ рядка, і порожня книга давала
+  // борг 0: боржник із `unpaid` на всю суму виходив у двері під `blocking`.
+  // Порожнє фоліо буває частіше, ніж здається — рецепція відкрила вкладку й
+  // нічого не нарахувала; місток завів книгу, а фіскальна варта відмовила
+  // (німецький обʼєкт без TSE). Порожня книга не каже «нічого не винен» —
+  // вона не каже нічого, і це різні речі (той самий закон, що `null` у
+  // `statusFromFolio`).
   const folio = await reservationBalance(input.reservationId, sql);
-  if (folio.hasFolio) return checkoutDecision(policy, folio.balance);
+  if (folio.hasFolio && folio.charged > 0) return checkoutDecision(policy, folio.balance);
 
   // Фоліо немає — питаємо слово, і воно не завжди знає суму. `partial` без
   // фоліо каже «частина прийшла» і не каже скільки (В3): доти сюди йшов увесь

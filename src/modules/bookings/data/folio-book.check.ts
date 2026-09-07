@@ -34,7 +34,7 @@ const { getSql } = await import('@core/db/async');
 const { openFolio: createFolio, addCharges } = await import('@invoicing/kernel');
 const { recordPayment, reservationFolioSummary } = await import('@invoicing/kernel');
 const { decideCheckout } = await import('./checkout.repo.ts');
-const { statusFromFolio } = await import('../domain/folio-payment.ts');
+const { recalcPaymentStatusFromFolio } = await import('./payment-status.repo.ts');
 const { createPaymentOperation } = await import('../../finance/api/payment-bridge.ts');
 
 const sql = getSql();
@@ -113,10 +113,11 @@ try {
     const a = '__folbook__a';
     const folioA = await seedStay(a);
     await recordPayment({ folioId: folioA, amount: PREPAID, method: 'cash' });
-    // Той самий перерахунок, що робить картка після оплати.
-    const summaryA = await reservationFolioSummary(a);
-    const wordA = statusFromFolio(summaryA);
-    if (wordA) await sql.run('UPDATE reservations SET payment_status = ? WHERE id = ?', [wordA, a]);
+    // Той самий перерахунок, у який упирається картка, — не свій UPDATE поруч.
+    // Доти сцена рахувала слово сама (`statusFromFolio` + `UPDATE`), тобто
+    // повторювала логіку писача замість того, щоб її перевіряти: зламати
+    // `recalcPaymentStatusFromFolio` можна було, лишивши сцену зеленою.
+    await recalcPaymentStatusFromFolio(a);
     const seenA = await asSeen(a);
     console.log('  А (через фоліо):', JSON.stringify(seenA));
 
@@ -149,14 +150,76 @@ try {
     say(seenA.owed !== TOTAL, 'А: борг дорівнює ВСІЙ сумі — це «статус partial → винен усе», а не рахунок');
     say(seenA.owed !== PREPAID, 'А: борг дорівнює ВНЕСКУ — переплутано сплачене з боргом');
 
+    // ── СЦЕНА В: ПОРОЖНЄ фоліо і борг ──────────────────────────────────
+    //
+    // Фоліо існує, але в ньому НІЧОГО: ні нарахувань, ні оплат. Так буває
+    // щоразу, коли `ensureReservationFolio` завело книгу, а записати в неї
+    // платіж не вдалося (сцена Г нижче) — і так буває, коли рецепція
+    // відкрила вкладку «Фінанси» й нічого не нарахувала.
+    //
+    // `reservationBalance` каже `hasFolio: true` від самої НАЯВНОСТІ рядка,
+    // тож борг виходить 0, і боржник із `unpaid` на 5000 виходить у двері під
+    // політикою `blocking`. Порожня книга не каже «нічого не винен» — вона не
+    // каже нічого, і це різні речі.
+    const c = '__folbook__c';
+    await sql.run(
+      `INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, status, payment_status, total_price, currency)
+       VALUES (?, ?, ?, ?, ?, '2026-11-02', '2026-11-04', 2, 2, 'checked_in', 'unpaid', ?, 'CZK')`,
+      [c, ORG, PROP, '__folbook__unit', '__folbook__guest', TOTAL]);
+    await createFolio({ reservationId: c, payerKind: 'guest', payerName: 'Eva Nová' });
+    const seenC = await asSeen(c);
+    console.log('  В (порожнє фоліо):', JSON.stringify(seenC));
+    say(seenC.allowed === false,
+      `В: боржник із порожнім фоліо ВИХОДИТЬ у двері під blocking (борг показано ${seenC.owed})`);
+    say(seenC.owed === TOTAL,
+      `В: борг показано ${seenC.owed}, а не сплачено нічого з ${TOTAL} — порожня книга не означає «нічого не винен»`);
+
+    // ── СЦЕНА Г: німецький обʼєкт без TSE ──────────────────────────────
+    //
+    // `recordPayment` для DE без `fiscal_de` ВІДМОВЛЯЄ навмисно: готівка й
+    // термінал там досі в старій касі, поки не ввімкнено фіскальний модуль.
+    // Місток це проковтував (`catch` із самим `console.error`), і виходило
+    // найгірше з обох: гроші лишались лише в `fin_operations`, фоліо
+    // лишалось ПОРОЖНІМ — а порожнє фоліо (сцена В) відчиняє виселення.
+    const DE_PROP = '__folbook__de';
+    await sql.run(
+      "INSERT INTO properties (id, organization_id, name, slug, country, checkout_balance_policy) VALUES (?, ?, 'Haus', 'folbook-de', 'DE', 'blocking')",
+      [DE_PROP, ORG]);
+    await sql.run("INSERT INTO categories (id, property_id, name, type) VALUES ('__folbook__decat', ?, 'Zimmer', 'resort')", [DE_PROP]);
+    await sql.run("INSERT INTO unit_types (id, property_id, category_id, name, code) VALUES ('__folbook__deut', ?, '__folbook__decat', 'Doppel', 'DBL')", [DE_PROP]);
+    await sql.run("INSERT INTO units (id, unit_type_id, property_id, category_id, name, code) VALUES ('__folbook__deunit', '__folbook__deut', ?, '__folbook__decat', '201', '201')", [DE_PROP]);
+    const d = '__folbook__d';
+    await sql.run(
+      `INSERT INTO reservations (id, organization_id, property_id, unit_id, guest_id, check_in, check_out, nights, adults, status, payment_status, total_price, currency)
+       VALUES (?, ?, ?, ?, ?, '2026-11-02', '2026-11-04', 2, 2, 'checked_in', 'unpaid', ?, 'CZK')`,
+      [d, ORG, DE_PROP, '__folbook__deunit', '__folbook__guest', TOTAL]);
+    await createPaymentOperation({
+      reservationId: d, amount: PREPAID, method: 'cash',
+      paymentSubtype: 'deposit', source: 'manual', status: 'completed',
+    }).catch((e: any) => { console.log('  Г: місток відмовив:', e.message.slice(0, 60)); });
+
+    // Скільки книг завела бронь — через ФАСАД, не своїм SQL до `fin_folios`:
+    // гейт меж це вже ловив на прибиранні цієї ж сцени.
+    const deFolios = { n: (await reservationFolioSummary(d)).folios.length };
+    const seenD = await sql.row<any>('SELECT payment_status, total_price FROM reservations WHERE id = ?', [d]);
+    const decisionD = await decideCheckout(sql, {
+      organizationId: ORG, propertyId: DE_PROP, reservationId: d,
+      paymentStatus: seenD.payment_status, totalPrice: Number(seenD.total_price),
+    });
+    const allowedD = decisionD === 'not_found' ? null : decisionD.allowed;
+    console.log(`  Г (DE без TSE):    фоліо ${Number(deFolios?.n)}, статус ${seenD.payment_status}, виселення дозволене: ${allowedD}`);
+    say(allowedD === false,
+      'Г: німецький готель без TSE — боржник ВИХОДИТЬ у двері, бо по собі лишилось порожнє фоліо');
+    say(Number(deFolios?.n) === 0,
+      `Г: по відмові фіскальної варти лишилось ${Number(deFolios?.n)} порожнє(і) фоліо — книга, у якій нічого немає і ніколи не буде`);
+
     // Виселення з боргом під `blocking` — відмова, і в обох сценах однаково.
     say(seenA.allowed === false && seenB.allowed === false,
       'виселення з боргом мало бути відмовлене політикою blocking');
 
     // ── Доплата решти закриває бронь, теж однаково ───────────────────────
     await recordPayment({ folioId: folioA, amount: REST, method: 'cash' });
-    const closedA = statusFromFolio(await reservationFolioSummary(a));
-    if (closedA) await sql.run('UPDATE reservations SET payment_status = ? WHERE id = ?', [closedA, a]);
+    await recalcPaymentStatusFromFolio(a);
     const finalA = await asSeen(a);
     say(finalA.status === 'paid' && finalA.owed === 0 && finalA.allowed === true,
       `А: після доплати ${JSON.stringify(finalA)} — мало бути paid, борг 0, виселення дозволене`);

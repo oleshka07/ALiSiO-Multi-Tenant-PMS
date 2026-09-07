@@ -11,6 +11,7 @@
 import { getSql } from '@core/db/async';
 import type { Sql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { recordPayment } from './folio-payments.repo';
 import { allocateInvoiceNumber, isPeriodLocked, seriesForChannel } from '../domain/invoice-numbering';
 import { buildSnapshot, buildStorno, type FolioItem } from '../domain/invoice-snapshot';
 
@@ -84,6 +85,51 @@ export async function ensureReservationFolio(reservationId: string, t?: Sql): Pr
     [organizationId, reservationId]);
   if (existing) return String(existing.id);
   return createFolio({ reservationId });
+}
+
+/**
+ * Записати платіж за бронь у фоліо — і НЕ лишити порожньої книги, якщо він
+ * не записався.
+ *
+ * `ensureReservationFolio` + `recordPayment` двома кроками дали найгірше з
+ * можливого на німецькому обʼєкті без TSE: фіскальна варта відмовляє готівці
+ * навмисно (гроші там досі в старій касі), місток відмову ковтав — і по собі
+ * лишалась ПОРОЖНЯ книга. А порожня книга відчиняла виселення боржникові, бо
+ * борг із неї виходив нуль.
+ *
+ * Тому створення й запис — одні двері: не записалось, і книгу завели ми в
+ * цьому ж виклику, і вона досі порожня — книгу прибрано, помилка піднята
+ * вище. Наявне фоліо не чіпається ніколи: воно старше за цей виклик.
+ */
+export async function recordReservationPayment(input: {
+  reservationId: string;
+  amount: number;
+  method: string;
+  paidAt?: string | null;
+}): Promise<{ paymentId: string; folioId: string }> {
+  const organizationId = await requireOrganizationId();
+  const sql = getSql();
+  const before = await sql.row<{ id: string }>(
+    'SELECT id FROM fin_folios WHERE organization_id = ? AND reservation_id = ? ORDER BY created_at ASC, id ASC LIMIT 1',
+    [organizationId, input.reservationId]);
+  const folioId = before ? String(before.id) : await createFolio({ reservationId: input.reservationId });
+  try {
+    const paymentId = await recordPayment({
+      folioId, amount: input.amount, method: input.method, paidAt: input.paidAt ?? null,
+    });
+    return { paymentId, folioId };
+  } catch (e) {
+    if (!before) {
+      const empty = await sql.row<{ n: number }>(
+        `SELECT (SELECT COUNT(*) FROM fin_folio_items WHERE folio_id = ?)
+              + (SELECT COUNT(*) FROM fin_folio_payments WHERE folio_id = ?) AS n`,
+        [folioId, folioId]);
+      if (Number(empty?.n) === 0) {
+        await sql.run('DELETE FROM fin_folios WHERE id = ? AND organization_id = ?', [folioId, organizationId]);
+      }
+    }
+    throw e;
+  }
 }
 
 /**

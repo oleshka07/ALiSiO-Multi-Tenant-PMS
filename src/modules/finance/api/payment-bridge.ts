@@ -6,7 +6,7 @@ import {
 } from './operations.handlers';
 // В3: гроші за бронь лягають У ФОЛІО, а слово рахує один спільний
 // перерахунок — не цей модуль. Двері фасадів, не чужий SQL.
-import { ensureReservationFolio, recordPayment as recordFolioPayment } from '@invoicing/kernel';
+import { recordReservationPayment } from '@invoicing/kernel';
 import { recalcPaymentStatusFromFolio } from '@bookings/kernel';
 import { applyRulesToOperation, loadActiveRules } from '../data/auto-rules-engine';
 
@@ -200,16 +200,23 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
   // писачами немає — `createOperationInTx` попри назву не відкриває BEGIN),
   // тож помилка називається вголос і статус лишається тим, що був: краще
   // старе слово, ніж слово, виведене з половини книги.
+  //
+  // Відмова тут БУВАЄ ЗАКОННОЮ: німецький обʼєкт без `fiscal_de` не пускає
+  // готівку у фоліо навмисно — вона там досі в старій касі, поки не ввімкнено
+  // фіскальний модуль. Тому це не помилка запиту, а факт: цю бронь фоліо не
+  // обліковує, і борг на виселенні рахується зі слова броні
+  // (`checkout.repo` — порожнє фоліо не відповідає). Двері одні
+  // (`recordReservationPayment`), і по відмові вони НЕ лишають порожньої
+  // книги: доти лишали, і порожня книга відчиняла виселення боржникові.
   try {
-    const folioId = await ensureReservationFolio(reservationId);
-    await recordFolioPayment({
-      folioId,
+    await recordReservationPayment({
+      reservationId,
       amount: isRefund ? -Math.abs(amount) : Math.abs(amount),
       method: 'cash',
       paidAt,
     });
   } catch (e: any) {
-    console.error('[payment-bridge] платіж не ліг у фоліо:', e.message);
+    console.warn(`[payment-bridge] фоліо не прийняло платіж за ${reservationId} — гроші лишаються в fin_operations: ${e.message}`);
   }
   await recalcPaymentStatusFromFolio(reservationId);
 
