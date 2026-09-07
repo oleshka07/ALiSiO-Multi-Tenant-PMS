@@ -84,17 +84,37 @@ const ORG = `${TAG}org`;
 const USER = `${TAG}user`;
 
 /**
- * Прибирання, яке НЕ мовчить про власний провал (Р8.16).
+ * Прибирання, яке НЕ мовчить про власний провал (Р8.16) і не пробачає
+ * неіснуючого імені.
  *
- * Дев'ять `DELETE` тут обгорнуті в `try` — і мусять бути: таблиця може ще не
- * існувати на базі, старшій за міграцію. Але порожній `catch` не розрізняє
- * «таблиці немає» і «прибирання не спрацювало», а гейт бігає й на спільній
- * базі: несприбране сміття лишалося б без сліду в лозі. Тепер кожна відмова
- * називається рядком, а прогін іде далі — прибирання не має валити гейт,
- * але й ховатись не має.
+ * Порожній `catch` тут ховав ДВА мертвих запити, і знайшлися вони не гейтом, а
+ * читанням лога postgres-контейнера в CI: `DELETE FROM invoice_items` (такої
+ * таблиці немає ніде — рядки фактури лежать у `fin_invoice_lines` і ключем на
+ * `invoice_id`) і `DELETE FROM accruals WHERE reservation_id` (у `accruals`
+ * такої колонки немає: це нарахування витрат, не броні). Виправдання, яким
+ * обгортка була пояснена — «таблиця може ще не існувати на старшій базі», —
+ * не справдилось для жодного з двадцяти одного імені: на свіжій схемі всі
+ * дев'ятнадцять решти резолвляться.
+ *
+ * Тому імена розділені на два роди відмов:
+ *
+ * - **не існує** (`does not exist`, `no such table/column`) — це друкарська
+ *   помилка в самому гейті, і вона ЧЕРВОНА. Живий гейт бігає проти щойно
+ *   змігрованої бази (CI) або поточної бази розробника; ім'я, яке там не
+ *   резолвиться, не буває «старою базою».
+ * - будь-яка інша відмова — рядок у лозі, прогін іде далі: прибирання не має
+ *   валити гейт, але й ховатись не має.
  */
+const MISSING_OBJECT = /does not exist|no such table|no such column|no column named/i;
+
 const swept = async (what, fn) => {
-  try { await fn(); } catch (e) { console.log(`  ··  прибирання ${what}: ${e?.message || e}`); }
+  try {
+    await fn();
+  } catch (e) {
+    const msg = e?.message || String(e);
+    if (MISSING_OBJECT.test(msg)) fail('прибирання', `гейт прибирає те, чого немає — ${what}: ${msg}`);
+    else console.log(`  ··  прибирання ${what}: ${msg}`);
+  }
 };
 
 async function cleanup() {
@@ -102,7 +122,10 @@ async function cleanup() {
   for (const pid of props) {
     const resIds = (await sql.rows('SELECT id FROM reservations WHERE property_id = ?', [pid])).map((r) => r.id);
     for (const rid of resIds) {
-      for (const t of ['invoice_items', 'invoices', 'booking_activity_log', 'guest_registrations', 'accruals']) {
+      // Без `invoice_items` і `accruals`: перше не існує ніде, у другого немає
+      // `reservation_id`. Рядки фактури прибирає каскад — `fin_invoice_lines`
+      // висить на організації через `ON DELETE CASCADE`.
+      for (const t of ['invoices', 'booking_activity_log', 'guest_registrations']) {
         await swept(t, () => sql.run(`DELETE FROM ${t} WHERE reservation_id = ?`, [rid]));
       }
     }
