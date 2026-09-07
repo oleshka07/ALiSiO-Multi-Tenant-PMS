@@ -38,7 +38,7 @@ export type { TaxRate } from '../domain/invoice-vat';
  * рядками — так само, як рецепція кладе туди сніданок.
  */
 export { createFolio as openFolio, addCharges } from '../data/folio.repo';
-export { ensureReservationFolio, recordReservationPayment } from '../data/folio.repo';
+export { ensureReservationFolio, recordReservationPayment, reverseReservationPayment } from '../data/folio.repo';
 export type { NewCharge } from '../data/folio.repo';
 
 /**

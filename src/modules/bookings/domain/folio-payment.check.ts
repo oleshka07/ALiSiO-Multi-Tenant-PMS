@@ -1,35 +1,93 @@
 /**
- * Оплата з фоліо: один документ, і бронь закривається лише разом із проживанням.
+ * Слово броні з фоліо і борг без фоліо — ЧИСТІ твердження, без бази.
  *
  *   node src/modules/bookings/domain/folio-payment.check.ts
  *
- * Рецензія 07.09 п.1 (червоним до коду): PATCH `paid` з фоліо виписував
- * другий документ; оплата за воду до нарахування закривала бронь як `paid`.
- * Осі: спосіб оплати (готівка через фоліо / фоліо / ручний cash / без
- * способу), склад фоліо (з проживанням / без), залишок (0 / борг).
+ * Доти обидві функції трималися на одному гейті з живою базою
+ * (`folio-book.check.ts`), і це надто крихко для двох правил, які вирішують,
+ * скільки гість винен на виході. Тут вони перевіряються самі по собі, а
+ * жива сцена лишається про те, що ці правила справді викликаються.
+ *
+ * Осі (інваріант 26), кожна з двома значеннями:
+ *   нарахування  — є / немає;
+ *   проживання   — є рядок `lodging` / лише послуга;
+ *   гроші        — прийшли / не приходили;
+ *   борг         — лишився / закритий.
+ *
+ * Числа не діляться навпіл навмисно: 5000 нараховано, 3000 сплачено, 2000
+ * лишилось — три різні числа, тож «половина», «уся сума» і «решта» не
+ * збігаються між собою.
  */
 import assert from 'node:assert';
-import { legacyInvoiceWanted, folioSettlesStay } from './folio-payment.ts';
+import '../../../../scripts/lib/module-aliases.mjs';
 
-// ── legacy-документ ────────────────────────────────────────────────────────
-assert.strictEqual(legacyInvoiceWanted({ payment_status: 'paid', payment_method: 'folio' }), false, 'оплата з фоліо — документ виставляє фоліо');
-assert.strictEqual(legacyInvoiceWanted({ payment_status: 'paid', payment_method: 'folio_cash' }), false, 'готівка через фоліо — те саме');
-assert.strictEqual(legacyInvoiceWanted({ payment_status: 'paid', payment_method: 'cash' }), true, 'ручна готівка без фоліо — старий шлях лишається');
-assert.strictEqual(legacyInvoiceWanted({ payment_status: 'paid' }), true, 'ручне «оплачено» без способу — старий шлях');
-assert.strictEqual(legacyInvoiceWanted({ payment_status: 'prepaid', payment_method: 'cash' }), false, 'не paid — нічого не виписується');
-assert.strictEqual(legacyInvoiceWanted({ payment_method: 'folio' }), false);
-console.log('  ok  legacy-документ не виписується на оплату з фоліо; ручне «оплачено» — як було');
+const { statusFromFolio, folioSettlesStay } = await import('./folio-payment.ts');
+const { balanceFromReservation } = await import('./checkout-balance.ts');
 
-// ── закриття броні з фоліо ─────────────────────────────────────────────────
-const lodging = { kind: 'lodging' };
-const water = { kind: 'service' };
-assert.strictEqual(folioSettlesStay({ totals: { charged: 3600, balance: 0 }, folios: [{ items: [lodging, water] }] }), true, 'проживання нараховано, борг нуль — закриває');
-assert.strictEqual(folioSettlesStay({ totals: { charged: 3600, balance: -100 }, folios: [{ items: [lodging] }] }), true, 'переплата — теж закриває');
-assert.strictEqual(folioSettlesStay({ totals: { charged: 45, balance: 0 }, folios: [{ items: [water] }] }), false, 'лише вода, без проживання — НЕ закриває');
-assert.strictEqual(folioSettlesStay({ totals: { charged: 3600, balance: 1200 }, folios: [{ items: [lodging] }] }), false, 'борг — не закриває');
-assert.strictEqual(folioSettlesStay({ totals: { charged: 0, balance: 0 }, folios: [] }), false, 'порожнє фоліо — не закриває');
-assert.strictEqual(folioSettlesStay({ totals: { charged: 3600, balance: 0 }, folios: [{ items: [water] }, { items: [lodging] }] }), true, 'проживання на другому платнику — рахується');
-assert.strictEqual(folioSettlesStay(null), false);
-console.log('  ok  бронь закривається лише з нарахованим проживанням і нульовим боргом');
+const lodging = { items: [{ kind: 'lodging' }] };
+const service = { items: [{ kind: 'service' }] };
 
-console.log('folio-payment: оплата з фоліо — один документ; бронь закриває лише проживання без боргу');
+// ── statusFromFolio ────────────────────────────────────────────────────────
+
+assert.strictEqual(
+  statusFromFolio({ totals: { charged: 5000, paid: 3000, balance: 2000 }, folios: [lodging] }),
+  'partial', 'нараховано проживання, прийшла частина — «частково»');
+
+assert.strictEqual(
+  statusFromFolio({ totals: { charged: 5000, paid: 5000, balance: 0 }, folios: [lodging] }),
+  'paid', 'нараховано проживання, борг закритий — «оплачено»');
+
+// Нараховано, грошей немає — це НЕ мовчання, це «не оплачено». Мовчання тут
+// лишало застаріле слово: після видалення платежу зустрічний рядок обнуляв
+// фоліо, а бронь далі стояла `paid` (Р8.7) — гроші зникли з обох книг, а
+// слово про них лишилось.
+assert.strictEqual(
+  statusFromFolio({ totals: { charged: 5000, paid: 0, balance: 5000 }, folios: [lodging] }),
+  'unpaid', 'нараховано, грошей немає — «не оплачено», а не мовчання');
+
+// Гроші є, а проживання ще не нараховане: рецепція взяла завдаток і не
+// натискала «нарахувати». Слово `paid` тут було б брехнею — варта заселення
+// пустила б гостя, який за ніч не платив, — а от «частково» правда, і саме
+// його бракувало: у найчастішому потоці бронь не потрапляла у фільтр.
+assert.strictEqual(
+  statusFromFolio({ totals: { charged: 0, paid: 3000, balance: -3000 }, folios: [] }),
+  'partial', 'завдаток без нарахування — «частково», а не мовчання');
+
+// Оплачена лише послуга (вода), проживання не нараховане: НЕ «оплачено».
+assert.strictEqual(
+  statusFromFolio({ totals: { charged: 200, paid: 200, balance: 0 }, folios: [service] }),
+  'partial', 'вода сплачена, проживання не нараховане — бронь не закрита');
+
+// А от ПОРОЖНЯ книга (нічого не нараховано і нічого не сплачено) справді не
+// каже нічого: рецепція ще не відкривала вкладку, і слово броні лишається.
+assert.strictEqual(
+  statusFromFolio({ totals: { charged: 0, paid: 0, balance: 0 }, folios: [] }),
+  null, 'порожня книга не каже нічого');
+
+assert.strictEqual(statusFromFolio(null), null, 'книги немає — нічого не кажемо');
+
+// `folioSettlesStay` — та сама функція, вужче питання.
+assert.strictEqual(
+  folioSettlesStay({ totals: { charged: 200, paid: 200, balance: 0 }, folios: [service] }),
+  false, 'сплачена вода бронь не закриває');
+assert.strictEqual(
+  folioSettlesStay({ totals: { charged: 5000, paid: 5000, balance: 0 }, folios: [lodging] }),
+  true, 'сплачене проживання — закриває');
+console.log('  ok  слово з фоліо: «оплачено» вимагає проживання, «частково» — лише грошей');
+
+// ── balanceFromReservation ─────────────────────────────────────────────────
+
+assert.strictEqual(balanceFromReservation('paid', 5000), 0);
+assert.strictEqual(balanceFromReservation('prepaid', 5000), 0);
+assert.strictEqual(balanceFromReservation('unpaid', 5000), 5000);
+assert.strictEqual(balanceFromReservation('payment_requested', 5000), 5000);
+// `partial` знає, що частина прийшла, і НЕ знає скільки: вигадане число на
+// екрані гірше за відсутнє — за ним рецепція вимагає грошей, яких гість не
+// винен. `null` тут не «нуль боргу», а «числа немає».
+assert.strictEqual(balanceFromReservation('partial', 5000), null,
+  '«частково» не має права оголошувати весь total_price');
+assert.notStrictEqual(balanceFromReservation('partial', 5000), 0,
+  'і нулем воно теж не є — боржника не можна випускати мовчки');
+console.log('  ok  борг без фоліо: слово, яке не знає суми, повертає «числа немає»');
+
+console.log('folio-payment: правила слова й боргу тримаються самі, без бази');

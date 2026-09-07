@@ -10,6 +10,9 @@ import { getSessionUser } from '@core/auth';
 import { loadActiveRules, isRuleApplicable } from '../data/auto-rules-engine';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import { ownedFinanceRow } from '../data/owned.repo';
+// Зняття грошей із книги гостя після видалення рядка — одні двері на всіх
+// (Р8.7). Файл листковий навмисно: інакше тут був би цикл із `payment-bridge`.
+import { reverseOperationInFolio } from './folio-reversal';
 import { serverError } from '@core/http/errors';
 import { organizationCurrency } from '@core/currency';
 
@@ -536,6 +539,15 @@ export async function createOperation(request: NextRequest): Promise<NextRespons
     const id = await createOperationInTx(orgId, body, actor);
     const created = await sql.row<any>("SELECT * FROM fin_operations WHERE id = ?", [id]);
 
+    // Р8.9, зміна поведінки, названа вголос: ця операція статусу броні БІЛЬШЕ
+    // НЕ РУХАЄ. Слово виводиться з фоліо (В3), а сюди рядок лягає повз нього —
+    // Фінанси → Операції не пишуть у книгу гостя. Тобто дохід, заведений тут
+    // із `reservation_id`, раніше давав `partial`/`paid`, а тепер не дає
+    // нічого; перерахунок кличеться, але фоліо каже те, що казало.
+    // Це не забутий випадок: гроші, які має бачити рахунок гостя, вносяться
+    // «Оплатою» на картці броні або касою (`payment-bridge`) — обидві пишуть у
+    // фоліо. Ручна операція у Фінансах — це проводка обліку, а не платіж
+    // гостя. Двері з Фінансів у фоліо — окреме рішення власника, не наше.
     if (body.reservation_id) await recalcReservationPaymentStatus(body.reservation_id);
 
     return NextResponse.json(await enrichOperation(created), { status: 201 });
@@ -648,7 +660,10 @@ export async function deleteOperation(
 
     await sql.run('DELETE FROM fin_operations WHERE id = ? AND organization_id = ?', [id, orgId]);
 
-    if (existing.reservation_id) await recalcReservationPaymentStatus(existing.reservation_id);
+    // Гроші, зняті з фінансової книги, знімаються і з книги гостя (Р8.7).
+    // Доти тут стояв самий перерахунок — а він читає ФОЛІО, де видалений
+    // платіж лишався: рядок зникав, а бронь далі стояла «оплачено».
+    await reverseOperationInFolio(existing);
     return NextResponse.json({ ok: true, deleted_id: id });
   } catch (error: any) {
     return serverError('modules/finance/api/operations deleteOperation', error);
@@ -714,7 +729,9 @@ export async function mergeOperations(request: NextRequest): Promise<NextRespons
     await writeOperationAudit(incOp.id, 'delete', actor, incOp, null);
     await sql.run('DELETE FROM fin_operations WHERE id = ? AND organization_id = ?', [incOp.id, orgId]);
 
-    if (incOp.reservation_id) await recalcReservationPaymentStatus(incOp.reservation_id);
+    // Дохід зник із фінансової книги — знімається і з книги гостя (Р8.7).
+    // Витрата не зникла, вона стала переміщенням: там лише перерахунок.
+    await reverseOperationInFolio(incOp);
     if (expOp.reservation_id) await recalcReservationPaymentStatus(expOp.reservation_id);
 
     return NextResponse.json({ ok: true, merged_into: expOp.id });
@@ -883,6 +900,13 @@ export async function recalcReservationPaymentStatus(reservationId: string): Pro
   // Функція лишається як ІМʼЯ, за яким її кличуть сім місць фінансів, і
   // делегує. `is_prepaid`, стара подія про зміну статусу і повідомлення —
   // усередині спільного перерахунку.
+  //
+  // Р8.9 — наслідок, який мусить бути сказаний, а не виявлений: усі сім місць
+  // тепер питають ФОЛІО, куди самі нічого не пишуть. Ручна операція у
+  // Фінансах із `reservation_id` статусу броні не рухає взагалі — ні
+  // створення, ні правка, ні видалення, ні обʼєднання. Раніше рухала. Хто
+  // хоче, щоб гроші побачив рахунок гостя, вносить їх «Оплатою» на картці або
+  // касою: обидві пишуть у фоліо.
   const change = await recalcPaymentStatusFromFolio(reservationId);
   if (change?.changed) {
     import('@core/event-bus').then(({ eventBus }) => {

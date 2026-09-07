@@ -133,6 +133,41 @@ export async function recordReservationPayment(input: {
 }
 
 /**
+ * Зняти з фоліо гроші, яких більше немає в іншій книзі — ЗУСТРІЧНИМ рядком.
+ *
+ * `fin_folio_payments` не має видалення за задумом: рахунок гостя не
+ * переписується заднім числом, помилковий клік виправляється зустрічним
+ * рядком. Але видалення фінансової операції чистило лише `fin_operations`, і
+ * перерахунок далі бачив у фоліо гроші, яких уже ніде немає, — бронь
+ * лишалась `paid`. Стан «гроші є в одній книзі й немає в іншій» виникав із
+ * НОРМАЛЬНОЇ дії оператора, а не з падіння.
+ *
+ * Сума береться з того, що фоліо справді має: знімати більше, ніж там є,
+ * означало б завести борг із повітря. Нічого немає — нічого й не пишемо.
+ */
+export async function reverseReservationPayment(input: {
+  reservationId: string;
+  amount: number;
+  method?: string;
+}): Promise<number> {
+  const organizationId = await requireOrganizationId();
+  const sql = getSql();
+  const folio = await sql.row<{ id: string; paid: number }>(
+    `SELECT f.id AS id,
+            COALESCE((SELECT SUM(p.amount) FROM fin_folio_payments p WHERE p.folio_id = f.id), 0) AS paid
+       FROM fin_folios f
+      WHERE f.organization_id = ? AND f.reservation_id = ?
+      ORDER BY f.created_at ASC, f.id ASC LIMIT 1`,
+    [organizationId, input.reservationId]);
+  if (!folio) return 0;
+  const held = Number(folio.paid) || 0;
+  const take = Math.min(Math.abs(Number(input.amount) || 0), held);
+  if (!(take > 0)) return 0;
+  await recordPayment({ folioId: String(folio.id), amount: -take, method: input.method ?? 'cash' });
+  return take;
+}
+
+/**
  * Which money this folio counts.
  *
  * The reservation first — a booking taken in crowns is billed in crowns even

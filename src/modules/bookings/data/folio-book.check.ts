@@ -20,6 +20,15 @@
  *   2. борг на виселенні (`decideCheckout` — те саме число, що на екрані);
  *   3. чи бронь у фільтрі «частково».
  *
+ * Сцена ганяється і на СПРАВЖНЬОМУ Postgres (AGENTS §7), не лише на SQLite:
+ *
+ *   DB_DRIVER=postgres DATABASE_URL=… node src/modules/bookings/data/folio-book.check.ts
+ *
+ * Це не формальність. На SQLite зовнішні ключі не перевіряються, тож рядок
+ * `fin_operations` висів на статті `ec_accommodation`, якої в цій організації
+ * не існувало — сцена була зелена на базі, де половина її ж даних не звʼязана.
+ * На Postgres вона падала цілком. Тому стаття тепер сіється явно.
+ *
  * Осі (інваріант 26). Сума НЕ ділиться навпіл: 3000 із 5000, тож «половина»,
  * «уся сума» і «решта» — три різні числа (3000 / 5000 / 2000), і жодне
  * альтернативне прочитання не збігається з очікуваним. Політика виселення
@@ -35,7 +44,7 @@ const { openFolio: createFolio, addCharges } = await import('@invoicing/kernel')
 const { recordPayment, reservationFolioSummary } = await import('@invoicing/kernel');
 const { decideCheckout } = await import('./checkout.repo.ts');
 const { recalcPaymentStatusFromFolio } = await import('./payment-status.repo.ts');
-const { createPaymentOperation } = await import('../../finance/api/payment-bridge.ts');
+const { createPaymentOperation, deletePaymentOperation } = await import('../../finance/api/payment-bridge.ts');
 
 const sql = getSql();
 const ORG = '__folbook__org';
@@ -107,6 +116,21 @@ try {
     // про що вона написана.
     await sql.run(
       "INSERT INTO finance_accounts (id, organization_id, name, type, currency) VALUES ('__folbook__acc', ?, 'Каса', 'cash', 'CZK')",
+      [ORG]);
+    // Стаття, на яку `createPaymentOperation` вішає готівку. Організація тут
+    // зроблена руками, тож типових статей у неї немає — а на Postgres це
+    // ЗОВНІШНІЙ КЛЮЧ, і сцена падала цілком. На SQLite ключі не перевіряються,
+    // тож гейт був зелений і на базі, де рядок висів у порожнечі.
+    //
+    // `ON CONFLICT DO NOTHING`, бо `ec_accommodation` — ЛІТЕРАЛЬНИЙ
+    // ідентифікатор: план рахунків сіється один раз, для організації, яку
+    // `db.ts` знайшов `SELECT id FROM organizations LIMIT 1`. Тобто на базі,
+    // де вже є готель, ця стаття належить ЙОМУ, а другий готель її не має —
+    // передано у звіті окремою знахідкою, тут лише не заважаємо сцені.
+    await sql.run(
+      `INSERT INTO expense_categories (id, organization_id, name, std_group, pnl_line)
+       VALUES ('ec_accommodation', ?, 'Accommodation', 'Revenue', 'Accommodation')
+       ON CONFLICT DO NOTHING`,
       [ORG]);
 
     // ── СЦЕНА А: 3000 наперед ЧЕРЕЗ ФОЛІО ────────────────────────────────
@@ -212,6 +236,41 @@ try {
       'Г: німецький готель без TSE — боржник ВИХОДИТЬ у двері, бо по собі лишилось порожнє фоліо');
     say(Number(deFolios?.n) === 0,
       `Г: по відмові фіскальної варти лишилось ${Number(deFolios?.n)} порожнє(і) фоліо — книга, у якій нічого немає і ніколи не буде`);
+    // Відмова мусить ДОХОДИТИ до оператора названою, а не лягати в лог: для
+    // цілого сегмента (DE без TSE) це постійний стан, а не рідкісний збій, і
+    // мовчазне розходження книг неприпустиме (інваріант 13).
+    const deReport = await createPaymentOperation({
+      reservationId: d, amount: 100, method: 'cash',
+      paymentSubtype: 'partial', source: 'manual', status: 'completed',
+    }).catch(() => null);
+    say(deReport != null && deReport.folioRecorded === false && Boolean(deReport.folioRefusal),
+      `Г: місток не сказав, що фоліо відмовило — оператор бачить 201 і не знає нічого (${JSON.stringify(deReport)})`);
+
+    // ── СЦЕНА Д: видалення платежу не лишає грошей у книзі ───────────────
+    //
+    // `fin_folio_payments` не має видалення ЗА ЗАДУМОМ: помилковий клік
+    // виправляється зустрічним рядком. Але видалення операції в Фінансах
+    // чистило лише `fin_operations`, а перерахунок читав фоліо, бачив там
+    // гроші й лишав слово `paid`. Стан «гроші є в одній книзі й немає в
+    // іншій» виникав із нормальної дії оператора, не з падіння.
+    const e = '__folbook__e';
+    await seedStay(e);
+    const opE = await createPaymentOperation({
+      reservationId: e, amount: TOTAL, method: 'cash',
+      paymentSubtype: 'full', source: 'manual', status: 'completed',
+    });
+    const paidE = await asSeen(e);
+    say(paidE.status === 'paid', `Д: після повної оплати слово «${paidE.status}», мало бути paid`);
+    await deletePaymentOperation(opE.operationId);
+    const afterDelE = await asSeen(e);
+    const folioE = (await reservationFolioSummary(e)).totals;
+    console.log('  Д (видалення):    ', JSON.stringify(afterDelE), 'фоліо:', JSON.stringify(folioE));
+    say(Number(folioE.paid) === 0,
+      `Д: у фоліо лишилось ${folioE.paid} після видалення платежу — гроші є в одній книзі й немає в іншій`);
+    say(afterDelE.status !== 'paid',
+      `Д: слово лишилось «${afterDelE.status}» після видалення платежу`);
+    say(afterDelE.owed === TOTAL,
+      `Д: борг ${afterDelE.owed}, а нараховано ${TOTAL} і нічого не сплачено`);
 
     // Виселення з боргом під `blocking` — відмова, і в обох сценах однаково.
     say(seenA.allowed === false && seenB.allowed === false,
@@ -227,6 +286,27 @@ try {
   });
 } finally {
   await cleanup();
+}
+
+// ── Продакшн-картка, а не її переказ у гейті (Р8.10) ─────────────────────
+//
+// Сцена А кличе спільний перерахунок — але картка рахує слово У БРАУЗЕРІ й
+// шле його PATCH-ом, тож повернути `FolioPanel` до «завжди paid» можна було,
+// лишивши всі сцени вище зеленими. Тому — твердження про сам файл картки, як
+// у `price-calendar.repo.check`: тіло PATCH будується зі `statusFromFolio`, і
+// слово там не зашите літералом.
+{
+  const fs = await import('node:fs');
+  const card = fs.readFileSync('src/components/booking/card/FolioPanel.tsx', 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, (m: string) => m.replace(/[^\n]/g, ' '))
+    .replace(/(^|[^:])\/\/[^\n]*/g, (m: string, p1: string) => p1 + ' '.repeat(m.length - p1.length));
+  const say = (ok: boolean, msg: string) => { if (!ok) fails.push(msg); };
+  say(/const\s+word\s*=\s*statusFromFolio\(/.test(card),
+    'картка більше не рахує слово через statusFromFolio — гейт про це мовчав би');
+  say(/payment_status:\s*word\b/.test(card),
+    'картка шле PATCH не тим словом, яке порахувала');
+  say(!/payment_status:\s*'(paid|partial|unpaid)'/.test(card),
+    'у картці зашите слово статусу літералом — саме так виглядала стара поведінка');
 }
 
 if (fails.length) {

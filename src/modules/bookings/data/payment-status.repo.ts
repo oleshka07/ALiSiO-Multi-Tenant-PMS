@@ -18,6 +18,7 @@
  * повернути її в «не оплачено».
  */
 import { getSql, type Sql } from '@core/db/async';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 import { reservationFolioSummary } from '@invoicing/kernel';
 import { statusFromFolio } from '../domain/folio-payment';
 
@@ -41,8 +42,13 @@ export async function recalcPaymentStatusFromFolio(
   t?: Sql,
 ): Promise<PaymentStatusChange | null> {
   const sql = t ?? getSql();
+  // Орендар у WHERE обох запитів. `id` тут приходить із ТІЛА запиту, не з URL,
+  // тож `audit-by-id-scope` цей файл пропускав, а на SQLite (`npm run dev`)
+  // немає RLS, яка рятує на Postgres: чужий ідентифікатор писав би чужу бронь.
+  const organizationId = await requireOrganizationId();
   const row = await sql.row<{ payment_status: string; is_prepaid: number | boolean | null }>(
-    'SELECT payment_status, is_prepaid FROM reservations WHERE id = ?', [reservationId]);
+    'SELECT payment_status, is_prepaid FROM reservations WHERE id = ? AND organization_id = ?',
+    [reservationId, organizationId]);
   if (!row) return null;
   const was = String(row.payment_status ?? 'unpaid');
   // Передоплачена каналом бронь: платформа зібрала гроші з гостя, і банківська
@@ -52,6 +58,7 @@ export async function recalcPaymentStatusFromFolio(
   const word = statusFromFolio(await reservationFolioSummary(reservationId, sql));
   if (!word || word === was) return { was, now: was, changed: false };
 
-  await sql.run('UPDATE reservations SET payment_status = ? WHERE id = ?', [word, reservationId]);
+  await sql.run('UPDATE reservations SET payment_status = ? WHERE id = ? AND organization_id = ?',
+    [word, reservationId, organizationId]);
   return { was, now: word, changed: true };
 }
