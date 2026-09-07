@@ -31,6 +31,16 @@ const { getSql } = await import('@core/db/async');
 const { ensureWebhook, rotateWebhookSecret, removeWebhook, testWebhook, classifyEvent, WEBHOOK_EVENT_MASK } = await import('./webhook-adapter.ts');
 
 const sql = getSql();
+
+const mock = await startMockChannex();
+const A = '__whadapter__a';
+const B = '__whadapter__b';
+const CONN = `${A}_conn`;
+const TOKEN = 'tok_a_0123456789abcdef0123456789abcdef';
+const SECRET = 'sec_a_fedcba9876543210fedcba9876543210';
+const KEY = 'api-key-a';
+const client = { baseUrl: mock.url, maxAttempts: 1, sleep: async () => {} };
+
 /**
  * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
  *
@@ -45,15 +55,6 @@ const asOrg = {
   row: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.row<any>(q, params as any)),
   rows: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.rows<any>(q, params as any)),
 };
-
-const mock = await startMockChannex();
-const A = '__whadapter__a';
-const B = '__whadapter__b';
-const CONN = `${A}_conn`;
-const TOKEN = 'tok_a_0123456789abcdef0123456789abcdef';
-const SECRET = 'sec_a_fedcba9876543210fedcba9876543210';
-const KEY = 'api-key-a';
-const client = { baseUrl: mock.url, maxAttempts: 1, sleep: async () => {} };
 
 /**
  * Засів і прибирання — В КОНТЕКСТІ ОРЕНДАРЯ, як це робить застосунок.

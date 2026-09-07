@@ -47,6 +47,19 @@ const { enqueueChange, queuedChanges, pendingCount, stuckChanges } = await impor
 const { bulkUpdatePrices } = await import('@pricing');
 
 const sql = getSql();
+
+const ORG = '__ari_adapter__';
+const PROP = `${ORG}_prop`;
+const UT = `${ORG}_ut`;
+const RP = `${ORG}_rp`;
+const CONN = `${ORG}_conn`;
+const CONN2 = `${ORG}_conn2`;
+const DAY = '2027-03-10';
+const addDays = (iso: string, n: number) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+};
+
 /**
  * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
  *
@@ -60,18 +73,6 @@ const asOrg = {
   run: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.run(q, params as any)),
   row: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.row<any>(q, params as any)),
   rows: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.rows<any>(q, params as any)),
-};
-
-const ORG = '__ari_adapter__';
-const PROP = `${ORG}_prop`;
-const UT = `${ORG}_ut`;
-const RP = `${ORG}_rp`;
-const CONN = `${ORG}_conn`;
-const CONN2 = `${ORG}_conn2`;
-const DAY = '2027-03-10';
-const addDays = (iso: string, n: number) => {
-  const [y, m, d] = iso.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
 
 /**

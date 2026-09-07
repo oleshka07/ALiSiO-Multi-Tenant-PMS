@@ -34,6 +34,15 @@ const { upsertPrices, bulkUpdatePrices } = await import('./price-calendar.repo.t
 const { queuedChannelChanges: queuedChanges } = await import('@channels');
 
 const sql = getSql();
+
+const A = '__seasons__a';
+const B = '__seasons__b';
+const PROP = `${A}_prop`;
+const DBL = `${A}_dbl`;
+const BAR = `${A}_bar`;
+const BB = `${A}_bb`;
+const CONN = `${A}_conn`;
+
 /**
  * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
  *
@@ -48,14 +57,6 @@ const asOrg = {
   row: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.row<any>(q, params as any)),
   rows: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.rows<any>(q, params as any)),
 };
-
-const A = '__seasons__a';
-const B = '__seasons__b';
-const PROP = `${A}_prop`;
-const DBL = `${A}_dbl`;
-const BAR = `${A}_bar`;
-const BB = `${A}_bb`;
-const CONN = `${A}_conn`;
 
 /**
  * Засів і прибирання — В КОНТЕКСТІ ОРЕНДАРЯ, як це робить застосунок.
