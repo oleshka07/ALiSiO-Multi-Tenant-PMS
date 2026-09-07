@@ -22,17 +22,28 @@
  * це давало неправильні числа мовчки: знижка за довжину перебування (LOS-тір
  * матриці) і правила з умовою «від N ночей» застосовувались до всієї сітки,
  * бо тридцять ночей — це одна довга поїздка. Сітка цін означає інше: скільки
- * коштує ЦЯ ніч сама по собі. Тому кадрування тут те саме, що в каналі
- * (`channex/ari-adapter.ts:247`): `nights: 1`, `checkIn: date`. Ціна на екрані
- * оператора збігається з ціною, яка поїде в OTA, і це не збіг, а те саме
- * питання, поставлене однаково.
+ * коштує ЦЯ ніч сама по собі. Тому кадрування тут по одній ночі: `nights: 1`,
+ * `checkIn: date`.
  *
- * Ціна: тридцять викликів замість одного на кожне відкриття екрана. Це екран
- * одного оператора, не гарячий шлях, і правильне число дорожче за швидкість.
+ * ── І чому це коштує одиниці запитів, а не сотні ─────────────────────────
+ *
+ * Тридцять запитань — це не тридцять походів у базу. Довідники рівня обʼєкта
+ * (матриця, LOS-тіри, правила надбавок, правила цін) і рядки календаря
+ * читаються ОДИН раз, `loadPricingContext` на весь місяць, і той самий
+ * контекст передається кожному запитанню.
+ *
+ * Перша редакція цього файлу цього не робила, і ціну було названо
+ * неправильно: «тридцять викликів» замість виміряних 181 запиту на один
+ * `GET /api/pricing` (рецензія раунду 10, Р10.1). Помилка в тому, що
+ * рахувались виклики, а не запити: усередині кожного виклику їх шість, і
+ * пʼять — однакові. Тому тут тепер стоїть лічильник у гейті
+ * (`month-origins.check.ts`), а не оцінка в коментарі.
+ *
+ * Другого шляху читання при цьому НЕ заведено: `priceNights` без контексту
+ * будує його сам, тим самим завантажувачем (інваріант 16).
  */
-import { priceNights } from './nightly-price';
+import { priceNights, loadPricingContext } from './nightly-price';
 import { priceOrigin, type PriceOrigin } from '../domain/day-price';
-import { getSql } from '@core/db/async';
 
 /** Скільки платить гість за цю ніч і звідки число — нерозривно. */
 export interface GuestNightPrice {
@@ -48,22 +59,33 @@ export async function monthGuestPrices(
 ): Promise<Record<string, GuestNightPrice>> {
   const lastDay = new Date(year, month, 0).getDate();
 
+  const mm = String(month).padStart(2, '0');
+  // Діапазон включає ПЕРШЕ число наступного місяця: воно є датою виїзду
+  // останньої ночі, і на ній живе заборона виїзду (CTD), яку читає
+  // `priceNights`. Без нього контекст не накривав би останню ніч, і виклик
+  // відмовився б — свідомо голосно, а не тихо неправильно.
+  const first = `${year}-${mm}-01`;
+  const afterLast = new Date(Date.UTC(year, month - 1, lastDay + 1)).toISOString().slice(0, 10);
+  const context = await loadPricingContext({
+    unitTypeId, from: first, to: afterLast, ratePlanId: ratePlanId ?? null,
+  });
+
   // Скільки дорослих цінувати. Базова заселеність типу — та сама кількість,
   // за якою готель називає ціну в переліку; інакше матриця відповідала б про
-  // іншу колонку, ніж та, що на екрані.
-  const ut = await getSql().row<{ base_occupancy?: unknown }>(
-    'SELECT base_occupancy FROM unit_types WHERE id = ?', [unitTypeId]);
-  const adults = Math.max(1, Number(ut?.base_occupancy ?? 2) || 2);
+  // іншу колонку, ніж та, що на екрані. Береться з контексту, не окремим
+  // запитом: контекст її вже прочитав разом з обʼєктом.
+  const adults = Math.max(1, Number(context.owner?.base_occupancy ?? 2) || 2);
 
   const out: Record<string, GuestNightPrice> = {};
   for (let d = 1; d <= lastDay; d++) {
-    const date = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const date = `${year}-${mm}-${String(d).padStart(2, '0')}`;
     const quote = await priceNights({
       unitTypeId, checkIn: date, nights: 1, adults,
       ratePlanId: ratePlanId ?? null,
       // Екран оператора — не канал і не сайт: правила, які діють на прямому
       // шляху, тут видно так само, як їх побачить адміністратор у квоті.
       channel: 'operator',
+      context,
     });
     const night = quote.nights[0];
     // Ночі без ціни тут немає взагалі: закрита ніч і ніч без джерела ціни

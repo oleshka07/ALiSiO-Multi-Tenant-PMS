@@ -173,6 +173,14 @@ function EditDayModal({ day, ratePlanSelected, advanced, onSave, onClose }: {
           <div className="form-group">
             <label className="form-label">{t('Базова ціна')}</label>
             <input className="form-input" type="number" value={basePrice} onChange={e => setBasePrice(e.target.value === '' ? '' : Number(e.target.value))} min={1} placeholder={t('немає — не продається')} />
+            {/* Р10.4: у заголовку стоїть ціна ГОСТЯ, а це поле редагує рядок
+                КАЛЕНДАРЯ. Коли ніч цінує матриця, це два різні числа, і
+                мовчання про це — той самий клас, що привід усього блоку. */}
+            {cellPrice(day).origin === 'matrix' && (
+              <span style={{ display: 'block', fontSize: 11, color: 'var(--accent-warning)', marginTop: 4 }}>
+                {t('Це поле — ціна рядка календаря. Гість платить за матрицею заселеності, і зміна цього числа ціни для гостя не змінить, поки на цю заселеність є рядок матриці')}
+              </span>
+            )}
           </div>
           {advanced ? (
             <div className="form-group">
@@ -346,6 +354,20 @@ function BulkEditModal({ ratePlanSelected, advanced, onSave, onClose }: {
               <label className="form-label">{t('Базова ціна')}</label>
               <input className="form-input" type="number" placeholder={t('Не змінювати')} value={basePrice} onChange={e => setBasePrice(e.target.value)} min={0} />
             </div>
+            {!advanced && (
+              /* Р10.2: у простому режимі поведінка та сама, що в денній
+                 модалці — зміна ціни прибирає ціну вихідних, — а сказано про
+                 це доти було лише там. Правка тут накриває МІСЯЦЬ, тобто
+                 мовчання коштує більше, ніж на одному дні. */
+              <div className="form-group" style={{ alignSelf: 'center' }}>
+                <div style={{ fontSize: 11, color: 'var(--accent-warning)' }}>
+                  {t('Якщо ввести ціну — окрема ціна вихідних на цих днях прибереться, і діятиме введене число')}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                  {t('Порожнє поле ціни нічого не міняє')}
+                </div>
+              </div>
+            )}
             {advanced && (
               <div className="form-group">
                 <label className="form-label">{t('Ціна вихідних — Пт/Сб/Нд')}</label>
@@ -645,10 +667,10 @@ export default function PricingPage() {
     setLoading(false);
   }, [selectedUnitType, month, year, ratePlanId]);
 
-  /** Перемикач «розширені ціни» — записується готелю, не браузеру. */
+  /** Перемикач «розширені ціни» — записується ОРГАНІЗАЦІЇ, не браузеру (Р9.6). */
   const toggleAdvanced = async (next: boolean) => {
     // Вимкнення називає наслідок числом (Р9.5). Дані в мить перемикання не
-    // гинуть, але готель переходить у режим, де кожна правка ціни витирає
+    // гинуть, але організація переходить у режим, де кожна правка ціни витирає
     // невидиму ціну вихідних — а завести її можна й повз цей екран, у
     // сезонах. Мовчазне перемикання тут і є той клас, який Блок 6 закриває.
     if (!next && weekendPriceDays > 0) {
@@ -758,9 +780,14 @@ export default function PricingPage() {
 
   // Stats
   const stats = useMemo(() => {
-    const withData = priceData.filter(d => d.effective_price != null);
-    const avgPrice = withData.length > 0
-      ? Math.round(withData.reduce((s, d) => s + (d.effective_price ?? 0), 0) / withData.length)
+    // Середня — з ТИХ САМИХ чисел, що стоять у клітинках (`cellPrice`), а не
+    // з `effective_price` рядка календаря. Доти вона усереднювала одне, а під
+    // нею лежали інші числа: на готелі з матрицею «серед. ціна» не збігалась
+    // із жодним видимим числом (Р10.4).
+    const shown = priceData.map(d => cellPrice(d).price).filter((v): v is number => v != null);
+    const withData = priceData.filter(d => cellPrice(d).price != null);
+    const avgPrice = shown.length > 0
+      ? Math.round(shown.reduce((s, v) => s + v, 0) / shown.length)
       : 0;
     const closedDays = priceData.filter(d => d.closed).length;
     return { total: priceData.length, withData: withData.length, avgPrice, closedDays };
@@ -940,11 +967,16 @@ export default function PricingPage() {
                         {(() => {
                           const cell = cellPrice(day);
                           return (<>
+                            {/* Колір вихідних і стрілка «успадковано» — факти
+                                РЯДКА календаря. На числі з матриці вони
+                                стосувались би не того джерела, тож там їх
+                                немає (Р10.4). */}
                             <div className="pricing-cell-price" style={{
-                              color: cell.price == null ? 'var(--text-tertiary)' : day.isWeekend ? '#f59e0b' : undefined,
+                              color: cell.price == null ? 'var(--text-tertiary)'
+                                : (day.isWeekend && cell.origin !== 'matrix') ? '#f59e0b' : undefined,
                               fontSize: cell.price != null ? 15 : 13,
                             }}>
-                              {cell.price != null ? `${cell.price.toLocaleString()}` : '—'}{day.inherited ? <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 3 }}>↑</span> : null}
+                              {cell.price != null ? `${cell.price.toLocaleString()}` : '—'}{day.inherited && cell.origin !== 'matrix' ? <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 3 }}>↑</span> : null}
                             </div>
                             {cell.origin && (
                               <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }} title={t('Звідки взялося це число')}>

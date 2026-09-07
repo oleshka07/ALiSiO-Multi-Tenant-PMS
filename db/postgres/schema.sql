@@ -1391,6 +1391,7 @@ CREATE TABLE "organizations" (
   "slug" TEXT NOT NULL,
   "timezone" TEXT DEFAULT 'Europe/Prague' NOT NULL,
   "default_currency" TEXT DEFAULT 'CZK' NOT NULL,
+  "pricing_advanced" BOOLEAN DEFAULT false NOT NULL,
   "language" TEXT DEFAULT 'uk' NOT NULL,
   "child_age_bands" TEXT DEFAULT '[]' NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
@@ -1407,7 +1408,6 @@ CREATE TABLE "organizations" (
   "invoice_email" TEXT,
   "website" TEXT,
   "ocr_cloud_fallback" BIGINT DEFAULT 0 NOT NULL,
-  "pricing_advanced" BOOLEAN DEFAULT false NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("slug")
 );

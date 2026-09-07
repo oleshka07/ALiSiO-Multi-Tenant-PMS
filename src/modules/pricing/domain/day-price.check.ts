@@ -16,6 +16,7 @@
  * немає», кожен із яких колись продавав ніч за своє число.
  */
 import assert from 'node:assert';
+import fs from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { isWeekendDate, dayRowPrice, priceOrigin } from './day-price.ts';
 
@@ -69,11 +70,28 @@ assert.strictEqual(priceOrigin('matrix'), 'matrix', 'матриця колонк
 // модулем може бути лише ІМЕНЕМ — колонкою в SQL, полем обʼєкта, ключем
 // маски. Щойно поруч зʼявляється рішення (`CASE`, `?`, `IS NOT NULL`,
 // порівняння) — це власна копія правила, хай яким синтаксисом написана.
-const FILES = [
-  'src/modules/pricing/data/nightly-price.ts',
-  'src/modules/pricing/data/price-calendar.repo.ts',
-  'src/modules/widget/api/widget-calendar-public.handlers.ts',
-];
+// Обхід ДЕРЕВА, не білий список. Тут стояли три імені файлів, і рецензія
+// раунду 10 (Р10.5) назвала очевидне: пʼята копія в новому файлі була б
+// невидима. Перелік файлів у гейті про копії — це той самий рід обіцянки, що
+// й сам гейт: він каже «копій немає», а перевіряє «у цих трьох немає».
+const SKIP = new Set(['node_modules', '.next', '.tmp-fresh', 'dist']);
+function walk(dir: URL, out: string[] = []): string[] {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.isDirectory()) {
+      if (SKIP.has(e.name)) continue;
+      walk(new URL(`${e.name}/`, dir), out);
+      continue;
+    }
+    if (/\.(ts|tsx)$/.test(e.name) && !/\.check\.tsx?$/.test(e.name)) out.push(new URL(e.name, dir).pathname);
+  }
+  return out;
+}
+// Сам домен правила — джерело, а не копія.
+const HOME = 'src/modules/pricing/domain/day-price.ts';
+const FILES = walk(new URL('../../../../src/', import.meta.url))
+  .map((f) => f.slice(f.indexOf('/src/') + 1))
+  .filter((f) => f !== HOME);
+
 // Рішення про те, ЯКА КОЛОНКА діє, за означенням вимагає знати день тижня.
 // Тому червоне — це пара «колонка вихідних + день» в одному рішенні, хай яким
 // синтаксисом написана: тернарник у JS чи `CASE WHEN` у SQL. Саме пари не
@@ -98,8 +116,6 @@ for (const f of FILES) {
   // віддає колонки; який стовпчик діє на цю дату, вирішує домен.
   assert.ok(!/CASE[\s\S]{0,300}?(weekend_price|weekendPrice)/i.test(text),
     `${f}: правило вихідних усередині SQL CASE — запит має віддавати колонки, не рішення`);
-  assert.ok(/\bdayRowPrice\b/.test(text),
-    `${f}: правило вихідних мусить приходити з одного місця — виклику dayRowPrice() тут немає`);
 }
 
 console.log('day-price: правило вихідних одне, воно називає колонку, нуль і відʼємне не продають ніч');
