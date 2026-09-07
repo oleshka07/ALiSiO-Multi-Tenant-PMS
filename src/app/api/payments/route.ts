@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { ensureReservationFolio, recordPayment as recordFolioPayment } from '@invoicing/kernel';
-import { recalcPaymentStatusFromFolio } from '@bookings/kernel';
 import { getSql } from '@core/db/async';
+import { requireOrganizationId } from '@core/auth/tenant-context';
 import { createPaymentOperation } from '@/modules/finance/api/payment-bridge';
 import { getOptionalActor } from '@/modules/finance/api/operations.handlers';
 import { withActor, withPermission, type Actor } from '@core/auth/session';
@@ -107,7 +106,7 @@ export const POST = withPermission('manage_payments', async (
         ? `Внесено: ${actor.name}${notes ? ' · ' + notes : ''}`
         : (notes || null);
 
-      const { operationId } = await createPaymentOperation({
+      const { operationId, folioRecorded, folioRefusal } = await createPaymentOperation({
         reservationId: reservation_id,
         amount: Math.abs(Number(amount)),
         method,
@@ -119,45 +118,46 @@ export const POST = withPermission('manage_payments', async (
         actor,
         accountId,
       });
-      return NextResponse.json({ id: operationId, ok: true, kind: 'fin_operation' }, { status: 201 });
+      // Відмова книги гостя ДОХОДИТЬ до оператора, а не лягає в лог (Р10.10).
+      // Для німецького обʼєкта без `fiscal_de` це постійний стан цілого
+      // сегмента: гроші в касі, у рахунку гостя їх немає. 201 без жодного
+      // слова означав, що розходження книг бачить лише той, хто читає логи.
+      return NextResponse.json({
+        id: operationId, ok: true, kind: 'fin_operation',
+        folioRecorded,
+        ...(folioRecorded ? {} : {
+          folioRefusal,
+          message: 'Гроші записано в касу, але не в рахунок гостя — рахунок їх не покаже.',
+        }),
+      }, { status: 201 });
     }
 
-    // Marker path — no fin_operation. Only update reservation.payment_status
-    // and write an audit row to booking_activity_log so the operator has a
-    // trail of who marked what.
-    const res = await sql.row<{ id: string; total_price: number; payment_status: string; is_prepaid: number }>(
-      'SELECT id, total_price, payment_status, is_prepaid FROM reservations WHERE id = ?',
-      [reservation_id],
-    );
-    if (!res) return NextResponse.json({ error: 'reservation not found' }, { status: 404 });
-
-    // Channel-prepaid reservations (Hostex Booking/Airbnb/VRBO with is_prepaid=1)
-    // are paid by the platform — never downgrade their status from a marker.
-    // В3: маркер оплати кладе гроші У ФОЛІО, а слово рахує спільний
-    // перерахунок — з книги, а не з типу натиснутої кнопки.
+    // ── Маркерний шлях: НІ операції, НІ рядка в книзі гостя (Ч8) ────────
+    //
+    // Рішення 07.09: маркер очікуваної оплати у фоліо не пише. «Очікується
+    // переказ» лишається очікуванням на броні, видимим рецепції в журналі; ні
+    // борг, ні слово оплати воно не рухає.
+    //
+    // Причини, у порядку ваги:
+    //   - книга гостя містить ФАКТИ, не наміри (Д20/Ч7): гроші ще в дорозі, і
+    //     цей маршрут існує саме тому (див. CASH_METHODS вище);
+    //   - `fin_folio_payments` не має видалення за задумом — помилковий клік
+    //     виправлявся б лише зустрічним рядком у рахунку живого гостя;
+    //   - борг на виселенні рахується з фоліо, тож маркер відчинив би двері
+    //     боржникові — той самий клас, що Р8.5.
     //
     // Доти тут стояла табличка «deposit → partial, full → paid», яка писала
-    // слово, не знаючи СУМИ: бронь ставала «частково оплаченою» без жодного
-    // числа за нею, і виселення показувало повний борг. Повернення теж не
-    // «unpaid» за означенням — воно зменшує сплачене, і скільки лишилось,
-    // каже фоліо.
-    let statusChanged = false;
-    if (res.is_prepaid !== 1) {
-      const signed = type === 'refund' ? -Math.abs(Number(amount)) : Math.abs(Number(amount));
-      try {
-        const folioId = await ensureReservationFolio(reservation_id);
-        // Спосіб у фоліо — `transfer`, і це не спрощення. Маркер оплати за
-        // означенням НЕ касовий оборот (готівка йде вище, через
-        // `createPaymentOperation`), а `card_terminal` у німецькому готелі без
-        // фіскального модуля фоліо відхиляє — платіж не ліг би, і розбіжність
-        // повернулась би саме там, де її найважче помітити.
-        await recordFolioPayment({ folioId, amount: signed, method: 'transfer', paidAt: paid_at || null });
-      } catch (e: any) {
-        console.error('[api/payments] маркер не ліг у фоліо:', e.message);
-      }
-      const change = await recalcPaymentStatusFromFolio(reservation_id);
-      statusChanged = Boolean(change?.changed);
-    }
+    // слово, не знаючи СУМИ; потім (В3) — платіж у фоліо методом `transfer`
+    // за гроші, яких ще немає. Тепер — жодного з двох.
+    //
+    // Третій стан платежу («заявлений/підтверджений») заводиться тоді, коли
+    // його попросить готель, а не як побічний ефект маркера.
+    const orgId = await requireOrganizationId();
+    const res = await sql.row<{ id: string }>(
+      'SELECT id FROM reservations WHERE id = ? AND organization_id = ?',
+      [reservation_id, orgId],
+    );
+    if (!res) return NextResponse.json({ error: 'reservation not found' }, { status: 404 });
 
     try {
       const detailsLine = `${method} ${type} ${Math.abs(Number(amount))}${notes ? ' — ' + notes : ''}`;
@@ -173,7 +173,9 @@ export const POST = withPermission('manage_payments', async (
       ok: true,
       kind: 'marker',
       method,
-      statusChanged,
+      // Слово оплати маркер не рухає за рішенням Ч8 — поле лишається, щоб
+      // старий клієнт не читав `undefined`, і завжди `false`.
+      statusChanged: false,
       message:
         'Позначка збережена. Реальна транзакція з\'явиться в Операціях, коли надійдуть гроші (банк / платформа).',
     }, { status: 201 });

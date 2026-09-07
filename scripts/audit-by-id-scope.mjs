@@ -87,28 +87,40 @@ const BASELINE = {
 // вчить ігнорувати збірку (те саме міркування, що про `npm run lint` у CI).
 // Ціна помилки теж різна: читання без орендаря віддає чуже, запис — псує.
 //
-// Стеля кожного файла на 2026-09-07, день увімкнення другої осі.
+// Ключ не лише `id = ?`, а БУДЬ-ЯКИЙ `<щось>_id = ?`. Перша редакція вимагала
+// межі слова перед `id`, тож `WHERE reservation_id = ?` не бачила взагалі — а
+// це той самий клас: чужий ідентифікатор броні у писачі без орендаря псує
+// чужий рядок так само, як чужий `id`. Знайшлося рецензією на власному коміті
+// (Р10.10), не гейтом.
+//
+// Стеля кожного файла на 2026-09-07, день увімкнення другої осі; 45 → 55 після
+// розширення ключа того ж дня.
 const WRITE_BASELINE = {
-  'src/lib/db.ts': 5,                                          // міграції: орендаря ще немає
   'src/modules/auth/api/user.handlers.ts': 5,
+  'src/lib/db.ts': 5,                                          // міграції: орендаря ще немає
   'src/modules/channels/data/inbound-bookings.repo.ts': 4,
   'src/modules/widget/api/widget-reserve.handlers.ts': 4,
+  'src/modules/finance/api/categories.handlers.ts': 3,
   'src/modules/finance/api/operations.handlers.ts': 3,
   'src/modules/finance/data/recurring-engine.ts': 3,
   'src/modules/auth/api/language.handlers.ts': 2,
-  'src/modules/bookings/api/reservation-registrations.handlers.ts': 2,
-  'src/modules/channels/api/ical-channel.handlers.ts': 2,
-  'src/modules/channels/api/ical-sync.handlers.ts': 2,
+  'src/modules/finance/api/projects.handlers.ts': 2,
   'src/modules/finance/api/exchange-rates.handlers.ts': 2,
-  'src/modules/guests/data/registration.repo.ts': 2,
+  'src/modules/finance/api/counterparties.handlers.ts': 2,
+  'src/modules/channels/api/ical-sync.handlers.ts': 2,
+  'src/modules/channels/api/ical-channel.handlers.ts': 2,
   'src/modules/reports/data/partner-report.repo.ts': 2,
-  'src/core/i18n/resolve.ts': 1,
+  'src/modules/bookings/api/reservation-registrations.handlers.ts': 2,
+  'src/modules/bookings/api/reservation.handlers.ts': 2,
+  'src/modules/guests/data/registration.repo.ts': 2,
   'src/modules/auth/api/login.handlers.ts': 1,
-  'src/modules/bookings/api/reservation.handlers.ts': 1,
-  'src/modules/bookings/api/sub-bookings.handlers.ts': 1,
   'src/modules/finance/api/attachments.handlers.ts': 1,
-  'src/modules/guests/data/guest-portal.repo.ts': 1,
   'src/modules/invoicing/data/reservation-invoice.repo.ts': 1,
+  'src/modules/bookings/api/sub-bookings.handlers.ts': 1,
+  'src/modules/pricing/data/rate-plans.repo.ts': 1,
+  'src/modules/pricing/data/seasons.repo.ts': 1,
+  'src/modules/guests/data/guest-portal.repo.ts': 1,
+  'src/core/i18n/resolve.ts': 1,
 };
 
 // Таблиці з орендарем — зі згенерованої схеми, а не зі списку в голові.
@@ -148,14 +160,20 @@ for (const file of files) {
     const tail = m[3];
     if (!/WHERE/i.test(tail)) continue;
     if (/organization_id/i.test(m[0])) continue;
-    if (!/\bid\s*=\s*\?/.test(tail)) continue;
+    // Дві осі — два ключі, і це навмисно. Перша (id з URL) лишається на
+    // `id = ?`: її стеля читається очима вже другий тиждень, і розширювати
+    // ключ там означало б перевідкрити 60 місць. Друга (писач) бере будь-який
+    // `<щось>_id = ?` — чужий ідентифікатор броні псує чужий рядок так само.
+    const byBareId = /\bid\s*=\s*\?/.test(tail);
+    const byAnyId = /(?:\b|_)id\s*=\s*\?/.test(tail);
+    if (!byAnyId) continue;
     const hit = {
       file: rel,
       line: src.slice(0, m.index).split(/\r?\n/).length,
       table,
       sql: m[0].replace(/\s+/g, ' ').slice(0, 90),
     };
-    if (fromUrl) hits.push(hit);
+    if (fromUrl && byBareId) hits.push(hit);
     // Вісь 2 — ПИСАЧ, звідки б id не прийшов: тіло запиту дає точно такий
     // самий чужий ідентифікатор, а `params` у файлі при цьому немає взагалі.
     if (/^(UPDATE|DELETE)/i.test(m[1])) writeHits.push(hit);

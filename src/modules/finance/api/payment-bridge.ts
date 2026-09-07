@@ -3,6 +3,8 @@ import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
 import {
   createOperationInTx,
+  getOptionalActor,
+  writeOperationAudit,
   type OperationActor,
 } from './operations.handlers';
 // В3: гроші за бронь лягають У ФОЛІО, а слово рахує один спільний
@@ -11,7 +13,7 @@ import { recordReservationPayment } from '@invoicing/kernel';
 import { recalcPaymentStatusFromFolio } from '@bookings/kernel';
 // Зняття грошей із книги гостя після видалення рядка — одні двері на всіх
 // (Р8.7), інакше кожен видаляч знімає їх по-своєму або не знімає зовсім.
-import { reverseOperationInFolio, reverseOperationsInFolio } from './folio-reversal';
+import { reverseOperationInFolio } from './folio-reversal';
 import { applyRulesToOperation, loadActiveRules } from '../data/auto-rules-engine';
 
 // Колонка `currency` тут NOT NULL, тож `|| 'CZK'` не спрацьовував ніколи —
@@ -230,12 +232,18 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
   let folioRecorded = true;
   let folioRefusal: string | undefined;
   try {
-    await recordReservationPayment({
+    const { paymentId } = await recordReservationPayment({
       reservationId,
       amount: isRefund ? -Math.abs(amount) : Math.abs(amount),
       method: 'cash',
       paidAt,
     });
+    // Операція НЕСЕ рядок, який поклала (0096, Р10.6). Без цього посилання
+    // видалення не має чим відрізнити свій платіж від ручної проводки
+    // бухгалтера — і забирає з рахунку гостя чужі гроші.
+    await sql.run(
+      'UPDATE fin_operations SET folio_payment_id = ? WHERE id = ? AND organization_id = ?',
+      [paymentId, operationId, row.org_id]);
   } catch (e: any) {
     // Спосіб лишається `cash`, а не підміняється на `transfer`: готівка — це
     // готівка, і сторож відмовляє саме їй не помилково. Брехати способом, щоб
@@ -270,42 +278,23 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
  */
 export async function hasPaymentOperation(reservationId: string, source: PaymentSource, sourceRef?: string): Promise<boolean> {
   const sql = getSql();
+  // Орендар названий явно, хоч `reservationId` і приходить із синку каналу:
+  // «чи вже є така операція» без орендаря відповідає ПО ВСІЙ базі, і сусідній
+  // готель, чия бронь має той самий ідентифікатор джерела, змусив би нас
+  // пропустити свій платіж. На Postgres рятує політика, на SQLite — ніщо.
+  const organizationId = await requireOrganizationId();
   if (sourceRef) {
     const row = await sql.row<any>(`
       SELECT id FROM fin_operations
-      WHERE reservation_id = ? AND source = ? AND source_ref = ? LIMIT 1
-    `, [reservationId, source, sourceRef]);
+      WHERE organization_id = ? AND reservation_id = ? AND source = ? AND source_ref = ? LIMIT 1
+    `, [organizationId, reservationId, source, sourceRef]);
     return !!row;
   }
   const row = await sql.row<any>(`
     SELECT id FROM fin_operations
-    WHERE reservation_id = ? AND source = ? LIMIT 1
-  `, [reservationId, source]);
+    WHERE organization_id = ? AND reservation_id = ? AND source = ? LIMIT 1
+  `, [organizationId, reservationId, source]);
   return !!row;
-}
-
-/**
- * Delete all payment operations associated with a reservation.
- * Used by cleanup-ical handler.
- */
-export async function deletePaymentOperationsForReservation(reservationId: string): Promise<number> {
-  const sql = getSql();
-  // `bank_transactions` НЕМАЄ у схемі — ні в `src/lib/db.ts`, ні в
-  // `db/postgres/schema.sql`. Тобто цей рядок валить виклик цілком, і так було
-  // ще до цієї правки: `deletePaymentOperationsForReservation` кидав
-  // «no such table» на кожному запуску. Огороджено, щоб зняття грошей із книги
-  // гостя не залежало від таблиці, якої немає; знахідка передана у звіті —
-  // або таблицю треба завести, або цей рядок прибрати, і це рішення не моє.
-  await sql.run('UPDATE bank_transactions SET matched_operation_id = NULL WHERE matched_operation_id IN (SELECT id FROM fin_operations WHERE reservation_id = ?)', [reservationId])
-    .catch(() => { /* таблиці немає у схемі — див. коментар вище */ });
-  const held = await sql.row<{ total: number }>(
-    "SELECT COALESCE(SUM(amount), 0) AS total FROM fin_operations WHERE reservation_id = ? AND op_type = 'income'",
-    [reservationId]);
-  const result = await sql.run('DELETE FROM fin_operations WHERE reservation_id = ?', [reservationId]);
-  // Гроші зникли з однієї книги — мусять зникнути і з другої, інакше рахунок
-  // гостя показує сплачене, якого вже ніде немає (Р8.7).
-  await reverseOperationsInFolio(reservationId, Number(held?.total) || 0);
-  return result.changes;
 }
 
 /**
@@ -321,13 +310,15 @@ export async function deletePaymentOperation(operationId: string): Promise<{ del
   // чужий ідентифікатор видаляв би чужий рядок. На Postgres від цього рятує
   // політика, на SQLite (`npm run dev`) — ніщо.
   const organizationId = await requireOrganizationId();
-  const op = await sql.row<{ organization_id: string; reservation_id: string | null; amount: number; op_type: string }>(
-    'SELECT organization_id, reservation_id, amount, op_type FROM fin_operations WHERE id = ? AND organization_id = ?',
+  const op = await sql.row<any>(
+    'SELECT * FROM fin_operations WHERE id = ? AND organization_id = ?',
     [operationId, organizationId]);
   if (!op) return { deleted: false, reservationId: null };
-  await sql.run('UPDATE bank_transactions SET matched_operation_id = NULL WHERE matched_operation_id = ?', [operationId])
-    .catch(() => { /* `bank_transactions` немає у схемі — див. коментар вище */ });
-  await sql.run('DELETE FROM fin_operations WHERE id = ? AND organization_id = ?', [operationId, op.organization_id]);
+  // Слід у журналі — так само, як у видаленні операції з екрана Фінансів:
+  // двері одні, тож і запис про видалення мусить бути один, інакше рядок,
+  // знесений старим маршрутом платежів, зникав без автора (Р10.10).
+  await writeOperationAudit(operationId, 'delete', await getOptionalActor(), op, null);
+  await sql.run('DELETE FROM fin_operations WHERE id = ? AND organization_id = ?', [operationId, organizationId]);
   await reverseOperationInFolio(op);
-  return { deleted: true, reservationId: op.reservation_id };
+  return { deleted: true, reservationId: op.reservation_id ?? null };
 }

@@ -12,7 +12,7 @@
 //
 // NOT wrapped (own auth / no user session):
 //   - payment-bridge (createPaymentOperation, hasPaymentOperation,
-//     deletePaymentOperationsForReservation) — internal, called programmatically
+//     deletePaymentOperation) — internal, called programmatically
 //   - generateInvoiceForReservation — internal,
 //     called from bookings + payments on reservation lifecycle
 //   - getReservationPaymentTotals / recalcReservationPaymentStatus — internal
@@ -209,7 +209,7 @@ export const applyRecurringSuggestion = await withPermission('manage_payments', 
 
 // ─── Payment bridge — INTERNAL (no HTTP, no guard) ────────────
 export {
-  createPaymentOperation, hasPaymentOperation, deletePaymentOperationsForReservation,
+  createPaymentOperation, hasPaymentOperation,
 } from './payment-bridge';
 
 // ─── Auto-rules (PR #7) ───────────────────────────────────────

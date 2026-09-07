@@ -45,6 +45,9 @@ const { recordPayment, reservationFolioSummary } = await import('@invoicing/kern
 const { decideCheckout } = await import('./checkout.repo.ts');
 const { recalcPaymentStatusFromFolio } = await import('./payment-status.repo.ts');
 const { createPaymentOperation, deletePaymentOperation } = await import('../../finance/api/payment-bridge.ts');
+// Ручна проводка у Фінансах — тим самим писачем, яким її заводить екран
+// операцій, а не своїм INSERT: сцена має тиснути на живий шлях (урок Р8.10).
+const { createOperationInTx } = await import('../../finance/api/operations.handlers.ts');
 
 const sql = getSql();
 const ORG = '__folbook__org';
@@ -271,6 +274,56 @@ try {
       `Д: слово лишилось «${afterDelE.status}» після видалення платежу`);
     say(afterDelE.owed === TOTAL,
       `Д: борг ${afterDelE.owed}, а нараховано ${TOTAL} і нічого не сплачено`);
+
+    // ── СЦЕНА Ж: видалення РУЧНОЇ проводки не чіпає книгу гостя (Р10.6) ──
+    //
+    // Пара мусить бути симетричною: створення ручної проводки у Фінансах у
+    // фоліо нічого не додає (Д21) — отже, її видалення звідти нічого й не
+    // знімає. Доти реверс знімав із фоліо БУДЬ-ЯКИЙ дохід із `reservation_id`,
+    // а відрізнити свій платіж від чужого було нічим: `source` не розрізняє,
+    // місток теж пише 'manual'.
+    //
+    // Числа навмисно всі різні (інваріант 26): нараховано 5000, гість заплатив
+    // 3000, бухгалтер помилково завів 1200, лишилось 2000. Якщо діра є —
+    // у фоліо стане 1800, борг 3200; жодне з цих чисел не збігається з
+    // очікуваними 3000 і 2000.
+    const WRONG_ENTRY = 1200;
+    const g = '__folbook__g';
+    await seedStay(g);
+    await createPaymentOperation({
+      reservationId: g, amount: PREPAID, method: 'cash',
+      paymentSubtype: 'deposit', source: 'manual', status: 'completed',
+    });
+    const beforeManual = await asSeen(g);
+    say(beforeManual.owed === REST,
+      `Ж: до ручної проводки борг ${beforeManual.owed}, мав бути ${REST}`);
+    // Ручна проводка бухгалтера: дохід по броні, заведений у Фінансах. У книгу
+    // гостя вона НЕ пише — це проводка обліку, не платіж гостя (Д21).
+    const manualId = await createOperationInTx(ORG, {
+      op_type: 'income',
+      account_to_id: '__folbook__acc',
+      amount: WRONG_ENTRY,
+      currency: 'CZK',
+      paid_at: '2026-11-03',
+      category_id: 'ec_accommodation',
+      reservation_id: g,
+      status: 'completed',
+      comment: 'помилкова ручна проводка',
+    }, null);
+    const afterManual = (await reservationFolioSummary(g)).totals;
+    say(Number(afterManual.paid) === PREPAID,
+      `Ж: ручна проводка ЗМІНИЛА книгу гостя (${afterManual.paid} замість ${PREPAID}) — а вона туди не пише`);
+
+    await deletePaymentOperation(manualId);
+    const afterManualDel = await asSeen(g);
+    const folioG = (await reservationFolioSummary(g)).totals;
+    console.log('  Ж (ручна проводка):', JSON.stringify(afterManualDel), 'фоліо:', JSON.stringify(folioG));
+    say(Number(folioG.paid) === PREPAID,
+      `Ж: видалення ручної проводки забрало з книги гостя чужі гроші — у фоліо ${folioG.paid}, мало лишитись ${PREPAID}`);
+    say(afterManualDel.owed === REST,
+      `Ж: борг на виселенні ${afterManualDel.owed}, мав лишитись ${REST} — гість не винен нічого понад решту`);
+    say(afterManualDel.status === 'partial',
+      `Ж: слово «${afterManualDel.status}», мало лишитись partial`);
 
     // Виселення з боргом під `blocking` — відмова, і в обох сценах однаково.
     say(seenA.allowed === false && seenB.allowed === false,

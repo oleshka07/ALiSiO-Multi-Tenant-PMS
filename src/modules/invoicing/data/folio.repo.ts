@@ -133,7 +133,7 @@ export async function recordReservationPayment(input: {
 }
 
 /**
- * Зняти з фоліо гроші, яких більше немає в іншій книзі — ЗУСТРІЧНИМ рядком.
+ * Зняти з книги гостя ОДИН названий платіж — ЗУСТРІЧНИМ рядком.
  *
  * `fin_folio_payments` не має видалення за задумом: рахунок гостя не
  * переписується заднім числом, помилковий клік виправляється зустрічним
@@ -142,28 +142,46 @@ export async function recordReservationPayment(input: {
  * лишалась `paid`. Стан «гроші є в одній книзі й немає в іншій» виникав із
  * НОРМАЛЬНОЇ дії оператора, а не з падіння.
  *
- * Сума береться з того, що фоліо справді має: знімати більше, ніж там є,
- * означало б завести борг із повітря. Нічого немає — нічого й не пишемо.
+ * Приймається ІДЕНТИФІКАТОР ПЛАТЕЖУ, не бронь із сумою (Р10.6). Стара форма
+ * знімала «стільки-то з першого фоліо броні», і це було неправильно двічі:
+ *   - викликач не мав чим довести, що ці гроші клав саме він, тож видалення
+ *     ручної проводки бухгалтера забирало з рахунку гостя ЧУЖІ гроші;
+ *   - `LIMIT 1` по фоліо знімав із першої книги, тоді як на роздільному
+ *     рахунку платіж міг лежати в другій.
+ * Названий рядок відповідає на обидва: знімається саме те, що клали, і саме
+ * там, де воно лежить.
+ *
+ * Спосіб і документ зустрічного рядка беруться З ТОГО САМОГО платежу, а не
+ * підставляються (`'cash'` тут стояло літералом). Це не косметика: німецький
+ * обʼєкт з увімкненим `fiscal_de` вимагає для готівки назвати фактуру, тож
+ * зустрічний рядок без неї не проходив НІКОЛИ — саме для сегмента, заради
+ * якого фіскальний модуль і будується (Р10.8).
+ *
+ * Сума обмежена тим, що фоліо справді тримає: знімати більше, ніж там є,
+ * означало б завести борг із повітря. Повторний виклик не знімає вдруге —
+ * зустрічний рядок уже зменшив залишок.
  */
-export async function reverseReservationPayment(input: {
-  reservationId: string;
-  amount: number;
-  method?: string;
-}): Promise<number> {
+export async function reverseFolioPayment(folioPaymentId: string): Promise<number> {
   const organizationId = await requireOrganizationId();
   const sql = getSql();
-  const folio = await sql.row<{ id: string; paid: number }>(
-    `SELECT f.id AS id,
-            COALESCE((SELECT SUM(p.amount) FROM fin_folio_payments p WHERE p.folio_id = f.id), 0) AS paid
-       FROM fin_folios f
-      WHERE f.organization_id = ? AND f.reservation_id = ?
-      ORDER BY f.created_at ASC, f.id ASC LIMIT 1`,
-    [organizationId, input.reservationId]);
-  if (!folio) return 0;
-  const held = Number(folio.paid) || 0;
-  const take = Math.min(Math.abs(Number(input.amount) || 0), held);
+  const row = await sql.row<{
+    folio_id: string; amount: number; method: string; invoice_id: string | null; paid: number;
+  }>(
+    `SELECT p.folio_id AS folio_id, p.amount AS amount, p.method AS method, p.invoice_id AS invoice_id,
+            COALESCE((SELECT SUM(q.amount) FROM fin_folio_payments q WHERE q.folio_id = p.folio_id), 0) AS paid
+       FROM fin_folio_payments p
+      WHERE p.id = ? AND p.organization_id = ?`,
+    [folioPaymentId, organizationId]);
+  if (!row) return 0;
+  const held = Number(row.paid) || 0;
+  const take = Math.min(Math.abs(Number(row.amount) || 0), held);
   if (!(take > 0)) return 0;
-  await recordPayment({ folioId: String(folio.id), amount: -take, method: input.method ?? 'cash' });
+  await recordPayment({
+    folioId: String(row.folio_id),
+    amount: -take,
+    method: String(row.method),
+    invoiceId: row.invoice_id ?? undefined,
+  });
   return take;
 }
 
