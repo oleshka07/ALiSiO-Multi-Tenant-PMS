@@ -38,20 +38,6 @@ const { queuedChanges } = await import('../data/outbox.repo.ts');
 const { bulkUpdatePrices, upsertPrices } = await import('@pricing');
 
 const sql = getSql();
-/**
- * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
- *
- * Прямий `sql.*` без орендаря під роллю застосунку (`alisio_app`, FORCE RLS)
- * або відхиляється політикою (запис), або мовчки бачить порожньо (читання):
- * твердження лишається зеленим, нічого не перевіривши (INC-014). Місця, де
- * сцена свідомо стає ІНШИМ орендарем, лишаються явними
- * `runWithOrganization(…)`.
- */
-const asOrg = {
-  run: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.run(q, params as any)),
-  row: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.row<any>(q, params as any)),
-  rows: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.rows<any>(q, params as any)),
-};
 
 const ORG = '__verify_adapter__';
 const OTHER = '__verify_adapter_other__';
@@ -76,6 +62,21 @@ const FRESH = '2027-03-01 11:59:30';
  * `DELETE` не бачить жодного рядка, відповідає «0» і не падає — гейт зелений
  * на брудній базі. `organizations` орендаря не має, тож іде поза контекстом.
  */
+/**
+ * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
+ *
+ * Прямий `sql.*` без орендаря під роллю застосунку (`alisio_app`, FORCE RLS)
+ * або відхиляється політикою (запис), або мовчки бачить порожньо (читання):
+ * твердження лишається зеленим, нічого не перевіривши (INC-014). Місця, де
+ * сцена свідомо стає ІНШИМ орендарем, лишаються явними
+ * `runWithOrganization(…)`.
+ */
+const asOrg = {
+  run: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.run(q, params as any)),
+  row: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.row<any>(q, params as any)),
+  rows: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.rows<any>(q, params as any)),
+};
+
 async function cleanup() {
   await runWithOrganization(OTHER, () => sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [OTHER]));
   await runWithOrganization(ORG, async () => {
