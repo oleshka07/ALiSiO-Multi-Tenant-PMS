@@ -37,29 +37,58 @@ const { makeWebhookReceiver } = await import('./webhook.handlers.ts');
 const { unprocessedEvents } = await import('../data/events.repo.ts');
 
 const sql = getSql();
+/**
+ * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
+ *
+ * Прямий `sql.*` без орендаря під роллю застосунку (`alisio_app`, FORCE RLS)
+ * або відхиляється політикою (запис), або мовчки бачить порожньо (читання):
+ * твердження лишається зеленим, нічого не перевіривши (INC-014). Місця, де
+ * сцена свідомо стає ІНШИМ орендарем, лишаються явними
+ * `runWithOrganization(…)`.
+ */
+const asOrg = {
+  run: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.run(q, params as any)),
+  row: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.row<any>(q, params as any)),
+  rows: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.rows<any>(q, params as any)),
+};
+
 const A = '__webhook__a';
 const B = '__webhook__b';
 const CONN = (org: string) => `${org}_conn`;
 const TOKEN = (org: string) => `tok_${org}_0123456789abcdef0123456789abcdef`;
 const SECRET = (org: string) => `sec_${org}_fedcba9876543210fedcba9876543210`;
 
+/**
+ * Засів і прибирання — В КОНТЕКСТІ ОРЕНДАРЯ, як це робить застосунок.
+ *
+ * Під роллю застосунку (`alisio_app`, FORCE RLS) запис без орендаря на
+ * зʼєднанні політика відхиляє, а видалення мовчки чіпає НУЛЬ рядків — і
+ * наступний `DELETE` падає вже на чужому ключі. Під суперкористувачем
+ * проходить і те, і те, тому гейт був зелений і про політики не свідчив
+ * (INC-014). Рядок `organizations` лишається поза контекстом: ця таблиця
+ * орендаря НАЗИВАЄ, політики на ній немає за побудовою.
+ */
 async function cleanup() {
   for (const org of [A, B]) {
-    await sql.run('DELETE FROM cm_events WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
-    await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    await runWithOrganization(org, async () => {
+      await sql.run('DELETE FROM cm_events WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM cm_connections WHERE organization_id = ?', [org]);
+      await sql.run('DELETE FROM properties WHERE organization_id = ?', [org]);
+    });
     await sql.run('DELETE FROM organizations WHERE id = ?', [org]);
   }
 }
 
 async function seed(org: string) {
   await sql.run('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)', [org, org, org]);
-  await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [`${org}_prop`, org, org, `${org}_prop`]);
-  await sql.run(
-    `INSERT INTO cm_connections (id, organization_id, property_id, provider, environment, remote_property_id, webhook_token, webhook_secret, is_enabled)
-     VALUES (?, ?, ?, 'probe', 'staging', ?, ?, ?, TRUE)`,
-    [CONN(org), org, `${org}_prop`, `remote-${org}`, TOKEN(org), SECRET(org)],
-  );
+  await runWithOrganization(org, async () => {
+    await sql.run('INSERT INTO properties (id, organization_id, name, slug) VALUES (?, ?, ?, ?)', [`${org}_prop`, org, org, `${org}_prop`]);
+    await sql.run(
+      `INSERT INTO cm_connections (id, organization_id, property_id, provider, environment, remote_property_id, webhook_token, webhook_secret, is_enabled)
+       VALUES (?, ?, ?, 'probe', 'staging', ?, ?, ?, TRUE)`,
+      [CONN(org), org, `${org}_prop`, `remote-${org}`, TOKEN(org), SECRET(org)],
+    );
+  });
 }
 
 await cleanup();
