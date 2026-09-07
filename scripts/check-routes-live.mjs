@@ -22,16 +22,30 @@
  * рядку, варта, реєстрація маршруту, серіалізація, ковтнутий виняток.
  *
  * Наявне покриття, виміряне: `smoke-routes.mjs` обходить лише СТАТИЧНІ GET
- * (`if (url.includes('[')) continue`), а з 302 маршрутів застосунку 130
+ * (`if (url.includes('[')) continue`), а з 303 маршрутів застосунку 130
  * динамічні — і обидві вади жили саме там. `check-isolation.mjs` ходить
  * живим HTTP, але стверджує про орендаря: «сусід не бачить», а не «свій
  * бачить те, що йому потрібно».
  *
+ * ── Скільки це покриває насправді (Р8.14) ────────────────────────────────
+ *
+ * ШІСТЬ родин, 40 тверджень, і рівно **ЧОТИРИ динамічні маршрути зі 130**:
+ * `/api/bookings/[id]`, `/api/bookings/[id]/invoice`, `/api/guest/[token]`,
+ * `/api/channels/connections/[id]/frame`. Обидві історичні вади в цьому
+ * наборі є — ціль узято правильно, — але поруч із «130 динамічних» це легко
+ * прочитати як закритий клас. Клас не закритий: закрито чотири маршрути з
+ * нього. Наступна родина додається дешево, бо фікстура вже стоїть.
+ *
  * ── Що тут стверджується ─────────────────────────────────────────────────
  *
- * Не «не 5xx». Фактура віддавала 200 і `null` — статус був бездоганний.
- * Тому кожна родина маршрутів перевіряється на ФОРМУ відповіді: ті поля, без
- * яких екран порожній, і те число, яке має збігтися з введеним.
+ * Здебільшого ФОРМА відповіді: поля, без яких екран порожній, і числа, які
+ * мають збігтися з введеними. Не «не 5xx» — фактура віддавала 200 і `null`,
+ * статус був бездоганний.
+ *
+ * Але не «ніколи статус»: там, де статус І Є відповіддю, стверджується саме
+ * він — 404 на чужий токен, 409 `catalog_not_synced` на маршруті каналу,
+ * 201 на створення. Різниця в тому, що жодне з цих тверджень не задовольняє
+ * будь-яка відповідь: `status !== 500` таким було, і його прибрано (Р8.12).
  *
  * ── Чому збирає всі відмови, а не падає на першій ────────────────────────
  *
@@ -69,25 +83,39 @@ function claim(family, condition, what) {
 const ORG = `${TAG}org`;
 const USER = `${TAG}user`;
 
+/**
+ * Прибирання, яке НЕ мовчить про власний провал (Р8.16).
+ *
+ * Дев'ять `DELETE` тут обгорнуті в `try` — і мусять бути: таблиця може ще не
+ * існувати на базі, старшій за міграцію. Але порожній `catch` не розрізняє
+ * «таблиці немає» і «прибирання не спрацювало», а гейт бігає й на спільній
+ * базі: несприбране сміття лишалося б без сліду в лозі. Тепер кожна відмова
+ * називається рядком, а прогін іде далі — прибирання не має валити гейт,
+ * але й ховатись не має.
+ */
+const swept = async (what, fn) => {
+  try { await fn(); } catch (e) { console.log(`  ··  прибирання ${what}: ${e?.message || e}`); }
+};
+
 async function cleanup() {
   const props = (await sql.rows('SELECT id FROM properties WHERE organization_id = ?', [ORG])).map((r) => r.id);
   for (const pid of props) {
     const resIds = (await sql.rows('SELECT id FROM reservations WHERE property_id = ?', [pid])).map((r) => r.id);
     for (const rid of resIds) {
       for (const t of ['invoice_items', 'invoices', 'booking_activity_log', 'guest_registrations', 'accruals']) {
-        try { await sql.run(`DELETE FROM ${t} WHERE reservation_id = ?`, [rid]); } catch { /* може не бути */ }
+        await swept(t, () => sql.run(`DELETE FROM ${t} WHERE reservation_id = ?`, [rid]));
       }
     }
     await sql.run('DELETE FROM reservations WHERE property_id = ?', [pid]);
     for (const t of ['cm_outbox', 'cm_mappings', 'cm_events', 'cm_inbound_bookings']) {
-      try { await sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [ORG]); } catch { /* може не бути */ }
+      await swept(t, () => sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [ORG]));
     }
-    try { await sql.run('DELETE FROM cm_connections WHERE property_id = ?', [pid]); } catch { /* може не бути */ }
+    await swept('cm_connections', () => sql.run('DELETE FROM cm_connections WHERE property_id = ?', [pid]));
     // Ціни НЕ прибираються тут окремим запитом: `price_occupancy` належить
     // модулю `pricing`, і прямий SQL звідси — пробій межі (`check-boundaries`
     // це й сказав). Рядки йдуть каскадом за обʼєктом і типом номера
     // (`ON DELETE CASCADE`), тобто прибирання не втрачає нічого.
-    try { await sql.run('DELETE FROM fees_taxes WHERE property_id = ?', [pid]); } catch { /* може не бути */ }
+    await swept('fees_taxes', () => sql.run('DELETE FROM fees_taxes WHERE property_id = ?', [pid]));
     await sql.run('DELETE FROM units WHERE property_id = ?', [pid]);
     await sql.run('DELETE FROM unit_types WHERE property_id = ?', [pid]);
     await sql.run('DELETE FROM categories WHERE property_id = ?', [pid]);
@@ -95,7 +123,7 @@ async function cleanup() {
   for (const t of ['invoices', 'invoice_counters', 'invoice_series', 'guests', 'organization_features',
     'unit_type_amenities', 'property_amenities', 'amenities', 'amenity_categories',
     'organization_currencies', 'finance_exchange_rates']) {
-    try { await sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [ORG]); } catch { /* може не бути */ }
+    await swept(t, () => sql.run(`DELETE FROM ${t} WHERE organization_id = ?`, [ORG]));
   }
   await sql.run('DELETE FROM properties WHERE organization_id = ?', [ORG]);
   await sql.run('DELETE FROM sessions WHERE user_id = ?', [USER]);

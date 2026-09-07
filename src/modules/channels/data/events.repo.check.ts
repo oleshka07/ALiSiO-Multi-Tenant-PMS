@@ -17,6 +17,11 @@ const { getSql } = await import('@core/db/async');
 const { recordEvent, unprocessedEvents, markEventsProcessed } = await import('./events.repo.ts');
 
 const sql = getSql();
+
+const A = '__events__a';
+const B = '__events__b';
+const CONN = (org: string) => `${org}_conn`;
+
 /**
  * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
  *
@@ -31,10 +36,6 @@ const asOrg = {
   row: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.row<any>(q, params as any)),
   rows: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.rows<any>(q, params as any)),
 };
-
-const A = '__events__a';
-const B = '__events__b';
-const CONN = (org: string) => `${org}_conn`;
 
 /**
  * Засів і прибирання — В КОНТЕКСТІ ОРЕНДАРЯ, як це робить застосунок.

@@ -26,6 +26,18 @@ const { upsertPrices, bulkUpdatePrices, getPriceMonth } = await import('./price-
 const { priceNights } = await import('./nightly-price.ts');
 
 const sql = getSql();
+
+const A = '__pc2__a';
+const B = '__pc2__b';
+const PROP = (o: string) => `${o}_prop`;
+const UT = (o: string) => `${o}_dbl`;
+const BAR = (o: string) => `${o}_bar`;
+const BB = (o: string) => `${o}_bb`;
+const D1 = '2026-11-25';
+const D2 = '2026-11-26';
+const D3 = '2026-11-27';
+const D4 = '2026-11-28';
+
 /**
  * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
  *
@@ -40,17 +52,6 @@ const asOrg = {
   row: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.row<any>(q, params as any)),
   rows: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.rows<any>(q, params as any)),
 };
-
-const A = '__pc2__a';
-const B = '__pc2__b';
-const PROP = (o: string) => `${o}_prop`;
-const UT = (o: string) => `${o}_dbl`;
-const BAR = (o: string) => `${o}_bar`;
-const BB = (o: string) => `${o}_bb`;
-const D1 = '2026-11-25';
-const D2 = '2026-11-26';
-const D3 = '2026-11-27';
-const D4 = '2026-11-28';
 
 /**
  * Засів і прибирання — В КОНТЕКСТІ ОРЕНДАРЯ, як це робить застосунок.

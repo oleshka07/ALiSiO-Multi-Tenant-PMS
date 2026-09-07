@@ -37,6 +37,13 @@ const { makeWebhookReceiver } = await import('./webhook.handlers.ts');
 const { unprocessedEvents } = await import('../data/events.repo.ts');
 
 const sql = getSql();
+
+const A = '__webhook__a';
+const B = '__webhook__b';
+const CONN = (org: string) => `${org}_conn`;
+const TOKEN = (org: string) => `tok_${org}_0123456789abcdef0123456789abcdef`;
+const SECRET = (org: string) => `sec_${org}_fedcba9876543210fedcba9876543210`;
+
 /**
  * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
  *
@@ -51,12 +58,6 @@ const asOrg = {
   row: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.row<any>(q, params as any)),
   rows: (q: string, params?: unknown[]) => runWithOrganization(A, () => sql.rows<any>(q, params as any)),
 };
-
-const A = '__webhook__a';
-const B = '__webhook__b';
-const CONN = (org: string) => `${org}_conn`;
-const TOKEN = (org: string) => `tok_${org}_0123456789abcdef0123456789abcdef`;
-const SECRET = (org: string) => `sec_${org}_fedcba9876543210fedcba9876543210`;
 
 /**
  * Засів і прибирання — В КОНТЕКСТІ ОРЕНДАРЯ, як це робить застосунок.
