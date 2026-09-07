@@ -57,12 +57,6 @@ const OLD = '2027-02-28 10:00:00';
 const FRESH = '2027-03-01 11:59:30';
 
 /**
- * Прибирання — У КОНТЕКСТІ ОРЕНДАРЯ (рецензія 07.09), як і в
- * `ari-adapter.check`: без нього на Postgres під `FORCE ROW LEVEL SECURITY`
- * `DELETE` не бачить жодного рядка, відповідає «0» і не падає — гейт зелений
- * на брудній базі. `organizations` орендаря не має, тож іде поза контекстом.
- */
-/**
  * Той самий `sql`, але завжди в контексті орендаря — як у застосунку.
  *
  * Прямий `sql.*` без орендаря під роллю застосунку (`alisio_app`, FORCE RLS)
@@ -77,6 +71,15 @@ const asOrg = {
   rows: (q: string, params?: unknown[]) => runWithOrganization(ORG, () => sql.rows<any>(q, params as any)),
 };
 
+/**
+ * Прибирання — У КОНТЕКСТІ ОРЕНДАРЯ (рецензія 07.09), як і в
+ * `ari-adapter.check`: без нього на Postgres під `FORCE ROW LEVEL SECURITY`
+ * `DELETE` не бачить жодного рядка, відповідає «0» і не падає — гейт зелений
+ * на брудній базі. `organizations` орендаря не має, тож іде поза контекстом.
+ *
+ * Сусід прибирається В КОНТЕКСТІ СУСІДА окремим рядком: `IN (ORG, OTHER)`
+ * зсередини контексту `ORG` рядків `OTHER` не бачить і мовчки лишає їх.
+ */
 async function cleanup() {
   await runWithOrganization(OTHER, () => sql.run('DELETE FROM cm_outbox WHERE organization_id = ?', [OTHER]));
   await runWithOrganization(ORG, async () => {
