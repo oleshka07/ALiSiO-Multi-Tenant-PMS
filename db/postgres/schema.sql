@@ -271,6 +271,7 @@ CREATE TABLE "business_units" (
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "parent_id" TEXT,
+  "code" TEXT,
   PRIMARY KEY ("id")
 );
 
@@ -606,6 +607,7 @@ CREATE TABLE "expense_categories" (
   "parent_id" TEXT,
   "op_type" TEXT,
   "classifier" TEXT,
+  "code" TEXT,
   PRIMARY KEY ("id")
 );
 
@@ -909,6 +911,7 @@ CREATE TABLE "fin_operations" (
   "status" TEXT DEFAULT 'completed' NOT NULL,
   "method" TEXT,
   "payment_subtype" TEXT,
+  "folio_payment_id" TEXT,
   "comment" TEXT,
   "is_planned" BOOLEAN DEFAULT false NOT NULL,
   "source" TEXT DEFAULT 'manual' NOT NULL,
@@ -920,7 +923,6 @@ CREATE TABLE "fin_operations" (
   "suggested_recurring_id" TEXT,
   "created_by_user_id" TEXT,
   "updated_by_user_id" TEXT,
-  "folio_payment_id" TEXT,
   PRIMARY KEY ("id"),
   CHECK (op_type IN ('income', 'expense', 'transfer')),
   CHECK (status IN ('completed','pending','failed','refunded'))
@@ -1393,6 +1395,7 @@ CREATE TABLE "organizations" (
   "timezone" TEXT DEFAULT 'Europe/Prague' NOT NULL,
   "default_currency" TEXT DEFAULT 'CZK' NOT NULL,
   "language" TEXT DEFAULT 'uk' NOT NULL,
+  "child_age_bands" TEXT DEFAULT '[]' NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "legal_name" TEXT,
@@ -1407,7 +1410,6 @@ CREATE TABLE "organizations" (
   "invoice_email" TEXT,
   "website" TEXT,
   "ocr_cloud_fallback" BIGINT DEFAULT 0 NOT NULL,
-  "child_age_bands" TEXT DEFAULT '[]' NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("slug")
 );
@@ -1641,13 +1643,13 @@ CREATE TABLE "rate_plans" (
   "description" TEXT,
   "included_services_json" JSONB DEFAULT '[]'::jsonb NOT NULL,
   "is_hidden" BOOLEAN DEFAULT false NOT NULL,
-  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
-  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "pricing_type" TEXT DEFAULT 'manual' NOT NULL,
   "based_on_rate_plan_id" TEXT,
   "adjustment_kind" TEXT,
   "adjustment_value" NUMERIC(14,2),
   "adjustment_direction" TEXT,
+  "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
+  "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   PRIMARY KEY ("id"),
   UNIQUE ("property_id", "code"),
   CHECK (sell_mode IN ('per_room', 'per_person')),
@@ -2094,14 +2096,14 @@ CREATE TABLE "units" (
   "notes" TEXT,
   "sort_order" BIGINT DEFAULT 0 NOT NULL,
   "is_active" BOOLEAN DEFAULT true NOT NULL,
+  "view" TEXT,
+  "wifi_network" TEXT,
+  "wifi_password" TEXT,
   "is_pool" BOOLEAN DEFAULT false NOT NULL,
   "created_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "updated_at" TIMESTAMPTZ DEFAULT now() NOT NULL,
   "lock_code" TEXT,
   "entry_photo_url" TEXT,
-  "view" TEXT,
-  "wifi_network" TEXT,
-  "wifi_password" TEXT,
   PRIMARY KEY ("id"),
   UNIQUE ("property_id", "code"),
   CHECK (room_status IN ('available', 'occupied', 'maintenance', 'blocked')),
@@ -2674,6 +2676,7 @@ CREATE INDEX "idx_booking_sites_property" ON "booking_sites" ("property_id");
 CREATE UNIQUE INDEX "idx_booking_sites_slug" ON "booking_sites" ("slug");
 CREATE INDEX "idx_booking_sites_status" ON "booking_sites" ("status");
 CREATE INDEX "idx_bu_parent" ON "business_units" ("parent_id");
+CREATE UNIQUE INDEX "idx_business_units_org_code" ON "business_units" ("organization_id", "code") WHERE code IS NOT NULL;
 CREATE INDEX "idx_capex_bu" ON "capex_items" ("business_unit_id");
 CREATE INDEX "idx_capex_month" ON "capex_items" ("month");
 CREATE INDEX "idx_capex_org" ON "capex_items" ("organization_id");
@@ -2704,6 +2707,7 @@ CREATE UNIQUE INDEX "idx_event_addons_row" ON "event_addons" ("property_id", "na
 CREATE INDEX "idx_event_bookings_day" ON "event_bookings" ("property_id", "space_id", "event_date");
 CREATE UNIQUE INDEX "idx_event_spaces_row" ON "event_spaces" ("property_id", "code");
 CREATE INDEX "idx_ec_parent" ON "expense_categories" ("parent_id");
+CREATE UNIQUE INDEX "idx_expense_categories_org_code" ON "expense_categories" ("organization_id", "code") WHERE code IS NOT NULL;
 CREATE INDEX "idx_extra_occupancy_rules_org" ON "extra_occupancy_rules" ("organization_id");
 CREATE INDEX "idx_extra_occupancy_rules_property" ON "extra_occupancy_rules" ("property_id");
 CREATE INDEX "idx_arm_op" ON "fin_auto_rule_matches" ("operation_id");

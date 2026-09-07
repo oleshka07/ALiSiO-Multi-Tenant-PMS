@@ -15,6 +15,9 @@ import { ownedFinanceRow } from '../data/owned.repo';
 import { reverseOperationInFolio } from './folio-reversal';
 import { serverError } from '@core/http/errors';
 import { organizationCurrency } from '@core/currency';
+// Стаття довідника — за СТАЛИМ кодом цього готелю, не за літеральним
+// ідентифікатором рядка, який належить готелю, що завівся першим (INC-025).
+import { categoryIdByCode } from '@core/chart-of-accounts';
 
 const OP_TYPES = ['income', 'expense', 'transfer'] as const;
 type OpType = typeof OP_TYPES[number];
@@ -435,13 +438,19 @@ export async function autoResolveCategory(
   // написав, і робила це чужою мовою.
 
   // 3. Fallbacks by op_type
+  //
+  // Запасне значення тут — код ЦЬОГО готелю, не літеральний ідентифікатор
+  // (INC-025). Стояло `|| 'ec_accommodation'`: рядок, який належить готелю,
+  // що завівся першим. Для другого готелю це або відмова зовнішнього ключа,
+  // або тихе чіпляння на ЧУЖИЙ рядок довідника, який його ж політика ховає, —
+  // і проживання лягало в P&L не в той рядок.
   if (opType === 'income') {
     const defaultInc = await sql.row<any>("SELECT id FROM expense_categories WHERE organization_id = ? AND op_type = 'income' ORDER BY sort_order ASC LIMIT 1", [orgId]) as { id: string } | undefined;
-    return defaultInc?.id || 'ec_accommodation';
+    return defaultInc?.id || await categoryIdByCode('accommodation');
   }
   if (opType === 'expense') {
     const defaultExp = await sql.row<any>("SELECT id FROM expense_categories WHERE organization_id = ? AND op_type = 'expense' ORDER BY sort_order ASC LIMIT 1", [orgId]) as { id: string } | undefined;
-    return defaultExp?.id || 'ec_other_exp';
+    return defaultExp?.id || await categoryIdByCode('other_exp');
   }
 
   return null;

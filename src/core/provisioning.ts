@@ -6,6 +6,7 @@ import { getSql } from './db/async.ts';
 import { runWithOrganization } from './auth/tenant-context.ts';
 import { DEFAULT_LANGUAGE, LANGUAGE_CODES, isLanguage } from './i18n/languages.ts';
 import { defaultBookingSources } from './booking-sources.ts';
+import { CHART_OF_ACCOUNTS, BUSINESS_UNITS } from './chart-of-accounts.ts';
 
 /**
  * Creating a customer.
@@ -216,6 +217,43 @@ export async function provisionOrganization(input: NewOrganization): Promise<Pro
     const wanted = new Set(input.enable || []);
     for (const key of Object.keys(FEATURES) as FeatureKey[]) {
       await setFeature(organizationId, key, wanted.has(key) || featureDefault(key), t);
+    }
+
+    // План рахунків і бізнес-юніти — КОЖНОМУ готелю свої (INC-025).
+    //
+    // Сіяв їх `db.ts` рівно один раз на всю базу:
+    // `SELECT id FROM organizations LIMIT 1` — проти інваріанта 1 — і з
+    // літеральними первинними ключами (`ec_accommodation`, `bu_shared`, …),
+    // тож другий комплект був неможливий за означенням PK. Тут не сіялось
+    // нічого. Наслідок: або статей немає ні в кого (чиста інсталяція) і
+    // готівкова оплата віддає 500 першому ж готелю, або вони належать готелю
+    // №1, і операції готелю №2 тихо чіпляються на ЧУЖИЙ рядок довідника —
+    // ключ пропускає, політика його ховає, і проживання лягає в P&L не в той
+    // рядок.
+    //
+    // Ідентифікатор випадковий, стала величина — `code`, унікальний у межах
+    // організації. Список один на всіх (`core/chart-of-accounts.ts`): два
+    // списки розійшлися б, і новий готель отримав би довідник, якого немає
+    // у старих.
+    // Прапорці за ТИПОМ колонки, не за виглядом (інваріант 12):
+    // include_in_pnl / include_in_cash — числові (BIGINT на Postgres), тож 1/0;
+    // is_capex — BOOLEAN, тож true/false. Postgres відхиляє true в число і 1 у
+    // булеве, а на SQLite цього не видно взагалі.
+    for (const a of CHART_OF_ACCOUNTS) {
+      await t.run(`
+        INSERT INTO expense_categories (id, organization_id, code, name, std_group, pnl_line,
+          include_in_pnl, include_in_cash, alloc_method, is_capex, icon, color, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [`ec_${crypto.randomBytes(8).toString('hex')}`, organizationId, a.code, a.name,
+        a.stdGroup, a.pnlLine, a.includeInPnl ? 1 : 0, a.includeInCash ? 1 : 0,
+        a.allocMethod, a.isCapex, a.icon, a.color, a.sortOrder]);
+    }
+    for (const u of BUSINESS_UNITS) {
+      await t.run(`
+        INSERT INTO business_units (id, organization_id, code, name, unit_type, is_shared, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [`bu_${crypto.randomBytes(8).toString('hex')}`, organizationId, u.code, u.name,
+        u.unitType, u.isShared, u.sortOrder]);
     }
 
     // Каталог зручностей тут НЕ сіється, і це не пропуск.

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSql } from '@core/db/async';
 import { requireOrganizationId } from '@core/auth/tenant-context';
+import { categoryIdByCode } from '@core/chart-of-accounts';
 import {
   createOperationInTx,
   getOptionalActor,
@@ -198,7 +199,12 @@ export async function createPaymentOperation(input: CreatePaymentOperationInput)
     ...(accruedAt ? { accrued_at: accruedAt } : {}),
     ...(row.check_in ? { period_from: row.check_in } : {}),
     ...(row.check_out ? { period_to: row.check_out } : {}),
-    category_id: isRefund ? 'ec_other_exp' : 'ec_accommodation',
+    // Стаття довідника ЦЬОГО готелю, за сталим кодом (INC-025). Тут стояв
+    // літеральний ідентифікатор — рядок, який належить готелю, що завівся
+    // першим: на чистій інсталяції зовнішній ключ відмовляв готівковій оплаті
+    // ПЕРШОГО ж готелю, а на базі з демо операції ДРУГОГО тихо чіплялись на
+    // чужий рядок, який його ж політика при читанні ховає.
+    category_id: isRefund ? await categoryIdByCode('other_exp') : await categoryIdByCode('accommodation'),
     reservation_id: reservationId,
     status,
     method,

@@ -4,6 +4,14 @@ import fs from 'fs';
 import { createRequire } from 'node:module';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+// Один список на всіх: план рахунків і бізнес-юніти. Імпорт відносний і з
+// розширенням — цей файл вантажать і збірка, і голий node (`check-bare-node`).
+// Два списки (тут і в сівачі) розійшлися б, і другий готель отримав би
+// довідник, якого немає в першого — саме той клас, що INC-025.
+import {
+  CHART_OF_ACCOUNTS as CHART_OF_ACCOUNTS_SEED,
+  BUSINESS_UNITS as BUSINESS_UNITS_SEED,
+} from '../core/chart-of-accounts.ts';
 
 // Database file path — the project's /data directory, unless told otherwise.
 // The override exists so scripts/check-fresh-schema.mjs can boot the app
@@ -1794,17 +1802,12 @@ function runMigrations(database: any) {
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
-    // Only the two structural units every P&L needs. A tenant's real business
-    // units (their restaurant, their wellness area, their buildings) are theirs
-    // to define — seeding one property's breakdown into every database put
-    // another company's org chart in front of the customer.
-    const orgRow = database.prepare("SELECT id FROM organizations LIMIT 1").get() as any;
-    if (orgRow) {
-      const insBU = database.prepare('INSERT INTO business_units (id, organization_id, name, unit_type, is_shared, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
-      insBU.run('bu_shared', orgRow.id, 'Shared / HQ', 'Shared / HQ', 1, 1);
-      insBU.run('bu_review', orgRow.id, 'To review', 'Unassigned / review', 0, 2);
-      console.log('[DB] Created business_units table');
-    }
+    // Рядків тут БІЛЬШЕ НЕ СІЄМО (INC-025). Тут стояло
+    // `SELECT id FROM organizations LIMIT 1` і два літеральні ключі
+    // (`bu_shared`, `bu_review`) — тобто структурні юніти діставались готелю,
+    // який завівся першим, а другий не мав жодного. Засів переїхав у 0097
+    // (для кожної організації) і в `provisionOrganization` (для нової).
+    console.log('[DB] Created business_units table');
   }
 
   // --- Migration: add parent_id to business_units for hierarchy (Finmap PR #3) ---
@@ -1843,36 +1846,14 @@ function runMigrations(database: any) {
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
-    // A generic hotel chart of accounts. Revenue lines that belong to one
-    // property's offering (its sauna, its restaurant) are not seeded — the
-    // tenant adds those itself.
-    const orgRow = database.prepare("SELECT id FROM organizations LIMIT 1").get() as any;
-    if (orgRow) {
-      const insEC = database.prepare('INSERT INTO expense_categories (id, organization_id, name, std_group, pnl_line, include_in_pnl, include_in_cash, alloc_method, is_capex, icon, color, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-      // Revenue
-      insEC.run('ec_accommodation', orgRow.id, 'Accommodation', 'Revenue', 'Accommodation', 1, 1, 'DIRECT', 0, '🏠', '#22c55e', 1);
-      insEC.run('ec_services_rev', orgRow.id, 'Services', 'Revenue', 'Services', 1, 1, 'DIRECT', 0, '🛎️', '#f59e0b', 2);
-      insEC.run('ec_other_rev', orgRow.id, 'Other income', 'Revenue', 'Other income', 1, 1, 'DIRECT', 0, '💰', '#84cc16', 3);
-      // COGS
-      insEC.run('ec_variable', orgRow.id, 'Variable costs', 'COGS', 'Variable costs', 1, 1, 'DIRECT', 0, '📦', '#991b1b', 4);
-      // OPEX
-      insEC.run('ec_rent', orgRow.id, 'Rent', 'OPEX', 'Rent', 1, 1, 'RENT', 0, '🏢', '#6366f1', 5);
-      insEC.run('ec_utilities', orgRow.id, 'Utilities', 'OPEX', 'Utilities', 1, 1, 'UTILITIES', 0, '🔌', '#8b5cf6', 6);
-      insEC.run('ec_payroll', orgRow.id, 'Payroll', 'OPEX', 'Payroll', 1, 1, 'SHARED_PAYROLL', 0, '👥', '#a855f7', 7);
-      insEC.run('ec_marketing', orgRow.id, 'Marketing', 'OPEX', 'Marketing', 1, 1, 'HQ', 0, '📢', '#ec4899', 8);
-      insEC.run('ec_professional', orgRow.id, 'Professional services', 'OPEX', 'Professional services', 1, 1, 'HQ', 0, '💼', '#14b8a6', 9);
-      insEC.run('ec_consumables', orgRow.id, 'Consumables', 'OPEX', 'Consumables', 1, 1, 'HQ', 0, '🧹', '#78716c', 10);
-      insEC.run('ec_other_exp', orgRow.id, 'Other expenses', 'OPEX', 'Other expenses', 1, 1, 'HQ', 0, '📋', '#6b7280', 11);
-      // Taxes
-      insEC.run('ec_taxes', orgRow.id, 'Taxes', 'Taxes', 'Taxes', 1, 1, 'HQ', 0, '🏛️', '#334155', 12);
-      // CAPEX
-      insEC.run('ec_capex', orgRow.id, 'Capital expenditure', 'CAPEX', 'CAPEX', 0, 1, 'NONE', 1, '🏗️', '#0ea5e9', 13);
-      // Financing
-      insEC.run('ec_investors', orgRow.id, 'Financing', 'Financing', 'Financing', 0, 1, 'NONE', 0, '🏦', '#059669', 14);
-      // Transfer
-      insEC.run('ec_transfer', orgRow.id, 'Transfer', 'Transfer', 'Transfer', 0, 1, 'NONE', 0, '↔️', '#94a3b8', 15);
-      console.log('[DB] Created expense_categories table with default chart of accounts');
-    }
+    // План рахунків тут БІЛЬШЕ НЕ СІЄМО (INC-025). Тут стояло
+    // `SELECT id FROM organizations LIMIT 1` і пʼятнадцять ЛІТЕРАЛЬНИХ
+    // первинних ключів (`ec_accommodation`, …), тож другий комплект був
+    // неможливий за означенням PK: статті діставались готелю, який завівся
+    // першим, а місток платежів пришпилював `'ec_accommodation'` кожному.
+    // Засів переїхав у 0097 (для кожної організації) і в
+    // `provisionOrganization` (для нової), а сталою величиною став `code`.
+    console.log('[DB] Created expense_categories table');
   }
 
   // --- Migration: add hierarchy + op_type + classifier to expense_categories (Finmap PR #2) ---
@@ -7295,6 +7276,104 @@ function runMigrations(database: any) {
     console.error('[DB] 0096 folio_payment_id:', e.message);
   }
 
+  // --- 0097: план рахунків і бізнес-юніти належать ГОТЕЛЮ (INC-025) ---
+  //
+  // Довідник сіявся один раз на всю базу — `SELECT id FROM organizations
+  // LIMIT 1`, проти інваріанта 1, — і з ЛІТЕРАЛЬНИМИ первинними ключами
+  // (`ec_accommodation`, `bu_shared`, …), тож другий комплект неможливий за
+  // означенням PK. Справжній сівач (`provisionOrganization`) статей не сіяв
+  // узагалі, а місток платежів пришпилював `'ec_accommodation'` кожному.
+  //
+  // Тепер стала величина — `code`, унікальний У МЕЖАХ ОРГАНІЗАЦІЇ
+  // (інваріант 3); ідентифікатор випадковий і належить готелю. Міграція:
+  //   1. заводить колонку;
+  //   2. підписує кодами історичні літеральні рядки — вони лишаються на
+  //      місці разом з усіма посиланнями на них;
+  //   3. досіває повний довідник КОЖНІЙ організації, у якої його немає.
+  //
+  // Крок 3 і є лікуванням: на чинній беті готель №2 не має жодної статті, і
+  // його операції або відмовляються ключем, або чіпляються на чужий рядок.
+  try {
+    for (const [table, prefix, seed] of [
+      ['expense_categories', 'ec_', CHART_OF_ACCOUNTS_SEED],
+      ['business_units', 'bu_', BUSINESS_UNITS_SEED],
+    ] as const) {
+      const cols = database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+      if (!cols.some((c) => c.name === 'code')) {
+        database.exec(`ALTER TABLE ${table} ADD COLUMN code TEXT`);
+      }
+      // Історичні літеральні ключі підписуються своїм кодом. Рядок лишається
+      // тим самим — усі `fin_operations`, що на нього посилаються, цілі.
+      const setCode = database.prepare(`UPDATE ${table} SET code = ? WHERE id = ? AND code IS NULL`);
+      for (const row of seed) setCode.run(row.code, `${prefix}${row.code}`);
+      // Унікальність — у межах організації, не бази.
+      database.exec(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_org_code ON ${table}(organization_id, code) WHERE code IS NOT NULL`);
+    }
+
+    // Досів для КОЖНОЇ організації, у якої довідника немає.
+    const orgs = database.prepare('SELECT id FROM organizations').all() as { id: string }[];
+    const insEC = database.prepare(
+      `INSERT INTO expense_categories (id, organization_id, code, name, std_group, pnl_line,
+         include_in_pnl, include_in_cash, alloc_method, is_capex, icon, color, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insBU = database.prepare(
+      `INSERT INTO business_units (id, organization_id, code, name, unit_type, is_shared, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`);
+    const rnd = () => Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2, 10);
+    let seededOrgs = 0;
+    for (const org of orgs) {
+      const haveEC = new Set((database.prepare(
+        'SELECT code FROM expense_categories WHERE organization_id = ? AND code IS NOT NULL')
+        .all(org.id) as { code: string }[]).map((r) => r.code));
+      const haveBU = new Set((database.prepare(
+        'SELECT code FROM business_units WHERE organization_id = ? AND code IS NOT NULL')
+        .all(org.id) as { code: string }[]).map((r) => r.code));
+      let added = 0;
+      for (const a of CHART_OF_ACCOUNTS_SEED) {
+        if (haveEC.has(a.code)) continue;
+        insEC.run(`ec_${rnd()}`, org.id, a.code, a.name, a.stdGroup, a.pnlLine,
+          a.includeInPnl ? 1 : 0, a.includeInCash ? 1 : 0, a.allocMethod, a.isCapex ? 1 : 0,
+          a.icon, a.color, a.sortOrder);
+        added++;
+      }
+      for (const u of BUSINESS_UNITS_SEED) {
+        if (haveBU.has(u.code)) continue;
+        insBU.run(`bu_${rnd()}`, org.id, u.code, u.name, u.unitType, u.isShared ? 1 : 0, u.sortOrder);
+        added++;
+      }
+      if (added > 0) seededOrgs++;
+    }
+    if (seededOrgs > 0) {
+      console.log(`[DB] 0097: план рахунків і бізнес-юніти досіяно для ${seededOrgs} організац(ії/ій)`);
+    }
+  } catch (e: any) {
+    console.error('[DB] 0097 chart of accounts per organization:', e.message);
+  }
+
+  // --- 0098 (ключі довідників з орендарем) — НЕ ЗРОБЛЕНО, і ось чому ---
+  //
+  // План був: складений зовнішній ключ
+  // `(organization_id, category_id) REFERENCES expense_categories(organization_id, id)`
+  // замість одноколонкового. Він і є тим, що робить клас INC-025 неможливим,
+  // а не лише невживаним: одноколонковий ключ пропускає операцію одного
+  // готелю на рядок довідника ІНШОГО (RI-тригери виконуються з вимкненою row
+  // security, тож ключ бачить рядок, а політика при читанні його ховає).
+  //
+  // Написано, перебудовано, доведено червоністю на порожній базі — і
+  // ВІДКОЧЕНО, бо `scripts/pg-schema.mjs` складених ключів не вміє. Він
+  // розкладає їх на два одноколонкові й видає, зокрема,
+  // `FOREIGN KEY (organization_id) REFERENCES business_units(organization_id)`
+  // — констрейнт, який означає не те й якого в базі бути не має. Схема
+  // Postgres генерується з цієї SQLite (інваріант 10), тож поки генератор не
+  // навчиться, складений ключ у `db/postgres/schema.sql` не потрапить —
+  // а неправильний констрейнт там гірший за відсутній.
+  //
+  // Що вже тримає межу без нього: жоден шлях коду більше не вміє скласти
+  // посилання на чужий рядок — ідентифікатори випадкові й потенантні,
+  // літералів у коді немає (0097 і `chart-of-accounts.check`). Ключ — це
+  // друга лінія, і вона робиться разом із правкою генератора.
+
   // --- 0095: статус оплати броні перераховується З ФОЛІО (В3) ---
   //
   // Дві книги вже розійшлися в чинних базах: слово в `reservations` ставили
@@ -7356,6 +7435,28 @@ function runMigrations(database: any) {
     }
   } catch (e: any) {
     console.error('[DB] 0095 payment status from folio:', e.message);
+  }
+
+  // --- Колонки, які зносить чужа перебудова, дописуються ОСТАННІМИ ---
+  //
+  // `fin_operation_id` додається через ALTER на рядок ~2490, а перебудови
+  // `accruals` (зняття мертвого ключа) і `capex_items` відтворюють таблицю з
+  // ЇЇ CREATE — тобто пізніше і без цієї колонки. На порожній базі вона
+  // зникала тут-таки: мігрований клієнт її мав, а НОВИЙ — ні.
+  //
+  // Побачив це не гейт, а генератор схеми, коли її вперше зібрали з
+  // по-справжньому свіжої бази: `check-fresh-schema` звіряє SQLite із SQLite,
+  // і там колонки бракує з обох боків — рівно та сліпота, про яку AGENTS §4
+  // каже про індекси. Тому дописуємо в кінці, коли всі перебудови позаду;
+  // перевірка ідемпотентна, на мігрованій базі це no-op.
+  for (const tbl of ['capex_items', 'accruals', 'invoices']) {
+    try {
+      const cols = database.prepare(`PRAGMA table_info(${tbl})`).all() as { name: string }[];
+      if (cols.length > 0 && !cols.some((c) => c.name === 'fin_operation_id')) {
+        database.exec(`ALTER TABLE ${tbl} ADD COLUMN fin_operation_id TEXT REFERENCES fin_operations(id)`);
+        console.log(`[DB] ${tbl}: fin_operation_id повернуто після перебудов`);
+      }
+    } catch { /* таблиці може не бути */ }
   }
 
   // The last line of runMigrations, and the only reliable signal that the

@@ -264,9 +264,37 @@ function pgDefault(raw, type) {
 
 // ── Read the live schema ─────────────────────────────────────────────────────
 
-const tables = db
+// Таблиці, яких у Postgres НЕ БУЛО НІКОЛИ і бути не має.
+//
+// Це дошервітний журнал грошей: `income`/`expenses`/`transfers`/`payments`.
+// Їхні дані перенесено у `fin_operations` ще міграцією clean-3, жоден рядок
+// коду їх більше не читає (перевірено грепом 07.09.2026), і в
+// `db/postgres/schema.sql` їх немає — тобто на проді їх немає теж.
+//
+// Але `src/lib/db.ts` досі СТВОРЮЄ їх на порожній базі. Тому свіжа SQLite і
+// закомічена схема розходяться, і генератор, запущений за інструкцією
+// («підніміть застосунок один раз»), не відтворює закоміченої схеми, а додає
+// чотири мертві таблиці кожному новому клієнтові Postgres. Розходження того
+// самого класу, що з індексами (AGENTS §4): `check-fresh-schema` звіряє
+// SQLite із SQLite і не бачить його за означенням.
+//
+// Виключення тут — не приховування: якщо в такій таблиці зʼявляться РЯДКИ,
+// генератор скаже про це вголос. Прибрати сам засів у db.ts — окрема правка,
+// і вона руйнівна (DROP по чужих девелоперських базах), тож це рішення не
+// генератора.
+const LEGACY_SQLITE_ONLY = ['income', 'expenses', 'transfers', 'payments'];
+
+const allTables = db
   .prepare(`SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
   .all();
+for (const name of LEGACY_SQLITE_ONLY) {
+  if (!allTables.some((t) => t.name === name)) continue;
+  const n = db.prepare(`SELECT COUNT(*) AS n FROM "${name}"`).get().n;
+  if (n > 0) {
+    console.warn(`  УВАГА: ${name} має ${n} рядків, а в Postgres цієї таблиці немає — розберіться, перш ніж покладатись на цей вивід`);
+  }
+}
+const tables = allTables.filter((t) => !LEGACY_SQLITE_ONLY.includes(t.name));
 
 const indexes = db
   .prepare(`SELECT name, tbl_name, sql FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL ORDER BY tbl_name, name`)
