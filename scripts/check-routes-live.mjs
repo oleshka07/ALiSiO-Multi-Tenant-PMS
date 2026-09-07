@@ -295,12 +295,18 @@ async function main() {
           'сторінка гостя показує ТУ САМУ бронь');
         // Поля саме з тих JOIN-ів, які й були зламані комою: обʼєкт і тип
         // номера. 200 без них — це порожній екран із зеленим статусом.
-        claim('гостьовий портал',
-          !!(reservation?.property_name ?? guest?.property?.name),
-          'у відповіді є назва обʼєкта (той самий JOIN, який ламала кома)');
-        claim('гостьовий портал',
-          !!(reservation?.unit_type_name ?? guest?.unitType?.name ?? reservation?.unit_type_id),
-          'у відповіді є тип номера');
+        // Поля саме з тих JOIN-ів, які ламала кома, — і БЕЗ запасних варіантів
+        // (рецензія раунду 8, Р8.13).
+        //
+        // Тут стояло `?? reservation?.unit_type_id`, і це рятувало твердження
+        // від падіння: `unit_type_id` лежить у самому рядку броні, без жодного
+        // JOIN. Тобто зламаний JOIN до `unit_types` лишав твердження зеленим —
+        // рівно та сліпота, проти якої гейт і написаний. Питаємо НАЗВУ, бо
+        // саме назву дає JOIN.
+        claim('гостьовий портал', typeof reservation?.property_name === 'string' && reservation.property_name.length > 0,
+          `у відповіді є назва обʼєкта з JOIN (${reservation?.property_name})`);
+        claim('гостьовий портал', typeof reservation?.unit_type_name === 'string' && reservation.unit_type_name.length > 0,
+          `у відповіді є назва типу номера з JOIN (${reservation?.unit_type_name})`);
 
         const badRes = await fetch(`${BASE}/api/guest/${token}zzz`);
         claim('гостьовий портал', badRes.status === 404,
@@ -357,15 +363,38 @@ async function main() {
     claim('канал', connRes.status === 200, `список зʼєднань відповідає 200 (${connRes.status})`);
     const mine = rows.find((c) => c.id === connId);
     claim('канал', !!mine, 'зʼєднання видно у списку');
-    claim('канал', mine?.provider === 'channex' || mine?.provider === undefined,
-      `у зʼєднання названий провайдер (${mine?.provider})`);
 
+    // Значення, які ми поклали, — назад ТИМИ САМИМИ (рецензія раунду 8, Р8.12).
+    //
+    // Тут стояло `provider === 'channex' || provider === undefined`, тобто
+    // «або те, що ми записали, або взагалі нічого» — твердження, істинне за
+    // будь-якої відповіді. Тепер перевіряються самі значення, і серед них
+    // `propertyId`: він доводить, що рядок дійшов зі своїм звʼязком, а не
+    // просто знайшовся за id.
+    claim('канал', mine?.provider === 'channex', `провайдер повернувся своїм (${mine?.provider})`);
+    claim('канал', mine?.environment === 'staging', `середовище повернулось своїм (${mine?.environment})`);
+    claim('канал', mine?.propertyId === property.id, `зʼєднання названо свій обʼєкт (${mine?.propertyId})`);
+    claim('канал', mine?.isEnabled === true, `увімкненість повернулась своєю (${mine?.isEnabled})`);
+    // Половини відповіді, кожна з яких — окремий запит усередині обробника:
+    // черга, застрягле, події, відправлення, журнал. Обірваний запит тут
+    // виглядав би як відсутнє поле, а не як помилка.
+    for (const [field, shape] of [['pending', 'number'], ['stuck', 'array'], ['attention', 'array'], ['sent', 'array'], ['sendLog', 'array']]) {
+      const value = mine?.[field];
+      const good = shape === 'array' ? Array.isArray(value) : typeof value === shape;
+      claim('канал', good, `у відповіді є ${field} (${shape}): ${JSON.stringify(value)?.slice(0, 30)}`);
+    }
+
+    // Динамічний маршрут каналу: НАЗВАНА відмова, а не «не 500».
+    //
+    // `status !== 500` проходило б і на 401, і на 404 — тобто на маршруті,
+    // який до обробника взагалі не дійшов. Наше зʼєднання свідомо без
+    // `remote_property_id`, і єдина правильна відповідь на нього — 409
+    // `catalog_not_synced`: обробник знайшов зʼєднання в орендарі й назвав
+    // ту передумову, якої бракує.
     const frameRes = await call(cookie, `/api/channels/connections/${connId}/frame`);
     const frame = await body(frameRes);
-    claim('канал', frameRes.status !== 500,
-      `динамічний маршрут каналу не падає (${frameRes.status})`);
-    claim('канал', typeof frame?.error === 'string' || typeof frame?.url === 'string',
-      `відповідь названа: ${JSON.stringify(frame).slice(0, 60)}`);
+    claim('канал', frameRes.status === 409 && frame?.error === 'catalog_not_synced',
+      `каталог не заведено — маршрут каже саме це (${frameRes.status} ${JSON.stringify(frame).slice(0, 40)})`);
   } finally {
     await cleanup();
   }
