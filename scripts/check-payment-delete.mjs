@@ -50,6 +50,7 @@ const NOT_MONEY = new Set([
   // немає ні броні, ні гостя, ні фоліо (Р13.2).
   'src/modules/finance/data/operation-tags.check.ts',
   'src/modules/finance/api/pnl-classifier.check.ts',
+  'src/modules/finance/data/axis-repair.check.ts',
 ]);
 
 const DELETES = /DELETE\s+FROM\s+fin_operations\b/i;

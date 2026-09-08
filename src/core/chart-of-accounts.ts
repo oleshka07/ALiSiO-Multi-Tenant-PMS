@@ -144,6 +144,49 @@ export const KNOWN_CLASSIFIERS = [
   'other', 'uncategorized',
 ] as const;
 
+/**
+ * Яку вісь стаття МУСИТЬ мати — за `code`, а якщо коду немає, за `std_group`.
+ *
+ * Порядок не переставляється, і це не стиль (Р13.6). Два рядки плану навмисно
+ * відхиляються від своєї групи: `variable` має `stdGroup: 'COGS'`, але власний
+ * рядок P&L «Змінні», а `investors` має `stdGroup: 'Financing'` і є
+ * НАДХОДЖЕННЯМ. Лікування за самою лише групою переписало б обидва — тобто
+ * зламало б рівно ті рядки, заради яких значення в плані стоять явно.
+ *
+ * `null` означає «правила для цієї групи немає»: група, якої не знає ні план,
+ * ні `AXIS_BY_STD_GROUP`. Таку статтю не вгадують — її НАЗИВАЮТЬ (інваріант
+ * 13), бо будь-яке вгадане значення тут це гроші в чужому рядку звіту.
+ */
+export function expectedAxis(
+  code: string | null | undefined,
+  stdGroup: string | null | undefined,
+): { opType: string; classifier: string } | null {
+  const byCode = code ? CHART_OF_ACCOUNTS.find((a) => a.code === code) : undefined;
+  if (byCode) return { opType: byCode.opType, classifier: byCode.classifier };
+  const group = (stdGroup || '').trim();
+  return AXIS_BY_STD_GROUP[group] || null;
+}
+
+/**
+ * Чи розходиться нинішня вісь рядка з тією, яку він мусить мати.
+ *
+ * ПОРОЖНЯ вісь — окремий випадок неправильної, а не єдиний. Скрипт лікування,
+ * міграція 0097 і `--list` рахували саме порожні (`NULL`/`''`) — і мовчали про
+ * рядки, яким легасі-бекфіл поставив НЕПОРОЖНЄ й неправильне: `std_group =
+ * 'Financing'` не потрапляв у жоден його `WHEN`, тож `investors` діставав
+ * `other/other`, і надходження від інвестора рахувалося виручкою. «Без осей: 0»
+ * при цьому виглядало як «усе гаразд».
+ */
+export function axisIsWrong(row: {
+  code?: string | null; std_group?: string | null;
+  op_type?: string | null; classifier?: string | null;
+}): boolean {
+  const want = expectedAxis(row.code, row.std_group);
+  if (!want) return false;   // невідома група — не «неправильна», а неназвана
+  return (row.op_type || '') !== want.opType
+    || (row.classifier || '') !== want.classifier;
+}
+
 /** Бізнес-юніт. Той самий клас проблеми, той самий вигляд рішення. */
 export interface BusinessUnitSeed {
   code: string;

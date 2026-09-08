@@ -11,6 +11,7 @@ import crypto from 'crypto';
 import {
   CHART_OF_ACCOUNTS as CHART_OF_ACCOUNTS_SEED,
   BUSINESS_UNITS as BUSINESS_UNITS_SEED,
+  AXIS_BY_STD_GROUP as AXIS_BY_STD_GROUP_SEED,
 } from '../core/chart-of-accounts.ts';
 
 // Database file path — the project's /data directory, unless told otherwise.
@@ -1890,12 +1891,22 @@ function runMigrations(database: any) {
       // жодного готелю й мовчить про це (Р12.4, `check-catalogue-ids`). Їх
       // забрано звідси: те саме робиться нижче, у блоці 0097, за `code` —
       // тобто вже після того, як колонка кодів зʼявилась.
-      database.exec("UPDATE expense_categories SET op_type = 'income',    classifier = 'other'       WHERE std_group = 'Revenue'");
-      database.exec("UPDATE expense_categories SET op_type = 'expense',   classifier = 'cogs'        WHERE std_group = 'COGS'");
-      database.exec("UPDATE expense_categories SET op_type = 'expense',   classifier = 'operational' WHERE std_group = 'OPEX'");
-      database.exec("UPDATE expense_categories SET op_type = 'expense',   classifier = 'tax'         WHERE std_group = 'Taxes'");
-      database.exec("UPDATE expense_categories SET op_type = 'expense',   classifier = 'capex'       WHERE std_group = 'CAPEX'");
-      database.exec("UPDATE expense_categories SET op_type = 'other',     classifier = 'other'       WHERE op_type IS NULL");
+      // Осі — з ОДНІЄЇ мапи (`AXIS_BY_STD_GROUP`), не зі списку, набраного тут
+      // руками (Р13.6). Той список був неправильний двічі: `Revenue` діставав
+      // `classifier = 'other'` — проживання переставало бути виручкою, — а
+      // `Financing` не потрапляв у жоден `WHEN` узагалі й падав в останній
+      // рядок `other/other`, тобто надходження від інвестора рахувалося
+      // виручкою. Обидва значення НЕПОРОЖНІ, тож наступний бекфіл, який лікує
+      // порожнє, не спрацьовував уже ніколи, а `--list` показував «без осей: 0».
+      for (const [group, axis] of Object.entries(AXIS_BY_STD_GROUP_SEED)) {
+        database.prepare(
+          'UPDATE expense_categories SET op_type = ?, classifier = ? WHERE std_group = ?')
+          .run(axis.opType, axis.classifier, group);
+      }
+      // Група, якої немає в мапі, вісь НЕ отримує: вгадана вісь це гроші в
+      // чужому рядку звіту. Такі статті називає читач П&L названою відмовою
+      // (`pnl-classifier.check`), а `seed-chart-of-accounts.mjs --list` — по
+      // імені (інваріант 13).
 
       console.log('[DB] Extended expense_categories with parent_id/op_type/classifier + backfilled seed rows');
     }
@@ -7374,6 +7385,50 @@ function runMigrations(database: any) {
     if (axed > 0) console.log(`[DB] 0097: axes (op_type/classifier) written by code for ${axed} catalogue rows`);
   } catch (e: any) {
     console.error('[DB] 0097 catalogue code column:', e.message);
+  }
+
+  // --- 0120: осі, які легасі-бекфіл поставив НЕПОРОЖНІМИ й неправильними ---
+  //
+  // 0097 підписував осі там, де порожньо, — і тому не чіпав саме ті бази, яким
+  // гірше за всіх (Р13.6). Одноразовий бекфіл вище (блок «Finmap PR #2») до
+  // цієї правки ставив `Revenue → classifier 'other'` і не мав `Financing` у
+  // жодному `WHEN`, тож `investors` діставав `other/other`. Обидва значення
+  // непорожні: другий бекфіл, який лікує порожнє, після них не спрацьовував
+  // уже ніколи, а `seed-chart-of-accounts.mjs --list` показував «без осей: 0».
+  // Тобто перевірка доповідала про безпеку, дивлячись не туди.
+  //
+  // Міра тут — РОЗБІЖНІСТЬ із правилом, не порожнеча. Спершу за `code`
+  // (`CHART_OF_ACCOUNTS`), і лише рядки БЕЗ коду — за `std_group`: два рядки
+  // плану навмисно відхиляються від своєї групи (`variable` — COGS, але
+  // «Змінні»; `investors` — Financing, але надходження), і лікування самою
+  // групою зламало б обидва. Те саме правило й тим самим порядком —
+  // `src/modules/finance/data/axis-repair.ts` (гейт `axis-repair.check`) і
+  // міграція Postgres 0120.
+  //
+  // Групи, якої немає в мапі, не чіпаємо: вгадана вісь це гроші в чужому
+  // рядку звіту. Такі статті називає читач П&L (інваріант 13).
+  try {
+    const byCode = database.prepare(
+      `UPDATE expense_categories SET op_type = ?, classifier = ?
+        WHERE code = ? AND (COALESCE(op_type, '') != ? OR COALESCE(classifier, '') != ?)`);
+    let fixed = 0;
+    for (const a of CHART_OF_ACCOUNTS_SEED) {
+      fixed += byCode.run(a.opType, a.classifier, a.code, a.opType, a.classifier).changes;
+    }
+    const codes = CHART_OF_ACCOUNTS_SEED.map(() => '?').join(',');
+    const byGroup = database.prepare(
+      `UPDATE expense_categories SET op_type = ?, classifier = ?
+        WHERE std_group = ?
+          AND (code IS NULL OR code NOT IN (${codes}))
+          AND (COALESCE(op_type, '') != ? OR COALESCE(classifier, '') != ?)`);
+    const chartCodes = CHART_OF_ACCOUNTS_SEED.map((a) => a.code);
+    for (const [group, axis] of Object.entries(AXIS_BY_STD_GROUP_SEED)) {
+      fixed += byGroup.run(
+        axis.opType, axis.classifier, group, ...chartCodes, axis.opType, axis.classifier).changes;
+    }
+    if (fixed > 0) console.log(`[DB] 0120: axes corrected on ${fixed} catalogue rows (wrong, not just empty)`);
+  } catch (e: any) {
+    console.error('[DB] 0120 axis repair:', e.message);
   }
 
   // --- 0098 (ключі довідників з орендарем) — НЕ ЗРОБЛЕНО, і ось чому ---

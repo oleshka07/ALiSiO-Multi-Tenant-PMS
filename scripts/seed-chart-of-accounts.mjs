@@ -40,6 +40,9 @@ if (has('--help') || (!has('--list') && !has('--all') && !val('--slug'))) {
 const { getSql } = await import('../src/core/db/async.ts');
 const { runWithOrganization } = await import('../src/core/auth/tenant-context.ts');
 const { CHART_OF_ACCOUNTS, BUSINESS_UNITS } = await import('../src/core/chart-of-accounts.ts');
+// Фасадом `@finance`, не з `data/` напряму: цей скрипт — код ПОЗА модулем
+// (разова дія адміністратора), і прямий імпорт нутрощів пробиває межу.
+const { wrongAxisRows, unknownGroupRows, repairAxes } = await import('../src/modules/finance/api/index.ts');
 
 const sql = getSql();
 const rnd = () => Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2, 10);
@@ -51,12 +54,22 @@ async function state(org) {
       'SELECT code, op_type, classifier FROM expense_categories WHERE organization_id = ? AND code IS NOT NULL', [org.id]);
     const bu = await sql.rows(
       'SELECT code FROM business_units WHERE organization_id = ? AND code IS NOT NULL', [org.id]);
-    // Стаття БЕЗ осей — це не «майже готова»: P&L кладе її в «Інше», нижче
-    // EBITDA, а форма витрати її не показує зовсім (Р12.1). Тому вона
+    // Стаття з НЕПРАВИЛЬНОЮ віссю — це не «майже готова»: P&L кладе її не в
+    // той рядок, а форма витрати може не показати зовсім (Р12.1). Тому вона
     // рахується окремо від відсутньої: доробити треба інакше — не вставити,
     // а підписати.
-    const blind = ec.filter((r) => !r.op_type || !r.classifier).map((r) => r.code);
-    return { ec: new Set(ec.map((r) => r.code)), bu: new Set(bu.map((r) => r.code)), blind };
+    //
+    // Міра — РОЗБІЖНІСТЬ із правилом, не порожнеча (Р13.6). Доти тут стояло
+    // `!r.op_type || !r.classifier`, і саме тому `--list` показував «без осей:
+    // 0» на базах, яким легасі-бекфіл `db.ts` поставив непорожнє й
+    // неправильне: `investors` діставав `other/other`, тобто надходження від
+    // інвестора рахувалося виручкою, а звіт про це мовчав.
+    const wrong = (await wrongAxisRows(org.id)).map((r) => r.code || r.name);
+    const unknown = (await unknownGroupRows(org.id)).map((r) => r.code || r.name);
+    return {
+      ec: new Set(ec.map((r) => r.code)), bu: new Set(bu.map((r) => r.code)),
+      wrong, unknown,
+    };
   });
 }
 
@@ -72,18 +85,30 @@ if (orgs.length === 0) {
 }
 
 if (has('--list')) {
-  console.log('\n  готель                     валюта   статей   юнітів  без осей');
+  console.log('\n  готель                     валюта   статей   юнітів  хибних осей');
+  const unknownSeen = [];
   for (const org of orgs) {
     const s = await state(org);
     const full = s.ec.size === CHART_OF_ACCOUNTS.length && s.bu.size === BUSINESS_UNITS.length
-      && s.blind.length === 0;
+      && s.wrong.length === 0;
     console.log(`  ${String(org.slug).padEnd(26)} ${String(org.default_currency).padEnd(8)} `
       + `${String(s.ec.size).padStart(2)}/${CHART_OF_ACCOUNTS.length}    `
       + `${String(s.bu.size).padStart(2)}/${BUSINESS_UNITS.length}     `
-      + `${String(s.blind.length).padStart(2)}     ${full ? ' ' : '←'}`);
+      + `${String(s.wrong.length).padStart(2)}        ${full ? ' ' : '←'}`);
+    // Не лише число: саме через «0» без імен ця вада й прожила стільки.
+    if (s.wrong.length > 0) console.log(`      хибні: ${s.wrong.join(', ')}`);
+    if (s.unknown.length > 0) unknownSeen.push([org.slug, s.unknown]);
   }
-  console.log('\n  ← бракує довідника або осей; полагодити: --slug <готель> або --all');
-  console.log('  «без осей» — стаття є, але P&L кладе її в «Інше», а форма витрати не показує\n');
+  console.log('\n  ← бракує довідника або вісь розходиться з правилом; полагодити: --slug <готель> або --all');
+  console.log('  «хибних осей» — стаття є, але її вісь не та: P&L кладе гроші не в той рядок.');
+  console.log('  Рахуються РОЗБІЖНОСТІ, не порожнеча: легасі-бекфіл ставив непорожнє й неправильне,');
+  console.log('  і доти цей стовпчик показував нуль (Р13.6).');
+  if (unknownSeen.length > 0) {
+    console.log('\n  Статті, для яких правила НЕМАЄ — їх не лікують, їх треба назвати руками');
+    console.log('  (група обліку не з переліку; читач П&L на них відмовляється):');
+    for (const [slug, names] of unknownSeen) console.log(`    ${slug}: ${names.join(', ')}`);
+  }
+  console.log('');
   process.exit(0);
 }
 
@@ -92,8 +117,7 @@ for (const org of orgs) {
   const s = await state(org);
   const missingEc = CHART_OF_ACCOUNTS.filter((a) => !s.ec.has(a.code));
   const missingBu = BUSINESS_UNITS.filter((u) => !s.bu.has(u.code));
-  const blindEc = CHART_OF_ACCOUNTS.filter((a) => s.blind.includes(a.code));
-  if (missingEc.length === 0 && missingBu.length === 0 && blindEc.length === 0) {
+  if (missingEc.length === 0 && missingBu.length === 0 && s.wrong.length === 0) {
     console.log(`  ${org.slug}: довідник повний, нічого не робив`);
     continue;
   }
@@ -111,17 +135,6 @@ for (const org of orgs) {
           a.includeInPnl ? 1 : 0, a.includeInCash ? 1 : 0, a.allocMethod, a.isCapex,
           a.icon, a.color, a.sortOrder]);
     }
-    // Статті, які вже є, але без осей — готелі, заведені між INC-025 і Р12.1.
-    // Підписуємо ЛИШЕ порожнє: вісь, яку готель змінив під себе, лишається
-    // його (той самий принцип, що й з назвами).
-    for (const a of blindEc) {
-      await sql.run(
-        `UPDATE expense_categories
-            SET op_type    = COALESCE(NULLIF(op_type, ''), ?),
-                classifier = COALESCE(NULLIF(classifier, ''), ?)
-          WHERE organization_id = ? AND code = ?`,
-        [a.opType, a.classifier, org.id, a.code]);
-    }
     for (const u of missingBu) {
       await sql.run(
         `INSERT INTO business_units (id, organization_id, code, name, unit_type, is_shared, sort_order)
@@ -129,8 +142,17 @@ for (const org of orgs) {
         [`bu_${rnd()}`, org.id, u.code, u.name, u.unitType, u.isShared, u.sortOrder]);
     }
   });
+  // Осі — ОСТАННІМИ, після вставки: щойно вставлені рядки вже правильні, а
+  // полікувати треба ті, що були. Одні двері з міграцією 0120 і з гейтом
+  // (`data/axis-repair.ts`), щоб правило не розійшлося втретє.
+  const healed = await runWithOrganization(org.id, () => repairAxes(org.id));
+  const unknown = await runWithOrganization(org.id, () => unknownGroupRows(org.id));
   console.log(`  ${org.slug}: додано ${missingEc.length} стат(тю/ей) і ${missingBu.length} бізнес-юніт(и/ів)`
-    + (blindEc.length ? `, підписано осі ще ${blindEc.length} статтям` : ''));
+    + (healed ? `, виправлено осі ще ${healed} статтям` : ''));
+  if (unknown.length > 0) {
+    console.log(`      НЕ полікував ${unknown.length}: група обліку не з переліку — ${unknown.map((r) => r.code || r.name).join(', ')}`);
+    console.log('      Вгадана вісь це гроші в чужому рядку звіту; назвіть групу руками.');
+  }
   touched += 1;
 }
 
