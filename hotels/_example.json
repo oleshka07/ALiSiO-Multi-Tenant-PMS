@@ -16,6 +16,7 @@
     "address": "Marktplatz 1",
     "city": "Greiz",
     "country": "DE",
+    "propertyType": "hotel",
     "phone": "+49 000 000000",
     "email": "info@example.test",
     "checkInTime": "15:00",

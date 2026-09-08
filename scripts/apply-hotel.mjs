@@ -239,6 +239,18 @@ async function applyOne(plan) {
     });
     row = { id: made.organizationId, name: both(org, 'name') || slug };
     say.made(`організація ${slug}`);
+    // Пояс — і ЗВІДКИ він узявся.
+    //
+    // `provisionOrganization` повертає `timezoneFrom`, щоб той, хто заводить
+    // готель, показав висновок на підтвердження. Тут його ігнорували, тобто
+    // на РЕАЛЬНОМУ шляху заведення — шляху деплою — «виведено з країни»
+    // ніхто не бачив (Р13.14). А пояс зсуває межу доби, і канал торгує
+    // датами заїзду: висновок із країни, зроблений мовчки, помітять уперше
+    // на зсунутій даті заїзду.
+    const from = made.timezoneFrom === 'country'
+      ? ` ← виведено з країни ${both(org, 'country') || '—'}, звірте з готелем`
+      : '';
+    console.log(`     ЧАСОВИЙ ПОЯС: ${made.timezone}${from}`);
     console.log(`\n     ВЛАСНИК: ${email}`);
     console.log(`     ПАРОЛЬ:  ${password}`);
     console.log('     Він друкується один раз і ніде не зберігається — змініть при першому вході.\n');
@@ -286,9 +298,15 @@ async function applyStructure(organizationId, plan) {
 
   const wantProp = plan.property || {};
   const propPatch = {};
+  // `propertyType` тут не косметика (Р13.14): без нього кожен готель,
+  // заведений шляхом деплою, народжувався з `property_type = NULL` і не міг
+  // синкнути каталог у канал, поки хтось не зайде в UI руками. Значення —
+  // з `@core/lodging-kinds`; писач звіряє його і відмовляє названими
+  // словами, тож помилка у файлі готелю видно тут, а не у вендора.
   for (const [key, col] of [['name', 'name'], ['address', 'address'], ['city', 'city'],
     ['country', 'country'], ['phone', 'phone'], ['email', 'email'],
-    ['checkInTime', 'check_in_time'], ['checkOutTime', 'check_out_time']]) {
+    ['checkInTime', 'check_in_time'], ['checkOutTime', 'check_out_time'],
+    ['propertyType', 'property_type']]) {
     const v = f(wantProp, key, snake(key), col);
     if (v !== undefined && String(property[col] ?? '') !== String(v)) propPatch[col] = v;
   }
